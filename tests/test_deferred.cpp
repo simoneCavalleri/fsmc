@@ -6,6 +6,7 @@
 
 #include "codegen/cameo_xmi_parser.hpp"
 #include "codegen/cpp_generator.hpp"
+#include "codegen/dot_parser.hpp"
 #include "codegen/fsm_validator.hpp"
 #include "codegen/json_parser.hpp"
 #include "codegen/mermaid_parser.hpp"
@@ -168,6 +169,33 @@ void test_deferred_events_json() {
     std::cout << "[PASS] test_deferred_events_json passed.\n";
 }
 
+void test_deferred_events_dot() {
+    std::cout << "[TEST] Running test_deferred_events_dot...\n";
+
+    const std::string dot = R"(
+    digraph DeferFSM {
+        __start__ [shape=point];
+        __start__ -> Initializing;
+        Initializing [defer="RequestCmd, DataPacket"];
+        Initializing -> Ready [label="InitDone"];
+    }
+    )";
+
+    DotParser parser;
+    FsmModel model;
+    std::string err;
+    const bool is_parsed = parser.parse(dot, model, err);
+
+    assert(is_parsed);
+    const auto* init_state = model.find_state("Initializing");
+    assert(init_state != nullptr);
+    assert(init_state->deferred_events.size() == 2);
+    assert(init_state->deferred_events[0] == "RequestCmd");
+    assert(init_state->deferred_events[1] == "DataPacket");
+
+    std::cout << "[PASS] test_deferred_events_dot passed.\n";
+}
+
 // ============================================================================
 // Runtime Execution Tests (Synchronous & Asynchronous)
 // ============================================================================
@@ -319,11 +347,12 @@ int main() {
     test_deferred_events_cameo();
     test_deferred_events_scxml();
     test_deferred_events_json();
+    test_deferred_events_dot();
     test_deferred_events_sync_runtime();
     test_deferred_events_async_runtime();
 
     std::cout << "========================================\n"
-              << "     ALL DEFERRED TESTS PASSED (7/7)!   \n"
+              << "     ALL DEFERRED TESTS PASSED (8/8)!   \n"
               << "========================================\n";
     return 0;
 }

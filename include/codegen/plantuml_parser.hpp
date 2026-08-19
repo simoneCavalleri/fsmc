@@ -165,10 +165,25 @@ class PlantUmlParser : public IParser {
             return;
         }
         const std::string state_name = sanitize_identifier(trim(line.substr(0, colon_pos)));
-        const std::string_view rest = trim(line.substr(colon_pos + 1));
-        const auto defer_pos = rest.find("defer ");
-        if (defer_pos != std::string_view::npos) {
-            const std::string event_name = sanitize_identifier(trim(rest.substr(defer_pos + 6)));
+        std::string_view rest = trim(line.substr(colon_pos + 1));
+
+        if (starts_with(rest, "[defer]")) {
+            rest = trim(rest.substr(7));
+        } else if (starts_with(rest, "defer:")) {
+            rest = trim(rest.substr(6));
+        } else if (starts_with(rest, "defer ")) {
+            rest = trim(rest.substr(6));
+        } else {
+            const auto defer_pos = rest.find("defer ");
+            if (defer_pos != std::string_view::npos) {
+                rest = trim(rest.substr(defer_pos + 6));
+            } else {
+                return;
+            }
+        }
+
+        const std::string event_name = sanitize_identifier(rest);
+        if (!event_name.empty()) {
             model.add_state(state_name);
             model.add_event(event_name);
             if (auto* state = model.find_state_mut(state_name)) {

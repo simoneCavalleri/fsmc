@@ -78,6 +78,33 @@ class DotParser : public IParser {
                 continue;
             }
 
+            // Check node attributes (e.g. StateName [defer="Event1, Event2"];)
+            const std::regex node_attr_regex(R"(^\s*([A-Za-z0-9_]+)\s*\[(.*)\])", std::regex::icase);
+            if (!std::regex_search(trimmed, match, edge_regex) && std::regex_search(trimmed, match, node_attr_regex)) {
+                std::string node_name = sanitize_identifier(match[1].str());
+                std::string attrs = match[2].str();
+
+                model.add_state(node_name, current_parent_state);
+
+                const std::regex defer_attr_regex(R"raw(defer\s*=\s*"([^"]*)")raw", std::regex::icase);
+                std::smatch defer_match;
+                if (std::regex_search(attrs, defer_match, defer_attr_regex)) {
+                    std::string def_events = defer_match[1].str();
+                    std::stringstream ss(def_events);
+                    std::string item;
+                    while (std::getline(ss, item, ',')) {
+                        std::string d_evt = sanitize_identifier(trim_line(item));
+                        if (!d_evt.empty()) {
+                            model.add_event(d_evt);
+                            if (auto* st = model.find_state_mut(node_name)) {
+                                st->deferred_events.push_back(d_evt);
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
+
             // Check edge transition S1 -> S2 [label="..."]
             if (std::regex_search(trimmed, match, edge_regex)) {
                 std::string src_raw = match[1].str();

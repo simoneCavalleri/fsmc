@@ -274,6 +274,19 @@ state def BootSequence {
 }
 ```
 
+### PlantUML (`.puml`)
+```plantuml
+@startuml
+[*] --> Initializing
+
+Initializing : defer StartMissionCmd
+Initializing : defer DataPacketEvent
+
+Initializing --> Ready : BootComplete
+Ready --> InFlight : StartMissionCmd
+@enduml
+```
+
 ### Mermaid (`.mmd`)
 ```mermaid
 stateDiagram-v2
@@ -284,6 +297,17 @@ stateDiagram-v2
 
     Initializing --> Ready : BootComplete
     Ready --> InFlight : StartMissionCmd
+```
+
+### Graphviz DOT (`.dot`, `.gv`)
+```dot
+digraph BootSequence {
+    __start__ [shape=point];
+    __start__ -> Initializing;
+    Initializing [defer="StartMissionCmd, DataPacketEvent"];
+    Initializing -> Ready [label="BootComplete"];
+    Ready -> InFlight [label="StartMissionCmd"];
+}
 ```
 
 ### Cameo / MagicDraw (`.xmi`)

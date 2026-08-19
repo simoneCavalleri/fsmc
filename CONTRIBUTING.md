@@ -17,7 +17,7 @@ Thank you for your interest in contributing to **`fsmc`**!
 cmake -B build -S .
 cmake --build build
 
-# Run full CTest suite (14 targets)
+# Run full CTest suite (15 targets)
 ctest --test-dir build --output-on-failure
 ```
 

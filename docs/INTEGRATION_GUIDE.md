@@ -28,6 +28,7 @@ fsmc_target_sources(my_app
     DIAGRAMS
         models/mission.puml
         models/protocol.mmd
+        models/spacecraft.sysml
     NAME MissionFSM
     STANDARD 20
     STANDALONE
@@ -41,7 +42,7 @@ fsmc_target_sources(my_app
 
 | Parameter | Type | Description |
 | :--- | :--- | :--- |
-| `DIAGRAMS` | `list` (**Required**) | One or more paths to `.puml`, `.plantuml`, `.mmd`, or `.mermaid` diagram files. |
+| `DIAGRAMS` | `list` (**Required**) | One or more paths to `.sysml`, `.puml`, `.plantuml`, `.mmd`, or `.mermaid` diagram files. |
 | `NAME` | `string` | FSM class name (default: inferred from diagram file stem). |
 | `STANDARD` | `17` or `20` | Target C++ standard (default: `17`). |
 | `NAMESPACE` | `string` | C++ namespace wrapping states, events, and FSM aliases (default: `fsm_generated`). |
@@ -96,7 +97,7 @@ If you do not use CMake or prefer manual code generation:
 
 1. Build or download the `fsmc` binary:
    ```bash
-   ./build/bin/fsmc -i model.puml -o model_fsm.hpp --std 20 --standalone
+   ./build/bin/fsmc -i model.sysml -o model_fsm.hpp --std 20 --standalone
    ```
 2. Copy `model_fsm.hpp` directly into your project's include path.
 3. `#include "model_fsm.hpp"` in your C++ code.

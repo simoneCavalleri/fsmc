@@ -7,12 +7,13 @@ This document describes the internal design, compiler pipeline, and template met
 ## 1. Compiler Pipeline
 
 ```
- Diagram (.mmd / .puml)
+ Specification (.sysml / .mmd / .puml)
           │
           ▼
 ┌───────────────────┐
-│ Multi-Format      │  • PlantUML Parser (Recursive block tokenization)
-│ Parser Interface  │  • Mermaid Parser (StateDiagram-v2 grammar)
+│ Multi-Format      │  • SysML v2 Parser (Native textual .sysml grammar)
+│ Parser Interface  │  • PlantUML Parser (Recursive block tokenization)
+│                   │  • Mermaid Parser (StateDiagram-v2 grammar)
 └─────────┬─────────┘
           │
           ▼

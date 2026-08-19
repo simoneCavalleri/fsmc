@@ -203,7 +203,9 @@ class thread_safe_fsm {
     template <typename Event, typename Rep, typename Period>
     void post_delayed(Event event, std::chrono::duration<Rep, Period> delay) {
         auto deadline = std::chrono::steady_clock::now() + delay;
-        auto task = [evt = std::move(event)](fsm_type& machine) { machine.dispatch(evt); };
+        auto task = [evt = std::move(event)](fsm_type& machine) {
+            machine.dispatch(evt);
+        };
         {
             std::scoped_lock lock(mutex_);
             timed_queue_.push(timed_event{deadline, std::move(task)});

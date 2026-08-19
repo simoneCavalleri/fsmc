@@ -41,7 +41,7 @@ jobs:
 
       - name: Configure CMake
         run: |
-          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release $([ "$RUNNER_OS" = "Windows" ] && echo "-A x64 -T host=x64")
         timeout-minutes: 15
 
       - name: Build Release Binary

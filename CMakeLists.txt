@@ -16,7 +16,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Strict compiler warnings for high code quality
 if(MSVC)
-    add_compile_options(/W4 /WX- /permissive- /utf-8)
+    add_compile_options(/W4 /WX- /permissive- /utf-8 /bigobj /FS)
 else()
     add_compile_options(-Wall -Wextra -Wpedantic -Wshadow -Wnon-virtual-dtor)
 endif()

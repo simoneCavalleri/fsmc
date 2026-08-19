@@ -8,5 +8,10 @@ set_target_properties(benchmark_dispatch PROPERTIES CXX_STANDARD 20 CXX_STANDARD
 
 # Optimize for release benchmarking if not set
 if(NOT CMAKE_BUILD_TYPE)
-    target_compile_options(benchmark_dispatch PRIVATE -O3)
+    if(MSVC)
+        target_compile_options(benchmark_dispatch PRIVATE /O2)
+    else()
+        target_compile_options(benchmark_dispatch PRIVATE -O3)
+    endif()
 endif()
+

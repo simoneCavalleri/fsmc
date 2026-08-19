@@ -81,7 +81,7 @@ jobs:
       - name: Configure CMake (Windows MSVC)
         if: runner.os == 'Windows'
         run: |
-          cmake -B build -S .
+          cmake -B build -S . -A x64 -T host=x64
 
       - name: Build fsmc, Generated Tests & Showcases
         run: |

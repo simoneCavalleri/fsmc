@@ -310,3 +310,68 @@ struct DeploySolarPanelsAction {
     }
 };
 ```
+
+---
+
+## 8. Multi-Format Modeling Reference
+
+In addition to SysML v2, PlantUML, and Mermaid, `fsmc` supports:
+
+### A. Cameo Systems Modeler / MagicDraw (`.xmi`, `.xml`, `.uml`)
+```xml
+<packagedElement xmi:type="uml:StateMachine" xmi:id="_sm1" name="MissionFSM">
+  <region xmi:id="_r1">
+    <subvertex xmi:type="uml:Pseudostate" xmi:id="_init" kind="initial"/>
+    <subvertex xmi:type="uml:State" xmi:id="_s1" name="Standby"/>
+    <subvertex xmi:type="uml:State" xmi:id="_s2" name="InFlight"/>
+    <transition source="_init" target="_s1"/>
+    <transition source="_s1" target="_s2">
+      <trigger name="AuthorizeCmd"/>
+      <guard name="ValidClearanceGuard"/>
+      <effect name="ArmEnginesAction"/>
+    </transition>
+  </region>
+</packagedElement>
+```
+
+### B. W3C SCXML (`.scxml`)
+```xml
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Standby" name="MissionFSM">
+  <state id="Standby">
+    <transition event="AuthorizeCmd" cond="ValidClearanceGuard" target="InFlight">
+      <send event="ArmEnginesAction"/>
+    </transition>
+  </state>
+  <state id="InFlight"/>
+</scxml>
+```
+
+### C. XState JSON Statechart (`.json`)
+```json
+{
+  "id": "MissionFSM",
+  "initial": "Standby",
+  "states": {
+    "Standby": {
+      "on": {
+        "AuthorizeCmd": {
+          "target": "InFlight",
+          "cond": "ValidClearanceGuard",
+          "actions": ["ArmEnginesAction"]
+        }
+      }
+    },
+    "InFlight": {}
+  }
+}
+```
+
+### D. Graphviz DOT (`.dot`, `.gv`)
+```dot
+digraph MissionFSM {
+  __start__ [shape=point];
+  __start__ -> Standby;
+  Standby -> InFlight [label="AuthorizeCmd [ValidClearanceGuard] / ArmEnginesAction"];
+}
+```
+

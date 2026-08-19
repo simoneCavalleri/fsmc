@@ -1,5 +1,7 @@
 #pragma once
 
+#include <chrono>
+
 #include "type_traits.hpp"
 
 namespace fsm {
@@ -12,6 +14,18 @@ struct no_action {
 // Default always-true guard
 struct no_guard {
     constexpr bool operator()() const noexcept { return true; }
+};
+
+// Timed Transition Event Types
+template <typename Duration = std::chrono::milliseconds>
+struct after {
+    Duration duration{};
+    constexpr explicit after(Duration d = Duration{0}) : duration(d) {}
+};
+
+template <std::int64_t Milliseconds>
+struct after_ms {
+    static constexpr std::chrono::milliseconds duration{Milliseconds};
 };
 
 // Logical NOT guard combinator
@@ -76,12 +90,12 @@ struct or_ {
 template <typename ParentState, typename SubState>
 struct history_is {
     template <typename Event, typename State, typename Context, typename Fsm>
-    constexpr bool operator()(const Event&, const State&, Context&, const Fsm& fsm) const {
+    constexpr bool operator()(const Event& /*evt*/, const State& /*state*/, Context& /*ctx*/, const Fsm& fsm) const {
         return fsm.get_history(ParentState::name) == SubState::name;
     }
 
     template <typename Event, typename State, typename Context>
-    constexpr bool operator()(const Event&, const State&, Context&) const {
+    constexpr bool operator()(const Event& /*evt*/, const State& /*state*/, Context& /*ctx*/) const {
         return false;
     }
 };

@@ -65,7 +65,24 @@ class CppGenerator {
             out << "struct " << model.context_type << ";\n\n";
         }
 
-        // 2. State Definitions
+        // 2. Event Definitions
+        out << "// "
+               "==================================================================="
+               "=========\n";
+        out << "// Events\n";
+        out << "// "
+               "==================================================================="
+               "=========\n\n";
+
+        for (const auto& event_item : model.events) {
+            out << "struct " << event_item.name << " {\n";
+            if (!event_item.description.empty()) {
+                out << "    // Description: " << event_item.description << "\n";
+            }
+            out << "};\n\n";
+        }
+
+        // 3. State Definitions
         out << "// "
                "==================================================================="
                "=========\n";
@@ -80,25 +97,18 @@ class CppGenerator {
             if (!state_item.parent_state.empty()) {
                 out << "    static constexpr std::string_view parent = \"" << state_item.parent_state << "\";\n";
             }
+            if (!state_item.deferred_events.empty()) {
+                out << "    using deferred_events = ::fsm::type_list<";
+                for (std::size_t i = 0; i < state_item.deferred_events.size(); ++i) {
+                    if (i > 0) {
+                        out << ", ";
+                    }
+                    out << state_item.deferred_events[i];
+                }
+                out << ">;\n";
+            }
             if (!state_item.description.empty()) {
                 out << "    // Description: " << state_item.description << "\n";
-            }
-            out << "};\n\n";
-        }
-
-        // 3. Event Definitions
-        out << "// "
-               "==================================================================="
-               "=========\n";
-        out << "// Events\n";
-        out << "// "
-               "==================================================================="
-               "=========\n\n";
-
-        for (const auto& event_item : model.events) {
-            out << "struct " << event_item.name << " {\n";
-            if (!event_item.description.empty()) {
-                out << "    // Description: " << event_item.description << "\n";
             }
             out << "};\n\n";
         }
@@ -478,6 +488,20 @@ class CppGenerator {
                "to_variant<List>::type;\n";
         out << "} // namespace detail\n\n";
 
+        out << "namespace detail {\n";
+        out << "template <typename State, typename = void> struct has_deferred_events : std::false_type {};\n";
+        out << "template <typename State> struct has_deferred_events<State, std::void_t<typename State::deferred_events>> : std::true_type {};\n";
+        out << "} // namespace detail\n\n";
+
+        out << "template <typename State, typename Event>\n";
+        out << "inline constexpr bool is_deferred_event_v = []() constexpr {\n";
+        out << "    if constexpr (detail::has_deferred_events<State>::value) {\n";
+        out << "        return detail::contains<std::decay_t<Event>, typename State::deferred_events>::value;\n";
+        out << "    } else {\n";
+        out << "        return false;\n";
+        out << "    }\n";
+        out << "}();\n\n";
+
         out << "struct no_guard {\n";
         out << "    [[nodiscard]] constexpr bool operator()(const auto&...) const "
                "noexcept { return true; }\n";
@@ -719,12 +743,55 @@ class CppGenerator {
                "}\n\n";
 
         out << "    template <typename Event>\n";
-        out << "    bool dispatch(const Event& event) {\n";
+        out << "    bool dispatch_direct(const Event& event) {\n";
         out << "        return std::visit([this, &event](auto& src) -> bool {\n";
         out << "            return process_event<Event, "
                "std::decay_t<decltype(src)>>(event, src);\n";
         out << "        }, current_state_);\n";
         out << "    }\n\n";
+
+        out << "    template <typename Event>\n";
+        out << "    bool dispatch(const Event& event) {\n";
+        out << "        bool handled = dispatch_direct(event);\n";
+        out << "        if (handled) {\n";
+        out << "            process_deferred_queue();\n";
+        out << "        } else {\n";
+        out << "            bool deferred = std::visit([this, &event](const auto& src) -> bool {\n";
+        out << "                using CurrentSrc = std::decay_t<decltype(src)>;\n";
+        out << "                if constexpr (is_deferred_event_v<CurrentSrc, Event>) {\n";
+        out << "                    this->deferred_queue_.push_back([event](fsm& self) -> bool {\n";
+        out << "                        return self.dispatch_direct(event);\n";
+        out << "                    });\n";
+        out << "                    return true;\n";
+        out << "                } else {\n";
+        out << "                    return false;\n";
+        out << "                }\n";
+        out << "            }, current_state_);\n";
+        out << "            if (deferred) return true;\n";
+        out << "        }\n";
+        out << "        return handled;\n";
+        out << "    }\n\n";
+
+        out << "    void process_deferred_queue() {\n";
+        out << "        if (deferred_queue_.empty() || is_replaying_deferred_) return;\n";
+        out << "        is_replaying_deferred_ = true;\n";
+        out << "        bool any_handled = true;\n";
+        out << "        while (any_handled && !deferred_queue_.empty()) {\n";
+        out << "            any_handled = false;\n";
+        out << "            for (auto it = deferred_queue_.begin(); it != deferred_queue_.end();) {\n";
+        out << "                if ((*it)(*this)) {\n";
+        out << "                    it = deferred_queue_.erase(it);\n";
+        out << "                    any_handled = true;\n";
+        out << "                    break;\n";
+        out << "                }\n";
+        out << "                ++it;\n";
+        out << "            }\n";
+        out << "        }\n";
+        out << "        is_replaying_deferred_ = false;\n";
+        out << "    }\n\n";
+
+        out << "    [[nodiscard]] std::size_t deferred_count() const noexcept { return deferred_queue_.size(); }\n";
+        out << "    void clear_deferred_events() noexcept { deferred_queue_.clear(); }\n\n";
 
         out << "    void set_observer(observer_type observer) { observer_ = std::move(observer); }\n\n";
 
@@ -821,6 +888,8 @@ class CppGenerator {
         out << "    Context* context_{nullptr};\n";
         out << "    observer_type observer_{};\n";
         out << "    std::vector<history_entry> history_records_{};\n";
+        out << "    std::vector<std::function<bool(fsm&)>> deferred_queue_{};\n";
+        out << "    bool is_replaying_deferred_{false};\n";
         out << "};\n\n";
 
         // Thread-Safe wrapper in C++20 with std::jthread and std::stop_token
@@ -977,6 +1046,20 @@ class CppGenerator {
         out << "template <typename List> using to_variant_t = typename "
                "to_variant<List>::type;\n";
         out << "} // namespace detail\n\n";
+
+        out << "namespace detail {\n";
+        out << "template <typename State, typename = void> struct has_deferred_events : std::false_type {};\n";
+        out << "template <typename State> struct has_deferred_events<State, std::void_t<typename State::deferred_events>> : std::true_type {};\n";
+        out << "} // namespace detail\n\n";
+
+        out << "template <typename State, typename Event>\n";
+        out << "inline constexpr bool is_deferred_event_v = []() constexpr {\n";
+        out << "    if constexpr (detail::has_deferred_events<State>::value) {\n";
+        out << "        return detail::contains<std::decay_t<Event>, typename State::deferred_events>::value;\n";
+        out << "    } else {\n";
+        out << "        return false;\n";
+        out << "    }\n";
+        out << "}();\n\n";
 
         out << "struct no_guard {\n";
         out << "    template <typename... Args> constexpr bool operator()(const "
@@ -1245,12 +1328,55 @@ class CppGenerator {
                "}\n\n";
 
         out << "    template <typename Event>\n";
-        out << "    bool dispatch(const Event& event) {\n";
+        out << "    bool dispatch_direct(const Event& event) {\n";
         out << "        return std::visit([this, &event](auto& src) -> bool {\n";
         out << "            return process_event<Event, "
                "std::decay_t<decltype(src)>>(event, src);\n";
         out << "        }, current_state_);\n";
         out << "    }\n\n";
+
+        out << "    template <typename Event>\n";
+        out << "    bool dispatch(const Event& event) {\n";
+        out << "        bool handled = dispatch_direct(event);\n";
+        out << "        if (handled) {\n";
+        out << "            process_deferred_queue();\n";
+        out << "        } else {\n";
+        out << "            bool deferred = std::visit([this, &event](const auto& src) -> bool {\n";
+        out << "                using CurrentSrc = std::decay_t<decltype(src)>;\n";
+        out << "                if constexpr (is_deferred_event_v<CurrentSrc, Event>) {\n";
+        out << "                    this->deferred_queue_.push_back([event](fsm& self) -> bool {\n";
+        out << "                        return self.dispatch_direct(event);\n";
+        out << "                    });\n";
+        out << "                    return true;\n";
+        out << "                } else {\n";
+        out << "                    return false;\n";
+        out << "                }\n";
+        out << "            }, current_state_);\n";
+        out << "            if (deferred) return true;\n";
+        out << "        }\n";
+        out << "        return handled;\n";
+        out << "    }\n\n";
+
+        out << "    void process_deferred_queue() {\n";
+        out << "        if (deferred_queue_.empty() || is_replaying_deferred_) return;\n";
+        out << "        is_replaying_deferred_ = true;\n";
+        out << "        bool any_handled = true;\n";
+        out << "        while (any_handled && !deferred_queue_.empty()) {\n";
+        out << "            any_handled = false;\n";
+        out << "            for (auto it = deferred_queue_.begin(); it != deferred_queue_.end();) {\n";
+        out << "                if ((*it)(*this)) {\n";
+        out << "                    it = deferred_queue_.erase(it);\n";
+        out << "                    any_handled = true;\n";
+        out << "                    break;\n";
+        out << "                }\n";
+        out << "                ++it;\n";
+        out << "            }\n";
+        out << "        }\n";
+        out << "        is_replaying_deferred_ = false;\n";
+        out << "    }\n\n";
+
+        out << "    [[nodiscard]] std::size_t deferred_count() const noexcept { return deferred_queue_.size(); }\n";
+        out << "    void clear_deferred_events() noexcept { deferred_queue_.clear(); }\n\n";
 
         out << "    void set_observer(observer_type observer) { observer_ = std::move(observer); }\n\n";
 
@@ -1349,6 +1475,8 @@ class CppGenerator {
         out << "    Context* context_{nullptr};\n";
         out << "    observer_type observer_{};\n";
         out << "    std::vector<history_entry> history_records_{};\n";
+        out << "    std::vector<std::function<bool(fsm&)>> deferred_queue_{};\n";
+        out << "    bool is_replaying_deferred_{false};\n";
         out << "};\n\n";
 
         // Thread-Safe wrapper in C++17

@@ -11,7 +11,10 @@ This guide provides a comprehensive mapping between the **OMG UML 2.5 / SysML v2
 4. [Choice & Junction Pseudostates](#4-choice--junction-pseudostates)
 5. [History States (Shallow & Deep)](#5-history-states-shallow--deep)
 6. [Deferred Events](#6-deferred-events)
-7. [Guards and Actions](#7-guards-and-actions)
+7. [Timed Transitions](#7-timed-transitions)
+8. [Universal Diagram Export & Translation](#8-universal-diagram-export--translation)
+9. [Guards, Composite Logic & Actions](#9-guards-composite-logic--actions)
+10. [Multi-Format Modeling Reference](#10-multi-format-modeling-reference)
 
 ---
 
@@ -271,24 +274,98 @@ state def BootSequence {
 }
 ```
 
-### PlantUML (`.puml`)
-```plantuml
-@startuml
-[*] --> Initializing
+### Mermaid (`.mmd`)
+```mermaid
+stateDiagram-v2
+    [*] --> Initializing
 
-Initializing : defer StartMissionCmd
-Initializing : defer DataPacketEvent
+    Initializing : [defer] StartMissionCmd
+    Initializing : [defer] DataPacketEvent
 
-Initializing --> Ready : BootComplete
-Ready --> InFlight : StartMissionCmd
-@enduml
+    Initializing --> Ready : BootComplete
+    Ready --> InFlight : StartMissionCmd
+```
+
+### Cameo / MagicDraw (`.xmi`)
+```xml
+<subvertex xmi:type="uml:State" xmi:id="_init" name="Initializing">
+  <deferrableTrigger xmi:type="uml:Trigger" xmi:id="_dt1" name="StartMissionCmd"/>
+</subvertex>
+```
+
+### W3C SCXML (`.scxml`)
+```xml
+<state id="Initializing">
+  <defer event="StartMissionCmd"/>
+  <transition event="BootComplete" target="Ready"/>
+</state>
+```
+
+### XState JSON (`.json`)
+```json
+{
+  "Initializing": {
+    "defer": ["StartMissionCmd", "DataPacketEvent"],
+    "on": { "BootComplete": "Ready" }
+  }
+}
+```
+
+### Generated C++ State
+```cpp
+struct Initializing {
+    static constexpr std::string_view name = "Initializing";
+    using deferred_events = fsm::type_list<StartMissionCmd, DataPacketEvent>;
+};
+```
+*When `Initializing` transitions to `Ready`, queued events are automatically replayed in FIFO order.*
+
+---
+
+## 7. Timed Transitions
+
+`fsmc` provides first-class support for deterministic timer-based transitions and deadline scheduling:
+
+### Type-Safe Timed Events
+```cpp
+// Explicit compile-time duration events:
+using Timeout500ms = fsm::after_ms<500>;
+using Timeout10s   = fsm::after_s<10>;
+using Timeout50us  = fsm::after_us<50>;
+
+// Transition definition in table:
+fsm::transition<Connecting, Timeout500ms, Disconnected, OnTimeoutAction>
+```
+
+### Asynchronous Deadline Scheduling (`thread_safe_fsm`)
+```cpp
+fsm::thread_safe_fsm<MyTable, MyContext> sm(ctx);
+sm.start_worker();
+
+// Schedule delayed events executed by worker in strict chronological priority:
+sm.post_delayed(TimeoutEvent{}, std::chrono::milliseconds(500));
 ```
 
 ---
 
+## 8. Universal Diagram Export & Translation
+
+Translate any model format to **Mermaid**, **PlantUML**, or **OMG SysML v2**:
+
+```bash
+# Convert Cameo XMI to GitHub-renderable Mermaid
+fsmc -i model.xmi --export mermaid -o diagram.mmd
+
+# Convert W3C SCXML to PlantUML
+fsmc -i protocol.scxml --export plantuml -o protocol.puml
+
+# Convert PlantUML to OMG SysML v2 textual specification
+fsmc -i mission.puml --export sysml2 -o mission.sysml
+```
+
 ---
 
-## 7. Guards, Composite Logic & Actions
+## 9. Guards, Composite Logic & Actions
 
 ### Composite Boolean Guards (`!`, `&&`, `||`)
 `fsmc` features a built-in recursive expression parser for composite guards across all supported model formats. You can write arbitrary boolean logic directly in transitions:
@@ -331,7 +408,7 @@ struct DeploySolarPanelsAction {
 };
 ```
 
-## 8. Multi-Format Modeling Reference
+## 10. Multi-Format Modeling Reference
 
 In addition to SysML v2, PlantUML, and Mermaid, `fsmc` supports:
 

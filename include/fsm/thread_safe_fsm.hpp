@@ -95,7 +95,7 @@ class thread_safe_fsm {
     bool process_one() {
         event_handler task;
         {
-            std::lock_guard<std::recursive_mutex> lock(mutex_);
+            std::scoped_lock lock(mutex_);
             if (event_queue_.empty()) {
                 return false;
             }
@@ -117,21 +117,33 @@ class thread_safe_fsm {
 
     // Returns current number of pending events in queue
     [[nodiscard]] std::size_t pending_events() const {
-        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        std::scoped_lock lock(mutex_);
         return event_queue_.size();
     }
 
     // Returns true if event queue is empty
     [[nodiscard]] bool is_queue_empty() const {
-        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        std::scoped_lock lock(mutex_);
         return event_queue_.empty();
+    }
+
+    // Deferred events count under mutex lock
+    [[nodiscard]] std::size_t deferred_count() const {
+        std::scoped_lock lock(mutex_);
+        return fsm_.deferred_count();
+    }
+
+    // Clear deferred events under mutex lock
+    void clear_deferred_events() {
+        std::scoped_lock lock(mutex_);
+        fsm_.clear_deferred_events();
     }
 
     // ========================================================================
     // Background Worker Thread Management
     // ========================================================================
     void start_worker() {
-        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        std::scoped_lock lock(mutex_);
         if (worker_running_) {
             return;
         }
@@ -141,7 +153,7 @@ class thread_safe_fsm {
 
     void stop_worker() {
         {
-            std::lock_guard<std::recursive_mutex> lock(mutex_);
+            std::scoped_lock lock(mutex_);
             if (!worker_running_) {
                 return;
             }
@@ -161,50 +173,83 @@ class thread_safe_fsm {
     // ========================================================================
     template <typename State>
     [[nodiscard]] bool is_in_state() const {
-        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        std::scoped_lock lock(mutex_);
         return fsm_.template is_in_state<State>();
     }
 
     // Thread-safe query of current state name
     [[nodiscard]] std::string current_state_name() const {
-        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        std::scoped_lock lock(mutex_);
         return std::string(fsm_.current_state_name());
     }
 
     // Execute custom callback with current state under mutex lock
     template <typename Callable>
     auto with_state(Callable&& callable) const {
-        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        std::scoped_lock lock(mutex_);
         return std::visit(std::forward<Callable>(callable), fsm_.get_current_state_variant());
     }
 
     // Execute custom callback directly with underlying FSM under mutex lock
     template <typename Callable>
     auto with_fsm(Callable&& callable) {
-        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        std::scoped_lock lock(mutex_);
         return std::forward<Callable>(callable)(fsm_);
     }
 
+    template <typename Event, typename Rep, typename Period>
+    void post_delayed(Event event, std::chrono::duration<Rep, Period> delay) {
+        auto deadline = std::chrono::steady_clock::now() + delay;
+        {
+            std::scoped_lock lock(mutex_);
+            timed_queue_.push(
+                timed_event{deadline, [evt = std::move(event)](fsm_type& machine) { machine.dispatch(evt); }});
+        }
+        cv_.notify_one();
+    }
+
   private:
+    struct timed_event {
+        std::chrono::steady_clock::time_point deadline;
+        event_handler task;
+
+        bool operator>(const timed_event& other) const noexcept { return deadline > other.deadline; }
+    };
+
     void worker_loop() {
         while (true) {
             event_handler task;
             {
                 std::unique_lock<std::recursive_mutex> lock(mutex_);
-                cv_.wait(lock, [this]() { return !worker_running_ || !event_queue_.empty(); });
 
-                if (!worker_running_ && event_queue_.empty()) {
+                while (worker_running_ && event_queue_.empty() && timed_queue_.empty()) {
+                    cv_.wait(lock);
+                }
+
+                while (worker_running_ && event_queue_.empty() && !timed_queue_.empty()) {
+                    const auto now = std::chrono::steady_clock::now();
+                    if (now >= timed_queue_.top().deadline) {
+                        break;
+                    }
+                    cv_.wait_until(lock, timed_queue_.top().deadline);
+                }
+
+                if (!worker_running_ && event_queue_.empty() && timed_queue_.empty()) {
                     break;
                 }
 
-                if (!event_queue_.empty()) {
+                const auto now = std::chrono::steady_clock::now();
+                if (!timed_queue_.empty() && now >= timed_queue_.top().deadline) {
+                    task = timed_queue_.top().task;
+                    timed_queue_.pop();
+                } else if (!event_queue_.empty()) {
                     task = std::move(event_queue_.front());
                     event_queue_.pop();
                 }
             }
 
             if (task) {
-                std::lock_guard<std::recursive_mutex> lock(mutex_);
+                std::scoped_lock lock(mutex_);
                 task(fsm_);
             }
         }
@@ -213,6 +258,7 @@ class thread_safe_fsm {
     mutable std::recursive_mutex mutex_;
     std::condition_variable_any cv_;
     std::queue<event_handler> event_queue_;
+    std::priority_queue<timed_event, std::vector<timed_event>, std::greater<>> timed_queue_;
     fsm_type fsm_;
 
     std::atomic<bool> worker_running_{false};

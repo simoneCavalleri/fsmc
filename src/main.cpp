@@ -12,11 +12,14 @@
 #include "codegen/fsm_validator.hpp"
 #include "codegen/json_parser.hpp"
 #include "codegen/mermaid_parser.hpp"
+#include "codegen/mermaid_serializer.hpp"
 #include "codegen/parser_interface.hpp"
 #include "codegen/plantuml_parser.hpp"
+#include "codegen/plantuml_serializer.hpp"
 #include "codegen/runtime_exporter.hpp"
 #include "codegen/scxml_parser.hpp"
 #include "codegen/sysml2_parser.hpp"
+#include "codegen/sysml2_serializer.hpp"
 
 namespace fs = std::filesystem;
 using namespace fsm::codegen;
@@ -27,6 +30,7 @@ struct CliOptions {
     std::string input_file;
     std::string output_file;
     std::string export_runtime_dir;
+    std::string export_diagram_format;
     std::string fsm_name;
     std::string ns_name = "fsm_generated";
     std::string context_type = "no_context";
@@ -48,12 +52,15 @@ void print_help(const char* prog_name) {
               << "====================================================================="
                  "=======\n\n"
               << "Usage: " << prog_name << " -i <model_file> [OPTIONS]\n"
+              << "       " << prog_name << " -i <model_file> --export <mermaid|plantuml|sysml2> -o <out_file>\n"
               << "       " << prog_name << " --export-runtime <dir> [--std 17|20]\n\n"
               << "Options:\n"
               << "  -i, --input <file>        Input model file (.xmi, .scxml, .json, .dot, "
                  ".sysml, .puml, .mmd) [Required]\n"
-              << "  -o, --output <file>       Output C++ header file (default: "
+              << "  -o, --output <file>       Output C++ header or diagram file (default: "
                  "stdout)\n"
+              << "  -e, --export <fmt>        Export diagram to format: 'mermaid', 'plantuml', "
+                 "'sysml2'\n"
               << "  -n, --name <name>         FSM class name (default: inferred from "
                  "file name or 'MyFSM')\n"
               << "  --namespace <ns>          C++ namespace (default: "
@@ -83,14 +90,9 @@ void print_help(const char* prog_name) {
               << " -i protocol.scxml -o protocol_fsm.hpp --std 20 --namespace net "
                  "--name ProtocolFSM\n"
               << "  " << prog_name
-              << " -i statechart.json -o statechart_fsm.hpp --std 20 --namespace app "
-                 "--name AppFSM\n"
+              << " -i model.xmi --export mermaid -o model.mmd\n"
               << "  " << prog_name
-              << " -i graph.dot -o graph_fsm.hpp --std 17 --namespace core "
-                 "--name GraphFSM\n"
-              << "  " << prog_name
-              << " -i model.xmi -o model_fsm.hpp --std 20 --namespace space "
-                 "--name MissionFSM\n"
+              << " -i model.sysml --export plantuml -o model.puml\n"
               << "  " << prog_name << " --export-runtime ./include/fsm --std 20\n\n";
 }
 
@@ -111,6 +113,8 @@ CliOptions parse_cli_args(int argc, char* argv[]) {
             opts.input_file = argv[++idx];
         } else if ((arg == "-o" || arg == "--output") && idx + 1 < argc) {
             opts.output_file = argv[++idx];
+        } else if ((arg == "-e" || arg == "--export") && idx + 1 < argc) {
+            opts.export_diagram_format = argv[++idx];
         } else if ((arg == "-n" || arg == "--name") && idx + 1 < argc) {
             opts.fsm_name = argv[++idx];
         } else if (arg == "--namespace" && idx + 1 < argc) {
@@ -275,6 +279,36 @@ int main(int argc, char* argv[]) {
             std::cerr << "  - " << err << "\n";
         }
         return 1;
+    }
+
+    // Handle Diagram Export (--export / -e)
+    if (!opts.export_diagram_format.empty()) {
+        std::string exported_diagram;
+        if (opts.export_diagram_format == "mermaid" || opts.export_diagram_format == "mmd") {
+            exported_diagram = MermaidSerializer::serialize(model);
+        } else if (opts.export_diagram_format == "plantuml" || opts.export_diagram_format == "puml") {
+            exported_diagram = PlantUmlSerializer::serialize(model);
+        } else if (opts.export_diagram_format == "sysml" || opts.export_diagram_format == "sysml2") {
+            exported_diagram = Sysml2Serializer::serialize(model);
+        } else {
+            std::cerr << "Error: Unsupported export diagram format: '" << opts.export_diagram_format
+                      << "'. Supported: mermaid, plantuml, sysml2\n";
+            return 1;
+        }
+
+        if (!opts.output_file.empty()) {
+            std::ofstream output_stream(opts.output_file);
+            if (!output_stream.is_open()) {
+                std::cerr << "Error: Could not write output file: " << opts.output_file << "\n";
+                return 1;
+            }
+            output_stream << exported_diagram;
+            std::cout << "[SUCCESS] Diagram exported to " << opts.export_diagram_format << ": " << opts.output_file
+                      << "\n";
+        } else {
+            std::cout << exported_diagram;
+        }
+        return 0;
     }
 
     // Generate C++ code

@@ -1,0 +1,104 @@
+#pragma once
+
+#include <sstream>
+#include <string>
+#include <vector>
+
+#include "fsm_model.hpp"
+
+namespace fsm::codegen {
+
+class MermaidSerializer {
+  public:
+    static std::string serialize(const FsmModel& model) {
+        std::ostringstream out;
+        out << "stateDiagram-v2\n";
+
+        // Initial transition
+        if (!model.initial_state.empty()) {
+            out << "    [*] --> " << model.initial_state << "\n";
+        }
+
+        // Emit composite states and their contents
+        for (const auto& state : model.states) {
+            if (state.is_composite && state.parent_state.empty()) {
+                emit_state(out, state, model, 1);
+            }
+        }
+
+        // Emit top-level non-composite states with notes or deferred events
+        for (const auto& state : model.states) {
+            if (!state.is_composite && state.parent_state.empty()) {
+                for (const auto& d_evt : state.deferred_events) {
+                    out << "    " << state.name << " : defer " << d_evt << "\n";
+                }
+            }
+        }
+
+        // Emit transitions
+        for (const auto& trans : model.transitions) {
+            out << "    " << trans.source << " --> " << trans.target;
+            std::string label = build_label(trans);
+            if (!label.empty()) {
+                out << " : " << label;
+            }
+            out << "\n";
+        }
+
+        return out.str();
+    }
+
+  private:
+    static void emit_state(std::ostream& out, const StateModel& state, const FsmModel& model, size_t indent) {
+        std::string pad(indent * 4, ' ');
+        out << pad << "state " << state.name << " {\n";
+
+        if (!state.initial_sub_state.empty()) {
+            out << pad << "    [*] --> " << state.initial_sub_state << "\n";
+        }
+        if (state.has_history) {
+            out << pad << "    " << (state.has_deep_history ? "[H*]" : "[H]") << "\n";
+        }
+
+        for (const auto& d_evt : state.deferred_events) {
+            out << pad << "    " << state.name << " : defer " << d_evt << "\n";
+        }
+
+        // Find child states
+        for (const auto& child : model.states) {
+            if (child.parent_state == state.name) {
+                if (child.is_composite) {
+                    emit_state(out, child, model, indent + 1);
+                } else {
+                    for (const auto& d_evt : child.deferred_events) {
+                        out << pad << "    " << child.name << " : defer " << d_evt << "\n";
+                    }
+                }
+            }
+        }
+
+        out << pad << "}\n";
+    }
+
+    static std::string build_label(const TransitionModel& trans) {
+        std::string label;
+        if (!trans.event.empty()) {
+            label += trans.event;
+        }
+        if (trans.guard && !trans.guard->empty()) {
+            if (!label.empty()) {
+                label += " ";
+            }
+            label += "[" + *trans.guard + "]";
+        }
+        if (trans.action && !trans.action->empty()) {
+            if (!label.empty()) {
+                label += " ";
+            }
+            label += "/ " + *trans.action;
+        }
+        return label;
+    }
+};
+
+}  // namespace fsm::codegen

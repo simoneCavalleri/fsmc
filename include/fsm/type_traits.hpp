@@ -384,6 +384,21 @@ struct has_parent_name : std::false_type {};
 template <typename State>
 struct has_parent_name<State, std::void_t<decltype(State::parent)>> : std::true_type {};
 
+template <typename State, typename = void>
+struct has_deferred_events : std::false_type {};
+
+template <typename State>
+struct has_deferred_events<State, std::void_t<typename State::deferred_events>> : std::true_type {};
+
+template <typename Event, typename List>
+struct type_list_contains : std::false_type {};
+
+template <typename Event, typename... Ts>
+struct type_list_contains<Event, type_list<Ts...>> : std::disjunction<std::is_same<Event, Ts>...> {};
+
+template <typename Event, typename... Ts>
+struct type_list_contains<Event, std::tuple<Ts...>> : std::disjunction<std::is_same<Event, Ts>...> {};
+
 }  // namespace detail
 
 template <typename State>
@@ -394,5 +409,17 @@ constexpr std::string_view get_parent_name() noexcept {
         return "";
     }
 }
+
+template <typename State>
+inline constexpr bool has_deferred_events_v = detail::has_deferred_events<State>::value;
+
+template <typename State, typename Event>
+inline constexpr bool is_deferred_event_v = []() constexpr {
+    if constexpr (has_deferred_events_v<State>) {
+        return detail::type_list_contains<std::decay_t<Event>, typename State::deferred_events>::value;
+    } else {
+        return false;
+    }
+}();
 
 }  // namespace fsm

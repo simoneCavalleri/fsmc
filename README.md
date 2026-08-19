@@ -22,6 +22,9 @@
 
 - ⚡ **Zero-Overhead Guarantee**: `0 bytes` heap allocation on dispatch, `0 ns` virtual table overhead, `10–25 ns` transition speed.
 - 🌐 **7 Modeling Formats**: Seamlessly compiles SysML v2, Cameo XMI, W3C SCXML, XState JSON, PlantUML, Mermaid, and DOT.
+- 🔄 **Universal Format Exporter**: Convert any input format into clean **Mermaid**, **PlantUML**, or **OMG SysML v2** diagrams via CLI (`--export`).
+- ⏳ **Timed Transitions & Deadlines**: Synchronous compile-time timeouts (`after_ms<N>`) and asynchronous priority-deadline event scheduling (`post_delayed`).
+- 📥 **Universal Deferred Events**: Native deferral across all formats with automatic FIFO cascade replay upon entering destination states.
 - 🔀 **Composite Boolean Guards**: Native parser for boolean logic (`[PowerOk && (!Fault || Override)]`) with short-circuit evaluation.
 - 🔭 **Live Transition Observer**: Built-in telemetry and tracing hooks (`set_observer`) with zero overhead when inactive.
 - 🔄 **History States & HFSM**: Dynamic restoration for Shallow `[H]` and Deep `[H*]` composite macro-states with automatic transition inheritance.
@@ -135,7 +138,8 @@ fsmc -i <model_file> -o <output.hpp> [OPTIONS]
 | Flag | Description | Default |
 | :--- | :--- | :--- |
 | `-i, --input <file>` | Input model file (`.xmi`, `.scxml`, `.json`, `.dot`, `.sysml`, `.puml`, `.mmd`) | **Required** |
-| `-o, --output <file>` | Output C++ header file | `stdout` |
+| `-o, --output <file>` | Output C++ header file or diagram file | `stdout` |
+| `-e, --export <fmt>` | Export diagram to `'mermaid'`, `'plantuml'`, or `'sysml2'` | |
 | `-n, --name <name>` | FSM class name | Inferred from file |
 | `--namespace <ns>` | C++ namespace | `fsm_generated` |
 | `--context <type>` | Custom Context struct/class | `no_context` |

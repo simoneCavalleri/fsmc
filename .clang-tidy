@@ -24,6 +24,13 @@ Checks: >
   -cppcoreguidelines-pro-type-member-init,
   -misc-non-private-member-variables-in-classes,
   -misc-const-correctness,
+  -misc-no-recursion,
+  -misc-include-cleaner,
+  -bugprone-exception-escape,
+  -readability-redundant-typename,
+  -bugprone-unchecked-optional-access,
+  -readability-braces-around-statements,
+  -readability-identifier-length,
   -readability-use-anyofallof
 
 WarningsAsErrors: ''

@@ -343,6 +343,23 @@ class JsonStateParser : public IParser {
                 parse_states_object(*sub_states, model, state_name);
             }
 
+            // Check deferred events
+            const auto* defer_val = state_data.get_child("defer");
+            if (defer_val != nullptr) {
+                auto* curr = model.find_state_mut(state_name);
+                if (curr != nullptr) {
+                    if (defer_val->is_string()) {
+                        curr->deferred_events.push_back(sanitize_identifier(defer_val->str_val));
+                    } else if (defer_val->is_array()) {
+                        for (const auto& d_item : defer_val->arr_val) {
+                            if (d_item.is_string()) {
+                                curr->deferred_events.push_back(sanitize_identifier(d_item.str_val));
+                            }
+                        }
+                    }
+                }
+            }
+
             // Check transitions on "on"
             const auto* on_obj = state_data.get_child("on");
             if (on_obj != nullptr && on_obj->is_object()) {

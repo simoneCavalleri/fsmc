@@ -117,6 +117,14 @@ class ScxmlParser : public IParser {
                         curr_state->has_deep_history = true;
                     }
                 }
+            } else if (tag == "defer" || ends_with(tag, ":defer")) {
+                std::string defer_event = child->get_attr("event");
+                if (!defer_event.empty()) {
+                    auto* curr_state = model.find_state_mut(current_parent_state);
+                    if (curr_state != nullptr) {
+                        curr_state->deferred_events.push_back(sanitize_identifier(defer_event));
+                    }
+                }
             } else if (tag == "transition" || ends_with(tag, ":transition")) {
                 parse_scxml_transition(child, model, current_parent_state);
             }

@@ -131,3 +131,15 @@ add_executable(test_observer test_observer.cpp)
 target_link_libraries(test_observer PRIVATE Threads::Threads)
 add_test(NAME test_observer COMMAND test_observer)
 
+# Timed Transitions & Deadline Scheduling Test Suite
+add_executable(test_timed_transitions test_timed_transitions.cpp)
+target_link_libraries(test_timed_transitions PRIVATE Threads::Threads)
+add_test(NAME test_timed_transitions COMMAND test_timed_transitions)
+
+# Diagram Inter-Format Export Test Suite
+add_executable(test_format_export test_format_export.cpp)
+target_link_libraries(test_format_export PRIVATE Threads::Threads)
+add_test(NAME test_format_export COMMAND test_format_export)
+
+
+

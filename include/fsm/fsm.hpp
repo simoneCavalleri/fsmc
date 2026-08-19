@@ -63,19 +63,46 @@ class fsm {
         enter_initial_state();
     }
 
-    // Dispatches an event to the FSM. Returns true if transition occurred, false
-    // otherwise.
+    // Dispatches an event directly (without deferred queue processing)
     template <typename Event>
-    bool dispatch(const Event& event) {
-        bool handled = std::visit(
+    bool dispatch_direct(const Event& event) {
+        return std::visit(
             [this, &event](auto& src_state) -> bool {
                 using CurrentSrc = std::decay_t<decltype(src_state)>;
                 return this->try_transition_from<CurrentSrc>(
                     src_state, event, std::make_index_sequence<std::tuple_size_v<decltype(this->table_.rows)>>{});
             },
             current_state_);
+    }
 
-        if (!handled) {
+    // Dispatches an event to the FSM. Returns true if transition occurred or if event was deferred.
+    template <typename Event>
+    bool dispatch(const Event& event) {
+        bool handled = dispatch_direct(event);
+
+        if (handled) {
+            // Process/replay any deferred events that can now fire in the new state
+            process_deferred_queue();
+        } else {
+            // Check if the current state defers this event
+            bool deferred = std::visit(
+                [this, &event](const auto& src_state) -> bool {
+                    using CurrentSrc = std::decay_t<decltype(src_state)>;
+                    if constexpr (is_deferred_event_v<CurrentSrc, Event>) {
+                        this->deferred_queue_.push_back([event](fsm& self) -> bool {
+                            return self.dispatch_direct(event);
+                        });
+                        return true;
+                    } else {
+                        return false;
+                    }
+                },
+                current_state_);
+
+            if (deferred) {
+                return true;
+            }
+
             std::visit([this, &event](const auto& src_state) { this->on_unhandled_event(event, src_state); },
                        current_state_);
         }
@@ -83,8 +110,37 @@ class fsm {
         return handled;
     }
 
+    // Process all deferred events in queue until no more can fire
+    void process_deferred_queue() {
+        if (deferred_queue_.empty() || is_replaying_deferred_) {
+            return;
+        }
+        is_replaying_deferred_ = true;
+
+        bool any_handled = true;
+        while (any_handled && !deferred_queue_.empty()) {
+            any_handled = false;
+            for (auto it = deferred_queue_.begin(); it != deferred_queue_.end();) {
+                if ((*it)(*this)) {
+                    it = deferred_queue_.erase(it);
+                    any_handled = true;
+                    // State may have transitioned, re-scan queue
+                    break;
+                }
+                ++it;
+            }
+        }
+
+        is_replaying_deferred_ = false;
+    }
+
+    // Deferred events introspection
+    [[nodiscard]] std::size_t deferred_count() const noexcept { return deferred_queue_.size(); }
+    void clear_deferred_events() noexcept { deferred_queue_.clear(); }
+
     // Observer management
     void set_observer(observer_type observer) { observer_ = std::move(observer); }
+    void clear_observer() noexcept { observer_ = nullptr; }
 
     // History state management
     void record_history(std::string_view parent, std::string_view substate) {
@@ -242,6 +298,8 @@ class fsm {
     no_context dummy_ctx_{};
     observer_type observer_{};
     std::vector<history_entry> history_records_{};
+    std::vector<std::function<bool(fsm&)>> deferred_queue_{};
+    bool is_replaying_deferred_{false};
 };
 
 }  // namespace fsm

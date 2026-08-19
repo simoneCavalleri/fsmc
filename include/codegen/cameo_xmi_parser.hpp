@@ -399,6 +399,22 @@ class CameoXmiParser : public IParser {
                     }
                 }
 
+                // Check deferrable triggers (UML 2.5)
+                for (const auto& defer_node : child->children) {
+                    if (defer_node->tag == "deferrableTrigger" || ends_with(defer_node->tag, ":deferrableTrigger")) {
+                        std::string d_name = defer_node->get_attr("name");
+                        if (d_name.empty()) {
+                            d_name = defer_node->get_attr("trigger");
+                        }
+                        if (!d_name.empty()) {
+                            auto* curr = model.find_state_mut(state_name);
+                            if (curr != nullptr) {
+                                curr->deferred_events.push_back(sanitize_identifier(d_name));
+                            }
+                        }
+                    }
+                }
+
                 // Check nested regions inside this state (Composite State)
                 for (const auto& sub : child->children) {
                     if (sub->tag == "region" || ends_with(sub->tag, ":region")) {

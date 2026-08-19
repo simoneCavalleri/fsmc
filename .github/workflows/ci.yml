@@ -84,8 +84,13 @@ jobs:
           cmake -B build -S . -A x64 -T host=x64
 
       - name: Build fsmc, Generated Tests & Showcases
+        shell: bash
         run: |
-          cmake --build build --config Release --parallel
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cmake --build build --config Release --parallel 2
+          else
+            cmake --build build --config Release --parallel
+          fi
 
       - name: Run Test Suite via CTest
         run: |

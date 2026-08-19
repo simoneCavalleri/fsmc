@@ -6,22 +6,23 @@ on:
       - main
     paths:
       - 'playground/**'
+      - 'include/**'
+      - 'src/**'
+      - 'CMakeLists.txt'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
 concurrency:
   group: "pages"
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  build-and-deploy:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -29,6 +30,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup Emscripten SDK
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.58
+
+      - name: Build fsmc WebAssembly Module
+        run: |
+          emcmake cmake -B build-wasm -DFSMC_BUILD_WASM=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-wasm --config Release --target fsmc_wasm
+          mkdir -p playground
+          cp build-wasm/fsmc.js playground/fsmc.js
+          cp build-wasm/fsmc.wasm playground/fsmc.wasm
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

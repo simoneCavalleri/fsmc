@@ -92,12 +92,64 @@ std::string fsmc_wasm_export(const std::string& source, const std::string& from_
     return "// [FSMC ERROR] Unsupported target format: " + to_format;
 }
 
+std::string fsmc_wasm_get_model(const std::string& source, const std::string& format) {
+    auto parser = get_parser_for_format(format);
+    FsmModel model;
+    std::string err;
+    if (!parser->parse(source, model, err)) {
+        return "{\"error\": \"" + err + "\"}";
+    }
+
+    std::stringstream ss;
+    ss << "{\n"
+       << "  \"name\": \"" << model.name << "\",\n"
+       << "  \"initialState\": \"" << model.initial_state << "\",\n"
+       << "  \"states\": [\n";
+
+    for (size_t i = 0; i < model.states.size(); ++i) {
+        const auto& s = model.states[i];
+        ss << "    {\"name\": \"" << s.name << "\", "
+           << "\"parent\": \"" << s.parent_state << "\", "
+           << "\"is_composite\": " << (s.is_composite ? "true" : "false") << ", "
+           << "\"initial_sub_state\": \"" << s.initial_sub_state << "\", "
+           << "\"has_history\": " << (s.has_history ? "true" : "false") << ", "
+           << "\"has_deep_history\": " << (s.has_deep_history ? "true" : "false") << ", "
+           << "\"deferred_events\": [";
+        for (size_t j = 0; j < s.deferred_events.size(); ++j) {
+            ss << "\"" << s.deferred_events[j] << "\"" << (j + 1 < s.deferred_events.size() ? ", " : "");
+        }
+        ss << "]}" << (i + 1 < model.states.size() ? "," : "") << "\n";
+    }
+
+    ss << "  ],\n  \"events\": [";
+    for (size_t i = 0; i < model.events.size(); ++i) {
+        ss << "\"" << model.events[i].name << "\"" << (i + 1 < model.events.size() ? ", " : "");
+    }
+    ss << "],\n  \"transitions\": [\n";
+
+    for (size_t i = 0; i < model.transitions.size(); ++i) {
+        const auto& t = model.transitions[i];
+        ss << "    {\"source\": \"" << t.source << "\", "
+           << "\"target\": \"" << t.target << "\", "
+           << "\"event\": \"" << t.event << "\", "
+           << "\"guard\": \"" << (t.guard ? *t.guard : "") << "\", "
+           << "\"action\": \"" << (t.action ? *t.action : "") << "\", "
+           << "\"is_internal\": " << (t.is_internal ? "true" : "false") << ", "
+           << "\"target_is_history\": " << (t.target_is_history ? "true" : "false") << ", "
+           << "\"target_is_deep_history\": " << (t.target_is_deep_history ? "true" : "false") << "}"
+           << (i + 1 < model.transitions.size() ? "," : "") << "\n";
+    }
+
+    ss << "  ]\n}";
+    return ss.str();
+}
+
 std::string fsmc_wasm_verify(const std::string& source, const std::string& format) {
     auto parser = get_parser_for_format(format);
     FsmModel model;
     std::string err;
     if (!parser->parse(source, model, err)) {
-        return "{\"is_valid\": false, \"errors\": [\"" + err + "\"], \"warnings\": []}";
+        return "{\"is_valid\": false, \"diagnostics\": [{\"severity\": \"ERROR\", \"category\": \"Parser\", \"message\": \"" + err + "\"}]}";
     }
 
     const auto res = FsmValidator::validate(model);
@@ -130,6 +182,7 @@ std::string fsmc_wasm_verify(const std::string& source, const std::string& forma
 EMSCRIPTEN_BINDINGS(fsmc_wasm_module) {
     emscripten::function("compile", &fsmc_wasm_compile);
     emscripten::function("exportDiagram", &fsmc_wasm_export);
+    emscripten::function("getModel", &fsmc_wasm_get_model);
     emscripten::function("verify", &fsmc_wasm_verify);
 }
 #endif

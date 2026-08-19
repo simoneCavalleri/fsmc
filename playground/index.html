@@ -22,11 +22,9 @@
       <div class="control-group">
         <span class="control-label">Preset:</span>
         <select id="presetSelect">
-          <option value="connection">Connection Manager (Async)</option>
-          <option value="motor">Motor Speed Controller</option>
-          <option value="mission">Mission Controller (HFSM)</option>
-          <option value="timed_watchdog">Timed Watchdog & Deadlines</option>
-          <option value="livelock_demo">Livelock / Cycle Demo</option>
+          <option value="industrial_press">Industrial Press (Complete HFSM)</option>
+          <option value="connection">Connection Manager (Async Network)</option>
+          <option value="timed_watchdog">Timed Watchdog (Safety Critical)</option>
         </select>
       </div>
 
@@ -48,26 +46,27 @@
         </select>
       </div>
 
-      <button id="copyBtn" class="btn-primary">📋 Copy Header</button>
-      <button id="downloadBtn" class="btn-secondary">📥 Download .hpp</button>
+      <button id="copyBtn" class="btn-primary" title="Copy self-contained Single-Header C++ library to clipboard">📋 Copy Single-Header</button>
+      <button id="downloadBtn" class="btn-secondary" title="Download self-contained Single-Header C++ .hpp file">📥 Download .hpp</button>
     </div>
   </header>
 
-  <!-- Workspace Multi-Column Grid -->
-  <main class="workspace">
+  <!-- Workspace Resizable Multi-Column Layout -->
+  <main class="workspace" id="workspace">
 
     <!-- Column 1: Diagram Code Editor & Diagnostics -->
-    <div class="panel">
+    <div class="panel col-panel" id="panelEditor">
       <div class="panel-header">
         <div class="panel-title">
           <span class="badge">01</span> Statechart Diagram Editor
         </div>
-        <span id="formatBadge" style="font-size: 0.7rem; padding: 2px 7px; border-radius: 4px; background: rgba(0,210,255,0.1); color: var(--accent-cyan); font-family: var(--font-mono);">MERMAID</span>
+        <span id="formatBadge" class="format-badge">MERMAID</span>
       </div>
-      <div class="panel-content">
+      <div class="panel-content editor-panel-content">
         <textarea id="editor" class="code-editor" spellcheck="false"></textarea>
-        <div style="border-top: 1px solid var(--border-subtle); background: #060910; max-height: 150px; overflow-y: auto;">
-          <div style="padding: 6px 12px; font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.04);">
+        <div class="resizer-h" id="resizerDiagnostics"></div>
+        <div class="diagnostics-panel" id="diagnosticsWrapper">
+          <div class="diag-header">
             <span>Formal Model Diagnostics</span>
             <span id="modelStatusBadge" class="status-pill status-ok">SOUND</span>
           </div>
@@ -76,17 +75,21 @@
       </div>
     </div>
 
+    <!-- Vertical Resizer 1 -->
+    <div class="resizer-v" id="resizerCol1" title="Drag to resize columns (Double click to reset)"></div>
+
     <!-- Column 2: Live Graph Visualizer -->
-    <div class="panel">
+    <div class="panel col-panel" id="panelVisual">
       <div class="panel-header">
         <div class="panel-title">
           <span class="badge">02</span> Visual Statechart Graph
         </div>
-        <div style="display: flex; gap: 4px;">
-          <button id="zoomInBtn" style="padding: 2px 8px; font-size: 0.75rem;" title="Zoom In">🔍+</button>
-          <button id="zoomOutBtn" style="padding: 2px 8px; font-size: 0.75rem;" title="Zoom Out">🔍-</button>
-          <button id="zoomResetBtn" style="padding: 2px 8px; font-size: 0.75rem;" title="Reset Zoom">⟲ 1:1</button>
-          <button id="resetSimBtn" style="padding: 2px 8px; font-size: 0.75rem; margin-left: 6px;" title="Reset Simulation State">↺ Reset</button>
+        <div class="header-actions">
+          <button id="zoomOutBtn" class="btn-icon" title="Zoom Out">−</button>
+          <span id="zoomLevelBadge" class="zoom-badge">100%</span>
+          <button id="zoomInBtn" class="btn-icon" title="Zoom In">+</button>
+          <button id="zoomResetBtn" class="btn-icon" title="Reset Zoom">Fit</button>
+          <button id="resetSimBtn" class="btn-icon" style="color: var(--accent-yellow); margin-left: 4px;" title="Reset Simulation State">↺ Reset</button>
         </div>
       </div>
       <div class="panel-content diagram-canvas" id="mermaidCanvas">
@@ -94,49 +97,52 @@
       </div>
     </div>
 
+    <!-- Vertical Resizer 2 -->
+    <div class="resizer-v" id="resizerCol2" title="Drag to resize columns (Double click to reset)"></div>
+
     <!-- Column 3: Generated C++ Code & Interactive Simulator -->
-    <div class="split-column">
+    <div class="split-column col-panel" id="panelRight">
 
       <!-- Top: Generated C++ Header -->
-      <div class="panel">
+      <div class="panel sub-panel" id="panelCpp">
         <div class="panel-header">
           <div class="panel-title">
             <span class="badge">03</span> Generated C++ Header
           </div>
-          <span style="font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono);">Zero Overhead (0 Deps)</span>
+          <span class="sub-badge">Zero Overhead (0 Deps)</span>
         </div>
         <div class="panel-content">
           <pre id="cppPreview" class="code-preview"></pre>
         </div>
       </div>
 
+      <!-- Horizontal Resizer inside Column 3 -->
+      <div class="resizer-h" id="resizerSplitCol" title="Drag to resize subpanels"></div>
+
       <!-- Bottom: Interactive State Machine Simulator -->
-      <div class="panel">
+      <div class="panel sub-panel" id="panelSim">
         <div class="panel-header">
           <div class="panel-title">
-            <span class="badge">04</span> Interactive Transition Simulator
+            <span class="badge">04</span> Interactive Simulator
           </div>
         </div>
         <div class="panel-content sim-container">
           <div class="state-badge-container">
-            <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 500;">Active State:</span>
+            <span class="state-label">Active State:</span>
             <div id="activeStateBadge" class="state-badge">Disconnected</div>
           </div>
 
           <div>
-            <div style="font-size: 0.74rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.4px;">
-              Dispatch Event Trigger:
-            </div>
+            <div class="sim-section-title">Dispatch Event Trigger:</div>
             <div id="eventButtons" class="event-buttons-grid"></div>
           </div>
 
-          <div style="flex: 1; display: flex; flex-direction: column;">
-            <div style="font-size: 0.74rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
+          <div class="history-wrapper">
+            <div class="history-header">
               <span>Execution Log:</span>
-              <a href="#" id="clearLogBtn" style="color: var(--text-muted); text-decoration: none; font-size: 0.7rem;">Clear Log</a>
+              <a href="#" id="clearLogBtn">Clear Log</a>
             </div>
             <div id="historyLog" class="history-log"></div>
-          </div>
         </div>
       </div>
 
@@ -144,6 +150,7 @@
 
   </main>
 
+  <script src="fsmc.js"></script>
   <script src="playground.js"></script>
 </body>
 </html>

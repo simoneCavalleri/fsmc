@@ -432,6 +432,8 @@ class CppGenerator {
         out << "#include <utility>\n";
         out << "#include <functional>\n";
         out << "#include <vector>\n";
+        out << "#include <chrono>\n";
+        out << "#include <memory>\n";
         if (opts.thread_safe) {
             out << "#include <queue>\n";
             out << "#include <mutex>\n";
@@ -466,21 +468,19 @@ class CppGenerator {
                "contains<T, type_list<Head, Rest...>> : contains<T, "
                "type_list<Rest...>> {};\n\n";
 
-        out << "template <typename InList, typename OutList = type_list<>> struct "
-               "unique;\n";
-        out << "template <typename OutList> struct unique<type_list<>, OutList> { "
-               "using type = OutList; };\n";
-        out << "template <typename Head, typename... Tail, typename... Out> struct "
-               "unique<type_list<Head, Tail...>, type_list<Out...>> {\n";
-        out << "    using type = std::conditional_t<contains<Head, "
-               "type_list<Out...>>::value,\n";
-        out << "        typename unique<type_list<Tail...>, "
-               "type_list<Out...>>::type,\n";
-        out << "        typename unique<type_list<Tail...>, type_list<Out..., "
-               "Head>>::type>;\n";
+        out << "template <typename List, typename T> struct append_unique;\n";
+        out << "template <typename... Ts, typename T> struct append_unique<type_list<Ts...>, T> {\n";
+        out << "    using type = std::conditional_t<contains<T, type_list<Ts...>>::value, type_list<Ts...>, type_list<Ts..., T>>;\n";
         out << "};\n";
-        out << "template <typename List> using unique_t = typename "
-               "unique<List>::type;\n\n";
+        out << "template <typename List, typename Result = type_list<>> struct unique;\n";
+        out << "template <typename Result> struct unique<type_list<>, Result> { using type = Result; };\n";
+        out << "template <typename Head, typename... Tail, typename Result> struct unique<type_list<Head, Tail...>, Result> {\n";
+        out << "  private:\n";
+        out << "    using next_result = typename append_unique<Result, Head>::type;\n";
+        out << "  public:\n";
+        out << "    using type = typename unique<type_list<Tail...>, next_result>::type;\n";
+        out << "};\n";
+        out << "template <typename List> using unique_t = typename unique<List>::type;\n\n";
 
         out << "template <typename List> struct to_variant;\n";
         out << "template <typename... Ts> struct to_variant<type_list<Ts...>> { "
@@ -1002,6 +1002,8 @@ class CppGenerator {
         out << "#include <utility>\n";
         out << "#include <functional>\n";
         out << "#include <vector>\n";
+        out << "#include <chrono>\n";
+        out << "#include <memory>\n";
         if (opts.thread_safe) {
             out << "#include <queue>\n";
             out << "#include <mutex>\n";
@@ -1033,21 +1035,19 @@ class CppGenerator {
                "contains<T, type_list<Head, Rest...>> : contains<T, "
                "type_list<Rest...>> {};\n\n";
 
-        out << "template <typename InList, typename OutList = type_list<>> struct "
-               "unique;\n";
-        out << "template <typename OutList> struct unique<type_list<>, OutList> { "
-               "using type = OutList; };\n";
-        out << "template <typename Head, typename... Tail, typename... Out> struct "
-               "unique<type_list<Head, Tail...>, type_list<Out...>> {\n";
-        out << "    using type = std::conditional_t<contains<Head, "
-               "type_list<Out...>>::value,\n";
-        out << "        typename unique<type_list<Tail...>, "
-               "type_list<Out...>>::type,\n";
-        out << "        typename unique<type_list<Tail...>, type_list<Out..., "
-               "Head>>::type>;\n";
+        out << "template <typename List, typename T> struct append_unique;\n";
+        out << "template <typename... Ts, typename T> struct append_unique<type_list<Ts...>, T> {\n";
+        out << "    using type = std::conditional_t<contains<T, type_list<Ts...>>::value, type_list<Ts...>, type_list<Ts..., T>>;\n";
         out << "};\n";
-        out << "template <typename List> using unique_t = typename "
-               "unique<List>::type;\n\n";
+        out << "template <typename List, typename Result = type_list<>> struct unique;\n";
+        out << "template <typename Result> struct unique<type_list<>, Result> { using type = Result; };\n";
+        out << "template <typename Head, typename... Tail, typename Result> struct unique<type_list<Head, Tail...>, Result> {\n";
+        out << "  private:\n";
+        out << "    using next_result = typename append_unique<Result, Head>::type;\n";
+        out << "  public:\n";
+        out << "    using type = typename unique<type_list<Tail...>, next_result>::type;\n";
+        out << "};\n";
+        out << "template <typename List> using unique_t = typename unique<List>::type;\n\n";
 
         out << "template <typename List> struct to_variant;\n";
         out << "template <typename... Ts> struct to_variant<type_list<Ts...>> { "

@@ -81,7 +81,7 @@ header {
 .nav-controls {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 select, button {
@@ -114,6 +114,41 @@ select:hover, button:hover {
   background: linear-gradient(135deg, rgba(0, 240, 255, 0.35), rgba(139, 92, 246, 0.35));
   box-shadow: 0 0 12px var(--primary-glow);
   transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  color: #e2e8f0;
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.12);
+  transform: translateY(-1px);
+}
+
+/* Status Pills */
+.status-pill {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+  letter-spacing: 0.5px;
+}
+.status-ok {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--accent-emerald);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.status-warn {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--accent-amber);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.status-err {
+  background: rgba(244, 63, 94, 0.15);
+  color: var(--accent-rose);
+  border: 1px solid rgba(244, 63, 94, 0.3);
 }
 
 /* Workspace Layout */
@@ -204,6 +239,25 @@ pre.code-preview {
   padding: 20px;
 }
 
+/* Mermaid Active State Glow Animation */
+svg .node.active-state > rect,
+svg .node.active-state > polygon,
+svg .node.active-state > circle {
+  stroke: var(--primary) !important;
+  stroke-width: 3px !important;
+  filter: drop-shadow(0 0 12px var(--primary));
+  animation: pulse-glow 2s infinite ease-in-out;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 6px rgba(0, 240, 255, 0.4));
+  }
+  50% {
+    filter: drop-shadow(0 0 16px rgba(0, 240, 255, 0.9));
+  }
+}
+
 /* Split Right Column */
 .split-column {
   display: grid;
@@ -216,7 +270,7 @@ pre.code-preview {
   padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   height: 100%;
 }
 
@@ -264,13 +318,15 @@ pre.code-preview {
   font-family: var(--font-mono);
   padding: 6px 12px;
   border-radius: 6px;
+  transition: all 0.15s ease-in-out;
 }
 
 .btn-event:hover {
-  background: rgba(139, 92, 246, 0.3);
+  background: rgba(139, 92, 246, 0.35);
   border-color: var(--accent-purple);
   color: #fff;
-  box-shadow: 0 0 10px rgba(139, 92, 246, 0.4);
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.45);
+  transform: translateY(-1px);
 }
 
 .history-log {
@@ -298,6 +354,10 @@ pre.code-preview {
 
 .log-entry span.event {
   color: var(--primary);
+}
+
+.log-entry span.dropped {
+  color: var(--accent-amber);
 }
 
 /* Diagnostics */

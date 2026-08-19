@@ -16,22 +16,31 @@
       <div class="logo-title">Universal C++ FSM Compiler & Live Simulator</div>
     </div>
     <div class="nav-controls">
-      <label style="font-size: 0.8rem; color: var(--text-muted);">Preset Model:</label>
+      <label style="font-size: 0.8rem; color: var(--text-muted);">Preset:</label>
       <select id="presetSelect">
         <option value="connection">Connection Manager (Async)</option>
         <option value="motor">Motor Speed Controller</option>
-        <option value="mission">Mission Flight Controller</option>
+        <option value="mission">Mission Flight Controller (HFSM)</option>
         <option value="timed_watchdog">Timed Watchdog & Deadlines</option>
         <option value="livelock_demo">Livelock / Infinite Cycle Demo</option>
       </select>
 
-      <label style="font-size: 0.8rem; color: var(--text-muted); margin-left: 8px;">C++ Standard:</label>
-      <select id="stdSelect">
-        <option value="20">C++20 (Concepts & Type-Safe)</option>
-        <option value="17">C++17 (Zero-Overhead)</option>
+      <label style="font-size: 0.8rem; color: var(--text-muted); margin-left: 6px;">Format:</label>
+      <select id="formatSelect">
+        <option value="mermaid">Mermaid (stateDiagram-v2)</option>
+        <option value="plantuml">PlantUML (@startuml)</option>
+        <option value="sysml2">OMG SysML v2 (.sysml)</option>
+        <option value="json">XState JSON (.json)</option>
       </select>
 
-      <button id="copyBtn" class="btn-primary">📋 Copy C++ Header</button>
+      <label style="font-size: 0.8rem; color: var(--text-muted); margin-left: 6px;">C++ Standard:</label>
+      <select id="stdSelect">
+        <option value="20">C++20 (Concepts & Metaprogramming)</option>
+        <option value="17">C++17 (Zero-Overhead Tables)</option>
+      </select>
+
+      <button id="copyBtn" class="btn-primary">📋 Copy C++</button>
+      <button id="downloadBtn" class="btn-secondary">📥 Download .hpp</button>
     </div>
   </header>
 
@@ -42,12 +51,14 @@
     <div class="panel">
       <div class="panel-header">
         <div class="panel-title"><span>01</span> Statechart Diagram Input</div>
+        <span id="formatBadge" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; background: rgba(0,240,255,0.1); color: var(--primary); font-family: var(--font-mono);">Mermaid</span>
       </div>
       <div class="panel-content" style="display: flex; flex-direction: column;">
         <textarea id="editor" class="code-editor" spellcheck="false"></textarea>
-        <div style="border-top: 1px solid var(--border-color); background: rgba(0,0,0,0.3); max-height: 140px; overflow-y: auto;">
-          <div style="padding: 6px 12px; font-size: 0.75rem; font-weight: 700; color: var(--text-dim); text-transform: uppercase;">
-            Formal Model Diagnostics
+        <div style="border-top: 1px solid var(--border-color); background: rgba(0,0,0,0.35); max-height: 160px; overflow-y: auto;">
+          <div style="padding: 6px 12px; font-size: 0.75rem; font-weight: 700; color: var(--text-dim); text-transform: uppercase; display: flex; justify-content: space-between; align-items: center;">
+            <span>Formal Model Checker & Diagnostics</span>
+            <span id="modelStatusBadge" class="status-pill status-ok">SOUND</span>
           </div>
           <div id="diagnostics" class="diag-container"></div>
         </div>
@@ -58,6 +69,9 @@
     <div class="panel">
       <div class="panel-header">
         <div class="panel-title"><span>02</span> Visual Statechart</div>
+        <div style="display: flex; gap: 6px;">
+          <button id="resetSimBtn" style="padding: 3px 8px; font-size: 0.75rem;">↺ Reset State</button>
+        </div>
       </div>
       <div class="panel-content diagram-canvas" id="mermaidCanvas">
         <!-- Rendered Mermaid SVG Canvas -->
@@ -71,6 +85,7 @@
       <div class="panel">
         <div class="panel-header">
           <div class="panel-title"><span>03</span> Generated C++ Header</div>
+          <span style="font-size: 0.72rem; color: var(--text-dim); font-family: var(--font-mono);">Standalone (0 Deps)</span>
         </div>
         <div class="panel-content">
           <pre id="cppPreview" class="code-preview"></pre>
@@ -96,8 +111,9 @@
           </div>
 
           <div style="flex: 1; display: flex; flex-direction: column;">
-            <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px;">
-              Transition History Log:
+            <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px; display: flex; justify-content: space-between;">
+              <span>Transition History Log:</span>
+              <a href="#" id="clearLogBtn" style="color: var(--text-dim); text-decoration: none; font-size: 0.72rem;">Clear</a>
             </div>
             <div id="historyLog" class="history-log"></div>
           </div>

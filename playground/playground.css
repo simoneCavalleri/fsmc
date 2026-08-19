@@ -2,8 +2,8 @@
 
 :root {
   --bg-dark: #07090e;
-  --bg-card: rgba(15, 23, 42, 0.75);
-  --bg-card-hover: rgba(30, 41, 59, 0.85);
+  --bg-card: rgba(15, 23, 42, 0.85);
+  --bg-card-hover: rgba(30, 41, 59, 0.9);
   --border-color: rgba(255, 255, 255, 0.08);
   --border-glow: rgba(0, 240, 255, 0.3);
   --text-main: #f8fafc;
@@ -26,23 +26,26 @@
   padding: 0;
 }
 
-body {
+html, body {
   background-color: var(--bg-dark);
   background-image: 
     radial-gradient(at 0% 0%, rgba(0, 240, 255, 0.08) 0px, transparent 50%),
     radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.08) 0px, transparent 50%);
   color: var(--text-main);
   font-family: var(--font-sans);
-  height: 100vh;
+  min-height: 100vh;
+  margin: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 /* Header */
 header {
   height: 64px;
-  background: rgba(10, 15, 26, 0.85);
+  min-height: 64px;
+  background: rgba(10, 15, 26, 0.95);
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--border-color);
   display: flex;
@@ -50,6 +53,8 @@ header {
   justify-content: space-between;
   padding: 0 24px;
   z-index: 100;
+  position: sticky;
+  top: 0;
 }
 
 .logo-area {
@@ -81,11 +86,12 @@ header {
 .nav-controls {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
 select, button {
-  background: rgba(30, 41, 59, 0.6);
+  background: rgba(30, 41, 59, 0.7);
   color: var(--text-main);
   border: 1px solid var(--border-color);
   padding: 7px 14px;
@@ -100,30 +106,30 @@ select, button {
 
 select:hover, button:hover {
   background: var(--bg-card-hover);
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.25);
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, rgba(0, 240, 255, 0.2), rgba(139, 92, 246, 0.2));
-  border: 1px solid rgba(0, 240, 255, 0.4);
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.25), rgba(139, 92, 246, 0.25));
+  border: 1px solid rgba(0, 240, 255, 0.5);
   color: var(--primary);
   font-weight: 600;
 }
 
 .btn-primary:hover {
-  background: linear-gradient(135deg, rgba(0, 240, 255, 0.35), rgba(139, 92, 246, 0.35));
-  box-shadow: 0 0 12px var(--primary-glow);
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.4), rgba(139, 92, 246, 0.4));
+  box-shadow: 0 0 14px var(--primary-glow);
   transform: translateY(-1px);
 }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.06);
   border: 1px solid var(--border-color);
   color: #e2e8f0;
 }
 
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.14);
   transform: translateY(-1px);
 }
 
@@ -151,14 +157,27 @@ select:hover, button:hover {
   border: 1px solid rgba(244, 63, 94, 0.3);
 }
 
-/* Workspace Layout */
+/* Workspace Responsive Grid */
 .workspace {
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 12px;
-  padding: 12px;
-  overflow: hidden;
+  grid-template-columns: minmax(320px, 1fr) minmax(350px, 1.2fr) minmax(350px, 1fr);
+  gap: 14px;
+  padding: 14px;
+  min-height: calc(100vh - 64px);
+  box-sizing: border-box;
+}
+
+@media (max-width: 1300px) {
+  .workspace {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
 }
 
 .panel {
@@ -168,14 +187,16 @@ select:hover, button:hover {
   border-radius: var(--radius);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  min-height: 520px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
 }
 
 .panel-header {
   height: 42px;
+  min-height: 42px;
   padding: 0 16px;
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.03);
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
@@ -201,12 +222,15 @@ select:hover, button:hover {
   flex: 1;
   overflow: auto;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Editor & Previews */
 textarea.code-editor {
   width: 100%;
-  height: 100%;
+  flex: 1;
+  min-height: 320px;
   background: transparent;
   color: #e2e8f0;
   border: none;
@@ -214,7 +238,7 @@ textarea.code-editor {
   font-family: var(--font-mono);
   font-size: 0.88rem;
   line-height: 1.6;
-  resize: none;
+  resize: vertical;
   outline: none;
   white-space: pre;
 }
@@ -223,11 +247,11 @@ pre.code-preview {
   margin: 0;
   padding: 16px;
   font-family: var(--font-mono);
-  font-size: 0.84rem;
+  font-size: 0.82rem;
   line-height: 1.55;
   color: #a5f3fc;
   overflow: auto;
-  height: 100%;
+  flex: 1;
 }
 
 /* Mermaid Canvas */
@@ -235,26 +259,37 @@ pre.code-preview {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 100%;
+  width: 100%;
+  height: 100%;
+  min-height: 440px;
   padding: 20px;
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.diagram-canvas svg {
+  max-width: 100%;
+  height: auto;
+  filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.5));
 }
 
 /* Mermaid Active State Glow Animation */
 svg .node.active-state > rect,
 svg .node.active-state > polygon,
-svg .node.active-state > circle {
+svg .node.active-state > circle,
+svg .node.active-state .label-container {
   stroke: var(--primary) !important;
   stroke-width: 3px !important;
-  filter: drop-shadow(0 0 12px var(--primary));
+  filter: drop-shadow(0 0 12px var(--primary)) !important;
   animation: pulse-glow 2s infinite ease-in-out;
 }
 
 @keyframes pulse-glow {
   0%, 100% {
-    filter: drop-shadow(0 0 6px rgba(0, 240, 255, 0.4));
+    filter: drop-shadow(0 0 6px rgba(0, 240, 255, 0.5));
   }
   50% {
-    filter: drop-shadow(0 0 16px rgba(0, 240, 255, 0.9));
+    filter: drop-shadow(0 0 18px rgba(0, 240, 255, 1));
   }
 }
 
@@ -262,7 +297,7 @@ svg .node.active-state > circle {
 .split-column {
   display: grid;
   grid-template-rows: 1fr 1fr;
-  gap: 12px;
+  gap: 14px;
 }
 
 /* Simulator Controls */
@@ -272,6 +307,7 @@ svg .node.active-state > circle {
   flex-direction: column;
   gap: 14px;
   height: 100%;
+  overflow-y: auto;
 }
 
 .state-badge-container {
@@ -311,8 +347,8 @@ svg .node.active-state > circle {
 }
 
 .btn-event {
-  background: rgba(139, 92, 246, 0.15);
-  border: 1px solid rgba(139, 92, 246, 0.4);
+  background: rgba(139, 92, 246, 0.18);
+  border: 1px solid rgba(139, 92, 246, 0.45);
   color: #c4b5fd;
   font-size: 0.82rem;
   font-family: var(--font-mono);
@@ -331,7 +367,9 @@ svg .node.active-state > circle {
 
 .history-log {
   flex: 1;
-  background: rgba(0, 0, 0, 0.4);
+  min-height: 120px;
+  max-height: 180px;
+  background: rgba(0, 0, 0, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 8px;
   padding: 10px;
@@ -395,18 +433,18 @@ svg .node.active-state > circle {
   color: #cffafe;
 }
 
-/* Custom Scrollbar */
+/* Custom Scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
 }
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(0, 0, 0, 0.2);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.35);
 }

@@ -396,13 +396,33 @@ function updatePlayground() {
   updateSimulatorUI();
 }
 
-function renderMermaid(code) {
+let renderSeq = 0;
+async function renderMermaid(code) {
   const canvas = document.getElementById("mermaidCanvas");
-  canvas.innerHTML = `<div class="mermaid">${code}</div>`;
-  if (window.mermaid) {
-    mermaid.contentLoaded().then(() => {
+  if (!window.mermaid) {
+    canvas.innerHTML = `<div style="padding: 20px; color: var(--text-muted); font-family: var(--font-mono); font-size: 0.85rem;">Loading Mermaid renderer...</div>`;
+    return;
+  }
+
+  // Ensure diagram has stateDiagram directive
+  let finalCode = code.trim();
+  if (!finalCode.startsWith('stateDiagram')) {
+    finalCode = 'stateDiagram-v2\n' + finalCode;
+  }
+
+  const currentSeq = ++renderSeq;
+  try {
+    const id = "mermaid_svg_" + currentSeq;
+    const { svg } = await mermaid.render(id, finalCode);
+    if (currentSeq === renderSeq) {
+      canvas.innerHTML = svg;
       highlightActiveSvgNode();
-    }).catch(() => {});
+    }
+  } catch (err) {
+    console.warn("Mermaid render error:", err);
+    // Cleanup any failed temp container inserted by mermaid
+    const tempEl = document.getElementById("d" + "mermaid_svg_" + currentSeq);
+    if (tempEl) tempEl.remove();
   }
 }
 
@@ -470,13 +490,16 @@ window.onload = () => {
     mermaid.initialize({
       startOnLoad: false,
       theme: 'dark',
+      securityLevel: 'loose',
       themeVariables: {
         darkMode: true,
-        background: '#07090e',
-        primaryColor: '#00f0ff',
+        background: 'transparent',
+        primaryColor: '#1e293b',
         primaryBorderColor: '#00f0ff',
+        primaryTextColor: '#f8fafc',
         lineColor: '#8b5cf6',
-        secondaryColor: '#1e293b'
+        secondaryColor: '#0f172a',
+        tertiaryColor: '#1e293b'
       }
     });
   }

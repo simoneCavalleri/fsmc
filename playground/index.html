@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>fsmc — Live Web Playground & State Machine Simulator</title>
   <link rel="stylesheet" href="playground.css">
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js"></script>
 </head>
 <body>
 
@@ -13,33 +13,42 @@
   <header>
     <div class="logo-area">
       <div class="logo-badge">fsmc</div>
-      <div class="logo-title">Universal C++ FSM Compiler & Live Simulator</div>
+      <div class="logo-title">
+        fsmc IDE
+        <span class="sub">Universal C++ FSM Compiler & Live Simulator</span>
+      </div>
     </div>
     <div class="nav-controls">
-      <label style="font-size: 0.8rem; color: var(--text-muted);">Preset:</label>
-      <select id="presetSelect">
-        <option value="connection">Connection Manager (Async)</option>
-        <option value="motor">Motor Speed Controller</option>
-        <option value="mission">Mission Flight Controller (HFSM)</option>
-        <option value="timed_watchdog">Timed Watchdog & Deadlines</option>
-        <option value="livelock_demo">Livelock / Infinite Cycle Demo</option>
-      </select>
+      <div class="control-group">
+        <span class="control-label">Preset:</span>
+        <select id="presetSelect">
+          <option value="connection">Connection Manager (Async)</option>
+          <option value="motor">Motor Speed Controller</option>
+          <option value="mission">Mission Controller (HFSM)</option>
+          <option value="timed_watchdog">Timed Watchdog & Deadlines</option>
+          <option value="livelock_demo">Livelock / Cycle Demo</option>
+        </select>
+      </div>
 
-      <label style="font-size: 0.8rem; color: var(--text-muted); margin-left: 6px;">Format:</label>
-      <select id="formatSelect">
-        <option value="mermaid">Mermaid (stateDiagram-v2)</option>
-        <option value="plantuml">PlantUML (@startuml)</option>
-        <option value="sysml2">OMG SysML v2 (.sysml)</option>
-        <option value="json">XState JSON (.json)</option>
-      </select>
+      <div class="control-group">
+        <span class="control-label">Format:</span>
+        <select id="formatSelect">
+          <option value="mermaid">Mermaid (stateDiagram-v2)</option>
+          <option value="plantuml">PlantUML (@startuml)</option>
+          <option value="sysml2">OMG SysML v2 (.sysml)</option>
+          <option value="json">XState JSON (.json)</option>
+        </select>
+      </div>
 
-      <label style="font-size: 0.8rem; color: var(--text-muted); margin-left: 6px;">C++ Standard:</label>
-      <select id="stdSelect">
-        <option value="20">C++20 (Concepts & Metaprogramming)</option>
-        <option value="17">C++17 (Zero-Overhead Tables)</option>
-      </select>
+      <div class="control-group">
+        <span class="control-label">C++ Std:</span>
+        <select id="stdSelect">
+          <option value="20">C++20 (Concepts & Type-Safe)</option>
+          <option value="17">C++17 (Zero-Overhead Tables)</option>
+        </select>
+      </div>
 
-      <button id="copyBtn" class="btn-primary">📋 Copy C++</button>
+      <button id="copyBtn" class="btn-primary">📋 Copy Header</button>
       <button id="downloadBtn" class="btn-secondary">📥 Download .hpp</button>
     </div>
   </header>
@@ -50,14 +59,16 @@
     <!-- Column 1: Diagram Code Editor & Diagnostics -->
     <div class="panel">
       <div class="panel-header">
-        <div class="panel-title"><span>01</span> Statechart Diagram Input</div>
-        <span id="formatBadge" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; background: rgba(0,240,255,0.1); color: var(--primary); font-family: var(--font-mono);">Mermaid</span>
+        <div class="panel-title">
+          <span class="badge">01</span> Statechart Diagram Editor
+        </div>
+        <span id="formatBadge" style="font-size: 0.7rem; padding: 2px 7px; border-radius: 4px; background: rgba(0,210,255,0.1); color: var(--accent-cyan); font-family: var(--font-mono);">MERMAID</span>
       </div>
-      <div class="panel-content" style="display: flex; flex-direction: column;">
+      <div class="panel-content">
         <textarea id="editor" class="code-editor" spellcheck="false"></textarea>
-        <div style="border-top: 1px solid var(--border-color); background: rgba(0,0,0,0.35); max-height: 160px; overflow-y: auto;">
-          <div style="padding: 6px 12px; font-size: 0.75rem; font-weight: 700; color: var(--text-dim); text-transform: uppercase; display: flex; justify-content: space-between; align-items: center;">
-            <span>Formal Model Checker & Diagnostics</span>
+        <div style="border-top: 1px solid var(--border-subtle); background: #060910; max-height: 150px; overflow-y: auto;">
+          <div style="padding: 6px 12px; font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.04);">
+            <span>Formal Model Diagnostics</span>
             <span id="modelStatusBadge" class="status-pill status-ok">SOUND</span>
           </div>
           <div id="diagnostics" class="diag-container"></div>
@@ -65,16 +76,21 @@
       </div>
     </div>
 
-    <!-- Column 2: Live Mermaid Graph Visualizer -->
+    <!-- Column 2: Live Graph Visualizer -->
     <div class="panel">
       <div class="panel-header">
-        <div class="panel-title"><span>02</span> Visual Statechart</div>
-        <div style="display: flex; gap: 6px;">
-          <button id="resetSimBtn" style="padding: 3px 8px; font-size: 0.75rem;">↺ Reset State</button>
+        <div class="panel-title">
+          <span class="badge">02</span> Visual Statechart Graph
+        </div>
+        <div style="display: flex; gap: 4px;">
+          <button id="zoomInBtn" style="padding: 2px 8px; font-size: 0.75rem;" title="Zoom In">🔍+</button>
+          <button id="zoomOutBtn" style="padding: 2px 8px; font-size: 0.75rem;" title="Zoom Out">🔍-</button>
+          <button id="zoomResetBtn" style="padding: 2px 8px; font-size: 0.75rem;" title="Reset Zoom">⟲ 1:1</button>
+          <button id="resetSimBtn" style="padding: 2px 8px; font-size: 0.75rem; margin-left: 6px;" title="Reset Simulation State">↺ Reset</button>
         </div>
       </div>
       <div class="panel-content diagram-canvas" id="mermaidCanvas">
-        <!-- Rendered Mermaid SVG Canvas -->
+        <!-- Rendered Interactive Graph -->
       </div>
     </div>
 
@@ -84,8 +100,10 @@
       <!-- Top: Generated C++ Header -->
       <div class="panel">
         <div class="panel-header">
-          <div class="panel-title"><span>03</span> Generated C++ Header</div>
-          <span style="font-size: 0.72rem; color: var(--text-dim); font-family: var(--font-mono);">Standalone (0 Deps)</span>
+          <div class="panel-title">
+            <span class="badge">03</span> Generated C++ Header
+          </div>
+          <span style="font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono);">Zero Overhead (0 Deps)</span>
         </div>
         <div class="panel-content">
           <pre id="cppPreview" class="code-preview"></pre>
@@ -95,25 +113,27 @@
       <!-- Bottom: Interactive State Machine Simulator -->
       <div class="panel">
         <div class="panel-header">
-          <div class="panel-title"><span>04</span> Interactive Transition Simulator</div>
+          <div class="panel-title">
+            <span class="badge">04</span> Interactive Transition Simulator
+          </div>
         </div>
         <div class="panel-content sim-container">
           <div class="state-badge-container">
-            <span style="font-size: 0.85rem; color: var(--text-muted);">Current Active State:</span>
+            <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 500;">Active State:</span>
             <div id="activeStateBadge" class="state-badge">Disconnected</div>
           </div>
 
           <div>
-            <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-dim); text-transform: uppercase; margin-bottom: 6px;">
-              Dispatch Event:
+            <div style="font-size: 0.74rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.4px;">
+              Dispatch Event Trigger:
             </div>
             <div id="eventButtons" class="event-buttons-grid"></div>
           </div>
 
           <div style="flex: 1; display: flex; flex-direction: column;">
-            <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px; display: flex; justify-content: space-between;">
-              <span>Transition History Log:</span>
-              <a href="#" id="clearLogBtn" style="color: var(--text-dim); text-decoration: none; font-size: 0.72rem;">Clear</a>
+            <div style="font-size: 0.74rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
+              <span>Execution Log:</span>
+              <a href="#" id="clearLogBtn" style="color: var(--text-muted); text-decoration: none; font-size: 0.7rem;">Clear Log</a>
             </div>
             <div id="historyLog" class="history-log"></div>
           </div>

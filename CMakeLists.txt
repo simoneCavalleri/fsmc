@@ -36,6 +36,25 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FsmGenTools.cmake)
 # Testing support
 enable_testing()
 
+# WebAssembly Playground target (when building with Emscripten)
+option(FSMC_BUILD_WASM "Build WebAssembly playground" OFF)
+if(FSMC_BUILD_WASM OR EMSCRIPTEN)
+    add_executable(fsmc_wasm playground/fsmc_wasm.cpp)
+    target_include_directories(fsmc_wasm PRIVATE include)
+    set_target_properties(fsmc_wasm PROPERTIES
+        CXX_STANDARD 20
+        OUTPUT_NAME "fsmc"
+        SUFFIX ".js"
+    )
+    target_link_options(fsmc_wasm PRIVATE
+        "-lembind"
+        "-sEXPORT_ES6=0"
+        "-sMODULARIZE=1"
+        "-sEXPORT_NAME=createFsmcModule"
+        "-sALLOW_MEMORY_GROWTH=1"
+    )
+endif()
+
 # Subdirectories
 add_subdirectory(src)
 add_subdirectory(tests)
@@ -70,6 +89,7 @@ install(FILES
 )
 
 install(DIRECTORY include/ DESTINATION include)
+install(DIRECTORY modules/ DESTINATION include/fsm/modules)
 
 # Install shell completion scripts
 install(FILES completions/fsmc.bash DESTINATION share/bash-completion/completions RENAME fsmc)

@@ -39,6 +39,7 @@ struct CliOptions {
     bool standalone = true;
     bool thread_safe = true;
     bool include_stubs = true;
+    bool verify_mode = false;
     bool show_help = false;
     bool show_version = false;
     bool is_valid = true;
@@ -53,6 +54,7 @@ void print_help(const char* prog_name) {
                  "=======\n\n"
               << "Usage: " << prog_name << " -i <model_file> [OPTIONS]\n"
               << "       " << prog_name << " -i <model_file> --export <mermaid|plantuml|sysml2> -o <out_file>\n"
+              << "       " << prog_name << " -i <model_file> --verify\n"
               << "       " << prog_name << " --export-runtime <dir> [--std 17|20]\n\n"
               << "Options:\n"
               << "  -i, --input <file>        Input model file (.xmi, .scxml, .json, .dot, "
@@ -61,6 +63,7 @@ void print_help(const char* prog_name) {
                  "stdout)\n"
               << "  -e, --export <fmt>        Export diagram to format: 'mermaid', 'plantuml', "
                  "'sysml2'\n"
+              << "  --verify, --check         Run formal model checker (livelock, choice, deadlock) and exit\n"
               << "  -n, --name <name>         FSM class name (default: inferred from "
                  "file name or 'MyFSM')\n"
               << "  --namespace <ns>          C++ namespace (default: "
@@ -140,6 +143,8 @@ CliOptions parse_cli_args(int argc, char* argv[]) {
             opts.standalone = true;
         } else if (arg == "--modular") {
             opts.standalone = false;
+        } else if (arg == "--verify" || arg == "--check") {
+            opts.verify_mode = true;
         } else if (arg == "--no-thread-safe") {
             opts.thread_safe = false;
         } else if (arg == "--no-stubs") {
@@ -267,8 +272,51 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Semantic Validation
+    // Formal Verification & Semantic Validation
     const auto validation = FsmValidator::validate(model);
+
+    // If in verification mode, output formal report and exit
+    if (opts.verify_mode) {
+        size_t total_deferred = 0;
+        for (const auto& s : model.states) {
+            total_deferred += s.deferred_events.size();
+        }
+
+        std::cout << "============================================================================\n"
+                  << "                  fsmc Formal Model Checker Report                          \n"
+                  << "============================================================================\n"
+                  << " Model Name:       " << model.name << "\n"
+                  << " Total States:     " << model.states.size() << "\n"
+                  << " Total Events:     " << model.events.size() << "\n"
+                  << " Transitions:      " << model.transitions.size() << "\n"
+                  << " Choice Nodes:     " << model.choice_nodes.size() << "\n"
+                  << " Deferred Triggers:" << total_deferred << "\n"
+                  << "----------------------------------------------------------------------------\n"
+                  << " Diagnostics:\n";
+
+        if (validation.diagnostics.empty()) {
+            std::cout << "  (No warnings or errors detected. Model is formally sound!)\n";
+        } else {
+            for (const auto& diag : validation.diagnostics) {
+                std::string level_tag = "[INFO]";
+                if (diag.severity == DiagnosticSeverity::Warning) {
+                    level_tag = "[WARNING]";
+                } else if (diag.severity == DiagnosticSeverity::SafetyCritical) {
+                    level_tag = "[SAFETY CRITICAL]";
+                } else if (diag.severity == DiagnosticSeverity::Error) {
+                    level_tag = "[ERROR]";
+                }
+                std::cout << "  " << level_tag << " (" << diag.category << "): " << diag.message << "\n";
+            }
+        }
+
+        std::cout << "----------------------------------------------------------------------------\n"
+                  << " Verification Status: " << (validation.is_valid ? "PASSED (Model Sound)" : "FAILED (Errors Detected)") << "\n"
+                  << "============================================================================\n";
+
+        return validation.is_valid ? 0 : 1;
+    }
+
     for (const auto& warn_msg : validation.warnings) {
         std::cout << "[WARNING] " << warn_msg << "\n";
     }

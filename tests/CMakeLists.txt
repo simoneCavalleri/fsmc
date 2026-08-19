@@ -148,5 +148,11 @@ add_executable(test_format_export test_format_export.cpp)
 target_link_libraries(test_format_export PRIVATE Threads::Threads)
 add_test(NAME test_format_export COMMAND test_format_export)
 
+# Formal Model Checker & Verification Test Suite
+add_executable(test_model_checker test_model_checker.cpp)
+target_link_libraries(test_model_checker PRIVATE Threads::Threads)
+add_test(NAME test_model_checker COMMAND test_model_checker)
+
+
 
 

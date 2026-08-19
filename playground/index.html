@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>fsmc — Live Web Playground & State Machine Simulator</title>
+  <link rel="stylesheet" href="playground.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+
+  <!-- Top Header Navigation -->
+  <header>
+    <div class="logo-area">
+      <div class="logo-badge">fsmc</div>
+      <div class="logo-title">Universal C++ FSM Compiler & Live Simulator</div>
+    </div>
+    <div class="nav-controls">
+      <label style="font-size: 0.8rem; color: var(--text-muted);">Preset Model:</label>
+      <select id="presetSelect">
+        <option value="connection">Connection Manager (Async)</option>
+        <option value="motor">Motor Speed Controller</option>
+        <option value="mission">Mission Flight Controller</option>
+        <option value="timed_watchdog">Timed Watchdog & Deadlines</option>
+        <option value="livelock_demo">Livelock / Infinite Cycle Demo</option>
+      </select>
+
+      <label style="font-size: 0.8rem; color: var(--text-muted); margin-left: 8px;">C++ Standard:</label>
+      <select id="stdSelect">
+        <option value="20">C++20 (Concepts & Type-Safe)</option>
+        <option value="17">C++17 (Zero-Overhead)</option>
+      </select>
+
+      <button id="copyBtn" class="btn-primary">📋 Copy C++ Header</button>
+    </div>
+  </header>
+
+  <!-- Workspace Multi-Column Grid -->
+  <main class="workspace">
+
+    <!-- Column 1: Diagram Code Editor & Diagnostics -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><span>01</span> Statechart Diagram Input</div>
+      </div>
+      <div class="panel-content" style="display: flex; flex-direction: column;">
+        <textarea id="editor" class="code-editor" spellcheck="false"></textarea>
+        <div style="border-top: 1px solid var(--border-color); background: rgba(0,0,0,0.3); max-height: 140px; overflow-y: auto;">
+          <div style="padding: 6px 12px; font-size: 0.75rem; font-weight: 700; color: var(--text-dim); text-transform: uppercase;">
+            Formal Model Diagnostics
+          </div>
+          <div id="diagnostics" class="diag-container"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Column 2: Live Mermaid Graph Visualizer -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><span>02</span> Visual Statechart</div>
+      </div>
+      <div class="panel-content diagram-canvas" id="mermaidCanvas">
+        <!-- Rendered Mermaid SVG Canvas -->
+      </div>
+    </div>
+
+    <!-- Column 3: Generated C++ Code & Interactive Simulator -->
+    <div class="split-column">
+
+      <!-- Top: Generated C++ Header -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title"><span>03</span> Generated C++ Header</div>
+        </div>
+        <div class="panel-content">
+          <pre id="cppPreview" class="code-preview"></pre>
+        </div>
+      </div>
+
+      <!-- Bottom: Interactive State Machine Simulator -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title"><span>04</span> Interactive Transition Simulator</div>
+        </div>
+        <div class="panel-content sim-container">
+          <div class="state-badge-container">
+            <span style="font-size: 0.85rem; color: var(--text-muted);">Current Active State:</span>
+            <div id="activeStateBadge" class="state-badge">Disconnected</div>
+          </div>
+
+          <div>
+            <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-dim); text-transform: uppercase; margin-bottom: 6px;">
+              Dispatch Event:
+            </div>
+            <div id="eventButtons" class="event-buttons-grid"></div>
+          </div>
+
+          <div style="flex: 1; display: flex; flex-direction: column;">
+            <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px;">
+              Transition History Log:
+            </div>
+            <div id="historyLog" class="history-log"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <script src="playground.js"></script>
+</body>
+</html>

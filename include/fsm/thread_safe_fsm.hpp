@@ -16,201 +16,191 @@ namespace fsm {
 
 // Thread-safe wrapper for FSM with synchronized dispatch, asynchronous event
 // queue, and Context Injection
-template <typename Table, typename Context = no_context,
-          typename InitialState = typename Table::initial_state>
+template <typename Table, typename Context = no_context, typename InitialState = typename Table::initial_state>
 class thread_safe_fsm {
- public:
-  using fsm_type = fsm<Table, Context, InitialState>;
-  using context_type = Context;
-  using event_handler = std::function<void(fsm_type&)>;
+  public:
+    using fsm_type = fsm<Table, Context, InitialState>;
+    using context_type = Context;
+    using event_handler = std::function<void(fsm_type&)>;
 
-  // Constructors
-  thread_safe_fsm() = default;
+    // Constructors
+    thread_safe_fsm() = default;
 
-  explicit thread_safe_fsm(Context& ctx, Table table = Table{})
-      : fsm_(ctx, std::move(table)) {}
+    explicit thread_safe_fsm(Context& ctx, Table table = Table{}) : fsm_(ctx, std::move(table)) {}
 
-  explicit thread_safe_fsm(Context& ctx, InitialState initial,
-                           Table table = Table{})
-      : fsm_(ctx, std::move(initial), std::move(table)) {}
+    explicit thread_safe_fsm(Context& ctx, InitialState initial, Table table = Table{})
+        : fsm_(ctx, std::move(initial), std::move(table)) {}
 
-  explicit thread_safe_fsm(Table table) : fsm_(std::move(table)) {}
+    explicit thread_safe_fsm(Table table) : fsm_(std::move(table)) {}
 
-  // Destructor: ensures background worker (if running) is cleanly stopped and
-  // joined
-  ~thread_safe_fsm() { stop_worker(); }
+    // Destructor: ensures background worker (if running) is cleanly stopped and
+    // joined
+    ~thread_safe_fsm() { stop_worker(); }
 
-  // Non-copyable
-  thread_safe_fsm(const thread_safe_fsm&) = delete;
-  thread_safe_fsm& operator=(const thread_safe_fsm&) = delete;
+    // Non-copyable
+    thread_safe_fsm(const thread_safe_fsm&) = delete;
+    thread_safe_fsm& operator=(const thread_safe_fsm&) = delete;
 
-  // Move operations
-  thread_safe_fsm(thread_safe_fsm&&) = delete;
-  thread_safe_fsm& operator=(thread_safe_fsm&&) = delete;
+    // Move operations
+    thread_safe_fsm(thread_safe_fsm&&) = delete;
+    thread_safe_fsm& operator=(thread_safe_fsm&&) = delete;
 
-  // ========================================================================
-  // Context Management
-  // ========================================================================
-  void set_context(Context& ctx) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    fsm_.set_context(ctx);
-  }
-
-  // ========================================================================
-  // Synchronous Dispatch (blocking with mutex)
-  // ========================================================================
-  template <typename Event>
-  bool send(const Event& event) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return fsm_.dispatch(event);
-  }
-
-  // ========================================================================
-  // Asynchronous Queue (Thread-Safe Event Injection)
-  // ========================================================================
-  template <typename Event>
-  void post(Event event) {
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      event_queue_.push([evt = std::move(event)](fsm_type& machine) {
-        machine.dispatch(evt);
-      });
-    }
-    cv_.notify_one();
-  }
-
-  // Process a single event from the queue in current thread. Returns true if an
-  // event was processed.
-  bool process_one() {
-    event_handler task;
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      if (event_queue_.empty()) {
-        return false;
-      }
-      task = std::move(event_queue_.front());
-      event_queue_.pop();
-      task(fsm_);
-    }
-    return true;
-  }
-
-  // Process all pending events in the queue in the current thread.
-  std::size_t process_all() {
-    std::size_t count = 0;
-    while (process_one()) {
-      ++count;
-    }
-    return count;
-  }
-
-  // Returns current number of pending events in queue
-  [[nodiscard]] std::size_t pending_events() const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return event_queue_.size();
-  }
-
-  // Returns true if event queue is empty
-  [[nodiscard]] bool is_queue_empty() const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return event_queue_.empty();
-  }
-
-  // ========================================================================
-  // Background Worker Thread Management
-  // ========================================================================
-  void start_worker() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (worker_running_) {
-      return;
-    }
-    worker_running_ = true;
-    worker_thread_ = std::thread([this]() { this->worker_loop(); });
-  }
-
-  void stop_worker() {
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      if (!worker_running_) {
-        return;
-      }
-      worker_running_ = false;
-    }
-    cv_.notify_all();
-
-    if (worker_thread_.joinable()) {
-      worker_thread_.join();
-    }
-  }
-
-  [[nodiscard]] bool is_worker_running() const {
-    return worker_running_.load();
-  }
-
-  // ========================================================================
-  // Thread-safe State Inspection
-  // ========================================================================
-  template <typename State>
-  [[nodiscard]] bool is_in_state() const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return fsm_.template is_in_state<State>();
-  }
-
-  // Thread-safe query of current state name
-  [[nodiscard]] std::string current_state_name() const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return std::string(fsm_.current_state_name());
-  }
-
-  // Execute custom callback with current state under mutex lock
-  template <typename Callable>
-  auto with_state(Callable&& callable) const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return std::visit(std::forward<Callable>(callable),
-                      fsm_.get_current_state_variant());
-  }
-
-  // Execute custom callback directly with underlying FSM under mutex lock
-  template <typename Callable>
-  auto with_fsm(Callable&& callable) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return std::forward<Callable>(callable)(fsm_);
-  }
-
- private:
-  void worker_loop() {
-    while (true) {
-      event_handler task;
-      {
-        std::unique_lock<std::mutex> lock(mutex_);
-        cv_.wait(lock, [this]() {
-          return !worker_running_ || !event_queue_.empty();
-        });
-
-        if (!worker_running_ && event_queue_.empty()) {
-          break;
-        }
-
-        if (!event_queue_.empty()) {
-          task = std::move(event_queue_.front());
-          event_queue_.pop();
-        }
-      }
-
-      if (task) {
+    // ========================================================================
+    // Context Management
+    // ========================================================================
+    void set_context(Context& ctx) {
         std::lock_guard<std::mutex> lock(mutex_);
-        task(fsm_);
-      }
+        fsm_.set_context(ctx);
     }
-  }
 
-  mutable std::mutex mutex_;
-  std::condition_variable cv_;
-  std::queue<event_handler> event_queue_;
-  fsm_type fsm_;
+    // ========================================================================
+    // Synchronous Dispatch (blocking with mutex)
+    // ========================================================================
+    template <typename Event>
+    bool send(const Event& event) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return fsm_.dispatch(event);
+    }
 
-  std::atomic<bool> worker_running_{false};
-  std::thread worker_thread_;
+    // ========================================================================
+    // Asynchronous Queue (Thread-Safe Event Injection)
+    // ========================================================================
+    template <typename Event>
+    void post(Event event) {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            event_queue_.push([evt = std::move(event)](fsm_type& machine) { machine.dispatch(evt); });
+        }
+        cv_.notify_one();
+    }
+
+    // Process a single event from the queue in current thread. Returns true if an
+    // event was processed.
+    bool process_one() {
+        event_handler task;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (event_queue_.empty()) {
+                return false;
+            }
+            task = std::move(event_queue_.front());
+            event_queue_.pop();
+            task(fsm_);
+        }
+        return true;
+    }
+
+    // Process all pending events in the queue in the current thread.
+    std::size_t process_all() {
+        std::size_t count = 0;
+        while (process_one()) {
+            ++count;
+        }
+        return count;
+    }
+
+    // Returns current number of pending events in queue
+    [[nodiscard]] std::size_t pending_events() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return event_queue_.size();
+    }
+
+    // Returns true if event queue is empty
+    [[nodiscard]] bool is_queue_empty() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return event_queue_.empty();
+    }
+
+    // ========================================================================
+    // Background Worker Thread Management
+    // ========================================================================
+    void start_worker() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (worker_running_) {
+            return;
+        }
+        worker_running_ = true;
+        worker_thread_ = std::thread([this]() { this->worker_loop(); });
+    }
+
+    void stop_worker() {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!worker_running_) {
+                return;
+            }
+            worker_running_ = false;
+        }
+        cv_.notify_all();
+
+        if (worker_thread_.joinable()) {
+            worker_thread_.join();
+        }
+    }
+
+    [[nodiscard]] bool is_worker_running() const { return worker_running_.load(); }
+
+    // ========================================================================
+    // Thread-safe State Inspection
+    // ========================================================================
+    template <typename State>
+    [[nodiscard]] bool is_in_state() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return fsm_.template is_in_state<State>();
+    }
+
+    // Thread-safe query of current state name
+    [[nodiscard]] std::string current_state_name() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return std::string(fsm_.current_state_name());
+    }
+
+    // Execute custom callback with current state under mutex lock
+    template <typename Callable>
+    auto with_state(Callable&& callable) const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return std::visit(std::forward<Callable>(callable), fsm_.get_current_state_variant());
+    }
+
+    // Execute custom callback directly with underlying FSM under mutex lock
+    template <typename Callable>
+    auto with_fsm(Callable&& callable) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return std::forward<Callable>(callable)(fsm_);
+    }
+
+  private:
+    void worker_loop() {
+        while (true) {
+            event_handler task;
+            {
+                std::unique_lock<std::mutex> lock(mutex_);
+                cv_.wait(lock, [this]() { return !worker_running_ || !event_queue_.empty(); });
+
+                if (!worker_running_ && event_queue_.empty()) {
+                    break;
+                }
+
+                if (!event_queue_.empty()) {
+                    task = std::move(event_queue_.front());
+                    event_queue_.pop();
+                }
+            }
+
+            if (task) {
+                std::lock_guard<std::mutex> lock(mutex_);
+                task(fsm_);
+            }
+        }
+    }
+
+    mutable std::mutex mutex_;
+    std::condition_variable cv_;
+    std::queue<event_handler> event_queue_;
+    fsm_type fsm_;
+
+    std::atomic<bool> worker_running_{false};
+    std::thread worker_thread_;
 };
 
 }  // namespace fsm

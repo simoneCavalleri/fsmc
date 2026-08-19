@@ -12,6 +12,7 @@ Checks: >
   -cppcoreguidelines-avoid-magic-numbers,
   -cppcoreguidelines-pro-bounds-pointer-arithmetic,
   -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,
   -cppcoreguidelines-avoid-c-arrays,
   -modernize-avoid-c-arrays,
   -readability-isolate-declaration,
@@ -20,7 +21,10 @@ Checks: >
   -readability-function-cognitive-complexity,
   -bugprone-easily-swappable-parameters,
   -readability-identifier-naming,
-  -cppcoreguidelines-pro-type-member-init
+  -cppcoreguidelines-pro-type-member-init,
+  -misc-non-private-member-variables-in-classes,
+  -misc-const-correctness,
+  -readability-use-anyofallof
 
 WarningsAsErrors: ''
 HeaderFilterRegex: 'include/.*|src/.*'

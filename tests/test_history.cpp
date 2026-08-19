@@ -75,7 +75,7 @@ void test_deep_history_target_parsing_mermaid() {
     std::cout << "[PASS] test_deep_history_target_parsing_mermaid passed.\n";
 }
 
-} // namespace
+}  // namespace
 
 int main() {
     std::cout << "========================================\n"

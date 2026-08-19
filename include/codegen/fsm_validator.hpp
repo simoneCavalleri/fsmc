@@ -1,11 +1,11 @@
 #pragma once
 
-#include "fsm_model.hpp"
-
 #include <queue>
 #include <set>
 #include <string>
 #include <vector>
+
+#include "fsm_model.hpp"
 
 namespace fsm::codegen {
 
@@ -16,7 +16,7 @@ struct ValidationResult {
 };
 
 class FsmValidator {
-public:
+  public:
     static ValidationResult validate(const FsmModel& model) {
         ValidationResult result;
 
@@ -37,27 +37,25 @@ public:
         // Check initial state
         if (model.initial_state.empty()) {
             if (!model.states.empty()) {
-                result.warnings.emplace_back(
-                    "No initial state '[*]' specified. Defaulting to first state: '" +
-                    model.states[0].name + "'.");
+                result.warnings.emplace_back("No initial state '[*]' specified. Defaulting to first state: '" +
+                                             model.states[0].name + "'.");
             }
         } else if (!node_names.contains(model.initial_state)) {
             result.is_valid = false;
-            result.errors.emplace_back("Initial state '" + model.initial_state +
-                                       "' is not defined in the state list.");
+            result.errors.emplace_back("Initial state '" + model.initial_state + "' is not defined in the state list.");
         }
 
         // Check transitions validity
         for (const auto& transition_item : model.transitions) {
             if (!node_names.contains(transition_item.source)) {
                 result.is_valid = false;
-                result.errors.emplace_back("Unknown source state/node in transition: '" +
-                                           transition_item.source + "'.");
+                result.errors.emplace_back("Unknown source state/node in transition: '" + transition_item.source +
+                                           "'.");
             }
             if (!node_names.contains(transition_item.target)) {
                 result.is_valid = false;
-                result.errors.emplace_back("Unknown target state/node in transition: '" +
-                                           transition_item.target + "'.");
+                result.errors.emplace_back("Unknown target state/node in transition: '" + transition_item.target +
+                                           "'.");
             }
             if (transition_item.event.empty() && !model.is_choice_node(transition_item.source)) {
                 result.warnings.emplace_back("Transition from '" + transition_item.source + "' to '" +
@@ -101,8 +99,7 @@ public:
 
             for (const auto& state_item : model.states) {
                 if (!reachable.contains(state_item.name)) {
-                    result.warnings.emplace_back("State unreachable from initial state: '" +
-                                                 state_item.name + "'.");
+                    result.warnings.emplace_back("State unreachable from initial state: '" + state_item.name + "'.");
                 }
             }
         }
@@ -111,4 +108,4 @@ public:
     }
 };
 
-} // namespace fsm::codegen
+}  // namespace fsm::codegen

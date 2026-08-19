@@ -6,45 +6,61 @@
 
 #pragma once
 
-#include <variant>
-#include <tuple>
-#include <string_view>
+#include <atomic>
 #include <concepts>
+#include <condition_variable>
+#include <functional>
+#include <mutex>
+#include <queue>
+#include <stop_token>
+#include <string_view>
+#include <thread>
+#include <tuple>
 #include <type_traits>
 #include <utility>
-#include <queue>
-#include <mutex>
-#include <condition_variable>
-#include <thread>
-#include <stop_token>
-#include <functional>
-#include <atomic>
+#include <variant>
 
 namespace fsm {
 
 struct no_context {};
 
-template <typename... Ts> struct type_list {};
+template <typename... Ts>
+struct type_list {};
 
 namespace detail {
-template <typename T, typename List> struct contains;
-template <typename T> struct contains<T, type_list<>> : std::false_type {};
-template <typename T, typename... Rest> struct contains<T, type_list<T, Rest...>> : std::true_type {};
-template <typename T, typename Head, typename... Rest> struct contains<T, type_list<Head, Rest...>> : contains<T, type_list<Rest...>> {};
+template <typename T, typename List>
+struct contains;
+template <typename T>
+struct contains<T, type_list<>> : std::false_type {};
+template <typename T, typename... Rest>
+struct contains<T, type_list<T, Rest...>> : std::true_type {};
+template <typename T, typename Head, typename... Rest>
+struct contains<T, type_list<Head, Rest...>> : contains<T, type_list<Rest...>> {};
 
-template <typename InList, typename OutList = type_list<>> struct unique;
-template <typename OutList> struct unique<type_list<>, OutList> { using type = OutList; };
-template <typename Head, typename... Tail, typename... Out> struct unique<type_list<Head, Tail...>, type_list<Out...>> {
-    using type = std::conditional_t<contains<Head, type_list<Out...>>::value,
-        typename unique<type_list<Tail...>, type_list<Out...>>::type,
-        typename unique<type_list<Tail...>, type_list<Out..., Head>>::type>;
+template <typename InList, typename OutList = type_list<>>
+struct unique;
+template <typename OutList>
+struct unique<type_list<>, OutList> {
+    using type = OutList;
 };
-template <typename List> using unique_t = typename unique<List>::type;
+template <typename Head, typename... Tail, typename... Out>
+struct unique<type_list<Head, Tail...>, type_list<Out...>> {
+    using type = std::conditional_t<contains<Head, type_list<Out...>>::value,
+                                    typename unique<type_list<Tail...>, type_list<Out...>>::type,
+                                    typename unique<type_list<Tail...>, type_list<Out..., Head>>::type>;
+};
+template <typename List>
+using unique_t = typename unique<List>::type;
 
-template <typename List> struct to_variant;
-template <typename... Ts> struct to_variant<type_list<Ts...>> { using type = std::variant<Ts...>; };
-template <typename List> using to_variant_t = typename to_variant<List>::type;
-} // namespace detail
+template <typename List>
+struct to_variant;
+template <typename... Ts>
+struct to_variant<type_list<Ts...>> {
+    using type = std::variant<Ts...>;
+};
+template <typename List>
+using to_variant_t = typename to_variant<List>::type;
+}  // namespace detail
 
 template <typename G, typename E, typename S, typename C>
 concept Guard = requires(const G& g, const E& e, const S& s, const C& c) {
@@ -58,17 +74,10 @@ concept Guard = requires(const G& g, const E& e, const S& s, const C& c) {
 };
 
 template <typename A, typename E, typename S, typename D, typename C>
-concept Action = requires(const A& a, const E& e, S& s, D& d, C& c) {
-    a(e, s, d, c);
-} || requires(const A& a, const E& e, S& s, D& d) {
-    a(e, s, d);
-} || requires(const A& a, const E& e, D& d) {
-    a(e, d);
-} || requires(const A& a, const E& e) {
-    a(e);
-} || requires(const A& a) {
-    a();
-};
+concept Action = requires(const A& a, const E& e, S& s, D& d, C& c) { a(e, s, d, c); } ||
+                 requires(const A& a, const E& e, S& s, D& d) { a(e, s, d); } ||
+                 requires(const A& a, const E& e, D& d) { a(e, d); } || requires(const A& a, const E& e) { a(e); } ||
+                 requires(const A& a) { a(); };
 
 struct no_guard {
     [[nodiscard]] constexpr bool operator()(const auto&...) const noexcept { return true; }
@@ -86,8 +95,10 @@ struct row {
     using guard_type = GuardType;
     using action_type = ActionType;
 
-    template <typename G> using when = row<Src, Evt, Dst, G, ActionType>;
-    template <typename A> using then = row<Src, Evt, Dst, GuardType, A>;
+    template <typename G>
+    using when = row<Src, Evt, Dst, G, ActionType>;
+    template <typename A>
+    using then = row<Src, Evt, Dst, GuardType, A>;
 };
 
 template <typename... Rows>
@@ -109,21 +120,32 @@ constexpr std::string_view get_state_name(const State&) noexcept {
 
 template <typename Guard, typename Event, typename State, typename Context>
 constexpr bool invoke_guard(const Guard& g, const Event& evt, const State& s, Context* ctx) {
-    if constexpr (requires { { g(evt, s, *ctx) } -> std::convertible_to<bool>; }) {
+    if constexpr (requires {
+                      { g(evt, s, *ctx) } -> std::convertible_to<bool>;
+                  }) {
         return ctx ? g(evt, s, *ctx) : true;
-    } else if constexpr (requires { { g(evt, s) } -> std::convertible_to<bool>; }) {
+    } else if constexpr (requires {
+                             { g(evt, s) } -> std::convertible_to<bool>;
+                         }) {
         return g(evt, s);
-    } else if constexpr (requires { { g(evt) } -> std::convertible_to<bool>; }) {
+    } else if constexpr (requires {
+                             { g(evt) } -> std::convertible_to<bool>;
+                         }) {
         return g(evt);
-    } else if constexpr (requires { { g() } -> std::convertible_to<bool>; }) {
+    } else if constexpr (requires {
+                             { g() } -> std::convertible_to<bool>;
+                         }) {
         return g();
-    } else { return true; }
+    } else {
+        return true;
+    }
 }
 
 template <typename Action, typename Event, typename SrcState, typename DstState, typename Context>
 constexpr void invoke_action(const Action& a, const Event& evt, SrcState& src, DstState& dst, Context* ctx) {
     if constexpr (requires { a(evt, src, dst, *ctx); }) {
-        if (ctx) a(evt, src, dst, *ctx);
+        if (ctx)
+            a(evt, src, dst, *ctx);
     } else if constexpr (requires { a(evt, src, dst); }) {
         a(evt, src, dst);
     } else if constexpr (requires { a(evt, dst); }) {
@@ -138,7 +160,8 @@ constexpr void invoke_action(const Action& a, const Event& evt, SrcState& src, D
 template <typename State, typename Context>
 constexpr void invoke_enter_hook(State& s, Context* ctx) {
     if constexpr (requires(State& st, Context& c) { st.on_enter(c); }) {
-        if (ctx) s.on_enter(*ctx);
+        if (ctx)
+            s.on_enter(*ctx);
     } else if constexpr (requires(State& st) { st.on_enter(); }) {
         s.on_enter();
     }
@@ -147,31 +170,36 @@ constexpr void invoke_enter_hook(State& s, Context* ctx) {
 template <typename State, typename Context>
 constexpr void invoke_exit_hook(State& s, Context* ctx) {
     if constexpr (requires(State& st, Context& c) { st.on_exit(c); }) {
-        if (ctx) s.on_exit(*ctx);
+        if (ctx)
+            s.on_exit(*ctx);
     } else if constexpr (requires(State& st) { st.on_exit(); }) {
         s.on_exit();
     }
 }
 
-template <typename Table, typename Context = no_context, typename InitialState = typename std::tuple_element_t<0, typename Table::rows>::source_state>
+template <typename Table, typename Context = no_context,
+          typename InitialState = typename std::tuple_element_t<0, typename Table::rows>::source_state>
 class fsm {
-public:
+  public:
     using table_type = Table;
     using context_type = Context;
     using state_variant = typename Table::state_variant;
 
     constexpr fsm() : current_state_(InitialState{}), context_(nullptr) { enter_initial(); }
     constexpr explicit fsm(Context& ctx) : current_state_(InitialState{}), context_(&ctx) { enter_initial(); }
-    constexpr explicit fsm(Context& ctx, InitialState init) : current_state_(std::move(init)), context_(&ctx) { enter_initial(); }
+    constexpr explicit fsm(Context& ctx, InitialState init) : current_state_(std::move(init)), context_(&ctx) {
+        enter_initial();
+    }
 
     template <typename Event>
     bool dispatch(const Event& event) {
-        return std::visit([this, &event](auto& src) -> bool {
-            return process_event<Event, std::decay_t<decltype(src)>>(event, src);
-        }, current_state_);
+        return std::visit(
+            [this, &event](auto& src) -> bool { return process_event<Event, std::decay_t<decltype(src)>>(event, src); },
+            current_state_);
     }
 
-    template <typename State> [[nodiscard]] constexpr bool is_in_state() const noexcept {
+    template <typename State>
+    [[nodiscard]] constexpr bool is_in_state() const noexcept {
         return std::holds_alternative<State>(current_state_);
     }
 
@@ -182,7 +210,7 @@ public:
     [[nodiscard]] const state_variant& get_current_state_variant() const noexcept { return current_state_; }
     [[nodiscard]] Context* get_context() noexcept { return context_; }
 
-private:
+  private:
     constexpr void enter_initial() {
         std::visit([this](auto& s) { ::fsm::invoke_enter_hook(s, context_); }, current_state_);
     }
@@ -190,17 +218,17 @@ private:
     template <typename Event, typename SrcState>
     bool process_event(const Event& evt, SrcState& src) {
         bool handled = false;
-        std::apply([&](auto... row_inst) {
-            ((!handled && (handled = try_transition<decltype(row_inst)>(evt, src))), ...);
-        }, typename Table::rows{});
+        std::apply(
+            [&](auto... row_inst) { ((!handled && (handled = try_transition<decltype(row_inst)>(evt, src))), ...); },
+            typename Table::rows{});
         return handled;
     }
 
     template <typename Row, typename Event, typename SrcState>
     bool try_transition(const Event& evt, SrcState& src) {
-        if constexpr (std::is_same_v<SrcState, typename Row::source_state> && std::is_same_v<Event, typename Row::event_type>) {
-            if (::fsm::invoke_guard(typename Row::guard_type{}, evt, src, context_)
-) {
+        if constexpr (std::is_same_v<SrcState, typename Row::source_state> &&
+                      std::is_same_v<Event, typename Row::event_type>) {
+            if (::fsm::invoke_guard(typename Row::guard_type{}, evt, src, context_)) {
                 ::fsm::invoke_exit_hook(src, context_);
                 typename Row::target_state dst_state{};
                 ::fsm::invoke_action(typename Row::action_type{}, evt, src, dst_state, context_);
@@ -216,9 +244,10 @@ private:
     Context* context_{nullptr};
 };
 
-template <typename Table, typename Context = no_context, typename InitialState = typename std::tuple_element_t<0, typename Table::rows>::source_state>
+template <typename Table, typename Context = no_context,
+          typename InitialState = typename std::tuple_element_t<0, typename Table::rows>::source_state>
 class thread_safe_fsm {
-public:
+  public:
     using fsm_type = fsm<Table, Context, InitialState>;
     using event_handler = std::function<void(fsm_type&)>;
 
@@ -236,7 +265,8 @@ public:
     }
 
     void start_worker() {
-        if (worker_.joinable()) return;
+        if (worker_.joinable())
+            return;
         running_ = true;
         worker_ = std::jthread([this](std::stop_token st) {
             while (!st.stop_requested()) {
@@ -244,7 +274,8 @@ public:
                 {
                     std::unique_lock<std::mutex> lock(mutex_);
                     cv_.wait(lock, [&] { return !queue_.empty() || !running_.load(); });
-                    if (!running_.load() && queue_.empty()) break;
+                    if (!running_.load() && queue_.empty())
+                        break;
                     if (!queue_.empty()) {
                         task = std::move(queue_.front());
                         queue_.pop();
@@ -267,7 +298,8 @@ public:
         }
     }
 
-    template <typename State> [[nodiscard]] bool is_in_state() const {
+    template <typename State>
+    [[nodiscard]] bool is_in_state() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return fsm_.template is_in_state<State>();
     }
@@ -282,7 +314,7 @@ public:
         return queue_.empty();
     }
 
-private:
+  private:
     fsm_type fsm_;
     mutable std::mutex mutex_;
     std::condition_variable cv_;
@@ -291,7 +323,7 @@ private:
     std::jthread worker_;
 };
 
-} // namespace fsm
+}  // namespace fsm
 
 namespace net20 {
 
@@ -323,43 +355,37 @@ struct Suspended {
 // Events
 // ============================================================================
 
-struct ConnectCmd {
-};
+struct ConnectCmd {};
 
-struct HandshakeOkEvent {
-};
+struct HandshakeOkEvent {};
 
-struct HandshakeFailedEvent {
-};
+struct HandshakeFailedEvent {};
 
-struct TimeoutEvent {
-};
+struct TimeoutEvent {};
 
-struct NetworkDegradedEvent {
-};
+struct NetworkDegradedEvent {};
 
-struct DisconnectCmd {
-};
+struct DisconnectCmd {};
 
-struct ConnectionLostEvent {
-};
+struct ConnectionLostEvent {};
 
-struct NetworkRestoredEvent {
-};
+struct NetworkRestoredEvent {};
 
 // ============================================================================
 // Guards
 // ============================================================================
 
 struct HasNetworkGuard {
-    [[nodiscard]] constexpr bool operator()(const auto& /*evt*/, const auto& /*state*/, const auto& /*ctx*/) const noexcept {
+    [[nodiscard]] constexpr bool operator()(const auto& /*evt*/, const auto& /*state*/,
+                                            const auto& /*ctx*/) const noexcept {
         // TODO: Implement guard logic for HasNetworkGuard
         return true;
     }
 };
 
 struct NoNetworkGuard {
-    [[nodiscard]] constexpr bool operator()(const auto& /*evt*/, const auto& /*state*/, const auto& /*ctx*/) const noexcept {
+    [[nodiscard]] constexpr bool operator()(const auto& /*evt*/, const auto& /*state*/,
+                                            const auto& /*ctx*/) const noexcept {
         // TODO: Implement guard logic for NoNetworkGuard
         return true;
     }
@@ -415,19 +441,18 @@ struct ResumeQueueAction {
 // Transition Table (Compile-Time Fluent DSL)
 // ============================================================================
 
-using ConnectionFSM20Table = fsm::transition_table<
-    fsm::row<Disconnected, ConnectCmd, Connecting>::when<HasNetworkGuard>::then<InitSocketAction>,
-    fsm::row<Disconnected, ConnectCmd, Disconnected>::when<NoNetworkGuard>::then<LogErrorAction>,
-    fsm::row<Connecting, HandshakeOkEvent, Connected>::then<SetupSessionAction>,
-    fsm::row<Connecting, HandshakeFailedEvent, Disconnected>::then<CleanupAction>,
-    fsm::row<Connecting, TimeoutEvent, Disconnected>::then<CleanupAction>,
-    fsm::row<Connected, NetworkDegradedEvent, Suspended>::then<PauseQueueAction>,
-    fsm::row<Connected, DisconnectCmd, Disconnected>::then<CloseSocketAction>,
-    fsm::row<Connected, ConnectionLostEvent, Disconnected>::then<CleanupAction>,
-    fsm::row<Suspended, NetworkRestoredEvent, Connected>::then<ResumeQueueAction>,
-    fsm::row<Suspended, DisconnectCmd, Disconnected>::then<CloseSocketAction>,
-    fsm::row<Suspended, TimeoutEvent, Disconnected>::then<CleanupAction>
->;
+using ConnectionFSM20Table =
+    fsm::transition_table<fsm::row<Disconnected, ConnectCmd, Connecting>::when<HasNetworkGuard>::then<InitSocketAction>,
+                          fsm::row<Disconnected, ConnectCmd, Disconnected>::when<NoNetworkGuard>::then<LogErrorAction>,
+                          fsm::row<Connecting, HandshakeOkEvent, Connected>::then<SetupSessionAction>,
+                          fsm::row<Connecting, HandshakeFailedEvent, Disconnected>::then<CleanupAction>,
+                          fsm::row<Connecting, TimeoutEvent, Disconnected>::then<CleanupAction>,
+                          fsm::row<Connected, NetworkDegradedEvent, Suspended>::then<PauseQueueAction>,
+                          fsm::row<Connected, DisconnectCmd, Disconnected>::then<CloseSocketAction>,
+                          fsm::row<Connected, ConnectionLostEvent, Disconnected>::then<CleanupAction>,
+                          fsm::row<Suspended, NetworkRestoredEvent, Connected>::then<ResumeQueueAction>,
+                          fsm::row<Suspended, DisconnectCmd, Disconnected>::then<CloseSocketAction>,
+                          fsm::row<Suspended, TimeoutEvent, Disconnected>::then<CleanupAction>>;
 
 // ============================================================================
 // State Machine Type Aliases
@@ -436,4 +461,4 @@ using ConnectionFSM20Table = fsm::transition_table<
 using ConnectionFSM20 = fsm::fsm<ConnectionFSM20Table, fsm::no_context, Disconnected>;
 using ThreadSafeConnectionFSM20 = fsm::thread_safe_fsm<ConnectionFSM20Table, fsm::no_context, Disconnected>;
 
-} // namespace net20
+}  // namespace net20

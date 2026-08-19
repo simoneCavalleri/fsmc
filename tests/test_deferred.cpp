@@ -65,7 +65,7 @@ void test_deferred_events_mermaid() {
     std::cout << "[PASS] test_deferred_events_mermaid passed.\n";
 }
 
-} // namespace
+}  // namespace
 
 int main() {
     std::cout << "========================================\n"

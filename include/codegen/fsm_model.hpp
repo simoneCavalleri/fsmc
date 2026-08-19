@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -7,11 +8,7 @@
 
 namespace fsm::codegen {
 
-enum class TransitionKind {
-    External,
-    Internal,
-    Local
-};
+enum class TransitionKind : std::uint8_t { External, Internal, Local };
 
 struct StateModel {
     std::string name;
@@ -29,9 +26,7 @@ struct StateModel {
     explicit StateModel(std::string state_name = "", std::string state_desc = "", std::string parent = "")
         : name(std::move(state_name)), description(std::move(state_desc)), parent_state(std::move(parent)) {}
 
-    bool operator<(const StateModel& other) const noexcept {
-        return name < other.name;
-    }
+    bool operator<(const StateModel& other) const noexcept { return name < other.name; }
 };
 
 struct EventModel {
@@ -41,9 +36,7 @@ struct EventModel {
     explicit EventModel(std::string event_name = "", std::string event_desc = "")
         : name(std::move(event_name)), description(std::move(event_desc)) {}
 
-    bool operator<(const EventModel& other) const noexcept {
-        return name < other.name;
-    }
+    bool operator<(const EventModel& other) const noexcept { return name < other.name; }
 };
 
 struct GuardModel {
@@ -53,9 +46,7 @@ struct GuardModel {
     explicit GuardModel(std::string guard_name = "", std::string guard_desc = "")
         : name(std::move(guard_name)), description(std::move(guard_desc)) {}
 
-    bool operator<(const GuardModel& other) const noexcept {
-        return name < other.name;
-    }
+    bool operator<(const GuardModel& other) const noexcept { return name < other.name; }
 };
 
 struct ActionModel {
@@ -65,9 +56,7 @@ struct ActionModel {
     explicit ActionModel(std::string action_name = "", std::string action_desc = "")
         : name(std::move(action_name)), description(std::move(action_desc)) {}
 
-    bool operator<(const ActionModel& other) const noexcept {
-        return name < other.name;
-    }
+    bool operator<(const ActionModel& other) const noexcept { return name < other.name; }
 };
 
 struct TransitionModel {
@@ -82,10 +71,8 @@ struct TransitionModel {
     bool target_is_deep_history{false};
 
     TransitionModel() = default;
-    TransitionModel(std::string src, std::string dst, std::string evt,
-                    std::optional<std::string> grd = std::nullopt,
-                    std::optional<std::string> act = std::nullopt,
-                    std::string desc = "",
+    TransitionModel(std::string src, std::string dst, std::string evt, std::optional<std::string> grd = std::nullopt,
+                    std::optional<std::string> act = std::nullopt, std::string desc = "",
                     TransitionKind transition_kind = TransitionKind::External)
         : source(std::move(src)),
           target(std::move(dst)),
@@ -100,8 +87,7 @@ struct ChoiceNodeModel {
     std::string name;
     std::vector<TransitionModel> outgoing_branches;
 
-    explicit ChoiceNodeModel(std::string choice_name = "")
-        : name(std::move(choice_name)) {}
+    explicit ChoiceNodeModel(std::string choice_name = "") : name(std::move(choice_name)) {}
 };
 
 struct FsmModel {
@@ -169,9 +155,7 @@ struct FsmModel {
         actions.emplace_back(action_name);
     }
 
-    void add_transition(TransitionModel transition_item) {
-        transitions.push_back(std::move(transition_item));
-    }
+    void add_transition(TransitionModel transition_item) { transitions.push_back(std::move(transition_item)); }
 
     void add_choice_node(const std::string& choice_name) {
         if (choice_name.empty()) {
@@ -213,4 +197,4 @@ struct FsmModel {
     }
 };
 
-} // namespace fsm::codegen
+}  // namespace fsm::codegen

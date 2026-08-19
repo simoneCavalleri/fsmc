@@ -10,7 +10,7 @@ struct NetworkContext {
     int socket_fd = -1;
     bool is_online = true;
 };
-} // namespace net
+}  // namespace net
 
 int main() {
     std::cout << "=================================================\n"

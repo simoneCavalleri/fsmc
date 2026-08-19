@@ -17,12 +17,8 @@ struct InternalTracker {
         static std::vector<std::string> instance;
         return instance;
     }
-    static void clear() {
-        log().clear();
-    }
-    static void add(const std::string& msg) {
-        log().emplace_back(msg);
-    }
+    static void clear() { log().clear(); }
+    static void add(const std::string& msg) { log().emplace_back(msg); }
 };
 
 struct ActiveState {
@@ -39,9 +35,7 @@ struct ResetWatchdogAction {
     }
 };
 
-using InternalFsmTable = fsm::transition_table<
-    fsm::internal_row<ActiveState, PingEvent>::then<ResetWatchdogAction>
->;
+using InternalFsmTable = fsm::transition_table<fsm::internal_row<ActiveState, PingEvent>::then<ResetWatchdogAction>>;
 
 void test_runtime_internal_transition() {
     std::cout << "[TEST] Running test_runtime_internal_transition...\n";
@@ -103,7 +97,7 @@ void test_parser_internal_transition() {
     std::cout << "[PASS] test_parser_internal_transition passed.\n";
 }
 
-} // namespace
+}  // namespace
 
 int main() {
     std::cout << "========================================\n"

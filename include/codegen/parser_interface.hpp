@@ -1,14 +1,14 @@
 #pragma once
 
-#include "fsm_model.hpp"
-
 #include <string>
 #include <string_view>
+
+#include "fsm_model.hpp"
 
 namespace fsm::codegen {
 
 class IParser {
-public:
+  public:
     virtual ~IParser() = default;
     virtual bool parse(std::string_view content, FsmModel& out_model, std::string& out_error) = 0;
 };
@@ -59,4 +59,4 @@ inline std::string sanitize_identifier(std::string_view str) {
     return result;
 }
 
-} // namespace fsm::codegen
+}  // namespace fsm::codegen

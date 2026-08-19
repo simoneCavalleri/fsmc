@@ -1,7 +1,7 @@
-#include "connection_fsm.hpp"
-
 #include <cassert>
 #include <iostream>
+
+#include "connection_fsm.hpp"
 
 int main() {
     std::cout << "=================================================\n"

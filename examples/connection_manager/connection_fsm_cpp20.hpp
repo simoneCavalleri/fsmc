@@ -5,10 +5,11 @@
 
 #pragma once
 
+#include <iostream>
+#include <string_view>
+
 #include "fsm/fsm.hpp"
 #include "fsm/thread_safe_fsm.hpp"
-#include <string_view>
-#include <iostream>
 
 namespace net {
 
@@ -43,43 +44,37 @@ struct Suspended {
 // Events
 // ============================================================================
 
-struct ConnectCmd {
-};
+struct ConnectCmd {};
 
-struct HandshakeOkEvent {
-};
+struct HandshakeOkEvent {};
 
-struct HandshakeFailedEvent {
-};
+struct HandshakeFailedEvent {};
 
-struct TimeoutEvent {
-};
+struct TimeoutEvent {};
 
-struct NetworkDegradedEvent {
-};
+struct NetworkDegradedEvent {};
 
-struct DisconnectCmd {
-};
+struct DisconnectCmd {};
 
-struct ConnectionLostEvent {
-};
+struct ConnectionLostEvent {};
 
-struct NetworkRestoredEvent {
-};
+struct NetworkRestoredEvent {};
 
 // ============================================================================
 // Guards
 // ============================================================================
 
 struct HasNetworkGuard {
-    [[nodiscard]] constexpr bool operator()(const auto& /*evt*/, const auto& /*state*/, const auto& /*ctx*/) const noexcept {
+    [[nodiscard]] constexpr bool operator()(const auto& /*evt*/, const auto& /*state*/,
+                                            const auto& /*ctx*/) const noexcept {
         // TODO: Implement guard logic for HasNetworkGuard
         return true;
     }
 };
 
 struct NoNetworkGuard {
-    [[nodiscard]] constexpr bool operator()(const auto& /*evt*/, const auto& /*state*/, const auto& /*ctx*/) const noexcept {
+    [[nodiscard]] constexpr bool operator()(const auto& /*evt*/, const auto& /*state*/,
+                                            const auto& /*ctx*/) const noexcept {
         // TODO: Implement guard logic for NoNetworkGuard
         return true;
     }
@@ -135,19 +130,18 @@ struct ResumeQueueAction {
 // Transition Table (Compile-Time Fluent DSL)
 // ============================================================================
 
-using ConnectionFSMTable = fsm::transition_table<
-    fsm::row<Disconnected, ConnectCmd, Connecting>::when<HasNetworkGuard>::then<InitSocketAction>,
-    fsm::row<Disconnected, ConnectCmd, Disconnected>::when<NoNetworkGuard>::then<LogErrorAction>,
-    fsm::row<Connecting, HandshakeOkEvent, Connected>::then<SetupSessionAction>,
-    fsm::row<Connecting, HandshakeFailedEvent, Disconnected>::then<CleanupAction>,
-    fsm::row<Connecting, TimeoutEvent, Disconnected>::then<CleanupAction>,
-    fsm::row<Connected, NetworkDegradedEvent, Suspended>::then<PauseQueueAction>,
-    fsm::row<Connected, DisconnectCmd, Disconnected>::then<CloseSocketAction>,
-    fsm::row<Connected, ConnectionLostEvent, Disconnected>::then<CleanupAction>,
-    fsm::row<Suspended, NetworkRestoredEvent, Connected>::then<ResumeQueueAction>,
-    fsm::row<Suspended, DisconnectCmd, Disconnected>::then<CloseSocketAction>,
-    fsm::row<Suspended, TimeoutEvent, Disconnected>::then<CleanupAction>
->;
+using ConnectionFSMTable =
+    fsm::transition_table<fsm::row<Disconnected, ConnectCmd, Connecting>::when<HasNetworkGuard>::then<InitSocketAction>,
+                          fsm::row<Disconnected, ConnectCmd, Disconnected>::when<NoNetworkGuard>::then<LogErrorAction>,
+                          fsm::row<Connecting, HandshakeOkEvent, Connected>::then<SetupSessionAction>,
+                          fsm::row<Connecting, HandshakeFailedEvent, Disconnected>::then<CleanupAction>,
+                          fsm::row<Connecting, TimeoutEvent, Disconnected>::then<CleanupAction>,
+                          fsm::row<Connected, NetworkDegradedEvent, Suspended>::then<PauseQueueAction>,
+                          fsm::row<Connected, DisconnectCmd, Disconnected>::then<CloseSocketAction>,
+                          fsm::row<Connected, ConnectionLostEvent, Disconnected>::then<CleanupAction>,
+                          fsm::row<Suspended, NetworkRestoredEvent, Connected>::then<ResumeQueueAction>,
+                          fsm::row<Suspended, DisconnectCmd, Disconnected>::then<CloseSocketAction>,
+                          fsm::row<Suspended, TimeoutEvent, Disconnected>::then<CleanupAction>>;
 
 // ============================================================================
 // State Machine Type Aliases
@@ -156,4 +150,4 @@ using ConnectionFSMTable = fsm::transition_table<
 using ConnectionFSM = fsm::fsm<ConnectionFSMTable, NetworkContext, Disconnected>;
 using ThreadSafeConnectionFSM = fsm::thread_safe_fsm<ConnectionFSMTable, NetworkContext, Disconnected>;
 
-} // namespace net
+}  // namespace net

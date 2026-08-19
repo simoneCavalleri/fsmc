@@ -33,7 +33,7 @@ void test_choice_pseudostate_parsing_and_codegen() {
     assert(is_parsed);
     assert(model.choice_nodes.size() == 1);
     assert(model.choice_nodes[0].name == "AuthChoice");
-    assert(model.states.size() == 3); // Idle, AdminView, UserView
+    assert(model.states.size() == 3);  // Idle, AdminView, UserView
     assert(model.guards.size() == 2);
     assert(model.actions.size() == 2);
 
@@ -46,13 +46,15 @@ void test_choice_pseudostate_parsing_and_codegen() {
     const std::string code = CppGenerator::generate_header(model, opts);
 
     // Verify expanded transition table rows
-    assert(code.find("fsm::row<Idle, LoginCmd, AdminView>::when<IsAdminGuard>::then<GrantAdminAction>") != std::string::npos);
-    assert(code.find("fsm::row<Idle, LoginCmd, UserView>::when<IsUserGuard>::then<GrantUserAction>") != std::string::npos);
+    assert(code.find("fsm::row<Idle, LoginCmd, AdminView>::when<IsAdminGuard>::then<GrantAdminAction>") !=
+           std::string::npos);
+    assert(code.find("fsm::row<Idle, LoginCmd, UserView>::when<IsUserGuard>::then<GrantUserAction>") !=
+           std::string::npos);
 
     std::cout << "[PASS] test_choice_pseudostate_parsing_and_codegen passed.\n";
 }
 
-} // namespace
+}  // namespace
 
 int main() {
     std::cout << "========================================\n"

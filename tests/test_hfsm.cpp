@@ -35,7 +35,7 @@ void test_plantuml_composite_state_parsing() {
 
     assert(is_parsed);
     assert(model.initial_state == "Active");
-    assert(model.states.size() == 4); // Active, Idle, Processing, Terminated
+    assert(model.states.size() == 4);  // Active, Idle, Processing, Terminated
 
     const auto* active_state = model.find_state("Active");
     assert(active_state != nullptr);
@@ -92,7 +92,7 @@ void test_mermaid_composite_state_parsing() {
     std::cout << "[PASS] test_mermaid_composite_state_parsing passed.\n";
 }
 
-} // namespace
+}  // namespace
 
 int main() {
     std::cout << "========================================\n"

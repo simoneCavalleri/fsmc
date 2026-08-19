@@ -1,7 +1,5 @@
 #pragma once
 
-#include "parser_interface.hpp"
-
 #include <regex>
 #include <sstream>
 #include <string>
@@ -9,10 +7,12 @@
 #include <utility>
 #include <vector>
 
+#include "parser_interface.hpp"
+
 namespace fsm::codegen {
 
 class MermaidParser : public IParser {
-public:
+  public:
     bool parse(std::string_view content, FsmModel& out_model, std::string& out_error) override {
         std::istringstream stream(std::string{content});
         std::string line;
@@ -27,7 +27,7 @@ public:
                 continue;
             }
             if (starts_with(trimmed, "%%")) {
-                continue; // Mermaid comment
+                continue;  // Mermaid comment
             }
             if (starts_with(trimmed, "stateDiagram") || starts_with(trimmed, "stateDiagram-v2")) {
                 continue;
@@ -42,9 +42,8 @@ public:
             }
 
             // Choice pseudostate: state ChoiceName <<choice>>
-            if (starts_with(trimmed, "state ") &&
-                (trimmed.find("<<choice>>") != std::string_view::npos ||
-                 trimmed.find("<<junction>>") != std::string_view::npos)) {
+            if (starts_with(trimmed, "state ") && (trimmed.find("<<choice>>") != std::string_view::npos ||
+                                                   trimmed.find("<<junction>>") != std::string_view::npos)) {
                 parse_choice_definition(trimmed, out_model);
                 continue;
             }
@@ -94,9 +93,9 @@ public:
         return true;
     }
 
-private:
+  private:
     static std::string parse_composite_state_header(std::string_view line, FsmModel& model,
-                                                   const std::vector<std::string>& parent_stack) {
+                                                    const std::vector<std::string>& parent_stack) {
         static const std::regex composite_regex(R"(state\s+([a-zA-Z0-9_]+)\s*\{)");
         const std::string line_str{line};
         std::smatch match;
@@ -191,8 +190,7 @@ private:
         const auto open_bracket = label.find('[');
         const auto close_bracket = label.find(']', open_bracket);
         if (open_bracket != std::string::npos && close_bracket != std::string::npos) {
-            const std::string grd = std::string(trim(
-                label.substr(open_bracket + 1, close_bracket - open_bracket - 1)));
+            const std::string grd = std::string(trim(label.substr(open_bracket + 1, close_bracket - open_bracket - 1)));
             if (!grd.empty()) {
                 guard_name = sanitize_identifier(grd);
             }
@@ -224,8 +222,7 @@ private:
         model.add_transition(std::move(trans));
     }
 
-    static bool parse_transition_line(std::string_view line, FsmModel& model,
-                                      std::string& out_error, size_t line_num,
+    static bool parse_transition_line(std::string_view line, FsmModel& model, std::string& out_error, size_t line_num,
                                       const std::vector<std::string>& parent_stack) {
         const auto arrow_pos = line.find("-->");
         if (arrow_pos == std::string_view::npos) {
@@ -290,8 +287,7 @@ private:
 
         if (src.empty() || dst.empty()) {
             out_error = "Error at line " + std::to_string(line_num) +
-                        ": invalid source or target state in transition: " +
-                        std::string{line};
+                        ": invalid source or target state in transition: " + std::string{line};
             return false;
         }
 
@@ -318,8 +314,8 @@ private:
             const auto open_bracket = label.find('[');
             const auto close_bracket = label.find(']', open_bracket);
             if (open_bracket != std::string::npos && close_bracket != std::string::npos) {
-                const std::string grd = std::string(trim(
-                    label.substr(open_bracket + 1, close_bracket - open_bracket - 1)));
+                const std::string grd =
+                    std::string(trim(label.substr(open_bracket + 1, close_bracket - open_bracket - 1)));
                 if (!grd.empty()) {
                     guard_name = sanitize_identifier(grd);
                 }
@@ -376,4 +372,4 @@ private:
     }
 };
 
-} // namespace fsm::codegen
+}  // namespace fsm::codegen

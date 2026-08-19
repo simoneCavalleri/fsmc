@@ -14,7 +14,7 @@ struct MissionContext {
     int telemetry_pings_received = 0;
     int clock_sync_count = 0;
 };
-} // namespace mission
+}  // namespace mission
 
 #include "mission_fsm.hpp"
 
@@ -24,16 +24,14 @@ namespace mission {
 // Custom Guard Functors
 // ============================================================================
 struct ValidClearanceGuard {
-    [[nodiscard]] constexpr bool operator()(const AuthorizeCmd& /*evt*/,
-                                            const auto& /*src*/,
+    [[nodiscard]] constexpr bool operator()(const AuthorizeCmd& /*evt*/, const auto& /*src*/,
                                             const MissionContext& ctx) const noexcept {
         return ctx.flight_clearance_granted;
     }
 };
 
 struct NoClearanceGuard {
-    [[nodiscard]] constexpr bool operator()(const AuthorizeCmd& /*evt*/,
-                                            const auto& /*src*/,
+    [[nodiscard]] constexpr bool operator()(const AuthorizeCmd& /*evt*/, const auto& /*src*/,
                                             const MissionContext& ctx) const noexcept {
         return !ctx.flight_clearance_granted;
     }
@@ -43,33 +41,28 @@ struct NoClearanceGuard {
 // Custom Action Functors
 // ============================================================================
 struct LogCalibrationAction {
-    constexpr void operator()(const CalibrationOkEvent& /*evt*/,
-                              auto& /*src*/, auto& /*dst*/,
+    constexpr void operator()(const CalibrationOkEvent& /*evt*/, auto& /*src*/, auto& /*dst*/,
                               MissionContext& /*ctx*/) const {
         std::cout << "  [ACTION] Diagnostics complete -> Gyroscopes & IMU calibrated.\n";
     }
 };
 
 struct ArmEnginesAction {
-    constexpr void operator()(const AuthorizeCmd& /*evt*/,
-                              auto& /*src*/, auto& /*dst*/,
-                              MissionContext& ctx) const {
+    constexpr void operator()(const AuthorizeCmd& /*evt*/, auto& /*src*/, auto& /*dst*/, MissionContext& ctx) const {
         ctx.thrusters_armed = true;
         std::cout << "  [ACTION] Clearance VERIFIED via <<choice>> -> Main thrusters ARMED for Ascent!\n";
     }
 };
 
 struct TriggerAlarmAction {
-    constexpr void operator()(const AuthorizeCmd& /*evt*/,
-                              auto& /*src*/, auto& /*dst*/,
+    constexpr void operator()(const AuthorizeCmd& /*evt*/, auto& /*src*/, auto& /*dst*/,
                               MissionContext& /*ctx*/) const {
         std::cout << "  [ACTION] Clearance REJECTED -> Mission aborted!\n";
     }
 };
 
 struct DeploySolarPanelsAction {
-    constexpr void operator()(const AltitudeReachedEvent& /*evt*/,
-                              auto& /*src*/, auto& /*dst*/,
+    constexpr void operator()(const AltitudeReachedEvent& /*evt*/, auto& /*src*/, auto& /*dst*/,
                               MissionContext& ctx) const {
         ctx.altitude_km = 400;
         ctx.solar_panels_deployed = true;
@@ -78,34 +71,29 @@ struct DeploySolarPanelsAction {
 };
 
 struct StabilizeAttitudeAction {
-    constexpr void operator()(const OrbitInsertedEvent& /*evt*/,
-                              auto& /*src*/, auto& /*dst*/,
+    constexpr void operator()(const OrbitInsertedEvent& /*evt*/, auto& /*src*/, auto& /*dst*/,
                               MissionContext& /*ctx*/) const {
         std::cout << "  [ACTION] Orbit insertion complete -> Attitude stabilized.\n";
     }
 };
 
 struct LogTelemetryAction {
-    constexpr void operator()(const PingTelemetry& /*evt*/,
-                              auto& /*src*/, auto& /*dst*/,
-                              MissionContext& ctx) const {
+    constexpr void operator()(const PingTelemetry& /*evt*/, auto& /*src*/, auto& /*dst*/, MissionContext& ctx) const {
         ctx.telemetry_pings_received++;
-        std::cout << "  [ACTION/INTERNAL] Telemetry Ping #"
-                  << ctx.telemetry_pings_received << " acknowledged (Zero exit/entry overhead).\n";
+        std::cout << "  [ACTION/INTERNAL] Telemetry Ping #" << ctx.telemetry_pings_received
+                  << " acknowledged (Zero exit/entry overhead).\n";
     }
 };
 
 struct BufferCommandsAction {
-    constexpr void operator()(const LinkDegradedEvent& /*evt*/,
-                              auto& /*src*/, auto& /*dst*/,
+    constexpr void operator()(const LinkDegradedEvent& /*evt*/, auto& /*src*/, auto& /*dst*/,
                               MissionContext& /*ctx*/) const {
         std::cout << "  [ACTION] RF link degraded -> Command buffer enabled.\n";
     }
 };
 
 struct SyncClockAction {
-    constexpr void operator()(const LinkRestoredEvent& /*evt*/,
-                              auto& /*src*/, auto& /*dst*/,
+    constexpr void operator()(const LinkRestoredEvent& /*evt*/, auto& /*src*/, auto& /*dst*/,
                               MissionContext& ctx) const {
         ctx.clock_sync_count++;
         std::cout << "  [ACTION] RF link restored -> Onboard clock resynchronized.\n";
@@ -113,24 +101,20 @@ struct SyncClockAction {
 };
 
 struct RetractPanelsAction {
-    constexpr void operator()(const ReturnHomeCmd& /*evt*/,
-                              auto& /*src*/, auto& /*dst*/,
-                              MissionContext& ctx) const {
+    constexpr void operator()(const ReturnHomeCmd& /*evt*/, auto& /*src*/, auto& /*dst*/, MissionContext& ctx) const {
         ctx.solar_panels_deployed = false;
         std::cout << "  [ACTION] De-orbit burn initiated -> Solar panels retracted.\n";
     }
 };
 
 struct ShutdownSystemsAction {
-    constexpr void operator()(const TouchdownEvent& /*evt*/,
-                              auto& /*src*/, auto& /*dst*/,
-                              MissionContext& ctx) const {
+    constexpr void operator()(const TouchdownEvent& /*evt*/, auto& /*src*/, auto& /*dst*/, MissionContext& ctx) const {
         ctx.thrusters_armed = false;
         std::cout << "  [ACTION] Touchdown confirmed -> All spacecraft systems safe.\n";
     }
 };
 
-} // namespace mission
+}  // namespace mission
 
 // ============================================================================
 // Main Showcase Execution

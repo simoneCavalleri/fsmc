@@ -1,12 +1,12 @@
-#include "fsm/fsm.hpp"
-#include "fsm/thread_safe_fsm.hpp"
-
 #include <cassert>
 #include <chrono>
 #include <iostream>
 #include <string>
 #include <thread>
 #include <vector>
+
+#include "fsm/fsm.hpp"
+#include "fsm/thread_safe_fsm.hpp"
 
 namespace {
 
@@ -22,10 +22,9 @@ struct StartEvent {};
 struct StopEvent {};
 struct ResetEvent {};
 
-using SimpleTable = fsm::transition_table<
-    fsm::transition<StateIdle, StartEvent, StateRunning>,
-    fsm::transition<StateRunning, StopEvent, StateStopped>,
-    fsm::transition<StateStopped, ResetEvent, StateIdle>>;
+using SimpleTable = fsm::transition_table<fsm::transition<StateIdle, StartEvent, StateRunning>,
+                                          fsm::transition<StateRunning, StopEvent, StateStopped>,
+                                          fsm::transition<StateStopped, ResetEvent, StateIdle>>;
 
 void test_basic_transitions() {
     std::cout << "[TEST] Running test_basic_transitions...\n";
@@ -67,12 +66,8 @@ struct HookTracker {
         static std::vector<std::string> instance;
         return instance;
     }
-    static void clear() {
-        log().clear();
-    }
-    static void add(const std::string& msg) {
-        log().emplace_back(msg);
-    }
+    static void clear() { log().clear(); }
+    static void add(const std::string& msg) { log().emplace_back(msg); }
 };
 
 struct StateA {
@@ -85,15 +80,9 @@ struct EventGotoB {
 };
 
 struct StateB {
-    static void on_enter(const EventGotoB& evt) {
-        HookTracker::add("StateB::on_enter with payload: " + evt.message);
-    }
-    static void on_exit(const EventGotoB& /*evt*/) {
-        HookTracker::add("StateB::on_exit with EventGotoB");
-    }
-    static void on_exit() {
-        HookTracker::add("StateB::on_exit void fallback");
-    }
+    static void on_enter(const EventGotoB& evt) { HookTracker::add("StateB::on_enter with payload: " + evt.message); }
+    static void on_exit(const EventGotoB& /*evt*/) { HookTracker::add("StateB::on_exit with EventGotoB"); }
+    static void on_exit() { HookTracker::add("StateB::on_exit void fallback"); }
 };
 
 struct EventGotoA {};
@@ -104,9 +93,8 @@ struct CustomAction {
     }
 };
 
-using HookTable = fsm::transition_table<
-    fsm::transition<StateA, EventGotoB, StateB, CustomAction>,
-    fsm::transition<StateB, EventGotoA, StateA>>;
+using HookTable = fsm::transition_table<fsm::transition<StateA, EventGotoB, StateB, CustomAction>,
+                                        fsm::transition<StateB, EventGotoA, StateA>>;
 
 void test_hooks_order() {
     std::cout << "[TEST] Running test_hooks_order...\n";
@@ -149,8 +137,8 @@ struct IsValidKeyGuard {
     }
 };
 
-using GuardTable = fsm::transition_table<
-    fsm::transition<StateLocked, UnlockEvent, StateUnlocked, fsm::no_action, IsValidKeyGuard>>;
+using GuardTable =
+    fsm::transition_table<fsm::transition<StateLocked, UnlockEvent, StateUnlocked, fsm::no_action, IsValidKeyGuard>>;
 
 void test_guards() {
     std::cout << "[TEST] Running test_guards...\n";
@@ -198,9 +186,8 @@ struct DecAction {
     }
 };
 
-using CounterTable = fsm::transition_table<
-    fsm::transition<CounterState, IncrementEvent, CounterState, IncAction>,
-    fsm::transition<CounterState, DecrementEvent, CounterState, DecAction>>;
+using CounterTable = fsm::transition_table<fsm::transition<CounterState, IncrementEvent, CounterState, IncAction>,
+                                           fsm::transition<CounterState, DecrementEvent, CounterState, DecAction>>;
 
 void test_thread_safe_queue() {
     std::cout << "[TEST] Running test_thread_safe_queue (manual processing)...\n";
@@ -259,11 +246,10 @@ void test_concurrent_multithreaded_worker() {
     const int final_count = ts_machine.with_state([](const CounterState& state) { return state.count; });
     assert(final_count == total_threads * increments_per_thread);
 
-    std::cout << "[PASS] test_concurrent_multithreaded_worker passed. Final count = "
-              << final_count << "\n";
+    std::cout << "[PASS] test_concurrent_multithreaded_worker passed. Final count = " << final_count << "\n";
 }
 
-} // namespace
+}  // namespace
 
 int main() {
     std::cout << "========================================\n"

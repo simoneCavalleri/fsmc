@@ -107,67 +107,84 @@ class CppGenerator {
     }
 
     // 4. Guards Definitions (if include_stubs)
+    // 4. Guards Definitions (if include_stubs)
     if (!model.guards.empty()) {
-      out << "// "
-             "================================================================="
-             "===========\n";
-      out << "// Guards\n";
-      out << "// "
-             "================================================================="
-             "===========\n\n";
+      if (options.include_stubs) {
+        out << "// "
+               "================================================================="
+               "===========\n";
+        out << "// Guards\n";
+        out << "// "
+               "================================================================="
+               "===========\n\n";
 
-      for (const auto& guard_item : model.guards) {
-        out << "struct " << guard_item.name << " {\n";
-        if (options.cpp_standard == CppStandard::Cpp20) {
-          out << "    [[nodiscard]] constexpr bool operator()(const auto& "
-                 "/*evt*/, const auto& /*state*/, const auto& /*ctx*/) const "
-                 "noexcept {\n";
-          out << "        // TODO: Implement guard logic for " << guard_item.name
-              << "\n";
-          out << "        return true;\n";
-          out << "    }\n";
-        } else {
-          out << "    template <typename Event, typename State, typename "
-                 "Context>\n";
-          out << "    bool operator()(const Event& /*evt*/, const State& "
-                 "/*state*/, const Context& /*ctx*/) const {\n";
-          out << "        // TODO: Implement guard logic for " << guard_item.name
-              << "\n";
-          out << "        return true;\n";
-          out << "    }\n";
+        for (const auto& guard_item : model.guards) {
+          out << "struct " << guard_item.name << " {\n";
+          if (options.cpp_standard == CppStandard::Cpp20) {
+            out << "    [[nodiscard]] constexpr bool operator()(const auto& "
+                   "/*evt*/, const auto& /*state*/, const auto& /*ctx*/) const "
+                   "noexcept {\n";
+            out << "        // TODO: Implement guard logic for " << guard_item.name
+                << "\n";
+            out << "        return true;\n";
+            out << "    }\n";
+          } else {
+            out << "    template <typename Event, typename State, typename "
+                   "Context>\n";
+            out << "    bool operator()(const Event& /*evt*/, const State& "
+                   "/*state*/, const Context& /*ctx*/) const {\n";
+            out << "        // TODO: Implement guard logic for " << guard_item.name
+                << "\n";
+            out << "        return true;\n";
+            out << "    }\n";
+          }
+          out << "};\n\n";
         }
-        out << "};\n\n";
+      } else {
+        out << "// Forward declaration of custom Guards\n";
+        for (const auto& guard_item : model.guards) {
+          out << "struct " << guard_item.name << ";\n";
+        }
+        out << "\n";
       }
     }
 
     // 5. Actions Definitions (if include_stubs)
     if (!model.actions.empty()) {
-      out << "// "
-             "================================================================="
-             "===========\n";
-      out << "// Actions\n";
-      out << "// "
-             "================================================================="
-             "===========\n\n";
+      if (options.include_stubs) {
+        out << "// "
+               "================================================================="
+               "===========\n";
+        out << "// Actions\n";
+        out << "// "
+               "================================================================="
+               "===========\n\n";
 
-      for (const auto& action_item : model.actions) {
-        out << "struct " << action_item.name << " {\n";
-        if (options.cpp_standard == CppStandard::Cpp20) {
-          out << "    constexpr void operator()(const auto& /*evt*/, auto& "
-                 "/*src*/, auto& /*dst*/, auto& /*ctx*/) const {\n";
-          out << "        // TODO: Implement action logic for " << action_item.name
-              << "\n";
-          out << "    }\n";
-        } else {
-          out << "    template <typename Event, typename SrcState, typename "
-                 "DstState, typename Context>\n";
-          out << "    void operator()(const Event& /*evt*/, SrcState& /*src*/, "
-                 "DstState& /*dst*/, Context& /*ctx*/) const {\n";
-          out << "        // TODO: Implement action logic for " << action_item.name
-              << "\n";
-          out << "    }\n";
+        for (const auto& action_item : model.actions) {
+          out << "struct " << action_item.name << " {\n";
+          if (options.cpp_standard == CppStandard::Cpp20) {
+            out << "    constexpr void operator()(const auto& /*evt*/, auto& "
+                   "/*src*/, auto& /*dst*/, auto& /*ctx*/) const {\n";
+            out << "        // TODO: Implement action logic for " << action_item.name
+                << "\n";
+            out << "    }\n";
+          } else {
+            out << "    template <typename Event, typename SrcState, typename "
+                   "DstState, typename Context>\n";
+            out << "    void operator()(const Event& /*evt*/, SrcState& /*src*/, "
+                   "DstState& /*dst*/, Context& /*ctx*/) const {\n";
+            out << "        // TODO: Implement action logic for " << action_item.name
+                << "\n";
+            out << "    }\n";
+          }
+          out << "};\n\n";
         }
-        out << "};\n\n";
+      } else {
+        out << "// Forward declaration of custom Actions\n";
+        for (const auto& action_item : model.actions) {
+          out << "struct " << action_item.name << ";\n";
+        }
+        out << "\n";
       }
     }
 

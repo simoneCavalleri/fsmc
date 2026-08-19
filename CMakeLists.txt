@@ -34,6 +34,7 @@ enable_testing()
 # Subdirectories
 add_subdirectory(src)
 add_subdirectory(tests)
+add_subdirectory(examples)
 
 # Install CMake integration module
 install(FILES cmake/FsmGenTools.cmake DESTINATION lib/cmake/fsmc)

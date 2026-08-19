@@ -1,0 +1,28 @@
+---
+Checks: >
+  -*,
+  bugprone-*,
+  cppcoreguidelines-*,
+  misc-*,
+  modernize-*,
+  performance-*,
+  readability-*,
+  -modernize-use-trailing-return-type,
+  -readability-magic-numbers,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-avoid-c-arrays,
+  -modernize-avoid-c-arrays,
+  -readability-isolate-declaration,
+  -cppcoreguidelines-special-member-functions,
+  -cppcoreguidelines-owning-memory,
+  -readability-function-cognitive-complexity,
+  -bugprone-easily-swappable-parameters,
+  -readability-identifier-naming,
+  -cppcoreguidelines-pro-type-member-init
+
+WarningsAsErrors: ''
+HeaderFilterRegex: 'include/.*|src/.*'
+FormatStyle: file
+...

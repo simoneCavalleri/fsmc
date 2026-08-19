@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  lint-and-format:
+    name: Lint & Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LLVM Tools (clang-format, clang-tidy)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format clang-tidy
+
+      - name: Check Formatting with clang-format
+        run: |
+          find src include tests -name '*.cpp' -o -name '*.hpp' | xargs clang-format --dry-run --Werror
+
+      - name: Configure CMake for Clang-Tidy
+        run: |
+          cmake -B build -S . -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Run Clang-Tidy
+        run: |
+          clang-tidy -p build src/main.cpp
+
+  build-and-test:
+    name: Build & Test (${{ matrix.compiler }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        include:
+          - compiler: gcc
+            cxx: g++-13
+            cc: gcc-13
+            pkg: g++-13
+          - compiler: clang
+            cxx: clang++-18
+            cc: clang-18
+            pkg: clang-18
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.pkg }}
+
+      - name: Configure CMake
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build fsmc & Test Targets
+        run: |
+          cmake --build build --config Release -j$(nproc)
+
+      - name: Run Test Suite via CTest
+        run: |
+          ctest --test-dir build --output-on-failure

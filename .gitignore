@@ -1,0 +1,26 @@
+# Build directories
+build/
+bin/
+out/
+dist/
+
+# Object files and libraries
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+
+# IDE & Editor caches
+.vscode/
+.idea/
+.cache/
+.DS_Store
+CMakeSettings.json
+CMakeUserPresets.json
+compile_commands.json

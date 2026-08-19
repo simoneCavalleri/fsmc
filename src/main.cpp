@@ -318,7 +318,7 @@ int main(int argc, char* argv[]) {
     }
 
     for (const auto& warn_msg : validation.warnings) {
-        std::cout << "[WARNING] " << warn_msg << "\n";
+        std::cerr << "[WARNING] " << warn_msg << "\n";
     }
 
     if (!validation.is_valid) {

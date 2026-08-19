@@ -408,22 +408,42 @@ class JsonStateParser : public IParser {
             cond = trans_obj.get_string("guard");
         }
 
-        std::string action;
-        const auto* act_val = trans_obj.get_child("actions");
-        if (act_val != nullptr) {
-            if (act_val->is_string()) {
-                action = act_val->str_val;
-            } else if (act_val->is_array() && !act_val->arr_val.empty() && act_val->arr_val.front().is_string()) {
-                action = act_val->arr_val.front().str_val;
+        std::string action = trans_obj.get_string("action");
+        if (action.empty()) {
+            const auto* act_val = trans_obj.get_child("actions");
+            if (act_val != nullptr) {
+                if (act_val->is_string()) {
+                    action = act_val->str_val;
+                } else if (act_val->is_array() && !act_val->arr_val.empty() && act_val->arr_val.front().is_string()) {
+                    action = act_val->arr_val.front().str_val;
+                }
             }
         }
 
         bool is_internal = target.empty() || trans_obj.get_string("type") == "internal";
         std::string dst = target.empty() ? source_state : target;
 
+        bool is_history = false;
+        bool is_deep_history = false;
+        const auto h_star_pos = dst.find("[H*]");
+        const auto h_pos = dst.find("[H]");
+        if (h_star_pos != std::string::npos) {
+            is_history = true;
+            is_deep_history = true;
+            dst = dst.substr(0, h_star_pos);
+        } else if (h_pos != std::string::npos) {
+            is_history = true;
+            is_deep_history = false;
+            dst = dst.substr(0, h_pos);
+        }
+
+        std::string clean_target = sanitize_identifier(dst);
+
         TransitionModel trans;
         trans.source = source_state;
-        trans.target = sanitize_identifier(dst);
+        trans.target = clean_target;
+        trans.target_is_history = is_history;
+        trans.target_is_deep_history = is_deep_history;
         trans.event = event_name;
         if (!cond.empty()) {
             auto parsed = GuardExpressionParser::parse(cond);
@@ -442,6 +462,14 @@ class JsonStateParser : public IParser {
 
         if (!model.is_choice_node(trans.target)) {
             model.add_state(trans.target);
+            if (is_history) {
+                if (auto* target_state = model.find_state_mut(trans.target)) {
+                    target_state->has_history = true;
+                    if (is_deep_history) {
+                        target_state->has_deep_history = true;
+                    }
+                }
+            }
         }
         if (!trans.event.empty()) {
             model.add_event(trans.event);

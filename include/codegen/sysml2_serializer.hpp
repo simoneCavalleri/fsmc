@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "fsm_model.hpp"
+#include "guard_parser.hpp"
 
 namespace fsm::codegen {
 
@@ -30,17 +31,21 @@ class Sysml2Serializer {
         // Emit transitions
         out << "\n";
         for (const auto& trans : model.transitions) {
+            std::string clean_target = trans.target;
+            if (trans.target_is_history) {
+                clean_target += trans.target_is_deep_history ? "[H*]" : "[H]";
+            }
             out << "    transition from " << trans.source;
             if (!trans.event.empty()) {
                 out << " accept " << trans.event;
             }
             if (trans.guard && !trans.guard->empty()) {
-                out << " if " << *trans.guard;
+                out << " if " << GuardExpressionParser::to_diagram_string(*trans.guard);
             }
             if (trans.action && !trans.action->empty()) {
                 out << " do " << *trans.action;
             }
-            out << " then " << trans.target << ";\n";
+            out << " then " << clean_target << ";\n";
         }
 
         out << "}\n";

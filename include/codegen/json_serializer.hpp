@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "fsm_model.hpp"
+#include "guard_parser.hpp"
 
 namespace fsm::codegen {
 
@@ -85,10 +86,16 @@ class JsonSerializer {
             out << pad << "  \"on\": {\n";
             for (size_t t_idx = 0; t_idx < state_trans.size(); ++t_idx) {
                 const auto* t = state_trans[t_idx];
+                std::string target_str = t->target;
+                if (t->target_is_history) {
+                    target_str += t->target_is_deep_history ? "[H*]" : "[H]";
+                }
                 out << pad << "    \"" << (t->event.empty() ? "EVENT" : t->event) << "\": {\n";
-                out << pad << "      \"target\": \"" << t->target << "\"";
+                out << pad << "      \"target\": \"" << target_str << "\"";
                 if (t->guard && !t->guard->empty()) {
-                    out << ",\n" << pad << "      \"guard\": \"" << escape_json(*t->guard) << "\"";
+                    out << ",\n"
+                        << pad << "      \"guard\": \""
+                        << escape_json(GuardExpressionParser::to_diagram_string(*t->guard)) << "\"";
                 }
                 if (t->action && !t->action->empty()) {
                     out << ",\n" << pad << "      \"action\": \"" << escape_json(*t->action) << "\"";

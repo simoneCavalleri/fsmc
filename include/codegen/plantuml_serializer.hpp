@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "fsm_model.hpp"
+#include "guard_parser.hpp"
 
 namespace fsm::codegen {
 
@@ -138,7 +139,7 @@ class PlantUmlSerializer {
             if (!label.empty()) {
                 label += " ";
             }
-            label += "[" + *trans.guard + "]";
+            label += "[" + GuardExpressionParser::to_diagram_string(*trans.guard) + "]";
         }
         if (trans.action && !trans.action->empty()) {
             if (!label.empty()) {

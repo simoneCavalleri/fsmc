@@ -16,8 +16,78 @@ struct ParsedGuardResult {
 
 class GuardExpressionParser {
   public:
+    static std::string to_diagram_string(std::string_view raw_expr) {
+        std::string expr = std::string(trim(raw_expr));
+        if (expr.empty()) {
+            return "";
+        }
+
+        // Fast check: if no fsm:: prefix, return as is
+        if (expr.find("fsm::") == std::string::npos) {
+            return expr;
+        }
+
+        // fsm::not_<...>
+        if (starts_with(expr, "fsm::not_<") && expr.back() == '>') {
+            std::string_view inner = expr;
+            inner.remove_prefix(10);
+            inner.remove_suffix(1);
+            return "!" + to_diagram_string(inner);
+        }
+
+        // fsm::and_<A, B>
+        if (starts_with(expr, "fsm::and_<") && expr.back() == '>') {
+            std::string_view inner = expr;
+            inner.remove_prefix(10);
+            inner.remove_suffix(1);
+            size_t depth = 0;
+            size_t comma_pos = std::string_view::npos;
+            for (size_t i = 0; i < inner.size(); ++i) {
+                if (inner[i] == '<')
+                    depth++;
+                else if (inner[i] == '>')
+                    depth--;
+                else if (inner[i] == ',' && depth == 0) {
+                    comma_pos = i;
+                    break;
+                }
+            }
+            if (comma_pos != std::string_view::npos) {
+                std::string left = to_diagram_string(inner.substr(0, comma_pos));
+                std::string right = to_diagram_string(inner.substr(comma_pos + 1));
+                return left + " && " + right;
+            }
+        }
+
+        // fsm::or_<A, B>
+        if (starts_with(expr, "fsm::or_<") && expr.back() == '>') {
+            std::string_view inner = expr;
+            inner.remove_prefix(9);
+            inner.remove_suffix(1);
+            size_t depth = 0;
+            size_t comma_pos = std::string_view::npos;
+            for (size_t i = 0; i < inner.size(); ++i) {
+                if (inner[i] == '<')
+                    depth++;
+                else if (inner[i] == '>')
+                    depth--;
+                else if (inner[i] == ',' && depth == 0) {
+                    comma_pos = i;
+                    break;
+                }
+            }
+            if (comma_pos != std::string_view::npos) {
+                std::string left = to_diagram_string(inner.substr(0, comma_pos));
+                std::string right = to_diagram_string(inner.substr(comma_pos + 1));
+                return left + " || " + right;
+            }
+        }
+
+        return expr;
+    }
+
     static ParsedGuardResult parse(std::string_view raw_expr) {
-        std::string_view expr = trim(raw_expr);
+        std::string expr = to_diagram_string(raw_expr);
         if (expr.empty()) {
             return {"", {}};
         }

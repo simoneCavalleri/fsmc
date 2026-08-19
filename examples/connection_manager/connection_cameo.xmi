@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20131001">
+  <uml:Model xmi:id="_model_connection" name="ConnectionModel">
+    <packagedElement xmi:type="uml:StateMachine" xmi:id="_sm_connection" name="ConnectionFSM">
+      <region xmi:id="_region_conn">
+        <subvertex xmi:type="uml:Pseudostate" xmi:id="_init_conn" kind="initial"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s_disconnected" name="Disconnected"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s_connecting" name="Connecting"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s_connected" name="Connected"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s_suspended" name="Suspended"/>
+
+        <!-- Initial transition -->
+        <transition xmi:id="_t_conn_init" source="_init_conn" target="_s_disconnected"/>
+
+        <!-- Disconnected -->
+        <transition xmi:id="_t_conn_1" source="_s_disconnected" target="_s_connecting">
+          <trigger xmi:id="_trig_c1" name="ConnectCmd"/>
+          <guard xmi:id="_g_c1" name="HasNetworkGuard"/>
+          <effect xmi:id="_act_c1" name="InitSocketAction"/>
+        </transition>
+        <transition xmi:id="_t_conn_2" source="_s_disconnected" target="_s_disconnected">
+          <trigger xmi:id="_trig_c2" name="ConnectCmd"/>
+          <guard xmi:id="_g_c2" name="NoNetworkGuard"/>
+          <effect xmi:id="_act_c2" name="LogErrorAction"/>
+        </transition>
+
+        <!-- Connecting -->
+        <transition xmi:id="_t_conn_3" source="_s_connecting" target="_s_connected">
+          <trigger xmi:id="_trig_c3" name="HandshakeOkEvent"/>
+          <effect xmi:id="_act_c3" name="SetupSessionAction"/>
+        </transition>
+        <transition xmi:id="_t_conn_4" source="_s_connecting" target="_s_disconnected">
+          <trigger xmi:id="_trig_c4" name="HandshakeFailedEvent"/>
+          <effect xmi:id="_act_c4" name="CleanupAction"/>
+        </transition>
+        <transition xmi:id="_t_conn_5" source="_s_connecting" target="_s_disconnected">
+          <trigger xmi:id="_trig_c5" name="TimeoutEvent"/>
+          <effect xmi:id="_act_c5" name="CleanupAction"/>
+        </transition>
+
+        <!-- Connected -->
+        <transition xmi:id="_t_conn_6" source="_s_connected" target="_s_suspended">
+          <trigger xmi:id="_trig_c6" name="NetworkDegradedEvent"/>
+          <effect xmi:id="_act_c6" name="PauseQueueAction"/>
+        </transition>
+        <transition xmi:id="_t_conn_7" source="_s_connected" target="_s_disconnected">
+          <trigger xmi:id="_trig_c7" name="DisconnectCmd"/>
+          <effect xmi:id="_act_c7" name="CloseSocketAction"/>
+        </transition>
+        <transition xmi:id="_t_conn_8" source="_s_connected" target="_s_disconnected">
+          <trigger xmi:id="_trig_c8" name="ConnectionLostEvent"/>
+          <effect xmi:id="_act_c8" name="CleanupAction"/>
+        </transition>
+
+        <!-- Suspended -->
+        <transition xmi:id="_t_conn_9" source="_s_suspended" target="_s_connected">
+          <trigger xmi:id="_trig_c9" name="NetworkRestoredEvent"/>
+          <effect xmi:id="_act_c9" name="ResumeQueueAction"/>
+        </transition>
+        <transition xmi:id="_t_conn_10" source="_s_suspended" target="_s_disconnected">
+          <trigger xmi:id="_trig_c10" name="DisconnectCmd"/>
+          <effect xmi:id="_act_c10" name="CloseSocketAction"/>
+        </transition>
+        <transition xmi:id="_t_conn_11" source="_s_suspended" target="_s_disconnected">
+          <trigger xmi:id="_trig_c11" name="TimeoutEvent"/>
+          <effect xmi:id="_act_c11" name="CleanupAction"/>
+        </transition>
+      </region>
+    </packagedElement>
+  </uml:Model>
+</xmi:XMI>

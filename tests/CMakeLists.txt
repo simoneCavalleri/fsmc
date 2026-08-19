@@ -67,6 +67,11 @@ add_executable(test_sysml2_parser test_sysml2_parser.cpp)
 target_link_libraries(test_sysml2_parser PRIVATE Threads::Threads)
 add_test(NAME test_sysml2_parser COMMAND test_sysml2_parser)
 
+# Cameo / MagicDraw OMG XMI Parser Test Suite
+add_executable(test_cameo_parser test_cameo_parser.cpp)
+target_link_libraries(test_cameo_parser PRIVATE Threads::Threads)
+add_test(NAME test_cameo_parser COMMAND test_cameo_parser)
+
 # CMake integration test (verifying fsmc_target_sources macro)
 add_executable(test_cmake_integration test_cmake_integration.cpp)
 target_link_libraries(test_cmake_integration PRIVATE Threads::Threads)

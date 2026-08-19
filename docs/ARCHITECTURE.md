@@ -7,12 +7,13 @@ This document describes the internal design, compiler pipeline, and template met
 ## 1. Compiler Pipeline
 
 ```
- Specification (.sysml / .mmd / .puml)
+ Model File (.xmi / .sysml / .mmd / .puml)
           │
           ▼
 ┌───────────────────┐
-│ Multi-Format      │  • SysML v2 Parser (Native textual .sysml grammar)
-│ Parser Interface  │  • PlantUML Parser (Recursive block tokenization)
+│ Multi-Format      │  • Cameo / MagicDraw Parser (OMG XMI 2.x XML tokenizer)
+│ Parser Interface  │  • SysML v2 Parser (Native textual .sysml grammar)
+│                   │  • PlantUML Parser (Recursive block tokenization)
 │                   │  • Mermaid Parser (StateDiagram-v2 grammar)
 └─────────┬─────────┘
           │

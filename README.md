@@ -102,6 +102,7 @@ int main() {
   - **Deferred Events**: `State : defer Event` declarations for buffering unhandled signals.
   - **State Lifecycle Hooks**: `on_enter` and `on_exit` member function reflection.
 - **Multi-Format Parsing**:
+  - **Cameo Systems Modeler / MagicDraw** (`.xmi`, `.xml`, `.mdxml`, `.uml`): Industry-standard OMG XMI 2.x export.
   - **OMG SysML v2** (`.sysml`): Native textual specification format.
   - **Mermaid** (`stateDiagram-v2`): Standard in GitHub, GitLab, and Markdown documentation.
   - **PlantUML** (`@startuml`): Standard in enterprise model-driven engineering.
@@ -118,7 +119,7 @@ int main() {
 
 ## 📚 Documentation Index
 
-- 📖 **[OMG UML 2.5 & SysML v2 Reference Guide](docs/UML_REFERENCE.md)**: Syntax reference for SysML v2, PlantUML, and Mermaid.
+- 📖 **[OMG UML 2.5 & SysML v2 Reference Guide](docs/UML_REFERENCE.md)**: Syntax reference for Cameo XMI, SysML v2, PlantUML, and Mermaid.
 - 🛠️ **[Integration & Build Guide](docs/INTEGRATION_GUIDE.md)**: CMake, vcpkg, Conan, and standalone usage.
 - ⚡ **[Runtime C++ API Reference](docs/RUNTIME_API.md)**: Classes, methods, lifecycle hooks, and asynchronous workers.
 - 🏛️ **[Compiler Architecture](docs/ARCHITECTURE.md)**: Pipeline design, choice branch flattening, and template metaprogramming.
@@ -142,12 +143,12 @@ ctest --test-dir build --output-on-failure
 ## 💻 CLI Usage
 
 ```bash
-fsmc -i <diagram_file> [OPTIONS]
+fsmc -i <model_file> [OPTIONS]
 ```
 
 | Option | Description | Default |
 | :--- | :--- | :--- |
-| `-i, --input <file>` | Input diagram file (`.sysml`, `.mmd`, `.mermaid`, `.puml`, `.plantuml`) | **Required** |
+| `-i, --input <file>` | Input model file (`.xmi`, `.xml`, `.mdxml`, `.sysml`, `.puml`, `.mmd`) | **Required** |
 | `-o, --output <file>` | Output C++ header file | `stdout` |
 | `-n, --name <name>` | FSM class name | Inferred from filename |
 | `--namespace <ns>` | C++ namespace | `fsm_generated` |
@@ -156,7 +157,7 @@ fsmc -i <diagram_file> [OPTIONS]
 | `--c++17` / `--c++20` | Shortcut for `--std 17` or `--std 20` | |
 | `--standalone` | Generate a self-contained header with embedded runtime | `true` |
 | `--modular` | Generate FSM header only, including external `fsm/fsm.hpp` | |
-| `--format <fmt>` | Explicit format: `sysml2`, `mermaid`, `plantuml`, `auto` | `auto` |
+| `--format <fmt>` | Explicit format: `cameo`, `sysml2`, `plantuml`, `mermaid`, `auto` | `auto` |
 | `--no-stubs` | Emits forward declarations for custom user guard/action structs | |
 | `-h, --help` | Display help menu and exit | |
 

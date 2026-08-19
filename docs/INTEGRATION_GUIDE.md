@@ -42,7 +42,7 @@ fsmc_target_sources(my_app
 
 | Parameter | Type | Description |
 | :--- | :--- | :--- |
-| `DIAGRAMS` | `list` (**Required**) | One or more paths to `.sysml`, `.puml`, `.plantuml`, `.mmd`, or `.mermaid` diagram files. |
+| `DIAGRAMS` | `list` (**Required**) | One or more paths to `.xmi`, `.xml`, `.mdxml`, `.sysml`, `.puml`, `.plantuml`, `.mmd`, or `.mermaid` model files. |
 | `NAME` | `string` | FSM class name (default: inferred from diagram file stem). |
 | `STANDARD` | `17` or `20` | Target C++ standard (default: `17`). |
 | `NAMESPACE` | `string` | C++ namespace wrapping states, events, and FSM aliases (default: `fsm_generated`). |

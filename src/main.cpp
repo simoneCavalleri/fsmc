@@ -5,6 +5,7 @@
 #include <sstream>
 #include <string>
 
+#include "codegen/cameo_xmi_parser.hpp"
 #include "codegen/cpp_generator.hpp"
 #include "codegen/fsm_model.hpp"
 #include "codegen/fsm_validator.hpp"
@@ -40,14 +41,14 @@ struct CliOptions {
 void print_help(const char* prog_name) {
     std::cout << "====================================================================="
                  "=======\n"
-              << " fsmc : PlantUML, Mermaid & SysML v2 to C++ State Machine Compiler\n"
+              << " fsmc : Cameo/MagicDraw, SysML v2, PlantUML & Mermaid C++ FSM Compiler\n"
               << "====================================================================="
                  "=======\n\n"
-              << "Usage: " << prog_name << " -i <diagram_file> [OPTIONS]\n"
+              << "Usage: " << prog_name << " -i <model_file> [OPTIONS]\n"
               << "       " << prog_name << " --export-runtime <dir> [--std 17|20]\n\n"
               << "Options:\n"
-              << "  -i, --input <file>        Input diagram file (.mmd, .mermaid, "
-                 ".puml, .plantuml, .sysml) [Required]\n"
+              << "  -i, --input <file>        Input model file (.xmi, .xml, .mdxml, "
+                 ".sysml, .puml, .mmd) [Required]\n"
               << "  -o, --output <file>       Output C++ header file (default: "
                  "stdout)\n"
               << "  -n, --name <name>         FSM class name (default: inferred from "
@@ -66,8 +67,8 @@ void print_help(const char* prog_name) {
                  "external fsm/fsm.hpp\n"
               << "  --export-runtime <dir>    Export the FSM runtime library to the "
                  "specified directory\n"
-              << "  --format <fmt>            Diagram format: 'mermaid', 'plantuml', "
-                 "'sysml2', 'auto' (default: auto)\n"
+              << "  --format <fmt>            Model format: 'cameo', 'sysml2', 'plantuml', "
+                 "'mermaid', 'auto' (default: auto)\n"
               << "  --no-thread-safe          Do not generate thread_safe_fsm wrapper "
                  "alias\n"
               << "  --no-stubs                Do not include default stub functors for "
@@ -76,13 +77,13 @@ void print_help(const char* prog_name) {
               << "  -v, --version             Show version information and exit\n\n"
               << "Examples:\n"
               << "  " << prog_name
-              << " -i connection.mmd -o connection_fsm.hpp --std 20 --namespace net "
-                 "--name ConnectionFSM\n"
+              << " -i model.xmi -o model_fsm.hpp --std 20 --namespace space "
+                 "--name MissionFSM\n"
               << "  " << prog_name
               << " -i mission.sysml -o mission_fsm.hpp --std 20 --namespace space "
                  "--name MissionFSM\n"
               << "  " << prog_name
-              << " -i connection.puml -o connection_fsm.hpp --std 17 --namespace net "
+              << " -i connection.mmd -o connection_fsm.hpp --std 20 --namespace net "
                  "--name ConnectionFSM\n"
               << "  " << prog_name << " --export-runtime ./include/fsm --std 20\n\n";
 }
@@ -104,8 +105,6 @@ CliOptions parse_cli_args(int argc, char* argv[]) {
             opts.input_file = argv[++idx];
         } else if ((arg == "-o" || arg == "--output") && idx + 1 < argc) {
             opts.output_file = argv[++idx];
-        } else if (arg == "--export-runtime" && idx + 1 < argc) {
-            opts.export_runtime_dir = argv[++idx];
         } else if ((arg == "-n" || arg == "--name") && idx + 1 < argc) {
             opts.fsm_name = argv[++idx];
         } else if (arg == "--namespace" && idx + 1 < argc) {
@@ -114,6 +113,8 @@ CliOptions parse_cli_args(int argc, char* argv[]) {
             opts.context_type = argv[++idx];
         } else if (arg == "--format" && idx + 1 < argc) {
             opts.format = argv[++idx];
+        } else if (arg == "--export-runtime" && idx + 1 < argc) {
+            opts.export_runtime_dir = argv[++idx];
         } else if (arg == "--std" && idx + 1 < argc) {
             const std::string std_str = argv[++idx];
             if (std_str == "20" || std_str == "c++20" || std_str == "C++20") {
@@ -144,6 +145,9 @@ CliOptions parse_cli_args(int argc, char* argv[]) {
 }
 
 std::unique_ptr<IParser> create_parser(const std::string& input_file, const std::string& format_option) {
+    if (format_option == "cameo" || format_option == "xmi" || format_option == "magicdraw") {
+        return std::make_unique<CameoXmiParser>();
+    }
     if (format_option == "sysml" || format_option == "sysml2") {
         return std::make_unique<Sysml2Parser>();
     }
@@ -154,6 +158,9 @@ std::unique_ptr<IParser> create_parser(const std::string& input_file, const std:
         return std::make_unique<MermaidParser>();
     }
     const std::string ext = fs::path(input_file).extension().string();
+    if (ext == ".xmi" || ext == ".xml" || ext == ".mdxml" || ext == ".uml") {
+        return std::make_unique<CameoXmiParser>();
+    }
     if (ext == ".sysml") {
         return std::make_unique<Sysml2Parser>();
     }

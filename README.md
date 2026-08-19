@@ -97,20 +97,6 @@ int main() {
 
 ---
 
-## 📊 Comparison with Other Libraries
-
-| Feature | `fsmc` | Boost.SML | Boost.MSM |
-| :--- | :---: | :---: | :---: |
-| **Diagram-Driven Compilation** | **Yes (PlantUML & Mermaid)** | No (C++ DSL only) | No (C++ DSL only) |
-| **OMG UML 2.5 Compliance** | **Full (Choice, History, Internal, Deferred, HFSM)** | Partial | Partial |
-| **Single-Header Output (Zero Dependencies)** | **Yes** | Header-only (Boost) | Heavy Boost Dependency |
-| **Native C++20 Concepts Support** | **Yes (`concept Guard`, `concept Action`)** | Experimental | No |
-| **CMake Build Integration** | **Native (`fsmc_target_sources`)** | Manual | Manual |
-| **Zero Heap Allocations on Dispatch** | **Yes** | Yes | No (variant/any) |
-| **Thread-Safe Queue & Background Worker** | **Built-in (`thread_safe_fsm`)** | Manual | Manual |
-
----
-
 ## 📚 Documentation Index
 
 - 📖 **[OMG UML 2.5 Reference Guide](docs/UML_REFERENCE.md)**: Syntax reference for PlantUML and Mermaid.

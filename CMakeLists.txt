@@ -41,6 +41,31 @@ add_subdirectory(src)
 add_subdirectory(tests)
 add_subdirectory(examples)
 
-# Install CMake integration module
-install(FILES cmake/FsmGenTools.cmake DESTINATION lib/cmake/fsmc)
+# Package configuration & installation for find_package(fsmc REQUIRED)
+include(CMakePackageConfigHelpers)
+
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/fsmcConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/fsmcConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/fsmcConfig.cmake"
+    INSTALL_DESTINATION lib/cmake/fsmc
+)
+
+install(EXPORT fsmcTargets
+    NAMESPACE fsmc::
+    DESTINATION lib/cmake/fsmc
+)
+
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/fsmcConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/fsmcConfigVersion.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FsmGenTools.cmake"
+    DESTINATION lib/cmake/fsmc
+)
+
 install(DIRECTORY include/ DESTINATION include)

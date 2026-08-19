@@ -57,11 +57,16 @@ class thread_safe_fsm {
     thread_safe_fsm& operator=(thread_safe_fsm&&) = delete;
 
     // ========================================================================
-    // Context Management
+    // Context & Observer Management
     // ========================================================================
     void set_context(Context& ctx) {
         std::lock_guard<std::recursive_mutex> lock(mutex_);
         fsm_.set_context(ctx);
+    }
+
+    void set_observer(typename fsm_type::observer_type observer) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        fsm_.set_observer(std::move(observer));
     }
 
     // ========================================================================

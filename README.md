@@ -155,7 +155,7 @@ fsmc -i <model_file> -o <output.hpp> [OPTIONS]
 
 Test, formal check, and simulate state machines directly in your browser without any installation:
 
-👉 **[Launch Interactive Web Playground](playground/index.html)** *(or open [playground/index.html](playground/index.html) in any browser)*
+👉 **[Launch Live Web Playground (GitHub Pages)](https://simoneCavalleri.github.io/fsmc/)** *(or open [playground/index.html](playground/index.html) locally)*
 
 - 🎨 **Multi-Format Live Editor**: Mermaid, PlantUML, SysML v2, JSON
 - 📊 **Real-Time Visual Statechart**: Graph rendering via Mermaid.js

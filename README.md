@@ -158,6 +158,11 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
+## 📖 Comprehensive Modeling & Extensions Guide
+
+For complete syntax references across all 7 formats, native vs extended capabilities, composite boolean guards, timed transitions, and deferred events, see the:
+👉 **[OMG UML 2.5 & SysML v2 State Machine Reference Guide](docs/UML_REFERENCE.md)**
+
 ---
 
 ## 📄 License

@@ -15,6 +15,7 @@ This guide provides a comprehensive mapping between the **OMG UML 2.5 / SysML v2
 8. [Universal Diagram Export & Translation](#8-universal-diagram-export--translation)
 9. [Guards, Composite Logic & Actions](#9-guards-composite-logic--actions)
 10. [Multi-Format Modeling Reference](#10-multi-format-modeling-reference)
+11. [Format Feature Matrix & Extensions Specification](#11-format-feature-matrix--extensions-specification)
 
 ---
 
@@ -493,4 +494,102 @@ digraph MissionFSM {
   Standby -> InFlight [label="AuthorizeCmd [ValidClearanceGuard] / ArmEnginesAction"];
 }
 ```
+
+---
+
+## 11. Format Feature Matrix & Extensions Specification
+
+### A. Feature Matrix (Native vs Extended Syntax)
+
+The table below details which UML 2.5 / Statechart features are supported **natively** by each official format specification versus features for which `fsmc` defines a **clean, renderer-safe extension**:
+
+| Feature / Concept | Cameo OMG XMI | OMG SysML v2 | W3C SCXML | XState JSON | PlantUML | Mermaid | Graphviz DOT |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Simple States & Transitions** | **Native** | **Native** | **Native** | **Native** | **Native** | **Native** | **Native** |
+| **Initial / Final States** | **Native** | **Native** | **Native** | **Native** | **Native** (`[*]`) | **Native** (`[*]`) | **Extended** (`shape=point`) |
+| **Composite States (HFSM)** | **Native** | **Native** | **Native** | **Native** | **Native** | **Native** | **Extended** (`subgraph`) |
+| **Internal Transitions** | **Native** | **Native** | **Native** | **Native** | **Native** (`State : E / A`) | **Native** (`State : E / A`) | **Extended** (`internal=true`) |
+| **Choice / Junction** | **Native** | **Native** | **Extended** (`cond` list) | **Extended** (`cond` list) | **Native** (`<<choice>>`) | **Native** (`<<choice>>`) | **Extended** (`shape=diamond`) |
+| **History States (`[H]`, `[H*]`)** | **Native** | **Native** | **Native** | **Native** | **Native** (`State[H]`) | **Extended** (`[H]`) | *N/A* |
+| **Deferred Events (Deferrable)** | **Native** | **Native** (`defer Evt;`) | **Extended** (`<defer>`) | **Extended** (`"defer": []`) | **Extended** (`: defer Evt`) | **Extended** (`: [defer] Evt`) | **Extended** (`defer="..."`) |
+| **Composite Guards (`!`, `&&`, `\|\|`)** | **Extended** (AST) | **Native** | **Native** | **Native** | **Extended** (AST) | **Extended** (AST) | **Extended** (AST) |
+| **Timed Transitions (`after_ms<N>`)** | **Extended** (AST) | **Native** (`after 500ms`) | **Native** (`delay=...`) | **Native** (`after: {}`) | **Extended** (AST) | **Extended** (AST) | **Extended** (AST) |
+
+---
+
+### B. Extension Design Principles
+
+When a diagram format lacks a native keyword for advanced UML 2.5 constructs (such as *deferred events* or *choice pseudostates* in visual diagram languages), `fsmc` extensions adhere to three non-negotiable design principles:
+
+1. **100% Renderer-Safe (Non-Intrusive)**:  
+   Extensions never break official diagram renderers (e.g. PlantUML Java JAR, Mermaid.js CLI, Graphviz `dot`). The extension syntax renders cleanly as regular state text, attributes, or stereotypes without visual or grammatical errors.
+2. **Deterministic Parsing (Zero Heuristics / Guessing)**:  
+   The parser evaluates input strictly through formal grammar and token matching. It never "guesses" or makes assumptions about unspecified behaviors.
+3. **Graceful Zero-Overhead Degradation**:  
+   If a feature is omitted in a diagram, the compiled C++ model completely excludes data structures and branching logic for that feature (0 bytes memory footprint, 0 CPU overhead).
+
+---
+
+### C. Syntax Extensions Quick Reference
+
+#### 1. Deferred Events (`defer`)
+- **PlantUML**:
+  ```plantuml
+  StateName : defer EventName
+  StateName : [defer] EventName
+  ```
+- **Mermaid**:
+  ```mermaid
+  StateName : [defer] EventName
+  StateName : defer EventName
+  ```
+- **Graphviz DOT**:
+  ```dot
+  StateName [defer="Event1, Event2"];
+  ```
+- **W3C SCXML**:
+  ```xml
+  <state id="StateName">
+    <defer event="EventName"/>
+  </state>
+  ```
+- **XState JSON**:
+  ```json
+  "StateName": {
+    "defer": ["Event1", "Event2"]
+  }
+  ```
+
+#### 2. Choice & Junction Pseudostates
+- **PlantUML**: `state MyChoice <<choice>>` or `state MyChoice <<junction>>`
+- **Mermaid**: `state MyChoice <<choice>>`
+- **Graphviz DOT**: `MyChoice [shape=diamond];` or `MyChoice [shape=choice];`
+- **SCXML / XState**: Modelled via sequential conditional transition branches on the same trigger event.
+
+#### 3. History States (Shallow `[H]` and Deep `[H*]`)
+- **PlantUML**: `StateName[H]` or `StateName[H*]`
+- **Mermaid**: Composite state containing `[H]` or `[H*]` transition targets.
+- **Cameo / SysML v2 / SCXML**: Standard native XML/SysML elements.
+
+#### 4. Internal Transitions (No Entry / Exit Triggers)
+- **PlantUML / Mermaid**: `StateName : EventName [Guard] / ActionName` (declared without transition arrow `-->`).
+- **Graphviz DOT**: `StateName -> StateName [label="Event / Action", internal=true];`
+
+#### 5. Timed Transitions (`after_ms<N>`, `after_s<N>`, `after_us<N>`)
+- **OMG SysML v2**: `transition accept after 500ms then NextState;`
+- **W3C SCXML**: `<transition delay="500ms" target="NextState"/>`
+- **XState JSON**: `"after": { "500": "NextState" }`
+- **PlantUML / Mermaid / DOT**: `after_500ms`, `after_10s`, `after_50us` or `after(500ms)`
+
+---
+
+### D. Semantic Validation Pipeline (`fsm_validator`)
+
+After parsing any input format, `fsmc` runs an exhaustive static analysis pass verifying:
+- **Reachability Analysis**: Identifies states that cannot be transitioned to from the initial state (`[WARNING] State unreachable from initial state: 'StateName'`).
+- **Target Integrity**: Verifies that all transition destinations exist in the model.
+- **Initial State Determinism**: Ensures every composite region has a well-defined initial state (inferred from first state if omitted).
+- **Choice Branch Completeness**: Ensures choice pseudostates possess at least one valid outgoing branch.
+- **Identifier Sanitization**: Automatically normalizes names to valid C++ identifiers while preserving semantic traceability.
+
 

@@ -60,12 +60,12 @@ class thread_safe_fsm {
     // Context & Observer Management
     // ========================================================================
     void set_context(Context& ctx) {
-        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        std::scoped_lock lock(mutex_);
         fsm_.set_context(ctx);
     }
 
     void set_observer(typename fsm_type::observer_type observer) {
-        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        std::scoped_lock lock(mutex_);
         fsm_.set_observer(std::move(observer));
     }
 
@@ -74,7 +74,7 @@ class thread_safe_fsm {
     // ========================================================================
     template <typename Event>
     bool send(const Event& event) {
-        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        std::scoped_lock lock(mutex_);
         return fsm_.dispatch(event);
     }
 
@@ -84,7 +84,7 @@ class thread_safe_fsm {
     template <typename Event>
     void post(Event event) {
         {
-            std::lock_guard<std::recursive_mutex> lock(mutex_);
+            std::scoped_lock lock(mutex_);
             event_queue_.push([evt = std::move(event)](fsm_type& machine) { machine.dispatch(evt); });
         }
         cv_.notify_one();

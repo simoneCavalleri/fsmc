@@ -908,7 +908,7 @@ class CppGenerator {
             out << "    template <typename Event>\n";
             out << "    void post(Event&& event) {\n";
             out << "        {\n";
-            out << "            std::lock_guard<std::mutex> lock(mutex_);\n";
+            out << "            std::scoped_lock lock(mutex_);\n";
             out << "            queue_.push([evt = "
                    "std::forward<Event>(event)](fsm_type& m) { m.dispatch(evt); "
                    "});\n";
@@ -917,7 +917,7 @@ class CppGenerator {
             out << "    }\n\n";
 
             out << "    void set_observer(typename fsm_type::observer_type obs) {\n";
-            out << "        std::lock_guard<std::mutex> lock(mutex_);\n";
+            out << "        std::scoped_lock lock(mutex_);\n";
             out << "        fsm_.set_observer(std::move(obs));\n";
             out << "    }\n\n";
 
@@ -928,7 +928,7 @@ class CppGenerator {
             out << "            while (!st.stop_requested()) {\n";
             out << "                event_handler task;\n";
             out << "                {\n";
-            out << "                    std::unique_lock<std::mutex> lock(mutex_);\n";
+            out << "                    std::unique_lock<std::recursive_mutex> lock(mutex_);\n";
             out << "                    cv_.wait(lock, [&] { return !queue_.empty() "
                    "|| !running_.load(); });\n";
             out << "                    if (!running_.load() && queue_.empty()) "
@@ -939,7 +939,7 @@ class CppGenerator {
             out << "                    }\n";
             out << "                }\n";
             out << "                if (task) {\n";
-            out << "                    std::lock_guard<std::mutex> lock(mutex_);\n";
+            out << "                    std::scoped_lock lock(mutex_);\n";
             out << "                    task(fsm_);\n";
             out << "                }\n";
             out << "            }\n";
@@ -957,25 +957,25 @@ class CppGenerator {
 
             out << "    template <typename State> [[nodiscard]] bool is_in_state() "
                    "const {\n";
-            out << "        std::lock_guard<std::mutex> lock(mutex_);\n";
+            out << "        std::scoped_lock lock(mutex_);\n";
             out << "        return fsm_.template is_in_state<State>();\n";
             out << "    }\n\n";
 
             out << "    [[nodiscard]] std::string_view current_state_name() const "
                    "{\n";
-            out << "        std::lock_guard<std::mutex> lock(mutex_);\n";
+            out << "        std::scoped_lock lock(mutex_);\n";
             out << "        return fsm_.current_state_name();\n";
             out << "    }\n\n";
 
             out << "    [[nodiscard]] bool is_queue_empty() const {\n";
-            out << "        std::lock_guard<std::mutex> lock(mutex_);\n";
+            out << "        std::scoped_lock lock(mutex_);\n";
             out << "        return queue_.empty();\n";
             out << "    }\n\n";
 
             out << "private:\n";
             out << "    fsm_type fsm_;\n";
-            out << "    mutable std::mutex mutex_;\n";
-            out << "    std::condition_variable cv_;\n";
+            out << "    mutable std::recursive_mutex mutex_;\n";
+            out << "    std::condition_variable_any cv_;\n";
             out << "    std::queue<event_handler> queue_;\n";
             out << "    std::atomic<bool> running_{false};\n";
             out << "    std::jthread worker_;\n";
@@ -1495,7 +1495,7 @@ class CppGenerator {
             out << "    template <typename Event>\n";
             out << "    void post(Event&& event) {\n";
             out << "        {\n";
-            out << "            std::lock_guard<std::mutex> lock(mutex_);\n";
+            out << "            std::scoped_lock lock(mutex_);\n";
             out << "            queue_.push([evt = "
                    "std::forward<Event>(event)](fsm_type& m) { m.dispatch(evt); "
                    "});\n";
@@ -1504,7 +1504,7 @@ class CppGenerator {
             out << "    }\n\n";
 
             out << "    void set_observer(typename fsm_type::observer_type obs) {\n";
-            out << "        std::lock_guard<std::mutex> lock(mutex_);\n";
+            out << "        std::scoped_lock lock(mutex_);\n";
             out << "        fsm_.set_observer(std::move(obs));\n";
             out << "    }\n\n";
 
@@ -1515,7 +1515,7 @@ class CppGenerator {
             out << "            while (running_.load()) {\n";
             out << "                event_handler task;\n";
             out << "                {\n";
-            out << "                    std::unique_lock<std::mutex> lock(mutex_);\n";
+            out << "                    std::unique_lock<std::recursive_mutex> lock(mutex_);\n";
             out << "                    cv_.wait(lock, [&] { return !queue_.empty() "
                    "|| !running_.load(); });\n";
             out << "                    if (!running_.load() && queue_.empty()) "
@@ -1526,7 +1526,7 @@ class CppGenerator {
             out << "                    }\n";
             out << "                }\n";
             out << "                if (task) {\n";
-            out << "                    std::lock_guard<std::mutex> lock(mutex_);\n";
+            out << "                    std::scoped_lock lock(mutex_);\n";
             out << "                    task(fsm_);\n";
             out << "                }\n";
             out << "            }\n";
@@ -1542,24 +1542,24 @@ class CppGenerator {
             out << "    }\n\n";
 
             out << "    template <typename State> bool is_in_state() const {\n";
-            out << "        std::lock_guard<std::mutex> lock(mutex_);\n";
+            out << "        std::scoped_lock lock(mutex_);\n";
             out << "        return fsm_.template is_in_state<State>();\n";
             out << "    }\n\n";
 
             out << "    std::string_view current_state_name() const {\n";
-            out << "        std::lock_guard<std::mutex> lock(mutex_);\n";
+            out << "        std::scoped_lock lock(mutex_);\n";
             out << "        return fsm_.current_state_name();\n";
             out << "    }\n\n";
 
             out << "    bool is_queue_empty() const {\n";
-            out << "        std::lock_guard<std::mutex> lock(mutex_);\n";
+            out << "        std::scoped_lock lock(mutex_);\n";
             out << "        return queue_.empty();\n";
             out << "    }\n\n";
 
             out << "private:\n";
             out << "    fsm_type fsm_;\n";
-            out << "    mutable std::mutex mutex_;\n";
-            out << "    std::condition_variable cv_;\n";
+            out << "    mutable std::recursive_mutex mutex_;\n";
+            out << "    std::condition_variable_any cv_;\n";
             out << "    std::queue<event_handler> queue_;\n";
             out << "    std::atomic<bool> running_{false};\n";
             out << "    std::thread worker_;\n";

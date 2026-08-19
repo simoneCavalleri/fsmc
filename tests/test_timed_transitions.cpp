@@ -124,6 +124,69 @@ void test_async_post_delayed_priority() {
     std::cout << "[PASS] test_async_post_delayed_priority passed (Timers executed in chronological priority order).\n";
 }
 
+// ============================================================================
+// Reentrancy & Recursive Lock Safety in Action Execution
+// ============================================================================
+
+struct ReentrantCtx;
+
+struct ActionSelfPost {
+    void operator()(const Step1& /*evt*/, StateA& /*src*/, StateB& /*dst*/, ReentrantCtx& ctx) const;
+};
+
+struct ActionFinal {
+    void operator()(const Step2& /*evt*/, StateB& /*src*/, StateC& /*dst*/, ReentrantCtx& ctx) const;
+};
+
+using ReentrantTable = fsm::transition_table<
+    fsm::transition<StateA, Step1, StateB, ActionSelfPost>,
+    fsm::transition<StateB, Step2, StateC, ActionFinal>
+>;
+
+struct ReentrantCtx {
+    fsm::thread_safe_fsm<ReentrantTable, ReentrantCtx>* sm_ptr = nullptr;
+    bool self_post_executed = false;
+    bool final_executed = false;
+};
+
+void ActionSelfPost::operator()(const Step1& /*evt*/, StateA& /*src*/, StateB& /*dst*/, ReentrantCtx& ctx) const {
+    ctx.self_post_executed = true;
+    // 1. Reentrant query of state name under recursive lock
+    assert(ctx.sm_ptr != nullptr);
+    assert(ctx.sm_ptr->is_in_state<StateA>());
+    // 2. Reentrant self-posting of next event from inside action handler
+    ctx.sm_ptr->post(Step2{});
+}
+
+void ActionFinal::operator()(const Step2& /*evt*/, StateB& /*src*/, StateC& /*dst*/, ReentrantCtx& ctx) const {
+    ctx.final_executed = true;
+}
+
+void test_async_reentrant_action_self_post() {
+    std::cout << "[TEST] Running test_async_reentrant_action_self_post...\n";
+
+    ReentrantCtx ctx;
+    fsm::thread_safe_fsm<ReentrantTable, ReentrantCtx> async_sm(ctx);
+    ctx.sm_ptr = &async_sm;
+
+    async_sm.start_worker();
+
+    // Trigger initial transition
+    async_sm.post(Step1{});
+
+    // Wait until background worker processes reentrantly self-posted Step2 event
+    while (!async_sm.is_in_state<StateC>()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    assert(ctx.self_post_executed);
+    assert(ctx.final_executed);
+    assert(async_sm.is_in_state<StateC>());
+
+    async_sm.stop_worker();
+    std::cout << "[PASS] test_async_reentrant_action_self_post passed (Recursive lock and self-post verified).\n";
+}
+
 }  // namespace
 
 int main() {
@@ -133,9 +196,10 @@ int main() {
 
     test_sync_timed_event();
     test_async_post_delayed_priority();
+    test_async_reentrant_action_self_post();
 
     std::cout << "========================================\n"
-              << "     ALL TIMED TESTS PASSED (2/2)!      \n"
+              << "     ALL TIMED & REENTRANCY TESTS PASSED (3/3)!\n"
               << "========================================\n";
     return 0;
 }

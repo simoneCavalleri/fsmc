@@ -11,7 +11,7 @@
 #include "fsm/fsm.hpp"
 #include "fsm/thread_safe_fsm.hpp"
 
-namespace net {
+namespace net_mermaid {
 
 // Forward declaration of Context
 struct NetworkContext;
@@ -137,7 +137,7 @@ struct ResumeQueueAction {
 // Transition Table (Compile-Time Fluent DSL)
 // ============================================================================
 
-using ConnectionFSMTable =
+using ConnectionMermaidFSMTable =
     fsm::transition_table<fsm::row<Disconnected, ConnectCmd, Connecting>::when<HasNetworkGuard>::then<InitSocketAction>,
                           fsm::row<Disconnected, ConnectCmd, Disconnected>::when<NoNetworkGuard>::then<LogErrorAction>,
                           fsm::row<Connecting, HandshakeOkEvent, Connected>::then<SetupSessionAction>,
@@ -154,7 +154,7 @@ using ConnectionFSMTable =
 // State Machine Type Aliases
 // ============================================================================
 
-using ConnectionFSM = fsm::fsm<ConnectionFSMTable, NetworkContext, Disconnected>;
-using ThreadSafeConnectionFSM = fsm::thread_safe_fsm<ConnectionFSMTable, NetworkContext, Disconnected>;
+using ConnectionMermaidFSM = fsm::fsm<ConnectionMermaidFSMTable, NetworkContext, Disconnected>;
+using ThreadSafeConnectionMermaidFSM = fsm::thread_safe_fsm<ConnectionMermaidFSMTable, NetworkContext, Disconnected>;
 
-}  // namespace net
+}  // namespace net_mermaid

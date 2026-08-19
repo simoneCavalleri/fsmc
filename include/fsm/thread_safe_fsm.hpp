@@ -83,9 +83,12 @@ class thread_safe_fsm {
     // ========================================================================
     template <typename Event>
     void post(Event event) {
+        auto task = [evt = std::move(event)](fsm_type& machine) {
+            machine.dispatch(evt);
+        };
         {
             std::scoped_lock lock(mutex_);
-            event_queue_.push([evt = std::move(event)](fsm_type& machine) { machine.dispatch(evt); });
+            event_queue_.push(std::move(task));
         }
         cv_.notify_one();
     }
@@ -200,11 +203,10 @@ class thread_safe_fsm {
     template <typename Event, typename Rep, typename Period>
     void post_delayed(Event event, std::chrono::duration<Rep, Period> delay) {
         auto deadline = std::chrono::steady_clock::now() + delay;
+        auto task = [evt = std::move(event)](fsm_type& machine) { machine.dispatch(evt); };
         {
             std::scoped_lock lock(mutex_);
-            timed_queue_.push(timed_event{deadline, [evt = std::move(event)](fsm_type& machine) {
-                                              machine.dispatch(evt);
-                                          }});
+            timed_queue_.push(timed_event{deadline, std::move(task)});
         }
         cv_.notify_one();
     }

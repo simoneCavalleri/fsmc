@@ -41,8 +41,8 @@ jobs:
           emcmake cmake -B build-wasm -DFSMC_BUILD_WASM=ON -DCMAKE_BUILD_TYPE=Release
           cmake --build build-wasm --config Release --target fsmc_wasm
           mkdir -p playground
-          cp build-wasm/fsmc.js playground/fsmc.js
-          cp build-wasm/fsmc.wasm playground/fsmc.wasm
+          cp build-wasm/bin/fsmc.js playground/fsmc.js || cp build-wasm/fsmc.js playground/fsmc.js
+          cp build-wasm/bin/fsmc.wasm playground/fsmc.wasm || cp build-wasm/fsmc.wasm playground/fsmc.wasm
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

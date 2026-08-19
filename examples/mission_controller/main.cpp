@@ -139,6 +139,7 @@ int main() {
     // 2. Hierarchical Sub-State Diagnostics
     std::cout << "\n[PHASE 2] Composite State Diagnostics (Standby -> Diagnostics)\n";
     bool handled = fsm.dispatch(mission::CalibrationOkEvent{});
+    (void)handled;
     assert(handled);
     assert(fsm.is_in_state<mission::Calibrated>());
     std::cout << "  Current State: " << fsm.current_state_name() << "\n";
@@ -163,6 +164,7 @@ int main() {
 
         std::cout << "  Dispatching AuthorizeCmd with flight_clearance_granted = false...\n";
         bool abort_handled = abort_fsm.dispatch(mission::AuthorizeCmd{});
+        (void)abort_handled;
         assert(abort_handled);
         assert(abort_fsm.is_in_state<mission::Aborted>());
         assert(denied_context.alarm_triggered_count == 1);

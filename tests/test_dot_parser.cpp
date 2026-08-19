@@ -27,6 +27,7 @@ void test_dot_basic() {
     FsmModel model;
     std::string err;
     const bool is_parsed = parser.parse(dot_content, model, err);
+    (void)is_parsed;
 
     assert(is_parsed);
     assert(model.name == "DotConnectionFSM");
@@ -60,10 +61,12 @@ void test_dot_composite() {
     FsmModel model;
     std::string err;
     const bool is_parsed = parser.parse(dot_content, model, err);
+    (void)is_parsed;
 
     assert(is_parsed);
     assert(model.states.size() == 4);
     const auto* inflight = model.find_state("InFlight");
+    (void)inflight;
     assert(inflight != nullptr);
     assert(inflight->is_composite);
     assert(inflight->initial_sub_state == "Ascending");

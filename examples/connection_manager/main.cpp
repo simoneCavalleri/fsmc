@@ -119,6 +119,7 @@ int main() {
     // 2. Establishing Connection (Disconnected -> Connecting -> Connected)
     std::cout << "\n[PHASE 2] Establishing Network Connection (Guarded Transition)\n";
     bool handled = fsm.dispatch(net::ConnectCmd{});
+    (void)handled;
     assert(handled);
     assert(fsm.is_in_state<net::Connecting>());
     assert(context.socket_fd == 42);

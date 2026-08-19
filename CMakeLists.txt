@@ -40,6 +40,7 @@ enable_testing()
 add_subdirectory(src)
 add_subdirectory(tests)
 add_subdirectory(examples)
+add_subdirectory(benchmarks)
 
 # Package configuration & installation for find_package(fsmc REQUIRED)
 include(CMakePackageConfigHelpers)

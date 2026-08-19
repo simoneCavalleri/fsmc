@@ -140,6 +140,7 @@ fsmc -i <model_file> -o <output.hpp> [OPTIONS]
 | `-i, --input <file>` | Input model file (`.xmi`, `.scxml`, `.json`, `.dot`, `.sysml`, `.puml`, `.mmd`) | **Required** |
 | `-o, --output <file>` | Output C++ header file or diagram file | `stdout` |
 | `-e, --export <fmt>` | Export diagram to `'mermaid'`, `'plantuml'`, or `'sysml2'` | |
+| `--verify, --check` | Run formal model checker (livelock, choice, deadlock) and exit | |
 | `-n, --name <name>` | FSM class name | Inferred from file |
 | `--namespace <ns>` | C++ namespace | `fsm_generated` |
 | `--context <type>` | Custom Context struct/class | `no_context` |
@@ -147,6 +148,19 @@ fsmc -i <model_file> -o <output.hpp> [OPTIONS]
 | `--standalone` | Single-header output with embedded runtime (zero deps) | `true` |
 | `--modular` | Header-only output including external `fsm/fsm.hpp` | |
 | `--no-stubs` | Emits forward declarations for custom user guard/action structs | |
+
+---
+
+## 🌐 Interactive Web Playground & Simulator
+
+Test, formal check, and simulate state machines directly in your browser without any installation:
+
+👉 **[Launch Interactive Web Playground](playground/index.html)** *(or open [playground/index.html](playground/index.html) in any browser)*
+
+- 🎨 **Multi-Format Live Editor**: Mermaid, PlantUML, SysML v2, JSON
+- 📊 **Real-Time Visual Statechart**: Graph rendering via Mermaid.js
+- 🛡️ **Formal Model Checker**: Detect livelocks, choice stalls, and deadlocks live
+- ⚡ **Interactive Simulator**: Click event buttons to trigger transitions and view execution history logs
 
 ---
 

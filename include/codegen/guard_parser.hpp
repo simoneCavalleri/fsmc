@@ -39,19 +39,19 @@ class GuardExpressionParser {
     }
 
   private:
-    enum class TokenType { Ident, And, Or, Not, LParen, RParen, End };
+    enum class TokenType : std::uint8_t { Ident, And, Or, Not, LParen, RParen, End };
 
     struct Token {
         TokenType type;
         std::string value;
     };
 
-    explicit GuardExpressionParser(std::string_view src) : src_(src), pos_(0) { tokenize(); }
+    explicit GuardExpressionParser(std::string_view src) : src_(src) { tokenize(); }
 
     void tokenize() {
         while (pos_ < src_.size()) {
             char c = src_[pos_];
-            if (std::isspace(static_cast<unsigned char>(c))) {
+            if (std::isspace(static_cast<unsigned char>(c)) != 0) {
                 ++pos_;
                 continue;
             }
@@ -95,7 +95,7 @@ class GuardExpressionParser {
             size_t start = pos_;
             while (pos_ < src_.size()) {
                 char ch = src_[pos_];
-                if (std::isspace(static_cast<unsigned char>(ch)) || ch == '&' || ch == '|' || ch == '!' || ch == '(' ||
+                if ((std::isspace(static_cast<unsigned char>(ch)) != 0) || ch == '&' || ch == '|' || ch == '!' || ch == '(' ||
                     ch == ')') {
                     break;
                 }
@@ -126,7 +126,9 @@ class GuardExpressionParser {
         while (current().type == TokenType::Or) {
             advance();
             std::string right = parse_and(atomic);
-            left = "fsm::or_<" + left + ", " + right + ">";
+            std::string temp = "fsm::or_<";
+            temp.append(left).append(", ").append(right).append(">");
+            left = std::move(temp);
         }
         return left;
     }
@@ -136,7 +138,9 @@ class GuardExpressionParser {
         while (current().type == TokenType::And) {
             advance();
             std::string right = parse_unary(atomic);
-            left = "fsm::and_<" + left + ", " + right + ">";
+            std::string temp = "fsm::and_<";
+            temp.append(left).append(", ").append(right).append(">");
+            left = std::move(temp);
         }
         return left;
     }

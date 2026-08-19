@@ -156,9 +156,7 @@ class MermaidParser : public IParser {
 
         if (starts_with(rest, "[defer]")) {
             rest = trim(rest.substr(7));
-        } else if (starts_with(rest, "defer:")) {
-            rest = trim(rest.substr(6));
-        } else if (starts_with(rest, "defer ")) {
+        } else if (starts_with(rest, "defer:") || starts_with(rest, "defer ")) {
             rest = trim(rest.substr(6));
         } else {
             const auto defer_pos = rest.find("defer ");

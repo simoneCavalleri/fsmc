@@ -213,7 +213,7 @@ class fsm {
         }
     }
 
-    const Context& get_ctx() const noexcept {
+    [[nodiscard]] const Context& get_ctx() const noexcept {
         if constexpr (std::is_same_v<Context, no_context>) {
             return dummy_ctx_;
         } else {
@@ -296,7 +296,7 @@ class fsm {
     Table table_;
     Context* context_{nullptr};
     no_context dummy_ctx_{};
-    observer_type observer_{};
+    observer_type observer_;
     std::vector<history_entry> history_records_{};
     std::vector<std::function<bool(fsm&)>> deferred_queue_{};
     bool is_replaying_deferred_{false};

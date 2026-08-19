@@ -31,6 +31,9 @@ Checks: >
   -bugprone-unchecked-optional-access,
   -readability-braces-around-statements,
   -readability-identifier-length,
+  -readability-container-contains,
+  -modernize-use-designated-initializers,
+  -misc-use-internal-linkage,
   -readability-use-anyofallof
 
 WarningsAsErrors: ''

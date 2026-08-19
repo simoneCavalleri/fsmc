@@ -4,11 +4,14 @@
 
 #include "codegen/cameo_xmi_parser.hpp"
 #include "codegen/fsm_model.hpp"
+#include "codegen/json_parser.hpp"
+#include "codegen/json_serializer.hpp"
 #include "codegen/mermaid_parser.hpp"
 #include "codegen/mermaid_serializer.hpp"
 #include "codegen/plantuml_parser.hpp"
 #include "codegen/plantuml_serializer.hpp"
 #include "codegen/scxml_parser.hpp"
+#include "codegen/sysml2_parser.hpp"
 #include "codegen/sysml2_serializer.hpp"
 
 using namespace fsm::codegen;
@@ -127,6 +130,109 @@ void test_sysml2_export() {
     std::cout << "[PASS] test_sysml2_export passed.\n";
 }
 
+void test_industrial_press_roundtrip() {
+    std::cout << "[TEST] Running test_industrial_press_roundtrip across all formats...\n";
+
+    const std::string puml = R"(@startuml
+[*] --> Idle
+
+Idle --> Initializing : PowerOnCmd [SafetyOk && !EStop] / LogPowerOn
+Idle --> Idle : PingEvent / Heartbeat
+
+state Initializing {
+    [*] --> SelfTest
+    SelfTest --> Calibrating : SelfTestOkEvent / StoreDiagnostics
+    SelfTest --> Faulted : SelfTestFailEvent [!Recoverable] / LogFault
+    SelfTest : ProgressEvent / UpdateDisplay
+    Calibrating --> Ready : CalibrationDoneEvent / SaveOffsets
+    Calibrating : ProgressEvent / UpdateDisplay
+}
+
+Initializing --> Idle : AbortCmd / Cleanup
+Ready --> Operating : StartCmd [ToolLoaded && OperatorPresent] / EngageDrive
+
+state Operating {
+    [*] --> Running
+
+    state Running {
+        [*] --> Manual
+        Manual --> Auto : AutoModeCmd [ConfigValid] / SwitchToAuto
+        Auto --> Manual : ManualModeCmd / SwitchToManual
+        Auto : SensorTickEvent / UpdateFeedback
+        Manual : JogCmd / MoveAxis
+        Running : HeartbeatEvent / ResetWatchdog
+    }
+
+    Running --> Paused : PauseCmd / HoldPosition
+    Paused --> Running : ResumeCmd [SafetyOk] / ReleaseHold
+    Paused --> Idle : after_30000ms / AutoShutdown
+    Running --> Faulted : EStopEvent / EmergencyBrake
+}
+
+Operating --> Paused : SuspendCmd / SaveContext
+Paused --> Operating[H] : ResumeSessionCmd / RestoreLastActiveState
+Faulted --> Operating[H*] : ResetAndResumeCmd [!CriticalFault] / DeepRestoreState
+Faulted --> Idle : AckFaultCmd [!CriticalFault] / ClearFault
+Faulted --> Faulted : DiagnosticPollEvent / LogDiagnostics
+Operating --> Idle : StopCmd / DisengageDrive
+@enduml)";
+
+    PlantUmlParser puml_parser;
+    FsmModel model;
+    std::string err;
+    assert(puml_parser.parse(puml, model, err));
+
+    // 1. Verify AST Hierarchy
+    assert(model.initial_state == "Idle");
+    assert(model.find_state("Idle")->parent_state.empty());
+    assert(model.find_state("Initializing")->is_composite);
+    assert(model.find_state("Initializing")->parent_state.empty());
+    assert(model.find_state("SelfTest")->parent_state == "Initializing");
+    assert(model.find_state("Calibrating")->parent_state == "Initializing");
+    assert(model.find_state("Ready")->parent_state.empty());
+    assert(model.find_state("Faulted")->parent_state.empty());
+    assert(model.find_state("Operating")->is_composite);
+    assert(model.find_state("Operating")->parent_state.empty());
+    assert(model.find_state("Running")->is_composite);
+    assert(model.find_state("Running")->parent_state == "Operating");
+    assert(model.find_state("Manual")->parent_state == "Running");
+    assert(model.find_state("Auto")->parent_state == "Running");
+
+    // 2. Test PlantUML Roundtrip
+    const std::string exported_puml = PlantUmlSerializer::serialize(model);
+    assert(exported_puml.find("state Initializing {") != std::string::npos);
+    assert(exported_puml.find("state Operating {") != std::string::npos);
+    assert(exported_puml.find("state Running {") != std::string::npos);
+    FsmModel roundtrip_puml;
+    assert(puml_parser.parse(exported_puml, roundtrip_puml, err));
+    assert(roundtrip_puml.initial_state == "Idle");
+    assert(roundtrip_puml.find_state("SelfTest")->parent_state == "Initializing");
+    assert(roundtrip_puml.find_state("Manual")->parent_state == "Running");
+
+    // 3. Test Mermaid Roundtrip
+    const std::string exported_mmd = MermaidSerializer::serialize(model);
+    assert(exported_mmd.find("state Initializing {") != std::string::npos);
+    assert(exported_mmd.find("state Operating {") != std::string::npos);
+    assert(exported_mmd.find("state Running {") != std::string::npos);
+    MermaidParser mmd_parser;
+    FsmModel roundtrip_mmd;
+    assert(mmd_parser.parse(exported_mmd, roundtrip_mmd, err));
+    assert(roundtrip_mmd.find_state("SelfTest")->parent_state == "Initializing");
+    assert(roundtrip_mmd.find_state("Manual")->parent_state == "Running");
+
+    // 4. Test JSON Roundtrip
+    const std::string exported_json = JsonSerializer::serialize(model);
+    assert(exported_json.find("\"Initializing\": {") != std::string::npos);
+    assert(exported_json.find("\"Operating\": {") != std::string::npos);
+    JsonStateParser json_parser;
+    FsmModel roundtrip_json;
+    assert(json_parser.parse(exported_json, roundtrip_json, err));
+    assert(roundtrip_json.find_state("SelfTest")->parent_state == "Initializing");
+    assert(roundtrip_json.find_state("Manual")->parent_state == "Running");
+
+    std::cout << "[PASS] test_industrial_press_roundtrip passed across PlantUML, Mermaid, and JSON.\n";
+}
+
 }  // namespace
 
 int main() {
@@ -137,9 +243,10 @@ int main() {
     test_cameo_to_mermaid_export();
     test_scxml_to_plantuml_export();
     test_sysml2_export();
+    test_industrial_press_roundtrip();
 
     std::cout << "========================================\n"
-              << "     ALL EXPORT TESTS PASSED (3/3)!     \n"
+              << "     ALL EXPORT TESTS PASSED (4/4)!     \n"
               << "========================================\n";
     return 0;
 }

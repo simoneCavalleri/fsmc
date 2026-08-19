@@ -110,15 +110,8 @@ class PlantUmlSerializer {
             }
             const auto& trans = model.transitions[i];
             auto src_it = parent_map.find(trans.source);
-            auto dst_it = parent_map.find(trans.target);
-
             std::string src_parent = (src_it != parent_map.end()) ? src_it->second : "";
-            std::string dst_parent = (dst_it != parent_map.end()) ? dst_it->second : "";
-
-            bool is_local =
-                (src_parent == state.name &&
-                 (dst_parent == state.name || trans.kind == TransitionKind::Internal || trans.source == trans.target));
-            if (is_local) {
+            if (src_parent == state.name) {
                 emitted_transitions.insert(i);
                 std::string clean_target = trans.target;
                 if (trans.target_is_history) {

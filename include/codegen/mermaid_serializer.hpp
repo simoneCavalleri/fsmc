@@ -1,5 +1,7 @@
 #pragma once
 
+#include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -14,6 +16,15 @@ class MermaidSerializer {
         std::ostringstream out;
         out << "stateDiagram-v2\n";
 
+        // Map each state to its parent for fast lookup
+        std::map<std::string, std::string> parent_map;
+        for (const auto& s : model.states) {
+            parent_map[s.name] = s.parent_state;
+        }
+
+        // Track emitted transitions so we don't duplicate
+        std::set<size_t> emitted_transitions;
+
         // Initial transition
         if (!model.initial_state.empty()) {
             out << "    [*] --> " << model.initial_state << "\n";
@@ -22,11 +33,11 @@ class MermaidSerializer {
         // Emit composite states and their contents
         for (const auto& state : model.states) {
             if (state.is_composite && state.parent_state.empty()) {
-                emit_state(out, state, model, 1);
+                emit_state(out, state, model, parent_map, emitted_transitions, 1);
             }
         }
 
-        // Emit top-level non-composite states with notes or deferred events
+        // Emit top-level non-composite states with deferred events
         for (const auto& state : model.states) {
             if (!state.is_composite && state.parent_state.empty()) {
                 for (const auto& d_evt : state.deferred_events) {
@@ -35,9 +46,17 @@ class MermaidSerializer {
             }
         }
 
-        // Emit transitions
-        for (const auto& trans : model.transitions) {
-            out << "    " << trans.source << " --> " << trans.target;
+        // Emit remaining outer / cross-boundary transitions
+        for (size_t i = 0; i < model.transitions.size(); ++i) {
+            if (emitted_transitions.find(i) != emitted_transitions.end()) {
+                continue;
+            }
+            const auto& trans = model.transitions[i];
+            std::string clean_target = trans.target;
+            if (trans.target_is_history) {
+                clean_target += trans.target_is_deep_history ? "[H*]" : "[H]";
+            }
+            out << "    " << trans.source << " --> " << clean_target;
             std::string label = build_label(trans);
             if (!label.empty()) {
                 out << " : " << label;
@@ -49,7 +68,9 @@ class MermaidSerializer {
     }
 
   private:
-    static void emit_state(std::ostream& out, const StateModel& state, const FsmModel& model, size_t indent) {
+    static void emit_state(std::ostream& out, const StateModel& state, const FsmModel& model,
+                           const std::map<std::string, std::string>& parent_map, std::set<size_t>& emitted_transitions,
+                           size_t indent) {
         std::string pad(indent * 4, ' ');
         out << pad << "state " << state.name << " {\n";
 
@@ -64,16 +85,51 @@ class MermaidSerializer {
             out << pad << "    " << state.name << " : defer " << d_evt << "\n";
         }
 
-        // Find child states
+        // 1. Emit child composite states first
         for (const auto& child : model.states) {
-            if (child.parent_state == state.name) {
-                if (child.is_composite) {
-                    emit_state(out, child, model, indent + 1);
-                } else {
-                    for (const auto& d_evt : child.deferred_events) {
-                        out << pad << "    " << child.name << " : defer " << d_evt << "\n";
-                    }
+            if (child.parent_state == state.name && child.is_composite) {
+                emit_state(out, child, model, parent_map, emitted_transitions, indent + 1);
+            }
+        }
+
+        // 2. Emit non-composite child states and their deferred events
+        for (const auto& child : model.states) {
+            if (child.parent_state == state.name && !child.is_composite) {
+                out << pad << "    state " << child.name << "\n";
+                for (const auto& d_evt : child.deferred_events) {
+                    out << pad << "    " << child.name << " : defer " << d_evt << "\n";
                 }
+            }
+        }
+
+        // 3. Emit local transitions strictly within this composite state scope
+        for (size_t i = 0; i < model.transitions.size(); ++i) {
+            if (emitted_transitions.find(i) != emitted_transitions.end()) {
+                continue;
+            }
+            const auto& trans = model.transitions[i];
+            auto src_it = parent_map.find(trans.source);
+            auto dst_it = parent_map.find(trans.target);
+
+            std::string src_parent = (src_it != parent_map.end()) ? src_it->second : "";
+            std::string dst_parent = (dst_it != parent_map.end()) ? dst_it->second : "";
+
+            // If source is inside this composite state AND target is either inside or same parent
+            bool is_local =
+                (src_parent == state.name &&
+                 (dst_parent == state.name || trans.kind == TransitionKind::Internal || trans.source == trans.target));
+            if (is_local) {
+                emitted_transitions.insert(i);
+                std::string clean_target = trans.target;
+                if (trans.target_is_history) {
+                    clean_target += trans.target_is_deep_history ? "[H*]" : "[H]";
+                }
+                out << pad << "    " << trans.source << " --> " << clean_target;
+                std::string label = build_label(trans);
+                if (!label.empty()) {
+                    out << " : " << label;
+                }
+                out << "\n";
             }
         }
 

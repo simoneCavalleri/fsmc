@@ -13,6 +13,7 @@
 #include "codegen/fsm_model.hpp"
 #include "codegen/fsm_validator.hpp"
 #include "codegen/json_parser.hpp"
+#include "codegen/json_serializer.hpp"
 #include "codegen/mermaid_parser.hpp"
 #include "codegen/mermaid_serializer.hpp"
 #include "codegen/plantuml_parser.hpp"
@@ -47,10 +48,45 @@ std::unique_ptr<IParser> get_parser_for_format(const std::string& fmt) {
     return std::make_unique<MermaidParser>();
 }
 
+std::string detect_format_from_content(const std::string& source) {
+    if (source.find("@startuml") != std::string::npos || source.find("@enduml") != std::string::npos)
+        return "plantuml";
+    if (source.find("stateDiagram") != std::string::npos || source.find("stateDiagram-v2") != std::string::npos)
+        return "mermaid";
+    if (source.find("state def ") != std::string::npos || source.find("entry;") != std::string::npos)
+        return "sysml2";
+    if (source.find("<scxml") != std::string::npos)
+        return "scxml";
+    if (source.find("digraph") != std::string::npos)
+        return "dot";
+    if (source.find("<xmi:") != std::string::npos || source.find("<uml:") != std::string::npos)
+        return "cameo";
+    size_t first = source.find_first_not_of(" \t\n\r");
+    if (first != std::string::npos && source[first] == '{')
+        return "json";
+    return "";
+}
+
+bool parse_with_fallback(const std::string& source, const std::string& format, FsmModel& model, std::string& err) {
+    auto parser = get_parser_for_format(format);
+    if (parser->parse(source, model, err)) {
+        return true;
+    }
+    std::string detected = detect_format_from_content(source);
+    if (!detected.empty() && detected != format) {
+        std::string fallback_err;
+        auto fallback_parser = get_parser_for_format(detected);
+        if (fallback_parser->parse(source, model, fallback_err)) {
+            err.clear();
+            return true;
+        }
+    }
+    return false;
+}
+
 }  // namespace
 
 std::string fsmc_wasm_compile(const std::string& source, const std::string& format, int standard, bool standalone) {
-    auto parser = get_parser_for_format(format);
     FsmModel model;
     model.name = "WebPlaygroundFSM";
     model.ns = "fsm_playground";
@@ -58,7 +94,7 @@ std::string fsmc_wasm_compile(const std::string& source, const std::string& form
     model.thread_safe = true;
 
     std::string err;
-    if (!parser->parse(source, model, err)) {
+    if (!parse_with_fallback(source, format, model, err)) {
         return "// [FSMC ERROR] Parsing failed:\n// " + err;
     }
 
@@ -72,10 +108,9 @@ std::string fsmc_wasm_compile(const std::string& source, const std::string& form
 }
 
 std::string fsmc_wasm_export(const std::string& source, const std::string& from_format, const std::string& to_format) {
-    auto parser = get_parser_for_format(from_format);
     FsmModel model;
     std::string err;
-    if (!parser->parse(source, model, err)) {
+    if (!parse_with_fallback(source, from_format, model, err)) {
         return "// [FSMC ERROR] Parsing failed: " + err;
     }
 
@@ -88,15 +123,17 @@ std::string fsmc_wasm_export(const std::string& source, const std::string& from_
     if (to_format == "sysml" || to_format == "sysml2") {
         return Sysml2Serializer::serialize(model);
     }
+    if (to_format == "json" || to_format == "xstate") {
+        return JsonSerializer::serialize(model);
+    }
 
     return "// [FSMC ERROR] Unsupported target format: " + to_format;
 }
 
 std::string fsmc_wasm_get_model(const std::string& source, const std::string& format) {
-    auto parser = get_parser_for_format(format);
     FsmModel model;
     std::string err;
-    if (!parser->parse(source, model, err)) {
+    if (!parse_with_fallback(source, format, model, err)) {
         return "{\"error\": \"" + err + "\"}";
     }
 
@@ -146,10 +183,9 @@ std::string fsmc_wasm_get_model(const std::string& source, const std::string& fo
 }
 
 std::string fsmc_wasm_verify(const std::string& source, const std::string& format) {
-    auto parser = get_parser_for_format(format);
     FsmModel model;
     std::string err;
-    if (!parser->parse(source, model, err)) {
+    if (!parse_with_fallback(source, format, model, err)) {
         return "{\"is_valid\": false, \"diagnostics\": [{\"severity\": \"ERROR\", \"category\": \"Parser\", "
                "\"message\": \"" +
                err + "\"}]}";

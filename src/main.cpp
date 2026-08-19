@@ -11,6 +11,7 @@
 #include "codegen/fsm_model.hpp"
 #include "codegen/fsm_validator.hpp"
 #include "codegen/json_parser.hpp"
+#include "codegen/json_serializer.hpp"
 #include "codegen/mermaid_parser.hpp"
 #include "codegen/mermaid_serializer.hpp"
 #include "codegen/parser_interface.hpp"
@@ -337,9 +338,11 @@ int main(int argc, char* argv[]) {
             exported_diagram = PlantUmlSerializer::serialize(model);
         } else if (opts.export_diagram_format == "sysml" || opts.export_diagram_format == "sysml2") {
             exported_diagram = Sysml2Serializer::serialize(model);
+        } else if (opts.export_diagram_format == "json" || opts.export_diagram_format == "xstate") {
+            exported_diagram = JsonSerializer::serialize(model);
         } else {
             std::cerr << "Error: Unsupported export diagram format: '" << opts.export_diagram_format
-                      << "'. Supported: mermaid, plantuml, sysml2\n";
+                      << "'. Supported: mermaid, plantuml, sysml2, json\n";
             return 1;
         }
 

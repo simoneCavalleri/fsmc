@@ -110,10 +110,12 @@ const ModelManager = {
   detectFormat(text) {
     const t = (text || "").trim();
     if (t.startsWith('{')) return 'json';
-    if (t.includes('@startuml')) return 'plantuml';
-    if (t.includes('stateDiagram')) return 'mermaid';
-    if (t.includes('state def ') || t.includes('accept ')) return 'sysml2';
-    return 'plantuml';
+    if (t.includes('@startuml') || t.includes('@enduml')) return 'plantuml';
+    if (t.startsWith('stateDiagram') || t.includes('stateDiagram-v2')) return 'mermaid';
+    if (t.includes('state def ') || t.includes('entry;') || t.includes('accept ')) return 'sysml2';
+    if (t.startsWith('digraph') || t.startsWith('graph')) return 'dot';
+    if (t.startsWith('<scxml')) return 'scxml';
+    return null;
   },
 
   parse(text, format) {
@@ -298,14 +300,28 @@ const GraphRenderer = {
     return out.trim();
   },
 
-  async render(model) {
+  async render(model, sourceCode, format) {
     const canvas = document.getElementById("mermaidCanvas");
     if (!model.states || model.states.length === 0) {
       canvas.innerHTML = `<div style="color: var(--text-muted); font-family: var(--font-mono); font-size: 0.8rem; padding: 20px; text-align: center;">No states detected in diagram.</div>`;
       return;
     }
 
-    const canonicalGraph = this.buildCanonicalGraph(model);
+    let canonicalGraph = "";
+    if (fsmcModule && fsmcModule.exportDiagram && sourceCode && sourceCode.trim()) {
+      try {
+        const exported = fsmcModule.exportDiagram(sourceCode, format, "mermaid");
+        if (exported && !exported.startsWith("// [FSMC ERROR]")) {
+          canonicalGraph = exported;
+        }
+      } catch (e) {
+        console.warn("WASM exportDiagram in render exception:", e);
+      }
+    }
+    if (!canonicalGraph) {
+      canonicalGraph = this.buildCanonicalGraph(model);
+    }
+
     if (window.mermaid && canonicalGraph) {
       const seq = ++renderSeq;
       try {
@@ -731,8 +747,18 @@ const App = {
 
   update() {
     const code = document.getElementById("editor").value;
-    const format = document.getElementById("formatSelect").value;
+    let format = document.getElementById("formatSelect").value;
     const isCpp20 = document.getElementById("stdSelect").value === "20";
+
+    const detected = ModelManager.detectFormat(code);
+    if (detected && detected !== format) {
+      format = detected;
+      const sel = document.getElementById("formatSelect");
+      if (sel && Array.from(sel.options).some(o => o.value === detected)) {
+        sel.value = detected;
+      }
+      document.getElementById("formatBadge").textContent = detected.toUpperCase();
+    }
 
     // 1. Parse AST from C++ WebAssembly parser
     const parsed = ModelManager.parse(code, format);
@@ -765,7 +791,7 @@ const App = {
     }
 
     // 4. Render Visual Graph & Simulator
-    GraphRenderer.render(ModelManager.currentModel);
+    GraphRenderer.render(ModelManager.currentModel, code, format);
     SimulatorController.updateUI();
   }
 };

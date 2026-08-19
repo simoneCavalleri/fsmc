@@ -35,10 +35,8 @@ struct TimeoutAction {
     void operator()(const Timeout500ms& /*evt*/, Connecting& /*src*/, Disconnected& /*dst*/) const {}
 };
 
-using ConnTable = fsm::transition_table<
-    fsm::transition<Connecting, HandshakeOk, Connected>,
-    fsm::transition<Connecting, Timeout500ms, Disconnected, TimeoutAction>
->;
+using ConnTable = fsm::transition_table<fsm::transition<Connecting, HandshakeOk, Connected>,
+                                        fsm::transition<Connecting, Timeout500ms, Disconnected, TimeoutAction>>;
 
 void test_sync_timed_event() {
     std::cout << "[TEST] Running test_sync_timed_event...\n";
@@ -62,10 +60,18 @@ struct Step1 {};
 struct Step2 {};
 struct Step3 {};
 
-struct StateA { static constexpr std::string_view name = "StateA"; };
-struct StateB { static constexpr std::string_view name = "StateB"; };
-struct StateC { static constexpr std::string_view name = "StateC"; };
-struct StateD { static constexpr std::string_view name = "StateD"; };
+struct StateA {
+    static constexpr std::string_view name = "StateA";
+};
+struct StateB {
+    static constexpr std::string_view name = "StateB";
+};
+struct StateC {
+    static constexpr std::string_view name = "StateC";
+};
+struct StateD {
+    static constexpr std::string_view name = "StateD";
+};
 
 struct OrderContext {
     std::vector<std::string> log;
@@ -89,11 +95,9 @@ struct ActionCtoD {
     }
 };
 
-using OrderTable = fsm::transition_table<
-    fsm::transition<StateA, Step1, StateB, ActionAtoB>,
-    fsm::transition<StateB, Step2, StateC, ActionBtoC>,
-    fsm::transition<StateC, Step3, StateD, ActionCtoD>
->;
+using OrderTable = fsm::transition_table<fsm::transition<StateA, Step1, StateB, ActionAtoB>,
+                                         fsm::transition<StateB, Step2, StateC, ActionBtoC>,
+                                         fsm::transition<StateC, Step3, StateD, ActionCtoD>>;
 
 void test_async_post_delayed_priority() {
     std::cout << "[TEST] Running test_async_post_delayed_priority...\n";
@@ -138,10 +142,8 @@ struct ActionFinal {
     void operator()(const Step2& /*evt*/, StateB& /*src*/, StateC& /*dst*/, ReentrantCtx& ctx) const;
 };
 
-using ReentrantTable = fsm::transition_table<
-    fsm::transition<StateA, Step1, StateB, ActionSelfPost>,
-    fsm::transition<StateB, Step2, StateC, ActionFinal>
->;
+using ReentrantTable = fsm::transition_table<fsm::transition<StateA, Step1, StateB, ActionSelfPost>,
+                                             fsm::transition<StateB, Step2, StateC, ActionFinal>>;
 
 struct ReentrantCtx {
     fsm::thread_safe_fsm<ReentrantTable, ReentrantCtx>* sm_ptr = nullptr;

@@ -86,7 +86,8 @@ void test_scxml_to_plantuml_export() {
     const std::string puml_diagram = PlantUmlSerializer::serialize(model);
     assert(puml_diagram.find("@startuml") != std::string::npos);
     assert(puml_diagram.find("[*] --> Disconnected") != std::string::npos);
-    assert(puml_diagram.find("Disconnected --> Connecting : ConnectCmd [HasNetworkGuard] / InitSocketAction") != std::string::npos);
+    assert(puml_diagram.find("Disconnected --> Connecting : ConnectCmd [HasNetworkGuard] / InitSocketAction") !=
+           std::string::npos);
     assert(puml_diagram.find("@enduml") != std::string::npos);
 
     // Verify PlantUML roundtrip parse
@@ -120,7 +121,8 @@ void test_sysml2_export() {
     const std::string sysml = Sysml2Serializer::serialize(model);
     assert(sysml.find("state def ExportTest {") != std::string::npos);
     assert(sysml.find("initial state Off;") != std::string::npos);
-    assert(sysml.find("transition from Off accept ToggleCmd if PowerGuard do TurnOnAction then On;") != std::string::npos);
+    assert(sysml.find("transition from Off accept ToggleCmd if PowerGuard do TurnOnAction then On;") !=
+           std::string::npos);
 
     std::cout << "[PASS] test_sysml2_export passed.\n";
 }

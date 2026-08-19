@@ -115,8 +115,12 @@ void test_history_codegen_expansion() {
 }
 
 // Runtime History Execution
-struct Standby { static constexpr std::string_view name = "Standby"; };
-struct Operating { static constexpr std::string_view name = "Operating"; };
+struct Standby {
+    static constexpr std::string_view name = "Standby";
+};
+struct Operating {
+    static constexpr std::string_view name = "Operating";
+};
 struct Step1 {
     static constexpr std::string_view name = "Step1";
     static constexpr std::string_view parent = "Operating";
@@ -129,7 +133,9 @@ struct Step3 {
     static constexpr std::string_view name = "Step3";
     static constexpr std::string_view parent = "Operating";
 };
-struct Paused { static constexpr std::string_view name = "Paused"; };
+struct Paused {
+    static constexpr std::string_view name = "Paused";
+};
 
 struct Start {};
 struct NextStep {};
@@ -137,19 +143,15 @@ struct Pause {};
 struct Resume {};
 
 using HistoryRuntimeTable = fsm::transition_table<
-    fsm::row<Standby, Start, Step1>,
-    fsm::row<Step1, NextStep, Step2>,
-    fsm::row<Step2, NextStep, Step3>,
+    fsm::row<Standby, Start, Step1>, fsm::row<Step1, NextStep, Step2>, fsm::row<Step2, NextStep, Step3>,
     // Propagated from Operating -> Paused
-    fsm::row<Step1, Pause, Paused>,
-    fsm::row<Step2, Pause, Paused>,
-    fsm::row<Step3, Pause, Paused>,
+    fsm::row<Step1, Pause, Paused>, fsm::row<Step2, Pause, Paused>, fsm::row<Step3, Pause, Paused>,
     // History expansion on Resume
     fsm::row<Paused, Resume, Step1>::when<fsm::history_is<Operating, Step1>>,
     fsm::row<Paused, Resume, Step2>::when<fsm::history_is<Operating, Step2>>,
     fsm::row<Paused, Resume, Step3>::when<fsm::history_is<Operating, Step3>>,
-    fsm::row<Paused, Resume, Step1> // Fallback default
->;
+    fsm::row<Paused, Resume, Step1>  // Fallback default
+    >;
 
 void test_history_runtime_execution() {
     std::cout << "[TEST] Running test_history_runtime_execution...\n";

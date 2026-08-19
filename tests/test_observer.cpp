@@ -12,15 +12,31 @@
 namespace {
 
 // States & Events
-struct Idle { static constexpr std::string_view name = "Idle"; };
-struct Active { static constexpr std::string_view name = "Active"; };
-struct Paused { static constexpr std::string_view name = "Paused"; };
+struct Idle {
+    static constexpr std::string_view name = "Idle";
+};
+struct Active {
+    static constexpr std::string_view name = "Active";
+};
+struct Paused {
+    static constexpr std::string_view name = "Paused";
+};
 
-struct StartEvent { static constexpr std::string_view name = "StartEvent"; };
-struct PauseEvent { static constexpr std::string_view name = "PauseEvent"; };
-struct ResumeEvent { static constexpr std::string_view name = "ResumeEvent"; };
-struct PingEvent { static constexpr std::string_view name = "PingEvent"; };
-struct StopEvent { static constexpr std::string_view name = "StopEvent"; };
+struct StartEvent {
+    static constexpr std::string_view name = "StartEvent";
+};
+struct PauseEvent {
+    static constexpr std::string_view name = "PauseEvent";
+};
+struct ResumeEvent {
+    static constexpr std::string_view name = "ResumeEvent";
+};
+struct PingEvent {
+    static constexpr std::string_view name = "PingEvent";
+};
+struct StopEvent {
+    static constexpr std::string_view name = "StopEvent";
+};
 
 struct PingAction {
     void operator()(const PingEvent& /*evt*/, auto& /*state*/, auto& /*ctx*/) const {
@@ -29,12 +45,8 @@ struct PingAction {
 };
 
 using ObserverTable = fsm::transition_table<
-    fsm::row<Idle, StartEvent, Active>,
-    fsm::row<Active, PauseEvent, Paused>,
-    fsm::row<Paused, ResumeEvent, Active>,
-    fsm::internal_row<Active, PingEvent, fsm::no_guard, PingAction>,
-    fsm::row<Active, StopEvent, Idle>
->;
+    fsm::row<Idle, StartEvent, Active>, fsm::row<Active, PauseEvent, Paused>, fsm::row<Paused, ResumeEvent, Active>,
+    fsm::internal_row<Active, PingEvent, fsm::no_guard, PingAction>, fsm::row<Active, StopEvent, Idle>>;
 
 void test_sync_fsm_observer() {
     std::cout << "[TEST] Synchronous FSM Observer Hooks...\n";
@@ -42,9 +54,7 @@ void test_sync_fsm_observer() {
     fsm::fsm<ObserverTable, fsm::no_context, Idle> machine;
 
     std::vector<fsm::transition_info> transitions;
-    machine.set_observer([&](const fsm::transition_info& info) {
-        transitions.push_back(info);
-    });
+    machine.set_observer([&](const fsm::transition_info& info) { transitions.push_back(info); });
 
     assert(machine.is_in_state<Idle>());
 

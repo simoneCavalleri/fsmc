@@ -205,7 +205,8 @@ class CppGenerator {
 
         auto find_state_by_name = [&](const std::string& name) -> const StateModel* {
             for (const auto& s : model.states) {
-                if (s.name == name) return &s;
+                if (s.name == name)
+                    return &s;
             }
             return nullptr;
         };
@@ -490,7 +491,8 @@ class CppGenerator {
 
         out << "namespace detail {\n";
         out << "template <typename State, typename = void> struct has_deferred_events : std::false_type {};\n";
-        out << "template <typename State> struct has_deferred_events<State, std::void_t<typename State::deferred_events>> : std::true_type {};\n";
+        out << "template <typename State> struct has_deferred_events<State, std::void_t<typename "
+               "State::deferred_events>> : std::true_type {};\n";
         out << "} // namespace detail\n\n";
 
         out << "template <typename State, typename Event>\n";
@@ -516,7 +518,8 @@ class CppGenerator {
         out << "constexpr bool invoke_guard(const Guard& g, const Event& evt, const State& s, Context* ctx);\n\n";
 
         out << "template <typename Guard, typename Event, typename State, typename Context, typename Fsm>\n";
-        out << "constexpr bool invoke_guard(const Guard& g, const Event& evt, const State& s, Context* ctx, const Fsm& fsm);\n\n";
+        out << "constexpr bool invoke_guard(const Guard& g, const Event& evt, const State& s, Context* ctx, const Fsm& "
+               "fsm);\n\n";
 
         out << "template <typename Guard>\n";
         out << "struct not_ {\n";
@@ -524,7 +527,8 @@ class CppGenerator {
         out << "    constexpr not_() = default;\n";
         out << "    constexpr explicit not_(Guard g) : guard_fn(std::move(g)) {}\n";
         out << "    template <typename Event, typename State, typename Context, typename Fsm>\n";
-        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx, const Fsm& fsm) const {\n";
+        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx, const Fsm& fsm) const "
+               "{\n";
         out << "        return !invoke_guard(guard_fn, evt, s, &ctx, fsm);\n";
         out << "    }\n";
         out << "    template <typename Event, typename State, typename Context>\n";
@@ -540,7 +544,8 @@ class CppGenerator {
         out << "    constexpr and_() = default;\n";
         out << "    constexpr and_(Guard1 first, Guard2 second) : g1(std::move(first)), g2(std::move(second)) {}\n";
         out << "    template <typename Event, typename State, typename Context, typename Fsm>\n";
-        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx, const Fsm& fsm) const {\n";
+        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx, const Fsm& fsm) const "
+               "{\n";
         out << "        if (!invoke_guard(g1, evt, s, &ctx, fsm)) return false;\n";
         out << "        if constexpr (sizeof...(Rest) == 0) {\n";
         out << "            return invoke_guard(g2, evt, s, &ctx, fsm);\n";
@@ -566,7 +571,8 @@ class CppGenerator {
         out << "    constexpr or_() = default;\n";
         out << "    constexpr or_(Guard1 first, Guard2 second) : g1(std::move(first)), g2(std::move(second)) {}\n";
         out << "    template <typename Event, typename State, typename Context, typename Fsm>\n";
-        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx, const Fsm& fsm) const {\n";
+        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx, const Fsm& fsm) const "
+               "{\n";
         out << "        if (invoke_guard(g1, evt, s, &ctx, fsm)) return true;\n";
         out << "        if constexpr (sizeof...(Rest) == 0) {\n";
         out << "            return invoke_guard(g2, evt, s, &ctx, fsm);\n";
@@ -668,7 +674,8 @@ class CppGenerator {
         out << "}\n\n";
 
         out << "template <typename Guard, typename Event, typename State, typename Context, typename Fsm>\n";
-        out << "constexpr bool invoke_guard(const Guard& g, const Event& evt, const State& s, Context* ctx, const Fsm& fsm) {\n";
+        out << "constexpr bool invoke_guard(const Guard& g, const Event& evt, const State& s, Context* ctx, const Fsm& "
+               "fsm) {\n";
         out << "    if constexpr (requires { { g(evt, s, *ctx, fsm) } -> std::convertible_to<bool>; }) {\n";
         out << "        return ctx ? g(evt, s, *ctx, fsm) : true;\n";
         out << "    } else if constexpr (requires { { g(evt, s, fsm) } -> std::convertible_to<bool>; }) {\n";
@@ -856,7 +863,8 @@ class CppGenerator {
                "evt, src, context_, *this)) {\n";
         out << "                if constexpr (Row::is_internal) {\n";
         out << "                    ::fsm::invoke_action(typename Row::action_type{}, evt, src, src, context_);\n";
-        out << "                    if (observer_) observer_(transition_info{::fsm::get_state_name(src), ::fsm::get_state_name(src), \"Event\", true});\n";
+        out << "                    if (observer_) observer_(transition_info{::fsm::get_state_name(src), "
+               "::fsm::get_state_name(src), \"Event\", true});\n";
         out << "                    return true;\n";
         out << "                } else {\n";
         out << "                    if constexpr (requires { SrcState::parent; }) {\n";
@@ -874,7 +882,8 @@ class CppGenerator {
         out << "                    ::fsm::invoke_action(typename Row::action_type{}, "
                "evt, src, dst_state, context_);\n";
         out << "                    ::fsm::invoke_enter_hook(dst_state, context_);\n";
-        out << "                    if (observer_) observer_(transition_info{::fsm::get_state_name(src), ::fsm::get_state_name(dst_state), \"Event\", false});\n";
+        out << "                    if (observer_) observer_(transition_info{::fsm::get_state_name(src), "
+               "::fsm::get_state_name(dst_state), \"Event\", false});\n";
         out << "                    current_state_.template emplace<typename "
                "Row::target_state>(std::move(dst_state));\n";
         out << "                    return true;\n";
@@ -1049,7 +1058,8 @@ class CppGenerator {
 
         out << "namespace detail {\n";
         out << "template <typename State, typename = void> struct has_deferred_events : std::false_type {};\n";
-        out << "template <typename State> struct has_deferred_events<State, std::void_t<typename State::deferred_events>> : std::true_type {};\n";
+        out << "template <typename State> struct has_deferred_events<State, std::void_t<typename "
+               "State::deferred_events>> : std::true_type {};\n";
         out << "} // namespace detail\n\n";
 
         out << "template <typename State, typename Event>\n";
@@ -1076,7 +1086,8 @@ class CppGenerator {
         out << "constexpr bool invoke_guard(const Guard& g, const Event& evt, const State& s, Context* ctx);\n\n";
 
         out << "template <typename Guard, typename Event, typename State, typename Context, typename Fsm>\n";
-        out << "constexpr bool invoke_guard(const Guard& g, const Event& evt, const State& s, Context* ctx, const Fsm& fsm);\n\n";
+        out << "constexpr bool invoke_guard(const Guard& g, const Event& evt, const State& s, Context* ctx, const Fsm& "
+               "fsm);\n\n";
 
         out << "template <typename Guard>\n";
         out << "struct not_ {\n";
@@ -1084,7 +1095,8 @@ class CppGenerator {
         out << "    constexpr not_() = default;\n";
         out << "    constexpr explicit not_(Guard g) : guard_fn(std::move(g)) {}\n";
         out << "    template <typename Event, typename State, typename Context, typename Fsm>\n";
-        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx, const Fsm& fsm) const {\n";
+        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx, const Fsm& fsm) const "
+               "{\n";
         out << "        return !invoke_guard(guard_fn, evt, s, &ctx, fsm);\n";
         out << "    }\n";
         out << "    template <typename Event, typename State, typename Context>\n";
@@ -1100,7 +1112,8 @@ class CppGenerator {
         out << "    constexpr and_() = default;\n";
         out << "    constexpr and_(Guard1 first, Guard2 second) : g1(std::move(first)), g2(std::move(second)) {}\n";
         out << "    template <typename Event, typename State, typename Context, typename Fsm>\n";
-        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx, const Fsm& fsm) const {\n";
+        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx, const Fsm& fsm) const "
+               "{\n";
         out << "        if (!invoke_guard(g1, evt, s, &ctx, fsm)) return false;\n";
         out << "        if constexpr (sizeof...(Rest) == 0) {\n";
         out << "            return invoke_guard(g2, evt, s, &ctx, fsm);\n";
@@ -1126,7 +1139,8 @@ class CppGenerator {
         out << "    constexpr or_() = default;\n";
         out << "    constexpr or_(Guard1 first, Guard2 second) : g1(std::move(first)), g2(std::move(second)) {}\n";
         out << "    template <typename Event, typename State, typename Context, typename Fsm>\n";
-        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx, const Fsm& fsm) const {\n";
+        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx, const Fsm& fsm) const "
+               "{\n";
         out << "        if (invoke_guard(g1, evt, s, &ctx, fsm)) return true;\n";
         out << "        if constexpr (sizeof...(Rest) == 0) {\n";
         out << "            return invoke_guard(g2, evt, s, &ctx, fsm);\n";
@@ -1243,7 +1257,8 @@ class CppGenerator {
         out << "}\n\n";
 
         out << "template <typename Guard, typename Event, typename State, typename Context, typename Fsm>\n";
-        out << "constexpr bool invoke_guard(const Guard& g, const Event& evt, const State& s, Context* ctx, const Fsm& fsm) {\n";
+        out << "constexpr bool invoke_guard(const Guard& g, const Event& evt, const State& s, Context* ctx, const Fsm& "
+               "fsm) {\n";
         out << "    if constexpr (std::is_invocable_v<Guard, const Event&, const State&, Context&, const Fsm&>) {\n";
         out << "        return ctx ? g(evt, s, *ctx, fsm) : true;\n";
         out << "    } else if constexpr (std::is_invocable_v<Guard, const Event&, const State&, const Fsm&>) {\n";
@@ -1443,7 +1458,8 @@ class CppGenerator {
                "evt, src, context_, *this)) {\n";
         out << "                if constexpr (Row::is_internal) {\n";
         out << "                    ::fsm::invoke_action(typename Row::action_type{}, evt, src, src, context_);\n";
-        out << "                    if (observer_) observer_(transition_info{::fsm::get_state_name(src), ::fsm::get_state_name(src), \"Event\", true});\n";
+        out << "                    if (observer_) observer_(transition_info{::fsm::get_state_name(src), "
+               "::fsm::get_state_name(src), \"Event\", true});\n";
         out << "                    return true;\n";
         out << "                } else {\n";
         out << "                    if constexpr (detail::has_parent<SrcState>::value) {\n";
@@ -1461,7 +1477,8 @@ class CppGenerator {
         out << "                    ::fsm::invoke_action(typename Row::action_type{}, "
                "evt, src, dst_state, context_);\n";
         out << "                    ::fsm::invoke_enter_hook(dst_state, context_);\n";
-        out << "                    if (observer_) observer_(transition_info{::fsm::get_state_name(src), ::fsm::get_state_name(dst_state), \"Event\", false});\n";
+        out << "                    if (observer_) observer_(transition_info{::fsm::get_state_name(src), "
+               "::fsm::get_state_name(dst_state), \"Event\", false});\n";
         out << "                    current_state_.template emplace<typename "
                "Row::target_state>(std::move(dst_state));\n";
         out << "                    return true;\n";

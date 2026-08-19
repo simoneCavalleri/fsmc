@@ -13,12 +13,7 @@
 
 namespace fsm::codegen {
 
-enum class DiagnosticSeverity : std::uint8_t {
-    Info,
-    Warning,
-    Error,
-    SafetyCritical
-};
+enum class DiagnosticSeverity : std::uint8_t { Info, Warning, Error, SafetyCritical };
 
 struct DiagnosticMessage {
     DiagnosticSeverity severity;
@@ -105,9 +100,8 @@ class FsmValidator {
                                        ValidationResult& result) {
         if (model.initial_state.empty()) {
             if (!model.states.empty()) {
-                result.add_warning("InitialState",
-                                   "No initial state '[*]' specified. Defaulting to first state: '" +
-                                       model.states[0].name + "'.");
+                result.add_warning("InitialState", "No initial state '[*]' specified. Defaulting to first state: '" +
+                                                       model.states[0].name + "'.");
             }
         } else if (node_names.count(model.initial_state) == 0) {
             result.add_error("InitialState",
@@ -143,8 +137,7 @@ class FsmValidator {
             }
 
             if (outgoing.empty()) {
-                result.add_error("Choice",
-                                 "Choice pseudostate '" + choice_item.name + "' has no outgoing branches.");
+                result.add_error("Choice", "Choice pseudostate '" + choice_item.name + "' has no outgoing branches.");
                 continue;
             }
 
@@ -191,8 +184,7 @@ class FsmValidator {
 
         for (const auto& state_item : model.states) {
             if (reachable.count(state_item.name) == 0) {
-                result.add_warning("Reachability",
-                                   "State unreachable from initial state: '" + state_item.name + "'.");
+                result.add_warning("Reachability", "State unreachable from initial state: '" + state_item.name + "'.");
             }
         }
     }
@@ -232,8 +224,8 @@ class FsmValidator {
                         }
                     }
                     cycle_str += " -> " + next_node;
-                    result.add_safety_critical("Livelock",
-                                               "Infinite cycle of eventless transitions detected: [" + cycle_str + "].");
+                    result.add_safety_critical(
+                        "Livelock", "Infinite cycle of eventless transitions detected: [" + cycle_str + "].");
                     return true;
                 }
                 if (visit_state[next_node] == 0) {
@@ -275,11 +267,10 @@ class FsmValidator {
                 std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(),
                                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
-                const bool is_intended_final = (lower_name.find("final") != std::string::npos ||
-                                                lower_name.find("end") != std::string::npos ||
-                                                lower_name.find("terminate") != std::string::npos ||
-                                                lower_name.find("stop") != std::string::npos ||
-                                                lower_name == "completed");
+                const bool is_intended_final =
+                    (lower_name.find("final") != std::string::npos || lower_name.find("end") != std::string::npos ||
+                     lower_name.find("terminate") != std::string::npos ||
+                     lower_name.find("stop") != std::string::npos || lower_name == "completed");
 
                 if (!is_intended_final) {
                     result.add_warning("Deadlock", "Potential trap / deadlock state: '" + state_item.name +
@@ -310,9 +301,9 @@ class FsmValidator {
                     }
                 }
                 if (unconditional_count > 1) {
-                    result.add_safety_critical(
-                        "Determinism", "Non-deterministic conflict in state '" + src_evt.first +
-                                           "': multiple unconditional transitions on event '" + src_evt.second + "'.");
+                    result.add_safety_critical("Determinism", "Non-deterministic conflict in state '" + src_evt.first +
+                                                                  "': multiple unconditional transitions on event '" +
+                                                                  src_evt.second + "'.");
                 }
             }
         }
@@ -330,7 +321,8 @@ class FsmValidator {
         for (const auto& entry : timer_counts) {
             if (entry.second > 1) {
                 result.add_warning("TimedTransition", "Duplicate timer transitions defined for duration '" +
-                                                          entry.first.second + "' on state '" + entry.first.first + "'.");
+                                                          entry.first.second + "' on state '" + entry.first.first +
+                                                          "'.");
             }
         }
     }

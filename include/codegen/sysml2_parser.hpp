@@ -231,7 +231,8 @@ class Sysml2Parser : public IParser {
 
         static const std::regex first_regex(R"(\b(?:first|from)\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
         static const std::regex accept_regex(R"(\b(?:accept|when)\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
-        static const std::regex if_regex(R"(\bif\s+([A-Za-z0-9_!&\|\(\)\s]+?)(?=\s+(?:do|then|to|;|$)))", std::regex::optimize);
+        static const std::regex if_regex(R"(\bif\s+([A-Za-z0-9_!&\|\(\)\s]+?)(?=\s+(?:do|then|to|;|$)))",
+                                         std::regex::optimize);
         static const std::regex do_regex(R"(\bdo\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
         static const std::regex then_regex(R"(\b(?:then|to)\s+([A-Za-z_][A-Za-z0-9_\[\]\*]*))", std::regex::optimize);
 

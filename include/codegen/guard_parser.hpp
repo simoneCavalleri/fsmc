@@ -95,8 +95,8 @@ class GuardExpressionParser {
             size_t start = pos_;
             while (pos_ < src_.size()) {
                 char ch = src_[pos_];
-                if ((std::isspace(static_cast<unsigned char>(ch)) != 0) || ch == '&' || ch == '|' || ch == '!' || ch == '(' ||
-                    ch == ')') {
+                if ((std::isspace(static_cast<unsigned char>(ch)) != 0) || ch == '&' || ch == '|' || ch == '!' ||
+                    ch == '(' || ch == ')') {
                     break;
                 }
                 ++pos_;

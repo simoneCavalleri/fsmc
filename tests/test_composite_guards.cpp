@@ -2,14 +2,14 @@
 #include <iostream>
 #include <string>
 
+#include "codegen/cameo_xmi_parser.hpp"
+#include "codegen/dot_parser.hpp"
 #include "codegen/guard_parser.hpp"
+#include "codegen/json_parser.hpp"
 #include "codegen/mermaid_parser.hpp"
 #include "codegen/plantuml_parser.hpp"
-#include "codegen/sysml2_parser.hpp"
 #include "codegen/scxml_parser.hpp"
-#include "codegen/dot_parser.hpp"
-#include "codegen/json_parser.hpp"
-#include "codegen/cameo_xmi_parser.hpp"
+#include "codegen/sysml2_parser.hpp"
 #include "fsm/fsm.hpp"
 
 namespace {
@@ -24,9 +24,7 @@ struct SafetyContext {
 
 // Base atomic guards
 struct IsPowerOk {
-    bool operator()(const auto& /*evt*/, const auto& /*state*/, const SafetyContext& ctx) const {
-        return ctx.power_ok;
-    }
+    bool operator()(const auto& /*evt*/, const auto& /*state*/, const SafetyContext& ctx) const { return ctx.power_ok; }
 };
 
 struct IsDoorClosed {
@@ -48,9 +46,15 @@ struct IsTempSafe {
 };
 
 // States & Events
-struct Off { static constexpr std::string_view name = "Off"; };
-struct Running { static constexpr std::string_view name = "Running"; };
-struct ErrorState { static constexpr std::string_view name = "ErrorState"; };
+struct Off {
+    static constexpr std::string_view name = "Off";
+};
+struct Running {
+    static constexpr std::string_view name = "Running";
+};
+struct ErrorState {
+    static constexpr std::string_view name = "ErrorState";
+};
 
 struct StartCmd {};
 struct StopCmd {};
@@ -149,7 +153,8 @@ Running --> Off : StopCmd
         assert(model.guards.size() == 2);
         auto has_guard_fn = [&](const std::string& name) {
             for (const auto& g : model.guards) {
-                if (g.name == name) return true;
+                if (g.name == name)
+                    return true;
             }
             return false;
         };
@@ -255,8 +260,7 @@ void test_fsm_runtime_with_composite_guards() {
 
     using Table = fsm::transition_table<
         fsm::row<Off, StartCmd, Running>::when<fsm::and_<IsPowerOk, IsDoorClosed, fsm::not_<IsEmergencyStop>>>,
-        fsm::row<Running, StopCmd, Off>
-    >;
+        fsm::row<Running, StopCmd, Off>>;
 
     SafetyContext ctx;
     fsm::fsm<Table, SafetyContext, Off> machine(ctx);

@@ -89,9 +89,8 @@ class fsm {
                 [this, &event](const auto& src_state) -> bool {
                     using CurrentSrc = std::decay_t<decltype(src_state)>;
                     if constexpr (is_deferred_event_v<CurrentSrc, Event>) {
-                        this->deferred_queue_.push_back([event](fsm& self) -> bool {
-                            return self.dispatch_direct(event);
-                        });
+                        this->deferred_queue_.push_back(
+                            [event](fsm& self) -> bool { return self.dispatch_direct(event); });
                         return true;
                     } else {
                         return false;

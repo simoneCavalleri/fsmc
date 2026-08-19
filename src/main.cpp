@@ -92,10 +92,8 @@ void print_help(const char* prog_name) {
               << "  " << prog_name
               << " -i protocol.scxml -o protocol_fsm.hpp --std 20 --namespace net "
                  "--name ProtocolFSM\n"
-              << "  " << prog_name
-              << " -i model.xmi --export mermaid -o model.mmd\n"
-              << "  " << prog_name
-              << " -i model.sysml --export plantuml -o model.puml\n"
+              << "  " << prog_name << " -i model.xmi --export mermaid -o model.mmd\n"
+              << "  " << prog_name << " -i model.sysml --export plantuml -o model.puml\n"
               << "  " << prog_name << " --export-runtime ./include/fsm --std 20\n\n";
 }
 
@@ -311,7 +309,8 @@ int main(int argc, char* argv[]) {
         }
 
         std::cout << "----------------------------------------------------------------------------\n"
-                  << " Verification Status: " << (validation.is_valid ? "PASSED (Model Sound)" : "FAILED (Errors Detected)") << "\n"
+                  << " Verification Status: "
+                  << (validation.is_valid ? "PASSED (Model Sound)" : "FAILED (Errors Detected)") << "\n"
                   << "============================================================================\n";
 
         return validation.is_valid ? 0 : 1;

@@ -253,11 +253,10 @@ struct OnPacketAction {
 };
 
 // Transition Table
-using PipelineTable = fsm::transition_table<
-    fsm::transition<Initializing, InitDone, Ready, OnInitDoneAction, fsm::no_guard>,
-    fsm::transition<Ready, RequestCmd, Processing, OnRequestAction, fsm::no_guard>,
-    fsm::transition<Processing, DataPacket, Completed, OnPacketAction, fsm::no_guard>
->;
+using PipelineTable =
+    fsm::transition_table<fsm::transition<Initializing, InitDone, Ready, OnInitDoneAction, fsm::no_guard>,
+                          fsm::transition<Ready, RequestCmd, Processing, OnRequestAction, fsm::no_guard>,
+                          fsm::transition<Processing, DataPacket, Completed, OnPacketAction, fsm::no_guard>>;
 
 void test_deferred_events_sync_runtime() {
     std::cout << "[TEST] Running test_deferred_events_sync_runtime...\n";
@@ -270,7 +269,7 @@ void test_deferred_events_sync_runtime() {
 
     // 1. Dispatch RequestCmd during Initializing -> Should be DEFERRED
     bool handled = sm.dispatch(RequestCmd{});
-    assert(handled); // Accepted into deferred queue
+    assert(handled);  // Accepted into deferred queue
     assert(sm.is_in_state<Initializing>());
     assert(sm.deferred_count() == 1);
     assert(!ctx.request_handled);

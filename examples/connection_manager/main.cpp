@@ -168,7 +168,8 @@ int main() {
         assert(handled);
         assert(offline_fsm.is_in_state<net::Disconnected>());
         assert(offline_ctx.error_count == 1);
-        std::cout << "  Connection safely rejected by composite guard [!HasNetworkGuard || !HasValidCredentialsGuard], state: "
+        std::cout << "  Connection safely rejected by composite guard [!HasNetworkGuard || !HasValidCredentialsGuard], "
+                     "state: "
                   << offline_fsm.current_state_name() << "\n";
     }
 
@@ -176,7 +177,7 @@ int main() {
     {
         net::NetworkContext cred_ctx;
         cred_ctx.has_network_interface = true;
-        cred_ctx.has_valid_credentials = false; // Triggers [!HasNetworkGuard || !HasValidCredentialsGuard]
+        cred_ctx.has_valid_credentials = false;  // Triggers [!HasNetworkGuard || !HasValidCredentialsGuard]
         net::ConnectionFSM cred_fsm(cred_ctx);
 
         handled = cred_fsm.dispatch(net::ConnectCmd{});
@@ -225,9 +226,7 @@ int main() {
     std::cout << "\n[PHASE 8] Real-Time Transition Observer Hook Demonstration\n";
     net::ConnectionFSM observed_fsm(context);
     observed_fsm.set_observer([](const fsm::transition_info& info) {
-        std::cout << "  [OBSERVER TRACE] " << info.source 
-                  << " --(" << info.event << ")--> " 
-                  << info.target
+        std::cout << "  [OBSERVER TRACE] " << info.source << " --(" << info.event << ")--> " << info.target
                   << (info.is_internal ? " [INTERNAL]" : "") << "\n";
     });
 

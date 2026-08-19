@@ -1,3 +1,10 @@
+# Ensure test assertions remain active across all compilers in Release builds
+if(MSVC)
+    add_compile_options(/UNDEBUG)
+else()
+    add_compile_options(-UNDEBUG -Wno-unused-const-variable)
+endif()
+
 # FSM Core Runtime Test Suite (C++17)
 add_executable(test_fsm test_fsm.cpp)
 target_link_libraries(test_fsm PRIVATE Threads::Threads)

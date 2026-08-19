@@ -6,13 +6,13 @@
 [![Release](https://img.shields.io/github/v/release/simoneCavalleri/fsmc?color=blue)](https://github.com/simoneCavalleri/fsmc/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![C++ Standard](https://img.shields.io/badge/C%2B%2B-17%20%7C%2020-blue.svg)](https://isocpp.org/)
-[![OMG Standards](https://img.shields.io/badge/OMG-UML%202.5%20%7C%20SysML%20v2-orange.svg)](https://www.omg.org/spec/UML/2.5/)
+[![Standards](https://img.shields.io/badge/Standards-OMG%20UML%202.5%20%7C%20SysML%20v2%20%7C%20W3C%20SCXML-orange.svg)](docs/UML_REFERENCE.md)
 [![Zero Overhead](https://img.shields.io/badge/Performance-Zero%20Overhead-success.svg)](docs/ARCHITECTURE.md)
 
-**A zero-overhead OMG UML 2.5 & SysML v2 Finite State Machine compiler for C++17/20 (SysML v2, PlantUML, Mermaid).**  
-*Convert SysML v2 (`.sysml`), PlantUML (`@startuml`), and Mermaid (`stateDiagram-v2`) models into zero-overhead C++ code.*
+**A universal zero-overhead State Machine compiler for modern C++ (C++17/20).**  
+*Convert SysML v2, Cameo / MagicDraw (OMG XMI), W3C SCXML, XState JSON, PlantUML, Mermaid, and Graphviz models into zero-overhead, standalone C++ code.*
 
-[Quickstart](#-60-second-quickstart) • [Features](#-features) • [UML / SysML Guide](docs/UML_REFERENCE.md) • [CMake Integration](docs/INTEGRATION_GUIDE.md) • [API Docs](docs/RUNTIME_API.md)
+[Quickstart](#-60-second-quickstart) • [Supported Formats](#-supported-formats) • [Features](#-features) • [UML / SysML Guide](docs/UML_REFERENCE.md) • [CMake Integration](docs/INTEGRATION_GUIDE.md) • [API Docs](docs/RUNTIME_API.md)
 
 </div>
 
@@ -20,19 +20,31 @@
 
 ## 🚀 60-Second Quickstart
 
-### 1. Define Your Model (`connection.mmd` or `mission.sysml`)
+### 1. Define Your Model
+
+Write your state machine in your preferred format:
+
+<table>
+<tr>
+<th>Mermaid (<code>.mmd</code>)</th>
+<th>OMG SysML v2 (<code>.sysml</code>)</th>
+</tr>
+<tr>
+<td>
 
 ```mermaid
 stateDiagram-v2
     [*] --> Disconnected
     Disconnected --> Connecting : ConnectCmd
-    Connecting --> Connected : ConnectionSuccessEvent / StartHeartbeat
-    Connecting --> Disconnected : ConnectionFailedEvent / LogFailure
+    Connecting --> Connected : HandshakeOkEvent / StartHeartbeat
+    Connecting --> Disconnected : TimeoutEvent / LogFailure
     Connected : Ping / ResetWatchdog
     Connected --> Disconnected : DisconnectCmd / CleanupSession
 ```
 
-*Or in native **OMG SysML v2** (`.sysml`):*
+</td>
+<td>
+
 ```sysml
 state def ConnectionFSM {
     entry; then Disconnected;
@@ -41,12 +53,66 @@ state def ConnectionFSM {
     state Connected;
 
     transition from Disconnected accept ConnectCmd then Connecting;
-    transition from Connecting accept ConnectionSuccessEvent do StartHeartbeat then Connected;
-    transition from Connecting accept ConnectionFailedEvent do LogFailure then Disconnected;
+    transition from Connecting accept HandshakeOkEvent do StartHeartbeat then Connected;
+    transition from Connecting accept TimeoutEvent do LogFailure then Disconnected;
     transition from Connected accept Ping do ResetWatchdog;
     transition from Connected accept DisconnectCmd do CleanupSession then Disconnected;
 }
 ```
+
+</td>
+</tr>
+<tr>
+<th>W3C SCXML (<code>.scxml</code>)</th>
+<th>XState JSON (<code>.json</code>)</th>
+</tr>
+<tr>
+<td>
+
+```xml
+<scxml version="1.0" initial="Disconnected" name="ConnectionFSM">
+  <state id="Disconnected">
+    <transition event="ConnectCmd" target="Connecting"/>
+  </state>
+  <state id="Connecting">
+    <transition event="HandshakeOkEvent" target="Connected">
+      <send event="StartHeartbeat"/>
+    </transition>
+  </state>
+  <state id="Connected">
+    <transition event="DisconnectCmd" target="Disconnected"/>
+  </state>
+</scxml>
+```
+
+</td>
+<td>
+
+```json
+{
+  "id": "ConnectionFSM",
+  "initial": "Disconnected",
+  "states": {
+    "Disconnected": {
+      "on": { "ConnectCmd": "Connecting" }
+    },
+    "Connecting": {
+      "on": {
+        "HandshakeOkEvent": { "target": "Connected", "actions": ["StartHeartbeat"] }
+      }
+    },
+    "Connected": {
+      "on": { "DisconnectCmd": "Disconnected" }
+    }
+  }
+}
+```
+
+</td>
+</tr>
+</table>
+
+---
 
 ### 2. Add to CMake (`CMakeLists.txt`)
 
@@ -55,16 +121,19 @@ find_package(fsmc REQUIRED)
 
 add_executable(my_app main.cpp)
 
-# Automatically compile diagram into connection_fsm.hpp
+# Automatically compile your model into a standalone C++ header during build
 fsmc_target_sources(my_app
     DIAGRAMS
         models/connection.mmd
         models/mission.sysml
+        models/protocol.scxml
     NAME ConnectionFSM
     STANDARD 20
     STANDALONE
 )
 ```
+
+---
 
 ### 3. Dispatch Events in C++ (`main.cpp`)
 
@@ -80,7 +149,7 @@ int main() {
     fsm.dispatch(ConnectCmd{});
     std::cout << "State: " << fsm.current_state_name() << "\n"; // Connecting
 
-    fsm.dispatch(ConnectionSuccessEvent{});
+    fsm.dispatch(HandshakeOkEvent{});
     std::cout << "State: " << fsm.current_state_name() << "\n"; // Connected
 
     // Zero-overhead internal transition:
@@ -92,37 +161,45 @@ int main() {
 
 ---
 
+## 🌐 Supported Formats
+
+| Format | Extensions | Primary Ecosystem | Specification / Standard |
+| :--- | :--- | :--- | :--- |
+| **Cameo Systems Modeler / MagicDraw** | `.xmi`, `.xml`, `.mdxml`, `.uml` | Aerospace, Defense, Automotive | OMG XMI 2.x / UML 2.5 |
+| **W3C SCXML** | `.scxml` | Qt (`QScxmlStateMachine`), Telecom, Robotics | W3C State Chart XML Recommendation |
+| **XState JSON Statechart** | `.json` | Web, TypeScript, Microservices, Cloud | XState / Stately.ai Schema |
+| **Graphviz DOT** | `.dot`, `.gv` | Unix Tooling, Compilers, LLVM | Graphviz DOT Grammar |
+| **OMG SysML v2** | `.sysml` | Model-Based Systems Engineering (MBSE) | OMG SysML 2.0 Textual Specification |
+| **PlantUML** | `.puml`, `.plantuml` | Enterprise Documentation & Software Design | `@startuml` Grammar |
+| **Mermaid** | `.mmd`, `.mermaid` | GitHub, GitLab, Markdown Docs | `stateDiagram-v2` |
+
+---
+
 ## ✨ Features
 
 - **Full OMG UML 2.5 & SysML v2 State Machine Compliance**:
   - **Hierarchical / Composite States (HFSM)**: Nested sub-state blocks with parent-child discovery.
   - **Internal Transitions**: `State : Event [Guard] / Action` — zero `on_exit`/`on_enter` overhead.
-  - **Choice & Junction Pseudostates**: Dynamic `<<choice>>` / `<<junction>>` runtime branching.
+  - **Choice & Junction Pseudostates**: Dynamic `<<choice>>` / `<<junction>>` runtime branching flattened at compile-time.
   - **History States**: Shallow (`[H]`) and Deep (`[H*]`) state resumption upon recovery.
   - **Deferred Events**: `State : defer Event` declarations for buffering unhandled signals.
   - **State Lifecycle Hooks**: `on_enter` and `on_exit` member function reflection.
-- **Multi-Format Ingestion**:
-  - **Cameo Systems Modeler / MagicDraw** (`.xmi`, `.xml`, `.mdxml`, `.uml`): Industry-standard OMG XMI 2.x export.
-  - **W3C SCXML** (`.scxml`): Official W3C State Chart XML standard (Qt, Telecom, Robotics).
-  - **XState JSON Statechart** (`.json`): Modern JSON Statechart specification (Web, TypeScript, Microservices).
-  - **Graphviz DOT** (`.dot`, `.gv`): Universal Unix graph/state machine format.
-  - **OMG SysML v2** (`.sysml`): Native textual specification format.
-  - **Mermaid** (`stateDiagram-v2`): Standard in GitHub, GitLab, and Markdown documentation.
-  - **PlantUML** (`@startuml`): Standard in enterprise model-driven engineering.
+- **Universal Multi-Format Ingestion**:
+  - Auto-detection or explicit selection across 7 industry formats with **zero external dependencies**.
 - **Pure Decoupled Compiler Architecture**:
-  - The CLI executable (`fsmc`) is built with C++20 and generates code for target applications targeting **C++17** or **C++20**.
+  - The CLI tool (`fsmc`) is built with C++20 and generates code for target applications in **C++17** or **C++20**.
 - **Standalone Self-Contained Output (`--standalone`, default)**:
   - Generates a single `.hpp` header containing both the state machine definition and the embedded engine. **Zero external dependencies, zero libraries to link.**
 - **First-Class CMake Integration (`fsmc_target_sources`)**:
-  - Automatically compiles diagram files during build and binds generated headers to your targets.
+  - Seamless build automation with automatic dependency tracking.
 - **Thread-Safe Asynchronous Worker**:
-  - Optional `thread_safe_fsm` wrapper for lockless background queue dispatching.
+  - Optional `thread_safe_fsm` wrapper (`std::jthread` in C++20, `std::thread` in C++17) for background queue event processing.
 
 ---
 
 ## 📚 Documentation Index
 
-- 📖 **[OMG UML 2.5, SysML v2 & SCXML Reference Guide](docs/UML_REFERENCE.md)**: Syntax reference for Cameo XMI, SCXML, JSON, DOT, SysML v2, PlantUML, and Mermaid.
+- 📖 **[OMG UML 2.5, SysML v2 & SCXML Reference Guide](docs/UML_REFERENCE.md)**: Syntax reference for all 7 supported formats.
 - 🛠️ **[Integration & Build Guide](docs/INTEGRATION_GUIDE.md)**: CMake, vcpkg, Conan, and standalone usage.
 - ⚡ **[Runtime C++ API Reference](docs/RUNTIME_API.md)**: Classes, methods, lifecycle hooks, and asynchronous workers.
 - 🏛️ **[Compiler Architecture](docs/ARCHITECTURE.md)**: Pipeline design, choice branch flattening, and template metaprogramming.

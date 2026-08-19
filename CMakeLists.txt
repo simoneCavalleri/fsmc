@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 project(fsmc
     VERSION 1.0.0
-    DESCRIPTION "A zero-overhead OMG UML 2.5 & SysML v2 Finite State Machine compiler for C++17/20 (SysML v2, PlantUML, Mermaid)"
+    DESCRIPTION "A universal zero-overhead State Machine compiler for modern C++ (C++17/20)"
     HOMEPAGE_URL "https://github.com/simoneCavalleri/fsmc"
     LANGUAGES CXX
 )

@@ -203,6 +203,8 @@ Operating --> Idle : StopCmd / DisengageDrive
     assert(exported_puml.find("state Initializing {") != std::string::npos);
     assert(exported_puml.find("state Operating {") != std::string::npos);
     assert(exported_puml.find("state Running {") != std::string::npos);
+    assert(exported_puml.find("[SafetyOk && !EStop]") != std::string::npos);
+    assert(exported_puml.find("fsm::and_") == std::string::npos); // Clean diagram format
     FsmModel roundtrip_puml;
     assert(puml_parser.parse(exported_puml, roundtrip_puml, err));
     assert(roundtrip_puml.initial_state == "Idle");
@@ -214,6 +216,8 @@ Operating --> Idle : StopCmd / DisengageDrive
     assert(exported_mmd.find("state Initializing {") != std::string::npos);
     assert(exported_mmd.find("state Operating {") != std::string::npos);
     assert(exported_mmd.find("state Running {") != std::string::npos);
+    assert(exported_mmd.find("[SafetyOk && !EStop]") != std::string::npos);
+    assert(exported_mmd.find("fsm::and_") == std::string::npos); // Clean diagram format
     MermaidParser mmd_parser;
     FsmModel roundtrip_mmd;
     assert(mmd_parser.parse(exported_mmd, roundtrip_mmd, err));
@@ -224,6 +228,9 @@ Operating --> Idle : StopCmd / DisengageDrive
     const std::string exported_json = JsonSerializer::serialize(model);
     assert(exported_json.find("\"Initializing\": {") != std::string::npos);
     assert(exported_json.find("\"Operating\": {") != std::string::npos);
+    assert(exported_json.find("\"guard\": \"SafetyOk && !EStop\"") != std::string::npos);
+    assert(exported_json.find("\"action\": \"LogPowerOn\"") != std::string::npos);
+    assert(exported_json.find("fsm::and_") == std::string::npos); // Clean diagram format
     JsonStateParser json_parser;
     FsmModel roundtrip_json;
     assert(json_parser.parse(exported_json, roundtrip_json, err));

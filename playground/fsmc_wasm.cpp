@@ -129,12 +129,13 @@ std::string fsmc_wasm_get_model(const std::string& source, const std::string& fo
 
     for (size_t i = 0; i < model.transitions.size(); ++i) {
         const auto& t = model.transitions[i];
+        bool is_internal = (t.kind == TransitionKind::Internal || t.source == t.target);
         ss << "    {\"source\": \"" << t.source << "\", "
            << "\"target\": \"" << t.target << "\", "
            << "\"event\": \"" << t.event << "\", "
            << "\"guard\": \"" << (t.guard ? *t.guard : "") << "\", "
            << "\"action\": \"" << (t.action ? *t.action : "") << "\", "
-           << "\"is_internal\": " << (t.is_internal ? "true" : "false") << ", "
+           << "\"is_internal\": " << (is_internal ? "true" : "false") << ", "
            << "\"target_is_history\": " << (t.target_is_history ? "true" : "false") << ", "
            << "\"target_is_deep_history\": " << (t.target_is_deep_history ? "true" : "false") << "}"
            << (i + 1 < model.transitions.size() ? "," : "") << "\n";
@@ -149,7 +150,9 @@ std::string fsmc_wasm_verify(const std::string& source, const std::string& forma
     FsmModel model;
     std::string err;
     if (!parser->parse(source, model, err)) {
-        return "{\"is_valid\": false, \"diagnostics\": [{\"severity\": \"ERROR\", \"category\": \"Parser\", \"message\": \"" + err + "\"}]}";
+        return "{\"is_valid\": false, \"diagnostics\": [{\"severity\": \"ERROR\", \"category\": \"Parser\", "
+               "\"message\": \"" +
+               err + "\"}]}";
     }
 
     const auto res = FsmValidator::validate(model);
@@ -164,10 +167,12 @@ std::string fsmc_wasm_verify(const std::string& source, const std::string& forma
 
     for (size_t i = 0; i < res.diagnostics.size(); ++i) {
         const auto& d = res.diagnostics[i];
-        std::string sev = (d.severity == DiagnosticSeverity::Error) ? "ERROR" :
-                          (d.severity == DiagnosticSeverity::SafetyCritical) ? "SAFETY_CRITICAL" :
-                          (d.severity == DiagnosticSeverity::Warning) ? "WARNING" : "INFO";
-        ss << "    {\"severity\": \"" << sev << "\", \"category\": \"" << d.category << "\", \"message\": \"" << d.message << "\"}";
+        std::string sev = (d.severity == DiagnosticSeverity::Error)            ? "ERROR"
+                          : (d.severity == DiagnosticSeverity::SafetyCritical) ? "SAFETY_CRITICAL"
+                          : (d.severity == DiagnosticSeverity::Warning)        ? "WARNING"
+                                                                               : "INFO";
+        ss << "    {\"severity\": \"" << sev << "\", \"category\": \"" << d.category << "\", \"message\": \""
+           << d.message << "\"}";
         if (i + 1 < res.diagnostics.size()) {
             ss << ",";
         }

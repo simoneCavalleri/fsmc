@@ -202,9 +202,8 @@ class thread_safe_fsm {
         auto deadline = std::chrono::steady_clock::now() + delay;
         {
             std::scoped_lock lock(mutex_);
-            timed_queue_.push(timed_event{deadline, [evt = std::move(event)](fsm_type& machine) {
-                                              machine.dispatch(evt);
-                                          }});
+            timed_queue_.push(
+                timed_event{deadline, [evt = std::move(event)](fsm_type& machine) { machine.dispatch(evt); }});
         }
         cv_.notify_one();
     }

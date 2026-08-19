@@ -512,20 +512,32 @@ const SimulatorController = {
     const details = ModelManager.currentModel.stateDetails || [];
     let curr = target;
 
-    // 1. History resolution
-    if (isHistory) {
-      if (isDeepHistory && this.deepHistoryRecords[curr]) {
-        return this.deepHistoryRecords[curr];
-      }
-      if (this.historyRecords[curr]) {
-        curr = this.historyRecords[curr];
-        if (isDeepHistory) {
-          return this.resolveLeaf(curr, false, false);
-        }
-      }
+    // 1. Deep History: direct restore of deepest leaf recorded
+    if (isHistory && isDeepHistory && this.deepHistoryRecords[curr]) {
+      return this.deepHistoryRecords[curr];
     }
 
-    // 2. Recursive descent through initial_sub_state to find active leaf
+    // 2. History traversal: if history exists at this level or sub-levels, restore recorded history
+    if (isHistory && this.historyRecords[curr]) {
+      const visited = new Set();
+      while (curr && !visited.has(curr)) {
+        visited.add(curr);
+        if (this.historyRecords[curr]) {
+          curr = this.historyRecords[curr];
+        } else {
+          // If a sub-level has no history recorded yet, descend via initial_sub_state
+          const obj = details.find(s => s.name === curr);
+          if (obj && obj.is_composite && obj.initial_sub_state) {
+            curr = obj.initial_sub_state;
+          } else {
+            break;
+          }
+        }
+      }
+      return curr;
+    }
+
+    // 3. Fresh Entry (non-history): Recursive descent through initial_sub_state to find active leaf
     const visited = new Set();
     while (curr && !visited.has(curr)) {
       visited.add(curr);

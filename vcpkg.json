@@ -1,7 +1,7 @@
 {
   "name": "fsmc",
   "version-string": "1.0.0",
-  "description": "Zero-overhead OMG UML 2.5 Finite State Machine compiler for C++17 and C++20",
+  "description": "A zero-overhead OMG UML 2.5 & SysML v2 Finite State Machine compiler for C++17/20 (SysML v2, PlantUML, Mermaid)",
   "homepage": "https://github.com/simoneCavalleri/fsmc",
   "license": "MIT",
   "dependencies": []

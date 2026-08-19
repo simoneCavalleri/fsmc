@@ -4,7 +4,7 @@ from conan.tools.cmake import CMake, CMakeToolchain, cmake_layout
 class FsmcConan(ConanFile):
     name = "fsmc"
     version = "1.0.0"
-    description = "Zero-overhead OMG UML 2.5 Finite State Machine compiler for C++17 and C++20"
+    description = "A zero-overhead OMG UML 2.5 & SysML v2 Finite State Machine compiler for C++17/20 (SysML v2, PlantUML, Mermaid)"
     license = "MIT"
     url = "https://github.com/simoneCavalleri/fsmc"
     settings = "os", "compiler", "build_type", "arch"

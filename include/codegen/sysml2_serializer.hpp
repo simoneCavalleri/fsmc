@@ -20,9 +20,9 @@ class Sysml2Serializer {
             out << "    initial state " << model.initial_state << ";\n\n";
         }
 
-        // Emit states
+        // Emit top-level states
         for (const auto& state : model.states) {
-            if (state.name != model.initial_state && state.parent_state.empty()) {
+            if (state.parent_state.empty()) {
                 emit_state(out, state, model, 1);
             }
         }

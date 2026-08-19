@@ -80,7 +80,7 @@ class PlantUmlParser : public IParser {
             // Deferred events: StateName : defer EventName
             if (trimmed.find(": defer ") != std::string_view::npos ||
                 trimmed.find(":defer ") != std::string_view::npos) {
-                parse_deferred_event(trimmed, out_model);
+                parse_deferred_event(trimmed, out_model, parent_stack);
                 continue;
             }
 
@@ -94,7 +94,7 @@ class PlantUmlParser : public IParser {
 
             // Internal transition lines: StateName : Event [Guard] / Action
             if (trimmed.find(':') != std::string_view::npos && trimmed.find("->") == std::string_view::npos) {
-                parse_internal_transition(trimmed, out_model);
+                parse_internal_transition(trimmed, out_model, parent_stack);
                 continue;
             }
         }
@@ -104,6 +104,7 @@ class PlantUmlParser : public IParser {
             return false;
         }
 
+        out_model.normalize_hierarchy();
         return true;
     }
 
@@ -159,7 +160,8 @@ class PlantUmlParser : public IParser {
         }
     }
 
-    static void parse_deferred_event(std::string_view line, FsmModel& model) {
+    static void parse_deferred_event(std::string_view line, FsmModel& model,
+                                     const std::vector<std::string>& parent_stack) {
         const auto colon_pos = line.find(':');
         if (colon_pos == std::string_view::npos) {
             return;
@@ -182,7 +184,8 @@ class PlantUmlParser : public IParser {
 
         const std::string event_name = sanitize_identifier(rest);
         if (!event_name.empty()) {
-            model.add_state(state_name);
+            const std::string current_parent = parent_stack.empty() ? "" : parent_stack.back();
+            model.add_state(state_name, current_parent);
             model.add_event(event_name);
             if (auto* state = model.find_state_mut(state_name)) {
                 state->deferred_events.push_back(event_name);
@@ -190,7 +193,8 @@ class PlantUmlParser : public IParser {
         }
     }
 
-    static void parse_internal_transition(std::string_view line, FsmModel& model) {
+    static void parse_internal_transition(std::string_view line, FsmModel& model,
+                                          const std::vector<std::string>& parent_stack) {
         const auto colon_pos = line.find(':');
         if (colon_pos == std::string_view::npos) {
             return;
@@ -235,7 +239,8 @@ class PlantUmlParser : public IParser {
             return;
         }
 
-        model.add_state(state_name);
+        const std::string current_parent = parent_stack.empty() ? "" : parent_stack.back();
+        model.add_state(state_name, current_parent);
         model.add_event(event_name);
         if (action_name) {
             model.add_action(*action_name);
@@ -248,6 +253,7 @@ class PlantUmlParser : public IParser {
         trans.guard = guard_name;
         trans.action = action_name;
         trans.kind = TransitionKind::Internal;
+        trans.parent_scope = current_parent;
 
         model.add_transition(std::move(trans));
     }
@@ -399,6 +405,7 @@ class PlantUmlParser : public IParser {
         trans.kind = TransitionKind::External;
         trans.target_is_history = is_history;
         trans.target_is_deep_history = is_deep_history;
+        trans.parent_scope = current_parent;
 
         model.add_transition(std::move(trans));
 

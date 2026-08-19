@@ -69,6 +69,7 @@ struct TransitionModel {
     TransitionKind kind{TransitionKind::External};
     bool target_is_history{false};
     bool target_is_deep_history{false};
+    std::string parent_scope;
 
     TransitionModel() = default;
     TransitionModel(std::string src, std::string dst, std::string evt, std::optional<std::string> grd = std::nullopt,
@@ -194,6 +195,35 @@ struct FsmModel {
             }
         }
         return nullptr;
+    }
+
+    void normalize_hierarchy() {
+        if (!initial_state.empty()) {
+            if (auto* init = find_state_mut(initial_state)) {
+                init->parent_state = "";
+            }
+        }
+
+        // Find states with outgoing transitions at the root scope
+        for (const auto& t : transitions) {
+            if (t.parent_scope.empty() && !t.source.empty()) {
+                if (auto* src_state = find_state_mut(t.source)) {
+                    src_state->parent_state = "";
+                }
+            }
+        }
+
+        // Recompute is_composite for all states
+        for (auto& p : states) {
+            bool has_children = false;
+            for (const auto& c : states) {
+                if (c.parent_state == p.name) {
+                    has_children = true;
+                    break;
+                }
+            }
+            p.is_composite = has_children;
+        }
     }
 };
 

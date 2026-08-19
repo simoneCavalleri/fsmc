@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.14)
-project(fsmc VERSION 1.0.0 LANGUAGES CXX)
+project(fsmc
+    VERSION 1.0.0
+    DESCRIPTION "A zero-overhead OMG UML 2.5 Finite State Machine compiler for C++17 and C++20"
+    HOMEPAGE_URL "https://github.com/simoneCavalleri/fsmc"
+    LANGUAGES CXX
+)
 
 # Enforce modern C++20 standard for the CLI tool
 set(CMAKE_CXX_STANDARD 20)

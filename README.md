@@ -9,8 +9,8 @@
 [![OMG Standards](https://img.shields.io/badge/OMG-UML%202.5%20%7C%20SysML%20v2-orange.svg)](https://www.omg.org/spec/UML/2.5/)
 [![Zero Overhead](https://img.shields.io/badge/Performance-Zero%20Overhead-success.svg)](docs/ARCHITECTURE.md)
 
-**A high-performance OMG UML 2.5 & SysML v2 State Machine Compiler for C++17 and C++20.**  
-*Convert Mermaid (`stateDiagram-v2`), PlantUML (`@startuml`), and SysML v2 (`.sysml`) diagrams into zero-overhead C++ code.*
+**A zero-overhead OMG UML 2.5 Finite State Machine compiler for C++17 and C++20.**  
+*Compile SysML v2 (`.sysml`), PlantUML (`@startuml`), and Mermaid (`stateDiagram-v2`) diagrams into zero-overhead C++ code.*
 
 [Quickstart](#-60-second-quickstart) • [Features](#-features) • [UML / SysML Guide](docs/UML_REFERENCE.md) • [CMake Integration](docs/INTEGRATION_GUIDE.md) • [API Docs](docs/RUNTIME_API.md)
 

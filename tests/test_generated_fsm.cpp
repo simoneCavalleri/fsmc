@@ -58,7 +58,8 @@ int main() {
     }
     async_machine.stop_worker();
 
-    std::cout << "[PASS] Generated C++ FSM (Connection Manager Mermaid) compiles and executes transitions successfully!\n"
-              << "=================================================\n";
+    std::cout
+        << "[PASS] Generated C++ FSM (Connection Manager Mermaid) compiles and executes transitions successfully!\n"
+        << "=================================================\n";
     return 0;
 }

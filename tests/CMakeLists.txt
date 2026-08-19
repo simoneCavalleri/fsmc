@@ -23,18 +23,40 @@ add_test(NAME test_codegen COMMAND test_codegen)
 # Compiled Generated FSM Test Suite (Modular mode)
 add_executable(test_generated_fsm test_generated_fsm.cpp)
 target_link_libraries(test_generated_fsm PRIVATE Threads::Threads)
+fsmc_target_sources(test_generated_fsm
+    DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/../examples/connection_manager/connection.mmd
+    NAME ConnectionMermaidFSM
+    STANDARD 20
+    NAMESPACE net_mermaid
+    CONTEXT NetworkContext
+    MODULAR
+)
 add_test(NAME test_generated_fsm COMMAND test_generated_fsm)
 
 # C++17 Standalone Output Test Suite
 add_executable(test_cpp17_standalone test_cpp17_standalone.cpp)
 target_link_libraries(test_cpp17_standalone PRIVATE Threads::Threads)
 set_target_properties(test_cpp17_standalone PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+fsmc_target_sources(test_cpp17_standalone
+    DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/../examples/connection_manager/connection.puml
+    NAME ConnectionFSM17
+    STANDARD 17
+    STANDALONE
+    NAMESPACE net17
+)
 add_test(NAME test_cpp17_standalone COMMAND test_cpp17_standalone)
 
 # C++20 Standalone Output Test Suite (Concepts & std::jthread)
 add_executable(test_cpp20_standalone test_cpp20_standalone.cpp)
 target_link_libraries(test_cpp20_standalone PRIVATE Threads::Threads)
 set_target_properties(test_cpp20_standalone PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+fsmc_target_sources(test_cpp20_standalone
+    DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/../examples/connection_manager/connection.puml
+    NAME ConnectionFSM20
+    STANDARD 20
+    STANDALONE
+    NAMESPACE net20
+)
 add_test(NAME test_cpp20_standalone COMMAND test_cpp20_standalone)
 
 # UML 2.5 Hierarchical / Composite States (HFSM)

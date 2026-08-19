@@ -3,7 +3,7 @@
 #include <iostream>
 #include <thread>
 
-#include "../examples/connection_manager/connection_mermaid_fsm.hpp"
+#include "connection_fsm.hpp"
 
 namespace net_mermaid {
 struct NetworkContext {

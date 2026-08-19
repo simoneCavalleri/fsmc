@@ -13,6 +13,7 @@ struct MissionContext {
     int altitude_km = 0;
     int telemetry_pings_received = 0;
     int clock_sync_count = 0;
+    int alarm_triggered_count = 0;
 };
 }  // namespace mission
 
@@ -55,9 +56,9 @@ struct ArmEnginesAction {
 };
 
 struct TriggerAlarmAction {
-    constexpr void operator()(const AuthorizeCmd& /*evt*/, auto& /*src*/, auto& /*dst*/,
-                              MissionContext& /*ctx*/) const {
-        std::cout << "  [ACTION] Clearance REJECTED -> Mission aborted!\n";
+    constexpr void operator()(const AuthorizeCmd& /*evt*/, auto& /*src*/, auto& /*dst*/, MissionContext& ctx) const {
+        ctx.alarm_triggered_count++;
+        std::cout << "  [ACTION] Clearance REJECTED via <<choice>> -> Alarm triggered, mission ABORTED!\n";
     }
 };
 
@@ -130,66 +131,102 @@ int main() {
     // 1. Instantiate the State Machine with custom Context
     mission::MissionFSM fsm(context);
 
-    std::cout << "[PHASE 1] Initial State Verification\n";
+    std::cout << "[PHASE 1] Initial State & Context Verification\n";
     std::cout << "  Current State: " << fsm.current_state_name() << "\n";
+    assert(fsm.is_in_state<mission::Diagnostics>());
     assert(fsm.current_state_name() == "Diagnostics");
 
     // 2. Hierarchical Sub-State Diagnostics
-    std::cout << "\n[PHASE 2] Standby Pre-Flight Diagnostics\n";
-    fsm.dispatch(mission::CalibrationOkEvent{});
+    std::cout << "\n[PHASE 2] Composite State Diagnostics (Standby -> Diagnostics)\n";
+    bool handled = fsm.dispatch(mission::CalibrationOkEvent{});
+    assert(handled);
     assert(fsm.is_in_state<mission::Calibrated>());
     std::cout << "  Current State: " << fsm.current_state_name() << "\n";
 
-    // 3. Choice Pseudostate Clearance Evaluation
-    std::cout << "\n[PHASE 3] Flight Authorization via <<choice>> Pseudostate\n";
-    fsm.dispatch(mission::AuthorizeCmd{});
+    // 3A. Choice Pseudostate Clearance Evaluation (Nominal Path: Granted -> Ascending)
+    std::cout << "\n[PHASE 3A] Flight Authorization via <<choice>> (Clearance Granted -> Ascending)\n";
+    handled = fsm.dispatch(mission::AuthorizeCmd{});
+    assert(handled);
     assert(fsm.is_in_state<mission::Ascending>());
     assert(context.thrusters_armed);
     std::cout << "  Current State: " << fsm.current_state_name() << "\n";
 
+    // 3B. Alternative Choice Branch Demonstration (Clearance Denied -> Aborted)
+    std::cout << "\n[PHASE 3B] Choice Pseudostate Alternative Branch (Clearance Denied -> Aborted)\n";
+    {
+        mission::MissionContext denied_context;
+        denied_context.flight_clearance_granted = false;
+        mission::MissionFSM abort_fsm(denied_context);
+
+        abort_fsm.dispatch(mission::CalibrationOkEvent{});
+        assert(abort_fsm.is_in_state<mission::Calibrated>());
+
+        std::cout << "  Dispatching AuthorizeCmd with flight_clearance_granted = false...\n";
+        bool abort_handled = abort_fsm.dispatch(mission::AuthorizeCmd{});
+        assert(abort_handled);
+        assert(abort_fsm.is_in_state<mission::Aborted>());
+        assert(denied_context.alarm_triggered_count == 1);
+        std::cout << "  Alternative branch successfully transitioned to: " << abort_fsm.current_state_name() << "\n";
+    }
+
     // 4. Hierarchical Flight Ascent -> Cruising -> Orbiting
-    std::cout << "\n[PHASE 4] Orbital Ascent Sequence\n";
-    fsm.dispatch(mission::AltitudeReachedEvent{});
+    std::cout << "\n[PHASE 4] Orbital Ascent Sequence (Ascending -> Cruising -> Orbiting)\n";
+    handled = fsm.dispatch(mission::AltitudeReachedEvent{});
+    assert(handled);
     assert(fsm.is_in_state<mission::Cruising>());
     assert(context.solar_panels_deployed);
     std::cout << "  Current State: " << fsm.current_state_name() << "\n";
 
-    fsm.dispatch(mission::OrbitInsertedEvent{});
+    handled = fsm.dispatch(mission::OrbitInsertedEvent{});
+    assert(handled);
     assert(fsm.is_in_state<mission::Orbiting>());
     std::cout << "  Current State: " << fsm.current_state_name() << "\n";
 
     // 5. Internal Transitions (Zero Exit/Entry Overhead)
     std::cout << "\n[PHASE 5] High-Frequency Internal Telemetry Pings\n";
     for (int i = 0; i < 3; ++i) {
-        fsm.dispatch(mission::PingTelemetry{});
+        handled = fsm.dispatch(mission::PingTelemetry{});
+        assert(handled);
     }
     assert(context.telemetry_pings_received == 3);
     assert(fsm.is_in_state<mission::Orbiting>());
 
     // 6. Communication Blackout & History Recovery
     std::cout << "\n[PHASE 6] Deep-Space Blackout & RF Recovery\n";
-    fsm.dispatch(mission::LinkDegradedEvent{});
+    handled = fsm.dispatch(mission::LinkDegradedEvent{});
+    assert(handled);
     assert(fsm.is_in_state<mission::SignalLost>());
     std::cout << "  Current State: " << fsm.current_state_name() << " (Telemetry buffered)\n";
 
     std::cout << "  Restoring RF connection...\n";
-    fsm.dispatch(mission::LinkRestoredEvent{});
+    handled = fsm.dispatch(mission::LinkRestoredEvent{});
+    assert(handled);
     assert(fsm.is_in_state<mission::Orbiting>());
     assert(context.clock_sync_count == 1);
     std::cout << "  Current State: " << fsm.current_state_name() << " (Resumed active state!)\n";
 
-    // 7. De-orbit & Landing
-    std::cout << "\n[PHASE 7] De-Orbit and Recovery\n";
-    fsm.dispatch(mission::ReturnHomeCmd{});
+    // 7. Unhandled Event Invariance Verification
+    std::cout << "\n[PHASE 7] Deterministic Unhandled Event Handling\n";
+    handled = fsm.dispatch(mission::CalibrationOkEvent{});  // Calibration is not accepted during Orbiting
+    assert(!handled);
+    assert(fsm.is_in_state<mission::Orbiting>());
+    std::cout << "  Spurious event safely ignored (dispatch returned false, state preserved: "
+              << fsm.current_state_name() << ").\n";
+
+    // 8. De-orbit & Landing
+    std::cout << "\n[PHASE 8] De-Orbit and Recovery\n";
+    handled = fsm.dispatch(mission::ReturnHomeCmd{});
+    assert(handled);
     assert(fsm.is_in_state<mission::Landing>());
     std::cout << "  Current State: " << fsm.current_state_name() << "\n";
 
-    fsm.dispatch(mission::TouchdownEvent{});
+    handled = fsm.dispatch(mission::TouchdownEvent{});
+    assert(handled);
     assert(fsm.is_in_state<mission::MissionCompleted>());
     std::cout << "  Current State: " << fsm.current_state_name() << "\n";
 
-    // 8. Asynchronous Thread-Safe Worker Showcase
-    std::cout << "\n[PHASE 8] Asynchronous Multithreaded Worker Execution\n";
+    // 9. Asynchronous Thread-Safe Worker Showcase
+    std::cout << "\n[PHASE 9] Asynchronous Multithreaded Worker Execution\n";
     mission::MissionContext async_ctx;
     mission::ThreadSafeMissionFSM async_fsm(async_ctx);
     async_fsm.start_worker();

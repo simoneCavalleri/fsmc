@@ -29,7 +29,7 @@ function(fsmc_target_sources TARGET_NAME)
     endif()
 
     if(NOT FSM_ARG_OUTPUT_DIR)
-        set(FSM_ARG_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated_fsm")
+        set(FSM_ARG_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated_${TARGET_NAME}")
     endif()
 
     file(MAKE_DIRECTORY "${FSM_ARG_OUTPUT_DIR}")

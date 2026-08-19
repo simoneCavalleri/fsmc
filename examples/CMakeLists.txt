@@ -2,7 +2,24 @@
 # Examples CMakeLists.txt
 # ==============================================================================
 
-# Showcase: Mission Controller (demonstrating all UML 2.5 features)
+# Showcase 1: Connection Manager (demonstrating OMG SysML v2 format & network protocol)
+add_executable(connection_manager_example connection_manager/main.cpp)
+target_link_libraries(connection_manager_example PRIVATE Threads::Threads)
+set_target_properties(connection_manager_example PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+
+fsmc_target_sources(connection_manager_example
+    DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/connection_manager/connection.sysml
+    NAME ConnectionFSM
+    STANDARD 20
+    STANDALONE
+    NAMESPACE net
+    CONTEXT NetworkContext
+    NO_STUBS
+)
+
+add_test(NAME connection_manager_example COMMAND connection_manager_example)
+
+# Showcase 2: Mission Controller (demonstrating all UML 2.5 features)
 add_executable(mission_controller_example mission_controller/main.cpp)
 target_link_libraries(mission_controller_example PRIVATE Threads::Threads)
 set_target_properties(mission_controller_example PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)

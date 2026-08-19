@@ -18,7 +18,7 @@ namespace fsm::codegen {
 // ============================================================================
 // Lightweight Zero-Dependency JSON Value Representation
 // ============================================================================
-enum class JsonType { Null, Bool, Number, String, Array, Object };
+enum class JsonType : std::uint8_t { Null, Bool, Number, String, Array, Object };
 
 struct JsonValue {
     JsonType type = JsonType::Null;
@@ -36,9 +36,9 @@ struct JsonValue {
         if (!is_object()) {
             return default_val;
         }
-        auto it = obj_val.find(key);
-        if (it != obj_val.end() && it->second.is_string()) {
-            return it->second.str_val;
+        auto find_it = obj_val.find(key);
+        if (find_it != obj_val.end() && find_it->second.is_string()) {
+            return find_it->second.str_val;
         }
         return default_val;
     }
@@ -47,8 +47,8 @@ struct JsonValue {
         if (!is_object()) {
             return nullptr;
         }
-        auto it = obj_val.find(key);
-        return (it != obj_val.end()) ? &it->second : nullptr;
+        auto find_it = obj_val.find(key);
+        return (find_it != obj_val.end()) ? &find_it->second : nullptr;
     }
 };
 
@@ -195,26 +195,24 @@ class SimpleJsonParser {
         idx++;  // skip '"'
         std::string result;
         while (idx < text.size()) {
-            char ch = text[idx++];
-            if (ch == '"') {
+            char curr_char = text[idx++];
+            if (curr_char == '"') {
                 out_val.str_val = result;
                 return true;
             }
-            if (ch == '\\' && idx < text.size()) {
-                char esc = text[idx++];
-                if (esc == 'n') {
+            if (curr_char == '\\' && idx < text.size()) {
+                char esc_char = text[idx++];
+                if (esc_char == 'n') {
                     result += '\n';
-                } else if (esc == 't') {
+                } else if (esc_char == 't') {
                     result += '\t';
-                } else if (esc == 'r') {
+                } else if (esc_char == 'r') {
                     result += '\r';
-                } else if (esc == '"' || esc == '\\' || esc == '/') {
-                    result += esc;
                 } else {
-                    result += esc;
+                    result += esc_char;
                 }
             } else {
-                result += ch;
+                result += curr_char;
             }
         }
         out_val.str_val = result;

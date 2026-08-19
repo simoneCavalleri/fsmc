@@ -1,7 +1,7 @@
 #include <cassert>
 #include <iostream>
 
-#include "../examples/connection_manager/connection_fsm_standalone_cpp17.hpp"
+#include "connection_fsm.hpp"
 
 int main() {
     std::cout << "=================================================" << std::endl;

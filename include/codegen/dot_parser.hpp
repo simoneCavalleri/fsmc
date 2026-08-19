@@ -154,19 +154,19 @@ class DotParser : public IParser {
     }
 
   private:
-    static std::string trim_line(std::string_view sv) {
+    static std::string trim_line(std::string_view line_sv) {
         size_t start = 0;
-        while (start < sv.size() && (std::isspace(static_cast<unsigned char>(sv[start])) != 0)) {
+        while (start < line_sv.size() && (std::isspace(static_cast<unsigned char>(line_sv[start])) != 0)) {
             start++;
         }
-        if (start == sv.size()) {
+        if (start == line_sv.size()) {
             return "";
         }
-        size_t end = sv.size() - 1;
-        while (end > start && (std::isspace(static_cast<unsigned char>(sv[end])) != 0 || sv[end] == ';')) {
+        size_t end = line_sv.size() - 1;
+        while (end > start && (std::isspace(static_cast<unsigned char>(line_sv[end])) != 0 || line_sv[end] == ';')) {
             end--;
         }
-        return std::string(sv.substr(start, end - start + 1));
+        return std::string(line_sv.substr(start, end - start + 1));
     }
 
     static void parse_label(const std::string& label, std::string& out_event, std::string& out_guard,

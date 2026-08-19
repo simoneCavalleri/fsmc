@@ -1,0 +1,74 @@
+name: Format Code
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**/*.cpp'
+      - 'src/**/*.hpp'
+      - 'include/**/*.hpp'
+      - 'tests/**/*.cpp'
+      - 'examples/**/*.cpp'
+      - '.clang-format'
+  pull_request:
+    paths:
+      - 'src/**/*.cpp'
+      - 'src/**/*.hpp'
+      - 'include/**/*.hpp'
+      - 'tests/**/*.cpp'
+      - 'examples/**/*.cpp'
+      - '.clang-format'
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format
+
+      - name: Run clang-format
+        run: |
+          find src include tests examples -name '*.cpp' -o -name '*.hpp' | xargs clang-format -i
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit and push changes
+        if: steps.changes.outputs.has_changes == 'true' && github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "style: apply clang-format fixes"
+          git push
+
+      - name: Comment on PR
+        if: steps.changes.outputs.has_changes == 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '❌ Code formatting issues detected! Please run `clang-format` locally:\n```bash\nfind src include tests examples -name "*.cpp" -o -name "*.hpp" | xargs clang-format -i\n```'
+            })
+
+      - name: Fail if PR has formatting issues
+        if: steps.changes.outputs.has_changes == 'true' && github.event_name == 'pull_request'
+        run: exit 1

@@ -1,0 +1,19 @@
+digraph ConnectionFSM {
+    __start__ [shape=point];
+    __start__ -> Disconnected;
+
+    Disconnected -> Connecting [label="ConnectCmd [HasNetworkGuard] / InitSocketAction"];
+    Disconnected -> Disconnected [label="ConnectCmd [NoNetworkGuard] / LogErrorAction"];
+    
+    Connecting -> Connected [label="HandshakeOkEvent / SetupSessionAction"];
+    Connecting -> Disconnected [label="HandshakeFailedEvent / CleanupAction"];
+    Connecting -> Disconnected [label="TimeoutEvent / CleanupAction"];
+
+    Connected -> Suspended [label="NetworkDegradedEvent / PauseQueueAction"];
+    Connected -> Disconnected [label="DisconnectCmd / CloseSocketAction"];
+    Connected -> Disconnected [label="ConnectionLostEvent / CleanupAction"];
+
+    Suspended -> Connected [label="NetworkRestoredEvent / ResumeQueueAction"];
+    Suspended -> Disconnected [label="DisconnectCmd / CloseSocketAction"];
+    Suspended -> Disconnected [label="TimeoutEvent / CleanupAction"];
+}

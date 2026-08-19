@@ -1,0 +1,23 @@
+digraph MissionFSM {
+    __start__ [shape=point];
+    __start__ -> Diagnostics;
+
+    subgraph cluster_Standby {
+        Diagnostics -> Calibrated [label="CalibrationOkEvent / LogCalibrationAction"];
+    }
+
+    subgraph cluster_InFlight {
+        Ascending -> Cruising [label="AltitudeReachedEvent / DeploySolarPanelsAction"];
+        Cruising -> Orbiting [label="OrbitInsertedEvent / StabilizeAttitudeAction"];
+        Orbiting -> Orbiting [label="PingTelemetry / LogTelemetryAction", internal=true];
+    }
+
+    Standby -> InFlight [label="AuthorizeCmd [ValidClearanceGuard] / ArmEnginesAction"];
+    Standby -> Aborted [label="AuthorizeCmd [NoClearanceGuard] / TriggerAlarmAction"];
+
+    InFlight -> SignalLost [label="LinkDegradedEvent / BufferCommandsAction"];
+    SignalLost -> InFlight [label="LinkRestoredEvent / SyncClockAction"];
+
+    InFlight -> Landing [label="ReturnHomeCmd / RetractPanelsAction"];
+    Landing -> MissionCompleted [label="TouchdownEvent / ShutdownSystemsAction"];
+}

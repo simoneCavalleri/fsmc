@@ -72,6 +72,21 @@ add_executable(test_cameo_parser test_cameo_parser.cpp)
 target_link_libraries(test_cameo_parser PRIVATE Threads::Threads)
 add_test(NAME test_cameo_parser COMMAND test_cameo_parser)
 
+# W3C SCXML Parser Test Suite
+add_executable(test_scxml_parser test_scxml_parser.cpp)
+target_link_libraries(test_scxml_parser PRIVATE Threads::Threads)
+add_test(NAME test_scxml_parser COMMAND test_scxml_parser)
+
+# XState JSON Parser Test Suite
+add_executable(test_json_parser test_json_parser.cpp)
+target_link_libraries(test_json_parser PRIVATE Threads::Threads)
+add_test(NAME test_json_parser COMMAND test_json_parser)
+
+# Graphviz DOT Parser Test Suite
+add_executable(test_dot_parser test_dot_parser.cpp)
+target_link_libraries(test_dot_parser PRIVATE Threads::Threads)
+add_test(NAME test_dot_parser COMMAND test_dot_parser)
+
 # CMake integration test (verifying fsmc_target_sources macro)
 add_executable(test_cmake_integration test_cmake_integration.cpp)
 target_link_libraries(test_cmake_integration PRIVATE Threads::Threads)

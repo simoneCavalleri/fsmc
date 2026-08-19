@@ -1,0 +1,70 @@
+{
+  "id": "ConnectionFSM",
+  "initial": "Disconnected",
+  "states": {
+    "Disconnected": {
+      "on": {
+        "ConnectCmd": [
+          {
+            "target": "Connecting",
+            "cond": "HasNetworkGuard",
+            "actions": ["InitSocketAction"]
+          },
+          {
+            "target": "Disconnected",
+            "cond": "NoNetworkGuard",
+            "actions": ["LogErrorAction"]
+          }
+        ]
+      }
+    },
+    "Connecting": {
+      "on": {
+        "HandshakeOkEvent": {
+          "target": "Connected",
+          "actions": ["SetupSessionAction"]
+        },
+        "HandshakeFailedEvent": {
+          "target": "Disconnected",
+          "actions": ["CleanupAction"]
+        },
+        "TimeoutEvent": {
+          "target": "Disconnected",
+          "actions": ["CleanupAction"]
+        }
+      }
+    },
+    "Connected": {
+      "on": {
+        "NetworkDegradedEvent": {
+          "target": "Suspended",
+          "actions": ["PauseQueueAction"]
+        },
+        "DisconnectCmd": {
+          "target": "Disconnected",
+          "actions": ["CloseSocketAction"]
+        },
+        "ConnectionLostEvent": {
+          "target": "Disconnected",
+          "actions": ["CleanupAction"]
+        }
+      }
+    },
+    "Suspended": {
+      "on": {
+        "NetworkRestoredEvent": {
+          "target": "Connected",
+          "actions": ["ResumeQueueAction"]
+        },
+        "DisconnectCmd": {
+          "target": "Disconnected",
+          "actions": ["CloseSocketAction"]
+        },
+        "TimeoutEvent": {
+          "target": "Disconnected",
+          "actions": ["CleanupAction"]
+        }
+      }
+    }
+  }
+}

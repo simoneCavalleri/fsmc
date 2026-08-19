@@ -7,12 +7,15 @@
 
 #include "codegen/cameo_xmi_parser.hpp"
 #include "codegen/cpp_generator.hpp"
+#include "codegen/dot_parser.hpp"
 #include "codegen/fsm_model.hpp"
 #include "codegen/fsm_validator.hpp"
+#include "codegen/json_parser.hpp"
 #include "codegen/mermaid_parser.hpp"
 #include "codegen/parser_interface.hpp"
 #include "codegen/plantuml_parser.hpp"
 #include "codegen/runtime_exporter.hpp"
+#include "codegen/scxml_parser.hpp"
 #include "codegen/sysml2_parser.hpp"
 
 namespace fs = std::filesystem;
@@ -41,13 +44,13 @@ struct CliOptions {
 void print_help(const char* prog_name) {
     std::cout << "====================================================================="
                  "=======\n"
-              << " fsmc : Cameo/MagicDraw, SysML v2, PlantUML & Mermaid C++ FSM Compiler\n"
+              << " fsmc : Universal OMG UML 2.5, SysML v2, SCXML, JSON & DOT C++ FSM Compiler\n"
               << "====================================================================="
                  "=======\n\n"
               << "Usage: " << prog_name << " -i <model_file> [OPTIONS]\n"
               << "       " << prog_name << " --export-runtime <dir> [--std 17|20]\n\n"
               << "Options:\n"
-              << "  -i, --input <file>        Input model file (.xmi, .xml, .mdxml, "
+              << "  -i, --input <file>        Input model file (.xmi, .scxml, .json, .dot, "
                  ".sysml, .puml, .mmd) [Required]\n"
               << "  -o, --output <file>       Output C++ header file (default: "
                  "stdout)\n"
@@ -67,8 +70,8 @@ void print_help(const char* prog_name) {
                  "external fsm/fsm.hpp\n"
               << "  --export-runtime <dir>    Export the FSM runtime library to the "
                  "specified directory\n"
-              << "  --format <fmt>            Model format: 'cameo', 'sysml2', 'plantuml', "
-                 "'mermaid', 'auto' (default: auto)\n"
+              << "  --format <fmt>            Model format: 'cameo', 'scxml', 'json', 'dot', "
+                 "'sysml2', 'plantuml', 'mermaid', 'auto' (default: auto)\n"
               << "  --no-thread-safe          Do not generate thread_safe_fsm wrapper "
                  "alias\n"
               << "  --no-stubs                Do not include default stub functors for "
@@ -77,14 +80,17 @@ void print_help(const char* prog_name) {
               << "  -v, --version             Show version information and exit\n\n"
               << "Examples:\n"
               << "  " << prog_name
+              << " -i protocol.scxml -o protocol_fsm.hpp --std 20 --namespace net "
+                 "--name ProtocolFSM\n"
+              << "  " << prog_name
+              << " -i statechart.json -o statechart_fsm.hpp --std 20 --namespace app "
+                 "--name AppFSM\n"
+              << "  " << prog_name
+              << " -i graph.dot -o graph_fsm.hpp --std 17 --namespace core "
+                 "--name GraphFSM\n"
+              << "  " << prog_name
               << " -i model.xmi -o model_fsm.hpp --std 20 --namespace space "
                  "--name MissionFSM\n"
-              << "  " << prog_name
-              << " -i mission.sysml -o mission_fsm.hpp --std 20 --namespace space "
-                 "--name MissionFSM\n"
-              << "  " << prog_name
-              << " -i connection.mmd -o connection_fsm.hpp --std 20 --namespace net "
-                 "--name ConnectionFSM\n"
               << "  " << prog_name << " --export-runtime ./include/fsm --std 20\n\n";
 }
 
@@ -145,6 +151,15 @@ CliOptions parse_cli_args(int argc, char* argv[]) {
 }
 
 std::unique_ptr<IParser> create_parser(const std::string& input_file, const std::string& format_option) {
+    if (format_option == "scxml") {
+        return std::make_unique<ScxmlParser>();
+    }
+    if (format_option == "json") {
+        return std::make_unique<JsonStateParser>();
+    }
+    if (format_option == "dot" || format_option == "gv") {
+        return std::make_unique<DotParser>();
+    }
     if (format_option == "cameo" || format_option == "xmi" || format_option == "magicdraw") {
         return std::make_unique<CameoXmiParser>();
     }
@@ -158,6 +173,15 @@ std::unique_ptr<IParser> create_parser(const std::string& input_file, const std:
         return std::make_unique<MermaidParser>();
     }
     const std::string ext = fs::path(input_file).extension().string();
+    if (ext == ".scxml") {
+        return std::make_unique<ScxmlParser>();
+    }
+    if (ext == ".json") {
+        return std::make_unique<JsonStateParser>();
+    }
+    if (ext == ".dot" || ext == ".gv") {
+        return std::make_unique<DotParser>();
+    }
     if (ext == ".xmi" || ext == ".xml" || ext == ".mdxml" || ext == ".uml") {
         return std::make_unique<CameoXmiParser>();
     }

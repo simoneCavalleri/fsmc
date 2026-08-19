@@ -101,8 +101,11 @@ int main() {
   - **History States**: Shallow (`[H]`) and Deep (`[H*]`) state resumption upon recovery.
   - **Deferred Events**: `State : defer Event` declarations for buffering unhandled signals.
   - **State Lifecycle Hooks**: `on_enter` and `on_exit` member function reflection.
-- **Multi-Format Parsing**:
+- **Multi-Format Ingestion**:
   - **Cameo Systems Modeler / MagicDraw** (`.xmi`, `.xml`, `.mdxml`, `.uml`): Industry-standard OMG XMI 2.x export.
+  - **W3C SCXML** (`.scxml`): Official W3C State Chart XML standard (Qt, Telecom, Robotics).
+  - **XState JSON Statechart** (`.json`): Modern JSON Statechart specification (Web, TypeScript, Microservices).
+  - **Graphviz DOT** (`.dot`, `.gv`): Universal Unix graph/state machine format.
   - **OMG SysML v2** (`.sysml`): Native textual specification format.
   - **Mermaid** (`stateDiagram-v2`): Standard in GitHub, GitLab, and Markdown documentation.
   - **PlantUML** (`@startuml`): Standard in enterprise model-driven engineering.
@@ -119,7 +122,7 @@ int main() {
 
 ## 📚 Documentation Index
 
-- 📖 **[OMG UML 2.5 & SysML v2 Reference Guide](docs/UML_REFERENCE.md)**: Syntax reference for Cameo XMI, SysML v2, PlantUML, and Mermaid.
+- 📖 **[OMG UML 2.5, SysML v2 & SCXML Reference Guide](docs/UML_REFERENCE.md)**: Syntax reference for Cameo XMI, SCXML, JSON, DOT, SysML v2, PlantUML, and Mermaid.
 - 🛠️ **[Integration & Build Guide](docs/INTEGRATION_GUIDE.md)**: CMake, vcpkg, Conan, and standalone usage.
 - ⚡ **[Runtime C++ API Reference](docs/RUNTIME_API.md)**: Classes, methods, lifecycle hooks, and asynchronous workers.
 - 🏛️ **[Compiler Architecture](docs/ARCHITECTURE.md)**: Pipeline design, choice branch flattening, and template metaprogramming.
@@ -148,7 +151,7 @@ fsmc -i <model_file> [OPTIONS]
 
 | Option | Description | Default |
 | :--- | :--- | :--- |
-| `-i, --input <file>` | Input model file (`.xmi`, `.xml`, `.mdxml`, `.sysml`, `.puml`, `.mmd`) | **Required** |
+| `-i, --input <file>` | Input model file (`.xmi`, `.scxml`, `.json`, `.dot`, `.sysml`, `.puml`, `.mmd`) | **Required** |
 | `-o, --output <file>` | Output C++ header file | `stdout` |
 | `-n, --name <name>` | FSM class name | Inferred from filename |
 | `--namespace <ns>` | C++ namespace | `fsm_generated` |
@@ -157,7 +160,7 @@ fsmc -i <model_file> [OPTIONS]
 | `--c++17` / `--c++20` | Shortcut for `--std 17` or `--std 20` | |
 | `--standalone` | Generate a self-contained header with embedded runtime | `true` |
 | `--modular` | Generate FSM header only, including external `fsm/fsm.hpp` | |
-| `--format <fmt>` | Explicit format: `cameo`, `sysml2`, `plantuml`, `mermaid`, `auto` | `auto` |
+| `--format <fmt>` | Explicit format: `cameo`, `scxml`, `json`, `dot`, `sysml2`, `plantuml`, `mermaid`, `auto` | `auto` |
 | `--no-stubs` | Emits forward declarations for custom user guard/action structs | |
 | `-h, --help` | Display help menu and exit | |
 

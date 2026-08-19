@@ -7,12 +7,15 @@ This document describes the internal design, compiler pipeline, and template met
 ## 1. Compiler Pipeline
 
 ```
- Model File (.xmi / .sysml / .mmd / .puml)
+ Model File (.xmi / .scxml / .json / .dot / .sysml / .mmd / .puml)
           │
           ▼
 ┌───────────────────┐
 │ Multi-Format      │  • Cameo / MagicDraw Parser (OMG XMI 2.x XML tokenizer)
-│ Parser Interface  │  • SysML v2 Parser (Native textual .sysml grammar)
+│ Parser Interface  │  • W3C SCXML Parser (State Chart XML specification)
+│                   │  • XState JSON Parser (Modern JSON Statecharts)
+│                   │  • Graphviz DOT Parser (Unix graph grammar)
+│                   │  • SysML v2 Parser (Native textual .sysml grammar)
 │                   │  • PlantUML Parser (Recursive block tokenization)
 │                   │  • Mermaid Parser (StateDiagram-v2 grammar)
 └─────────┬─────────┘

@@ -346,23 +346,47 @@ const GraphRenderer = {
     const svg = document.querySelector("#mermaidCanvas svg");
     if (!svg) return;
 
+    // Resolve active state hierarchy path (e.g. [Manual, Running, Operating])
+    const details = ModelManager.currentModel.stateDetails || [];
+    const activeHierarchy = new Set();
+    let curr = activeState;
+    const visited = new Set();
+    while (curr && !visited.has(curr)) {
+      visited.add(curr);
+      activeHierarchy.add(curr);
+      const obj = details.find(s => s.name === curr);
+      curr = obj ? obj.parent : null;
+    }
+
     svg.querySelectorAll(".node").forEach(n => {
       const label = n.textContent.trim();
-      const isActive = label.includes(activeState);
-      n.classList.toggle("active-state", isActive);
+      const isLeafActive = label.includes(activeState);
+      const isAncestorActive = Array.from(activeHierarchy).some(s => label.includes(s));
+
+      n.classList.toggle("active-state", isAncestorActive);
 
       n.querySelectorAll("span, p, text, div, tspan, .nodeLabel").forEach(el => {
-        el.style.color = isActive ? "#ffffff" : "#f0f6fc";
-        el.style.fill = isActive ? "#ffffff" : "#f0f6fc";
-        el.style.fontWeight = isActive ? "700" : "500";
-        el.style.textShadow = isActive ? "0 1px 3px rgba(0,0,0,0.9)" : "none";
+        el.style.color = isAncestorActive ? "#ffffff" : "#f0f6fc";
+        el.style.fill = isAncestorActive ? "#ffffff" : "#f0f6fc";
+        el.style.fontWeight = isLeafActive ? "700" : (isAncestorActive ? "600" : "500");
+        el.style.textShadow = isAncestorActive ? "0 1px 3px rgba(0,0,0,0.9)" : "none";
       });
 
       const rect = n.querySelector("rect, polygon, circle, .label-container");
       if (rect) {
-        rect.style.fill = isActive ? "#1e3a8a" : "#161b22";
-        rect.style.stroke = isActive ? "#38bdf8" : "#30363d";
-        rect.style.strokeWidth = isActive ? "3px" : "1px";
+        if (isLeafActive) {
+          rect.style.fill = "#1e3a8a";
+          rect.style.stroke = "#38bdf8";
+          rect.style.strokeWidth = "3px";
+        } else if (isAncestorActive) {
+          rect.style.fill = "#1e293b";
+          rect.style.stroke = "#60a5fa";
+          rect.style.strokeWidth = "2px";
+        } else {
+          rect.style.fill = "#161b22";
+          rect.style.stroke = "#30363d";
+          rect.style.strokeWidth = "1px";
+        }
       }
     });
   },
@@ -378,9 +402,9 @@ const GraphRenderer = {
         const text = node.textContent.trim();
         const matched = ModelManager.currentModel.states.find(s => text.includes(s));
         if (matched) {
-          ModelManager.currentModel.activeState = matched;
+          ModelManager.currentModel.activeState = SimulatorController.resolveLeaf(matched);
           SimulatorController.updateUI();
-          this.highlightActive(matched);
+          this.highlightActive(ModelManager.currentModel.activeState);
         }
       };
     });
@@ -461,7 +485,7 @@ const ViewportController = {
     };
   },
 
-  applyTransform(animate = true) {
+  applyTransform(animate = false) {
     const badge = document.getElementById("zoomLevelBadge");
     if (badge) badge.textContent = Math.round((ModelManager.currentModel.zoom || 1.0) * 100) + "%";
     const svg = document.querySelector("#mermaidCanvas svg");
@@ -481,6 +505,85 @@ const ViewportController = {
 // ----------------------------------------------------------------------------
 
 const SimulatorController = {
+  historyRecords: {},
+  deepHistoryRecords: {},
+
+  resolveLeaf(target, isHistory = false, isDeepHistory = false) {
+    const details = ModelManager.currentModel.stateDetails || [];
+    let curr = target;
+
+    // 1. History resolution
+    if (isHistory) {
+      if (isDeepHistory && this.deepHistoryRecords[curr]) {
+        return this.deepHistoryRecords[curr];
+      }
+      if (this.historyRecords[curr]) {
+        curr = this.historyRecords[curr];
+        if (isDeepHistory) {
+          return this.resolveLeaf(curr, false, false);
+        }
+      }
+    }
+
+    // 2. Recursive descent through initial_sub_state to find active leaf
+    const visited = new Set();
+    while (curr && !visited.has(curr)) {
+      visited.add(curr);
+      const obj = details.find(s => s.name === curr);
+      if (obj && obj.is_composite && obj.initial_sub_state) {
+        curr = obj.initial_sub_state;
+      } else {
+        break;
+      }
+    }
+    return curr;
+  },
+
+  findMatchingTransition(eventName) {
+    const model = ModelManager.currentModel;
+    const details = model.stateDetails || [];
+    let curr = model.activeState;
+    const visited = new Set();
+
+    // Climb up the ancestor hierarchy to bubble events
+    while (curr && !visited.has(curr)) {
+      visited.add(curr);
+      const matching = model.transitions.find(t => t.source === curr && t.event === eventName);
+      if (matching) return matching;
+
+      const obj = details.find(s => s.name === curr);
+      curr = obj ? obj.parent : null;
+    }
+    return null;
+  },
+
+  recordHistory(fromState) {
+    const details = ModelManager.currentModel.stateDetails || [];
+    let curr = fromState;
+    const ancestors = [];
+    const visited = new Set();
+
+    while (curr && !visited.has(curr)) {
+      visited.add(curr);
+      ancestors.push(curr);
+      const obj = details.find(s => s.name === curr);
+      curr = obj ? obj.parent : null;
+    }
+
+    // Shallow history: direct child of each ancestor
+    for (let i = ancestors.length - 1; i > 0; --i) {
+      const parent = ancestors[i];
+      const child = ancestors[i - 1];
+      this.historyRecords[parent] = child;
+    }
+
+    // Deep history: deepest leaf for each ancestor
+    for (let i = ancestors.length - 1; i >= 0; --i) {
+      const ancestor = ancestors[i];
+      this.deepHistoryRecords[ancestor] = fromState;
+    }
+  },
+
   updateUI() {
     document.getElementById("activeStateBadge").textContent = ModelManager.currentModel.activeState;
     const btnContainer = document.getElementById("eventButtons");
@@ -498,26 +601,16 @@ const SimulatorController = {
 
   dispatch(eventName) {
     const model = ModelManager.currentModel;
-    let matching = model.transitions.find(t => t.source === model.activeState && t.event === eventName);
-
-    // Hierarchical Parent Delegation
-    if (!matching && model.stateDetails) {
-      const activeObj = model.stateDetails.find(s => s.name === model.activeState);
-      if (activeObj && activeObj.parent) {
-        matching = model.transitions.find(t => t.source === activeObj.parent && t.event === eventName);
-      }
-    }
+    const matching = this.findMatchingTransition(eventName);
 
     const log = document.getElementById("historyLog");
     const time = new Date().toLocaleTimeString();
 
     if (matching) {
       const oldState = model.activeState;
-      let target = matching.target;
-      if (model.stateDetails) {
-        const targetObj = model.stateDetails.find(s => s.name === target);
-        if (targetObj && targetObj.initial_sub_state) target = targetObj.initial_sub_state;
-      }
+      this.recordHistory(oldState);
+
+      const target = this.resolveLeaf(matching.target, matching.target_is_history, matching.target_is_deep_history);
       model.activeState = target;
       document.getElementById("activeStateBadge").textContent = model.activeState;
 
@@ -707,7 +800,7 @@ const App = {
     };
 
     document.getElementById("resetSimBtn").onclick = () => {
-      ModelManager.currentModel.activeState = ModelManager.currentModel.initialState;
+      ModelManager.currentModel.activeState = SimulatorController.resolveLeaf(ModelManager.currentModel.initialState);
       SimulatorController.updateUI();
     };
 
@@ -765,7 +858,7 @@ const App = {
     ModelManager.currentModel = {
       ...ModelManager.currentModel,
       ...parsed,
-      activeState: ModelManager.currentModel.activeState && parsed.states.includes(ModelManager.currentModel.activeState) ? ModelManager.currentModel.activeState : parsed.initialState
+      activeState: ModelManager.currentModel.activeState && parsed.states.includes(ModelManager.currentModel.activeState) ? ModelManager.currentModel.activeState : SimulatorController.resolveLeaf(parsed.initialState)
     };
 
     // 2. Generate C++ Modular Preview directly from C++ CppGenerator

@@ -12,6 +12,7 @@
 #include "codegen/parser_interface.hpp"
 #include "codegen/plantuml_parser.hpp"
 #include "codegen/runtime_exporter.hpp"
+#include "codegen/sysml2_parser.hpp"
 
 namespace fs = std::filesystem;
 using namespace fsm::codegen;
@@ -39,14 +40,14 @@ struct CliOptions {
 void print_help(const char* prog_name) {
     std::cout << "====================================================================="
                  "=======\n"
-              << " fsm-gen : Mermaid/PlantUML to C++ State Machine Code Generator\n"
+              << " fsmc : PlantUML, Mermaid & SysML v2 to C++ State Machine Compiler\n"
               << "====================================================================="
                  "=======\n\n"
               << "Usage: " << prog_name << " -i <diagram_file> [OPTIONS]\n"
               << "       " << prog_name << " --export-runtime <dir> [--std 17|20]\n\n"
               << "Options:\n"
               << "  -i, --input <file>        Input diagram file (.mmd, .mermaid, "
-                 ".puml, .plantuml) [Required]\n"
+                 ".puml, .plantuml, .sysml) [Required]\n"
               << "  -o, --output <file>       Output C++ header file (default: "
                  "stdout)\n"
               << "  -n, --name <name>         FSM class name (default: inferred from "
@@ -66,7 +67,7 @@ void print_help(const char* prog_name) {
               << "  --export-runtime <dir>    Export the FSM runtime library to the "
                  "specified directory\n"
               << "  --format <fmt>            Diagram format: 'mermaid', 'plantuml', "
-                 "'auto' (default: auto)\n"
+                 "'sysml2', 'auto' (default: auto)\n"
               << "  --no-thread-safe          Do not generate thread_safe_fsm wrapper "
                  "alias\n"
               << "  --no-stubs                Do not include default stub functors for "
@@ -77,6 +78,9 @@ void print_help(const char* prog_name) {
               << "  " << prog_name
               << " -i connection.mmd -o connection_fsm.hpp --std 20 --namespace net "
                  "--name ConnectionFSM\n"
+              << "  " << prog_name
+              << " -i mission.sysml -o mission_fsm.hpp --std 20 --namespace space "
+                 "--name MissionFSM\n"
               << "  " << prog_name
               << " -i connection.puml -o connection_fsm.hpp --std 17 --namespace net "
                  "--name ConnectionFSM\n"
@@ -140,6 +144,9 @@ CliOptions parse_cli_args(int argc, char* argv[]) {
 }
 
 std::unique_ptr<IParser> create_parser(const std::string& input_file, const std::string& format_option) {
+    if (format_option == "sysml" || format_option == "sysml2") {
+        return std::make_unique<Sysml2Parser>();
+    }
     if (format_option == "plantuml" || format_option == "puml") {
         return std::make_unique<PlantUmlParser>();
     }
@@ -147,6 +154,9 @@ std::unique_ptr<IParser> create_parser(const std::string& input_file, const std:
         return std::make_unique<MermaidParser>();
     }
     const std::string ext = fs::path(input_file).extension().string();
+    if (ext == ".sysml") {
+        return std::make_unique<Sysml2Parser>();
+    }
     if (ext == ".puml" || ext == ".plantuml") {
         return std::make_unique<PlantUmlParser>();
     }

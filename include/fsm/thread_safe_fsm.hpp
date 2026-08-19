@@ -99,11 +99,16 @@ class thread_safe_fsm {
         event_handler task;
         {
             std::scoped_lock lock(mutex_);
-            if (event_queue_.empty()) {
+            const auto now = std::chrono::steady_clock::now();
+            if (!timed_queue_.empty() && now >= timed_queue_.top().deadline) {
+                task = timed_queue_.top().task;
+                timed_queue_.pop();
+            } else if (!event_queue_.empty()) {
+                task = std::move(event_queue_.front());
+                event_queue_.pop();
+            } else {
                 return false;
             }
-            task = std::move(event_queue_.front());
-            event_queue_.pop();
             task(fsm_);
         }
         return true;
@@ -121,13 +126,13 @@ class thread_safe_fsm {
     // Returns current number of pending events in queue
     [[nodiscard]] std::size_t pending_events() const {
         std::scoped_lock lock(mutex_);
-        return event_queue_.size();
+        return event_queue_.size() + timed_queue_.size();
     }
 
     // Returns true if event queue is empty
     [[nodiscard]] bool is_queue_empty() const {
         std::scoped_lock lock(mutex_);
-        return event_queue_.empty();
+        return event_queue_.empty() && timed_queue_.empty();
     }
 
     // Deferred events count under mutex lock

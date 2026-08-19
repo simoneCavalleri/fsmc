@@ -153,6 +153,17 @@ add_executable(test_model_checker test_model_checker.cpp)
 target_link_libraries(test_model_checker PRIVATE Threads::Threads)
 add_test(NAME test_model_checker COMMAND test_model_checker)
 
+# Multi-Threaded Concurrent Stress Test Suite
+add_executable(test_thread_safe_stress test_thread_safe_stress.cpp)
+target_link_libraries(test_thread_safe_stress PRIVATE Threads::Threads)
+add_test(NAME test_thread_safe_stress COMMAND test_thread_safe_stress)
 
+# 4-Level Deep History Multi-Level Test Suite
+add_executable(test_deep_history_multi_level test_deep_history_multi_level.cpp)
+target_link_libraries(test_deep_history_multi_level PRIVATE Threads::Threads)
+add_test(NAME test_deep_history_multi_level COMMAND test_deep_history_multi_level)
 
-
+# Parser Negative Testing & Fuzzing Test Suite
+add_executable(test_parser_negative test_parser_negative.cpp)
+target_link_libraries(test_parser_negative PRIVATE Threads::Threads)
+add_test(NAME test_parser_negative COMMAND test_parser_negative)

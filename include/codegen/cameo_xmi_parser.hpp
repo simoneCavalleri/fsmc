@@ -146,6 +146,11 @@ class SimpleXmlParser {
             idx = tag_end + 1;
         }
 
+        if (node_stack.size() > 1) {
+            err = "Malformed XML: unclosed tag <" + node_stack.back()->tag + ">";
+            return nullptr;
+        }
+
         if (root->children.empty()) {
             err = "Empty XML document";
             return nullptr;

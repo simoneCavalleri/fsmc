@@ -77,6 +77,9 @@ class CppGenerator {
         for (const auto& state_item : model.states) {
             out << "struct " << state_item.name << " {\n";
             out << "    static constexpr std::string_view name = \"" << state_item.name << "\";\n";
+            if (!state_item.parent_state.empty()) {
+                out << "    static constexpr std::string_view parent = \"" << state_item.parent_state << "\";\n";
+            }
             if (!state_item.description.empty()) {
                 out << "    // Description: " << state_item.description << "\n";
             }
@@ -190,6 +193,36 @@ class CppGenerator {
         std::string table_type_name = model.name + "Table";
         out << "using " << table_type_name << " = fsm::transition_table<\n";
 
+        auto find_state_by_name = [&](const std::string& name) -> const StateModel* {
+            for (const auto& s : model.states) {
+                if (s.name == name) return &s;
+            }
+            return nullptr;
+        };
+
+        auto find_leaf_substates = [&](auto& self, const std::string& parent_name) -> std::vector<std::string> {
+            std::vector<std::string> leaves;
+            for (const auto& s : model.states) {
+                if (s.parent_state == parent_name) {
+                    if (s.is_composite) {
+                        auto sub_leaves = self(self, s.name);
+                        leaves.insert(leaves.end(), sub_leaves.begin(), sub_leaves.end());
+                    } else {
+                        leaves.push_back(s.name);
+                    }
+                }
+            }
+            return leaves;
+        };
+
+        auto find_initial_leaf_substate = [&](auto& self, const std::string& state_name) -> std::string {
+            const auto* s = find_state_by_name(state_name);
+            if (s != nullptr && s->is_composite && !s->initial_sub_state.empty()) {
+                return self(self, s->initial_sub_state);
+            }
+            return state_name;
+        };
+
         struct EffectiveTransition {
             std::string source;
             std::string target;
@@ -199,7 +232,17 @@ class CppGenerator {
             bool is_internal = false;
         };
 
-        std::vector<EffectiveTransition> effective_transitions;
+        struct BaseTransition {
+            std::string source;
+            std::string target;
+            std::string event;
+            std::optional<std::string> guard;
+            std::optional<std::string> action;
+            bool is_internal = false;
+            bool target_is_history = false;
+        };
+
+        std::vector<BaseTransition> base_transitions;
         for (const auto& transition_item : model.transitions) {
             if (model.is_choice_node(transition_item.source)) {
                 continue;
@@ -207,25 +250,101 @@ class CppGenerator {
             if (model.is_choice_node(transition_item.target)) {
                 for (const auto& branch : model.transitions) {
                     if (branch.source == transition_item.target) {
-                        EffectiveTransition eff;
-                        eff.source = transition_item.source;
-                        eff.target = branch.target;
-                        eff.event = transition_item.event;
-                        eff.guard = branch.guard ? branch.guard : transition_item.guard;
-                        eff.action = branch.action ? branch.action : transition_item.action;
-                        eff.is_internal = false;
-                        effective_transitions.push_back(std::move(eff));
+                        BaseTransition bt;
+                        bt.source = transition_item.source;
+                        bt.target = branch.target;
+                        bt.event = transition_item.event;
+                        if (transition_item.guard && branch.guard) {
+                            bt.guard = "fsm::and_<" + *transition_item.guard + ", " + *branch.guard + ">";
+                        } else if (branch.guard) {
+                            bt.guard = branch.guard;
+                        } else {
+                            bt.guard = transition_item.guard;
+                        }
+                        bt.action = branch.action ? branch.action : transition_item.action;
+                        bt.is_internal = false;
+                        bt.target_is_history = branch.target_is_history;
+                        base_transitions.push_back(std::move(bt));
                     }
                 }
             } else {
-                EffectiveTransition eff;
-                eff.source = transition_item.source;
-                eff.target = transition_item.target;
-                eff.event = transition_item.event;
-                eff.guard = transition_item.guard;
-                eff.action = transition_item.action;
-                eff.is_internal = (transition_item.kind == TransitionKind::Internal);
-                effective_transitions.push_back(std::move(eff));
+                BaseTransition bt;
+                bt.source = transition_item.source;
+                bt.target = transition_item.target;
+                bt.event = transition_item.event;
+                bt.guard = transition_item.guard;
+                bt.action = transition_item.action;
+                bt.is_internal = (transition_item.kind == TransitionKind::Internal);
+                bt.target_is_history = transition_item.target_is_history;
+                base_transitions.push_back(std::move(bt));
+            }
+        }
+
+        std::vector<EffectiveTransition> effective_transitions;
+        for (const auto& bt : base_transitions) {
+            const auto* src_st = find_state_by_name(bt.source);
+            std::vector<std::string> actual_sources;
+            if (src_st != nullptr && src_st->is_composite) {
+                auto leaves = find_leaf_substates(find_leaf_substates, bt.source);
+                for (const auto& leaf : leaves) {
+                    bool leaf_has_own = false;
+                    for (const auto& other : base_transitions) {
+                        if (other.source == leaf && other.event == bt.event) {
+                            leaf_has_own = true;
+                            break;
+                        }
+                    }
+                    if (!leaf_has_own) {
+                        actual_sources.push_back(leaf);
+                    }
+                }
+                if (actual_sources.empty()) {
+                    actual_sources.push_back(bt.source);
+                }
+            } else {
+                actual_sources.push_back(bt.source);
+            }
+
+            for (const auto& src : actual_sources) {
+                if (bt.target_is_history) {
+                    auto sub_leaves = find_leaf_substates(find_leaf_substates, bt.target);
+                    std::string init_leaf = find_initial_leaf_substate(find_initial_leaf_substate, bt.target);
+
+                    for (const auto& sub : sub_leaves) {
+                        EffectiveTransition eff;
+                        eff.source = src;
+                        eff.target = sub;
+                        eff.event = bt.event;
+                        std::string hist_guard = "fsm::history_is<" + bt.target + ", " + sub + ">";
+                        if (bt.guard && !bt.guard->empty()) {
+                            eff.guard = "fsm::and_<" + *bt.guard + ", " + hist_guard + ">";
+                        } else {
+                            eff.guard = hist_guard;
+                        }
+                        eff.action = bt.action;
+                        eff.is_internal = false;
+                        effective_transitions.push_back(std::move(eff));
+                    }
+
+                    EffectiveTransition fallback;
+                    fallback.source = src;
+                    fallback.target = init_leaf;
+                    fallback.event = bt.event;
+                    fallback.guard = bt.guard;
+                    fallback.action = bt.action;
+                    fallback.is_internal = false;
+                    effective_transitions.push_back(std::move(fallback));
+                } else {
+                    std::string actual_target = find_initial_leaf_substate(find_initial_leaf_substate, bt.target);
+                    EffectiveTransition eff;
+                    eff.source = src;
+                    eff.target = actual_target;
+                    eff.event = bt.event;
+                    eff.guard = bt.guard;
+                    eff.action = bt.action;
+                    eff.is_internal = bt.is_internal;
+                    effective_transitions.push_back(std::move(eff));
+                }
             }
         }
 
@@ -267,14 +386,15 @@ class CppGenerator {
                 ? "fsm::no_context"
                 : model.context_type;
 
-        std::string init_state = model.initial_state;
-        if (init_state.empty()) {
+        std::string raw_init_state = model.initial_state;
+        if (raw_init_state.empty()) {
             if (!model.states.empty()) {
-                init_state = model.states[0].name;
+                raw_init_state = model.states[0].name;
             } else {
-                init_state = "Idle";
+                raw_init_state = "Idle";
             }
         }
+        std::string init_state = find_initial_leaf_substate(find_initial_leaf_substate, raw_init_state);
 
         out << "using " << model.name << " = fsm::fsm<" << table_type_name << ", " << ctx_type << ", " << init_state
             << ">;\n";
@@ -299,19 +419,28 @@ class CppGenerator {
         out << "#include <concepts>\n";
         out << "#include <type_traits>\n";
         out << "#include <utility>\n";
+        out << "#include <functional>\n";
+        out << "#include <vector>\n";
         if (opts.thread_safe) {
             out << "#include <queue>\n";
             out << "#include <mutex>\n";
             out << "#include <condition_variable>\n";
             out << "#include <thread>\n";
             out << "#include <stop_token>\n";
-            out << "#include <functional>\n";
             out << "#include <atomic>\n";
         }
         out << "\n";
 
         out << "namespace fsm {\n\n";
         out << "struct no_context {};\n\n";
+
+        // Transition info
+        out << "struct transition_info {\n";
+        out << "    std::string_view source;\n";
+        out << "    std::string_view target;\n";
+        out << "    std::string_view event;\n";
+        out << "    bool is_internal = false;\n";
+        out << "};\n\n";
 
         // Type list helpers
         out << "template <typename... Ts> struct type_list {};\n\n";
@@ -349,34 +478,6 @@ class CppGenerator {
                "to_variant<List>::type;\n";
         out << "} // namespace detail\n\n";
 
-        // Concepts
-        out << "template <typename G, typename E, typename S, typename C>\n";
-        out << "concept Guard = requires(const G& g, const E& e, const S& s, const "
-               "C& c) {\n";
-        out << "    { g(e, s, c) } -> std::convertible_to<bool>;\n";
-        out << "} || requires(const G& g, const E& e, const S& s) {\n";
-        out << "    { g(e, s) } -> std::convertible_to<bool>;\n";
-        out << "} || requires(const G& g, const E& e) {\n";
-        out << "    { g(e) } -> std::convertible_to<bool>;\n";
-        out << "} || requires(const G& g) {\n";
-        out << "    { g() } -> std::convertible_to<bool>;\n";
-        out << "};\n\n";
-
-        out << "template <typename A, typename E, typename S, typename D, typename "
-               "C>\n";
-        out << "concept Action = requires(const A& a, const E& e, S& s, D& d, C& "
-               "c) {\n";
-        out << "    a(e, s, d, c);\n";
-        out << "} || requires(const A& a, const E& e, S& s, D& d) {\n";
-        out << "    a(e, s, d);\n";
-        out << "} || requires(const A& a, const E& e, D& d) {\n";
-        out << "    a(e, d);\n";
-        out << "} || requires(const A& a, const E& e) {\n";
-        out << "    a(e);\n";
-        out << "} || requires(const A& a) {\n";
-        out << "    a();\n";
-        out << "};\n\n";
-
         out << "struct no_guard {\n";
         out << "    [[nodiscard]] constexpr bool operator()(const auto&...) const "
                "noexcept { return true; }\n";
@@ -384,6 +485,92 @@ class CppGenerator {
 
         out << "struct no_action {\n";
         out << "    constexpr void operator()(auto&...) const noexcept {}\n";
+        out << "};\n\n";
+
+        // Combinators
+        out << "template <typename Guard, typename Event, typename State, typename Context>\n";
+        out << "constexpr bool invoke_guard(const Guard& g, const Event& evt, const State& s, Context* ctx);\n\n";
+
+        out << "template <typename Guard, typename Event, typename State, typename Context, typename Fsm>\n";
+        out << "constexpr bool invoke_guard(const Guard& g, const Event& evt, const State& s, Context* ctx, const Fsm& fsm);\n\n";
+
+        out << "template <typename Guard>\n";
+        out << "struct not_ {\n";
+        out << "    Guard guard_fn{};\n";
+        out << "    constexpr not_() = default;\n";
+        out << "    constexpr explicit not_(Guard g) : guard_fn(std::move(g)) {}\n";
+        out << "    template <typename Event, typename State, typename Context, typename Fsm>\n";
+        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx, const Fsm& fsm) const {\n";
+        out << "        return !invoke_guard(guard_fn, evt, s, &ctx, fsm);\n";
+        out << "    }\n";
+        out << "    template <typename Event, typename State, typename Context>\n";
+        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx) const {\n";
+        out << "        return !invoke_guard(guard_fn, evt, s, &ctx);\n";
+        out << "    }\n";
+        out << "};\n\n";
+
+        out << "template <typename Guard1, typename Guard2, typename... Rest>\n";
+        out << "struct and_ {\n";
+        out << "    Guard1 g1{};\n";
+        out << "    Guard2 g2{};\n";
+        out << "    constexpr and_() = default;\n";
+        out << "    constexpr and_(Guard1 first, Guard2 second) : g1(std::move(first)), g2(std::move(second)) {}\n";
+        out << "    template <typename Event, typename State, typename Context, typename Fsm>\n";
+        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx, const Fsm& fsm) const {\n";
+        out << "        if (!invoke_guard(g1, evt, s, &ctx, fsm)) return false;\n";
+        out << "        if constexpr (sizeof...(Rest) == 0) {\n";
+        out << "            return invoke_guard(g2, evt, s, &ctx, fsm);\n";
+        out << "        } else {\n";
+        out << "            return and_<Guard2, Rest...>{}(evt, s, ctx, fsm);\n";
+        out << "        }\n";
+        out << "    }\n";
+        out << "    template <typename Event, typename State, typename Context>\n";
+        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx) const {\n";
+        out << "        if (!invoke_guard(g1, evt, s, &ctx)) return false;\n";
+        out << "        if constexpr (sizeof...(Rest) == 0) {\n";
+        out << "            return invoke_guard(g2, evt, s, &ctx);\n";
+        out << "        } else {\n";
+        out << "            return and_<Guard2, Rest...>{}(evt, s, ctx);\n";
+        out << "        }\n";
+        out << "    }\n";
+        out << "};\n\n";
+
+        out << "template <typename Guard1, typename Guard2, typename... Rest>\n";
+        out << "struct or_ {\n";
+        out << "    Guard1 g1{};\n";
+        out << "    Guard2 g2{};\n";
+        out << "    constexpr or_() = default;\n";
+        out << "    constexpr or_(Guard1 first, Guard2 second) : g1(std::move(first)), g2(std::move(second)) {}\n";
+        out << "    template <typename Event, typename State, typename Context, typename Fsm>\n";
+        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx, const Fsm& fsm) const {\n";
+        out << "        if (invoke_guard(g1, evt, s, &ctx, fsm)) return true;\n";
+        out << "        if constexpr (sizeof...(Rest) == 0) {\n";
+        out << "            return invoke_guard(g2, evt, s, &ctx, fsm);\n";
+        out << "        } else {\n";
+        out << "            return or_<Guard2, Rest...>{}(evt, s, ctx, fsm);\n";
+        out << "        }\n";
+        out << "    }\n";
+        out << "    template <typename Event, typename State, typename Context>\n";
+        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx) const {\n";
+        out << "        if (invoke_guard(g1, evt, s, &ctx)) return true;\n";
+        out << "        if constexpr (sizeof...(Rest) == 0) {\n";
+        out << "            return invoke_guard(g2, evt, s, &ctx);\n";
+        out << "        } else {\n";
+        out << "            return or_<Guard2, Rest...>{}(evt, s, ctx);\n";
+        out << "        }\n";
+        out << "    }\n";
+        out << "};\n\n";
+
+        out << "template <typename ParentState, typename SubState>\n";
+        out << "struct history_is {\n";
+        out << "    template <typename Event, typename State, typename Context, typename Fsm>\n";
+        out << "    constexpr bool operator()(const Event&, const State&, Context&, const Fsm& fsm) const {\n";
+        out << "        return fsm.get_history(ParentState::name) == SubState::name;\n";
+        out << "    }\n";
+        out << "    template <typename Event, typename State, typename Context>\n";
+        out << "    constexpr bool operator()(const Event&, const State&, Context&) const {\n";
+        out << "        return false;\n";
+        out << "    }\n";
         out << "};\n\n";
 
         // Row DSL
@@ -456,6 +643,19 @@ class CppGenerator {
         out << "    } else { return true; }\n";
         out << "}\n\n";
 
+        out << "template <typename Guard, typename Event, typename State, typename Context, typename Fsm>\n";
+        out << "constexpr bool invoke_guard(const Guard& g, const Event& evt, const State& s, Context* ctx, const Fsm& fsm) {\n";
+        out << "    if constexpr (requires { { g(evt, s, *ctx, fsm) } -> std::convertible_to<bool>; }) {\n";
+        out << "        return ctx ? g(evt, s, *ctx, fsm) : true;\n";
+        out << "    } else if constexpr (requires { { g(evt, s, fsm) } -> std::convertible_to<bool>; }) {\n";
+        out << "        return g(evt, s, fsm);\n";
+        out << "    } else if constexpr (requires { { g(fsm) } -> std::convertible_to<bool>; }) {\n";
+        out << "        return g(fsm);\n";
+        out << "    } else {\n";
+        out << "        return invoke_guard(g, evt, s, ctx);\n";
+        out << "    }\n";
+        out << "}\n\n";
+
         out << "template <typename Action, typename Event, typename SrcState, "
                "typename DstState, typename Context>\n";
         out << "constexpr void invoke_action(const Action& a, const Event& evt, "
@@ -503,7 +703,8 @@ class CppGenerator {
         out << "public:\n";
         out << "    using table_type = Table;\n";
         out << "    using context_type = Context;\n";
-        out << "    using state_variant = typename Table::state_variant;\n\n";
+        out << "    using state_variant = typename Table::state_variant;\n";
+        out << "    using observer_type = std::function<void(const transition_info&)>;\n\n";
         out << "    static constexpr std::size_t state_count = std::variant_size_v<state_variant>;\n";
         out << "    static constexpr std::size_t transition_count = std::tuple_size_v<typename Table::rows>;\n";
         out << "    template <typename State> static constexpr bool has_state = detail::contains<State, typename "
@@ -523,6 +724,28 @@ class CppGenerator {
         out << "            return process_event<Event, "
                "std::decay_t<decltype(src)>>(event, src);\n";
         out << "        }, current_state_);\n";
+        out << "    }\n\n";
+
+        out << "    void set_observer(observer_type observer) { observer_ = std::move(observer); }\n\n";
+
+        out << "    struct history_entry {\n";
+        out << "        std::string_view parent;\n";
+        out << "        std::string_view substate;\n";
+        out << "    };\n\n";
+
+        out << "    void record_history(std::string_view parent, std::string_view substate) {\n";
+        out << "        if (parent.empty() || substate.empty()) return;\n";
+        out << "        for (auto& entry : history_records_) {\n";
+        out << "            if (entry.parent == parent) { entry.substate = substate; return; }\n";
+        out << "        }\n";
+        out << "        history_records_.push_back({parent, substate});\n";
+        out << "    }\n\n";
+
+        out << "    [[nodiscard]] std::string_view get_history(std::string_view parent) const noexcept {\n";
+        out << "        for (const auto& entry : history_records_) {\n";
+        out << "            if (entry.parent == parent) return entry.substate;\n";
+        out << "        }\n";
+        out << "        return \"\";\n";
         out << "    }\n\n";
 
         out << "    template <typename State> [[nodiscard]] constexpr bool "
@@ -563,16 +786,28 @@ class CppGenerator {
                "Row::source_state> && std::is_same_v<Event, typename "
                "Row::event_type>) {\n";
         out << "            if (::fsm::invoke_guard(typename Row::guard_type{}, "
-               "evt, src, context_)\n) {\n";
+               "evt, src, context_, *this)) {\n";
         out << "                if constexpr (Row::is_internal) {\n";
         out << "                    ::fsm::invoke_action(typename Row::action_type{}, evt, src, src, context_);\n";
+        out << "                    if (observer_) observer_(transition_info{::fsm::get_state_name(src), ::fsm::get_state_name(src), \"Event\", true});\n";
         out << "                    return true;\n";
         out << "                } else {\n";
+        out << "                    if constexpr (requires { SrcState::parent; }) {\n";
+        out << "                        constexpr std::string_view src_p = SrcState::parent;\n";
+        out << "                        std::string_view dst_p = \"\";\n";
+        out << "                        if constexpr (requires { typename Row::target_state::parent; }) {\n";
+        out << "                            dst_p = Row::target_state::parent;\n";
+        out << "                        }\n";
+        out << "                        if (src_p != dst_p) {\n";
+        out << "                            record_history(src_p, ::fsm::get_state_name(src));\n";
+        out << "                        }\n";
+        out << "                    }\n";
         out << "                    ::fsm::invoke_exit_hook(src, context_);\n";
         out << "                    typename Row::target_state dst_state{};\n";
         out << "                    ::fsm::invoke_action(typename Row::action_type{}, "
                "evt, src, dst_state, context_);\n";
         out << "                    ::fsm::invoke_enter_hook(dst_state, context_);\n";
+        out << "                    if (observer_) observer_(transition_info{::fsm::get_state_name(src), ::fsm::get_state_name(dst_state), \"Event\", false});\n";
         out << "                    current_state_.template emplace<typename "
                "Row::target_state>(std::move(dst_state));\n";
         out << "                    return true;\n";
@@ -584,6 +819,8 @@ class CppGenerator {
 
         out << "    state_variant current_state_;\n";
         out << "    Context* context_{nullptr};\n";
+        out << "    observer_type observer_{};\n";
+        out << "    std::vector<history_entry> history_records_{};\n";
         out << "};\n\n";
 
         // Thread-Safe wrapper in C++20 with std::jthread and std::stop_token
@@ -608,6 +845,11 @@ class CppGenerator {
                    "});\n";
             out << "        }\n";
             out << "        cv_.notify_one();\n";
+            out << "    }\n\n";
+
+            out << "    void set_observer(typename fsm_type::observer_type obs) {\n";
+            out << "        std::lock_guard<std::mutex> lock(mutex_);\n";
+            out << "        fsm_.set_observer(std::move(obs));\n";
             out << "    }\n\n";
 
             out << "    void start_worker() {\n";
@@ -680,18 +922,26 @@ class CppGenerator {
         out << "#include <string_view>\n";
         out << "#include <type_traits>\n";
         out << "#include <utility>\n";
+        out << "#include <functional>\n";
+        out << "#include <vector>\n";
         if (opts.thread_safe) {
             out << "#include <queue>\n";
             out << "#include <mutex>\n";
             out << "#include <condition_variable>\n";
             out << "#include <thread>\n";
-            out << "#include <functional>\n";
             out << "#include <atomic>\n";
         }
         out << "\n";
 
         out << "namespace fsm {\n\n";
         out << "struct no_context {};\n\n";
+
+        out << "struct transition_info {\n";
+        out << "    std::string_view source;\n";
+        out << "    std::string_view target;\n";
+        out << "    std::string_view event;\n";
+        out << "    bool is_internal = false;\n";
+        out << "};\n\n";
 
         out << "template <typename... Ts> struct type_list {};\n\n";
 
@@ -738,6 +988,92 @@ class CppGenerator {
                "operator()(Args&...) const noexcept {}\n";
         out << "};\n\n";
 
+        // Combinators
+        out << "template <typename Guard, typename Event, typename State, typename Context>\n";
+        out << "constexpr bool invoke_guard(const Guard& g, const Event& evt, const State& s, Context* ctx);\n\n";
+
+        out << "template <typename Guard, typename Event, typename State, typename Context, typename Fsm>\n";
+        out << "constexpr bool invoke_guard(const Guard& g, const Event& evt, const State& s, Context* ctx, const Fsm& fsm);\n\n";
+
+        out << "template <typename Guard>\n";
+        out << "struct not_ {\n";
+        out << "    Guard guard_fn{};\n";
+        out << "    constexpr not_() = default;\n";
+        out << "    constexpr explicit not_(Guard g) : guard_fn(std::move(g)) {}\n";
+        out << "    template <typename Event, typename State, typename Context, typename Fsm>\n";
+        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx, const Fsm& fsm) const {\n";
+        out << "        return !invoke_guard(guard_fn, evt, s, &ctx, fsm);\n";
+        out << "    }\n";
+        out << "    template <typename Event, typename State, typename Context>\n";
+        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx) const {\n";
+        out << "        return !invoke_guard(guard_fn, evt, s, &ctx);\n";
+        out << "    }\n";
+        out << "};\n\n";
+
+        out << "template <typename Guard1, typename Guard2, typename... Rest>\n";
+        out << "struct and_ {\n";
+        out << "    Guard1 g1{};\n";
+        out << "    Guard2 g2{};\n";
+        out << "    constexpr and_() = default;\n";
+        out << "    constexpr and_(Guard1 first, Guard2 second) : g1(std::move(first)), g2(std::move(second)) {}\n";
+        out << "    template <typename Event, typename State, typename Context, typename Fsm>\n";
+        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx, const Fsm& fsm) const {\n";
+        out << "        if (!invoke_guard(g1, evt, s, &ctx, fsm)) return false;\n";
+        out << "        if constexpr (sizeof...(Rest) == 0) {\n";
+        out << "            return invoke_guard(g2, evt, s, &ctx, fsm);\n";
+        out << "        } else {\n";
+        out << "            return and_<Guard2, Rest...>{}(evt, s, ctx, fsm);\n";
+        out << "        }\n";
+        out << "    }\n";
+        out << "    template <typename Event, typename State, typename Context>\n";
+        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx) const {\n";
+        out << "        if (!invoke_guard(g1, evt, s, &ctx)) return false;\n";
+        out << "        if constexpr (sizeof...(Rest) == 0) {\n";
+        out << "            return invoke_guard(g2, evt, s, &ctx);\n";
+        out << "        } else {\n";
+        out << "            return and_<Guard2, Rest...>{}(evt, s, ctx);\n";
+        out << "        }\n";
+        out << "    }\n";
+        out << "};\n\n";
+
+        out << "template <typename Guard1, typename Guard2, typename... Rest>\n";
+        out << "struct or_ {\n";
+        out << "    Guard1 g1{};\n";
+        out << "    Guard2 g2{};\n";
+        out << "    constexpr or_() = default;\n";
+        out << "    constexpr or_(Guard1 first, Guard2 second) : g1(std::move(first)), g2(std::move(second)) {}\n";
+        out << "    template <typename Event, typename State, typename Context, typename Fsm>\n";
+        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx, const Fsm& fsm) const {\n";
+        out << "        if (invoke_guard(g1, evt, s, &ctx, fsm)) return true;\n";
+        out << "        if constexpr (sizeof...(Rest) == 0) {\n";
+        out << "            return invoke_guard(g2, evt, s, &ctx, fsm);\n";
+        out << "        } else {\n";
+        out << "            return or_<Guard2, Rest...>{}(evt, s, ctx, fsm);\n";
+        out << "        }\n";
+        out << "    }\n";
+        out << "    template <typename Event, typename State, typename Context>\n";
+        out << "    constexpr bool operator()(const Event& evt, const State& s, Context& ctx) const {\n";
+        out << "        if (invoke_guard(g1, evt, s, &ctx)) return true;\n";
+        out << "        if constexpr (sizeof...(Rest) == 0) {\n";
+        out << "            return invoke_guard(g2, evt, s, &ctx);\n";
+        out << "        } else {\n";
+        out << "            return or_<Guard2, Rest...>{}(evt, s, ctx);\n";
+        out << "        }\n";
+        out << "    }\n";
+        out << "};\n\n";
+
+        out << "template <typename ParentState, typename SubState>\n";
+        out << "struct history_is {\n";
+        out << "    template <typename Event, typename State, typename Context, typename Fsm>\n";
+        out << "    constexpr bool operator()(const Event&, const State&, Context&, const Fsm& fsm) const {\n";
+        out << "        return fsm.get_history(ParentState::name) == SubState::name;\n";
+        out << "    }\n";
+        out << "    template <typename Event, typename State, typename Context>\n";
+        out << "    constexpr bool operator()(const Event&, const State&, Context&) const {\n";
+        out << "        return false;\n";
+        out << "    }\n";
+        out << "};\n\n";
+
         out << "template <typename Src, typename Evt, typename Dst, typename "
                "GuardType = no_guard, typename ActionType = no_action>\n";
         out << "struct row {\n";
@@ -781,6 +1117,10 @@ class CppGenerator {
                "std::false_type {};\n";
         out << "template <typename T> struct has_name<T, "
                "std::void_t<decltype(T::name)>> : std::true_type {};\n\n";
+        out << "template <typename T, typename = void> struct has_parent : "
+               "std::false_type {};\n";
+        out << "template <typename T> struct has_parent<T, "
+               "std::void_t<decltype(T::parent)>> : std::true_type {};\n\n";
         out << "template <typename T, typename = void> struct has_on_enter : "
                "std::false_type {};\n";
         out << "template <typename T> struct has_on_enter<T, "
@@ -817,6 +1157,19 @@ class CppGenerator {
         out << "    } else if constexpr (std::is_invocable_v<Guard>) {\n";
         out << "        return g();\n";
         out << "    } else { return true; }\n";
+        out << "}\n\n";
+
+        out << "template <typename Guard, typename Event, typename State, typename Context, typename Fsm>\n";
+        out << "constexpr bool invoke_guard(const Guard& g, const Event& evt, const State& s, Context* ctx, const Fsm& fsm) {\n";
+        out << "    if constexpr (std::is_invocable_v<Guard, const Event&, const State&, Context&, const Fsm&>) {\n";
+        out << "        return ctx ? g(evt, s, *ctx, fsm) : true;\n";
+        out << "    } else if constexpr (std::is_invocable_v<Guard, const Event&, const State&, const Fsm&>) {\n";
+        out << "        return g(evt, s, fsm);\n";
+        out << "    } else if constexpr (std::is_invocable_v<Guard, const Fsm&>) {\n";
+        out << "        return g(fsm);\n";
+        out << "    } else {\n";
+        out << "        return invoke_guard(g, evt, s, ctx);\n";
+        out << "    }\n";
         out << "}\n\n";
 
         out << "template <typename Action, typename Event, typename SrcState, "
@@ -876,7 +1229,8 @@ class CppGenerator {
         out << "public:\n";
         out << "    using table_type = Table;\n";
         out << "    using context_type = Context;\n";
-        out << "    using state_variant = typename Table::state_variant;\n\n";
+        out << "    using state_variant = typename Table::state_variant;\n";
+        out << "    using observer_type = std::function<void(const transition_info&)>;\n\n";
         out << "    static constexpr std::size_t state_count = std::variant_size_v<state_variant>;\n";
         out << "    static constexpr std::size_t transition_count = std::tuple_size_v<typename Table::rows>;\n";
         out << "    template <typename State> static constexpr bool has_state = detail::contains<State, typename "
@@ -896,6 +1250,28 @@ class CppGenerator {
         out << "            return process_event<Event, "
                "std::decay_t<decltype(src)>>(event, src);\n";
         out << "        }, current_state_);\n";
+        out << "    }\n\n";
+
+        out << "    void set_observer(observer_type observer) { observer_ = std::move(observer); }\n\n";
+
+        out << "    struct history_entry {\n";
+        out << "        std::string_view parent;\n";
+        out << "        std::string_view substate;\n";
+        out << "    };\n\n";
+
+        out << "    void record_history(std::string_view parent, std::string_view substate) {\n";
+        out << "        if (parent.empty() || substate.empty()) return;\n";
+        out << "        for (auto& entry : history_records_) {\n";
+        out << "            if (entry.parent == parent) { entry.substate = substate; return; }\n";
+        out << "        }\n";
+        out << "        history_records_.push_back({parent, substate});\n";
+        out << "    }\n\n";
+
+        out << "    [[nodiscard]] std::string_view get_history(std::string_view parent) const noexcept {\n";
+        out << "        for (const auto& entry : history_records_) {\n";
+        out << "            if (entry.parent == parent) return entry.substate;\n";
+        out << "        }\n";
+        out << "        return \"\";\n";
         out << "    }\n\n";
 
         out << "    template <typename State> constexpr bool is_in_state() const "
@@ -938,16 +1314,28 @@ class CppGenerator {
                "Row::source_state> && std::is_same_v<Event, typename "
                "Row::event_type>) {\n";
         out << "            if (::fsm::invoke_guard(typename Row::guard_type{}, "
-               "evt, src, context_)) {\n";
+               "evt, src, context_, *this)) {\n";
         out << "                if constexpr (Row::is_internal) {\n";
         out << "                    ::fsm::invoke_action(typename Row::action_type{}, evt, src, src, context_);\n";
+        out << "                    if (observer_) observer_(transition_info{::fsm::get_state_name(src), ::fsm::get_state_name(src), \"Event\", true});\n";
         out << "                    return true;\n";
         out << "                } else {\n";
+        out << "                    if constexpr (detail::has_parent<SrcState>::value) {\n";
+        out << "                        constexpr std::string_view src_p = SrcState::parent;\n";
+        out << "                        std::string_view dst_p = \"\";\n";
+        out << "                        if constexpr (detail::has_parent<typename Row::target_state>::value) {\n";
+        out << "                            dst_p = Row::target_state::parent;\n";
+        out << "                        }\n";
+        out << "                        if (src_p != dst_p) {\n";
+        out << "                            record_history(src_p, ::fsm::get_state_name(src));\n";
+        out << "                        }\n";
+        out << "                    }\n";
         out << "                    ::fsm::invoke_exit_hook(src, context_);\n";
         out << "                    typename Row::target_state dst_state{};\n";
         out << "                    ::fsm::invoke_action(typename Row::action_type{}, "
                "evt, src, dst_state, context_);\n";
         out << "                    ::fsm::invoke_enter_hook(dst_state, context_);\n";
+        out << "                    if (observer_) observer_(transition_info{::fsm::get_state_name(src), ::fsm::get_state_name(dst_state), \"Event\", false});\n";
         out << "                    current_state_.template emplace<typename "
                "Row::target_state>(std::move(dst_state));\n";
         out << "                    return true;\n";
@@ -959,6 +1347,8 @@ class CppGenerator {
 
         out << "    state_variant current_state_;\n";
         out << "    Context* context_{nullptr};\n";
+        out << "    observer_type observer_{};\n";
+        out << "    std::vector<history_entry> history_records_{};\n";
         out << "};\n\n";
 
         // Thread-Safe wrapper in C++17
@@ -983,6 +1373,11 @@ class CppGenerator {
                    "});\n";
             out << "        }\n";
             out << "        cv_.notify_one();\n";
+            out << "    }\n\n";
+
+            out << "    void set_observer(typename fsm_type::observer_type obs) {\n";
+            out << "        std::lock_guard<std::mutex> lock(mutex_);\n";
+            out << "        fsm_.set_observer(std::move(obs));\n";
             out << "    }\n\n";
 
             out << "    void start_worker() {\n";

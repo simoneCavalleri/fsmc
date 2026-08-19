@@ -120,3 +120,14 @@ fsmc_target_sources(test_cmake_integration
     NAMESPACE net_cmake
 )
 add_test(NAME test_cmake_integration COMMAND test_cmake_integration)
+
+# Composite Guards & Boolean Expressions Test Suite
+add_executable(test_composite_guards test_composite_guards.cpp)
+target_link_libraries(test_composite_guards PRIVATE Threads::Threads)
+add_test(NAME test_composite_guards COMMAND test_composite_guards)
+
+# Transition Observers & Tracing Test Suite
+add_executable(test_observer test_observer.cpp)
+target_link_libraries(test_observer PRIVATE Threads::Threads)
+add_test(NAME test_observer COMMAND test_observer)
+

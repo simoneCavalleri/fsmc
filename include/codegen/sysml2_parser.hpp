@@ -281,8 +281,12 @@ class Sysml2Parser : public IParser {
         trans.source = source;
         trans.target = target;
         trans.event = event;
-        trans.guard = guard;
-        trans.action = action;
+        if (!guard.empty()) {
+            trans.guard = guard;
+        }
+        if (!action.empty()) {
+            trans.action = action;
+        }
         trans.target_is_history = target_is_history;
         trans.target_is_deep_history = target_is_deep_history;
 

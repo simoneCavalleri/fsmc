@@ -133,15 +133,15 @@ struct ResumeQueueAction {
 using ConnectionSysmlFSMTable =
     fsm::transition_table<fsm::row<Disconnected, ConnectCmd, Connecting>::when<HasNetworkGuard>::then<InitSocketAction>,
                           fsm::row<Disconnected, ConnectCmd, Disconnected>::when<NoNetworkGuard>::then<LogErrorAction>,
-                          fsm::row<Connecting, HandshakeOkEvent, Connected>::when<>::then<SetupSessionAction>,
-                          fsm::row<Connecting, HandshakeFailedEvent, Disconnected>::when<>::then<CleanupAction>,
-                          fsm::row<Connecting, TimeoutEvent, Disconnected>::when<>::then<CleanupAction>,
-                          fsm::row<Connected, NetworkDegradedEvent, Suspended>::when<>::then<PauseQueueAction>,
-                          fsm::row<Connected, DisconnectCmd, Disconnected>::when<>::then<CloseSocketAction>,
-                          fsm::row<Connected, ConnectionLostEvent, Disconnected>::when<>::then<CleanupAction>,
-                          fsm::row<Suspended, NetworkRestoredEvent, Connected>::when<>::then<ResumeQueueAction>,
-                          fsm::row<Suspended, DisconnectCmd, Disconnected>::when<>::then<CloseSocketAction>,
-                          fsm::row<Suspended, TimeoutEvent, Disconnected>::when<>::then<CleanupAction>>;
+                          fsm::row<Connecting, HandshakeOkEvent, Connected>::then<SetupSessionAction>,
+                          fsm::row<Connecting, HandshakeFailedEvent, Disconnected>::then<CleanupAction>,
+                          fsm::row<Connecting, TimeoutEvent, Disconnected>::then<CleanupAction>,
+                          fsm::row<Connected, NetworkDegradedEvent, Suspended>::then<PauseQueueAction>,
+                          fsm::row<Connected, DisconnectCmd, Disconnected>::then<CloseSocketAction>,
+                          fsm::row<Connected, ConnectionLostEvent, Disconnected>::then<CleanupAction>,
+                          fsm::row<Suspended, NetworkRestoredEvent, Connected>::then<ResumeQueueAction>,
+                          fsm::row<Suspended, DisconnectCmd, Disconnected>::then<CloseSocketAction>,
+                          fsm::row<Suspended, TimeoutEvent, Disconnected>::then<CleanupAction>>;
 
 // ============================================================================
 // State Machine Type Aliases

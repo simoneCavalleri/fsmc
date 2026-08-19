@@ -238,10 +238,10 @@ class CppGenerator {
                     << transition_item.target << ">";
             }
 
-            if (transition_item.guard) {
+            if (transition_item.guard && !transition_item.guard->empty()) {
                 out << "::when<" << *transition_item.guard << ">";
             }
-            if (transition_item.action) {
+            if (transition_item.action && !transition_item.action->empty()) {
                 out << "::then<" << *transition_item.action << ">";
             }
 

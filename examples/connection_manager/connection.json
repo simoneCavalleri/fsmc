@@ -7,12 +7,12 @@
         "ConnectCmd": [
           {
             "target": "Connecting",
-            "cond": "HasNetworkGuard",
+            "cond": "HasNetworkGuard && HasValidCredentialsGuard",
             "actions": ["InitSocketAction"]
           },
           {
             "target": "Disconnected",
-            "cond": "NoNetworkGuard",
+            "cond": "!HasNetworkGuard || !HasValidCredentialsGuard",
             "actions": ["LogErrorAction"]
           }
         ]

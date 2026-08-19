@@ -1,13 +1,13 @@
 #include <cassert>
 #include <chrono>
 #include <iostream>
-#include <string>
 #include <thread>
 
 // Forward declaration of custom context in namespace net
 namespace net {
 struct NetworkContext {
     bool has_network_interface = true;
+    bool has_valid_credentials = true;
     int socket_fd = -1;
     int session_id = 0;
     bool queue_paused = false;
@@ -20,7 +20,10 @@ struct NetworkContext {
 namespace net {
 
 // ============================================================================
-// Custom Guard Functors
+// Custom Atomic Guard Functors
+// Combined automatically via C++ templates:
+//   Nominal path: fsm::and_<HasNetworkGuard, HasValidCredentialsGuard>
+//   Error path (De Morgan): fsm::or_<fsm::not_<HasNetworkGuard>, fsm::not_<HasValidCredentialsGuard>>
 // ============================================================================
 struct HasNetworkGuard {
     [[nodiscard]] constexpr bool operator()(const ConnectCmd& /*evt*/, const auto& /*src*/,
@@ -29,10 +32,10 @@ struct HasNetworkGuard {
     }
 };
 
-struct NoNetworkGuard {
+struct HasValidCredentialsGuard {
     [[nodiscard]] constexpr bool operator()(const ConnectCmd& /*evt*/, const auto& /*src*/,
                                             const NetworkContext& ctx) const noexcept {
-        return !ctx.has_network_interface;
+        return ctx.has_valid_credentials;
     }
 };
 
@@ -153,18 +156,35 @@ int main() {
     assert(context.socket_fd == -1);
     std::cout << "  Current State: " << fsm.current_state_name() << "\n";
 
-    // 5. Guard Rejection (Connecting without network interface)
-    std::cout << "\n[PHASE 5] Guard Rejection Test (No Network Interface)\n";
+    // 5. Composite Boolean Guard Rejection Tests (De Morgan logic)
+    std::cout << "\n[PHASE 5A] Composite Guard Rejection Test (No Network Interface)\n";
     {
         net::NetworkContext offline_ctx;
         offline_ctx.has_network_interface = false;
+        offline_ctx.has_valid_credentials = true;
         net::ConnectionFSM offline_fsm(offline_ctx);
 
         handled = offline_fsm.dispatch(net::ConnectCmd{});
         assert(handled);
         assert(offline_fsm.is_in_state<net::Disconnected>());
         assert(offline_ctx.error_count == 1);
-        std::cout << "  Connection safely rejected, remains in: " << offline_fsm.current_state_name() << "\n";
+        std::cout << "  Connection safely rejected by composite guard [!HasNetworkGuard || !HasValidCredentialsGuard], state: "
+                  << offline_fsm.current_state_name() << "\n";
+    }
+
+    std::cout << "\n[PHASE 5B] Composite Guard Rejection Test (Network OK but Invalid Credentials)\n";
+    {
+        net::NetworkContext cred_ctx;
+        cred_ctx.has_network_interface = true;
+        cred_ctx.has_valid_credentials = false; // Triggers [!HasNetworkGuard || !HasValidCredentialsGuard]
+        net::ConnectionFSM cred_fsm(cred_ctx);
+
+        handled = cred_fsm.dispatch(net::ConnectCmd{});
+        assert(handled);
+        assert(cred_fsm.is_in_state<net::Disconnected>());
+        assert(cred_ctx.error_count == 1);
+        std::cout << "  Connection safely rejected by composite guard logic (has_valid_credentials=false), state: "
+                  << cred_fsm.current_state_name() << "\n";
     }
 
     // 6. Timeout Recovery Test (Connecting -> Timeout -> Disconnected)
@@ -200,6 +220,20 @@ int main() {
 
     std::cout << "  Async FSM successfully reached Connected state under worker thread.\n";
     async_fsm.stop_worker();
+
+    // 8. Real-Time Transition Observer & Telemetry Hook
+    std::cout << "\n[PHASE 8] Real-Time Transition Observer Hook Demonstration\n";
+    net::ConnectionFSM observed_fsm(context);
+    observed_fsm.set_observer([](const fsm::transition_info& info) {
+        std::cout << "  [OBSERVER TRACE] " << info.source 
+                  << " --(" << info.event << ")--> " 
+                  << info.target
+                  << (info.is_internal ? " [INTERNAL]" : "") << "\n";
+    });
+
+    observed_fsm.dispatch(net::ConnectCmd{});
+    observed_fsm.dispatch(net::HandshakeOkEvent{});
+    observed_fsm.dispatch(net::DisconnectCmd{});
 
     std::cout << "\n======================================================================\n"
               << "  [SUCCESS] All Connection Manager features demonstrated successfully!\n"

@@ -6,8 +6,8 @@ state "Connecting to Server" as Connecting
 state "Connected and Ready" as Connected
 state "Connection Suspended" as Suspended
 
-Disconnected --> Connecting : ConnectCmd [HasNetworkGuard] / InitSocketAction
-Disconnected --> Disconnected : ConnectCmd [NoNetworkGuard] / LogErrorAction
+Disconnected --> Connecting : ConnectCmd [HasNetworkGuard && HasValidCredentialsGuard] / InitSocketAction
+Disconnected --> Disconnected : ConnectCmd [!HasNetworkGuard || !HasValidCredentialsGuard] / LogErrorAction
 
 Connecting --> Connected : HandshakeOkEvent / SetupSessionAction
 Connecting --> Disconnected : HandshakeFailedEvent / CleanupAction

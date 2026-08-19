@@ -15,12 +15,12 @@
         <!-- Disconnected -->
         <transition xmi:id="_t_conn_1" source="_s_disconnected" target="_s_connecting">
           <trigger xmi:id="_trig_c1" name="ConnectCmd"/>
-          <guard xmi:id="_g_c1" name="HasNetworkGuard"/>
+          <guard xmi:id="_g_c1" name="HasNetworkGuard &amp;&amp; HasValidCredentialsGuard"/>
           <effect xmi:id="_act_c1" name="InitSocketAction"/>
         </transition>
         <transition xmi:id="_t_conn_2" source="_s_disconnected" target="_s_disconnected">
           <trigger xmi:id="_trig_c2" name="ConnectCmd"/>
-          <guard xmi:id="_g_c2" name="NoNetworkGuard"/>
+          <guard xmi:id="_g_c2" name="!HasNetworkGuard || !HasValidCredentialsGuard"/>
           <effect xmi:id="_act_c2" name="LogErrorAction"/>
         </transition>
 

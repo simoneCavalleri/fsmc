@@ -1,7 +1,6 @@
 #include <cassert>
 #include <chrono>
 #include <iostream>
-#include <string>
 #include <thread>
 
 // Forward declaration of custom context in namespace mission

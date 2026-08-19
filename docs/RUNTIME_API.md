@@ -49,11 +49,29 @@ Accesses the injected user context instance.
 fsm.context().battery_percentage = 98;
 ```
 
+#### `set_observer(observer_type observer)` / `clear_observer()`
+Attaches a callback / functor hook that is notified immediately whenever a state transition occurs (both external and internal).
+
+```cpp
+fsm.set_observer([](const fsm::transition_info& info) {
+    std::cout << "[TRANSITION] " << info.source 
+              << " --(" << info.event << ")--> " 
+              << info.target
+              << (info.is_internal ? " [INTERNAL]" : "") << "\n";
+});
+```
+
+The `fsm::transition_info` struct contains:
+- `source`: `std::string_view` name of the source state.
+- `target`: `std::string_view` name of the target state.
+- `event`: `std::string_view` name of the triggering event.
+- `is_internal`: `bool` indicating if the transition was an internal transition.
+
 ---
 
 ## 2. `fsm::thread_safe_fsm<Table, Context, InitialState>`
 
-An asynchronous, thread-safe wrapper around `fsm::fsm` backed by an internal lockless condition-variable queue and a background worker thread.
+An asynchronous, thread-safe wrapper around `fsm::fsm` backed by an internal condition-variable queue and a background worker thread.
 
 ### Header
 ```cpp
@@ -83,6 +101,15 @@ Thread-safely pushes an event into the queue and notifies the worker thread.
 async_fsm.post(TelemetryPingEvent{});
 ```
 
+#### `set_observer(observer_type observer)` / `clear_observer()`
+Thread-safely attaches a transition observer hook to the asynchronous state machine under mutex lock.
+
+```cpp
+async_fsm.set_observer([](const fsm::transition_info& info) {
+    std::cout << "[ASYNC TRACE] " << info.source << " -> " << info.target << "\n";
+});
+```
+
 #### `with_fsm(Callable&& fn)`
 Thread-safely executes a lambda or functor with exclusive access to the underlying `fsm::fsm` instance under mutex lock.
 
@@ -94,7 +121,28 @@ async_fsm.with_fsm([](auto& inner_fsm) {
 
 ---
 
-## 3. State Lifecycle Hooks
+## 3. Composite Guards (`fsm::not_`, `fsm::and_`, `fsm::or_`)
+
+`fsmc` provides compile-time combinators to compose atomic guard predicates with boolean logic:
+
+```cpp
+#include "fsm/transition.hpp"
+
+// Inversion: !Guard
+using NotEmergency = fsm::not_<IsEmergencyStop>;
+
+// Short-circuit Conjunction: G1 && G2 && G3
+using ReadyGuard = fsm::and_<IsPowerOk, IsDoorClosed, fsm::not_<IsEmergencyStop>>;
+
+// Short-circuit Disjunction: G1 || G2
+using AlertGuard = fsm::or_<IsEmergencyStop, fsm::not_<IsTempSafe>>;
+```
+
+All combinators evaluate arguments with C++ short-circuit semantics and forward arguments matching the arity of the underlying guards.
+
+---
+
+## 4. State Lifecycle Hooks
 
 States can optionally define `on_enter` and `on_exit` methods. They are automatically discovered using C++20 Concepts or C++17 SFINAE:
 
@@ -116,19 +164,19 @@ struct Orbiting {
 
 ---
 
-## 4. Fluent DSL Transition Tables
+## 5. Fluent DSL Transition Tables
 
 When constructing transition tables programmatically:
 
 ```cpp
 using MyTable = fsm::transition_table<
-    // External Transition
-    fsm::row<Idle, StartCmd, Running, HasPowerGuard, StartMotorsAction>,
+    // External Transition with Composite Guard
+    fsm::row<Idle, StartCmd, Running>::when<fsm::and_<HasPowerGuard, InverterReadyGuard>>,
 
     // Internal Transition (Zero exit/entry overhead)
     fsm::internal_row<Running, PingEvent, fsm::no_guard, LogTelemetryAction>,
 
-    // Guarded Branch
+    // Guarded Branch with Action
     fsm::row<Running, StopCmd, Idle, fsm::no_guard, StopMotorsAction>
 >;
 ```

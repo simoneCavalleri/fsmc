@@ -9,9 +9,9 @@ state def ConnectionFSM {
     state Connected;
     state Suspended;
 
-    // Disconnected transitions
-    transition from Disconnected accept ConnectCmd if HasNetworkGuard do InitSocketAction then Connecting;
-    transition from Disconnected accept ConnectCmd if NoNetworkGuard do LogErrorAction then Disconnected;
+    // Disconnected transitions with Composite Boolean Guards (De Morgan: !(A && B) == !A || !B)
+    transition from Disconnected accept ConnectCmd if HasNetworkGuard && HasValidCredentialsGuard do InitSocketAction then Connecting;
+    transition from Disconnected accept ConnectCmd if !HasNetworkGuard || !HasValidCredentialsGuard do LogErrorAction then Disconnected;
 
     // Connecting transitions
     transition from Connecting accept HandshakeOkEvent do SetupSessionAction then Connected;

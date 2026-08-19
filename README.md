@@ -22,6 +22,9 @@
 
 - ⚡ **Zero-Overhead Guarantee**: `0 bytes` heap allocation on dispatch, `0 ns` virtual table overhead, `10–25 ns` transition speed.
 - 🌐 **7 Modeling Formats**: Seamlessly compiles SysML v2, Cameo XMI, W3C SCXML, XState JSON, PlantUML, Mermaid, and DOT.
+- 🔀 **Composite Boolean Guards**: Native parser for boolean logic (`[PowerOk && (!Fault || Override)]`) with short-circuit evaluation.
+- 🔭 **Live Transition Observer**: Built-in telemetry and tracing hooks (`set_observer`) with zero overhead when inactive.
+- 🔄 **History States & HFSM**: Dynamic restoration for Shallow `[H]` and Deep `[H*]` composite macro-states with automatic transition inheritance.
 - 📦 **Standalone Single-Header**: Generates a self-contained `.hpp` with embedded runtime — **zero external dependencies, zero libraries to link**.
 - 🛠️ **First-Class CMake Automation**: Built-in `fsmc_target_sources` compiles models transparently during your build.
 - 🧵 **Thread-Safe Async Engine**: Optional `thread_safe_fsm` with background event queue powered by `std::jthread`.

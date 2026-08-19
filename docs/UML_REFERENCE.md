@@ -286,7 +286,27 @@ Ready --> InFlight : StartMissionCmd
 
 ---
 
-## 7. Guards and Actions
+---
+
+## 7. Guards, Composite Logic & Actions
+
+### Composite Boolean Guards (`!`, `&&`, `||`)
+`fsmc` features a built-in recursive expression parser for composite guards across all supported model formats. You can write arbitrary boolean logic directly in transitions:
+
+| Expression in Diagram | Generated C++ Guard Type | Semantics |
+| :--- | :--- | :--- |
+| `[!EmergencyStop]` | `fsm::not_<EmergencyStop>` | Logical NOT |
+| `[PowerOk && DoorClosed]` | `fsm::and_<PowerOk, DoorClosed>` | Logical AND (Short-circuit) |
+| `[HasKey || IsAdmin]` | `fsm::or_<HasKey, IsAdmin>` | Logical OR (Short-circuit) |
+| `[PowerOk && (!Fault || Override)]` | `fsm::and_<PowerOk, fsm::or_<fsm::not_<Fault>, Override>>` | Nested grouping |
+
+#### Multi-Format Syntax:
+- **PlantUML / Mermaid / DOT**: `StateA --> StateB : Event [PowerOk && !EmergencyStop]`
+- **SysML v2**: `transition from StateA accept Event if PowerOk && !EmergencyStop then StateB;`
+- **SCXML**: `<transition event="Event" cond="PowerOk &amp;&amp; !EmergencyStop" target="StateB"/>`
+- **XState JSON**: `"guard": "PowerOk && !EmergencyStop"`
+
+When generating C++ code, `fsmc` generates stub definitions only for atomic predicates (`PowerOk`, `EmergencyStop`), combining them seamlessly through `fsm::and_`, `fsm::or_`, `fsm::not_`.
 
 ### C++ Guard Signature (Predicates)
 ```cpp
@@ -310,8 +330,6 @@ struct DeploySolarPanelsAction {
     }
 };
 ```
-
----
 
 ## 8. Multi-Format Modeling Reference
 

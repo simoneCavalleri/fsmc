@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Disconnected" name="ConnectionFSM">
   <state id="Disconnected">
-    <transition event="ConnectCmd" cond="HasNetworkGuard" target="Connecting">
+    <transition event="ConnectCmd" cond="HasNetworkGuard &amp;&amp; HasValidCredentialsGuard" target="Connecting">
       <send event="InitSocketAction"/>
     </transition>
-    <transition event="ConnectCmd" cond="NoNetworkGuard" target="Disconnected">
+    <transition event="ConnectCmd" cond="!HasNetworkGuard || !HasValidCredentialsGuard" target="Disconnected">
       <send event="LogErrorAction"/>
     </transition>
   </state>

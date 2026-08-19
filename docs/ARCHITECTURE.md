@@ -69,3 +69,31 @@ The runtime engine uses `std::variant`, `std::tuple`, and fold expressions to el
 3. **Internal vs External Transitions**:
    - External transitions trigger state destruction, `on_exit()`, `Action()`, state reconstruction, and `on_enter()`.
    - Internal transitions (`RowType::is_internal == true`) invoke `Action()` in-place on the existing state instance with zero destruction or reconstruction.
+
+---
+
+## 4. Composite Guard AST & Recursive Parser
+
+To support complex boolean logic in model diagrams (e.g. `[PowerOk && (!Fault || Override)]`), `fsmc` incorporates an expression tokenizer and recursive-descent parser (`GuardExpressionParser`):
+- Generates a nested C++ type representation using variadic templates: `fsm::and_<PowerOk, fsm::or_<fsm::not_<Fault>, Override>>`.
+- Extracts unique atomic guard identifiers to generate forward-declared stubs only for leaf predicates.
+- Short-circuits evaluations at runtime with zero temporary objects.
+
+---
+
+## 5. Transition Observer & Tracing Hooks
+
+The runtime engine provides an optional observer callback mechanism (`set_observer`):
+- Zero overhead when inactive (`if (observer_) observer_(...)`).
+- Notifies listeners with `fsm::transition_info` containing string views of the source state, target state, event, and `is_internal` flag.
+- Thread-safe support in `thread_safe_fsm` through mutex-protected callback registration and notification.
+
+---
+
+## 6. HFSM Hierarchy & History State Resolution
+
+1. **Parent Transition Inheritance (Flattening)**:
+   - Outgoing transitions defined on parent macro-states are automatically propagated to all child sub-states during code generation, unless a child explicitly overrides the triggering event.
+2. **Dynamic History Restoration**:
+   - For composite states targeted with shallow history `State[H]` or deep history `State[H*]`, the runtime tracks the last active child sub-state and dynamically restores it upon re-entry.
+   - If the macro-state has never been visited before, the machine defaults to the initial sub-state.

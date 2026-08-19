@@ -470,11 +470,13 @@ class CppGenerator {
 
         out << "template <typename List, typename T> struct append_unique;\n";
         out << "template <typename... Ts, typename T> struct append_unique<type_list<Ts...>, T> {\n";
-        out << "    using type = std::conditional_t<contains<T, type_list<Ts...>>::value, type_list<Ts...>, type_list<Ts..., T>>;\n";
+        out << "    using type = std::conditional_t<contains<T, type_list<Ts...>>::value, type_list<Ts...>, "
+               "type_list<Ts..., T>>;\n";
         out << "};\n";
         out << "template <typename List, typename Result = type_list<>> struct unique;\n";
         out << "template <typename Result> struct unique<type_list<>, Result> { using type = Result; };\n";
-        out << "template <typename Head, typename... Tail, typename Result> struct unique<type_list<Head, Tail...>, Result> {\n";
+        out << "template <typename Head, typename... Tail, typename Result> struct unique<type_list<Head, Tail...>, "
+               "Result> {\n";
         out << "  private:\n";
         out << "    using next_result = typename append_unique<Result, Head>::type;\n";
         out << "  public:\n";
@@ -1037,11 +1039,13 @@ class CppGenerator {
 
         out << "template <typename List, typename T> struct append_unique;\n";
         out << "template <typename... Ts, typename T> struct append_unique<type_list<Ts...>, T> {\n";
-        out << "    using type = std::conditional_t<contains<T, type_list<Ts...>>::value, type_list<Ts...>, type_list<Ts..., T>>;\n";
+        out << "    using type = std::conditional_t<contains<T, type_list<Ts...>>::value, type_list<Ts...>, "
+               "type_list<Ts..., T>>;\n";
         out << "};\n";
         out << "template <typename List, typename Result = type_list<>> struct unique;\n";
         out << "template <typename Result> struct unique<type_list<>, Result> { using type = Result; };\n";
-        out << "template <typename Head, typename... Tail, typename Result> struct unique<type_list<Head, Tail...>, Result> {\n";
+        out << "template <typename Head, typename... Tail, typename Result> struct unique<type_list<Head, Tail...>, "
+               "Result> {\n";
         out << "  private:\n";
         out << "    using next_result = typename append_unique<Result, Head>::type;\n";
         out << "  public:\n";

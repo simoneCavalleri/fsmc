@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "codegen/fsm_model.hpp"
+#include "codegen/guard_parser.hpp"
 #include "codegen/parser_interface.hpp"
 
 namespace fsm::codegen {
@@ -26,10 +27,11 @@ class Sysml2Parser : public IParser {
         std::vector<std::string> state_stack;
         std::string accumulated_stmt;
 
-        auto flush_stmt = [&](size_t current_line) -> bool {
+        auto flush_stmt = [&](size_t current_line, bool is_block_open) -> bool {
             accumulated_stmt = trim(accumulated_stmt);
             if (!accumulated_stmt.empty()) {
-                if (!process_statement(accumulated_stmt, model, state_stack, error_message, current_line)) {
+                if (!process_statement(accumulated_stmt, model, state_stack, error_message, current_line,
+                                       is_block_open)) {
                     return false;
                 }
                 accumulated_stmt.clear();
@@ -47,12 +49,16 @@ class Sysml2Parser : public IParser {
             }
 
             for (const char character : clean_line) {
-                if (character == '{' || character == ';') {
-                    if (!flush_stmt(line_number)) {
+                if (character == '{') {
+                    if (!flush_stmt(line_number, true)) {
+                        return false;
+                    }
+                } else if (character == ';') {
+                    if (!flush_stmt(line_number, false)) {
                         return false;
                     }
                 } else if (character == '}') {
-                    if (!flush_stmt(line_number)) {
+                    if (!flush_stmt(line_number, false)) {
                         return false;
                     }
                     if (!state_stack.empty()) {
@@ -67,7 +73,7 @@ class Sysml2Parser : public IParser {
             }
         }
 
-        if (!flush_stmt(line_number)) {
+        if (!flush_stmt(line_number, false)) {
             return false;
         }
 
@@ -127,7 +133,7 @@ class Sysml2Parser : public IParser {
     }
 
     static bool process_statement(const std::string& raw_stmt, FsmModel& model, std::vector<std::string>& state_stack,
-                                  std::string& error_message, size_t line_number) {
+                                  std::string& error_message, size_t line_number, bool is_block_open = false) {
         const std::string stmt = normalize_whitespace(raw_stmt);
         if (stmt.empty()) {
             return true;
@@ -170,7 +176,9 @@ class Sysml2Parser : public IParser {
                     }
                 }
             }
-            state_stack.push_back(state_name);
+            if (is_block_open) {
+                state_stack.push_back(state_name);
+            }
             return true;
         }
 
@@ -221,10 +229,9 @@ class Sysml2Parser : public IParser {
         std::string guard;
         std::string action;
 
-        // Tokenize clause components: first|from, accept|when, if, do, then|to
         static const std::regex first_regex(R"(\b(?:first|from)\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
         static const std::regex accept_regex(R"(\b(?:accept|when)\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
-        static const std::regex if_regex(R"(\bif\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
+        static const std::regex if_regex(R"(\bif\s+([A-Za-z0-9_!&\|\(\)\s]+?)(?=\s+(?:do|then|to|;|$)))", std::regex::optimize);
         static const std::regex do_regex(R"(\bdo\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
         static const std::regex then_regex(R"(\b(?:then|to)\s+([A-Za-z_][A-Za-z0-9_\[\]\*]*))", std::regex::optimize);
 
@@ -240,7 +247,13 @@ class Sysml2Parser : public IParser {
         }
 
         if (std::regex_search(stmt, match, if_regex)) {
-            guard = sanitize_identifier(match[1].str());
+            auto parsed = GuardExpressionParser::parse(match[1].str());
+            if (!parsed.cpp_type.empty()) {
+                guard = parsed.cpp_type;
+                for (const auto& atomic : parsed.atomic_guards) {
+                    model.add_guard(atomic);
+                }
+            }
         }
 
         if (std::regex_search(stmt, match, do_regex)) {
@@ -315,9 +328,6 @@ class Sysml2Parser : public IParser {
 
         if (!event.empty()) {
             model.add_event(event);
-        }
-        if (!guard.empty()) {
-            model.add_guard(guard);
         }
         if (!action.empty()) {
             model.add_action(action);

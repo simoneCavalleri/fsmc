@@ -287,6 +287,19 @@ constexpr bool call_guard(const Guard& guard, const Event& event, const SrcState
     }
 }
 
+template <typename Guard, typename Event, typename SrcState, typename Context, typename Fsm>
+constexpr bool call_guard(const Guard& guard, const Event& event, const SrcState& src, Context& ctx, const Fsm& fsm) {
+    if constexpr (std::is_invocable_r_v<bool, Guard, const Event&, const SrcState&, Context&, const Fsm&>) {
+        return guard(event, src, ctx, fsm);
+    } else if constexpr (std::is_invocable_r_v<bool, Guard, const Event&, const SrcState&, const Fsm&>) {
+        return guard(event, src, fsm);
+    } else if constexpr (std::is_invocable_r_v<bool, Guard, const Fsm&>) {
+        return guard(fsm);
+    } else {
+        return call_guard(guard, event, src, ctx);
+    }
+}
+
 // ----------------------------------------------------------------------------
 // Safe invocation of action
 // ----------------------------------------------------------------------------
@@ -360,6 +373,25 @@ constexpr std::string_view get_state_name(const State& state) {
         return State::name;
     } else {
         return get_type_name<State>();
+    }
+}
+
+namespace detail {
+
+template <typename State, typename = void>
+struct has_parent_name : std::false_type {};
+
+template <typename State>
+struct has_parent_name<State, std::void_t<decltype(State::parent)>> : std::true_type {};
+
+}  // namespace detail
+
+template <typename State>
+constexpr std::string_view get_parent_name() noexcept {
+    if constexpr (detail::has_parent_name<State>::value) {
+        return State::parent;
+    } else {
+        return "";
     }
 }
 

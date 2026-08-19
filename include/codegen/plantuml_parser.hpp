@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "guard_parser.hpp"
 #include "parser_interface.hpp"
 
 namespace fsm::codegen {
@@ -205,7 +206,13 @@ class PlantUmlParser : public IParser {
         if (open_bracket != std::string::npos && close_bracket != std::string::npos) {
             const std::string grd = std::string(trim(label.substr(open_bracket + 1, close_bracket - open_bracket - 1)));
             if (!grd.empty()) {
-                guard_name = sanitize_identifier(grd);
+                auto parsed = GuardExpressionParser::parse(grd);
+                if (!parsed.cpp_type.empty()) {
+                    guard_name = parsed.cpp_type;
+                    for (const auto& atomic : parsed.atomic_guards) {
+                        model.add_guard(atomic);
+                    }
+                }
             }
             label = label.substr(0, open_bracket) + label.substr(close_bracket + 1);
         }
@@ -217,9 +224,6 @@ class PlantUmlParser : public IParser {
 
         model.add_state(state_name);
         model.add_event(event_name);
-        if (guard_name) {
-            model.add_guard(*guard_name);
-        }
         if (action_name) {
             model.add_action(*action_name);
         }
@@ -335,7 +339,13 @@ class PlantUmlParser : public IParser {
                 const std::string grd =
                     std::string(trim(label.substr(open_bracket + 1, close_bracket - open_bracket - 1)));
                 if (!grd.empty()) {
-                    guard_name = sanitize_identifier(grd);
+                    auto parsed = GuardExpressionParser::parse(grd);
+                    if (!parsed.cpp_type.empty()) {
+                        guard_name = parsed.cpp_type;
+                        for (const auto& atomic : parsed.atomic_guards) {
+                            model.add_guard(atomic);
+                        }
+                    }
                 }
                 label = label.substr(0, open_bracket) + label.substr(close_bracket + 1);
             }
@@ -363,9 +373,6 @@ class PlantUmlParser : public IParser {
         }
 
         model.add_event(event_name);
-        if (guard_name) {
-            model.add_guard(*guard_name);
-        }
         if (action_name) {
             model.add_action(*action_name);
         }

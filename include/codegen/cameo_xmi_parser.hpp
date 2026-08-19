@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "codegen/fsm_model.hpp"
+#include "codegen/guard_parser.hpp"
 #include "codegen/parser_interface.hpp"
 
 namespace fsm::codegen {
@@ -219,12 +220,28 @@ class SimpleXmlParser {
                     if (pos < len && body[pos] == quote) {
                         pos++;
                     }
-                    out_attrs[attr_name] = attr_val;
+                    out_attrs[attr_name] = unescape_xml(attr_val);
                 }
             } else if (!attr_name.empty()) {
                 out_attrs[attr_name] = "true";
             }
         }
+    }
+
+    static std::string unescape_xml(std::string str) {
+        auto replace_all = [](std::string& s, const std::string& from, const std::string& to) {
+            size_t p = 0;
+            while ((p = s.find(from, p)) != std::string::npos) {
+                s.replace(p, from.length(), to);
+                p += to.length();
+            }
+        };
+        replace_all(str, "&amp;", "&");
+        replace_all(str, "&lt;", "<");
+        replace_all(str, "&gt;", ">");
+        replace_all(str, "&quot;", "\"");
+        replace_all(str, "&apos;", "'");
+        return str;
     }
 };
 
@@ -490,8 +507,13 @@ class CameoXmiParser : public IParser {
         trans.target = dst_name;
         trans.event = sanitize_identifier(event_name);
         if (!guard_name.empty()) {
-            trans.guard = sanitize_identifier(guard_name);
-            model.add_guard(*trans.guard);
+            auto parsed = GuardExpressionParser::parse(guard_name);
+            if (!parsed.cpp_type.empty()) {
+                trans.guard = parsed.cpp_type;
+                for (const auto& atomic : parsed.atomic_guards) {
+                    model.add_guard(atomic);
+                }
+            }
         }
         if (!action_name.empty()) {
             trans.action = sanitize_identifier(action_name);

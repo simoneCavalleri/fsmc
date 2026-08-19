@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "codegen/fsm_model.hpp"
+#include "codegen/guard_parser.hpp"
 #include "codegen/parser_interface.hpp"
 
 namespace fsm::codegen {
@@ -121,8 +122,13 @@ class DotParser : public IParser {
                 trans.target = dst;
                 trans.event = sanitize_identifier(event_name);
                 if (!guard_name.empty()) {
-                    trans.guard = sanitize_identifier(guard_name);
-                    model.add_guard(*trans.guard);
+                    auto parsed = GuardExpressionParser::parse(guard_name);
+                    if (!parsed.cpp_type.empty()) {
+                        trans.guard = parsed.cpp_type;
+                        for (const auto& atomic : parsed.atomic_guards) {
+                            model.add_guard(atomic);
+                        }
+                    }
                 }
                 if (!action_name.empty()) {
                     trans.action = sanitize_identifier(action_name);

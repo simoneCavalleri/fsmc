@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "codegen/fsm_model.hpp"
+#include "codegen/guard_parser.hpp"
 #include "codegen/parser_interface.hpp"
 
 namespace fsm::codegen {
@@ -408,8 +409,13 @@ class JsonStateParser : public IParser {
         trans.target = sanitize_identifier(dst);
         trans.event = event_name;
         if (!cond.empty()) {
-            trans.guard = sanitize_identifier(cond);
-            model.add_guard(*trans.guard);
+            auto parsed = GuardExpressionParser::parse(cond);
+            if (!parsed.cpp_type.empty()) {
+                trans.guard = parsed.cpp_type;
+                for (const auto& atomic : parsed.atomic_guards) {
+                    model.add_guard(atomic);
+                }
+            }
         }
         if (!action.empty()) {
             trans.action = sanitize_identifier(action);

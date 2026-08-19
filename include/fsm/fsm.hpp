@@ -16,6 +16,17 @@ class fsm {
     using state_variant = typename Table::state_variant;
     using initial_state_type = InitialState;
 
+    // Static compile-time introspection
+    static constexpr std::size_t state_count = Table::state_count;
+    static constexpr std::size_t transition_count = Table::transition_count;
+    static constexpr std::size_t event_count = Table::event_count;
+
+    template <typename State>
+    static constexpr bool has_state = Table::template has_state<State>;
+
+    template <typename Event>
+    static constexpr bool has_event = Table::template has_event<Event>;
+
     // Default constructor (with no context or default-constructible context)
     constexpr fsm() : current_state_(InitialState{}), table_(), context_(nullptr) { enter_initial_state(); }
 

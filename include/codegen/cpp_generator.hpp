@@ -504,6 +504,10 @@ class CppGenerator {
         out << "    using table_type = Table;\n";
         out << "    using context_type = Context;\n";
         out << "    using state_variant = typename Table::state_variant;\n\n";
+        out << "    static constexpr std::size_t state_count = std::variant_size_v<state_variant>;\n";
+        out << "    static constexpr std::size_t transition_count = std::tuple_size_v<typename Table::rows>;\n";
+        out << "    template <typename State> static constexpr bool has_state = detail::contains<State, typename "
+               "Table::unique_states>::value;\n\n";
         out << "    constexpr fsm() : current_state_(InitialState{}), "
                "context_(nullptr) { enter_initial(); }\n";
         out << "    constexpr explicit fsm(Context& ctx) : "
@@ -873,6 +877,10 @@ class CppGenerator {
         out << "    using table_type = Table;\n";
         out << "    using context_type = Context;\n";
         out << "    using state_variant = typename Table::state_variant;\n\n";
+        out << "    static constexpr std::size_t state_count = std::variant_size_v<state_variant>;\n";
+        out << "    static constexpr std::size_t transition_count = std::tuple_size_v<typename Table::rows>;\n";
+        out << "    template <typename State> static constexpr bool has_state = detail::contains<State, typename "
+               "Table::unique_states>::value;\n\n";
         out << "    constexpr fsm() : current_state_(InitialState{}), "
                "context_(nullptr) { enter_initial(); }\n";
         out << "    constexpr explicit fsm(Context& ctx) : "

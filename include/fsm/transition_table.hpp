@@ -34,6 +34,16 @@ struct transition_table {
     using state_variant = to_variant_t<states>;
     using initial_state = type_list_front_t<states>;
 
+    static constexpr std::size_t state_count = states::size;
+    static constexpr std::size_t transition_count = sizeof...(Transitions);
+    static constexpr std::size_t event_count = events::size;
+
+    template <typename S>
+    static constexpr bool has_state = type_list_contains_v<S, states>;
+
+    template <typename E>
+    static constexpr bool has_event = type_list_contains_v<E, events>;
+
     std::tuple<Transitions...> rows;
 
     constexpr transition_table() = default;

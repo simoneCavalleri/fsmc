@@ -31,6 +31,13 @@ void test_basic_transitions() {
 
     fsm::fsm<SimpleTable> state_machine;
 
+    static_assert(decltype(state_machine)::state_count == 3);
+    static_assert(decltype(state_machine)::transition_count == 3);
+    static_assert(decltype(state_machine)::has_state<StateIdle>);
+    static_assert(decltype(state_machine)::has_state<StateRunning>);
+    static_assert(decltype(state_machine)::has_event<StartEvent>);
+    static_assert(!decltype(state_machine)::has_state<int>);
+
     assert(state_machine.is_in_state<StateIdle>());
     assert(!state_machine.is_in_state<StateRunning>());
 

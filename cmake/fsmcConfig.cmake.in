@@ -1,0 +1,14 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyTargets OPTIONAL)
+include(FindPackageHandleStandardArgs)
+
+# Include the exported targets
+if(NOT TARGET fsmc::fsmc)
+    include("${CMAKE_CURRENT_LIST_DIR}/fsmcTargets.cmake")
+endif()
+
+# Include the code generation helpers
+include("${CMAKE_CURRENT_LIST_DIR}/FsmcTools.cmake")
+
+set(fsmc_FOUND TRUE)

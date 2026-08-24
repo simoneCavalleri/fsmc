@@ -1,0 +1,106 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release-binaries:
+    name: Build Binary (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: fsmc-linux-x86_64
+            binary_path: build/bin/fsmc
+          - os: macos-latest
+            artifact_name: fsmc-macos-arm64
+            binary_path: build/bin/fsmc
+          - os: windows-latest
+            artifact_name: fsmc-windows-x86_64.exe
+            binary_path: build/bin/Release/fsmc.exe
+
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake
+
+      - name: Configure CMake (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+        timeout-minutes: 15
+
+      - name: Configure CMake (Windows MSVC)
+        if: runner.os == 'Windows'
+        run: |
+          cmake -B build -S . -A x64 -T host=x64
+        timeout-minutes: 15
+
+      - name: Build Release Binary
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cmake --build build --config Release --parallel 2 --verbose
+          else
+            cmake --build build --config Release --parallel --verbose
+          fi
+        timeout-minutes: 30
+
+      - name: Package Binary
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp "${{ matrix.binary_path }}" "dist/${{ matrix.artifact_name }}"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp "build/bin/Release/fsm-opt.exe" "dist/fsm-opt-windows-x86_64.exe" 2>/dev/null || true
+          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+            cp "build/bin/fsm-opt" "dist/fsm-opt-macos-arm64" 2>/dev/null || true
+          else
+            cp "build/bin/fsm-opt" "dist/fsm-opt-linux-x86_64" 2>/dev/null || true
+          fi
+        timeout-minutes: 5
+
+      - name: Upload Binary Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: dist/*
+
+  create-github-release:
+    name: Publish GitHub Release
+    needs: build-release-binaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release_assets
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release_assets/**/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

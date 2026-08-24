@@ -1,0 +1,59 @@
+name: Deploy Playground to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'playground/**'
+      - 'include/**'
+      - 'tools/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Emscripten SDK
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.58
+
+      - name: Build fsmc WebAssembly Module
+        run: |
+          emcmake cmake -B build-wasm -DFSMC_BUILD_WASM=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-wasm --config Release --target fsmc_wasm
+          mkdir -p playground
+          cp build-wasm/bin/fsmc.js playground/fsmc.js || cp build-wasm/fsmc.js playground/fsmc.js
+          cp build-wasm/bin/fsmc.wasm playground/fsmc.wasm || cp build-wasm/fsmc.wasm playground/fsmc.wasm
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'playground'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

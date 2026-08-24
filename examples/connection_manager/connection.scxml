@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Disconnected" name="ConnectionFSM">
+  <state id="Disconnected">
+    <transition event="ConnectCmd" cond="HasNetworkGuard &amp;&amp; HasValidCredentialsGuard" target="Connecting">
+      <send event="InitSocketAction"/>
+    </transition>
+    <transition event="ConnectCmd" cond="!HasNetworkGuard || !HasValidCredentialsGuard" target="Disconnected">
+      <send event="LogErrorAction"/>
+    </transition>
+  </state>
+
+  <state id="Connecting">
+    <transition event="HandshakeOkEvent" target="Connected">
+      <send event="SetupSessionAction"/>
+    </transition>
+    <transition event="HandshakeFailedEvent" target="Disconnected">
+      <send event="CleanupAction"/>
+    </transition>
+    <transition event="TimeoutEvent" target="Disconnected">
+      <send event="CleanupAction"/>
+    </transition>
+  </state>
+
+  <state id="Connected">
+    <transition event="NetworkDegradedEvent" target="Suspended">
+      <send event="PauseQueueAction"/>
+    </transition>
+    <transition event="DisconnectCmd" target="Disconnected">
+      <send event="CloseSocketAction"/>
+    </transition>
+    <transition event="ConnectionLostEvent" target="Disconnected">
+      <send event="CleanupAction"/>
+    </transition>
+  </state>
+
+  <state id="Suspended">
+    <transition event="NetworkRestoredEvent" target="Connected">
+      <send event="ResumeQueueAction"/>
+    </transition>
+    <transition event="DisconnectCmd" target="Disconnected">
+      <send event="CloseSocketAction"/>
+    </transition>
+    <transition event="TimeoutEvent" target="Disconnected">
+      <send event="CleanupAction"/>
+    </transition>
+  </state>
+</scxml>

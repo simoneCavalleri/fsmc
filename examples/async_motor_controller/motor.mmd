@@ -1,0 +1,12 @@
+stateDiagram-v2
+    [*] --> Halted
+    Halted --> Accelerating : StartCmd [HasValidRpmGuard] / PowerOnInverterAction
+    Accelerating --> RunningAtSpeed : SpeedReachedEvent / EngageSpeedPidAction
+    RunningAtSpeed --> Decelerating : StopCmd / ApplyRegenerativeBrakeAction
+    Decelerating --> Halted : StoppedEvent / DisengageInverterAction
+
+    RunningAtSpeed : SpeedSensorTick / UpdateOdometryAction
+    Accelerating --> Faulted : OvercurrentEvent / EmergencyCutoffAction
+    RunningAtSpeed --> Faulted : OvercurrentEvent / EmergencyCutoffAction
+    Decelerating --> Faulted : OvercurrentEvent / EmergencyCutoffAction
+    Faulted --> Halted : ResetFaultCmd [IsThermalSafeGuard] / ClearFaultFlagsAction

@@ -1,0 +1,23 @@
+@startuml
+[*] --> Disconnected
+
+state "Disconnected State" as Disconnected
+state "Connecting to Server" as Connecting
+state "Connected and Ready" as Connected
+state "Connection Suspended" as Suspended
+
+Disconnected --> Connecting : ConnectCmd [HasNetworkGuard && HasValidCredentialsGuard] / InitSocketAction
+Disconnected --> Disconnected : ConnectCmd [!HasNetworkGuard || !HasValidCredentialsGuard] / LogErrorAction
+
+Connecting --> Connected : HandshakeOkEvent / SetupSessionAction
+Connecting --> Disconnected : HandshakeFailedEvent / CleanupAction
+Connecting --> Disconnected : TimeoutEvent / CleanupAction
+
+Connected --> Suspended : NetworkDegradedEvent / PauseQueueAction
+Connected --> Disconnected : DisconnectCmd / CloseSocketAction
+Connected --> Disconnected : ConnectionLostEvent / CleanupAction
+
+Suspended --> Connected : NetworkRestoredEvent / ResumeQueueAction
+Suspended --> Disconnected : DisconnectCmd / CloseSocketAction
+Suspended --> Disconnected : TimeoutEvent / CleanupAction
+@enduml

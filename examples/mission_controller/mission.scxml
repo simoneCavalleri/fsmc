@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Standby" name="MissionFSM">
+  <state id="Standby" initial="Diagnostics">
+    <state id="Diagnostics">
+      <transition event="CalibrationOkEvent" target="Calibrated">
+        <send event="LogCalibrationAction"/>
+      </transition>
+    </state>
+    <state id="Calibrated"/>
+    <transition event="AuthorizeCmd" cond="ValidClearanceGuard" target="InFlight">
+      <send event="ArmEnginesAction"/>
+    </transition>
+    <transition event="AuthorizeCmd" cond="NoClearanceGuard" target="Aborted">
+      <send event="TriggerAlarmAction"/>
+    </transition>
+  </state>
+
+  <state id="InFlight" initial="Ascending">
+    <state id="Ascending">
+      <transition event="AltitudeReachedEvent" target="Cruising">
+        <send event="DeploySolarPanelsAction"/>
+      </transition>
+    </state>
+    <state id="Cruising">
+      <transition event="OrbitInsertedEvent" target="Orbiting">
+        <send event="StabilizeAttitudeAction"/>
+      </transition>
+    </state>
+    <state id="Orbiting">
+      <transition event="PingTelemetry">
+        <send event="LogTelemetryAction"/>
+      </transition>
+    </state>
+    <transition event="LinkDegradedEvent" target="SignalLost">
+      <send event="BufferCommandsAction"/>
+    </transition>
+    <transition event="ReturnHomeCmd" target="Landing">
+      <send event="RetractPanelsAction"/>
+    </transition>
+  </state>
+
+  <state id="SignalLost">
+    <transition event="LinkRestoredEvent" target="InFlight">
+      <send event="SyncClockAction"/>
+    </transition>
+  </state>
+
+  <state id="Landing">
+    <transition event="TouchdownEvent" target="MissionCompleted">
+      <send event="ShutdownSystemsAction"/>
+    </transition>
+  </state>
+
+  <state id="MissionCompleted"/>
+  <state id="Aborted"/>
+</scxml>

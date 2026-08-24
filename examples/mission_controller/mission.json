@@ -1,0 +1,91 @@
+{
+  "id": "MissionFSM",
+  "initial": "Standby",
+  "states": {
+    "Standby": {
+      "initial": "Diagnostics",
+      "states": {
+        "Diagnostics": {
+          "on": {
+            "CalibrationOkEvent": {
+              "target": "Calibrated",
+              "actions": ["LogCalibrationAction"]
+            }
+          }
+        },
+        "Calibrated": {}
+      },
+      "on": {
+        "AuthorizeCmd": [
+          {
+            "target": "InFlight",
+            "cond": "ValidClearanceGuard",
+            "actions": ["ArmEnginesAction"]
+          },
+          {
+            "target": "Aborted",
+            "cond": "NoClearanceGuard",
+            "actions": ["TriggerAlarmAction"]
+          }
+        ]
+      }
+    },
+    "InFlight": {
+      "initial": "Ascending",
+      "states": {
+        "Ascending": {
+          "on": {
+            "AltitudeReachedEvent": {
+              "target": "Cruising",
+              "actions": ["DeploySolarPanelsAction"]
+            }
+          }
+        },
+        "Cruising": {
+          "on": {
+            "OrbitInsertedEvent": {
+              "target": "Orbiting",
+              "actions": ["StabilizeAttitudeAction"]
+            }
+          }
+        },
+        "Orbiting": {
+          "on": {
+            "PingTelemetry": {
+              "type": "internal",
+              "actions": ["LogTelemetryAction"]
+            }
+          }
+        }
+      },
+      "on": {
+        "LinkDegradedEvent": {
+          "target": "SignalLost",
+          "actions": ["BufferCommandsAction"]
+        },
+        "ReturnHomeCmd": {
+          "target": "Landing",
+          "actions": ["RetractPanelsAction"]
+        }
+      }
+    },
+    "SignalLost": {
+      "on": {
+        "LinkRestoredEvent": {
+          "target": "InFlight",
+          "actions": ["SyncClockAction"]
+        }
+      }
+    },
+    "Landing": {
+      "on": {
+        "TouchdownEvent": {
+          "target": "MissionCompleted",
+          "actions": ["ShutdownSystemsAction"]
+        }
+      }
+    },
+    "MissionCompleted": {},
+    "Aborted": {}
+  }
+}

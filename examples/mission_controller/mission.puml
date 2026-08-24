@@ -1,0 +1,27 @@
+@startuml
+[*] --> Diagnostics
+
+state Standby {
+    Diagnostics --> Calibrated : CalibrationOkEvent / LogCalibrationAction
+}
+
+Standby : defer LaunchCmd
+
+state ClearanceChoice <<choice>>
+
+Calibrated --> ClearanceChoice : AuthorizeCmd
+ClearanceChoice --> Ascending : [ValidClearanceGuard] / ArmEnginesAction
+ClearanceChoice --> Aborted : [NoClearanceGuard] / TriggerAlarmAction
+
+state InFlight {
+    Ascending --> Cruising : AltitudeReachedEvent / DeploySolarPanelsAction
+    Cruising --> Orbiting : OrbitInsertedEvent / StabilizeAttitudeAction
+}
+
+Orbiting : PingTelemetry / LogTelemetryAction
+Orbiting --> SignalLost : LinkDegradedEvent / BufferCommandsAction
+SignalLost --> Orbiting : LinkRestoredEvent / SyncClockAction
+
+Orbiting --> Landing : ReturnHomeCmd / RetractPanelsAction
+Landing --> MissionCompleted : TouchdownEvent / ShutdownSystemsAction
+@enduml

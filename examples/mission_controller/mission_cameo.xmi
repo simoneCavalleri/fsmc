@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20131001">
+  <uml:Model xmi:id="_model_mission" name="MissionModel">
+    <packagedElement xmi:type="uml:StateMachine" xmi:id="_sm_mission" name="MissionFSM">
+      <region xmi:id="_root_region">
+        <subvertex xmi:type="uml:Pseudostate" xmi:id="_init_root" kind="initial"/>
+        
+        <!-- Standby Composite State -->
+        <subvertex xmi:type="uml:State" xmi:id="_s_standby" name="Standby">
+          <region xmi:id="_standby_region">
+            <subvertex xmi:type="uml:Pseudostate" xmi:id="_standby_init" kind="initial"/>
+            <subvertex xmi:type="uml:State" xmi:id="_s_diagnostics" name="Diagnostics"/>
+            <subvertex xmi:type="uml:State" xmi:id="_s_calibrated" name="Calibrated"/>
+            <transition xmi:id="_t_calib_init" source="_standby_init" target="_s_diagnostics"/>
+            <transition xmi:id="_t_calib" source="_s_diagnostics" target="_s_calibrated">
+              <trigger xmi:id="_trig_calib" name="CalibrationOkEvent"/>
+              <effect xmi:id="_act_calib" name="LogCalibrationAction"/>
+            </transition>
+          </region>
+        </subvertex>
+
+        <!-- Clearance Choice Pseudostate -->
+        <subvertex xmi:type="uml:Pseudostate" xmi:id="_choice_clearance" name="ClearanceChoice" kind="choice"/>
+
+        <!-- InFlight Composite State -->
+        <subvertex xmi:type="uml:State" xmi:id="_s_inflight" name="InFlight">
+          <region xmi:id="_inflight_region">
+            <subvertex xmi:type="uml:Pseudostate" xmi:id="_inflight_init" kind="initial"/>
+            <subvertex xmi:type="uml:State" xmi:id="_s_ascending" name="Ascending"/>
+            <subvertex xmi:type="uml:State" xmi:id="_s_cruising" name="Cruising"/>
+            <subvertex xmi:type="uml:State" xmi:id="_s_orbiting" name="Orbiting"/>
+            
+            <transition xmi:id="_t_inflight_init" source="_inflight_init" target="_s_ascending"/>
+            <transition xmi:id="_t_ascent" source="_s_ascending" target="_s_cruising">
+              <trigger xmi:id="_trig_alt" name="AltitudeReachedEvent"/>
+              <effect xmi:id="_act_panels" name="DeploySolarPanelsAction"/>
+            </transition>
+            <transition xmi:id="_t_cruise" source="_s_cruising" target="_s_orbiting">
+              <trigger xmi:id="_trig_orbit" name="OrbitInsertedEvent"/>
+              <effect xmi:id="_act_att" name="StabilizeAttitudeAction"/>
+            </transition>
+            <!-- Internal telemetry ping -->
+            <transition xmi:id="_t_ping" source="_s_orbiting" target="_s_orbiting" kind="internal">
+              <trigger xmi:id="_trig_ping" name="PingTelemetry"/>
+              <effect xmi:id="_act_ping" name="LogTelemetryAction"/>
+            </transition>
+          </region>
+        </subvertex>
+
+        <subvertex xmi:type="uml:State" xmi:id="_s_signallost" name="SignalLost"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s_landing" name="Landing"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s_completed" name="MissionCompleted"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s_aborted" name="Aborted"/>
+
+        <!-- Root Transitions -->
+        <transition xmi:id="_t_root_init" source="_init_root" target="_s_standby"/>
+        <transition xmi:id="_t_auth" source="_s_standby" target="_choice_clearance">
+          <trigger xmi:id="_trig_auth" name="AuthorizeCmd"/>
+        </transition>
+        <transition xmi:id="_t_auth_ok" source="_choice_clearance" target="_s_inflight">
+          <guard xmi:id="_g_clear" name="ValidClearanceGuard"/>
+          <effect xmi:id="_act_arm" name="ArmEnginesAction"/>
+        </transition>
+        <transition xmi:id="_t_auth_no" source="_choice_clearance" target="_s_aborted">
+          <guard xmi:id="_g_noclear" name="NoClearanceGuard"/>
+          <effect xmi:id="_act_alarm" name="TriggerAlarmAction"/>
+        </transition>
+
+        <!-- Signal Lost & Recovery -->
+        <transition xmi:id="_t_sigloss" source="_s_inflight" target="_s_signallost">
+          <trigger xmi:id="_trig_loss" name="LinkDegradedEvent"/>
+          <effect xmi:id="_act_buf" name="BufferCommandsAction"/>
+        </transition>
+        <transition xmi:id="_t_sigrestore" source="_s_signallost" target="_s_inflight">
+          <trigger xmi:id="_trig_restore" name="LinkRestoredEvent"/>
+          <effect xmi:id="_act_sync" name="SyncClockAction"/>
+        </transition>
+
+        <!-- De-orbit & Landing -->
+        <transition xmi:id="_t_deorbit" source="_s_inflight" target="_s_landing">
+          <trigger xmi:id="_trig_home" name="ReturnHomeCmd"/>
+          <effect xmi:id="_act_retract" name="RetractPanelsAction"/>
+        </transition>
+        <transition xmi:id="_t_land" source="_s_landing" target="_s_completed">
+          <trigger xmi:id="_trig_touch" name="TouchdownEvent"/>
+          <effect xmi:id="_act_down" name="ShutdownSystemsAction"/>
+        </transition>
+      </region>
+    </packagedElement>
+  </uml:Model>
+</xmi:XMI>

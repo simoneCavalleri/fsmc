@@ -67,6 +67,8 @@ add_fsm_unit_test(test_spsc_queue DIR core)
 add_fsm_unit_test(test_context_contract DIR core)
 add_fsm_unit_test(test_traits_and_hooks DIR core)
 add_fsm_unit_test(test_ring_buffer_overflow DIR core)
+add_fsm_unit_test(test_spsc_fsm DIR core)
+
 
 # ==============================================================================
 # Frontend Formal Parser Tests (tests/frontend/formal/)
@@ -112,6 +114,8 @@ add_fsm_unit_test(test_timed_smv DIR middleend)
 add_fsm_unit_test(test_format_export DIR backend/emitters)
 add_fsm_unit_test(test_lossless_roundtrip DIR backend/emitters)
 add_fsm_unit_test(test_emitter_factory DIR backend/emitters)
+add_fsm_unit_test(test_rtm_emitter DIR backend/emitters)
+
 
 # ==============================================================================
 # C++ Code Generator Backend Tests (tests/backend/cpp/)

@@ -10,28 +10,28 @@ theme:
   name: material
   logo: assets/logo.svg
   favicon: assets/logo.png
+  font:
+    text: IBM Plex Sans
+    code: JetBrains Mono
   palette:
-
-
     - scheme: default
-      primary: light blue
-      accent: cyan
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - scheme: slate
-      primary: light blue
-      accent: cyan
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
   features:
+    - navigation.indexes
+    - navigation.path
     - navigation.tracking
-    - navigation.sections
-    - navigation.expand
     - navigation.top
     - navigation.footer
-    - navigation.indexes
     - search.suggest
     - search.highlight
     - search.share
@@ -39,6 +39,7 @@ theme:
     - content.code.annotate
     - content.tabs.link
     - toc.follow
+
 
 extra_css:
   - stylesheets/extra.css
@@ -82,31 +83,44 @@ markdown_extensions:
 nav:
   - Overview: index.md
   - Getting Started:
-      - Installation: getting_started/installation.md
+      - getting_started/index.md
+      - Installation & Requirements: getting_started/installation.md
       - Quickstart Tutorial: getting_started/quickstart.md
-      - CLI Reference: getting_started/cli_usage.md
+      - CLI Reference (fsmc & fsm-opt): getting_started/cli_usage.md
+      - Build Systems Integration: getting_started/integration_guide.md
   - Architecture & Concepts:
+      - concepts/index.md
       - States & HFSM Hierarchy: concepts/states_and_hierarchy.md
       - Transitions & Triggers: concepts/transitions_and_events.md
       - Guards & Action Effects: concepts/guards_and_actions.md
       - Memory & Real-Time Guarantees: concepts/memory_and_realtime.md
   - Modeling Languages:
+      - formal_languages/index.md
       - OMG SysML v2: formal_languages/sysml_v2.md
       - Cameo / MagicDraw (XMI 2.1): formal_languages/cameo_magicdraw.md
       - W3C SCXML: formal_languages/scxml.md
-      - nuXmv / SMV: formal_languages/smv_nuxmv.md
+      - nuXmv / SMV Formal Logic: formal_languages/smv_nuxmv.md
       - Visual Diagrams: formal_languages/diagrams.md
+      - Comprehensive UML Reference: formal_languages/uml_reference.md
   - Verification & Safety:
+      - verification_and_safety/index.md
       - Model Checking (LTL/CTL): verification_and_safety/model_checking.md
       - EFSM Interval Analysis: verification_and_safety/interval_analysis.md
       - Requirement Traceability (RTM): verification_and_safety/rtm_matrix.md
   - Runtime C++ API:
+      - runtime_api/index.md
       - Synchronous Core FSM: runtime_api/synchronous_fsm.md
       - Lock-Free SPSC FSM (ISR-Safe): runtime_api/spsc_fsm.md
       - Thread-Safe MPSC Engine: runtime_api/thread_safe_fsm.md
       - Transition Trace & Telemetry: runtime_api/introspection_trace.md
-  - Reference & Tooling:
-      - CMake Target Integration: reference/cmake_integration.md
-      - Test Suite Catalog: TEST_SUITE_CATALOG.md
-      - IR Architecture Specification: ARCHITECTURE.md
+      - Full Runtime API Reference: runtime_api/reference.md
+  - Compiler Internals & Reference:
+      - internals/index.md
+      - Compiler Architecture: internals/architecture.md
+      - Canonical IR AST Specification: internals/fsm_ir_specification.md
+      - CMake Target Macro Reference: reference/cmake_integration.md
+      - Test Suite Catalog: reference/test_suite_catalog.md
   - Interactive Playground: playground/index.md
+
+
+

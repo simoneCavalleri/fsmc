@@ -5,17 +5,18 @@ This guide provides a comprehensive mapping between the **OMG UML 2.5 / SysML v2
 ---
 
 ## Table of Contents
-1. [Simple States & Transitions](#1-simple-states--transitions)
-2. [Hierarchical / Composite States (HFSM)](#2-hierarchical--composite-states-hfsm)
+1. [Simple States & Transitions](#1-simple-states-transitions)
+2. [Hierarchical / Composite States (HFSM)](#2-hierarchical-composite-states-hfsm)
 3. [Internal Transitions](#3-internal-transitions)
-4. [Choice & Junction Pseudostates](#4-choice--junction-pseudostates)
-5. [History States (Shallow & Deep)](#5-history-states-shallow--deep)
+4. [Choice & Junction Pseudostates](#4-choice-junction-pseudostates)
+5. [History States (Shallow & Deep)](#5-history-states-shallow-deep)
 6. [Deferred Events](#6-deferred-events)
 7. [Timed Transitions](#7-timed-transitions)
-8. [Universal Diagram Export & Translation](#8-universal-diagram-export--translation)
-9. [Guards, Composite Logic & Actions](#9-guards-composite-logic--actions)
+8. [Universal Diagram Export & Translation](#8-universal-diagram-export-translation)
+9. [Guards, Composite Logic & Actions](#9-guards-composite-logic-actions)
 10. [Multi-Format Modeling Reference](#10-multi-format-modeling-reference)
-11. [Format Feature Matrix & Extensions Specification](#11-format-feature-matrix--extensions-specification)
+11. [Format Feature Matrix & Extensions Specification](#11-format-feature-matrix-extensions-specification)
+
 
 ---
 

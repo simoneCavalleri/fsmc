@@ -15,52 +15,110 @@ We will model a flight mission state machine with three operating modes:
 
 ## Step 1: Author the State Machine Model
 
-Create a SysML v2 state definition file named `uav_mission.sysml`:
+Choose your preferred modeling syntax to define the UAV state machine:
 
-```sysml
-package UavMissionSystem {
-    state def UavMissionStatechart {
-        // Shared context variables
-        attribute batteryLevel : Real = 100.0;
-        attribute isGpsLocked : Boolean = true;
-        attribute waypointReached : Boolean = false;
+=== "OMG SysML v2 (`uav_mission.sysml`)"
+    ```sysml
+    package UavMissionSystem {
+        state def UavMissionStatechart {
+            attribute batteryLevel : Real = 100.0;
+            attribute isGpsLocked : Boolean = true;
+            attribute waypointReached : Boolean = false;
 
-        // Entry into Initial State
-        entry; then state SensorCalib;
+            entry; then state SensorCalib;
 
-        state SensorCalib {
-            transition on CalibrationOk to SystemReady;
+            state SensorCalib {
+                transition on CalibrationOk to SystemReady;
+            }
+            state SystemReady {
+                transition on TakeoffCmd if isGpsLocked to WaypointNav;
+            }
+            state WaypointNav {
+                transition on AreaReached do waypointReached = true; to HoverPause;
+                transition on LowBatteryEvent if batteryLevel < 20.0 to ReturnToHome;
+            }
+            state HoverPause {
+                transition on ResumeMissionCmd to WaypointNav;
+                transition on LowBatteryEvent if batteryLevel < 20.0 to ReturnToHome;
+            }
+            state ReturnToHome {
+                transition on TouchdownEvent to Landed;
+            }
+            state Landed {
+                transition on ShutdownCmd to FinalShutdown;
+            }
+            state FinalShutdown;
         }
-
-        state SystemReady {
-            // Guarded transition: Takeoff allowed only when GPS is locked
-            transition on TakeoffCmd if isGpsLocked to WaypointNav;
-        }
-
-        state WaypointNav {
-            // Normal mission flow
-            transition on AreaReached do waypointReached = true; to HoverPause;
-            // Emergency safety transition: fires when battery falls below 20%
-            transition on LowBatteryEvent if batteryLevel < 20.0 to ReturnToHome;
-        }
-
-        state HoverPause {
-            transition on ResumeMissionCmd to WaypointNav;
-            transition on LowBatteryEvent if batteryLevel < 20.0 to ReturnToHome;
-        }
-
-        state ReturnToHome {
-            transition on TouchdownEvent to Landed;
-        }
-
-        state Landed {
-            transition on ShutdownCmd to FinalShutdown;
-        }
-
-        state FinalShutdown;
     }
-}
-```
+    ```
+
+=== "PlantUML (`uav_mission.puml`)"
+    ```plantuml
+    @startuml
+    [*] --> SensorCalib
+
+    SensorCalib --> SystemReady : CalibrationOk
+    SystemReady --> WaypointNav : TakeoffCmd [isGpsLocked]
+    
+    WaypointNav --> HoverPause : AreaReached / waypointReached=true
+    WaypointNav --> ReturnToHome : LowBatteryEvent [batteryLevel < 20.0]
+    
+    HoverPause --> WaypointNav : ResumeMissionCmd
+    HoverPause --> ReturnToHome : LowBatteryEvent [batteryLevel < 20.0]
+    
+    ReturnToHome --> Landed : TouchdownEvent
+    Landed --> [*] : ShutdownCmd
+    @enduml
+    ```
+
+=== "W3C SCXML (`uav_mission.scxml`)"
+    ```xml
+    <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="SensorCalib">
+        <datamodel>
+            <data id="batteryLevel" expr="100.0"/>
+            <data id="isGpsLocked" expr="true"/>
+            <data id="waypointReached" expr="false"/>
+        </datamodel>
+        <state id="SensorCalib">
+            <transition event="CalibrationOk" target="SystemReady"/>
+        </state>
+        <state id="SystemReady">
+            <transition event="TakeoffCmd" cond="isGpsLocked" target="WaypointNav"/>
+        </state>
+        <state id="WaypointNav">
+            <transition event="AreaReached" target="HoverPause">
+                <assign location="waypointReached" expr="true"/>
+            </transition>
+            <transition event="LowBatteryEvent" cond="batteryLevel &lt; 20.0" target="ReturnToHome"/>
+        </state>
+        <state id="HoverPause">
+            <transition event="ResumeMissionCmd" target="WaypointNav"/>
+            <transition event="LowBatteryEvent" cond="batteryLevel &lt; 20.0" target="ReturnToHome"/>
+        </state>
+        <state id="ReturnToHome">
+            <transition event="TouchdownEvent" target="Landed"/>
+        </state>
+        <state id="Landed">
+            <transition event="ShutdownCmd" target="FinalShutdown"/>
+        </state>
+        <final id="FinalShutdown"/>
+    </scxml>
+    ```
+
+=== "Mermaid (`uav_mission.mmd`)"
+    ```mermaid
+    stateDiagram-v2
+        [*] --> SensorCalib
+        SensorCalib --> SystemReady: CalibrationOk
+        SystemReady --> WaypointNav: TakeoffCmd [isGpsLocked]
+        WaypointNav --> HoverPause: AreaReached
+        WaypointNav --> ReturnToHome: LowBatteryEvent [batteryLevel < 20.0]
+        HoverPause --> WaypointNav: ResumeMissionCmd
+        HoverPause --> ReturnToHome: LowBatteryEvent [batteryLevel < 20.0]
+        ReturnToHome --> Landed: TouchdownEvent
+        Landed --> [*]: ShutdownCmd
+    ```
+
 
 ---
 

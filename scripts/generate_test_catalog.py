@@ -126,9 +126,14 @@ def generate_catalog(root_dir: Path) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate TEST_SUITE_CATALOG.md from in-code test comments.")
-    parser.add_argument("--output", default="docs/TEST_SUITE_CATALOG.md", help="Output path for the generated catalog.")
+    parser = argparse.ArgumentParser(description="Generate test_suite_catalog.md from in-code test comments.")
+    parser.add_argument(
+        "--output",
+        default="docs/reference/test_suite_catalog.md",
+        help="Output path for the generated catalog.",
+    )
     parser.add_argument("--check", action="store_true", help="Check if the catalog is up-to-date without writing.")
+
     args = parser.parse_args()
 
     root_dir = Path(__file__).resolve().parent.parent

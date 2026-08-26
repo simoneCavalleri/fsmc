@@ -13,14 +13,25 @@ namespace fsm::codegen {
 
 class RuntimeExporter {
   public:
-    static bool export_runtime(const std::string& target_dir, CppStandard standard, std::string& out_error) {
+    static bool export_runtime(const std::string& output_file_path, CppStandard standard, std::string& out_error) {
         try {
-            fs::create_directories(target_dir);
+            const fs::path out_path(output_file_path);
+            const fs::path parent_dir = out_path.parent_path();
 
-            const std::string header_path = (fs::path(target_dir) / "fsm.hpp").string();
-            std::ofstream out(header_path);
+            // Attempt to create parent directory chain. Use std::error_code to avoid
+            // silent failures on Windows where some paths don't throw but silently no-op.
+            if (!parent_dir.empty()) {
+                std::error_code ec;
+                fs::create_directories(parent_dir, ec);
+                if (ec) {
+                    out_error = "Could not create output directory '" + parent_dir.string() + "': " + ec.message();
+                    return false;
+                }
+            }
+
+            std::ofstream out(out_path);
             if (!out.is_open()) {
-                out_error = "Could not create file: " + header_path;
+                out_error = "Could not create file: " + out_path.string();
                 return false;
             }
 
@@ -38,7 +49,7 @@ class RuntimeExporter {
             out << runtime_code;
 
             std::cout << "[SUCCESS] FSM Runtime (" << (standard == CppStandard::Cpp20 ? "Native C++20" : "C++17")
-                      << ") exported successfully to: " << header_path << "\n";
+                      << ") exported successfully to: " << out_path.string() << "\n";
             return true;
         } catch (const std::exception& ex) {
             out_error = ex.what();

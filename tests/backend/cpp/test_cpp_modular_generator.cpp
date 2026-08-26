@@ -56,6 +56,13 @@ FsmIr create_sample_ir() {
     return model;
 }
 
+/**
+ * @brief Test Intent: Verify granular emission of C++ events, states, guards, actions, and transition tables.
+ *
+ * Scenario:
+ * - Test each CppModelEmitter function independently.
+ * - Verify correct type_list for deferred events and row chaining for transition tables.
+ */
 TEST(CppModularGeneratorTest, CppModelEmitterStandaloneUnits) {
     auto model = create_sample_ir();
     GeneratorOptions opts;
@@ -98,6 +105,13 @@ TEST(CppModularGeneratorTest, CppModelEmitterStandaloneUnits) {
               std::string::npos);
 }
 
+/**
+ * @brief Test Intent: Verify C++20 standalone runtime emitter outputs complete runtime classes and traits.
+ *
+ * Scenario:
+ * - Emit Cpp20StandaloneRuntime into an ostringstream.
+ * - Verify dispatch_status, transition_info, fsm, and thread_safe_fsm definitions.
+ */
 TEST(CppModularGeneratorTest, Cpp20StandaloneRuntimeEmitter) {
     GeneratorOptions opts;
     opts.cpp_standard = CppStandard::Cpp20;
@@ -113,6 +127,13 @@ TEST(CppModularGeneratorTest, Cpp20StandaloneRuntimeEmitter) {
     EXPECT_NE(rt_str.find("class thread_safe_fsm"), std::string::npos);
 }
 
+/**
+ * @brief Test Intent: Verify C++17 standalone runtime emitter outputs complete runtime classes and traits.
+ *
+ * Scenario:
+ * - Emit Cpp17StandaloneRuntime into an ostringstream.
+ * - Verify C++17 compatible runtime types are generated.
+ */
 TEST(CppModularGeneratorTest, Cpp17StandaloneRuntimeEmitter) {
     GeneratorOptions opts;
     opts.cpp_standard = CppStandard::Cpp17;
@@ -128,6 +149,13 @@ TEST(CppModularGeneratorTest, Cpp17StandaloneRuntimeEmitter) {
     EXPECT_NE(rt_str.find("class thread_safe_fsm"), std::string::npos);
 }
 
+/**
+ * @brief Test Intent: Verify unified CppGenerator facade generates complete standalone self-contained header.
+ *
+ * Scenario:
+ * - Generate standalone header for DeviceController FSM.
+ * - Verify include guards, namespace wrapping, and synchronous and thread-safe FSM aliases.
+ */
 TEST(CppModularGeneratorTest, FullFacadeIntegration) {
     auto model = create_sample_ir();
     GeneratorOptions opts;

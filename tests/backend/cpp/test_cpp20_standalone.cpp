@@ -1,3 +1,13 @@
+/**
+ * @file test_cpp20_standalone.cpp
+ * @brief Standalone verification executable for C++20 standalone code generation.
+ *
+ * Test Intent:
+ * Prove that the generated C++20 standalone FSM header (leveraging C++20 Concepts,
+ * abbreviated function templates, and std::jthread async workers) compiles cleanly under C++20,
+ * transitions accurately, and handles asynchronous events via thread_safe_fsm.
+ */
+
 #include <cassert>
 #include <iostream>
 

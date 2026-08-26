@@ -51,7 +51,7 @@ function(fsmc_target_sources TARGET_NAME)
 
         set(OUTPUT_HEADER "${FSM_ARG_OUTPUT_DIR}/${DIAGRAM_NAME}_fsm.hpp")
 
-        set(CLI_ARGS -i "${DIAGRAM_ABS}" -o "${OUTPUT_HEADER}")
+        set(CLI_ARGS -i "${DIAGRAM_ABS}" -o "${OUTPUT_HEADER}" --allow-diagram-codegen)
 
         if(FSM_ARG_TARGET_LANG)
             list(APPEND CLI_ARGS --target "${FSM_ARG_TARGET_LANG}")

@@ -17,6 +17,77 @@ class MermaidSerializer {
         std::ostringstream out;
         out << "stateDiagram-v2\n";
 
+        // Properties
+        for (const auto& prop : model.properties) {
+            out << "%% @fsm:property name=" << prop.name << " kind=" << property_kind_to_string(prop.kind) << " ltl=\""
+                << prop.raw_formula << "\"";
+            if (!prop.traceability_req.empty()) {
+                out << " req=\"" << prop.traceability_req << "\"";
+            }
+            if (!prop.description.empty()) {
+                out << " desc=\"" << prop.description << "\"";
+            }
+            out << "\n";
+        }
+
+        // Variables
+        for (const auto& var : model.variables) {
+            out << "%% @fsm:var name=" << var.name << " type=" << var.type;
+            if (var.physical_unit.has_value()) {
+                out << " unit=\"" << *var.physical_unit << "\"";
+            }
+            if (!var.initial_value.empty()) {
+                out << " init=" << var.initial_value;
+            }
+            if (var.min_value.has_value()) {
+                out << " min=" << *var.min_value;
+            }
+            if (var.max_value.has_value()) {
+                out << " max=" << *var.max_value;
+            }
+            if (!var.description.empty()) {
+                out << " desc=\"" << var.description << "\"";
+            }
+            out << "\n";
+        }
+
+        // Signals
+        for (const auto& sig : model.signals) {
+            if (sig.attributes.empty()) {
+                out << "%% @fsm:signal " << sig.name << "\n";
+            } else {
+                out << "%% @fsm:signal " << sig.name << "{";
+                for (size_t i = 0; i < sig.attributes.size(); ++i) {
+                    out << sig.attributes[i].type << " " << sig.attributes[i].name;
+                    if (i + 1 < sig.attributes.size()) {
+                        out << ", ";
+                    }
+                }
+                out << "}";
+                if (!sig.validators.empty()) {
+                    out << " validator=\"" << sig.validators.front() << "\"";
+                }
+                out << "\n";
+            }
+        }
+
+        // State requirements
+        for (const auto& st : model.states) {
+            if (!st.traceability_reqs.empty()) {
+                out << "%% @fsm:state name=" << st.name << " satisfies=[";
+                for (size_t r = 0; r < st.traceability_reqs.size(); ++r) {
+                    if (r > 0)
+                        out << ", ";
+                    out << "\"" << st.traceability_reqs[r] << "\"";
+                }
+                out << "]\n";
+            }
+        }
+
+        if (!model.properties.empty() || !model.variables.empty() || !model.signals.empty()) {
+            out << "\n";
+        }
+
         // Map each state to its parent for fast lookup
         std::map<std::string, std::string> parent_map;
         for (const auto& s : model.states) {
@@ -56,12 +127,10 @@ class MermaidSerializer {
             }
         }
 
-        // Emit top-level non-composite states with deferred events
+        // Emit top-level non-composite states
         for (const auto& state : model.states) {
             if (!state.is_composite && state.parent_state.empty()) {
-                for (const auto& d_evt : state.deferred_events) {
-                    out << "    " << state.name << " : defer " << d_evt << "\n";
-                }
+                emit_leaf_state(out, state, "    ");
             }
         }
 
@@ -71,11 +140,7 @@ class MermaidSerializer {
                 continue;
             }
             const auto& trans = model.transitions[idx];
-            std::string clean_target = trans.target;
-            if (trans.target_is_history) {
-                clean_target += trans.target_is_deep_history ? "[H*]" : "[H]";
-            }
-            out << "    " << trans.source << " --> " << clean_target;
+            out << "    " << trans.source << " --> " << trans.target;
             std::string label = build_label(trans);
             if (!label.empty()) {
                 out << " : " << label;
@@ -87,6 +152,66 @@ class MermaidSerializer {
     }
 
   private:
+    static void emit_leaf_state(std::ostream& out, const StateNode& state, const std::string& pad) {
+        if (state.kind == StateKind::EntryPoint) {
+            out << pad << "state " << state.name << " <<entryPoint>>\n";
+            return;
+        }
+        if (state.kind == StateKind::ExitPoint) {
+            out << pad << "state " << state.name << " <<exitPoint>>\n";
+            return;
+        }
+        if (state.kind == StateKind::Fork) {
+            out << pad << "state " << state.name << " <<fork>>\n";
+            return;
+        }
+        if (state.kind == StateKind::Join) {
+            out << pad << "state " << state.name << " <<join>>\n";
+            return;
+        }
+        if (state.kind == StateKind::Choice) {
+            out << pad << "state " << state.name << " <<choice>>\n";
+            return;
+        }
+
+        bool has_actions = !state.entry_actions.empty() || !state.exit_actions.empty() ||
+                           !state.deferred_events.empty() ||
+                           (state.do_activity.has_value() && !state.do_activity->empty());
+        if (!has_actions) {
+            out << pad << "state " << state.name << "\n";
+            return;
+        }
+
+        std::string label = "<b>" + state.name + "</b><hr/>";
+        bool first = true;
+        for (const auto& act : state.entry_actions) {
+            if (!first)
+                label += "<br/>";
+            label += "entry / " + act.name;
+            first = false;
+        }
+        if (state.do_activity.has_value() && !state.do_activity->empty()) {
+            if (!first)
+                label += "<br/>";
+            label += "do / " + *state.do_activity;
+            first = false;
+        }
+        for (const auto& act : state.exit_actions) {
+            if (!first)
+                label += "<br/>";
+            label += "exit / " + act.name;
+            first = false;
+        }
+        for (const auto& d_evt : state.deferred_events) {
+            if (!first)
+                label += "<br/>";
+            label += "defer " + d_evt;
+            first = false;
+        }
+
+        out << pad << "state \"" << label << "\" as " << state.name << "\n";
+    }
+
     static void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
                            const std::map<std::string, std::string>& parent_map, std::set<size_t>& emitted_transitions,
                            const std::vector<size_t>& trans_order, size_t indent) {
@@ -96,13 +221,6 @@ class MermaidSerializer {
         if (!state.initial_sub_state.empty()) {
             out << pad << "    [*] --> " << state.initial_sub_state << "\n";
         }
-        if (state.has_history) {
-            out << pad << "    " << (state.has_deep_history ? "[H*]" : "[H]") << "\n";
-        }
-
-        for (const auto& d_evt : state.deferred_events) {
-            out << pad << "    " << state.name << " : defer " << d_evt << "\n";
-        }
 
         // 1. Emit child composite states first
         for (const auto& child : model.states) {
@@ -111,13 +229,10 @@ class MermaidSerializer {
             }
         }
 
-        // 2. Emit non-composite child states and their deferred events
+        // 2. Emit non-composite child states and their actions
         for (const auto& child : model.states) {
             if (child.parent_state == state.name && !child.is_composite) {
-                out << pad << "    state " << child.name << "\n";
-                for (const auto& d_evt : child.deferred_events) {
-                    out << pad << "    " << child.name << " : defer " << d_evt << "\n";
-                }
+                emit_leaf_state(out, child, pad + "    ");
             }
         }
 
@@ -131,11 +246,7 @@ class MermaidSerializer {
             std::string src_parent = (src_it != parent_map.end()) ? src_it->second : "";
             if (src_parent == state.name) {
                 emitted_transitions.insert(idx);
-                std::string clean_target = trans.target;
-                if (trans.target_is_history) {
-                    clean_target += trans.target_is_deep_history ? "[H*]" : "[H]";
-                }
-                out << pad << "    " << trans.source << " --> " << clean_target;
+                out << pad << "    " << trans.source << " --> " << trans.target;
                 std::string label = build_label(trans);
                 if (!label.empty()) {
                     out << " : " << label;
@@ -145,11 +256,42 @@ class MermaidSerializer {
         }
 
         out << pad << "}\n";
+
+        // Composite state lifecycle notes (Mermaid stateDiagram-v2 single-line note syntax)
+        bool has_comp_actions = !state.entry_actions.empty() || !state.exit_actions.empty() ||
+                                !state.deferred_events.empty() ||
+                                (state.do_activity.has_value() && !state.do_activity->empty());
+        if (has_comp_actions) {
+            std::string note_content;
+            for (const auto& act : state.entry_actions) {
+                if (!note_content.empty()) note_content += ", ";
+                note_content += "entry / " + act.name;
+            }
+            if (state.do_activity.has_value() && !state.do_activity->empty()) {
+                if (!note_content.empty()) note_content += ", ";
+                note_content += "do / " + *state.do_activity;
+            }
+            for (const auto& act : state.exit_actions) {
+                if (!note_content.empty()) note_content += ", ";
+                note_content += "exit / " + act.name;
+            }
+            for (const auto& d_evt : state.deferred_events) {
+                if (!note_content.empty()) note_content += ", ";
+                note_content += "defer " + d_evt;
+            }
+            out << pad << "note right of " << state.name << " : " << note_content << "\n";
+        }
     }
 
     static std::string build_label(const TransitionEdge& trans) {
         std::string label;
+        if (trans.priority > 0) {
+            label += "(prio=" + std::to_string(trans.priority) + ")";
+        }
         if (!trans.event.empty()) {
+            if (!label.empty()) {
+                label += " ";
+            }
             label += trans.event;
         }
         if (trans.guard && !trans.guard->empty()) {

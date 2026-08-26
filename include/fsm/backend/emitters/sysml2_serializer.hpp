@@ -16,9 +16,41 @@ class Sysml2Serializer {
         std::string model_name = model.name.empty() ? "GeneratedStateMachine" : model.name;
         out << "state def " << model_name << " {\n";
 
+        // Native SysML v2 EFSM Variables
+        for (const auto& var : model.variables) {
+            out << "    attribute " << var.name << " : " << map_cpp_type_to_sysml(var.type);
+            if (!var.initial_value.empty()) {
+                out << " = " << var.initial_value;
+            }
+            out << ";\n";
+        }
+        if (!model.variables.empty()) {
+            out << "\n";
+        }
+
+        // Native SysML v2 Signals & Item Definitions
+        for (const auto& sig : model.signals) {
+            if (sig.attributes.empty()) {
+                out << "    event def " << sig.name << ";\n";
+            } else {
+                out << "    item def " << sig.name << " {\n";
+                for (const auto& attr : sig.attributes) {
+                    out << "        attribute " << attr.name << " : " << map_cpp_type_to_sysml(attr.type);
+                    if (!attr.default_value.empty()) {
+                        out << " = " << attr.default_value;
+                    }
+                    out << ";\n";
+                }
+                out << "    }\n";
+            }
+        }
+        if (!model.signals.empty()) {
+            out << "\n";
+        }
+
         // Initial state
         if (!model.initial_state.empty()) {
-            out << "    initial state " << model.initial_state << ";\n\n";
+            out << "    entry; then " << model.initial_state << ";\n\n";
         }
 
         // Emit top-level states
@@ -35,17 +67,21 @@ class Sysml2Serializer {
             if (trans.target_is_history) {
                 clean_target += trans.target_is_deep_history ? "[H*]" : "[H]";
             }
-            out << "    transition from " << trans.source;
+            out << "    transition\n";
+            if (trans.priority > 0) {
+                out << "        priority " << trans.priority << "\n";
+            }
+            out << "        first " << trans.source << "\n";
             if (!trans.event.empty()) {
-                out << " accept " << trans.event;
+                out << "        accept " << trans.event << "\n";
             }
             if (trans.guard && !trans.guard->empty()) {
-                out << " if " << GuardExpressionParser::to_diagram_string(*trans.guard);
+                out << "        if " << GuardExpressionParser::to_diagram_string(*trans.guard) << "\n";
             }
             if (trans.action && !trans.action->empty()) {
-                out << " do " << *trans.action;
+                out << "        do " << *trans.action << "\n";
             }
-            out << " then " << clean_target << ";\n";
+            out << "        then " << clean_target << ";\n";
         }
 
         out << "}\n";
@@ -53,33 +89,97 @@ class Sysml2Serializer {
     }
 
   private:
+    static std::string map_cpp_type_to_sysml(std::string_view cpp_type) {
+        if (cpp_type == "uint32_t" || cpp_type == "int" || cpp_type == "uint64_t" || cpp_type == "int32_t") {
+            return "Integer";
+        }
+        if (cpp_type == "float" || cpp_type == "double") {
+            return "Real";
+        }
+        if (cpp_type == "bool") {
+            return "Boolean";
+        }
+        if (cpp_type == "std::string" || cpp_type == "string") {
+            return "String";
+        }
+        return std::string{cpp_type};
+    }
+
     static void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, size_t indent) {
         std::string pad(indent * 4, ' ');
-        if (state.is_composite) {
-            out << pad << "state " << state.name << " {\n";
-            if (!state.initial_sub_state.empty()) {
-                out << pad << "    initial state " << state.initial_sub_state << ";\n";
-            }
-            for (const auto& d_evt : state.deferred_events) {
-                out << pad << "    defer " << d_evt << ";\n";
-            }
-            for (const auto& child : model.states) {
-                if (child.parent_state == state.name) {
-                    emit_state(out, child, model, indent + 1);
-                }
-            }
-            out << pad << "}\n";
-        } else {
-            if (!state.deferred_events.empty()) {
-                out << pad << "state " << state.name << " {\n";
-                for (const auto& d_evt : state.deferred_events) {
-                    out << pad << "    defer " << d_evt << ";\n";
-                }
-                out << pad << "}\n";
-            } else {
-                out << pad << "state " << state.name << ";\n";
+
+        if (state.kind == StateKind::EntryPoint) {
+            out << pad << "entry point " << state.name << ";\n";
+            return;
+        }
+        if (state.kind == StateKind::ExitPoint) {
+            out << pad << "exit point " << state.name << ";\n";
+            return;
+        }
+
+        bool has_body = !state.traceability_reqs.empty() || !state.entry_actions.empty() ||
+                        (state.do_activity.has_value() && !state.do_activity->empty()) || !state.exit_actions.empty() ||
+                        !state.deferred_events.empty() || !state.initial_sub_state.empty() ||
+                        (state.time_invariant.has_value() && !state.time_invariant->empty());
+
+        bool has_children = false;
+        for (const auto& child : model.states) {
+            if (child.parent_state == state.name) {
+                has_children = true;
+                break;
             }
         }
+
+        if (!has_body && !has_children) {
+            out << pad << "state " << state.name << ";\n";
+            return;
+        }
+
+        out << pad << "state " << state.name << " {\n";
+
+        // Invariant (stay duration)
+        if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
+            out << pad << "    stay duration <= " << *state.time_invariant << ";\n";
+        }
+
+        // Requirements
+        for (const auto& req : state.traceability_reqs) {
+            out << pad << "    satisfy requirement " << req << ";\n";
+        }
+
+        // Entry Actions
+        for (const auto& act : state.entry_actions) {
+            out << pad << "    entry action " << act.name << ";\n";
+        }
+
+        // Do Activity
+        if (state.do_activity.has_value() && !state.do_activity->empty()) {
+            out << pad << "    do action " << *state.do_activity << ";\n";
+        }
+
+        // Exit Actions
+        for (const auto& act : state.exit_actions) {
+            out << pad << "    exit action " << act.name << ";\n";
+        }
+
+        // Deferred Events
+        for (const auto& d_evt : state.deferred_events) {
+            out << pad << "    defer " << d_evt << ";\n";
+        }
+
+        // Initial substate
+        if (!state.initial_sub_state.empty()) {
+            out << pad << "    entry; then " << state.initial_sub_state << ";\n";
+        }
+
+        // Nested children
+        for (const auto& child : model.states) {
+            if (child.parent_state == state.name) {
+                emit_state(out, child, model, indent + 1);
+            }
+        }
+
+        out << pad << "}\n";
     }
 };
 

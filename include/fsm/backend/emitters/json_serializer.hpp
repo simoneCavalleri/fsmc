@@ -19,6 +19,81 @@ class JsonSerializer {
         if (!model.initial_state.empty()) {
             out << "  \"initial\": \"" << model.initial_state << "\",\n";
         }
+
+        // Variables
+        if (!model.variables.empty()) {
+            out << "  \"variables\": [\n";
+            for (size_t v = 0; v < model.variables.size(); ++v) {
+                const auto& var = model.variables[v];
+                out << "    {\n";
+                out << "      \"name\": \"" << escape_json(var.name) << "\",\n";
+                out << "      \"type\": \"" << escape_json(var.type) << "\",\n";
+                out << "      \"init\": \"" << escape_json(var.initial_value) << "\"";
+                if (!var.description.empty()) {
+                    out << ",\n      \"description\": \"" << escape_json(var.description) << "\"";
+                }
+                out << "\n    }";
+                if (v + 1 < model.variables.size()) {
+                    out << ",";
+                }
+                out << "\n";
+            }
+            out << "  ],\n";
+        }
+
+        // Signals
+        if (!model.signals.empty()) {
+            out << "  \"signals\": [\n";
+            for (size_t s = 0; s < model.signals.size(); ++s) {
+                const auto& sig = model.signals[s];
+                out << "    {\n";
+                out << "      \"name\": \"" << escape_json(sig.name) << "\"";
+                if (!sig.attributes.empty()) {
+                    out << ",\n      \"attributes\": [\n";
+                    for (size_t a = 0; a < sig.attributes.size(); ++a) {
+                        const auto& attr = sig.attributes[a];
+                        out << "        { \"name\": \"" << escape_json(attr.name) << "\", \"type\": \""
+                            << escape_json(attr.type) << "\" }";
+                        if (a + 1 < sig.attributes.size()) {
+                            out << ",";
+                        }
+                        out << "\n";
+                    }
+                    out << "      ]";
+                }
+                out << "\n    }";
+                if (s + 1 < model.signals.size()) {
+                    out << ",";
+                }
+                out << "\n";
+            }
+            out << "  ],\n";
+        }
+
+        // Properties
+        if (!model.properties.empty()) {
+            out << "  \"properties\": [\n";
+            for (size_t p = 0; p < model.properties.size(); ++p) {
+                const auto& prop = model.properties[p];
+                out << "    {\n";
+                out << "      \"name\": \"" << escape_json(prop.name) << "\",\n";
+                out << "      \"kind\": \"" << property_kind_to_string(prop.kind) << "\",\n";
+                out << "      \"ltl\": \"" << escape_json(prop.raw_formula) << "\"";
+                if (!prop.traceability_req.empty()) {
+                    out << ",\n      \"req\": \"" << escape_json(prop.traceability_req) << "\"";
+                }
+                if (!prop.description.empty()) {
+                    out << ",\n      \"desc\": \"" << escape_json(prop.description) << "\"";
+                }
+                out << "\n    }";
+                if (p + 1 < model.properties.size()) {
+                    out << ",";
+                }
+                out << "\n";
+            }
+            out << "  ],\n";
+        }
+
         out << "  \"states\": {\n";
 
         // Group top-level states
@@ -49,9 +124,87 @@ class JsonSerializer {
 
         bool need_comma = false;
 
+        // State kind
+        if (state.kind != StateKind::Atomic) {
+            if (need_comma) {
+                out << ",\n";
+            }
+            out << pad << "  \"kind\": \"" << state_kind_to_string(state.kind) << "\"";
+            need_comma = true;
+        }
+
+        // Time invariant
+        if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
+            if (need_comma) {
+                out << ",\n";
+            }
+            out << pad << "  \"time_invariant\": \"" << escape_json(*state.time_invariant) << "\"";
+            need_comma = true;
+        }
+
         // Initial sub-state if composite
         if (!state.initial_sub_state.empty()) {
+            if (need_comma) {
+                out << ",\n";
+            }
             out << pad << "  \"initial\": \"" << state.initial_sub_state << "\"";
+            need_comma = true;
+        }
+
+        // Entry actions
+        if (!state.entry_actions.empty()) {
+            if (need_comma) {
+                out << ",\n";
+            }
+            out << pad << "  \"entry\": [";
+            for (size_t a = 0; a < state.entry_actions.size(); ++a) {
+                out << "\"" << escape_json(state.entry_actions[a].name) << "\"";
+                if (a + 1 < state.entry_actions.size()) {
+                    out << ", ";
+                }
+            }
+            out << "]";
+            need_comma = true;
+        }
+
+        // Exit actions
+        if (!state.exit_actions.empty()) {
+            if (need_comma) {
+                out << ",\n";
+            }
+            out << pad << "  \"exit\": [";
+            for (size_t a = 0; a < state.exit_actions.size(); ++a) {
+                out << "\"" << escape_json(state.exit_actions[a].name) << "\"";
+                if (a + 1 < state.exit_actions.size()) {
+                    out << ", ";
+                }
+            }
+            out << "]";
+            need_comma = true;
+        }
+
+        // Do activity
+        if (state.do_activity.has_value() && !state.do_activity->empty()) {
+            if (need_comma) {
+                out << ",\n";
+            }
+            out << pad << "  \"do\": \"" << escape_json(*state.do_activity) << "\"";
+            need_comma = true;
+        }
+
+        // Traceability requirements
+        if (!state.traceability_reqs.empty()) {
+            if (need_comma) {
+                out << ",\n";
+            }
+            out << pad << "  \"satisfies\": [";
+            for (size_t r = 0; r < state.traceability_reqs.size(); ++r) {
+                out << "\"" << escape_json(state.traceability_reqs[r]) << "\"";
+                if (r + 1 < state.traceability_reqs.size()) {
+                    out << ", ";
+                }
+            }
+            out << "]";
             need_comma = true;
         }
 
@@ -62,7 +215,7 @@ class JsonSerializer {
             }
             out << pad << "  \"defer\": [";
             for (size_t d = 0; d < state.deferred_events.size(); ++d) {
-                out << "\"" << state.deferred_events[d] << "\"";
+                out << "\"" << escape_json(state.deferred_events[d]) << "\"";
                 if (d + 1 < state.deferred_events.size()) {
                     out << ", ";
                 }
@@ -100,6 +253,9 @@ class JsonSerializer {
                     }
                     out << pad << "    \"" << evt_name << "\": {\n";
                     out << pad << "      \"target\": \"" << target_str << "\"";
+                    if (t->priority > 0) {
+                        out << ",\n" << pad << "      \"priority\": " << t->priority;
+                    }
                     if (t->guard && !t->guard->empty()) {
                         out << ",\n"
                             << pad << "      \"guard\": \""
@@ -119,6 +275,9 @@ class JsonSerializer {
                         }
                         out << pad << "      {\n";
                         out << pad << "        \"target\": \"" << target_str << "\"";
+                        if (t->priority > 0) {
+                            out << ",\n" << pad << "        \"priority\": " << t->priority;
+                        }
                         if (t->guard && !t->guard->empty()) {
                             out << ",\n"
                                 << pad << "        \"guard\": \""

@@ -99,7 +99,7 @@ def generate_catalog(root_dir: Path) -> str:
         lines.append(f"## {subsystem_name}")
         lines.append("")
         for rel_path, tests in files:
-            lines.append(f"### [`{rel_path.name}`](file:///{root_dir / rel_path}) (`{rel_path}`)")
+            lines.append(f"### [`{rel_path.name}`](../{rel_path}) (`{rel_path}`)")
             if not tests:
                 lines.append("- *(Executable binary test verification)*")
                 lines.append("")

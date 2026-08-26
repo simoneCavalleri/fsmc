@@ -198,10 +198,16 @@ stateDiagram-v2
 ### 2. Verify and Transpile via CLI
 
 ```bash
-# Verify semantic model soundness
+# Verify semantic model soundness (formal models & diagrams)
 fsmc -i connection.mmd --verify
 
-# Transpile to SysML v2 or nuXmv formal specification
+# Generate C++ from visual diagram formats (PlantUML, Mermaid, DOT, JSON)
+fsmc -i connection.mmd -o connection_fsm.hpp --allow-diagram-codegen
+
+# Compile formal models directly out-of-the-box (SysML v2, SCXML, Cameo XMI, nuXmv SMV)
+fsmc -i mission.sysml -o mission_fsm.hpp
+
+# Transpile between formal specification & diagram formats
 fsmc -i connection.mmd --export sysml2 -o connection.sysml
 fsmc -i connection.mmd --export smv -o connection.smv
 ```
@@ -217,7 +223,8 @@ find_package(fsmc CONFIG REQUIRED)
 add_executable(my_app main.cpp)
 target_link_libraries(my_app PRIVATE fsmc::fsmc_runtime)
 
-# Automatically compiles diagram into connection_fsm.hpp during build
+# Automatically compiles statecharts into connection_fsm.hpp during build
+# (Supports both formal specifications and visual diagram models out-of-the-box)
 fsmc_target_sources(my_app
     DIAGRAMS models/connection.mmd
     NAME ConnectionFSM

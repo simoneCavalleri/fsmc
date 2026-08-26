@@ -34,6 +34,8 @@ add_executable(my_app src/main.cpp)
 target_link_libraries(my_app PRIVATE fsmc::runtime)
 
 # 3. Automatically compile state machine diagrams
+# Note: fsmc_target_sources automatically handles both formal specifications
+# (SysML v2, SCXML, Cameo XMI, nuXmv SMV) and visual diagrams (PlantUML, Mermaid, DOT, JSON).
 fsmc_target_sources(my_app
     DIAGRAMS
         models/mission.puml

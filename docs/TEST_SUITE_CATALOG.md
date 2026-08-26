@@ -11,7 +11,7 @@
 
 ## Core Runtime Subsystem
 
-### [`test_async_and_guards.cpp`](file:////home/simone/dev/github/fsmc/tests/core/test_async_and_guards.cpp) (`tests/core/test_async_and_guards.cpp`)
+### [`test_async_and_guards.cpp`](../tests/core/test_async_and_guards.cpp) (`tests/core/test_async_and_guards.cpp`)
 #### `AsyncAndGuardsTest.GuardRejectionAndAcceptance`
 **Test Intent**: Verify guard predicate rejection, acceptance, and status tracking.
 
@@ -99,7 +99,7 @@
   - Test type_list traits (size, contains).
   - Test direct async_event_queue try_pop and queue size.
 
-### [`test_choice.cpp`](file:////home/simone/dev/github/fsmc/tests/core/test_choice.cpp) (`tests/core/test_choice.cpp`)
+### [`test_choice.cpp`](../tests/core/test_choice.cpp) (`tests/core/test_choice.cpp`)
 #### `ChoiceTest.ChoicePseudostateParsingAndCodegen`
 **Test Intent**: Verify Choice pseudostate expansion and code generation.
 
@@ -109,7 +109,7 @@
   - Verify C++ code generator expands the choice into direct guarded rows in the transition table
   - (e.g., row<Idle, LoginCmd, AdminView>::when<IsAdminGuard> and row<Idle, LoginCmd, UserView>::when<IsUserGuard>).
 
-### [`test_composite_guards.cpp`](file:////home/simone/dev/github/fsmc/tests/core/test_composite_guards.cpp) (`tests/core/test_composite_guards.cpp`)
+### [`test_composite_guards.cpp`](../tests/core/test_composite_guards.cpp) (`tests/core/test_composite_guards.cpp`)
 #### `CompositeGuardsTest.DirectCombinatorsEvaluation`
 **Test Intent**: Verify C++ compile-time composite guard combinators (`and_`, `or_`, `not_`).
 
@@ -151,7 +151,7 @@
   - Test failure with power off, door open, and emergency stop active.
   - Test success when all composite conditions are satisfied, transitioning to Running.
 
-### [`test_context_contract.cpp`](file:////home/simone/dev/github/fsmc/tests/core/test_context_contract.cpp) (`tests/core/test_context_contract.cpp`)
+### [`test_context_contract.cpp`](../tests/core/test_context_contract.cpp) (`tests/core/test_context_contract.cpp`)
 #### `ContextContractTest.SignalValidatorExecution`
 **Test Intent**: Verify runtime and constexpr validation logic on typed signal structs.
 
@@ -173,7 +173,7 @@
   - Machines with `no_context` can be default constructed safely.
   - Machines with user Context structs cannot be default constructed without a reference,
 
-### [`test_deep_history_multi_level.cpp`](file:////home/simone/dev/github/fsmc/tests/core/test_deep_history_multi_level.cpp) (`tests/core/test_deep_history_multi_level.cpp`)
+### [`test_deep_history_multi_level.cpp`](../tests/core/test_deep_history_multi_level.cpp) (`tests/core/test_deep_history_multi_level.cpp`)
 #### `DeepHistoryTest.FourLevelDeepHistoryAstAndCodegen`
 **Test Intent**: Verify AST construction and C++ codegen for 4-level deep hierarchical history.
 
@@ -197,7 +197,7 @@
   - Start FSM directly in Emergency state without having visited Operating before.
   - Dispatch ResumeDeepCmd -> verify fallback transition to the default initial leaf (Level4Active).
 
-### [`test_deferred.cpp`](file:////home/simone/dev/github/fsmc/tests/core/test_deferred.cpp) (`tests/core/test_deferred.cpp`)
+### [`test_deferred.cpp`](../tests/core/test_deferred.cpp) (`tests/core/test_deferred.cpp`)
 #### `DeferredEventsTest.PlantUmlParsing`
 **Test Intent**: Verify PlantUML `defer <Event>` directive parsing into state deferred events.
 
@@ -255,7 +255,7 @@
   - Post deferred events from producer thread.
   - Post trigger event and wait for worker thread to asynchronously cascade replay and reach Completed state.
 
-### [`test_fsm.cpp`](file:////home/simone/dev/github/fsmc/tests/core/test_fsm.cpp) (`tests/core/test_fsm.cpp`)
+### [`test_fsm.cpp`](../tests/core/test_fsm.cpp) (`tests/core/test_fsm.cpp`)
 #### `FsmCoreTest.BasicTransitionsAndIntrospection`
 **Test Intent**: Verify basic synchronous state transitions and compile-time introspection.
 
@@ -300,7 +300,7 @@
   - Wait for worker thread to process all 1000 events.
   - Verify final accumulated state count is exactly 1000 with zero race conditions.
 
-### [`test_hfsm.cpp`](file:////home/simone/dev/github/fsmc/tests/core/test_hfsm.cpp) (`tests/core/test_hfsm.cpp`)
+### [`test_hfsm.cpp`](../tests/core/test_hfsm.cpp) (`tests/core/test_hfsm.cpp`)
 #### `HfsmTest.PlantUmlCompositeStateParsing`
 **Test Intent**: Verify hierarchical state machine (HFSM) parsing from PlantUML syntax.
 
@@ -318,7 +318,7 @@
   - Verify parent-child navigation and initial sub-state assignment for Session.
   - Validate integrity through FsmValidator.
 
-### [`test_history.cpp`](file:////home/simone/dev/github/fsmc/tests/core/test_history.cpp) (`tests/core/test_history.cpp`)
+### [`test_history.cpp`](../tests/core/test_history.cpp) (`tests/core/test_history.cpp`)
 #### `HistoryTest.PlantUmlHistoryTargetParsing`
 **Test Intent**: Verify PlantUML shallow history pseudo-state syntax parsing (`Operating[H]`).
 
@@ -350,7 +350,7 @@
   - Dispatch Resume event to transition to Operating[H] -> verifies Step2 is restored.
   - Advance to Step3, Pause, and Resume -> verifies Step3 is restored.
 
-### [`test_internal_transition.cpp`](file:////home/simone/dev/github/fsmc/tests/core/test_internal_transition.cpp) (`tests/core/test_internal_transition.cpp`)
+### [`test_internal_transition.cpp`](../tests/core/test_internal_transition.cpp) (`tests/core/test_internal_transition.cpp`)
 #### `InternalTransitionTest.RuntimeInternalTransitionExecutesActionWithoutEntryExit`
 **Test Intent**: Verify internal transitions execute actions without triggering state entry or exit hooks.
 
@@ -367,7 +367,7 @@
   - Verify transition is recorded with TransitionEdgeKind::Internal.
   - Verify C++ generator outputs `fsm::internal_row<Idle, Ping>::then<ResetWatchdog>`.
 
-### [`test_observer.cpp`](file:////home/simone/dev/github/fsmc/tests/core/test_observer.cpp) (`tests/core/test_observer.cpp`)
+### [`test_observer.cpp`](../tests/core/test_observer.cpp) (`tests/core/test_observer.cpp`)
 #### `ObserverTest.SyncFsmObserverHooks`
 **Test Intent**: Verify synchronous observer callbacks receive comprehensive transition metadata.
 
@@ -398,10 +398,10 @@
   - Register observer callback that immediately issues another `send()` event synchronously.
   - Verify recursive/reentrant lock acquisition completes without deadlock.
 
-### [`test_ring_buffer_overflow.cpp`](file:////home/simone/dev/github/fsmc/tests/core/test_ring_buffer_overflow.cpp) (`tests/core/test_ring_buffer_overflow.cpp`)
+### [`test_ring_buffer_overflow.cpp`](../tests/core/test_ring_buffer_overflow.cpp) (`tests/core/test_ring_buffer_overflow.cpp`)
 - *(Executable binary test verification)*
 
-### [`test_spsc_queue.cpp`](file:////home/simone/dev/github/fsmc/tests/core/test_spsc_queue.cpp) (`tests/core/test_spsc_queue.cpp`)
+### [`test_spsc_queue.cpp`](../tests/core/test_spsc_queue.cpp) (`tests/core/test_spsc_queue.cpp`)
 #### `SpscRingBufferTest.SingleThreadBasicOps`
 **Test Intent**: Verify single-threaded SPSC ring buffer FIFO semantics and capacity boundaries.
 
@@ -426,7 +426,7 @@
   - Pop objects and verify live instance count updates with exact 1-to-1 parity.
   - Destroy the ring buffer and verify remaining slotted elements are cleanly destroyed with 0 leaks.
 
-### [`test_thread_safe_stress.cpp`](file:////home/simone/dev/github/fsmc/tests/core/test_thread_safe_stress.cpp) (`tests/core/test_thread_safe_stress.cpp`)
+### [`test_thread_safe_stress.cpp`](../tests/core/test_thread_safe_stress.cpp) (`tests/core/test_thread_safe_stress.cpp`)
 #### `ThreadSafeStressTest.HighConcurrency20Threads50kEvents`
 **Test Intent**: Stress-test thread_safe_fsm under intense 20-thread concurrency (50,000 total events).
 
@@ -443,7 +443,7 @@
   - Wait for timed events to expire and drain.
   - Verify all events are recorded without race conditions.
 
-### [`test_timed_transitions.cpp`](file:////home/simone/dev/github/fsmc/tests/core/test_timed_transitions.cpp) (`tests/core/test_timed_transitions.cpp`)
+### [`test_timed_transitions.cpp`](../tests/core/test_timed_transitions.cpp) (`tests/core/test_timed_transitions.cpp`)
 #### `TimedTransitionsTest.SyncTimedEventDispatch`
 **Test Intent**: Verify synchronous dispatch of compile-time duration timed events (`fsm::after_ms<500>`).
 
@@ -465,7 +465,7 @@
   - ActionSelfPost is executed on Step1, queries active state, and self-posts Step2 back into the FSM.
   - Verify no deadlocks or mutex violations occur, reaching StateC smoothly.
 
-### [`test_traits_and_hooks.cpp`](file:////home/simone/dev/github/fsmc/tests/core/test_traits_and_hooks.cpp) (`tests/core/test_traits_and_hooks.cpp`)
+### [`test_traits_and_hooks.cpp`](../tests/core/test_traits_and_hooks.cpp) (`tests/core/test_traits_and_hooks.cpp`)
 #### `TraitsAndHooksTest.TypeListAlgorithms`
 **Test Intent**: Verify compile-time type list algorithms and transformations.
 
@@ -506,7 +506,7 @@
   - Verify detection of dynamic vs no-op static observers.
   - Verify compile-time detection of history pseudostates and deferred events across type_list.
 
-### [`test_zero_alloc_runtime.cpp`](file:////home/simone/dev/github/fsmc/tests/core/test_zero_alloc_runtime.cpp) (`tests/core/test_zero_alloc_runtime.cpp`)
+### [`test_zero_alloc_runtime.cpp`](../tests/core/test_zero_alloc_runtime.cpp) (`tests/core/test_zero_alloc_runtime.cpp`)
 #### `ZeroAllocRuntimeTest.StaticRingBufferBasicOps`
 **Test Intent**: Verify boundary conditions, peek inspection, and FIFO ordering for static_ring_buffer.
 
@@ -552,7 +552,7 @@
 
 ## Frontend Parser Subsystem
 
-### [`test_dot_parser.cpp`](file:////home/simone/dev/github/fsmc/tests/frontend/diagram/test_dot_parser.cpp) (`tests/frontend/diagram/test_dot_parser.cpp`)
+### [`test_dot_parser.cpp`](../tests/frontend/diagram/test_dot_parser.cpp) (`tests/frontend/diagram/test_dot_parser.cpp`)
 #### `DotParserTest.BasicDotParsing`
 **Test Intent**: Verify Graphviz DOT graph parsing with transition labels and initial pseudostate (`__start__`).
 
@@ -567,7 +567,7 @@
   - Parse DOT graph containing a cluster subgraph `cluster_InFlight`.
   - Verify InFlight is parsed as a Composite StateKind with nested sub-states.
 
-### [`test_json_parser.cpp`](file:////home/simone/dev/github/fsmc/tests/frontend/diagram/test_json_parser.cpp) (`tests/frontend/diagram/test_json_parser.cpp`)
+### [`test_json_parser.cpp`](../tests/frontend/diagram/test_json_parser.cpp) (`tests/frontend/diagram/test_json_parser.cpp`)
 #### `JsonParserTest.BasicJsonParsing`
 **Test Intent**: Verify XState-compatible JSON statechart format parsing.
 
@@ -596,7 +596,7 @@
   - Define states in specific order: ZetaState -> AlphaState -> MuState -> BetaState.
   - Verify FsmIr preserves this exact ordering.
 
-### [`test_plantuml_parser.cpp`](file:////home/simone/dev/github/fsmc/tests/frontend/diagram/test_plantuml_parser.cpp) (`tests/frontend/diagram/test_plantuml_parser.cpp`)
+### [`test_plantuml_parser.cpp`](../tests/frontend/diagram/test_plantuml_parser.cpp) (`tests/frontend/diagram/test_plantuml_parser.cpp`)
 #### `ParserTest.MermaidBasicParsingAndValidation`
 **Test Intent**: Verify Mermaid syntax parsing, state aliases, guard/action extraction, and validation.
 
@@ -654,7 +654,7 @@
   - Parse Mermaid with `state ep <<entryPoint>>`, `state xp <<exitPoint>>`, and `Idle --> Active : (prio=4) EvStart`.
   - Verify IR captures StateKind::EntryPoint, StateKind::ExitPoint, and transition priority.
 
-### [`test_cameo_parser.cpp`](file:////home/simone/dev/github/fsmc/tests/frontend/formal/test_cameo_parser.cpp) (`tests/frontend/formal/test_cameo_parser.cpp`)
+### [`test_cameo_parser.cpp`](../tests/frontend/formal/test_cameo_parser.cpp) (`tests/frontend/formal/test_cameo_parser.cpp`)
 #### `CameoParserTest.BasicXmiParsing`
 **Test Intent**: Verify Cameo Systems Modeler OMG XMI 2.x standard XML schema parsing.
 
@@ -697,7 +697,7 @@
 **Scenario**:
   - Parse XML with UML pseudostates and verify parsing completes cleanly.
 
-### [`test_scxml_parser.cpp`](file:////home/simone/dev/github/fsmc/tests/frontend/formal/test_scxml_parser.cpp) (`tests/frontend/formal/test_scxml_parser.cpp`)
+### [`test_scxml_parser.cpp`](../tests/frontend/formal/test_scxml_parser.cpp) (`tests/frontend/formal/test_scxml_parser.cpp`)
 #### `ScxmlParserTest.BasicScxmlParsingWithInternalTransitions`
 **Test Intent**: Verify W3C SCXML parsing with internal transitions and `<send event="..."/>` actions.
 
@@ -727,7 +727,7 @@
   - Parse `<onentry>` and `<onexit>` action blocks with variable assignments.
   - Verify FsmIr variables and state lifecycle action signatures are captured.
 
-### [`test_smv_parser.cpp`](file:////home/simone/dev/github/fsmc/tests/frontend/formal/test_smv_parser.cpp) (`tests/frontend/formal/test_smv_parser.cpp`)
+### [`test_smv_parser.cpp`](../tests/frontend/formal/test_smv_parser.cpp) (`tests/frontend/formal/test_smv_parser.cpp`)
 #### `SmvParserTest.BasicSmvParsing`
 **Test Intent**: Verify formal nuXmv / SMV parsing of states, events, and transitions.
 
@@ -743,7 +743,7 @@
 #### `SmvParserTest.NegativeErrorHandling`
 **Test Intent**: Error handling for invalid/empty SMV content.
 
-### [`test_sysml2_parser.cpp`](file:////home/simone/dev/github/fsmc/tests/frontend/formal/test_sysml2_parser.cpp) (`tests/frontend/formal/test_sysml2_parser.cpp`)
+### [`test_sysml2_parser.cpp`](../tests/frontend/formal/test_sysml2_parser.cpp) (`tests/frontend/formal/test_sysml2_parser.cpp`)
 #### `Sysml2ParserTest.MultilineTransitionParsing`
 **Test Intent**: Verify OMG SysML v2 multi-line transition syntax parsing.
 
@@ -790,7 +790,7 @@
   - [priority=10]`.
   - Verify IR captures StateKind::EntryPoint, StateKind::ExitPoint, time_invariant, and transition priority.
 
-### [`test_directive_parser.cpp`](file:////home/simone/dev/github/fsmc/tests/frontend/test_directive_parser.cpp) (`tests/frontend/test_directive_parser.cpp`)
+### [`test_directive_parser.cpp`](../tests/frontend/test_directive_parser.cpp) (`tests/frontend/test_directive_parser.cpp`)
 #### `DirectiveParserTest.ParseStateDirective`
 **Test Intent**: Verify `@fsm:state` directive parsing for traceability requirements and history metadata.
 
@@ -819,13 +819,13 @@
   - Parse `%% @fsm:trans id="tr_001" guard_ast="ctx.is_valid(payload)" action_sig="ctx.on_data(payload)"`.
   - Verify TransitionEdge metadata is populated.
 
-### [`test_parser_classification.cpp`](file:////home/simone/dev/github/fsmc/tests/frontend/test_parser_classification.cpp) (`tests/frontend/test_parser_classification.cpp`)
+### [`test_parser_classification.cpp`](../tests/frontend/test_parser_classification.cpp) (`tests/frontend/test_parser_classification.cpp`)
 - *(Executable binary test verification)*
 
-### [`test_parser_factory_and_lexer.cpp`](file:////home/simone/dev/github/fsmc/tests/frontend/test_parser_factory_and_lexer.cpp) (`tests/frontend/test_parser_factory_and_lexer.cpp`)
+### [`test_parser_factory_and_lexer.cpp`](../tests/frontend/test_parser_factory_and_lexer.cpp) (`tests/frontend/test_parser_factory_and_lexer.cpp`)
 - *(Executable binary test verification)*
 
-### [`test_parser_negative.cpp`](file:////home/simone/dev/github/fsmc/tests/frontend/test_parser_negative.cpp) (`tests/frontend/test_parser_negative.cpp`)
+### [`test_parser_negative.cpp`](../tests/frontend/test_parser_negative.cpp) (`tests/frontend/test_parser_negative.cpp`)
 #### `ParserNegativeTest.PlantUmlRejectsMalformedInputs`
 **Test Intent**: Verify PlantUmlParser rejects malformed, empty, and corrupted syntax with informative error
 
@@ -872,7 +872,7 @@
 
 ## Formal IR Subsystem
 
-### [`test_fsm_ir.cpp`](file:////home/simone/dev/github/fsmc/tests/ir/test_fsm_ir.cpp) (`tests/ir/test_fsm_ir.cpp`)
+### [`test_fsm_ir.cpp`](../tests/ir/test_fsm_ir.cpp) (`tests/ir/test_fsm_ir.cpp`)
 #### `FsmIrTest.ModularHeaderSubcomponents`
 **Test Intent**: Verify modular IR header decoupling, enum converters, and trigger variants.
 
@@ -945,7 +945,7 @@
 
 ## Middle-End Verification & Transformation Subsystem
 
-### [`test_diagnostics.cpp`](file:////home/simone/dev/github/fsmc/tests/middleend/test_diagnostics.cpp) (`tests/middleend/test_diagnostics.cpp`)
+### [`test_diagnostics.cpp`](../tests/middleend/test_diagnostics.cpp) (`tests/middleend/test_diagnostics.cpp`)
 #### `DiagnosticEngineTest.ErrorRenderingWithCaret`
 **Test Intent**: Verify diagnostic engine source code rendering with line numbers, caret underlines, and help
 
@@ -953,7 +953,7 @@
   - Report a warning diagnostic with a specific SourceSpan (line 2, col 7, length 11) and help suggestion.
   - Verify rendered output contains file location, source code excerpt, caret underline `^~~~~~~~~~~`, and suggestion.
 
-### [`test_middleend_passes.cpp`](file:////home/simone/dev/github/fsmc/tests/middleend/test_middleend_passes.cpp) (`tests/middleend/test_middleend_passes.cpp`)
+### [`test_middleend_passes.cpp`](../tests/middleend/test_middleend_passes.cpp) (`tests/middleend/test_middleend_passes.cpp`)
 #### `MiddleendPassesTest.GuardSimplificationAlgebraicReductions`
 **Test Intent**: Verify algebraic boolean simplifications (double negation, constant folding, idempotency).
 
@@ -995,7 +995,7 @@
   - FSM has unreachable Island state and a transition with guard == "false".
   - Verify pass prunes Island and the false transition from the IR.
 
-### [`test_model_checker.cpp`](file:////home/simone/dev/github/fsmc/tests/middleend/test_model_checker.cpp) (`tests/middleend/test_model_checker.cpp`)
+### [`test_model_checker.cpp`](../tests/middleend/test_model_checker.cpp) (`tests/middleend/test_model_checker.cpp`)
 #### `ModelCheckerTest.SoundModelVerification`
 **Test Intent**: Verify formal validation passes for a sound state machine with zero defects.
 
@@ -1045,7 +1045,7 @@
   - State Active has two transitions with identical timer duration `after_500ms`.
   - Verify TimedTransition diagnostic warning is emitted.
 
-### [`test_model_checker_ltl.cpp`](file:////home/simone/dev/github/fsmc/tests/middleend/test_model_checker_ltl.cpp) (`tests/middleend/test_model_checker_ltl.cpp`)
+### [`test_model_checker_ltl.cpp`](../tests/middleend/test_model_checker_ltl.cpp) (`tests/middleend/test_model_checker_ltl.cpp`)
 #### `LtlParserTest.BasicUnaryAndBinaryOperators`
 **Test Intent**: Verify LTL formula tokenization and operator parsing (G, F, X, !, &&, ||, U, ->).
 
@@ -1109,7 +1109,7 @@
 **Scenario**:
   - Verify SMV serializer formats CTL properties and state declarations accurately.
 
-### [`test_pass_manager.cpp`](file:////home/simone/dev/github/fsmc/tests/middleend/test_pass_manager.cpp) (`tests/middleend/test_pass_manager.cpp`)
+### [`test_pass_manager.cpp`](../tests/middleend/test_pass_manager.cpp) (`tests/middleend/test_pass_manager.cpp`)
 #### `PassManagerTest.RunDefaultPipeline`
 **Test Intent**: Verify PassManager default optimization and analysis pipeline execution.
 
@@ -1125,14 +1125,14 @@
   - Register it on PassManager and run pipeline over FSM.
   - Verify state metadata modification and pass statistics recording.
 
-### [`test_timed_smv.cpp`](file:////home/simone/dev/github/fsmc/tests/middleend/test_timed_smv.cpp) (`tests/middleend/test_timed_smv.cpp`)
+### [`test_timed_smv.cpp`](../tests/middleend/test_timed_smv.cpp) (`tests/middleend/test_timed_smv.cpp`)
 - *(Executable binary test verification)*
 
 ---
 
 ## C++ Backend Codegen Subsystem
 
-### [`test_codegen.cpp`](file:////home/simone/dev/github/fsmc/tests/backend/cpp/test_codegen.cpp) (`tests/backend/cpp/test_codegen.cpp`)
+### [`test_codegen.cpp`](../tests/backend/cpp/test_codegen.cpp) (`tests/backend/cpp/test_codegen.cpp`)
 #### `CodegenTest.Cpp17CodegenGeneration`
 **Test Intent**: Verify C++17 code generation compliance (template parameters for actions/guards).
 
@@ -1204,13 +1204,13 @@
   - Attempt to export runtime to a path whose parent is a regular file (not a directory).
   - On all platforms (Linux, macOS, Windows), creating a subdirectory inside a file
 
-### [`test_cpp17_standalone.cpp`](file:////home/simone/dev/github/fsmc/tests/backend/cpp/test_cpp17_standalone.cpp) (`tests/backend/cpp/test_cpp17_standalone.cpp`)
+### [`test_cpp17_standalone.cpp`](../tests/backend/cpp/test_cpp17_standalone.cpp) (`tests/backend/cpp/test_cpp17_standalone.cpp`)
 - *(Executable binary test verification)*
 
-### [`test_cpp20_standalone.cpp`](file:////home/simone/dev/github/fsmc/tests/backend/cpp/test_cpp20_standalone.cpp) (`tests/backend/cpp/test_cpp20_standalone.cpp`)
+### [`test_cpp20_standalone.cpp`](../tests/backend/cpp/test_cpp20_standalone.cpp) (`tests/backend/cpp/test_cpp20_standalone.cpp`)
 - *(Executable binary test verification)*
 
-### [`test_cpp_modular_generator.cpp`](file:////home/simone/dev/github/fsmc/tests/backend/cpp/test_cpp_modular_generator.cpp) (`tests/backend/cpp/test_cpp_modular_generator.cpp`)
+### [`test_cpp_modular_generator.cpp`](../tests/backend/cpp/test_cpp_modular_generator.cpp) (`tests/backend/cpp/test_cpp_modular_generator.cpp`)
 #### `CppModularGeneratorTest.CppModelEmitterStandaloneUnits`
 **Test Intent**: Verify granular emission of C++ events, states, guards, actions, and transition tables.
 
@@ -1239,17 +1239,17 @@
   - Generate standalone header for DeviceController FSM.
   - Verify include guards, namespace wrapping, and synchronous and thread-safe FSM aliases.
 
-### [`test_generated_fsm.cpp`](file:////home/simone/dev/github/fsmc/tests/backend/cpp/test_generated_fsm.cpp) (`tests/backend/cpp/test_generated_fsm.cpp`)
+### [`test_generated_fsm.cpp`](../tests/backend/cpp/test_generated_fsm.cpp) (`tests/backend/cpp/test_generated_fsm.cpp`)
 - *(Executable binary test verification)*
 
 ---
 
 ## Diagram & Emitter Backend Subsystem
 
-### [`test_emitter_factory.cpp`](file:////home/simone/dev/github/fsmc/tests/backend/emitters/test_emitter_factory.cpp) (`tests/backend/emitters/test_emitter_factory.cpp`)
+### [`test_emitter_factory.cpp`](../tests/backend/emitters/test_emitter_factory.cpp) (`tests/backend/emitters/test_emitter_factory.cpp`)
 - *(Executable binary test verification)*
 
-### [`test_format_export.cpp`](file:////home/simone/dev/github/fsmc/tests/backend/emitters/test_format_export.cpp) (`tests/backend/emitters/test_format_export.cpp`)
+### [`test_format_export.cpp`](../tests/backend/emitters/test_format_export.cpp) (`tests/backend/emitters/test_format_export.cpp`)
 #### `FormatExportTest.CameoToMermaidExport`
 **Test Intent**: Verify cross-format export from Cameo OMG XMI to Mermaid state diagrams.
 
@@ -1311,7 +1311,7 @@
   - Verify digraph header, state styling, and transition edges.
   - Re-parse with DotParser to confirm full lossless syntax compatibility.
 
-### [`test_lossless_roundtrip.cpp`](file:////home/simone/dev/github/fsmc/tests/backend/emitters/test_lossless_roundtrip.cpp) (`tests/backend/emitters/test_lossless_roundtrip.cpp`)
+### [`test_lossless_roundtrip.cpp`](../tests/backend/emitters/test_lossless_roundtrip.cpp) (`tests/backend/emitters/test_lossless_roundtrip.cpp`)
 #### `LosslessRoundtripTest.ConnectionManagerPreset`
 **Test Intent**: Verify lossless roundtrip serialization across all 7 supported diagram/schema formats.
 
@@ -1389,7 +1389,7 @@
 
 ## Integration & Build Subsystem
 
-### [`test_cmake_integration.cpp`](file:////home/simone/dev/github/fsmc/tests/integration/test_cmake_integration.cpp) (`tests/integration/test_cmake_integration.cpp`)
+### [`test_cmake_integration.cpp`](../tests/integration/test_cmake_integration.cpp) (`tests/integration/test_cmake_integration.cpp`)
 - *(Executable binary test verification)*
 
 ---

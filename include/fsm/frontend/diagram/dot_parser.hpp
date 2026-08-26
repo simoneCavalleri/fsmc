@@ -18,7 +18,8 @@ namespace fsm::codegen {
 
 class DotParser : public IParser {
   public:
-    [[nodiscard]] static std::string format_name() { return "dot"; }
+    [[nodiscard]] FrontendKind kind() const noexcept override { return FrontendKind::Diagram; }
+    [[nodiscard]] std::string_view format_name() const noexcept override { return "dot"; }
 
     bool parse(std::string_view content, FsmIr& model, std::string& error_message) override {
         std::istringstream stream{std::string(content)};
@@ -63,6 +64,75 @@ class DotParser : public IParser {
                 continue;
             }
 
+            auto parse_label_actions = [&](const std::string& raw_lbl, const std::string& target_state) {
+                std::string unescaped_lbl;
+                for (size_t i = 0; i < raw_lbl.size(); ++i) {
+                    if (raw_lbl[i] == '\\' && i + 1 < raw_lbl.size() && raw_lbl[i + 1] == 'n') {
+                        unescaped_lbl += '\n';
+                        ++i;
+                    } else {
+                        unescaped_lbl += raw_lbl[i];
+                    }
+                }
+                std::string item_line;
+                std::istringstream lss(unescaped_lbl);
+                while (std::getline(lss, item_line)) {
+                    std::string clean_item = trim_line(item_line);
+                    if (clean_item.find("(entry /") != std::string::npos) {
+                        size_t p = clean_item.find("(entry /");
+                        size_t end_p = clean_item.find(')', p);
+                        std::string act = clean_item.substr(
+                            p + 8, (end_p != std::string::npos ? end_p : clean_item.size()) - (p + 8));
+                        act = sanitize_identifier(trim_line(act));
+                        if (!act.empty()) {
+                            model.add_action(act);
+                            if (auto* st = model.find_state_mut(target_state))
+                                st->entry_actions.push_back(ActionSignature{act});
+                        }
+                    } else if (clean_item.find("(exit /") != std::string::npos) {
+                        size_t p = clean_item.find("(exit /");
+                        size_t end_p = clean_item.find(')', p);
+                        std::string act = clean_item.substr(
+                            p + 7, (end_p != std::string::npos ? end_p : clean_item.size()) - (p + 7));
+                        act = sanitize_identifier(trim_line(act));
+                        if (!act.empty()) {
+                            model.add_action(act);
+                            if (auto* st = model.find_state_mut(target_state))
+                                st->exit_actions.push_back(ActionSignature{act});
+                        }
+                    } else if (clean_item.find("(do /") != std::string::npos) {
+                        size_t p = clean_item.find("(do /");
+                        size_t end_p = clean_item.find(')', p);
+                        std::string act = clean_item.substr(
+                            p + 5, (end_p != std::string::npos ? end_p : clean_item.size()) - (p + 5));
+                        act = sanitize_identifier(trim_line(act));
+                        if (!act.empty()) {
+                            if (auto* st = model.find_state_mut(target_state))
+                                st->do_activity = act;
+                        }
+                    } else if (clean_item.find("(defer ") != std::string::npos) {
+                        size_t p = clean_item.find("(defer ");
+                        size_t end_p = clean_item.find(')', p);
+                        std::string evt = clean_item.substr(
+                            p + 7, (end_p != std::string::npos ? end_p : clean_item.size()) - (p + 7));
+                        evt = sanitize_identifier(trim_line(evt));
+                        if (!evt.empty()) {
+                            model.add_event(evt);
+                            if (auto* st = model.find_state_mut(target_state))
+                                st->deferred_events.push_back(evt);
+                        }
+                    }
+                }
+            };
+
+            // Check cluster label inside subgraph: label = "..." or label="...";
+            const std::regex cluster_label_regex(R"raw(^\s*label\s*=\s*"([^"]*)")raw", std::regex::icase);
+            if (!current_parent_state.empty() && std::regex_search(trimmed, match, cluster_label_regex)) {
+                std::string lbl_content = match[1].str();
+                parse_label_actions(lbl_content, current_parent_state);
+                continue;
+            }
+
             // Closing brace }
             if (trimmed == "}" || trimmed == "};") {
                 if (!parent_stack.empty()) {
@@ -74,7 +144,7 @@ class DotParser : public IParser {
 
             // Check point / initial node declaration (e.g. init [shape=point];)
             if (std::regex_search(trimmed, match, node_point_regex)) {
-                std::string node_name = match[1].str();
+                std::string node_name = sanitize_identifier(match[1].str());
                 point_nodes[node_name] = true;
                 continue;
             }
@@ -85,7 +155,29 @@ class DotParser : public IParser {
                 std::string node_name = sanitize_identifier(match[1].str());
                 std::string attrs = match[2].str();
 
+                if (node_name == "node" || node_name == "edge" || node_name == "graph" || node_name == "digraph" ||
+                    node_name == "strict" || node_name.rfind("__start", 0) == 0 || node_name.rfind("__hist", 0) == 0 ||
+                    point_nodes.count(node_name) != 0) {
+                    if (node_name.rfind("__start", 0) == 0 || node_name.rfind("__hist", 0) == 0) {
+                        point_nodes[node_name] = true;
+                    }
+                    continue;
+                }
+
+                if (attrs.find("shape=diamond") != std::string::npos ||
+                    attrs.find("shape = diamond") != std::string::npos) {
+                    model.add_choice_node(node_name);
+                    continue;
+                }
+
                 model.add_state(node_name, current_parent_state);
+
+                // Check label for actions / activities / defers
+                std::smatch lbl_match;
+                if (std::regex_search(attrs, lbl_match, label_attr_regex)) {
+                    std::string lbl_content = lbl_match[1].str();
+                    parse_label_actions(lbl_content, node_name);
+                }
 
                 const std::regex defer_attr_regex(R"raw(defer\s*=\s*"([^"]*)")raw", std::regex::icase);
                 std::smatch defer_match;
@@ -121,8 +213,8 @@ class DotParser : public IParser {
                 }
 
                 // Is initial transition?
-                if (point_nodes.count(src_raw) != 0 || src_raw == "[*]" || src_raw == "__start__" ||
-                    src_raw == "start" || src_raw == "init" || src_raw == "initial") {
+                if (point_nodes.count(src_raw) != 0 || src_raw.rfind("__start", 0) == 0 || src_raw == "[*]" ||
+                    src_raw == "__start__" || src_raw == "start" || src_raw == "init" || src_raw == "initial") {
                     std::string init_target = sanitize_identifier(dst_raw);
                     if (current_parent_state.empty()) {
                         model.initial_state = init_target;
@@ -140,16 +232,38 @@ class DotParser : public IParser {
                 std::string src = sanitize_identifier(src_raw);
                 std::string dst = sanitize_identifier(dst_raw);
 
-                // Parse label: Event [Guard] / Action
+                // Parse label: Event (prio=1) [Guard] / Action
                 std::string event_name;
                 std::string guard_name;
                 std::string action_name;
+                std::uint32_t priority = 0;
+
+                static const std::regex prio_attr_regex(
+                    R"regex(priority\s*=\s*"?(\d+)"?|(?:\[|\()(?:prio|priority)=(\d+)(?:\]|\)))regex",
+                    std::regex::icase);
+                std::smatch prio_match;
+                if (std::regex_search(attrs, prio_match, prio_attr_regex)) {
+                    std::string p_str = prio_match[1].matched ? prio_match[1].str() : prio_match[2].str();
+                    try {
+                        priority = static_cast<std::uint32_t>(std::stoul(p_str));
+                    } catch (...) {
+                    }
+                } else if (std::regex_search(label_str, prio_match, prio_attr_regex)) {
+                    std::string p_str = prio_match[1].matched ? prio_match[1].str() : prio_match[2].str();
+                    try {
+                        priority = static_cast<std::uint32_t>(std::stoul(p_str));
+                    } catch (...) {
+                    }
+                    label_str = std::regex_replace(label_str, prio_attr_regex, "");
+                }
+
                 parse_label(label_str, event_name, guard_name, action_name);
 
                 TransitionEdge trans;
                 trans.source = src;
                 trans.target = dst;
                 trans.event = sanitize_identifier(event_name);
+                trans.priority = priority;
                 if (!guard_name.empty()) {
                     auto parsed = GuardExpressionParser::parse(guard_name);
                     if (!parsed.cpp_type.empty()) {

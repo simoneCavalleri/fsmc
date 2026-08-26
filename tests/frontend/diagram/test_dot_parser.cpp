@@ -3,13 +3,20 @@
 #include <string>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
-#include "fsm/frontend/dot_parser.hpp"
+#include "fsm/frontend/diagram/dot_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 using namespace fsm::codegen;
 
 namespace {
 
+/**
+ * @brief Test Intent: Verify Graphviz DOT graph parsing with transition labels and initial pseudostate (`__start__`).
+ *
+ * Scenario:
+ * - Parse Graphviz DOT `digraph` with edge labels formatted as `event [guard] / action`.
+ * - Verify initial point node points to Disconnected, and transitions are populated into FsmIr.
+ */
 TEST(DotParserTest, BasicDotParsing) {
     const std::string dot_content = R"(digraph DotConnectionFSM {
     __start__ [shape=point];
@@ -35,6 +42,13 @@ TEST(DotParserTest, BasicDotParsing) {
     EXPECT_EQ(ir.transitions.size(), 5u);
 }
 
+/**
+ * @brief Test Intent: Verify DOT `subgraph cluster_<Name>` parsing into hierarchical composite states.
+ *
+ * Scenario:
+ * - Parse DOT graph containing a cluster subgraph `cluster_InFlight`.
+ * - Verify InFlight is parsed as a Composite StateKind with nested sub-states.
+ */
 TEST(DotParserTest, CompositeClusterParsing) {
     const std::string dot_content = R"(digraph MissionFSM {
     start [shape=point];

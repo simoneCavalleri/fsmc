@@ -6,6 +6,13 @@ using namespace fsm::codegen;
 
 namespace {
 
+/**
+ * @brief Test Intent: Verify `@fsm:state` directive parsing for traceability requirements and history metadata.
+ *
+ * Scenario:
+ * - Parse `@fsm:state history=deep satisfies=["REQ-1", "SAFETY-04"] do_activity="sensor_worker"`.
+ * - Verify state kind is DeepHistory, requirements array is populated, and do_activity is set.
+ */
 TEST(DirectiveParserTest, ParseStateDirective) {
     std::string line = "' @fsm:state history=deep satisfies=[\"REQ-1\", \"SAFETY-04\"] do_activity=\"sensor_worker\"";
     EXPECT_TRUE(DirectiveParser::is_directive(line));
@@ -24,6 +31,13 @@ TEST(DirectiveParserTest, ParseStateDirective) {
     EXPECT_EQ(state.traceability_reqs[1], "SAFETY-04");
 }
 
+/**
+ * @brief Test Intent: Verify `@fsm:defer [...]` directive parsing for deferred events.
+ *
+ * Scenario:
+ * - Parse `%% @fsm:defer [EvSensorReady, EvAck, EvTimeout]`.
+ * - Verify all 3 event identifiers are parsed into state deferred_events.
+ */
 TEST(DirectiveParserTest, ParseDeferDirective) {
     std::string line = "%% @fsm:defer [EvSensorReady, EvAck, EvTimeout]";
     EXPECT_TRUE(DirectiveParser::is_directive(line));
@@ -38,6 +52,13 @@ TEST(DirectiveParserTest, ParseDeferDirective) {
     EXPECT_EQ(state.deferred_events[2], "EvTimeout");
 }
 
+/**
+ * @brief Test Intent: Verify `@fsm:signal` directive parsing with payload attributes and validation expressions.
+ *
+ * Scenario:
+ * - Parse `' @fsm:signal EvPacketRecv{uint32_t len, const uint8_t* ptr} validator="len > 0 && ptr != nullptr"'`.
+ * - Verify SignalDefinition attributes, types, and validator constraints are parsed.
+ */
 TEST(DirectiveParserTest, ParseSignalDirective) {
     std::string line =
         "' @fsm:signal EvPacketRecv{uint32_t len, const uint8_t* ptr} validator=\"len > 0 && ptr != nullptr\"";
@@ -57,6 +78,13 @@ TEST(DirectiveParserTest, ParseSignalDirective) {
     EXPECT_EQ(sig->validators[0], "len > 0 && ptr != nullptr");
 }
 
+/**
+ * @brief Test Intent: Verify `@fsm:trans` directive parsing for custom transition IDs, guard ASTs, and actions.
+ *
+ * Scenario:
+ * - Parse `%% @fsm:trans id="tr_001" guard_ast="ctx.is_valid(payload)" action_sig="ctx.on_data(payload)"`.
+ * - Verify TransitionEdge metadata is populated.
+ */
 TEST(DirectiveParserTest, ParseTransDirective) {
     std::string line =
         "%% @fsm:trans id=\"tr_001\" guard_ast=\"ctx.is_valid(payload)\" action_sig=\"ctx.on_data(payload)\"";

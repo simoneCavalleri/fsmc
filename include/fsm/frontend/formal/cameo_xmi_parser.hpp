@@ -255,7 +255,8 @@ class SimpleXmlParser {
 // ============================================================================
 class CameoXmiParser : public IParser {
   public:
-    [[nodiscard]] static std::string format_name() { return "cameo_xmi"; }
+    [[nodiscard]] FrontendKind kind() const noexcept override { return FrontendKind::Formal; }
+    [[nodiscard]] std::string_view format_name() const noexcept override { return "cameo"; }
 
     bool parse(std::string_view content, FsmIr& model, std::string& error_message) override {
         std::string xml_err;
@@ -380,6 +381,16 @@ class CameoXmiParser : public IParser {
                         id_is_deep_history[node_id] = true;
                         id_is_history[node_id] = true;
                         id_to_name[node_id] = hist_name;
+                    } else if (kind == "entryPoint") {
+                        std::string ep_name = raw_name.empty() ? ("EntryPoint_" + sanitize_identifier(node_id))
+                                                               : sanitize_identifier(raw_name);
+                        id_to_name[node_id] = ep_name;
+                        model.add_or_get_state(ep_name, current_parent_state, StateKind::EntryPoint);
+                    } else if (kind == "exitPoint") {
+                        std::string xp_name = raw_name.empty() ? ("ExitPoint_" + sanitize_identifier(node_id))
+                                                               : sanitize_identifier(raw_name);
+                        id_to_name[node_id] = xp_name;
+                        model.add_or_get_state(xp_name, current_parent_state, StateKind::ExitPoint);
                     }
                     continue;
                 }
@@ -420,6 +431,37 @@ class CameoXmiParser : public IParser {
                     }
                 }
 
+                // Check entry, exit, and doActivity actions (UML 2.5)
+                for (const auto& act_node : child->children) {
+                    if (act_node->tag == "entry" || ends_with(act_node->tag, ":entry")) {
+                        std::string a_name = act_node->get_attr("name");
+                        if (!a_name.empty()) {
+                            auto* curr = model.find_state_mut(state_name);
+                            if (curr != nullptr) {
+                                model.add_action(sanitize_identifier(a_name));
+                                curr->entry_actions.push_back(ActionSignature{sanitize_identifier(a_name)});
+                            }
+                        }
+                    } else if (act_node->tag == "exit" || ends_with(act_node->tag, ":exit")) {
+                        std::string a_name = act_node->get_attr("name");
+                        if (!a_name.empty()) {
+                            auto* curr = model.find_state_mut(state_name);
+                            if (curr != nullptr) {
+                                model.add_action(sanitize_identifier(a_name));
+                                curr->exit_actions.push_back(ActionSignature{sanitize_identifier(a_name)});
+                            }
+                        }
+                    } else if (act_node->tag == "doActivity" || ends_with(act_node->tag, ":doActivity")) {
+                        std::string a_name = act_node->get_attr("name");
+                        if (!a_name.empty()) {
+                            auto* curr = model.find_state_mut(state_name);
+                            if (curr != nullptr) {
+                                curr->do_activity = sanitize_identifier(a_name);
+                            }
+                        }
+                    }
+                }
+
                 // Check nested regions inside this state (Composite State)
                 for (const auto& sub : child->children) {
                     if (sub->tag == "region" || ends_with(sub->tag, ":region")) {
@@ -445,7 +487,7 @@ class CameoXmiParser : public IParser {
     }
 
     static void parse_transition_element(const std::shared_ptr<XmlNode>& trans_node, FsmIr& model,
-                                         const std::string& /*current_parent_state*/,
+                                         const std::string& current_parent_state,
                                          const std::map<std::string, std::string>& id_to_name,
                                          const std::map<std::string, bool>& /*id_is_choice*/,
                                          const std::map<std::string, bool>& id_is_initial,
@@ -464,8 +506,13 @@ class CameoXmiParser : public IParser {
 
         // Initial transition: [*] -> Target
         if (src_is_init || src_name == "[*]" || src_name == "Initial" || src_name == "initial") {
-            if (model.initial_state.empty()) {
+            if (current_parent_state.empty()) {
                 model.initial_state = dst_name;
+            } else {
+                auto* parent = model.find_state_mut(current_parent_state);
+                if (parent != nullptr) {
+                    parent->initial_sub_state = dst_name;
+                }
             }
             return;
         }
@@ -555,6 +602,14 @@ class CameoXmiParser : public IParser {
             trans.kind = TransitionEdgeKind::Internal;
         } else {
             trans.kind = TransitionEdgeKind::External;
+        }
+
+        std::string prio_attr = trans_node->get_attr("priority");
+        if (!prio_attr.empty()) {
+            try {
+                trans.priority = static_cast<std::uint32_t>(std::stoul(prio_attr));
+            } catch (...) {
+            }
         }
 
         if (!model.is_choice_node(src_name)) {

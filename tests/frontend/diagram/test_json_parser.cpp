@@ -3,13 +3,20 @@
 #include <string>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
-#include "fsm/frontend/json_parser.hpp"
+#include "fsm/frontend/diagram/json_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 using namespace fsm::codegen;
 
 namespace {
 
+/**
+ * @brief Test Intent: Verify XState-compatible JSON statechart format parsing.
+ *
+ * Scenario:
+ * - Parse JSON state machine with states, `"on"` event maps, target strings, guards, and action lists.
+ * - Verify IR elements are populated accurately.
+ */
 TEST(JsonParserTest, BasicJsonParsing) {
     const std::string json_content = R"({
   "id": "JsonConnectionFSM",
@@ -57,6 +64,13 @@ TEST(JsonParserTest, BasicJsonParsing) {
     EXPECT_EQ(model.actions.size(), 3u);
 }
 
+/**
+ * @brief Test Intent: Verify nested composite states within JSON schema.
+ *
+ * Scenario:
+ * - Parse JSON with nested `"states"` property inside `"InFlight"`.
+ * - Verify composite state flags and sub-state parent mappings.
+ */
 TEST(JsonParserTest, CompositeStatesParsing) {
     const std::string json_content = R"({
   "id": "MissionFSM",
@@ -93,6 +107,13 @@ TEST(JsonParserTest, CompositeStatesParsing) {
     EXPECT_EQ(inflight->initial_sub_state, "Ascending");
 }
 
+/**
+ * @brief Test Intent: Verify array of conditional transitions per event key in JSON.
+ *
+ * Scenario:
+ * - Parse `"ConnectCmd": [ { target: ..., guard: ... }, { target: ..., guard: ... } ]`.
+ * - Verify multiple transitions for the same event trigger are captured.
+ */
 TEST(JsonParserTest, ArrayTransitionsPerEvent) {
     const std::string json_content = R"({
   "id": "MultiTransFSM",
@@ -121,6 +142,13 @@ TEST(JsonParserTest, ArrayTransitionsPerEvent) {
     EXPECT_EQ(model.guards.size(), 2U);
 }
 
+/**
+ * @brief Test Intent: Verify document insertion order preservation of state definitions in JSON.
+ *
+ * Scenario:
+ * - Define states in specific order: ZetaState -> AlphaState -> MuState -> BetaState.
+ * - Verify FsmIr preserves this exact ordering.
+ */
 TEST(JsonParserTest, DocumentInsertionOrderPreservation) {
     const std::string json_content = R"({
   "id": "OrderFSM",

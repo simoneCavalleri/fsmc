@@ -8,6 +8,7 @@
 #include <string_view>
 #include <vector>
 
+#include "fsm/frontend/ltl_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 namespace fsm::codegen {
@@ -43,6 +44,25 @@ class DirectiveParser {
             } else if (val == "shallow") {
                 state.kind = StateKind::ShallowHistory;
             }
+        }
+        // kind=entryPoint / exitPoint / choice / junction
+        auto k_pos = str.find("kind=");
+        if (k_pos != std::string::npos) {
+            auto val = extract_quoted_or_word(str, k_pos + 5);
+            state.kind = state_kind_from_string(val);
+        }
+        // invariant="..." or time_invariant="..."
+        auto inv_pos = str.find("invariant=");
+        if (inv_pos == std::string::npos) {
+            inv_pos = str.find("time_invariant=");
+            if (inv_pos != std::string::npos) {
+                inv_pos += 15;
+            }
+        } else {
+            inv_pos += 10;
+        }
+        if (inv_pos != std::string::npos) {
+            state.time_invariant = extract_quoted_or_word(str, inv_pos);
         }
         // do_activity="..."
         auto act_pos = str.find("do_activity=");
@@ -130,6 +150,154 @@ class DirectiveParser {
         return sig;
     }
 
+    // Parses @fsm:property name=SafeLand kind=Safety formula="G (LowBattery -> F SafeLand)" [req="REQ-01"] [desc="..."]
+    static std::optional<FormalProperty> parse_property_directive(std::string_view body) {
+        std::string str = trim(body);
+        if (str.empty())
+            return std::nullopt;
+
+        if (str.rfind("property", 0) == 0) {
+            str = trim(str.substr(8));
+        }
+
+        FormalProperty prop;
+        // name="..."
+        auto n_pos = str.find("name=");
+        if (n_pos != std::string::npos) {
+            prop.name = extract_quoted_or_word(str, n_pos + 5);
+        } else {
+            auto first_space = str.find_first_of(" \t");
+            if (first_space != std::string::npos) {
+                prop.name = trim(str.substr(0, first_space));
+            } else {
+                prop.name = str;
+            }
+        }
+
+        // kind=Safety / Liveness / Invariant / Reachability / DeadlockFreedom
+        auto k_pos = str.find("kind=");
+        if (k_pos != std::string::npos) {
+            std::string k_str = extract_quoted_or_word(str, k_pos + 5);
+            prop.kind = property_kind_from_string(k_str);
+        }
+
+        // formula="..." or ltl="..."
+        auto f_pos = str.find("formula=");
+        if (f_pos == std::string::npos) {
+            auto l_pos = str.find("ltl=");
+            if (l_pos != std::string::npos) {
+                f_pos = l_pos + 4;
+            }
+        } else {
+            f_pos += 8;
+        }
+
+        if (f_pos != std::string::npos) {
+            prop.raw_formula = extract_quoted_or_word(str, f_pos);
+            prop.ast = LtlPropertyParser::parse(prop.raw_formula);
+        }
+
+        // req="..."
+        auto req_pos = str.find("req=");
+        if (req_pos != std::string::npos) {
+            prop.traceability_req = extract_quoted_or_word(str, req_pos + 4);
+        }
+
+        // desc="..."
+        auto d_pos = str.find("desc=");
+        if (d_pos != std::string::npos) {
+            prop.description = extract_quoted_or_word(str, d_pos + 5);
+        }
+
+        if (prop.id.empty()) {
+            prop.id = compute_deterministic_id(prop.name + ":" + prop.raw_formula);
+        }
+
+        return prop;
+    }
+
+    // Parses @fsm:var name=retry_count type=uint32_t init=0 [unit="[mm/s]"] [min=0] [max=5] [desc="..."]
+    static std::optional<VariableDefinition> parse_variable_directive(std::string_view body) {
+        std::string str = trim(body);
+        if (str.empty())
+            return std::nullopt;
+
+        if (str.rfind("variable", 0) == 0) {
+            str = trim(str.substr(8));
+        } else if (str.rfind("var", 0) == 0) {
+            str = trim(str.substr(3));
+        }
+
+        VariableDefinition var;
+        auto n_pos = str.find("name=");
+        if (n_pos != std::string::npos) {
+            var.name = extract_quoted_or_word(str, n_pos + 5);
+        } else {
+            auto first_space = str.find_first_of(" \t");
+            if (first_space != std::string::npos) {
+                var.name = trim(str.substr(0, first_space));
+            } else {
+                var.name = str;
+            }
+        }
+
+        auto t_pos = str.find("type=");
+        if (t_pos != std::string::npos) {
+            var.type = extract_quoted_or_word(str, t_pos + 5);
+            var.type_kind = infer_type_kind(var.type);
+        }
+
+        auto k_pos = str.find("kind=");
+        if (k_pos != std::string::npos) {
+            std::string k_str = extract_quoted_or_word(str, k_pos + 5);
+            if (k_str == "Boolean")
+                var.type_kind = VariableTypeKind::Boolean;
+            else if (k_str == "Integer")
+                var.type_kind = VariableTypeKind::Integer;
+            else if (k_str == "UnsignedInteger")
+                var.type_kind = VariableTypeKind::UnsignedInteger;
+            else if (k_str == "Float")
+                var.type_kind = VariableTypeKind::Float;
+            else if (k_str == "Enum")
+                var.type_kind = VariableTypeKind::Enum;
+            else if (k_str == "CustomStruct")
+                var.type_kind = VariableTypeKind::CustomStruct;
+        }
+
+        auto u_pos = str.find("unit=");
+        if (u_pos != std::string::npos) {
+            var.physical_unit = extract_quoted_or_word(str, u_pos + 5);
+        }
+
+        auto i_pos = str.find("init=");
+        if (i_pos != std::string::npos) {
+            var.initial_value = extract_quoted_or_word(str, i_pos + 5);
+        }
+
+        auto min_pos = str.find("min=");
+        if (min_pos != std::string::npos) {
+            std::string m_str = extract_quoted_or_word(str, min_pos + 4);
+            if (!m_str.empty()) {
+                var.min_value = std::stoll(m_str);
+            }
+        }
+
+        auto max_pos = str.find("max=");
+        if (max_pos != std::string::npos) {
+            std::string m_str = extract_quoted_or_word(str, max_pos + 4);
+            if (!m_str.empty()) {
+                var.max_value = std::stoll(m_str);
+            }
+        }
+
+        auto d_pos = str.find("desc=");
+        if (d_pos != std::string::npos) {
+            var.description = extract_quoted_or_word(str, d_pos + 5);
+        }
+
+        return var;
+    }
+
     // Parses @fsm:trans [id="<hash>"] [guard_ast="..."] [action_sig="..."]
     static bool parse_trans_directive(std::string_view body, TransitionEdge& trans) {
         std::string str(body);
@@ -149,6 +317,21 @@ class DirectiveParser {
         if (a_pos != std::string::npos) {
             std::string act = extract_quoted_or_word(str, a_pos + 11);
             trans.action_sig = ActionSignature(act, act);
+        }
+        auto p_pos = str.find("priority=");
+        if (p_pos == std::string::npos) {
+            p_pos = str.find("prio=");
+            if (p_pos != std::string::npos) {
+                p_pos += 5;
+            }
+        } else {
+            p_pos += 9;
+        }
+        if (p_pos != std::string::npos) {
+            std::string p_str = extract_quoted_or_word(str, p_pos);
+            if (!p_str.empty()) {
+                trans.priority = static_cast<std::uint32_t>(std::stoul(p_str));
+            }
         }
         return true;
     }

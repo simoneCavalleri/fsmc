@@ -193,56 +193,89 @@ class SimpleJsonParser {
         return false;
     }
 
-    static bool parse_string(std::string_view text, size_t& idx, JsonValue& out_val, std::string& /*err*/) {
+    static bool parse_string(std::string_view text, size_t& idx, JsonValue& out_val, std::string& err) {
         out_val.type = JsonType::String;
-        idx++;  // skip '"'
-        std::string result;
+        idx++;  // skip opening '"'
+        std::string res;
+
         while (idx < text.size()) {
-            char curr_char = text[idx++];
-            if (curr_char == '"') {
-                out_val.str_val = result;
+            char ch = text[idx++];
+            if (ch == '"') {
+                out_val.str_val = res;
                 return true;
             }
-            if (curr_char == '\\' && idx < text.size()) {
-                char esc_char = text[idx++];
-                if (esc_char == 'n') {
-                    result += '\n';
-                } else if (esc_char == 't') {
-                    result += '\t';
-                } else if (esc_char == 'r') {
-                    result += '\r';
-                } else {
-                    result += esc_char;
+            if (ch == '\\') {
+                if (idx >= text.size()) {
+                    err = "Incomplete escape sequence in JSON string";
+                    return false;
+                }
+                char esc = text[idx++];
+                switch (esc) {
+                    case '"':
+                        res += '"';
+                        break;
+                    case '\\':
+                        res += '\\';
+                        break;
+                    case '/':
+                        res += '/';
+                        break;
+                    case 'b':
+                        res += '\b';
+                        break;
+                    case 'f':
+                        res += '\f';
+                        break;
+                    case 'n':
+                        res += '\n';
+                        break;
+                    case 'r':
+                        res += '\r';
+                        break;
+                    case 't':
+                        res += '\t';
+                        break;
+                    case 'u':
+                        if (idx + 4 <= text.size()) {
+                            idx += 4;  // skip unicode hex sequence
+                            res += '?';
+                        }
+                        break;
+                    default:
+                        res += esc;
+                        break;
                 }
             } else {
-                result += curr_char;
+                res += ch;
             }
         }
-        out_val.str_val = result;
-        return true;
+        err = "Unterminated JSON string";
+        return false;
     }
 
-    static bool parse_bool(std::string_view text, size_t& idx, JsonValue& out_val, std::string& /*err*/) {
+    static bool parse_bool(std::string_view text, size_t& idx, JsonValue& out_val, std::string& err) {
         out_val.type = JsonType::Bool;
-        if (starts_with(text.substr(idx), "true")) {
+        if (text.substr(idx, 4) == "true") {
             out_val.bool_val = true;
             idx += 4;
             return true;
         }
-        if (starts_with(text.substr(idx), "false")) {
+        if (text.substr(idx, 5) == "false") {
             out_val.bool_val = false;
             idx += 5;
             return true;
         }
+        err = "Invalid boolean in JSON";
         return false;
     }
 
-    static bool parse_null(std::string_view text, size_t& idx, JsonValue& out_val, std::string& /*err*/) {
+    static bool parse_null(std::string_view text, size_t& idx, JsonValue& out_val, std::string& err) {
         out_val.type = JsonType::Null;
-        if (starts_with(text.substr(idx), "null")) {
+        if (text.substr(idx, 4) == "null") {
             idx += 4;
             return true;
         }
+        err = "Invalid null in JSON";
         return false;
     }
 
@@ -267,7 +300,8 @@ class SimpleJsonParser {
 // ============================================================================
 class JsonStateParser : public IParser {
   public:
-    [[nodiscard]] static std::string format_name() { return "json"; }
+    [[nodiscard]] FrontendKind kind() const noexcept override { return FrontendKind::Diagram; }
+    [[nodiscard]] std::string_view format_name() const noexcept override { return "json"; }
 
     bool parse(std::string_view content, FsmIr& model, std::string& error_message) override {
         JsonValue root;
@@ -289,6 +323,83 @@ class JsonStateParser : public IParser {
         std::string init_state = root.get_string("initial");
         if (!init_state.empty()) {
             model.initial_state = sanitize_identifier(init_state);
+        }
+
+        // Top-level variables / context
+        const auto* vars_arr = root.get_child("variables");
+        if (vars_arr != nullptr && vars_arr->is_array()) {
+            for (const auto& v_val : vars_arr->arr_val) {
+                if (v_val.is_object()) {
+                    VariableDefinition var;
+                    var.name = sanitize_identifier(v_val.get_string("name"));
+                    var.type = v_val.get_string("type", "uint32_t");
+                    var.initial_value = v_val.get_string("init");
+                    var.description = v_val.get_string("description");
+                    if (!var.name.empty()) {
+                        model.add_variable(std::move(var));
+                    }
+                }
+            }
+        }
+
+        // Top-level signals
+        const auto* sigs_arr = root.get_child("signals");
+        if (sigs_arr != nullptr && sigs_arr->is_array()) {
+            for (const auto& s_val : sigs_arr->arr_val) {
+                if (s_val.is_object()) {
+                    SignalDefinition sig;
+                    sig.name = sanitize_identifier(s_val.get_string("name"));
+                    const auto* attrs_arr = s_val.get_child("attributes");
+                    if (attrs_arr != nullptr && attrs_arr->is_array()) {
+                        for (const auto& a_val : attrs_arr->arr_val) {
+                            if (a_val.is_object()) {
+                                SignalAttribute attr;
+                                attr.name = sanitize_identifier(a_val.get_string("name"));
+                                attr.type = a_val.get_string("type", "uint32_t");
+                                attr.default_value = a_val.get_string("default");
+                                sig.attributes.push_back(std::move(attr));
+                            }
+                        }
+                    }
+                    if (!sig.name.empty()) {
+                        model.signals.push_back(std::move(sig));
+                        model.add_event(sig.name);
+                    }
+                }
+            }
+        }
+
+        // Top-level formal properties
+        const auto* props_arr = root.get_child("properties");
+        if (props_arr != nullptr && props_arr->is_array()) {
+            for (const auto& p_val : props_arr->arr_val) {
+                if (p_val.is_object()) {
+                    std::string p_name = p_val.get_string("name");
+                    std::string formula = p_val.get_string("ltl");
+                    if (formula.empty()) {
+                        formula = p_val.get_string("formula");
+                    }
+                    std::string kind_str = p_val.get_string("kind", "Safety");
+                    PropertyKind p_kind = PropertyKind::Safety;
+                    if (kind_str == "Invariant") {
+                        p_kind = PropertyKind::Invariant;
+                    } else if (kind_str == "Reachability") {
+                        p_kind = PropertyKind::Reachability;
+                    } else if (kind_str == "Liveness") {
+                        p_kind = PropertyKind::Liveness;
+                    }
+                    std::string req = p_val.get_string("req");
+                    if (req.empty()) {
+                        req = p_val.get_string("traceability_req");
+                    }
+                    std::string desc = p_val.get_string("desc");
+                    if (desc.empty()) {
+                        desc = p_val.get_string("description");
+                    }
+                    FormalProperty prop(p_name, p_kind, formula, desc, req);
+                    model.properties.push_back(std::move(prop));
+                }
+            }
         }
 
         const auto* states_obj = root.get_child("states");
@@ -315,7 +426,8 @@ class JsonStateParser : public IParser {
     void parse_states_object(const JsonValue& states_obj, FsmIr& model, const std::string& current_parent) {
         for (const auto& [state_key, state_data] : states_obj.obj_members) {
             const std::string state_name = sanitize_identifier(state_key);
-            model.add_state(state_name, current_parent);
+            auto& node = model.add_state(state_name, current_parent);
+            node.parent_state = current_parent;
 
             if (!current_parent.empty()) {
                 auto* parent = model.find_state_mut(current_parent);
@@ -331,11 +443,101 @@ class JsonStateParser : public IParser {
                 continue;
             }
 
+            auto* curr = model.find_state_mut(state_name);
+
+            // Parse entry actions
+            const auto* entry_val = state_data.get_child("entry");
+            if (entry_val != nullptr && curr != nullptr) {
+                if (entry_val->is_string()) {
+                    std::string act = sanitize_identifier(entry_val->str_val);
+                    model.add_action(act);
+                    curr->entry_actions.push_back(ActionSignature{act});
+                } else if (entry_val->is_array()) {
+                    for (const auto& item : entry_val->arr_val) {
+                        if (item.is_string()) {
+                            std::string act = sanitize_identifier(item.str_val);
+                            model.add_action(act);
+                            curr->entry_actions.push_back(ActionSignature{act});
+                        }
+                    }
+                }
+            }
+
+            // Parse exit actions
+            const auto* exit_val = state_data.get_child("exit");
+            if (exit_val != nullptr && curr != nullptr) {
+                if (exit_val->is_string()) {
+                    std::string act = sanitize_identifier(exit_val->str_val);
+                    model.add_action(act);
+                    curr->exit_actions.push_back(ActionSignature{act});
+                } else if (exit_val->is_array()) {
+                    for (const auto& item : exit_val->arr_val) {
+                        if (item.is_string()) {
+                            std::string act = sanitize_identifier(item.str_val);
+                            model.add_action(act);
+                            curr->exit_actions.push_back(ActionSignature{act});
+                        }
+                    }
+                }
+            }
+
+            // Parse do activity
+            std::string do_act = state_data.get_string("do");
+            if (!do_act.empty() && curr != nullptr) {
+                curr->do_activity = sanitize_identifier(do_act);
+            }
+
+            // Parse kind (entryPoint, exitPoint, parallel, choice, fork, join)
+            std::string kind_str = state_data.get_string("kind");
+            if (kind_str.empty()) {
+                kind_str = state_data.get_string("type");
+            }
+            if (!kind_str.empty() && curr != nullptr) {
+                if (kind_str == "entryPoint" || kind_str == "entry_point" || kind_str == "EntryPoint") {
+                    curr->kind = StateKind::EntryPoint;
+                } else if (kind_str == "exitPoint" || kind_str == "exit_point" || kind_str == "ExitPoint") {
+                    curr->kind = StateKind::ExitPoint;
+                } else if (kind_str == "parallel" || kind_str == "Parallel") {
+                    curr->kind = StateKind::Parallel;
+                } else if (kind_str == "choice" || kind_str == "Choice") {
+                    curr->kind = StateKind::Choice;
+                } else if (kind_str == "fork" || kind_str == "Fork") {
+                    curr->kind = StateKind::Fork;
+                } else if (kind_str == "join" || kind_str == "Join") {
+                    curr->kind = StateKind::Join;
+                }
+            }
+
+            // Parse time_invariant
+            std::string inv_str = state_data.get_string("time_invariant");
+            if (inv_str.empty()) {
+                inv_str = state_data.get_string("invariant");
+            }
+            if (!inv_str.empty() && curr != nullptr) {
+                curr->time_invariant = inv_str;
+            }
+
+            // Parse traceability requirements
+            const auto* reqs_val = state_data.get_child("satisfies");
+            if (reqs_val == nullptr) {
+                reqs_val = state_data.get_child("requirements");
+            }
+            if (reqs_val != nullptr && curr != nullptr) {
+                if (reqs_val->is_string()) {
+                    curr->traceability_reqs.push_back(reqs_val->str_val);
+                } else if (reqs_val->is_array()) {
+                    for (const auto& item : reqs_val->arr_val) {
+                        if (item.is_string()) {
+                            curr->traceability_reqs.push_back(item.str_val);
+                        }
+                    }
+                }
+            }
+
             // Check if composite state with nested "states"
             std::string sub_initial = state_data.get_string("initial");
             const auto* sub_states = state_data.get_child("states");
             if (sub_states != nullptr && sub_states->is_object()) {
-                auto* curr = model.find_state_mut(state_name);
                 if (curr != nullptr) {
                     curr->is_composite = true;
                     if (!sub_initial.empty()) {
@@ -347,16 +549,13 @@ class JsonStateParser : public IParser {
 
             // Check deferred events
             const auto* defer_val = state_data.get_child("defer");
-            if (defer_val != nullptr) {
-                auto* curr = model.find_state_mut(state_name);
-                if (curr != nullptr) {
-                    if (defer_val->is_string()) {
-                        curr->deferred_events.push_back(sanitize_identifier(defer_val->str_val));
-                    } else if (defer_val->is_array()) {
-                        for (const auto& d_item : defer_val->arr_val) {
-                            if (d_item.is_string()) {
-                                curr->deferred_events.push_back(sanitize_identifier(d_item.str_val));
-                            }
+            if (defer_val != nullptr && curr != nullptr) {
+                if (defer_val->is_string()) {
+                    curr->deferred_events.push_back(sanitize_identifier(defer_val->str_val));
+                } else if (defer_val->is_array()) {
+                    for (const auto& d_item : defer_val->arr_val) {
+                        if (d_item.is_string()) {
+                            curr->deferred_events.push_back(sanitize_identifier(d_item.str_val));
                         }
                     }
                 }
@@ -380,6 +579,8 @@ class JsonStateParser : public IParser {
                 trans.source = source_state;
                 trans.target = sanitize_identifier(trans_data.str_val);
                 trans.event = event_name;
+                const auto* src_node = model.find_state(source_state);
+                trans.parent_scope = (src_node != nullptr) ? src_node->parent_state : "";
                 model.add_event(event_name);
                 model.add_state(trans.target);
                 model.add_transition(std::move(trans));
@@ -422,6 +623,20 @@ class JsonStateParser : public IParser {
             }
         }
 
+        std::uint32_t priority = 0;
+        std::string prio_str = trans_obj.get_string("priority");
+        if (!prio_str.empty()) {
+            try {
+                priority = static_cast<std::uint32_t>(std::stoul(prio_str));
+            } catch (...) {
+            }
+        } else {
+            const auto* p_val = trans_obj.get_child("priority");
+            if (p_val != nullptr && p_val->type == JsonType::Number) {
+                priority = static_cast<std::uint32_t>(p_val->num_val);
+            }
+        }
+
         bool is_internal = target.empty() || trans_obj.get_string("type") == "internal";
         std::string dst = target.empty() ? source_state : target;
 
@@ -447,6 +662,7 @@ class JsonStateParser : public IParser {
         trans.target_is_history = is_history;
         trans.target_is_deep_history = is_deep_history;
         trans.event = event_name;
+        trans.priority = priority;
         if (!cond.empty()) {
             auto parsed = GuardExpressionParser::parse(cond);
             if (!parsed.cpp_type.empty()) {
@@ -460,6 +676,8 @@ class JsonStateParser : public IParser {
             trans.action = sanitize_identifier(action);
             model.add_action(*trans.action);
         }
+        const auto* src_node = model.find_state(source_state);
+        trans.parent_scope = (src_node != nullptr) ? src_node->parent_state : "";
         trans.kind = is_internal ? TransitionEdgeKind::Internal : TransitionEdgeKind::External;
 
         if (!model.is_choice_node(trans.target)) {

@@ -7,9 +7,34 @@
 
 namespace fsm::codegen {
 
+/**
+ * @brief Classification of state machine frontends for compilation guarantees.
+ *
+ * - Formal: Strict formal metamodels (SysML v2, W3C SCXML, Cameo/MagicDraw XMI).
+ *           Contains typed variables, explicit physical units, event payloads, and deterministic semantics.
+ * - Diagram: Visual diagramming & descriptive notations (PlantUML, Mermaid, Graphviz DOT, JSON).
+ *            Designed for visual sketching; types and contracts are inferred or supplemented via @fsm directives.
+ */
+enum class FrontendKind : std::uint8_t {
+    Formal,   ///< Strict formal metamodel: SysML v2, W3C SCXML, Cameo/MagicDraw XMI
+    Diagram   ///< Visual diagram notation: PlantUML, Mermaid, Graphviz DOT, XState JSON
+};
+
+inline std::string_view frontend_kind_to_string(FrontendKind kind) noexcept {
+    switch (kind) {
+        case FrontendKind::Formal:
+            return "Formal Model (Deterministic & High-Semantics)";
+        case FrontendKind::Diagram:
+            return "Visual Diagram (Descriptive / Heuristic)";
+    }
+    return "Visual Diagram (Descriptive / Heuristic)";
+}
+
 class IParser {
   public:
     virtual ~IParser() = default;
+    [[nodiscard]] virtual FrontendKind kind() const noexcept { return FrontendKind::Formal; }
+    [[nodiscard]] virtual std::string_view format_name() const noexcept { return "unknown"; }
     virtual bool parse(std::string_view content, FsmIr& out_ir, std::string& out_error) = 0;
 };
 

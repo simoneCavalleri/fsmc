@@ -7,17 +7,22 @@
 #include <utility>
 #include <vector>
 
+#include "fsm/frontend/directive_parser.hpp"
 #include "fsm/frontend/guard_parser.hpp"
 #include "fsm/frontend/parser_interface.hpp"
 
 namespace fsm::codegen {
 
-class MermaidParser : public IParser {
+class PlantUmlParser : public IParser {
   public:
+    [[nodiscard]] FrontendKind kind() const noexcept override { return FrontendKind::Diagram; }
+    [[nodiscard]] std::string_view format_name() const noexcept override { return "plantuml"; }
+
     bool parse(std::string_view content, FsmIr& out_model, std::string& out_error) override {
         std::istringstream stream(std::string{content});
         std::string line;
         size_t line_num = 0;
+        bool in_block_comment = false;
         std::vector<std::string> parent_stack;
 
         while (std::getline(stream, line)) {
@@ -27,10 +32,50 @@ class MermaidParser : public IParser {
             if (trimmed.empty()) {
                 continue;
             }
-            if (starts_with(trimmed, "%%")) {
-                continue;  // Mermaid comment
+
+            if (starts_with(trimmed, "/'")) {
+                in_block_comment = true;
             }
-            if (starts_with(trimmed, "stateDiagram") || starts_with(trimmed, "stateDiagram-v2")) {
+            if (in_block_comment) {
+                if (trimmed.find("'/") != std::string_view::npos) {
+                    in_block_comment = false;
+                }
+                continue;
+            }
+
+            if (DirectiveParser::is_directive(trimmed)) {
+                std::string body = DirectiveParser::extract_directive_body(trimmed);
+                if (body.rfind("var", 0) == 0) {
+                    if (auto var = DirectiveParser::parse_variable_directive(body)) {
+                        out_model.add_variable(std::move(*var));
+                    }
+                } else if (body.rfind("property", 0) == 0) {
+                    if (auto prop = DirectiveParser::parse_property_directive(body)) {
+                        out_model.add_property(std::move(*prop));
+                    }
+                } else if (body.rfind("signal", 0) == 0) {
+                    if (auto sig = DirectiveParser::parse_signal_directive(body)) {
+                        out_model.add_signal(std::move(*sig));
+                    }
+                } else if (!parent_stack.empty()) {
+                    auto* st = out_model.find_state_mut(parent_stack.back());
+                    if (st != nullptr) {
+                        if (body.rfind("state", 0) == 0) {
+                            DirectiveParser::parse_state_directive(body, *st);
+                        } else if (body.rfind("defer", 0) == 0) {
+                            DirectiveParser::parse_defer_directive(body, *st);
+                        }
+                    }
+                }
+                continue;
+            }
+
+            if (starts_with(trimmed, "'") || starts_with(trimmed, "@startuml") || starts_with(trimmed, "@enduml") ||
+                starts_with(trimmed, "title ")) {
+                continue;
+            }
+
+            if (starts_with(trimmed, "note ") || starts_with(trimmed, "note\t")) {
                 continue;
             }
 
@@ -42,9 +87,8 @@ class MermaidParser : public IParser {
                 continue;
             }
 
-            // Choice pseudostate: state ChoiceName <<choice>>
-            if (starts_with(trimmed, "state ") && (trimmed.find("<<choice>>") != std::string_view::npos ||
-                                                   trimmed.find("<<junction>>") != std::string_view::npos)) {
+            // Pseudostates: state Name <<choice|junction|fork|join|entryPoint|exitPoint>>
+            if (starts_with(trimmed, "state ") && trimmed.find("<<") != std::string_view::npos) {
                 parse_choice_definition(trimmed, out_model);
                 continue;
             }
@@ -58,7 +102,7 @@ class MermaidParser : public IParser {
                 continue;
             }
 
-            // Parse state descriptions: state "Description" as StateName
+            // State alias definitions: state "Description" as StateName
             if (starts_with(trimmed, "state ")) {
                 parse_state_definition(trimmed, out_model, parent_stack);
                 continue;
@@ -71,8 +115,8 @@ class MermaidParser : public IParser {
                 continue;
             }
 
-            // Parse transitions: StateA --> StateB : Event [Guard] / Action
-            if (trimmed.find("-->") != std::string_view::npos) {
+            // Transition lines: Source --> Target or Source -> Target
+            if (trimmed.find("->") != std::string_view::npos) {
                 if (!parse_transition_line(trimmed, out_model, out_error, line_num, parent_stack)) {
                     return false;
                 }
@@ -80,14 +124,14 @@ class MermaidParser : public IParser {
             }
 
             // Internal transition lines: StateName : Event [Guard] / Action
-            if (trimmed.find(':') != std::string_view::npos && trimmed.find("-->") == std::string_view::npos) {
+            if (trimmed.find(':') != std::string_view::npos && trimmed.find("->") == std::string_view::npos) {
                 parse_internal_transition(trimmed, out_model, parent_stack);
                 continue;
             }
         }
 
         if (out_model.states.empty() && out_model.choice_nodes.empty()) {
-            out_error = "No valid states or transitions found in Mermaid diagram.";
+            out_error = "No valid states or transitions found in PlantUML diagram.";
             return false;
         }
 
@@ -114,12 +158,24 @@ class MermaidParser : public IParser {
     }
 
     static void parse_choice_definition(std::string_view line, FsmIr& model) {
-        static const std::regex choice_regex(R"(state\s+([a-zA-Z0-9_]+)\s*<<(choice|junction)>>)");
+        static const std::regex choice_regex(
+            R"(state\s+([a-zA-Z0-9_]+)\s*<<(choice|junction|fork|join|entryPoint|exitPoint)>>)");
         const std::string line_str{line};
         std::smatch match;
         if (std::regex_search(line_str, match, choice_regex)) {
-            const std::string choice_name = sanitize_identifier(match[1].str());
-            model.add_choice_node(choice_name);
+            const std::string name = sanitize_identifier(match[1].str());
+            const std::string kind_str = match[2].str();
+            if (kind_str == "choice" || kind_str == "junction") {
+                model.add_choice_node(name);
+            } else if (kind_str == "entryPoint") {
+                model.add_or_get_state(name, "", StateKind::EntryPoint);
+            } else if (kind_str == "exitPoint") {
+                model.add_or_get_state(name, "", StateKind::ExitPoint);
+            } else if (kind_str == "fork") {
+                model.add_or_get_state(name, "", StateKind::Fork);
+            } else if (kind_str == "join") {
+                model.add_or_get_state(name, "", StateKind::Join);
+            }
         }
     }
 
@@ -194,6 +250,28 @@ class MermaidParser : public IParser {
             return;
         }
 
+        std::string parent_for_state;
+        if (!parent_stack.empty()) {
+            if (parent_stack.back() == state_name) {
+                parent_for_state = (parent_stack.size() >= 2) ? parent_stack[parent_stack.size() - 2] : "";
+            } else {
+                parent_for_state = parent_stack.back();
+            }
+        }
+        const std::string trans_scope = parent_stack.empty() ? "" : parent_stack.back();
+
+        // Check for invariant / stay_duration directives
+        if (starts_with(label, "invariant ") || starts_with(label, "time_invariant ") || starts_with(label, "stay ") ||
+            starts_with(label, "stay_duration ")) {
+            size_t sp = label.find(' ');
+            std::string inv_body = std::string(trim(label.substr(sp + 1)));
+            model.add_state(state_name, parent_for_state);
+            if (auto* st = model.find_state_mut(state_name)) {
+                st->time_invariant = inv_body;
+            }
+            return;
+        }
+
         std::optional<std::string> action_name;
         const auto slash_pos = label.find('/');
         if (slash_pos != std::string::npos) {
@@ -226,8 +304,30 @@ class MermaidParser : public IParser {
             return;
         }
 
-        const std::string current_parent = parent_stack.empty() ? "" : parent_stack.back();
-        model.add_state(state_name, current_parent);
+        model.add_state(state_name, parent_for_state);
+
+        // Native PlantUML lifecycle hooks: entry, exit, do
+        if (event_name == "entry" && action_name) {
+            model.add_action(*action_name);
+            if (auto* st = model.find_state_mut(state_name)) {
+                st->entry_actions.push_back(ActionSignature{*action_name});
+            }
+            return;
+        }
+        if (event_name == "exit" && action_name) {
+            model.add_action(*action_name);
+            if (auto* st = model.find_state_mut(state_name)) {
+                st->exit_actions.push_back(ActionSignature{*action_name});
+            }
+            return;
+        }
+        if (event_name == "do" && action_name) {
+            if (auto* st = model.find_state_mut(state_name)) {
+                st->do_activity = *action_name;
+            }
+            return;
+        }
+
         model.add_event(event_name);
         if (action_name) {
             model.add_action(*action_name);
@@ -240,20 +340,25 @@ class MermaidParser : public IParser {
         trans.guard = guard_name;
         trans.action = action_name;
         trans.kind = TransitionEdgeKind::Internal;
-        trans.parent_scope = current_parent;
+        trans.parent_scope = trans_scope;
 
         model.add_transition(std::move(trans));
     }
 
     static bool parse_transition_line(std::string_view line, FsmIr& model, std::string& out_error, size_t line_num,
                                       const std::vector<std::string>& parent_stack) {
-        const auto arrow_pos = line.find("-->");
+        size_t arrow_pos = line.find("-->");
+        size_t arrow_len = 3;
+        if (arrow_pos == std::string_view::npos) {
+            arrow_pos = line.find("->");
+            arrow_len = 2;
+        }
         if (arrow_pos == std::string_view::npos) {
             return false;
         }
 
         const std::string_view src_part = trim(line.substr(0, arrow_pos));
-        const std::string_view rest = trim(line.substr(arrow_pos + 3));
+        const std::string_view rest = trim(line.substr(arrow_pos + arrow_len));
 
         std::string_view dst_part;
         std::string_view label_part;
@@ -268,7 +373,7 @@ class MermaidParser : public IParser {
 
         const std::string current_parent = parent_stack.empty() ? "" : parent_stack.back();
 
-        // Check for initial state [*] --> InitialState
+        // Check for initial state [*] -> InitialState
         if (src_part == "[*]") {
             std::string dst = sanitize_identifier(dst_part);
             if (!dst.empty() && dst_part != "[*]") {
@@ -303,25 +408,38 @@ class MermaidParser : public IParser {
 
         std::string dst = sanitize_identifier(dst_raw);
 
-        // Check for final state State --> [*]
+        // Check for final state State -> [*]
         if (dst_part == "[*]") {
             dst = "Final";
         }
 
         if (src.empty() || dst.empty()) {
             out_error = "Error at line " + std::to_string(line_num) +
-                        ": invalid source or target state in transition: " + std::string{line};
+                        ": invalid source or target in transition: " + std::string{line};
             return false;
         }
 
-        // Parse Event, Guard, Action from label:
-        // Format: EventName [GuardName] / ActionName
+        // Parse Event, Guard, Action, Priority from label:
+        // Format: EventName (prio=1) [GuardName] / ActionName
         std::string event_name = "AnonymousEvent";
         std::optional<std::string> guard_name;
         std::optional<std::string> action_name;
+        std::uint32_t priority = 0;
 
         if (!label_part.empty()) {
             std::string label{label_part};
+
+            // Check for Priority: (prio=N) or [prio=N] or (priority=N) or [priority=N]
+            static const std::regex prio_regex(R"(\[(?:prio|priority)=(\d+)\]|\((?:prio|priority)=(\d+)\))");
+            std::smatch prio_match;
+            if (std::regex_search(label, prio_match, prio_regex)) {
+                std::string p_str = prio_match[1].matched ? prio_match[1].str() : prio_match[2].str();
+                try {
+                    priority = static_cast<std::uint32_t>(std::stoul(p_str));
+                } catch (...) {
+                }
+                label = std::regex_replace(label, prio_regex, "");
+            }
 
             // Check for Action: / ActionName
             const auto slash_pos = label.find('/');
@@ -388,6 +506,7 @@ class MermaidParser : public IParser {
         trans.target_is_history = is_history;
         trans.target_is_deep_history = is_deep_history;
         trans.parent_scope = current_parent;
+        trans.priority = priority;
 
         model.add_transition(std::move(trans));
 

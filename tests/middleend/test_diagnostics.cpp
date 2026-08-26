@@ -6,6 +6,14 @@ using namespace fsm::codegen;
 
 namespace {
 
+/**
+ * @brief Test Intent: Verify diagnostic engine source code rendering with line numbers, caret underlines, and help
+ * tips.
+ *
+ * Scenario:
+ * - Report a warning diagnostic with a specific SourceSpan (line 2, col 7, length 11) and help suggestion.
+ * - Verify rendered output contains file location, source code excerpt, caret underline `^~~~~~~~~~~`, and suggestion.
+ */
 TEST(DiagnosticEngineTest, ErrorRenderingWithCaret) {
     const std::string dummy_source =
         "@startuml\n"

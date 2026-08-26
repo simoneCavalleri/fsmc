@@ -13,7 +13,7 @@ namespace fsm::codegen {
 /**
  * @brief Severity level for compiler and verification diagnostics.
  */
-enum class DiagnosticSeverity : std::uint8_t { Note, Warning, Error, Fatal };
+enum class DiagnosticSeverity : std::uint8_t { Note, Info = Note, Warning, Error, Fatal, SafetyCritical = Fatal };
 
 /**
  * @brief Precise source span locating a token or AST construct in an input file.
@@ -42,8 +42,16 @@ struct Diagnostic {
         return Diagnostic{DiagnosticSeverity::Error, std::move(code), std::move(message), std::move(span), "", {}};
     }
 
+    static Diagnostic safety_critical(std::string code, std::string message, SourceSpan span = {}) {
+        return Diagnostic{DiagnosticSeverity::Fatal, std::move(code), std::move(message), std::move(span), "", {}};
+    }
+
     static Diagnostic warning(std::string code, std::string message, SourceSpan span = {}) {
         return Diagnostic{DiagnosticSeverity::Warning, std::move(code), std::move(message), std::move(span), "", {}};
+    }
+
+    static Diagnostic info(std::string code, std::string message, SourceSpan span = {}) {
+        return Diagnostic{DiagnosticSeverity::Note, std::move(code), std::move(message), std::move(span), "", {}};
     }
 
     static Diagnostic note(std::string message, SourceSpan span = {}) {
@@ -64,6 +72,14 @@ class DiagnosticEngine {
     }
 
     [[nodiscard]] bool has_errors() const noexcept { return has_errors_; }
+    [[nodiscard]] bool has_warnings() const noexcept {
+        for (const auto& diag : diagnostics_) {
+            if (diag.severity == DiagnosticSeverity::Warning) {
+                return true;
+            }
+        }
+        return false;
+    }
     [[nodiscard]] const std::vector<Diagnostic>& get_diagnostics() const noexcept { return diagnostics_; }
 
     void clear() noexcept {

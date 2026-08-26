@@ -297,6 +297,8 @@ class fsm {
     dispatch_result try_transition_from(CurrentSrc& src_state, const Event& event,
                                         std::index_sequence<Indices...> /*indices*/) {
         bool any_guard_rejected = false;
+        std::optional<transition_trace> executed_trace = std::nullopt;
+        std::optional<transition_trace> last_rejected_trace = std::nullopt;
 
         auto try_index = [&](auto idx_constant) -> bool {
             constexpr std::size_t Index = decltype(idx_constant)::value;
@@ -309,17 +311,31 @@ class fsm {
                 using Action = typename RowType::action_type;
                 auto& ctx = get_ctx();
 
-                if (!call_guard(Guard{}, event, src_state, ctx, *this)) {
-                    any_guard_rejected = true;
-                    return false;
-                }
-
                 const auto src_name = get_state_name(src_state);
                 const auto evt_name = get_event_name(event);
+
+                if (!call_guard(Guard{}, event, src_state, ctx, *this)) {
+                    any_guard_rejected = true;
+                    using TargetState = typename RowType::target;
+                    last_rejected_trace =
+                        transition_trace{src_name,
+                                         RowType::is_internal ? src_name : get_type_name<TargetState>(),
+                                         evt_name,
+                                         get_type_name<Guard>(),
+                                         get_type_name<Action>(),
+                                         RowType::is_internal ? transition_kind::internal : transition_kind::external};
+                    return false;
+                }
 
                 if constexpr (RowType::is_internal) {
                     Action act{};
                     call_action(act, event, src_state, src_state, ctx);
+                    executed_trace = transition_trace{src_name,
+                                                      src_name,
+                                                      evt_name,
+                                                      get_type_name<Guard>(),
+                                                      get_type_name<Action>(),
+                                                      transition_kind::internal};
                     if constexpr (has_observer) {
                         observer_(transition_info{src_name, src_name, evt_name, dispatch_status::success,
                                                   transition_kind::internal});
@@ -343,6 +359,12 @@ class fsm {
                     call_on_enter(std::get<TransDst>(current_state_), event, ctx);
 
                     const auto dst_name = get_state_name(std::get<TransDst>(current_state_));
+                    executed_trace = transition_trace{src_name,
+                                                      dst_name,
+                                                      evt_name,
+                                                      get_type_name<Guard>(),
+                                                      get_type_name<Action>(),
+                                                      transition_kind::external};
                     if constexpr (has_observer) {
                         observer_(transition_info{src_name, dst_name, evt_name, dispatch_status::success,
                                                   transition_kind::external});
@@ -355,12 +377,14 @@ class fsm {
 
         bool executed = (try_index(std::integral_constant<std::size_t, Indices>{}) || ...);
         if (executed) {
-            return dispatch_result{dispatch_status::success};
+            return dispatch_result{dispatch_status::success, executed_trace};
         }
         if (any_guard_rejected) {
-            return dispatch_result{dispatch_status::guard_rejected};
+            return dispatch_result{dispatch_status::guard_rejected, last_rejected_trace};
         }
-        return dispatch_result{dispatch_status::unhandled};
+        return dispatch_result{
+            dispatch_status::unhandled,
+            transition_trace{get_state_name(src_state), {}, get_event_name(event), {}, {}, transition_kind::external}};
     }
 
     using history_storage = std::conditional_t<has_history, std::vector<history_entry>, empty_storage>;

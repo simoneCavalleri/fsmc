@@ -4,8 +4,8 @@
 #include <thread>
 
 #include "fsm/runtime/cpp/fsm.hpp"
+#include "fsm/runtime/cpp/spsc_fsm.hpp"
 #include "fsm/runtime/cpp/static_ring_buffer.hpp"
-#include "fsm/runtime/cpp/static_thread_safe_fsm.hpp"
 #include "fsm/runtime/cpp/type_traits.hpp"
 
 namespace {
@@ -105,50 +105,33 @@ TEST(ZeroAllocRuntimeTest, TrueCompileTimeZeroOverheadSize) {
 }
 
 /**
- * @brief Test Intent: Verify static_thread_safe_fsm operations with zero dynamic allocations.
+ * @brief Test Intent: Verify spsc_fsm operations with zero dynamic allocations and lock-free SPSC execution.
  *
  * Scenario:
- * - Post events into fixed static queue.
- * - Process events one-by-one via process_one() and in batch via process_all().
- * - Send synchronous events via send().
- * - Start a background worker thread and verify asynchronous processing without heap allocation.
+ * - Enqueue events into fixed static queue.
+ * - Process events one-by-one via process_one() and in batch via run_until_empty().
+ * - Verify state inspection and queue queries.
  */
-TEST(ZeroAllocRuntimeTest, StaticThreadSafeFsmOperations) {
-    fsm::static_thread_safe_fsm<MinimalTable, fsm::no_context, 8> static_ts_machine;
+TEST(ZeroAllocRuntimeTest, SpscFsmOperations) {
+    fsm::spsc_fsm<MinimalTable, fsm::no_context, 8> spsc_machine;
 
-    EXPECT_TRUE(static_ts_machine.is_in_state<StateIdle>());
-    EXPECT_TRUE(static_ts_machine.is_queue_empty());
+    EXPECT_TRUE(spsc_machine.is_in_state<StateIdle>());
+    EXPECT_TRUE(spsc_machine.queue_empty());
 
-    // Post into static ring buffer (0 heap allocations)
-    EXPECT_TRUE(static_ts_machine.post(EvStart{}));
-    EXPECT_TRUE(static_ts_machine.post(EvStop{}));
-    EXPECT_EQ(static_ts_machine.pending_events(), 2u);
+    // Enqueue into static ring buffer (0 heap allocations, lock-free)
+    EXPECT_TRUE(spsc_machine.enqueue(EvStart{}));
+    EXPECT_TRUE(spsc_machine.enqueue(EvStop{}));
+    EXPECT_EQ(spsc_machine.queue_size(), 2u);
 
     // Process one
-    EXPECT_TRUE(static_ts_machine.process_one());
-    EXPECT_TRUE(static_ts_machine.is_in_state<StateRunning>());
-    EXPECT_EQ(static_ts_machine.pending_events(), 1u);
+    EXPECT_TRUE(spsc_machine.process_one());
+    EXPECT_TRUE(spsc_machine.is_in_state<StateRunning>());
+    EXPECT_EQ(spsc_machine.queue_size(), 1u);
 
-    // Process remaining
-    EXPECT_EQ(static_ts_machine.process_all(), 1u);
-    EXPECT_TRUE(static_ts_machine.is_in_state<StateStopped>());
-    EXPECT_TRUE(static_ts_machine.is_queue_empty());
-
-    // Send direct synchronous
-    auto r_sync = static_ts_machine.send(EvReset{});
-    EXPECT_TRUE(r_sync.is_success());
-    EXPECT_TRUE(static_ts_machine.is_in_state<StateIdle>());
-
-    // Test worker thread with static ring buffer
-    static_ts_machine.start_worker();
-    EXPECT_TRUE(static_ts_machine.post(EvStart{}));
-
-    while (!static_ts_machine.is_in_state<StateRunning>()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    EXPECT_TRUE(static_ts_machine.is_in_state<StateRunning>());
-
-    static_ts_machine.stop_worker();
+    // Process remaining via run_until_empty
+    EXPECT_EQ(spsc_machine.run_until_empty(), 1u);
+    EXPECT_TRUE(spsc_machine.is_in_state<StateStopped>());
+    EXPECT_TRUE(spsc_machine.queue_empty());
 }
 
 /**
@@ -179,30 +162,30 @@ TEST(ZeroAllocRuntimeTest, StaticRingBufferPeekAndClear) {
 }
 
 /**
- * @brief Test Intent: Verify deterministic queue overflow rejection in static_thread_safe_fsm.
+ * @brief Test Intent: Verify deterministic queue overflow rejection in spsc_fsm.
  *
  * Scenario:
- * - Instantiate static FSM with capacity 2.
- * - Post 2 events until is_queue_full() is true.
- * - Attempt to post 3rd event and verify post() returns false without exceptions or heap allocation.
+ * - Instantiate static SPSC FSM with capacity 2.
+ * - Enqueue 2 events until queue_full() is true.
+ * - Attempt to enqueue 3rd event and verify enqueue() returns false without exceptions or heap allocation.
  * - Process one event and verify queue accepts subsequent posts.
  */
-TEST(ZeroAllocRuntimeTest, StaticThreadSafeFsmQueueOverflowHandling) {
+TEST(ZeroAllocRuntimeTest, SpscFsmQueueOverflowHandling) {
     // Capacity 2 static FSM
-    fsm::static_thread_safe_fsm<MinimalTable, fsm::no_context, 2> tiny_fsm;
-    EXPECT_FALSE(tiny_fsm.is_queue_full());
+    fsm::spsc_fsm<MinimalTable, fsm::no_context, 2> tiny_fsm;
+    EXPECT_FALSE(tiny_fsm.queue_full());
 
-    EXPECT_TRUE(tiny_fsm.post(EvStart{}));
-    EXPECT_TRUE(tiny_fsm.post(EvStop{}));
-    EXPECT_TRUE(tiny_fsm.is_queue_full());
+    EXPECT_TRUE(tiny_fsm.enqueue(EvStart{}));
+    EXPECT_TRUE(tiny_fsm.enqueue(EvStop{}));
+    EXPECT_TRUE(tiny_fsm.queue_full());
 
     // Third event must be rejected (returns false, 0 dynamic allocation)
-    EXPECT_FALSE(tiny_fsm.post(EvReset{}));
-    EXPECT_EQ(tiny_fsm.pending_events(), 2u);
+    EXPECT_FALSE(tiny_fsm.enqueue(EvReset{}));
+    EXPECT_EQ(tiny_fsm.queue_size(), 2u);
 
     EXPECT_TRUE(tiny_fsm.process_one());
-    EXPECT_FALSE(tiny_fsm.is_queue_full());
-    EXPECT_TRUE(tiny_fsm.post(EvReset{}));
+    EXPECT_FALSE(tiny_fsm.queue_full());
+    EXPECT_TRUE(tiny_fsm.enqueue(EvReset{}));
 }
 
 }  // namespace

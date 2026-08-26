@@ -389,4 +389,33 @@ TEST(TraitsAndHooksTest, DispatchResultAndObserverPolicies) {
     EXPECT_FALSE((fsm::is_deferred_event_v<StateWithEventAndCtx, TestEventA>));
 }
 
+/**
+ * @brief Test Intent: Verify transition_trace struct and trace introspection on dispatch_result.
+ *
+ * Scenario:
+ * - Construct dispatch_result with explicit transition_trace.
+ * - Verify access to source, target, event, guard, action, and transition_kind.
+ * - Verify is_internal() and is_external() query helpers.
+ */
+TEST(TraitsAndHooksTest, DispatchResultTransitionTraceInspection) {
+    fsm::transition_trace trace{"StateIdle",       "StateRunning",   "StartEvent",
+                                "AllowStartGuard", "LogStartAction", fsm::transition_kind::external};
+
+    EXPECT_EQ(trace.source, "StateIdle");
+    EXPECT_EQ(trace.target, "StateRunning");
+    EXPECT_EQ(trace.event, "StartEvent");
+    EXPECT_EQ(trace.guard, "AllowStartGuard");
+    EXPECT_EQ(trace.action, "LogStartAction");
+    EXPECT_TRUE(trace.is_external());
+    EXPECT_FALSE(trace.is_internal());
+
+    fsm::dispatch_result res(fsm::dispatch_status::success, trace);
+    EXPECT_TRUE(res.is_success());
+    ASSERT_TRUE(res.trace.has_value());
+    EXPECT_EQ(res.trace->source, "StateIdle");
+    EXPECT_EQ(res.trace->target, "StateRunning");
+    EXPECT_EQ(res.trace->guard, "AllowStartGuard");
+    EXPECT_EQ(res.trace->action, "LogStartAction");
+}
+
 }  // namespace

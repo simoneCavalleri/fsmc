@@ -34,8 +34,9 @@ THREAD_FILES = [
     "async_types.hpp",
     "async_event_queue.hpp",
     "thread_safe_fsm.hpp",
-    "static_thread_safe_fsm.hpp",
+    "spsc_fsm.hpp",
 ]
+
 
 def clean_file_content(filepath):
     """Reads a runtime header, strips #pragma once, local #includes, and returns system includes + body."""

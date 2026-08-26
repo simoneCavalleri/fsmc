@@ -4,8 +4,8 @@
 #include <vector>
 
 #include "fsm/runtime/cpp/fsm.hpp"
+#include "fsm/runtime/cpp/spsc_fsm.hpp"
 #include "fsm/runtime/cpp/static_ring_buffer.hpp"
-#include "fsm/runtime/cpp/static_thread_safe_fsm.hpp"
 
 using namespace fsm;
 
@@ -67,7 +67,7 @@ TEST(RingBufferOverflowTest, DropOldestPolicy) {
     EXPECT_TRUE(rb.empty());
 }
 
-// Simple test FSM for static_thread_safe_fsm
+// Simple test FSM for spsc_fsm
 struct StateA {
     static constexpr std::string_view name() noexcept { return "StateA"; }
 };
@@ -82,26 +82,19 @@ struct EvToggle {
 using TestFsmTable =
     ::fsm::transition_table<::fsm::transition<StateA, EvToggle, StateB>, ::fsm::transition<StateB, EvToggle, StateA>>;
 
-TEST(StaticThreadSafeFsmTest, OverflowPolicyDropOldest) {
-    ::fsm::static_thread_safe_fsm<TestFsmTable, ::fsm::no_context, 2, ::fsm::OverflowPolicy::DropOldest> machine;
+TEST(SpscFsmTest, QueueOverflowRejection) {
+    ::fsm::spsc_fsm<TestFsmTable, ::fsm::no_context, 2> machine;
 
-    // Enqueue 3 events with capacity 2 (oldest dropped)
+    // Enqueue 2 events (capacity 2 is full)
     EXPECT_TRUE(machine.enqueue(EvToggle{}));
     EXPECT_TRUE(machine.enqueue(EvToggle{}));
-    EXPECT_TRUE(machine.enqueue(EvToggle{}));
+    EXPECT_TRUE(machine.queue_full());
 
-    EXPECT_EQ(machine.pending_events(), 2);
+    // 3rd push rejected in wait-free O(1) time
+    EXPECT_FALSE(machine.enqueue(EvToggle{}));
+
+    EXPECT_EQ(machine.queue_size(), 2);
     EXPECT_TRUE(machine.process_one());
     EXPECT_TRUE(machine.process_one());
     EXPECT_FALSE(machine.process_one());
-}
-
-TEST(StaticThreadSafeFsmTest, OverflowPolicyDropIncoming) {
-    ::fsm::static_thread_safe_fsm<TestFsmTable, ::fsm::no_context, 2, ::fsm::OverflowPolicy::DropIncoming> machine;
-
-    EXPECT_TRUE(machine.enqueue(EvToggle{}));
-    EXPECT_TRUE(machine.enqueue(EvToggle{}));
-    EXPECT_FALSE(machine.enqueue(EvToggle{}));
-
-    EXPECT_EQ(machine.pending_events(), 2);
 }

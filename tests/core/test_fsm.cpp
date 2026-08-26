@@ -52,21 +52,33 @@ TEST(FsmCoreTest, BasicTransitionsAndIntrospection) {
     auto is_handled = state_machine.dispatch(StartEvent{});
     EXPECT_TRUE(is_handled.is_success());
     EXPECT_TRUE(state_machine.is_in_state<StateRunning>());
+    ASSERT_TRUE(is_handled.trace.has_value());
+    EXPECT_EQ(is_handled.trace->source, "StateIdle");
+    EXPECT_EQ(is_handled.trace->target, "StateRunning");
+    EXPECT_EQ(is_handled.trace->event, "StartEvent");
 
     // Invalid transition (ResetEvent from Running)
     is_handled = state_machine.dispatch(ResetEvent{});
     EXPECT_TRUE(is_handled.is_unhandled());
     EXPECT_TRUE(state_machine.is_in_state<StateRunning>());
+    ASSERT_TRUE(is_handled.trace.has_value());
+    EXPECT_EQ(is_handled.trace->source, "StateRunning");
 
     // Dispatch StopEvent
     is_handled = state_machine.dispatch(StopEvent{});
     EXPECT_TRUE(is_handled.is_success());
     EXPECT_TRUE(state_machine.is_in_state<StateStopped>());
+    ASSERT_TRUE(is_handled.trace.has_value());
+    EXPECT_EQ(is_handled.trace->source, "StateRunning");
+    EXPECT_EQ(is_handled.trace->target, "StateStopped");
 
     // Dispatch ResetEvent
     is_handled = state_machine.dispatch(ResetEvent{});
     EXPECT_TRUE(is_handled.is_success());
     EXPECT_TRUE(state_machine.is_in_state<StateIdle>());
+    ASSERT_TRUE(is_handled.trace.has_value());
+    EXPECT_EQ(is_handled.trace->source, "StateStopped");
+    EXPECT_EQ(is_handled.trace->target, "StateIdle");
 }
 
 // ============================================================================

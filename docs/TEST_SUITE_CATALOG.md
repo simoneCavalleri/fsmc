@@ -4,8 +4,8 @@
 > To update this file, run: `cmake --build build --target generate_test_catalog` or `python3 scripts/generate_test_catalog.py`.
 
 **Total Documented Subsystems**: 7  
-**Total Test Suites & Binaries**: 44  
-**Total Documented Test Cases**: 182  
+**Total Test Suites & Binaries**: 46  
+**Total Documented Test Cases**: 189  
 
 ---
 
@@ -423,6 +423,16 @@
 ### [`test_ring_buffer_overflow.cpp`](../tests/core/test_ring_buffer_overflow.cpp) (`tests/core/test_ring_buffer_overflow.cpp`)
 - *(Executable binary test verification)*
 
+### [`test_spsc_fsm.cpp`](../tests/core/test_spsc_fsm.cpp) (`tests/core/test_spsc_fsm.cpp`)
+#### `SpscFsmTest.CompileTimeIntrospection`
+**Test Intent**: Verify compile-time introspection on spsc_fsm.
+
+#### `SpscFsmTest.BasicProducerConsumerExecution`
+**Test Intent**: Verify basic SPSC execution across distinct producer and consumer threads.
+
+#### `SpscFsmTest.ConcurrentLockFreeReads`
+**Test Intent**: Verify lock-free concurrent reads while consumer executes transitions.
+
 ### [`test_spsc_queue.cpp`](../tests/core/test_spsc_queue.cpp) (`tests/core/test_spsc_queue.cpp`)
 #### `SpscRingBufferTest.SingleThreadBasicOps`
 **Test Intent**: Verify single-threaded SPSC ring buffer FIFO semantics and capacity boundaries.
@@ -528,6 +538,14 @@
   - Verify detection of dynamic vs no-op static observers.
   - Verify compile-time detection of history pseudostates and deferred events across type_list.
 
+#### `TraitsAndHooksTest.DispatchResultTransitionTraceInspection`
+**Test Intent**: Verify transition_trace struct and trace introspection on dispatch_result.
+
+**Scenario**:
+  - Construct dispatch_result with explicit transition_trace.
+  - Verify access to source, target, event, guard, action, and transition_kind.
+  - Verify is_internal() and is_external() query helpers.
+
 ### [`test_zero_alloc_runtime.cpp`](../tests/core/test_zero_alloc_runtime.cpp) (`tests/core/test_zero_alloc_runtime.cpp`)
 #### `ZeroAllocRuntimeTest.StaticRingBufferBasicOps`
 **Test Intent**: Verify boundary conditions, peek inspection, and FIFO ordering for static_ring_buffer.
@@ -545,14 +563,13 @@
   - Check compile-time machine size with no_observer policy (no heap vectors or std::function objects).
   - Dispatch transitions synchronously and verify state progression.
 
-#### `ZeroAllocRuntimeTest.StaticThreadSafeFsmOperations`
-**Test Intent**: Verify static_thread_safe_fsm operations with zero dynamic allocations.
+#### `ZeroAllocRuntimeTest.SpscFsmOperations`
+**Test Intent**: Verify spsc_fsm operations with zero dynamic allocations and lock-free SPSC execution.
 
 **Scenario**:
-  - Post events into fixed static queue.
-  - Process events one-by-one via process_one() and in batch via process_all().
-  - Send synchronous events via send().
-  - Start a background worker thread and verify asynchronous processing without heap allocation.
+  - Enqueue events into fixed static queue.
+  - Process events one-by-one via process_one() and in batch via run_until_empty().
+  - Verify state inspection and queue queries.
 
 #### `ZeroAllocRuntimeTest.StaticRingBufferPeekAndClear`
 **Test Intent**: Verify mutable peek inspection and buffer clearing for static_ring_buffer.
@@ -561,13 +578,13 @@
   - Modify head item in place via mutable peek() pointer.
   - Call clear() and verify size becomes 0 and empty() returns true.
 
-#### `ZeroAllocRuntimeTest.StaticThreadSafeFsmQueueOverflowHandling`
-**Test Intent**: Verify deterministic queue overflow rejection in static_thread_safe_fsm.
+#### `ZeroAllocRuntimeTest.SpscFsmQueueOverflowHandling`
+**Test Intent**: Verify deterministic queue overflow rejection in spsc_fsm.
 
 **Scenario**:
-  - Instantiate static FSM with capacity 2.
-  - Post 2 events until is_queue_full() is true.
-  - Attempt to post 3rd event and verify post() returns false without exceptions or heap allocation.
+  - Instantiate static SPSC FSM with capacity 2.
+  - Enqueue 2 events until queue_full() is true.
+  - Attempt to enqueue 3rd event and verify enqueue() returns false without exceptions or heap allocation.
   - Process one event and verify queue accepts subsequent posts.
 
 ---
@@ -1034,6 +1051,16 @@
   - FSM has unreachable Island state and a transition with guard == "false".
   - Verify pass prunes Island and the false transition from the IR.
 
+#### `MiddleendPassesTest.ChoiceInliningBranchFlattening`
+**Test Intent**: Verify ChoiceInliningPass flattens choice pseudostates into direct composite transitions.
+
+**Scenario**:
+  - FSM has state Idle, Choice node evaluate_health, targets Nominal and Degraded.
+  - Idle -> evaluate_health (event StartCmd, action InitSubsystem).
+  - evaluate_health -> Nominal (guard BatteryOk, action EnablePower).
+  - evaluate_health -> Degraded (guard else, action LogError).
+  - Verify pass flattens into 2 direct transitions (Idle -> Nominal, Idle -> Degraded) with combined actions.
+
 ### [`test_model_checker.cpp`](../tests/middleend/test_model_checker.cpp) (`tests/middleend/test_model_checker.cpp`)
 #### `ModelCheckerTest.SoundModelVerification`
 **Test Intent**: Verify formal validation passes for a sound state machine with zero defects.
@@ -1083,6 +1110,15 @@
 **Scenario**:
   - State Active has two transitions with identical timer duration `after_500ms`.
   - Verify TimedTransition diagnostic warning is emitted.
+
+#### `ModelCheckerTest.EFSMDataPathIntervalAnalysis`
+**Test Intent**: Verify EFSM Interval Analysis detects unsatisfiable guard conditions across data paths.
+
+**Scenario**:
+  - Define EFSM with batteryLevel initialized to 20.
+  - Transition Idle -> Active with assignment batteryLevel = batteryLevel + 10 (range [30, 30]).
+  - Transition Active -> Turbo with unsatisfiable guard 'batteryLevel > 100'.
+  - Verify EFSMIntervalAnalyzer flags the dead branch with W_EFSM_UNSATISFIABLE_GUARD warning.
 
 ### [`test_model_checker_ltl.cpp`](../tests/middleend/test_model_checker_ltl.cpp) (`tests/middleend/test_model_checker_ltl.cpp`)
 #### `LtlParserTest.BasicUnaryAndBinaryOperators`
@@ -1242,6 +1278,14 @@
 **Scenario**:
   - Attempt to export runtime to a path whose parent is a regular file (not a directory).
   - On all platforms (Linux, macOS, Windows), creating a subdirectory inside a file
+
+#### `CodegenTest.EfsmResolvedGuardCodeGeneration`
+**Test Intent**: Verify C++ emission of automatic resolved EFSM guard expressions from Context variables.
+
+**Scenario**:
+  - Define FSM with Context variable 'batterySoC' and 'criticalError'.
+  - GuardModel with cpp_expression "ctx.batterySoC > 30.0f && !ctx.criticalError".
+  - Verify that generated struct contains the direct return expression instead of a TODO stub.
 
 ### [`test_cpp17_standalone.cpp`](../tests/backend/cpp/test_cpp17_standalone.cpp) (`tests/backend/cpp/test_cpp17_standalone.cpp`)
 - *(Executable binary test verification)*
@@ -1423,6 +1467,9 @@
   - Model with state variables, typed signals, traceability reqs, entry/do/exit actions, and deferred events.
   - Test roundtrips to SysML v2, SCXML, JSON, and PlantUML.
   - Verify all metadata attributes remain intact.
+
+### [`test_rtm_emitter.cpp`](../tests/backend/emitters/test_rtm_emitter.cpp) (`tests/backend/emitters/test_rtm_emitter.cpp`)
+- *(Executable binary test verification)*
 
 ---
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string_view>
 
 namespace fsm {
@@ -27,11 +28,39 @@ inline constexpr std::string_view to_string(dispatch_status s) noexcept {
     return "unknown";
 }
 
+enum class transition_kind : std::uint8_t { external, internal };
+
+inline constexpr std::string_view to_string(transition_kind k) noexcept {
+    switch (k) {
+        case transition_kind::external:
+            return "external";
+        case transition_kind::internal:
+            return "internal";
+    }
+    return "external";
+}
+
+// Detailed transition trace payload attached to dispatch_result for zero-overhead introspection
+struct transition_trace {
+    std::string_view source{};
+    std::string_view target{};
+    std::string_view event{};
+    std::string_view guard{};
+    std::string_view action{};
+    transition_kind kind{transition_kind::external};
+
+    [[nodiscard]] constexpr bool is_internal() const noexcept { return kind == transition_kind::internal; }
+    [[nodiscard]] constexpr bool is_external() const noexcept { return kind == transition_kind::external; }
+};
+
 struct dispatch_result {
     dispatch_status status = dispatch_status::unhandled;
+    std::optional<transition_trace> trace = std::nullopt;
 
     constexpr dispatch_result() noexcept = default;
-    constexpr dispatch_result(dispatch_status s) noexcept : status(s) {}
+    constexpr dispatch_result(dispatch_status s) noexcept : status(s), trace(std::nullopt) {}
+    constexpr dispatch_result(dispatch_status s, transition_trace t) noexcept : status(s), trace(t) {}
+    constexpr dispatch_result(dispatch_status s, std::optional<transition_trace> t) noexcept : status(s), trace(t) {}
 
     [[nodiscard]] constexpr bool is_success() const noexcept { return status == dispatch_status::success; }
     [[nodiscard]] constexpr bool is_deferred() const noexcept { return status == dispatch_status::deferred; }
@@ -49,18 +78,6 @@ struct dispatch_result {
 
     [[nodiscard]] constexpr std::string_view to_string() const noexcept { return fsm::to_string(status); }
 };
-
-enum class transition_kind : std::uint8_t { external, internal };
-
-inline constexpr std::string_view to_string(transition_kind k) noexcept {
-    switch (k) {
-        case transition_kind::external:
-            return "external";
-        case transition_kind::internal:
-            return "internal";
-    }
-    return "external";
-}
 
 // Information about a transition or dispatch attempt passed to observers
 struct transition_info {

@@ -39,6 +39,7 @@ class CppGenerator {
             out << "#include \"fsm/runtime/cpp/fsm.hpp\"\n";
             if (options.thread_safe) {
                 out << "#include \"fsm/runtime/cpp/thread_safe_fsm.hpp\"\n";
+                out << "#include \"fsm/runtime/cpp/spsc_fsm.hpp\"\n";
             }
             out << "#include <string_view>\n";
             out << "#include <iostream>\n\n";

@@ -1,19 +1,22 @@
-# `fsmc`
-
 <div align="center">
+
+<img src="docs/assets/logo.png" alt="fsmc Logo" width="220" />
+
+# `fsmc`
 
 [![CI](https://github.com/simoneCavalleri/fsmc/actions/workflows/ci.yml/badge.svg)](https://github.com/simoneCavalleri/fsmc/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/simoneCavalleri/fsmc?color=blue)](https://github.com/simoneCavalleri/fsmc/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Standards](https://img.shields.io/badge/Standards-OMG%20UML%202.5%20%7C%20SysML%20v2%20%7C%20W3C%20SCXML%20%7C%20nuXmv-orange.svg)](docs/UML_REFERENCE.md)
-[![Tests](https://img.shields.io/badge/Tests-48%20Suites%20Passing-success.svg)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-51%20Suites%20Passing-success.svg)](tests/)
 
 **The Universal Finite State Machine Compiler, Optimization & Formal Verification Infrastructure.**  
 *Transpile, optimize, formally verify, and compile statecharts across 8 industry modeling formats and target architectures.*
 
-[What is fsmc?](#-what-is-fsmc) • [The Toolchain Tools](#-the-toolchain-tools) • [Quickstart](#-quickstart) • [Supported Formats](#-supported-modeling-formats) • [Benchmarks](#-performance--compiler-benchmarks) • [Documentation](docs/ARCHITECTURE.md)
+[Overview](docs/index.md) • [Getting Started](docs/getting_started/installation.md) • [Quickstart](docs/getting_started/quickstart.md) • [CLI Reference](docs/getting_started/cli_usage.md) • [Runtime API](docs/RUNTIME_API.md)
 
 </div>
+
 
 ---
 

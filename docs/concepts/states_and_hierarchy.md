@@ -1,27 +1,70 @@
-# States & Hierarchical Statecharts (HFSM)
+# States and Hierarchical Statecharts (HFSM)
 
-Hierarchical Statecharts (HFSM) allow grouping complex behaviors into composite states with nested substates, initial entries, and history recovery.
+Hierarchical Finite State Machines (HFSM), also known as UML statecharts or Harel statecharts, extend classical flat automata by introducing nested state hierarchies, composite states, history recovery mechanisms, and orthogonal regions.
 
 ---
 
-## State Taxonomy in `FsmIr`
+## State Hierarchy Architecture
 
-| State Kind | Description | Representation in SysML v2 / UML |
+In classical flat automata, state complexity grows exponentially when handling modal behavior or global interrupts. HFSM solves this problem through behavioral inheritance: substates inherit all outgoing transitions from their parent composite states.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Operational
+    
+    state Operational {
+        [*] --> Standby
+        Standby --> Processing : StartCmd
+        Processing --> Standby : StopCmd
+    }
+
+    Operational --> EmergencySafeMode : CriticalFault
+```
+
+When the state machine is in `Operational::Processing` and receives `CriticalFault`, it automatically traverses up the hierarchy to find the enclosing transition on `Operational`, exits `Processing`, exits `Operational`, and enters `EmergencySafeMode`.
+
+---
+
+## State Taxonomy in `fsmc`
+
+Every node in the `FsmIr` intermediate representation belongs to one of the following categories:
+
+| State Kind | Semantic Meaning | Lifecycle Hooks |
 | :--- | :--- | :--- |
-| **Atomic** | Simple leaf state with no children. | `state Operational;` |
-| **Composite** | State containing one or more nested substates. | `state Active { state Mode1; state Mode2; }` |
-| **Initial** | Entry pseudostate designating initial leaf state. | `entry; then state Mode1;` |
-| **Final** | Termination state designating end of lifecycle. | `state FinalShutdown;` |
-| **Shallow History `[H]`** | Remembers the immediate most recently active substate. | `[H]` |
-| **Deep History `[H*]`** | Recursively remembers the deepest active substate across all levels. | `[H*]` |
-| **Choice / Junction** | Dynamic decision pseudostate evaluated upon entry. | `state my_choice <<choice>>;` |
+| **Atomic State** | A leaf state with no child substates. | `on_entry`, `on_exit` |
+| **Composite State** | A container enclosing nested child substates. Defines an initial entry path. | `on_entry`, `on_exit` |
+| **Initial Pseudostate** | Designated entry point of a composite state. | Immediate transition to target |
+| **Final State** | Designates completion of the enclosing composite state's lifecycle. | Fires parent completion transitions |
+| **Shallow History `[H]`**| Restores the immediate most recently active direct substate. | Restores single level |
+| **Deep History `[H*]`** | Recursively restores the exact nested leaf substate across arbitrary hierarchy depths. | Restores recursive path |
+| **Choice Pseudostate** | Dynamic decision node where outgoing branch guards are evaluated at runtime. | Evaluates guards sequentially |
+| **Junction Pseudostate**| Static decision node resolved at compile time or inlined by `ChoiceInliningPass`. | Guard chaining |
 
 ---
 
-## Shallow vs Deep History Recovery
+## History Pseudostates: Shallow vs Deep
 
-=== "Shallow History `[H]`"
-    When transitioning to a composite state with shallow history `[H]`, the state machine restores the top-level substate that was active when exiting, re-entering its default initial substate.
+History states allow a composite state to resume execution where it was previously interrupted instead of re-entering its default initial substate.
 
-=== "Deep History `[H*]`"
-    When transitioning with deep history `[H*]`, the state machine recursively descends the entire active substate hierarchy down to the exact leaf state.
+### Shallow History (`[H]`)
+Restores only the immediate top-level child substate of the composite state. Any nested substates within that child will be initialized to their default initial state.
+
+### Deep History (`[H*]`)
+Recursively restores the full hierarchy chain down to the deepest active leaf state.
+
+#### Implementation in Modern C++
+In `fsmc`, history is tracked without heap allocations by storing an enum tag representing the active substate path in the state machine's internal state storage variant:
+
+```cpp
+// Transition into composite state with history
+fsm::row<Suspended, ResumeCmd, fsm::history<Operational, Standby>>
+```
+If `Operational` was previously active in substate `Processing`, `ResumeCmd` restores `Processing`. If `Operational` was never entered before, it enters the fallback substate `Standby`.
+
+---
+
+## Orthogonal (Parallel) Regions
+
+Orthogonal regions allow a composite state to execute multiple concurrent statecharts simultaneously. In `fsmc`:
+- Regions are defined as independent sub-statecharts executing synchronously within the parent state.
+- Middle-end passes (`OrthogonalInterferencePass`) statically analyze transitions across orthogonal regions to verify that concurrent actions do not perform unsynchronized read/write conflicts on the same shared context variables.

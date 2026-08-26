@@ -1,20 +1,19 @@
-# WebAssembly Interactive Statechart Playground
+# WebAssembly Interactive Playground
 
-The **`fsmc` Interactive Playground** allows you to author, simulate, model-check, and generate C++ statecharts directly in your browser powered by WebAssembly (WASM).
+The `fsmc` Interactive Playground runs the full compiler, formal verification engine, and C++ code generator directly in your web browser using WebAssembly.
 
 ---
 
-<div style="text-align: center; margin: 2rem 0;">
-    <a href="./playground.html" class="md-button md-button--primary" style="font-size: 1.2rem; padding: 0.8rem 2rem;">
-        🚀 Launch Fullscreen WebAssembly Playground
-    </a>
+<div class="playground-frame-container">
+    <iframe src="playground.html" title="fsmc WebAssembly Playground" allow="clipboard-read; clipboard-write"></iframe>
 </div>
 
 ---
 
-## Capabilities in the Playground
+## Playground Features
 
-- 🎨 **Multi-Notation Support**: Edit in **OMG SysML v2**, **PlantUML**, **Mermaid**, or **W3C SCXML**.
-- 🔬 **Instant Formal Verification**: Verify safety invariants and check LTL/CTL reachability live.
-- ⚡ **Live C++ Code Generator**: View standalone C++17/C++20 generated code in real-time as you type.
-- 🌲 **Interactive Visualizer**: Render live SVG topological statechart diagrams.
+- **Multi-Panel Workspace**: Live code editor with syntax highlighting for OMG SysML v2, PlantUML, Mermaid, SCXML, and JSON.
+- **Instant Formal Verification**: Run model checking against safety invariants and response liveness properties directly in WebAssembly.
+- **Live Code Generation**: Inspect the generated C++17 / C++20 zero-allocation state machine header in real time.
+- **Interactive Visualizer**: Render live SVG topological statechart diagrams.
+- **Standalone Launch**: You can also open the [Fullscreen Playground Workspace](playground.html){ target="_blank" } in a separate browser tab.

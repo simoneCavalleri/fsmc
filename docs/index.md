@@ -1,53 +1,82 @@
-# fsmc: Universal State Machine Compiler for Critical Systems
+# Overview of fsmc
 
-[![CI Test Matrix](https://github.com/simoneCavalleri/fsmc/actions/workflows/cmake-ci.yml/badge.svg)](https://github.com/simoneCavalleri/fsmc/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![C++17/C++20](https://img.shields.io/badge/Language-C%2B%2B17%20%7C%20C%2B%2B20-orange.svg)](https://en.cppreference.com/)
-[![Zero-Heap Allocation](https://img.shields.io/badge/Runtime-Zero--Heap%20Alloc-green.svg)](#)
 
-**`fsmc`** is a production-grade, deterministic compiler, formal verification engine, and zero-overhead C++17/C++20 runtime infrastructure for finite state machines (FSM) and hierarchical statecharts (HFSM).
+**`fsmc`** (Finite State Machine Compiler) is a model compiler, formal verification engine, and zero-overhead C++ code generator designed for deterministic, safety-critical systems.
 
-Built specifically for **mission-critical, hard real-time, aerospace, automotive (ISO 26262), and embedded (DO-178C)** applications.
+
+It bridges the gap between high-level **Model-Based Systems Engineering (MBSE)** specifications—such as OMG SysML v2, Cameo Systems Modeler (XMI), and W3C SCXML—and **hard real-time C++ implementations** (C++17 and C++20), guaranteeing that behavioral models are formally verified before execution and deployed with zero heap allocations.
+
+```mermaid
+flowchart LR
+    subgraph Frontend["Frontend Parsers"]
+        SysML["SysML v2 / Cameo XMI"]
+        SCXML["W3C SCXML"]
+        Diagrams["PlantUML / Mermaid / DOT"]
+    end
+
+    subgraph MiddleEnd["Middle-End & Formal Verification"]
+        IR["Canonical IR (FsmIr)"]
+        MC["Model Checker (LTL/CTL)"]
+        Interval["EFSM Interval Analysis"]
+        Opt["Pass Pipeline & Simplifier"]
+    end
+
+    subgraph Backend["Target Emission"]
+        CPP["C++17 / C++20 Zero-Alloc Runtime"]
+        SPSC["Lock-Free SPSC Wrapper (ISR-Safe)"]
+        RTM["Requirement Traceability (RTM)"]
+        Transpile["Diagram Transpilation"]
+    end
+
+    Frontend --> IR
+    IR --> Opt
+    Opt --> MC
+    Opt --> Interval
+    Opt --> Backend
+```
 
 ---
 
-## ⚡ Core Value Proposition
+## Why fsmc?
 
-=== "Aerospace & Systems Engineering"
-    - **Native OMG SysML v2, Cameo XMI, W3C SCXML Ingestion**: Model state machines in standard MBSE tools.
-    - **LTL/CTL Model Checking**: Formally verify temporal safety invariants and response liveness before deployment.
-    - **Requirement Traceability (RTM)**: Automatic compliance matrix generation in Markdown and JSON.
+State machine implementations in embedded and safety-critical software often suffer from two divergent approaches:
 
-=== "Embedded & Automotive (AUTOSAR/RTOS)"
-    - **Lock-Free `fsm::spsc_fsm`**: Wait-Free $O(1)$ single-producer ring buffer safe for Interrupt Service Routines (ISRs).
-    - **Zero Dynamic Memory Allocation**: No `malloc`, no `new`, zero heap fragmentation.
-    - **Compile-Time Folding**: Sub-nanosecond transitions via flat template metaprogramming.
+1. **Manual Implementation**: Developers translate UML or state diagrams into handwritten switch-case statements or object-oriented state patterns. This manual translation is error-prone, untraceable to system requirements, difficult to formally verify, and tedious to maintain when specifications change.
+2. **Heavyweight Frameworks**: Traditional state machine libraries frequently rely on dynamic heap allocation (`malloc`/`new`), virtual dispatch tables, and runtime string comparisons, which introduce non-deterministic execution times, heap fragmentation, and priority inversion risks incompatible with hard real-time and certification standards such as DO-178C and ISO 26262.
 
-=== "Application & Game Development"
-    - **Thread-Safe Asynchronous Wrapper (`fsm::thread_safe_fsm`)**: Thread-safe MPSC event queue with background worker execution.
-    - **Visual Transpilation**: Bidirectional transpilation between Mermaid, PlantUML, Graphviz DOT, and XState JSON.
-    - **Comprehensive Introspection**: Live transition trace metadata via `dispatch_result`.
+`fsmc` resolves this dichotomy by treating statecharts as formal programs that are parsed, validated, optimized, model-checked, and compiled directly into compile-time unrolled C++ templates.
 
 ---
 
-## 🚀 Quick Navigation
+## Key Capabilities
 
-<div class="grid cards" markdown>
+### Multi-Format Model Ingestion
+`fsmc` parses statechart definitions from both formal systems engineering formats and lightweight diagram notations:
+- **Formal Specifications**: OMG SysML v2 textual state definitions, Dassault / No Magic Cameo (OMG XMI 2.1), and W3C SCXML.
+- **Visual Diagram Notations**: PlantUML, Mermaid state diagrams, Graphviz DOT, and XState JSON.
+- **Bidirectional Transpilation**: Convert losslessly between any supported modeling formats.
 
--   :material-rocket-launch: **[Getting Started](getting_started/installation.md)**
-    ---
-    Install `fsmc` via CMake FetchContent, Conan, or pre-built binaries.
+### Middle-End Verification & Analysis
+Before emitting any target code, the compiler passes the model through an intermediate optimization and verification pipeline:
+- **Temporal Logic Model Checking**: Verifies safety invariants (`G P`) and liveness response properties (`G (P -> F Q)`) using symbolic model checking.
+- **EFSM Data Path Interval Analysis**: Abstract interpretation over numeric variables to statically detect unreachable branches and dead guards.
+- **Deterministic Disambiguation**: Enforces priority ordering and detects conflicting transitions across overlapping event triggers.
+- **Requirement Traceability (RTM)**: Correlates `@fsm:req` annotations with states, transitions, and model checker results into structured Markdown and JSON audit matrices.
 
--   :material-book-open-page-variant: **[Core Concepts](concepts/states_and_hierarchy.md)**
-    ---
-    Learn about HFSM hierarchy, history recovery, and data path semantics.
+### Zero-Overhead C++ Runtime Engine
+The generated C++ headers provide predictable, high-performance execution:
+- **Zero Dynamic Allocations**: State representations and event queues are bounded and stack-allocated or statically sized.
+- **Lock-Free Concurrency (`spsc_fsm`)**: Wait-Free $O(1)$ single-producer single-consumer engine suitable for Interrupt Service Routines (ISRs) and real-time sensor streams.
+- **Compile-Time Dispatch**: Transition tables are resolved via template metaprogramming, eliminating virtual function overhead.
+- **Rich Telemetry**: Non-intrusive transition tracing and observer hooks without memory overhead.
 
--   :material-shield-check: **[Safety & Formal Verification](verification_and_safety/model_checking.md)**
-    ---
-    Model check LTL/CTL formulas, run EFSM interval analysis, and generate RTMs.
+---
 
--   :material-play-circle: **[Interactive Playground](playground/index.md)**
-    ---
-    Try statecharts, verify models, and generate C++ in your browser via WebAssembly.
+## Documentation Structure
 
-</div>
+- **[Getting Started](getting_started/installation.md)**: Installation guides via CMake FetchContent, Conan 2.0, and pre-built binaries, followed by a 5-minute quickstart tutorial.
+- **[Architecture & Concepts](concepts/states_and_hierarchy.md)**: Conceptual foundations of Hierarchical State Machines (HFSM), history recovery, event dispatch, and real-time execution guarantees.
+- **[Modeling Languages](formal_languages/sysml_v2.md)**: Grammar specifications, examples, and import/export guides for each supported format.
+- **[Verification & Safety](verification_and_safety/model_checking.md)**: Formal verification guide, LTL/CTL specification syntax, EFSM abstract interpretation, and RTM generation.
+- **[Runtime C++ API](runtime_api/synchronous_fsm.md)**: In-depth technical reference for `fsm::fsm`, `fsm::spsc_fsm`, and `fsm::thread_safe_fsm`.
+- **[Interactive Playground](playground/index.md)**: WebAssembly-powered browser workspace to edit, verify, and compile statecharts in real time.

@@ -4,9 +4,9 @@
 #include <vector>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
-#include "fsm/frontend/plantuml_parser.hpp"
-#include "fsm/fsm.hpp"
+#include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/middleend/fsm_validator.hpp"
+#include "fsm/runtime/cpp/fsm.hpp"
 
 using namespace fsm::codegen;
 
@@ -37,6 +37,14 @@ struct ResetWatchdogAction {
 
 using InternalFsmTable = fsm::transition_table<fsm::internal_row<ActiveState, PingEvent>::then<ResetWatchdogAction>>;
 
+/**
+ * @brief Test Intent: Verify internal transitions execute actions without triggering state entry or exit hooks.
+ *
+ * Scenario:
+ * - Enter initial ActiveState (on_enter hook runs).
+ * - Dispatch internal transition event (PingEvent).
+ * - Verify only the action executes, while on_exit and on_enter hooks are completely bypassed.
+ */
 TEST(InternalTransitionTest, RuntimeInternalTransitionExecutesActionWithoutEntryExit) {
     InternalTracker::clear();
 
@@ -56,6 +64,14 @@ TEST(InternalTransitionTest, RuntimeInternalTransitionExecutesActionWithoutEntry
     EXPECT_EQ(InternalTracker::log()[0], "Action(ResetWatchdog)");
 }
 
+/**
+ * @brief Test Intent: Verify parser recognition of internal transitions and code generation to `fsm::internal_row`.
+ *
+ * Scenario:
+ * - Parse PlantUML syntax `Idle : Ping / ResetWatchdog`.
+ * - Verify transition is recorded with TransitionEdgeKind::Internal.
+ * - Verify C++ generator outputs `fsm::internal_row<Idle, Ping>::then<ResetWatchdog>`.
+ */
 TEST(InternalTransitionTest, ParserInternalTransitionAndCodegen) {
     const std::string puml = R"(
     @startuml

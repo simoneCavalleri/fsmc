@@ -5,8 +5,8 @@
 #include <thread>
 #include <vector>
 
-#include "fsm/fsm.hpp"
-#include "fsm/thread_safe_fsm.hpp"
+#include "fsm/runtime/cpp/fsm.hpp"
+#include "fsm/runtime/cpp/thread_safe_fsm.hpp"
 
 namespace {
 
@@ -70,6 +70,14 @@ using StressTransitionTable = fsm::transition_table<
     fsm::internal_row<Idle, PingEvent, LogPing>, fsm::internal_row<Processing, PingEvent, LogPing>,
     fsm::internal_row<Syncing, PingEvent, LogPing>>;
 
+/**
+ * @brief Test Intent: Stress-test thread_safe_fsm under intense 20-thread concurrency (50,000 total events).
+ *
+ * Scenario:
+ * - Launch 20 concurrent producer threads, each posting 2,500 mixed external and internal events.
+ * - Concurrently run a consumer thread executing `process_all()`.
+ * - Verify no deadlocks, segmentation faults, or lost events occur during high-contention locking.
+ */
 TEST(ThreadSafeStressTest, HighConcurrency20Threads50kEvents) {
     StressContext ctx;
     fsm::thread_safe_fsm<StressTransitionTable, StressContext, Idle> fsm(ctx);
@@ -126,6 +134,14 @@ TEST(ThreadSafeStressTest, HighConcurrency20Threads50kEvents) {
     EXPECT_GT(total_processed, 0u);
 }
 
+/**
+ * @brief Test Intent: Verify thread-safe concurrency mixing immediate posts and delayed timed transitions.
+ *
+ * Scenario:
+ * - Launch 8 threads simultaneously issuing immediate posts and delayed deadline posts.
+ * - Wait for timed events to expire and drain.
+ * - Verify all events are recorded without race conditions.
+ */
 TEST(ThreadSafeStressTest, ConcurrentTimedAndImmediateEvents) {
     StressContext ctx;
     fsm::thread_safe_fsm<StressTransitionTable, StressContext, Idle> fsm(ctx);

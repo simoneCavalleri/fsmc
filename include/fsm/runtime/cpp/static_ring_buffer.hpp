@@ -1,11 +1,22 @@
 #pragma once
 
 #include <array>
+#include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <utility>
 
 namespace fsm {
+
+/**
+ * @brief Overflow policy when pushing into a saturated bounded ring buffer.
+ */
+enum class OverflowPolicy : std::uint8_t {
+    DropOldest,        ///< Discards the oldest element at the head to accommodate the newest element
+    DropIncoming,      ///< Rejects the incoming element, leaving the existing buffer unmodified
+    AssertOnOverflow   ///< Triggers an assertion in debug/safety builds if the queue overflows
+};
 
 // Zero-allocation, static capacity ring buffer designed for hard real-time / embedded systems
 template <typename T, std::size_t Capacity>
@@ -23,9 +34,20 @@ class static_ring_buffer {
     [[nodiscard]] constexpr size_type size() const noexcept { return size_; }
     [[nodiscard]] constexpr size_type capacity() const noexcept { return Capacity; }
 
-    constexpr bool push(const T& value) noexcept {
+    constexpr bool push(const T& value, OverflowPolicy policy = OverflowPolicy::DropIncoming) noexcept {
         if (full()) {
-            return false;
+            if (policy == OverflowPolicy::DropIncoming) {
+                return false;
+            }
+            if (policy == OverflowPolicy::AssertOnOverflow) {
+                assert(!full() && "static_ring_buffer overflow with AssertOnOverflow policy");
+                return false;
+            }
+            if (policy == OverflowPolicy::DropOldest) {
+                // Advance head to drop oldest item
+                head_ = (head_ + 1) % Capacity;
+                --size_;
+            }
         }
         buffer_[tail_] = value;
         tail_ = (tail_ + 1) % Capacity;
@@ -33,9 +55,20 @@ class static_ring_buffer {
         return true;
     }
 
-    constexpr bool push(T&& value) noexcept {
+    constexpr bool push(T&& value, OverflowPolicy policy = OverflowPolicy::DropIncoming) noexcept {
         if (full()) {
-            return false;
+            if (policy == OverflowPolicy::DropIncoming) {
+                return false;
+            }
+            if (policy == OverflowPolicy::AssertOnOverflow) {
+                assert(!full() && "static_ring_buffer overflow with AssertOnOverflow policy");
+                return false;
+            }
+            if (policy == OverflowPolicy::DropOldest) {
+                // Advance head to drop oldest item
+                head_ = (head_ + 1) % Capacity;
+                --size_;
+            }
         }
         buffer_[tail_] = std::move(value);
         tail_ = (tail_ + 1) % Capacity;

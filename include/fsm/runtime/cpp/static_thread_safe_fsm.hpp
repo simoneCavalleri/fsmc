@@ -11,14 +11,15 @@
 #include <utility>
 #include <variant>
 
-#include "fsm.hpp"
-#include "static_ring_buffer.hpp"
+#include "fsm/runtime/cpp/fsm.hpp"
+#include "fsm/runtime/cpp/static_ring_buffer.hpp"
 
 namespace fsm {
 
 // Zero-allocation, statically bounded thread-safe FSM wrapper designed for hard real-time and embedded systems.
 // Does NOT use std::function, heap allocations, std::vector, or std::future.
 template <typename Table, typename Context = no_context, std::size_t QueueCapacity = 64,
+          OverflowPolicy Policy = OverflowPolicy::DropIncoming,
           typename InitialState = typename Table::initial_state, typename Observer = no_observer>
 class static_thread_safe_fsm {
   public:
@@ -30,6 +31,7 @@ class static_thread_safe_fsm {
     static constexpr std::size_t transition_count = fsm_type::transition_count;
     static constexpr std::size_t event_count = fsm_type::event_count;
     static constexpr std::size_t queue_capacity = QueueCapacity;
+    static constexpr OverflowPolicy overflow_policy = Policy;
 
     template <typename State>
     static constexpr bool has_state = fsm_type::template has_state<State>;
@@ -65,12 +67,15 @@ class static_thread_safe_fsm {
         return fsm_.dispatch(event);
     }
 
-    // Zero-allocation queue submission (returns false if ring buffer is full)
+    // Zero-allocation queue submission
     template <typename Event>
-    bool post(Event&& event) {
+    bool post(Event&& event, OverflowPolicy policy = Policy) {
+        if (!worker_running_.load() && !is_calling_from_worker_thread()) {
+            start_worker();
+        }
         {
-            std::scoped_lock lock(queue_mutex_);
-            if (!queue_.push(event_variant{std::forward<Event>(event)})) {
+            std::scoped_lock lock(mutex_);
+            if (!queue_.push(event_variant(std::forward<Event>(event)), policy)) {
                 return false;
             }
         }
@@ -78,22 +83,26 @@ class static_thread_safe_fsm {
         return true;
     }
 
-    // Process a single event from the static ring buffer in current thread
-    bool process_one() {
-        std::optional<event_variant> evt_opt;
-        {
-            std::scoped_lock lock(queue_mutex_);
-            evt_opt = queue_.pop();
-        }
-        if (evt_opt.has_value()) {
-            std::scoped_lock lock(mutex_);
-            std::visit([this](const auto& evt) { fsm_.dispatch(evt); }, *evt_opt);
-            return true;
-        }
-        return false;
+    template <typename Event>
+    bool enqueue(Event&& event, OverflowPolicy policy = Policy) {
+        std::scoped_lock lock(mutex_);
+        return queue_.push(event_variant(std::forward<Event>(event)), policy);
     }
 
-    // Process all pending events in the ring buffer synchronously
+    bool process_one() {
+        event_variant evt;
+        {
+            std::scoped_lock lock(mutex_);
+            auto popped = queue_.pop();
+            if (!popped) {
+                return false;
+            }
+            evt = std::move(*popped);
+        }
+        std::visit([this](const auto& e) { fsm_.dispatch(e); }, evt);
+        return true;
+    }
+
     std::size_t process_all() {
         std::size_t processed = 0;
         while (process_one()) {
@@ -102,37 +111,45 @@ class static_thread_safe_fsm {
         return processed;
     }
 
-    // Starts background worker thread
-    void start_worker() {
-        if (worker_.joinable())
-            return;
-        running_ = true;
-        worker_ = std::thread([this]() {
-            while (running_.load()) {
-                std::optional<event_variant> evt_opt;
-                {
-                    std::unique_lock<std::mutex> lock(queue_mutex_);
-                    cv_.wait(lock, [&] { return !queue_.empty() || !running_.load(); });
-                    if (!running_.load() && queue_.empty())
-                        break;
-                    evt_opt = queue_.pop();
-                }
-                if (evt_opt.has_value()) {
-                    std::scoped_lock lock(mutex_);
-                    std::visit([this](const auto& evt) { fsm_.dispatch(evt); }, *evt_opt);
-                }
-            }
-        });
+    [[nodiscard]] std::size_t pending_events() const {
+        std::scoped_lock lock(mutex_);
+        return queue_.size();
     }
 
-    // Stops and joins background worker thread cleanly
+    [[nodiscard]] bool is_queue_empty() const {
+        std::scoped_lock lock(mutex_);
+        return queue_.empty();
+    }
+
+    [[nodiscard]] bool is_queue_full() const {
+        std::scoped_lock lock(mutex_);
+        return queue_.full();
+    }
+
+    void start_worker() {
+        std::scoped_lock lock(mutex_);
+        if (worker_running_) {
+            return;
+        }
+        worker_running_ = true;
+        worker_thread_ = std::thread([this]() { worker_loop(); });
+    }
+
     void stop_worker() {
-        running_ = false;
+        {
+            std::scoped_lock lock(mutex_);
+            if (!worker_running_) {
+                return;
+            }
+            worker_running_ = false;
+        }
         cv_.notify_all();
-        if (worker_.joinable()) {
-            worker_.join();
+        if (worker_thread_.joinable()) {
+            worker_thread_.join();
         }
     }
+
+    [[nodiscard]] bool is_worker_running() const { return worker_running_.load(); }
 
     template <typename State>
     [[nodiscard]] bool is_in_state() const {
@@ -145,29 +162,40 @@ class static_thread_safe_fsm {
         return fsm_.current_state_name();
     }
 
-    [[nodiscard]] bool is_queue_empty() const {
-        std::scoped_lock lock(queue_mutex_);
-        return queue_.empty();
-    }
-
-    [[nodiscard]] bool is_queue_full() const {
-        std::scoped_lock lock(queue_mutex_);
-        return queue_.full();
-    }
-
-    [[nodiscard]] std::size_t pending_events() const {
-        std::scoped_lock lock(queue_mutex_);
-        return queue_.size();
-    }
-
   private:
-    fsm_type fsm_;
-    mutable std::recursive_mutex mutex_;
-    mutable std::mutex queue_mutex_;
+    [[nodiscard]] bool is_calling_from_worker_thread() const noexcept {
+        return worker_thread_.get_id() == std::this_thread::get_id();
+    }
+
+    void worker_loop() {
+        while (true) {
+            event_variant evt;
+            {
+                std::unique_lock<std::mutex> lock(mutex_);
+                cv_.wait(lock, [this]() { return !worker_running_ || !queue_.empty(); });
+
+                if (!worker_running_ && queue_.empty()) {
+                    break;
+                }
+
+                auto popped = queue_.pop();
+                if (popped) {
+                    evt = std::move(*popped);
+                } else {
+                    continue;
+                }
+            }
+
+            std::visit([this](const auto& e) { fsm_.dispatch(e); }, evt);
+        }
+    }
+
+    mutable std::mutex mutex_;
     std::condition_variable cv_;
+    fsm_type fsm_;
     static_ring_buffer<event_variant, QueueCapacity> queue_;
-    std::atomic<bool> running_{false};
-    std::thread worker_;
+    std::atomic<bool> worker_running_{false};
+    std::thread worker_thread_;
 };
 
 }  // namespace fsm

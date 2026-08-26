@@ -1,7 +1,7 @@
 #pragma once
 
-#include "transition.hpp"
-#include "type_traits.hpp"
+#include "fsm/runtime/cpp/transition.hpp"
+#include "fsm/runtime/cpp/type_traits.hpp"
 
 namespace fsm {
 

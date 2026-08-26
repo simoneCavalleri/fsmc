@@ -6,9 +6,9 @@
 #include <thread>
 #include <vector>
 
-#include "fsm/fsm.hpp"
-#include "fsm/thread_safe_fsm.hpp"
-#include "fsm/transition.hpp"
+#include "fsm/runtime/cpp/fsm.hpp"
+#include "fsm/runtime/cpp/thread_safe_fsm.hpp"
+#include "fsm/runtime/cpp/transition.hpp"
 
 namespace {
 
@@ -38,6 +38,13 @@ struct TimeoutAction {
 using ConnTable = fsm::transition_table<fsm::transition<Connecting, HandshakeOk, Connected>,
                                         fsm::transition<Connecting, Timeout500ms, Disconnected, TimeoutAction>>;
 
+/**
+ * @brief Test Intent: Verify synchronous dispatch of compile-time duration timed events (`fsm::after_ms<500>`).
+ *
+ * Scenario:
+ * - Define transition table with `Timeout500ms`.
+ * - Dispatch timed event directly and verify transition from Connecting to Disconnected.
+ */
 TEST(TimedTransitionsTest, SyncTimedEventDispatch) {
     fsm::fsm<ConnTable> sm;
     EXPECT_TRUE(sm.is_in_state<Connecting>());
@@ -95,6 +102,13 @@ using OrderTable = fsm::transition_table<fsm::transition<StateA, Step1, StateB, 
                                          fsm::transition<StateB, Step2, StateC, ActionBtoC>,
                                          fsm::transition<StateC, Step3, StateD, ActionCtoD>>;
 
+/**
+ * @brief Test Intent: Verify chronological priority deadline scheduling with `post_delayed()`.
+ *
+ * Scenario:
+ * - Post Step3 (60ms delay), Step2 (30ms delay), and Step1 (5ms delay) in reverse order.
+ * - Verify priority queue executes events in strict chronological order: Step1 -> Step2 -> Step3.
+ */
 TEST(TimedTransitionsTest, AsyncPostDelayedPriorityChronologicalOrder) {
     OrderContext ctx;
     fsm::thread_safe_fsm<OrderTable, OrderContext> async_sm(ctx);
@@ -157,6 +171,13 @@ void ActionFinal::operator()(const Step2& /*evt*/, StateB& /*src*/, StateC& /*ds
     ctx.final_executed = true;
 }
 
+/**
+ * @brief Test Intent: Verify recursive lock safety when actions self-post events to the asynchronous queue.
+ *
+ * Scenario:
+ * - ActionSelfPost is executed on Step1, queries active state, and self-posts Step2 back into the FSM.
+ * - Verify no deadlocks or mutex violations occur, reaching StateC smoothly.
+ */
 TEST(TimedTransitionsTest, AsyncReentrantActionSelfPost) {
     ReentrantCtx ctx;
     fsm::thread_safe_fsm<ReentrantTable, ReentrantCtx> async_sm(ctx);

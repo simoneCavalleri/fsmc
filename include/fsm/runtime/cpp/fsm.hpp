@@ -5,7 +5,7 @@
 #include <utility>
 #include <vector>
 
-#include "transition_table.hpp"
+#include "fsm/runtime/cpp/transition_table.hpp"
 
 namespace fsm {
 
@@ -88,8 +88,7 @@ class fsm {
                     [this, &event](const auto& src_state) -> bool {
                         using CurrentSrc = std::decay_t<decltype(src_state)>;
                         if constexpr (is_deferred_event_v<CurrentSrc, Event>) {
-                            this->deferred_queue_.push_back(
-                                [event](fsm& self) -> bool { return self.dispatch_direct(event).is_success(); });
+                            this->defer_event(event);
                             return true;
                         } else {
                             return false;
@@ -124,9 +123,17 @@ class fsm {
         return res;
     }
 
-    // Process all deferred events in queue until no more can fire
-    void process_deferred_queue() {
+    template <typename Event>
+    void defer_event(const Event& event) {
         if constexpr (has_deferred) {
+            deferred_queue_.push_back([event](fsm& self) -> bool { return self.dispatch_direct(event).is_success(); });
+        }
+    }
+
+    // Process all deferred events in queue until no more can fire
+    template <bool D = has_deferred>
+    void process_deferred_queue() {
+        if constexpr (D) {
             if (deferred_queue_.empty() || is_replaying_deferred_) {
                 return;
             }
@@ -151,16 +158,18 @@ class fsm {
     }
 
     // Deferred events introspection
+    template <bool D = has_deferred>
     [[nodiscard]] std::size_t deferred_count() const noexcept {
-        if constexpr (has_deferred) {
+        if constexpr (D) {
             return deferred_queue_.size();
         } else {
             return 0;
         }
     }
 
+    template <bool D = has_deferred>
     void clear_deferred_events() noexcept {
-        if constexpr (has_deferred) {
+        if constexpr (D) {
             deferred_queue_.clear();
         }
     }
@@ -185,8 +194,9 @@ class fsm {
     }
 
     // History state management
+    template <bool H = has_history>
     void record_history(std::string_view parent, std::string_view substate) {
-        if constexpr (has_history) {
+        if constexpr (H) {
             if (parent.empty() || substate.empty()) {
                 return;
             }
@@ -200,8 +210,9 @@ class fsm {
         }
     }
 
+    template <bool H = has_history>
     [[nodiscard]] std::string_view get_history(std::string_view parent) const noexcept {
-        if constexpr (has_history) {
+        if constexpr (H) {
             for (const auto& entry : history_records_) {
                 if (entry.parent == parent) {
                     return entry.substate;
@@ -226,6 +237,11 @@ class fsm {
     template <typename State>
     [[nodiscard]] bool is_in_state() const noexcept {
         return std::holds_alternative<State>(current_state_);
+    }
+
+    template <typename State>
+    [[nodiscard]] bool is_in() const noexcept {
+        return is_in_state<State>();
     }
 
     // Get pointer to current state if it matches State, nullptr otherwise
@@ -289,10 +305,11 @@ class fsm {
             using TransEvt = typename RowType::event;
 
             if constexpr (std::is_same_v<CurrentSrc, TransSrc> && std::is_same_v<std::decay_t<Event>, TransEvt>) {
-                auto& row = std::get<Index>(table_.rows);
+                using Guard = typename RowType::guard_type;
+                using Action = typename RowType::action_type;
                 auto& ctx = get_ctx();
 
-                if (!call_guard(row.guard_fn, event, src_state, ctx, *this)) {
+                if (!call_guard(Guard{}, event, src_state, ctx, *this)) {
                     any_guard_rejected = true;
                     return false;
                 }
@@ -301,7 +318,8 @@ class fsm {
                 const auto evt_name = get_event_name(event);
 
                 if constexpr (RowType::is_internal) {
-                    call_action(row.action_fn, event, src_state, src_state, ctx);
+                    Action act{};
+                    call_action(act, event, src_state, src_state, ctx);
                     if constexpr (has_observer) {
                         observer_(transition_info{src_name, src_name, evt_name, dispatch_status::success,
                                                   transition_kind::internal});
@@ -319,7 +337,8 @@ class fsm {
 
                     TransDst dst_state{};
                     call_on_exit(src_state, event, ctx);
-                    call_action(row.action_fn, event, src_state, dst_state, ctx);
+                    Action act{};
+                    call_action(act, event, src_state, dst_state, ctx);
                     current_state_ = std::move(dst_state);
                     call_on_enter(std::get<TransDst>(current_state_), event, ctx);
 

@@ -3,15 +3,22 @@
 #include <string>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
-#include "fsm/frontend/mermaid_parser.hpp"
-#include "fsm/frontend/plantuml_parser.hpp"
-#include "fsm/fsm.hpp"
+#include "fsm/frontend/diagram/mermaid_parser.hpp"
+#include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/middleend/fsm_validator.hpp"
+#include "fsm/runtime/cpp/fsm.hpp"
 
 using namespace fsm::codegen;
 
 namespace {
 
+/**
+ * @brief Test Intent: Verify PlantUML shallow history pseudo-state syntax parsing (`Operating[H]`).
+ *
+ * Scenario:
+ * - Parse PlantUML with `Paused --> Operating[H] : Resume`.
+ * - Verify target state is flagged with has_history == true and transition is target_is_history.
+ */
 TEST(HistoryTest, PlantUmlHistoryTargetParsing) {
     const std::string puml = R"(
     @startuml
@@ -45,6 +52,13 @@ TEST(HistoryTest, PlantUmlHistoryTargetParsing) {
     EXPECT_TRUE(found_history_transition);
 }
 
+/**
+ * @brief Test Intent: Verify Mermaid deep history pseudo-state syntax parsing (`Operating[H*]`).
+ *
+ * Scenario:
+ * - Parse Mermaid diagram with `Suspended --> Operating[H*] : Recover`.
+ * - Verify target composite state is flagged with has_deep_history == true.
+ */
 TEST(HistoryTest, MermaidDeepHistoryTargetParsing) {
     const std::string mmd = R"(
     stateDiagram-v2
@@ -66,6 +80,14 @@ TEST(HistoryTest, MermaidDeepHistoryTargetParsing) {
     EXPECT_TRUE(op_state->has_deep_history);
 }
 
+/**
+ * @brief Test Intent: Verify code generation of history guards and sub-state parent metadata.
+ *
+ * Scenario:
+ * - Generate C++20 header for FSM with shallow history.
+ * - Verify generated substates contain `parent = "Operating"`.
+ * - Verify transition table contains conditional rows guarded by `fsm::history_is<Operating, StepX>`.
+ */
 TEST(HistoryTest, HistoryCodegenExpansion) {
     const std::string puml = R"(
     @startuml
@@ -138,6 +160,15 @@ using HistoryRuntimeTable = fsm::transition_table<
     fsm::row<Paused, Resume, Step1>  // Fallback default
     >;
 
+/**
+ * @brief Test Intent: Verify runtime history recording and exact restoration of the last active sub-state.
+ *
+ * Scenario:
+ * - Enter composite state Operating (sub-state Step1), advance to Step2.
+ * - Dispatch Pause event to exit Operating -> Paused (fsm records Operating history as Step2).
+ * - Dispatch Resume event to transition to Operating[H] -> verifies Step2 is restored.
+ * - Advance to Step3, Pause, and Resume -> verifies Step3 is restored.
+ */
 TEST(HistoryTest, RuntimeHistoryRestoresLastVisitedSubstate) {
     fsm::fsm<HistoryRuntimeTable, fsm::no_context, Standby> fsm;
     EXPECT_TRUE(fsm.is_in_state<Standby>());

@@ -3,7 +3,7 @@
 #include <chrono>
 #include <cstdint>
 
-#include "type_traits.hpp"
+#include "fsm/runtime/cpp/type_traits.hpp"
 
 namespace fsm {
 
@@ -16,6 +16,10 @@ struct no_action {
 struct no_guard {
     constexpr bool operator()() const noexcept { return true; }
 };
+
+// Anonymous / Eventless Transition Trigger Event
+struct anonymous_event {};
+using completion_event = anonymous_event;
 
 // Timed Transition Event Types
 template <typename Duration = std::chrono::milliseconds>
@@ -32,33 +36,26 @@ struct after_ms {
 // Logical NOT guard combinator
 template <typename Guard>
 struct not_ {
-    Guard guard_fn{};
-
     constexpr not_() = default;
-    constexpr explicit not_(Guard g) : guard_fn(std::move(g)) {}
 
     template <typename Event, typename SrcState, typename Context, typename... Extra>
     constexpr bool operator()(const Event& evt, const SrcState& src, Context& ctx, const Extra&... extra) const {
-        return !call_guard(guard_fn, evt, src, ctx, extra...);
+        return !call_guard(Guard{}, evt, src, ctx, extra...);
     }
 };
 
 // Logical AND guard combinator
 template <typename Guard1, typename Guard2, typename... Rest>
 struct and_ {
-    Guard1 g1{};
-    Guard2 g2{};
-
     constexpr and_() = default;
-    constexpr and_(Guard1 first, Guard2 second) : g1(std::move(first)), g2(std::move(second)) {}
 
     template <typename Event, typename SrcState, typename Context, typename... Extra>
     constexpr bool operator()(const Event& evt, const SrcState& src, Context& ctx, const Extra&... extra) const {
-        if (!call_guard(g1, evt, src, ctx, extra...)) {
+        if (!call_guard(Guard1{}, evt, src, ctx, extra...)) {
             return false;
         }
         if constexpr (sizeof...(Rest) == 0) {
-            return call_guard(g2, evt, src, ctx, extra...);
+            return call_guard(Guard2{}, evt, src, ctx, extra...);
         } else {
             return and_<Guard2, Rest...>{}(evt, src, ctx, extra...);
         }
@@ -68,19 +65,15 @@ struct and_ {
 // Logical OR guard combinator
 template <typename Guard1, typename Guard2, typename... Rest>
 struct or_ {
-    Guard1 g1{};
-    Guard2 g2{};
-
     constexpr or_() = default;
-    constexpr or_(Guard1 first, Guard2 second) : g1(std::move(first)), g2(std::move(second)) {}
 
     template <typename Event, typename SrcState, typename Context, typename... Extra>
     constexpr bool operator()(const Event& evt, const SrcState& src, Context& ctx, const Extra&... extra) const {
-        if (call_guard(g1, evt, src, ctx, extra...)) {
+        if (call_guard(Guard1{}, evt, src, ctx, extra...)) {
             return true;
         }
         if constexpr (sizeof...(Rest) == 0) {
-            return call_guard(g2, evt, src, ctx, extra...);
+            return call_guard(Guard2{}, evt, src, ctx, extra...);
         } else {
             return or_<Guard2, Rest...>{}(evt, src, ctx, extra...);
         }
@@ -112,18 +105,14 @@ struct transition {
     using guard_type = GuardType;
     static constexpr bool is_internal = false;
 
-    ActionType action_fn{};
-    GuardType guard_fn{};
-
     constexpr transition() = default;
-    constexpr transition(ActionType act, GuardType grd = {}) : action_fn(std::move(act)), guard_fn(std::move(grd)) {}
 };
 
 // Internal transition specification (executes action without exiting/entering state)
 template <typename State, typename EventType, typename ActionType = no_action, typename GuardType = no_guard>
 struct internal_transition : transition<State, EventType, State, ActionType, GuardType> {
     static constexpr bool is_internal = true;
-    using transition<State, EventType, State, ActionType, GuardType>::transition;
+    constexpr internal_transition() = default;
 };
 
 // ============================================================================
@@ -137,7 +126,6 @@ struct row : transition<SourceState, EventType, TargetState, ActionType, GuardTy
     using base = transition<SourceState, EventType, TargetState, ActionType, GuardType>;
 
     constexpr row() = default;
-    constexpr row(ActionType act, GuardType grd = {}) : base(std::move(act), std::move(grd)) {}
 
     // Add / override Guard
     template <typename NewGuard>
@@ -160,7 +148,6 @@ struct internal_row : internal_transition<State, EventType, ActionType, GuardTyp
     using base = internal_transition<State, EventType, ActionType, GuardType>;
 
     constexpr internal_row() = default;
-    constexpr internal_row(ActionType act, GuardType grd = {}) : base(std::move(act), std::move(grd)) {}
 
     template <typename NewGuard>
     using guard = internal_row<State, EventType, ActionType, NewGuard>;

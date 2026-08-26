@@ -3,14 +3,23 @@
 #include <string>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
-#include "fsm/frontend/mermaid_parser.hpp"
-#include "fsm/frontend/plantuml_parser.hpp"
+#include "fsm/frontend/diagram/mermaid_parser.hpp"
+#include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/middleend/fsm_validator.hpp"
 
 using namespace fsm::codegen;
 
 namespace {
 
+/**
+ * @brief Test Intent: Verify hierarchical state machine (HFSM) parsing from PlantUML syntax.
+ *
+ * Scenario:
+ * - Parse PlantUML with nested `state Active { [*] --> Idle ... }` block and top-level transitions.
+ * - Verify parent-child relationships (Idle and Processing have parent Active).
+ * - Verify composite state properties (is_composite == true, initial_sub_state == Idle).
+ * - Verify validation passes with zero errors.
+ */
 TEST(HfsmTest, PlantUmlCompositeStateParsing) {
     const std::string puml = R"(
     @startuml
@@ -51,6 +60,14 @@ TEST(HfsmTest, PlantUmlCompositeStateParsing) {
     EXPECT_TRUE(validation.is_valid);
 }
 
+/**
+ * @brief Test Intent: Verify hierarchical composite state machine parsing from Mermaid syntax.
+ *
+ * Scenario:
+ * - Parse Mermaid `stateDiagram-v2` with `state Session { [*] --> Connected ... }`.
+ * - Verify parent-child navigation and initial sub-state assignment for Session.
+ * - Validate integrity through FsmValidator.
+ */
 TEST(HfsmTest, MermaidCompositeStateParsing) {
     const std::string mmd = R"(
     stateDiagram-v2

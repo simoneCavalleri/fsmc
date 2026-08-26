@@ -4,8 +4,8 @@
 #include <cstdint>
 #include <string>
 
-#include "fsm/fsm.hpp"
-#include "fsm/thread_safe_fsm.hpp"
+#include "fsm/runtime/cpp/fsm.hpp"
+#include "fsm/runtime/cpp/thread_safe_fsm.hpp"
 
 namespace {
 
@@ -37,6 +37,13 @@ struct IncompleteContext {
     // Missing is_valid
 };
 
+/**
+ * @brief Test Intent: Verify runtime and constexpr validation logic on typed signal structs.
+ *
+ * Scenario:
+ * - Instantiate signal with valid buffer pointer and positive length -> is_valid() is true.
+ * - Instantiate signal with null pointer or zero length -> is_valid() is false.
+ */
 TEST(ContextContractTest, SignalValidatorExecution) {
     std::uint8_t dummy_buf[4] = {1, 2, 3, 4};
     EvPacketRecv valid_packet(4, dummy_buf);
@@ -49,6 +56,13 @@ TEST(ContextContractTest, SignalValidatorExecution) {
     EXPECT_FALSE(zero_len_packet.is_valid());
 }
 
+/**
+ * @brief Test Intent: Verify compile-time C++20 concept requirements on user-defined context structs.
+ *
+ * Scenario:
+ * - Verify ValidDeviceContext satisfies StateMachineContextContract concept.
+ * - Verify IncompleteContext (missing member method) fails concept constraints at compile time.
+ */
 TEST(ContextContractTest, Cpp20ConceptsValidation) {
     static_assert(StateMachineContextContract<ValidDeviceContext>);
     static_assert(!StateMachineContextContract<IncompleteContext>);
@@ -60,6 +74,14 @@ TEST(ContextContractTest, Cpp20ConceptsValidation) {
     EXPECT_TRUE(ctx.is_valid(ev));
 }
 
+/**
+ * @brief Test Intent: Verify compile-time safety preventing uninitialized context default construction.
+ *
+ * Scenario:
+ * - Machines with `no_context` can be default constructed safely.
+ * - Machines with user Context structs cannot be default constructed without a reference,
+ *   guaranteeing zero null-dereference undefined behavior at runtime.
+ */
 TEST(ContextContractTest, CompileTimeContextSafety) {
     struct StateA {};
     struct StateB {};

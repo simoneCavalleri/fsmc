@@ -3,13 +3,22 @@
 #include <string>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
-#include "fsm/frontend/plantuml_parser.hpp"
+#include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/middleend/fsm_validator.hpp"
 
 using namespace fsm::codegen;
 
 namespace {
 
+/**
+ * @brief Test Intent: Verify Choice pseudostate expansion and code generation.
+ *
+ * Scenario:
+ * - Parse PlantUML containing `state AuthChoice <<choice>>` and conditional outgoing branches.
+ * - Verify Choice node is captured as a choice_node in the Formal IR.
+ * - Verify C++ code generator expands the choice into direct guarded rows in the transition table
+ *   (e.g., row<Idle, LoginCmd, AdminView>::when<IsAdminGuard> and row<Idle, LoginCmd, UserView>::when<IsUserGuard>).
+ */
 TEST(ChoiceTest, ChoicePseudostateParsingAndCodegen) {
     const std::string puml = R"(
     @startuml

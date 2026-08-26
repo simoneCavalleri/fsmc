@@ -2,15 +2,15 @@
 
 #include <string>
 
-#include "fsm/frontend/cameo_xmi_parser.hpp"
-#include "fsm/frontend/dot_parser.hpp"
 #include "fsm/frontend/guard_parser.hpp"
-#include "fsm/frontend/json_parser.hpp"
-#include "fsm/frontend/mermaid_parser.hpp"
-#include "fsm/frontend/plantuml_parser.hpp"
-#include "fsm/frontend/scxml_parser.hpp"
-#include "fsm/frontend/sysml2_parser.hpp"
-#include "fsm/fsm.hpp"
+#include "fsm/frontend/formal/cameo_xmi_parser.hpp"
+#include "fsm/frontend/formal/scxml_parser.hpp"
+#include "fsm/frontend/formal/sysml2_parser.hpp"
+#include "fsm/frontend/diagram/dot_parser.hpp"
+#include "fsm/frontend/diagram/json_parser.hpp"
+#include "fsm/frontend/diagram/mermaid_parser.hpp"
+#include "fsm/frontend/diagram/plantuml_parser.hpp"
+#include "fsm/runtime/cpp/fsm.hpp"
 
 namespace {
 
@@ -66,6 +66,15 @@ struct ErrorState {
 struct StartCmd {};
 struct StopCmd {};
 
+/**
+ * @brief Test Intent: Verify C++ compile-time composite guard combinators (`and_`, `or_`, `not_`).
+ *
+ * Scenario:
+ * - Evaluate `not_<IsEmergencyStop>`.
+ * - Evaluate 3-way conjunction `and_<IsPowerOk, IsDoorClosed, not_<IsEmergencyStop>>`.
+ * - Evaluate disjunction `or_<IsEmergencyStop, not_<IsTempSafe>>`.
+ * - Evaluate complex nested combinator: `(PowerOk && DoorClosed) || ManualOverride`.
+ */
 TEST(CompositeGuardsTest, DirectCombinatorsEvaluation) {
     SafetyContext ctx;
     StartCmd evt;
@@ -120,6 +129,15 @@ TEST(CompositeGuardsTest, DirectCombinatorsEvaluation) {
     EXPECT_TRUE(override_guard(evt, st, ctx));
 }
 
+/**
+ * @brief Test Intent: Verify AST parsing and operator precedence in GuardExpressionParser.
+ *
+ * Scenario:
+ * - Parse atomic guards, negation `!A`, conjunction `A && B`, and disjunction `A || B`.
+ * - Verify `&&` binds tighter than `||` (`A || B && C` -> `fsm::or_<A, fsm::and_<B, C>>`).
+ * - Verify parentheses override default precedence (`(A || B) && C` -> `fsm::and_<fsm::or_<A, B>, C>`).
+ * - Verify 4-level deep nested boolean formulas.
+ */
 TEST(CompositeGuardsTest, GuardExpressionParserBasicAndNested) {
     // 1. Single identifier
     {
@@ -166,6 +184,14 @@ TEST(CompositeGuardsTest, GuardExpressionParserBasicAndNested) {
     }
 }
 
+/**
+ * @brief Test Intent: Verify whitespace resilience, empty inputs, and roundtrip diagram string formatting.
+ *
+ * Scenario:
+ * - Parse expressions with irregular whitespace formatting.
+ * - Test empty and whitespace-only guard strings.
+ * - Test roundtrip conversion between C++ template representation and diagram string format.
+ */
 TEST(CompositeGuardsTest, GuardExpressionParserEdgeCasesAndFuzzing) {
     // 1. Whitespace resilience
     {
@@ -206,6 +232,13 @@ TEST(CompositeGuardsTest, GuardExpressionParserEdgeCasesAndFuzzing) {
     }
 }
 
+/**
+ * @brief Test Intent: Verify composite guard expression extraction across all supported diagram parsers.
+ *
+ * Scenario:
+ * - Parse composite guard expressions from PlantUML, Mermaid, SysML v2, SCXML, DOT, and JSON.
+ * - Verify every parser properly decodes entities and compiles the expression into the normalized C++ template type.
+ */
 TEST(CompositeGuardsTest, MultiFormatParserCompositeGuards) {
     // 1. PlantUML
     {
@@ -317,6 +350,14 @@ digraph FSM {
     }
 }
 
+/**
+ * @brief Test Intent: Verify end-to-end runtime evaluation of composite guards during event dispatch.
+ *
+ * Scenario:
+ * - Define transition table with `fsm::and_<IsPowerOk, IsDoorClosed, fsm::not_<IsEmergencyStop>>`.
+ * - Test failure with power off, door open, and emergency stop active.
+ * - Test success when all composite conditions are satisfied, transitioning to Running.
+ */
 TEST(CompositeGuardsTest, FsmRuntimeExecutionWithCompositeGuards) {
     using Table = fsm::transition_table<
         fsm::row<Off, StartCmd, Running>::when<fsm::and_<IsPowerOk, IsDoorClosed, fsm::not_<IsEmergencyStop>>>,

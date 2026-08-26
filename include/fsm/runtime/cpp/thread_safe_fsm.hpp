@@ -2,22 +2,22 @@
 
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <cstdint>
 #include <exception>
 #include <functional>
 #include <future>
 #include <memory>
 #include <mutex>
-#include <queue>
 #include <string>
 #include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
 
-#include "fsm/fsm.hpp"
-#include "fsm/type_traits.hpp"
+#include "fsm/runtime/cpp/async_event_queue.hpp"
+#include "fsm/runtime/cpp/async_types.hpp"
+#include "fsm/runtime/cpp/fsm.hpp"
+#include "fsm/runtime/cpp/type_traits.hpp"
 
 namespace fsm {
 
@@ -50,12 +50,11 @@ class thread_safe_fsm {
     using fsm_type = fsm<Table, Context, InitialState, dynamic_observer>;
     using context_type = Context;
     using event_handler = std::function<void(fsm_type&)>;
-    using unhandled_handler = std::function<void(std::string_view /*event*/, std::string_view /*state*/)>;
-    using guard_rejected_handler = std::function<void(std::string_view /*event*/, std::string_view /*state*/)>;
-    using deferred_handler = std::function<void(std::string_view /*event*/, std::string_view /*state*/)>;
-    using dispatch_failure_handler =
-        std::function<void(std::string_view /*event*/, std::string_view /*state*/, dispatch_status /*status*/)>;
-    using exception_handler = std::function<void(std::exception_ptr)>;
+    using unhandled_handler = ::fsm::unhandled_handler;
+    using guard_rejected_handler = ::fsm::guard_rejected_handler;
+    using deferred_handler = ::fsm::deferred_handler;
+    using dispatch_failure_handler = ::fsm::dispatch_failure_handler;
+    using exception_handler = ::fsm::exception_handler;
 
     // Static compile-time introspection
     static constexpr std::size_t state_count = fsm_type::state_count;
@@ -80,10 +79,6 @@ class thread_safe_fsm {
     /**
      * @brief Destructor: ensures background worker (if running) is cleanly stopped and joined,
      * drains all remaining queue tasks before destruction, and purges queues.
-     *
-     * @note Lifecycle Policy: `thread_safe_fsm` must be destroyed from an external managing thread.
-     * If an asynchronous shutdown from within an action or observer callback is needed, invoke `request_stop()`,
-     * and let the external owner perform destruction once the worker has terminated.
      */
     ~thread_safe_fsm() {
         stop_worker();
@@ -106,12 +101,6 @@ class thread_safe_fsm {
         fsm_.set_context(ctx);
     }
 
-    /**
-     * @brief Executes a user callback with exclusive locked access to the Context.
-     *
-     * Recommended method for thread-safe modification or querying of Context data while
-     * the FSM or worker thread is active.
-     */
     template <typename Callable>
     auto with_context(Callable&& callable) {
         std::scoped_lock lock(dispatch_mutex_);
@@ -124,21 +113,12 @@ class thread_safe_fsm {
         return std::forward<Callable>(callable)(fsm_.context());
     }
 
-    /**
-     * @warning (Unsynchronized Access) Direct Context access bypasses state machine synchronization locks.
-     * Use `with_context([](Context& ctx) { ... })` for thread-safe access when worker or FSM is active.
-     */
     [[nodiscard]] Context& context() noexcept { return fsm_.context(); }
     [[nodiscard]] const Context& context() const noexcept { return fsm_.context(); }
 
     [[nodiscard]] Context* get_context() noexcept { return fsm_.get_context(); }
     [[nodiscard]] const Context* get_context() const noexcept { return fsm_.get_context(); }
 
-    /**
-     * @brief Registers an observer callback.
-     * @note Handlers are updated atomically under lock. Any in-flight dispatch retains its existing snapshot;
-     * the new observer takes effect for all subsequent event dispatches.
-     */
     void set_observer(std::function<void(const transition_info&)> observer) {
         std::scoped_lock lock(dispatch_mutex_);
         user_observer_ = std::move(observer);
@@ -149,36 +129,26 @@ class thread_safe_fsm {
         }
     }
 
-    /** @note Applied atomically; active in-flight dispatch uses its initial snapshot; applies to subsequent dispatches.
-     */
     void set_unhandled_handler(unhandled_handler handler) {
         std::scoped_lock lock(dispatch_mutex_);
         unhandled_handler_ = std::move(handler);
     }
 
-    /** @note Applied atomically; active in-flight dispatch uses its initial snapshot; applies to subsequent dispatches.
-     */
     void set_guard_rejected_handler(guard_rejected_handler handler) {
         std::scoped_lock lock(dispatch_mutex_);
         guard_rejected_handler_ = std::move(handler);
     }
 
-    /** @note Applied atomically; active in-flight dispatch uses its initial snapshot; applies to subsequent dispatches.
-     */
     void set_deferred_handler(deferred_handler handler) {
         std::scoped_lock lock(dispatch_mutex_);
         deferred_handler_ = std::move(handler);
     }
 
-    /** @note Applied atomically; active in-flight dispatch uses its initial snapshot; applies to subsequent dispatches.
-     */
     void set_dispatch_failure_handler(dispatch_failure_handler handler) {
         std::scoped_lock lock(dispatch_mutex_);
         failure_handler_ = std::move(handler);
     }
 
-    /** @note Applied atomically; active in-flight dispatch uses its initial snapshot; applies to subsequent dispatches.
-     */
     void set_exception_handler(exception_handler handler) {
         std::scoped_lock lock(dispatch_mutex_);
         exception_handler_ = std::move(handler);
@@ -195,19 +165,8 @@ class thread_safe_fsm {
     }
 
     // ========================================================================
-    // Synchronous Dispatch (Deadlock-Free Reentrant Lock)
+    // Synchronous Dispatch
     // ========================================================================
-    /**
-     * @brief Synchronously dispatches an event to the state machine.
-     *
-     * The internal state mutation is executed atomically under `dispatch_mutex_`.
-     * All observers and handlers are invoked outside the lock to prevent deadlock
-     * and minimize lock contention.
-     *
-     * If an action, hook, or observer throws an exception, it is recorded in
-     * `last_exception()`, forwarded to `exception_handler` (if set), and rethrown
-     * to the caller.
-     */
     template <typename Event>
     dispatch_result send(const Event& event) {
         dispatch_snapshot snap;
@@ -223,18 +182,8 @@ class thread_safe_fsm {
     }
 
     // ========================================================================
-    // Asynchronous Queue (Thread-Safe Event Injection & Self-Posting)
+    // Asynchronous Queue
     // ========================================================================
-    /**
-     * @brief Asynchronously enqueues an event (fire-and-forget).
-     *
-     * Automatically ensures the background worker thread is running to process the event.
-     *
-     * @note Exception Handling Policy: In fire-and-forget `post()`, if an action or observer throws,
-     * the exception is caught to keep the worker thread running, recorded in `last_exception()`,
-     * and forwarded to `set_exception_handler(handler)`. Callers interested in per-call exceptions
-     * should use `post_async()`.
-     */
     template <typename Event>
     void post(Event event) {
         if (!worker_running_.load() && !is_calling_from_worker_thread()) {
@@ -243,12 +192,6 @@ class thread_safe_fsm {
         enqueue(std::move(event));
     }
 
-    /**
-     * @brief Asynchronously enqueues an event with a completion callback.
-     *
-     * Automatically ensures the background worker thread is running.
-     * The callback is invoked outside the lock after dispatch and observer notifications complete.
-     */
     template <typename Event, typename Callback>
     void post(Event event, Callback&& on_complete) {
         if (!worker_running_.load() && !is_calling_from_worker_thread()) {
@@ -272,22 +215,9 @@ class thread_safe_fsm {
                 }
             }
         };
-        {
-            std::scoped_lock lock(queue_mutex_);
-            event_queue_.push(std::move(task));
-        }
-        cv_.notify_one();
+        queue_.push(std::move(task));
     }
 
-    /**
-     * @brief Asynchronously enqueues an event and returns a std::future for result tracking.
-     *
-     * Automatically ensures the background worker thread is running so the future never hangs.
-     *
-     * @note Exception Handling Policy: If an action or observer throws during dispatch, the exception
-     * is set on the promise (`std::promise::set_exception`) and rethrown when calling `future.get()`,
-     * as well as recorded in `last_exception()` and notified to `set_exception_handler()`.
-     */
     template <typename Event>
     std::future<dispatch_result> post_async(Event event) {
         if (!worker_running_.load() && !is_calling_from_worker_thread()) {
@@ -306,20 +236,10 @@ class thread_safe_fsm {
                 p->set_exception(ex);
             }
         };
-        {
-            std::scoped_lock lock(queue_mutex_);
-            event_queue_.push(std::move(task));
-        }
-        cv_.notify_one();
+        queue_.push(std::move(task));
         return future;
     }
 
-    /**
-     * @brief Enqueues an event without automatically starting the background worker thread.
-     *
-     * Useful for Manual Polling Mode where events are queued and manually processed via `process_one()` or
-     * `process_all()`. Rejects new external events if the state machine is currently undergoing shutdown.
-     */
     template <typename Event>
     void enqueue(Event event) {
         auto task = [this, evt = std::move(event)](fsm_type&) {
@@ -331,25 +251,19 @@ class thread_safe_fsm {
             }
         };
         {
-            std::scoped_lock lock(queue_mutex_);
+            std::scoped_lock lock(queue_.mutex());
             if (is_stopping_.load(std::memory_order_acquire) && !is_calling_from_worker_thread() &&
                 !is_calling_from_stopping_thread()) {
                 return;
             }
-            event_queue_.push(std::move(task));
+            queue_.event_queue().push(std::move(task));
         }
-        cv_.notify_one();
+        queue_.cv().notify_one();
     }
 
-    /**
-     * @brief Processes a single pending event in the current thread (Manual Polling Mode).
-     *
-     * @note Single-Consumer Polling Contract: process_one() and process_all() must be called from a single consumer
-     * thread (e.g. main/game loop). Concurrent consumer invocations are rejected. Rejects (returns false) if the
-     * background worker is currently active to prevent concurrency conflicts.
-     *
-     * @return true if an event was processed, false if the queue was empty, worker is active, or polling is contested.
-     */
+    // ========================================================================
+    // Manual Polling (Single-Consumer Loop)
+    // ========================================================================
     bool process_one() {
         if (worker_running_.load(std::memory_order_acquire)) {
             return false;
@@ -364,18 +278,8 @@ class thread_safe_fsm {
         } guard{is_polling_};
 
         event_handler task;
-        {
-            std::scoped_lock lock(queue_mutex_);
-            const auto now = std::chrono::steady_clock::now();
-            if (!timed_queue_.empty() && now >= timed_queue_.top().deadline) {
-                task = timed_queue_.top().task;
-                timed_queue_.pop();
-            } else if (!event_queue_.empty()) {
-                task = std::move(event_queue_.front());
-                event_queue_.pop();
-            } else {
-                return false;
-            }
+        if (!queue_.try_pop(task)) {
+            return false;
         }
         if (task) {
             try {
@@ -388,16 +292,6 @@ class thread_safe_fsm {
         return true;
     }
 
-    /**
-     * @brief Processes all pending events in the queue in the current thread (Manual Polling Mode).
-     *
-     * Drains all pending events as well as any cascading events queued during dispatch.
-     *
-     * @note Single-Consumer Polling Contract: process_one() and process_all() must be called from a single consumer
-     * thread. Rejects (returns 0) if the background worker is active or another thread is actively polling.
-     *
-     * @return The number of processed events.
-     */
     std::size_t process_all() {
         if (worker_running_.load(std::memory_order_acquire)) {
             return 0;
@@ -413,24 +307,10 @@ class thread_safe_fsm {
 
         std::size_t total = 0;
         while (true) {
-            std::vector<event_handler> batch;
-            {
-                std::scoped_lock lock(queue_mutex_);
-                const auto now = std::chrono::steady_clock::now();
-                while (!timed_queue_.empty() && now >= timed_queue_.top().deadline) {
-                    batch.push_back(timed_queue_.top().task);
-                    timed_queue_.pop();
-                }
-                while (!event_queue_.empty()) {
-                    batch.push_back(std::move(event_queue_.front()));
-                    event_queue_.pop();
-                }
-            }
-
+            auto batch = queue_.drain_ready_batch();
             if (batch.empty()) {
                 break;
             }
-
             for (auto& task : batch) {
                 if (task) {
                     try {
@@ -445,34 +325,15 @@ class thread_safe_fsm {
         return total;
     }
 
-    // Returns current number of pending events in queue
-    [[nodiscard]] std::size_t pending_events() const {
-        std::scoped_lock lock(queue_mutex_);
-        return event_queue_.size() + timed_queue_.size();
-    }
+    [[nodiscard]] std::size_t pending_events() const { return queue_.size(); }
+    [[nodiscard]] bool is_queue_empty() const { return queue_.empty(); }
+    void clear_queue() { queue_.clear(); }
 
-    // Returns true if event queue is empty
-    [[nodiscard]] bool is_queue_empty() const {
-        std::scoped_lock lock(queue_mutex_);
-        return event_queue_.empty() && timed_queue_.empty();
-    }
-
-    // Clear all pending events in the queue
-    void clear_queue() {
-        std::scoped_lock lock(queue_mutex_);
-        std::queue<event_handler> empty_q;
-        std::swap(event_queue_, empty_q);
-        std::priority_queue<timed_event, std::vector<timed_event>, std::greater<>> empty_timed;
-        std::swap(timed_queue_, empty_timed);
-    }
-
-    // Deferred events count under dispatch lock
     [[nodiscard]] std::size_t deferred_count() const {
         std::scoped_lock lock(dispatch_mutex_);
         return fsm_.deferred_count();
     }
 
-    // Clear deferred events under dispatch lock
     void clear_deferred_events() {
         std::scoped_lock lock(dispatch_mutex_);
         fsm_.clear_deferred_events();
@@ -497,7 +358,7 @@ class thread_safe_fsm {
         }
         std::scoped_lock lock(lifecycle_mutex_);
         {
-            std::scoped_lock q_lock(queue_mutex_);
+            std::scoped_lock q_lock(queue_.mutex());
             if (worker_running_ || is_stopping_) {
                 return;
             }
@@ -509,27 +370,17 @@ class thread_safe_fsm {
         worker_thread_ = std::thread([this]() { this->worker_loop(); });
     }
 
-    /**
-     * @brief Requests the worker to stop gracefully without joining.
-     * Safe to call from any thread, including from actions/observers within the worker thread itself.
-     */
     void request_stop() noexcept {
         {
-            std::scoped_lock q_lock(queue_mutex_);
+            std::scoped_lock q_lock(queue_.mutex());
             if (!worker_running_) {
                 return;
             }
             worker_running_ = false;
         }
-        cv_.notify_all();
+        queue_.cv().notify_all();
     }
 
-    /**
-     * @brief Stops the background worker thread, waits for it to finish (join), and drains remaining events.
-     *
-     * @note If called from within the worker thread itself, gracefully delegates to `request_stop()`
-     * to avoid self-join deadlocks or use-after-free.
-     */
     void stop_worker() {
         if (is_calling_from_worker_thread()) {
             request_stop();
@@ -539,11 +390,11 @@ class thread_safe_fsm {
         std::scoped_lock lock(lifecycle_mutex_);
         stopping_thread_id_.store(std::this_thread::get_id(), std::memory_order_release);
         {
-            std::scoped_lock q_lock(queue_mutex_);
+            std::scoped_lock q_lock(queue_.mutex());
             worker_running_ = false;
             is_stopping_ = true;
         }
-        cv_.notify_all();
+        queue_.cv().notify_all();
 
         if (worker_thread_.joinable()) {
             worker_thread_.join();
@@ -553,7 +404,7 @@ class thread_safe_fsm {
         process_all();
 
         {
-            std::scoped_lock q_lock(queue_mutex_);
+            std::scoped_lock q_lock(queue_.mutex());
             is_stopping_ = false;
             stopping_thread_id_.store(std::thread::id{}, std::memory_order_release);
         }
@@ -570,20 +421,17 @@ class thread_safe_fsm {
         return fsm_.template is_in_state<State>();
     }
 
-    // Thread-safe query of current state name
     [[nodiscard]] std::string current_state_name() const {
         std::scoped_lock lock(dispatch_mutex_);
         return std::string(fsm_.current_state_name());
     }
 
-    // Execute custom callback with current state under dispatch lock
     template <typename Callable>
     auto with_state(Callable&& callable) const {
         std::scoped_lock lock(dispatch_mutex_);
         return std::visit(std::forward<Callable>(callable), fsm_.get_current_state_variant());
     }
 
-    // Execute custom callback directly with underlying FSM under dispatch lock
     template <typename Callable>
     auto with_fsm(Callable&& callable) {
         std::scoped_lock lock(dispatch_mutex_);
@@ -604,26 +452,10 @@ class thread_safe_fsm {
                 handle_exception_outside_lock(std::current_exception(), get_exception_handler_copy());
             }
         };
-        {
-            std::scoped_lock lock(queue_mutex_);
-            timed_queue_.push(timed_event{deadline, std::move(task)});
-        }
-        cv_.notify_one();
+        queue_.push_timed(deadline, std::move(task));
     }
 
   private:
-    struct dispatch_snapshot {
-        dispatch_result result{dispatch_status::unhandled};
-        std::string state_name{};
-        std::vector<transition_info> notifications{};
-        unhandled_handler unhandled_h{};
-        guard_rejected_handler guard_rejected_h{};
-        deferred_handler deferred_h{};
-        dispatch_failure_handler failure_h{};
-        exception_handler exception_h{};
-        std::function<void(const transition_info&)> observer_h{};
-    };
-
     template <typename Event>
     dispatch_snapshot execute_dispatch_under_lock(const Event& evt) {
         dispatch_snapshot snap;
@@ -698,43 +530,36 @@ class thread_safe_fsm {
         return exception_handler_;
     }
 
-    struct timed_event {
-        std::chrono::steady_clock::time_point deadline;
-        event_handler task;
-
-        bool operator>(const timed_event& other) const noexcept { return deadline > other.deadline; }
-    };
-
     void worker_loop() {
         worker_thread_id_.store(std::this_thread::get_id(), std::memory_order_release);
         while (true) {
             event_handler task;
             {
-                std::unique_lock<std::mutex> lock(queue_mutex_);
+                std::unique_lock<std::mutex> lock(queue_.mutex());
 
-                while (worker_running_ && event_queue_.empty() && timed_queue_.empty()) {
-                    cv_.wait(lock);
+                while (worker_running_ && queue_.event_queue().empty() && queue_.timed_queue().empty()) {
+                    queue_.cv().wait(lock);
                 }
 
-                while (worker_running_ && event_queue_.empty() && !timed_queue_.empty()) {
+                while (worker_running_ && queue_.event_queue().empty() && !queue_.timed_queue().empty()) {
                     const auto now = std::chrono::steady_clock::now();
-                    if (now >= timed_queue_.top().deadline) {
+                    if (now >= queue_.timed_queue().top().deadline) {
                         break;
                     }
-                    cv_.wait_until(lock, timed_queue_.top().deadline);
+                    queue_.cv().wait_until(lock, queue_.timed_queue().top().deadline);
                 }
 
-                if (!worker_running_ && event_queue_.empty() && timed_queue_.empty()) {
+                if (!worker_running_ && queue_.event_queue().empty() && queue_.timed_queue().empty()) {
                     break;
                 }
 
                 const auto now = std::chrono::steady_clock::now();
-                if (!timed_queue_.empty() && now >= timed_queue_.top().deadline) {
-                    task = timed_queue_.top().task;
-                    timed_queue_.pop();
-                } else if (!event_queue_.empty()) {
-                    task = std::move(event_queue_.front());
-                    event_queue_.pop();
+                if (!queue_.timed_queue().empty() && now >= queue_.timed_queue().top().deadline) {
+                    task = queue_.timed_queue().top().task;
+                    queue_.timed_queue().pop();
+                } else if (!queue_.event_queue().empty()) {
+                    task = std::move(queue_.event_queue().front());
+                    queue_.event_queue().pop();
                 }
             }
 
@@ -749,12 +574,9 @@ class thread_safe_fsm {
         worker_thread_id_.store(std::thread::id{}, std::memory_order_release);
     }
 
-    mutable std::mutex queue_mutex_;
+    mutable async_event_queue<event_handler> queue_;
     mutable std::recursive_mutex lifecycle_mutex_;
     mutable std::recursive_mutex dispatch_mutex_;
-    std::condition_variable cv_;
-    std::queue<event_handler> event_queue_;
-    std::priority_queue<timed_event, std::vector<timed_event>, std::greater<>> timed_queue_;
     fsm_type fsm_;
     std::function<void(const transition_info&)> user_observer_{};
     std::vector<transition_info> notification_buffer_{};

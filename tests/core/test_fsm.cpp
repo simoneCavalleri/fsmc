@@ -5,8 +5,8 @@
 #include <thread>
 #include <vector>
 
-#include "fsm/fsm.hpp"
-#include "fsm/thread_safe_fsm.hpp"
+#include "fsm/runtime/cpp/fsm.hpp"
+#include "fsm/runtime/cpp/thread_safe_fsm.hpp"
 
 namespace {
 
@@ -26,6 +26,15 @@ using SimpleTable = fsm::transition_table<fsm::transition<StateIdle, StartEvent,
                                           fsm::transition<StateRunning, StopEvent, StateStopped>,
                                           fsm::transition<StateStopped, ResetEvent, StateIdle>>;
 
+/**
+ * @brief Test Intent: Verify basic synchronous state transitions and compile-time introspection.
+ *
+ * Scenario:
+ * - Define a 3-state machine (Idle -> Running -> Stopped -> Idle).
+ * - Verify compile-time type introspection (state_count, transition_count, has_state, has_event).
+ * - Dispatch valid events in sequence and verify immediate active state updates.
+ * - Dispatch unhandled events and verify that the machine remains in the current state with an unhandled result.
+ */
 TEST(FsmCoreTest, BasicTransitionsAndIntrospection) {
     fsm::fsm<SimpleTable> state_machine;
 
@@ -99,6 +108,16 @@ struct CustomAction {
 using HookTable = fsm::transition_table<fsm::transition<StateA, EventGotoB, StateB, CustomAction>,
                                         fsm::transition<StateB, EventGotoA, StateA>>;
 
+/**
+ * @brief Test Intent: Verify strict lifecycle hook execution order and event payload forwarding.
+ *
+ * Scenario:
+ * - When entering initial state StateA: StateA::on_enter() must be called.
+ * - When transitioning StateA -> StateB with EventGotoB{"Hello FSM"}:
+ *   1. StateA::on_exit() is invoked.
+ *   2. CustomAction is executed with the payload.
+ *   3. StateB::on_enter(evt) is invoked with payload parameter.
+ */
 TEST(FsmCoreTest, HooksExecutionOrderAndPayloads) {
     HookTracker::clear();
 
@@ -140,6 +159,14 @@ struct IsValidKeyGuard {
 using GuardTable =
     fsm::transition_table<fsm::transition<StateLocked, UnlockEvent, StateUnlocked, fsm::no_action, IsValidKeyGuard>>;
 
+/**
+ * @brief Test Intent: Verify guard predicate rejection, acceptance, and dispatch result statuses.
+ *
+ * Scenario:
+ * - With key != 42: guard returns false, transition is rejected, state remains Locked, status is guard_rejected.
+ * - With an unhandled event: status is unhandled, state remains Locked.
+ * - With key == 42: guard returns true, transition succeeds, state becomes Unlocked, status is success.
+ */
 TEST(FsmCoreTest, GuardValidation) {
     fsm::fsm<GuardTable> state_machine;
 
@@ -198,6 +225,14 @@ struct DecAction {
 using CounterTable = fsm::transition_table<fsm::transition<CounterState, IncrementEvent, CounterState, IncAction>,
                                            fsm::transition<CounterState, DecrementEvent, CounterState, DecAction>>;
 
+/**
+ * @brief Test Intent: Verify thread_safe_fsm synchronous sending and manual batch processing.
+ *
+ * Scenario:
+ * - Call send() synchronously to apply transition immediately under mutex.
+ * - Call enqueue() to push events into thread-safe queue.
+ * - Call process_all() to drain and execute queued events deterministically.
+ */
 TEST(FsmCoreTest, ThreadSafeQueueManualProcessing) {
     fsm::thread_safe_fsm<CounterTable> ts_machine;
 
@@ -217,6 +252,15 @@ TEST(FsmCoreTest, ThreadSafeQueueManualProcessing) {
     EXPECT_EQ(ts_machine.with_state([](const CounterState& state) { return state.count; }), 12);
 }
 
+/**
+ * @brief Test Intent: Verify asynchronous background worker thread handling concurrent event posting.
+ *
+ * Scenario:
+ * - Start worker thread with start_worker().
+ * - Launch 10 concurrent producer threads, each posting 100 IncrementEvent events.
+ * - Wait for worker thread to process all 1000 events.
+ * - Verify final accumulated state count is exactly 1000 with zero race conditions.
+ */
 TEST(FsmCoreTest, ConcurrentMultithreadedWorker) {
     fsm::thread_safe_fsm<CounterTable> ts_machine;
     ts_machine.start_worker();

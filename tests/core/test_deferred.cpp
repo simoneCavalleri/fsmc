@@ -5,15 +5,14 @@
 #include <thread>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
-#include "fsm/frontend/cameo_xmi_parser.hpp"
-#include "fsm/frontend/dot_parser.hpp"
-#include "fsm/frontend/json_parser.hpp"
-#include "fsm/frontend/mermaid_parser.hpp"
-#include "fsm/frontend/plantuml_parser.hpp"
-#include "fsm/frontend/scxml_parser.hpp"
-#include "fsm/fsm.hpp"
-#include "fsm/middleend/fsm_validator.hpp"
-#include "fsm/thread_safe_fsm.hpp"
+#include "fsm/frontend/formal/cameo_xmi_parser.hpp"
+#include "fsm/frontend/formal/scxml_parser.hpp"
+#include "fsm/frontend/diagram/dot_parser.hpp"
+#include "fsm/frontend/diagram/json_parser.hpp"
+#include "fsm/frontend/diagram/mermaid_parser.hpp"
+#include "fsm/frontend/diagram/plantuml_parser.hpp"
+#include "fsm/runtime/cpp/fsm.hpp"
+#include "fsm/runtime/cpp/thread_safe_fsm.hpp"
 
 using namespace fsm::codegen;
 
@@ -23,6 +22,13 @@ namespace {
 // Multi-Format Parsing Tests
 // ============================================================================
 
+/**
+ * @brief Test Intent: Verify PlantUML `defer <Event>` directive parsing into state deferred events.
+ *
+ * Scenario:
+ * - Parse PlantUML with `Initializing : defer RequestCmd` and `Initializing : defer DataPacket`.
+ * - Verify IR state contains both deferred event names.
+ */
 TEST(DeferredEventsTest, PlantUmlParsing) {
     const std::string puml = R"(
     @startuml
@@ -48,6 +54,13 @@ TEST(DeferredEventsTest, PlantUmlParsing) {
     EXPECT_EQ(init_state->deferred_events[1], "DataPacket");
 }
 
+/**
+ * @brief Test Intent: Verify Mermaid `defer <Event>` syntax parsing.
+ *
+ * Scenario:
+ * - Parse Mermaid with `Booting : defer UserInput`.
+ * - Verify Booting state records UserInput in deferred_events.
+ */
 TEST(DeferredEventsTest, MermaidParsing) {
     const std::string mmd = R"(
     stateDiagram-v2
@@ -67,6 +80,13 @@ TEST(DeferredEventsTest, MermaidParsing) {
     EXPECT_EQ(boot_state->deferred_events[0], "UserInput");
 }
 
+/**
+ * @brief Test Intent: Verify Cameo / MagicDraw XMI deferrableTrigger element parsing.
+ *
+ * Scenario:
+ * - Parse OMG XMI containing `<deferrableTrigger name="RequestCmd"/>`.
+ * - Verify state records RequestCmd in deferred_events list.
+ */
 TEST(DeferredEventsTest, CameoParsing) {
     const std::string xmi = R"(<?xml version="1.0" encoding="UTF-8"?>
     <xmi:XMI xmi:version="2.1" xmlns:uml="http://www.omg.org/spec/UML/20090901" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1">
@@ -96,6 +116,13 @@ TEST(DeferredEventsTest, CameoParsing) {
     EXPECT_EQ(init_state->deferred_events[0], "RequestCmd");
 }
 
+/**
+ * @brief Test Intent: Verify W3C SCXML `<defer event="..."/>` syntax parsing.
+ *
+ * Scenario:
+ * - Parse SCXML with `<defer event="RequestCmd"/>` child element inside `<state>`.
+ * - Verify parsed FsmIr captures the deferred event definition.
+ */
 TEST(DeferredEventsTest, ScxmlParsing) {
     const std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Initializing" name="DeferSM">
@@ -117,6 +144,13 @@ TEST(DeferredEventsTest, ScxmlParsing) {
     EXPECT_EQ(init_state->deferred_events[0], "RequestCmd");
 }
 
+/**
+ * @brief Test Intent: Verify JSON statechart `"defer": [...]` array parsing.
+ *
+ * Scenario:
+ * - Parse XState JSON with `"defer": ["RequestCmd", "DataPacket"]`.
+ * - Verify both deferred events are captured in IR.
+ */
 TEST(DeferredEventsTest, JsonParsing) {
     const std::string json = R"({
       "id": "DeferSM",
@@ -144,6 +178,13 @@ TEST(DeferredEventsTest, JsonParsing) {
     EXPECT_EQ(init_state->deferred_events[1], "DataPacket");
 }
 
+/**
+ * @brief Test Intent: Verify Graphviz DOT `defer="A, B"` attribute parsing.
+ *
+ * Scenario:
+ * - Parse DOT graph with `Initializing [defer="RequestCmd, DataPacket"]`.
+ * - Verify parsed FsmIr captures both comma-separated deferred events.
+ */
 TEST(DeferredEventsTest, DotParsing) {
     const std::string dot = R"(
     digraph DeferFSM {
@@ -228,6 +269,15 @@ using PipelineTable =
                           fsm::transition<Ready, RequestCmd, Processing, OnRequestAction, fsm::no_guard>,
                           fsm::transition<Processing, DataPacket, Completed, OnPacketAction, fsm::no_guard>>;
 
+/**
+ * @brief Test Intent: Verify synchronous runtime cascade replay of deferred events upon state transitions.
+ *
+ * Scenario:
+ * - Dispatch RequestCmd and DataPacket while in Initializing state (both must be deferred into queue).
+ * - Dispatch InitDone: FSM enters Ready, automatically un-defers and processes RequestCmd (moving to Processing),
+ *   and automatically un-defers DataPacket (moving to Completed).
+ * - Verify all payload and context modifications occurred in proper FIFO order.
+ */
 TEST(DeferredEventsTest, SyncRuntimeCascadeReplay) {
     PipelineContext ctx;
     fsm::fsm<PipelineTable, PipelineContext> sm(ctx);
@@ -266,6 +316,14 @@ TEST(DeferredEventsTest, SyncRuntimeCascadeReplay) {
     EXPECT_EQ(sm.deferred_count(), 0U);
 }
 
+/**
+ * @brief Test Intent: Verify asynchronous multi-threaded deferred event processing.
+ *
+ * Scenario:
+ * - Start thread_safe_fsm worker thread.
+ * - Post deferred events from producer thread.
+ * - Post trigger event and wait for worker thread to asynchronously cascade replay and reach Completed state.
+ */
 TEST(DeferredEventsTest, AsyncRuntimeExecution) {
     PipelineContext ctx;
     fsm::thread_safe_fsm<PipelineTable, PipelineContext> async_sm(ctx);

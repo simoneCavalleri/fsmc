@@ -3,14 +3,22 @@
 #include <string>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
-#include "fsm/frontend/plantuml_parser.hpp"
-#include "fsm/fsm.hpp"
+#include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/runtime/cpp/fsm.hpp"
 
 using namespace fsm::codegen;
 
 namespace {
 
+/**
+ * @brief Test Intent: Verify AST construction and C++ codegen for 4-level deep hierarchical history.
+ *
+ * Scenario:
+ * - Parse PlantUML with 4-level nesting (Operating -> SubSystem -> Module -> Level4Active/Calibrating).
+ * - Verify deep history target flag `Operating[H*]`.
+ * - Verify code generator emits history guards for deepest leaf substates.
+ */
 TEST(DeepHistoryTest, FourLevelDeepHistoryAstAndCodegen) {
     const std::string puml = R"(@startuml
 [*] --> Standby
@@ -96,6 +104,14 @@ using DeepHistoryTable = fsm::transition_table<
     fsm::row<Emergency, ResumeDeepCmd, Level4Active>::when<fsm::history_is<Operating, Level4Active>>,
     fsm::row<Emergency, ResumeDeepCmd, Level4Active>>;
 
+/**
+ * @brief Test Intent: Verify runtime deep history restoration of deeply nested leaf states.
+ *
+ * Scenario:
+ * - Navigate from Standby to Level4Active, then advance to Level4Calibrating.
+ * - Interrupt with EStopEvent to transition to Emergency state.
+ * - Dispatch ResumeDeepCmd -> verify runtime FSM restores Level4Calibrating leaf state directly.
+ */
 TEST(DeepHistoryTest, RuntimeExecutionRestoresDeepLeafState) {
     fsm::fsm<DeepHistoryTable, fsm::no_context, Standby> sm;
     EXPECT_TRUE(sm.is_in_state<Standby>());
@@ -118,9 +134,14 @@ TEST(DeepHistoryTest, RuntimeExecutionRestoresDeepLeafState) {
     EXPECT_TRUE(sm.is_in_state<Level4Calibrating>());
 }
 
+/**
+ * @brief Test Intent: Verify default initial sub-state fallback when entering history with no prior visit.
+ *
+ * Scenario:
+ * - Start FSM directly in Emergency state without having visited Operating before.
+ * - Dispatch ResumeDeepCmd -> verify fallback transition to the default initial leaf (Level4Active).
+ */
 TEST(DeepHistoryTest, InitialEntryWithoutPriorHistoryFallsBackToDefault) {
-    // If we transition to Emergency first, then ResumeDeepCmd without having entered Operating,
-    // it falls back to the default initial leaf (Level4Active).
     fsm::fsm<DeepHistoryTable, fsm::no_context, Emergency> sm;
     EXPECT_TRUE(sm.is_in_state<Emergency>());
     EXPECT_EQ(sm.get_history("Operating"), "");

@@ -21,6 +21,7 @@ struct TemperatureThresholdExceeded {
 
 ### 2. Timed Transitions (`after` and `every`)
 Timed triggers model real-time timeouts and periodic ticks:
+
 - `after(500ms)`: Single-shot relative timeout that begins counting when the source state is entered. If an external transition exits the state before 500ms elapse, the timer is automatically cancelled.
 - `every(100ms)`: Periodic heartbeat trigger that fires repeatedly as long as the source state remains active.
 
@@ -58,6 +59,7 @@ When a transition fires, `fsmc` executes actions according to UML / SysML run-to
 ## Determinism and Collision Resolution
 
 If multiple outgoing transitions from the same state match the same event trigger, a non-deterministic collision occurs unless disambiguated:
+
 - **Priority Rules**: Higher priority values fire first.
 - **Guard Exclusivity**: If branches have mutually exclusive guards (e.g. `[x > 0]` and `[x <= 0]`), only the valid branch fires.
 - **Strict Mode (`--strict-determinism`)**: When enabled, the compiler flags any overlapping triggers with non-disjoint guards as compilation errors.

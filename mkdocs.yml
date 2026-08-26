@@ -97,6 +97,8 @@ nav:
       - Transitions & Triggers: concepts/transitions_and_events.md
       - Guards & Action Effects: concepts/guards_and_actions.md
       - Memory & Real-Time Guarantees: concepts/memory_and_realtime.md
+      - Architectural Design Patterns: concepts/design_patterns.md
+
   - Modeling Languages:
       - formal_languages/index.md
       - OMG SysML v2: formal_languages/sysml_v2.md

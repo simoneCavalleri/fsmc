@@ -30,7 +30,7 @@ The synchronous, zero-overhead compile-time finite state machine engine.
 
 ### Key Characteristics
 - **Zero Heap Allocations**: All state storage uses `std::variant<States...>`. Transitions operate entirely on the stack.
-- **Sub-Nanosecond Latency**: Transitions compile down to unrolled template folds with zero virtual functions.
+- **Deterministic Latency**: Transitions compile down to unrolled template folds with zero virtual functions.
 - **Context Injection**: Optional hardware/software context struct passed by reference to state machine constructors, guards, and actions.
 
 ### Member Functions
@@ -39,7 +39,8 @@ The synchronous, zero-overhead compile-time finite state machine engine.
 Dispatches an event synchronously on the calling thread.
 
 - **Returns**: A `dispatch_result` representing whether the transition fired (`success`), was deferred (`deferred`), rejected by a guard (`guard_rejected`), or had no matching transition (`unhandled`).
-- **Complexity**: $O(1)$ to $O(N)$ compile-time unrolling where $N$ is the number of transitions matching the active state.
+- **Complexity**: O(1) to O(N) compile-time unrolling where N is the number of transitions matching the active state.
+
 
 ```cpp
 auto res = fsm.dispatch(StartMissionCmd{});
@@ -83,6 +84,7 @@ fsm.set_observer([](const fsm::transition_info& info) {
 ```
 
 The `fsm::transition_info` struct contains:
+
 - `source`: `std::string_view` name of the source state.
 - `target`: `std::string_view` name of the target state.
 - `event`: `std::string_view` name of the triggering event.
@@ -128,6 +130,7 @@ An asynchronous, thread-safe wrapper around `fsm::fsm` providing queue-based exe
 ### Core Execution Modes
 
 `thread_safe_fsm` supports two complementary execution models:
+
 1. **Background Worker Mode**: Events are queued and processed asynchronously by a dedicated worker thread (`post`, `post_async`).
 2. **Manual Polling Mode**: Events are enqueued without spawning threads (`enqueue`) and drained deterministically by the main/game loop (`process_one`, `process_all`).
 
@@ -137,6 +140,7 @@ An asynchronous, thread-safe wrapper around `fsm::fsm` providing queue-based exe
 
 #### `send(const Event& event) -> dispatch_result`
 Executes a thread-safe synchronous transition on the calling thread:
+
 - Acquires `dispatch_mutex_` exclusively during state evaluation and action execution.
 - Captures transition info and observer notifications in an isolated snapshot.
 - Invokes observers outside the lock to minimize contention.
@@ -194,7 +198,8 @@ manual_fsm.enqueue(UserInputEvent{key});
 ```
 
 #### `process_one() -> bool`
-Processes a single pending event from the front of the queue in $O(1)$ constant time (backed by `std::deque`).
+Processes a single pending event from the front of the queue in O(1) constant time (backed by `std::deque`).
+
 
 - **Contract**: Single-Consumer Polling Contract (called from the main loop).
 - **Return**: `true` if an event was processed; `false` if queue was empty, background worker was running, or polling was contested.
@@ -331,8 +336,9 @@ fsm.clear_deferred_events();
 A lock-free, wait-free Single-Producer Single-Consumer circular queue designed for hard real-time systems and hardware **Interrupt Service Routines (ISR)**:
 
 ### Guarantees
-- **Wait-Free Operations**: Both `push` and `pop` execute in $O(1)$ constant time with zero locks and zero system calls.
+- **Wait-Free Operations**: Both `push` and `pop` execute in O(1) constant time with zero locks and zero system calls.
 - **Cacheline Aligned**: Head and Tail atomic indices reside on distinct 64-byte cache lines (`alignas(64)`) to completely eliminate false sharing.
+
 - **Zero Dynamic Allocation**: Fixed contiguous ring storage.
 
 ```cpp
@@ -397,7 +403,8 @@ if (command_queue.pop(ev)) {
 
 ## 8. `fsm::spsc_fsm<Table, Context, QueueCapacity, InitialState>` (Lock-Free & ISR-Safe)
 
-A zero-allocation, Wait-Free $O(1)$ Single-Producer Single-Consumer FSM wrapper designed for Interrupt Service Routines (ISRs), hard real-time tasks, and multi-core embedded systems without locks or heap allocation:
+A zero-allocation, Wait-Free O(1) Single-Producer Single-Consumer FSM wrapper designed for Interrupt Service Routines (ISRs), hard real-time tasks, and multi-core embedded systems without locks or heap allocation:
+
 
 ### Header
 ```cpp

@@ -1,58 +1,120 @@
-# Formal Model Checking (LTL / CTL)
+# Formal Model Checking (LTL & CTL)
 
-`fsmc` features an integrated formal model checker that exhaustively verifies temporal logic specifications against the statechart's Kripke transition structure before code generation.
+`fsmc` includes a verification engine that checks statechart safety, liveness, and reachability properties against the state machine's transition graph (Kripke structure) prior to code generation.
 
 ---
 
-## 1. Supported Temporal Logic Operators
+## Verification Principles
+
+Model checking systematically explores reachable state configurations and possible transition sequences to evaluate formal specifications:
+
+```mermaid
+flowchart LR
+    Statechart["Statechart Model"] --> Kripke["State Transition Graph (Kripke Structure)"]
+    Properties["LTL / CTL Formulas"] --> Checker["Model Checking Engine"]
+    Kripke --> Checker
+    Checker --> Result["Verification Result (Sound / Counterexample Trace)"]
+```
+
+- **Safety Properties**: Verify that hazardous states or invalid state combinations are never reachable.
+- **Liveness Properties**: Verify that designated recovery or terminal states are guaranteed to be reached following trigger events.
+- **Deadlock and Dead-State Detection**: Identifies states with no legal outgoing transitions or unreachable branches.
+
+
+---
+
+## Supported Temporal Logic Operators
 
 The verification engine supports Linear Temporal Logic (LTL) and Computation Tree Logic (CTL) formulas:
 
-| Operator | Syntax | Semantics | Practical Aerospace / Systems Meaning |
+| Operator | Syntax | Semantics | Aerospace / Mission Example |
 | :--- | :--- | :--- | :--- |
-| **Globally (Always)** | `G (P)` | Property $P$ holds in every reachable state. | Safety invariant (e.g. system never exceeds critical temperature). |
-| **Finally (Eventually)**| `F (P)` | Property $P$ is guaranteed to be reached. | Termination / mission completion guarantee. |
-| **Response / Leadsto** | `G (P -> F Q)` | Whenever trigger/state $P$ occurs, state $Q$ is eventually entered. | Request-Response guarantee (e.g. low battery always triggers landing). |
-| **Next State** | `X (P)` | Property $P$ holds in the immediate next state. | Step-by-step sequencing requirement. |
-| **Until** | `P U Q` | Property $P$ holds continuously until $Q$ becomes true. | Holding invariant during transient phases. |
-| **Mutual Exclusion** | `G (!(A && B))`| States $A$ and $B$ can never be simultaneously active. | Proves orthogonal safety separation. |
+| **Globally (Always)** | `G (P)` | Property `P` holds in every reachable state. | **Safety Invariant**: `G !(MotorsArmed && ChargingBattery)` |
+| **Finally (Eventually)**| `F (P)` | Property `P` is guaranteed to be reached. | **Mission Completion**: `F (MissionAccomplished)` |
+| **Response (Leadsto)** | `G (P -> F Q)` | Whenever trigger `P` occurs, state `Q` is eventually reached. | **Fail-Safe Response**: `G (LowBattery -> F SafeLanding)` |
+| **Next State** | `X (P)` | Property `P` holds in the immediate next step. | **Sequence Order**: `G (DisarmCmd -> X MotorsStopped)` |
+| **Until** | `P U Q` | Property `P` holds continuously until `Q` becomes true. | **Holding Pattern**: `Preflight U SystemReady` |
+| **Mutual Exclusion** | `G (!(A && B))`| States `A` and `B` can never be simultaneously active. | **Orthogonal Safety**: `G (!(EmergencyStop && InMotion))` |
+
 
 ---
 
-## 2. Defining Properties in Formal Models
+## Specifying Properties in Models
 
-Temporal properties can be embedded directly in SysML v2 models or PlantUML diagrams using the `@fsm:property` directive:
-
+### 1. In OMG SysML v2
 ```sysml
 package FlightControl {
     state def AircraftMission {
-        // ... states and transitions ...
+        entry; then Preflight;
+        state Preflight;
+        state InFlight;
+        state Landed;
 
         // Formal Safety Property: Mutual exclusion between Preflight and InFlight
-        @fsm:property DisjointPreflightFlight = "G (!(Preflight && InFlight))";
+        @fsm:property DisjointFlight = "G (!(Preflight && InFlight))";
 
-        // Formal Liveness Property: Low battery always leads to Landed
+        // Formal Liveness Property: Low battery always eventually leads to Landed
         @fsm:property SafeLandingOnLowBattery = "G (LowBattery -> F Landed)";
     }
 }
 ```
 
+### 2. In PlantUML / Mermaid
+```plantuml
+@startuml
+[*] --> Preflight
+
+state Preflight
+state InFlight
+state Landed
+
+Preflight --> InFlight : TakeoffCmd
+InFlight --> Landed : LowBattery
+
+' Embedded Formal Verification Invariant
+/' @fsm:property SafeDescent = "G (LowBattery -> F Landed)" '/
+@enduml
+```
+
 ---
 
-## 3. Running Verification via CLI
+## Running Verification via CLI
 
-To verify all temporal formulas, deadlock traps, and livelock cycles in a model:
+Execute the model checker against your model:
 
 ```bash
 fsmc -i flight_mission.sysml --verify
 ```
 
-If a temporal formula fails, the model checker outputs the counterexample trace demonstrating the sequence of events and states that led to the violation:
+### Passing Output
+```text
+[INFO] Parsed 8 states, 12 transitions from flight_mission.sysml
+[INFO] Model Checking started:
+  [PASS] Property 'DisjointFlight': G (!(Preflight && InFlight))
+  [PASS] Property 'SafeLandingOnLowBattery': G (LowBattery -> F Landed)
+  [PASS] Deadlock Freedom: No terminal unhandled dead-end states detected
+  [PASS] Unreachable State Analysis: 0 dead states found
+[SUCCESS] All 4 formal verification properties SOUND and VERIFIED.
+```
+
+### Diagnosing Counterexample Violations
+If a temporal formula fails, `fsmc` prints the exact counterexample trace showing the execution path leading to the violation:
 
 ```text
 [ERROR] Formal Property 'SafeLandingOnLowBattery' VIOLATED!
 Counterexample Trace:
-  1. State: CruiseFlight (batteryLevel = 15.0)
-  2. Event: LowBattery
-  3. Transition: CruiseFlight -> HoverPause (Loop trap: No outgoing path to Landed)
+  Step 1: State: InFlight (batteryLevel = 100)
+  Step 2: Event: LowBattery
+  Step 3: Transition: InFlight -> HoverPause (Deadlock cycle: No outgoing transition from HoverPause to Landed)
+```
+
+---
+
+## nuXmv / SMV Formal Logic Export
+
+You can export the formal Kripke transition model directly to nuXmv / SMV for external theorem provers and formal certification packages:
+
+```bash
+# Export formal SMV specification
+fsmc -i flight_mission.sysml --export smv -o flight_model.smv
 ```

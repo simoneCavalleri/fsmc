@@ -126,6 +126,8 @@ The complete, official documentation is hosted at **[simoneCavalleri.github.io/f
 
 ---
 
-## 📄 License
+## 📄 License & Trademarks
 
-`fsmc` is released under the permissive [MIT License](LICENSE).
+- **License**: `fsmc` is released under the permissive [MIT License](LICENSE).
+- **Trademarks**: All product names, logos, brands, and registered trademarks (such as SysML®, Cameo®, MagicDraw®, ARM®, FreeRTOS™, STM32®) mentioned in this repository and documentation are property of their respective owners. Their mention is strictly for technical interoperability, compatibility identification, and reference purposes, and does not imply any affiliation, sponsorship, or endorsement.
+

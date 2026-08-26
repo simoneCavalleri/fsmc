@@ -7,6 +7,7 @@ This tutorial walks through creating a complete, production-ready aerospace sub-
 ## Scenario: Autonomous UAV Flight Controller
 
 We will model a flight mission state machine with three operating modes:
+
 1. **Preflight**: Sensor calibration and motor arming.
 2. **Navigating**: Waypoint navigation with emergency low-battery fail-safe return.
 3. **Landed**: Final disarm and shutdown.
@@ -106,7 +107,7 @@ Choose your preferred modeling syntax to define the UAV state machine:
     ```
 
 === "Mermaid (`uav_mission.mmd`)"
-    ```mermaid
+    ```mmd
     stateDiagram-v2
         [*] --> SensorCalib
         SensorCalib --> SystemReady: CalibrationOk
@@ -118,6 +119,7 @@ Choose your preferred modeling syntax to define the UAV state machine:
         ReturnToHome --> Landed: TouchdownEvent
         Landed --> [*]: ShutdownCmd
     ```
+
 
 
 ---

@@ -7,6 +7,7 @@
 ## 1. SMV Translation Pipeline
 
 During SMV export, `fsmc`:
+
 1. Constructs the discrete finite state domain `state : {StateA, StateB, ...}`.
 2. Constructs the input event alphabet `event : {Ev1, Ev2, ..., none}`.
 3. Maps discrete timer variables with discrete-time tick counters for `after` / `every` transitions.

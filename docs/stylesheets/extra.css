@@ -48,20 +48,22 @@
 }
 
 /* --------------------------------------------------------------------------
-   2. Full-Width Edge-to-Edge Grid Layout
+   2. Grid Layout (Full-Width on Desktop, Safe Padding on Mobile)
    -------------------------------------------------------------------------- */
-.md-grid {
-    max-width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-}
+@media screen and (min-width: 76.25em) {
+    .md-grid {
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
 
-.md-main__inner {
-    margin-top: 0 !important;
+    .md-main__inner {
+        margin-top: 0 !important;
+    }
 }
 
 /* --------------------------------------------------------------------------
-   3. Top Navigation Header (Deep Slate with Transparent Vector Logo)
+   3. Top Navigation Header (Deep Slate with Vector Logo)
    -------------------------------------------------------------------------- */
 .md-header {
     background-color: var(--fsmc-header-bg) !important;
@@ -89,7 +91,7 @@
     color: #ffffff !important;
 }
 
-/* Logo: Pure Transparent Vector Rendering (NO white bounding box) */
+/* Logo: Pure Transparent Vector Rendering */
 .md-header__button.md-logo {
     margin-right: 0.85rem;
     padding: 0 !important;
@@ -102,7 +104,7 @@
 
 .md-header__button.md-logo img,
 .md-header__button.md-logo svg {
-    height: 2.2rem;
+    height: 2.0rem;
     width: auto;
     display: block;
     filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
@@ -128,31 +130,54 @@
 }
 
 /* --------------------------------------------------------------------------
-   4. Left Sidebar Navigation (Accordion Stack of Chapters)
+   4. Left Sidebar Navigation
    -------------------------------------------------------------------------- */
-.md-sidebar--primary {
-    position: sticky;
-    top: 48px;
-    width: 18.5rem !important;
-    flex-shrink: 0;
-    background-color: var(--fsmc-sidebar-bg) !important;
-    border-right: 1px solid var(--fsmc-border) !important;
+
+/* Desktop-only Sidebar Layout */
+@media screen and (min-width: 76.25em) {
+    .md-sidebar--primary {
+        position: sticky;
+        top: 48px;
+        width: 18.5rem !important;
+        flex-shrink: 0;
+        background-color: var(--fsmc-sidebar-bg) !important;
+        border-right: 1px solid var(--fsmc-border) !important;
+    }
+
+    .md-sidebar--primary .md-sidebar__scrollwrap {
+        background-color: var(--fsmc-sidebar-bg) !important;
+        padding: 1.25rem 0.85rem !important;
+    }
+
+    /* Hide redundant root nav title and TOC label on desktop */
+    .md-sidebar--primary .md-nav--primary > .md-nav__title,
+    .md-sidebar--primary label.md-nav__link[for="__toc"],
+    .md-sidebar--primary .md-nav__item > label.md-nav__link[for="__toc"] {
+        display: none !important;
+    }
 }
 
-.md-sidebar--primary .md-sidebar__scrollwrap {
-    background-color: var(--fsmc-sidebar-bg) !important;
-    padding: 1.25rem 0.85rem !important;
+/* Mobile Drawer Responsive Layout */
+@media screen and (max-width: 76.1875em) {
+    .md-sidebar--primary {
+        background-color: var(--md-default-bg-color) !important;
+    }
+
+    .md-sidebar--primary .md-sidebar__scrollwrap {
+        padding: 0.75rem 0.5rem !important;
+        background-color: var(--md-default-bg-color) !important;
+    }
+
+    .md-sidebar--primary .md-nav--primary .md-nav__title {
+        color: var(--fsmc-text);
+        font-weight: 700;
+        border-bottom: 1px solid var(--fsmc-border);
+        padding: 0.75rem 1rem;
+    }
 }
 
-/* Hide redundant root nav title and TOC label so Overview appears only once */
-.md-sidebar--primary .md-nav--primary > .md-nav__title,
-.md-sidebar--primary label.md-nav__link[for="__toc"],
-.md-sidebar--primary .md-nav__item > label.md-nav__link[for="__toc"] {
-    display: none !important;
-}
-
-/* Reset and style container wrapper for chapters with subpages */
-.md-sidebar--primary .md-nav__container {
+/* Shared Chapter Navigation Styling */
+.md-nav__container {
     display: flex !important;
     align-items: center !important;
     justify-content: space-between !important;
@@ -165,18 +190,18 @@
     border: none !important;
 }
 
-.md-sidebar--primary .md-nav__container:hover {
+.md-nav__container:hover {
     background-color: rgba(2, 132, 199, 0.08) !important;
     color: var(--fsmc-primary) !important;
 }
 
-.md-sidebar--primary .md-nav__item--active > .md-nav__container {
+.md-nav__item--active > .md-nav__container {
     background-color: var(--fsmc-primary-light) !important;
     color: var(--fsmc-primary-dark) !important;
 }
 
 /* Text link inside container */
-.md-sidebar--primary .md-nav__container > a.md-nav__link {
+.md-nav__container > a.md-nav__link {
     flex: 1 1 auto !important;
     display: flex !important;
     align-items: center !important;
@@ -189,7 +214,7 @@
 }
 
 /* Expansion chevron label inside container */
-.md-sidebar--primary .md-nav__container > label.md-nav__link {
+.md-nav__container > label.md-nav__link {
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -201,12 +226,12 @@
     height: 100% !important;
 }
 
-.md-sidebar--primary .md-nav__container > label.md-nav__link:hover {
+.md-nav__container > label.md-nav__link:hover {
     color: var(--fsmc-primary) !important;
 }
 
 /* Expansion chevron icon centering & rotation */
-.md-sidebar--primary .md-nav__icon.md-icon {
+.md-nav__icon.md-icon {
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -219,18 +244,18 @@
     transition: transform 0.2s ease !important;
 }
 
-.md-sidebar--primary .md-nav__item--active > .md-nav__container > label.md-nav__link .md-icon {
+.md-nav__item--active > .md-nav__container > label.md-nav__link .md-icon {
     transform: rotate(90deg);
 }
 
-.md-sidebar--primary .md-nav__icon.md-icon svg {
+.md-nav__icon.md-icon svg {
     display: block;
     height: 0.95rem;
     width: 0.95rem;
 }
 
 /* Standalone Top-Level Chapter Links (e.g., Overview, Playground) */
-.md-sidebar--primary .md-nav > .md-nav__list > .md-nav__item > a.md-nav__link {
+.md-nav > .md-nav__list > .md-nav__item > a.md-nav__link {
     display: flex !important;
     align-items: center !important;
     font-size: 0.88rem !important;
@@ -242,21 +267,19 @@
     transition: all 0.15s ease;
 }
 
-.md-sidebar--primary .md-nav > .md-nav__list > .md-nav__item > a.md-nav__link:hover {
+.md-nav > .md-nav__list > .md-nav__item > a.md-nav__link:hover {
     color: var(--fsmc-primary) !important;
     background-color: rgba(2, 132, 199, 0.08);
 }
 
-.md-sidebar--primary .md-nav > .md-nav__list > .md-nav__item--active > a.md-nav__link {
+.md-nav > .md-nav__list > .md-nav__item--active > a.md-nav__link {
     color: var(--fsmc-primary-dark) !important;
     font-weight: 700 !important;
     background-color: var(--fsmc-primary-light) !important;
 }
 
-
-
 /* Subpages Container Under Expanded Chapter */
-.md-sidebar--primary .md-nav__list .md-nav__list {
+.md-nav__list .md-nav__list {
     border-left: 2px solid var(--fsmc-border);
     margin-left: 0.85rem;
     padding-left: 0.5rem;
@@ -265,7 +288,7 @@
 }
 
 /* Subpage Links */
-.md-sidebar--primary .md-nav__list .md-nav__list .md-nav__link {
+.md-nav__list .md-nav__list .md-nav__link {
     font-size: 0.83rem !important;
     font-weight: 400 !important;
     color: var(--fsmc-text-secondary) !important;
@@ -275,13 +298,13 @@
     transition: all 0.15s ease;
 }
 
-.md-sidebar--primary .md-nav__list .md-nav__list .md-nav__link:hover {
+.md-nav__list .md-nav__list .md-nav__link:hover {
     color: var(--fsmc-primary) !important;
     background-color: rgba(2, 132, 199, 0.08);
 }
 
 /* Active Subpage Highlight */
-.md-sidebar--primary .md-nav__list .md-nav__list .md-nav__item--active > .md-nav__link {
+.md-nav__list .md-nav__list .md-nav__item--active > .md-nav__link {
     color: var(--fsmc-primary-dark) !important;
     font-weight: 600 !important;
     background-color: var(--fsmc-primary-hover) !important;
@@ -309,59 +332,131 @@
 }
 
 /* --------------------------------------------------------------------------
-   6. Main Content Area & Typography
+   6. Main Content Area & Responsive Typography
    -------------------------------------------------------------------------- */
 .md-content {
     background-color: var(--md-default-bg-color);
-    padding: 1.8rem 3rem 4rem !important;
-    max-width: 64rem;
+    padding: 1.4rem 2.2rem 3rem !important;
+    max-width: 60rem;
+    box-sizing: border-box;
+}
+
+@media screen and (max-width: 60em) {
+    .md-content {
+        padding: 1rem 1rem 2.5rem !important;
+        max-width: 100% !important;
+    }
+}
+
+@media screen and (max-width: 40em) {
+    .md-content {
+        padding: 0.85rem 0.75rem 2rem !important;
+    }
 }
 
 .md-typeset {
     font-family: var(--md-text-font-family, "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
-    font-size: 0.89rem;
-    line-height: 1.74;
+    font-size: 0.84rem;
+    line-height: 1.62;
     color: var(--fsmc-text);
+    word-break: break-word;
 }
 
 .md-typeset h1 {
-    font-size: 1.85rem;
+    font-size: 1.55rem;
     font-weight: 700;
     color: var(--fsmc-text);
     letter-spacing: -0.02em;
     border-bottom: 2px solid var(--fsmc-border);
-    padding-bottom: 0.45rem;
-    margin-bottom: 1.25rem;
+    padding-bottom: 0.35rem;
+    margin-bottom: 1rem;
 }
 
 .md-typeset h2 {
-    font-size: 1.35rem;
+    font-size: 1.18rem;
     font-weight: 600;
     color: var(--fsmc-text);
     letter-spacing: -0.01em;
     border-bottom: 1px solid var(--fsmc-border);
-    padding-bottom: 0.35rem;
-    margin-top: 2.2rem;
-    margin-bottom: 0.85rem;
+    padding-bottom: 0.25rem;
+    margin-top: 1.6rem;
+    margin-bottom: 0.65rem;
 }
 
 .md-typeset h3 {
-    font-size: 1.12rem;
+    font-size: 1.00rem;
     font-weight: 600;
     color: var(--fsmc-text);
-    margin-top: 1.6rem;
-    margin-bottom: 0.6rem;
+    margin-top: 1.25rem;
+    margin-bottom: 0.45rem;
+}
+
+.md-typeset h4 {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--fsmc-text);
+    margin-top: 1rem;
+    margin-bottom: 0.35rem;
+}
+
+@media screen and (max-width: 40em) {
+    .md-typeset h1 {
+        font-size: 1.30rem;
+    }
+    .md-typeset h2 {
+        font-size: 1.08rem;
+    }
+    .md-typeset h3 {
+        font-size: 0.95rem;
+    }
+}
+
+/* List Styling & Nested Indentation */
+.md-typeset ul, 
+.md-typeset ol {
+    margin-top: 0.35rem;
+    margin-bottom: 0.55rem;
+    padding-left: 1.5rem;
+}
+
+.md-typeset li {
+    margin-bottom: 0.25rem;
+}
+
+.md-typeset li > ul, 
+.md-typeset li > ol {
+    margin-top: 0.25rem;
+    margin-bottom: 0.25rem;
+    padding-left: 1.5rem;
+}
+
+.md-typeset ul > li > ul {
+    list-style-type: circle;
+}
+
+.md-typeset ul > li > ul > li > ul {
+    list-style-type: square;
+}
+
+.md-typeset ol > li > ul {
+    list-style-type: disc;
+}
+
+.md-typeset ol > li > ul > li > ul {
+    list-style-type: circle;
 }
 
 /* Inline Code Snippets */
 .md-typeset :not(pre) > code {
+
     background-color: rgba(2, 132, 199, 0.08);
     color: var(--fsmc-primary-dark);
     border: 1px solid rgba(2, 132, 199, 0.2);
     border-radius: 4px;
-    padding: 0.12em 0.38em;
-    font-size: 0.85em;
+    padding: 0.10em 0.35em;
+    font-size: 0.83em;
     font-family: var(--md-code-font-family, "JetBrains Mono", monospace);
+    word-break: break-all;
 }
 
 [data-md-color-scheme="slate"] .md-typeset :not(pre) > code {
@@ -370,33 +465,58 @@
     border: 1px solid rgba(56, 189, 248, 0.25);
 }
 
-/* Code Blocks */
+/* Code Blocks & Highlights (Sleek, Compact Scale, Touch Scroll) */
 .md-typeset pre {
-    border-radius: 8px;
+    border-radius: 6px;
     border: 1px solid var(--fsmc-border);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    margin: 0.85rem 0;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.md-typeset pre > code {
+    font-size: 0.78rem !important;
+    line-height: 1.44 !important;
+    padding: 0.70rem 0.95rem !important;
+    font-family: var(--md-code-font-family, "JetBrains Mono", monospace) !important;
+}
+
+.md-typeset .highlighttable {
+    margin: 0.85rem 0;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 /* Multi-Format Tabbed Sets (=== "Tab") */
 .md-typeset .tabbed-set {
-    border-radius: 8px;
+    border-radius: 6px;
     border: 1px solid var(--fsmc-border);
     overflow: hidden;
-    margin: 1.5rem 0;
+    margin: 1.1rem 0;
+    max-width: 100%;
 }
 
 .md-typeset .tabbed-labels {
     background-color: var(--fsmc-sidebar-bg);
     border-bottom: 1px solid var(--fsmc-border);
+    display: flex;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
 }
 
 .md-typeset .tabbed-labels > label {
-    font-size: 0.82rem;
+    font-size: 0.76rem;
     font-weight: 600;
-    padding: 0.5rem 1.1rem;
+    padding: 0.38rem 0.90rem;
     color: var(--fsmc-text-muted);
     border-bottom: 2px solid transparent;
     transition: all 0.15s ease;
+    flex-shrink: 0;
 }
 
 .md-typeset .tabbed-labels > label:hover {
@@ -409,13 +529,27 @@
     background-color: var(--md-default-bg-color);
 }
 
-/* Tables */
+.md-typeset .tabbed-content {
+    padding: 0.5rem !important;
+    overflow-x: auto;
+}
+
+.md-typeset .tabbed-content pre {
+    margin: 0 !important;
+}
+
+/* Tables (Compact with Responsive Touch Scroll) */
 .md-typeset table:not([class]) {
-    font-size: 0.85rem;
-    border-radius: 6px;
+    font-size: 0.80rem;
+    border-radius: 5px;
     border: 1px solid var(--fsmc-border);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
-    margin: 1.35rem 0;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    margin: 1.1rem 0;
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-collapse: collapse;
 }
 
 .md-typeset table:not([class]) th {
@@ -423,21 +557,40 @@
     color: var(--fsmc-text);
     font-weight: 600;
     border-bottom: 2px solid var(--fsmc-border);
-    padding: 0.65rem 0.95rem;
+    padding: 0.45rem 0.75rem;
+    white-space: nowrap;
 }
 
 .md-typeset table:not([class]) td {
-    padding: 0.6rem 0.95rem;
+    padding: 0.40rem 0.75rem;
     border-bottom: 1px solid var(--fsmc-border-subtle);
 }
 
 /* Admonitions (Callout Cards) */
 .md-typeset .admonition {
-    border-radius: 8px;
+    border-radius: 6px;
     border-left-width: 4px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-    margin: 1.35rem 0;
-    font-size: 0.87rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    margin: 1.0rem 0;
+    font-size: 0.82rem;
+    padding: 0.55rem 0.85rem;
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+/* Mermaid Diagrams Constrained Scale */
+.md-typeset .mermaid {
+    margin: 1.2rem 0;
+    text-align: center;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.md-typeset .mermaid svg {
+    max-height: 380px !important;
+    max-width: 100% !important;
+    height: auto;
 }
 
 /* Keyboard Keys (<kbd>) */
@@ -446,33 +599,43 @@ kbd {
     border: 1px solid var(--fsmc-border);
     border-bottom: 2px solid #cbd5e1;
     border-radius: 4px;
-    padding: 0.15em 0.4em;
-    font-size: 0.78em;
+    padding: 0.12em 0.35em;
+    font-size: 0.75em;
     font-family: inherit;
     box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
 }
 
 /* Right-Hand Table of Contents (TOC) */
-.md-sidebar--secondary {
-    padding-top: 1.25rem;
-}
+@media screen and (min-width: 60em) {
+    .md-sidebar--secondary {
+        padding-top: 1.25rem;
+    }
 
-.md-sidebar--secondary .md-nav__link--active {
-    color: var(--fsmc-primary) !important;
-    font-weight: 600;
-    border-left: 2px solid var(--fsmc-primary);
-    padding-left: 0.5rem;
+    .md-sidebar--secondary .md-nav__link--active {
+        color: var(--fsmc-primary) !important;
+        font-weight: 600;
+        border-left: 2px solid var(--fsmc-primary);
+        padding-left: 0.5rem;
+    }
 }
 
 /* Interactive Playground Frame */
 .playground-frame-container {
     width: 100%;
     height: 85vh;
+    min-height: 520px;
     border: 1px solid var(--fsmc-border);
     border-radius: 8px;
     overflow: hidden;
     margin-top: 1rem;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+@media screen and (max-width: 60em) {
+    .playground-frame-container {
+        height: 75vh;
+        min-height: 440px;
+    }
 }
 
 .playground-frame-container iframe {

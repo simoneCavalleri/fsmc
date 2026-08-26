@@ -267,20 +267,56 @@ select:hover, select:focus {
 
 /* Responsive Handling */
 @media (max-width: 900px) {
+  html, body {
+    height: auto;
+    min-height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
   .workspace {
     flex-direction: column;
-    overflow-y: auto;
+    overflow: visible;
     height: auto;
+    padding: 8px;
+    gap: 8px;
   }
   .col-panel {
-    min-height: 400px;
+    min-height: 380px;
     height: auto;
-    margin-bottom: 8px;
+    flex: none !important;
+    width: 100% !important;
+    margin-bottom: 0;
   }
   .resizer-v {
-    display: none;
+    display: none !important;
+  }
+  #panelEditor {
+    min-height: 360px;
+  }
+  #panelVisual {
+    min-height: 420px;
+  }
+  #panelRight {
+    min-height: auto;
+    gap: 8px;
+    flex: none !important;
+    width: 100% !important;
+  }
+  #panelCpp {
+    min-height: 260px;
+    height: 320px;
+    flex: none !important;
+  }
+  #panelSim {
+    min-height: 300px;
+    height: auto;
+    flex: none !important;
+  }
+  #resizerSplitCol {
+    display: none !important;
   }
 }
+
 
 /* Splitter Gutters */
 .resizer-v {
@@ -832,23 +868,19 @@ pre.code-preview {
 
 @media (max-width: 820px) {
   header {
-    justify-content: center;
     padding: 8px 10px;
   }
   .logo-area {
     width: 100%;
-    justify-content: center;
     margin-bottom: 2px;
   }
   .nav-controls {
     width: 100%;
-    justify-content: center;
-    gap: 5px;
+    gap: 6px;
   }
   .control-group {
     flex: 1 1 auto;
-    min-width: 100px;
-    justify-content: center;
+    min-width: 110px;
   }
   .control-label {
     display: none;
@@ -859,20 +891,72 @@ pre.code-preview {
   }
 }
 
-@media (max-width: 700px) {
-  html, body {
-    overflow: auto;
+@media (max-width: 600px) {
+  header {
+    padding: 8px;
+    gap: 6px;
   }
-  .workspace {
-    flex-direction: column;
-    overflow: visible;
+  .logo-area {
+    width: 100%;
   }
-  .col-panel {
-    min-height: 400px;
-    flex: none !important;
-    width: 100% !important;
+  .logo-title {
+    font-size: 0.88rem;
   }
-  .resizer-v {
-    display: none;
+  .nav-controls {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .control-group {
+    width: 100%;
+    min-width: 0;
+  }
+  .control-group:first-child {
+    grid-column: span 2;
+  }
+  select {
+    width: 100%;
+    max-width: 100%;
+    font-size: 0.75rem;
+  }
+  #optBtn {
+    grid-column: span 1;
+    font-size: 0.74rem;
+    padding: 5px 6px;
+    text-align: center;
+    justify-content: center;
+  }
+  #downloadBtn {
+    grid-column: span 1;
+    font-size: 0.74rem;
+    padding: 5px 6px;
+    text-align: center;
+    justify-content: center;
+  }
+  #copyBtn {
+    grid-column: span 2;
+    font-size: 0.76rem;
+    padding: 6px 8px;
+    text-align: center;
+    justify-content: center;
+  }
+  .panel-header {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 34px;
+    padding: 4px 8px;
+    gap: 4px;
+  }
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .btn-event {
+    padding: 5px 9px;
+    font-size: 0.76rem;
+    min-height: 30px;
   }
 }
+

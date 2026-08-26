@@ -55,12 +55,13 @@ Running --> Idle : StopEvent / TurnOffAction
 ```
 
 ### Mermaid (`.mmd`)
-```mermaid
+```mmd
 stateDiagram-v2
     [*] --> Idle
     Idle --> Running : StartEvent [HasPowerGuard] / TurnOnAction
     Running --> Idle : StopEvent / TurnOffAction
 ```
+
 
 ### Generated C++ Row
 ```cpp
@@ -107,7 +108,7 @@ InFlight --> Landing : DeorbitCmd
 ```
 
 ### Mermaid (`.mmd`)
-```mermaid
+```mmd
 stateDiagram-v2
     [*] --> InFlight
 
@@ -119,6 +120,7 @@ stateDiagram-v2
 
     InFlight --> Landing : DeorbitCmd
 ```
+
 
 ---
 
@@ -149,7 +151,7 @@ Orbiting --> Standby : SleepCmd
 ```
 
 ### Mermaid (`.mmd`)
-```mermaid
+```mmd
 stateDiagram-v2
     [*] --> Orbiting
 
@@ -157,6 +159,7 @@ stateDiagram-v2
     Orbiting : KeepAlive / ResetWatchdogAction
     Orbiting --> Standby : SleepCmd
 ```
+
 
 ### Generated C++ Row
 ```cpp
@@ -200,7 +203,7 @@ AuthChoice --> Locked : [NoClearanceGuard] / LockoutAction
 ```
 
 ### Mermaid (`.mmd`)
-```mermaid
+```mmd
 stateDiagram-v2
     [*] --> Standby
 
@@ -290,7 +293,7 @@ Ready --> InFlight : StartMissionCmd
 ```
 
 ### Mermaid (`.mmd`)
-```mermaid
+```mmd
 stateDiagram-v2
     [*] --> Initializing
 
@@ -300,6 +303,7 @@ stateDiagram-v2
     Initializing --> Ready : BootComplete
     Ready --> InFlight : StartMissionCmd
 ```
+
 
 ### Graphviz DOT (`.dot`, `.gv`)
 ```dot
@@ -505,11 +509,12 @@ digraph MissionFSM {
 `fsmc` categorizes statechart formats into two distinct frontend classes:
 
 1. **Formal Metamodels (`include/fsm/frontend/formal/`)**:
-   - **Cameo / MagicDraw (OMG XMI 2.x)**, **OMG SysML v2**, and **W3C SCXML**.
-   - Strict symbol and type declarations, mathematical semantics, physical units. Direct compilation to C++ without warnings.
+    - **Cameo / MagicDraw (OMG XMI 2.x)**, **OMG SysML v2**, and **W3C SCXML**.
+    - Strict symbol and type declarations, mathematical semantics, physical units. Direct compilation to C++ without warnings.
 2. **Visual Diagrams (`include/fsm/frontend/diagram/`)**:
-   - **PlantUML**, **Mermaid `stateDiagram-v2`**, **Graphviz DOT**, and **XState JSON**.
-   - Descriptive sketch notations. Code generation requires `--allow-diagram-codegen` and emits `warning[W0301]`.
+    - **PlantUML**, **Mermaid `stateDiagram-v2`**, **Graphviz DOT**, and **XState JSON**.
+    - Descriptive sketch notations. Code generation requires `--allow-diagram-codegen` and emits `warning[W0301]`.
+
 
 ### B. Feature Matrix (Native vs Extended Syntax)
 
@@ -537,8 +542,10 @@ When a diagram format lacks a native keyword for advanced UML 2.5 constructs (su
 
 1. **100% Renderer-Safe (Non-Intrusive)**:  
    Extensions never break official diagram renderers (e.g. PlantUML Java JAR, Mermaid.js CLI, Graphviz `dot`). The extension syntax renders cleanly as regular state text, attributes, or stereotypes without visual or grammatical errors.
+
 2. **Deterministic Parsing (Zero Heuristics / Guessing)**:  
    The parser evaluates input strictly through formal grammar and token matching. It never "guesses" or makes assumptions about unspecified behaviors.
+
 3. **Graceful Zero-Overhead Degradation**:  
    If a feature is omitted in a diagram, the compiled C++ model completely excludes data structures and branching logic for that feature (0 bytes memory footprint, 0 CPU overhead).
 
@@ -552,15 +559,18 @@ For visual diagram formats (PlantUML, Mermaid, Graphviz DOT), `fsmc` supports lo
   ```plantuml
   ' @fsm:state kind=Composite initial=Idle do=poll_sensor req="REQ-01"
   ```
+
 - **Extended Variables with Physical Units**:
   ```plantuml
   ' @fsm:var battery_level : float = 100.0 [percent]
   ' @fsm:var velocity : float = 0.0 [m/s]
   ```
+
 - **Typed Signals & Payloads**:
   ```plantuml
   ' @fsm:signal name=ConnectCmd type="const ConnectionRequest&" validator="req.port > 0"
   ```
+
 - **Formal Verification Properties**:
   ```plantuml
   ' @fsm:property name=SafeLanding kind=Safety formula="G (LowBattery -> F SafeLand)" req="REQ-SAFE-09"
@@ -581,6 +591,7 @@ For visual diagram formats (PlantUML, Mermaid, Graphviz DOT), `fsmc` supports lo
 ### D. Semantic Validation Pipeline (`fsm_validator`)
 
 After parsing any input format, `fsmc` runs an exhaustive static analysis pass verifying:
+
 - **Reachability Analysis**: Identifies states that cannot be transitioned to from the initial state (`[WARNING] State unreachable from initial state: 'StateName'`).
 - **Target Integrity**: Verifies that all transition destinations exist in the model.
 - **Initial State Determinism**: Ensures every composite region has a well-defined initial state (inferred from first state if omitted).

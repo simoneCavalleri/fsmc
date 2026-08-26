@@ -33,3 +33,9 @@ playground/fsmc.wasm
 # Scratch directory
 scratch/
 
+# Generated documentation
+site/
+.cache/
+
+
+

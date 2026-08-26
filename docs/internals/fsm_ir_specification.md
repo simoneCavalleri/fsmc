@@ -177,12 +177,17 @@ struct ActionAssignment {
 To guarantee order-invariant, reproducible builds and lossless round-tripping across diagram formats, `fsmc` computes deterministic 64-bit FNV-1a hashes:
 
 ### State Node Identifier
-$$\text{StateId} = \text{FNV-1a}(\text{FQN})$$
+```
+StateId = FNV-1a(FQN)
+```
 *Example*: For `Operating.Running.Manual`, `StateId` is `"id_4b8f1a23c09e88d1"`.
 
 ### Transition Edge Identifier
-$$\text{TransitionId} = \text{FNV-1a}(\text{SourceFQN} \to \text{TargetFQN} : \text{Trigger} [\text{GuardAST}])$$
+```
+TransitionId = FNV-1a(SourceFQN -> TargetFQN : Trigger [GuardAST])
+```
 *Example*: For `Standby->Navigating:StartMission[HasTelemetry]`, `TransitionId` is `"id_a912cf304b7891e2"`.
+
 
 ---
 
@@ -313,8 +318,9 @@ Standby --> Navigating : StartMission [HasTelemetry] / ArmNav
 
 ## 5. Lossless Round-Trip Guarantee
 
-Because all 7 frontend parsers populate `FsmIr` directly and all diagram serializers emit from `FsmIr`, lossless roundtripping is guaranteed:
-
-$$\text{SysML v2} \xrightarrow{\text{parse}} \text{FsmIr} \xrightarrow{\text{serialize}} \text{PlantUML} \xrightarrow{\text{parse}} \text{FsmIr} \xrightarrow{\text{serialize}} \text{Mermaid}$$
+```
+SysML v2 --(parse)--> FsmIr --(serialize)--> PlantUML --(parse)--> FsmIr --(serialize)--> Mermaid
+```
 
 All structural hierarchies, orthogonal regions, guard boolean trees, formal verification properties, EFSM variables, and traceability requirements are preserved without loss of semantic precision.
+

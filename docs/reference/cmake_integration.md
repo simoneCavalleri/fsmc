@@ -7,6 +7,7 @@
 ## 1. Importing `fsmc` into CMake
 
 When `fsmc` is imported via `FetchContent` or `find_package(fsmc CONFIG REQUIRED)`, it defines:
+
 - **`fsmc_runtime`**: An `INTERFACE` library containing runtime C++ header search paths and compile features (`cxx_std_17` or `cxx_std_20`).
 - **`fsmc::fsmc`**: The host executable target for the compiler driver.
 - **`fsmc::fsm-opt`**: The host executable target for the formal IR optimizer.

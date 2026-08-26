@@ -67,6 +67,7 @@ fsmc -i satellite.sysml -o satellite_fsm.hpp --std 20 --namespace space --name S
 ## 3. Supported Directives and Extensions
 
 SysML v2 comments can contain compiler directives:
+
 - `@fsm:req "<id>"`: Links state or transition to a system requirement for RTM reporting.
 - `@fsm:property <name> = "<LTL/CTL formula>"`: Defines a formal verification property.
 - `@fsm:deferred <EventName>`: Marks an event as deferred in this state.

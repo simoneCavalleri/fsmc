@@ -31,9 +31,10 @@ using SafeToLaunch = fsm::and_<
 ```
 
 During compilation, the `GuardSimplificationPass` analyzes and reduces composite boolean guard trees:
-- Double negation elimination: $\neg(\neg A) \implies A$
-- Neutral elements: $A \land \text{true} \implies A$, $A \lor \text{false} \implies A$
-- Dominant elements: $A \land \text{false} \implies \text{false}$, $A \lor \text{true} \implies \text{true}$
+
+- Double negation elimination: `not(not A) => A`
+- Neutral elements: `A and true => A`, `A or false => A`
+- Dominant elements: `A and false => false`, `A or true => true`
 
 ---
 
@@ -65,4 +66,5 @@ struct Action_increment_waypoint {
 
 When models contain intermediate decision points (`<<choice>>` or `<<junction>>`), the middle-end optimizer inlines the decision trees directly into flat composite transitions.
 
-For example, a transition path `StateA -> ChoiceNode -> StateB` with incoming guard $G_1$ and outgoing guard $G_2$ is transformed into a direct edge `StateA -> StateB` guarded by `fsm::and_<G1, G2>` and executing the merged actions $A_1 \circ A_2$. This eliminates intermediate state allocations and enables sub-nanosecond branch resolution.
+For example, a transition path `StateA -> ChoiceNode -> StateB` with incoming guard `G1` and outgoing guard `G2` is transformed into a direct edge `StateA -> StateB` guarded by `fsm::and_<G1, G2>` and executing the combined actions `A1` and `A2`. This eliminates intermediate state allocations and enables direct branch resolution.
+

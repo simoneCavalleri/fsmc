@@ -54,7 +54,7 @@ inline void print_help(const char* prog_name) {
         << "Input & Output Options:\n"
         << "  -i, --input <file>          Input model file (.sysml, .puml, .mmd, .xmi, .scxml, .json, .dot)\n"
         << "  -o, --output <file>         Output generated code or exported diagram file (default: stdout)\n"
-        << "  -t, --target <lang>         Target code generator backend: 'cpp' (default), 'c', 'rust', 'zig', 'ts'\n"
+        << "  -t, --target <lang>         Target code generator backend: 'cpp' (default)\n"
         << "  -n, --name <name>           Generated FSM class name (default: inferred from filename or 'MyFSM')\n"
         << "  --namespace, --package <ns> Generated namespace/package/module name (default: 'fsm_generated')\n"
         << "  --context <type>            Hardware/Software context type name (default: 'no_context')\n"
@@ -116,6 +116,12 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             opts.output_file = argv[++idx];
         } else if ((arg == "-t" || arg == "--target" || arg == "--lang") && idx + 1 < argc) {
             opts.target_lang = argv[++idx];
+            if (opts.target_lang != "cpp" && opts.target_lang != "c++") {
+                opts.is_valid = false;
+                opts.error_message =
+                    "Unsupported target language: '" + opts.target_lang + "' (currently supported: 'cpp')";
+                return opts;
+            }
         } else if ((arg == "-n" || arg == "--name") && idx + 1 < argc) {
             opts.fsm_name = argv[++idx];
         } else if ((arg == "--namespace" || arg == "--package") && idx + 1 < argc) {

@@ -1536,7 +1536,10 @@ const ViewportController = {
     let isDragging = false;
     let startX = 0;
     let startY = 0;
+    let initialTouchDist = 0;
+    let initialZoom = 1.0;
 
+    // Mouse Panning
     canvas.onmousedown = (e) => {
       if (e.target.closest('.node')) return;
       isDragging = true;
@@ -1558,6 +1561,45 @@ const ViewportController = {
         canvas.style.cursor = "grab";
       }
     };
+
+    // Touch Panning & Pinch Zoom
+    canvas.addEventListener("touchstart", (e) => {
+      if (e.target.closest('.node')) return;
+      if (e.touches.length === 1) {
+        isDragging = true;
+        startX = e.touches[0].clientX - ModelManager.currentModel.panX;
+        startY = e.touches[0].clientY - ModelManager.currentModel.panY;
+      } else if (e.touches.length === 2) {
+        isDragging = false;
+        initialTouchDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        initialZoom = ModelManager.currentModel.zoom;
+      }
+    }, { passive: true });
+
+    canvas.addEventListener("touchmove", (e) => {
+      if (isDragging && e.touches.length === 1) {
+        ModelManager.currentModel.panX = e.touches[0].clientX - startX;
+        ModelManager.currentModel.panY = e.touches[0].clientY - startY;
+        this.applyTransform();
+      } else if (e.touches.length === 2 && initialTouchDist > 0) {
+        const currentDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        const scale = currentDist / initialTouchDist;
+        ModelManager.currentModel.zoom = Math.max(0.2, Math.min(3.0, initialZoom * scale));
+        this.applyTransform();
+        document.getElementById("zoomLevelBadge").textContent = `${Math.round(ModelManager.currentModel.zoom * 100)}%`;
+      }
+    }, { passive: true });
+
+    canvas.addEventListener("touchend", () => {
+      isDragging = false;
+      initialTouchDist = 0;
+    }, { passive: true });
 
     canvas.onwheel = (e) => {
       e.preventDefault();

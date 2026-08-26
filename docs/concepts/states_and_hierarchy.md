@@ -66,5 +66,6 @@ If `Operational` was previously active in substate `Processing`, `ResumeCmd` res
 ## Orthogonal (Parallel) Regions
 
 Orthogonal regions allow a composite state to execute multiple concurrent statecharts simultaneously. In `fsmc`:
+
 - Regions are defined as independent sub-statecharts executing synchronously within the parent state.
 - Middle-end passes (`OrthogonalInterferencePass`) statically analyze transitions across orthogonal regions to verify that concurrent actions do not perform unsynchronized read/write conflicts on the same shared context variables.

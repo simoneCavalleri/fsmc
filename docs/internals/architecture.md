@@ -115,11 +115,11 @@ enum class FrontendKind : std::uint8_t {
 ```
 
 1. **`FrontendKind::Formal` (`include/fsm/frontend/formal/`)**:
-   - Backed by formal specifications where variables, types, units, and transitions have precise mathematical semantics.
-   - Code generation proceeds directly without heuristic warnings.
+    - Backed by formal specifications where variables, types, units, and transitions have precise mathematical semantics.
+    - Code generation proceeds directly without heuristic warnings.
 2. **`FrontendKind::Diagram` (`include/fsm/frontend/diagram/`)**:
-   - Visual sketching notations where state charts are descriptive. Types and payloads are inferred or supplemented via lossless `@fsm:` directives.
-   - Codegen requires explicit confirmation via `--allow-diagram-codegen` and emits warning `warning[W0301]: Untyped or inferred symbol in diagram source`.
+    - Visual sketching notations where state charts are descriptive. Types and payloads are inferred or supplemented via lossless `@fsm:` directives.
+    - Codegen requires explicit confirmation via `--allow-diagram-codegen` and emits warning `warning[W0301]: Untyped or inferred symbol in diagram source`.
 
 ---
 
@@ -139,21 +139,22 @@ public:
 
 ### Standard Passes
 1. **`HierarchyCanonicalizationPass`**:
-   - Computes deterministic FNV-1a identifiers for all states and transitions.
-   - Reconciles parent-child relationships and fully qualified names (`FQN`).
-   - Sorts nodes and transitions into canonical, reproducible order.
+    - Computes deterministic FNV-1a identifiers for all states and transitions.
+    - Reconciles parent-child relationships and fully qualified names (`FQN`).
+    - Sorts nodes and transitions into canonical, reproducible order.
 2. **`ChoiceCompletenessPass`**:
-   - Inspects UML 2.5 `<<choice>>` pseudostates.
-   - Detects missing unconditional fallback branches (`else`/`default`), preventing runtime state machine stalls.
-   - Flags conflicting duplicate guard conditions on choice branches.
+    - Inspects UML 2.5 `<<choice>>` pseudostates.
+    - Detects missing unconditional fallback branches (`else`/`default`), preventing runtime state machine stalls.
+    - Flags conflicting duplicate guard conditions on choice branches.
 3. **`TimedDeadlockPass`**:
-   - Analyzes all `TimeTrigger` transitions in the state hierarchy.
-   - Flags zero-duration timeouts (`after(0ms)`) which cause instantaneous livelocks.
-   - Detects racing timeouts originating from the same source state with identical or overlapping durations without explicit priority guards.
+    - Analyzes all `TimeTrigger` transitions in the state hierarchy.
+    - Flags zero-duration timeouts (`after(0ms)`) which cause instantaneous livelocks.
+    - Detects racing timeouts originating from the same source state with identical or overlapping durations without explicit priority guards.
 4. **`ModelSafetyVerifierPass`**:
-   - Performs formal graph reachability from the root initial state.
-   - Flags unreachable state islands (`W0201`).
-   - Detects deadlock / trap states (`W0202`) that possess incoming transitions but lack outgoing transitions.
+    - Performs formal graph reachability from the root initial state.
+    - Flags unreachable state islands (`W0201`).
+    - Detects deadlock / trap states (`W0202`) that possess incoming transitions but lack outgoing transitions.
+
 
 ---
 
@@ -174,22 +175,27 @@ warning[W0103]: Choice pseudostate 'ClearanceChoice' lacks an unconditional else
 
 ## 6. Bounded Dynamic Choice Node Flattening
 
-In UML 2.5, a choice pseudostate $C$ conditionally directs control from an incoming transition $T_{in}: S_{src} \xrightarrow{E} C$ to several outgoing branches $T_{out, i}: C \xrightarrow{[G_i] / A_i} S_{dst, i}$.
+In UML 2.5, a choice pseudostate `C` conditionally directs control from an incoming transition `Tin: Ssrc -> C` to several outgoing branches `Tout_i: C -> [Gi] / Ai -> Sdst_i`.
 
 ### Flattening Strategies & Cardinality Evaluation
 In `cpp_model_emitter.hpp`, the compiler evaluates the Cartesian product cardinality for each choice pseudostate:
 
-$$K = N_{in} \times N_{out}$$
+```
+K = Nin * Nout
+```
 
-where $N_{in}$ is the number of incoming transitions and $N_{out}$ is the number of outgoing choice branches.
+where `Nin` is the number of incoming transitions and `Nout` is the number of outgoing choice branches.
 
-1. **Small Cardinality ($K \le 16$) — Combinatorial Template Expansion**:
-   - Synthesizes direct atomic transitions:
-     $$\text{Transition}(S_{src}, E, S_{dst, i}) = \text{Guard}(G_{in} \land G_i) + \text{Action}(A_{in} \circ A_i)$$
-   - Advantage: Single-cycle atomic dispatch with zero intermediate states and $O(1)$ dispatch execution.
-2. **Large Cardinality ($K > 16$) — Direct Choice Node Routing**:
-   - Bypasses combinatorial multiplication by routing incoming transitions to the choice pseudostate and evaluating prioritized choice guards sequentially.
-   - Advantage: Prevents $O(N^2)$ compilation times, excessive template instantiation depth, and binary flash explosion in embedded environments.
+1. **Small Cardinality (K <= 16) — Combinatorial Template Expansion**:
+    - Synthesizes direct atomic transitions:
+      ```
+      Transition(Ssrc, E, Sdst_i) = Guard(Gin and Gi) + Action(Ain ; Ai)
+      ```
+
+    - Advantage: Single-cycle atomic dispatch with zero intermediate states and O(1) dispatch execution.
+2. **Large Cardinality (K > 16) — Direct Choice Node Routing**:
+    - Bypasses combinatorial multiplication by routing incoming transitions to the choice pseudostate and evaluating prioritized choice guards sequentially.
+    - Advantage: Prevents exponential compilation times, excessive template instantiation depth, and binary size growth in embedded environments.
 
 ---
 
@@ -198,20 +204,22 @@ where $N_{in}$ is the number of incoming transitions and $N_{out}$ is the number
 The C++ runtime engine (`include/fsm/runtime/cpp/`) is designed for mission-critical, hard real-time embedded environments:
 
 1. **Deterministic Ring Buffers & Overflow Policies**:
-   - `fsm::static_ring_buffer<T, Capacity, Policy>` provides fixed-capacity zero-heap event buffering with configurable overflow policies:
-     - `OverflowPolicy::DropOldest`: Overwrites oldest unconsumed event (telemetry/streaming mode).
-     - `OverflowPolicy::DropIncoming`: Discards new event on full queue (resilient backpressure).
-     - `OverflowPolicy::AssertOnOverflow`: Traps execution immediately (hard real-time safety critical).
-2. **Static Thread-Safe Wrapper**:
-   - `fsm::static_thread_safe_fsm<Table, Context, Capacity, Policy>` combines compile-time state machine folding with fixed-capacity static ring buffers, eliminating all `std::mutex` and heap usage in polling mode.
+    - `fsm::static_ring_buffer<T, Capacity, Policy>` provides fixed-capacity zero-heap event buffering with configurable overflow policies:
+        - `OverflowPolicy::DropOldest`: Overwrites oldest unconsumed event (telemetry/streaming mode).
+        - `OverflowPolicy::DropIncoming`: Discards new event on full queue (resilient backpressure).
+        - `OverflowPolicy::AssertOnOverflow`: Traps execution immediately (hard real-time safety critical).
+2. **Lock-Free SPSC Engine (`fsm::spsc_fsm`)**:
+    - `fsm::spsc_fsm<Table, Context, Capacity, InitialState>` combines compile-time state machine folding with fixed-capacity static ring buffers, providing wait-free O(1) ISR event production and lock-free seqlock context reading.
 3. **Synchronous Deterministic Timer Manager**:
-   - `fsm::deterministic_timer_manager<MaxTimers>` manages state machine timeout events via discrete `tick(delta_ms, callback)` invocations, perfectly matching hardware tick timers (SysTick) without background threads.
+    - `fsm::deterministic_timer_manager<MaxTimers>` manages state machine timeout events via discrete `tick(delta_ms, callback)` invocations, perfectly matching hardware tick timers (SysTick) without background threads.
+
 
 ---
 
 ## 8. Composite Guard AST & Recursive Parser
 
 To support complex boolean logic in model diagrams (e.g. `[PowerOk && (!Fault || Override)]`), `fsmc` incorporates an expression tokenizer and recursive-descent parser (`GuardExpressionParser`):
+
 - Generates a nested C++ type representation using variadic templates: `fsm::and_<PowerOk, fsm::or_<fsm::not_<Fault>, Override>>`.
 - Extracts unique atomic guard identifiers to generate forward-declared stubs only for leaf predicates.
 - Short-circuits evaluations at runtime with zero temporary objects.
@@ -221,10 +229,10 @@ To support complex boolean logic in model diagrams (e.g. `[PowerOk && (!Fault ||
 ## 9. HFSM Hierarchy & History State Resolution
 
 1. **Parent Transition Inheritance (Flattening)**:
-   - Outgoing transitions defined on parent macro-states are automatically propagated to all child sub-states during code generation, unless a child explicitly overrides the triggering event.
+    - Outgoing transitions defined on parent macro-states are automatically propagated to all child sub-states during code generation, unless a child explicitly overrides the triggering event.
 2. **Dynamic History Restoration**:
-   - For composite states targeted with shallow history `State[H]` or deep history `State[H*]`, the runtime tracks the last active child sub-state and dynamically restores it upon re-entry.
-   - If the macro-state has never been visited before, the machine defaults to the initial sub-state.
+    - For composite states targeted with shallow history `State[H]` or deep history `State[H*]`, the runtime tracks the last active child sub-state and dynamically restores it upon re-entry.
+    - If the macro-state has never been visited before, the machine defaults to the initial sub-state.
 
 ---
 
@@ -233,16 +241,17 @@ To support complex boolean logic in model diagrams (e.g. `[PowerOk && (!Fault ||
 `fsm::thread_safe_fsm` delivers high-throughput concurrent event handling while strictly preventing data races, deadlocks, and use-after-free conditions:
 
 1. **Dual Mutex Model**:
-   - `dispatch_mutex_`: Serializes state mutations and action execution.
-   - `queue_mutex_`: Protects the internal event FIFO queue independently from dispatch execution.
+    - `dispatch_mutex_`: Serializes state mutations and action execution.
+    - `queue_mutex_`: Protects the internal event FIFO queue independently from dispatch execution.
 2. **Snapshot-Based Notification Dispatch**:
-   - Transition information and observer callbacks are captured under `dispatch_mutex_` and invoked outside the lock, preventing deadlocks when observers self-post events.
-3. **Single-Consumer Polling Guard & $O(1)$ Queue**:
-   - Backed by `std::deque<event_handler>`, `process_one()` achieves deterministic $O(1)$ front popping.
-   - Guarded by atomic test-and-set (`is_polling_`), enforcing single-consumer sequential event consumption.
+    - Transition information and observer callbacks are captured under `dispatch_mutex_` and invoked outside the lock, preventing deadlocks when observers self-post events.
+3. **Single-Consumer Polling Guard & O(1) Queue**:
+    - Backed by `std::deque<event_handler>`, `process_one()` achieves deterministic O(1) front popping.
+    - Guarded by atomic test-and-set (`is_polling_`), enforcing single-consumer sequential event consumption.
 4. **Deterministic Lifecycle & Safe Shutdown**:
-   - Worker thread ID (`worker_thread_id_`) and stopping thread ID (`stopping_thread_id_`) are tracked via lock-free atomics.
-   - External event enqueueing is safely rejected during shutdown (`is_stopping_`), while cascading events generated by active actions are fully drained before destruction.
+    - Worker thread ID (`worker_thread_id_`) and stopping thread ID (`stopping_thread_id_`) are tracked via lock-free atomics.
+    - External event enqueueing is safely rejected during shutdown (`is_stopping_`), while cascading events generated by active actions are fully drained before destruction.
+
 
 ---
 
@@ -275,6 +284,7 @@ To support complex boolean logic in model diagrams (e.g. `[PowerOk && (!Fault ||
  │ • Header-only standalone library  │       │ • Kripke Structure (S, S0, R, L)  │
  │ • Lock-free SPSC / Ring Buffer    │       │ • Discrete Timed Automata clocks  │
  │ • Async Future / Polling Engine   │       │ • LTLSPEC / INVARSPEC / CTLSPEC   │
+ │ • Extensible for future targets   │       │                                   │
  └───────────────────────────────────┘       └───────────────────────────────────┘
 ```
 
@@ -286,5 +296,6 @@ To support complex boolean logic in model diagrams (e.g. `[PowerOk && (!Fault ||
 
 2. **Formal Verification Sink (`nuXmv / SMV`)**:
    - **Role**: Serves as a pure, standard **Symbolic Model Checking Target** for mission-critical and safety-critical verification (DO-178C, ISO 26262, ECSS).
-   - **Mathematical Formalism**: Emits a standard finite Kripke structure $\mathcal{M} = \langle S, S_0, \to, L \rangle$ with explicit transition relations (`ASSIGN next(state) := case ... esac;`), finite-domain variables (`0..100`, `boolean`), discrete clock counters (`timer_<state> : 0..N`), and temporal logic goals (`LTLSPEC`, `INVARSPEC`).
+   - **Mathematical Formalism**: Emits a standard finite Kripke structure `M = <S, S0, R, L>` with explicit transition relations (`ASSIGN next(state) := case ... esac;`), finite-domain variables (`0..100`, `boolean`), discrete clock counters (`timer_<state> : 0..N`), and temporal logic goals (`LTLSPEC`, `INVARSPEC`).
    - **Design Philosophy**: SMV is kept clean and canonical—free of unnatural pseudo-directives—so that emitted files are immediately verifiable by external tools (`nuxmv`, `NuSMV`, `MathSAT`) without preprocessing.
+

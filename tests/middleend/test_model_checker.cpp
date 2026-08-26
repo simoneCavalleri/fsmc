@@ -4,6 +4,7 @@
 
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
+#include "fsm/middleend/efsm_interval_analysis.hpp"
 #include "fsm/middleend/fsm_validator.hpp"
 
 using namespace fsm::codegen;
@@ -227,6 +228,51 @@ TEST(ModelCheckerTest, DuplicateTimerTransitions) {
         }
     }
     EXPECT_TRUE(found_timer_warning);
+}
+
+/**
+ * @brief Test Intent: Verify EFSM Interval Analysis detects unsatisfiable guard conditions across data paths.
+ *
+ * Scenario:
+ * - Define EFSM with batteryLevel initialized to 20.
+ * - Transition Idle -> Active with assignment batteryLevel = batteryLevel + 10 (range [30, 30]).
+ * - Transition Active -> Turbo with unsatisfiable guard 'batteryLevel > 100'.
+ * - Verify EFSMIntervalAnalyzer flags the dead branch with W_EFSM_UNSATISFIABLE_GUARD warning.
+ */
+TEST(ModelCheckerTest, EFSMDataPathIntervalAnalysis) {
+    FsmIr model;
+    model.name = "PowerFSM";
+    model.initial_state = "Idle";
+
+    model.add_state("Idle");
+    model.add_state("Active");
+    model.add_state("Turbo");
+
+    VariableDefinition var;
+    var.name = "batteryLevel";
+    var.type = "float";
+    var.initial_value = "20.0";
+    model.add_variable(var);
+
+    TransitionEdge t1("t1", "Idle", "Active", SignalTrigger("Start"));
+    ActionSignature act_sig("Charge");
+    act_sig.assignments.push_back(ActionAssignment("batteryLevel", "batteryLevel + 10"));
+    t1.action_sig = act_sig;
+    model.add_transition(t1);
+
+    TransitionEdge t2("t2", "Active", "Turbo", SignalTrigger("Boost"));
+    t2.guard = "batteryLevel > 100.0";
+    model.add_transition(t2);
+
+    DiagnosticEngine diag;
+    EFSMIntervalAnalyzer analyzer(model);
+    auto findings = analyzer.analyze(diag);
+
+    ASSERT_EQ(findings.size(), 1u);
+    EXPECT_EQ(findings[0].variable_name, "batteryLevel");
+    EXPECT_EQ(findings[0].source_state, "Active");
+    EXPECT_EQ(findings[0].target_state, "Turbo");
+    EXPECT_TRUE(diag.has_warnings());
 }
 
 }  // namespace

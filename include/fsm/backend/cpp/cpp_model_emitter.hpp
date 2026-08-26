@@ -230,22 +230,33 @@ class CppModelEmitter {
 
             for (const auto& guard_item : model.guards) {
                 out << "struct " << guard_item.name << " {\n";
+                const bool has_expr = guard_item.cpp_expression.has_value() && !guard_item.cpp_expression->empty();
                 if (options.cpp_standard == CppStandard::Cpp20) {
                     out << "    [[nodiscard]] constexpr bool operator()(const auto& /*evt*/, const auto& /*state*/, "
-                           "const auto& /*ctx*/) const noexcept {\n";
-                    out << "        // TODO: Implement guard logic for " << guard_item.name << "\n";
-                    out << "        return true;\n";
+                           "const auto& "
+                        << (has_expr ? "ctx" : "/*ctx*/") << ") const noexcept {\n";
+                    if (has_expr) {
+                        out << "        return " << *guard_item.cpp_expression << ";\n";
+                    } else {
+                        out << "        // TODO: Implement guard logic for " << guard_item.name << "\n";
+                        out << "        return true;\n";
+                    }
                     out << "    }\n";
                 } else {
                     out << "    template <typename Event, typename State, typename Context>\n";
-                    out << "    bool operator()(const Event& /*evt*/, const State& /*state*/, const Context& /*ctx*/) "
-                           "const {\n";
-                    out << "        // TODO: Implement guard logic for " << guard_item.name << "\n";
-                    out << "        return true;\n";
+                    out << "    bool operator()(const Event& /*evt*/, const State& /*state*/, const Context& "
+                        << (has_expr ? "ctx" : "/*ctx*/") << ") const {\n";
+                    if (has_expr) {
+                        out << "        return " << *guard_item.cpp_expression << ";\n";
+                    } else {
+                        out << "        // TODO: Implement guard logic for " << guard_item.name << "\n";
+                        out << "        return true;\n";
+                    }
                     out << "    }\n";
                 }
                 out << "};\n\n";
             }
+
         } else {
             out << "// Forward declaration of custom Guards\n";
             for (const auto& guard_item : model.guards) {
@@ -639,6 +650,8 @@ class CppModelEmitter {
         if (options.thread_safe) {
             out << "using ThreadSafe" << model.name << " = fsm::thread_safe_fsm<" << table_type_name << ", " << ctx_type
                 << ", " << init_state << ">;\n";
+            out << "using Spsc" << model.name << " = fsm::spsc_fsm<" << table_type_name << ", " << ctx_type << ", 64, "
+                << init_state << ">;\n";
         }
     }
 

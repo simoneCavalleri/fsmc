@@ -39,6 +39,7 @@ struct TransitionEdge {
     bool target_is_history{false};
     bool target_is_deep_history{false};
     std::string parent_scope;
+    std::vector<std::string> traceability_reqs;  ///< Traceability requirement tags (e.g. "REQ-TRANS-01")
 
     TransitionEdge() = default;
     TransitionEdge(std::string src, std::string dst, std::string evt, std::optional<std::string> grd = std::nullopt,

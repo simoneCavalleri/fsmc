@@ -63,9 +63,16 @@ struct GuardAstNode {
 struct GuardModel {
     std::string name;
     std::string description;
+    std::optional<std::string> raw_expression;
+    std::optional<std::string> cpp_expression;
 
-    explicit GuardModel(std::string guard_name = "", std::string guard_desc = "")
-        : name(std::move(guard_name)), description(std::move(guard_desc)) {}
+    explicit GuardModel(std::string guard_name = "", std::string guard_desc = "",
+                        std::optional<std::string> raw_expr = std::nullopt,
+                        std::optional<std::string> cpp_expr = std::nullopt)
+        : name(std::move(guard_name)),
+          description(std::move(guard_desc)),
+          raw_expression(std::move(raw_expr)),
+          cpp_expression(std::move(cpp_expr)) {}
 
     bool operator<(const GuardModel& other) const noexcept { return name < other.name; }
 };

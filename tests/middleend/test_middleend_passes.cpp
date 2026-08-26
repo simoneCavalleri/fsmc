@@ -251,4 +251,90 @@ TEST(MiddleendPassesTest, DeadStateAndTransitionPruning) {
     EXPECT_EQ(ir.transitions[0].event, "Start");
 }
 
+/**
+ * @brief Test Intent: Verify ChoiceInliningPass flattens choice pseudostates into direct composite transitions.
+ *
+ * Scenario:
+ * - FSM has state Idle, Choice node evaluate_health, targets Nominal and Degraded.
+ * - Idle -> evaluate_health (event StartCmd, action InitSubsystem).
+ * - evaluate_health -> Nominal (guard BatteryOk, action EnablePower).
+ * - evaluate_health -> Degraded (guard else, action LogError).
+ * - Verify pass flattens into 2 direct transitions (Idle -> Nominal, Idle -> Degraded) with combined actions.
+ */
+TEST(MiddleendPassesTest, ChoiceInliningBranchFlattening) {
+    FsmIr ir;
+    ir.name = "ChoiceInliningFSM";
+    ir.initial_state = "Idle";
+
+    ir.add_state("Idle");
+    ir.add_state("Nominal");
+    ir.add_state("Degraded");
+
+    ChoiceNodeModel choice;
+    choice.name = "evaluate_health";
+    ir.choice_nodes.push_back(choice);
+
+    StateNode choice_st;
+    choice_st.name = "evaluate_health";
+    choice_st.kind = StateKind::Choice;
+    ir.states.push_back(choice_st);
+
+    // Incoming transition
+    TransitionEdge in_t;
+    in_t.source = "Idle";
+    in_t.target = "evaluate_health";
+    in_t.event = "StartCmd";
+    in_t.action = "InitSubsystem";
+    ir.add_transition(in_t);
+
+    // Branch 1: nominal
+    TransitionEdge b1;
+    b1.source = "evaluate_health";
+    b1.target = "Nominal";
+    b1.guard = "BatteryOk";
+    b1.action = "EnablePower";
+    ir.add_transition(b1);
+
+    // Branch 2: degraded (else)
+    TransitionEdge b2;
+    b2.source = "evaluate_health";
+    b2.target = "Degraded";
+    b2.guard = "else";
+    b2.action = "LogError";
+    ir.add_transition(b2);
+
+    ChoiceInliningPass pass;
+    DiagnosticEngine diag;
+    pass.run(ir, diag);
+
+    // Verify choice state and choice node are eliminated
+    EXPECT_EQ(ir.find_state("evaluate_health"), nullptr);
+    EXPECT_TRUE(ir.choice_nodes.empty());
+    EXPECT_EQ(ir.states.size(), 3u);
+
+    // Verify exactly 2 inlined transitions
+    ASSERT_EQ(ir.transitions.size(), 2u);
+
+    // Check transition 1 (Idle -> Nominal)
+    auto it_nom = std::find_if(ir.transitions.begin(), ir.transitions.end(),
+                               [](const TransitionEdge& t) { return t.target == "Nominal"; });
+    ASSERT_NE(it_nom, ir.transitions.end());
+    EXPECT_EQ(it_nom->source, "Idle");
+    EXPECT_EQ(it_nom->event, "StartCmd");
+    ASSERT_TRUE(it_nom->guard.has_value());
+    EXPECT_EQ(*it_nom->guard, "BatteryOk");
+    ASSERT_TRUE(it_nom->action.has_value());
+    EXPECT_EQ(*it_nom->action, "InitSubsystem_EnablePower");
+
+    // Check transition 2 (Idle -> Degraded)
+    auto it_deg = std::find_if(ir.transitions.begin(), ir.transitions.end(),
+                               [](const TransitionEdge& t) { return t.target == "Degraded"; });
+    ASSERT_NE(it_deg, ir.transitions.end());
+    EXPECT_EQ(it_deg->source, "Idle");
+    EXPECT_EQ(it_deg->event, "StartCmd");
+    EXPECT_FALSE(it_deg->guard.has_value());  // 'else' guard is unwrapped
+    ASSERT_TRUE(it_deg->action.has_value());
+    EXPECT_EQ(*it_deg->action, "InitSubsystem_LogError");
+}
+
 }  // namespace

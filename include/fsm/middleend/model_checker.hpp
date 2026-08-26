@@ -14,6 +14,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/efsm_interval_analysis.hpp"
 
 namespace fsm::codegen {
 
@@ -110,6 +111,11 @@ class ModelChecker {
             results.push_back(verify_property(prop));
         }
         return results;
+    }
+
+    std::vector<EFSMAnalysisFinding> verify_efsm_data_paths(DiagnosticEngine& diag) {
+        EFSMIntervalAnalyzer analyzer(ir_);
+        return analyzer.analyze(diag);
     }
 
   private:

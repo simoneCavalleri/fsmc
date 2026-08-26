@@ -221,14 +221,23 @@ struct FsmIr {
         }
     }
 
-    void add_guard(const std::string& guard_name) {
+    void add_guard(const std::string& guard_name, std::string desc = "",
+                   std::optional<std::string> raw_expr = std::nullopt,
+                   std::optional<std::string> cpp_expr = std::nullopt) {
         if (guard_name.empty())
             return;
-        for (const auto& g : guards) {
-            if (g.name == guard_name)
+        for (auto& g : guards) {
+            if (g.name == guard_name) {
+                if (raw_expr.has_value() && !g.raw_expression.has_value()) {
+                    g.raw_expression = raw_expr;
+                }
+                if (cpp_expr.has_value() && !g.cpp_expression.has_value()) {
+                    g.cpp_expression = cpp_expr;
+                }
                 return;
+            }
         }
-        guards.emplace_back(guard_name);
+        guards.emplace_back(guard_name, std::move(desc), std::move(raw_expr), std::move(cpp_expr));
     }
 
     void add_action(const std::string& action_name) {

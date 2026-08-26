@@ -13,6 +13,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/choice_inlining_pass.hpp"
 #include "fsm/middleend/dead_state_pruning_pass.hpp"
 #include "fsm/middleend/determinism_enforcement_pass.hpp"
 #include "fsm/middleend/guard_simplification_pass.hpp"
@@ -147,6 +148,21 @@ class ChoiceCompletenessPass : public IPass {
             }
         }
         return true;
+    }
+};
+
+// ============================================================================
+// Pass: ChoiceInliningPassWrapper
+// Flattens choice/junction pseudostates into direct composite transitions
+// ============================================================================
+class ChoiceInliningPassWrapper : public IPass {
+  public:
+    [[nodiscard]] std::string name() const override { return ChoiceInliningPass::name(); }
+    [[nodiscard]] std::string description() const override { return ChoiceInliningPass::description(); }
+
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override {
+        ChoiceInliningPass pass;
+        return pass.run(ir, diag);
     }
 };
 
@@ -348,6 +364,28 @@ class TimedDeadlockPassWrapper : public IPass {
 };
 
 // ============================================================================
+// Pass: EFSMDataPathPass
+// ============================================================================
+class EFSMDataPathPass : public IPass {
+  public:
+    [[nodiscard]] std::string name() const override { return "EFSMDataPathPass"; }
+    [[nodiscard]] std::string description() const override {
+        return "Analyzes EFSM data paths and variable ranges via abstract interpretation to detect unsatisfiable "
+               "guards";
+    }
+
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override {
+        if (ir.variables.empty()) {
+            return true;
+        }
+
+        EFSMIntervalAnalyzer analyzer(ir);
+        analyzer.analyze(diag);
+        return !diag.has_errors();
+    }
+};
+
+// ============================================================================
 // PassManager: Pipeline Coordinator
 // ============================================================================
 class PassManager {
@@ -361,7 +399,9 @@ class PassManager {
         pm.add_pass(std::make_unique<DeterminismEnforcementPassWrapper>());
         pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
         pm.add_pass(std::make_unique<ChoiceCompletenessPass>());
+        pm.add_pass(std::make_unique<ChoiceInliningPassWrapper>());
         pm.add_pass(std::make_unique<TimedDeadlockPassWrapper>());
+        pm.add_pass(std::make_unique<EFSMDataPathPass>());
         pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
         pm.add_pass(std::make_unique<ModelCheckingPass>());
         return pm;
@@ -377,7 +417,9 @@ class PassManager {
             pm.add_pass(std::make_unique<DeadStatePruningPassWrapper>(true));
         }
         pm.add_pass(std::make_unique<ChoiceCompletenessPass>());
+        pm.add_pass(std::make_unique<ChoiceInliningPassWrapper>());
         pm.add_pass(std::make_unique<TimedDeadlockPassWrapper>());
+        pm.add_pass(std::make_unique<EFSMDataPathPass>());
         pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
         pm.add_pass(std::make_unique<ModelCheckingPass>());
         return pm;
@@ -425,7 +467,9 @@ using DeterminismEnforcementPassWrapper = ::fsm::codegen::DeterminismEnforcement
 using OrthogonalInterferencePassWrapper = ::fsm::codegen::OrthogonalInterferencePassWrapper;
 using DeadStatePruningPassWrapper = ::fsm::codegen::DeadStatePruningPassWrapper;
 using ChoiceCompletenessPass = ::fsm::codegen::ChoiceCompletenessPass;
+using ChoiceInliningPassWrapper = ::fsm::codegen::ChoiceInliningPassWrapper;
 using TimedDeadlockPassWrapper = ::fsm::codegen::TimedDeadlockPassWrapper;
+using EFSMDataPathPass = ::fsm::codegen::EFSMDataPathPass;
 using ModelSafetyVerifierPass = ::fsm::codegen::ModelSafetyVerifierPass;
 using ModelCheckingPass = ::fsm::codegen::ModelCheckingPass;
 }  // namespace fsm

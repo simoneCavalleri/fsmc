@@ -390,4 +390,54 @@ TEST(CodegenTest, RuntimeExporterNegativePath) {
     fs::remove(blocker_file);
 }
 
+/**
+ * @brief Test Intent: Verify C++ emission of automatic resolved EFSM guard expressions from Context variables.
+ *
+ * Scenario:
+ * - Define FSM with Context variable 'batterySoC' and 'criticalError'.
+ * - GuardModel with cpp_expression "ctx.batterySoC > 30.0f && !ctx.criticalError".
+ * - Verify that generated struct contains the direct return expression instead of a TODO stub.
+ */
+TEST(CodegenTest, EfsmResolvedGuardCodeGeneration) {
+    FsmIr model;
+    model.name = "BatteryManager";
+    model.initial_state = "Idle";
+
+    model.add_state("Idle");
+    model.add_state("Nominal");
+
+    VariableDefinition var1;
+    var1.name = "batterySoC";
+    var1.type = "float";
+    var1.initial_value = "100.0f";
+    model.add_variable(var1);
+
+    VariableDefinition var2;
+    var2.name = "criticalError";
+    var2.type = "bool";
+    var2.initial_value = "false";
+    model.add_variable(var2);
+
+    GuardModel guard_item("batterySoC_gt_30", "Battery above threshold", "batterySoC > 30.0 && !criticalError",
+                          "ctx.batterySoC > 30.0f && !ctx.criticalError");
+    model.guards.push_back(guard_item);
+
+    TransitionEdge t("t1", "Idle", "Nominal", SignalTrigger("CheckHealth"));
+    t.guard = "batterySoC_gt_30";
+    model.add_transition(t);
+
+    GeneratorOptions opts;
+    opts.cpp_standard = CppStandard::Cpp20;
+    opts.include_stubs = true;
+
+    const std::string code20 = CppGenerator::generate_header(model, opts);
+    EXPECT_NE(code20.find("struct batterySoC_gt_30 {"), std::string::npos);
+    EXPECT_NE(code20.find("return ctx.batterySoC > 30.0f && !ctx.criticalError;"), std::string::npos);
+
+    opts.cpp_standard = CppStandard::Cpp17;
+    const std::string code17 = CppGenerator::generate_header(model, opts);
+    EXPECT_NE(code17.find("struct batterySoC_gt_30 {"), std::string::npos);
+    EXPECT_NE(code17.find("return ctx.batterySoC > 30.0f && !ctx.criticalError;"), std::string::npos);
+}
+
 }  // namespace

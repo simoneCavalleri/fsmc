@@ -578,11 +578,31 @@ class Sysml2Parser : public IParser {
         }
 
         if (std::regex_search(stmt, match, if_regex)) {
-            auto parsed = GuardExpressionParser::parse(match[1].str());
+            const std::string raw_guard_expr = trim(match[1].str());
+            auto parsed = GuardExpressionParser::parse(raw_guard_expr);
             if (!parsed.cpp_type.empty()) {
                 guard = parsed.cpp_type;
+
+                std::string normalized_expr = raw_guard_expr;
+                static const std::regex not_re(R"(\bnot\b|\bNOT\b)", std::regex::optimize);
+                static const std::regex and_re(R"(\band\b|\bAND\b)", std::regex::optimize);
+                static const std::regex or_re(R"(\bor\b|\bOR\b)", std::regex::optimize);
+                normalized_expr = std::regex_replace(normalized_expr, not_re, "!");
+                normalized_expr = std::regex_replace(normalized_expr, and_re, "&&");
+                normalized_expr = std::regex_replace(normalized_expr, or_re, "||");
+
+                std::string cpp_expr = normalized_expr;
+                for (const auto& v : model.variables) {
+                    if (v.name.empty())
+                        continue;
+                    std::regex re(R"((^|[^A-Za-z0-9_.]))" + v.name + R"((?![A-Za-z0-9_]))");
+                    cpp_expr = std::regex_replace(cpp_expr, re, "$1ctx." + v.name);
+                }
+
+                const bool has_ctx_ref = (cpp_expr.find("ctx.") != std::string::npos);
                 for (const auto& atomic : parsed.atomic_guards) {
-                    model.add_guard(atomic);
+                    model.add_guard(atomic, "", raw_guard_expr,
+                                    has_ctx_ref ? std::optional<std::string>{cpp_expr} : std::nullopt);
                 }
             }
         }

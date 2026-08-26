@@ -123,7 +123,7 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         if (arg == "-v" || arg == "--version") {
-            std::cout << "fsm-opt (The Universal Finite State Machine Compiler Infrastructure)\n";
+            std::cout << "fsm-opt v0.2.0 (The Universal Finite State Machine Compiler Infrastructure)\n";
             return 0;
         }
         if (arg == "--list-passes") {

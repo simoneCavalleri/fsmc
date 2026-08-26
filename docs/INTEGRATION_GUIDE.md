@@ -120,7 +120,7 @@ Add `fsmc` in your `vcpkg.json`:
 ```json
 {
   "name": "my-project",
-  "version-string": "1.0.0",
+  "version-string": "0.2.0",
   "dependencies": [
     "fsmc"
   ]
@@ -128,10 +128,10 @@ Add `fsmc` in your `vcpkg.json`:
 ```
 
 ### Conan 2.0 Integration
-Add `fsmc/1.0.0` in your `conanfile.txt`:
+Add `fsmc/0.2.0` in your `conanfile.txt`:
 ```ini
 [requires]
-fsmc/1.0.0
+fsmc/0.2.0
 
 [generators]
 CMakeDeps

@@ -250,7 +250,7 @@ int main(int argc, char* argv[]) {
         return 0;
     }
     if (opts.show_version) {
-        std::cout << "fsmc (The Finite State Machine Compiler Infrastructure)\n";
+        std::cout << "fsmc v0.2.0 (The Finite State Machine Compiler Infrastructure)\n";
         return 0;
     }
     if (!opts.is_valid) {

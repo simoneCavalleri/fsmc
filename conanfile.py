@@ -3,7 +3,7 @@ from conan.tools.cmake import CMake, CMakeToolchain, cmake_layout
 
 class FsmcConan(ConanFile):
     name = "fsmc"
-    version = "0.1.0"
+    version = "0.2.0"
     description = "Universal Finite State Machine Compiler, Optimization Infrastructure, Formal Verification & Zero-Overhead C++17/C++20 Engine"
     license = "MIT"
     url = "https://github.com/simoneCavalleri/fsmc"

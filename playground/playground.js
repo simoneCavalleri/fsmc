@@ -11,76 +11,420 @@
 // ----------------------------------------------------------------------------
 
 const CANONICAL_PRESETS = {
+  autonomous_uav_mission: `state def AutonomousUavMission {
+    // Native SysML v2 EFSM State Variables
+    attribute battery_percent : Integer = 100;
+    attribute altitude_m : Integer = 0;
+    attribute waypoints_completed : Integer = 0;
+    attribute retry_count : Integer = 0;
+
+    // Native SysML v2 Strongly-Typed Signal Definitions
+    item def EvTelemetry {
+        attribute battery_mv : Integer;
+        attribute altitude_cm : Integer;
+        attribute gps_locked : Boolean;
+    }
+
+    item def EvWaypointCmd {
+        attribute lat : Real;
+        attribute lon : Real;
+        attribute target_alt : Real;
+    }
+
+    event def EvTelemetryPing;
+    event def EvCameraSnap;
+    event def TakeoffCmd;
+    event def PauseCmd;
+    event def ResumeMissionCmd;
+    event def AbortCmd;
+    event def CalibrationOk;
+    event def TargetAltitudeReached;
+    event def AreaReached;
+    event def NextSectorCmd;
+    event def HomePointReached;
+    event def TouchdownEvent;
+    event def LowBatteryEvent;
+    event def ShutdownCmd;
+
+    entry; then Preflight;
+
+    state Preflight {
+        satisfy requirement REQ_UAV_PRE_01;
+        entry; then SensorCalib;
+        state SensorCalib;
+        state SystemReady;
+
+        transition calib_done
+            first SensorCalib
+            accept CalibrationOk
+            do ArmMotors
+            then SystemReady;
+    }
+
+    state InFlight {
+        satisfy requirement REQ_UAV_NAV_01;
+        do action async_flight_stabilizer;
+
+        entry; then Ascending;
+        state Ascending;
+
+        state Navigating {
+            defer EvTelemetryPing;
+            defer EvCameraSnap;
+
+            entry; then WaypointNav;
+            state WaypointNav;
+            state SearchPattern;
+
+            transition area_reached
+                first WaypointNav
+                accept AreaReached
+                do EnableSensors
+                then SearchPattern;
+
+            transition next_sector
+                first SearchPattern
+                accept NextSectorCmd
+                do LogSectorCompleted
+                then WaypointNav;
+        }
+
+        state HoverPause {
+            satisfy requirement REQ_UAV_HOLD_01;
+        }
+
+        transition alt_reached
+            first Ascending
+            accept TargetAltitudeReached
+            do StartNavigation
+            then Navigating;
+
+        transition pause_mission
+            first Navigating
+            accept PauseCmd
+            do HoldPosition
+            then HoverPause;
+
+        transition resume_mission
+            first HoverPause
+            accept ResumeMissionCmd
+            do ResumeNavigation
+            then Navigating[H];
+    }
+
+    state FailSafe {
+        satisfy requirement REQ_UAV_SAFE_01;
+        entry; then ReturnToHome;
+        state ReturnToHome;
+        state SafeLanding;
+        state Landed;
+
+        transition home_reached
+            first ReturnToHome
+            accept HomePointReached
+            do DescendMotors
+            then SafeLanding;
+
+        transition touch_down
+            first SafeLanding
+            accept TouchdownEvent
+            do DisarmMotors
+            then Landed;
+    }
+
+    state Terminal;
+
+    transition takeoff
+        first Preflight
+        accept TakeoffCmd
+        if HasGpsLockGuard
+        do LaunchUav
+        then InFlight;
+
+    transition low_bat
+        first InFlight
+        accept LowBatteryEvent
+        do InitiateFailSafe
+        then FailSafe;
+
+    transition abort_flight
+        first InFlight
+        accept AbortCmd
+        do InitiateFailSafe
+        then FailSafe;
+
+    transition power_off
+        first FailSafe
+        accept ShutdownCmd
+        do PowerOff
+        then Terminal;
+}`,
+
+  industrial_press: `<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Idle" name="IndustrialPressFSM">
+  <datamodel>
+    <data id="cycle_count" expr="0" type="uint32_t"/>
+    <data id="hydraulic_pressure_psi" expr="2200" type="uint32_t"/>
+    <data id="safety_curtain_active" expr="true" type="bool"/>
+  </datamodel>
+
+  <state id="Idle">
+    <onentry>
+      <send event="LogIdleStatus"/>
+    </onentry>
+    <transition event="PowerOnCmd" cond="SafetyOk" target="Initializing">
+      <send event="LogPowerOn"/>
+    </transition>
+  </state>
+
+  <state id="Initializing">
+    <onentry>
+      <assign location="cycle_count" expr="0"/>
+      <send event="CalibrateSensors"/>
+    </onentry>
+    <onexit>
+      <send event="DiagnosticsComplete"/>
+    </onexit>
+    <transition event="InitDone" target="Ready">
+      <send event="StoreDiagnostics"/>
+    </transition>
+    <transition event="AbortCmd" target="Idle">
+      <send event="Cleanup"/>
+    </transition>
+  </state>
+
+  <state id="Ready">
+    <transition event="StartCmd" cond="ToolLoaded" target="Running">
+      <send event="EngageDrive"/>
+    </transition>
+  </state>
+
+  <state id="Running">
+    <onentry>
+      <assign location="cycle_count" expr="cycle_count + 1"/>
+      <send event="StartStrokeTimer"/>
+    </onentry>
+    <transition event="PauseCmd" target="Paused">
+      <send event="HoldPosition"/>
+    </transition>
+    <transition event="EStopEvent" target="Faulted">
+      <send event="EmergencyBrake"/>
+    </transition>
+    <transition event="StopCmd" target="Idle">
+      <send event="DisengageDrive"/>
+    </transition>
+  </state>
+
+  <state id="Paused">
+    <transition event="ResumeCmd" cond="SafetyOk" target="Running">
+      <send event="ReleaseHold"/>
+    </transition>
+    <transition event="AbortCmd" target="Idle">
+      <send event="Cleanup"/>
+    </transition>
+  </state>
+
+  <state id="Faulted">
+    <onentry>
+      <send event="TriggerSafetyAlarm"/>
+    </onentry>
+    <transition event="ResetFaultCmd" target="Idle">
+      <send event="ClearFault"/>
+    </transition>
+  </state>
+</scxml>`,
+
   connection_manager: `@startuml
+' Formal Verification Specifications (LTL)
+' @fsm:property name=AlwaysReconnect kind=Safety ltl="G (ConnectionLost -> F Connected)" req="REQ-NET-01" desc="Guarantees eventual reconnection"
+' @fsm:property name=NoDirectConnected kind=Invariant ltl="G (! (Disconnected && Connected))" req="REQ-NET-02" desc="Mutual exclusion between disconnected and connected"
+
+' EFSM State Variables
+' @fsm:var name=retry_count type=uint32_t init=0 min=0 max=10 desc="Connection attempt counter"
+' @fsm:var name=latency_ms type=uint32_t init=20 min=0 max=5000 desc="Measured roundtrip ping"
+
+' Strongly-Typed Signals & Payloads
+' @fsm:signal ConnectCmd{uint32_t timeout_ms, bool use_tls} validator="timeout_ms > 0"
+' @fsm:signal EvTelemetryPing
+
 [*] --> Disconnected
+
+state Disconnected {
+  Disconnected : entry / ResetRetryCount
+  Disconnected : exit / PrepareNetworkInterface
+}
 
 Disconnected --> Connecting : ConnectCmd [HasNetworkGuard && HasValidCredentialsGuard] / InitSocketAction
 Disconnected --> Disconnected : ConnectCmd [!HasNetworkGuard || !HasValidCredentialsGuard] / LogErrorAction
+
+state Connecting {
+  Connecting : entry / StartConnectTimer
+  Connecting : defer EvTelemetryPing
+  Connecting : exit / StopConnectTimer
+}
+
 Connecting --> Connected : HandshakeOkEvent / SetupSessionAction
 Connecting --> Disconnected : HandshakeFailedEvent / CleanupAction
 Connecting --> Disconnected : TimeoutEvent / CleanupAction
+
+state Connected {
+  Connected : entry / EnableKeepAlive
+  Connected : exit / FlushSendQueue
+}
+
 Connected --> Suspended : NetworkDegradedEvent / PauseQueueAction
 Connected --> Disconnected : DisconnectCmd / CloseSocketAction
 Connected --> Disconnected : ConnectionLostEvent / CleanupAction
+
+state Suspended {
+  Suspended : entry / PauseDataStreams
+  Suspended : exit / ResumeDataStreams
+}
+
 Suspended --> Connected : NetworkRestoredEvent / ResumeQueueAction
 Suspended --> Disconnected : DisconnectCmd / CloseSocketAction
 Suspended --> Disconnected : TimeoutEvent / CleanupAction
 @enduml`,
 
-  async_motor_controller: `@startuml
-[*] --> Halted
+  smart_thermostat: `{
+  "id": "SmartThermostatFSM",
+  "initial": "Off",
+  "variables": [
+    { "name": "target_temp_c", "type": "float", "init": "21.5", "description": "User setpoint temperature" },
+    { "name": "measured_temp_c", "type": "float", "init": "20.0", "description": "Current room temperature" },
+    { "name": "hysteresis_c", "type": "float", "init": "0.5", "description": "Deadband temperature differential" },
+    { "name": "eco_mode", "type": "bool", "init": "false", "description": "Energy saving mode flag" }
+  ],
+  "signals": [
+    {
+      "name": "EvSetTemp",
+      "attributes": [
+        { "name": "new_target_c", "type": "float" }
+      ]
+    },
+    {
+      "name": "EvSensorReading",
+      "attributes": [
+        { "name": "ambient_temp_c", "type": "float" },
+        { "name": "humidity_pct", "type": "float" }
+      ]
+    }
+  ],
+  "properties": [
+    {
+      "name": "SafeHeatingLimit",
+      "kind": "Safety",
+      "ltl": "G (OverheatAlert -> F Off)",
+      "req": "REQ-HVAC-SAFE-01",
+      "desc": "Shutdown heating upon overheat detection"
+    }
+  ],
+  "states": {
+    "Off": {
+      "entry": ["DisplayOffMode"],
+      "on": {
+        "PowerOnCmd": { "target": "Standby", "action": "InitHvacControllers" }
+      }
+    },
+    "Standby": {
+      "entry": ["LogStandbyTelemetry"],
+      "satisfies": ["REQ-HVAC-NORM-01"],
+      "on": {
+        "HeatReqCmd": { "target": "Heating", "guard": "IsBelowTargetTemp", "action": "IgniteBurner" },
+        "CoolReqCmd": { "target": "Cooling", "guard": "IsAboveTargetTemp", "action": "StartCompressor" },
+        "PowerOffCmd": { "target": "Off", "action": "ShutdownDisplay" }
+      }
+    },
+    "Heating": {
+      "entry": ["EngageHeatingRelay"],
+      "exit": ["DisengageHeatingRelay"],
+      "do": "async_temperature_monitor",
+      "on": {
+        "TargetReached": { "target": "Standby", "action": "LogTargetReached" },
+        "PowerOffCmd": { "target": "Off", "action": "EmergencyCutoff" }
+      }
+    },
+    "Cooling": {
+      "entry": ["EngageCoolingCompressor"],
+      "exit": ["DisengageCompressor"],
+      "do": "async_temperature_monitor",
+      "on": {
+        "TargetReached": { "target": "Standby", "action": "LogTargetReached" },
+        "PowerOffCmd": { "target": "Off", "action": "EmergencyCutoff" }
+      }
+    }
+  }
+}`,
 
-Halted --> Accelerating : StartCmd [HasValidRpmGuard] / PowerOnInverterAction
-Accelerating --> RunningAtSpeed : SpeedReachedEvent / EngageSpeedPidAction
-RunningAtSpeed --> Decelerating : StopCmd / ApplyRegenerativeBrakeAction
-Decelerating --> Halted : StoppedEvent / DisengageInverterAction
-Accelerating --> Faulted : OvercurrentEvent / EmergencyCutoffAction
-RunningAtSpeed --> Faulted : OvercurrentEvent / EmergencyCutoffAction
-Decelerating --> Faulted : OvercurrentEvent / EmergencyCutoffAction
-Faulted --> Halted : ResetFaultCmd [IsThermalSafeGuard] / ClearFaultFlagsAction
-@enduml`,
+  satellite_mission: `<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20131001">
+  <uml:Model xmi:id="_m1" name="CubeSatFlightModel">
+    <packagedElement xmi:type="uml:StateMachine" xmi:id="_sm1" name="SatelliteMissionFSM">
+      <region xmi:id="_r1">
+        <subvertex xmi:type="uml:Pseudostate" xmi:id="_ps_init" kind="initial"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s_boot" name="Boot">
+          <entry xmi:type="uml:Activity" name="RunPowerOnSelfTest"/>
+          <exit xmi:type="uml:Activity" name="InitializeRadio"/>
+        </subvertex>
+        <subvertex xmi:type="uml:State" xmi:id="_s_detumble" name="Detumbling">
+          <entry xmi:type="uml:Activity" name="ActivateMagnetorquers"/>
+          <doActivity xmi:type="uml:Activity" name="StabilizeAngularRates"/>
+          <exit xmi:type="uml:Activity" name="DeactivateMagnetorquers"/>
+        </subvertex>
+        <subvertex xmi:type="uml:State" xmi:id="_s_science" name="ScienceOperations">
+          <entry xmi:type="uml:Activity" name="DeployPayloadSensors"/>
+          <doActivity xmi:type="uml:Activity" name="CollectSpectrometerData"/>
+          <deferrableTrigger name="GroundStationBeaconPing"/>
+        </subvertex>
+        <subvertex xmi:type="uml:State" xmi:id="_s_safe" name="SafeHold">
+          <entry xmi:type="uml:Activity" name="PointSolarPanelsSun"/>
+          <doActivity xmi:type="uml:Activity" name="RechargeBatteries"/>
+        </subvertex>
 
-  mission_controller: `@startuml
-[*] --> Standby
+        <transition xmi:id="_t0" source="_ps_init" target="_s_boot"/>
+        <transition xmi:id="_t1" source="_s_boot" target="_s_detumble" trigger="PostOkEvent" effect="DeployAntennas"/>
+        <transition xmi:id="_t2" source="_s_detumble" target="_s_science" trigger="RatesStabilizedEvent" guard="BatteryLevelOk" effect="StartMissionSchedule"/>
+        <transition xmi:id="_t3" source="_s_science" target="_s_safe" trigger="LowBatteryAnomaly" effect="IsolateNonCriticalLoads"/>
+        <transition xmi:id="_t4" source="_s_safe" target="_s_science" trigger="BatteryRecoveredCmd" guard="BatteryLevelOk" effect="ResumeScienceSchedule"/>
+      </region>
+    </packagedElement>
+  </uml:Model>
+</xmi:XMI>`,
 
-Standby --> Ascending : LaunchCmd [ValidClearanceGuard] / ArmEnginesAction
-Ascending --> Cruising : AltitudeReachedEvent / DeploySolarPanelsAction
-Cruising --> Orbiting : OrbitInsertedEvent / StabilizeAttitudeAction
-Orbiting --> Landing : ReturnHomeCmd / RetractPanelsAction
-Landing --> MissionCompleted : TouchdownEvent / ShutdownSystemsAction
-Ascending --> Aborted : AbortCmd / TriggerAlarmAction
-Cruising --> Aborted : AbortCmd / TriggerAlarmAction
-Orbiting --> Aborted : AbortCmd / TriggerAlarmAction
-@enduml`,
+  async_motor_controller: `stateDiagram-v2
+    [*] --> Halted
 
-  industrial_press: `@startuml
-[*] --> Idle
+    state Halted {
+        Halted : entry / ClearPwmOutputs
+        Halted : exit / PrechargeInverter
+    }
 
-Idle --> Initializing : PowerOnCmd [SafetyOk] / LogPowerOn
-Initializing --> Ready : InitDone / StoreDiagnostics
-Initializing --> Idle : AbortCmd / Cleanup
-Ready --> Running : StartCmd [ToolLoaded] / EngageDrive
-Running --> Paused : PauseCmd / HoldPosition
-Paused --> Running : ResumeCmd [SafetyOk] / ReleaseHold
-Running --> Faulted : EStopEvent / EmergencyBrake
-Faulted --> Idle : ResetFaultCmd / ClearFault
-Running --> Idle : StopCmd / DisengageDrive
-@enduml`,
+    state Accelerating {
+        Accelerating : entry / RampCurrentReference
+    }
 
-  sysml2_spacecraft: `state def SpacecraftController {
-    initial state Standby;
-    
-    state Standby;
-    state InFlight;
-    state Landing;
-    state MissionCompleted;
-    state Aborted;
+    state RunningAtSpeed {
+        RunningAtSpeed : entry / EnableClosedLoopFluxVector
+        RunningAtSpeed : exit / DisableClosedLoop
+    }
 
-    transition from Standby accept AuthorizeCmd if ValidClearanceGuard then InFlight;
-    transition from InFlight accept ReturnHomeCmd then Landing;
-    transition from Landing accept TouchdownEvent then MissionCompleted;
-    transition from InFlight accept EmergencyAbortCmd then Aborted;
-}`
+    state Decelerating {
+        Decelerating : entry / ApplyRegenerativeBrake
+    }
+
+    state Faulted {
+        Faulted : entry / TripBridgeIsolationRelay
+        Faulted : exit / ResetFaultLatch
+    }
+
+    Halted --> Accelerating : StartCmd [HasValidRpmGuard] / PowerOnInverterAction
+    Accelerating --> RunningAtSpeed : SpeedReachedEvent / EngageSpeedPidAction
+    RunningAtSpeed --> Decelerating : StopCmd / ApplyRegenerativeBrakeAction
+    Decelerating --> Halted : StoppedEvent / DisengageInverterAction
+    Accelerating --> Faulted : OvercurrentEvent / EmergencyCutoffAction
+    RunningAtSpeed --> Faulted : OvercurrentEvent / EmergencyCutoffAction
+    Decelerating --> Faulted : OvercurrentEvent / EmergencyCutoffAction
+    Faulted --> Halted : ResetFaultCmd [IsThermalSafeGuard] / ClearFaultFlagsAction`
 };
 
 // ----------------------------------------------------------------------------
@@ -151,8 +495,10 @@ const ModelManager = {
     if (t.includes('<xmi:') || t.includes('<uml:') || t.includes('<packagedElement')) return 'cameo';
     if (t.includes('@startuml') || t.includes('@enduml')) return 'plantuml';
     if (t.includes('stateDiagram') || t.includes('stateDiagram-v2')) return 'mermaid';
-    if (t.includes('state def ') || t.includes('transition from ')) return 'sysml2';
+    if (t.includes('state def ') || t.includes('transition from ') || t.includes('item def ') ||
+        t.includes('event def ') || t.includes('entry; then') || t.includes('attribute ')) return 'sysml2';
     if (t.includes('digraph ') || t.startsWith('digraph{') || t.includes('graph ')) return 'dot';
+    if (t.includes('MODULE main') || t.includes('ASSIGN next(state)') || t.includes('LTLSPEC') || t.includes('INVARSPEC')) return 'smv';
     if (t.startsWith('{') || (t.includes('"states"') && t.includes('"id"'))) return 'json';
     return 'plantuml';
   },
@@ -384,39 +730,164 @@ const ModelManager = {
 
     // Format: OMG SysML v2
     else if (fmt === 'sysml2') {
-      const nameMatch = text.match(/state\s+def\s+([A-Za-z0-9_]+)/);
+      const nameMatch = text.match(/(?:state\s+def|package)\s+([A-Za-z0-9_]+)/);
       if (nameMatch) name = nameMatch[1];
-      const lines = text.split('\n');
-      for (const raw of lines) {
-        const line = raw.trim();
-        if (line.startsWith("state def") || !line) continue;
 
-        const stateDecl = line.match(/^(?:initial\s+)?state\s+([A-Za-z0-9_]+);?/);
-        if (stateDecl && stateDecl[1] !== "def") {
-          const stName = stateDecl[1];
-          states.add(stName);
-          stateDetails.push({ name: stName, parent: "", is_composite: false });
-          if (line.includes('initial')) initial = stName;
+      const cleanText = text.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+      const stateStack = [];
+
+      const processSysmlStmt = (stmt, stack) => {
+        const s = stmt.replace(/\s+/g, ' ').trim();
+        if (!s || s.startsWith("item def") || s.startsWith("attribute") || s.startsWith("event def") || s === "entry" || s === "initial") return;
+
+        const initMatch = s.match(/(?:(?:entry|initial)(?:\s*;)?\s*)?then\s+([A-Za-z0-9_]+)/);
+        if (initMatch) {
+          if (stack.length === 0) {
+            initial = initMatch[1];
+          } else {
+            const pName = stack[stack.length - 1];
+            const pObj = stateDetails.find(d => d.name === pName);
+            if (pObj) pObj.initial_sub_state = initMatch[1];
+          }
+          return;
         }
 
-        if (line.startsWith("transition")) {
-          const fromMatch = line.match(/from\s+([A-Za-z0-9_]+)/);
-          const acceptMatch = line.match(/accept\s+([A-Za-z0-9_]+)/);
-          const ifMatch = line.match(/\sif\s+(.+?)(?=\sdo\s|\sthen\s|;|$)/);
-          const doMatch = line.match(/\sdo\s+(.+?)(?=\sthen\s|;|$)/);
-          const thenMatch = line.match(/then\s+([A-Za-z0-9_]+)/);
+        const doActMatch = s.match(/^do\s+(?:action\s+)?([A-Za-z0-9_]+)/);
+        if (doActMatch) {
+          const actName = doActMatch[1];
+          if (stack.length > 0) {
+            const pName = stack[stack.length - 1];
+            const pObj = stateDetails.find(d => d.name === pName);
+            if (pObj) pObj.do_activity = actName;
+          }
+          return;
+        }
 
-          if (fromMatch && thenMatch) {
-            const src = fromMatch[1];
-            const dst = thenMatch[1];
+        const entryActMatch = s.match(/^entry\s+(?:action\s+|do\s+)([A-Za-z0-9_]+)/);
+        if (entryActMatch) {
+          const actName = entryActMatch[1];
+          if (stack.length > 0) {
+            const pName = stack[stack.length - 1];
+            const pObj = stateDetails.find(d => d.name === pName);
+            if (pObj) {
+              pObj.entry_actions = pObj.entry_actions || [];
+              pObj.entry_actions.push(actName);
+            }
+          }
+          return;
+        }
+
+        const exitActMatch = s.match(/^exit\s+(?:action\s+|do\s+)([A-Za-z0-9_]+)/);
+        if (exitActMatch) {
+          const actName = exitActMatch[1];
+          if (stack.length > 0) {
+            const pName = stack[stack.length - 1];
+            const pObj = stateDetails.find(d => d.name === pName);
+            if (pObj) {
+              pObj.exit_actions = pObj.exit_actions || [];
+              pObj.exit_actions.push(actName);
+            }
+          }
+          return;
+        }
+
+        const deferMatch = s.match(/^defer\s+([A-Za-z0-9_]+)/);
+        if (deferMatch) {
+          const evtName = deferMatch[1];
+          if (stack.length > 0) {
+            const pName = stack[stack.length - 1];
+            const pObj = stateDetails.find(d => d.name === pName);
+            if (pObj) {
+              pObj.deferred_events = pObj.deferred_events || [];
+              pObj.deferred_events.push(evtName);
+            }
+          }
+          return;
+        }
+
+        const stateDecl = s.match(/^state\s+([A-Za-z0-9_]+)/);
+        if (stateDecl && stateDecl[1] !== "def") {
+          const sName = stateDecl[1];
+          const parent = stack.length > 0 ? stack[stack.length - 1] : "";
+          if (!states.has(sName)) {
+            states.add(sName);
+            stateDetails.push({ name: sName, parent: parent, is_composite: false });
+          }
+          return;
+        }
+
+        if (s.startsWith("transition") || s.includes("first ") || s.includes("from ")) {
+          const fromMatch = s.match(/(?:first|from)\s+([A-Za-z0-9_]+)/);
+          const acceptMatch = s.match(/(?:accept|when)\s+(?:[A-Za-z0-9_]+\s*:\s*)?([A-Za-z0-9_]+)/);
+          const ifMatch = s.match(/\sif\s+(.+?)(?=\sdo\s|\sthen\s|\sto\s|;|$)/);
+          const doMatch = s.match(/\sdo\s+([A-Za-z0-9_]+)/);
+          const thenMatch = s.match(/(?:then|to)\s+([A-Za-z0-9_\[\]\*]+)/);
+
+          const src = fromMatch ? fromMatch[1] : (stack.length > 0 ? stack[stack.length - 1] : "");
+          let dst = thenMatch ? thenMatch[1] : src;
+          let isHist = false;
+          if (dst.includes("[H]")) {
+            isHist = true;
+            dst = dst.replace(/\[H\*?\]/g, '');
+          }
+
+          if (src && dst) {
             const evt = acceptMatch ? acceptMatch[1] : "Anonymous";
             const guard = ifMatch ? ifMatch[1].trim() : "";
             const action = doMatch ? doMatch[1].trim() : "";
             states.add(src);
             states.add(dst);
             if (evt !== "Anonymous") events.add(evt);
-            transitions.push({ source: src, target: dst, event: evt, guard: guard, action: action, is_internal: (src === dst) });
+            transitions.push({
+              source: src,
+              target: dst,
+              event: evt,
+              guard: guard,
+              action: action,
+              is_internal: (src === dst && !thenMatch),
+              target_is_history: isHist
+            });
           }
+        }
+      };
+
+      let currentStmt = "";
+      for (let i = 0; i < cleanText.length; i++) {
+        const ch = cleanText[i];
+        if (ch === '{') {
+          const stmt = currentStmt.trim();
+          currentStmt = "";
+          if (stmt) {
+            const stateDecl = stmt.match(/state\s+([A-Za-z0-9_]+)/);
+            if (stateDecl && stateDecl[1] !== "def") {
+              const sName = stateDecl[1];
+              const parent = stateStack.length > 0 ? stateStack[stateStack.length - 1] : "";
+              states.add(sName);
+              stateDetails.push({ name: sName, parent: parent, is_composite: true });
+              stateStack.push(sName);
+            }
+          }
+        } else if (ch === '}') {
+          const stmt = currentStmt.trim();
+          currentStmt = "";
+          if (stmt) {
+            processSysmlStmt(stmt, stateStack);
+          }
+          if (stateStack.length > 0) {
+            stateStack.pop();
+          }
+        } else if (ch === ';') {
+          const s = currentStmt.trim();
+          if (s === "entry" || s === "initial") {
+            currentStmt += "; ";
+            continue;
+          }
+          currentStmt = "";
+          if (s) {
+            processSysmlStmt(s, stateStack);
+          }
+        } else {
+          currentStmt += ch;
         }
       }
     }
@@ -658,6 +1129,20 @@ const ModelManager = {
     return this.serialize(model, toFormat);
   },
 
+  optimize(source, format, outFormat = "") {
+    if (fsmcModule && fsmcModule.optimize && source && source.trim()) {
+      try {
+        const opt = fsmcModule.optimize(source, format, outFormat || format);
+        if (opt && !opt.startsWith("// [FSMC ERROR]")) {
+          return opt;
+        }
+      } catch (e) {
+        console.warn("WASM optimize notice:", e);
+      }
+    }
+    return source;
+  },
+
   generateCpp(source, format, isCpp20 = true, isStandalone = true) {
     // 1. Try C++ WebAssembly compiler
     if (fsmcModule && fsmcModule.compile && source && source.trim()) {
@@ -686,7 +1171,7 @@ const ModelManager = {
     const fsmName = rawName.endsWith("FSM") ? rawName : rawName + "FSM";
 
     let code = `// ============================================================================\n`;
-    code += `// Generated by fsmc v1.0.0 (The Universal State Machine Compiler)\n`;
+    code += `// Generated by fsmc (The Universal State Machine Compiler)\n`;
     code += `// Target: C++${isCpp20 ? '20' : '17'} (${isStandalone ? 'Standalone 0-Deps' : 'Modular'})\n`;
     code += `// ============================================================================\n#pragma once\n\n`;
 
@@ -835,8 +1320,76 @@ const GraphRenderer = {
       out += `    [*] --> ${model.initialState}\n`;
     }
 
+    const details = model.stateDetails || [];
+    const emittedStates = new Set();
+
+    function emitSubtree(parentName, indent) {
+      const pad = "    ".repeat(indent);
+      for (const s of details) {
+        if (s.parent === parentName) {
+          emittedStates.add(s.name);
+          if (s.is_composite) {
+            out += `${pad}state ${s.name} {\n`;
+            if (s.initial_sub_state) {
+              out += `${pad}    [*] --> ${s.initial_sub_state}\n`;
+            }
+            emitSubtree(s.name, indent + 1);
+            out += `${pad}}\n`;
+
+            const hasCompActions = (s.entry_actions && s.entry_actions.length > 0) ||
+                                   (s.exit_actions && s.exit_actions.length > 0) ||
+                                   s.do_activity ||
+                                   (s.deferred_events && s.deferred_events.length > 0);
+            if (hasCompActions) {
+              out += `${pad}note right of ${s.name}\n`;
+              if (s.entry_actions) {
+                for (const act of s.entry_actions) out += `${pad}    entry / ${typeof act === 'object' ? act.name : act}\n`;
+              }
+              if (s.do_activity) out += `${pad}    do / ${s.do_activity}\n`;
+              if (s.exit_actions) {
+                for (const act of s.exit_actions) out += `${pad}    exit / ${typeof act === 'object' ? act.name : act}\n`;
+              }
+              if (s.deferred_events) {
+                for (const dev of s.deferred_events) out += `${pad}    defer ${dev}\n`;
+              }
+              out += `${pad}end note\n`;
+            }
+          } else {
+            const hasActions = (s.entry_actions && s.entry_actions.length > 0) ||
+                               s.do_activity ||
+                               (s.exit_actions && s.exit_actions.length > 0) ||
+                               (s.deferred_events && s.deferred_events.length > 0);
+            if (!hasActions) {
+              out += `${pad}state ${s.name}\n`;
+            } else {
+              let label = `<b>${s.name}</b><hr/>`;
+              const actLines = [];
+              if (s.entry_actions && s.entry_actions.length > 0) {
+                for (const act of s.entry_actions) actLines.push(`entry / ${typeof act === 'object' ? act.name : act}`);
+              }
+              if (s.do_activity) {
+                actLines.push(`do / ${s.do_activity}`);
+              }
+              if (s.exit_actions && s.exit_actions.length > 0) {
+                for (const act of s.exit_actions) actLines.push(`exit / ${typeof act === 'object' ? act.name : act}`);
+              }
+              if (s.deferred_events && s.deferred_events.length > 0) {
+                for (const dev of s.deferred_events) actLines.push(`defer ${dev}`);
+              }
+              label += actLines.join("<br/>");
+              out += `${pad}state "${label}" as ${s.name}\n`;
+            }
+          }
+        }
+      }
+    }
+
+    emitSubtree("", 1);
+
     for (const st of model.states) {
-      out += `    state ${st}\n`;
+      if (!emittedStates.has(st)) {
+        out += `    state ${st}\n`;
+      }
     }
 
     for (const t of model.transitions) {
@@ -864,7 +1417,20 @@ const GraphRenderer = {
       return;
     }
 
-    const canonicalGraph = this.buildCanonicalGraph(model);
+    let canonicalGraph = "";
+    if (fsmcModule && fsmcModule.exportDiagram && sourceCode && sourceCode.trim()) {
+      try {
+        const exported = fsmcModule.exportDiagram(sourceCode, format, "mermaid");
+        if (exported && !exported.startsWith("// [FSMC ERROR]")) {
+          canonicalGraph = exported;
+        }
+      } catch (e) {
+        console.warn("WASM exportDiagram notice:", e);
+      }
+    }
+    if (!canonicalGraph) {
+      canonicalGraph = this.buildCanonicalGraph(model);
+    }
 
     if (window.mermaid && canonicalGraph) {
       const seq = ++renderSeq;
@@ -887,34 +1453,71 @@ const GraphRenderer = {
 
   highlightActive(activeState) {
     const svg = document.querySelector("#mermaidCanvas svg");
-    if (!svg) return;
+    if (!svg || !activeState) return;
 
-    svg.querySelectorAll(".node").forEach(n => {
-      const label = n.textContent.trim();
-      const isLeafActive = label.includes(activeState);
-      if (isLeafActive) {
-        n.classList.add("active-state-node");
-        n.style.stroke = "var(--accent-green)";
-        n.style.strokeWidth = "3px";
-        n.style.filter = "drop-shadow(0 0 8px rgba(16, 185, 129, 0.6))";
-      } else {
-        n.classList.remove("active-state-node");
-        n.style.stroke = "";
-        n.style.strokeWidth = "";
-        n.style.filter = "";
-      }
+    // Reset all previous active styles
+    svg.querySelectorAll(".active-state-node, .active-state").forEach(n => {
+      n.classList.remove("active-state-node", "active-state");
+      n.querySelectorAll("rect, polygon, circle, path, .label-container").forEach(shape => {
+        shape.style.stroke = "";
+        shape.style.strokeWidth = "";
+        shape.style.filter = "";
+        shape.style.fill = "";
+        shape.style.fillOpacity = "";
+      });
     });
+
+    const allNodes = Array.from(svg.querySelectorAll(".node, .statediagram-state"));
+    let bestMatch = null;
+
+    for (const n of allNodes) {
+      const idMatch = n.id && (n.id === `state-${activeState}` || n.id.startsWith(`state-${activeState}-`) || n.id.endsWith(`-${activeState}`));
+      const labelEl = n.querySelector(".nodeLabel, text, foreignObject, div") || n;
+      const text = labelEl.textContent ? labelEl.textContent.trim() : "";
+      const firstLine = text.split(/\n|\/|<br>/)[0].trim().replace(/^\*\s*/, '');
+      const textExactMatch = (text === activeState || firstLine === activeState);
+
+      if (idMatch || textExactMatch) {
+        bestMatch = n;
+        break;
+      }
+    }
+
+    if (!bestMatch) {
+      for (const n of allNodes) {
+        const text = n.textContent ? n.textContent.trim() : "";
+        if (text.startsWith(activeState) || text.includes(activeState)) {
+          bestMatch = n;
+          break;
+        }
+      }
+    }
+
+    if (bestMatch) {
+      bestMatch.classList.add("active-state-node", "active-state");
+      const shapes = bestMatch.querySelectorAll("rect, polygon, circle, path, .label-container");
+      shapes.forEach(shape => {
+        shape.style.stroke = "#10b981";
+        shape.style.strokeWidth = "3.5px";
+        shape.style.filter = "drop-shadow(0 0 12px rgba(16, 185, 129, 0.85))";
+        shape.style.fill = "#064e3b";
+        shape.style.fillOpacity = "0.45";
+      });
+    }
   },
 
   attachHandlers() {
     const svg = document.querySelector("#mermaidCanvas svg");
     if (!svg) return;
-    svg.querySelectorAll(".node").forEach(n => {
+    svg.querySelectorAll(".node, .statediagram-state").forEach(n => {
       n.style.cursor = "pointer";
       n.onclick = (e) => {
         e.stopPropagation();
         const text = n.textContent.trim();
-        const found = ModelManager.currentModel.states.find(s => text.includes(s));
+        const found = ModelManager.currentModel.states.find(s => {
+          const firstLine = text.split(/\n|\/|<br>/)[0].trim();
+          return firstLine === s || text.startsWith(s);
+        });
         if (found) {
           SimulatorController.setState(found);
         }
@@ -991,6 +1594,55 @@ const ViewportController = {
   }
 };
 
+function resolveLeafState(model, targetState) {
+  if (!targetState) return "";
+  let curr = targetState.replace(/\[H\*?\]/g, '').trim();
+  const visited = new Set();
+  while (curr && !visited.has(curr)) {
+    visited.add(curr);
+    const detail = (model.stateDetails || []).find(d => d.name === curr);
+    if (detail && detail.is_composite && detail.initial_sub_state) {
+      curr = detail.initial_sub_state;
+    } else {
+      break;
+    }
+  }
+  return curr;
+}
+
+function getAncestorChain(model, stateName) {
+  const chain = [];
+  let curr = stateName;
+  const visited = new Set();
+  while (curr && !visited.has(curr)) {
+    visited.add(curr);
+    chain.push(curr);
+    const detail = (model.stateDetails || []).find(d => d.name === curr);
+    if (detail && detail.parent) {
+      curr = detail.parent;
+    } else {
+      break;
+    }
+  }
+  return chain;
+}
+
+function getAvailableTransitions(model, currState) {
+  const ancestors = getAncestorChain(model, currState);
+  const result = [];
+  const seenEvents = new Set();
+  for (const st of ancestors) {
+    const matching = (model.transitions || []).filter(t => t.source === st);
+    for (const t of matching) {
+      if (!seenEvents.has(t.event)) {
+        seenEvents.add(t.event);
+        result.push(t);
+      }
+    }
+  }
+  return result;
+}
+
 // ----------------------------------------------------------------------------
 // 6. Hard Real-Time Simulation Engine
 // ----------------------------------------------------------------------------
@@ -1011,11 +1663,12 @@ const SimulatorController = {
   },
 
   setState(targetState, guard = "", action = "") {
+    const leaf = resolveLeafState(ModelManager.currentModel, targetState);
     const prev = ModelManager.currentModel.activeState;
-    ModelManager.currentModel.activeState = targetState;
-    document.getElementById("activeStateBadge").textContent = targetState;
-    GraphRenderer.highlightActive(targetState);
-    let msg = `State override: ${prev} ➔ ${targetState}`;
+    ModelManager.currentModel.activeState = leaf;
+    document.getElementById("activeStateBadge").textContent = leaf;
+    GraphRenderer.highlightActive(leaf);
+    let msg = `State override: ${prev} ➔ ${leaf}`;
     if (guard) msg += ` [guard: ${guard}]`;
     if (action) msg += ` ➔ Action: ${action}()`;
     this.log(msg, "EVENT");
@@ -1024,14 +1677,15 @@ const SimulatorController = {
 
   dispatch(eventName) {
     const curr = ModelManager.currentModel.activeState;
-    const trans = ModelManager.currentModel.transitions.filter(t => t.source === curr && t.event === eventName);
+    const availableTrans = getAvailableTransitions(ModelManager.currentModel, curr);
+    const matching = availableTrans.filter(t => t.event === eventName);
 
-    if (trans.length === 0) {
+    if (matching.length === 0) {
       this.log(`Event '${eventName}' unhandled in state '${curr}' (IGNORED)`, "WARN");
       return;
     }
 
-    const t = trans[0];
+    const t = matching[0];
     const cleanGuard = t.guard ? t.guard
       .replace(/fsm::and_<(.+?)>/g, (m, p) => p.replace(/,/g, ' && '))
       .replace(/fsm::or_<(.+?)>/g, (m, p) => p.replace(/,/g, ' || '))
@@ -1045,11 +1699,12 @@ const SimulatorController = {
       this.log(msg, "INFO");
     } else {
       const prev = ModelManager.currentModel.activeState;
-      ModelManager.currentModel.activeState = t.target;
-      document.getElementById("activeStateBadge").textContent = t.target;
-      GraphRenderer.highlightActive(t.target);
+      const targetLeaf = resolveLeafState(ModelManager.currentModel, t.target);
+      ModelManager.currentModel.activeState = targetLeaf;
+      document.getElementById("activeStateBadge").textContent = targetLeaf;
+      GraphRenderer.highlightActive(targetLeaf);
 
-      let msg = `[${eventName}] ${prev} ➔ ${t.target}`;
+      let msg = `[${eventName}] ${prev} ➔ ${targetLeaf}`;
       if (cleanGuard) msg += ` [guard: ${cleanGuard}]`;
       if (t.action) msg += ` ➔ Action: ${t.action}()`;
       this.log(msg, "EVENT");
@@ -1061,7 +1716,7 @@ const SimulatorController = {
     const container = document.getElementById("eventButtons");
     container.innerHTML = "";
     const curr = ModelManager.currentModel.activeState;
-    const availableTrans = ModelManager.currentModel.transitions.filter(t => t.source === curr);
+    const availableTrans = getAvailableTransitions(ModelManager.currentModel, curr);
 
     for (const t of availableTrans) {
       const btn = document.createElement("button");
@@ -1072,7 +1727,7 @@ const SimulatorController = {
       container.appendChild(btn);
     }
 
-    const otherEvents = ModelManager.currentModel.events.filter(e => !availableTrans.some(t => t.event === e));
+    const otherEvents = (ModelManager.currentModel.events || []).filter(e => !availableTrans.some(t => t.event === e));
     for (const evt of otherEvents) {
       const btn = document.createElement("button");
       btn.className = "btn-event disabled-trigger";
@@ -1114,7 +1769,8 @@ const App = {
       SimulatorController.clearLog();
     };
     document.getElementById("resetSimBtn").onclick = () => {
-      SimulatorController.setState(ModelManager.currentModel.initialState);
+      const initLeaf = resolveLeafState(ModelManager.currentModel, ModelManager.currentModel.initialState);
+      SimulatorController.setState(initLeaf);
     };
 
     document.getElementById("copyBtn").onclick = () => {
@@ -1127,6 +1783,22 @@ const App = {
       });
     };
 
+    const optBtn = document.getElementById("optBtn");
+    if (optBtn) {
+      optBtn.onclick = () => {
+        const code = document.getElementById("editor").value;
+        const fmt = document.getElementById("formatSelect").value;
+        const optimized = ModelManager.optimize(code, fmt, fmt);
+        if (optimized && optimized !== code) {
+          document.getElementById("editor").value = optimized;
+          const orig = optBtn.textContent;
+          optBtn.textContent = "✓ Optimized!";
+          setTimeout(() => { optBtn.textContent = orig; }, 2000);
+          this.update();
+        }
+      };
+    }
+
     document.getElementById("downloadBtn").onclick = () => {
       const code = document.getElementById("cppPreview").textContent;
       const blob = new Blob([code], { type: "text/plain;charset=utf-8" });
@@ -1136,22 +1808,203 @@ const App = {
       a.click();
     };
 
+    this.initResizers();
+
     // Await WebAssembly initialization before initial render so the real C++ compiler runs on frame 0
     await initWasm();
     this.loadPreset();
   },
 
+  initResizers() {
+    // 1. Column Resizer 1 (between panelEditor and panelVisual)
+    const resizer1 = document.getElementById("resizerCol1");
+    const panelEditor = document.getElementById("panelEditor");
+    const panelVisual = document.getElementById("panelVisual");
+    const panelRight = document.getElementById("panelRight");
+    const workspace = document.getElementById("workspace");
+
+    if (resizer1 && panelEditor && panelVisual && workspace) {
+      let isDragging = false;
+      let startX = 0;
+      let startEditorW = 0;
+      let startVisualW = 0;
+
+      resizer1.addEventListener("mousedown", (e) => {
+        isDragging = true;
+        startX = e.clientX;
+        startEditorW = panelEditor.getBoundingClientRect().width;
+        startVisualW = panelVisual.getBoundingClientRect().width;
+        resizer1.classList.add("resizing");
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+      });
+
+      window.addEventListener("mousemove", (e) => {
+        if (!isDragging) return;
+        const dx = e.clientX - startX;
+        const minW = 180;
+        const totalW = startEditorW + startVisualW;
+        let newEditorW = Math.max(minW, Math.min(totalW - minW, startEditorW + dx));
+        let newVisualW = totalW - newEditorW;
+
+        panelEditor.style.flex = `0 0 ${newEditorW}px`;
+        panelVisual.style.flex = `1 1 ${newVisualW}px`;
+      });
+
+      window.addEventListener("mouseup", () => {
+        if (isDragging) {
+          isDragging = false;
+          resizer1.classList.remove("resizing");
+          document.body.style.cursor = "";
+          document.body.style.userSelect = "";
+        }
+      });
+
+      resizer1.addEventListener("dblclick", () => {
+        panelEditor.style.flex = "30 1 0%";
+        panelVisual.style.flex = "40 1 0%";
+        if (panelRight) panelRight.style.flex = "30 1 0%";
+      });
+    }
+
+    // 2. Column Resizer 2 (between panelVisual and panelRight)
+    const resizer2 = document.getElementById("resizerCol2");
+    if (resizer2 && panelVisual && panelRight && workspace) {
+      let isDragging = false;
+      let startX = 0;
+      let startVisualW = 0;
+      let startRightW = 0;
+
+      resizer2.addEventListener("mousedown", (e) => {
+        isDragging = true;
+        startX = e.clientX;
+        startVisualW = panelVisual.getBoundingClientRect().width;
+        startRightW = panelRight.getBoundingClientRect().width;
+        resizer2.classList.add("resizing");
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+      });
+
+      window.addEventListener("mousemove", (e) => {
+        if (!isDragging) return;
+        const dx = e.clientX - startX;
+        const minW = 180;
+        const totalW = startVisualW + startRightW;
+        let newVisualW = Math.max(minW, Math.min(totalW - minW, startVisualW + dx));
+        let newRightW = totalW - newVisualW;
+
+        panelVisual.style.flex = `1 1 ${newVisualW}px`;
+        panelRight.style.flex = `0 0 ${newRightW}px`;
+      });
+
+      window.addEventListener("mouseup", () => {
+        if (isDragging) {
+          isDragging = false;
+          resizer2.classList.remove("resizing");
+          document.body.style.cursor = "";
+          document.body.style.userSelect = "";
+        }
+      });
+
+      resizer2.addEventListener("dblclick", () => {
+        if (panelEditor) panelEditor.style.flex = "30 1 0%";
+        panelVisual.style.flex = "40 1 0%";
+        panelRight.style.flex = "30 1 0%";
+      });
+    }
+
+    // 3. Diagnostics Resizer inside Col 1 (between editor and diagnostics)
+    const resizerDiag = document.getElementById("resizerDiagnostics");
+    const editor = document.getElementById("editor");
+    const diagWrapper = document.getElementById("diagnosticsWrapper");
+    if (resizerDiag && editor && diagWrapper) {
+      let isDragging = false;
+      let startY = 0;
+      let startDiagH = 0;
+
+      resizerDiag.addEventListener("mousedown", (e) => {
+        isDragging = true;
+        startY = e.clientY;
+        startDiagH = diagWrapper.getBoundingClientRect().height;
+        resizerDiag.classList.add("resizing");
+        document.body.style.cursor = "row-resize";
+        document.body.style.userSelect = "none";
+      });
+
+      window.addEventListener("mousemove", (e) => {
+        if (!isDragging) return;
+        const dy = startY - e.clientY;
+        const minH = 40;
+        const maxH = 500;
+        let newH = Math.max(minH, Math.min(maxH, startDiagH + dy));
+        diagWrapper.style.height = `${newH}px`;
+      });
+
+      window.addEventListener("mouseup", () => {
+        if (isDragging) {
+          isDragging = false;
+          resizerDiag.classList.remove("resizing");
+          document.body.style.cursor = "";
+          document.body.style.userSelect = "";
+        }
+      });
+    }
+
+    // 4. Sub-panel Resizer inside Col 3 (between panelCpp and panelSim)
+    const resizerSplit = document.getElementById("resizerSplitCol");
+    const panelCpp = document.getElementById("panelCpp");
+    const panelSim = document.getElementById("panelSim");
+    if (resizerSplit && panelCpp && panelSim) {
+      let isDragging = false;
+      let startY = 0;
+      let startCppH = 0;
+      let startSimH = 0;
+
+      resizerSplit.addEventListener("mousedown", (e) => {
+        isDragging = true;
+        startY = e.clientY;
+        startCppH = panelCpp.getBoundingClientRect().height;
+        startSimH = panelSim.getBoundingClientRect().height;
+        resizerSplit.classList.add("resizing");
+        document.body.style.cursor = "row-resize";
+        document.body.style.userSelect = "none";
+      });
+
+      window.addEventListener("mousemove", (e) => {
+        if (!isDragging) return;
+        const dy = e.clientY - startY;
+        const minH = 80;
+        const totalH = startCppH + startSimH;
+        let newCppH = Math.max(minH, Math.min(totalH - minH, startCppH + dy));
+        let newSimH = totalH - newCppH;
+        panelCpp.style.flex = `0 0 ${newCppH}px`;
+        panelSim.style.flex = `1 1 ${newSimH}px`;
+      });
+
+      window.addEventListener("mouseup", () => {
+        if (isDragging) {
+          isDragging = false;
+          resizerSplit.classList.remove("resizing");
+          document.body.style.cursor = "";
+          document.body.style.userSelect = "";
+        }
+      });
+    }
+  },
+
   loadPreset() {
-    const fmt = document.getElementById("formatSelect").value;
     const presetKey = document.getElementById("presetSelect").value;
-    const rawCanonical = CANONICAL_PRESETS[presetKey] || CANONICAL_PRESETS.connection_manager;
-    const sourceFmt = presetKey === 'sysml2_spacecraft' ? 'sysml2' : 'plantuml';
+    const rawCanonical = CANONICAL_PRESETS[presetKey] || CANONICAL_PRESETS.autonomous_uav_mission;
+    const nativeFmt = ModelManager.detectFormat(rawCanonical);
 
-    // Dynamically transpile preset to the chosen target format
-    const text = ModelManager.export(rawCanonical, sourceFmt, fmt);
+    // Synchronize format dropdown to the native format of this preset
+    const formatSel = document.getElementById("formatSelect");
+    if (formatSel && Array.from(formatSel.options).some(o => o.value === nativeFmt)) {
+      formatSel.value = nativeFmt;
+    }
+    document.getElementById("formatBadge").textContent = nativeFmt.toUpperCase();
 
-    document.getElementById("editor").value = text;
-    document.getElementById("formatBadge").textContent = fmt.toUpperCase();
+    document.getElementById("editor").value = rawCanonical;
 
     ModelManager.currentModel.panX = 0;
     ModelManager.currentModel.panY = 0;
@@ -1163,6 +2016,12 @@ const App = {
     const currentCode = document.getElementById("editor").value;
     const newFmt = document.getElementById("formatSelect").value;
     const detectedFmt = ModelManager.detectFormat(currentCode);
+
+    if (detectedFmt === newFmt) {
+      document.getElementById("formatBadge").textContent = newFmt.toUpperCase();
+      this.update();
+      return;
+    }
 
     // Dynamically transpile user editor content to the newly selected format
     const converted = ModelManager.export(currentCode, detectedFmt, newFmt);
@@ -1187,32 +2046,55 @@ const App = {
     }
 
     const parsed = ModelManager.parse(code, format);
+    const initLeaf = resolveLeafState(parsed, parsed.initialState);
+    const prevActive = ModelManager.currentModel.activeState;
+    const activeLeaf = prevActive && parsed.states.includes(prevActive) ? prevActive : initLeaf;
+
     ModelManager.currentModel = {
       ...ModelManager.currentModel,
       ...parsed,
-      activeState: ModelManager.currentModel.activeState && parsed.states.includes(ModelManager.currentModel.activeState) ? ModelManager.currentModel.activeState : parsed.initialState
+      activeState: activeLeaf
     };
 
     // 1. Generate C++ Modular Preview
     document.getElementById("cppPreview").textContent = ModelManager.generateCpp(code, format, isCpp20, true);
 
-    // 2. Model Diagnostics
+    // 2. Model Diagnostics with Distinct Severity Tiers
     const diags = ModelManager.validate(code, format);
     const diagContainer = document.getElementById("diagnostics");
     const statusBadge = document.getElementById("modelStatusBadge");
     diagContainer.innerHTML = "";
 
-    if (diags.length === 0) {
-      statusBadge.textContent = "SOUND";
-      statusBadge.className = "status-pill status-ok";
-      diagContainer.innerHTML = `<div class="diag-item INFO">Model verified and sound (0 errors, 0 warnings).</div>`;
-    } else {
+    const hasErrors = diags.some(d => d.severity === "ERROR" || d.severity === "SafetyCritical" || d.severity === "Error");
+    const hasWarnings = diags.some(d => d.severity === "WARNING" || d.severity === "Warning");
+    const hasInfo = diags.some(d => d.severity === "INFO" || d.severity === "Info");
+
+    if (hasErrors) {
       statusBadge.textContent = "ERRORS";
       statusBadge.className = "status-pill status-err";
+    } else if (hasWarnings) {
+      statusBadge.textContent = "WARNINGS";
+      statusBadge.className = "status-pill status-warn";
+    } else if (hasInfo) {
+      statusBadge.textContent = "INFO";
+      statusBadge.className = "status-pill status-info";
+    } else {
+      statusBadge.textContent = "SOUND";
+      statusBadge.className = "status-pill status-ok";
+    }
+
+    if (diags.length === 0) {
+      diagContainer.innerHTML = `<div class="diag-item INFO">ℹ️ Model verified and sound (0 errors, 0 warnings).</div>`;
+    } else {
       for (const d of diags) {
         const item = document.createElement("div");
-        item.className = `diag-item ${d.severity}`;
-        item.textContent = `[${d.severity}] ${d.category ? `(${d.category}) ` : ""}${d.message}`;
+        const isErr = (d.severity === "SafetyCritical" || d.severity === "Error" || d.severity === "ERROR");
+        const isWarn = (d.severity === "Warning" || d.severity === "WARNING");
+        const sevClass = isErr ? "ERROR" : (isWarn ? "WARNING" : "INFO");
+        const icon = isErr ? "❌" : (isWarn ? "⚠️" : "ℹ️");
+
+        item.className = `diag-item ${sevClass}`;
+        item.textContent = `${icon} [${d.severity}] ${d.category ? `(${d.category}) ` : ""}${d.message}`;
         diagContainer.appendChild(item);
       }
     }

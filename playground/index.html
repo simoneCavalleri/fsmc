@@ -15,31 +15,37 @@
       <div class="logo-badge">fsmc</div>
       <div class="logo-title">
         fsmc IDE
-        <span class="sub">Universal C++ FSM Compiler & Live Simulator</span>
+        <span class="sub">Universal FSM Compiler, Optimizer & Formal Simulator</span>
       </div>
     </div>
     <div class="nav-controls">
       <div class="control-group">
         <span class="control-label">Preset:</span>
         <select id="presetSelect">
-          <option value="industrial_press">Industrial Press (Complete HFSM & History)</option>
-          <option value="mission_controller">Aerospace Mission (Choice Pseudostates & Deferral)</option>
-          <option value="async_motor_controller">Automotive Motor ECU (ISR Safety & Interlock)</option>
-          <option value="connection_manager">Connection Manager (Composite Guards & QoS)</option>
-          <option value="sysml2_spacecraft">OMG SysML v2 Spacecraft (Native MBSE)</option>
+          <option value="autonomous_uav_mission">Autonomous UAV Mission (Native SysML v2: EFSM Vars, Typed Signals, LTL)</option>
+          <option value="industrial_press">Industrial Press (Native SCXML: Datamodel, OnEntry, OnExit, Assign)</option>
+          <option value="connection_manager">Connection Manager (Native PlantUML: Entry/Exit, Defer, Properties)</option>
+          <option value="smart_thermostat">Smart IoT Thermostat (Native JSON: Context, Signals, Formal Verification)</option>
+          <option value="satellite_mission">Satellite Flight Controller (Native Cameo XMI: Activities & Triggers)</option>
+          <option value="async_motor_controller">Automotive Motor ECU (Native Mermaid: Lifecycle Hooks, History)</option>
         </select>
       </div>
 
       <div class="control-group">
         <span class="control-label">Format:</span>
         <select id="formatSelect">
-          <option value="mermaid">Mermaid (stateDiagram-v2)</option>
-          <option value="plantuml">PlantUML (@startuml)</option>
-          <option value="sysml2">OMG SysML v2 (.sysml)</option>
-          <option value="cameo">Cameo / MagicDraw (OMG XMI)</option>
-          <option value="scxml">W3C SCXML (.scxml)</option>
-          <option value="json">XState JSON (.json)</option>
-          <option value="dot">Graphviz DOT (.dot)</option>
+          <optgroup label="Authoring & Visual Statecharts">
+            <option value="sysml2" selected>OMG SysML v2 (.sysml)</option>
+            <option value="scxml">W3C SCXML (.scxml)</option>
+            <option value="cameo">Cameo / MagicDraw (OMG XMI)</option>
+            <option value="plantuml">PlantUML (@startuml)</option>
+            <option value="mermaid">Mermaid (stateDiagram-v2)</option>
+            <option value="json">XState JSON (.json)</option>
+            <option value="dot">Graphviz DOT (.dot)</option>
+          </optgroup>
+          <optgroup label="Formal Verification Target">
+            <option value="smv">nuXmv / SMV Formal Model (.smv)</option>
+          </optgroup>
         </select>
       </div>
 
@@ -51,6 +57,7 @@
         </select>
       </div>
 
+      <button id="optBtn" class="btn-secondary" title="Run Middle-End PassManager optimizations (dead-state pruning, guard simplification)">⚡ Optimize IR</button>
       <button id="copyBtn" class="btn-primary" title="Copy self-contained Single-Header C++ library to clipboard">📋 Copy Single-Header</button>
       <button id="downloadBtn" class="btn-secondary" title="Download self-contained Single-Header C++ .hpp file">📥 Download .hpp</button>
     </div>

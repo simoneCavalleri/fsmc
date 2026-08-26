@@ -8,83 +8,34 @@
 #include <string>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
-#include "fsm/backend/emitters/cameo_serializer.hpp"
-#include "fsm/backend/emitters/dot_serializer.hpp"
-#include "fsm/backend/emitters/json_serializer.hpp"
-#include "fsm/backend/emitters/mermaid_serializer.hpp"
-#include "fsm/backend/emitters/plantuml_serializer.hpp"
-#include "fsm/backend/emitters/scxml_serializer.hpp"
-#include "fsm/backend/emitters/sysml2_serializer.hpp"
-#include "fsm/frontend/cameo_xmi_parser.hpp"
-#include "fsm/frontend/dot_parser.hpp"
+#include "fsm/backend/emitter_factory.hpp"
 #include "fsm/frontend/guard_parser.hpp"
-#include "fsm/frontend/json_parser.hpp"
-#include "fsm/frontend/mermaid_parser.hpp"
-#include "fsm/frontend/plantuml_parser.hpp"
-#include "fsm/frontend/scxml_parser.hpp"
-#include "fsm/frontend/sysml2_parser.hpp"
+#include "fsm/frontend/parser_factory.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/fsm_validator.hpp"
+#include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm;
 using namespace fsm::codegen;
 
 namespace {
 
-std::unique_ptr<IParser> get_parser_for_format(const std::string& fmt) {
-    if (fmt == "cameo" || fmt == "xmi") {
-        return std::make_unique<CameoXmiParser>();
-    }
-    if (fmt == "sysml" || fmt == "sysml2") {
-        return std::make_unique<Sysml2Parser>();
-    }
-    if (fmt == "scxml") {
-        return std::make_unique<ScxmlParser>();
-    }
-    if (fmt == "json") {
-        return std::make_unique<JsonStateParser>();
-    }
-    if (fmt == "dot" || fmt == "gv") {
-        return std::make_unique<DotParser>();
-    }
-    if (fmt == "plantuml" || fmt == "puml") {
-        return std::make_unique<PlantUmlParser>();
-    }
-    return std::make_unique<MermaidParser>();
-}
-
-std::string detect_format_from_content(const std::string& source) {
-    if (source.find("@startuml") != std::string::npos || source.find("@enduml") != std::string::npos)
-        return "plantuml";
-    if (source.find("stateDiagram") != std::string::npos || source.find("stateDiagram-v2") != std::string::npos)
-        return "mermaid";
-    if (source.find("state def ") != std::string::npos || source.find("entry;") != std::string::npos)
-        return "sysml2";
-    if (source.find("<scxml") != std::string::npos)
-        return "scxml";
-    if (source.find("digraph") != std::string::npos)
-        return "dot";
-    if (source.find("<xmi:") != std::string::npos || source.find("<uml:") != std::string::npos)
-        return "cameo";
-    size_t first = source.find_first_not_of(" \t\n\r");
-    if (first != std::string::npos && source[first] == '{')
-        return "json";
-    return "";
-}
-
 bool parse_with_fallback(const std::string& source, const std::string& format, FsmIr& model, std::string& err) {
-    auto parser = get_parser_for_format(format);
-    if (parser->parse(source, model, err)) {
+    auto parser = ParserFactory::create_by_format(format);
+    if (parser != nullptr && parser->parse(source, model, err)) {
         return true;
     }
-    std::string detected = detect_format_from_content(source);
+    std::string detected = ParserFactory::detect_format_from_content(source);
     if (!detected.empty() && detected != format) {
         std::string fallback_err;
-        auto fallback_parser = get_parser_for_format(detected);
-        if (fallback_parser->parse(source, model, fallback_err)) {
+        auto fallback_parser = ParserFactory::create_by_format(detected);
+        if (fallback_parser != nullptr && fallback_parser->parse(source, model, fallback_err)) {
             err.clear();
             return true;
         }
+    }
+    if (err.empty()) {
+        err = "Unknown or unsupported input format: " + format;
     }
     return false;
 }
@@ -119,26 +70,9 @@ std::string fsmc_wasm_export(const std::string& source, const std::string& from_
         return "// [FSMC ERROR] Parsing failed: " + err;
     }
 
-    if (to_format == "mermaid" || to_format == "mmd") {
-        return MermaidSerializer::serialize(model);
-    }
-    if (to_format == "plantuml" || to_format == "puml") {
-        return PlantUmlSerializer::serialize(model);
-    }
-    if (to_format == "sysml" || to_format == "sysml2") {
-        return Sysml2Serializer::serialize(model);
-    }
-    if (to_format == "json" || to_format == "xstate") {
-        return JsonSerializer::serialize(model);
-    }
-    if (to_format == "dot" || to_format == "gv") {
-        return DotSerializer::serialize(model);
-    }
-    if (to_format == "scxml") {
-        return ScxmlSerializer::serialize(model);
-    }
-    if (to_format == "cameo" || to_format == "xmi") {
-        return CameoSerializer::serialize(model);
+    std::string exported = EmitterFactory::emit_diagram(model, to_format);
+    if (!exported.empty()) {
+        return exported;
     }
 
     return "// [FSMC ERROR] Unsupported target format: " + to_format;
@@ -165,6 +99,17 @@ std::string fsmc_wasm_get_model(const std::string& source, const std::string& fo
            << "\"initial_sub_state\": \"" << s.initial_sub_state << "\", "
            << "\"has_history\": " << (s.has_history ? "true" : "false") << ", "
            << "\"has_deep_history\": " << (s.has_deep_history ? "true" : "false") << ", "
+           << "\"do_activity\": \"" << (s.do_activity.has_value() ? *s.do_activity : "") << "\", "
+           << "\"entry_actions\": [";
+        for (size_t j = 0; j < s.entry_actions.size(); ++j) {
+            ss << "\"" << s.entry_actions[j].name << "\"" << (j + 1 < s.entry_actions.size() ? ", " : "");
+        }
+        ss << "], "
+           << "\"exit_actions\": [";
+        for (size_t j = 0; j < s.exit_actions.size(); ++j) {
+            ss << "\"" << s.exit_actions[j].name << "\"" << (j + 1 < s.exit_actions.size() ? ", " : "");
+        }
+        ss << "], "
            << "\"deferred_events\": [";
         for (size_t j = 0; j < s.deferred_events.size(); ++j) {
             ss << "\"" << s.deferred_events[j] << "\"" << (j + 1 < s.deferred_events.size() ? ", " : "");
@@ -237,11 +182,32 @@ std::string fsmc_wasm_verify(const std::string& source, const std::string& forma
     return ss.str();
 }
 
+std::string fsmc_wasm_optimize(const std::string& source, const std::string& format, const std::string& out_format) {
+    FsmIr model;
+    std::string err;
+    if (!parse_with_fallback(source, format, model, err)) {
+        return "// [FSMC ERROR] Parsing failed: " + err;
+    }
+
+    auto pm = PassManager::create_default_pipeline();
+    DiagnosticEngine diag;
+    pm.run(model, diag);
+
+    std::string target_fmt = out_format.empty() ? format : out_format;
+    std::string exported = EmitterFactory::emit_diagram(model, target_fmt);
+    if (!exported.empty()) {
+        return exported;
+    }
+
+    return "// [FSMC ERROR] Unsupported target format: " + target_fmt;
+}
+
 #ifdef __EMSCRIPTEN__
 EMSCRIPTEN_BINDINGS(fsmc_wasm_module) {
     emscripten::function("compile", &fsmc_wasm_compile);
     emscripten::function("exportDiagram", &fsmc_wasm_export);
     emscripten::function("getModel", &fsmc_wasm_get_model);
     emscripten::function("verify", &fsmc_wasm_verify);
+    emscripten::function("optimize", &fsmc_wasm_optimize);
 }
 #endif

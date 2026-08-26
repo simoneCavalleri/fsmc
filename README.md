@@ -68,7 +68,8 @@
   - **Orthogonal Race Detection**: Analyzes concurrent state regions for potential read/write data races on shared context.
   - **Temporal Formal Verification**: Verifies safety invariants (`INVARSPEC`) and LTL/CTL reachability formulas against livelocks and deadlocks, with automatic SMV discrete tick timer generation.
 - 🚨 **Compiler-Grade Diagnostic Engine**: Clang/Rust-style terminal diagnostics with exact source spans, line numbers, error categories, and visual carets (`^~~~`).
-- ⚡ **Hard Real-Time, Zero-Heap C++20 Runtime Engine**: Embedded runtime with `static_ring_buffer` supporting configurable `OverflowPolicy` (`DropOldest`, `DropIncoming`, `AssertOnOverflow`), `static_thread_safe_fsm`, and a standalone synchronous `deterministic_timer_manager`.
+- ⚡ **Hard Real-Time, Zero-Heap C++20 Runtime Engine**: Embedded runtime with `spsc_ring_buffer` supporting `fsm::spsc_fsm` (Wait-Free O(1), ISR-safe, lock-free seqlock context), `fsm::thread_safe_fsm` (MPSC with background worker), and a synchronous `deterministic_timer_manager`.
+- 📊 **Formal EFSM Data Path Analysis & RTM Export**: Abstract interpretation for numerical variable ranges detecting dead guards, and automated Requirement Traceability Matrix export (Markdown / JSON).
 
 ---
 
@@ -81,8 +82,12 @@ The infrastructure provides two primary command-line tools:
 `fsmc` is the primary code generator, formal verifier, and diagram transpiler. It converts any input model into verified target code or translates across diagram ecosystems.
 
 ```bash
-# Formally verify model soundness (livelock, choice completeness, reachability)
+# Formally verify model soundness (livelock, choice completeness, reachability, EFSM data paths)
 fsmc -i mission_controller.puml --verify
+
+# Export Requirement Traceability Matrix (Markdown or JSON)
+fsmc -i aerospace_mission.sysml --rtm-output rtm.md
+fsmc -i aerospace_mission.sysml --rtm-output rtm.json
 
 # Transpile between modeling formats (e.g. SysML v2 -> Mermaid, or Cameo XMI -> SMV)
 fsmc -i spacecraft.sysml --export mermaid -o spacecraft.mmd
@@ -129,6 +134,8 @@ Safety & Static Analysis Verification Options:
   --strict-determinism        Fail compilation on non-deterministic branch collisions or unprioritized transitions
   --check-races               Perform static concurrency data-race analysis across parallel orthogonal regions
   --req-audit                 Print Requirement Traceability Matrix (@fsm:req) before code generation
+  --rtm-output <file>         Export Requirement Traceability Matrix to file
+  --rtm-format <json|md>      Requirement Traceability Matrix format ('json' or 'markdown')
 
 C++ Backend Options (--target cpp):
   --std <17|20>               Target C++ standard: '17' or '20' (default: 17)
@@ -140,12 +147,13 @@ C++ Backend Options (--target cpp):
 
 Model Analysis & Diagram Export:
   -e, --export <fmt>          Export diagram to: 'mermaid', 'plantuml', 'sysml2', 'json', 'dot', 'scxml', 'cameo', 'smv'
-  --verify, --check           Run formal model checker (livelock, choice completeness, reachability) and exit
+  --verify, --check           Run formal model checker (livelock, choice completeness, reachability, EFSM data paths) and exit
 
 General Options:
   -h, --help                  Show this help message and exit
   -v, --version               Show version information and exit
 ```
+
 
 ---
 

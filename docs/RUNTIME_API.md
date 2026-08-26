@@ -102,7 +102,7 @@ enum class dispatch_status : std::uint8_t {
 };
 ```
 
-### Methods
+### Methods & Traceability
 - `is_success() const noexcept -> bool`: Returns `true` if `status == dispatch_status::success`.
 - `is_deferred() const noexcept -> bool`: Returns `true` if `status == dispatch_status::deferred`.
 - `is_guard_rejected() const noexcept -> bool`: Returns `true` if `status == dispatch_status::guard_rejected`.
@@ -110,8 +110,10 @@ enum class dispatch_status : std::uint8_t {
 - `is_ok() const noexcept -> bool`: Returns `true` if `is_success() || is_deferred()`.
 - `explicit operator bool() const noexcept`: Implicitly convertible to `bool` (`is_ok()`).
 - `to_string() const noexcept -> std::string_view`: Returns `"success"`, `"deferred"`, `"guard_rejected"`, or `"unhandled"`.
+- `trace`: Optional `fsm::transition_trace` containing `{source, target, event, guard, action, kind}` for non-intrusive logging and black-box telemetry.
 
 ---
+
 
 ## 3. `fsm::thread_safe_fsm<Table, Context, InitialState>` (Thread-Safe Engine)
 
@@ -392,28 +394,42 @@ if (command_queue.pop(ev)) {
 
 ---
 
-## 8. `fsm::static_thread_safe_fsm<Table, Context, Capacity, Policy>`
+## 8. `fsm::spsc_fsm<Table, Context, QueueCapacity, InitialState>` (Lock-Free & ISR-Safe)
 
-A fully static, zero-heap asynchronous state machine wrapper backed by `static_ring_buffer`. Ideal for resource-constrained bare-metal targets and RTOS tasks without heap allocations:
+A zero-allocation, Wait-Free $O(1)$ Single-Producer Single-Consumer FSM wrapper designed for Interrupt Service Routines (ISRs), hard real-time tasks, and multi-core embedded systems without locks or heap allocation:
 
 ### Header
 ```cpp
-#include "fsm/runtime/cpp/static_thread_safe_fsm.hpp"
+#include "fsm/runtime/cpp/spsc_fsm.hpp"
 ```
+
+### Key Guarantees
+- **Wait-Free O(1) Producer**: `enqueue(Event)` returns in strictly bounded time without acquiring mutexes or spinning on atomics.
+- **Single Dedicated Consumer**: `process_one()` and `run_until_empty()` execute sequentially on the consumer thread.
+- **Lock-Free Context Snapshots**: `snapshot_context()` and `with_context()` utilize an internal seqlock mechanism to guarantee consistent reads without blocking the producer or consumer.
 
 ### Usage
 ```cpp
-// 64-element static queue, DropIncoming policy
-fsm::static_thread_safe_fsm<TransitionTable, SystemContext, 64, fsm::OverflowPolicy::DropIncoming> static_fsm(ctx);
+// 64-element power-of-two static lock-free ring buffer
+fsm::spsc_fsm<TransitionTable, SystemContext, 64> spsc_machine(ctx);
 
-// Enqueue event from ISR or main loop
-bool enqueued = static_fsm.enqueue(TickEvent{});
+// ISR Thread (Producer): Wait-Free O(1)
+void EXTI0_IRQHandler() {
+    spsc_machine.enqueue(TickEvent{});
+}
 
-// Deterministic polling in RTOS loop
-std::size_t processed = static_fsm.process_all();
+// RTOS Task Thread (Consumer): Deterministic execution
+void Task_ControlLoop() {
+    spsc_machine.run_until_empty();
+}
+
+// Any Reader Thread: Atomic lock-free inspection
+auto state_name = spsc_machine.state_name();
+auto ctx_copy = spsc_machine.snapshot_context();
 ```
 
 ---
+
 
 ## 9. `fsm::deterministic_timer_manager<MaxTimers>` (Hardware Tick Timer)
 

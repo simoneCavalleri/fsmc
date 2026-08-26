@@ -1,0 +1,107 @@
+site_name: fsmc Documentation
+site_description: Universal State Machine Compiler & Zero-Overhead C++17/C++20 Engine for Critical Systems
+site_author: Simone Cavalleri
+site_url: https://simoneCavalleri.github.io/fsmc/
+repo_url: https://github.com/simoneCavalleri/fsmc
+repo_name: simoneCavalleri/fsmc
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+
+    - scheme: default
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+
+plugins:
+  - search
+
+validation:
+  nav:
+    omitted_files: ignore
+  links:
+    not_found: ignore
+    absolute_links: ignore
+    unrecognized_links: ignore
+
+markdown_extensions:
+
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.keys
+  - pymdownx.arithmatex:
+      generic: true
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting_started/installation.md
+      - Quickstart: getting_started/quickstart.md
+      - CLI Reference: getting_started/cli_usage.md
+  - Core Concepts:
+      - States & HFSM: concepts/states_and_hierarchy.md
+      - Transitions & Triggers: concepts/transitions_and_events.md
+      - Guards & Actions: concepts/guards_and_actions.md
+      - Memory & Real-Time: concepts/memory_and_realtime.md
+  - Formal Languages:
+      - SysML v2: formal_languages/sysml_v2.md
+      - Cameo / MagicDraw: formal_languages/cameo_magicdraw.md
+      - W3C SCXML: formal_languages/scxml.md
+      - nuXmv / SMV: formal_languages/smv_nuxmv.md
+      - Visual Diagrams: formal_languages/diagrams.md
+  - Safety & Verification:
+      - Model Checking (LTL/CTL): verification_and_safety/model_checking.md
+      - EFSM Interval Analysis: verification_and_safety/interval_analysis.md
+      - Requirement Traceability (RTM): verification_and_safety/rtm_matrix.md
+  - Runtime C++ API:
+      - Synchronous FSM: runtime_api/synchronous_fsm.md
+      - Lock-Free SPSC FSM: runtime_api/spsc_fsm.md
+      - Thread-Safe MPSC FSM: runtime_api/thread_safe_fsm.md
+      - Transition Trace & Hooks: runtime_api/introspection_trace.md
+  - Reference:
+      - CMake Integration: reference/cmake_integration.md
+      - Test Suite Catalog: TEST_SUITE_CATALOG.md
+      - Architecture Specification: ARCHITECTURE.md
+  - Interactive Playground: playground/index.md

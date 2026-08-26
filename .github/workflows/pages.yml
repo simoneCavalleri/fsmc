@@ -1,10 +1,12 @@
-name: Deploy Playground to GitHub Pages
+name: Deploy Documentation & Playground to GitHub Pages
 
 on:
   push:
     branches:
       - main
     paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
       - 'playground/**'
       - 'include/**'
       - 'tools/**'
@@ -31,6 +33,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install MkDocs & Material Theme
+        run: |
+          pip install mkdocs mkdocs-material pymdown-extensions
+
       - name: Setup Emscripten SDK
         uses: mymindstorm/setup-emsdk@v14
         with:
@@ -42,6 +53,13 @@ jobs:
           cmake --build build-wasm --config Release --target fsmc_wasm
           test -f playground/fsmc.js || cp -f build-wasm/playground/fsmc.js playground/fsmc.js 2>/dev/null || true
 
+      - name: Build MkDocs Site
+        run: |
+          mkdocs build
+          mkdir -p site/playground
+          cp -r playground/* site/playground/
+          cp -f playground/index.html site/playground/playground.html 2>/dev/null || true
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
         with:
@@ -50,8 +68,9 @@ jobs:
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'playground'
+          path: 'site'
 
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+

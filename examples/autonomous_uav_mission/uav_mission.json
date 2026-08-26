@@ -1,0 +1,242 @@
+{
+  "id": "AutonomousUavMission",
+  "initial": "Preflight",
+  "variables": [
+    {
+      "name": "altitude_m",
+      "type": "uint32_t",
+      "init": "0"
+    },
+    {
+      "name": "battery_percent",
+      "type": "uint32_t",
+      "init": "100"
+    },
+    {
+      "name": "retry_count",
+      "type": "uint32_t",
+      "init": "0"
+    },
+    {
+      "name": "waypoints_completed",
+      "type": "uint32_t",
+      "init": "0"
+    }
+  ],
+  "signals": [
+    {
+      "name": "AbortCmd"
+    },
+    {
+      "name": "AreaReached"
+    },
+    {
+      "name": "ArmCmd"
+    },
+    {
+      "name": "CalibrationOk"
+    },
+    {
+      "name": "EvCameraSnap"
+    },
+    {
+      "name": "EvSensorFault",
+      "attributes": [
+        { "name": "error_code", "type": "uint32_t" },
+        { "name": "sensor_id", "type": "uint32_t" }
+      ]
+    },
+    {
+      "name": "EvTelemetry",
+      "attributes": [
+        { "name": "battery_mv", "type": "uint32_t" },
+        { "name": "altitude_cm", "type": "uint32_t" },
+        { "name": "gps_locked", "type": "bool" }
+      ]
+    },
+    {
+      "name": "EvTelemetryPing"
+    },
+    {
+      "name": "EvWaypointCmd",
+      "attributes": [
+        { "name": "lat", "type": "float" },
+        { "name": "lon", "type": "float" },
+        { "name": "target_alt", "type": "float" }
+      ]
+    },
+    {
+      "name": "HomePointReached"
+    },
+    {
+      "name": "LowBatteryEvent"
+    },
+    {
+      "name": "NextSectorCmd"
+    },
+    {
+      "name": "PauseCmd"
+    },
+    {
+      "name": "ResumeMissionCmd"
+    },
+    {
+      "name": "ShutdownCmd"
+    },
+    {
+      "name": "TakeoffCmd"
+    },
+    {
+      "name": "TargetAltitudeReached"
+    },
+    {
+      "name": "TouchdownEvent"
+    }
+  ],
+  "properties": [
+    {
+      "name": "DisjointPreflightFlight",
+      "kind": "Invariant",
+      "ltl": "G (! (Preflight && InFlight))",
+      "req": "REQ-UAV-SAFE-02",
+      "desc": "Preflight checks and flight execution are mutually exclusive"
+    },
+    {
+      "name": "MissionTerminationReached",
+      "kind": "Reachability",
+      "ltl": "F Landed",
+      "req": "REQ-UAV-LIVE-03",
+      "desc": "A complete mission eventually reaches Landed state"
+    },
+    {
+      "name": "SafeLandingOnLowBattery",
+      "kind": "Safety",
+      "ltl": "G (LowBattery -> F SafeLanding)",
+      "req": "REQ-UAV-SAFE-01",
+      "desc": "Guarantees emergency return and landing upon low battery"
+    }
+  ],
+  "states": {
+  "FailSafe": {
+    "initial": "ReturnToHome",
+    "satisfies": ["REQ_UAV_SAFE_01"],
+    "on": {
+      "ShutdownCmd": {
+        "target": "Terminal",
+        "action": "PowerOff"
+      }
+    },
+    "states": {
+      "Landed": {
+
+      }
+    }
+  },
+  "ReturnToHome": {
+    "on": {
+      "HomePointReached": {
+        "target": "SafeLanding",
+        "action": "DescendMotors"
+      }
+    }
+  },
+  "SafeLanding": {
+    "on": {
+      "TouchdownEvent": {
+        "target": "Landed",
+        "action": "DisarmMotors"
+      }
+    }
+  },
+  "InFlight": {
+    "initial": "Ascending",
+    "do": "async_flight_stabilizer",
+    "satisfies": ["REQ_UAV_NAV_01"],
+    "on": {
+      "LowBatteryEvent": {
+        "target": "FailSafe",
+        "action": "InitiateFailSafe"
+      },
+      "AbortCmd": {
+        "target": "FailSafe",
+        "action": "InitiateFailSafe"
+      }
+    }
+  },
+  "Ascending": {
+    "on": {
+      "TargetAltitudeReached": {
+        "target": "Navigating",
+        "action": "StartNavigation"
+      }
+    }
+  },
+  "HoverPause": {
+    "satisfies": ["REQ_UAV_HOLD_01"],
+    "on": {
+      "ResumeMissionCmd": {
+        "target": "Navigating[H]",
+        "action": "ResumeNavigation"
+      }
+    }
+  },
+  "Navigating": {
+    "initial": "WaypointNav",
+    "defer": ["EvTelemetryPing", "EvCameraSnap"],
+    "on": {
+      "PauseCmd": {
+        "target": "HoverPause",
+        "action": "HoldPosition"
+      }
+    }
+  },
+  "SearchPattern": {
+    "on": {
+      "NextSectorCmd": {
+        "target": "WaypointNav",
+        "action": "LogSectorCompleted"
+      }
+    }
+  },
+  "WaypointNav": {
+    "on": {
+      "AreaReached": {
+        "target": "SearchPattern",
+        "action": "EnableSensors"
+      }
+    }
+  },
+  "Preflight": {
+    "initial": "SensorCalib",
+    "satisfies": ["REQ_UAV_PRE_01"],
+    "on": {
+      "TakeoffCmd": {
+        "target": "InFlight",
+        "guard": "HasGpsLockGuard",
+        "action": "LaunchUav"
+      }
+    },
+    "states": {
+      "SystemReady": {
+
+      }
+    }
+  },
+  "SensorCalib": {
+    "on": {
+      "CalibrationOk": {
+        "target": "SystemReady",
+        "action": "ArmMotors"
+      }
+    }
+  },
+  "Terminal": {
+    "initial": "FinalShutdown",
+    "states": {
+      "FinalShutdown": {
+
+      }
+    }
+  }
+  }
+}

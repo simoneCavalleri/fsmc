@@ -1,0 +1,16 @@
+digraph AutonomousUavMission {
+    __start__ [shape=point];
+    __start__ -> Preflight;
+    SensorCalib -> SystemReady [label="CalibrationOk / ArmMotors"];
+    WaypointNav -> SearchPattern [label="AreaReached / EnableSensors"];
+    SearchPattern -> WaypointNav [label="NextSectorCmd / LogSectorCompleted"];
+    Ascending -> Navigating [label="TargetAltitudeReached / StartNavigation"];
+    Navigating -> HoverPause [label="PauseCmd / HoldPosition"];
+    HoverPause -> Navigating [label="ResumeMissionCmd / ResumeNavigation"];
+    ReturnToHome -> SafeLanding [label="HomePointReached / DescendMotors"];
+    SafeLanding -> Landed [label="TouchdownEvent / DisarmMotors"];
+    Preflight -> InFlight [label="TakeoffCmd [HasGpsLockGuard] / LaunchUav"];
+    InFlight -> FailSafe [label="LowBatteryEvent / InitiateFailSafe"];
+    InFlight -> FailSafe [label="AbortCmd / InitiateFailSafe"];
+    FailSafe -> Terminal [label="ShutdownCmd / PowerOff"];
+}

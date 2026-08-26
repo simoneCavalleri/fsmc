@@ -1,0 +1,29 @@
+-- ============================================================================
+-- nuXmv / SMV Formal Model: MissionFSM
+-- Generated automatically by fsmc
+-- ============================================================================
+
+MODULE main
+
+VAR
+  state : {Aborted, InFlight, Ascending, Cruising, Orbiting, Landing, MissionCompleted, SignalLost, Standby, Calibrated, Diagnostics};
+  event : {none, CalibrationOkEvent, AuthorizeCmd, AltitudeReachedEvent, OrbitInsertedEvent, PingTelemetry, LinkDegradedEvent, LinkRestoredEvent, ReturnHomeCmd, TouchdownEvent, LaunchCmd};
+
+ASSIGN
+  init(state) := Diagnostics;
+
+  next(state) := case
+    state = Diagnostics & event = CalibrationOkEvent : Calibrated;
+    state = Calibrated & event = AuthorizeCmd : ClearanceChoice;
+    state = ClearanceChoice & (ValidClearanceGuard) : Ascending;
+    state = ClearanceChoice & (NoClearanceGuard) : Aborted;
+    state = Ascending & event = AltitudeReachedEvent : Cruising;
+    state = Cruising & event = OrbitInsertedEvent : Orbiting;
+    state = Orbiting & event = PingTelemetry : Orbiting;
+    state = Orbiting & event = LinkDegradedEvent : SignalLost;
+    state = SignalLost & event = LinkRestoredEvent : Orbiting;
+    state = Orbiting & event = ReturnHomeCmd : Landing;
+    state = Landing & event = TouchdownEvent : MissionCompleted;
+    TRUE : state;
+  esac;
+

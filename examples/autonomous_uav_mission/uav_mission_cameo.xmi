@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="2.1" xmlns:uml="http://www.omg.org/spec/UML/20090901" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1">
+  <uml:Model xmi:id="_m1" name="AutonomousUavMissionModel">
+    <packagedElement xmi:type="uml:StateMachine" xmi:id="_sm1" name="AutonomousUavMission">
+      <region xmi:id="_r1">
+        <subvertex xmi:type="uml:Pseudostate" xmi:id="_ps_root" kind="initial"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s1" name="FailSafe">
+          <region xmi:id="_r__s1">
+            <subvertex xmi:type="uml:Pseudostate" xmi:id="_ps_init__s1" kind="initial"/>
+            <transition xmi:id="_t_init__s1" source="_ps_init__s1" target="_s3"/>
+            <subvertex xmi:type="uml:State" xmi:id="_s2" name="Landed">
+            </subvertex>
+            <subvertex xmi:type="uml:State" xmi:id="_s3" name="ReturnToHome">
+            </subvertex>
+            <subvertex xmi:type="uml:State" xmi:id="_s4" name="SafeLanding">
+            </subvertex>
+            <transition xmi:id="_t7" source="_s3" target="_s4" trigger="HomePointReached" effect="DescendMotors"/>
+            <transition xmi:id="_t8" source="_s4" target="_s2" trigger="TouchdownEvent" effect="DisarmMotors"/>
+          </region>
+        </subvertex>
+        <subvertex xmi:type="uml:State" xmi:id="_s5" name="InFlight">
+          <doActivity xmi:type="uml:Activity" name="async_flight_stabilizer"/>
+          <region xmi:id="_r__s5">
+            <subvertex xmi:type="uml:Pseudostate" xmi:id="_ps_init__s5" kind="initial"/>
+            <transition xmi:id="_t_init__s5" source="_ps_init__s5" target="_s6"/>
+            <subvertex xmi:type="uml:State" xmi:id="_s6" name="Ascending">
+            </subvertex>
+            <subvertex xmi:type="uml:State" xmi:id="_s7" name="HoverPause">
+            </subvertex>
+            <subvertex xmi:type="uml:State" xmi:id="_s8" name="Navigating">
+              <deferrableTrigger name="EvTelemetryPing"/>
+              <deferrableTrigger name="EvCameraSnap"/>
+              <region xmi:id="_r__s8">
+                <subvertex xmi:type="uml:Pseudostate" xmi:id="_ps_init__s8" kind="initial"/>
+                <transition xmi:id="_t_init__s8" source="_ps_init__s8" target="_s10"/>
+                <subvertex xmi:type="uml:Pseudostate" xmi:id="_ps_hist__s8" kind="shallowHistory"/>
+                <subvertex xmi:type="uml:State" xmi:id="_s9" name="SearchPattern">
+                </subvertex>
+                <subvertex xmi:type="uml:State" xmi:id="_s10" name="WaypointNav">
+                </subvertex>
+                <transition xmi:id="_t2" source="_s10" target="_s9" trigger="AreaReached" effect="EnableSensors"/>
+                <transition xmi:id="_t3" source="_s9" target="_s10" trigger="NextSectorCmd" effect="LogSectorCompleted"/>
+              </region>
+            </subvertex>
+            <transition xmi:id="_t4" source="_s6" target="_s8" trigger="TargetAltitudeReached" effect="StartNavigation"/>
+            <transition xmi:id="_t5" source="_s8" target="_s7" trigger="PauseCmd" effect="HoldPosition"/>
+            <transition xmi:id="_t6" source="_s7" target="_s8" trigger="ResumeMissionCmd" effect="ResumeNavigation"/>
+          </region>
+        </subvertex>
+        <subvertex xmi:type="uml:State" xmi:id="_s11" name="Preflight">
+          <region xmi:id="_r__s11">
+            <subvertex xmi:type="uml:Pseudostate" xmi:id="_ps_init__s11" kind="initial"/>
+            <transition xmi:id="_t_init__s11" source="_ps_init__s11" target="_s12"/>
+            <subvertex xmi:type="uml:State" xmi:id="_s12" name="SensorCalib">
+            </subvertex>
+            <subvertex xmi:type="uml:State" xmi:id="_s13" name="SystemReady">
+            </subvertex>
+            <transition xmi:id="_t1" source="_s12" target="_s13" trigger="CalibrationOk" effect="ArmMotors"/>
+          </region>
+        </subvertex>
+        <subvertex xmi:type="uml:State" xmi:id="_s14" name="Terminal">
+          <region xmi:id="_r__s14">
+            <subvertex xmi:type="uml:Pseudostate" xmi:id="_ps_init__s14" kind="initial"/>
+            <transition xmi:id="_t_init__s14" source="_ps_init__s14" target="_s15"/>
+            <subvertex xmi:type="uml:State" xmi:id="_s15" name="FinalShutdown">
+            </subvertex>
+          </region>
+        </subvertex>
+        <transition xmi:id="_t_root_init" source="_ps_root" target="_s11"/>
+        <transition xmi:id="_t9" source="_s11" target="_s5" trigger="TakeoffCmd" guard="HasGpsLockGuard" effect="LaunchUav"/>
+        <transition xmi:id="_t10" source="_s5" target="_s1" trigger="LowBatteryEvent" effect="InitiateFailSafe"/>
+        <transition xmi:id="_t11" source="_s5" target="_s1" trigger="AbortCmd" effect="InitiateFailSafe"/>
+        <transition xmi:id="_t12" source="_s1" target="_s14" trigger="ShutdownCmd" effect="PowerOff"/>
+      </region>
+    </packagedElement>
+  </uml:Model>
+</xmi:XMI>

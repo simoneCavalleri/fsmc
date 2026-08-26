@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Preflight" name="AutonomousUavMission">
+  <datamodel>
+    <data id="altitude_m" expr="0" type="uint32_t"/>
+    <data id="battery_percent" expr="100" type="uint32_t"/>
+    <data id="retry_count" expr="0" type="uint32_t"/>
+    <data id="waypoints_completed" expr="0" type="uint32_t"/>
+  </datamodel>
+  <state id="FailSafe" initial="ReturnToHome">
+    <state id="Landed">
+    </state>
+    <transition event="ShutdownCmd" target="Terminal">
+      <send event="PowerOff"/>
+    </transition>
+  </state>
+  <state id="ReturnToHome">
+    <transition event="HomePointReached" target="SafeLanding">
+      <send event="DescendMotors"/>
+    </transition>
+  </state>
+  <state id="SafeLanding">
+    <transition event="TouchdownEvent" target="Landed">
+      <send event="DisarmMotors"/>
+    </transition>
+  </state>
+  <state id="InFlight" initial="Ascending">
+    <transition event="LowBatteryEvent" target="FailSafe">
+      <send event="InitiateFailSafe"/>
+    </transition>
+    <transition event="AbortCmd" target="FailSafe">
+      <send event="InitiateFailSafe"/>
+    </transition>
+  </state>
+  <state id="Ascending">
+    <transition event="TargetAltitudeReached" target="Navigating">
+      <send event="StartNavigation"/>
+    </transition>
+  </state>
+  <state id="HoverPause">
+    <transition event="ResumeMissionCmd" target="Navigating">
+      <send event="ResumeNavigation"/>
+    </transition>
+  </state>
+  <state id="Navigating" initial="WaypointNav">
+    <history id="Navigating_hist" type="shallow"/>
+    <defer event="EvTelemetryPing"/>
+    <defer event="EvCameraSnap"/>
+    <transition event="PauseCmd" target="HoverPause">
+      <send event="HoldPosition"/>
+    </transition>
+  </state>
+  <state id="SearchPattern">
+    <transition event="NextSectorCmd" target="WaypointNav">
+      <send event="LogSectorCompleted"/>
+    </transition>
+  </state>
+  <state id="WaypointNav">
+    <transition event="AreaReached" target="SearchPattern">
+      <send event="EnableSensors"/>
+    </transition>
+  </state>
+  <state id="Preflight" initial="SensorCalib">
+    <state id="SystemReady">
+    </state>
+    <transition event="TakeoffCmd" cond="HasGpsLockGuard" target="InFlight">
+      <send event="LaunchUav"/>
+    </transition>
+  </state>
+  <state id="SensorCalib">
+    <transition event="CalibrationOk" target="SystemReady">
+      <send event="ArmMotors"/>
+    </transition>
+  </state>
+  <state id="Terminal" initial="FinalShutdown">
+    <state id="FinalShutdown">
+    </state>
+  </state>
+</scxml>

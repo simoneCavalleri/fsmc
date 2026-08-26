@@ -1,0 +1,29 @@
+-- ============================================================================
+-- nuXmv / SMV Formal Model: ConnectionFSM
+-- Generated automatically by fsmc
+-- ============================================================================
+
+MODULE main
+
+VAR
+  state : {Connected, Connecting, Disconnected, Suspended};
+  event : {none, ConnectCmd, HandshakeOkEvent, HandshakeFailedEvent, TimeoutEvent, NetworkDegradedEvent, DisconnectCmd, ConnectionLostEvent, NetworkRestoredEvent};
+
+ASSIGN
+  init(state) := Disconnected;
+
+  next(state) := case
+    state = Disconnected & event = ConnectCmd & (fsm::and_<HasNetworkGuard, HasValidCredentialsGuard>) : Connecting;
+    state = Disconnected & event = ConnectCmd & (fsm::or_<fsm::not_<HasNetworkGuard>, fsm::not_<HasValidCredentialsGuard>>) : Disconnected;
+    state = Connecting & event = HandshakeOkEvent : Connected;
+    state = Connecting & event = HandshakeFailedEvent : Disconnected;
+    state = Connecting & event = TimeoutEvent : Disconnected;
+    state = Connected & event = NetworkDegradedEvent : Suspended;
+    state = Connected & event = DisconnectCmd : Disconnected;
+    state = Connected & event = ConnectionLostEvent : Disconnected;
+    state = Suspended & event = NetworkRestoredEvent : Connected;
+    state = Suspended & event = DisconnectCmd : Disconnected;
+    state = Suspended & event = TimeoutEvent : Disconnected;
+    TRUE : state;
+  esac;
+

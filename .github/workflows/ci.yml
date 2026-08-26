@@ -5,6 +5,11 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint-and-format:
@@ -13,22 +18,46 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install LLVM Tools (clang-format, clang-tidy)
+      - name: Install LLVM Tools & Python
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-format clang-tidy
+          sudo apt-get install -y clang-format clang-tidy python3
 
       - name: Check Formatting with clang-format
         run: |
           find include tools tests examples benchmarks -name '*.cpp' -o -name '*.hpp' | xargs clang-format --dry-run --Werror
 
-      - name: Configure CMake for Clang-Tidy
+      - name: Configure CMake for Clang-Tidy & SSOT Checks
         run: |
           cmake -B build -S . -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DFSMC_ENABLE_BENCHMARKS=ON
 
+      - name: Verify Standalone Runtime Synchronization (SSOT)
+        run: |
+          cmake --build build --target check_standalone_runtime
+
       - name: Run Clang-Tidy
         run: |
-          clang-tidy -p build tools/fsmc/main.cpp tools/fsm-opt/main.cpp tests/test_deferred.cpp tests/test_format_export.cpp tests/test_timed_transitions.cpp
+          clang-tidy -p build tools/fsmc/main.cpp tools/fsm-opt/main.cpp tests/core/test_deferred.cpp tests/backend/emitters/test_format_export.cpp tests/core/test_timed_transitions.cpp
+
+  docs-catalog-sync:
+    name: Test Catalog Sync Check
+    runs-on: ubuntu-latest
+    # Runs in parallel with lint-and-format and build-and-test.
+    # Does NOT block merges: catalog drift is surfaced as a warning, not a gate.
+    # Developers should run: python3 scripts/generate_test_catalog.py
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python
+        run: sudo apt-get update && sudo apt-get install -y python3
+
+      - name: Configure CMake for check_test_catalog target
+        run: cmake -B build -S . -DFSMC_ENABLE_TESTING=ON -DFSMC_ENABLE_BENCHMARKS=OFF
+
+      - name: Verify Test Suite Catalog is Synchronized
+        run: |
+          cmake --build build --target check_test_catalog
 
   build-and-test:
     name: Build & Test (${{ matrix.name }})
@@ -103,4 +132,3 @@ jobs:
           mkdir -p build/tools
           test -f build/tools/plantuml.jar || curl -sL -o build/tools/plantuml.jar "https://github.com/plantuml/plantuml/releases/download/v1.2024.6/plantuml-1.2024.6.jar"
           ./scripts/verify_diagram_renderings.py
-

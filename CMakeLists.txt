@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 project(fsmc
-    VERSION 1.0.0
+    VERSION 0.1.0
     DESCRIPTION "A universal zero-overhead State Machine compiler for modern C++ (C++17/20)"
     HOMEPAGE_URL "https://github.com/simoneCavalleri/fsmc"
     LANGUAGES CXX
@@ -70,6 +70,7 @@ if(FSMC_BUILD_WASM OR EMSCRIPTEN)
         CXX_STANDARD 20
         OUTPUT_NAME "fsmc"
         SUFFIX ".js"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/playground"
     )
     target_link_options(fsmc_wasm PRIVATE
         "-lembind"
@@ -77,6 +78,8 @@ if(FSMC_BUILD_WASM OR EMSCRIPTEN)
         "-sMODULARIZE=1"
         "-sEXPORT_NAME=createFsmcModule"
         "-sALLOW_MEMORY_GROWTH=1"
+        "-sENVIRONMENT=web,worker,node"
+        "-sSINGLE_FILE=1"
     )
 endif()
 
@@ -97,6 +100,40 @@ endif()
 # Benchmarks
 if(FSMC_ENABLE_BENCHMARKS)
     add_subdirectory(benchmarks)
+endif()
+
+# ==============================================================================
+# Automated Test Catalog Generator & Validator Targets
+# ==============================================================================
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_FOUND)
+    add_custom_target(generate_test_catalog
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_test_catalog.py
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Generating docs/TEST_SUITE_CATALOG.md from in-code test comments..."
+        VERBATIM
+    )
+
+    add_custom_target(check_test_catalog
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_test_catalog.py --check
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Validating that docs/TEST_SUITE_CATALOG.md is synchronized with in-code test comments..."
+        VERBATIM
+    )
+
+    add_custom_target(generate_standalone_runtime
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_standalone_runtime.py
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Generating standalone runtime single-headers from include/fsm/runtime/cpp/..."
+        VERBATIM
+    )
+
+    add_custom_target(check_standalone_runtime
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_standalone_runtime.py --check
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Checking that standalone runtimes are synchronized with include/fsm/runtime/cpp/..."
+        VERBATIM
+    )
 endif()
 
 # ==============================================================================

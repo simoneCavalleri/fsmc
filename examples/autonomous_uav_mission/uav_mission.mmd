@@ -1,0 +1,39 @@
+stateDiagram-v2
+    [*] --> Preflight
+    state Preflight {
+        [*] --> SensorCalib
+        state SensorCalib
+        state SystemReady
+        SensorCalib --> SystemReady : CalibrationOk / ArmMotors
+    }
+    state InFlight {
+        [*] --> Ascending
+        state Navigating {
+            [*] --> WaypointNav
+            state WaypointNav
+            state SearchPattern
+            WaypointNav --> SearchPattern : AreaReached / EnableSensors
+            SearchPattern --> WaypointNav : NextSectorCmd / LogSectorCompleted
+        }
+        state Ascending
+        state HoverPause
+        Ascending --> Navigating : TargetAltitudeReached / StartNavigation
+        Navigating --> HoverPause : PauseCmd / HoldPosition
+        HoverPause --> Navigating : ResumeMissionCmd / ResumeNavigation
+    }
+    state FailSafe {
+        [*] --> ReturnToHome
+        state ReturnToHome
+        state SafeLanding
+        state Landed
+        ReturnToHome --> SafeLanding : HomePointReached / DescendMotors
+        SafeLanding --> Landed : TouchdownEvent / DisarmMotors
+    }
+    state Terminal {
+        [*] --> FinalShutdown
+        state FinalShutdown
+    }
+    Preflight --> InFlight : TakeoffCmd [HasGpsLockGuard] / LaunchUav
+    InFlight --> FailSafe : LowBatteryEvent / InitiateFailSafe
+    InFlight --> FailSafe : AbortCmd / InitiateFailSafe
+    FailSafe --> Terminal : ShutdownCmd / PowerOff

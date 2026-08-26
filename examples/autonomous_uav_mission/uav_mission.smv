@@ -1,0 +1,51 @@
+-- ============================================================================
+-- nuXmv / SMV Formal Model: AutonomousUavMission
+-- Generated automatically by fsmc
+-- ============================================================================
+
+MODULE main
+
+VAR
+  state : {FailSafe, Landed, ReturnToHome, SafeLanding, InFlight, Ascending, HoverPause, Navigating, SearchPattern, WaypointNav, Preflight, SensorCalib, SystemReady, Terminal, FinalShutdown};
+  event : {none, CalibrationOk, AreaReached, NextSectorCmd, TargetAltitudeReached, PauseCmd, ResumeMissionCmd, HomePointReached, TouchdownEvent, TakeoffCmd, LowBatteryEvent, AbortCmd, ShutdownCmd, EvTelemetryPing, EvCameraSnap};
+  altitude_m : 0..100;
+  battery_percent : 0..100;
+  retry_count : 0..100;
+  waypoints_completed : 0..100;
+
+ASSIGN
+  init(state) := Preflight;
+  init(altitude_m) := 0;
+  init(battery_percent) := 100;
+  init(retry_count) := 0;
+  init(waypoints_completed) := 0;
+
+  next(state) := case
+    state = SensorCalib & event = CalibrationOk : SystemReady;
+    state = WaypointNav & event = AreaReached : SearchPattern;
+    state = SearchPattern & event = NextSectorCmd : WaypointNav;
+    state = Ascending & event = TargetAltitudeReached : Navigating;
+    state = Navigating & event = PauseCmd : HoverPause;
+    state = HoverPause & event = ResumeMissionCmd : Navigating;
+    state = ReturnToHome & event = HomePointReached : SafeLanding;
+    state = SafeLanding & event = TouchdownEvent : Landed;
+    state = Preflight & event = TakeoffCmd & (HasGpsLockGuard) : InFlight;
+    state = InFlight & event = LowBatteryEvent : FailSafe;
+    state = InFlight & event = AbortCmd : FailSafe;
+    state = FailSafe & event = ShutdownCmd : Terminal;
+    TRUE : state;
+  esac;
+
+-- ============================================================================
+-- Formal Specifications & Verification Goals
+-- ============================================================================
+
+INVARSPEC -- DisjointPreflightFlight
+  G (!((state = Preflight & state = InFlight)));
+
+LTLSPEC -- MissionTerminationReached
+  F (state = Landed);
+
+LTLSPEC -- SafeLandingOnLowBattery
+  G ((state = LowBattery -> F (state = SafeLanding)));
+

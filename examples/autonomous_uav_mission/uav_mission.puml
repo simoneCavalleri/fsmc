@@ -1,0 +1,91 @@
+@startuml
+title Autonomous UAV Mission & Flight Executive Statechart
+
+' ============================================================================
+' Formal Verification Specifications (LTL / CTL)
+' ============================================================================
+' @fsm:property name=SafeLandingOnLowBattery kind=Safety ltl="G (LowBattery -> F SafeLanding)" req="REQ-UAV-SAFE-01" desc="Guarantees emergency return and landing upon low battery"
+' @fsm:property name=DisjointPreflightFlight kind=Invariant ltl="G (! (Preflight && InFlight))" req="REQ-UAV-SAFE-02" desc="Preflight checks and flight execution are mutually exclusive"
+' @fsm:property name=MissionTerminationReached kind=Reachability ltl="F Landed" req="REQ-UAV-LIVE-03" desc="A complete mission eventually reaches Landed state"
+
+' ============================================================================
+' Extended Finite State Machine Variables (EFSM)
+' ============================================================================
+' @fsm:var name=battery_percent type=uint32_t init=100 min=0 max=100 desc="Remaining battery percentage"
+' @fsm:var name=altitude_m type=uint32_t init=0 min=0 max=5000 desc="Current altitude in meters"
+' @fsm:var name=waypoints_completed type=uint32_t init=0 min=0 max=100 desc="Number of navigation waypoints visited"
+' @fsm:var name=retry_count type=uint32_t init=0 min=0 max=5 desc="Communication reconnect retry count"
+
+' ============================================================================
+' Strongly-Typed Signal Definitions with Validation Predicates
+' ============================================================================
+' @fsm:signal EvTelemetry{uint32_t battery_mv, int32_t altitude_cm, bool gps_locked} validator="battery_mv > 0 && altitude_cm >= 0"
+' @fsm:signal EvWaypointCmd{double lat, double lon, float target_alt} validator="target_alt > 0.0f"
+' @fsm:signal EvSensorFault{uint32_t error_code, uint32_t sensor_id} validator="sensor_id > 0"
+' @fsm:signal EvTelemetryPing
+' @fsm:signal EvCameraSnap
+' @fsm:signal ArmCmd
+' @fsm:signal TakeoffCmd
+' @fsm:signal PauseCmd
+' @fsm:signal ResumeMissionCmd
+' @fsm:signal AbortCmd
+' @fsm:signal CalibrationOk
+' @fsm:signal TargetAltitudeReached
+' @fsm:signal AreaReached
+' @fsm:signal NextSectorCmd
+' @fsm:signal HomePointReached
+' @fsm:signal TouchdownEvent
+' @fsm:signal LowBatteryEvent
+' @fsm:signal ShutdownCmd
+
+' ============================================================================
+' State Hierarchy & Composite Structures
+' ============================================================================
+[*] --> Preflight
+
+state Preflight {
+    ' @fsm:state satisfies=["REQ-UAV-PRE-01"]
+    [*] --> SensorCalib
+    SensorCalib --> SystemReady : CalibrationOk / ArmMotors
+}
+
+state InFlight {
+    ' @fsm:state satisfies=["REQ-UAV-NAV-01", "REQ-UAV-SAFE-04"] do_activity="async_flight_stabilizer"
+    [*] --> Ascending
+
+    Ascending --> Navigating : TargetAltitudeReached / StartNavigation
+
+    state Navigating {
+        ' @fsm:defer [EvTelemetryPing, EvCameraSnap]
+        [*] --> WaypointNav
+        WaypointNav --> SearchPattern : AreaReached / EnableSensors
+        SearchPattern --> WaypointNav : NextSectorCmd / LogSectorCompleted
+    }
+
+    state HoverPause {
+        ' @fsm:state satisfies=["REQ-UAV-HOLD-01"]
+    }
+
+    Navigating --> HoverPause : PauseCmd / HoldPosition
+    HoverPause --> Navigating[H] : ResumeMissionCmd / ResumeNavigation
+}
+
+state FailSafe {
+    ' @fsm:state satisfies=["REQ-UAV-SAFE-01"]
+    [*] --> ReturnToHome
+    ReturnToHome --> SafeLanding : HomePointReached / DescendMotors
+    SafeLanding --> Landed : TouchdownEvent / DisarmMotors
+}
+
+Preflight --> InFlight : TakeoffCmd [HasGpsLockGuard] / LaunchUav
+InFlight --> FailSafe : LowBatteryEvent / InitiateFailSafe
+InFlight --> FailSafe : AbortCmd / InitiateFailSafe
+
+state Terminal {
+    [*] --> FinalShutdown
+}
+
+FailSafe --> Terminal : ShutdownCmd / PowerOff
+Terminal --> [*]
+
+@enduml

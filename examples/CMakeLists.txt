@@ -51,3 +51,18 @@ fsmc_target_sources(async_motor_controller_example
 )
 
 add_test(NAME async_motor_controller_example COMMAND async_motor_controller_example)
+
+# Showcase 4: Autonomous UAV Mission & Flight Executive (Full FsmIr Showcase: EFSM, Typed Signals, History, Safety LTL)
+add_executable(autonomous_uav_mission_example autonomous_uav_mission/main.cpp)
+target_link_libraries(autonomous_uav_mission_example PRIVATE fsmc_runtime)
+set_target_properties(autonomous_uav_mission_example PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+
+fsmc_target_sources(autonomous_uav_mission_example
+    DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/autonomous_uav_mission/uav_mission.puml
+    NAME UavMissionFSM
+    STANDARD 20
+    STANDALONE
+    NAMESPACE uav
+)
+
+add_test(NAME autonomous_uav_mission_example COMMAND autonomous_uav_mission_example)

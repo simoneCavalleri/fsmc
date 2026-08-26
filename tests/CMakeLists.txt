@@ -22,12 +22,16 @@ FetchContent_MakeAvailable(googletest)
 # Helper Function for DRY Test Declarations
 # ==============================================================================
 function(add_fsm_unit_test TEST_NAME)
-    set(oneValueArgs STANDARD)
+    set(oneValueArgs STANDARD DIR)
     set(multiValueArgs SOURCES EXTRA_LIBS)
     cmake_parse_arguments(ARG "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
     if(NOT ARG_SOURCES)
-        set(ARG_SOURCES ${TEST_NAME}.cpp)
+        if(ARG_DIR)
+            set(ARG_SOURCES ${ARG_DIR}/${TEST_NAME}.cpp)
+        else()
+            set(ARG_SOURCES ${TEST_NAME}.cpp)
+        endif()
     endif()
 
     add_executable(${TEST_NAME} ${ARG_SOURCES})
@@ -43,55 +47,80 @@ function(add_fsm_unit_test TEST_NAME)
 endfunction()
 
 # ==============================================================================
-# Core Runtime Tests
+# Core Runtime Tests (tests/core/)
 # ==============================================================================
-add_fsm_unit_test(test_fsm STANDARD 17)
-add_fsm_unit_test(test_fsm_cpp20 STANDARD 20 SOURCES test_fsm.cpp)
-add_fsm_unit_test(test_hfsm)
-add_fsm_unit_test(test_choice)
-add_fsm_unit_test(test_internal_transition)
-add_fsm_unit_test(test_history)
-add_fsm_unit_test(test_deep_history_multi_level)
-add_fsm_unit_test(test_deferred)
-add_fsm_unit_test(test_composite_guards)
-add_fsm_unit_test(test_observer)
-add_fsm_unit_test(test_timed_transitions)
-add_fsm_unit_test(test_thread_safe_stress)
-add_fsm_unit_test(test_async_and_guards)
-add_fsm_unit_test(test_zero_alloc_runtime)
-add_fsm_unit_test(test_spsc_queue)
-add_fsm_unit_test(test_context_contract)
+add_fsm_unit_test(test_fsm DIR core STANDARD 17)
+add_fsm_unit_test(test_fsm_cpp20 DIR core STANDARD 20 SOURCES core/test_fsm.cpp)
+add_fsm_unit_test(test_hfsm DIR core)
+add_fsm_unit_test(test_choice DIR core)
+add_fsm_unit_test(test_internal_transition DIR core)
+add_fsm_unit_test(test_history DIR core)
+add_fsm_unit_test(test_deep_history_multi_level DIR core)
+add_fsm_unit_test(test_deferred DIR core)
+add_fsm_unit_test(test_composite_guards DIR core)
+add_fsm_unit_test(test_observer DIR core)
+add_fsm_unit_test(test_timed_transitions DIR core)
+add_fsm_unit_test(test_thread_safe_stress DIR core)
+add_fsm_unit_test(test_async_and_guards DIR core)
+add_fsm_unit_test(test_zero_alloc_runtime DIR core)
+add_fsm_unit_test(test_spsc_queue DIR core)
+add_fsm_unit_test(test_context_contract DIR core)
+add_fsm_unit_test(test_traits_and_hooks DIR core)
+add_fsm_unit_test(test_ring_buffer_overflow DIR core)
 
 # ==============================================================================
-# Frontend Parser Tests
+# Frontend Formal Parser Tests (tests/frontend/formal/)
 # ==============================================================================
-add_fsm_unit_test(test_parser)
-add_fsm_unit_test(test_sysml2_parser)
-add_fsm_unit_test(test_cameo_parser)
-add_fsm_unit_test(test_scxml_parser)
-add_fsm_unit_test(test_json_parser)
-add_fsm_unit_test(test_dot_parser)
-add_fsm_unit_test(test_directive_parser)
-add_fsm_unit_test(test_parser_negative)
+add_fsm_unit_test(test_sysml2_parser DIR frontend/formal)
+add_fsm_unit_test(test_cameo_parser DIR frontend/formal)
+add_fsm_unit_test(test_scxml_parser DIR frontend/formal)
+add_fsm_unit_test(test_smv_parser DIR frontend/formal)
 
 # ==============================================================================
-# Formal IR & Middle-End Tests
+# Frontend Diagram Parser Tests (tests/frontend/diagram/)
 # ==============================================================================
-add_fsm_unit_test(test_fsm_ir)
-add_fsm_unit_test(test_model_checker)
-add_fsm_unit_test(test_pass_manager)
-add_fsm_unit_test(test_diagnostics)
-add_fsm_unit_test(test_format_export)
-add_fsm_unit_test(test_lossless_roundtrip)
+add_fsm_unit_test(test_parser DIR frontend/diagram SOURCES frontend/diagram/test_plantuml_parser.cpp)
+add_fsm_unit_test(test_json_parser DIR frontend/diagram)
+add_fsm_unit_test(test_dot_parser DIR frontend/diagram)
 
 # ==============================================================================
-# Code Generation & Integration Tests
+# Frontend Directives & Lexer Tests (tests/frontend/)
 # ==============================================================================
-add_fsm_unit_test(test_codegen)
-add_fsm_unit_test(test_cpp_modular_generator)
+add_fsm_unit_test(test_directive_parser DIR frontend)
+add_fsm_unit_test(test_parser_classification DIR frontend)
+add_fsm_unit_test(test_parser_negative DIR frontend)
+add_fsm_unit_test(test_parser_factory_and_lexer DIR frontend)
+
+# ==============================================================================
+# Formal IR Tests (tests/ir/)
+# ==============================================================================
+add_fsm_unit_test(test_fsm_ir DIR ir)
+
+# ==============================================================================
+# Middle-End & Verification Tests (tests/middleend/)
+# ==============================================================================
+add_fsm_unit_test(test_model_checker DIR middleend)
+add_fsm_unit_test(test_model_checker_ltl DIR middleend)
+add_fsm_unit_test(test_pass_manager DIR middleend)
+add_fsm_unit_test(test_middleend_passes DIR middleend)
+add_fsm_unit_test(test_diagnostics DIR middleend)
+add_fsm_unit_test(test_timed_smv DIR middleend)
+
+# ==============================================================================
+# Diagram & IR Emitter Tests (tests/backend/emitters/)
+# ==============================================================================
+add_fsm_unit_test(test_format_export DIR backend/emitters)
+add_fsm_unit_test(test_lossless_roundtrip DIR backend/emitters)
+add_fsm_unit_test(test_emitter_factory DIR backend/emitters)
+
+# ==============================================================================
+# C++ Code Generator Backend Tests (tests/backend/cpp/)
+# ==============================================================================
+add_fsm_unit_test(test_codegen DIR backend/cpp)
+add_fsm_unit_test(test_cpp_modular_generator DIR backend/cpp)
 
 # Compiled Generated FSM (Modular C++20)
-add_fsm_unit_test(test_generated_fsm)
+add_fsm_unit_test(test_generated_fsm DIR backend/cpp)
 fsmc_target_sources(test_generated_fsm
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/../examples/connection_manager/connection.mmd
     NAME ConnectionMermaidFSM
@@ -102,7 +131,7 @@ fsmc_target_sources(test_generated_fsm
 )
 
 # C++17 Standalone Output
-add_fsm_unit_test(test_cpp17_standalone STANDARD 17)
+add_fsm_unit_test(test_cpp17_standalone DIR backend/cpp STANDARD 17)
 fsmc_target_sources(test_cpp17_standalone
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/../examples/connection_manager/connection.puml
     NAME ConnectionFSM17
@@ -112,7 +141,7 @@ fsmc_target_sources(test_cpp17_standalone
 )
 
 # C++20 Standalone Output
-add_fsm_unit_test(test_cpp20_standalone STANDARD 20)
+add_fsm_unit_test(test_cpp20_standalone DIR backend/cpp STANDARD 20)
 fsmc_target_sources(test_cpp20_standalone
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/../examples/connection_manager/connection.puml
     NAME ConnectionFSM20
@@ -121,8 +150,10 @@ fsmc_target_sources(test_cpp20_standalone
     NAMESPACE net20
 )
 
-# CMake target_sources integration test
-add_fsm_unit_test(test_cmake_integration STANDARD 20)
+# ==============================================================================
+# Integration Tests (tests/integration/)
+# ==============================================================================
+add_fsm_unit_test(test_cmake_integration DIR integration STANDARD 20)
 fsmc_target_sources(test_cmake_integration
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/../examples/connection_manager/connection.mmd
     NAME ConnectionFSM

@@ -1,7 +1,7 @@
 {
   "name": "fsmc",
-  "version-string": "1.0.0",
-  "description": "A universal zero-overhead State Machine compiler for modern C++ (C++17/20)",
+  "version-string": "0.1.0",
+  "description": "Universal Finite State Machine Compiler, Optimization Infrastructure, Formal Verification & Zero-Overhead C++17/C++20 Engine",
   "homepage": "https://github.com/simoneCavalleri/fsmc",
   "license": "MIT",
   "dependencies": []

@@ -11,13 +11,13 @@
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
-#include "fsm/frontend/plantuml_parser.hpp"
-#include "fsm/frontend/sysml2_parser.hpp"
-#include "fsm/fsm.hpp"
+#include "fsm/frontend/formal/sysml2_parser.hpp"
+#include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/pass_manager.hpp"
-#include "fsm/spsc_ring_buffer.hpp"
-#include "fsm/static_ring_buffer.hpp"
+#include "fsm/runtime/cpp/fsm.hpp"
+#include "fsm/runtime/cpp/spsc_ring_buffer.hpp"
+#include "fsm/runtime/cpp/static_ring_buffer.hpp"
 
 // ============================================================================
 // Global Heap Allocation Tracker for Google Benchmark

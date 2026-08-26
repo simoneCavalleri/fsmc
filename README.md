@@ -5,15 +5,13 @@
 [![CI](https://github.com/simoneCavalleri/fsmc/actions/workflows/ci.yml/badge.svg)](https://github.com/simoneCavalleri/fsmc/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/simoneCavalleri/fsmc?color=blue)](https://github.com/simoneCavalleri/fsmc/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![C++ Standard](https://img.shields.io/badge/C%2B%2B-17%20%7C%2020-blue.svg)](https://isocpp.org/)
-[![Standards](https://img.shields.io/badge/Standards-OMG%20UML%202.5%20%7C%20SysML%20v2%20%7C%20W3C%20SCXML-orange.svg)](docs/UML_REFERENCE.md)
-[![Tests](https://img.shields.io/badge/Tests-39%20Suites%20Passing-success.svg)](tests/)
-[![Performance](https://img.shields.io/badge/Dispatch-0.43%20ns%20%7C%200%20Heap%20Allocs-brightgreen.svg)](benchmarks/)
+[![Standards](https://img.shields.io/badge/Standards-OMG%20UML%202.5%20%7C%20SysML%20v2%20%7C%20W3C%20SCXML%20%7C%20nuXmv-orange.svg)](docs/UML_REFERENCE.md)
+[![Tests](https://img.shields.io/badge/Tests-48%20Suites%20Passing-success.svg)](tests/)
 
-**The Universal Finite State Machine Compiler & Optimization Infrastructure.**  
-*Transpile, optimize, formally verify, and compile statecharts from 7 industry modeling formats into hard real-time, zero-overhead C++17/C++20 code.*
+**The Universal Finite State Machine Compiler, Optimization & Formal Verification Infrastructure.**  
+*Transpile, optimize, formally verify, and compile statecharts across 8 industry modeling formats and target architectures.*
 
-[What is fsmc?](#-what-is-fsmc) • [The Toolchain Tools](#-the-toolchain-tools) • [Quickstart](#-quickstart) • [Performance Benchmarks](#-performance-benchmarks) • [Supported Formats](#-supported-formats) • [Documentation](docs/ARCHITECTURE.md)
+[What is fsmc?](#-what-is-fsmc) • [The Toolchain Tools](#-the-toolchain-tools) • [Quickstart](#-quickstart) • [Supported Formats](#-supported-modeling-formats) • [Benchmarks](#-performance--compiler-benchmarks) • [Documentation](docs/ARCHITECTURE.md)
 
 </div>
 
@@ -21,65 +19,83 @@
 
 ## 🏛️ What is `fsmc`?
 
-**`fsmc`** is a multi-frontend, multi-backend compiler and toolchain for finite state machines. Rather than locking statechart definitions into proprietary tools or a single runtime, `fsmc` decouples model ingestion, intermediate representation (IR), static verification passes, and code generation across target languages and platforms—powered today by a zero-overhead, sub-nanosecond C++ engine.
+**`fsmc`** is a modern, multi-frontend, multi-backend compiler and toolchain designed for finite state machines and hierarchical statecharts. Instead of locking state definitions into proprietary modeling software or binding them to a single language runtime, `fsmc` decouples **model ingestion**, **formal Intermediate Representation (IR)**, **static optimization passes**, **formal model checking**, and **backend code generation**.
 
 ```
   ┌─────────────────────────────────────────────────────────────────────────────────┐
   │                              FRONTEND INGESTION                                 │
-  │   SysML v2  •  Cameo XMI  •  W3C SCXML  •  XState JSON  •  PlantUML  •  Mermaid │
+  │  Formal Metamodels: SysML v2  •  Cameo / MagicDraw XMI  •  W3C SCXML            │
+  │  Visual Diagrams:   PlantUML  •  Mermaid  •  Graphviz DOT  •  XState JSON       │
   └──────────────────────────────────────┬──────────────────────────────────────────┘
                                          │
                                          ▼
   ┌─────────────────────────────────────────────────────────────────────────────────┐
   │                    UNIFIED INTERMEDIATE REPRESENTATION (FsmIr)                  │
   │   Canonical AST  •  Deterministic 64-bit FNV-1a Hashes  •  Lossless Serialization│
+  │   Extended Variables (EFSM & Physical Units)  •  Structured Triggers & Signals   │
+  │   Formal Properties (LTL/INVAR)  •  Traceability Requirements (@fsm:req)        │
   └──────────────────────────────────────┬──────────────────────────────────────────┘
                                          │
                                          ▼
   ┌─────────────────────────────────────────────────────────────────────────────────┐
   │                      MIDDLE-END PASS PIPELINE (PassManager)                     │
-  │   Hierarchy Flattening  •  Dead State Pruning  •  Choice Branch Completeness    │
-  │   Reachability Check    •  Safety Invariant Verification  •  DiagnosticEngine   │
+  │   Dead State & Transition Pruning  •  Determinism Enforcement                   │
+  │   Algebraic Guard Simplification   •  Submachine Inlining                       │
+  │   Orthogonal Race Analysis         •  Timed Deadlock & Racing Timeout Pass      │
+  │   Temporal LTL/CTL Model Checking  •  Clang/Rust-Style Diagnostic Engine        │
   └──────────────────────────────────────┬──────────────────────────────────────────┘
                                          │
                                          ▼
   ┌─────────────────────────────────────────────────────────────────────────────────┐
   │                               TARGET BACKENDS                                   │
-  │   Standalone C++17/C++20 Header (0 deps)  •  Modular C++  •  Diagram Emitters   │
+  │   8 Universal Diagram & SMV Emitters  •  C++17/C++20 Zero-Allocation Engine     │
+  │   Bounded Choice Flattening           •  Deterministic Tick Timer Manager       │
+  │   Ring Buffer Overflow Policies       •  Standalone Headers (0 Dependencies)    │
   └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Key Capabilities
-- ⚡ **Sub-Nanosecond Zero-Overhead Execution**: `0 bytes` heap allocation on dispatch, `0 ns` virtual table overhead, `~0.43 ns` transition latency (over 7 Billion transitions/sec).
-- 🔒 **Embedded & Hard Real-Time Safe**: Wait-free, lock-free cacheline-aligned Single-Producer Single-Consumer queue (`fsm::spsc_ring_buffer`) and microcontroller static buffer (`fsm::static_ring_buffer`).
-- 🌲 **Unified Formal IR (`FsmIr`)**: Strongly-typed AST capturing hierarchical states (HFSM), Shallow `[H]` / Deep `[H*]` history, UML `<<choice>>` / `<<junction>>` pseudostates, deferred events, and boolean composite guards (`[PowerOk && (!Fault || Override)]`).
-- 🚨 **Rich Diagnostic Engine**: Clang/Rust-style ANSI diagnostic rendering with exact source code spans, line numbers, and error carets (`^~~~`).
+### Core Architecture Highlights
+
+- 🌐 **Two-Category Frontend Architecture**:
+  - **Formal Models (`include/fsm/frontend/formal/`)**: Deterministic ingestion from OMG SysML v2, Cameo / MagicDraw (OMG XMI 2.x), and W3C SCXML with strict symbol typing and physical quantity tracking (`[mm/s]`, `[percent]`).
+  - **Visual Diagrams (`include/fsm/frontend/diagram/`)**: Visual sketch notations (PlantUML, Mermaid, Graphviz DOT, XState JSON) with lossless roundtrip comment directives (`@fsm:var`, `@fsm:signal`, `@fsm:property`) and compilation guardrails (`--allow-diagram-codegen`).
+- 🌲 **Strongly-Typed Intermediate Representation (`FsmIr`)**: Canonical AST capturing Hierarchical State Machines (HFSM), Shallow `[H]` and Deep `[H*]` history pseudostates, dynamic `<<choice>>` / `<<junction>>` nodes, structured `TimeTrigger` (after/every with units), `SignalTrigger` with typed payloads, deferred event triggers, orthogonal regions, and composable boolean guard trees.
+- 🔬 **Middle-End Optimization & Formal Verification (`PassManager`)**:
+  - **Dead State & Transition Elimination**: Prunes unreachable states and statically dead branches before code emission.
+  - **Determinism Enforcement**: Analyzes branch collisions and enforces prioritized resolution on overlapping triggers.
+  - **Algebraic Guard Simplification**: Evaluates boolean constants, removes tautologies, and simplifies nested guard expressions.
+  - **Timed Deadlock Verification (`TimedDeadlockPass`)**: Detects zero-duration timeouts and unprioritized races between timed and immediate transitions.
+  - **Orthogonal Race Detection**: Analyzes concurrent state regions for potential read/write data races on shared context.
+  - **Temporal Formal Verification**: Verifies safety invariants (`INVARSPEC`) and LTL/CTL reachability formulas against livelocks and deadlocks, with automatic SMV discrete tick timer generation.
+- 🚨 **Compiler-Grade Diagnostic Engine**: Clang/Rust-style terminal diagnostics with exact source spans, line numbers, error categories, and visual carets (`^~~~`).
+- ⚡ **Hard Real-Time, Zero-Heap C++20 Runtime Engine**: Embedded runtime with `static_ring_buffer` supporting configurable `OverflowPolicy` (`DropOldest`, `DropIncoming`, `AssertOnOverflow`), `static_thread_safe_fsm`, and a standalone synchronous `deterministic_timer_manager`.
 
 ---
 
 ## 🛠️ The Toolchain Tools
 
-The repository builds two primary command-line tools:
+The infrastructure provides two primary command-line tools:
 
-### 1. `fsmc` — The State Machine Compiler Driver
+### 1. `fsmc` — The Universal State Machine Compiler Driver
 
-`fsmc` is the primary code generator and transpiler. It converts any input diagram or specification file into optimized C++ header files or translates between diagram formats.
+`fsmc` is the primary code generator, formal verifier, and diagram transpiler. It converts any input model into verified target code or translates across diagram ecosystems.
 
 ```bash
-# Generate a standalone C++20 zero-allocation header (self-contained, 0 external dependencies)
-fsmc -i connection.mmd -o connection_fsm.hpp --std 20 --namespace net --name ConnectionFSM
-
-# Generate modular C++ code linking against <fsm/fsm.hpp>
-fsmc -i spacecraft.sysml -o spacecraft_fsm.hpp --modular --std 20
-
-# Run formal semantic verification (livelock, choice completeness, reachability)
+# Formally verify model soundness (livelock, choice completeness, reachability)
 fsmc -i mission_controller.puml --verify
 
-# Transpile between diagram formats (e.g. Cameo XMI -> Mermaid, or SysML v2 -> PlantUML)
-fsmc -i model.xmi --export mermaid -o model.mmd
-fsmc -i spacecraft.sysml --export plantuml -o spacecraft.puml
+# Transpile between modeling formats (e.g. SysML v2 -> Mermaid, or Cameo XMI -> SMV)
+fsmc -i spacecraft.sysml --export mermaid -o spacecraft.mmd
+fsmc -i model.xmi --export smv -o formal_model.smv
+fsmc -i protocol.scxml --export plantuml -o protocol.puml
 
-# Export the standalone zero-allocation C++ runtime library
+# Compile into a standalone C++20 zero-allocation header (0 external dependencies)
+fsmc -i connection.sysml -o connection_fsm.hpp --std 20 --namespace net --name ConnectionFSM
+
+# Compile visual diagram format with explicit guardrail flag
+fsmc -i connection.mmd -o connection_fsm.hpp --std 20 --allow-diagram-codegen
+
+# Export the embedded C++ runtime library
 fsmc --export-runtime ./include/fsm --std 20
 ```
 
@@ -92,81 +108,65 @@ Usage: fsmc -i <model_file> [OPTIONS]
        fsmc --export-runtime <dir> [--std 17|20]
 
 Input & Output Options:
-  -i, --input <file>        Input model file (.sysml, .puml, .mmd, .xmi, .scxml, .json, .dot)
-  -o, --output <file>       Output generated code or exported diagram file (default: stdout)
-  -t, --target <lang>       Target code generator backend: 'cpp' (default), 'c', 'rust', 'zig', 'ts'
-  -n, --name <name>         Generated FSM class name (default: inferred from filename or 'MyFSM')
+  -i, --input <file>          Input model file (.sysml, .puml, .mmd, .xmi, .scxml, .json, .dot)
+  -o, --output <file>         Output generated code or exported diagram file (default: stdout)
+  -t, --target <lang>         Target code generator backend: 'cpp' (default), 'c', 'rust', 'zig', 'ts'
+  -n, --name <name>           Generated FSM class name (default: inferred from filename or 'MyFSM')
   --namespace, --package <ns> Generated namespace/package/module name (default: 'fsm_generated')
-  --context <type>          Hardware/Software context type name (default: 'no_context')
-  --format <fmt>            Override input format: 'sysml2', 'plantuml', 'mermaid', 'cameo', 'scxml', 'json', 'dot', 'auto'
+  --context <type>            Hardware/Software context type name (default: 'no_context')
+  --format <fmt>              Override input format: 'sysml2', 'plantuml', 'mermaid', 'cameo', 'scxml', 'json', 'dot', 'auto'
+
+Optimization & Code Transformation Options:
+  -O0, --no-opt               Disable middle-end optimization passes
+  -O1, -O2, --optimize        Enable middle-end optimization passes (default: -O1)
+  --prune-dead-states         Prune unreachable states and statically dead transitions before codegen
+  --no-guard-simplification   Disable algebraic boolean simplification on guard expressions
+  --inline-submachines        Inline modular submachines (SubmachineRef) into a single flat/composite FSM
+  --submachine-dir <dir>      Search directory for external submachine diagram files
+
+Safety & Static Analysis Verification Options:
+  -Werror                     Treat all middle-end compiler warnings as fatal errors
+  --strict-determinism        Fail compilation on non-deterministic branch collisions or unprioritized transitions
+  --check-races               Perform static concurrency data-race analysis across parallel orthogonal regions
+  --req-audit                 Print Requirement Traceability Matrix (@fsm:req) before code generation
 
 C++ Backend Options (--target cpp):
-  --std <17|20>             Target C++ standard: '17' or '20' (default: 17)
-  --c++17                   Target C++17 standard
-  --c++20                   Target C++20 standard
-  --standalone              Generate self-contained header with embedded zero-alloc runtime (default)
-  --modular                 Generate FSM header only, including external <fsm/fsm.hpp>
-  --export-runtime <dir>    Export the standalone FSM runtime library headers to directory
-  --no-thread-safe          Do not generate thread_safe_fsm asynchronous wrapper
-  --no-stubs                Do not emit default stub functors for actions and guards
+  --std <17|20>               Target C++ standard: '17' or '20' (default: 17)
+  --standalone                Generate self-contained header with embedded zero-alloc runtime (default)
+  --modular                   Generate FSM header only, including external <fsm/runtime/cpp/fsm.hpp>
+  --no-thread-safe            Do not generate thread_safe_fsm asynchronous wrapper
+  --no-stubs                  Do not emit default stub functors for actions and guards
+  --allow-diagram-codegen     Allow C++ code generation from visual diagram formats (PlantUML, Mermaid, etc.)
+  --allow-tier2-codegen       (Alias for --allow-diagram-codegen)
 
 Model Analysis & Diagram Export:
-  -e, --export <fmt>        Export diagram to: 'mermaid', 'plantuml', 'sysml2', 'json', 'dot', 'scxml', 'cameo'
-  --verify, --check         Run formal model checker (livelock, choice completeness, reachability) and exit
+  -e, --export <fmt>          Export diagram to: 'mermaid', 'plantuml', 'sysml2', 'json', 'dot', 'scxml', 'cameo', 'smv'
+  --verify, --check           Run formal model checker (livelock, choice completeness, reachability) and exit
 
 General Options:
-  -h, --help                Show this help message and exit
-  -v, --version             Show version information and exit
+  -h, --help                  Show this help message and exit
+  -v, --version               Show version information and exit
 ```
 
 ---
 
-### 2. `fsm-opt` — The IR Optimizer & Linter
+### 2. `fsm-opt` — The IR Optimizer, Formatter & Linter
 
-`fsm-opt` operates directly on the Intermediate Representation (`FsmIr`). It runs optimization and semantic validation passes, performs dead state elimination, verifies choice completeness, and emits canonical representations.
+`fsm-opt` operates directly on the canonical Intermediate Representation (`FsmIr`). It runs optimization pipelines, performs dead-code elimination, analyzes timing profiles, and emits normalized representations.
 
 ```bash
 # Optimize and emit canonical JSON Intermediate Representation (IR)
 fsm-opt -i model.sysml --emit-ir -o model.ir.json
 
-# Run passes with performance profiling and timing breakdown
+# Run optimization passes with execution timing and pass breakdown
 fsm-opt -i protocol.scxml --profile
 
-# Perform formal verification with rich colored terminal diagnostics
+# Perform formal verification with colored compiler diagnostics
 fsm-opt -i aerospace.sysml --verify
 
-# Canonicalize model into optimized PlantUML, Mermaid, or SysML v2
+# Canonicalize model into optimized PlantUML, Mermaid, SysML v2, or nuXmv SMV
 fsm-opt -i dirty_model.puml --emit-puml -o clean_model.puml
-fsm-opt -i dirty_model.xmi --emit-sysml -o clean_model.sysml
-```
-
-#### CLI Reference for `fsm-opt`:
-```text
-Usage: fsm-opt -i <model_file> [OPTIONS]
-       fsm-opt [OPTIONS] <model_file>
-
-Input & Output Options:
-  -i, --input <file>        Input model or IR file (.sysml, .puml, .mmd, .xmi, .scxml, .json, .dot)
-  -o, --output <file>       Output file path (default: stdout)
-  --format <fmt>            Override parser format (sysml2, plantuml, mermaid, cameo, scxml, json, dot)
-
-IR Optimization & Emission:
-  --emit-ir                 Emit optimized canonical JSON Intermediate Representation (default)
-  --emit-puml               Emit canonical PlantUML state diagram
-  --emit-mmd                Emit canonical Mermaid stateDiagram-v2
-  --emit-sysml              Emit canonical OMG SysML v2 state definition
-  --emit-json               Emit canonical XState JSON
-  --emit-dot                Emit canonical Graphviz DOT diagram
-  --emit-scxml              Emit canonical W3C SCXML statechart
-  --emit-cameo              Emit canonical Cameo / MagicDraw OMG XMI 2.1
-
-Analysis & Diagnostics:
-  --profile                 Print PassManager execution times and optimization stats
-  --verify, --check         Run formal model checker passes without emitting transformed model
-
-General Options:
-  -h, --help                Show this help message and exit
-  -v, --version             Show version information and exit
+fsm-opt -i legacy_diagram.xmi --emit-sysml -o clean_model.sysml
 ```
 
 #### Diagnostic Output Example:
@@ -183,7 +183,7 @@ error[E002]: Incomplete choice pseudostate branch coverage
 
 ## 🚀 Quickstart
 
-### 1. Define Your Statechart (`connection.mmd`)
+### 1. Define Statechart in Any Format (`connection.mmd`)
 
 ```mermaid
 stateDiagram-v2
@@ -195,7 +195,18 @@ stateDiagram-v2
     Connected --> Disconnected : DisconnectCmd / CleanupSession
 ```
 
-### 2. Integrate with CMake (`CMakeLists.txt`)
+### 2. Verify and Transpile via CLI
+
+```bash
+# Verify semantic model soundness
+fsmc -i connection.mmd --verify
+
+# Transpile to SysML v2 or nuXmv formal specification
+fsmc -i connection.mmd --export sysml2 -o connection.sysml
+fsmc -i connection.mmd --export smv -o connection.smv
+```
+
+### 3. Integrate with CMake (`CMakeLists.txt`)
 
 ```cmake
 cmake_minimum_required(VERSION 3.20)
@@ -216,7 +227,7 @@ fsmc_target_sources(my_app
 )
 ```
 
-### 3. Dispatch Events in C++ (`main.cpp`)
+### 4. Dispatch Events in Application Code (`main.cpp`)
 
 ```cpp
 #include "connection_fsm.hpp"
@@ -239,30 +250,23 @@ int main() {
     net::ConnectionFSM fsm(ctx);
 
     // Initial state: Disconnected
-    std::cout << "State: " << fsm.current_state_name() << "\n";
+    std::cout << "Current State: " << fsm.current_state_name() << "\n";
 
     // Synchronous Dispatch:
     fsm.dispatch(net::ConnectCmd{});
-    std::cout << "State: " << fsm.current_state_name() << "\n";
+    std::cout << "Current State: " << fsm.current_state_name() << "\n";
 
     fsm.dispatch(net::HandshakeOkEvent{});
-    std::cout << "State: " << fsm.current_state_name() << "\n";
+    std::cout << "Current State: " << fsm.current_state_name() << "\n";
 
-    // In-place internal transition without state destruction/construction:
+    // In-place internal transition without state destruction/reconstruction:
     fsm.dispatch(net::Ping{});
 
-    // 4. Asynchronous & Multi-Threaded Dispatch:
+    // Asynchronous Dispatch via ThreadSafe wrapper:
     net::ThreadSafeConnectionFSM async_fsm(ctx);
-
-    // Asynchronous future (auto-starts background worker):
     auto fut = async_fsm.post_async(net::ConnectCmd{});
-    auto res = fut.get(); // std::future<fsm::dispatch_result>
-    std::cout << "Async Dispatch Result: " << res.to_string() << "\n";
-
-    // Thread-safe synchronized context mutation:
-    async_fsm.with_context([](NetworkContext& c) {
-        c.has_network = true;
-    });
+    auto res = fut.get();
+    std::cout << "Async Dispatch: " << res.to_string() << "\n";
 
     return 0;
 }
@@ -270,20 +274,35 @@ int main() {
 
 ---
 
-## ⚡ Performance Benchmarks
+## 🌐 Supported Modeling Formats
+
+| Format | Extension | Target Ecosystem | Specification Reference |
+| :--- | :--- | :--- | :--- |
+| **OMG SysML v2** | `.sysml` | Systems Engineering & MBSE Toolchains | OMG SysML 2.0 State Definition Spec |
+| **Cameo / MagicDraw** | `.xmi`, `.xml` | Enterprise MBSE (No Magic / Dassault) | OMG XMI 2.x & UML 2.5 Metamodel |
+| **W3C SCXML** | `.scxml`, `.xml` | VoiceXML, Telecom & Automotive HMI | W3C State Chart XML Spec |
+| **XState JSON** | `.json` | Web, Node & Embedded GUI Statecharts | Modern JSON Statechart Schema |
+| **PlantUML** | `.puml`, `.plantuml` | Architectural Documentation & CI/CD | PlantUML State Diagram Syntax |
+| **Mermaid** | `.mmd`, `.mermaid` | Markdown, GitHub, GitLab & Notion | Mermaid `stateDiagram-v2` Grammar |
+| **Graphviz DOT** | `.dot`, `.gv` | Graph Analysis & Legacy FSM Tools | Graphviz Attribute Grammar |
+| **nuXmv / NuSMV** | `.smv` | Formal Model Checking & Temporal Logic | NuSMV / nuXmv Formal Verification Spec |
+
+---
+
+## 📊 Performance & Compiler Benchmarks
 
 Micro-benchmarks measured with **Google Benchmark v1.8.3** (Linux x86_64, Release `-O3`):
 
-| Benchmark Case | Latency | Throughput | Heap Allocations |
-| :--- | :--- | :--- | :--- |
-| **`BM_Dispatch_ExternalTransition`** | **0.42 ns** | **7.07 Billion ops/sec** | **0 bytes (0 allocs)** |
-| **`BM_Dispatch_InternalTransition`** | **0.55 ns** | **1.82 Billion ops/sec** | **0 bytes (0 allocs)** |
-| **`BM_Runtime_SpscQueue_PushPop`** | **0.72 ns** | **1.38 Billion ops/sec** | **0 bytes (0 allocs)** |
-| **`BM_Runtime_StaticRingBuffer_PushPop`** | **0.86 ns** | **1.15 Billion ops/sec** | **0 bytes (0 allocs)** |
-| **`BM_Compiler_PlantUml_Parse`** | **4.77 µs** | 46.0 MiB/s | — |
-| **`BM_Compiler_Sysml2_Parse`** | **32.8 µs** | 7.7 MiB/s | — |
-| **`BM_Compiler_PassManager_Pipeline`** | **1.89 µs** | — | — |
-| **`BM_Compiler_CppGenerator`** | **8.11 µs** | — | — |
+| Component | Benchmark Case | Latency | Throughput | Allocations |
+| :--- | :--- | :--- | :--- | :--- |
+| **Runtime Engine** | `BM_Dispatch_ExternalTransition` | **41.7 ns** | 71.96 Million ops/sec | **0 bytes (0 heap allocs)** |
+| **Runtime Engine** | `BM_Dispatch_InternalTransition` | **17.3 ns** | 57.88 Million ops/sec | **0 bytes (0 heap allocs)** |
+| **Runtime Engine** | `BM_Runtime_SpscQueue_PushPop` | **0.72 ns** | 1.38 Billion ops/sec | **0 bytes (0 heap allocs)** |
+| **Runtime Engine** | `BM_Runtime_StaticRingBuffer_PushPop` | **1.07 ns** | 936.15 Million ops/sec | **0 bytes (0 heap allocs)** |
+| **Compiler Middle-End** | `BM_Compiler_PassManager_Pipeline` | **2.05 µs** | — | Static Pass Pipeline |
+| **Compiler Frontends** | `BM_Compiler_PlantUml_Parse` | **4.77 µs** | 46.0 MiB/s | Direct AST Ingestion |
+| **Compiler Frontends** | `BM_Compiler_Sysml2_Parse` | **32.8 µs** | 7.7 MiB/s | Textual Grammar Tokenizer |
+| **Compiler Backend** | `BM_Compiler_CppGenerator` | **8.84 µs** | — | Zero-Alloc C++ Emitter |
 
 To run the benchmarks locally:
 ```bash
@@ -294,23 +313,9 @@ cmake --build build --target fsmc_bench -j
 
 ---
 
-## 🌐 Supported Modeling Formats
-
-| Format | Extension | Target Ecosystem | Spec Reference |
-| :--- | :--- | :--- | :--- |
-| **OMG SysML v2** | `.sysml` | Systems Engineering & MBSE Toolchains | OMG SysML 2.0 State Definition Spec |
-| **Cameo / MagicDraw** | `.xmi`, `.xml` | Enterprise MBSE (No Magic / Dassault) | OMG XMI 2.x & UML 2.5 Metamodel |
-| **W3C SCXML** | `.scxml`, `.xml` | VoiceXML, Telecom & Automotive HMI | W3C State Chart XML Spec |
-| **XState JSON** | `.json` | Web / Node / Embedded GUI Statecharts | Modern JSON Statechart Schema |
-| **PlantUML** | `.puml`, `.plantuml` | Architectural Documentation & CI/CD | PlantUML State Diagram Syntax |
-| **Mermaid** | `.mmd`, `.mermaid` | Markdown, GitHub, GitLab & Notion | Mermaid `stateDiagram-v2` |
-| **Graphviz DOT** | `.dot`, `.gv` | Graph Analysis & Legacy FSM Tools | Graphviz Attribute Grammar |
-
----
-
 ## 🌐 WebAssembly Interactive Playground
 
-`fsmc` compiles natively to WebAssembly (`fsmc.wasm`), powering a live interactive browser playground where you can write state diagrams in any format and instantly inspect the generated C++ header, JSON IR, AST node graph, and exported diagrams.
+`fsmc` compiles natively to WebAssembly (`fsmc.wasm`), powering a client-side interactive browser engineering suite where you can write state diagrams in any format and instantly inspect the generated C++ header, JSON IR, formal diagnostics, interactive AST graph, and live HFSM simulator.
 
 Check it out locally:
 ```bash
@@ -322,11 +327,12 @@ python3 -m http.server 8080 -d playground/
 
 ## 📚 Technical Documentation
 
-- 🏗️ [**Compiler Architecture (`docs/ARCHITECTURE.md`)**](docs/ARCHITECTURE.md): Multi-stage pipeline, PassManager, DiagnosticEngine, choice flattening, and metaprogramming.
+- 🏗️ [**Compiler Architecture (`docs/ARCHITECTURE.md`)**](docs/ARCHITECTURE.md): Multi-stage pipeline, PassManager, DiagnosticEngine, choice flattening, and intermediate representation.
 - 📐 [**Formal IR Specification (`docs/FSM_IR_SPECIFICATION.md`)**](docs/FSM_IR_SPECIFICATION.md): AST schema, 64-bit deterministic hashing, inline directives, and JSON serialization.
-- ⚙️ [**Integration & CMake Guide (`docs/INTEGRATION_GUIDE.md`)**](docs/INTEGRATION_GUIDE.md): CMake functions, FetchContent, modular targets, and standalone embedding.
+- ⚙️ [**Integration & CMake Guide (`docs/INTEGRATION_GUIDE.md`)**](docs/INTEGRATION_GUIDE.md): CMake functions, FetchContent, vcpkg, Conan, and modular target embedding.
 - ⏱️ [**Runtime API Reference (`docs/RUNTIME_API.md`)**](docs/RUNTIME_API.md): Transitions, guards, actions, observers, deferred events, lock-free queues, and timed timeouts.
 - 🏷️ [**OMG UML 2.5 & SysML Reference (`docs/UML_REFERENCE.md`)**](docs/UML_REFERENCE.md): Pseudostate specifications, region semantics, and compliance mapping.
+- 🧪 [**Test Suite Catalog (`docs/TEST_SUITE_CATALOG.md`)**](docs/TEST_SUITE_CATALOG.md): Complete catalog of the 48 test suites with technical scenarios and intents.
 
 ---
 

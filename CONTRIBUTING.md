@@ -17,7 +17,7 @@ Thank you for your interest in contributing to **`fsmc`**!
 cmake -B build -S .
 cmake --build build
 
-# Run full CTest suite (39 test suites)
+# Run full CTest suite (48 test targets)
 ctest --test-dir build --output-on-failure
 ```
 
@@ -37,7 +37,22 @@ clang-tidy -p build tools/fsmc/main.cpp
 
 ---
 
-## 3. Submitting Changes
+## 3. Adding New Frontend Parsers
+
+When adding support for a new state machine or diagram format, follow the two-category frontend rule:
+
+1. **Formal Metamodels (`include/fsm/frontend/formal/`)**:
+   - For formats backed by a typed mathematical metamodel (e.g. SysML, SCXML, Cameo XMI, Simulink Stateflow, AUTOSAR ARXML).
+   - Override `kind()` returning `FrontendKind::Formal`.
+   - Add unit tests under `tests/frontend/formal/test_<format>_parser.cpp`.
+2. **Visual Diagrams (`include/fsm/frontend/diagram/`)**:
+   - For graphical sketching or text-based diagram notations (e.g. PlantUML, Mermaid, Graphviz DOT, D2).
+   - Override `kind()` returning `FrontendKind::Diagram`.
+   - Add unit tests under `tests/frontend/diagram/test_<format>_parser.cpp`.
+
+---
+
+## 4. Submitting Changes
 
 1. Fork the repository on GitHub.
 2. Create a feature branch: `git checkout -b feature/my-new-feature`.

@@ -86,7 +86,7 @@ When compiling or embedding `fsmc` in your workspace:
 
 | Option | Default | Description |
 | :--- | :--- | :--- |
-| `FSMC_ENABLE_TESTING` | `ON` | Builds the 39 GoogleTest test suites. |
+| `FSMC_ENABLE_TESTING` | `ON` | Builds the 48 GoogleTest test suites. |
 | `FSMC_ENABLE_EXAMPLES` | `ON` | Builds showcase example targets. |
 | `FSMC_ENABLE_BENCHMARKS` | `ON` | Builds dispatch micro-benchmarks. |
 | `FSMC_ENABLE_SANITIZERS` | `OFF` | Enables Address & Undefined Sanitizers in Debug builds. |
@@ -98,14 +98,14 @@ When compiling or embedding `fsmc` in your workspace:
 
 | Parameter | Type | Description |
 | :--- | :--- | :--- |
-| `DIAGRAMS` | `list` (**Required**) | Paths to `.sysml`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, or `.dot` files. |
+| `DIAGRAMS` | `list` (**Required**) | Paths to `.sysml`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, or `.dot` files (automatically passes `--allow-diagram-codegen` for visual formats). |
 | `NAME` | `string` | FSM class name (default: inferred from diagram file stem). |
 | `STANDARD` | `17` or `20` | Target C++ standard (default: `17`). |
 | `NAMESPACE` | `string` | C++ namespace wrapping states, events, and FSM aliases (default: `fsm_generated`). |
 | `CONTEXT` | `string` | Custom Context struct/class name (default: `no_context`). |
 | `OUTPUT_DIR` | `path` | Output directory for generated headers (default: `${CMAKE_CURRENT_BINARY_DIR}/generated_fsm`). |
 | `STANDALONE` | `flag` | Embeds the zero-overhead engine into the generated header (zero external dependencies). |
-| `MODULAR` | `flag` | Generates a header that includes external `fsm/fsm.hpp`. |
+| `MODULAR` | `flag` | Generates a header that includes external `<fsm/runtime/cpp/fsm.hpp>`. |
 | `NO_THREAD_SAFE` | `flag` | Disables generation of the `thread_safe_fsm` wrapper alias. |
 | `NO_STUBS` | `flag` | Emits forward declarations for custom user-defined guard and action structs. |
 

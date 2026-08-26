@@ -499,12 +499,24 @@ digraph MissionFSM {
 
 ## 11. Format Feature Matrix & Extensions Specification
 
-### A. Feature Matrix (Native vs Extended Syntax)
+### A. Frontend Classification (Formal Models vs Visual Diagrams)
+
+`fsmc` categorizes statechart formats into two distinct frontend classes:
+
+1. **Formal Metamodels (`include/fsm/frontend/formal/`)**:
+   - **Cameo / MagicDraw (OMG XMI 2.x)**, **OMG SysML v2**, and **W3C SCXML**.
+   - Strict symbol and type declarations, mathematical semantics, physical units. Direct compilation to C++ without warnings.
+2. **Visual Diagrams (`include/fsm/frontend/diagram/`)**:
+   - **PlantUML**, **Mermaid `stateDiagram-v2`**, **Graphviz DOT**, and **XState JSON**.
+   - Descriptive sketch notations. Code generation requires `--allow-diagram-codegen` (or `--allow-tier2-codegen`) and emits `warning[W0301]`.
+
+### B. Feature Matrix (Native vs Extended Syntax)
 
 The table below details which UML 2.5 / Statechart features are supported **natively** by each official format specification versus features for which `fsmc` defines a **clean, renderer-safe extension**:
 
 | Feature / Concept | Cameo OMG XMI | OMG SysML v2 | W3C SCXML | XState JSON | PlantUML | Mermaid | Graphviz DOT |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Frontend Category** | **Formal** | **Formal** | **Formal** | **Diagram** | **Diagram** | **Diagram** | **Diagram** |
 | **Simple States & Transitions** | **Native** | **Native** | **Native** | **Native** | **Native** | **Native** | **Native** |
 | **Initial / Final States** | **Native** | **Native** | **Native** | **Native** | **Native** (`[*]`) | **Native** (`[*]`) | **Extended** (`shape=point`) |
 | **Composite States (HFSM)** | **Native** | **Native** | **Native** | **Native** | **Native** | **Native** | **Extended** (`subgraph`) |
@@ -514,10 +526,11 @@ The table below details which UML 2.5 / Statechart features are supported **nati
 | **Deferred Events (Deferrable)** | **Native** | **Native** (`defer Evt;`) | **Extended** (`<defer>`) | **Extended** (`"defer": []`) | **Extended** (`: defer Evt`) | **Extended** (`: [defer] Evt`) | **Extended** (`defer="..."`) |
 | **Composite Guards (`!`, `&&`, `\|\|`)** | **Extended** (AST) | **Native** | **Native** | **Native** | **Extended** (AST) | **Extended** (AST) | **Extended** (AST) |
 | **Timed Transitions (`after_ms<N>`)** | **Extended** (AST) | **Native** (`after 500ms`) | **Native** (`delay=...`) | **Native** (`after: {}`) | **Extended** (AST) | **Extended** (AST) | **Extended** (AST) |
+| **Lossless Comment Directives** | *N/A* | *N/A* | *N/A* | *N/A* | **`@fsm:` comments** | **`%% @fsm:` comments** | **`// @fsm:` comments** |
 
 ---
 
-### B. Extension Design Principles
+### C. Extension Design Principles
 
 When a diagram format lacks a native keyword for advanced UML 2.5 constructs (such as *deferred events* or *choice pseudostates* in visual diagram languages), `fsmc` extensions adhere to three non-negotiable design principles:
 
@@ -530,56 +543,37 @@ When a diagram format lacks a native keyword for advanced UML 2.5 constructs (su
 
 ---
 
-### C. Syntax Extensions Quick Reference
+### D. Lossless Diagram Directives (`@fsm:`)
 
-#### 1. Deferred Events (`defer`)
-- **PlantUML**:
+For visual diagram formats (PlantUML, Mermaid, Graphviz DOT), `fsmc` supports lossless metadata directives placed inside comments:
+
+- **State Metadata**:
   ```plantuml
-  StateName : defer EventName
-  StateName : [defer] EventName
+  ' @fsm:state kind=Composite initial=Idle do=poll_sensor req="REQ-01"
   ```
-- **Mermaid**:
-  ```mermaid
-  StateName : [defer] EventName
-  StateName : defer EventName
+- **Extended Variables with Physical Units**:
+  ```plantuml
+  ' @fsm:var battery_level : float = 100.0 [percent]
+  ' @fsm:var velocity : float = 0.0 [m/s]
   ```
-- **Graphviz DOT**:
-  ```dot
-  StateName [defer="Event1, Event2"];
+- **Typed Signals & Payloads**:
+  ```plantuml
+  ' @fsm:signal name=ConnectCmd type="const ConnectionRequest&" validator="req.port > 0"
   ```
-- **W3C SCXML**:
-  ```xml
-  <state id="StateName">
-    <defer event="EventName"/>
-  </state>
-  ```
-- **XState JSON**:
-  ```json
-  "StateName": {
-    "defer": ["Event1", "Event2"]
-  }
+- **Formal Verification Properties**:
+  ```plantuml
+  ' @fsm:property name=SafeLanding kind=Safety formula="G (LowBattery -> F SafeLand)" req="REQ-SAFE-09"
   ```
 
-#### 2. Choice & Junction Pseudostates
-- **PlantUML**: `state MyChoice <<choice>>` or `state MyChoice <<junction>>`
-- **Mermaid**: `state MyChoice <<choice>>`
-- **Graphviz DOT**: `MyChoice [shape=diamond];` or `MyChoice [shape=choice];`
-- **SCXML / XState**: Modelled via sequential conditional transition branches on the same trigger event.
+---
 
-#### 3. History States (Shallow `[H]` and Deep `[H*]`)
-- **PlantUML**: `StateName[H]` or `StateName[H*]`
-- **Mermaid**: Composite state containing `[H]` or `[H*]` transition targets.
-- **Cameo / SysML v2 / SCXML**: Standard native XML/SysML elements.
+### E. Timed Transitions (`after(...)`, `every(...)`) & SMV Discrete Timers
 
-#### 4. Internal Transitions (No Entry / Exit Triggers)
-- **PlantUML / Mermaid**: `StateName : EventName [Guard] / ActionName` (declared without transition arrow `-->`).
-- **Graphviz DOT**: `StateName -> StateName [label="Event / Action", internal=true];`
-
-#### 5. Timed Transitions (`after_ms<N>`, `after_s<N>`, `after_us<N>`)
 - **OMG SysML v2**: `transition accept after 500ms then NextState;`
 - **W3C SCXML**: `<transition delay="500ms" target="NextState"/>`
 - **XState JSON**: `"after": { "500": "NextState" }`
-- **PlantUML / Mermaid / DOT**: `after_500ms`, `after_10s`, `after_50us` or `after(500ms)`
+- **PlantUML / Mermaid / DOT**: `after_500ms`, `after_10s`, `after_50us`, `after(500ms)`, `every(100ms)`
+- **SMV Formal Synthesis**: The SMV serializer automatically allocates discrete tick counter variables (`timer_<State> : 0..<duration>;`) and emits state-bounded counting rules and reset conditions on transition entry.
 
 ---
 

@@ -11,8 +11,10 @@ This document describes the core C++ classes, lifecycle hooks, thread-safe async
 4. [Composite Boolean Guards (`and_`, `or_`, `not_`)](#4-composite-boolean-guards-and_-or_-not_)
 5. [Deferred Events & History Resolution](#5-deferred-events--history-resolution)
 6. [`fsm::spsc_ring_buffer<T, Capacity>` (Wait-Free & ISR-Safe)](#6-fsmspsc_ring_buffert-capacity-wait-free--isr-safe)
-7. [`fsm::static_ring_buffer<T, Capacity>` (Embedded Zero-Alloc)](#7-fsmstatic_ring_buffert-capacity-embedded-zero-alloc)
-8. [Compile-Time Reflection & Type Traits](#8-compile-time-reflection--type-traits)
+7. [`fsm::static_ring_buffer<T, Capacity, Policy>` (Zero-Alloc with Overflow Policies)](#7-fsmstatic_ring_buffert-capacity-policy-zero-alloc-with-overflow-policies)
+8. [`fsm::static_thread_safe_fsm<Table, Context, Capacity, Policy>`](#8-fsmstatic_thread_safe_fsmtable-context-capacity-policy)
+9. [`fsm::deterministic_timer_manager<MaxTimers>` (Hardware Tick Timer)](#9-fsmdeterministic_timer_managermaxtimers-hardware-tick-timer)
+10. [Compile-Time Reflection & Type Traits](#10-compile-time-reflection--type-traits)
 
 ---
 
@@ -22,7 +24,7 @@ The synchronous, zero-overhead compile-time finite state machine engine.
 
 ### Header
 ```cpp
-#include "fsm/fsm.hpp" // or your generated standalone header
+#include "fsm/runtime/cpp/fsm.hpp" // or your generated standalone header
 ```
 
 ### Key Characteristics
@@ -117,7 +119,7 @@ An asynchronous, thread-safe wrapper around `fsm::fsm` providing queue-based exe
 
 ### Header
 ```cpp
-#include "fsm/thread_safe_fsm.hpp" // or your generated standalone header
+#include "fsm/runtime/cpp/thread_safe_fsm.hpp" // or your generated standalone header
 ```
 
 ### Core Execution Modes
@@ -285,7 +287,7 @@ async_fsm.set_exception_handler([](std::exception_ptr ex) {
 `fsmc` supports composable compile-time boolean predicate combinators with recursive short-circuit evaluation:
 
 ```cpp
-#include "fsm/composite_guards.hpp"
+#include "fsm/runtime/cpp/transition.hpp"
 
 // Conjunction: evaluates G1 && G2 && ...
 using GuardA = fsm::and_<PowerOkGuard, NetworkAvailableGuard>;
@@ -331,7 +333,7 @@ A lock-free, wait-free Single-Producer Single-Consumer circular queue designed f
 - **Zero Dynamic Allocation**: Fixed contiguous ring storage.
 
 ```cpp
-#include "fsm/spsc_ring_buffer.hpp"
+#include "fsm/runtime/cpp/spsc_ring_buffer.hpp"
 
 // Capacity must be a power of 2
 fsm::spsc_ring_buffer<SensorReadingEvent, 1024> isr_event_queue;
@@ -353,24 +355,99 @@ void update_loop() {
 
 ---
 
-## 7. `fsm::static_ring_buffer<T, Capacity>` (Embedded Zero-Alloc)
+## 7. `fsm::static_ring_buffer<T, Capacity, Policy>` (Zero-Alloc with Overflow Policies)
 
-A deterministic circular buffer for microcontrollers requiring a static memory footprint without atomic synchronization overhead:
+A deterministic circular buffer for microcontrollers and embedded bare-metal firmware requiring a static memory footprint with configurable overflow management:
 
+### Header
 ```cpp
-#include "fsm/static_ring_buffer.hpp"
+#include "fsm/runtime/cpp/static_ring_buffer.hpp"
+```
 
-fsm::static_ring_buffer<EventVariant, 32> static_queue;
-static_queue.push(TickEvent{});
-auto event = static_queue.pop();
+### Overflow Policies
+```cpp
+enum class OverflowPolicy : std::uint8_t {
+    DropOldest,        ///< Overwrites oldest unconsumed entry when capacity is reached (telemetry/streaming)
+    DropIncoming,      ///< Rejects incoming element when capacity is reached (default)
+    AssertOnOverflow   ///< Asserts/traps execution on overflow (hard real-time safety critical)
+};
+```
+
+### Usage
+```cpp
+// Drop oldest on overflow (telemetry buffer)
+fsm::static_ring_buffer<EventVariant, 32, fsm::OverflowPolicy::DropOldest> telemetry_queue;
+telemetry_queue.push(SensorReadingEvent{42.0f});
+
+// Drop incoming on overflow (default)
+fsm::static_ring_buffer<EventVariant, 16, fsm::OverflowPolicy::DropIncoming> command_queue;
+bool accepted = command_queue.push(CommandEvent{});
+
+// Retrieve events
+EventVariant ev;
+if (command_queue.pop(ev)) {
+    // Process event
+}
 ```
 
 ---
 
-## 8. Compile-Time Reflection & Type Traits
+## 8. `fsm::static_thread_safe_fsm<Table, Context, Capacity, Policy>`
+
+A fully static, zero-heap asynchronous state machine wrapper backed by `static_ring_buffer`. Ideal for resource-constrained bare-metal targets and RTOS tasks without heap allocations:
+
+### Header
+```cpp
+#include "fsm/runtime/cpp/static_thread_safe_fsm.hpp"
+```
+
+### Usage
+```cpp
+// 64-element static queue, DropIncoming policy
+fsm::static_thread_safe_fsm<TransitionTable, SystemContext, 64, fsm::OverflowPolicy::DropIncoming> static_fsm(ctx);
+
+// Enqueue event from ISR or main loop
+bool enqueued = static_fsm.enqueue(TickEvent{});
+
+// Deterministic polling in RTOS loop
+std::size_t processed = static_fsm.process_all();
+```
+
+---
+
+## 9. `fsm::deterministic_timer_manager<MaxTimers>` (Hardware Tick Timer)
+
+A standalone deterministic timer manager for handling `after(...)` and `every(...)` timeout transitions in hard real-time systems without spawning background threads:
+
+### Header
+```cpp
+#include "fsm/runtime/cpp/deterministic_timer.hpp"
+```
+
+### Usage
+```cpp
+// Manage up to 8 concurrent timed transitions
+fsm::deterministic_timer_manager<8> timer_mgr;
+
+// Schedule a 500ms single-shot timer
+timer_mgr.start_timer(1 /* timer_id */, 500 /* duration_ms */, false /* is_periodic */);
+
+// Invoked periodically by the hardware SysTick ISR (e.g. every 1ms)
+void SysTick_Handler() {
+    timer_mgr.tick(1 /* delta_ms */, [](std::uint32_t expired_timer_id) {
+        if (expired_timer_id == 1) {
+            fsm.dispatch(TimeoutEvent{});
+        }
+    });
+}
+```
+
+---
+
+## 10. Compile-Time Reflection & Type Traits
 
 ```cpp
-#include "fsm/type_traits.hpp"
+#include "fsm/runtime/cpp/type_traits.hpp"
 
 // Extract compile-time demangled event name
 std::string_view name = fsm::event_name<StartCmd>(); // "StartCmd"

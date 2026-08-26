@@ -44,14 +44,14 @@ struct CliOptions {
     std::string format = "auto";
     std::string submachine_dir;
     CppStandard cpp_standard = CppStandard::Cpp17;
-    int opt_level = 1;                // -O0, -O1, -O2
-    bool prune_dead_states = false;   // --prune-dead-states
-    bool simplify_guards = true;      // --no-guard-simplification
-    bool inline_submachines = false;  // --inline-submachines
-    bool strict_determinism = false;  // --strict-determinism
-    bool check_races = false;         // --check-races
-    bool werror = false;              // -Werror
-    bool req_audit = false;           // --req-audit
+    int opt_level = 1;                   // -O0, -O1, -O2
+    bool prune_dead_states = false;      // --prune-dead-states
+    bool simplify_guards = true;         // --no-guard-simplification
+    bool inline_submachines = false;     // --inline-submachines
+    bool strict_determinism = false;     // --strict-determinism
+    bool check_races = false;            // --check-races
+    bool werror = false;                 // -Werror
+    bool req_audit = false;              // --req-audit
     bool allow_diagram_codegen = false;  // --allow-diagram-codegen / --allow-tier2-codegen
     bool standalone = true;
     bool thread_safe = true;
@@ -105,7 +105,8 @@ void print_help(const char* prog_name) {
         << "  --export-runtime <dir>      Export the standalone FSM runtime library headers to directory\n"
         << "  --no-thread-safe            Do not generate thread_safe_fsm asynchronous wrapper\n"
         << "  --no-stubs                  Do not emit default stub functors for actions and guards\n"
-        << "  --allow-diagram-codegen     Allow C++ code generation from visual diagram formats (PlantUML, Mermaid, etc.)\n"
+        << "  --allow-diagram-codegen     Allow C++ code generation from visual diagram formats (PlantUML, Mermaid, "
+           "etc.)\n"
         << "  --allow-tier2-codegen       (Alias for --allow-diagram-codegen)\n\n"
         << "Model Analysis & Diagram Export:\n"
         << "  -e, --export <fmt>          Export diagram or formal model to: 'mermaid', 'plantuml', 'sysml2', 'json', "
@@ -306,7 +307,8 @@ int main(int argc, char* argv[]) {
         if (!opts.allow_diagram_codegen && !opts.verify_mode && opts.export_diagram_format.empty()) {
             std::cerr << "\n[ERROR] Direct code generation blocked: '" << opts.input_file
                       << "' is a visual diagram format (" << parser->format_name()
-                      << ").\nPass '--allow-diagram-codegen' (or '--allow-tier2-codegen') to allow heuristic code generation, or use '--verify' / '--export <fmt>'.\n";
+                      << ").\nPass '--allow-diagram-codegen' (or '--allow-tier2-codegen') to allow heuristic code "
+                         "generation, or use '--verify' / '--export <fmt>'.\n";
             return 1;
         }
     }

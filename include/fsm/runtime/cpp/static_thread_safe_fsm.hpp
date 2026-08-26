@@ -19,8 +19,8 @@ namespace fsm {
 // Zero-allocation, statically bounded thread-safe FSM wrapper designed for hard real-time and embedded systems.
 // Does NOT use std::function, heap allocations, std::vector, or std::future.
 template <typename Table, typename Context = no_context, std::size_t QueueCapacity = 64,
-          OverflowPolicy Policy = OverflowPolicy::DropIncoming,
-          typename InitialState = typename Table::initial_state, typename Observer = no_observer>
+          OverflowPolicy Policy = OverflowPolicy::DropIncoming, typename InitialState = typename Table::initial_state,
+          typename Observer = no_observer>
 class static_thread_safe_fsm {
   public:
     using fsm_type = fsm<Table, Context, InitialState, Observer>;

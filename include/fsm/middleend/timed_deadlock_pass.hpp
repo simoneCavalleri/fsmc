@@ -60,9 +60,9 @@ class TimedDeadlockPass {
                     if (t1.duration_in_ms() == t2.duration_in_ms() &&
                         timed_transitions[i]->priority == timed_transitions[j]->priority &&
                         timed_transitions[i]->guard == timed_transitions[j]->guard) {
-                        diag.report(Diagnostic::warning(
-                            "W0402", "State '" + st.name +
-                                         "' has multiple identical TimeTriggers with equal priority (non-deterministic timeout dispatch)."));
+                        diag.report(Diagnostic::warning("W0402", "State '" + st.name +
+                                                                     "' has multiple identical TimeTriggers with equal "
+                                                                     "priority (non-deterministic timeout dispatch)."));
                     }
                 }
             }
@@ -72,10 +72,10 @@ class TimedDeadlockPass {
                 for (const auto* timed : timed_transitions) {
                     if (imm->priority == timed->priority && imm->priority == 0) {
                         std::string imm_name = imm->event.empty() ? "Anonymous" : imm->event;
-                        diag.report(Diagnostic::warning(
-                            "W0403", "State '" + st.name + "' has timeout transition (" + timed->get_trigger_name() +
-                                         ") racing with immediate transition (" + imm_name +
-                                         ") without explicit priority ordering."));
+                        diag.report(Diagnostic::warning("W0403", "State '" + st.name + "' has timeout transition (" +
+                                                                     timed->get_trigger_name() +
+                                                                     ") racing with immediate transition (" + imm_name +
+                                                                     ") without explicit priority ordering."));
                     }
                 }
             }

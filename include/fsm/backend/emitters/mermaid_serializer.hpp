@@ -264,19 +264,23 @@ class MermaidSerializer {
         if (has_comp_actions) {
             std::string note_content;
             for (const auto& act : state.entry_actions) {
-                if (!note_content.empty()) note_content += ", ";
+                if (!note_content.empty())
+                    note_content += ", ";
                 note_content += "entry / " + act.name;
             }
             if (state.do_activity.has_value() && !state.do_activity->empty()) {
-                if (!note_content.empty()) note_content += ", ";
+                if (!note_content.empty())
+                    note_content += ", ";
                 note_content += "do / " + *state.do_activity;
             }
             for (const auto& act : state.exit_actions) {
-                if (!note_content.empty()) note_content += ", ";
+                if (!note_content.empty())
+                    note_content += ", ";
                 note_content += "exit / " + act.name;
             }
             for (const auto& d_evt : state.deferred_events) {
-                if (!note_content.empty()) note_content += ", ";
+                if (!note_content.empty())
+                    note_content += ", ";
                 note_content += "defer " + d_evt;
             }
             out << pad << "note right of " << state.name << " : " << note_content << "\n";

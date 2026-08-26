@@ -49,8 +49,7 @@ class SmvParser : public IParser {
             }
             if (trimmed.rfind("MODULE", 0) == 0) {
                 std::string mod_name = trim(trimmed.substr(6));
-                if (!mod_name.empty() && mod_name != "main" &&
-                    (model.name.empty() || model.name == "MyStateMachine")) {
+                if (!mod_name.empty() && mod_name != "main" && (model.name.empty() || model.name == "MyStateMachine")) {
                     model.name = sanitize_identifier(mod_name);
                 }
                 continue;
@@ -178,7 +177,7 @@ class SmvParser : public IParser {
             // 3. ASSIGN next(state) := case transitions
             if (current_section == Section::AssignNextState) {
                 if (trimmed.find("TRUE :") != std::string::npos || trimmed.find("TRUE:") != std::string::npos) {
-                    continue; // Skip default frame condition
+                    continue;  // Skip default frame condition
                 }
                 parse_transition_case(trimmed, model);
                 continue;
@@ -200,7 +199,8 @@ class SmvParser : public IParser {
   private:
     static std::string trim(std::string_view str) {
         size_t first = str.find_first_not_of(" \t\r\n");
-        if (first == std::string_view::npos) return "";
+        if (first == std::string_view::npos)
+            return "";
         size_t last = str.find_last_not_of(" \t\r\n");
         return std::string(str.substr(first, last - first + 1));
     }
@@ -244,13 +244,15 @@ class SmvParser : public IParser {
 
     static void parse_variable_decl(const std::string& line, FsmIr& model) {
         size_t colon = line.find(':');
-        if (colon == std::string::npos) return;
+        if (colon == std::string::npos)
+            return;
         std::string name = sanitize_identifier(trim(line.substr(0, colon)));
-        if (name.empty()) return;
+        if (name.empty())
+            return;
         if (name.rfind("timer_", 0) == 0) {
             std::string possible_st = name.substr(6);
             if (model.find_state(possible_st) != nullptr) {
-                return; // Skip synthetic tick timers
+                return;  // Skip synthetic tick timers
             }
         }
 
@@ -301,7 +303,8 @@ class SmvParser : public IParser {
         }
 
         size_t colon = clean_line.find(':');
-        if (colon == std::string::npos) return;
+        if (colon == std::string::npos)
+            return;
 
         std::string cond_part = trim(clean_line.substr(0, colon));
         std::string target_part = trim(clean_line.substr(colon + 1));
@@ -309,7 +312,8 @@ class SmvParser : public IParser {
             target_part.pop_back();
         }
         std::string target_state = sanitize_identifier(trim(target_part));
-        if (target_state.empty()) return;
+        if (target_state.empty())
+            return;
 
         // Parse: state = S1 & event = E1 & [guard]
         std::string source_state;
@@ -334,13 +338,15 @@ class SmvParser : public IParser {
                     c = trim(c.substr(1, c.size() - 2));
                 }
                 if (!c.empty()) {
-                    if (!guard_expr.empty()) guard_expr += " && ";
+                    if (!guard_expr.empty())
+                        guard_expr += " && ";
                     guard_expr += c;
                 }
             }
         }
 
-        if (source_state.empty()) return;
+        if (source_state.empty())
+            return;
 
         TransitionEdge trans;
         trans.source = source_state;
@@ -358,11 +364,14 @@ class SmvParser : public IParser {
     }
 
     static void parse_state_metadata_directive(const std::string& body, FsmIr& model) {
-        // e.g. state name=Preflight parent=... composite=true initial=SensorCalib kind=parallel history=shallow do_activity="..."
+        // e.g. state name=Preflight parent=... composite=true initial=SensorCalib kind=parallel history=shallow
+        // do_activity="..."
         auto n_pos = body.find("name=");
-        if (n_pos == std::string::npos) return;
+        if (n_pos == std::string::npos)
+            return;
         std::string name = extract_word_or_quoted(body, n_pos + 5);
-        if (name.empty()) return;
+        if (name.empty())
+            return;
 
         auto* st = model.find_state_mut(name);
         if (st == nullptr) {
@@ -405,11 +414,13 @@ class SmvParser : public IParser {
         // e.g. entry state=Preflight action="ArmMotors"
         auto s_pos = body.find("state=");
         auto a_pos = body.find("action=");
-        if (s_pos == std::string::npos || a_pos == std::string::npos) return;
+        if (s_pos == std::string::npos || a_pos == std::string::npos)
+            return;
 
         std::string st_name = extract_word_or_quoted(body, s_pos + 6);
         std::string act_name = extract_word_or_quoted(body, a_pos + 7);
-        if (st_name.empty() || act_name.empty()) return;
+        if (st_name.empty() || act_name.empty())
+            return;
 
         auto* st = model.find_state_mut(st_name);
         if (st == nullptr) {
@@ -429,11 +440,13 @@ class SmvParser : public IParser {
         // e.g. defer state=Navigating event="EvTelemetryPing"
         auto s_pos = body.find("state=");
         auto e_pos = body.find("event=");
-        if (s_pos == std::string::npos || e_pos == std::string::npos) return;
+        if (s_pos == std::string::npos || e_pos == std::string::npos)
+            return;
 
         std::string st_name = extract_word_or_quoted(body, s_pos + 6);
         std::string ev_name = extract_word_or_quoted(body, e_pos + 6);
-        if (st_name.empty() || ev_name.empty()) return;
+        if (st_name.empty() || ev_name.empty())
+            return;
 
         auto* st = model.find_state_mut(st_name);
         if (st == nullptr) {
@@ -451,11 +464,13 @@ class SmvParser : public IParser {
         // e.g. req state=Preflight req="REQ_UAV_PRE_01"
         auto s_pos = body.find("state=");
         auto r_pos = body.find("req=");
-        if (s_pos == std::string::npos || r_pos == std::string::npos) return;
+        if (s_pos == std::string::npos || r_pos == std::string::npos)
+            return;
 
         std::string st_name = extract_word_or_quoted(body, s_pos + 6);
         std::string req_name = extract_word_or_quoted(body, r_pos + 4);
-        if (st_name.empty() || req_name.empty()) return;
+        if (st_name.empty() || req_name.empty())
+            return;
 
         auto* st = model.find_state_mut(st_name);
         if (st == nullptr) {
@@ -463,7 +478,8 @@ class SmvParser : public IParser {
             st = &new_st;
         }
 
-        if (std::find(st->traceability_reqs.begin(), st->traceability_reqs.end(), req_name) == st->traceability_reqs.end()) {
+        if (std::find(st->traceability_reqs.begin(), st->traceability_reqs.end(), req_name) ==
+            st->traceability_reqs.end()) {
             st->traceability_reqs.push_back(req_name);
         }
     }
@@ -473,12 +489,14 @@ class SmvParser : public IParser {
         auto s_pos = body.find("src=");
         auto t_pos = body.find("tgt=");
         auto a_pos = body.find("action=");
-        if (s_pos == std::string::npos || t_pos == std::string::npos || a_pos == std::string::npos) return;
+        if (s_pos == std::string::npos || t_pos == std::string::npos || a_pos == std::string::npos)
+            return;
 
         std::string src = extract_word_or_quoted(body, s_pos + 4);
         std::string tgt = extract_word_or_quoted(body, t_pos + 4);
         std::string act = extract_word_or_quoted(body, a_pos + 7);
-        if (src.empty() || tgt.empty() || act.empty()) return;
+        if (src.empty() || tgt.empty() || act.empty())
+            return;
 
         for (auto& trans : model.transitions) {
             if (trans.source == src && trans.target == tgt) {
@@ -490,18 +508,23 @@ class SmvParser : public IParser {
     }
 
     static std::string extract_word_or_quoted(const std::string& str, size_t pos) {
-        if (pos >= str.size()) return "";
-        while (pos < str.size() && (str[pos] == ' ' || str[pos] == '\t')) pos++;
-        if (pos >= str.size()) return "";
+        if (pos >= str.size())
+            return "";
+        while (pos < str.size() && (str[pos] == ' ' || str[pos] == '\t'))
+            pos++;
+        if (pos >= str.size())
+            return "";
         if (str[pos] == '"') {
             size_t close_q = str.find('"', pos + 1);
-            if (close_q == std::string::npos) return str.substr(pos + 1);
+            if (close_q == std::string::npos)
+                return str.substr(pos + 1);
             return str.substr(pos + 1, close_q - pos - 1);
         }
         size_t end = str.find_first_of(" \t\r\n;", pos);
-        if (end == std::string::npos) return str.substr(pos);
+        if (end == std::string::npos)
+            return str.substr(pos);
         return str.substr(pos, end - pos);
     }
 };
 
-} // namespace fsm::codegen
+}  // namespace fsm::codegen

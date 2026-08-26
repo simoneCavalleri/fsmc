@@ -96,7 +96,8 @@ class SmvSerializer {
                 std::string src = t.source.empty() ? t.source_id : t.source;
                 if (!src.empty()) {
                     std::uint64_t dur = tt.duration_in_ms();
-                    if (dur == 0) dur = 1;
+                    if (dur == 0)
+                        dur = 1;
                     state_max_timeouts[src] = std::max(state_max_timeouts[src], dur);
                 }
             }
@@ -130,8 +131,8 @@ class SmvSerializer {
         for (const auto& [st_name, max_dur] : state_max_timeouts) {
             out << "  init(timer_" << sanitize_smv_ident(st_name) << ") := 0;\n";
             out << "  next(timer_" << sanitize_smv_ident(st_name) << ") := case\n"
-                << "    state = " << sanitize_smv_ident(st_name) << " & timer_" << sanitize_smv_ident(st_name)
-                << " < " << max_dur << " : timer_" << sanitize_smv_ident(st_name) << " + 1;\n"
+                << "    state = " << sanitize_smv_ident(st_name) << " & timer_" << sanitize_smv_ident(st_name) << " < "
+                << max_dur << " : timer_" << sanitize_smv_ident(st_name) << " + 1;\n"
                 << "    TRUE : 0;\n"
                 << "  esac;\n";
         }
@@ -155,7 +156,8 @@ class SmvSerializer {
             if (std::holds_alternative<TimeTrigger>(t.trigger)) {
                 const auto& tt = std::get<TimeTrigger>(t.trigger);
                 std::uint64_t dur = tt.duration_in_ms();
-                if (dur == 0) dur = 1;
+                if (dur == 0)
+                    dur = 1;
                 out << " & timer_" << sanitize_smv_ident(src) << " >= " << dur;
             } else if (!evt.empty() && evt != "Anonymous" && evt != "none") {
                 out << " & event = " << sanitize_smv_ident(evt);

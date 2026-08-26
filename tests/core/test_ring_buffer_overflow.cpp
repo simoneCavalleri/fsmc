@@ -79,10 +79,8 @@ struct EvToggle {
     static constexpr std::string_view name() noexcept { return "EvToggle"; }
 };
 
-using TestFsmTable = ::fsm::transition_table<
-    ::fsm::transition<StateA, EvToggle, StateB>,
-    ::fsm::transition<StateB, EvToggle, StateA>
->;
+using TestFsmTable =
+    ::fsm::transition_table<::fsm::transition<StateA, EvToggle, StateB>, ::fsm::transition<StateB, EvToggle, StateA>>;
 
 TEST(StaticThreadSafeFsmTest, OverflowPolicyDropOldest) {
     ::fsm::static_thread_safe_fsm<TestFsmTable, ::fsm::no_context, 2, ::fsm::OverflowPolicy::DropOldest> machine;

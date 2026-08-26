@@ -402,7 +402,8 @@ class CppModelEmitter {
             if (model.is_choice_node(transition_item.source)) {
                 // If choice exceeded threshold, retain its outgoing branches as direct transitions from choice node
                 auto it = choice_cardinality.find(transition_item.source);
-                if (it != choice_cardinality.end() && (it->second.first * it->second.second) > kCartesianExpansionThreshold) {
+                if (it != choice_cardinality.end() &&
+                    (it->second.first * it->second.second) > kCartesianExpansionThreshold) {
                     BaseTransition bt;
                     bt.source = transition_item.source;
                     bt.target = transition_item.target;
@@ -418,14 +419,16 @@ class CppModelEmitter {
             }
             if (model.is_choice_node(transition_item.target)) {
                 auto it = choice_cardinality.find(transition_item.target);
-                std::size_t cartesian_prod = it != choice_cardinality.end() ? (it->second.first * it->second.second) : 0;
+                std::size_t cartesian_prod =
+                    it != choice_cardinality.end() ? (it->second.first * it->second.second) : 0;
 
                 if (cartesian_prod > kCartesianExpansionThreshold) {
                     // Exceeded Cartesian threshold: route directly to choice node to avoid combinatorial template bloat
                     BaseTransition bt;
                     bt.source = transition_item.source;
                     bt.target = transition_item.target;
-                    bt.event = transition_item.event.empty() ? transition_item.get_trigger_name() : transition_item.event;
+                    bt.event =
+                        transition_item.event.empty() ? transition_item.get_trigger_name() : transition_item.event;
                     if (bt.event.empty() || bt.event == "Anonymous" || bt.event == "none") {
                         bt.event = "fsm::anonymous_event";
                     }
@@ -442,8 +445,8 @@ class CppModelEmitter {
                             BaseTransition bt;
                             bt.source = transition_item.source;
                             bt.target = branch.target;
-                            bt.event =
-                                transition_item.event.empty() ? transition_item.get_trigger_name() : transition_item.event;
+                            bt.event = transition_item.event.empty() ? transition_item.get_trigger_name()
+                                                                     : transition_item.event;
                             if (bt.event.empty() || bt.event == "Anonymous" || bt.event == "none") {
                                 bt.event = "fsm::anonymous_event";
                             }

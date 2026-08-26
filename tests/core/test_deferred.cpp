@@ -5,12 +5,12 @@
 #include <thread>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
-#include "fsm/frontend/formal/cameo_xmi_parser.hpp"
-#include "fsm/frontend/formal/scxml_parser.hpp"
 #include "fsm/frontend/diagram/dot_parser.hpp"
 #include "fsm/frontend/diagram/json_parser.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
+#include "fsm/frontend/formal/cameo_xmi_parser.hpp"
+#include "fsm/frontend/formal/scxml_parser.hpp"
 #include "fsm/runtime/cpp/fsm.hpp"
 #include "fsm/runtime/cpp/thread_safe_fsm.hpp"
 

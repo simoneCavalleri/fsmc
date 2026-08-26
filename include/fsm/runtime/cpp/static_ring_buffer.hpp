@@ -13,9 +13,9 @@ namespace fsm {
  * @brief Overflow policy when pushing into a saturated bounded ring buffer.
  */
 enum class OverflowPolicy : std::uint8_t {
-    DropOldest,        ///< Discards the oldest element at the head to accommodate the newest element
-    DropIncoming,      ///< Rejects the incoming element, leaving the existing buffer unmodified
-    AssertOnOverflow   ///< Triggers an assertion in debug/safety builds if the queue overflows
+    DropOldest,       ///< Discards the oldest element at the head to accommodate the newest element
+    DropIncoming,     ///< Rejects the incoming element, leaving the existing buffer unmodified
+    AssertOnOverflow  ///< Triggers an assertion in debug/safety builds if the queue overflows
 };
 
 // Zero-allocation, static capacity ring buffer designed for hard real-time / embedded systems

@@ -16,8 +16,8 @@ namespace fsm::codegen {
  *            Designed for visual sketching; types and contracts are inferred or supplemented via @fsm directives.
  */
 enum class FrontendKind : std::uint8_t {
-    Formal,   ///< Strict formal metamodel: SysML v2, W3C SCXML, Cameo/MagicDraw XMI
-    Diagram   ///< Visual diagram notation: PlantUML, Mermaid, Graphviz DOT, XState JSON
+    Formal,  ///< Strict formal metamodel: SysML v2, W3C SCXML, Cameo/MagicDraw XMI
+    Diagram  ///< Visual diagram notation: PlantUML, Mermaid, Graphviz DOT, XState JSON
 };
 
 inline std::string_view frontend_kind_to_string(FrontendKind kind) noexcept {

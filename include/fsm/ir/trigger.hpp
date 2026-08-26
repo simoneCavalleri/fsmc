@@ -84,7 +84,7 @@ inline std::uint64_t to_milliseconds(std::uint64_t val, TimeUnit unit) noexcept 
 
 struct SignalTrigger {
     std::string signal_name;
-    std::string payload_binding{"payload"};  ///< Name of payload argument, e.g. "payload"
+    std::string payload_binding{"payload"};                               ///< Name of payload argument, e.g. "payload"
     std::vector<std::pair<std::string, std::string>> payload_parameters;  ///< Parameter bindings: (name, type)
     std::string payload_type;
 
@@ -93,9 +93,7 @@ struct SignalTrigger {
         : signal_name(std::move(name)), payload_binding(std::move(binding)) {}
     SignalTrigger(std::string name, std::vector<std::pair<std::string, std::string>> params,
                   std::string binding = "payload")
-        : signal_name(std::move(name)),
-          payload_binding(std::move(binding)),
-          payload_parameters(std::move(params)) {}
+        : signal_name(std::move(name)), payload_binding(std::move(binding)), payload_parameters(std::move(params)) {}
 
     bool operator==(const SignalTrigger& other) const noexcept {
         return signal_name == other.signal_name && payload_binding == other.payload_binding &&
@@ -133,9 +131,7 @@ struct TimeTrigger {
         return duration_ms > 0 ? duration_ms : to_milliseconds(duration_value, unit);
     }
 
-    [[nodiscard]] bool is_periodic() const noexcept {
-        return periodic || kind == TimeTriggerKind::Every;
-    }
+    [[nodiscard]] bool is_periodic() const noexcept { return periodic || kind == TimeTriggerKind::Every; }
 
     bool operator==(const TimeTrigger& other) const noexcept {
         return kind == other.kind && duration_value == other.duration_value && unit == other.unit &&

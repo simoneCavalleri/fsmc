@@ -1439,9 +1439,9 @@ namespace fsm {
  * @brief Overflow policy when pushing into a saturated bounded ring buffer.
  */
 enum class OverflowPolicy : std::uint8_t {
-    DropOldest,        ///< Discards the oldest element at the head to accommodate the newest element
-    DropIncoming,      ///< Rejects the incoming element, leaving the existing buffer unmodified
-    AssertOnOverflow   ///< Triggers an assertion in debug/safety builds if the queue overflows
+    DropOldest,       ///< Discards the oldest element at the head to accommodate the newest element
+    DropIncoming,     ///< Rejects the incoming element, leaving the existing buffer unmodified
+    AssertOnOverflow  ///< Triggers an assertion in debug/safety builds if the queue overflows
 };
 
 // Zero-allocation, static capacity ring buffer designed for hard real-time / embedded systems
@@ -2262,8 +2262,8 @@ namespace fsm {
 // Zero-allocation, statically bounded thread-safe FSM wrapper designed for hard real-time and embedded systems.
 // Does NOT use std::function, heap allocations, std::vector, or std::future.
 template <typename Table, typename Context = no_context, std::size_t QueueCapacity = 64,
-          OverflowPolicy Policy = OverflowPolicy::DropIncoming,
-          typename InitialState = typename Table::initial_state, typename Observer = no_observer>
+          OverflowPolicy Policy = OverflowPolicy::DropIncoming, typename InitialState = typename Table::initial_state,
+          typename Observer = no_observer>
 class static_thread_safe_fsm {
   public:
     using fsm_type = fsm<Table, Context, InitialState, Observer>;

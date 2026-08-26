@@ -6,15 +6,15 @@
 #include <string_view>
 #include <vector>
 
+#include "fsm/frontend/diagram/dot_parser.hpp"
+#include "fsm/frontend/diagram/json_parser.hpp"
+#include "fsm/frontend/diagram/mermaid_parser.hpp"
+#include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/frontend/directive_parser.hpp"
 #include "fsm/frontend/formal/cameo_xmi_parser.hpp"
 #include "fsm/frontend/formal/scxml_parser.hpp"
 #include "fsm/frontend/formal/smv_parser.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
-#include "fsm/frontend/diagram/dot_parser.hpp"
-#include "fsm/frontend/diagram/json_parser.hpp"
-#include "fsm/frontend/diagram/mermaid_parser.hpp"
-#include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/frontend/parser_interface.hpp"
 
 namespace fsm::codegen {
@@ -126,7 +126,8 @@ class ParserFactory {
         for (auto& c : f) {
             c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         }
-        if (f == "sysml" || f == "sysml2" || f == "scxml" || f == "cameo" || f == "xmi" || f == "smv" || f == "nusmv" || f == "nuxmv") {
+        if (f == "sysml" || f == "sysml2" || f == "scxml" || f == "cameo" || f == "xmi" || f == "smv" || f == "nusmv" ||
+            f == "nuxmv") {
             return FrontendKind::Formal;
         }
         return FrontendKind::Diagram;

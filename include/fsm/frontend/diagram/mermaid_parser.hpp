@@ -53,7 +53,8 @@ class MermaidParser : public IParser {
                         std::string state_name = DirectiveParser::extract_directive_body(body);
                         auto eq_pos = body.find('=', n_pos);
                         auto sp_pos = body.find_first_of(" \t", eq_pos + 1);
-                        std::string sname = body.substr(eq_pos + 1, sp_pos == std::string::npos ? std::string::npos : (sp_pos - eq_pos - 1));
+                        std::string sname = body.substr(
+                            eq_pos + 1, sp_pos == std::string::npos ? std::string::npos : (sp_pos - eq_pos - 1));
                         if (!sname.empty() && sname.front() == '"' && sname.back() == '"') {
                             sname = sname.substr(1, sname.size() - 2);
                         }
@@ -97,7 +98,8 @@ class MermaidParser : public IParser {
                 std::string target_state;
                 size_t colon_pos = trimmed.find(':');
                 if (p != std::string_view::npos) {
-                    size_t len = (colon_pos != std::string_view::npos && colon_pos > p + 4) ? (colon_pos - (p + 4)) : std::string_view::npos;
+                    size_t len = (colon_pos != std::string_view::npos && colon_pos > p + 4) ? (colon_pos - (p + 4))
+                                                                                            : std::string_view::npos;
                     target_state = sanitize_identifier(trim(trimmed.substr(p + 4, len)));
                 }
 

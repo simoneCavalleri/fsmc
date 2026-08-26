@@ -78,10 +78,12 @@ TEST(SmvSerializerTest, EmitsTickCountersForTimeTriggers) {
 TEST(DeterministicTimerTest, StepAndExpiration) {
     deterministic_timer_manager<4> mgr;
     EXPECT_TRUE(mgr.start_timer(101, 50, false));
-    EXPECT_TRUE(mgr.start_timer(102, 100, true)); // periodic
+    EXPECT_TRUE(mgr.start_timer(102, 100, true));  // periodic
 
     std::vector<uint32_t> expired;
-    auto on_expired = [&](uint32_t id) { expired.push_back(id); };
+    auto on_expired = [&](uint32_t id) {
+        expired.push_back(id);
+    };
 
     // Advance 30ms -> none expired
     EXPECT_EQ(mgr.tick(30, on_expired), 0);

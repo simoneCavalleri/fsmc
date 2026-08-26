@@ -20,13 +20,7 @@ class Sysml2Parser : public IParser {
     [[nodiscard]] FrontendKind kind() const noexcept override { return FrontendKind::Formal; }
     [[nodiscard]] std::string_view format_name() const noexcept override { return "sysml2"; }
 
-    enum class SysmlBlockKind : std::uint8_t {
-        Package,
-        StateDef,
-        State,
-        ItemDef,
-        ActionBlock
-    };
+    enum class SysmlBlockKind : std::uint8_t { Package, StateDef, State, ItemDef, ActionBlock };
 
     bool parse(std::string_view content, FsmIr& model, std::string& error_message) override {
         std::string content_str(content);
@@ -417,8 +411,8 @@ class Sysml2Parser : public IParser {
         }
 
         // 7b. State Lifecycle Actions: entry action <Act>; / exit action <Act>;
-        static const std::regex entry_act_regex(R"(^entry\s+(?:action\s+|do\s+)?(?!point\b)([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?)",
-                                                std::regex::optimize);
+        static const std::regex entry_act_regex(
+            R"(^entry\s+(?:action\s+|do\s+)?(?!point\b)([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?)", std::regex::optimize);
         if (std::regex_search(stmt, match, entry_act_regex)) {
             const std::string act_name = sanitize_identifier(match[1].str());
             model.add_action(act_name);
@@ -431,8 +425,8 @@ class Sysml2Parser : public IParser {
             return true;
         }
 
-        static const std::regex exit_act_regex(R"(^exit\s+(?:action\s+|do\s+)?(?!point\b)([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?)",
-                                               std::regex::optimize);
+        static const std::regex exit_act_regex(
+            R"(^exit\s+(?:action\s+|do\s+)?(?!point\b)([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?)", std::regex::optimize);
         if (std::regex_search(stmt, match, exit_act_regex)) {
             const std::string act_name = sanitize_identifier(match[1].str());
             model.add_action(act_name);
@@ -446,7 +440,8 @@ class Sysml2Parser : public IParser {
         }
 
         // 8. State Do Activity: do action <Activity>; or do <Activity>;
-        static const std::regex do_act_regex(R"(^do\s+(?:action\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?$)", std::regex::optimize);
+        static const std::regex do_act_regex(R"(^do\s+(?:action\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?$)",
+                                             std::regex::optimize);
         if (std::regex_search(stmt, match, do_act_regex)) {
             const std::string act_name = sanitize_identifier(match[1].str());
             if (!state_stack.empty()) {
@@ -499,8 +494,8 @@ class Sysml2Parser : public IParser {
         }
 
         // 10. Temporal Logic Specifications: assert property <Name> : <Formula>
-        static const std::regex assert_prop_regex(
-            R"(^(?:assert\s+)?property\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+)$)", std::regex::optimize);
+        static const std::regex assert_prop_regex(R"(^(?:assert\s+)?property\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+)$)",
+                                                  std::regex::optimize);
         if (std::regex_search(stmt, match, assert_prop_regex)) {
             FormalProperty prop;
             prop.name = sanitize_identifier(match[1].str());
@@ -545,8 +540,7 @@ class Sysml2Parser : public IParser {
         static const std::regex accept_regex(
             R"(\b(?:accept|when)\s+(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
         static const std::regex after_regex(
-            R"(\bafter\s+(\d+(?:\.\d+)?)\s*(?:\[(?:SI::|ISQ::)?([A-Za-z]+)\]|([A-Za-z]+))?)",
-            std::regex::optimize);
+            R"(\bafter\s+(\d+(?:\.\d+)?)\s*(?:\[(?:SI::|ISQ::)?([A-Za-z]+)\]|([A-Za-z]+))?)", std::regex::optimize);
         static const std::regex if_regex(R"(\bif\s+([A-Za-z0-9_!&\|\(\)\s]+?)(?=\s+(?:do|then|to|;|$)))",
                                          std::regex::optimize);
         static const std::regex do_block_regex(R"(\bdo\s*\{([^}]+)\})", std::regex::optimize);
@@ -578,7 +572,8 @@ class Sysml2Parser : public IParser {
             } else if (unit == "h") {
                 duration_ms = static_cast<uint64_t>(raw_val * 3600000.0);
             }
-            if (duration_ms == 0) duration_ms = 1;
+            if (duration_ms == 0)
+                duration_ms = 1;
             time_trigger = TimeTrigger(TimeTriggerKind::After, duration_ms, TimeUnit::Milliseconds);
             event = "after_" + std::to_string(duration_ms) + "ms";
         }

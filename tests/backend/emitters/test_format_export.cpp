@@ -10,13 +10,13 @@
 #include "fsm/backend/emitters/scxml_serializer.hpp"
 #include "fsm/backend/emitters/smv_serializer.hpp"
 #include "fsm/backend/emitters/sysml2_serializer.hpp"
-#include "fsm/frontend/formal/cameo_xmi_parser.hpp"
-#include "fsm/frontend/formal/scxml_parser.hpp"
-#include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/frontend/diagram/dot_parser.hpp"
 #include "fsm/frontend/diagram/json_parser.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
+#include "fsm/frontend/formal/cameo_xmi_parser.hpp"
+#include "fsm/frontend/formal/scxml_parser.hpp"
+#include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 using namespace fsm::codegen;

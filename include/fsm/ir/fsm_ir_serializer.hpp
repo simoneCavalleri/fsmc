@@ -42,10 +42,11 @@ class FsmIrSerializer {
             ss << indent << indent << "{\n";
             ss << indent << indent << indent << "\"name\": \"" << escape_json(var.name) << "\",\n";
             ss << indent << indent << indent << "\"type\": \"" << escape_json(var.type) << "\",\n";
-            ss << indent << indent << indent << "\"type_kind\": \""
-               << variable_type_kind_to_string(var.type_kind) << "\",\n";
+            ss << indent << indent << indent << "\"type_kind\": \"" << variable_type_kind_to_string(var.type_kind)
+               << "\",\n";
             if (var.physical_unit.has_value()) {
-                ss << indent << indent << indent << "\"physical_unit\": \"" << escape_json(*var.physical_unit) << "\",\n";
+                ss << indent << indent << indent << "\"physical_unit\": \"" << escape_json(*var.physical_unit)
+                   << "\",\n";
             } else {
                 ss << indent << indent << indent << "\"physical_unit\": null,\n";
             }

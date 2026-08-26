@@ -8,8 +8,11 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
+  custom_dir: overrides
   logo: assets/logo.svg
-  favicon: assets/logo.png
+  favicon: assets/logo.svg
+
+
   font:
     text: IBM Plex Sans
     code: JetBrains Mono

@@ -1,8 +1,9 @@
 <div align="center">
 
-<img src="docs/assets/logo.png" alt="fsmc Logo" width="220" />
+<img src="docs/assets/logo.svg" alt="fsmc Logo" width="280" />
 
 # `fsmc`
+
 
 [![CI](https://github.com/simoneCavalleri/fsmc/actions/workflows/ci.yml/badge.svg)](https://github.com/simoneCavalleri/fsmc/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/simoneCavalleri/fsmc?color=blue)](https://github.com/simoneCavalleri/fsmc/releases)

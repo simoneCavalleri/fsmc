@@ -8,9 +8,10 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
-  logo: assets/logo.png
+  logo: assets/logo.svg
   favicon: assets/logo.png
   palette:
+
 
     - scheme: default
       primary: light blue

@@ -6,6 +6,13 @@ using namespace fsm::codegen;
 
 namespace {
 
+/**
+ * @brief Test Intent: Verify PassManager default optimization and analysis pipeline execution.
+ *
+ * Scenario:
+ * - Run default optimization pipeline over an FSM containing an unreachable trap state and choice without fallback.
+ * - Verify passes collect execution statistics and emit appropriate diagnostic warnings (W0201, W0103).
+ */
 TEST(PassManagerTest, RunDefaultPipeline) {
     FsmIr ir;
     ir.name = "MissionFSM";
@@ -41,6 +48,14 @@ TEST(PassManagerTest, RunDefaultPipeline) {
     EXPECT_TRUE(found_choice_warn);
 }
 
+/**
+ * @brief Test Intent: Verify custom pass registration and extension in PassManager.
+ *
+ * Scenario:
+ * - Create a custom `IPass` subclass (`CustomInstrumentationPass`).
+ * - Register it on PassManager and run pipeline over FSM.
+ * - Verify state metadata modification and pass statistics recording.
+ */
 TEST(PassManagerTest, CustomPassRegistration) {
     class CustomInstrumentationPass : public IPass {
       public:

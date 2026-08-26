@@ -10,11 +10,10 @@
 #include <string>
 #include <vector>
 
+#include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 namespace fsm::codegen {
-
-enum class DiagnosticSeverity : std::uint8_t { Info, Warning, Error, SafetyCritical };
 
 struct DiagnosticMessage {
     DiagnosticSeverity severity;
@@ -168,17 +167,57 @@ class FsmValidator {
     static void validate_reachability(const FsmIr& model, ValidationResult& result) {
         std::set<std::string> reachable;
         std::queue<std::string> bfs_queue;
-        bfs_queue.push(model.initial_state);
-        reachable.insert(model.initial_state);
+
+        auto mark_reachable = [&](const std::string& st_name) {
+            if (st_name.empty())
+                return;
+            if (reachable.insert(st_name).second) {
+                bfs_queue.push(st_name);
+
+                // If composite, initial substate is reached
+                const auto* st_node = model.find_state(st_name);
+                if (st_node != nullptr) {
+                    if (!st_node->initial_sub_state.empty() && reachable.count(st_node->initial_sub_state) == 0) {
+                        reachable.insert(st_node->initial_sub_state);
+                        bfs_queue.push(st_node->initial_sub_state);
+                    }
+                    if (!st_node->parent_state.empty() && reachable.count(st_node->parent_state) == 0) {
+                        reachable.insert(st_node->parent_state);
+                        bfs_queue.push(st_node->parent_state);
+                    }
+                }
+            }
+        };
+
+        mark_reachable(model.initial_state);
 
         while (!bfs_queue.empty()) {
             const std::string current = bfs_queue.front();
             bfs_queue.pop();
 
+            const auto* st_node = model.find_state(current);
+            if (st_node != nullptr) {
+                if (!st_node->initial_sub_state.empty()) {
+                    mark_reachable(st_node->initial_sub_state);
+                }
+                if (!st_node->parent_state.empty()) {
+                    mark_reachable(st_node->parent_state);
+                }
+                // Include all child sub-states for composite/parallel states
+                for (const auto& child : model.states) {
+                    if (child.parent_state == current) {
+                        mark_reachable(child.name);
+                    }
+                }
+            }
+
             for (const auto& transition_item : model.transitions) {
-                if (transition_item.source == current && reachable.count(transition_item.target) == 0) {
-                    reachable.insert(transition_item.target);
-                    bfs_queue.push(transition_item.target);
+                if (transition_item.source == current) {
+                    mark_reachable(transition_item.target);
+                }
+                if (st_node != nullptr && !st_node->parent_state.empty() &&
+                    transition_item.source == st_node->parent_state) {
+                    mark_reachable(transition_item.target);
                 }
             }
         }
@@ -262,16 +301,51 @@ class FsmValidator {
             in_degree[transition_item.target]++;
         }
 
+        auto has_ancestor_outgoing = [&](const StateNode& s) -> bool {
+            std::string curr = s.parent_state;
+            while (!curr.empty()) {
+                if (out_degree[curr] > 0)
+                    return true;
+                const auto* p = model.find_state(curr);
+                if (p == nullptr)
+                    break;
+                curr = p->parent_state;
+            }
+            return false;
+        };
+
+        auto has_descendant_outgoing = [&](const StateNode& s) -> bool {
+            std::queue<std::string> q;
+            q.push(s.name);
+            while (!q.empty()) {
+                std::string curr = q.front();
+                q.pop();
+                for (const auto& child : model.states) {
+                    if (child.parent_state == curr) {
+                        if (out_degree[child.name] > 0)
+                            return true;
+                        q.push(child.name);
+                    }
+                }
+            }
+            return false;
+        };
+
         for (const auto& state_item : model.states) {
             if (out_degree[state_item.name] == 0 && in_degree[state_item.name] > 0) {
+                if (has_ancestor_outgoing(state_item) || has_descendant_outgoing(state_item)) {
+                    continue;  // Inherits outgoing transition from ancestor or child sub-state
+                }
                 std::string lower_name = state_item.name;
                 std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(),
                                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
                 const bool is_intended_final =
                     (lower_name.find("final") != std::string::npos || lower_name.find("end") != std::string::npos ||
+                     lower_name.find("terminal") != std::string::npos ||
                      lower_name.find("terminate") != std::string::npos ||
-                     lower_name.find("stop") != std::string::npos || lower_name == "completed");
+                     lower_name.find("stop") != std::string::npos || lower_name.find("landed") != std::string::npos ||
+                     lower_name == "completed" || lower_name == "done");
 
                 if (!is_intended_final) {
                     result.add_warning("Deadlock", "Potential trap / deadlock state: '" + state_item.name +

@@ -2,14 +2,21 @@
 
 #include <string>
 
-#include "fsm/frontend/mermaid_parser.hpp"
-#include "fsm/frontend/plantuml_parser.hpp"
+#include "fsm/frontend/diagram/mermaid_parser.hpp"
+#include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/middleend/fsm_validator.hpp"
 
 using namespace fsm::codegen;
 
 namespace {
 
+/**
+ * @brief Test Intent: Verify formal validation passes for a sound state machine with zero defects.
+ *
+ * Scenario:
+ * - Validate standard FSM (Idle -> Running -> Paused/Stopped -> [*]).
+ * - Verify validation result has is_valid == true and 0 errors.
+ */
 TEST(ModelCheckerTest, SoundModelVerification) {
     const std::string mmd = R"(
     stateDiagram-v2
@@ -31,6 +38,13 @@ TEST(ModelCheckerTest, SoundModelVerification) {
     EXPECT_TRUE(validation.errors.empty());
 }
 
+/**
+ * @brief Test Intent: Verify model checker detection of livelock cycles with no exit transitions.
+ *
+ * Scenario:
+ * - Parse circular loop: StateA -> StateB -> StateC -> StateA.
+ * - Verify diagnostic engine emits SafetyCritical diagnostic for Livelock.
+ */
 TEST(ModelCheckerTest, LivelockCycleDetection) {
     const std::string mmd = R"(
     stateDiagram-v2
@@ -56,6 +70,13 @@ TEST(ModelCheckerTest, LivelockCycleDetection) {
     EXPECT_TRUE(found_livelock);
 }
 
+/**
+ * @brief Test Intent: Verify model checker detects Choice nodes lacking an unconditional fallback branch.
+ *
+ * Scenario:
+ * - Choice node branches on [IsFast] and [IsSlow] without a default else branch.
+ * - Verify SafetyCritical Choice diagnostic is emitted.
+ */
 TEST(ModelCheckerTest, ChoiceMissingFallback) {
     const std::string puml = R"(
     @startuml
@@ -82,6 +103,13 @@ TEST(ModelCheckerTest, ChoiceMissingFallback) {
     EXPECT_TRUE(found_choice_warning);
 }
 
+/**
+ * @brief Test Intent: Verify model checker detects duplicate/conflicting guard conditions on Choice branches.
+ *
+ * Scenario:
+ * - Choice node has two outgoing branches with identical guard `[IsFast]`.
+ * - Verify warning diagnostic is emitted for non-deterministic choice guards.
+ */
 TEST(ModelCheckerTest, ChoiceDuplicateGuards) {
     const std::string puml = R"(
     @startuml
@@ -109,6 +137,13 @@ TEST(ModelCheckerTest, ChoiceDuplicateGuards) {
     EXPECT_TRUE(found_dup_guard);
 }
 
+/**
+ * @brief Test Intent: Verify model checker detects deadlock/trap states (states with no exit transitions).
+ *
+ * Scenario:
+ * - Active transitions to TrapState on ErrorEvent, and TrapState has 0 outgoing transitions.
+ * - Verify Deadlock diagnostic warning is reported.
+ */
 TEST(ModelCheckerTest, DeadlockTrapState) {
     const std::string mmd = R"(
     stateDiagram-v2
@@ -132,6 +167,13 @@ TEST(ModelCheckerTest, DeadlockTrapState) {
     EXPECT_TRUE(found_deadlock_warning);
 }
 
+/**
+ * @brief Test Intent: Verify model checker detects non-deterministic transition conflicts for identical events.
+ *
+ * Scenario:
+ * - State Idle has two unconditional transitions for the same event `StartCmd` (one to StateA, one to StateB).
+ * - Verify SafetyCritical Determinism conflict diagnostic is emitted.
+ */
 TEST(ModelCheckerTest, NondeterministicTransitionConflict) {
     const std::string mmd = R"(
     stateDiagram-v2
@@ -156,6 +198,13 @@ TEST(ModelCheckerTest, NondeterministicTransitionConflict) {
     EXPECT_TRUE(found_conflict);
 }
 
+/**
+ * @brief Test Intent: Verify model checker detects duplicate timer transitions from the same state.
+ *
+ * Scenario:
+ * - State Active has two transitions with identical timer duration `after_500ms`.
+ * - Verify TimedTransition diagnostic warning is emitted.
+ */
 TEST(ModelCheckerTest, DuplicateTimerTransitions) {
     const std::string mmd = R"(
     stateDiagram-v2

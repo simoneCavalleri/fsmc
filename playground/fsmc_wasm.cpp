@@ -46,7 +46,7 @@ std::string fsmc_wasm_compile(const std::string& source, const std::string& form
     FsmIr model;
     model.name = "WebPlaygroundFSM";
     model.ns = "fsm_playground";
-    model.context_type = "PlaygroundContext";
+    model.context_type = "no_context";
     model.thread_safe = true;
 
     std::string err;

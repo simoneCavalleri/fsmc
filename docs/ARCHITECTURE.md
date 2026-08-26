@@ -119,7 +119,7 @@ enum class FrontendKind : std::uint8_t {
    - Code generation proceeds directly without heuristic warnings.
 2. **`FrontendKind::Diagram` (`include/fsm/frontend/diagram/`)**:
    - Visual sketching notations where state charts are descriptive. Types and payloads are inferred or supplemented via lossless `@fsm:` directives.
-   - Codegen requires explicit confirmation via `--allow-diagram-codegen` (or `--allow-tier2-codegen`) and emits warning `warning[W0301]: Untyped or inferred symbol in diagram source`.
+   - Codegen requires explicit confirmation via `--allow-diagram-codegen` and emits warning `warning[W0301]: Untyped or inferred symbol in diagram source`.
 
 ---
 

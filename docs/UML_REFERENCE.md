@@ -508,7 +508,7 @@ digraph MissionFSM {
    - Strict symbol and type declarations, mathematical semantics, physical units. Direct compilation to C++ without warnings.
 2. **Visual Diagrams (`include/fsm/frontend/diagram/`)**:
    - **PlantUML**, **Mermaid `stateDiagram-v2`**, **Graphviz DOT**, and **XState JSON**.
-   - Descriptive sketch notations. Code generation requires `--allow-diagram-codegen` (or `--allow-tier2-codegen`) and emits `warning[W0301]`.
+   - Descriptive sketch notations. Code generation requires `--allow-diagram-codegen` and emits `warning[W0301]`.
 
 ### B. Feature Matrix (Native vs Extended Syntax)
 

@@ -52,7 +52,7 @@ struct CliOptions {
     bool check_races = false;            // --check-races
     bool werror = false;                 // -Werror
     bool req_audit = false;              // --req-audit
-    bool allow_diagram_codegen = false;  // --allow-diagram-codegen / --allow-tier2-codegen
+    bool allow_diagram_codegen = false;  // --allow-diagram-codegen
     bool standalone = true;
     bool thread_safe = true;
     bool include_stubs = true;
@@ -106,8 +106,7 @@ void print_help(const char* prog_name) {
         << "  --no-thread-safe            Do not generate thread_safe_fsm asynchronous wrapper\n"
         << "  --no-stubs                  Do not emit default stub functors for actions and guards\n"
         << "  --allow-diagram-codegen     Allow C++ code generation from visual diagram formats (PlantUML, Mermaid, "
-           "etc.)\n"
-        << "  --allow-tier2-codegen       (Alias for --allow-diagram-codegen)\n\n"
+           "etc.)\n\n"
         << "Model Analysis & Diagram Export:\n"
         << "  -e, --export <fmt>          Export diagram or formal model to: 'mermaid', 'plantuml', 'sysml2', 'json', "
            "'dot', 'scxml', 'cameo', 'smv'\n"
@@ -196,7 +195,7 @@ CliOptions parse_cli_args(int argc, char* argv[]) {
             opts.thread_safe = false;
         } else if (arg == "--no-stubs") {
             opts.include_stubs = false;
-        } else if (arg == "--allow-diagram-codegen" || arg == "--allow-tier2-codegen") {
+        } else if (arg == "--allow-diagram-codegen") {
             opts.allow_diagram_codegen = true;
         } else if (!arg.empty() && arg[0] != '-') {
             if (opts.input_file.empty()) {
@@ -307,7 +306,7 @@ int main(int argc, char* argv[]) {
         if (!opts.allow_diagram_codegen && !opts.verify_mode && opts.export_diagram_format.empty()) {
             std::cerr << "\n[ERROR] Direct code generation blocked: '" << opts.input_file
                       << "' is a visual diagram format (" << parser->format_name()
-                      << ").\nPass '--allow-diagram-codegen' (or '--allow-tier2-codegen') to allow heuristic code "
+                      << ").\nPass '--allow-diagram-codegen' to allow heuristic code "
                          "generation, or use '--verify' / '--export <fmt>'.\n";
             return 1;
         }

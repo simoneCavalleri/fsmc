@@ -2,6 +2,7 @@
 
 #include <cctype>
 #include <cstdint>
+#include <regex>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -92,6 +93,14 @@ class GuardExpressionParser {
         if (expr.empty()) {
             return {"", {}};
         }
+
+        // Normalize textual boolean keywords
+        static const std::regex not_re(R"(\bnot\b|\bNOT\b)", std::regex::optimize);
+        static const std::regex and_re(R"(\band\b|\bAND\b)", std::regex::optimize);
+        static const std::regex or_re(R"(\bor\b|\bOR\b)", std::regex::optimize);
+        expr = std::regex_replace(expr, not_re, "!");
+        expr = std::regex_replace(expr, and_re, "&&");
+        expr = std::regex_replace(expr, or_re, "||");
 
         // Fast path: if no logical operators, it's a simple identifier
         if (expr.find('&') == std::string_view::npos && expr.find('|') == std::string_view::npos &&

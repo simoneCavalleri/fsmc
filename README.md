@@ -137,7 +137,6 @@ C++ Backend Options (--target cpp):
   --no-thread-safe            Do not generate thread_safe_fsm asynchronous wrapper
   --no-stubs                  Do not emit default stub functors for actions and guards
   --allow-diagram-codegen     Allow C++ code generation from visual diagram formats (PlantUML, Mermaid, etc.)
-  --allow-tier2-codegen       (Alias for --allow-diagram-codegen)
 
 Model Analysis & Diagram Export:
   -e, --export <fmt>          Export diagram to: 'mermaid', 'plantuml', 'sysml2', 'json', 'dot', 'scxml', 'cameo', 'smv'

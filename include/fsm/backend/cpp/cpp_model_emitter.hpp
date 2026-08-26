@@ -4,6 +4,7 @@
 #include <map>
 #include <optional>
 #include <ostream>
+#include <regex>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -17,20 +18,22 @@ namespace fsm::codegen {
 class CppModelEmitter {
   public:
     static std::string get_effective_context_type(const FsmIr& model) {
+        if (!model.variables.empty()) {
+            return (!model.context_type.empty() && model.context_type != "no_context" &&
+                    model.context_type != "fsm::no_context" && model.context_type != "void")
+                       ? model.context_type
+                       : (model.name + "Context");
+        }
         if (!model.context_type.empty() && model.context_type != "no_context" &&
             model.context_type != "fsm::no_context" && model.context_type != "void") {
             return model.context_type;
-        }
-        if (!model.variables.empty()) {
-            return model.name + "Context";
         }
         return "fsm::no_context";
     }
 
     static void emit_context_definition(std::ostream& out, const FsmIr& model) {
-        if (!model.variables.empty() && (model.context_type.empty() || model.context_type == "no_context" ||
-                                         model.context_type == "fsm::no_context" || model.context_type == "void")) {
-            std::string ctx_name = model.name + "Context";
+        if (!model.variables.empty()) {
+            std::string ctx_name = get_effective_context_type(model);
             out << "// ============================================================================\n";
             out << "// EFSM State Context (Auto-Generated from IR Variables)\n";
             out << "// ============================================================================\n\n";
@@ -252,6 +255,18 @@ class CppModelEmitter {
         }
     }
 
+    static std::string format_context_expr(const std::string& raw_expr,
+                                           const std::vector<VariableDefinition>& variables) {
+        std::string expr = raw_expr;
+        for (const auto& v : variables) {
+            if (v.name.empty())
+                continue;
+            std::regex re(R"((^|[^A-Za-z0-9_.]))" + v.name + R"((?![A-Za-z0-9_]))");
+            expr = std::regex_replace(expr, re, "$1ctx." + v.name);
+        }
+        return expr;
+    }
+
     static void emit_actions(std::ostream& out, const FsmIr& model, const GeneratorOptions& options) {
         if (model.actions.empty()) {
             return;
@@ -279,7 +294,8 @@ class CppModelEmitter {
                         out << "    constexpr void operator()(const auto& /*evt*/, auto& /*src*/, auto& /*dst*/, auto& "
                                "ctx) const {\n";
                         for (const auto& assign : assignments) {
-                            out << "        ctx." << assign.target_variable << " = " << assign.expression << ";\n";
+                            out << "        ctx." << assign.target_variable << " = "
+                                << format_context_expr(assign.expression, model.variables) << ";\n";
                         }
                     } else {
                         out << "    constexpr void operator()(const auto& /*evt*/, auto& /*src*/, auto& /*dst*/, auto& "
@@ -295,7 +311,8 @@ class CppModelEmitter {
                                "Context& "
                                "ctx) const {\n";
                         for (const auto& assign : assignments) {
-                            out << "        ctx." << assign.target_variable << " = " << assign.expression << ";\n";
+                            out << "        ctx." << assign.target_variable << " = "
+                                << format_context_expr(assign.expression, model.variables) << ";\n";
                         }
                     } else {
                         out << "    template <typename Event, typename SrcState, typename DstState, typename "

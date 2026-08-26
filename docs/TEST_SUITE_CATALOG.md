@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 7  
 **Total Test Suites & Binaries**: 44  
-**Total Documented Test Cases**: 177  
+**Total Documented Test Cases**: 182  
 
 ---
 
@@ -172,6 +172,28 @@
 **Scenario**:
   - Machines with `no_context` can be default constructed safely.
   - Machines with user Context structs cannot be default constructed without a reference,
+
+#### `ContextContractTest.ThreadSafeWithContextMutation`
+**Test Intent**: Verify thread_safe_fsm::with_context executes callable under internal lock.
+
+**Scenario**:
+  - Create a thread_safe_fsm with a context holding a mutable counter.
+  - Call with_context() to read and modify the counter.
+  - Verify the modification is visible through the subsequent snapshot_context().
+
+#### `ContextContractTest.SnapshotContextIsolation`
+**Test Intent**: Verify thread_safe_fsm::snapshot_context is independent from subsequent mutations.
+
+**Scenario**:
+  - Take a snapshot before mutation, mutate via with_context, take a second snapshot.
+  - Verify the first snapshot is unaffected (value copy semantics).
+
+#### `ContextContractTest.ThreadSafeWithContextConstReadOnly`
+**Test Intent**: Verify const overload of with_context for read-only access.
+
+**Scenario**:
+  - Const-qualify the thread_safe_fsm reference and call with_context() to read the value.
+  - Verify the read value is consistent with the last mutation.
 
 ### [`test_deep_history_multi_level.cpp`](../tests/core/test_deep_history_multi_level.cpp) (`tests/core/test_deep_history_multi_level.cpp`)
 #### `DeepHistoryTest.FourLevelDeepHistoryAstAndCodegen`
@@ -789,6 +811,23 @@
   - Parse state machine with `entry point EnPort;`, `exit point ExPort;`, `stay duration <= 500[ms];`, and `transition
   - [priority=10]`.
   - Verify IR captures StateKind::EntryPoint, StateKind::ExitPoint, time_invariant, and transition priority.
+
+#### `Sysml2ParserTest.ChoiceNodeComparisonGuardParsing`
+**Test Intent**: Verify SysML v2 choice pseudostate guard parsing with comparison operators.
+
+**Scenario**:
+  - Parse a `decide` node with outgoing branches guarded by `> 30.0`, `!= false`, and `else`.
+  - Verify that the IR captures distinct, non-empty guard expressions for each branch.
+  - Verify that boolean keyword aliases (not, and, or) are normalized to C++ operators.
+  - Verify that the choice node is eliminated and transitions are inlined from the source state.
+
+#### `Sysml2ParserTest.SemanticEfsmAssignmentActionParsing`
+**Test Intent**: Verify SysML v2 semantic EFSM action parsing from do { } assignment blocks.
+
+**Scenario**:
+  - Parse `do { counter = counter + 1; }` on a transition.
+  - Verify the IR emits a named semantic action (increment_counter) rather than a raw expression.
+  - Parse `do { value += 5; }` and verify an assign_value action with += semantics.
 
 ### [`test_directive_parser.cpp`](../tests/frontend/test_directive_parser.cpp) (`tests/frontend/test_directive_parser.cpp`)
 #### `DirectiveParserTest.ParseStateDirective`

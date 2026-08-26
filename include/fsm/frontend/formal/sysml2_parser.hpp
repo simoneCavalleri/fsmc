@@ -541,8 +541,7 @@ class Sysml2Parser : public IParser {
             R"(\b(?:accept|when)\s+(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
         static const std::regex after_regex(
             R"(\bafter\s+(\d+(?:\.\d+)?)\s*(?:\[(?:SI::|ISQ::)?([A-Za-z]+)\]|([A-Za-z]+))?)", std::regex::optimize);
-        static const std::regex if_regex(R"(\bif\s+([A-Za-z0-9_!&\|\(\)\s]+?)(?=\s+(?:do|then|to|;|$)))",
-                                         std::regex::optimize);
+        static const std::regex if_regex(R"(\bif\s+([^;]+?)(?=\s+(?:do|then|to|;|$)))", std::regex::optimize);
         static const std::regex do_block_regex(R"(\bdo\s*\{([^}]+)\})", std::regex::optimize);
         static const std::regex do_regex(R"(\bdo\s+(?:action\s+)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
         static const std::regex then_regex(R"(\b(?:then|to)\s+([A-Za-z_][A-Za-z0-9_\[\]\*]*))", std::regex::optimize);
@@ -588,8 +587,63 @@ class Sysml2Parser : public IParser {
             }
         }
 
+        std::vector<ActionAssignment> assignments;
         if (std::regex_search(stmt, match, do_block_regex)) {
-            action = sanitize_identifier(trim(match[1].str()));
+            std::string block_content = trim(match[1].str());
+            std::stringstream ss(block_content);
+            std::string statement;
+            while (std::getline(ss, statement, ';')) {
+                statement = trim(statement);
+                if (statement.empty())
+                    continue;
+
+                static const std::regex assign_regex(R"(^([A-Za-z_][A-Za-z0-9_]*)\s*(=|\+=|-=|\*=|\/=)\s*(.+)$)",
+                                                     std::regex::optimize);
+                static const std::regex inc_regex(R"(^([A-Za-z_][A-Za-z0-9_]*)\s*(\+\+|--)$)", std::regex::optimize);
+                std::smatch assign_match;
+                if (std::regex_match(statement, assign_match, assign_regex)) {
+                    std::string var = assign_match[1].str();
+                    std::string op = assign_match[2].str();
+                    std::string rhs = trim(assign_match[3].str());
+                    if (op == "=") {
+                        assignments.push_back({var, rhs});
+                    } else if (op == "+=") {
+                        assignments.push_back({var, var + " + " + rhs});
+                    } else if (op == "-=") {
+                        assignments.push_back({var, var + " - " + rhs});
+                    } else if (op == "*=") {
+                        assignments.push_back({var, var + " * (" + rhs + ")"});
+                    } else if (op == "/=") {
+                        assignments.push_back({var, var + " / (" + rhs + ")"});
+                    }
+                } else if (std::regex_match(statement, assign_match, inc_regex)) {
+                    std::string var = assign_match[1].str();
+                    std::string op = assign_match[2].str();
+                    if (op == "++") {
+                        assignments.push_back({var, var + " + 1"});
+                    } else {
+                        assignments.push_back({var, var + " - 1"});
+                    }
+                }
+            }
+
+            if (!assignments.empty()) {
+                if (assignments.size() == 1) {
+                    const auto& a = assignments[0];
+                    if (a.expression == a.target_variable + " + 1" || a.expression == a.target_variable + " + 1.0") {
+                        action = "increment_" + a.target_variable;
+                    } else if (a.expression == a.target_variable + " - 1" ||
+                               a.expression == a.target_variable + " - 1.0") {
+                        action = "decrement_" + a.target_variable;
+                    } else {
+                        action = "assign_" + a.target_variable;
+                    }
+                } else {
+                    action = "update_state_vars";
+                }
+            } else {
+                action = sanitize_identifier(block_content);
+            }
         } else if (std::regex_search(stmt, match, do_regex)) {
             action = sanitize_identifier(match[1].str());
         }
@@ -634,8 +688,13 @@ class Sysml2Parser : public IParser {
         if (!guard.empty()) {
             trans.guard = guard;
         }
-        if (!action.empty()) {
+        if (!action.empty() || !assignments.empty()) {
             trans.action = action;
+            ActionSignature sig;
+            sig.name = action;
+            sig.assignments = assignments;
+            trans.action_sig = std::move(sig);
+            model.add_action(action);
         }
         trans.target_is_history = target_is_history;
         trans.target_is_deep_history = target_is_deep_history;

@@ -1769,6 +1769,17 @@ class thread_safe_fsm {
         return std::forward<Callable>(callable)(fsm_.context());
     }
 
+    [[nodiscard]] Context snapshot_context() const {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.context();
+    }
+
+    /**
+     * @warning Direct, un-synchronized access to Context.
+     * In multithreaded environments where a background worker or multiple threads
+     * dispatch events concurrently, prefer using @ref with_context() or @ref snapshot_context()
+     * to avoid race conditions.
+     */
     [[nodiscard]] Context& context() noexcept { return fsm_.context(); }
     [[nodiscard]] const Context& context() const noexcept { return fsm_.context(); }
 
@@ -2297,6 +2308,29 @@ class static_thread_safe_fsm {
     static_thread_safe_fsm(static_thread_safe_fsm&&) = delete;
     static_thread_safe_fsm& operator=(static_thread_safe_fsm&&) = delete;
 
+    template <typename Callable>
+    auto with_context(Callable&& callable) {
+        std::scoped_lock lock(mutex_);
+        return std::forward<Callable>(callable)(fsm_.context());
+    }
+
+    template <typename Callable>
+    auto with_context(Callable&& callable) const {
+        std::scoped_lock lock(mutex_);
+        return std::forward<Callable>(callable)(fsm_.context());
+    }
+
+    [[nodiscard]] Context snapshot_context() const {
+        std::scoped_lock lock(mutex_);
+        return fsm_.context();
+    }
+
+    /**
+     * @warning Direct, un-synchronized access to Context.
+     * In multithreaded environments where a background worker or multiple threads
+     * dispatch events concurrently, prefer using @ref with_context() or @ref snapshot_context()
+     * to avoid race conditions.
+     */
     [[nodiscard]] Context& context() noexcept { return fsm_.context(); }
     [[nodiscard]] const Context& context() const noexcept { return fsm_.context(); }
 

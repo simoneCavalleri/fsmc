@@ -106,4 +106,89 @@ TEST(ContextContractTest, CompileTimeContextSafety) {
     EXPECT_EQ(&ts_machine.context(), &ctx);
 }
 
+/**
+ * @brief Test Intent: Verify thread_safe_fsm::with_context executes callable under internal lock.
+ *
+ * Scenario:
+ * - Create a thread_safe_fsm with a context holding a mutable counter.
+ * - Call with_context() to read and modify the counter.
+ * - Verify the modification is visible through the subsequent snapshot_context().
+ */
+TEST(ContextContractTest, ThreadSafeWithContextMutation) {
+    struct CounterCtx {
+        int value = 0;
+    };
+    struct StateA {};
+    struct StateB {};
+    struct EventX {};
+    using Table = fsm::transition_table<fsm::transition<StateA, EventX, StateB>>;
+
+    CounterCtx ctx{42};
+    fsm::thread_safe_fsm<Table, CounterCtx> ts_machine(ctx);
+
+    // with_context allows mutating the context through a callable
+    ts_machine.with_context([](CounterCtx& c) { c.value += 8; });
+
+    // snapshot_context returns a copy of the current state
+    const CounterCtx snap = ts_machine.snapshot_context();
+    EXPECT_EQ(snap.value, 50);
+}
+
+/**
+ * @brief Test Intent: Verify thread_safe_fsm::snapshot_context is independent from subsequent mutations.
+ *
+ * Scenario:
+ * - Take a snapshot before mutation, mutate via with_context, take a second snapshot.
+ * - Verify the first snapshot is unaffected (value copy semantics).
+ */
+TEST(ContextContractTest, SnapshotContextIsolation) {
+    struct DeltaCtx {
+        int counter = 0;
+    };
+    struct StateA {};
+    struct StateB {};
+    struct EventX {};
+    using Table = fsm::transition_table<fsm::transition<StateA, EventX, StateB>>;
+
+    DeltaCtx ctx{10};
+    fsm::thread_safe_fsm<Table, DeltaCtx> ts_machine(ctx);
+
+    const DeltaCtx before = ts_machine.snapshot_context();
+    EXPECT_EQ(before.counter, 10);
+
+    ts_machine.with_context([](DeltaCtx& c) { c.counter = 99; });
+
+    const DeltaCtx after = ts_machine.snapshot_context();
+    EXPECT_EQ(after.counter, 99);
+
+    // The first snapshot must not have been affected
+    EXPECT_EQ(before.counter, 10);
+}
+
+/**
+ * @brief Test Intent: Verify const overload of with_context for read-only access.
+ *
+ * Scenario:
+ * - Const-qualify the thread_safe_fsm reference and call with_context() to read the value.
+ * - Verify the read value is consistent with the last mutation.
+ */
+TEST(ContextContractTest, ThreadSafeWithContextConstReadOnly) {
+    struct ReadCtx {
+        double temperature = 36.6;
+    };
+    struct StateA {};
+    struct StateB {};
+    struct EventX {};
+    using Table = fsm::transition_table<fsm::transition<StateA, EventX, StateB>>;
+
+    ReadCtx ctx;
+    fsm::thread_safe_fsm<Table, ReadCtx> ts_machine(ctx);
+
+    const auto& const_machine = ts_machine;
+    double read_value = 0.0;
+    const_machine.with_context([&](const ReadCtx& c) { read_value = c.temperature; });
+
+    EXPECT_DOUBLE_EQ(read_value, 36.6);
+}
+
 }  // namespace

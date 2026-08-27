@@ -605,19 +605,71 @@ kbd {
     box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
 }
 
-/* Right-Hand Table of Contents (TOC) */
+/* ==========================================================================
+   Modern Right-Hand Table of Contents (TOC) & Sidebar Navigation
+   ========================================================================== */
 @media screen and (min-width: 60em) {
     .md-sidebar--secondary {
         padding-top: 1.25rem;
     }
 
-    .md-sidebar--secondary .md-nav__link--active {
+    /* TOC Container & Title */
+    .md-sidebar--secondary .md-nav__title {
+        font-size: 0.78rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--fsmc-text-muted);
+        margin-bottom: 0.5rem;
+        padding-left: 0.6rem;
+    }
+
+    /* Hide mobile drawer back arrow on desktop */
+    .md-sidebar--secondary .md-nav__title .md-nav__icon {
+        display: none !important;
+    }
+
+
+    /* Base TOC link */
+    .md-sidebar--secondary .md-nav__link {
+        font-size: 0.78rem;
+        line-height: 1.45;
+        padding: 0.28rem 0.6rem;
+        border-radius: 4px;
+        color: var(--fsmc-text-muted);
+        transition: all 0.15s ease-in-out;
+        display: block;
+        border-left: 2px solid transparent;
+    }
+
+    .md-sidebar--secondary .md-nav__link:hover {
+        color: var(--fsmc-primary);
+        background-color: var(--fsmc-code-bg);
+    }
+
+    /* Active TOC Link */
+    .md-sidebar--secondary .md-nav__link--active,
+    .md-sidebar--secondary .md-nav__item--active > .md-nav__link {
         color: var(--fsmc-primary) !important;
         font-weight: 600;
-        border-left: 2px solid var(--fsmc-primary);
-        padding-left: 0.5rem;
+        background-color: rgba(37, 99, 235, 0.06);
+        border-left: 2px solid var(--fsmc-primary) !important;
+        padding-left: 0.6rem;
+    }
+
+    /* Nested Sub-headings (H3 / H4) */
+    .md-sidebar--secondary .md-nav__list .md-nav__list {
+        padding-left: 0.6rem;
+        margin-left: 0.4rem;
+        border-left: 1px solid var(--fsmc-border);
+    }
+
+    .md-sidebar--secondary .md-nav__list .md-nav__list .md-nav__link {
+        font-size: 0.74rem;
+        padding: 0.22rem 0.5rem;
     }
 }
+
 
 /* Interactive Playground Frame */
 .playground-frame-container {

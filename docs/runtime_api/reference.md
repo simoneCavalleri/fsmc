@@ -4,22 +4,8 @@ This document describes the core C++ classes, lifecycle hooks, thread-safe async
 
 ---
 
-## Table of Contents
-1. [`fsm::fsm<Table, Context, InitialState>`](#1-fsmfsmtable-context-initialstate-synchronous-engine)
-2. [`fsm::dispatch_result` & `fsm::dispatch_status`](#2-fsmdispatch_result-fsmdispatch_status)
-3. [`fsm::thread_safe_fsm<Table, Context, InitialState>`](#3-fsmthread_safe_fsmtable-context-initialstate-thread-safe-engine)
-4. [Composite Boolean Guards (`and_`, `or_`, `not_`)](#4-composite-boolean-guards-and_-or_-not_)
-5. [Deferred Events & History Resolution](#5-deferred-events-history-resolution)
-6. [`fsm::spsc_ring_buffer<T, Capacity>` (Wait-Free & ISR-Safe)](#6-fsmspsc_ring_buffert-capacity-wait-free-isr-safe)
-7. [`fsm::static_ring_buffer<T, Capacity, Policy>` (Zero-Alloc with Overflow Policies)](#7-fsmstatic_ring_buffert-capacity-policy-zero-alloc-with-overflow-policies)
-8. [`fsm::spsc_fsm<Table, Context, QueueCapacity, InitialState>`](#8-fsmspsc_fsmtable-context-queuecapacity-initialstate-lock-free-isr-safe)
-9. [`fsm::deterministic_timer_manager<MaxTimers>` (Hardware Tick Timer)](#9-fsmdeterministic_timer_managermaxtimers-hardware-tick-timer)
-10. [Compile-Time Reflection & Type Traits](#10-compile-time-reflection-type-traits)
-
-
----
-
 ## 1. `fsm::fsm<Table, Context, InitialState>` (Synchronous Engine)
+
 
 The synchronous, zero-overhead compile-time finite state machine engine.
 

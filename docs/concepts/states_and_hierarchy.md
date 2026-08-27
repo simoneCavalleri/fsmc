@@ -52,14 +52,21 @@ Restores only the immediate top-level child substate of the composite state. Any
 ### Deep History (`[H*]`)
 Recursively restores the full hierarchy chain down to the deepest active leaf state.
 
-#### Implementation in Modern C++
-In `fsmc`, history is tracked without heap allocations by storing an enum tag representing the active substate path in the state machine's internal state storage variant:
+=== "Conceptual Semantics (FsmIr)"
+    In the canonical Intermediate Representation, transitions targeting history pseudostates are marked with flags:
 
-```cpp
-// Transition into composite state with history
-fsm::row<Suspended, ResumeCmd, fsm::history<Operational, Standby>>
-```
-If `Operational` was previously active in substate `Processing`, `ResumeCmd` restores `Processing`. If `Operational` was never entered before, it enters the fallback substate `Standby`.
+    - `target_is_history: true` for shallow history `[H]`.
+    - `target_is_deep_history: true` for deep history `[H*]`.
+
+=== "C++ Reference Backend"
+    In the C++ runtime, history is tracked without dynamic allocations by storing an active substate tag in the state machine's internal state storage:
+
+    ```cpp
+    // Transition into composite state with history
+    fsm::row<Suspended, ResumeCmd, fsm::history<Operational, Standby>>
+    ```
+    If `Operational` was previously active in substate `Processing`, `ResumeCmd` restores `Processing`. If `Operational` was never entered before, it enters the fallback substate `Standby`.
+
 
 ---
 

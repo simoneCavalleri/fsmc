@@ -82,8 +82,10 @@ markdown_extensions:
   - tables
   - toc:
       permalink: true
+      toc_depth: 3
 
 nav:
+
   - Overview: index.md
   - Getting Started:
       - getting_started/index.md
@@ -91,13 +93,19 @@ nav:
       - Quickstart Tutorial: getting_started/quickstart.md
       - CLI Reference (fsmc & fsm-opt): getting_started/cli_usage.md
       - Build Systems Integration: getting_started/integration_guide.md
+  - Step-by-Step Tutorials:
+      - tutorials/index.md
+      - "1. First State Machine": tutorials/01_first_statechart.md
+      - "2. EFSM, Guards & Datapath": tutorials/02_guards_and_actions.md
+      - "3. Hierarchical HFSM & History": tutorials/03_hierarchical_hfsm.md
+      - "4. Formal Verification & Safety": tutorials/04_formal_verification.md
+      - "5. Code Generation & Integration": tutorials/05_code_generation_and_integration.md
   - Architecture & Concepts:
       - concepts/index.md
       - States & HFSM Hierarchy: concepts/states_and_hierarchy.md
       - Transitions & Triggers: concepts/transitions_and_events.md
       - Guards & Action Effects: concepts/guards_and_actions.md
       - Memory & Real-Time Guarantees: concepts/memory_and_realtime.md
-      - Architectural Design Patterns: concepts/design_patterns.md
 
   - Modeling Languages:
       - formal_languages/index.md
@@ -118,7 +126,9 @@ nav:
       - Lock-Free SPSC FSM (ISR-Safe): runtime_api/spsc_fsm.md
       - Thread-Safe MPSC Engine: runtime_api/thread_safe_fsm.md
       - Transition Trace & Telemetry: runtime_api/introspection_trace.md
+      - Architectural Design Patterns: runtime_api/design_patterns.md
       - Full Runtime API Reference: runtime_api/reference.md
+
   - Compiler Internals & Reference:
       - internals/index.md
       - Compiler Architecture: internals/architecture.md

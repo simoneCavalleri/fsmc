@@ -124,8 +124,12 @@ struct UavContext {
     bool failsafe_active{false};
 };
 
+using UavSpscFsm = fsm::spsc_fsm<AutonomousUavMissionTable, UavContext, 128, Preflight>;
+
 static UavContext g_ctx;
-static fsm::spsc_fsm<AutonomousUavMissionTable, UavContext, 128, Preflight> g_fsm(g_ctx);
+static UavSpscFsm g_fsm(g_ctx);
+
+
 
 // ----------------------------------------------------------------------------
 // 1. Hardware Sensor Interrupt (Producer - Wait-Free O(1))

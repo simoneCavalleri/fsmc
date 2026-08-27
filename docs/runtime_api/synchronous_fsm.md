@@ -192,12 +192,16 @@ struct UavContext {
     bool armed{false};
 };
 
+// Define clean type alias for the generated state machine
+using UavFsm = fsm::fsm<AutonomousUavMissionTable, UavContext, Preflight>;
+
 int main() {
     UavContext ctx;
-    fsm::fsm<AutonomousUavMissionTable, UavContext, Preflight> uav(ctx);
+    UavFsm uav(ctx);
 
     // Initial state check
     std::cout << "Initial: " << uav.current_state_name() << "\n";
+
 
     // Attach non-intrusive trace observer
     uav.set_observer([](const fsm::transition_info& info) {

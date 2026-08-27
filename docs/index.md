@@ -118,9 +118,12 @@ struct UavContext {
     bool has_gps_lock = true;
 };
 
+// Define clean type alias for the generated state machine
+using UavFsm = fsm::fsm<AutonomousUavMissionTable, UavContext, Preflight>;
+
 int main() {
     UavContext ctx;
-    fsm::fsm<AutonomousUavMissionTable, UavContext, Preflight> uav(ctx);
+    UavFsm uav(ctx);
 
     std::cout << "Initial state: " << uav.current_state_name() << "\n";
 
@@ -140,12 +143,14 @@ int main() {
 ## Documentation Structure
 
 - **[Getting Started](getting_started/index.md)**: Installation instructions via CMake, Conan, vcpkg, or binary builds, followed by CLI options and build system integration guides.
+- **[Step-by-Step Tutorials](tutorials/index.md)**: Progressive 5-step hands-on guides from writing your first model to formal verification and build integration.
 - **[Architecture & Concepts](concepts/index.md)**: Hierarchical state machines (HFSM), orthogonal regions, history states, event dispatch mechanics, and memory models.
 - **[Architectural Design Patterns](concepts/design_patterns.md)**: Practical engineering recipes for embedded ISR sensor pipelines, aerospace mission controllers, network protocol parsers, and multi-FSM coordination.
 - **[Modeling Languages](formal_languages/index.md)**: Syntax reference, examples, and import/export guides for SysML v2, SCXML, Cameo XMI, PlantUML, and Mermaid.
 - **[Verification & Safety](verification_and_safety/index.md)**: Guide to formal model checking (LTL/CTL), EFSM interval analysis, and requirement traceability matrices.
 - **[Runtime C++ API](runtime_api/index.md)**: Complete technical reference for `fsm::fsm`, `fsm::spsc_fsm`, `fsm::thread_safe_fsm`, and transition telemetry.
 - **[Interactive Playground](playground/index.md)**: WebAssembly-powered browser workspace to edit, visualize, simulate, and compile state machines interactively.
+
 
 ---
 

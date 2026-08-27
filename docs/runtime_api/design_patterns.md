@@ -1,16 +1,16 @@
 # Architectural Design Patterns & Cookbooks
 
-This cookbook demonstrates real-world architectural design patterns using `fsmc` in production embedded, automotive, aerospace, and robotics systems.
+This cookbook demonstrates production-grade architectural patterns using `fsmc`'s C++ runtime across embedded firmware, aerospace mission controllers, network protocols, and multi-FSM robotics systems.
 
 ---
 
 ## 1. High-Frequency Hardware Sensor Pipeline (ISR + RTOS)
 
 ### Problem
-A high-frequency sensor (IMU / ADC / UART) generates interrupts at 1 kHz. The interrupt service routine (ISR) must ingest data with **sub-microsecond deterministic latency** without heap allocation, mutex locking, or priority inversion, while a lower-priority RTOS task processes state transitions.
+A high-frequency hardware sensor (IMU / ADC / UART) generates interrupts at 1 kHz. The interrupt service routine (ISR) must ingest data with **sub-microsecond deterministic latency** without heap allocation, mutex locking, or priority inversion, while a lower-priority RTOS task drains and processes state transitions.
 
 ### Solution Architecture
-Use **`fsm::spsc_fsm`** with a bounded lock-free ring buffer:
+Use **`fsm::spsc_fsm`** with a static lock-free ring buffer:
 
 ```mermaid
 flowchart LR
@@ -19,7 +19,6 @@ flowchart LR
     Task --> Engine["fsm::fsm Transition Engine"]
     Engine --> Telemetry["Lock-Free Seqlock Snapshot (10 Hz Task)"]
 ```
-
 
 ```cpp
 #include "sensor_pipeline_fsm.hpp"
@@ -31,9 +30,12 @@ struct SensorContext {
     bool stream_active{false};
 };
 
+// Define clean type alias for SPSC FSM
+using SensorPipelineFSM = fsm::spsc_fsm<SensorPipelineTable, SensorContext, 64, IdleState>;
+
 static SensorContext g_ctx;
 // 64-element lock-free ring buffer statically allocated in BSS
-static fsm::spsc_fsm<SensorPipelineTable, SensorContext, 64, IdleState> g_fsm(g_ctx);
+static SensorPipelineFSM g_fsm(g_ctx);
 
 // ----------------------------------------------------------------------------
 // 1. Hardware Sensor ISR (Producer Context)
@@ -111,10 +113,14 @@ state def MissionController {
 ### C++ Execution
 ```cpp
 #include "mission_controller_fsm.hpp"
+#include <iostream>
+
+// Clean type alias for Mission Controller FSM
+using MissionControllerFSM = fsm::fsm<MissionControllerTable, MissionContext, Preflight>;
 
 int main() {
     MissionContext ctx;
-    fsm::fsm<MissionControllerTable, MissionContext, Preflight> mission(ctx);
+    MissionControllerFSM mission(ctx);
 
     mission.dispatch(TakeoffCmd{});
     mission.dispatch(AltReached{});
@@ -149,10 +155,14 @@ struct ProtocolContext {
     uint16_t expected_seq{0};
 };
 
+// Type aliases for parser and timers
+using ProtocolParserFSM = fsm::fsm<ProtocolParserTable, ProtocolContext, WaitingHeader>;
+using ProtocolTimerManager = fsm::deterministic_timer_manager<4>;
+
 int main() {
     ProtocolContext ctx;
-    fsm::fsm<ProtocolParserTable, ProtocolContext, WaitingHeader> fsm(ctx);
-    fsm::deterministic_timer_manager<4> timers;
+    ProtocolParserFSM fsm(ctx);
+    ProtocolTimerManager timers;
 
     // Start 500ms timeout timer
     const uint32_t TIMEOUT_TIMER_ID = 1;
@@ -192,13 +202,18 @@ struct RobotContext {
     bool e_stop_triggered{false};
 };
 
+// Type aliases for coordinated FSMs
+using ArmFSM    = fsm::fsm<ArmKinematicsTable, RobotContext, ArmIdle>;
+using GripperFSM = fsm::fsm<GripperTable, RobotContext, GripperOpen>;
+using SafetyFSM  = fsm::fsm<SafetySupervisorTable, RobotContext, NormalOperation>;
+
 int main() {
     RobotContext robot_ctx;
 
     // Independent FSM instances sharing single context reference
-    fsm::fsm<ArmKinematicsTable, RobotContext, ArmIdle> arm_fsm(robot_ctx);
-    fsm::fsm<GripperTable, RobotContext, GripperOpen> gripper_fsm(robot_ctx);
-    fsm::fsm<SafetySupervisorTable, RobotContext, NormalOperation> safety_fsm(robot_ctx);
+    ArmFSM arm_fsm(robot_ctx);
+    GripperFSM gripper_fsm(robot_ctx);
+    SafetyFSM safety_fsm(robot_ctx);
 
     // Dispatching events across coordinated state machines
     arm_fsm.dispatch(MoveToCoordCmd{10.0f, 20.0f, 30.0f});

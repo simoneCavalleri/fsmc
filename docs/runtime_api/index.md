@@ -59,9 +59,12 @@ In your application code, include the generated file directly:
 ```cpp
 #include "flight_fsm.hpp"
 
+// Define clean type alias for the generated state machine
+using FlightFSM = fsm::fsm<FlightFSMTable, FlightContext, IdleState>;
+
 int main() {
     FlightContext ctx;
-    fsm::fsm<FlightFSMTable, FlightContext, IdleState> fsm(ctx);
+    FlightFSM fsm(ctx);
 
     fsm.dispatch(ArmEnginesCmd{});
     return 0;
@@ -76,4 +79,6 @@ int main() {
 - **[2. Lock-Free SPSC Engine (`fsm::spsc_fsm`)](spsc_fsm.md)**: Lock-free ring buffer mechanics, ISR event submission, and seqlock context snapshots.
 - **[3. Thread-Safe MPSC Engine (`fsm::thread_safe_fsm`)](thread_safe_fsm.md)**: Thread-safe event queues, worker thread processing, and asynchronous futures.
 - **[4. Introspection, Trace & Telemetry](introspection_trace.md)**: `dispatch_result`, transition tracing metadata, observers, and deterministic timers.
-- **[5. Full Runtime API Reference](reference.md)**: Complete API reference, member methods, and C++20 concepts.
+- **[5. Architectural Design Patterns](design_patterns.md)**: Production cookbooks for embedded ISR pipelines, UAV mission controllers, network protocols, and multi-FSM coordination.
+- **[6. Full Runtime API Reference](reference.md)**: Complete API reference, member methods, and C++20 concepts.
+

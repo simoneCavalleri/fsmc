@@ -107,11 +107,15 @@ struct FlightContext {
     bool emergency{false};
 };
 
+// Define clean type alias for thread-safe asynchronous FSM
+using ThreadSafeUavFSM = fsm::thread_safe_fsm<AutonomousUavMissionTable, FlightContext, Preflight>;
+
 int main() {
     FlightContext ctx;
-    fsm::thread_safe_fsm<AutonomousUavMissionTable, FlightContext, Preflight> fsm(ctx);
+    ThreadSafeUavFSM fsm(ctx);
 
     std::cout << "Initial: " << fsm.current_state_name() << "\n";
+
 
     // 1. Thread 1: Post async calibration and wait for completion
     std::thread worker1([&fsm]() {

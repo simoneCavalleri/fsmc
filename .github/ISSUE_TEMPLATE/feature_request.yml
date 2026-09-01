@@ -1,0 +1,59 @@
+name: "✨ Feature Request"
+description: "Suggest an idea, new frontend parser, optimization pass, or formal verification capability for fsmc."
+title: "[FEAT]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a feature for **fsmc**!
+        Please describe your proposal in detail below.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: "Problem or Use Case"
+      description: "Is your feature request related to a specific problem or design challenge?"
+      placeholder: "e.g. In aerospace applications, we need to ingest AUTOSAR ARXML state definitions directly..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: "Proposed Solution"
+      description: "Describe the proposed solution, syntax, or architecture."
+      placeholder: "e.g. Add a new frontend parser `include/fsm/frontend/formal/autosar_arxml_parser.hpp`..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: "Target Subsystem"
+      options:
+        - "Frontend Parser (New modeling format)"
+        - "IR Metamodel Enhancement"
+        - "Middle-End Transformation / Analysis Pass"
+        - "Formal Verification (SMT / Model Checking)"
+        - "Backend Emitter (New target language or architecture)"
+        - "Runtime Library Feature"
+        - "CLI Tooling (fsmc / fsm-opt)"
+        - "Documentation / Examples"
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "Alternative Solutions Considered"
+      description: "Any alternative approaches or workarounds you've considered."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: willingness_to_contribute
+    attributes:
+      label: "Willingness to Contribute"
+      options:
+        - label: "I am willing to submit a Pull Request implementing this feature!"

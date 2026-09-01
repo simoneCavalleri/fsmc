@@ -1,0 +1,37 @@
+fsmc (Finite State Machine Compiler)
+Copyright (c) 2026 Simone Cavalleri. All rights reserved.
+
+This product includes software developed by Simone Cavalleri and contributors.
+
+===============================================================================
+THIRD-PARTY TRADEMARKS & NOTICES
+===============================================================================
+
+1. Object Management Group (OMG):
+   - SysML® and UML® are registered trademarks of Object Management Group, Inc.
+   - Mention of SysML and UML in this software is strictly for descriptive and
+     format interoperability purposes under nominative fair use.
+
+2. Dassault Systèmes / No Magic:
+   - Cameo® and MagicDraw® are registered trademarks of Dassault Systèmes or its
+     subsidiaries. Mention of Cameo / MagicDraw is strictly for file interchange
+     (XMI 2.1) compatibility purposes.
+
+3. World Wide Web Consortium (W3C):
+   - SCXML (State Chart XML) is a W3C Recommendation.
+
+4. Fondazione Bruno Kessler (FBK):
+   - nuXmv is a symbolic model checker developed by FBK. Mention is for formal
+     SMV format interchange.
+
+===============================================================================
+SAFETY & REGULATORY DISCLAIMER
+===============================================================================
+
+fsmc is an open-source software engineering tool and is NOT pre-certified or
+qualified by regulatory bodies (e.g. FAA, EASA, FDA, TÜV). The deploying
+organization bears the sole and absolute responsibility for qualifying,
+testing, verifying, and certifying any system or emitted code produced with
+or incorporating this software.
+
+See DISCLAIMER.md and LICENSE for complete terms and non-warranty provisions.

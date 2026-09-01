@@ -37,5 +37,7 @@ scratch/
 site/
 .cache/
 
-
-
+# Python Virtual Environments
+.venv/
+venv/
+env/

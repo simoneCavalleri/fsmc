@@ -1,0 +1,87 @@
+name: "🐛 Bug Report"
+description: "Report an issue, unexpected compiler diagnostic, or invalid code generation in fsmc."
+title: "[BUG]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue in **fsmc**!
+        Please fill out the sections below so we can quickly reproduce and diagnose the problem.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "Bug Description"
+      description: "A clear and concise description of what the bug is."
+      placeholder: "e.g. When transpiling a SysML v2 state machine with interval contracts, the C++ emitter generates an invalid struct name..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: "Affected Subsystem"
+      description: "Which part of fsmc is affected?"
+      options:
+        - "Frontend Parser (SysML v2, Cameo XMI, SCXML, JSON, PlantUML, Mermaid, DOT)"
+        - "IR Metamodel & AST representation"
+        - "Middle-End Pass (Optimization, Dead-State Pruning, Interval Analysis)"
+        - "Formal Verification (Z3 SMT, nuXmv Model Checking)"
+        - "Backend Emitter (C++17, C++20, Standalone Runtime)"
+        - "Backend Serializer (Diagram transpilations)"
+        - "Runtime Library (fsm, spsc_fsm, thread_safe_fsm)"
+        - "CLI Tool (fsmc, fsm-opt)"
+        - "WebAssembly Playground"
+        - "CMake / Build System"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: "Minimal Reproducing Example"
+      description: "Please provide a minimal state machine definition (in SysML v2, PlantUML, SCXML, etc.) or CLI command line to reproduce the behavior."
+      placeholder: |
+        ```sysml
+        state def MinimalReproducer {
+            entry; then StateA;
+            state StateA;
+            transition from StateA accept EventA then StateB;
+            state StateB;
+        }
+        ```
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: "Expected Behavior"
+      description: "What did you expect to happen instead?"
+      placeholder: "e.g. The compiler should generate clean C++20 code without errors."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: "Actual Output & Diagnostics"
+      description: "Paste compiler error messages, diagnostics, or stack traces here."
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: "Environment Details"
+      description: "System and toolchain versions."
+      value: |
+        - OS: [e.g. Ubuntu 24.04, macOS Sonoma, Windows 11]
+        - Compiler: [e.g. GCC 13.2, Clang 17.0, MSVC 2022]
+        - CMake Version: [e.g. 3.28]
+        - fsmc Version/Commit: [e.g. v0.4.0 or commit hash]
+    validations:
+      required: true

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "📖 fsmc Documentation & Architecture Manual"
+    url: "https://simoneCavalleri.github.io/fsmc/"
+    about: "Read the comprehensive manual, runtime API references, and formal metamodel documentation."
+  - name: "💻 WebAssembly Interactive Playground"
+    url: "https://simoneCavalleri.github.io/fsmc/playground/"
+    about: "Test models live in your browser and inspect generated C++ headers."
+  - name: "💬 GitHub Discussions"
+    url: "https://github.com/simoneCavalleri/fsmc/discussions"
+    about: "Ask questions, share state machine designs, and discuss ideas with the community."

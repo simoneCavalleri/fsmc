@@ -8,7 +8,6 @@
 #       [NAME <class_name>]
 #       [STANDARD <17|20>]
 #       [NAMESPACE <namespace>]
-#       [CONTEXT <context_type>]
 #       [STANDALONE]
 #       [OUTPUT_DIR <dir>]
 #   )
@@ -19,7 +18,7 @@
 
 function(fsmc_target_sources TARGET_NAME)
     set(options STANDALONE MODULAR NO_THREAD_SAFE NO_STUBS)
-    set(oneValueArgs NAME STANDARD NAMESPACE CONTEXT OUTPUT_DIR FORMAT TARGET_LANG)
+    set(oneValueArgs NAME STANDARD NAMESPACE OUTPUT_DIR FORMAT TARGET_LANG)
     set(multiValueArgs DIAGRAMS)
 
     cmake_parse_arguments(FSM_ARG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
@@ -67,10 +66,6 @@ function(fsmc_target_sources TARGET_NAME)
 
         if(FSM_ARG_NAMESPACE)
             list(APPEND CLI_ARGS --namespace "${FSM_ARG_NAMESPACE}")
-        endif()
-
-        if(FSM_ARG_CONTEXT)
-            list(APPEND CLI_ARGS --context "${FSM_ARG_CONTEXT}")
         endif()
 
         if(FSM_ARG_FORMAT)

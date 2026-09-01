@@ -15,9 +15,9 @@
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/pass_manager.hpp"
-#include "fsm/runtime/cpp/fsm.hpp"
-#include "fsm/runtime/cpp/spsc_ring_buffer.hpp"
-#include "fsm/runtime/cpp/static_ring_buffer.hpp"
+#include "fsm/backend/cpp/runtime/fsm.hpp"
+#include "fsm/backend/cpp/runtime/spsc_ring_buffer.hpp"
+#include "fsm/backend/cpp/runtime/static_ring_buffer.hpp"
 
 // ============================================================================
 // Global Heap Allocation Tracker for Google Benchmark
@@ -76,33 +76,31 @@ struct Event2 {};
 struct Event3 {};
 struct InternalPing {};
 
-struct BenchContext {
+struct BenchRegisters {
     uint64_t counter = 0;
 };
 
 struct DummyGuard {
-    [[nodiscard]] constexpr bool operator()(const auto& /*evt*/, const auto& /*src*/,
-                                            const BenchContext& ctx) const noexcept {
-        return ctx.counter >= 0;
+    [[nodiscard]] constexpr bool operator()(const BenchRegisters& /*reg*/) const noexcept {
+        return true;
     }
 };
 
 struct CompositeGuard {
-    [[nodiscard]] constexpr bool operator()(const auto& /*evt*/, const auto& /*src*/,
-                                            const BenchContext& ctx) const noexcept {
-        return (ctx.counter % 2 == 0) && (ctx.counter < 1'000'000'000ULL);
+    [[nodiscard]] constexpr bool operator()(const BenchRegisters& reg) const noexcept {
+        return (reg.counter % 2 == 0) && (reg.counter < 1'000'000'000ULL);
     }
 };
 
 struct DummyAction {
-    constexpr void operator()(const auto& /*evt*/, auto& /*src*/, auto& /*dst*/, BenchContext& ctx) const noexcept {
-        ctx.counter++;
+    constexpr void operator()(BenchRegisters& reg) const noexcept {
+        reg.counter++;
     }
 };
 
 struct InternalAction {
-    constexpr void operator()(const auto& /*evt*/, auto& /*src*/, auto& /*dst*/, BenchContext& ctx) const noexcept {
-        ctx.counter++;
+    constexpr void operator()(BenchRegisters& reg) const noexcept {
+        reg.counter++;
     }
 };
 
@@ -111,7 +109,7 @@ using BenchTable = fsm::transition_table<fsm::transition<StateA, Event1, StateB,
                                          fsm::transition<StateC, Event3, StateA, DummyAction, DummyGuard>,
                                          fsm::internal_transition<StateA, InternalPing, InternalAction, DummyGuard>>;
 
-using BenchFSM = fsm::fsm<BenchTable, BenchContext>;
+using BenchFSM = fsm::fsm<BenchTable, fsm::no_ports, fsm::no_ports, BenchRegisters>;
 
 }  // namespace bench
 
@@ -120,8 +118,7 @@ using BenchFSM = fsm::fsm<BenchTable, BenchContext>;
 // ============================================================================
 
 static void BM_Dispatch_ExternalTransition(benchmark::State& state) {
-    bench::BenchContext ctx;
-    bench::BenchFSM machine(ctx);
+    bench::BenchFSM machine;
 
     g_tracking_enabled = true;
     for (auto _ : state) {
@@ -137,8 +134,7 @@ static void BM_Dispatch_ExternalTransition(benchmark::State& state) {
 BENCHMARK(BM_Dispatch_ExternalTransition);
 
 static void BM_Dispatch_InternalTransition(benchmark::State& state) {
-    bench::BenchContext ctx;
-    bench::BenchFSM machine(ctx);
+    bench::BenchFSM machine;
 
     g_tracking_enabled = true;
     for (auto _ : state) {

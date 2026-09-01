@@ -37,7 +37,7 @@ jobs:
 
       - name: Run Clang-Tidy
         run: |
-          clang-tidy -p build tools/fsmc/main.cpp tools/fsm-opt/main.cpp tests/core/test_deferred.cpp tests/backend/emitters/test_format_export.cpp tests/core/test_timed_transitions.cpp
+          clang-tidy -p build tools/fsmc/main.cpp tools/fsm-opt/main.cpp tests/backend/cpp/runtime/test_deferred.cpp tests/backend/diagram/test_diagram_export.cpp tests/backend/cpp/runtime/test_timed_transitions.cpp
 
   docs-catalog-sync:
     name: Test Catalog Sync Check

@@ -2,7 +2,7 @@
 
 In pure finite state automata, states represent purely discrete symbolic stages. Real-world systems, however, depend on continuous numerical parameters—battery levels, retry counters, timeouts, and sensor readings.
 
-In this tutorial, you will learn how **`fsmc` v0.4.0** implements **Extended Finite State Machines (EFSM)** using partitioned data domains:
+In this tutorial, you will learn how **`fsmc`** implements **Extended Finite State Machines (EFSM)** using partitioned data domains:
 
 - Defining **InPorts** (read-only with range contracts), **OutPorts** (write-only), and **Registers** (internal memory).
 - Formulating **Guard Conditions** (`if [expr]`) over ports and registers.

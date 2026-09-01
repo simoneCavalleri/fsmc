@@ -47,6 +47,10 @@ theme:
 extra_css:
   - stylesheets/extra.css
 
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+
 plugins:
   - search
 
@@ -106,6 +110,7 @@ nav:
       - States & HFSM Hierarchy: concepts/states_and_hierarchy.md
       - Transitions & Triggers: concepts/transitions_and_events.md
       - Guards & Action Effects: concepts/guards_and_actions.md
+      - Dual-Paradigm Temporal Models: concepts/temporal_models.md
       - Execution Semantics & Metamodel: concepts/execution_semantics.md
 
   - Modeling Languages:
@@ -122,15 +127,20 @@ nav:
       - EFSM Interval Analysis: verification_and_safety/interval_analysis.md
       - Requirement Traceability (RTM): verification_and_safety/rtm_matrix.md
   - Runtime C++ API:
-      - runtime_api/index.md
-      - Universal Runtime Fundamentals: runtime_api/core_concepts.md
-      - 1. Synchronous Core Engine: runtime_api/synchronous_fsm.md
-      - 2. Lock-Free SPSC Engine (ISR-Safe): runtime_api/spsc_fsm.md
-      - 3. Thread-Safe MPSC Engine: runtime_api/thread_safe_fsm.md
-      - Memory & Real-Time Guarantees: runtime_api/memory_and_realtime.md
-      - Transition Trace & Telemetry: runtime_api/introspection_trace.md
-      - Architectural Design Patterns: runtime_api/design_patterns.md
-      - Full Runtime API Reference: runtime_api/reference.md
+      - Overview & Quickstart: runtime_api/index.md
+      - Core Building Blocks: runtime_api/core_concepts.md
+      - Execution Engines:
+          - 1. Synchronous & Control Loops (fsm::fsm): runtime_api/synchronous_fsm.md
+          - 2. Lock-Free & ISR (fsm::spsc_fsm): runtime_api/spsc_fsm.md
+          - 3. Multi-Threaded Active Object (fsm::thread_safe_fsm): runtime_api/thread_safe_fsm.md
+      - Advanced & Real-Time:
+          - Memory Layout & WCET: runtime_api/memory_and_realtime.md
+          - Tracing & Telemetry: runtime_api/introspection_trace.md
+      - Patterns & Reference:
+          - Architectural Design Patterns: runtime_api/design_patterns.md
+          - Unit Testing Guide: runtime_api/testing_guide.md
+          - FAQ & Troubleshooting: runtime_api/faq_and_troubleshooting.md
+          - Full API Reference: runtime_api/reference.md
 
   - Compiler Internals:
       - internals/index.md

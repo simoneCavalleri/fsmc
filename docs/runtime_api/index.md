@@ -78,13 +78,44 @@ flowchart TD
 
 | Method | Target Engine | Execution Mode | When to Use It? | Return Type |
 | :--- | :--- | :--- | :--- | :--- |
-| **`dispatch(event, ...)`** | `fsm::fsm` | Synchronous (Immediate) | You want to process a discrete event right now on the current thread. | `dispatch_result` |
-| **`step(...)`** | `fsm::fsm`, `spsc_fsm` | Synchronous (Cycle Tick) | Periodic control loop tick (e.g. 1 kHz timer) evaluating continuous anonymous transitions against `InPorts`. | `dispatch_result` |
+| **`dispatch(event, ...)`** | `fsm::fsm` | Synchronous (Immediate) | You want to process a discrete event right now on the current thread. | `fsm::dispatch_result` |
+| **`step([dt], ...)`** | `fsm::fsm`, `spsc_fsm`, `thread_safe_fsm` | Synchronous (Cycle Tick) | Periodic control loop tick (e.g. 1 kHz timer) evaluating continuous anonymous transitions against `InPorts` & `Registers`. | `fsm::step_result` |
 | **`post(event)`** | `spsc_fsm`, `thread_safe_fsm` | Asynchronous (Fire & Forget) | Pushing an event into a queue without waiting for completion (e.g. inside a hardware ISR or from a producer thread). | `bool` (SPSC) / `void` (MPSC) |
-| **`post_async(event)`** | `thread_safe_fsm` | Asynchronous (Future Awaitable) | Pushing an event from a thread and waiting (`.get()`) for the worker thread to finish the transition. | `std::future<dispatch_result>` |
+| **`post_async(event)`** | `thread_safe_fsm` | Asynchronous (Future Awaitable) | Pushing an event from a thread and waiting (`.get()`) for the worker thread to finish the transition. | `std::future<fsm::dispatch_result>` |
 | **`post_delayed(event, delay)`** | `thread_safe_fsm` | Asynchronous (Timed Delay) | Scheduling an event to fire automatically after a specified time duration (e.g. 500ms timeout). | `void` |
+| **`post_state_timeout(event, delay)`** | `thread_safe_fsm` | Asynchronous (State Timeout) | Scheduling a state timeout that is **automatically invalidated and discarded** if state changes before deadline. | `void` |
 | **`process_one(...)`** | `spsc_fsm` | Synchronous (Drain Step) | Executing the single oldest queued event on the consumer control task. | `bool` |
 | **`run_until_empty(...)`** | `spsc_fsm` | Synchronous (Drain All) | Processing all pending queued events in a batch loop. | `std::size_t` |
+
+---
+
+## Execution Paradigms: Pure Event-Driven vs Hybrid Sampled Step
+
+A key architectural design question when using asynchronous engines ([`fsm::spsc_fsm`](spsc_fsm.md) and [`fsm::thread_safe_fsm`](thread_safe_fsm.md)) is: **Should I invoke `step()` or just let the machine wait for events?**
+
+```mermaid
+flowchart TD
+    Start["How should your state machine operate?"] --> Q{"Do you have continuous sensor monitoring<br/>or periodic threshold conditions (e.g. 100 Hz loop)?"}
+
+    Q -- "No (UI, Network, Protocol Parser)" --> Pure["1. Pure Event-Driven Quiescence<br/>- DO NOT invoke step()<br/>- Worker thread sleeps on wait() (0.0% CPU)<br/>- Wakes up ONLY when events arrive via post() / post_state_timeout()"]
+
+    Q -- "Yes (Robotics, Drone, Automotive)" --> Hybrid["2. Hybrid Sampled Step + Async Event Queue<br/>- Use post() for async hardware ISRs / user commands<br/>- Use step(in, out) in a periodic timer task (e.g. 50 Hz)<br/>- Evaluates continuous InPorts guards & in_state_for dwell"]
+```
+
+### Paradigm 1: Pure Event-Driven Quiescence (0.0% Idle CPU)
+
+In network parsers, RPC daemons, and UI controllers, the machine remains completely quiescent:
+
+- The worker thread sleeps on `std::condition_variable::wait()`.
+- Transitions execute exclusively in response to `post(event)` or `post_state_timeout(...)`.
+- **In this mode, you NEVER invoke `step()`.**
+
+### Paradigm 2: Hybrid Continuous Step + Event Queue
+
+In embedded robotics, automotive ECUs, and flight controllers, you need **both**:
+
+- **Continuous Periodic `step(in, out)`**: Evaluates fresh sensor `InPorts` at a fixed rate (e.g. 50 Hz), checks continuous threshold guards (e.g. `temp > 85°C`, `battery < 20%`), and updates actuator `OutPorts`.
+- **Asynchronous `post(event)`**: Hardware ISRs (limit switches, emergency stops, UART packets) push immediate events into the queue.
 
 ---
 
@@ -128,11 +159,20 @@ flowchart TD
 
 ## Chapter Roadmap
 
-1. **[Universal Runtime Fundamentals](core_concepts.md)**: Universal building blocks shared across all engines (States, Hooks, Events, 4-Domain Datapath, Flexible Guards/Actions, History, and `dispatch_result`).
-2. **[1. Synchronous Core Engine (`fsm::fsm`)](synchronous_fsm.md)**: Synchronous execution on the caller's stack, deterministic $O(1)$ dispatch, and periodic sampled `step()` control loops.
-3. **[2. Lock-Free SPSC Engine (`fsm::spsc_fsm`)](spsc_fsm.md)**: Wait-free ISR event ingestion, lock-free ring buffer mechanics, and seqlock reader synchronization.
-4. **[3. Thread-Safe MPSC Engine (`fsm::thread_safe_fsm`)](thread_safe_fsm.md)**: Active Object pattern, worker threads, async futures, and timed delayed events.
-5. **[Memory Layout & Real-Time Guarantees](memory_and_realtime.md)**: Formal memory guarantees, `fsm::static_vector`, zero-vtable overhead, and WCET determinism.
-6. **[Transition Tracing & Telemetry](introspection_trace.md)**: Observers, `dispatch_result`, structured trace metadata, and deterministic timers.
-7. **[Architectural Design Patterns](design_patterns.md)**: Production cookbooks for embedded sensor pipelines, flight mission controllers, and multi-FSM coordination.
-8. **[Full Runtime API Reference](reference.md)**: Complete member function, type trait, and C++20 concept reference.
+### 1. Foundation & Building Blocks
+- **[Core Building Blocks](core_concepts.md)**: States, Lifecycle Hooks, Events, 4-Domain Datapath (`InPorts`, `OutPorts`, `Registers`, `Services`), Flexible Guards/Actions, History, and the 5 Common Idioms cookbook.
+
+### 2. Execution Engines (Choose Your Concurrency Model)
+- **[1. Synchronous & Control Loops (`fsm::fsm`)](synchronous_fsm.md)**: Direct execution on caller stack, deterministic $O(1)$ dispatch, and periodic sampled `step()` control loops with `in_state_for<Threshold>`.
+- **[2. Lock-Free & ISR (`fsm::spsc_fsm`)](spsc_fsm.md)**: Wait-free ring buffer for hardware ISRs and single-producer RTOS tasks with seqlock reader synchronization.
+- **[3. Multi-Threaded Active Object (`fsm::thread_safe_fsm`)](thread_safe_fsm.md)**: Multi-producer thread-safe queue with background worker thread, async futures (`post_async`), and auto-canceling state timeouts (`post_state_timeout`).
+
+### 3. Advanced & Real-Time Guarantees
+- **[Memory Layout & WCET Guarantees](memory_and_realtime.md)**: Formal zero-heap guarantees, `fsm::static_vector`, zero-vtable overhead, and WCET bounds.
+- **[Transition Tracing & Telemetry](introspection_trace.md)**: State machine observers, structured telemetry metadata, and deterministic timing metrics.
+
+### 4. Patterns & Reference
+- **[Architectural Design Patterns](design_patterns.md)**: Production cookbooks for sensor pipelines, mission controllers, and multi-FSM coordination.
+- **[Unit Testing Guide](testing_guide.md)**: GoogleTest and Catch2 recipes, test fixtures, and mock service injection.
+- **[FAQ & Troubleshooting](faq_and_troubleshooting.md)**: Common compiler diagnostics, error checklists, and architectural answers.
+- **[Full Runtime API Reference](reference.md)**: Complete reference of types, traits, helper concepts, and member functions.

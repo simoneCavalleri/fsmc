@@ -8,6 +8,7 @@ This section documents the theoretical foundations, execution semantics, and met
 
 | Topic | Description | Reference |
 | :--- | :--- | :--- |
+| **Dual-Paradigm Temporal Models** | Formal specification of discrete sampled time (Registers $z^{-1}$) vs continuous asynchronous reactive time. | [Temporal Models](temporal_models.md) |
 | **States & HFSM Hierarchy** | Atomic states, composite submachines, orthogonal regions, and shallow `[H]` / deep `[H*]` history pseudostates. | [States & Hierarchy](states_and_hierarchy.md) |
 | **Transitions & Events** | Signal triggers with typed payloads, continuous sampled transitions, timed triggers (`after`/`every`), and internal transitions. | [Transitions & Events](transitions_and_events.md) |
 | **Guards & Actions** | Deterministic boolean condition trees (`and`, `or`, `not`), choice pseudostates, and action lifecycle effects. | [Guards & Actions](guards_and_actions.md) |

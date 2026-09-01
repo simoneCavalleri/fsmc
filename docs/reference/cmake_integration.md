@@ -62,7 +62,7 @@ include(FetchContent)
 FetchContent_Declare(
     fsmc
     GIT_REPOSITORY https://github.com/simoneCavalleri/fsmc.git
-    GIT_TAG        v0.4.0
+    GIT_TAG        main
 )
 FetchContent_MakeAvailable(fsmc)
 

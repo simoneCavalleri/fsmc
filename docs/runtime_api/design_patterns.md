@@ -1,6 +1,6 @@
 # Architectural Design Patterns & Cookbooks
 
-This cookbook demonstrates production-grade architectural patterns using `fsmc` v0.4.0's C++ runtime across embedded firmware, aerospace mission controllers, network protocols, and multi-FSM robotics systems.
+This cookbook demonstrates production-grade architectural patterns using `fsmc`'s C++ runtime across embedded firmware, aerospace mission controllers, network protocols, and multi-FSM robotics systems.
 
 ---
 
@@ -14,7 +14,7 @@ Use **`fsm::spsc_fsm`** with a static lock-free ring buffer:
 
 ```mermaid
 flowchart LR
-    HW["Hardware Sensor ISR (1 kHz)"] -->|enqueue| Ring["Bounded Lock-Free SPSC Ring Buffer"]
+    HW["Hardware Sensor ISR (1 kHz)"] -->|post| Ring["Bounded Lock-Free SPSC Ring Buffer"]
     Ring -->|run_until_empty| Task["RTOS 50 Hz Control Task"]
     Task --> Engine["fsm::fsm Transition Engine<br/>(InPorts, OutPorts, Registers)"]
     Engine --> Telemetry["Lock-Free Seqlock Snapshot (10 Hz Task)"]
@@ -38,9 +38,9 @@ extern "C" void SPI1_IRQHandler(void) {
 
     // Wait-Free O(1) Push - never blocks, no mutex, no dynamic allocation
     if (sample > 0xFF00) {
-        g_fsm.enqueue(OverThresholdEvent{sample});
+        g_fsm.post(OverThresholdEvent{sample});
     } else {
-        g_fsm.enqueue(SampleReadyEvent{sample});
+        g_fsm.post(SampleReadyEvent{sample});
     }
 
     SPI1->SR &= ~SPI_SR_RXNE; // Clear interrupt flag
@@ -369,3 +369,11 @@ fsm::row<Idle, EvTick, StateB>::when<InTempBelow30>  // temp <= 30.0
 fsm::row<Idle, EvTick, EmergencyMode, HighTempGuard, NoAction, 1>,
 fsm::row<Idle, EvTick, NormalMode,    AlwaysTrue,    NoAction, 2>
 ```
+
+---
+
+## Further Reading
+
+- **[Unit Testing Guide](testing_guide.md)**: GoogleTest and Catch2 recipes, test fixtures, and mock service injection.
+- **[FAQ & Troubleshooting](faq_and_troubleshooting.md)**: Common compiler diagnostics, error checklists, and architectural answers.
+- **[Full API Reference](reference.md)**: Comprehensive member functions, traits, and types.

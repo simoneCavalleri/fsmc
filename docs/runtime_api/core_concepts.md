@@ -17,34 +17,25 @@ struct FaultState { static constexpr std::string_view name = "FaultState"; };
 ```
 
 ### State Lifecycle Hooks (`on_enter` & `on_exit`)
-States can define optional `on_enter` and `on_exit` methods. The runtime automatically invokes them upon state entry and exit.
-
-Like transition actions, lifecycle hooks only need to declare the parameters they actually access:
+States can define optional `on_enter` and `on_exit` methods. The runtime automatically invokes them upon state entry and exit:
 
 ```cpp
 struct Running {
     static constexpr std::string_view name = "Running";
 
-    // Form 1: Zero-argument entry notification
+    // 1. Simple notification hook
     void on_enter() {
         std::cout << "Entered Running state\n";
     }
 
-    // Form 2: Direct output port actuation on exit
-    void on_exit(MotorOutPorts& out) {
-        out.motor_enable = false;
-        out.target_velocity = 0.0f;
-    }
-
-    // Form 3: Full 4-domain entry hook
-    template <typename Event, typename InPorts, typename OutPorts, typename Registers, typename Services>
-    void on_enter(const Event&, const InPorts& in, OutPorts& out, Registers& reg, Services& srv) {
-        out.motor_enable = true;
-        reg.cycle_counter++;
-        srv.log_info("Running state entered with battery at " + std::to_string(in.battery_percent) + "%");
+    void on_exit() {
+        std::cout << "Exited Running state\n";
     }
 };
 ```
+
+> [!NOTE]
+> Like transition actions, lifecycle hooks can also directly accept `OutPorts&`, `Registers&`, or `Services&` once your datapath domains are defined (see **[Section 3: The 4-Domain Datapath Model](#3-the-4-domain-segregated-datapath-model)**).
 
 ---
 
@@ -218,7 +209,56 @@ using MotorTable = fsm::transition_table<
 
 ---
 
-## 7. Hierarchical States & History (`fsm::history`)
+## 7. Execution Outcomes: `fsm::step_result` & `fsm::dispatch_result`
+
+To preserve strict semantic separation between periodic control loops and reactive event dispatching, `fsmc` provides dedicated return types:
+
+### Sampled Periodic Step: `fsm::step_result`
+Every `step()` invocation evaluates continuous transitions and returns `fsm::step_result`:
+
+```cpp
+enum class step_status : std::uint8_t {
+    steady,        // Machine remains nominally in active state (no continuous guard satisfied)
+    transitioned   // A continuous/sampled transition condition fired and state updated
+};
+
+struct step_result {
+    step_status status;
+    std::optional<transition_trace> trace;
+
+    [[nodiscard]] constexpr bool has_transitioned() const noexcept;
+    [[nodiscard]] constexpr bool is_steady() const noexcept;
+    [[nodiscard]] constexpr explicit operator bool() const noexcept; // true if transitioned
+};
+```
+
+### Reactive Event Dispatching: `fsm::dispatch_result`
+Every `dispatch()` invocation routes an explicit event and returns `fsm::dispatch_result`:
+
+```cpp
+enum class dispatch_status : std::uint8_t {
+    success,        // Transition fired and state changed
+    deferred,       // Event deferred by active state
+    guard_rejected, // Matching transition found, but guard returned false
+    unhandled       // No transition defined for event in active state
+};
+
+struct dispatch_result {
+    dispatch_status status;
+    std::optional<transition_trace> trace;
+
+    [[nodiscard]] constexpr bool is_success() const noexcept;
+    [[nodiscard]] constexpr bool is_guard_rejected() const noexcept;
+    [[nodiscard]] constexpr bool is_deferred() const noexcept;
+    [[nodiscard]] constexpr bool is_unhandled() const noexcept;
+    [[nodiscard]] constexpr bool is_ok() const noexcept; // is_success() || is_deferred()
+    [[nodiscard]] constexpr explicit operator bool() const noexcept; // true if is_ok()
+};
+```
+
+---
+
+## 8. Hierarchical States & History (`fsm::history`)
 
 To model composite nested states, a substate declares its enclosing parent by defining `static constexpr std::string_view parent`:
 
@@ -267,35 +307,181 @@ using HfsmTable = fsm::transition_table<
 
 ---
 
-## 8. Execution Status: `fsm::dispatch_result`
+## 9. Temporal Models & Timers in C++
 
-Every `dispatch()` and `step()` call returns a lightweight `dispatch_result` struct detailing the outcome:
+`fsmc` supports two distinct ways to handle time, reflecting the fundamental architectural separation between **discrete periodic control loops** and **asynchronous event-driven timers**:
+
+```mermaid
+flowchart TD
+    Start["How do you want to manage time in C++?"] --> Decision{"Is your machine in a periodic control loop<br/>or an asynchronous event-driven system?"}
+
+    Decision -- "Periodic Loop (100 Hz / 1 kHz)" --> Disc["1. Discrete Sampled Time (step)<br/>- Automatic: fsm::in_state_for<Ticks><br/>- Custom: Registers dt accumulation<br/>- Hard Real-Time, 0 heap, 0 jitter"]
+    
+    Decision -- "Asynchronous / Multi-Thread" --> Async["2. Asynchronous Physical Timers (dispatch)<br/>- post_delayed(event, 500ms)<br/>- post_state_timeout(event, 500ms) with auto-cancellation<br/>- Uses std::chrono & background worker"]
+```
+
+### Pattern A: Automatic Sampled Dwell Time (`fsm::in_state_for<N>`)
+In periodic control loops (e.g. 100 Hz timer), transition automatically after residing in a state for $N$ cycles:
 
 ```cpp
-enum class dispatch_status : std::uint8_t {
-    success,        // Transition fired and state changed
-    deferred,       // Event deferred by active state
-    guard_rejected, // Matching transition found, but guard returned false
-    unhandled       // No transition defined for event in active state
+struct PreCharge { static constexpr std::string_view name = "PreCharge"; };
+struct Ready     { static constexpr std::string_view name = "Ready";     };
+
+using Table = fsm::transition_table<
+    // Automatically transition to Ready after 50 periodic step() ticks in PreCharge:
+    fsm::row<PreCharge, fsm::anonymous_event, Ready>::when<fsm::in_state_for<50>>
+>;
+
+// In periodic control loop (e.g. 100 Hz):
+fsm::step_result res = sm.step(in, out);
+if (res.has_transitioned()) {
+    std::cout << "50 ticks elapsed -> Transitioned to Ready!\n";
+}
+```
+
+> [!TIP]
+> `fsmc` automatically tracks state residence. When the machine enters any new state, its internal dwell counter resets to zero in $O(1)$ time without wall-clock drift.
+
+### Pattern B: Delta-Time Accumulation in `Registers` ($z^{-1}$)
+When the time period $\Delta t$ fluctuates (e.g. OS scheduling jitter), accumulate physical elapsed time inside `Registers`:
+
+```cpp
+struct MotorRegisters { float dwell_ms = 0.0f; };
+
+struct DwellExceededGuard {
+    bool operator()(const MotorRegisters& reg) const noexcept {
+        return reg.dwell_ms >= 500.0f; // 500 ms threshold
+    }
 };
 
-struct dispatch_result {
-    dispatch_status status;
-    std::string_view source_state;
-    std::string_view target_state;
-    bool is_internal;
+using Table = fsm::transition_table<
+    fsm::row<WarmingUp, fsm::anonymous_event, Running>::when<DwellExceededGuard>
+>;
 
-    [[nodiscard]] constexpr bool is_success() const noexcept;
-    [[nodiscard]] constexpr bool is_guard_rejected() const noexcept;
-    [[nodiscard]] constexpr bool is_deferred() const noexcept;
-    [[nodiscard]] constexpr bool is_unhandled() const noexcept;
-    [[nodiscard]] constexpr bool is_ok() const noexcept; // is_success() || is_deferred()
-};
+// In control loop:
+reg.dwell_ms += delta_time_ms;
+sm.step(in, out);
+```
+
+### Pattern C: Asynchronous State Timeout with Auto-Cancellation (`post_state_timeout`)
+In multi-threaded applications using [`fsm::thread_safe_fsm`](thread_safe_fsm.md), schedule physical timeouts that **automatically cancel** if an external event transitions the machine away before the deadline:
+
+```cpp
+using namespace std::chrono_literals;
+
+// 1. When entering Authenticating, schedule a 200ms timeout:
+sm.post_state_timeout(EvTimeout{}, 200ms);
+
+// 2. If a fast response arrives after 30ms:
+sm.post(EvAuthSuccess{}); // Transitions to Connected
+
+// 3. When the 200ms deadline expires, the runtime verifies the active state is no longer
+//    Authenticating and silently discards the stale EvTimeout, preventing spurious errors!
 ```
 
 ---
 
-## 9. Next Steps: Selecting an Execution Engine
+## 10. Developer Cookbook: 5 Common Idioms
+
+### Idiom 1: Event with a Typed Payload
+Pass sensor data or commands to transitions:
+
+```cpp
+struct EvSetSpeed { float target_rpm; };
+
+struct ApplySpeedAction {
+    void operator()(const EvSetSpeed& ev, MotorOutPorts& out) const noexcept {
+        out.target_velocity = ev.target_rpm;
+    }
+};
+
+using Table = fsm::transition_table<
+    fsm::row<Idle, EvSetSpeed, Running>::then<ApplySpeedAction>
+>;
+
+// Usage:
+sm.dispatch(EvSetSpeed{3000.0f}, in, out);
+```
+
+### Idiom 2: Sampled Dwell Time (`in_state_for<Threshold>`)
+Stay in a state for a deterministic number of ticks or time:
+
+```cpp
+struct StandbyRegs { std::uint32_t elapsed_ticks = 0; };
+
+using Table = fsm::transition_table<
+    // After 10 periodic step() ticks, transition to Active automatically:
+    fsm::row<Standby, fsm::anonymous_event, Active>::when<fsm::in_state_for<10>>
+>;
+
+// In periodic control loop (e.g. 100 Hz):
+reg.elapsed_ticks++;
+fsm::step_result res = sm.step(in, out);
+if (res.has_transitioned()) {
+    std::cout << "10 ticks reached! Transitioned to Active.\n";
+}
+```
+
+### Idiom 3: Clean State Entry & Exit Effects
+Use `on_enter` and `on_exit` methods directly on your State structs:
+
+```cpp
+struct Preflight {
+    static constexpr std::string_view name = "Preflight";
+
+    void on_enter(MotorRegisters& reg, DroneServices& srv) {
+        reg.calibrated = false;
+        srv.start_gyro_calibration();
+    }
+
+    void on_exit(DroneOutPorts& out) {
+        out.status_led_green = true; // Turn on LED when leaving Preflight
+    }
+};
+```
+
+### Idiom 4: Composing Guards (`and_`, `or_`, `not_`)
+Combine atomic guard predicates without boilerplate:
+
+```cpp
+struct BatteryOkGuard { bool operator()(const InPorts& in) const { return in.battery > 20; } };
+struct TemperatureOkGuard { bool operator()(const InPorts& in) const { return in.temp < 75; } };
+
+using ReadyToLaunch = fsm::and_<BatteryOkGuard, TemperatureOkGuard>;
+using AbortRequired = fsm::or_<fsm::not_<BatteryOkGuard>, EmergencySwitchGuard>;
+
+using Table = fsm::transition_table<
+    fsm::row<Standby, EvLaunch, Flying>::when<ReadyToLaunch>,
+    fsm::row<Flying,  EvTick,   Abort>::when<AbortRequired>
+>;
+```
+
+### Idiom 5: Checking Transition Outcomes
+Inspect return values cleanly:
+
+```cpp
+// 1. Reactive Dispatch Outcome:
+fsm::dispatch_result disp = sm.dispatch(EvStart{}, in, out);
+if (disp.is_success()) {
+    std::cout << "Transition fired successfully!\n";
+} else if (disp.is_guard_rejected()) {
+    std::cout << "Event received, but guard conditions were not met.\n";
+} else if (disp.is_unhandled()) {
+    std::cout << "Active state does not accept EvStart.\n";
+}
+
+// 2. Periodic Step Outcome:
+fsm::step_result step = sm.step(in, out);
+if (step.has_transitioned()) {
+    std::cout << "Continuous transition triggered during cycle step.\n";
+} else if (step.is_steady()) {
+    std::cout << "Nominal: machine steady in " << sm.current_state_name() << "\n";
+}
+```
+
+---
+
+## 11. Next Steps: Selecting an Execution Engine
 
 Now that you understand the shared fundamentals, choose the execution engine that matches your threading model:
 

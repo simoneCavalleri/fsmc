@@ -32,7 +32,7 @@ include(FetchContent)
 FetchContent_Declare(
     fsmc
     GIT_REPOSITORY https://github.com/simoneCavalleri/fsmc.git
-    GIT_TAG        v0.4.0
+    GIT_TAG        main
 )
 FetchContent_MakeAvailable(fsmc)
 
@@ -59,7 +59,7 @@ fsmc_target_sources(flight_control
 === "conanfile.txt"
     ```ini
     [requires]
-    fsmc/0.4.0
+    fsmc/latest
 
     [generators]
     CMakeDeps
@@ -74,7 +74,7 @@ fsmc_target_sources(flight_control
         name = "flight_control_app"
         version = "1.0.0"
         settings = "os", "compiler", "build_type", "arch"
-        requires = "fsmc/0.4.0"
+        requires = "fsmc/latest"
         generators = "CMakeDeps", "CMakeToolchain"
     ```
 

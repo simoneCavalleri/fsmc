@@ -209,6 +209,7 @@ When enhancing the C++ runtime engine:
 ### Unit Testing Standards (GoogleTest)
 
 All unit tests follow strict conventions:
+
 - **AAA Pattern**: Explicit `Arrange`, `Act`, and `Assert` phases.
 - **Doxygen Documentation**: Every test file and test case includes `@file`, `@brief Test Intent`, and `Scenario:` blocks.
 - **Clean Assertions**: No fix annotations (`// FIX`), scratch comments, or unhandled warnings.

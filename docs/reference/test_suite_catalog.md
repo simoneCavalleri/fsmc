@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 5  
 **Total Test Suites & Binaries**: 44  
-**Total Documented Test Cases**: 193  
+**Total Documented Test Cases**: 195  
 
 ---
 
@@ -105,7 +105,7 @@
   - Verify FsmIr preserves this exact ordering.
 
 #### `JsonParserTest.ParsePortsAndContracts`
-**Test Intent**: Verify parsing of v0.4.0 typed ports and range constraints in JSON schema.
+**Test Intent**: Verify parsing of typed ports and range constraints in JSON schema.
 
 ### [`test_plantuml_parser.cpp`](../tests/frontend/diagram/test_plantuml_parser.cpp) (`tests/frontend/diagram/test_plantuml_parser.cpp`)
 #### `ParserTest.MermaidBasicParsingAndValidation`
@@ -1173,6 +1173,12 @@
   - ActionSelfPost is executed on Step1, queries active state, and self-posts Step2 back into the FSM.
   - Verify no deadlocks or mutex violations occur, reaching StateC smoothly.
 
+#### `TimedTransitionsTest.SampledDiscreteInStateResidenceGuard`
+**Test Intent**: Verify discrete sampled time model with in_state_for guard and step_result.
+
+#### `TimedTransitionsTest.AsyncTimeoutInvalidationOnStateChange`
+**Test Intent**: Verify that post_delayed invalidates stale timeouts when state changes before deadline.
+
 ### [`test_traits_and_hooks.cpp`](../tests/backend/cpp/runtime/test_traits_and_hooks.cpp) (`tests/backend/cpp/runtime/test_traits_and_hooks.cpp`)
 #### `TraitsAndHooksTest.TypeListAlgorithms`
 **Test Intent**: Verify compile-time type list algorithms and transformations.
@@ -1212,7 +1218,7 @@
   - Verify is_internal() and is_external() query helpers.
 
 #### `TraitsAndHooksTest.LegacyContextPoisonCheck`
-**Test Intent**: Certify at compile-time that legacy v0.3.0 signatures (guard(Context&), action(Context&)) are
+**Test Intent**: Certify at compile-time that legacy monolithic context signatures (guard(Context&),
 
 #### `TraitsAndHooksTest.StateNameStaticResolutionConsistency`
 **Test Intent**: Verify static state name resolution and compile-time string reflection.

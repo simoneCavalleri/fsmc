@@ -1,6 +1,6 @@
 # Quickstart Tutorial
 
-This tutorial walks through creating a complete, production-ready aerospace sub-system state machine from scratch, verifying its safety properties, and embedding it in C++ using **`fsmc` v0.4.0**.
+This tutorial walks through creating a complete, production-ready aerospace sub-system state machine from scratch, verifying its safety properties, and embedding it in C++ using **`fsmc`**.
 
 ---
 

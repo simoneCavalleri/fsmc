@@ -27,7 +27,7 @@ sequenceDiagram
     Reader->>Task: snapshot_registers() [Consistent copy without blocking Task]
 ```
 
-- **Producer Context (ISR / DMA)**: Calls `post()` / `enqueue()` in deterministic, wait-free $O(1)$ time.
+- **Producer Context (ISR / DMA)**: Calls `post()` in deterministic, wait-free $O(1)$ time.
 - **Consumer Context (RTOS Worker)**: Calls `process_one()` or `run_until_empty()` to execute state transitions sequentially in Run-to-Completion order.
 - **Reader Context (Telemetry / Loggers)**: Calls `snapshot_registers()` to capture consistent register snapshots via an atomic Sequence Lock (seqlock).
 
@@ -122,9 +122,42 @@ int main() {
 | Method | Latency Guarantee | Description |
 | :--- | :--- | :--- |
 | `bool post(Event&& event)` | Wait-Free $O(1)$ | Enqueues an event into the ring buffer. Returns `false` if full. |
-| `bool send(Event&& event)` | Wait-Free $O(1)$ | Fluent alias for `post()`. |
-| `bool enqueue(Event&& event)` | Wait-Free $O(1)$ | Standard FIFO push operation. |
 | `bool queue_full()` | $O(1)$ | Returns `true` if the circular queue has reached capacity. |
+
+---
+
+## Hybrid RTOS Loop Pattern: Combining ISR Events with Periodic Step
+
+In mission-critical embedded control systems, a state machine often needs to handle **both** high-priority asynchronous interrupts from hardware (ISRs) and **periodic continuous control ticks** (evaluating sensors and continuous threshold guards).
+
+Here is the standard, production-grade RTOS control task pattern:
+
+```cpp
+void rtos_periodic_control_task(void* param) {
+    MotorInPorts in{};
+    MotorOutPorts out{};
+
+    for (;;) {
+        // 1. Read fresh sensor snapshot (Latching Pattern):
+        in = sample_sensors();
+
+        // 2. Drain and execute all urgent events queued by hardware ISRs:
+        g_motor_fsm.run_until_empty(in, out);
+
+        // 3. Execute continuous sampled cycle step over current sensors & dwell timers:
+        fsm::step_result step_res = g_motor_fsm.step(in, out);
+        if (step_res.has_transitioned()) {
+            // A continuous threshold guard fired (e.g. Overheat or in_state_for dwell)
+        }
+
+        // 4. Commit actuator commands to hardware:
+        apply_motor_actuation(out);
+
+        // 5. Sleep until the next deterministic 20ms period (50 Hz):
+        vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(20));
+    }
+}
+```
 
 ---
 
@@ -134,6 +167,7 @@ int main() {
 | :--- | :--- |
 | `bool process_one(in, out, srv)` | Pops and executes the single oldest event. Returns `false` if the queue was empty. |
 | `std::size_t run_until_empty(in, out, srv)` | Processes all currently queued events in a loop until the queue is completely drained. |
+| `step_result step([dt], in, out, srv)` | Evaluates continuous condition transitions and dwell timers (`in_state_for`) on the current state. |
 | `std::size_t queue_size()` | Returns the current count of queued pending events. |
 
 ---

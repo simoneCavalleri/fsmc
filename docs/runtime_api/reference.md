@@ -41,9 +41,10 @@ class fsm;
 ### Member Functions
 
 #### Lifecycle & Execution
-- `dispatch_result step(const InPorts& in, OutPorts& out, Services& srv)`: Evaluates continuous condition transitions.
-- `dispatch_result step(const InPorts& in, OutPorts& out)`: Step overload omitting `Services`.
-- `dispatch_result step()`: Step overload for stateless state machines.
+- `step_result step(const InPorts& in, OutPorts& out, Services& srv)`: Evaluates continuous condition transitions.
+- `template <typename DurationRep> step_result step(DurationRep dt, const InPorts& in, OutPorts& out, Services& srv)`: Evaluates continuous transitions with explicit $\Delta t$.
+- `step_result step(const InPorts& in, OutPorts& out)`: Step overload omitting `Services`.
+- `step_result step()`: Step overload for stateless state machines.
 - `template <typename Event> dispatch_result dispatch(const Event& ev, const InPorts& in, OutPorts& out, Services& srv)`: Synchronously evaluates transitions matching `Event`.
 - `template <typename Event> dispatch_result dispatch(const Event& ev, const InPorts& in, OutPorts& out)`: Dispatch overload omitting `Services`.
 - `template <typename Event> dispatch_result dispatch(const Event& ev)`: Dispatch overload for stateless state machines.
@@ -185,13 +186,13 @@ class spsc_fsm;
 
 #### Producer Context (Wait-Free O(1), ISR-Safe)
 - `template <typename Event> bool post(Event&& ev) noexcept`: Enqueues event. Returns `false` if queue is full.
-- `template <typename Event> bool send(Event&& ev) noexcept`: Fluent alias for `post()`.
 - `template <typename Event> bool enqueue(Event&& ev) noexcept`: FIFO queue push.
 
 #### Consumer Context (RTOS Worker Thread)
 - `bool process_one(const InPorts& in, OutPorts& out, Services& srv) noexcept`: Pops and executes the single oldest event.
 - `std::size_t run_until_empty(const InPorts& in, OutPorts& out, Services& srv) noexcept`: Drains and executes all queued events.
-- `dispatch_result step(const InPorts& in, OutPorts& out, Services& srv) noexcept`: Evaluates continuous condition step.
+- `step_result step(const InPorts& in, OutPorts& out, Services& srv) noexcept`: Evaluates continuous condition step.
+- `template <typename DurationRep> step_result step(DurationRep dt, const InPorts& in, OutPorts& out, Services& srv) noexcept`: Evaluates continuous step with $\Delta t$.
 
 #### Reader Context (Lock-Free Seqlock)
 - `Registers snapshot_registers() const noexcept`: Captures consistent register snapshot using atomic sequence lock without blocking worker.
@@ -225,9 +226,12 @@ class thread_safe_fsm;
 - `template <typename Event> void post(Event&& ev)`: Asynchronous, non-blocking fire-and-forget push.
 - `template <typename Event, typename Callback> void post(Event&& ev, Callback&& cb)`: Push with completion callback.
 - `template <typename Event> std::future<dispatch_result> post_async(Event&& ev)`: Push returning `std::future<dispatch_result>`.
-- `template <typename Event, typename Rep, typename Period> void post_delayed(Event&& ev, std::chrono::duration<Rep, Period> delay)`: Schedules event to fire after duration.
+- `template <typename Event, typename Rep, typename Period> void post_delayed(Event&& ev, std::chrono::duration<Rep, Period> delay, bool cancel_if_state_changes = false)`: Schedules event to fire after duration.
+- `template <typename Event, typename Rep, typename Period> void post_state_timeout(Event&& ev, std::chrono::duration<Rep, Period> delay)`: Schedules state-bound timeout automatically invalidated on state change.
 
 #### Synchronous & State Queries (Mutex Guarded)
+- `step_result step(const InPorts& in, OutPorts& out, Services& srv)`: Thread-safe continuous step evaluation under lock.
+- `template <typename DurationRep> step_result step(DurationRep dt, const InPorts& in, OutPorts& out, Services& srv)`: Step with $\Delta t$.
 - `std::string_view current_state_name() const`: Returns active state name under mutex lock.
 - `template <typename State> bool is_in_state() const`: Checks state type under mutex lock.
 - `Registers snapshot_registers() const`: Returns copy of registers under mutex lock.

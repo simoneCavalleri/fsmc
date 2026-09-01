@@ -92,6 +92,7 @@ In addition to forward data-path propagation, `fsmc` includes the dedicated `Gua
 ## 5. Formal SMT & Model Checking Export
 
 The computed interval bounds are automatically fed into the formal backend serializers:
+
 - **nuXmv / NuSMV**: Bounded variables (`VAR sensor_temp : -50..150;`) and contract invariants (`INVAR sensor_temp >= -50 & sensor_temp <= 150;`).
 - **SysML v2**: Exported `assert constraint { self >= min and self <= max; }`.
 

@@ -32,10 +32,10 @@ Caller Thread ◄── Returns dispatch_result
 
 `fsm::fsm` provides two primary execution methods tailored for real-time control systems:
 
-| Method | Execution Trigger | Primary Purpose | Emitted Trigger Type |
-| :--- | :--- | :--- | :--- |
-| **`dispatch(event, ...)`** | Discrete external event | Processes command triggers, sensor threshold interrupts, or network messages | Typed `Event` struct |
-| **`step(...)`** | Periodic sampled tick (e.g. 1 kHz control loop) | Evaluates continuous threshold guards directly against `InPorts` | `fsm::anonymous_event` |
+| Method | Execution Trigger | Return Type | Primary Purpose | Emitted Trigger Type |
+| :--- | :--- | :--- | :--- | :--- |
+| **`dispatch(event, ...)`** | Discrete external event | `fsm::dispatch_result` (`success`, `deferred`, `guard_rejected`, `unhandled`) | Processes command triggers, sensor threshold interrupts, or network messages | Typed `Event` struct |
+| **`step([dt], ...)`** | Periodic sampled tick (e.g. 1 kHz control loop) | `fsm::step_result` (`steady`, `transitioned`) | Evaluates continuous threshold guards directly against `InPorts` and `Registers` ($z^{-1}$) | `fsm::anonymous_event` |
 
 ---
 
@@ -146,9 +146,10 @@ int main() {
 
     // 2. Continuous Sampled Step (Evaluates continuous threshold transitions)
     in.temperature_celsius = 92.0f; // Overheating condition
-    fsm.step(in, out);
-    if (fsm.is_in<Fault>()) {
+    fsm::step_result step_res = fsm.step(in, out);
+    if (step_res.has_transitioned()) {
         std::cout << "Thermal protection triggered! State: " << fsm.current_state_name() << "\n";
+        assert(fsm.is_in<Fault>());
     }
 
     // 3. State & Register Introspection
@@ -198,7 +199,53 @@ fsm.step();
 
 ---
 
-## 5. Temporary Stack Buffer Semantics for Single-Argument `dispatch(event)`
+## 5. Timed State Dwell Recipe (`in_state_for<Threshold>`)
+
+In periodic control loops (e.g. 1 kHz sensor cycle), you often want a state machine to remain in a state for a fixed duration before transitioning automatically.
+
+With `fsmc`, continuous time dwell is counted deterministically in `Registers` ($z^{-1}$) without wall-clock drift:
+
+```cpp
+#include "fsm/backend/cpp/runtime/fsm.hpp"
+#include <iostream>
+
+struct PreCharge { static constexpr std::string_view name = "PreCharge"; };
+struct Armed     { static constexpr std::string_view name = "Armed";     };
+
+// Transition after 5 periodic ticks in PreCharge:
+using PowerTable = fsm::transition_table<
+    fsm::row<PreCharge, fsm::anonymous_event, Armed>::when<fsm::in_state_for<5>>
+>;
+
+int main() {
+    fsm::fsm<PowerTable> sm;
+
+    // Simulate 100 Hz control loop ticks:
+    for (int tick = 1; tick <= 6; ++tick) {
+        fsm::step_result res = sm.step();
+        std::cout << "Tick " << tick << ": state = " << sm.current_state_name();
+        if (res.has_transitioned()) {
+            std::cout << " (Dwell reached -> transitioned!)";
+        }
+        std::cout << "\n";
+    }
+    return 0;
+}
+```
+
+**Output:**
+```
+Tick 1: state = PreCharge
+Tick 2: state = PreCharge
+Tick 3: state = PreCharge
+Tick 4: state = PreCharge
+Tick 5: state = Armed (Dwell reached -> transitioned!)
+Tick 6: state = Armed
+```
+
+---
+
+## 6. Temporary Stack Buffer Semantics for Single-Argument `dispatch(event)`
 
 If your state machine defines custom `InPorts` and `OutPorts`, but you invoke the shorthand single-argument `fsm.dispatch(event)`:
 
@@ -211,7 +258,7 @@ If your state machine defines custom `InPorts` and `OutPorts`, but you invoke th
 
 ---
 
-## 6. Next Steps
+## 7. Next Steps
 - For asynchronous, lock-free ISR event ingestion, see **[Lock-Free SPSC Engine (`fsm::spsc_fsm`)](spsc_fsm.md)**.
 - For multi-threaded active object queues and timers, see **[Thread-Safe MPSC Engine (`fsm::thread_safe_fsm`)](thread_safe_fsm.md)**.
 - For complete method signatures and traits, see the **[Full Runtime API Reference](reference.md)**.

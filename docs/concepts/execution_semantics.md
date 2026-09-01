@@ -27,15 +27,18 @@ flowchart TD
 In periodic control loops (e.g. digital signal processing, flight guidance, robotics control loops at 1 kHz):
 
 - The machine executes periodic evaluation ticks over current inputs.
-- Transitions with no event trigger (continuous condition transitions) evaluate their boolean guards against the current inputs.
-- If a condition is met, the transition fires immediately.
+- Transitions with no event trigger (continuous condition transitions) evaluate their boolean guards against the current inputs and `Registers` ($z^{-1}$).
+- Returns an evaluation status indicating either nominal state residence (**`steady`**) or execution of a continuous transition (**`transitioned`**).
 
 ### Reactive Event Dispatch (`dispatch`)
 In event-driven architectures (e.g. protocol parsers, command interfaces, UI events):
 
 - The machine remains quiescent until a discrete event signal is injected.
 - The machine matches the active state and incoming event trigger against transition candidates.
-- The matching transition fires in response to the signal.
+- Returns a dispatch status (**`success`**, **`deferred`**, **`guard_rejected`**, or **`unhandled`**).
+
+> [!NOTE]
+> For a full formal specification of discrete sampled time vs continuous physical timers, state residence in registers, and timeout invalidation mechanics, see **[Dual-Paradigm Temporal Models](temporal_models.md)**.
 
 ---
 

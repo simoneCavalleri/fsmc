@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "fsm/frontend/guard_parser.hpp"
+#include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 namespace fsm::codegen {
@@ -26,6 +26,28 @@ class PlantUmlSerializer {
             }
             if (!prop.description.empty()) {
                 out << " desc=\"" << prop.description << "\"";
+            }
+            out << "\n";
+        }
+
+        // Ports
+        for (const auto& port : model.ports) {
+            out << "' @fsm:port name=" << port.name << " type=" << port.type
+                << " dir=" << (port.is_out() ? "out" : (port.direction == PortDirection::InOut ? "inout" : "in"));
+            if (port.physical_unit.has_value()) {
+                out << " unit=\"" << *port.physical_unit << "\"";
+            }
+            if (port.min_value.has_value()) {
+                out << " min=" << *port.min_value;
+            }
+            if (port.max_value.has_value()) {
+                out << " max=" << *port.max_value;
+            }
+            if (!port.constraint.empty()) {
+                out << " constraint=\"" << port.constraint << "\"";
+            }
+            if (!port.description.empty()) {
+                out << " desc=\"" << port.description << "\"";
             }
             out << "\n";
         }

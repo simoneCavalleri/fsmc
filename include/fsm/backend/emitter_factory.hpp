@@ -6,14 +6,14 @@
 #include <string_view>
 #include <vector>
 
-#include "fsm/backend/emitters/cameo_serializer.hpp"
-#include "fsm/backend/emitters/dot_serializer.hpp"
-#include "fsm/backend/emitters/json_serializer.hpp"
-#include "fsm/backend/emitters/mermaid_serializer.hpp"
-#include "fsm/backend/emitters/plantuml_serializer.hpp"
-#include "fsm/backend/emitters/scxml_serializer.hpp"
-#include "fsm/backend/emitters/smv_serializer.hpp"
-#include "fsm/backend/emitters/sysml2_serializer.hpp"
+#include "fsm/backend/formal/cameo_serializer.hpp"
+#include "fsm/backend/diagram/dot_serializer.hpp"
+#include "fsm/backend/diagram/json_serializer.hpp"
+#include "fsm/backend/diagram/mermaid_serializer.hpp"
+#include "fsm/backend/diagram/plantuml_serializer.hpp"
+#include "fsm/backend/formal/scxml_serializer.hpp"
+#include "fsm/backend/formal/smv_serializer.hpp"
+#include "fsm/backend/formal/sysml2_serializer.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/ir/fsm_ir_serializer.hpp"
 

@@ -16,20 +16,12 @@
 
 #include "connection_fsm.hpp"
 
-namespace net_mermaid {
-struct NetworkContext {
-    int socket_fd = -1;
-    bool is_online = true;
-};
-}  // namespace net_mermaid
-
 int main() {
     std::cout << "=================================================\n"
               << "  RUNNING COMPILED GENERATED FSM TEST SUITE     \n"
               << "=================================================\n";
 
-    net_mermaid::NetworkContext context;
-    net_mermaid::ConnectionMermaidFSM state_machine(context);
+    net_mermaid::ConnectionMermaidFSM state_machine;
 
     // Initial state: Disconnected
     assert(state_machine.current_state_name() == "Disconnected");
@@ -61,7 +53,7 @@ int main() {
     assert(state_machine.is_in_state<net_mermaid::Disconnected>());
 
     // Test ThreadSafe wrapper
-    net_mermaid::ThreadSafeConnectionMermaidFSM async_machine(context);
+    net_mermaid::ThreadSafeConnectionMermaidFSM async_machine;
     async_machine.start_worker();
     async_machine.post(net_mermaid::ConnectCmd{});
     while (!async_machine.is_in_state<net_mermaid::Connecting>()) {

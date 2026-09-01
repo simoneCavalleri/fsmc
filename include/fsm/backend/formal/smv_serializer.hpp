@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-#include "fsm/frontend/guard_parser.hpp"
+#include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 namespace fsm::codegen {
@@ -86,6 +86,19 @@ class SmvSerializer {
                 out << " -- physical unit: " << *var.physical_unit;
             }
             out << "\n";
+        }
+
+        // Typed Ports (InPorts / OutPorts with bounds)
+        for (const auto& port : model.ports) {
+            out << "  " << sanitize_smv_ident(port.name) << " : ";
+            if (port.type == "bool" || port.type == "boolean" || port.type_kind == VariableTypeKind::Boolean) {
+                out << "boolean;";
+            } else if (port.min_value.has_value() && port.max_value.has_value()) {
+                out << static_cast<long long>(*port.min_value) << ".." << static_cast<long long>(*port.max_value) << ";";
+            } else {
+                out << "0..100;";
+            }
+            out << " -- port (" << port_direction_to_string(port.direction) << ")\n";
         }
 
         // Discrete tick counters for TimeTriggers

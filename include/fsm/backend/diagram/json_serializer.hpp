@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "fsm/frontend/guard_parser.hpp"
+#include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 namespace fsm::codegen {
@@ -18,6 +18,33 @@ class JsonSerializer {
         out << "  \"id\": \"" << (model.name.empty() ? "StateMachine" : model.name) << "\",\n";
         if (!model.initial_state.empty()) {
             out << "  \"initial\": \"" << model.initial_state << "\",\n";
+        }
+
+        // Ports
+        if (!model.ports.empty()) {
+            out << "  \"ports\": [\n";
+            for (size_t p = 0; p < model.ports.size(); ++p) {
+                const auto& port = model.ports[p];
+                out << "    {\n";
+                out << "      \"name\": \"" << escape_json(port.name) << "\",\n";
+                out << "      \"type\": \"" << escape_json(port.type) << "\",\n";
+                out << "      \"direction\": \"" << (port.is_out() ? "out" : (port.direction == PortDirection::InOut ? "inout" : "in")) << "\"";
+                if (port.min_value.has_value()) {
+                    out << ",\n      \"min\": " << *port.min_value;
+                }
+                if (port.max_value.has_value()) {
+                    out << ",\n      \"max\": " << *port.max_value;
+                }
+                if (!port.constraint.empty()) {
+                    out << ",\n      \"constraint\": \"" << escape_json(port.constraint) << "\"";
+                }
+                out << "\n    }";
+                if (p + 1 < model.ports.size()) {
+                    out << ",";
+                }
+                out << "\n";
+            }
+            out << "  ],\n";
         }
 
         // Variables

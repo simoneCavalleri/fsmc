@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "fsm/frontend/guard_parser.hpp"
+#include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 namespace fsm::codegen {
@@ -18,8 +18,11 @@ class ScxmlSerializer {
             << "\" name=\"" << (model.name.empty() ? "GeneratedFSM" : model.name) << "\">\n";
 
         // Native SCXML Datamodel
-        if (!model.variables.empty()) {
+        if (!model.variables.empty() || !model.ports.empty()) {
             out << "  <datamodel>\n";
+            for (const auto& port : model.ports) {
+                out << "    <data id=\"" << escape_xml(port.name) << "\" type=\"" << escape_xml(port.type) << "\"/>\n";
+            }
             for (const auto& var : model.variables) {
                 out << "    <data id=\"" << escape_xml(var.name) << "\"";
                 if (!var.initial_value.empty()) {

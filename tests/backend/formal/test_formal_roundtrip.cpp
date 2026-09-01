@@ -1,13 +1,13 @@
 #include <gtest/gtest.h>
 
-#include "fsm/backend/emitters/cameo_serializer.hpp"
-#include "fsm/backend/emitters/dot_serializer.hpp"
-#include "fsm/backend/emitters/json_serializer.hpp"
-#include "fsm/backend/emitters/mermaid_serializer.hpp"
-#include "fsm/backend/emitters/plantuml_serializer.hpp"
-#include "fsm/backend/emitters/scxml_serializer.hpp"
-#include "fsm/backend/emitters/smv_serializer.hpp"
-#include "fsm/backend/emitters/sysml2_serializer.hpp"
+#include "fsm/backend/formal/cameo_serializer.hpp"
+#include "fsm/backend/diagram/dot_serializer.hpp"
+#include "fsm/backend/diagram/json_serializer.hpp"
+#include "fsm/backend/diagram/mermaid_serializer.hpp"
+#include "fsm/backend/diagram/plantuml_serializer.hpp"
+#include "fsm/backend/formal/scxml_serializer.hpp"
+#include "fsm/backend/formal/smv_serializer.hpp"
+#include "fsm/backend/formal/sysml2_serializer.hpp"
 #include "fsm/frontend/diagram/dot_parser.hpp"
 #include "fsm/frontend/diagram/json_parser.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
@@ -755,6 +755,73 @@ state def SatelliteSafety {
     FsmIr mmd_ir;
     ASSERT_TRUE(mmd_parser.parse(mmd, mmd_ir, err)) << "Mermaid parse error: " << err;
     EXPECT_EQ(mmd_ir.states.size(), model.states.size());
+}
+
+/**
+ * @brief Test Intent: Verify lossless roundtrip of v0.4.0 Typed In/Out Ports and Numeric Assert Constraints across SysML v2, JSON, and PlantUML.
+ */
+TEST(LosslessRoundtripTest, V040TypedPortsAndContractsRoundtrip) {
+    constexpr const char* kSysMLv2PortsModel = R"(
+package SpacecraftSubsystem {
+    state def PowerManager {
+        in port solar_flux : Real { assert constraint { self >= 0.0 and self <= 1400.0 } }
+        out port bus_voltage : Real { assert constraint { self >= 24.0 and self <= 32.0 } }
+        attribute battery_soc : Real = 100.0;
+
+        entry; then Nominal;
+
+        state Nominal {
+            transition on_eclipse
+                if solar_flux < 50.0
+                then Eclipse;
+        }
+
+        state Eclipse;
+    }
+}
+)";
+
+    Sysml2Parser sysml_parser;
+    FsmIr ir_sysml;
+    std::string err;
+    ASSERT_TRUE(sysml_parser.parse(kSysMLv2PortsModel, ir_sysml, err)) << err;
+
+    ASSERT_EQ(ir_sysml.ports.size(), 2u);
+    const auto* in_p = ir_sysml.find_port("solar_flux");
+    ASSERT_NE(in_p, nullptr);
+    EXPECT_TRUE(in_p->is_in());
+    EXPECT_DOUBLE_EQ(in_p->min_value.value_or(0.0), 0.0);
+    EXPECT_DOUBLE_EQ(in_p->max_value.value_or(0.0), 1400.0);
+
+    const auto* out_p = ir_sysml.find_port("bus_voltage");
+    ASSERT_NE(out_p, nullptr);
+    EXPECT_TRUE(out_p->is_out());
+    EXPECT_DOUBLE_EQ(out_p->min_value.value_or(0.0), 24.0);
+    EXPECT_DOUBLE_EQ(out_p->max_value.value_or(0.0), 32.0);
+
+    // 1. SysML v2 -> JSON -> parse JSON -> verify ports
+    std::string json_str = JsonSerializer::serialize(ir_sysml);
+    JsonStateParser json_parser;
+    FsmIr ir_json;
+    ASSERT_TRUE(json_parser.parse(json_str, ir_json, err)) << err;
+    ASSERT_EQ(ir_json.ports.size(), 2u);
+    const auto* in_json = ir_json.find_port("solar_flux");
+    ASSERT_NE(in_json, nullptr);
+    EXPECT_TRUE(in_json->is_in());
+    EXPECT_DOUBLE_EQ(in_json->min_value.value_or(0.0), 0.0);
+    EXPECT_DOUBLE_EQ(in_json->max_value.value_or(0.0), 1400.0);
+
+    // 2. JSON -> PlantUML (@fsm:port) -> parse PlantUML -> verify ports
+    std::string puml_str = PlantUmlSerializer::serialize(ir_json);
+    PlantUmlParser puml_parser;
+    FsmIr ir_puml;
+    ASSERT_TRUE(puml_parser.parse(puml_str, ir_puml, err)) << err;
+    ASSERT_EQ(ir_puml.ports.size(), 2u);
+    const auto* in_puml = ir_puml.find_port("solar_flux");
+    ASSERT_NE(in_puml, nullptr);
+    EXPECT_TRUE(in_puml->is_in());
+    EXPECT_DOUBLE_EQ(in_puml->min_value.value_or(0.0), 0.0);
+    EXPECT_DOUBLE_EQ(in_puml->max_value.value_or(0.0), 1400.0);
 }
 
 }  // namespace

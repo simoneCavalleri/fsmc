@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "fsm/frontend/guard_parser.hpp"
+#include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 namespace fsm::codegen {
@@ -15,6 +15,21 @@ class Sysml2Serializer {
         std::ostringstream out;
         std::string model_name = model.name.empty() ? "GeneratedStateMachine" : model.name;
         out << "state def " << model_name << " {\n";
+
+        // Native SysML v2 Typed Ports (InPorts / OutPorts / InOutPorts)
+        for (const auto& port : model.ports) {
+            std::string dir_str = port.is_out() ? "out port " : (port.direction == PortDirection::InOut ? "inout port " : "in port ");
+            out << "    " << dir_str << port.name << " : " << map_cpp_type_to_sysml(port.type);
+            if (!port.constraint.empty()) {
+                out << " { assert constraint { " << port.constraint << " } }";
+            } else if (port.min_value.has_value() && port.max_value.has_value()) {
+                out << " { assert constraint { self >= " << *port.min_value << " and self <= " << *port.max_value << " } }";
+            }
+            out << ";\n";
+        }
+        if (!model.ports.empty()) {
+            out << "\n";
+        }
 
         // Native SysML v2 EFSM Variables
         for (const auto& var : model.variables) {

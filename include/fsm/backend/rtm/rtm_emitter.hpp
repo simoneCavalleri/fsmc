@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "fsm/ir/fsm_ir.hpp"
-#include "fsm/middleend/model_checker.hpp"
+#include "fsm/middleend/analysis/model_checker.hpp"
 
 namespace fsm::codegen {
 

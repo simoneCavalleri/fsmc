@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "fsm/backend/rtm_emitter.hpp"
+#include "fsm/backend/rtm/rtm_emitter.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 using namespace fsm::codegen;

@@ -1,13 +1,14 @@
 #pragma once
 
 #include <algorithm>
+#include <cctype>
 #include <map>
 #include <optional>
 #include <ostream>
 #include <regex>
+#include <set>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <vector>
 
 #include "fsm/backend/cpp/cpp_options.hpp"
@@ -17,27 +18,167 @@ namespace fsm::codegen {
 
 class CppModelEmitter {
   public:
-    static std::string get_effective_context_type(const FsmIr& model) {
-        if (!model.variables.empty()) {
-            return (!model.context_type.empty() && model.context_type != "no_context" &&
-                    model.context_type != "fsm::no_context" && model.context_type != "void")
-                       ? model.context_type
-                       : (model.name + "Context");
-        }
-        if (!model.context_type.empty() && model.context_type != "no_context" &&
-            model.context_type != "fsm::no_context" && model.context_type != "void") {
-            return model.context_type;
-        }
-        return "fsm::no_context";
-    }
+    static void emit_domain_structures(std::ostream& out, const FsmIr& model) {
+        out << "// ============================================================================\n";
+        out << "// Partitioned I/O Ports, Internal Registers & Environment Services\n";
+        out << "// ============================================================================\n\n";
 
-    static void emit_context_definition(std::ostream& out, const FsmIr& model) {
+        // 1. InPorts
+        bool has_in_ports = false;
+        for (const auto& port : model.ports) {
+            if (port.is_in()) {
+                has_in_ports = true;
+                break;
+            }
+        }
+        if (has_in_ports) {
+            out << "/**\n";
+            out << " * @struct " << model.name << "InPorts\n";
+            out << " * @brief Immutable input sensor snapshot for '" << model.name << "'.\n";
+            out << " */\n";
+            out << "struct " << model.name << "InPorts {\n";
+            for (const auto& port : model.ports) {
+                if (port.is_in()) {
+                    out << "    " << port.type << " " << port.name;
+                    if (!port.default_value.empty()) {
+                        out << "{" << port.default_value << "}";
+                    } else if (port.type == "bool" || port.type == "Boolean") {
+                        out << "{false}";
+                    } else if (port.type == "double" || port.type == "float" || port.type == "Real") {
+                        out << "{0.0}";
+                    } else if (port.type == "int" || port.type == "int32_t" || port.type == "Integer") {
+                        out << "{0}";
+                    }
+                    out << ";";
+                    if (!port.constraint.empty()) {
+                        out << " // assert: " << port.constraint;
+                    }
+                    out << "\n";
+                }
+            }
+            std::vector<std::string> in_validations;
+            for (const auto& port : model.ports) {
+                if (port.is_in()) {
+                    if (port.min_value.has_value() && port.max_value.has_value()) {
+                        std::ostringstream v;
+                        v << "(" << port.name << " >= " << *port.min_value << " && " << port.name << " <= " << *port.max_value << ")";
+                        in_validations.push_back(v.str());
+                    } else if (port.min_value.has_value()) {
+                        std::ostringstream v;
+                        v << "(" << port.name << " >= " << *port.min_value << ")";
+                        in_validations.push_back(v.str());
+                    } else if (port.max_value.has_value()) {
+                        std::ostringstream v;
+                        v << "(" << port.name << " <= " << *port.max_value << ")";
+                        in_validations.push_back(v.str());
+                    }
+                }
+            }
+
+            out << "\n    /**\n";
+            out << "     * @brief Validates input port contracts and numeric bounds.\n";
+            out << "     * @return true if all sensor values satisfy model constraints.\n";
+            out << "     */\n";
+            out << "    [[nodiscard]] constexpr bool validate_contracts() const noexcept {\n";
+            if (in_validations.empty()) {
+                out << "        return true;\n";
+            } else {
+                out << "        return ";
+                for (size_t i = 0; i < in_validations.size(); ++i) {
+                    if (i > 0) out << " &&\n               ";
+                    out << in_validations[i];
+                }
+                out << ";\n";
+            }
+            out << "    }\n";
+            out << "};\n\n";
+        } else {
+            out << "/** @typedef " << model.name << "InPorts\n * @brief Empty input ports sentinel. */\n";
+            out << "using " << model.name << "InPorts = fsm::no_ports;\n\n";
+        }
+
+        // 2. OutPorts
+        bool has_out_ports = false;
+        for (const auto& port : model.ports) {
+            if (port.is_out()) {
+                has_out_ports = true;
+                break;
+            }
+        }
+        if (has_out_ports) {
+            out << "/**\n";
+            out << " * @struct " << model.name << "OutPorts\n";
+            out << " * @brief Actuator output command write buffer for '" << model.name << "'.\n";
+            out << " */\n";
+            out << "struct " << model.name << "OutPorts {\n";
+            for (const auto& port : model.ports) {
+                if (port.is_out()) {
+                    out << "    " << port.type << " " << port.name;
+                    if (!port.default_value.empty()) {
+                        out << "{" << port.default_value << "}";
+                    } else if (port.type == "bool" || port.type == "Boolean") {
+                        out << "{false}";
+                    } else if (port.type == "double" || port.type == "float" || port.type == "Real") {
+                        out << "{0.0}";
+                    } else if (port.type == "int" || port.type == "int32_t" || port.type == "Integer") {
+                        out << "{0}";
+                    }
+                    out << ";";
+                    if (!port.constraint.empty()) {
+                        out << " // assert: " << port.constraint;
+                    }
+                    out << "\n";
+                }
+            }
+
+            std::vector<std::string> out_validations;
+            for (const auto& port : model.ports) {
+                if (port.is_out()) {
+                    if (port.min_value.has_value() && port.max_value.has_value()) {
+                        std::ostringstream v;
+                        v << "(" << port.name << " >= " << *port.min_value << " && " << port.name << " <= " << *port.max_value << ")";
+                        out_validations.push_back(v.str());
+                    } else if (port.min_value.has_value()) {
+                        std::ostringstream v;
+                        v << "(" << port.name << " >= " << *port.min_value << ")";
+                        out_validations.push_back(v.str());
+                    } else if (port.max_value.has_value()) {
+                        std::ostringstream v;
+                        v << "(" << port.name << " <= " << *port.max_value << ")";
+                        out_validations.push_back(v.str());
+                    }
+                }
+            }
+
+            out << "\n    /**\n";
+            out << "     * @brief Validates output port contracts and numeric bounds.\n";
+            out << "     * @return true if all output actuator values satisfy model constraints.\n";
+            out << "     */\n";
+            out << "    [[nodiscard]] constexpr bool validate_contracts() const noexcept {\n";
+            if (out_validations.empty()) {
+                out << "        return true;\n";
+            } else {
+                out << "        return ";
+                for (size_t i = 0; i < out_validations.size(); ++i) {
+                    if (i > 0) out << " &&\n               ";
+                    out << out_validations[i];
+                }
+                out << ";\n";
+            }
+            out << "    }\n";
+            out << "};\n\n";
+        } else {
+            out << "/** @typedef " << model.name << "OutPorts\n * @brief Empty output ports sentinel. */\n";
+            out << "using " << model.name << "OutPorts = fsm::no_ports;\n\n";
+        }
+
+        // 3. Registers (State machine internal memory)
         if (!model.variables.empty()) {
-            std::string ctx_name = get_effective_context_type(model);
-            out << "// ============================================================================\n";
-            out << "// EFSM State Context (Auto-Generated from IR Variables)\n";
-            out << "// ============================================================================\n\n";
-            out << "struct " << ctx_name << " {\n";
+            out << "/**\n";
+            out << " * @struct " << model.name << "Registers\n";
+            out << " * @brief Persistent internal datapath memory for '" << model.name << "'.\n";
+            out << " */\n";
+            out << "struct " << model.name << "Registers {\n";
             for (const auto& var : model.variables) {
                 out << "    " << var.type << " " << var.name;
                 if (!var.initial_value.empty()) {
@@ -50,111 +191,165 @@ class CppModelEmitter {
                 out << "\n";
             }
             out << "};\n\n";
-        } else if (!model.context_type.empty() && model.context_type != "no_context" &&
-                   model.context_type != "fsm::no_context" && model.context_type != "void") {
-            out << "// Forward declaration of Context (if not already defined)\n";
-            out << "struct " << model.context_type << ";\n\n";
+        } else {
+            out << "/** @typedef " << model.name << "Registers\n * @brief Empty registers sentinel. */\n";
+            out << "using " << model.name << "Registers = fsm::no_registers;\n\n";
+        }
+
+        // 4. Services Interface
+        std::vector<std::string> external_actions;
+        for (const auto& act : model.actions) {
+            bool has_assign = false;
+            for (const auto& t : model.transitions) {
+                if (t.action_sig.has_value() && t.action_sig->name == act.name &&
+                    !t.action_sig->assignments.empty()) {
+                    has_assign = true;
+                    break;
+                }
+            }
+            if (!has_assign) {
+                external_actions.push_back(act.name);
+            }
+        }
+
+        if (!external_actions.empty()) {
+            out << "/**\n";
+            out << " * @struct " << model.name << "Services\n";
+            out << " * @brief External environment and hardware driver interface for '" << model.name << "'.\n";
+            out << " */\n";
+            out << "struct " << model.name << "Services {\n";
+            out << "    virtual ~" << model.name << "Services() = default;\n";
+            for (const auto& act_name : external_actions) {
+                out << "    virtual void " << act_name << "() {}\n";
+            }
+            out << "};\n\n";
+        } else {
+            out << "/** @typedef " << model.name << "Services\n * @brief Empty services sentinel. */\n";
+            out << "using " << model.name << "Services = fsm::no_services;\n\n";
         }
     }
 
     static void emit_events(std::ostream& out, const FsmIr& model) {
+        if (model.events.empty() && model.signals.empty()) {
+            return;
+        }
+
         out << "// ============================================================================\n";
         out << "// Events & Signals\n";
         out << "// ============================================================================\n\n";
 
-        // Collect all distinct event/signal names
-        std::vector<std::string> emitted_events;
-
-        // 1. Emit signals with typed payloads
-        for (const auto& sig : model.signals) {
-            if (sig.name.empty() || sig.name == "none" || sig.name == "Anonymous")
-                continue;
-
-            emitted_events.push_back(sig.name);
-            out << "struct " << sig.name << " {\n";
-            out << "    static constexpr std::string_view name = \"" << sig.name << "\";\n";
-
-            if (!sig.attributes.empty()) {
-                out << "\n    // Payload Attributes\n";
-                for (const auto& attr : sig.attributes) {
-                    out << "    " << attr.type << " " << attr.name;
-                    if (!attr.default_value.empty()) {
-                        out << "{" << attr.default_value << "}";
-                    } else {
-                        out << "{}";
-                    }
-                    out << ";\n";
-                }
-
-                // Default and parameterized constructors
-                out << "\n    constexpr " << sig.name << "() = default;\n";
-                out << "    constexpr explicit " << sig.name << "(";
-                for (std::size_t i = 0; i < sig.attributes.size(); ++i) {
-                    if (i > 0)
-                        out << ", ";
-                    out << sig.attributes[i].type << " " << sig.attributes[i].name << "_";
-                }
-                out << ")\n        : ";
-                for (std::size_t i = 0; i < sig.attributes.size(); ++i) {
-                    if (i > 0)
-                        out << ", ";
-                    out << sig.attributes[i].name << "(" << sig.attributes[i].name << "_)";
-                }
-                out << " {}\n";
-            }
-
-            if (!sig.validators.empty()) {
-                out << "\n    [[nodiscard]] constexpr bool is_valid() const noexcept {\n";
-                out << "        return ";
-                for (std::size_t i = 0; i < sig.validators.size(); ++i) {
-                    if (i > 0)
-                        out << " && ";
-                    out << "(" << sig.validators[i] << ")";
-                }
-                out << ";\n    }\n";
-            }
-
-            out << "};\n\n";
-        }
-
-        // 2. Emit regular events
         for (const auto& event_item : model.events) {
-            if (event_item.name.empty() || event_item.name == "none" || event_item.name == "Anonymous")
+            if (event_item.name == "anonymous_event" || event_item.name == "completion_event") {
                 continue;
-            if (std::find(emitted_events.begin(), emitted_events.end(), event_item.name) != emitted_events.end())
-                continue;
-
-            emitted_events.push_back(event_item.name);
+            }
+            out << "/**\n";
+            out << " * @struct " << event_item.name << "\n";
+            out << " * @brief Signal trigger '" << event_item.name << "'.\n";
+            if (!event_item.description.empty()) {
+                out << " * @details " << event_item.description << "\n";
+            }
+            out << " */\n";
             out << "struct " << event_item.name << " {\n";
             out << "    static constexpr std::string_view name = \"" << event_item.name << "\";\n";
+
             if (!event_item.description.empty()) {
                 out << "    // Description: " << event_item.description << "\n";
             }
             out << "};\n\n";
         }
 
-        // 3. Emit deferred events if not already declared
-        for (const auto& state : model.states) {
-            for (const auto& d_evt : state.deferred_events) {
-                if (d_evt.empty() || d_evt == "none" || d_evt == "Anonymous")
-                    continue;
-                if (std::find(emitted_events.begin(), emitted_events.end(), d_evt) != emitted_events.end())
-                    continue;
-
-                emitted_events.push_back(d_evt);
-                out << "struct " << d_evt << " {\n";
-                out << "    static constexpr std::string_view name = \"" << d_evt << "\";\n";
+        for (const auto& sig : model.signals) {
+            bool already_emitted = false;
+            for (const auto& ev : model.events) {
+                if (ev.name == sig.name) {
+                    already_emitted = true;
+                    break;
+                }
+            }
+            if (!already_emitted) {
+                out << "/**\n";
+                out << " * @struct " << sig.name << "\n";
+                out << " * @brief Parameterized signal payload for '" << sig.name << "'.\n";
+                out << " */\n";
+                out << "struct " << sig.name << " {\n";
+                out << "    static constexpr std::string_view name = \"" << sig.name << "\";\n";
+                for (const auto& attr : sig.attributes) {
+                    if (attr.default_value.empty()) {
+                        out << "    " << attr.type << " " << attr.name << "{};\n";
+                    } else {
+                        out << "    " << attr.type << " " << attr.name << "{" << attr.default_value << "};\n";
+                    }
+                }
+                if (!sig.attributes.empty()) {
+                    out << "\n    constexpr explicit " << sig.name << "(";
+                    for (std::size_t i = 0; i < sig.attributes.size(); ++i) {
+                        if (i > 0) out << ", ";
+                        out << sig.attributes[i].type << " " << sig.attributes[i].name << "_";
+                    }
+                    out << ") : ";
+                    for (std::size_t i = 0; i < sig.attributes.size(); ++i) {
+                        if (i > 0) out << ", ";
+                        out << sig.attributes[i].name << "(" << sig.attributes[i].name << "_)";
+                    }
+                    out << " {}\n";
+                }
+                if (!sig.validators.empty()) {
+                    out << "\n    /**\n";
+                    out << "     * @brief Validates signal payload attributes against constraints.\n";
+                    out << "     * @return true if payload is valid.\n";
+                    out << "     */\n";
+                    out << "    [[nodiscard]] constexpr bool is_valid() const noexcept {\n";
+                    out << "        return ";
+                    for (std::size_t i = 0; i < sig.validators.size(); ++i) {
+                        if (i > 0) out << " && ";
+                        out << "(" << sig.validators[i] << ")";
+                    }
+                    out << ";\n";
+                    out << "    }\n";
+                }
                 out << "};\n\n";
             }
         }
     }
 
     static void emit_states(std::ostream& out, const FsmIr& model) {
+        if (model.states.empty()) {
+            return;
+        }
+
         out << "// ============================================================================\n";
         out << "// States\n";
         out << "// ============================================================================\n\n";
 
+        // Forward declare all states for recursive parent_type support
         for (const auto& state_item : model.states) {
+            out << "struct " << state_item.name << ";\n";
+        }
+        out << "\n";
+
+        for (const auto& state_item : model.states) {
+            if (state_item.is_composite) {
+                std::vector<std::string> sub_states;
+                for (const auto& s : model.states) {
+                    if (s.parent_state == state_item.name) {
+                        sub_states.push_back(s.name);
+                    }
+                }
+                out << "/// @brief Composite State: " << state_item.name << "\n";
+                if (!sub_states.empty()) {
+                    out << "/// Contains substates: ";
+                    for (std::size_t i = 0; i < sub_states.size(); ++i) {
+                        if (i > 0)
+                            out << ", ";
+                        out << sub_states[i];
+                    }
+                    out << "\n";
+                }
+                if (!state_item.initial_sub_state.empty()) {
+                    out << "/// Initial substate: " << state_item.initial_sub_state << "\n";
+                }
+                out << "\n";
+            }
             if (!state_item.traceability_reqs.empty()) {
                 out << "/// @satisfies ";
                 for (std::size_t i = 0; i < state_item.traceability_reqs.size(); ++i) {
@@ -164,10 +359,18 @@ class CppModelEmitter {
                 }
                 out << "\n";
             }
+            out << "/**\n";
+            out << " * @struct " << state_item.name << "\n";
+            out << " * @brief State representation for '" << state_item.name << "'.\n";
+            if (!state_item.description.empty()) {
+                out << " * @details " << state_item.description << "\n";
+            }
+            out << " */\n";
             out << "struct " << state_item.name << " {\n";
             out << "    static constexpr std::string_view name = \"" << state_item.name << "\";\n";
             if (!state_item.parent_state.empty()) {
                 out << "    static constexpr std::string_view parent = \"" << state_item.parent_state << "\";\n";
+                out << "    using parent_type = " << state_item.parent_state << ";\n";
             }
             if (!state_item.deferred_events.empty()) {
                 out << "    using deferred_events = ::fsm::type_list<";
@@ -182,8 +385,9 @@ class CppModelEmitter {
 
             // Entry lifecycle actions
             if (!state_item.entry_actions.empty()) {
-                out << "\n    template <typename Context>\n";
-                out << "    void on_entry(Context& /*ctx*/) const {\n";
+                out << "\n    /** @brief State entry lifecycle hook */\n";
+                out << "    template <typename InPorts, typename OutPorts, typename Registers, typename Services>\n";
+                out << "    void on_entry(const InPorts& /*in*/, OutPorts& /*out*/, Registers& /*reg*/, Services& /*srv*/) const {\n";
                 for (const auto& act : state_item.entry_actions) {
                     out << "        // Entry action: " << act.name << "\n";
                 }
@@ -192,8 +396,9 @@ class CppModelEmitter {
 
             // Exit lifecycle actions
             if (!state_item.exit_actions.empty()) {
-                out << "\n    template <typename Context>\n";
-                out << "    void on_exit(Context& /*ctx*/) const {\n";
+                out << "\n    /** @brief State exit lifecycle hook */\n";
+                out << "    template <typename InPorts, typename OutPorts, typename Registers, typename Services>\n";
+                out << "    void on_exit(const InPorts& /*in*/, OutPorts& /*out*/, Registers& /*reg*/, Services& /*srv*/) const {\n";
                 for (const auto& act : state_item.exit_actions) {
                     out << "        // Exit action: " << act.name << "\n";
                 }
@@ -229,53 +434,66 @@ class CppModelEmitter {
             out << "// ============================================================================\n\n";
 
             for (const auto& guard_item : model.guards) {
-                out << "struct " << guard_item.name << " {\n";
                 const bool has_expr = guard_item.cpp_expression.has_value() && !guard_item.cpp_expression->empty();
-                if (options.cpp_standard == CppStandard::Cpp20) {
-                    out << "    [[nodiscard]] constexpr bool operator()(const auto& /*evt*/, const auto& /*state*/, "
-                           "const auto& "
-                        << (has_expr ? "ctx" : "/*ctx*/") << ") const noexcept {\n";
-                    if (has_expr) {
-                        out << "        return " << *guard_item.cpp_expression << ";\n";
-                    } else {
-                        out << "        // TODO: Implement guard logic for " << guard_item.name << "\n";
-                        out << "        return true;\n";
-                    }
-                    out << "    }\n";
-                } else {
-                    out << "    template <typename Event, typename State, typename Context>\n";
-                    out << "    bool operator()(const Event& /*evt*/, const State& /*state*/, const Context& "
-                        << (has_expr ? "ctx" : "/*ctx*/") << ") const {\n";
-                    if (has_expr) {
-                        out << "        return " << *guard_item.cpp_expression << ";\n";
-                    } else {
-                        out << "        // TODO: Implement guard logic for " << guard_item.name << "\n";
-                        out << "        return true;\n";
-                    }
-                    out << "    }\n";
+                std::string expr = has_expr ? *guard_item.cpp_expression : "true";
+                bool references_event = expr.find("cmd") != std::string::npos ||
+                                        expr.find("event") != std::string::npos ||
+                                        expr.find("payload") != std::string::npos;
+                std::string non_event_expr = references_event ? "true" : expr;
+
+                out << "/**\n";
+                out << " * @struct " << guard_item.name << "\n";
+                out << " * @brief Transition guard predicate for '" << guard_item.name << "'.\n";
+                if (has_expr) {
+                    out << " * @note Evaluates: `" << expr << "`\n";
                 }
+                out << " */\n";
+                out << "struct " << guard_item.name << " {\n";
+
+                out << "    // Domain guard evaluation (InPorts, Registers, Event payload)\n";
+                out << "    template <typename InPorts, typename Registers>\n";
+                out << "    [[nodiscard]] constexpr bool operator()(const InPorts& in, const Registers& reg) const noexcept {\n";
+                out << "        (void)in; (void)reg;\n";
+                out << "        return " << non_event_expr << ";\n";
+                out << "    }\n\n";
+
+                out << "    template <typename Event, typename InPorts, typename Registers>\n";
+                out << "    [[nodiscard]] constexpr bool operator()(const Event& cmd, const InPorts& in, const Registers& reg) const noexcept {\n";
+                out << "        (void)cmd; (void)in; (void)reg;\n";
+                out << "        return " << expr << ";\n";
+                out << "    }\n\n";
+
+                out << "    template <typename InPorts>\n";
+                out << "    [[nodiscard]] constexpr bool operator()(const InPorts& in) const noexcept {\n";
+                out << "        (void)in;\n";
+                out << "        return " << non_event_expr << ";\n";
+                out << "    }\n\n";
+
+                out << "    template <typename Event, typename SrcState, typename InPorts, typename Registers, typename Services, typename Fsm>\n";
+                out << "    [[nodiscard]] constexpr bool operator()(const Event& cmd, const SrcState& /*src*/, const InPorts& in, const Registers& reg, Services& /*srv*/, const Fsm& /*fsm*/) const noexcept {\n";
+                out << "        (void)cmd; (void)in; (void)reg;\n";
+                out << "        return " << expr << ";\n";
+                out << "    }\n";
                 out << "};\n\n";
             }
 
         } else {
             out << "// Forward declaration of custom Guards\n";
+            std::set<std::string> declared_guards;
             for (const auto& guard_item : model.guards) {
-                out << "struct " << guard_item.name << ";\n";
+                std::regex ident_re(R"([A-Za-z_][A-Za-z0-9_]*)");
+                for (std::sregex_iterator it(guard_item.name.begin(), guard_item.name.end(), ident_re), end; it != end; ++it) {
+                    std::string id = it->str();
+                    if (id != "fsm" && id != "and_" && id != "or_" && id != "not_" && id != "xor_" && id != "no_guard") {
+                        declared_guards.insert(id);
+                    }
+                }
+            }
+            for (const auto& g : declared_guards) {
+                out << "struct " << g << ";\n";
             }
             out << "\n";
         }
-    }
-
-    static std::string format_context_expr(const std::string& raw_expr,
-                                           const std::vector<VariableDefinition>& variables) {
-        std::string expr = raw_expr;
-        for (const auto& v : variables) {
-            if (v.name.empty())
-                continue;
-            std::regex re(R"((^|[^A-Za-z0-9_.]))" + v.name + R"((?![A-Za-z0-9_]))");
-            expr = std::regex_replace(expr, re, "$1ctx." + v.name);
-        }
-        return expr;
     }
 
     static void emit_actions(std::ostream& out, const FsmIr& model, const GeneratorOptions& options) {
@@ -283,13 +501,17 @@ class CppModelEmitter {
             return;
         }
 
-        if (options.include_stubs) {
-            out << "// ============================================================================\n";
-            out << "// Actions\n";
-            out << "// ============================================================================\n\n";
+        out << "// ============================================================================\n";
+        out << "// Actions\n";
+        out << "// ============================================================================\n\n";
 
+        if (options.include_stubs) {
             for (const auto& action_item : model.actions) {
-                // Find if there are assignments associated with this action
+                out << "/**\n";
+                out << " * @struct " << action_item.name << "\n";
+                out << " * @brief Transition action effect for '" << action_item.name << "'.\n";
+                out << " */\n";
+                out << "struct " << action_item.name << " {\n";
                 std::vector<ActionAssignment> assignments;
                 for (const auto& t : model.transitions) {
                     if (t.action_sig.has_value() && t.action_sig->name == action_item.name) {
@@ -299,48 +521,89 @@ class CppModelEmitter {
                     }
                 }
 
-                out << "struct " << action_item.name << " {\n";
-                if (options.cpp_standard == CppStandard::Cpp20) {
-                    if (!assignments.empty()) {
-                        out << "    constexpr void operator()(const auto& /*evt*/, auto& /*src*/, auto& /*dst*/, auto& "
-                               "ctx) const {\n";
-                        for (const auto& assign : assignments) {
-                            out << "        ctx." << assign.target_variable << " = "
-                                << format_context_expr(assign.expression, model.variables) << ";\n";
+                if (!assignments.empty()) {
+                    bool uses_out = false;
+                    bool uses_reg = false;
+                    for (const auto& assign : assignments) {
+                        const auto* p = model.find_port(assign.target_variable);
+                        if (p != nullptr && p->is_out()) {
+                            uses_out = true;
+                        } else {
+                            uses_reg = true;
                         }
-                    } else {
-                        out << "    constexpr void operator()(const auto& /*evt*/, auto& /*src*/, auto& /*dst*/, auto& "
-                               "/*ctx*/) const {\n";
-                        out << "        // TODO: Implement action logic for " << action_item.name << "\n";
+                    }
+
+                    std::string out_param = uses_out ? "OutPorts& out" : "OutPorts& /*out*/";
+                    std::string reg_param = uses_reg ? "Registers& reg" : "Registers& /*reg*/";
+
+                    out << "    template <typename Event, typename OutPorts, typename Registers>\n";
+                    out << "    void operator()(const Event& /*cmd*/, " << out_param << ", " << reg_param << ") const {\n";
+                    for (const auto& assign : assignments) {
+                        const auto* p = model.find_port(assign.target_variable);
+                        if (p != nullptr && p->is_out()) {
+                            out << "        out." << assign.target_variable << " = " << assign.expression << ";\n";
+                        } else {
+                            out << "        reg." << assign.target_variable << " = " << assign.expression << ";\n";
+                        }
+                    }
+                    out << "    }\n\n";
+
+                    out << "    template <typename OutPorts, typename Registers>\n";
+                    out << "    void operator()(" << out_param << ", " << reg_param << ") const {\n";
+                    for (const auto& assign : assignments) {
+                        const auto* p = model.find_port(assign.target_variable);
+                        if (p != nullptr && p->is_out()) {
+                            out << "        out." << assign.target_variable << " = " << assign.expression << ";\n";
+                        } else {
+                            out << "        reg." << assign.target_variable << " = " << assign.expression << ";\n";
+                        }
+                    }
+                    out << "    }\n\n";
+
+                    out << "    template <typename Event, typename InPorts, typename OutPorts, typename Registers, typename Services>\n";
+                    out << "    void operator()(const Event& /*cmd*/, const InPorts& /*in*/, " << out_param << ", " << reg_param << ", Services& /*srv*/) const {\n";
+                    for (const auto& assign : assignments) {
+                        const auto* p = model.find_port(assign.target_variable);
+                        if (p != nullptr && p->is_out()) {
+                            out << "        out." << assign.target_variable << " = " << assign.expression << ";\n";
+                        } else {
+                            out << "        reg." << assign.target_variable << " = " << assign.expression << ";\n";
+                        }
                     }
                     out << "    }\n";
                 } else {
-                    if (!assignments.empty()) {
-                        out << "    template <typename Event, typename SrcState, typename DstState, typename "
-                               "Context>\n";
-                        out << "    void operator()(const Event& /*evt*/, SrcState& /*src*/, DstState& /*dst*/, "
-                               "Context& "
-                               "ctx) const {\n";
-                        for (const auto& assign : assignments) {
-                            out << "        ctx." << assign.target_variable << " = "
-                                << format_context_expr(assign.expression, model.variables) << ";\n";
-                        }
-                    } else {
-                        out << "    template <typename Event, typename SrcState, typename DstState, typename "
-                               "Context>\n";
-                        out << "    void operator()(const Event& /*evt*/, SrcState& /*src*/, DstState& /*dst*/, "
-                               "Context& "
-                               "/*ctx*/) const {\n";
-                        out << "        // TODO: Implement action logic for " << action_item.name << "\n";
-                    }
+                    // External service invocation
+                    out << "    template <typename Services>\n";
+                    out << "    auto operator()(Services& srv) const -> decltype(srv." << action_item.name << "()) {\n";
+                    out << "        srv." << action_item.name << "();\n";
+                    out << "    }\n\n";
+
+                    out << "    template <typename Event, typename Services>\n";
+                    out << "    auto operator()(const Event& /*cmd*/, Services& srv) const -> decltype(srv." << action_item.name << "()) {\n";
+                    out << "        srv." << action_item.name << "();\n";
+                    out << "    }\n\n";
+
+                    out << "    template <typename Event, typename InPorts, typename OutPorts, typename Registers, typename Services>\n";
+                    out << "    auto operator()(const Event& /*cmd*/, const InPorts& /*in*/, OutPorts& /*out*/, Registers& /*reg*/, Services& srv) const -> decltype(srv." << action_item.name << "()) {\n";
+                    out << "        srv." << action_item.name << "();\n";
                     out << "    }\n";
                 }
                 out << "};\n\n";
             }
         } else {
             out << "// Forward declaration of custom Actions\n";
+            std::set<std::string> declared_actions;
             for (const auto& action_item : model.actions) {
-                out << "struct " << action_item.name << ";\n";
+                std::regex ident_re(R"([A-Za-z_][A-Za-z0-9_]*)");
+                for (std::sregex_iterator it(action_item.name.begin(), action_item.name.end(), ident_re), end; it != end; ++it) {
+                    std::string id = it->str();
+                    if (id != "fsm" && id != "and_" && id != "or_" && id != "not_" && id != "seq_" && id != "no_action") {
+                        declared_actions.insert(id);
+                    }
+                }
+            }
+            for (const auto& a : declared_actions) {
+                out << "struct " << a << ";\n";
             }
             out << "\n";
         }
@@ -348,11 +611,10 @@ class CppModelEmitter {
 
     static void emit_transition_table(std::ostream& out, const FsmIr& model, const GeneratorOptions& /*options*/) {
         out << "// ============================================================================\n";
-        out << "// Transition Table (Compile-Time Fluent DSL)\n";
+        out << "// Transition Table\n";
         out << "// ============================================================================\n\n";
 
         std::string table_type_name = model.name + "Table";
-        out << "using " << table_type_name << " = fsm::transition_table<\n";
 
         auto find_state_by_name = [&](const std::string& name) -> const StateNode* {
             for (const auto& s : model.states) {
@@ -363,21 +625,6 @@ class CppModelEmitter {
             return nullptr;
         };
 
-        auto find_leaf_substates = [&](auto& self, const std::string& parent_name) -> std::vector<std::string> {
-            std::vector<std::string> leaves;
-            for (const auto& s : model.states) {
-                if (s.parent_state == parent_name) {
-                    if (s.is_composite) {
-                        auto sub_leaves = self(self, s.name);
-                        leaves.insert(leaves.end(), sub_leaves.begin(), sub_leaves.end());
-                    } else {
-                        leaves.push_back(s.name);
-                    }
-                }
-            }
-            return leaves;
-        };
-
         auto find_initial_leaf_substate = [&](auto& self, const std::string& state_name) -> std::string {
             const auto* s = find_state_by_name(state_name);
             if (s != nullptr && s->is_composite && !s->initial_sub_state.empty()) {
@@ -386,236 +633,122 @@ class CppModelEmitter {
             return state_name;
         };
 
-        struct EffectiveTransition {
-            std::string source;
-            std::string target;
-            std::string event;
-            std::optional<std::string> guard;
-            std::optional<std::string> action;
-            bool is_internal = false;
-            std::uint32_t priority = 0;
+        auto get_all_substates = [&](auto& self, const std::string& parent_name, bool deep) -> std::vector<std::string> {
+            std::vector<std::string> subs;
+            for (const auto& s : model.states) {
+                if (s.parent_state == parent_name) {
+                    if (deep && s.is_composite) {
+                        auto nested = self(self, s.name, deep);
+                        subs.insert(subs.end(), nested.begin(), nested.end());
+                    } else {
+                        subs.push_back(s.name);
+                    }
+                }
+            }
+            return subs;
         };
 
-        struct BaseTransition {
-            std::string source;
-            std::string target;
-            std::string event;
-            std::optional<std::string> guard;
-            std::optional<std::string> action;
-            bool is_internal = false;
-            bool target_is_history = false;
-            std::uint32_t priority = 0;
+        bool first_row = true;
+        auto emit_single_row = [&](const std::string& src, const std::string& evt, const std::string& tgt,
+                                   const std::string& act, const std::string& grd) {
+            if (!first_row) {
+                out << ",\n    ::fsm::row<" << src << ", " << evt << ", " << tgt << ">";
+            } else {
+                out << "\n    ::fsm::row<" << src << ", " << evt << ", " << tgt << ">";
+                first_row = false;
+            }
+            if (grd != "::fsm::no_guard") {
+                out << "::when<" << grd << ">";
+            }
+            if (act != "::fsm::no_action") {
+                out << "::then<" << act << ">";
+            }
         };
 
-        std::vector<BaseTransition> base_transitions;
-        constexpr std::size_t kCartesianExpansionThreshold = 16;
-
-        // Map choice nodes to their Cartesian product size
-        std::map<std::string, std::pair<std::size_t, std::size_t>> choice_cardinality;
-        for (const auto& choice : model.choice_nodes) {
-            std::size_t n_in = 0;
-            std::size_t n_out = 0;
-            for (const auto& t : model.transitions) {
-                if (t.target == choice.name || t.target_id == choice.name) {
-                    ++n_in;
-                }
-                if (t.source == choice.name || t.source_id == choice.name) {
-                    ++n_out;
-                }
+        auto emit_internal_row = [&](const std::string& src, const std::string& evt,
+                                     const std::string& act, const std::string& grd) {
+            if (!first_row) {
+                out << ",\n    ::fsm::internal_row<" << src << ", " << evt << ">";
+            } else {
+                out << "\n    ::fsm::internal_row<" << src << ", " << evt << ">";
+                first_row = false;
             }
-            choice_cardinality[choice.name] = {n_in, n_out};
-        }
-
-        for (const auto& transition_item : model.transitions) {
-            if (model.is_choice_node(transition_item.source)) {
-                // If choice exceeded threshold, retain its outgoing branches as direct transitions from choice node
-                auto it = choice_cardinality.find(transition_item.source);
-                if (it != choice_cardinality.end() &&
-                    (it->second.first * it->second.second) > kCartesianExpansionThreshold) {
-                    BaseTransition bt;
-                    bt.source = transition_item.source;
-                    bt.target = transition_item.target;
-                    bt.event = transition_item.event.empty() ? "fsm::anonymous_event" : transition_item.event;
-                    bt.guard = transition_item.guard;
-                    bt.action = transition_item.action;
-                    bt.is_internal = false;
-                    bt.target_is_history = transition_item.target_is_history;
-                    bt.priority = transition_item.priority;
-                    base_transitions.push_back(std::move(bt));
-                }
-                continue;
+            if (grd != "::fsm::no_guard") {
+                out << "::when<" << grd << ">";
             }
-            if (model.is_choice_node(transition_item.target)) {
-                auto it = choice_cardinality.find(transition_item.target);
-                std::size_t cartesian_prod =
-                    it != choice_cardinality.end() ? (it->second.first * it->second.second) : 0;
+            if (act != "::fsm::no_action") {
+                out << "::then<" << act << ">";
+            }
+        };
 
-                if (cartesian_prod > kCartesianExpansionThreshold) {
-                    // Exceeded Cartesian threshold: route directly to choice node to avoid combinatorial template bloat
-                    BaseTransition bt;
-                    bt.source = transition_item.source;
-                    bt.target = transition_item.target;
-                    bt.event =
-                        transition_item.event.empty() ? transition_item.get_trigger_name() : transition_item.event;
-                    if (bt.event.empty() || bt.event == "Anonymous" || bt.event == "none") {
-                        bt.event = "fsm::anonymous_event";
+        out << "/**\n";
+        out << " * @typedef " << table_type_name << "\n";
+        out << " * @brief Static transition table specification for '" << model.name << "'.\n";
+        out << " */\n";
+        out << "using " << table_type_name << " = ::fsm::transition_table<";
+
+        std::vector<TransitionEdge> transitions = model.transitions;
+        std::stable_sort(transitions.begin(), transitions.end(), [](const auto& a, const auto& b) {
+            return a.priority > b.priority;
+        });
+
+        for (const auto& t : transitions) {
+            std::string event_type = t.event;
+            if (event_type.empty()) {
+                event_type = "::fsm::anonymous_event";
+            }
+
+            std::string action_type = t.action.value_or("::fsm::no_action");
+            if (action_type.empty()) {
+                action_type = "::fsm::no_action";
+            }
+
+            std::string guard_type = t.guard.value_or("::fsm::no_guard");
+            if (guard_type.empty()) {
+                guard_type = "::fsm::no_guard";
+            }
+
+            const auto* target_node = find_state_by_name(t.target);
+            if (target_node != nullptr && target_node->is_composite) {
+                std::vector<std::string> sub_states =
+                    get_all_substates(get_all_substates, target_node->name, target_node->has_deep_history);
+
+                if (target_node->has_history && !sub_states.empty()) {
+                    for (const auto& sub : sub_states) {
+                        std::string composite_guard = (guard_type != "::fsm::no_guard")
+                                                          ? "::fsm::and_<" + guard_type + ", ::fsm::history_is<" +
+                                                                target_node->name + ", " + sub + ">>"
+                                                          : "::fsm::history_is<" + target_node->name + ", " + sub + ">";
+                        emit_single_row(t.source, event_type, sub, action_type, composite_guard);
                     }
-                    bt.guard = transition_item.guard;
-                    bt.action = transition_item.action;
-                    bt.is_internal = false;
-                    bt.target_is_history = transition_item.target_is_history;
-                    bt.priority = transition_item.priority;
-                    base_transitions.push_back(std::move(bt));
+                    std::string default_sub = !target_node->initial_sub_state.empty() ? target_node->initial_sub_state
+                                                                                      : sub_states[0];
+                    default_sub = find_initial_leaf_substate(find_initial_leaf_substate, default_sub);
+                    emit_single_row(t.source, event_type, default_sub, action_type, guard_type);
+                } else if (!target_node->initial_sub_state.empty()) {
+                    std::string leaf_sub =
+                        find_initial_leaf_substate(find_initial_leaf_substate, target_node->initial_sub_state);
+                    emit_single_row(t.source, event_type, leaf_sub, action_type, guard_type);
                 } else {
-                    // Below threshold: expand combinatorial Cartesian product
-                    for (const auto& branch : model.transitions) {
-                        if (branch.source == transition_item.target) {
-                            BaseTransition bt;
-                            bt.source = transition_item.source;
-                            bt.target = branch.target;
-                            bt.event = transition_item.event.empty() ? transition_item.get_trigger_name()
-                                                                     : transition_item.event;
-                            if (bt.event.empty() || bt.event == "Anonymous" || bt.event == "none") {
-                                bt.event = "fsm::anonymous_event";
-                            }
-                            if (transition_item.guard && branch.guard) {
-                                bt.guard = "fsm::and_<" + *transition_item.guard + ", " + *branch.guard + ">";
-                            } else if (branch.guard) {
-                                bt.guard = branch.guard;
-                            } else {
-                                bt.guard = transition_item.guard;
-                            }
-                            bt.action = branch.action ? branch.action : transition_item.action;
-                            bt.is_internal = false;
-                            bt.target_is_history = branch.target_is_history;
-                            bt.priority = std::max(transition_item.priority, branch.priority);
-                            base_transitions.push_back(std::move(bt));
-                        }
-                    }
+                    emit_single_row(t.source, event_type, t.target, action_type, guard_type);
                 }
             } else {
-                BaseTransition bt;
-                bt.source = transition_item.source;
-                bt.target = transition_item.target;
-                bt.event = transition_item.event.empty() ? transition_item.get_trigger_name() : transition_item.event;
-                if (bt.event.empty() || bt.event == "Anonymous" || bt.event == "none") {
-                    bt.event = "fsm::anonymous_event";
-                }
-                bt.guard = transition_item.guard;
-                bt.action = transition_item.action;
-                bt.is_internal = (transition_item.kind == TransitionEdgeKind::Internal);
-                bt.target_is_history = transition_item.target_is_history;
-                bt.priority = transition_item.priority;
-                base_transitions.push_back(std::move(bt));
-            }
-        }
-
-        std::vector<EffectiveTransition> effective_transitions;
-        for (const auto& bt : base_transitions) {
-            const auto* src_st = find_state_by_name(bt.source);
-            std::vector<std::string> actual_sources;
-            if (src_st != nullptr && src_st->is_composite) {
-                auto leaves = find_leaf_substates(find_leaf_substates, bt.source);
-                for (const auto& leaf : leaves) {
-                    bool leaf_has_own = false;
-                    for (const auto& other : base_transitions) {
-                        if (other.source == leaf && other.event == bt.event) {
-                            leaf_has_own = true;
-                            break;
-                        }
-                    }
-                    if (!leaf_has_own) {
-                        actual_sources.push_back(leaf);
-                    }
-                }
-                if (actual_sources.empty()) {
-                    actual_sources.push_back(bt.source);
-                }
-            } else {
-                actual_sources.push_back(bt.source);
-            }
-
-            for (const auto& src : actual_sources) {
-                if (bt.target_is_history) {
-                    auto sub_leaves = find_leaf_substates(find_leaf_substates, bt.target);
-                    std::string init_leaf = find_initial_leaf_substate(find_initial_leaf_substate, bt.target);
-
-                    for (const auto& sub : sub_leaves) {
-                        EffectiveTransition eff;
-                        eff.source = src;
-                        eff.target = sub;
-                        eff.event = bt.event;
-                        std::string hist_guard = "fsm::history_is<" + bt.target + ", " + sub + ">";
-                        if (bt.guard && !bt.guard->empty()) {
-                            eff.guard = "fsm::and_<" + *bt.guard + ", " + hist_guard + ">";
-                        } else {
-                            eff.guard = hist_guard;
-                        }
-                        eff.action = bt.action;
-                        eff.is_internal = false;
-                        eff.priority = bt.priority;
-                        effective_transitions.push_back(std::move(eff));
-                    }
-
-                    EffectiveTransition fallback;
-                    fallback.source = src;
-                    fallback.target = init_leaf;
-                    fallback.event = bt.event;
-                    fallback.guard = bt.guard;
-                    fallback.action = bt.action;
-                    fallback.is_internal = false;
-                    fallback.priority = bt.priority;
-                    effective_transitions.push_back(std::move(fallback));
+                if (t.kind == TransitionEdgeKind::Internal) {
+                    emit_internal_row(t.source, event_type, action_type, guard_type);
                 } else {
-                    std::string actual_target = find_initial_leaf_substate(find_initial_leaf_substate, bt.target);
-                    EffectiveTransition eff;
-                    eff.source = src;
-                    eff.target = actual_target;
-                    eff.event = bt.event;
-                    eff.guard = bt.guard;
-                    eff.action = bt.action;
-                    eff.is_internal = bt.is_internal;
-                    eff.priority = bt.priority;
-                    effective_transitions.push_back(std::move(eff));
+                    emit_single_row(t.source, event_type, t.target, action_type, guard_type);
                 }
-            }
-        }
-
-        std::stable_sort(effective_transitions.begin(), effective_transitions.end(),
-                         [](const auto& a, const auto& b) { return a.priority > b.priority; });
-
-        for (std::size_t i = 0; i < effective_transitions.size(); ++i) {
-            const auto& transition_item = effective_transitions[i];
-            if (transition_item.is_internal) {
-                out << "    fsm::internal_row<" << transition_item.source << ", " << transition_item.event << ">";
-            } else {
-                out << "    fsm::row<" << transition_item.source << ", " << transition_item.event << ", "
-                    << transition_item.target << ">";
-            }
-
-            if (transition_item.guard && !transition_item.guard->empty()) {
-                out << "::when<" << *transition_item.guard << ">";
-            }
-            if (transition_item.action && !transition_item.action->empty()) {
-                out << "::then<" << *transition_item.action << ">";
-            }
-
-            if (i + 1 < effective_transitions.size()) {
-                out << ",\n";
-            } else {
-                out << "\n";
             }
         }
         out << ">;\n\n";
     }
 
-    static void emit_fsm_aliases(std::ostream& out, const FsmIr& model, const GeneratorOptions& options) {
+    static void emit_fsm_aliases(std::ostream& out, const FsmIr& model, const GeneratorOptions& /*options*/) {
         out << "// ============================================================================\n";
         out << "// State Machine Type Aliases\n";
         out << "// ============================================================================\n\n";
 
         std::string table_type_name = model.name + "Table";
-        std::string ctx_type = get_effective_context_type(model);
 
         auto find_state_by_name = [&](const std::string& name) -> const StateNode* {
             for (const auto& s : model.states) {
@@ -644,19 +777,33 @@ class CppModelEmitter {
         }
         std::string init_state = find_initial_leaf_substate(find_initial_leaf_substate, raw_init_state);
 
-        out << "using " << model.name << " = fsm::fsm<" << table_type_name << ", " << ctx_type << ", " << init_state
-            << ", fsm::dynamic_observer>;\n";
+        out << "/**\n";
+        out << " * @typedef " << model.name << "\n";
+        out << " * @brief Primary Synchronous Core State Machine instance for '" << model.name << "' on caller stack.\n";
+        out << " */\n";
+        out << "using " << model.name << " = fsm::fsm<" << table_type_name << ", " << model.name << "InPorts, "
+            << model.name << "OutPorts, " << model.name << "Registers, " << model.name << "Services, " << init_state
+            << ", fsm::dynamic_observer>;\n\n";
 
-        if (options.thread_safe) {
-            out << "using ThreadSafe" << model.name << " = fsm::thread_safe_fsm<" << table_type_name << ", " << ctx_type
-                << ", " << init_state << ">;\n";
-            out << "using Spsc" << model.name << " = fsm::spsc_fsm<" << table_type_name << ", " << ctx_type << ", 64, "
-                << init_state << ">;\n";
-        }
+        out << "/**\n";
+        out << " * @typedef ThreadSafe" << model.name << "\n";
+        out << " * @brief Thread-Safe Active Object State Machine for '" << model.name << "'.\n";
+        out << " */\n";
+        out << "using ThreadSafe" << model.name << " = fsm::thread_safe_fsm<" << table_type_name << ", "
+            << model.name << "InPorts, " << model.name << "OutPorts, " << model.name << "Registers, "
+            << model.name << "Services, " << init_state << ">;\n\n";
+
+        out << "/**\n";
+        out << " * @typedef Spsc" << model.name << "\n";
+        out << " * @brief Lock-Free Single-Producer Single-Consumer State Machine for '" << model.name << "'.\n";
+        out << " */\n";
+        out << "using Spsc" << model.name << " = fsm::spsc_fsm<" << table_type_name << ", "
+            << model.name << "InPorts, " << model.name << "OutPorts, " << model.name << "Registers, "
+            << model.name << "Services, 64, " << init_state << ">;\n";
     }
 
     static void emit_model(std::ostream& out, const FsmIr& model, const GeneratorOptions& options) {
-        emit_context_definition(out, model);
+        emit_domain_structures(out, model);
         emit_events(out, model);
         emit_states(out, model);
         emit_guards(out, model, options);

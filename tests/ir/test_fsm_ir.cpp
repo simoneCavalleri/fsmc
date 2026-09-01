@@ -50,12 +50,10 @@ TEST(FsmIrTest, ModularHeaderSubcomponents) {
     EXPECT_EQ(assign.target_variable, "counter");
     EXPECT_EQ(assign.expression, "counter + 1");
 
-    ActionSignature act_sig("on_reset", "ctx.reset()");
+    ActionSignature act_sig("on_reset", "srv.reset()");
     act_sig.accepts_event = true;
-    act_sig.accepts_context = true;
     act_sig.assignments.push_back(assign);
     EXPECT_TRUE(act_sig.accepts_event);
-    EXPECT_TRUE(act_sig.accepts_context);
     EXPECT_EQ(act_sig.assignments.size(), 1u);
 
     // 4. Triggers
@@ -109,7 +107,6 @@ TEST(FsmIrTest, StateHierarchyAndOrthogonalRegions) {
     FsmIr ir;
     ir.name = "IndustrialController";
     ir.ns = "industrial";
-    ir.context_type = "MachineContext";
     ir.satisfies_reqs = {"REQ-SAFETY-01", "REQ-REALTIME-02"};
 
     // Add state hierarchy
@@ -444,6 +441,60 @@ TEST(FsmIrTest, PriorityTimeInvariantAndEntryExitPoints) {
     EXPECT_NE(json.find("\"time_invariant\": \"stay_duration <= 500ms\""), std::string::npos);
     EXPECT_NE(json.find("\"priority\": 1"), std::string::npos);
     EXPECT_NE(json.find("\"priority\": 5"), std::string::npos);
+}
+
+/**
+ * @brief Test Intent: Verify domain-separated PortDefinition, SignalDefinition, VariableDefinition and zero Context references.
+ */
+TEST(FsmIrTest, DomainPortSeparationAndZeroContext) {
+    FsmIr model;
+    model.name = "DualChannelMachine";
+    model.ns = "TestSystem";
+
+    // 1. InPort with numeric contract
+    PortDefinition in_p("sensor_val", "float", PortDirection::In);
+    in_p.min_value = 0.0;
+    in_p.max_value = 100.0;
+    in_p.constraint = "self >= 0.0 and self <= 100.0";
+    model.ports.push_back(in_p);
+
+    // 2. OutPort with numeric contract
+    PortDefinition out_p("actuator_cmd", "float", PortDirection::Out);
+    out_p.min_value = 0.0;
+    out_p.max_value = 200.0;
+    out_p.constraint = "self >= 0.0 and self <= 200.0";
+    model.ports.push_back(out_p);
+
+    // 3. Registers (Variables)
+    model.variables.emplace_back("retry_count", "uint32_t", "0");
+
+    // 4. Signals with Typed Payload
+    SignalDefinition sig("CmdBoost");
+    sig.attributes.emplace_back("boost_val", "float");
+    model.signals.push_back(sig);
+
+    // Verifications
+    const auto* found_in = model.find_port("sensor_val");
+    ASSERT_NE(found_in, nullptr);
+    EXPECT_TRUE(found_in->is_in());
+    EXPECT_FALSE(found_in->is_out());
+    EXPECT_DOUBLE_EQ(found_in->min_value.value(), 0.0);
+    EXPECT_DOUBLE_EQ(found_in->max_value.value(), 100.0);
+
+    const auto* found_out = model.find_port("actuator_cmd");
+    ASSERT_NE(found_out, nullptr);
+    EXPECT_TRUE(found_out->is_out());
+    EXPECT_FALSE(found_out->is_in());
+    EXPECT_DOUBLE_EQ(found_out->max_value.value(), 200.0);
+
+    ASSERT_EQ(model.variables.size(), 1u);
+    EXPECT_EQ(model.variables[0].name, "retry_count");
+
+    ASSERT_EQ(model.signals.size(), 1u);
+    EXPECT_EQ(model.signals[0].name, "CmdBoost");
+    ASSERT_EQ(model.signals[0].attributes.size(), 1u);
+    EXPECT_EQ(model.signals[0].attributes[0].name, "boost_val");
+    EXPECT_EQ(model.signals[0].attributes[0].type, "float");
 }
 
 }  // namespace

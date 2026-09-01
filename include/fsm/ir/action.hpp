@@ -25,9 +25,8 @@ struct ActionAssignment {
 
 struct ActionSignature {
     std::string name;
-    std::string invocation;                     // e.g. "ctx.on_data(payload)"
+    std::string invocation;                     // e.g. "srv.SendAlert()"
     bool accepts_event{false};                  // Passes const Event&
-    bool accepts_context{false};                // Passes Context&
     std::vector<ActionAssignment> assignments;  // State variable assignments
 
     ActionSignature() = default;
@@ -36,7 +35,7 @@ struct ActionSignature {
 
     bool operator==(const ActionSignature& other) const noexcept {
         return name == other.name && invocation == other.invocation && accepts_event == other.accepts_event &&
-               accepts_context == other.accepts_context && assignments == other.assignments;
+               assignments == other.assignments;
     }
 };
 

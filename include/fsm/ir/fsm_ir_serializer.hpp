@@ -22,7 +22,6 @@ class FsmIrSerializer {
         ss << indent << "\"id\": \"" << escape_json(ir.id) << "\",\n";
         ss << indent << "\"name\": \"" << escape_json(ir.name) << "\",\n";
         ss << indent << "\"ns\": \"" << escape_json(ir.ns) << "\",\n";
-        ss << indent << "\"context_type\": \"" << escape_json(ir.context_type) << "\",\n";
         ss << indent << "\"initial_state_id\": \"" << escape_json(ir.initial_state_id) << "\",\n";
         ss << indent << "\"thread_safe\": " << (ir.thread_safe ? "true" : "false") << ",\n";
 
@@ -34,6 +33,40 @@ class FsmIrSerializer {
             ss << "\"" << escape_json(ir.satisfies_reqs[i]) << "\"";
         }
         ss << "],\n";
+
+        // Typed I/O Ports & Domain Contracts (SysML v2)
+        ss << indent << "\"ports\": [\n";
+        for (std::size_t i = 0; i < ir.ports.size(); ++i) {
+            const auto& port = ir.ports[i];
+            ss << indent << indent << "{\n";
+            ss << indent << indent << indent << "\"name\": \"" << escape_json(port.name) << "\",\n";
+            ss << indent << indent << indent << "\"type\": \"" << escape_json(port.type) << "\",\n";
+            ss << indent << indent << indent << "\"type_kind\": \"" << variable_type_kind_to_string(port.type_kind)
+               << "\",\n";
+            ss << indent << indent << indent << "\"direction\": \"" << port_direction_to_string(port.direction)
+               << "\",\n";
+            if (port.min_value.has_value()) {
+                ss << indent << indent << indent << "\"min_value\": " << *port.min_value << ",\n";
+            } else {
+                ss << indent << indent << indent << "\"min_value\": null,\n";
+            }
+            if (port.max_value.has_value()) {
+                ss << indent << indent << indent << "\"max_value\": " << *port.max_value << ",\n";
+            } else {
+                ss << indent << indent << indent << "\"max_value\": null,\n";
+            }
+            ss << indent << indent << indent << "\"constraint\": \"" << escape_json(port.constraint) << "\",\n";
+            ss << indent << indent << indent << "\"default_value\": \"" << escape_json(port.default_value) << "\",\n";
+            if (port.physical_unit.has_value()) {
+                ss << indent << indent << indent << "\"physical_unit\": \"" << escape_json(*port.physical_unit)
+                   << "\",\n";
+            } else {
+                ss << indent << indent << indent << "\"physical_unit\": null,\n";
+            }
+            ss << indent << indent << indent << "\"description\": \"" << escape_json(port.description) << "\"\n";
+            ss << indent << indent << "}" << (i + 1 < ir.ports.size() ? "," : "") << "\n";
+        }
+        ss << indent << "],\n";
 
         // State Variables (EFSM)
         ss << indent << "\"variables\": [\n";

@@ -14,6 +14,7 @@
 #include "fsm/ir/event_model.hpp"
 #include "fsm/ir/formal_property.hpp"
 #include "fsm/ir/guard.hpp"
+#include "fsm/ir/port_definition.hpp"
 #include "fsm/ir/region.hpp"
 #include "fsm/ir/signal_definition.hpp"
 #include "fsm/ir/state_kind.hpp"
@@ -26,30 +27,43 @@
 namespace fsm::codegen {
 
 // ============================================================================
-// FsmIr: Strongly-Typed Formal Intermediate Representation Root
-// ============================================================================
-
+/**
+ * @brief Canonical Intermediate Representation (IR) Root Metamodel for Finite State Machines.
+ *
+ * `FsmIr` serves as the universal abstract syntax tree (AST) exchanged across the compiler pipeline:
+ * - Ingested by Frontend Parsers (`include/fsm/frontend/`)
+ * - Transformed and Verified by Middle-End Optimization/SMT Passes (`include/fsm/middleend/`)
+ * - Serialized by Backend Code Generators and Diagram Transpilers (`include/fsm/backend/`)
+ */
 struct FsmIr {
-    std::string id;
-    std::string name = "MyStateMachine";
-    std::string ns = "fsm_generated";
-    std::string context_type = "no_context";
-    std::string initial_state;
-    std::string initial_state_id;
-    bool thread_safe = true;
-    std::vector<std::string> satisfies_reqs;
+    std::string id;                                     ///< Unique deterministic identifier
+    std::string name = "MyStateMachine";                ///< State machine class name
+    std::string ns = "fsm_generated";                   ///< Target C++ namespace
+    std::string initial_state;                          ///< Initial state unqualified name
+    std::string initial_state_id;                       ///< Initial state deterministic ID
+    bool thread_safe = true;                            ///< Whether to generate thread-safe wrappers
+    std::vector<std::string> satisfies_reqs;            ///< DO-178C requirement traceability IDs
 
-    std::vector<StateNode> states;
-    std::vector<TransitionEdge> transitions;
-    std::vector<SignalDefinition> signals;
-    std::vector<VariableDefinition> variables;
-    std::vector<FormalProperty> properties;
-    std::vector<EventModel> events;
-    std::vector<GuardModel> guards;
-    std::vector<ActionModel> actions;
-    std::vector<ChoiceNodeModel> choice_nodes;
+    std::vector<StateNode> states;                      ///< Hierarchy of state nodes (simple, composite, parallel)
+    std::vector<TransitionEdge> transitions;            ///< Directed transition edges with triggers, guards, actions
+    std::vector<PortDefinition> ports;                  ///< Typed InPorts / OutPorts with range contracts
+    std::vector<SignalDefinition> signals;              ///< MBSE typed signal definitions
+    std::vector<VariableDefinition> variables;          ///< Internal registers with datapath bounds
+    std::vector<FormalProperty> properties;             ///< Formal LTL/CTL temporal verification specifications
+    std::vector<EventModel> events;                     ///< Registered event definitions
+    std::vector<GuardModel> guards;                     ///< Guard predicates with C++ / SMT expressions
+    std::vector<ActionModel> actions;                   ///< Action effects and assignment sequences
+    std::vector<ChoiceNodeModel> choice_nodes;          ///< Choice pseudostates for middle-end inlining
 
-    // Lookups
+    // ========================================================================
+    // Lookups and Query Methods
+    // ========================================================================
+
+    /**
+     * @brief Finds a state node by its deterministic unique identifier.
+     * @param state_id The unique state identifier string.
+     * @return Const pointer to StateNode if found, nullptr otherwise.
+     */
     [[nodiscard]] const StateNode* find_state_by_id(std::string_view state_id) const noexcept {
         for (const auto& s : states) {
             if (s.id == state_id)
@@ -96,6 +110,40 @@ struct FsmIr {
                 return &s;
         }
         return nullptr;
+    }
+
+    [[nodiscard]] const PortDefinition* find_port(std::string_view port_name) const noexcept {
+        for (const auto& port : ports) {
+            if (port.name == port_name)
+                return &port;
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] PortDefinition* find_port_mut(std::string_view port_name) noexcept {
+        for (auto& port : ports) {
+            if (port.name == port_name)
+                return &port;
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] std::vector<PortDefinition> get_in_ports() const {
+        std::vector<PortDefinition> res;
+        for (const auto& p : ports) {
+            if (p.is_in())
+                res.push_back(p);
+        }
+        return res;
+    }
+
+    [[nodiscard]] std::vector<PortDefinition> get_out_ports() const {
+        std::vector<PortDefinition> res;
+        for (const auto& p : ports) {
+            if (p.is_out())
+                res.push_back(p);
+        }
+        return res;
     }
 
     [[nodiscard]] const SignalDefinition* find_signal(std::string_view sig_name) const noexcept {
@@ -176,6 +224,16 @@ struct FsmIr {
         }
         states.push_back(std::move(node));
         return states.back();
+    }
+
+    void add_port(PortDefinition port) {
+        for (auto& existing : ports) {
+            if (existing.name == port.name) {
+                existing = std::move(port);
+                return;
+            }
+        }
+        ports.push_back(std::move(port));
     }
 
     void add_signal(SignalDefinition sig) {
@@ -344,6 +402,9 @@ struct FsmIr {
         }
         // Sort states by FQN for deterministic canonical order
         std::sort(states.begin(), states.end(), [](const StateNode& a, const StateNode& b) { return a.fqn < b.fqn; });
+        // Sort ports by name
+        std::sort(ports.begin(), ports.end(),
+                  [](const PortDefinition& a, const PortDefinition& b) { return a.name < b.name; });
         // Sort signals by name
         std::sort(signals.begin(), signals.end(),
                   [](const SignalDefinition& a, const SignalDefinition& b) { return a.name < b.name; });
@@ -356,10 +417,11 @@ struct FsmIr {
     }
 
     bool operator==(const FsmIr& other) const noexcept {
-        return name == other.name && ns == other.ns && context_type == other.context_type &&
+        return name == other.name && ns == other.ns &&
                initial_state_id == other.initial_state_id && thread_safe == other.thread_safe &&
                satisfies_reqs == other.satisfies_reqs && states == other.states && transitions == other.transitions &&
-               signals == other.signals && variables == other.variables && properties == other.properties;
+               ports == other.ports && signals == other.signals && variables == other.variables &&
+               properties == other.properties;
     }
 };
 
@@ -371,6 +433,8 @@ using StateNode = fsm::codegen::StateNode;
 using StateKind = fsm::codegen::StateKind;
 using TransitionEdge = fsm::codegen::TransitionEdge;
 using TransitionEdgeKind = fsm::codegen::TransitionEdgeKind;
+using PortDefinition = fsm::codegen::PortDefinition;
+using PortDirection = fsm::codegen::PortDirection;
 using SignalDefinition = fsm::codegen::SignalDefinition;
 using SignalAttribute = fsm::codegen::SignalAttribute;
 using VariableDefinition = fsm::codegen::VariableDefinition;

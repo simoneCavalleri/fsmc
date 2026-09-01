@@ -12,15 +12,15 @@
 #include <vector>
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
-#include "fsm/ir/fsm_ir.hpp"
-#include "fsm/middleend/choice_inlining_pass.hpp"
-#include "fsm/middleend/dead_state_pruning_pass.hpp"
-#include "fsm/middleend/determinism_enforcement_pass.hpp"
-#include "fsm/middleend/guard_simplification_pass.hpp"
-#include "fsm/middleend/model_checker.hpp"
-#include "fsm/middleend/orthogonal_interference_pass.hpp"
-#include "fsm/middleend/submachine_inlining_pass.hpp"
-#include "fsm/middleend/timed_deadlock_pass.hpp"
+#include "fsm/middleend/analysis/guard_satisfiability_pass.hpp"
+#include "fsm/middleend/analysis/model_checker.hpp"
+#include "fsm/middleend/passes/choice_inlining_pass.hpp"
+#include "fsm/middleend/passes/dead_state_pruning_pass.hpp"
+#include "fsm/middleend/passes/determinism_enforcement_pass.hpp"
+#include "fsm/middleend/passes/guard_simplification_pass.hpp"
+#include "fsm/middleend/passes/orthogonal_interference_pass.hpp"
+#include "fsm/middleend/passes/submachine_inlining_pass.hpp"
+#include "fsm/middleend/passes/timed_deadlock_pass.hpp"
 
 namespace fsm::codegen {
 
@@ -66,6 +66,20 @@ class GuardSimplificationPassWrapper : public IPass {
 
     bool run(FsmIr& ir, DiagnosticEngine& diag) override {
         GuardSimplificationPass pass;
+        return pass.run(ir, diag);
+    }
+};
+
+// ============================================================================
+// Pass: GuardSatisfiabilityPassWrapper
+// ============================================================================
+class GuardSatisfiabilityPassWrapper : public IPass {
+  public:
+    [[nodiscard]] std::string name() const override { return GuardSatisfiabilityPass::name(); }
+    [[nodiscard]] std::string description() const override { return GuardSatisfiabilityPass::description(); }
+
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override {
+        GuardSatisfiabilityPass pass;
         return pass.run(ir, diag);
     }
 };
@@ -375,7 +389,7 @@ class EFSMDataPathPass : public IPass {
     }
 
     bool run(FsmIr& ir, DiagnosticEngine& diag) override {
-        if (ir.variables.empty()) {
+        if (ir.variables.empty() && ir.ports.empty()) {
             return true;
         }
 
@@ -402,6 +416,7 @@ class PassManager {
         pm.add_pass(std::make_unique<ChoiceInliningPassWrapper>());
         pm.add_pass(std::make_unique<TimedDeadlockPassWrapper>());
         pm.add_pass(std::make_unique<EFSMDataPathPass>());
+        pm.add_pass(std::make_unique<GuardSatisfiabilityPassWrapper>());
         pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
         pm.add_pass(std::make_unique<ModelCheckingPass>());
         return pm;
@@ -420,6 +435,7 @@ class PassManager {
         pm.add_pass(std::make_unique<ChoiceInliningPassWrapper>());
         pm.add_pass(std::make_unique<TimedDeadlockPassWrapper>());
         pm.add_pass(std::make_unique<EFSMDataPathPass>());
+        pm.add_pass(std::make_unique<GuardSatisfiabilityPassWrapper>());
         pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
         pm.add_pass(std::make_unique<ModelCheckingPass>());
         return pm;

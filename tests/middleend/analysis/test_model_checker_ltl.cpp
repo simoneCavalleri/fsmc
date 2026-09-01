@@ -1,10 +1,10 @@
 #include <gtest/gtest.h>
 
-#include "fsm/backend/emitters/smv_serializer.hpp"
-#include "fsm/frontend/directive_parser.hpp"
-#include "fsm/frontend/ltl_parser.hpp"
+#include "fsm/backend/formal/smv_serializer.hpp"
+#include "fsm/frontend/directive/directive_parser.hpp"
+#include "fsm/frontend/directive/ltl_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
-#include "fsm/middleend/model_checker.hpp"
+#include "fsm/middleend/analysis/model_checker.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm::codegen;

@@ -1,11 +1,12 @@
 #include <gtest/gtest.h>
 
-#include "fsm/middleend/dead_state_pruning_pass.hpp"
-#include "fsm/middleend/determinism_enforcement_pass.hpp"
-#include "fsm/middleend/guard_simplification_pass.hpp"
-#include "fsm/middleend/orthogonal_interference_pass.hpp"
+#include "fsm/middleend/passes/dead_state_pruning_pass.hpp"
+#include "fsm/middleend/passes/determinism_enforcement_pass.hpp"
+#include "fsm/middleend/passes/guard_simplification_pass.hpp"
+#include "fsm/middleend/passes/orthogonal_interference_pass.hpp"
 #include "fsm/middleend/pass_manager.hpp"
-#include "fsm/middleend/submachine_inlining_pass.hpp"
+#include "fsm/middleend/passes/submachine_inlining_pass.hpp"
+#include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
 
 using namespace fsm::codegen;
 
@@ -335,6 +336,144 @@ TEST(MiddleendPassesTest, ChoiceInliningBranchFlattening) {
     EXPECT_FALSE(it_deg->guard.has_value());  // 'else' guard is unwrapped
     ASSERT_TRUE(it_deg->action.has_value());
     EXPECT_EQ(*it_deg->action, "InitSubsystem_LogError");
+}
+
+/**
+ * @brief Test Intent: Verify determinism enforcement detects non-deterministic collisions on identical-priority branches.
+ */
+TEST(MiddleendPassesTest, DeterminismEnforcementUnconditionalCollision) {
+    FsmIr model;
+    model.name = "CollisionFSM";
+
+    TransitionEdge t1;
+    t1.id = "t1";
+    t1.source = "Running";
+    t1.target = "Fault";
+    t1.event = "CmdEmergency";
+    t1.priority = 0;
+    model.add_transition(t1);
+
+    TransitionEdge t2;
+    t2.id = "t2";
+    t2.source = "Running";
+    t2.target = "Idle";
+    t2.event = "CmdEmergency";
+    t2.priority = 0;
+    model.add_transition(t2);
+
+    DiagnosticEngine diag;
+    DeterminismEnforcementPass pass;
+    pass.run(model, diag);
+    EXPECT_TRUE(diag.has_errors());
+}
+
+/**
+ * @brief Test Intent: Verify EFSM interval analysis validates port domain bounds and detects contract violations.
+ *
+ * Scenario:
+ * - Define InPort `sensor_val` in [0, 100] and OutPort `actuator_cmd` in [0, 200].
+ * - Run interval analysis.
+ * - Verify no errors on compliant models.
+ */
+TEST(MiddleendPassesTest, EfsmIntervalAnalysisContractVerification) {
+    FsmIr model;
+    model.name = "BoundedFSM";
+
+    PortDefinition in_p("sensor_val", "float", PortDirection::In);
+    in_p.min_value = 0.0;
+    in_p.max_value = 100.0;
+    model.ports.push_back(in_p);
+
+    PortDefinition out_p("actuator_cmd", "float", PortDirection::Out);
+    out_p.min_value = 0.0;
+    out_p.max_value = 200.0;
+    model.ports.push_back(out_p);
+
+    DiagnosticEngine diag;
+    EFSMIntervalAnalyzer interval_pass(model);
+    auto findings = interval_pass.analyze(diag);
+    EXPECT_FALSE(diag.has_errors());
+}
+
+/**
+ * @brief Test Intent: Verify EFSM interval analyzer detects out-of-range assignments violating OutPort contracts.
+ *
+ * Scenario:
+ * - Define OutPort `heater_power` with range [0.0, 100.0].
+ * - Add transition with action assigning `heater_power = 150.0f`.
+ * - Verify analyzer emits W_PORT_RANGE_VIOLATION diagnostic.
+ */
+TEST(MiddleendPassesTest, EfsmIntervalAnalysisOutOfRangePortAssignment) {
+    FsmIr model;
+    model.name = "ThermostatFSM";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Heating");
+
+    PortDefinition out_p("heater_power", "float", PortDirection::Out);
+    out_p.min_value = 0.0;
+    out_p.max_value = 100.0;
+    model.ports.push_back(out_p);
+
+    TransitionEdge t("t1", "Idle", "Heating", SignalTrigger("EvStart"));
+    ActionSignature act("OverheatAct", "OverheatAct");
+    act.assignments.push_back({"heater_power", "150.0f"});
+    t.action_sig = act;
+    model.add_transition(t);
+
+    DiagnosticEngine diag;
+    EFSMIntervalAnalyzer analyzer(model);
+    auto findings = analyzer.analyze(diag);
+
+    bool found_port_violation = false;
+    for (const auto& f : findings) {
+        if (f.variable_name == "heater_power" && f.is_error) {
+            found_port_violation = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_port_violation);
+}
+
+/**
+ * @brief Test Intent: Verify EFSM interval analyzer detects unsatisfiable guards over bounded InPorts.
+ *
+ * Scenario:
+ * - Define InPort `sensor_temp` bounded to [-50.0, 50.0].
+ * - Transition has guard `in.sensor_temp > 90.0f`.
+ * - Verify analyzer detects unsatisfiable guard and reports diagnostic.
+ */
+TEST(MiddleendPassesTest, EfsmIntervalAnalysisUnsatisfiableGuardDetection) {
+    FsmIr model;
+    model.name = "SensorFSM";
+    model.initial_state = "Active";
+    model.add_state("Active");
+    model.add_state("Alert");
+
+    PortDefinition in_p("sensor_temp", "float", PortDirection::In);
+    in_p.min_value = -50.0;
+    in_p.max_value = 50.0;
+    model.ports.push_back(in_p);
+
+    GuardModel gm("OverheatGuard", "OverheatGuard", "in.sensor_temp > 90.0f", "in.sensor_temp > 90.0f");
+    model.guards.push_back(gm);
+
+    TransitionEdge t("t1", "Active", "Alert", AnonymousTrigger{});
+    t.guard = "OverheatGuard";
+    model.add_transition(t);
+
+    DiagnosticEngine diag;
+    EFSMIntervalAnalyzer analyzer(model);
+    auto findings = analyzer.analyze(diag);
+
+    bool found_unsat_guard = false;
+    for (const auto& f : findings) {
+        if (f.variable_name == "sensor_temp" && !f.is_error) {
+            found_unsat_guard = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_unsat_guard);
 }
 
 }  // namespace

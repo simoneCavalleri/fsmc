@@ -14,7 +14,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
-#include "fsm/middleend/efsm_interval_analysis.hpp"
+#include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
 
 namespace fsm::codegen {
 

@@ -4,8 +4,8 @@
 
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
-#include "fsm/middleend/efsm_interval_analysis.hpp"
-#include "fsm/middleend/fsm_validator.hpp"
+#include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
+#include "fsm/middleend/analysis/fsm_validator.hpp"
 
 using namespace fsm::codegen;
 

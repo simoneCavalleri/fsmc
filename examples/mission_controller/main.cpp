@@ -5,10 +5,15 @@
 #include <string_view>
 #include <thread>
 
-// Forward declaration of custom context in namespace mission
+#include "mission_fsm.hpp"
+
 namespace mission {
-struct MissionContext {
+
+struct MissionInPorts {
     bool flight_clearance_granted = true;
+};
+
+struct MissionRegisters {
     bool solar_panels_deployed = false;
     bool thrusters_armed = false;
     int altitude_km = 0;
@@ -17,26 +22,19 @@ struct MissionContext {
     int alarm_triggered_count = 0;
     float battery_charge_pct = 100.0F;
 };
-}  // namespace mission
-
-#include "mission_fsm.hpp"
-
-namespace mission {
 
 // ============================================================================
 // Custom Guard Functors
 // ============================================================================
 struct ValidClearanceGuard {
-    [[nodiscard]] constexpr bool operator()(const AuthorizeCmd& /*evt*/, const auto& /*src*/,
-                                            const MissionContext& ctx) const noexcept {
-        return ctx.flight_clearance_granted;
+    [[nodiscard]] constexpr bool operator()(const MissionInPorts& in) const noexcept {
+        return in.flight_clearance_granted;
     }
 };
 
 struct NoClearanceGuard {
-    [[nodiscard]] constexpr bool operator()(const AuthorizeCmd& /*evt*/, const auto& /*src*/,
-                                            const MissionContext& ctx) const noexcept {
-        return !ctx.flight_clearance_granted;
+    [[nodiscard]] constexpr bool operator()(const MissionInPorts& in) const noexcept {
+        return !in.flight_clearance_granted;
     }
 };
 
@@ -44,16 +42,15 @@ struct NoClearanceGuard {
 // Custom Action Functors
 // ============================================================================
 struct LogCalibrationAction {
-    constexpr void operator()(const CalibrationOkEvent& /*evt*/, auto& /*src*/, auto& /*dst*/,
-                              MissionContext& /*ctx*/) const {
+    void operator()() const {
         std::cout << "\033[1;32m  [ACTION]\033[0m Pre-flight telemetry calibrated -> Gyroscopes, Star Tracker & IMU "
                      "nominal.\n";
     }
 };
 
 struct ArmEnginesAction {
-    constexpr void operator()(const AuthorizeCmd& /*evt*/, auto& /*src*/, auto& /*dst*/, MissionContext& ctx) const {
-        ctx.thrusters_armed = true;
+    void operator()(MissionRegisters& reg) const {
+        reg.thrusters_armed = true;
         std::cout
             << "\033[1;32m  [ACTION]\033[0m Flight clearance VERIFIED via <<choice>> -> Main propulsion ARMED for "
                "Ascent!\n";
@@ -61,18 +58,17 @@ struct ArmEnginesAction {
 };
 
 struct TriggerAlarmAction {
-    constexpr void operator()(const AuthorizeCmd& /*evt*/, auto& /*src*/, auto& /*dst*/, MissionContext& ctx) const {
-        ctx.alarm_triggered_count++;
+    void operator()(MissionRegisters& reg) const {
+        reg.alarm_triggered_count++;
         std::cout << "\033[1;31m  [ACTION/SAFETY]\033[0m Clearance REJECTED via <<choice>> -> Flight aborted, safe "
                      "hold engaged!\n";
     }
 };
 
 struct DeploySolarPanelsAction {
-    constexpr void operator()(const AltitudeReachedEvent& /*evt*/, auto& /*src*/, auto& /*dst*/,
-                              MissionContext& ctx) const {
-        ctx.altitude_km = 420;
-        ctx.solar_panels_deployed = true;
+    void operator()(MissionRegisters& reg) const {
+        reg.altitude_km = 420;
+        reg.solar_panels_deployed = true;
         std::cout
             << "\033[1;32m  [ACTION]\033[0m Altitude 420 km reached -> Solar array wings DEPLOYED and sun-tracking "
                "engaged.\n";
@@ -80,53 +76,53 @@ struct DeploySolarPanelsAction {
 };
 
 struct StabilizeAttitudeAction {
-    constexpr void operator()(const OrbitInsertedEvent& /*evt*/, auto& /*src*/, auto& /*dst*/,
-                              MissionContext& /*ctx*/) const {
+    void operator()() const {
         std::cout
             << "\033[1;32m  [ACTION]\033[0m Circular orbit insertion complete (LEO 420km) -> Attitude stabilized.\n";
     }
 };
 
 struct LogTelemetryAction {
-    constexpr void operator()(const PingTelemetry& /*evt*/, auto& /*src*/, auto& /*dst*/, MissionContext& ctx) const {
-        ctx.telemetry_pings_received++;
-        std::cout << "\033[1;36m  [ACTION/INTERNAL]\033[0m Telemetry heartbeat #" << ctx.telemetry_pings_received
+    void operator()(MissionRegisters& reg) const {
+        reg.telemetry_pings_received++;
+        std::cout << "\033[1;36m  [ACTION/INTERNAL]\033[0m Telemetry heartbeat #" << reg.telemetry_pings_received
                   << " acknowledged (Zero state exit/entry cost)\n";
     }
 };
 
 struct BufferCommandsAction {
-    constexpr void operator()(const LinkDegradedEvent& /*evt*/, auto& /*src*/, auto& /*dst*/,
-                              MissionContext& /*ctx*/) const {
+    void operator()() const {
         std::cout
             << "\033[1;33m  [ACTION]\033[0m RF telemetry link degraded -> Outbound packets buffered in flash memory.\n";
     }
 };
 
 struct SyncClockAction {
-    constexpr void operator()(const LinkRestoredEvent& /*evt*/, auto& /*src*/, auto& /*dst*/,
-                              MissionContext& ctx) const {
-        ctx.clock_sync_count++;
+    void operator()(MissionRegisters& reg) const {
+        reg.clock_sync_count++;
         std::cout
             << "\033[1;32m  [ACTION]\033[0m RF ground link re-acquired -> Master spacecraft clock resynchronized.\n";
     }
 };
 
 struct RetractPanelsAction {
-    constexpr void operator()(const ReturnHomeCmd& /*evt*/, auto& /*src*/, auto& /*dst*/, MissionContext& ctx) const {
-        ctx.solar_panels_deployed = false;
+    void operator()(MissionRegisters& reg) const {
+        reg.solar_panels_deployed = false;
         std::cout << "\033[1;33m  [ACTION]\033[0m Retrograde burn initiated -> Solar arrays retracted for atmospheric "
                      "re-entry.\n";
     }
 };
 
 struct ShutdownSystemsAction {
-    constexpr void operator()(const TouchdownEvent& /*evt*/, auto& /*src*/, auto& /*dst*/, MissionContext& ctx) const {
-        ctx.thrusters_armed = false;
+    void operator()(MissionRegisters& reg) const {
+        reg.thrusters_armed = false;
         std::cout << "\033[1;32m  [ACTION]\033[0m Touchdown confirmed on recovery pad -> Main engines locked in safe "
                      "state.\n";
     }
 };
+
+using AppMissionFSM = ::fsm::fsm<MissionFSMTable, MissionInPorts, ::fsm::no_ports, MissionRegisters>;
+using AppThreadSafeMissionFSM = ::fsm::thread_safe_fsm<MissionFSMTable, MissionInPorts, ::fsm::no_ports, MissionRegisters>;
 
 }  // namespace mission
 
@@ -138,16 +134,16 @@ void print_header(std::string_view title) {
     std::cout << "\033[1;35m======================================================================\033[0m\n";
 }
 
-void print_spacecraft_hud(const mission::MissionContext& ctx, std::string_view state_name) {
+void print_spacecraft_hud(const mission::MissionRegisters& reg, std::string_view state_name) {
     std::cout << "  ┌─────────────────────────────────────────────────────────────┐\n";
     std::cout << "  │ \033[1mFSM State:\033[0m " << std::left << std::setw(15) << state_name
-              << " │ \033[1mAltitude:\033[0m " << std::left << std::setw(6) << (std::to_string(ctx.altitude_km) + " km")
+              << " │ \033[1mAltitude:\033[0m " << std::left << std::setw(6) << (std::to_string(reg.altitude_km) + " km")
               << " │ \033[1mPanels:\033[0m "
-              << (ctx.solar_panels_deployed ? "\033[32mDEPLOYED\033[0m" : "\033[33mSTOWED\033[0m  ") << " │\n";
+              << (reg.solar_panels_deployed ? "\033[32mDEPLOYED\033[0m" : "\033[33mSTOWED\033[0m  ") << " │\n";
     std::cout << "  │ \033[1mThrusters:\033[0m " << std::left << std::setw(15)
-              << (ctx.thrusters_armed ? "\033[32mARMED\033[0m" : "\033[31mSAFE\033[0m") << " │ \033[1mPings:\033[0m    "
-              << std::left << std::setw(6) << ctx.telemetry_pings_received << " │ \033[1mBattery:\033[0m " << std::fixed
-              << std::setprecision(0) << ctx.battery_charge_pct << " %     │\n";
+              << (reg.thrusters_armed ? "\033[32mARMED\033[0m" : "\033[31mSAFE\033[0m") << " │ \033[1mPings:\033[0m    "
+              << std::left << std::setw(6) << reg.telemetry_pings_received << " │ \033[1mBattery:\033[0m " << std::fixed
+              << std::setprecision(0) << reg.battery_charge_pct << " %     │\n";
     std::cout << "  └─────────────────────────────────────────────────────────────┘\n";
 }
 
@@ -156,11 +152,13 @@ void print_spacecraft_hud(const mission::MissionContext& ctx, std::string_view s
 int main() {
     print_header("fsmc Aerospace: Autonomous Spacecraft Mission Controller");
 
-    mission::MissionContext context;
-    context.flight_clearance_granted = true;
+    mission::MissionInPorts in;
+    mission::MissionRegisters reg;
+    ::fsm::no_ports out;
+    in.flight_clearance_granted = true;
 
-    // 1. Instantiate the State Machine with custom Context
-    mission::MissionFSM fsm(context);
+    // 1. Instantiate the State Machine with MissionRegisters
+    mission::AppMissionFSM fsm(reg);
 
     // Attach live telemetry observer
     fsm.set_observer([](const fsm::transition_info& info) {
@@ -170,35 +168,36 @@ int main() {
 
     // Phase 1: Pre-Flight Systems Initialization
     print_header("PHASE 1: Pre-Flight Systems Initialization (Composite Standby)");
-    print_spacecraft_hud(fsm.context(), fsm.current_state_name());
+    print_spacecraft_hud(fsm.registers(), fsm.current_state_name());
     assert(fsm.is_in_state<mission::Diagnostics>());
 
     std::cout << "\n--> [Telemetry] Verifying sensor suite calibration...\n";
-    auto res = fsm.dispatch(mission::CalibrationOkEvent{});
+    auto res = fsm.dispatch(mission::CalibrationOkEvent{}, in, out);
     assert(res.is_success());
     assert(fsm.is_in_state<mission::Calibrated>());
-    print_spacecraft_hud(fsm.context(), fsm.current_state_name());
+    print_spacecraft_hud(fsm.registers(), fsm.current_state_name());
 
     // Phase 2: Flight Authorization via UML Choice Pseudostate
     print_header("PHASE 2: Flight Authorization via <<choice>> Pseudostate");
     std::cout << "\n--> [Telemetry] Requesting launch authorization from Range Safety...\n";
-    res = fsm.dispatch(mission::AuthorizeCmd{});
+    res = fsm.dispatch(mission::AuthorizeCmd{}, in, out);
     assert(res.is_success());
     assert(fsm.is_in_state<mission::Ascending>());
-    assert(context.thrusters_armed);
-    print_spacecraft_hud(fsm.context(), fsm.current_state_name());
+    assert(fsm.registers().thrusters_armed);
+    print_spacecraft_hud(fsm.registers(), fsm.current_state_name());
 
     // Alternative Choice Branch Verification (Denial Path)
     std::cout << "\n  \033[33m[Verification]\033[0m Simulating alternative choice branch when clearance is denied:\n";
     {
-        mission::MissionContext denied_ctx;
-        denied_ctx.flight_clearance_granted = false;
-        mission::MissionFSM abort_fsm(denied_ctx);
-        abort_fsm.dispatch(mission::CalibrationOkEvent{});
-        auto abort_res = abort_fsm.dispatch(mission::AuthorizeCmd{});
+        mission::MissionInPorts denied_in;
+        denied_in.flight_clearance_granted = false;
+        mission::MissionRegisters abort_reg;
+        mission::AppMissionFSM abort_fsm(abort_reg);
+        abort_fsm.dispatch(mission::CalibrationOkEvent{}, denied_in, out);
+        auto abort_res = abort_fsm.dispatch(mission::AuthorizeCmd{}, denied_in, out);
         assert(abort_res.is_success());
         assert(abort_fsm.is_in_state<mission::Aborted>());
-        assert(denied_ctx.alarm_triggered_count == 1);
+        assert(abort_fsm.registers().alarm_triggered_count == 1);
         std::cout << "  (Choice pseudostate deterministically routed to Aborted state: "
                   << abort_fsm.current_state_name() << ")\n";
     }
@@ -206,59 +205,59 @@ int main() {
     // Phase 3: Ascent, Staging & Circular Orbit Insertion
     print_header("PHASE 3: Ascent, Fairing Separation & Orbit Insertion");
     std::cout << "\n--> [Telemetry] Spacecraft reaches orbital altitude (420 km)...\n";
-    res = fsm.dispatch(mission::AltitudeReachedEvent{});
+    res = fsm.dispatch(mission::AltitudeReachedEvent{}, in, out);
     assert(res.is_success());
     assert(fsm.is_in_state<mission::Cruising>());
-    print_spacecraft_hud(fsm.context(), fsm.current_state_name());
+    print_spacecraft_hud(fsm.registers(), fsm.current_state_name());
 
     std::cout << "\n--> [Telemetry] Main engine cutoff & circular orbit insertion burn complete...\n";
-    res = fsm.dispatch(mission::OrbitInsertedEvent{});
+    res = fsm.dispatch(mission::OrbitInsertedEvent{}, in, out);
     assert(res.is_success());
     assert(fsm.is_in_state<mission::Orbiting>());
-    print_spacecraft_hud(fsm.context(), fsm.current_state_name());
+    print_spacecraft_hud(fsm.registers(), fsm.current_state_name());
 
     // Phase 4: Zero-Overhead Internal Transitions
     print_header("PHASE 4: In-Orbit Telemetry Heartbeats (Internal Transitions)");
     for (int i = 0; i < 3; ++i) {
-        res = fsm.dispatch(mission::PingTelemetry{});
+        res = fsm.dispatch(mission::PingTelemetry{}, in, out);
         assert(res.is_success());
     }
-    assert(context.telemetry_pings_received == 3);
+    assert(fsm.registers().telemetry_pings_received == 3);
     assert(fsm.is_in_state<mission::Orbiting>());
-    print_spacecraft_hud(fsm.context(), fsm.current_state_name());
+    print_spacecraft_hud(fsm.registers(), fsm.current_state_name());
 
     // Phase 5: RF Link Degradation & Ground Station Acquisition
     print_header("PHASE 5: Deep-Space Communication Degradation & Resynchronization");
     std::cout << "\n--> [Telemetry] Spacecraft enters ground station shadow (RF link lost)...\n";
-    res = fsm.dispatch(mission::LinkDegradedEvent{});
+    res = fsm.dispatch(mission::LinkDegradedEvent{}, in, out);
     assert(res.is_success());
     assert(fsm.is_in_state<mission::SignalLost>());
 
     std::cout << "\n--> [Telemetry] Ground station signal re-acquired (Lock established)...\n";
-    res = fsm.dispatch(mission::LinkRestoredEvent{});
+    res = fsm.dispatch(mission::LinkRestoredEvent{}, in, out);
     assert(res.is_success());
     assert(fsm.is_in_state<mission::Orbiting>());
-    assert(context.clock_sync_count == 1);
+    assert(fsm.registers().clock_sync_count == 1);
     std::cout << "  (State seamlessly restored to Orbiting!)\n";
 
     // Phase 6: De-orbit, Re-entry & Recovery Touchdown
     print_header("PHASE 6: De-Orbit, Re-entry Burn & Recovery Touchdown");
     std::cout << "\n--> [Telemetry] Dispatching ReturnHomeCmd (De-orbit sequence)...\n";
-    res = fsm.dispatch(mission::ReturnHomeCmd{});
+    res = fsm.dispatch(mission::ReturnHomeCmd{}, in, out);
     assert(res.is_success());
     assert(fsm.is_in_state<mission::Landing>());
-    print_spacecraft_hud(fsm.context(), fsm.current_state_name());
+    print_spacecraft_hud(fsm.registers(), fsm.current_state_name());
 
     std::cout << "\n--> [Telemetry] Drogue & main parachutes deployed -> Touchdown!\n";
-    res = fsm.dispatch(mission::TouchdownEvent{});
+    res = fsm.dispatch(mission::TouchdownEvent{}, in, out);
     assert(res.is_success());
     assert(fsm.is_in_state<mission::MissionCompleted>());
-    print_spacecraft_hud(fsm.context(), fsm.current_state_name());
+    print_spacecraft_hud(fsm.registers(), fsm.current_state_name());
 
     // Phase 7: Multithreaded Asynchronous Worker Execution
     print_header("PHASE 7: Asynchronous Background Thread Execution");
-    mission::MissionContext async_ctx;
-    mission::ThreadSafeMissionFSM async_fsm(async_ctx);
+    mission::MissionRegisters async_reg;
+    mission::AppThreadSafeMissionFSM async_fsm(async_reg);
     async_fsm.start_worker();
 
     std::cout << "  Posting events asynchronously to background thread...\n";

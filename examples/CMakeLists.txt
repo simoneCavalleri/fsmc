@@ -13,7 +13,6 @@ fsmc_target_sources(connection_manager_example
     STANDARD 20
     STANDALONE
     NAMESPACE net
-    CONTEXT NetworkContext
     NO_STUBS
 )
 
@@ -30,7 +29,6 @@ fsmc_target_sources(mission_controller_example
     STANDARD 20
     STANDALONE
     NAMESPACE mission
-    CONTEXT MissionContext
     NO_STUBS
 )
 
@@ -46,7 +44,6 @@ fsmc_target_sources(async_motor_controller_example
     NAME MotorFSM
     STANDARD 20
     STANDALONE
-    CONTEXT MotorHardwareContext
     NO_STUBS
 )
 

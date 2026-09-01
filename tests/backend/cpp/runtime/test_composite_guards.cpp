@@ -2,15 +2,15 @@
 
 #include <string>
 
+#include "fsm/backend/cpp/runtime/fsm.hpp"
 #include "fsm/frontend/diagram/dot_parser.hpp"
 #include "fsm/frontend/diagram/json_parser.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
+#include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/frontend/formal/cameo_xmi_parser.hpp"
 #include "fsm/frontend/formal/scxml_parser.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
-#include "fsm/frontend/directive/guard_parser.hpp"
-#include "fsm/backend/cpp/runtime/fsm.hpp"
 
 namespace {
 

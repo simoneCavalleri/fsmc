@@ -1,11 +1,11 @@
 #include <gtest/gtest.h>
 
+#include "fsm/backend/cpp/runtime/deterministic_timer.hpp"
 #include "fsm/backend/formal/smv_serializer.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/ir/trigger.hpp"
 #include "fsm/middleend/passes/timed_deadlock_pass.hpp"
-#include "fsm/backend/cpp/runtime/deterministic_timer.hpp"
 
 using namespace fsm;
 using namespace fsm::codegen;

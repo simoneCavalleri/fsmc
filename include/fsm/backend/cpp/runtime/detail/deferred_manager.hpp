@@ -24,13 +24,9 @@ class deferred_manager<Table, DeferredCapacity, true> {
         deferred_queue_.push_back(event_variant{event});
     }
 
-    [[nodiscard]] std::size_t deferred_count() const noexcept {
-        return deferred_queue_.size();
-    }
+    [[nodiscard]] std::size_t deferred_count() const noexcept { return deferred_queue_.size(); }
 
-    void clear_deferred_events() noexcept {
-        deferred_queue_.clear();
-    }
+    void clear_deferred_events() noexcept { deferred_queue_.clear(); }
 
     template <typename DispatchDirectFn>
     void process_deferred_queue(DispatchDirectFn&& dispatch_direct_fn) {
@@ -44,10 +40,7 @@ class deferred_manager<Table, DeferredCapacity, true> {
             any_handled = false;
             for (auto it = deferred_queue_.begin(); it != deferred_queue_.end();) {
                 bool handled = std::visit(
-                    [&dispatch_direct_fn](const auto& ev) -> bool {
-                        return dispatch_direct_fn(ev).is_success();
-                    },
-                    *it);
+                    [&dispatch_direct_fn](const auto& ev) -> bool { return dispatch_direct_fn(ev).is_success(); }, *it);
                 if (handled) {
                     it = deferred_queue_.erase(it);
                     any_handled = true;

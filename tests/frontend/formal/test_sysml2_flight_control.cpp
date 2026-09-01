@@ -4,10 +4,10 @@
 #include <string>
 
 #include "fsm/backend/cpp/cpp_model_emitter.hpp"
+#include "fsm/backend/cpp/runtime/fsm.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
 #include "fsm/middleend/pass_manager.hpp"
-#include "fsm/backend/cpp/runtime/fsm.hpp"
 
 namespace {
 
@@ -122,8 +122,7 @@ struct TakeoffGuard {
 };
 
 struct LowBatteryCriticalGuard {
-    [[nodiscard]] constexpr bool operator()(const FlightInPorts& in,
-                                            const FlightRegisters& /*reg*/) const noexcept {
+    [[nodiscard]] constexpr bool operator()(const FlightInPorts& in, const FlightRegisters& /*reg*/) const noexcept {
         return in.battery_percent < 20.0;
     }
     [[nodiscard]] constexpr bool operator()(const FlightInPorts& in) const noexcept {
@@ -154,10 +153,11 @@ struct SendIotAlertAction {
 };
 
 // Transition Table definition
-using FlightControlTable = fsm::transition_table<
-    fsm::row<Preflight, TakeoffCmd, InFlight>::when<TakeoffGuard>::then<TakeoffAction>,
-    fsm::row<InFlight, fsm::anonymous_event, ReturnToHome>::when<LowBatteryCriticalGuard>::then<LowBatteryCriticalAction>,
-    fsm::row<InFlight, EmergencyStopCmd, Terminated>::then<SendIotAlertAction>>;
+using FlightControlTable =
+    fsm::transition_table<fsm::row<Preflight, TakeoffCmd, InFlight>::when<TakeoffGuard>::then<TakeoffAction>,
+                          fsm::row<InFlight, fsm::anonymous_event,
+                                   ReturnToHome>::when<LowBatteryCriticalGuard>::then<LowBatteryCriticalAction>,
+                          fsm::row<InFlight, EmergencyStopCmd, Terminated>::then<SendIotAlertAction>>;
 
 using FlightControlFSM =
     fsm::fsm<FlightControlTable, FlightInPorts, FlightOutPorts, FlightRegisters, MockFlightServices, Preflight>;
@@ -204,9 +204,9 @@ TEST(SysML2FlightControlTest, ParseFlightMissionControllerSysMLv2) {
     EXPECT_EQ(model.variables[0].initial_value, "0");
 
     // Events / Signals
-    EXPECT_TRUE(model.find_signal("TakeoffCmd") != nullptr ||
-                std::any_of(model.events.begin(), model.events.end(),
-                            [](const auto& e) { return e.name == "TakeoffCmd"; }));
+    EXPECT_TRUE(
+        model.find_signal("TakeoffCmd") != nullptr ||
+        std::any_of(model.events.begin(), model.events.end(), [](const auto& e) { return e.name == "TakeoffCmd"; }));
     EXPECT_TRUE(model.find_signal("EmergencyStopCmd") != nullptr ||
                 std::any_of(model.events.begin(), model.events.end(),
                             [](const auto& e) { return e.name == "EmergencyStopCmd"; }));

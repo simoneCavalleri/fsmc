@@ -102,7 +102,8 @@ TEST(GuardSatisfiabilityTest, OverlappingGuardsEmitWarningW0301) {
 }
 
 /**
- * @brief Test Intent: Verify that contradictory guard conditions (e.g. x > 100 && x < 50) emit dead guard warning W0302.
+ * @brief Test Intent: Verify that contradictory guard conditions (e.g. x > 100 && x < 50) emit dead guard warning
+ * W0302.
  *
  * Scenario:
  * - Define a transition with guard 'x > 100 && x < 50' whose interval intersection is empty.
@@ -162,7 +163,7 @@ TEST(GuardSatisfiabilityTest, DifferentPrioritiesAvoidW0301) {
     t2.target = "Pending";
     t2.event = "Tick";
     t2.guard = "x > 20";
-    t2.priority = 2; // Distinct priority ensures deterministic resolution
+    t2.priority = 2;  // Distinct priority ensures deterministic resolution
 
     ir.transitions.push_back(t1);
     ir.transitions.push_back(t2);
@@ -174,7 +175,8 @@ TEST(GuardSatisfiabilityTest, DifferentPrioritiesAvoidW0301) {
 }
 
 /**
- * @brief Test Intent: Verify that complementary boolean guards (enabled == true vs enabled == false) are recognized as disjoint.
+ * @brief Test Intent: Verify that complementary boolean guards (enabled == true vs enabled == false) are recognized as
+ * disjoint.
  *
  * Scenario:
  * - Define two transitions on event 'Toggle' with boolean guards 'enabled == true' and 'enabled == false'.
@@ -210,4 +212,3 @@ TEST(GuardSatisfiabilityTest, BooleanGuardsMutuallyExclusive) {
 }
 
 }  // namespace
-

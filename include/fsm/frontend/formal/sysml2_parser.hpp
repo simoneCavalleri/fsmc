@@ -8,9 +8,9 @@
 #include <utility>
 #include <vector>
 
+#include "fsm/frontend/common/parser_interface.hpp"
 #include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
-#include "fsm/frontend/common/parser_interface.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 namespace fsm::codegen {
@@ -622,9 +622,8 @@ class Sysml2Parser : public IParser {
         std::smatch match;
         if (std::regex_search(stmt, match, trans_name_regex)) {
             std::string name_candidate = sanitize_identifier(match[1].str());
-            if (name_candidate != "from" && name_candidate != "first" &&
-                name_candidate != "accept" && name_candidate != "if" &&
-                name_candidate != "do" && name_candidate != "then") {
+            if (name_candidate != "from" && name_candidate != "first" && name_candidate != "accept" &&
+                name_candidate != "if" && name_candidate != "do" && name_candidate != "then") {
                 trans_name = name_candidate;
             }
         }
@@ -640,7 +639,8 @@ class Sysml2Parser : public IParser {
 
         static const std::regex first_regex(R"(\b(?:first|from)\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
         static const std::regex accept_regex(
-            R"(\b(?:accept|when)\s+(?:([A-Za-z_][A-Za-z0-9_]*)\s*:\s*)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
+            R"(\b(?:accept|when)\s+(?:([A-Za-z_][A-Za-z0-9_]*)\s*:\s*)?([A-Za-z_][A-Za-z0-9_]*))",
+            std::regex::optimize);
         static const std::regex after_regex(
             R"(\bafter\s+(\d+(?:\.\d+)?)\s*(?:\[(?:SI::|ISQ::)?([A-Za-z]+)\]|([A-Za-z]+))?)", std::regex::optimize);
         static const std::regex if_regex(R"(\bif\s+([^;]+?)(?=\s+(?:do|then|to|;|$)))", std::regex::optimize);

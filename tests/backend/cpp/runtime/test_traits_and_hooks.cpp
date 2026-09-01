@@ -45,11 +45,13 @@ struct AnonymousEvent {
 struct StateWithEventAndReg {
     static constexpr std::string_view name = "StateWithEventAndReg";
     // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
-    void on_enter(const TestEventA& /*unused*/, const fsm::no_ports&, fsm::no_ports&, TestRegisters& reg, fsm::no_services&) {
+    void on_enter(const TestEventA& /*unused*/, const fsm::no_ports&, fsm::no_ports&, TestRegisters& reg,
+                  fsm::no_services&) {
         ++reg.enter_count;
     }
     // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
-    void on_exit(const TestEventA& /*unused*/, const fsm::no_ports&, fsm::no_ports&, TestRegisters& reg, fsm::no_services&) {
+    void on_exit(const TestEventA& /*unused*/, const fsm::no_ports&, fsm::no_ports&, TestRegisters& reg,
+                 fsm::no_services&) {
         ++reg.exit_count;
     }
 };
@@ -58,13 +60,9 @@ struct StateWithEventAndReg {
 struct StateWithRegOnly {
     static constexpr std::string_view name = "StateWithRegOnly";
     // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
-    void on_enter(const fsm::no_ports&, fsm::no_ports&, TestRegisters& reg, fsm::no_services&) {
-        reg.enter_count += 2;
-    }
+    void on_enter(const fsm::no_ports&, fsm::no_ports&, TestRegisters& reg, fsm::no_services&) { reg.enter_count += 2; }
     // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
-    void on_exit(const fsm::no_ports&, fsm::no_ports&, TestRegisters& reg, fsm::no_services&) {
-        reg.exit_count += 2;
-    }
+    void on_exit(const fsm::no_ports&, fsm::no_ports&, TestRegisters& reg, fsm::no_services&) { reg.exit_count += 2; }
 };
 
 // 3. State with on_enter(event) and on_exit(event)
@@ -447,7 +445,8 @@ struct ModernServices {
 };
 
 /**
- * @brief Test Intent: Certify at compile-time that legacy v0.3.0 signatures (guard(Context&), action(Context&)) are rejected.
+ * @brief Test Intent: Certify at compile-time that legacy v0.3.0 signatures (guard(Context&), action(Context&)) are
+ * rejected.
  */
 TEST(TraitsAndHooksTest, LegacyContextPoisonCheck) {
     // 1. Verify Legacy Guard is NOT invocable with modern domain references
@@ -471,29 +470,40 @@ TEST(TraitsAndHooksTest, LegacyContextPoisonCheck) {
 // Duplicate Row Detection & State Name Static Resolution
 // ============================================================================
 
-struct DRowS1 { static constexpr std::string_view name = "DRowS1"; };
-struct DRowS2 { static constexpr std::string_view name = "DRowS2"; };
-struct DRowS3 { static constexpr std::string_view name = "DRowS3"; };
-struct DRowE1 { static constexpr std::string_view name = "DRowE1"; };
-struct DRowG1 { constexpr bool operator()() const { return true; } };
-struct DRowG2 { constexpr bool operator()() const { return true; } };
+struct DRowS1 {
+    static constexpr std::string_view name = "DRowS1";
+};
+struct DRowS2 {
+    static constexpr std::string_view name = "DRowS2";
+};
+struct DRowS3 {
+    static constexpr std::string_view name = "DRowS3";
+};
+struct DRowE1 {
+    static constexpr std::string_view name = "DRowE1";
+};
+struct DRowG1 {
+    constexpr bool operator()() const { return true; }
+};
+struct DRowG2 {
+    constexpr bool operator()() const { return true; }
+};
 
-using ValidTable = fsm::transition_table<
-    fsm::row<DRowS1, DRowE1, DRowS2>::when<DRowG1>,
-    fsm::row<DRowS1, DRowE1, DRowS3>::when<DRowG2>,
-    fsm::row<DRowS2, DRowE1, DRowS1>
->;
+using ValidTable =
+    fsm::transition_table<fsm::row<DRowS1, DRowE1, DRowS2>::when<DRowG1>,
+                          fsm::row<DRowS1, DRowE1, DRowS3>::when<DRowG2>, fsm::row<DRowS2, DRowE1, DRowS1>>;
 
 TEST(TraitsAndHooksTest, DuplicateRowDetectionTraits) {
     using RowA = fsm::row<DRowS1, DRowE1, DRowS2>::when<DRowG1>;
-    using RowB = fsm::row<DRowS1, DRowE1, DRowS3>::when<DRowG1>; // Same (source, event, guard) -> duplicate!
-    using RowC = fsm::row<DRowS1, DRowE1, DRowS2>::when<DRowG2>; // Different guard -> not duplicate
+    using RowB = fsm::row<DRowS1, DRowE1, DRowS3>::when<DRowG1>;  // Same (source, event, guard) -> duplicate!
+    using RowC = fsm::row<DRowS1, DRowE1, DRowS2>::when<DRowG2>;  // Different guard -> not duplicate
 
     static_assert(fsm::detail::is_duplicate_row<RowA, RowB>::value, "Exact (source, event, guard) must match");
     static_assert(!fsm::detail::is_duplicate_row<RowA, RowC>::value, "Different guard must not match");
 
     static_assert(!fsm::detail::has_any_duplicate_row<RowA, RowC>::value, "Valid table must have no duplicates");
-    static_assert(fsm::detail::has_any_duplicate_row<RowA, RowB, RowC>::value, "Table with RowA and RowB must report duplicate");
+    static_assert(fsm::detail::has_any_duplicate_row<RowA, RowB, RowC>::value,
+                  "Table with RowA and RowB must report duplicate");
 
     EXPECT_EQ(ValidTable::transition_count, 3);
     EXPECT_EQ(ValidTable::state_count, 3);
@@ -507,12 +517,13 @@ struct StateWithoutCustomName {};
 
 struct RejectGuardStaticTrace {
     template <typename... Args>
-    constexpr bool operator()(const Args&...) const noexcept { return false; }
+    constexpr bool operator()(const Args&...) const noexcept {
+        return false;
+    }
 };
 
-using StaticTraceTable = fsm::transition_table<
-    fsm::row<DRowS1, DRowE1, StateWithStaticName>::when<RejectGuardStaticTrace>
->;
+using StaticTraceTable =
+    fsm::transition_table<fsm::row<DRowS1, DRowE1, StateWithStaticName>::when<RejectGuardStaticTrace>>;
 
 /**
  * @brief Test Intent: Verify static state name resolution and compile-time string reflection.
@@ -534,8 +545,12 @@ TEST(TraitsAndHooksTest, StateNameStaticResolutionConsistency) {
     EXPECT_EQ(res.trace->target, "CustomStaticStateName");
 }
 
-struct MockParentState { static constexpr std::string_view name = "Parent"; };
-struct MockSubState { static constexpr std::string_view name = "Sub"; };
+struct MockParentState {
+    static constexpr std::string_view name = "Parent";
+};
+struct MockSubState {
+    static constexpr std::string_view name = "Sub";
+};
 struct MockFsmInstance {
     [[nodiscard]] std::string_view get_history(std::string_view) const { return "Sub"; }
 };
@@ -585,9 +600,12 @@ TEST(TraitsAndHooksTest, ConceptAndScalarSanityCompliance) {
     static_assert(!fsm::Guard<int, DRowE1, DRowS1, fsm::no_ports, fsm::no_registers, fsm::no_services>);
 
     // Action concept
-    static_assert(fsm::Action<ValidCustomAction, DRowE1, DRowS1, StateWithStaticName, fsm::no_ports, fsm::no_ports, fsm::no_registers, fsm::no_services>);
-    static_assert(fsm::Action<fsm::no_action, DRowE1, DRowS1, StateWithStaticName, fsm::no_ports, fsm::no_ports, fsm::no_registers, fsm::no_services>);
-    static_assert(!fsm::Action<double, DRowE1, DRowS1, StateWithStaticName, fsm::no_ports, fsm::no_ports, fsm::no_registers, fsm::no_services>);
+    static_assert(fsm::Action<ValidCustomAction, DRowE1, DRowS1, StateWithStaticName, fsm::no_ports, fsm::no_ports,
+                              fsm::no_registers, fsm::no_services>);
+    static_assert(fsm::Action<fsm::no_action, DRowE1, DRowS1, StateWithStaticName, fsm::no_ports, fsm::no_ports,
+                              fsm::no_registers, fsm::no_services>);
+    static_assert(!fsm::Action<double, DRowE1, DRowS1, StateWithStaticName, fsm::no_ports, fsm::no_ports,
+                               fsm::no_registers, fsm::no_services>);
 }
 #endif
 

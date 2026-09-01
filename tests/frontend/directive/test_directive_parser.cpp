@@ -105,7 +105,9 @@ TEST(DirectiveParserTest, ParseTransDirective) {
  * @brief Test Intent: Verify `@fsm:port` directive parsing with direction, numeric bounds, and constraint expression.
  */
 TEST(DirectiveParserTest, ParsePortDirective) {
-    std::string line = "' @fsm:port name=sensor_val type=float dir=in min=0.0 max=100.0 constraint=\"self >= 0.0 and self <= 100.0\" unit=\"[degC]\" desc=\"Primary sensor\"";
+    std::string line =
+        "' @fsm:port name=sensor_val type=float dir=in min=0.0 max=100.0 constraint=\"self >= 0.0 and self <= 100.0\" "
+        "unit=\"[degC]\" desc=\"Primary sensor\"";
     EXPECT_TRUE(DirectiveParser::is_directive(line));
 
     std::string body = DirectiveParser::extract_directive_body(line);

@@ -3,9 +3,9 @@
 #include <string>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
+#include "fsm/backend/cpp/runtime/fsm.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
-#include "fsm/backend/cpp/runtime/fsm.hpp"
 
 using namespace fsm::codegen;
 

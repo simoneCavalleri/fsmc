@@ -348,7 +348,10 @@ class EFSMIntervalAnalyzer {
         }
 
         // 3. var += k / var = var + k
-        std::regex add_re(R"((?:(?:in|reg|out)\.)?)" + var + R"(\s*\+\s*([+-]?\d+(?:\.\d+)?[fFuUlL]*)|([+-]?\d+(?:\.\d+)?[fFuUlL]*)\s*\+\s*(?:(?:in|reg|out)\.)?)" + var);
+        std::regex add_re(
+            R"((?:(?:in|reg|out)\.)?)" + var +
+            R"(\s*\+\s*([+-]?\d+(?:\.\d+)?[fFuUlL]*)|([+-]?\d+(?:\.\d+)?[fFuUlL]*)\s*\+\s*(?:(?:in|reg|out)\.)?)" +
+            var);
         std::smatch match;
         if (std::regex_search(expr, match, add_re)) {
             std::string num_str = match[1].matched ? match[1].str() : match[2].str();

@@ -1,10 +1,10 @@
 #include <gtest/gtest.h>
 
-#include "fsm/backend/formal/cameo_serializer.hpp"
 #include "fsm/backend/diagram/dot_serializer.hpp"
 #include "fsm/backend/diagram/json_serializer.hpp"
 #include "fsm/backend/diagram/mermaid_serializer.hpp"
 #include "fsm/backend/diagram/plantuml_serializer.hpp"
+#include "fsm/backend/formal/cameo_serializer.hpp"
 #include "fsm/backend/formal/scxml_serializer.hpp"
 #include "fsm/backend/formal/smv_serializer.hpp"
 #include "fsm/backend/formal/sysml2_serializer.hpp"
@@ -758,7 +758,8 @@ state def SatelliteSafety {
 }
 
 /**
- * @brief Test Intent: Verify lossless roundtrip of v0.4.0 Typed In/Out Ports and Numeric Assert Constraints across SysML v2, JSON, and PlantUML.
+ * @brief Test Intent: Verify lossless roundtrip of v0.4.0 Typed In/Out Ports and Numeric Assert Constraints across
+ * SysML v2, JSON, and PlantUML.
  */
 TEST(LosslessRoundtripTest, V040TypedPortsAndContractsRoundtrip) {
     constexpr const char* kSysMLv2PortsModel = R"(

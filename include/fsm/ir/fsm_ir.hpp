@@ -36,24 +36,24 @@ namespace fsm::codegen {
  * - Serialized by Backend Code Generators and Diagram Transpilers (`include/fsm/backend/`)
  */
 struct FsmIr {
-    std::string id;                                     ///< Unique deterministic identifier
-    std::string name = "MyStateMachine";                ///< State machine class name
-    std::string ns = "fsm_generated";                   ///< Target C++ namespace
-    std::string initial_state;                          ///< Initial state unqualified name
-    std::string initial_state_id;                       ///< Initial state deterministic ID
-    bool thread_safe = true;                            ///< Whether to generate thread-safe wrappers
-    std::vector<std::string> satisfies_reqs;            ///< DO-178C requirement traceability IDs
+    std::string id;                           ///< Unique deterministic identifier
+    std::string name = "MyStateMachine";      ///< State machine class name
+    std::string ns = "fsm_generated";         ///< Target C++ namespace
+    std::string initial_state;                ///< Initial state unqualified name
+    std::string initial_state_id;             ///< Initial state deterministic ID
+    bool thread_safe = true;                  ///< Whether to generate thread-safe wrappers
+    std::vector<std::string> satisfies_reqs;  ///< DO-178C requirement traceability IDs
 
-    std::vector<StateNode> states;                      ///< Hierarchy of state nodes (simple, composite, parallel)
-    std::vector<TransitionEdge> transitions;            ///< Directed transition edges with triggers, guards, actions
-    std::vector<PortDefinition> ports;                  ///< Typed InPorts / OutPorts with range contracts
-    std::vector<SignalDefinition> signals;              ///< MBSE typed signal definitions
-    std::vector<VariableDefinition> variables;          ///< Internal registers with datapath bounds
-    std::vector<FormalProperty> properties;             ///< Formal LTL/CTL temporal verification specifications
-    std::vector<EventModel> events;                     ///< Registered event definitions
-    std::vector<GuardModel> guards;                     ///< Guard predicates with C++ / SMT expressions
-    std::vector<ActionModel> actions;                   ///< Action effects and assignment sequences
-    std::vector<ChoiceNodeModel> choice_nodes;          ///< Choice pseudostates for middle-end inlining
+    std::vector<StateNode> states;              ///< Hierarchy of state nodes (simple, composite, parallel)
+    std::vector<TransitionEdge> transitions;    ///< Directed transition edges with triggers, guards, actions
+    std::vector<PortDefinition> ports;          ///< Typed InPorts / OutPorts with range contracts
+    std::vector<SignalDefinition> signals;      ///< MBSE typed signal definitions
+    std::vector<VariableDefinition> variables;  ///< Internal registers with datapath bounds
+    std::vector<FormalProperty> properties;     ///< Formal LTL/CTL temporal verification specifications
+    std::vector<EventModel> events;             ///< Registered event definitions
+    std::vector<GuardModel> guards;             ///< Guard predicates with C++ / SMT expressions
+    std::vector<ActionModel> actions;           ///< Action effects and assignment sequences
+    std::vector<ChoiceNodeModel> choice_nodes;  ///< Choice pseudostates for middle-end inlining
 
     // ========================================================================
     // Lookups and Query Methods
@@ -417,45 +417,44 @@ struct FsmIr {
     }
 
     bool operator==(const FsmIr& other) const noexcept {
-        return name == other.name && ns == other.ns &&
-               initial_state_id == other.initial_state_id && thread_safe == other.thread_safe &&
-               satisfies_reqs == other.satisfies_reqs && states == other.states && transitions == other.transitions &&
-               ports == other.ports && signals == other.signals && variables == other.variables &&
-               properties == other.properties;
+        return name == other.name && ns == other.ns && initial_state_id == other.initial_state_id &&
+               thread_safe == other.thread_safe && satisfies_reqs == other.satisfies_reqs && states == other.states &&
+               transitions == other.transitions && ports == other.ports && signals == other.signals &&
+               variables == other.variables && properties == other.properties;
     }
 };
 
 }  // namespace fsm::codegen
 
 namespace fsm {
-using FsmIr = fsm::codegen::FsmIr;
-using StateNode = fsm::codegen::StateNode;
-using StateKind = fsm::codegen::StateKind;
-using TransitionEdge = fsm::codegen::TransitionEdge;
-using TransitionEdgeKind = fsm::codegen::TransitionEdgeKind;
-using PortDefinition = fsm::codegen::PortDefinition;
-using PortDirection = fsm::codegen::PortDirection;
-using SignalDefinition = fsm::codegen::SignalDefinition;
-using SignalAttribute = fsm::codegen::SignalAttribute;
-using VariableDefinition = fsm::codegen::VariableDefinition;
-using ActionAssignment = fsm::codegen::ActionAssignment;
-using TemporalOp = fsm::codegen::TemporalOp;
-using PropertyAstNode = fsm::codegen::PropertyAstNode;
-using PropertyKind = fsm::codegen::PropertyKind;
-using FormalProperty = fsm::codegen::FormalProperty;
-using SignalTrigger = fsm::codegen::SignalTrigger;
-using TimeTrigger = fsm::codegen::TimeTrigger;
-using AnonymousTrigger = fsm::codegen::AnonymousTrigger;
-using TriggerType = fsm::codegen::TriggerType;
-using GuardAstNode = fsm::codegen::GuardAstNode;
-using GuardOp = fsm::codegen::GuardOp;
-using ActionSignature = fsm::codegen::ActionSignature;
-using ActionModel = fsm::codegen::ActionModel;
-using EventModel = fsm::codegen::EventModel;
-using GuardModel = fsm::codegen::GuardModel;
-using ChoiceNodeModel = fsm::codegen::ChoiceNodeModel;
-using OrthogonalRegion = fsm::codegen::OrthogonalRegion;
-using PortMapping = fsm::codegen::PortMapping;
-using SubmachineRef = fsm::codegen::SubmachineRef;
-using fsm::codegen::compute_deterministic_id;
+using FsmIr = codegen::FsmIr;
+using StateNode = codegen::StateNode;
+using StateKind = codegen::StateKind;
+using TransitionEdge = codegen::TransitionEdge;
+using TransitionEdgeKind = codegen::TransitionEdgeKind;
+using PortDefinition = codegen::PortDefinition;
+using PortDirection = codegen::PortDirection;
+using SignalDefinition = codegen::SignalDefinition;
+using SignalAttribute = codegen::SignalAttribute;
+using VariableDefinition = codegen::VariableDefinition;
+using ActionAssignment = codegen::ActionAssignment;
+using TemporalOp = codegen::TemporalOp;
+using PropertyAstNode = codegen::PropertyAstNode;
+using PropertyKind = codegen::PropertyKind;
+using FormalProperty = codegen::FormalProperty;
+using SignalTrigger = codegen::SignalTrigger;
+using TimeTrigger = codegen::TimeTrigger;
+using AnonymousTrigger = codegen::AnonymousTrigger;
+using TriggerType = codegen::TriggerType;
+using GuardAstNode = codegen::GuardAstNode;
+using GuardOp = codegen::GuardOp;
+using ActionSignature = codegen::ActionSignature;
+using ActionModel = codegen::ActionModel;
+using EventModel = codegen::EventModel;
+using GuardModel = codegen::GuardModel;
+using ChoiceNodeModel = codegen::ChoiceNodeModel;
+using OrthogonalRegion = codegen::OrthogonalRegion;
+using PortMapping = codegen::PortMapping;
+using SubmachineRef = codegen::SubmachineRef;
+using codegen::compute_deterministic_id;
 }  // namespace fsm

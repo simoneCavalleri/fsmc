@@ -1,12 +1,12 @@
 #include <gtest/gtest.h>
 
+#include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
+#include "fsm/middleend/pass_manager.hpp"
 #include "fsm/middleend/passes/dead_state_pruning_pass.hpp"
 #include "fsm/middleend/passes/determinism_enforcement_pass.hpp"
 #include "fsm/middleend/passes/guard_simplification_pass.hpp"
 #include "fsm/middleend/passes/orthogonal_interference_pass.hpp"
-#include "fsm/middleend/pass_manager.hpp"
 #include "fsm/middleend/passes/submachine_inlining_pass.hpp"
-#include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
 
 using namespace fsm::codegen;
 
@@ -339,7 +339,8 @@ TEST(MiddleendPassesTest, ChoiceInliningBranchFlattening) {
 }
 
 /**
- * @brief Test Intent: Verify determinism enforcement detects non-deterministic collisions on identical-priority branches.
+ * @brief Test Intent: Verify determinism enforcement detects non-deterministic collisions on identical-priority
+ * branches.
  */
 TEST(MiddleendPassesTest, DeterminismEnforcementUnconditionalCollision) {
     FsmIr model;

@@ -122,7 +122,8 @@ TEST(AsyncAndGuardsTest, GuardRejectionAndAcceptance) {
  */
 TEST(AsyncAndGuardsTest, DeferredEventsQueuingAndReplay) {
     GuardRegisters reg;
-    fsm::fsm<GuardTestTable, fsm::no_ports, fsm::no_ports, GuardRegisters, fsm::no_services, StateInitialWithDeferred> sm(reg);
+    fsm::fsm<GuardTestTable, fsm::no_ports, fsm::no_ports, GuardRegisters, fsm::no_services, StateInitialWithDeferred>
+        sm(reg);
     EXPECT_TRUE(sm.is_in_state<StateInitialWithDeferred>());
 
     // EvDeferred is deferred in StateInitialWithDeferred
@@ -156,7 +157,9 @@ TEST(AsyncAndGuardsTest, ThreadSafeFsmPostAsyncAndHandlers) {
     GuardRegisters reg;
     reg.allow_transition = false;
 
-    fsm::thread_safe_fsm<GuardTestTable, fsm::no_ports, fsm::no_ports, GuardRegisters, fsm::no_services, StateInitialWithDeferred> ts_sm(reg);
+    fsm::thread_safe_fsm<GuardTestTable, fsm::no_ports, fsm::no_ports, GuardRegisters, fsm::no_services,
+                         StateInitialWithDeferred>
+        ts_sm(reg);
 
     std::vector<std::string> rejected_events;
     std::vector<std::string> deferred_events;
@@ -566,28 +569,31 @@ TEST(AsyncAndGuardsTest, ModularTraitsAndRuntimeHeaders) {
 // 13. Concurrency: thread_safe_fsm Reentrancy Detection & Safe Draining
 // ============================================================================
 
-struct ReentrantStateIdle { static constexpr std::string_view name = "Idle"; };
-struct ReentrantStateActive { static constexpr std::string_view name = "Active"; };
-struct ReentrantStateDone { static constexpr std::string_view name = "Done"; };
+struct ReentrantStateIdle {
+    static constexpr std::string_view name = "Idle";
+};
+struct ReentrantStateActive {
+    static constexpr std::string_view name = "Active";
+};
+struct ReentrantStateDone {
+    static constexpr std::string_view name = "Done";
+};
 
-struct TriggerFirstEvent { static constexpr std::string_view name = "TriggerFirst"; };
-struct TriggerSecondEvent { static constexpr std::string_view name = "TriggerSecond"; };
+struct TriggerFirstEvent {
+    static constexpr std::string_view name = "TriggerFirst";
+};
+struct TriggerSecondEvent {
+    static constexpr std::string_view name = "TriggerSecond";
+};
 
 struct ReentrantSelfAction;
 
 using ReentrantTable = fsm::transition_table<
     fsm::row<ReentrantStateIdle, TriggerFirstEvent, ReentrantStateActive>::then<ReentrantSelfAction>,
-    fsm::row<ReentrantStateActive, TriggerSecondEvent, ReentrantStateDone>
->;
+    fsm::row<ReentrantStateActive, TriggerSecondEvent, ReentrantStateDone>>;
 
-using TestReentrantThreadSafeFsm = fsm::thread_safe_fsm<
-    ReentrantTable,
-    fsm::no_ports,
-    fsm::no_ports,
-    fsm::no_registers,
-    fsm::no_services,
-    ReentrantStateIdle
->;
+using TestReentrantThreadSafeFsm = fsm::thread_safe_fsm<ReentrantTable, fsm::no_ports, fsm::no_ports, fsm::no_registers,
+                                                        fsm::no_services, ReentrantStateIdle>;
 
 struct ReentrantSelfAction {
     static inline TestReentrantThreadSafeFsm* target_fsm = nullptr;
@@ -604,7 +610,8 @@ struct ReentrantSelfAction {
 };
 
 /**
- * @brief Test Intent: Verify thread_safe_fsm detects same-thread reentrant dispatch and safely defers/drains it without UB.
+ * @brief Test Intent: Verify thread_safe_fsm detects same-thread reentrant dispatch and safely defers/drains it without
+ * UB.
  */
 TEST(AsyncAndGuardsTest, ThreadSafeFsmReentrancyPreventionAndDraining) {
     TestReentrantThreadSafeFsm fsm_instance;

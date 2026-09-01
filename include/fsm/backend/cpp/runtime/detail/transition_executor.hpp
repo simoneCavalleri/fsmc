@@ -48,12 +48,14 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
 #if __cplusplus >= 202002L
             using ExpectedDst = std::conditional_t<RowType::is_internal, CurrentSrc, TransDst>;
             static_assert(::fsm::Guard<Guard, Event, CurrentSrc, In, Registers, Services> ||
-                          std::is_same_v<Guard, no_guard> ||
-                          std::is_invocable_v<Guard, const Event&, const CurrentSrc&, const In&, const Registers&, Services&, const FsmInstance&>,
+                              std::is_same_v<Guard, no_guard> ||
+                              std::is_invocable_v<Guard, const Event&, const CurrentSrc&, const In&, const Registers&,
+                                                  Services&, const FsmInstance&>,
                           "Guard functor does not satisfy fsm::Guard concept for the specified state machine domain.");
-            static_assert(::fsm::Action<Action, Event, CurrentSrc, ExpectedDst, In, Out, Registers, Services> ||
-                          std::is_same_v<Action, no_action>,
-                          "Action functor does not satisfy fsm::Action concept for the specified state machine domain.");
+            static_assert(
+                ::fsm::Action<Action, Event, CurrentSrc, ExpectedDst, In, Out, Registers, Services> ||
+                    std::is_same_v<Action, no_action>,
+                "Action functor does not satisfy fsm::Action concept for the specified state machine domain.");
 #endif
 
             const auto src_name = get_state_name(src_state);

@@ -6,6 +6,7 @@
 #include <string_view>
 #include <vector>
 
+#include "fsm/frontend/common/parser_interface.hpp"
 #include "fsm/frontend/diagram/dot_parser.hpp"
 #include "fsm/frontend/diagram/json_parser.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
@@ -15,7 +16,6 @@
 #include "fsm/frontend/formal/scxml_parser.hpp"
 #include "fsm/frontend/formal/smv_parser.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
-#include "fsm/frontend/common/parser_interface.hpp"
 
 namespace fsm::codegen {
 

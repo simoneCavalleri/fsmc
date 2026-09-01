@@ -61,7 +61,8 @@ class CppModelEmitter {
                 if (port.is_in()) {
                     if (port.min_value.has_value() && port.max_value.has_value()) {
                         std::ostringstream v;
-                        v << "(" << port.name << " >= " << *port.min_value << " && " << port.name << " <= " << *port.max_value << ")";
+                        v << "(" << port.name << " >= " << *port.min_value << " && " << port.name
+                          << " <= " << *port.max_value << ")";
                         in_validations.push_back(v.str());
                     } else if (port.min_value.has_value()) {
                         std::ostringstream v;
@@ -85,7 +86,8 @@ class CppModelEmitter {
             } else {
                 out << "        return ";
                 for (size_t i = 0; i < in_validations.size(); ++i) {
-                    if (i > 0) out << " &&\n               ";
+                    if (i > 0)
+                        out << " &&\n               ";
                     out << in_validations[i];
                 }
                 out << ";\n";
@@ -136,7 +138,8 @@ class CppModelEmitter {
                 if (port.is_out()) {
                     if (port.min_value.has_value() && port.max_value.has_value()) {
                         std::ostringstream v;
-                        v << "(" << port.name << " >= " << *port.min_value << " && " << port.name << " <= " << *port.max_value << ")";
+                        v << "(" << port.name << " >= " << *port.min_value << " && " << port.name
+                          << " <= " << *port.max_value << ")";
                         out_validations.push_back(v.str());
                     } else if (port.min_value.has_value()) {
                         std::ostringstream v;
@@ -160,7 +163,8 @@ class CppModelEmitter {
             } else {
                 out << "        return ";
                 for (size_t i = 0; i < out_validations.size(); ++i) {
-                    if (i > 0) out << " &&\n               ";
+                    if (i > 0)
+                        out << " &&\n               ";
                     out << out_validations[i];
                 }
                 out << ";\n";
@@ -201,8 +205,7 @@ class CppModelEmitter {
         for (const auto& act : model.actions) {
             bool has_assign = false;
             for (const auto& t : model.transitions) {
-                if (t.action_sig.has_value() && t.action_sig->name == act.name &&
-                    !t.action_sig->assignments.empty()) {
+                if (t.action_sig.has_value() && t.action_sig->name == act.name && !t.action_sig->assignments.empty()) {
                     has_assign = true;
                     break;
                 }
@@ -283,12 +286,14 @@ class CppModelEmitter {
                 if (!sig.attributes.empty()) {
                     out << "\n    constexpr explicit " << sig.name << "(";
                     for (std::size_t i = 0; i < sig.attributes.size(); ++i) {
-                        if (i > 0) out << ", ";
+                        if (i > 0)
+                            out << ", ";
                         out << sig.attributes[i].type << " " << sig.attributes[i].name << "_";
                     }
                     out << ") : ";
                     for (std::size_t i = 0; i < sig.attributes.size(); ++i) {
-                        if (i > 0) out << ", ";
+                        if (i > 0)
+                            out << ", ";
                         out << sig.attributes[i].name << "(" << sig.attributes[i].name << "_)";
                     }
                     out << " {}\n";
@@ -301,7 +306,8 @@ class CppModelEmitter {
                     out << "    [[nodiscard]] constexpr bool is_valid() const noexcept {\n";
                     out << "        return ";
                     for (std::size_t i = 0; i < sig.validators.size(); ++i) {
-                        if (i > 0) out << " && ";
+                        if (i > 0)
+                            out << " && ";
                         out << "(" << sig.validators[i] << ")";
                     }
                     out << ";\n";
@@ -387,7 +393,8 @@ class CppModelEmitter {
             if (!state_item.entry_actions.empty()) {
                 out << "\n    /** @brief State entry lifecycle hook */\n";
                 out << "    template <typename InPorts, typename OutPorts, typename Registers, typename Services>\n";
-                out << "    void on_entry(const InPorts& /*in*/, OutPorts& /*out*/, Registers& /*reg*/, Services& /*srv*/) const {\n";
+                out << "    void on_entry(const InPorts& /*in*/, OutPorts& /*out*/, Registers& /*reg*/, Services& "
+                       "/*srv*/) const {\n";
                 for (const auto& act : state_item.entry_actions) {
                     out << "        // Entry action: " << act.name << "\n";
                 }
@@ -398,7 +405,8 @@ class CppModelEmitter {
             if (!state_item.exit_actions.empty()) {
                 out << "\n    /** @brief State exit lifecycle hook */\n";
                 out << "    template <typename InPorts, typename OutPorts, typename Registers, typename Services>\n";
-                out << "    void on_exit(const InPorts& /*in*/, OutPorts& /*out*/, Registers& /*reg*/, Services& /*srv*/) const {\n";
+                out << "    void on_exit(const InPorts& /*in*/, OutPorts& /*out*/, Registers& /*reg*/, Services& "
+                       "/*srv*/) const {\n";
                 for (const auto& act : state_item.exit_actions) {
                     out << "        // Exit action: " << act.name << "\n";
                 }
@@ -452,13 +460,15 @@ class CppModelEmitter {
 
                 out << "    // Domain guard evaluation (InPorts, Registers, Event payload)\n";
                 out << "    template <typename InPorts, typename Registers>\n";
-                out << "    [[nodiscard]] constexpr bool operator()(const InPorts& in, const Registers& reg) const noexcept {\n";
+                out << "    [[nodiscard]] constexpr bool operator()(const InPorts& in, const Registers& reg) const "
+                       "noexcept {\n";
                 out << "        (void)in; (void)reg;\n";
                 out << "        return " << non_event_expr << ";\n";
                 out << "    }\n\n";
 
                 out << "    template <typename Event, typename InPorts, typename Registers>\n";
-                out << "    [[nodiscard]] constexpr bool operator()(const Event& cmd, const InPorts& in, const Registers& reg) const noexcept {\n";
+                out << "    [[nodiscard]] constexpr bool operator()(const Event& cmd, const InPorts& in, const "
+                       "Registers& reg) const noexcept {\n";
                 out << "        (void)cmd; (void)in; (void)reg;\n";
                 out << "        return " << expr << ";\n";
                 out << "    }\n\n";
@@ -469,8 +479,10 @@ class CppModelEmitter {
                 out << "        return " << non_event_expr << ";\n";
                 out << "    }\n\n";
 
-                out << "    template <typename Event, typename SrcState, typename InPorts, typename Registers, typename Services, typename Fsm>\n";
-                out << "    [[nodiscard]] constexpr bool operator()(const Event& cmd, const SrcState& /*src*/, const InPorts& in, const Registers& reg, Services& /*srv*/, const Fsm& /*fsm*/) const noexcept {\n";
+                out << "    template <typename Event, typename SrcState, typename InPorts, typename Registers, "
+                       "typename Services, typename Fsm>\n";
+                out << "    [[nodiscard]] constexpr bool operator()(const Event& cmd, const SrcState& /*src*/, const "
+                       "InPorts& in, const Registers& reg, Services& /*srv*/, const Fsm& /*fsm*/) const noexcept {\n";
                 out << "        (void)cmd; (void)in; (void)reg;\n";
                 out << "        return " << expr << ";\n";
                 out << "    }\n";
@@ -482,9 +494,11 @@ class CppModelEmitter {
             std::set<std::string> declared_guards;
             for (const auto& guard_item : model.guards) {
                 std::regex ident_re(R"([A-Za-z_][A-Za-z0-9_]*)");
-                for (std::sregex_iterator it(guard_item.name.begin(), guard_item.name.end(), ident_re), end; it != end; ++it) {
+                for (std::sregex_iterator it(guard_item.name.begin(), guard_item.name.end(), ident_re), end; it != end;
+                     ++it) {
                     std::string id = it->str();
-                    if (id != "fsm" && id != "and_" && id != "or_" && id != "not_" && id != "xor_" && id != "no_guard") {
+                    if (id != "fsm" && id != "and_" && id != "or_" && id != "not_" && id != "xor_" &&
+                        id != "no_guard") {
                         declared_guards.insert(id);
                     }
                 }
@@ -537,7 +551,8 @@ class CppModelEmitter {
                     std::string reg_param = uses_reg ? "Registers& reg" : "Registers& /*reg*/";
 
                     out << "    template <typename Event, typename OutPorts, typename Registers>\n";
-                    out << "    void operator()(const Event& /*cmd*/, " << out_param << ", " << reg_param << ") const {\n";
+                    out << "    void operator()(const Event& /*cmd*/, " << out_param << ", " << reg_param
+                        << ") const {\n";
                     for (const auto& assign : assignments) {
                         const auto* p = model.find_port(assign.target_variable);
                         if (p != nullptr && p->is_out()) {
@@ -560,8 +575,10 @@ class CppModelEmitter {
                     }
                     out << "    }\n\n";
 
-                    out << "    template <typename Event, typename InPorts, typename OutPorts, typename Registers, typename Services>\n";
-                    out << "    void operator()(const Event& /*cmd*/, const InPorts& /*in*/, " << out_param << ", " << reg_param << ", Services& /*srv*/) const {\n";
+                    out << "    template <typename Event, typename InPorts, typename OutPorts, typename Registers, "
+                           "typename Services>\n";
+                    out << "    void operator()(const Event& /*cmd*/, const InPorts& /*in*/, " << out_param << ", "
+                        << reg_param << ", Services& /*srv*/) const {\n";
                     for (const auto& assign : assignments) {
                         const auto* p = model.find_port(assign.target_variable);
                         if (p != nullptr && p->is_out()) {
@@ -579,12 +596,16 @@ class CppModelEmitter {
                     out << "    }\n\n";
 
                     out << "    template <typename Event, typename Services>\n";
-                    out << "    auto operator()(const Event& /*cmd*/, Services& srv) const -> decltype(srv." << action_item.name << "()) {\n";
+                    out << "    auto operator()(const Event& /*cmd*/, Services& srv) const -> decltype(srv."
+                        << action_item.name << "()) {\n";
                     out << "        srv." << action_item.name << "();\n";
                     out << "    }\n\n";
 
-                    out << "    template <typename Event, typename InPorts, typename OutPorts, typename Registers, typename Services>\n";
-                    out << "    auto operator()(const Event& /*cmd*/, const InPorts& /*in*/, OutPorts& /*out*/, Registers& /*reg*/, Services& srv) const -> decltype(srv." << action_item.name << "()) {\n";
+                    out << "    template <typename Event, typename InPorts, typename OutPorts, typename Registers, "
+                           "typename Services>\n";
+                    out << "    auto operator()(const Event& /*cmd*/, const InPorts& /*in*/, OutPorts& /*out*/, "
+                           "Registers& /*reg*/, Services& srv) const -> decltype(srv."
+                        << action_item.name << "()) {\n";
                     out << "        srv." << action_item.name << "();\n";
                     out << "    }\n";
                 }
@@ -595,9 +616,11 @@ class CppModelEmitter {
             std::set<std::string> declared_actions;
             for (const auto& action_item : model.actions) {
                 std::regex ident_re(R"([A-Za-z_][A-Za-z0-9_]*)");
-                for (std::sregex_iterator it(action_item.name.begin(), action_item.name.end(), ident_re), end; it != end; ++it) {
+                for (std::sregex_iterator it(action_item.name.begin(), action_item.name.end(), ident_re), end;
+                     it != end; ++it) {
                     std::string id = it->str();
-                    if (id != "fsm" && id != "and_" && id != "or_" && id != "not_" && id != "seq_" && id != "no_action") {
+                    if (id != "fsm" && id != "and_" && id != "or_" && id != "not_" && id != "seq_" &&
+                        id != "no_action") {
                         declared_actions.insert(id);
                     }
                 }
@@ -633,7 +656,8 @@ class CppModelEmitter {
             return state_name;
         };
 
-        auto get_all_substates = [&](auto& self, const std::string& parent_name, bool deep) -> std::vector<std::string> {
+        auto get_all_substates = [&](auto& self, const std::string& parent_name,
+                                     bool deep) -> std::vector<std::string> {
             std::vector<std::string> subs;
             for (const auto& s : model.states) {
                 if (s.parent_state == parent_name) {
@@ -665,8 +689,8 @@ class CppModelEmitter {
             }
         };
 
-        auto emit_internal_row = [&](const std::string& src, const std::string& evt,
-                                     const std::string& act, const std::string& grd) {
+        auto emit_internal_row = [&](const std::string& src, const std::string& evt, const std::string& act,
+                                     const std::string& grd) {
             if (!first_row) {
                 out << ",\n    ::fsm::internal_row<" << src << ", " << evt << ">";
             } else {
@@ -688,9 +712,8 @@ class CppModelEmitter {
         out << "using " << table_type_name << " = ::fsm::transition_table<";
 
         std::vector<TransitionEdge> transitions = model.transitions;
-        std::stable_sort(transitions.begin(), transitions.end(), [](const auto& a, const auto& b) {
-            return a.priority > b.priority;
-        });
+        std::stable_sort(transitions.begin(), transitions.end(),
+                         [](const auto& a, const auto& b) { return a.priority > b.priority; });
 
         for (const auto& t : transitions) {
             std::string event_type = t.event;
@@ -721,8 +744,8 @@ class CppModelEmitter {
                                                           : "::fsm::history_is<" + target_node->name + ", " + sub + ">";
                         emit_single_row(t.source, event_type, sub, action_type, composite_guard);
                     }
-                    std::string default_sub = !target_node->initial_sub_state.empty() ? target_node->initial_sub_state
-                                                                                      : sub_states[0];
+                    std::string default_sub =
+                        !target_node->initial_sub_state.empty() ? target_node->initial_sub_state : sub_states[0];
                     default_sub = find_initial_leaf_substate(find_initial_leaf_substate, default_sub);
                     emit_single_row(t.source, event_type, default_sub, action_type, guard_type);
                 } else if (!target_node->initial_sub_state.empty()) {
@@ -779,7 +802,8 @@ class CppModelEmitter {
 
         out << "/**\n";
         out << " * @typedef " << model.name << "\n";
-        out << " * @brief Primary Synchronous Core State Machine instance for '" << model.name << "' on caller stack.\n";
+        out << " * @brief Primary Synchronous Core State Machine instance for '" << model.name
+            << "' on caller stack.\n";
         out << " */\n";
         out << "using " << model.name << " = fsm::fsm<" << table_type_name << ", " << model.name << "InPorts, "
             << model.name << "OutPorts, " << model.name << "Registers, " << model.name << "Services, " << init_state
@@ -789,17 +813,17 @@ class CppModelEmitter {
         out << " * @typedef ThreadSafe" << model.name << "\n";
         out << " * @brief Thread-Safe Active Object State Machine for '" << model.name << "'.\n";
         out << " */\n";
-        out << "using ThreadSafe" << model.name << " = fsm::thread_safe_fsm<" << table_type_name << ", "
-            << model.name << "InPorts, " << model.name << "OutPorts, " << model.name << "Registers, "
-            << model.name << "Services, " << init_state << ">;\n\n";
+        out << "using ThreadSafe" << model.name << " = fsm::thread_safe_fsm<" << table_type_name << ", " << model.name
+            << "InPorts, " << model.name << "OutPorts, " << model.name << "Registers, " << model.name << "Services, "
+            << init_state << ">;\n\n";
 
         out << "/**\n";
         out << " * @typedef Spsc" << model.name << "\n";
         out << " * @brief Lock-Free Single-Producer Single-Consumer State Machine for '" << model.name << "'.\n";
         out << " */\n";
-        out << "using Spsc" << model.name << " = fsm::spsc_fsm<" << table_type_name << ", "
-            << model.name << "InPorts, " << model.name << "OutPorts, " << model.name << "Registers, "
-            << model.name << "Services, 64, " << init_state << ">;\n";
+        out << "using Spsc" << model.name << " = fsm::spsc_fsm<" << table_type_name << ", " << model.name << "InPorts, "
+            << model.name << "OutPorts, " << model.name << "Registers, " << model.name << "Services, 64, " << init_state
+            << ">;\n";
     }
 
     static void emit_model(std::ostream& out, const FsmIr& model, const GeneratorOptions& options) {

@@ -43,7 +43,7 @@ inline void handle_exception_outside_lock(std::exception_ptr ex, const exception
 
 template <typename Event>
 inline void invoke_notifications_outside_lock(const Event& evt, const dispatch_snapshot& snap,
-                                             std::exception_ptr& last_exception, std::mutex& mutex) {
+                                              std::exception_ptr& last_exception, std::mutex& mutex) {
     if (snap.observer_h) {
         for (const auto& info : snap.notifications) {
             try {

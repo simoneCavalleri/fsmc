@@ -59,9 +59,7 @@ class spsc_fsm {
     static constexpr bool has_event = fsm_type::template has_event<Event>;
 
     // Constructors
-    spsc_fsm() : fsm_() {
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_relaxed);
-    }
+    spsc_fsm() : fsm_() { state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_relaxed); }
 
     explicit spsc_fsm(Services& srv, Table table = Table{}) : fsm_(srv, std::move(table)) {
         state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_relaxed);
@@ -76,8 +74,7 @@ class spsc_fsm {
         state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_relaxed);
     }
 
-    explicit spsc_fsm(InitialState initial, Table table = Table{})
-        : fsm_(std::move(initial), std::move(table)) {
+    explicit spsc_fsm(InitialState initial, Table table = Table{}) : fsm_(std::move(initial), std::move(table)) {
         state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_relaxed);
     }
 
@@ -145,7 +142,9 @@ class spsc_fsm {
         seq_.fetch_add(1, std::memory_order_release);
         services_type dummy_srv{};
         services_type& srv = (fsm_.get_services() != nullptr) ? *fsm_.get_services() : dummy_srv;
-        std::visit([this, &in, &out, &srv](const auto& evt) { (void)this->fsm_.dispatch_direct_ports(evt, in, out, srv); }, *item);
+        std::visit(
+            [this, &in, &out, &srv](const auto& evt) { (void)this->fsm_.dispatch_direct_ports(evt, in, out, srv); },
+            *item);
         state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
         seq_.fetch_add(1, std::memory_order_release);
         return true;

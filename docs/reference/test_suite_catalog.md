@@ -430,7 +430,7 @@
   - Verify serialization to JSON preserves time_invariant and priority.
 
 #### `FsmIrTest.DomainPortSeparationAndZeroContext`
-**Test Intent**: Verify domain-separated PortDefinition, SignalDefinition, VariableDefinition and zero Context references.
+**Test Intent**: Verify domain-separated PortDefinition, SignalDefinition, VariableDefinition and zero Context
 
 ---
 
@@ -452,7 +452,7 @@
   - Run GuardSatisfiabilityPass and verify that diagnostic code W0301 is emitted.
 
 #### `GuardSatisfiabilityTest.DeadGuardEmitWarningW0302`
-**Test Intent**: Verify that contradictory guard conditions (e.g. x > 100 && x < 50) emit dead guard warning W0302.
+**Test Intent**: Verify that contradictory guard conditions (e.g. x > 100 && x < 50) emit dead guard warning
 
 **Scenario**:
   - Define a transition with guard 'x > 100 && x < 50' whose interval intersection is empty.
@@ -466,7 +466,7 @@
   - Run GuardSatisfiabilityPass and verify that no ambiguity warning is emitted.
 
 #### `GuardSatisfiabilityTest.BooleanGuardsMutuallyExclusive`
-**Test Intent**: Verify that complementary boolean guards (enabled == true vs enabled == false) are recognized as disjoint.
+**Test Intent**: Verify that complementary boolean guards (enabled == true vs enabled == false) are recognized as
 
 **Scenario**:
   - Define two transitions on event 'Toggle' with boolean guards 'enabled == true' and 'enabled == false'.
@@ -651,7 +651,7 @@
   - Verify pass flattens into 2 direct transitions (Idle -> Nominal, Idle -> Degraded) with combined actions.
 
 #### `MiddleendPassesTest.DeterminismEnforcementUnconditionalCollision`
-**Test Intent**: Verify determinism enforcement detects non-deterministic collisions on identical-priority branches.
+**Test Intent**: Verify determinism enforcement detects non-deterministic collisions on identical-priority
 
 #### `MiddleendPassesTest.EfsmIntervalAnalysisContractVerification`
 **Test Intent**: Verify EFSM interval analysis validates port domain bounds and detects contract violations.
@@ -786,7 +786,7 @@
   - Test direct async_event_queue try_pop and queue size.
 
 #### `AsyncAndGuardsTest.ThreadSafeFsmReentrancyPreventionAndDraining`
-**Test Intent**: Verify thread_safe_fsm detects same-thread reentrant dispatch and safely defers/drains it without UB.
+**Test Intent**: Verify thread_safe_fsm detects same-thread reentrant dispatch and safely defers/drains it without
 
 ### [`test_choice.cpp`](../tests/backend/cpp/runtime/test_choice.cpp) (`tests/backend/cpp/runtime/test_choice.cpp`)
 #### `ChoiceTest.ChoicePseudostateParsingAndCodegen`
@@ -990,7 +990,7 @@
   - Verify final accumulated state count is exactly 1000 with zero race conditions.
 
 #### `FsmCoreTest.DualChannelMachineDualParadigmAndZeroHeap`
-**Test Intent**: Verify dual-mode execution (continuous sampled step + event-driven reactive dispatch) and zero-heap non-polymorphism.
+**Test Intent**: Verify dual-mode execution (continuous sampled step + event-driven reactive dispatch) and
 
 ### [`test_hfsm.cpp`](../tests/backend/cpp/runtime/test_hfsm.cpp) (`tests/backend/cpp/runtime/test_hfsm.cpp`)
 #### `HfsmTest.PlantUmlCompositeStateParsing`
@@ -1212,7 +1212,7 @@
   - Verify is_internal() and is_external() query helpers.
 
 #### `TraitsAndHooksTest.LegacyContextPoisonCheck`
-**Test Intent**: Certify at compile-time that legacy v0.3.0 signatures (guard(Context&), action(Context&)) are rejected.
+**Test Intent**: Certify at compile-time that legacy v0.3.0 signatures (guard(Context&), action(Context&)) are
 
 #### `TraitsAndHooksTest.StateNameStaticResolutionConsistency`
 **Test Intent**: Verify static state name resolution and compile-time string reflection.
@@ -1296,7 +1296,7 @@
 
 ### [`test_cpp_e2e_compiler.cpp`](../tests/backend/cpp/test_cpp_e2e_compiler.cpp) (`tests/backend/cpp/test_cpp_e2e_compiler.cpp`)
 #### `CppE2ECompilerTest.StandaloneCompilationAndExecutionCpp17AndCpp20`
-**Test Intent**: Verify host compiler compilation and runtime execution of standalone generated C++17 and C++20 code.
+**Test Intent**: Verify host compiler compilation and runtime execution of standalone generated C++17 and C++20
 
 **Scenario**:
   - Generate standalone C++17 and C++20 headers for IndustrialThermostat EFSM.
@@ -1304,7 +1304,7 @@
   - Execute compiled binaries asserting synchronous step() control loops, reactive dispatch() with payload,
 
 #### `CppE2ECompilerTest.RuntimeExporterBundlingAndResilience`
-**Test Intent**: Verify `RuntimeExporter` bundles standalone runtime headers for C++17 and C++20 and handles IO errors gracefully.
+**Test Intent**: Verify `RuntimeExporter` bundles standalone runtime headers for C++17 and C++20 and handles IO
 
 **Scenario**:
   - Export standalone runtime into temporary directories for C++17 and C++20.
@@ -1321,7 +1321,7 @@
   - Verify that structs with exact member names, types, default initializers, and RPC virtual interfaces are generated.
 
 #### `CppModelEmitterTest.TypedSignalPayloadsWithValidators`
-**Test Intent**: Verify C++ emission of strongly-typed signal structs with payload attributes and constexpr validators.
+**Test Intent**: Verify C++ emission of strongly-typed signal structs with payload attributes and constexpr
 
 **Scenario**:
   - Define signal `EvTelemetry` with attributes `len`, `ptr` and validation expressions.
@@ -1329,7 +1329,7 @@
   - Verify explicit constructor generation and `[[nodiscard]] constexpr bool is_valid()` validator implementation.
 
 #### `CppModelEmitterTest.StatesLifecycleHooksAndRequirements`
-**Test Intent**: Verify C++ emission of state lifecycle hooks (`on_entry`, `on_exit`), time invariants, and traceability docstrings.
+**Test Intent**: Verify C++ emission of state lifecycle hooks (`on_entry`, `on_exit`), time invariants, and
 
 **Scenario**:
   - State has traceability requirements (REQ-SAFE-01, REQ-REALTIME-02), entry/exit actions, and time invariant.

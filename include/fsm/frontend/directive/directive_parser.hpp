@@ -275,7 +275,8 @@ class DirectiveParser {
             if (!m_str.empty()) {
                 try {
                     port.min_value = std::stod(m_str);
-                } catch (...) {}
+                } catch (...) {
+                }
             }
         }
 
@@ -285,7 +286,8 @@ class DirectiveParser {
             if (!m_str.empty()) {
                 try {
                     port.max_value = std::stod(m_str);
-                } catch (...) {}
+                } catch (...) {
+                }
             }
         }
 

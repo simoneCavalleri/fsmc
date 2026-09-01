@@ -30,7 +30,8 @@ class GuardSatisfiabilityPass {
   public:
     [[nodiscard]] static std::string name() { return "GuardSatisfiabilityAnalysis"; }
     [[nodiscard]] static std::string description() {
-        return "Analyzes guard expressions for satisfiability and mutual exclusivity without external solver dependencies";
+        return "Analyzes guard expressions for satisfiability and mutual exclusivity without external solver "
+               "dependencies";
     }
 
     bool run(FsmIr& ir, DiagnosticEngine& diag) {
@@ -53,10 +54,9 @@ class GuardSatisfiabilityPass {
                 auto constraints = extract_guard_constraints(g_str);
                 for (const auto& [var, ival] : constraints) {
                     if (ival.is_empty()) {
-                        diag.report(Diagnostic::warning(
-                            "W0302",
-                            "Dead guard on transition from '" + src + "' to '" + t->target + "' on event '" +
-                                evt + "': guard '" + g_str + "' is unsatisfiable."));
+                        diag.report(Diagnostic::warning("W0302", "Dead guard on transition from '" + src + "' to '" +
+                                                                     t->target + "' on event '" + evt + "': guard '" +
+                                                                     g_str + "' is unsatisfiable."));
                         break;
                     }
                 }
@@ -91,10 +91,9 @@ class GuardSatisfiabilityPass {
                     // If identical guard strings -> always overlapping
                     if (*t1->guard == *t2->guard) {
                         diag.report(Diagnostic::warning(
-                            "W0301",
-                            "Potentially overlapping guards on transitions from '" + src + "' on event '" +
-                                evt + "': guards ['" + *t1->guard + "'] and ['" + *t2->guard +
-                                "'] may be simultaneously satisfiable."));
+                            "W0301", "Potentially overlapping guards on transitions from '" + src + "' on event '" +
+                                         evt + "': guards ['" + *t1->guard + "'] and ['" + *t2->guard +
+                                         "'] may be simultaneously satisfiable."));
                         continue;
                     }
 
@@ -117,10 +116,9 @@ class GuardSatisfiabilityPass {
 
                     if (found_common_var && !provably_mutually_exclusive) {
                         diag.report(Diagnostic::warning(
-                            "W0301",
-                            "Potentially overlapping guards on transitions from '" + src + "' on event '" +
-                                evt + "': guards ['" + *t1->guard + "'] and ['" + *t2->guard +
-                                "'] may be simultaneously satisfiable."));
+                            "W0301", "Potentially overlapping guards on transitions from '" + src + "' on event '" +
+                                         evt + "': guards ['" + *t1->guard + "'] and ['" + *t2->guard +
+                                         "'] may be simultaneously satisfiable."));
                     }
                 }
             }
@@ -146,7 +144,8 @@ class GuardSatisfiabilityPass {
         std::sregex_token_iterator iter(guard_str.begin(), guard_str.end(), and_split, -1);
         std::sregex_token_iterator end;
 
-        std::regex cmp_re(R"((?:(?:in|reg|out|cmd|event|payload)\.)?([a-zA-Z_]\w*)\s*(==|!=|>=|<=|>|<)\s*([+-]?\d+(?:\.\d+)?[fFuUlL]*))");
+        std::regex cmp_re(
+            R"((?:(?:in|reg|out|cmd|event|payload)\.)?([a-zA-Z_]\w*)\s*(==|!=|>=|<=|>|<)\s*([+-]?\d+(?:\.\d+)?[fFuUlL]*))");
         std::regex bool_eq_re(R"((?:(?:in|reg|out|cmd|event|payload)\.)?([a-zA-Z_]\w*)\s*(==|!=)\s*(true|false))");
 
         for (; iter != end; ++iter) {

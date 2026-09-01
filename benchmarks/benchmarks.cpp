@@ -10,14 +10,14 @@
 #include <string_view>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
+#include "fsm/backend/cpp/runtime/fsm.hpp"
+#include "fsm/backend/cpp/runtime/spsc_ring_buffer.hpp"
+#include "fsm/backend/cpp/runtime/static_ring_buffer.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/pass_manager.hpp"
-#include "fsm/backend/cpp/runtime/fsm.hpp"
-#include "fsm/backend/cpp/runtime/spsc_ring_buffer.hpp"
-#include "fsm/backend/cpp/runtime/static_ring_buffer.hpp"
 
 // ============================================================================
 // Global Heap Allocation Tracker for Google Benchmark
@@ -81,9 +81,7 @@ struct BenchRegisters {
 };
 
 struct DummyGuard {
-    [[nodiscard]] constexpr bool operator()(const BenchRegisters& /*reg*/) const noexcept {
-        return true;
-    }
+    [[nodiscard]] constexpr bool operator()(const BenchRegisters& /*reg*/) const noexcept { return true; }
 };
 
 struct CompositeGuard {
@@ -93,15 +91,11 @@ struct CompositeGuard {
 };
 
 struct DummyAction {
-    constexpr void operator()(BenchRegisters& reg) const noexcept {
-        reg.counter++;
-    }
+    constexpr void operator()(BenchRegisters& reg) const noexcept { reg.counter++; }
 };
 
 struct InternalAction {
-    constexpr void operator()(BenchRegisters& reg) const noexcept {
-        reg.counter++;
-    }
+    constexpr void operator()(BenchRegisters& reg) const noexcept { reg.counter++; }
 };
 
 using BenchTable = fsm::transition_table<fsm::transition<StateA, Event1, StateB, DummyAction, DummyGuard>,

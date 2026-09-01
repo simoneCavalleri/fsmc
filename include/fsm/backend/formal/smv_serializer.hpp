@@ -94,7 +94,8 @@ class SmvSerializer {
             if (port.type == "bool" || port.type == "boolean" || port.type_kind == VariableTypeKind::Boolean) {
                 out << "boolean;";
             } else if (port.min_value.has_value() && port.max_value.has_value()) {
-                out << static_cast<long long>(*port.min_value) << ".." << static_cast<long long>(*port.max_value) << ";";
+                out << static_cast<long long>(*port.min_value) << ".." << static_cast<long long>(*port.max_value)
+                    << ";";
             } else {
                 out << "0..100;";
             }

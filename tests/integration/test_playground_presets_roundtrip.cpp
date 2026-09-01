@@ -472,12 +472,14 @@ bool compile_header_with_flags(const std::string& header_path, int std_version) 
 
     std::string cmd = "g++ -std=c++" + std::to_string(std_version) +
                       " -Wall -Wextra -Werror -pedantic -Wconversion"
-                      " -I" + std::string(FSMC_INCLUDE_DIR) +
-                      " -c " + runner_path + " -o " + out_obj + " 2>&1";
+                      " -I" +
+                      std::string(FSMC_INCLUDE_DIR) + " -c " + runner_path + " -o " + out_obj + " 2>&1";
 
     int ret = std::system(cmd.c_str());
-    if (fs::exists(runner_path)) fs::remove(runner_path);
-    if (fs::exists(out_obj)) fs::remove(out_obj);
+    if (fs::exists(runner_path))
+        fs::remove(runner_path);
+    if (fs::exists(out_obj))
+        fs::remove(out_obj);
 
     return (ret == 0);
 }
@@ -485,7 +487,7 @@ bool compile_header_with_flags(const std::string& header_path, int std_version) 
 }  // namespace
 
 class PlaygroundPresetsRoundtripTest : public ::testing::Test {
-protected:
+  protected:
     fs::path temp_dir;
 
     void SetUp() override {

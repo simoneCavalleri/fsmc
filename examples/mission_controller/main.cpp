@@ -122,7 +122,8 @@ struct ShutdownSystemsAction {
 };
 
 using AppMissionFSM = ::fsm::fsm<MissionFSMTable, MissionInPorts, ::fsm::no_ports, MissionRegisters>;
-using AppThreadSafeMissionFSM = ::fsm::thread_safe_fsm<MissionFSMTable, MissionInPorts, ::fsm::no_ports, MissionRegisters>;
+using AppThreadSafeMissionFSM =
+    ::fsm::thread_safe_fsm<MissionFSMTable, MissionInPorts, ::fsm::no_ports, MissionRegisters>;
 
 }  // namespace mission
 

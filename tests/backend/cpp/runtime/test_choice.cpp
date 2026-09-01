@@ -54,8 +54,7 @@ TEST(ChoiceTest, ChoicePseudostateParsingAndCodegen) {
     // Verify expanded transition table rows
     EXPECT_NE(code.find("row<Idle, LoginCmd, AdminView>::when<IsAdminGuard>::then<GrantAdminAction>"),
               std::string::npos);
-    EXPECT_NE(code.find("row<Idle, LoginCmd, UserView>::when<IsUserGuard>::then<GrantUserAction>"),
-              std::string::npos);
+    EXPECT_NE(code.find("row<Idle, LoginCmd, UserView>::when<IsUserGuard>::then<GrantUserAction>"), std::string::npos);
 }
 
 }  // namespace

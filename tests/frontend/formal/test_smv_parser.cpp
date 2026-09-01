@@ -3,8 +3,8 @@
 #include <string>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
-#include "fsm/frontend/formal/smv_parser.hpp"
 #include "fsm/frontend/common/parser_interface.hpp"
+#include "fsm/frontend/formal/smv_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 using namespace fsm::codegen;

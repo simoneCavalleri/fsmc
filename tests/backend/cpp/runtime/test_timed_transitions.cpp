@@ -81,21 +81,15 @@ struct OrderRegisters {
 };
 
 struct ActionAtoB {
-    void operator()(OrderRegisters& reg) const {
-        reg.log.emplace_back("A->B");
-    }
+    void operator()(OrderRegisters& reg) const { reg.log.emplace_back("A->B"); }
 };
 
 struct ActionBtoC {
-    void operator()(OrderRegisters& reg) const {
-        reg.log.emplace_back("B->C");
-    }
+    void operator()(OrderRegisters& reg) const { reg.log.emplace_back("B->C"); }
 };
 
 struct ActionCtoD {
-    void operator()(OrderRegisters& reg) const {
-        reg.log.emplace_back("C->D");
-    }
+    void operator()(OrderRegisters& reg) const { reg.log.emplace_back("C->D"); }
 };
 
 using OrderTable = fsm::transition_table<fsm::transition<StateA, Step1, StateB, ActionAtoB>,
@@ -141,8 +135,8 @@ TEST(TimedTransitionsTest, AsyncPostDelayedPriorityChronologicalOrder) {
 
 struct ReentrantRegisters;
 
-using ReentrantTable = fsm::transition_table<fsm::transition<StateA, Step1, StateB>,
-                                             fsm::transition<StateB, Step2, StateC>>;
+using ReentrantTable =
+    fsm::transition_table<fsm::transition<StateA, Step1, StateB>, fsm::transition<StateB, Step2, StateC>>;
 
 using ReentrantSm = fsm::thread_safe_fsm<ReentrantTable, fsm::no_ports, fsm::no_ports, ReentrantRegisters>;
 

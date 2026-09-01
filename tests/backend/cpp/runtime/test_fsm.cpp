@@ -358,9 +358,7 @@ struct OnBoostGuard {
 };
 
 struct OnSensorDropGuard {
-    [[nodiscard]] constexpr bool operator()(const MachineInPorts& in) const noexcept {
-        return in.sensor_val < 5.0;
-    }
+    [[nodiscard]] constexpr bool operator()(const MachineInPorts& in) const noexcept { return in.sensor_val < 5.0; }
 };
 
 struct OnBoostAction {
@@ -371,9 +369,7 @@ struct OnBoostAction {
 };
 
 struct OnSensorDropAction {
-    void operator()(MachineOutPorts& out, MachineRegisters& /*reg*/) const noexcept {
-        out.actuator_cmd = 0.0;
-    }
+    void operator()(MachineOutPorts& out, MachineRegisters& /*reg*/) const noexcept { out.actuator_cmd = 0.0; }
 };
 
 struct ExternalAlertAction {
@@ -392,7 +388,8 @@ using DualChannelFSM =
     fsm::fsm<DualChannelTable, MachineInPorts, MachineOutPorts, MachineRegisters, MockMachineServices, IdleState>;
 
 /**
- * @brief Test Intent: Verify dual-mode execution (continuous sampled step + event-driven reactive dispatch) and zero-heap non-polymorphism.
+ * @brief Test Intent: Verify dual-mode execution (continuous sampled step + event-driven reactive dispatch) and
+ * zero-heap non-polymorphism.
  */
 TEST(FsmCoreTest, DualChannelMachineDualParadigmAndZeroHeap) {
     // 1. Zero-Heap & No-Virtual Static Assertions

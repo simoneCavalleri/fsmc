@@ -219,7 +219,7 @@ TEST(ZeroAllocRuntimeTest, StaticVectorOperations) {
     EXPECT_TRUE(vec.push_back(50));
     EXPECT_TRUE(vec.push_back(60));
     EXPECT_TRUE(vec.full());
-    EXPECT_FALSE(vec.push_back(70)); // Full!
+    EXPECT_FALSE(vec.push_back(70));  // Full!
 
     // Copy constructor & assignment
     fsm::static_vector<int, 5> vec_copy = vec;
@@ -295,20 +295,18 @@ struct EvGotoB {};
 struct EvLeave {};
 struct EvResume {};
 
-using AdvancedTable = fsm::transition_table<
-    fsm::row<ChildA, EvGotoB, ChildB>,
-    fsm::row<ChildA, EvLeave, OutsideState>,
-    fsm::row<ChildB, EvLeave, OutsideState>,
-    fsm::row<OutsideState, EvResume, ChildB>::when<fsm::history_is<ParentState, ChildB>>,
-    fsm::row<OutsideState, EvResume, ChildA>,
-    fsm::row<ChildB, EvReset, ChildA>
->;
+using AdvancedTable =
+    fsm::transition_table<fsm::row<ChildA, EvGotoB, ChildB>, fsm::row<ChildA, EvLeave, OutsideState>,
+                          fsm::row<ChildB, EvLeave, OutsideState>,
+                          fsm::row<OutsideState, EvResume, ChildB>::when<fsm::history_is<ParentState, ChildB>>,
+                          fsm::row<OutsideState, EvResume, ChildA>, fsm::row<ChildB, EvReset, ChildA>>;
 
 /**
  * @brief Test Intent: Verify that FSM with History and Deferred Events operates with 100% Zero-Heap storage.
  */
 TEST(ZeroAllocRuntimeTest, TrueZeroAllocWithHistoryAndDeferredEvents) {
-    using AdvancedFSM = fsm::fsm<AdvancedTable, fsm::no_ports, fsm::no_ports, fsm::no_registers, fsm::no_services, ChildA>;
+    using AdvancedFSM =
+        fsm::fsm<AdvancedTable, fsm::no_ports, fsm::no_ports, fsm::no_registers, fsm::no_services, ChildA>;
 
     // Bounded inline memory footprint without any dynamic vector or dynamic closures
     AdvancedFSM machine;

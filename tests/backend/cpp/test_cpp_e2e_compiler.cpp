@@ -20,12 +20,12 @@
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/backend/cpp/cpp_model_emitter.hpp"
-#include "fsm/backend/cpp/runtime_exporter.hpp"
-#include "fsm/ir/fsm_ir.hpp"
 #include "fsm/backend/cpp/runtime/fsm.hpp"
 #include "fsm/backend/cpp/runtime/spsc_fsm.hpp"
 #include "fsm/backend/cpp/runtime/thread_safe_fsm.hpp"
 #include "fsm/backend/cpp/runtime/traits/hook_traits.hpp"
+#include "fsm/backend/cpp/runtime_exporter.hpp"
+#include "fsm/ir/fsm_ir.hpp"
 
 using namespace fsm::codegen;
 namespace fs = std::filesystem;
@@ -121,7 +121,7 @@ FsmIr create_industrial_efsm_model() {
 
     TransitionEdge t4("t_fault", "Operating", "Fault", SignalTrigger("EvEmergency"));
     t4.action = "emergency_shutdown";
-    t4.priority = 0; // Highest priority
+    t4.priority = 0;  // Highest priority
     model.add_transition(t4);
 
     return model;
@@ -130,7 +130,8 @@ FsmIr create_industrial_efsm_model() {
 }  // namespace
 
 /**
- * @brief Test Intent: Verify host compiler compilation and runtime execution of standalone generated C++17 and C++20 code.
+ * @brief Test Intent: Verify host compiler compilation and runtime execution of standalone generated C++17 and C++20
+ * code.
  *
  * Scenario:
  * - Generate standalone C++17 and C++20 headers for IndustrialThermostat EFSM.
@@ -314,7 +315,8 @@ int main() {
 }
 
 /**
- * @brief Test Intent: Verify `RuntimeExporter` bundles standalone runtime headers for C++17 and C++20 and handles IO errors gracefully.
+ * @brief Test Intent: Verify `RuntimeExporter` bundles standalone runtime headers for C++17 and C++20 and handles IO
+ * errors gracefully.
  *
  * Scenario:
  * - Export standalone runtime into temporary directories for C++17 and C++20.

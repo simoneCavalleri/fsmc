@@ -13,9 +13,7 @@ class reentrancy_tracker {
         return dispatching_thread_.load(std::memory_order_relaxed) == std::this_thread::get_id();
     }
 
-    [[nodiscard]] int depth() const noexcept {
-        return dispatch_depth_;
-    }
+    [[nodiscard]] int depth() const noexcept { return dispatch_depth_; }
 
     struct depth_guard {
         reentrancy_tracker& tracker;

@@ -53,8 +53,8 @@ struct PortDefinition {
     PortDefinition() = default;
     PortDefinition(std::string port_name, std::string port_type, PortDirection port_dir = PortDirection::In,
                    std::optional<double> min_val = std::nullopt, std::optional<double> max_val = std::nullopt,
-                   std::string constr = "", std::string def_val = "",
-                   std::optional<std::string> unit = std::nullopt, std::string desc = "")
+                   std::string constr = "", std::string def_val = "", std::optional<std::string> unit = std::nullopt,
+                   std::string desc = "")
         : name(std::move(port_name)),
           type(std::move(port_type)),
           type_kind(infer_type_kind(type)),
@@ -66,8 +66,12 @@ struct PortDefinition {
           physical_unit(std::move(unit)),
           description(std::move(desc)) {}
 
-    [[nodiscard]] bool is_in() const noexcept { return direction == PortDirection::In || direction == PortDirection::InOut; }
-    [[nodiscard]] bool is_out() const noexcept { return direction == PortDirection::Out || direction == PortDirection::InOut; }
+    [[nodiscard]] bool is_in() const noexcept {
+        return direction == PortDirection::In || direction == PortDirection::InOut;
+    }
+    [[nodiscard]] bool is_out() const noexcept {
+        return direction == PortDirection::Out || direction == PortDirection::InOut;
+    }
 
     bool operator==(const PortDefinition& other) const noexcept {
         return name == other.name && type == other.type && type_kind == other.type_kind &&

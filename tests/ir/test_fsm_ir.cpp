@@ -444,7 +444,8 @@ TEST(FsmIrTest, PriorityTimeInvariantAndEntryExitPoints) {
 }
 
 /**
- * @brief Test Intent: Verify domain-separated PortDefinition, SignalDefinition, VariableDefinition and zero Context references.
+ * @brief Test Intent: Verify domain-separated PortDefinition, SignalDefinition, VariableDefinition and zero Context
+ * references.
  */
 TEST(FsmIrTest, DomainPortSeparationAndZeroContext) {
     FsmIr model;

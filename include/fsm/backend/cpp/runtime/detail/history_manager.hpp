@@ -11,8 +11,8 @@
 namespace fsm {
 
 struct history_entry {
-    std::string_view parent{};   ///< Parent composite state name
-    std::string_view substate{}; ///< Recorded active substate name
+    std::string_view parent{};    ///< Parent composite state name
+    std::string_view substate{};  ///< Recorded active substate name
 
     constexpr bool operator==(const history_entry& other) const noexcept {
         return parent == other.parent && substate == other.substate;
@@ -53,9 +53,7 @@ class history_manager<Table, true> {
         return "";
     }
 
-    void clear_history() noexcept {
-        history_records_.clear();
-    }
+    void clear_history() noexcept { history_records_.clear(); }
 
   private:
     static_vector<history_entry, max_history_capacity> history_records_{};

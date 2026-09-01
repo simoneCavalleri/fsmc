@@ -59,7 +59,8 @@ template <typename Table, typename InPorts = no_ports, typename OutPorts = no_po
           std::size_t DeferredCapacity = 16>
 class thread_safe_fsm {
   public:
-    using fsm_type = fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, dynamic_observer, DeferredCapacity>;
+    using fsm_type =
+        fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, dynamic_observer, DeferredCapacity>;
     using in_ports_type = InPorts;
     using out_ports_type = OutPorts;
     using registers_type = Registers;
@@ -73,27 +74,19 @@ class thread_safe_fsm {
     using exception_handler = ::fsm::exception_handler;
 
     thread_safe_fsm() {
-        fsm_.set_observer([this](const transition_info& info) {
-            notification_buffer_.push_back(info);
-        });
+        fsm_.set_observer([this](const transition_info& info) { notification_buffer_.push_back(info); });
     }
 
     explicit thread_safe_fsm(services_type& srv) : fsm_(srv) {
-        fsm_.set_observer([this](const transition_info& info) {
-            notification_buffer_.push_back(info);
-        });
+        fsm_.set_observer([this](const transition_info& info) { notification_buffer_.push_back(info); });
     }
 
     explicit thread_safe_fsm(registers_type reg) : fsm_(std::move(reg)) {
-        fsm_.set_observer([this](const transition_info& info) {
-            notification_buffer_.push_back(info);
-        });
+        fsm_.set_observer([this](const transition_info& info) { notification_buffer_.push_back(info); });
     }
 
     thread_safe_fsm(registers_type reg, services_type& srv) : fsm_(std::move(reg), srv) {
-        fsm_.set_observer([this](const transition_info& info) {
-            notification_buffer_.push_back(info);
-        });
+        fsm_.set_observer([this](const transition_info& info) { notification_buffer_.push_back(info); });
     }
 
     ~thread_safe_fsm() {
@@ -161,13 +154,9 @@ class thread_safe_fsm {
     }
 
     // State & Register Access
-    [[nodiscard]] registers_type& registers() noexcept {
-        return fsm_.registers();
-    }
+    [[nodiscard]] registers_type& registers() noexcept { return fsm_.registers(); }
 
-    [[nodiscard]] const registers_type& registers() const noexcept {
-        return fsm_.registers();
-    }
+    [[nodiscard]] const registers_type& registers() const noexcept { return fsm_.registers(); }
 
     [[nodiscard]] registers_type snapshot_registers() const {
         if (reentrancy_.is_reentrant_call()) {
@@ -438,9 +427,7 @@ class thread_safe_fsm {
         return processed;
     }
 
-    std::size_t process_all() {
-        return run_until_empty();
-    }
+    std::size_t process_all() { return run_until_empty(); }
 
     void wait_until_idle() {
         while (!is_queue_empty()) {
@@ -456,7 +443,8 @@ class thread_safe_fsm {
     }
 
     void drain_reentrant_queue_if_outermost() {
-        if (reentrancy_.depth() == 0 && !worker_running_.load(std::memory_order_relaxed) && !is_calling_from_worker_thread()) {
+        if (reentrancy_.depth() == 0 && !worker_running_.load(std::memory_order_relaxed) &&
+            !is_calling_from_worker_thread()) {
             process_all();
         }
     }

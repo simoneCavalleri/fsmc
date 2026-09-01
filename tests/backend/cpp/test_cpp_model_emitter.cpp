@@ -123,7 +123,8 @@ TEST(CppModelEmitterTest, PartitionedDomainStructuresEmission) {
 }
 
 /**
- * @brief Test Intent: Verify C++ emission of strongly-typed signal structs with payload attributes and constexpr validators.
+ * @brief Test Intent: Verify C++ emission of strongly-typed signal structs with payload attributes and constexpr
+ * validators.
  *
  * Scenario:
  * - Define signal `EvTelemetry` with attributes `len`, `ptr` and validation expressions.
@@ -154,7 +155,8 @@ TEST(CppModelEmitterTest, TypedSignalPayloadsWithValidators) {
 }
 
 /**
- * @brief Test Intent: Verify C++ emission of state lifecycle hooks (`on_entry`, `on_exit`), time invariants, and traceability docstrings.
+ * @brief Test Intent: Verify C++ emission of state lifecycle hooks (`on_entry`, `on_exit`), time invariants, and
+ * traceability docstrings.
  *
  * Scenario:
  * - State has traceability requirements (REQ-SAFE-01, REQ-REALTIME-02), entry/exit actions, and time invariant.
@@ -182,9 +184,14 @@ TEST(CppModelEmitterTest, StatesLifecycleHooksAndRequirements) {
     EXPECT_NE(str.find("/// @satisfies REQ-SAFE-01, REQ-REALTIME-02"), std::string::npos);
 
     // Check on_entry and on_exit lifecycle hooks
-    EXPECT_NE(str.find("void on_entry(const InPorts& /*in*/, OutPorts& /*out*/, Registers& /*reg*/, Services& /*srv*/) const"), std::string::npos);
+    EXPECT_NE(
+        str.find(
+            "void on_entry(const InPorts& /*in*/, OutPorts& /*out*/, Registers& /*reg*/, Services& /*srv*/) const"),
+        std::string::npos);
     EXPECT_NE(str.find("// Entry action: ArmSensors"), std::string::npos);
-    EXPECT_NE(str.find("void on_exit(const InPorts& /*in*/, OutPorts& /*out*/, Registers& /*reg*/, Services& /*srv*/) const"), std::string::npos);
+    EXPECT_NE(
+        str.find("void on_exit(const InPorts& /*in*/, OutPorts& /*out*/, Registers& /*reg*/, Services& /*srv*/) const"),
+        std::string::npos);
     EXPECT_NE(str.find("// Exit action: DisarmSensors"), std::string::npos);
 
     // Check Time Invariant

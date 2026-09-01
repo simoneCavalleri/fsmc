@@ -28,7 +28,8 @@ class JsonSerializer {
                 out << "    {\n";
                 out << "      \"name\": \"" << escape_json(port.name) << "\",\n";
                 out << "      \"type\": \"" << escape_json(port.type) << "\",\n";
-                out << "      \"direction\": \"" << (port.is_out() ? "out" : (port.direction == PortDirection::InOut ? "inout" : "in")) << "\"";
+                out << "      \"direction\": \""
+                    << (port.is_out() ? "out" : (port.direction == PortDirection::InOut ? "inout" : "in")) << "\"";
                 if (port.min_value.has_value()) {
                     out << ",\n      \"min\": " << *port.min_value;
                 }

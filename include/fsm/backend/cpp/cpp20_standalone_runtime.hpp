@@ -460,11 +460,10 @@ template <typename State, typename Event, typename InPorts, typename OutPorts, t
 struct has_on_enter_full : std::false_type {};
 
 template <typename State, typename Event, typename InPorts, typename OutPorts, typename Registers, typename Services>
-struct has_on_enter_full<
-    State, Event, InPorts, OutPorts, Registers, Services,
-    std::void_t<decltype(std::declval<State&>().on_enter(
-        std::declval<const Event&>(), std::declval<const InPorts&>(), std::declval<OutPorts&>(),
-        std::declval<Registers&>(), std::declval<Services&>()))>> : std::true_type {};
+struct has_on_enter_full<State, Event, InPorts, OutPorts, Registers, Services,
+                         std::void_t<decltype(std::declval<State&>().on_enter(
+                             std::declval<const Event&>(), std::declval<const InPorts&>(), std::declval<OutPorts&>(),
+                             std::declval<Registers&>(), std::declval<Services&>()))>> : std::true_type {};
 
 // on_enter(event)
 template <typename State, typename Event, typename = void>
@@ -482,9 +481,9 @@ struct has_on_enter_ports : std::false_type {};
 template <typename State, typename InPorts, typename OutPorts, typename Registers, typename Services>
 struct has_on_enter_ports<
     State, InPorts, OutPorts, Registers, Services,
-    std::void_t<decltype(std::declval<State&>().on_enter(
-        std::declval<const InPorts&>(), std::declval<OutPorts&>(),
-        std::declval<Registers&>(), std::declval<Services&>()))>> : std::true_type {};
+    std::void_t<decltype(std::declval<State&>().on_enter(std::declval<const InPorts&>(), std::declval<OutPorts&>(),
+                                                         std::declval<Registers&>(), std::declval<Services&>()))>>
+    : std::true_type {};
 
 // on_enter()
 template <typename State, typename = void>
@@ -499,11 +498,10 @@ template <typename State, typename Event, typename InPorts, typename OutPorts, t
 struct has_on_exit_full : std::false_type {};
 
 template <typename State, typename Event, typename InPorts, typename OutPorts, typename Registers, typename Services>
-struct has_on_exit_full<
-    State, Event, InPorts, OutPorts, Registers, Services,
-    std::void_t<decltype(std::declval<State&>().on_exit(
-        std::declval<const Event&>(), std::declval<const InPorts&>(), std::declval<OutPorts&>(),
-        std::declval<Registers&>(), std::declval<Services&>()))>> : std::true_type {};
+struct has_on_exit_full<State, Event, InPorts, OutPorts, Registers, Services,
+                        std::void_t<decltype(std::declval<State&>().on_exit(
+                            std::declval<const Event&>(), std::declval<const InPorts&>(), std::declval<OutPorts&>(),
+                            std::declval<Registers&>(), std::declval<Services&>()))>> : std::true_type {};
 
 // on_exit(event)
 template <typename State, typename Event, typename = void>
@@ -601,19 +599,23 @@ constexpr bool invoke_guard_fallback(const Guard& guard, Tuple& t) {
 
 #if defined(__cpp_concepts) && __cpp_concepts >= 201907L && __cplusplus >= 202002L
     if constexpr (N >= 6 && requires {
-                      { guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t),
-                              tuple_get<5>(t)) } -> std::convertible_to<bool>;
+                      {
+                          guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t),
+                                tuple_get<5>(t))
+                      } -> std::convertible_to<bool>;
                   }) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t),
                      tuple_get<5>(t));
     } else if constexpr (N >= 4 && requires {
-                             { guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t),
-                                     tuple_get<N - 1>(t)) } -> std::convertible_to<bool>;
+                             {
+                                 guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<N - 1>(t))
+                             } -> std::convertible_to<bool>;
                          }) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<N - 1>(t));
     } else if constexpr (N >= 3 && requires {
-                             { guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<N - 1>(t)) } ->
-                                 std::convertible_to<bool>;
+                             {
+                                 guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<N - 1>(t))
+                             } -> std::convertible_to<bool>;
                          }) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<N - 1>(t));
     } else if constexpr (N >= 2 && requires {
@@ -625,28 +627,30 @@ constexpr bool invoke_guard_fallback(const Guard& guard, Tuple& t) {
                          }) {
         return guard(tuple_get<N - 1>(t));
     } else if constexpr (N >= 5 && requires {
-                             { guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t),
-                                     tuple_get<4>(t)) } -> std::convertible_to<bool>;
+                             {
+                                 guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t),
+                                       tuple_get<4>(t))
+                             } -> std::convertible_to<bool>;
                          }) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t));
     } else if constexpr (N >= 4 && requires {
-                             { guard(tuple_get<0>(t), tuple_get<2>(t), tuple_get<3>(t),
-                                     tuple_get<4>(t)) } -> std::convertible_to<bool>;
+                             {
+                                 guard(tuple_get<0>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t))
+                             } -> std::convertible_to<bool>;
                          }) {
         return guard(tuple_get<0>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t));
     } else if constexpr (N >= 3 && requires {
-                             { guard(tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t)) } ->
-                                 std::convertible_to<bool>;
+                             { guard(tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t)) } -> std::convertible_to<bool>;
                          }) {
         return guard(tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t));
     } else if constexpr (N >= 4 && requires {
-                             { guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t),
-                                     tuple_get<3>(t)) } -> std::convertible_to<bool>;
+                             {
+                                 guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t))
+                             } -> std::convertible_to<bool>;
                          }) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t));
     } else if constexpr (N >= 4 && requires {
-                             { guard(tuple_get<0>(t), tuple_get<2>(t), tuple_get<3>(t)) } ->
-                                 std::convertible_to<bool>;
+                             { guard(tuple_get<0>(t), tuple_get<2>(t), tuple_get<3>(t)) } -> std::convertible_to<bool>;
                          }) {
         return guard(tuple_get<0>(t), tuple_get<2>(t), tuple_get<3>(t));
     } else if constexpr (N >= 4 && requires {
@@ -654,8 +658,7 @@ constexpr bool invoke_guard_fallback(const Guard& guard, Tuple& t) {
                          }) {
         return guard(tuple_get<2>(t), tuple_get<3>(t));
     } else if constexpr (N >= 4 && requires {
-                             { guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<3>(t)) } ->
-                                 std::convertible_to<bool>;
+                             { guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<3>(t)) } -> std::convertible_to<bool>;
                          }) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<3>(t));
     } else if constexpr (N >= 4 && requires {
@@ -671,8 +674,7 @@ constexpr bool invoke_guard_fallback(const Guard& guard, Tuple& t) {
                          }) {
         return guard(tuple_get<3>(t));
     } else if constexpr (N >= 3 && requires {
-                             { guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t)) } ->
-                                 std::convertible_to<bool>;
+                             { guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t)) } -> std::convertible_to<bool>;
                          }) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t));
     } else if constexpr (N >= 3 && requires {
@@ -703,43 +705,65 @@ constexpr bool invoke_guard_fallback(const Guard& guard, Tuple& t) {
         return true;
     }
 #else
-    if constexpr (N >= 6 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t)), decltype(tuple_get<5>(t))>) {
-        return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t));
-    } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<N - 1>(t))>) {
+    if constexpr (N >= 6 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                                  decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t)),
+                                                  decltype(tuple_get<4>(t)), decltype(tuple_get<5>(t))>) {
+        return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t),
+                     tuple_get<5>(t));
+    } else if constexpr (N >= 4 &&
+                         std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                               decltype(tuple_get<2>(t)), decltype(tuple_get<N - 1>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<N - 1>(t));
-    } else if constexpr (N >= 3 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<N - 1>(t))>) {
+    } else if constexpr (N >= 3 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)),
+                                                         decltype(tuple_get<1>(t)), decltype(tuple_get<N - 1>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<N - 1>(t));
-    } else if constexpr (N >= 2 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<N - 1>(t))>) {
+    } else if constexpr (N >= 2 &&
+                         std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<N - 1>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<N - 1>(t));
     } else if constexpr (N >= 1 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<N - 1>(t))>) {
         return guard(tuple_get<N - 1>(t));
-    } else if constexpr (N >= 5 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t))>) {
+    } else if constexpr (N >= 5 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)),
+                                                         decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)),
+                                                         decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t));
-    } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t))>) {
+    } else if constexpr (N >= 4 &&
+                         std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<2>(t)),
+                                               decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t));
-    } else if constexpr (N >= 3 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t))>) {
+    } else if constexpr (N >= 3 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<2>(t)),
+                                                         decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t))>) {
         return guard(tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t));
-    } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t))>) {
+    } else if constexpr (N >= 4 &&
+                         std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                               decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t));
-    } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t))>) {
+    } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)),
+                                                         decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<2>(t), tuple_get<3>(t));
-    } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t))>) {
+    } else if constexpr (N >= 4 &&
+                         std::is_invocable_r_v<bool, Guard, decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t))>) {
         return guard(tuple_get<2>(t), tuple_get<3>(t));
-    } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<3>(t))>) {
+    } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)),
+                                                         decltype(tuple_get<1>(t)), decltype(tuple_get<3>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<3>(t));
-    } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<3>(t))>) {
+    } else if constexpr (N >= 4 &&
+                         std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<3>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<3>(t));
-    } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<1>(t)), decltype(tuple_get<3>(t))>) {
+    } else if constexpr (N >= 4 &&
+                         std::is_invocable_r_v<bool, Guard, decltype(tuple_get<1>(t)), decltype(tuple_get<3>(t))>) {
         return guard(tuple_get<1>(t), tuple_get<3>(t));
     } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<3>(t))>) {
         return guard(tuple_get<3>(t));
-    } else if constexpr (N >= 3 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t))>) {
+    } else if constexpr (N >= 3 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)),
+                                                         decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t));
-    } else if constexpr (N >= 3 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<2>(t))>) {
+    } else if constexpr (N >= 3 &&
+                         std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<2>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<2>(t));
     } else if constexpr (N >= 3 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<2>(t))>) {
         return guard(tuple_get<2>(t));
-    } else if constexpr (N >= 2 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t))>) {
+    } else if constexpr (N >= 2 &&
+                         std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<1>(t));
     } else if constexpr (N >= 1 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t))>) {
         return guard(tuple_get<0>(t));
@@ -764,10 +788,10 @@ constexpr void invoke_action_fallback(Action& action, Tuple& t) {
                              tuple_get<5>(t), tuple_get<6>(t));
                   }) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t),
-              tuple_get<6>(t));
+               tuple_get<6>(t));
     } else if constexpr (N >= 6 && requires {
-                             action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<3>(t), tuple_get<4>(t),
-                                    tuple_get<5>(t), tuple_get<6>(t));
+                             action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t),
+                                    tuple_get<6>(t));
                          }) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t));
     } else if constexpr (N >= 5 && requires {
@@ -775,13 +799,11 @@ constexpr void invoke_action_fallback(Action& action, Tuple& t) {
                                     tuple_get<6>(t));
                          }) {
         action(tuple_get<0>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t));
-    } else if constexpr (N >= 4 && requires {
-                             action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t));
-                         }) {
+    } else if constexpr (N >= 4 &&
+                         requires { action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t)); }) {
         action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t));
-    } else if constexpr (N >= 6 && requires {
-                             action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<5>(t));
-                         }) {
+    } else if constexpr (N >= 6 &&
+                         requires { action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<5>(t)); }) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<5>(t));
     } else if constexpr (N >= 6 && requires { action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<5>(t)); }) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<5>(t));
@@ -799,9 +821,8 @@ constexpr void invoke_action_fallback(Action& action, Tuple& t) {
         action(tuple_get<1>(t), tuple_get<5>(t));
     } else if constexpr (N >= 6 && requires { action(tuple_get<5>(t)); }) {
         action(tuple_get<5>(t));
-    } else if constexpr (N >= 7 && requires {
-                             action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<6>(t));
-                         }) {
+    } else if constexpr (N >= 7 &&
+                         requires { action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<6>(t)); }) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<6>(t));
     } else if constexpr (N >= 7 && requires { action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<6>(t)); }) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<6>(t));
@@ -821,13 +842,10 @@ constexpr void invoke_action_fallback(Action& action, Tuple& t) {
         action(tuple_get<0>(t), tuple_get<3>(t));
     } else if constexpr (N >= 4 && requires { action(tuple_get<3>(t)); }) {
         action(tuple_get<3>(t));
-    } else if constexpr (N >= 4 && requires {
-                             action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<N - 1>(t));
-                         }) {
+    } else if constexpr (N >= 4 &&
+                         requires { action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<N - 1>(t)); }) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<N - 1>(t));
-    } else if constexpr (N >= 3 && requires {
-                             action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<N - 1>(t));
-                         }) {
+    } else if constexpr (N >= 3 && requires { action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<N - 1>(t)); }) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<N - 1>(t));
     } else if constexpr (N >= 2 && requires { action(tuple_get<0>(t), tuple_get<N - 1>(t)); }) {
         action(tuple_get<0>(t), tuple_get<N - 1>(t));
@@ -849,41 +867,58 @@ constexpr void invoke_action_fallback(Action& action, Tuple& t) {
         action();
     }
 #else
-    if constexpr (N >= 7 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t)), decltype(tuple_get<5>(t)), decltype(tuple_get<6>(t))>) {
-        action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t));
-    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t)), decltype(tuple_get<5>(t)), decltype(tuple_get<6>(t))>) {
+    if constexpr (N >= 7 &&
+                  std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                      decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t)),
+                                      decltype(tuple_get<5>(t)), decltype(tuple_get<6>(t))>) {
+        action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t),
+               tuple_get<6>(t));
+    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                                       decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t)),
+                                                       decltype(tuple_get<5>(t)), decltype(tuple_get<6>(t))>) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t));
-    } else if constexpr (N >= 5 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t)), decltype(tuple_get<5>(t)), decltype(tuple_get<6>(t))>) {
+    } else if constexpr (N >= 5 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<3>(t)),
+                                                       decltype(tuple_get<4>(t)), decltype(tuple_get<5>(t)),
+                                                       decltype(tuple_get<6>(t))>) {
         action(tuple_get<0>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t));
-    } else if constexpr (N >= 4 && std::is_invocable_v<Action, decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t)), decltype(tuple_get<5>(t)), decltype(tuple_get<6>(t))>) {
+    } else if constexpr (N >= 4 && std::is_invocable_v<Action, decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t)),
+                                                       decltype(tuple_get<5>(t)), decltype(tuple_get<6>(t))>) {
         action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t));
-    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<5>(t))>) {
+    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                                       decltype(tuple_get<2>(t)), decltype(tuple_get<5>(t))>) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<5>(t));
-    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<5>(t))>) {
+    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                                       decltype(tuple_get<5>(t))>) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<5>(t));
-    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<5>(t))>) {
+    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<2>(t)),
+                                                       decltype(tuple_get<5>(t))>) {
         action(tuple_get<0>(t), tuple_get<2>(t), tuple_get<5>(t));
-    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<4>(t)), decltype(tuple_get<5>(t))>) {
+    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<4>(t)),
+                                                       decltype(tuple_get<5>(t))>) {
         action(tuple_get<0>(t), tuple_get<4>(t), tuple_get<5>(t));
     } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<4>(t)), decltype(tuple_get<5>(t))>) {
         action(tuple_get<4>(t), tuple_get<5>(t));
     } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<5>(t))>) {
         action(tuple_get<0>(t), tuple_get<5>(t));
-    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<5>(t))>) {
+    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)),
+                                                       decltype(tuple_get<5>(t))>) {
         action(tuple_get<1>(t), tuple_get<2>(t), tuple_get<5>(t));
     } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<1>(t)), decltype(tuple_get<5>(t))>) {
         action(tuple_get<1>(t), tuple_get<5>(t));
     } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<5>(t))>) {
         action(tuple_get<5>(t));
-    } else if constexpr (N >= 7 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<6>(t))>) {
+    } else if constexpr (N >= 7 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                                       decltype(tuple_get<2>(t)), decltype(tuple_get<6>(t))>) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<6>(t));
-    } else if constexpr (N >= 7 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<6>(t))>) {
+    } else if constexpr (N >= 7 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                                       decltype(tuple_get<6>(t))>) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<6>(t));
     } else if constexpr (N >= 7 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<6>(t))>) {
         action(tuple_get<0>(t), tuple_get<6>(t));
     } else if constexpr (N >= 7 && std::is_invocable_v<Action, decltype(tuple_get<6>(t))>) {
         action(tuple_get<6>(t));
-    } else if constexpr (N >= 5 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t))>) {
+    } else if constexpr (N >= 5 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<3>(t)),
+                                                       decltype(tuple_get<4>(t))>) {
         action(tuple_get<0>(t), tuple_get<3>(t), tuple_get<4>(t));
     } else if constexpr (N >= 5 && std::is_invocable_v<Action, decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t))>) {
         action(tuple_get<3>(t), tuple_get<4>(t));
@@ -895,15 +930,19 @@ constexpr void invoke_action_fallback(Action& action, Tuple& t) {
         action(tuple_get<0>(t), tuple_get<3>(t));
     } else if constexpr (N >= 4 && std::is_invocable_v<Action, decltype(tuple_get<3>(t))>) {
         action(tuple_get<3>(t));
-    } else if constexpr (N >= 4 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<N - 1>(t))>) {
+    } else if constexpr (N >= 4 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                                       decltype(tuple_get<2>(t)), decltype(tuple_get<N - 1>(t))>) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<N - 1>(t));
-    } else if constexpr (N >= 3 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<N - 1>(t))>) {
+    } else if constexpr (N >= 3 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                                       decltype(tuple_get<N - 1>(t))>) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<N - 1>(t));
-    } else if constexpr (N >= 2 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<N - 1>(t))>) {
+    } else if constexpr (N >= 2 &&
+                         std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<N - 1>(t))>) {
         action(tuple_get<0>(t), tuple_get<N - 1>(t));
     } else if constexpr (N >= 1 && std::is_invocable_v<Action, decltype(tuple_get<N - 1>(t))>) {
         action(tuple_get<N - 1>(t));
-    } else if constexpr (N >= 3 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t))>) {
+    } else if constexpr (N >= 3 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                                       decltype(tuple_get<2>(t))>) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t));
     } else if constexpr (N >= 2 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t))>) {
         action(tuple_get<0>(t), tuple_get<1>(t));
@@ -1101,56 +1140,48 @@ struct no_services {};
 #if __cplusplus >= 202002L
 template <typename GuardType, typename EventType, typename StateType, typename InPorts, typename Registers,
           typename Services>
-concept Guard =
-    requires(const GuardType& guard, const EventType& event, const StateType& state, const InPorts& in,
-             Registers& reg, Services& srv) {
-        { guard(event, state, in, reg, srv) } -> std::convertible_to<bool>;
-    } || requires(const GuardType& guard, const EventType& event, const InPorts& in, Registers& reg,
-                  Services& srv) {
-        { guard(event, in, reg, srv) } -> std::convertible_to<bool>;
-    } || requires(const GuardType& guard, const EventType& event, const InPorts& in, Registers& reg) {
-        { guard(event, in, reg) } -> std::convertible_to<bool>;
-    } || requires(const GuardType& guard, const EventType& event, const StateType& state, Registers& reg) {
-        { guard(event, state, reg) } -> std::convertible_to<bool>;
-    } || requires(const GuardType& guard, const EventType& event, Registers& reg) {
-        { guard(event, reg) } -> std::convertible_to<bool>;
-    } || requires(const GuardType& guard, const StateType& state, Registers& reg) {
-        { guard(state, reg) } -> std::convertible_to<bool>;
-    } || requires(const GuardType& guard, const EventType& event, const InPorts& in) {
-        { guard(event, in) } -> std::convertible_to<bool>;
-    } || requires(const GuardType& guard, const InPorts& in, Registers& reg) {
-        { guard(in, reg) } -> std::convertible_to<bool>;
-    } || requires(const GuardType& guard, const InPorts& in) {
-        { guard(in) } -> std::convertible_to<bool>;
-    } || requires(const GuardType& guard, Registers& reg) {
-        { guard(reg) } -> std::convertible_to<bool>;
-    } || requires(const GuardType& guard, const EventType& event, const StateType& state) {
-        { guard(event, state) } -> std::convertible_to<bool>;
-    } || requires(const GuardType& guard, const StateType& state) {
-        { guard(state) } -> std::convertible_to<bool>;
-    } || requires(const GuardType& guard, const EventType& event) {
-        { guard(event) } -> std::convertible_to<bool>;
-    } || requires(const GuardType& guard) {
-        { guard() } -> std::convertible_to<bool>;
-    };
+concept Guard = requires(const GuardType& guard, const EventType& event, const StateType& state, const InPorts& in,
+                         Registers& reg, Services& srv) {
+    { guard(event, state, in, reg, srv) } -> std::convertible_to<bool>;
+} || requires(const GuardType& guard, const EventType& event, const InPorts& in, Registers& reg, Services& srv) {
+    { guard(event, in, reg, srv) } -> std::convertible_to<bool>;
+} || requires(const GuardType& guard, const EventType& event, const InPorts& in, Registers& reg) {
+    { guard(event, in, reg) } -> std::convertible_to<bool>;
+} || requires(const GuardType& guard, const EventType& event, const StateType& state, Registers& reg) {
+    { guard(event, state, reg) } -> std::convertible_to<bool>;
+} || requires(const GuardType& guard, const EventType& event, Registers& reg) {
+    { guard(event, reg) } -> std::convertible_to<bool>;
+} || requires(const GuardType& guard, const StateType& state, Registers& reg) {
+    { guard(state, reg) } -> std::convertible_to<bool>;
+} || requires(const GuardType& guard, const EventType& event, const InPorts& in) {
+    { guard(event, in) } -> std::convertible_to<bool>;
+} || requires(const GuardType& guard, const InPorts& in, Registers& reg) {
+    { guard(in, reg) } -> std::convertible_to<bool>;
+} || requires(const GuardType& guard, const InPorts& in) {
+    { guard(in) } -> std::convertible_to<bool>;
+} || requires(const GuardType& guard, Registers& reg) {
+    { guard(reg) } -> std::convertible_to<bool>;
+} || requires(const GuardType& guard, const EventType& event, const StateType& state) {
+    { guard(event, state) } -> std::convertible_to<bool>;
+} || requires(const GuardType& guard, const StateType& state) {
+    { guard(state) } -> std::convertible_to<bool>;
+} || requires(const GuardType& guard, const EventType& event) {
+    { guard(event) } -> std::convertible_to<bool>;
+} || requires(const GuardType& guard) {
+    { guard() } -> std::convertible_to<bool>;
+};
 
 template <typename ActionType, typename EventType, typename SrcStateType, typename DstStateType, typename InPorts,
           typename OutPorts, typename Registers, typename Services>
 concept Action =
     requires(const ActionType& action, const EventType& event, SrcStateType& src_state, DstStateType& dst_state,
-             const InPorts& in, OutPorts& out, Registers& reg, Services& srv) {
-        action(event, src_state, dst_state, in, out, reg, srv);
-    } ||
+             const InPorts& in, OutPorts& out, Registers& reg,
+             Services& srv) { action(event, src_state, dst_state, in, out, reg, srv); } ||
     requires(const ActionType& action, const EventType& event, const SrcStateType& src_state, DstStateType& dst_state,
-             Services& srv) {
-        action(event, src_state, dst_state, srv);
-    } ||
+             Services& srv) { action(event, src_state, dst_state, srv); } ||
     requires(const ActionType& action, const EventType& event, const SrcStateType& src_state, Services& srv) {
         action(event, src_state, srv);
-    } ||
-    requires(const ActionType& action, const EventType& event, Services& srv) {
-        action(event, srv);
-    } ||
+    } || requires(const ActionType& action, const EventType& event, Services& srv) { action(event, srv); } ||
     requires(const ActionType& action, const EventType& event, const InPorts& in, OutPorts& out, Registers& reg,
              Services& srv) { action(event, in, out, reg, srv); } ||
     requires(const ActionType& action, const InPorts& in, OutPorts& out, Registers& reg, Services& srv) {
@@ -1161,23 +1192,14 @@ concept Action =
     } ||
     requires(const ActionType& action, const EventType& event, const InPorts& in, OutPorts& out) {
         action(event, in, out);
-    } ||
-    requires(const ActionType& action, OutPorts& out, Registers& reg, Services& srv) { action(out, reg, srv); } ||
+    } || requires(const ActionType& action, OutPorts& out, Registers& reg, Services& srv) { action(out, reg, srv); } ||
     requires(const ActionType& action, const EventType& event, OutPorts& out, Registers& reg) {
         action(event, out, reg);
-    } ||
-    requires(const ActionType& action, const EventType& event, Registers& reg) {
-        action(event, reg);
-    } ||
+    } || requires(const ActionType& action, const EventType& event, Registers& reg) { action(event, reg); } ||
     requires(const ActionType& action, const EventType& event, const InPorts& in, Registers& reg) {
         action(event, in, reg);
-    } ||
-    requires(const ActionType& action, const InPorts& in, Registers& reg) {
-        action(in, reg);
-    } ||
-    requires(const ActionType& action, const InPorts& in) {
-        action(in);
-    } ||
+    } || requires(const ActionType& action, const InPorts& in, Registers& reg) { action(in, reg); } ||
+    requires(const ActionType& action, const InPorts& in) { action(in); } ||
     requires(const ActionType& action, const InPorts& in, OutPorts& out) { action(in, out); } ||
     requires(const ActionType& action, OutPorts& out, Registers& reg) { action(out, reg); } ||
     requires(const ActionType& action, OutPorts& out) { action(out); } ||
@@ -1738,8 +1760,8 @@ constexpr auto make_transition_table(Transitions&&... trs) {
 namespace fsm {
 
 struct history_entry {
-    std::string_view parent{};   ///< Parent composite state name
-    std::string_view substate{}; ///< Recorded active substate name
+    std::string_view parent{};    ///< Parent composite state name
+    std::string_view substate{};  ///< Recorded active substate name
 
     constexpr bool operator==(const history_entry& other) const noexcept {
         return parent == other.parent && substate == other.substate;
@@ -1780,9 +1802,7 @@ class history_manager<Table, true> {
         return "";
     }
 
-    void clear_history() noexcept {
-        history_records_.clear();
-    }
+    void clear_history() noexcept { history_records_.clear(); }
 
   private:
     static_vector<history_entry, max_history_capacity> history_records_{};
@@ -1822,13 +1842,9 @@ class deferred_manager<Table, DeferredCapacity, true> {
         deferred_queue_.push_back(event_variant{event});
     }
 
-    [[nodiscard]] std::size_t deferred_count() const noexcept {
-        return deferred_queue_.size();
-    }
+    [[nodiscard]] std::size_t deferred_count() const noexcept { return deferred_queue_.size(); }
 
-    void clear_deferred_events() noexcept {
-        deferred_queue_.clear();
-    }
+    void clear_deferred_events() noexcept { deferred_queue_.clear(); }
 
     template <typename DispatchDirectFn>
     void process_deferred_queue(DispatchDirectFn&& dispatch_direct_fn) {
@@ -1842,10 +1858,7 @@ class deferred_manager<Table, DeferredCapacity, true> {
             any_handled = false;
             for (auto it = deferred_queue_.begin(); it != deferred_queue_.end();) {
                 bool handled = std::visit(
-                    [&dispatch_direct_fn](const auto& ev) -> bool {
-                        return dispatch_direct_fn(ev).is_success();
-                    },
-                    *it);
+                    [&dispatch_direct_fn](const auto& ev) -> bool { return dispatch_direct_fn(ev).is_success(); }, *it);
                 if (handled) {
                     it = deferred_queue_.erase(it);
                     any_handled = true;
@@ -1918,12 +1931,14 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
 #if __cplusplus >= 202002L
             using ExpectedDst = std::conditional_t<RowType::is_internal, CurrentSrc, TransDst>;
             static_assert(::fsm::Guard<Guard, Event, CurrentSrc, In, Registers, Services> ||
-                          std::is_same_v<Guard, no_guard> ||
-                          std::is_invocable_v<Guard, const Event&, const CurrentSrc&, const In&, const Registers&, Services&, const FsmInstance&>,
+                              std::is_same_v<Guard, no_guard> ||
+                              std::is_invocable_v<Guard, const Event&, const CurrentSrc&, const In&, const Registers&,
+                                                  Services&, const FsmInstance&>,
                           "Guard functor does not satisfy fsm::Guard concept for the specified state machine domain.");
-            static_assert(::fsm::Action<Action, Event, CurrentSrc, ExpectedDst, In, Out, Registers, Services> ||
-                          std::is_same_v<Action, no_action>,
-                          "Action functor does not satisfy fsm::Action concept for the specified state machine domain.");
+            static_assert(
+                ::fsm::Action<Action, Event, CurrentSrc, ExpectedDst, In, Out, Registers, Services> ||
+                    std::is_same_v<Action, no_action>,
+                "Action functor does not satisfy fsm::Action concept for the specified state machine domain.");
 #endif
 
             const auto src_name = get_state_name(src_state);
@@ -2015,7 +2030,8 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
 namespace fsm {
 
 /**
- * @brief Core Compile-Time Finite State Machine Engine (Model-Based Systems Engineering Partitioned Domain Architecture).
+ * @brief Core Compile-Time Finite State Machine Engine (Model-Based Systems Engineering Partitioned Domain
+ * Architecture).
  *
  * `fsm::fsm` executes statecharts defined via a compile-time static transition table `Table`.
  * It provides strict separation of memory concerns across 4 orthogonal domain interfaces:
@@ -2025,8 +2041,10 @@ namespace fsm {
  * - `Services`: External OS/driver service interfaces (e.g. timers, logging, network sockets).
  *
  * ### Execution Paradigms:
- * 1. **Sampled Periodic Step (`step()`):** Executes sampled/continuous transitions evaluated on cyclic clock ticks (PLC/IEC 61131-3 / SCADE style).
- * 2. **Reactive Event Dispatch (`dispatch(event)`):** Evaluates event-triggered transitions in response to external signals or messages.
+ * 1. **Sampled Periodic Step (`step()`):** Executes sampled/continuous transitions evaluated on cyclic clock ticks
+ * (PLC/IEC 61131-3 / SCADE style).
+ * 2. **Reactive Event Dispatch (`dispatch(event)`):** Evaluates event-triggered transitions in response to external
+ * signals or messages.
  *
  * ### Exception safety
  * This class is NOT thread-safe by itself (see thread_safe_fsm / spsc_fsm for
@@ -2068,7 +2086,8 @@ namespace fsm {
  * @tparam DeferredCapacity Maximum number of simultaneously deferred events
  *         (configurable parameter; only relevant if at least one state declares `deferred_events`).
  *
- * @note Zero-Heap: Operates 100% without dynamic memory allocations (0 bytes heap) across all features, including History states and Deferred Event queues.
+ * @note Zero-Heap: Operates 100% without dynamic memory allocations (0 bytes heap) across all features, including
+ * History states and Deferred Event queues.
  * @note Zero-VTable: Employs static C++ template metaprogramming for deterministic execution times.
  */
 template <typename Table, typename InPorts = no_ports, typename OutPorts = no_ports, typename Registers = no_registers,
@@ -2096,7 +2115,8 @@ class fsm {
     static constexpr std::size_t transition_count = Table::transition_count;
     static constexpr std::size_t event_count = Table::event_count;
 
-    static constexpr std::size_t max_history_capacity = detail::history_manager<Table, has_history>::max_history_capacity;
+    static constexpr std::size_t max_history_capacity =
+        detail::history_manager<Table, has_history>::max_history_capacity;
     static constexpr std::size_t max_deferred_capacity = DeferredCapacity;
 
     template <typename State>
@@ -2119,7 +2139,10 @@ class fsm {
     }
 
     constexpr explicit fsm(registers_type reg, Table table = Table{})
-        : current_state_(initial_state_type{}), table_(std::move(table)), registers_(std::move(reg)), services_(nullptr) {
+        : current_state_(initial_state_type{}),
+          table_(std::move(table)),
+          registers_(std::move(reg)),
+          services_(nullptr) {
         enter_initial_state();
     }
 
@@ -2128,16 +2151,14 @@ class fsm {
         enter_initial_state();
     }
 
-    template <typename InitState,
-              typename = std::enable_if_t<Table::template has_state<std::decay_t<InitState>> &&
-                                          !std::is_same_v<std::decay_t<InitState>, registers_type>>>
+    template <typename InitState, typename = std::enable_if_t<Table::template has_state<std::decay_t<InitState>> &&
+                                                              !std::is_same_v<std::decay_t<InitState>, registers_type>>>
     constexpr explicit fsm(InitState&& initial, Table table = Table{})
         : current_state_(std::forward<InitState>(initial)), table_(std::move(table)), registers_{}, services_(nullptr) {
         enter_initial_state();
     }
 
-    template <typename InitState,
-              typename = std::enable_if_t<Table::template has_state<std::decay_t<InitState>>>>
+    template <typename InitState, typename = std::enable_if_t<Table::template has_state<std::decay_t<InitState>>>>
     constexpr explicit fsm(InitState&& initial, services_type& srv, Table table = Table{})
         : current_state_(std::forward<InitState>(initial)), table_(std::move(table)), registers_{}, services_(&srv) {
         enter_initial_state();
@@ -2190,14 +2211,20 @@ class fsm {
             }
             if (was_deferred) {
                 if constexpr (has_observer) {
-                    observer_(transition_info{current_state_name(), {}, get_event_name(event), dispatch_status::deferred,
+                    observer_(transition_info{current_state_name(),
+                                              {},
+                                              get_event_name(event),
+                                              dispatch_status::deferred,
                                               transition_kind::external});
                 }
                 return dispatch_result{dispatch_status::deferred, res.trace};
             }
             if constexpr (has_observer) {
-                observer_(transition_info{current_state_name(), {}, get_event_name(event), dispatch_status::unhandled,
-                                              transition_kind::external});
+                observer_(transition_info{current_state_name(),
+                                          {},
+                                          get_event_name(event),
+                                          dispatch_status::unhandled,
+                                          transition_kind::external});
             }
             std::visit([this, &event](const auto& st) { this->on_unhandled_event(event, st); }, current_state_);
         } else if (res.is_guard_rejected()) {
@@ -2240,8 +2267,8 @@ class fsm {
                     this->history_mgr_.record_history(p, s);
                 };
                 return detail::execute_transition_from_ports<Table, CurrentSrc>(
-                    src_state, event, in, out, this->registers_, &srv, *this, this->observer_,
-                    record_fn, std::make_index_sequence<std::tuple_size_v<decltype(this->table_.rows)>>{});
+                    src_state, event, in, out, this->registers_, &srv, *this, this->observer_, record_fn,
+                    std::make_index_sequence<std::tuple_size_v<decltype(this->table_.rows)>>{});
             },
             current_state_);
     }
@@ -2273,9 +2300,8 @@ class fsm {
     template <bool D = has_deferred>
     void process_deferred_queue_ports(const in_ports_type& in, out_ports_type& out, services_type& srv) {
         if constexpr (D) {
-            deferred_mgr_.process_deferred_queue([this, &in, &out, &srv](const auto& ev) {
-                return this->dispatch_direct_ports(ev, in, out, srv);
-            });
+            deferred_mgr_.process_deferred_queue(
+                [this, &in, &out, &srv](const auto& ev) { return this->dispatch_direct_ports(ev, in, out, srv); });
         }
     }
 
@@ -2402,7 +2428,8 @@ class fsm {
 template <typename Table, typename InPorts = no_ports, typename OutPorts = no_ports, typename Registers = no_registers,
           typename Services = no_services, typename InitialState = typename Table::initial_state,
           std::size_t DeferredCapacity = 16>
-using dynamic_fsm = fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, dynamic_observer, DeferredCapacity>;
+using dynamic_fsm =
+    fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, dynamic_observer, DeferredCapacity>;
 
 }  // namespace fsm
 
@@ -2810,9 +2837,7 @@ class reentrancy_tracker {
         return dispatching_thread_.load(std::memory_order_relaxed) == std::this_thread::get_id();
     }
 
-    [[nodiscard]] int depth() const noexcept {
-        return dispatch_depth_;
-    }
+    [[nodiscard]] int depth() const noexcept { return dispatch_depth_; }
 
     struct depth_guard {
         reentrancy_tracker& tracker;
@@ -2870,7 +2895,7 @@ inline void handle_exception_outside_lock(std::exception_ptr ex, const exception
 
 template <typename Event>
 inline void invoke_notifications_outside_lock(const Event& evt, const dispatch_snapshot& snap,
-                                             std::exception_ptr& last_exception, std::mutex& mutex) {
+                                              std::exception_ptr& last_exception, std::mutex& mutex) {
     if (snap.observer_h) {
         for (const auto& info : snap.notifications) {
             try {
@@ -2949,7 +2974,8 @@ template <typename Table, typename InPorts = no_ports, typename OutPorts = no_po
           std::size_t DeferredCapacity = 16>
 class thread_safe_fsm {
   public:
-    using fsm_type = fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, dynamic_observer, DeferredCapacity>;
+    using fsm_type =
+        fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, dynamic_observer, DeferredCapacity>;
     using in_ports_type = InPorts;
     using out_ports_type = OutPorts;
     using registers_type = Registers;
@@ -2963,27 +2989,19 @@ class thread_safe_fsm {
     using exception_handler = ::fsm::exception_handler;
 
     thread_safe_fsm() {
-        fsm_.set_observer([this](const transition_info& info) {
-            notification_buffer_.push_back(info);
-        });
+        fsm_.set_observer([this](const transition_info& info) { notification_buffer_.push_back(info); });
     }
 
     explicit thread_safe_fsm(services_type& srv) : fsm_(srv) {
-        fsm_.set_observer([this](const transition_info& info) {
-            notification_buffer_.push_back(info);
-        });
+        fsm_.set_observer([this](const transition_info& info) { notification_buffer_.push_back(info); });
     }
 
     explicit thread_safe_fsm(registers_type reg) : fsm_(std::move(reg)) {
-        fsm_.set_observer([this](const transition_info& info) {
-            notification_buffer_.push_back(info);
-        });
+        fsm_.set_observer([this](const transition_info& info) { notification_buffer_.push_back(info); });
     }
 
     thread_safe_fsm(registers_type reg, services_type& srv) : fsm_(std::move(reg), srv) {
-        fsm_.set_observer([this](const transition_info& info) {
-            notification_buffer_.push_back(info);
-        });
+        fsm_.set_observer([this](const transition_info& info) { notification_buffer_.push_back(info); });
     }
 
     ~thread_safe_fsm() {
@@ -3051,13 +3069,9 @@ class thread_safe_fsm {
     }
 
     // State & Register Access
-    [[nodiscard]] registers_type& registers() noexcept {
-        return fsm_.registers();
-    }
+    [[nodiscard]] registers_type& registers() noexcept { return fsm_.registers(); }
 
-    [[nodiscard]] const registers_type& registers() const noexcept {
-        return fsm_.registers();
-    }
+    [[nodiscard]] const registers_type& registers() const noexcept { return fsm_.registers(); }
 
     [[nodiscard]] registers_type snapshot_registers() const {
         if (reentrancy_.is_reentrant_call()) {
@@ -3328,9 +3342,7 @@ class thread_safe_fsm {
         return processed;
     }
 
-    std::size_t process_all() {
-        return run_until_empty();
-    }
+    std::size_t process_all() { return run_until_empty(); }
 
     void wait_until_idle() {
         while (!is_queue_empty()) {
@@ -3346,7 +3358,8 @@ class thread_safe_fsm {
     }
 
     void drain_reentrant_queue_if_outermost() {
-        if (reentrancy_.depth() == 0 && !worker_running_.load(std::memory_order_relaxed) && !is_calling_from_worker_thread()) {
+        if (reentrancy_.depth() == 0 && !worker_running_.load(std::memory_order_relaxed) &&
+            !is_calling_from_worker_thread()) {
             process_all();
         }
     }
@@ -3464,9 +3477,7 @@ class spsc_fsm {
     static constexpr bool has_event = fsm_type::template has_event<Event>;
 
     // Constructors
-    spsc_fsm() : fsm_() {
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_relaxed);
-    }
+    spsc_fsm() : fsm_() { state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_relaxed); }
 
     explicit spsc_fsm(Services& srv, Table table = Table{}) : fsm_(srv, std::move(table)) {
         state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_relaxed);
@@ -3481,8 +3492,7 @@ class spsc_fsm {
         state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_relaxed);
     }
 
-    explicit spsc_fsm(InitialState initial, Table table = Table{})
-        : fsm_(std::move(initial), std::move(table)) {
+    explicit spsc_fsm(InitialState initial, Table table = Table{}) : fsm_(std::move(initial), std::move(table)) {
         state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_relaxed);
     }
 
@@ -3550,7 +3560,9 @@ class spsc_fsm {
         seq_.fetch_add(1, std::memory_order_release);
         services_type dummy_srv{};
         services_type& srv = (fsm_.get_services() != nullptr) ? *fsm_.get_services() : dummy_srv;
-        std::visit([this, &in, &out, &srv](const auto& evt) { (void)this->fsm_.dispatch_direct_ports(evt, in, out, srv); }, *item);
+        std::visit(
+            [this, &in, &out, &srv](const auto& evt) { (void)this->fsm_.dispatch_direct_ports(evt, in, out, srv); },
+            *item);
         state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
         seq_.fetch_add(1, std::memory_order_release);
         return true;

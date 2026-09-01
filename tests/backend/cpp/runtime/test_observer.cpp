@@ -44,9 +44,10 @@ struct PingAction {
     }
 };
 
-using ObserverTable = fsm::transition_table<
-    fsm::row<Idle, StartEvent, Active>, fsm::row<Active, PauseEvent, Paused>, fsm::row<Paused, ResumeEvent, Active>,
-    fsm::internal_row<Active, PingEvent, PingAction>, fsm::row<Active, StopEvent, Idle>>;
+using ObserverTable =
+    fsm::transition_table<fsm::row<Idle, StartEvent, Active>, fsm::row<Active, PauseEvent, Paused>,
+                          fsm::row<Paused, ResumeEvent, Active>, fsm::internal_row<Active, PingEvent, PingAction>,
+                          fsm::row<Active, StopEvent, Idle>>;
 
 /**
  * @brief Test Intent: Verify synchronous observer callbacks receive comprehensive transition metadata.

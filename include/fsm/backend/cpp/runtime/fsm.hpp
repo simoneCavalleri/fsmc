@@ -13,7 +13,8 @@
 namespace fsm {
 
 /**
- * @brief Core Compile-Time Finite State Machine Engine (Model-Based Systems Engineering Partitioned Domain Architecture).
+ * @brief Core Compile-Time Finite State Machine Engine (Model-Based Systems Engineering Partitioned Domain
+ * Architecture).
  *
  * `fsm::fsm` executes statecharts defined via a compile-time static transition table `Table`.
  * It provides strict separation of memory concerns across 4 orthogonal domain interfaces:
@@ -23,8 +24,10 @@ namespace fsm {
  * - `Services`: External OS/driver service interfaces (e.g. timers, logging, network sockets).
  *
  * ### Execution Paradigms:
- * 1. **Sampled Periodic Step (`step()`):** Executes sampled/continuous transitions evaluated on cyclic clock ticks (PLC/IEC 61131-3 / SCADE style).
- * 2. **Reactive Event Dispatch (`dispatch(event)`):** Evaluates event-triggered transitions in response to external signals or messages.
+ * 1. **Sampled Periodic Step (`step()`):** Executes sampled/continuous transitions evaluated on cyclic clock ticks
+ * (PLC/IEC 61131-3 / SCADE style).
+ * 2. **Reactive Event Dispatch (`dispatch(event)`):** Evaluates event-triggered transitions in response to external
+ * signals or messages.
  *
  * ### Exception safety
  * This class is NOT thread-safe by itself (see thread_safe_fsm / spsc_fsm for
@@ -66,7 +69,8 @@ namespace fsm {
  * @tparam DeferredCapacity Maximum number of simultaneously deferred events
  *         (configurable parameter; only relevant if at least one state declares `deferred_events`).
  *
- * @note Zero-Heap: Operates 100% without dynamic memory allocations (0 bytes heap) across all features, including History states and Deferred Event queues.
+ * @note Zero-Heap: Operates 100% without dynamic memory allocations (0 bytes heap) across all features, including
+ * History states and Deferred Event queues.
  * @note Zero-VTable: Employs static C++ template metaprogramming for deterministic execution times.
  */
 template <typename Table, typename InPorts = no_ports, typename OutPorts = no_ports, typename Registers = no_registers,
@@ -94,7 +98,8 @@ class fsm {
     static constexpr std::size_t transition_count = Table::transition_count;
     static constexpr std::size_t event_count = Table::event_count;
 
-    static constexpr std::size_t max_history_capacity = detail::history_manager<Table, has_history>::max_history_capacity;
+    static constexpr std::size_t max_history_capacity =
+        detail::history_manager<Table, has_history>::max_history_capacity;
     static constexpr std::size_t max_deferred_capacity = DeferredCapacity;
 
     template <typename State>
@@ -117,7 +122,10 @@ class fsm {
     }
 
     constexpr explicit fsm(registers_type reg, Table table = Table{})
-        : current_state_(initial_state_type{}), table_(std::move(table)), registers_(std::move(reg)), services_(nullptr) {
+        : current_state_(initial_state_type{}),
+          table_(std::move(table)),
+          registers_(std::move(reg)),
+          services_(nullptr) {
         enter_initial_state();
     }
 
@@ -126,16 +134,14 @@ class fsm {
         enter_initial_state();
     }
 
-    template <typename InitState,
-              typename = std::enable_if_t<Table::template has_state<std::decay_t<InitState>> &&
-                                          !std::is_same_v<std::decay_t<InitState>, registers_type>>>
+    template <typename InitState, typename = std::enable_if_t<Table::template has_state<std::decay_t<InitState>> &&
+                                                              !std::is_same_v<std::decay_t<InitState>, registers_type>>>
     constexpr explicit fsm(InitState&& initial, Table table = Table{})
         : current_state_(std::forward<InitState>(initial)), table_(std::move(table)), registers_{}, services_(nullptr) {
         enter_initial_state();
     }
 
-    template <typename InitState,
-              typename = std::enable_if_t<Table::template has_state<std::decay_t<InitState>>>>
+    template <typename InitState, typename = std::enable_if_t<Table::template has_state<std::decay_t<InitState>>>>
     constexpr explicit fsm(InitState&& initial, services_type& srv, Table table = Table{})
         : current_state_(std::forward<InitState>(initial)), table_(std::move(table)), registers_{}, services_(&srv) {
         enter_initial_state();
@@ -188,14 +194,20 @@ class fsm {
             }
             if (was_deferred) {
                 if constexpr (has_observer) {
-                    observer_(transition_info{current_state_name(), {}, get_event_name(event), dispatch_status::deferred,
+                    observer_(transition_info{current_state_name(),
+                                              {},
+                                              get_event_name(event),
+                                              dispatch_status::deferred,
                                               transition_kind::external});
                 }
                 return dispatch_result{dispatch_status::deferred, res.trace};
             }
             if constexpr (has_observer) {
-                observer_(transition_info{current_state_name(), {}, get_event_name(event), dispatch_status::unhandled,
-                                              transition_kind::external});
+                observer_(transition_info{current_state_name(),
+                                          {},
+                                          get_event_name(event),
+                                          dispatch_status::unhandled,
+                                          transition_kind::external});
             }
             std::visit([this, &event](const auto& st) { this->on_unhandled_event(event, st); }, current_state_);
         } else if (res.is_guard_rejected()) {
@@ -238,8 +250,8 @@ class fsm {
                     this->history_mgr_.record_history(p, s);
                 };
                 return detail::execute_transition_from_ports<Table, CurrentSrc>(
-                    src_state, event, in, out, this->registers_, &srv, *this, this->observer_,
-                    record_fn, std::make_index_sequence<std::tuple_size_v<decltype(this->table_.rows)>>{});
+                    src_state, event, in, out, this->registers_, &srv, *this, this->observer_, record_fn,
+                    std::make_index_sequence<std::tuple_size_v<decltype(this->table_.rows)>>{});
             },
             current_state_);
     }
@@ -271,9 +283,8 @@ class fsm {
     template <bool D = has_deferred>
     void process_deferred_queue_ports(const in_ports_type& in, out_ports_type& out, services_type& srv) {
         if constexpr (D) {
-            deferred_mgr_.process_deferred_queue([this, &in, &out, &srv](const auto& ev) {
-                return this->dispatch_direct_ports(ev, in, out, srv);
-            });
+            deferred_mgr_.process_deferred_queue(
+                [this, &in, &out, &srv](const auto& ev) { return this->dispatch_direct_ports(ev, in, out, srv); });
         }
     }
 
@@ -400,6 +411,7 @@ class fsm {
 template <typename Table, typename InPorts = no_ports, typename OutPorts = no_ports, typename Registers = no_registers,
           typename Services = no_services, typename InitialState = typename Table::initial_state,
           std::size_t DeferredCapacity = 16>
-using dynamic_fsm = fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, dynamic_observer, DeferredCapacity>;
+using dynamic_fsm =
+    fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, dynamic_observer, DeferredCapacity>;
 
 }  // namespace fsm

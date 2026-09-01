@@ -18,11 +18,10 @@ template <typename State, typename Event, typename InPorts, typename OutPorts, t
 struct has_on_enter_full : std::false_type {};
 
 template <typename State, typename Event, typename InPorts, typename OutPorts, typename Registers, typename Services>
-struct has_on_enter_full<
-    State, Event, InPorts, OutPorts, Registers, Services,
-    std::void_t<decltype(std::declval<State&>().on_enter(
-        std::declval<const Event&>(), std::declval<const InPorts&>(), std::declval<OutPorts&>(),
-        std::declval<Registers&>(), std::declval<Services&>()))>> : std::true_type {};
+struct has_on_enter_full<State, Event, InPorts, OutPorts, Registers, Services,
+                         std::void_t<decltype(std::declval<State&>().on_enter(
+                             std::declval<const Event&>(), std::declval<const InPorts&>(), std::declval<OutPorts&>(),
+                             std::declval<Registers&>(), std::declval<Services&>()))>> : std::true_type {};
 
 // on_enter(event)
 template <typename State, typename Event, typename = void>
@@ -40,9 +39,9 @@ struct has_on_enter_ports : std::false_type {};
 template <typename State, typename InPorts, typename OutPorts, typename Registers, typename Services>
 struct has_on_enter_ports<
     State, InPorts, OutPorts, Registers, Services,
-    std::void_t<decltype(std::declval<State&>().on_enter(
-        std::declval<const InPorts&>(), std::declval<OutPorts&>(),
-        std::declval<Registers&>(), std::declval<Services&>()))>> : std::true_type {};
+    std::void_t<decltype(std::declval<State&>().on_enter(std::declval<const InPorts&>(), std::declval<OutPorts&>(),
+                                                         std::declval<Registers&>(), std::declval<Services&>()))>>
+    : std::true_type {};
 
 // on_enter()
 template <typename State, typename = void>
@@ -57,11 +56,10 @@ template <typename State, typename Event, typename InPorts, typename OutPorts, t
 struct has_on_exit_full : std::false_type {};
 
 template <typename State, typename Event, typename InPorts, typename OutPorts, typename Registers, typename Services>
-struct has_on_exit_full<
-    State, Event, InPorts, OutPorts, Registers, Services,
-    std::void_t<decltype(std::declval<State&>().on_exit(
-        std::declval<const Event&>(), std::declval<const InPorts&>(), std::declval<OutPorts&>(),
-        std::declval<Registers&>(), std::declval<Services&>()))>> : std::true_type {};
+struct has_on_exit_full<State, Event, InPorts, OutPorts, Registers, Services,
+                        std::void_t<decltype(std::declval<State&>().on_exit(
+                            std::declval<const Event&>(), std::declval<const InPorts&>(), std::declval<OutPorts&>(),
+                            std::declval<Registers&>(), std::declval<Services&>()))>> : std::true_type {};
 
 // on_exit(event)
 template <typename State, typename Event, typename = void>
@@ -159,19 +157,23 @@ constexpr bool invoke_guard_fallback(const Guard& guard, Tuple& t) {
 
 #if defined(__cpp_concepts) && __cpp_concepts >= 201907L && __cplusplus >= 202002L
     if constexpr (N >= 6 && requires {
-                      { guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t),
-                              tuple_get<5>(t)) } -> std::convertible_to<bool>;
+                      {
+                          guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t),
+                                tuple_get<5>(t))
+                      } -> std::convertible_to<bool>;
                   }) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t),
                      tuple_get<5>(t));
     } else if constexpr (N >= 4 && requires {
-                             { guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t),
-                                     tuple_get<N - 1>(t)) } -> std::convertible_to<bool>;
+                             {
+                                 guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<N - 1>(t))
+                             } -> std::convertible_to<bool>;
                          }) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<N - 1>(t));
     } else if constexpr (N >= 3 && requires {
-                             { guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<N - 1>(t)) } ->
-                                 std::convertible_to<bool>;
+                             {
+                                 guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<N - 1>(t))
+                             } -> std::convertible_to<bool>;
                          }) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<N - 1>(t));
     } else if constexpr (N >= 2 && requires {
@@ -183,28 +185,30 @@ constexpr bool invoke_guard_fallback(const Guard& guard, Tuple& t) {
                          }) {
         return guard(tuple_get<N - 1>(t));
     } else if constexpr (N >= 5 && requires {
-                             { guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t),
-                                     tuple_get<4>(t)) } -> std::convertible_to<bool>;
+                             {
+                                 guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t),
+                                       tuple_get<4>(t))
+                             } -> std::convertible_to<bool>;
                          }) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t));
     } else if constexpr (N >= 4 && requires {
-                             { guard(tuple_get<0>(t), tuple_get<2>(t), tuple_get<3>(t),
-                                     tuple_get<4>(t)) } -> std::convertible_to<bool>;
+                             {
+                                 guard(tuple_get<0>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t))
+                             } -> std::convertible_to<bool>;
                          }) {
         return guard(tuple_get<0>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t));
     } else if constexpr (N >= 3 && requires {
-                             { guard(tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t)) } ->
-                                 std::convertible_to<bool>;
+                             { guard(tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t)) } -> std::convertible_to<bool>;
                          }) {
         return guard(tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t));
     } else if constexpr (N >= 4 && requires {
-                             { guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t),
-                                     tuple_get<3>(t)) } -> std::convertible_to<bool>;
+                             {
+                                 guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t))
+                             } -> std::convertible_to<bool>;
                          }) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t));
     } else if constexpr (N >= 4 && requires {
-                             { guard(tuple_get<0>(t), tuple_get<2>(t), tuple_get<3>(t)) } ->
-                                 std::convertible_to<bool>;
+                             { guard(tuple_get<0>(t), tuple_get<2>(t), tuple_get<3>(t)) } -> std::convertible_to<bool>;
                          }) {
         return guard(tuple_get<0>(t), tuple_get<2>(t), tuple_get<3>(t));
     } else if constexpr (N >= 4 && requires {
@@ -212,8 +216,7 @@ constexpr bool invoke_guard_fallback(const Guard& guard, Tuple& t) {
                          }) {
         return guard(tuple_get<2>(t), tuple_get<3>(t));
     } else if constexpr (N >= 4 && requires {
-                             { guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<3>(t)) } ->
-                                 std::convertible_to<bool>;
+                             { guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<3>(t)) } -> std::convertible_to<bool>;
                          }) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<3>(t));
     } else if constexpr (N >= 4 && requires {
@@ -229,8 +232,7 @@ constexpr bool invoke_guard_fallback(const Guard& guard, Tuple& t) {
                          }) {
         return guard(tuple_get<3>(t));
     } else if constexpr (N >= 3 && requires {
-                             { guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t)) } ->
-                                 std::convertible_to<bool>;
+                             { guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t)) } -> std::convertible_to<bool>;
                          }) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t));
     } else if constexpr (N >= 3 && requires {
@@ -261,43 +263,65 @@ constexpr bool invoke_guard_fallback(const Guard& guard, Tuple& t) {
         return true;
     }
 #else
-    if constexpr (N >= 6 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t)), decltype(tuple_get<5>(t))>) {
-        return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t));
-    } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<N - 1>(t))>) {
+    if constexpr (N >= 6 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                                  decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t)),
+                                                  decltype(tuple_get<4>(t)), decltype(tuple_get<5>(t))>) {
+        return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t),
+                     tuple_get<5>(t));
+    } else if constexpr (N >= 4 &&
+                         std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                               decltype(tuple_get<2>(t)), decltype(tuple_get<N - 1>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<N - 1>(t));
-    } else if constexpr (N >= 3 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<N - 1>(t))>) {
+    } else if constexpr (N >= 3 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)),
+                                                         decltype(tuple_get<1>(t)), decltype(tuple_get<N - 1>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<N - 1>(t));
-    } else if constexpr (N >= 2 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<N - 1>(t))>) {
+    } else if constexpr (N >= 2 &&
+                         std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<N - 1>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<N - 1>(t));
     } else if constexpr (N >= 1 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<N - 1>(t))>) {
         return guard(tuple_get<N - 1>(t));
-    } else if constexpr (N >= 5 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t))>) {
+    } else if constexpr (N >= 5 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)),
+                                                         decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)),
+                                                         decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t));
-    } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t))>) {
+    } else if constexpr (N >= 4 &&
+                         std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<2>(t)),
+                                               decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t));
-    } else if constexpr (N >= 3 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t))>) {
+    } else if constexpr (N >= 3 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<2>(t)),
+                                                         decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t))>) {
         return guard(tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t));
-    } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t))>) {
+    } else if constexpr (N >= 4 &&
+                         std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                               decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t));
-    } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t))>) {
+    } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)),
+                                                         decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<2>(t), tuple_get<3>(t));
-    } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t))>) {
+    } else if constexpr (N >= 4 &&
+                         std::is_invocable_r_v<bool, Guard, decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t))>) {
         return guard(tuple_get<2>(t), tuple_get<3>(t));
-    } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<3>(t))>) {
+    } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)),
+                                                         decltype(tuple_get<1>(t)), decltype(tuple_get<3>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<3>(t));
-    } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<3>(t))>) {
+    } else if constexpr (N >= 4 &&
+                         std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<3>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<3>(t));
-    } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<1>(t)), decltype(tuple_get<3>(t))>) {
+    } else if constexpr (N >= 4 &&
+                         std::is_invocable_r_v<bool, Guard, decltype(tuple_get<1>(t)), decltype(tuple_get<3>(t))>) {
         return guard(tuple_get<1>(t), tuple_get<3>(t));
     } else if constexpr (N >= 4 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<3>(t))>) {
         return guard(tuple_get<3>(t));
-    } else if constexpr (N >= 3 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t))>) {
+    } else if constexpr (N >= 3 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)),
+                                                         decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t));
-    } else if constexpr (N >= 3 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<2>(t))>) {
+    } else if constexpr (N >= 3 &&
+                         std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<2>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<2>(t));
     } else if constexpr (N >= 3 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<2>(t))>) {
         return guard(tuple_get<2>(t));
-    } else if constexpr (N >= 2 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t))>) {
+    } else if constexpr (N >= 2 &&
+                         std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t))>) {
         return guard(tuple_get<0>(t), tuple_get<1>(t));
     } else if constexpr (N >= 1 && std::is_invocable_r_v<bool, Guard, decltype(tuple_get<0>(t))>) {
         return guard(tuple_get<0>(t));
@@ -322,10 +346,10 @@ constexpr void invoke_action_fallback(Action& action, Tuple& t) {
                              tuple_get<5>(t), tuple_get<6>(t));
                   }) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t),
-              tuple_get<6>(t));
+               tuple_get<6>(t));
     } else if constexpr (N >= 6 && requires {
-                             action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<3>(t), tuple_get<4>(t),
-                                    tuple_get<5>(t), tuple_get<6>(t));
+                             action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t),
+                                    tuple_get<6>(t));
                          }) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t));
     } else if constexpr (N >= 5 && requires {
@@ -333,13 +357,11 @@ constexpr void invoke_action_fallback(Action& action, Tuple& t) {
                                     tuple_get<6>(t));
                          }) {
         action(tuple_get<0>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t));
-    } else if constexpr (N >= 4 && requires {
-                             action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t));
-                         }) {
+    } else if constexpr (N >= 4 &&
+                         requires { action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t)); }) {
         action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t));
-    } else if constexpr (N >= 6 && requires {
-                             action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<5>(t));
-                         }) {
+    } else if constexpr (N >= 6 &&
+                         requires { action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<5>(t)); }) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<5>(t));
     } else if constexpr (N >= 6 && requires { action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<5>(t)); }) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<5>(t));
@@ -357,9 +379,8 @@ constexpr void invoke_action_fallback(Action& action, Tuple& t) {
         action(tuple_get<1>(t), tuple_get<5>(t));
     } else if constexpr (N >= 6 && requires { action(tuple_get<5>(t)); }) {
         action(tuple_get<5>(t));
-    } else if constexpr (N >= 7 && requires {
-                             action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<6>(t));
-                         }) {
+    } else if constexpr (N >= 7 &&
+                         requires { action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<6>(t)); }) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<6>(t));
     } else if constexpr (N >= 7 && requires { action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<6>(t)); }) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<6>(t));
@@ -379,13 +400,10 @@ constexpr void invoke_action_fallback(Action& action, Tuple& t) {
         action(tuple_get<0>(t), tuple_get<3>(t));
     } else if constexpr (N >= 4 && requires { action(tuple_get<3>(t)); }) {
         action(tuple_get<3>(t));
-    } else if constexpr (N >= 4 && requires {
-                             action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<N - 1>(t));
-                         }) {
+    } else if constexpr (N >= 4 &&
+                         requires { action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<N - 1>(t)); }) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<N - 1>(t));
-    } else if constexpr (N >= 3 && requires {
-                             action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<N - 1>(t));
-                         }) {
+    } else if constexpr (N >= 3 && requires { action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<N - 1>(t)); }) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<N - 1>(t));
     } else if constexpr (N >= 2 && requires { action(tuple_get<0>(t), tuple_get<N - 1>(t)); }) {
         action(tuple_get<0>(t), tuple_get<N - 1>(t));
@@ -407,41 +425,58 @@ constexpr void invoke_action_fallback(Action& action, Tuple& t) {
         action();
     }
 #else
-    if constexpr (N >= 7 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t)), decltype(tuple_get<5>(t)), decltype(tuple_get<6>(t))>) {
-        action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t));
-    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t)), decltype(tuple_get<5>(t)), decltype(tuple_get<6>(t))>) {
+    if constexpr (N >= 7 &&
+                  std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                      decltype(tuple_get<2>(t)), decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t)),
+                                      decltype(tuple_get<5>(t)), decltype(tuple_get<6>(t))>) {
+        action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t),
+               tuple_get<6>(t));
+    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                                       decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t)),
+                                                       decltype(tuple_get<5>(t)), decltype(tuple_get<6>(t))>) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t));
-    } else if constexpr (N >= 5 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t)), decltype(tuple_get<5>(t)), decltype(tuple_get<6>(t))>) {
+    } else if constexpr (N >= 5 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<3>(t)),
+                                                       decltype(tuple_get<4>(t)), decltype(tuple_get<5>(t)),
+                                                       decltype(tuple_get<6>(t))>) {
         action(tuple_get<0>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t));
-    } else if constexpr (N >= 4 && std::is_invocable_v<Action, decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t)), decltype(tuple_get<5>(t)), decltype(tuple_get<6>(t))>) {
+    } else if constexpr (N >= 4 && std::is_invocable_v<Action, decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t)),
+                                                       decltype(tuple_get<5>(t)), decltype(tuple_get<6>(t))>) {
         action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t));
-    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<5>(t))>) {
+    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                                       decltype(tuple_get<2>(t)), decltype(tuple_get<5>(t))>) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<5>(t));
-    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<5>(t))>) {
+    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                                       decltype(tuple_get<5>(t))>) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<5>(t));
-    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<5>(t))>) {
+    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<2>(t)),
+                                                       decltype(tuple_get<5>(t))>) {
         action(tuple_get<0>(t), tuple_get<2>(t), tuple_get<5>(t));
-    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<4>(t)), decltype(tuple_get<5>(t))>) {
+    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<4>(t)),
+                                                       decltype(tuple_get<5>(t))>) {
         action(tuple_get<0>(t), tuple_get<4>(t), tuple_get<5>(t));
     } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<4>(t)), decltype(tuple_get<5>(t))>) {
         action(tuple_get<4>(t), tuple_get<5>(t));
     } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<5>(t))>) {
         action(tuple_get<0>(t), tuple_get<5>(t));
-    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<5>(t))>) {
+    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)),
+                                                       decltype(tuple_get<5>(t))>) {
         action(tuple_get<1>(t), tuple_get<2>(t), tuple_get<5>(t));
     } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<1>(t)), decltype(tuple_get<5>(t))>) {
         action(tuple_get<1>(t), tuple_get<5>(t));
     } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<5>(t))>) {
         action(tuple_get<5>(t));
-    } else if constexpr (N >= 7 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<6>(t))>) {
+    } else if constexpr (N >= 7 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                                       decltype(tuple_get<2>(t)), decltype(tuple_get<6>(t))>) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<6>(t));
-    } else if constexpr (N >= 7 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<6>(t))>) {
+    } else if constexpr (N >= 7 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                                       decltype(tuple_get<6>(t))>) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<6>(t));
     } else if constexpr (N >= 7 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<6>(t))>) {
         action(tuple_get<0>(t), tuple_get<6>(t));
     } else if constexpr (N >= 7 && std::is_invocable_v<Action, decltype(tuple_get<6>(t))>) {
         action(tuple_get<6>(t));
-    } else if constexpr (N >= 5 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t))>) {
+    } else if constexpr (N >= 5 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<3>(t)),
+                                                       decltype(tuple_get<4>(t))>) {
         action(tuple_get<0>(t), tuple_get<3>(t), tuple_get<4>(t));
     } else if constexpr (N >= 5 && std::is_invocable_v<Action, decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t))>) {
         action(tuple_get<3>(t), tuple_get<4>(t));
@@ -453,15 +488,19 @@ constexpr void invoke_action_fallback(Action& action, Tuple& t) {
         action(tuple_get<0>(t), tuple_get<3>(t));
     } else if constexpr (N >= 4 && std::is_invocable_v<Action, decltype(tuple_get<3>(t))>) {
         action(tuple_get<3>(t));
-    } else if constexpr (N >= 4 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t)), decltype(tuple_get<N - 1>(t))>) {
+    } else if constexpr (N >= 4 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                                       decltype(tuple_get<2>(t)), decltype(tuple_get<N - 1>(t))>) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<N - 1>(t));
-    } else if constexpr (N >= 3 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<N - 1>(t))>) {
+    } else if constexpr (N >= 3 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                                       decltype(tuple_get<N - 1>(t))>) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<N - 1>(t));
-    } else if constexpr (N >= 2 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<N - 1>(t))>) {
+    } else if constexpr (N >= 2 &&
+                         std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<N - 1>(t))>) {
         action(tuple_get<0>(t), tuple_get<N - 1>(t));
     } else if constexpr (N >= 1 && std::is_invocable_v<Action, decltype(tuple_get<N - 1>(t))>) {
         action(tuple_get<N - 1>(t));
-    } else if constexpr (N >= 3 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)), decltype(tuple_get<2>(t))>) {
+    } else if constexpr (N >= 3 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
+                                                       decltype(tuple_get<2>(t))>) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t));
     } else if constexpr (N >= 2 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t))>) {
         action(tuple_get<0>(t), tuple_get<1>(t));

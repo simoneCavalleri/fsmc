@@ -7,9 +7,9 @@
 #include <utility>
 #include <vector>
 
+#include "fsm/frontend/common/parser_interface.hpp"
 #include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
-#include "fsm/frontend/common/parser_interface.hpp"
 
 namespace fsm::codegen {
 

@@ -45,7 +45,8 @@ struct SampleRegisters {
 
 struct IncrementAction {
     template <typename Event, typename Src, typename Dst>
-    void operator()(const Event& /*evt*/, Src& /*src*/, Dst& /*dst*/, const fsm::no_ports& /*in*/, fsm::no_ports& /*out*/, SampleRegisters& reg, fsm::no_services& /*srv*/) const {
+    void operator()(const Event& /*evt*/, Src& /*src*/, Dst& /*dst*/, const fsm::no_ports& /*in*/,
+                    fsm::no_ports& /*out*/, SampleRegisters& reg, fsm::no_services& /*srv*/) const {
         ++reg.counter1;
         ++reg.counter2;
     }

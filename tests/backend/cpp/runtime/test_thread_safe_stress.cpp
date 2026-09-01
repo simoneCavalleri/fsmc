@@ -80,7 +80,8 @@ using StressTransitionTable = fsm::transition_table<
  */
 TEST(ThreadSafeStressTest, HighConcurrency20Threads50kEvents) {
     StressServices ctx;
-    fsm::thread_safe_fsm<StressTransitionTable, fsm::no_ports, fsm::no_ports, fsm::no_registers, StressServices> fsm(ctx);
+    fsm::thread_safe_fsm<StressTransitionTable, fsm::no_ports, fsm::no_ports, fsm::no_registers, StressServices> fsm(
+        ctx);
 
     constexpr int kNumThreads = 20;
     constexpr int kEventsPerThread = 2500;
@@ -144,7 +145,8 @@ TEST(ThreadSafeStressTest, HighConcurrency20Threads50kEvents) {
  */
 TEST(ThreadSafeStressTest, ConcurrentTimedAndImmediateEvents) {
     StressServices ctx;
-    fsm::thread_safe_fsm<StressTransitionTable, fsm::no_ports, fsm::no_ports, fsm::no_registers, StressServices> fsm(ctx);
+    fsm::thread_safe_fsm<StressTransitionTable, fsm::no_ports, fsm::no_ports, fsm::no_registers, StressServices> fsm(
+        ctx);
 
     constexpr int kNumThreads = 8;
     std::vector<std::thread> threads;

@@ -9,8 +9,8 @@
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/backend/emitter_factory.hpp"
-#include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/frontend/common/parser_factory.hpp"
+#include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/fsm_validator.hpp"
 #include "fsm/middleend/pass_manager.hpp"
@@ -105,8 +105,7 @@ std::string fsmc_wasm_get_model(const std::string& source, const std::string& fo
         const auto& v = model.variables[i];
         ss << "    {\"name\": \"" << v.name << "\", "
            << "\"type\": \"" << v.type << "\", "
-           << "\"initial\": \"" << v.initial_value << "\"}"
-           << (i + 1 < model.variables.size() ? "," : "") << "\n";
+           << "\"initial\": \"" << v.initial_value << "\"}" << (i + 1 < model.variables.size() ? "," : "") << "\n";
     }
 
     ss << "  ],\n  \"states\": [\n";
@@ -199,7 +198,8 @@ std::string fsmc_wasm_verify(const std::string& source, const std::string& forma
                           : (d.severity == DiagnosticSeverity::SafetyCritical) ? "SAFETY_CRITICAL"
                           : (d.severity == DiagnosticSeverity::Warning)        ? "WARNING"
                                                                                : "INFO";
-        if (has_diag) ss << ",\n";
+        if (has_diag)
+            ss << ",\n";
         ss << "    {\"severity\": \"" << sev << "\", \"category\": \"" << d.category << "\", \"message\": \""
            << d.message << "\"}";
         has_diag = true;
@@ -210,9 +210,10 @@ std::string fsmc_wasm_verify(const std::string& source, const std::string& forma
                           : (d.severity == DiagnosticSeverity::SafetyCritical) ? "SAFETY_CRITICAL"
                           : (d.severity == DiagnosticSeverity::Warning)        ? "WARNING"
                                                                                : "INFO";
-        if (has_diag) ss << ",\n";
-        ss << "    {\"severity\": \"" << sev << "\", \"category\": \"IntervalAnalysis\", \"message\": \""
-           << d.message << "\"}";
+        if (has_diag)
+            ss << ",\n";
+        ss << "    {\"severity\": \"" << sev << "\", \"category\": \"IntervalAnalysis\", \"message\": \"" << d.message
+           << "\"}";
         has_diag = true;
     }
 

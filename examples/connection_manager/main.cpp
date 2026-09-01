@@ -102,7 +102,8 @@ struct CloseSocketAction {
 };
 
 using AppConnectionFSM = ::fsm::fsm<ConnectionFSMTable, NetworkInPorts, ::fsm::no_ports, NetworkRegisters>;
-using AppThreadSafeConnectionFSM = ::fsm::thread_safe_fsm<ConnectionFSMTable, NetworkInPorts, ::fsm::no_ports, NetworkRegisters>;
+using AppThreadSafeConnectionFSM =
+    ::fsm::thread_safe_fsm<ConnectionFSMTable, NetworkInPorts, ::fsm::no_ports, NetworkRegisters>;
 
 }  // namespace net
 

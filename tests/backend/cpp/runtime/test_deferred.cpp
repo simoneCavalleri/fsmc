@@ -5,15 +5,15 @@
 #include <thread>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
+#include "fsm/backend/cpp/runtime/fsm.hpp"
+#include "fsm/backend/cpp/runtime/spsc_fsm.hpp"
+#include "fsm/backend/cpp/runtime/thread_safe_fsm.hpp"
 #include "fsm/frontend/diagram/dot_parser.hpp"
 #include "fsm/frontend/diagram/json_parser.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/frontend/formal/cameo_xmi_parser.hpp"
 #include "fsm/frontend/formal/scxml_parser.hpp"
-#include "fsm/backend/cpp/runtime/fsm.hpp"
-#include "fsm/backend/cpp/runtime/spsc_fsm.hpp"
-#include "fsm/backend/cpp/runtime/thread_safe_fsm.hpp"
 
 using namespace ::fsm::codegen;
 
@@ -247,21 +247,15 @@ struct PipelineRegisters {
 
 // Actions
 struct OnInitDoneAction {
-    void operator()(PipelineRegisters& reg) const {
-        reg.init_done_called = true;
-    }
+    void operator()(PipelineRegisters& reg) const { reg.init_done_called = true; }
 };
 
 struct OnRequestAction {
-    void operator()(PipelineRegisters& reg) const {
-        reg.request_handled = true;
-    }
+    void operator()(PipelineRegisters& reg) const { reg.request_handled = true; }
 };
 
 struct OnPacketAction {
-    void operator()(const DataPacket& evt, PipelineRegisters& reg) const {
-        reg.received_payload = evt.payload;
-    }
+    void operator()(const DataPacket& evt, PipelineRegisters& reg) const { reg.received_payload = evt.payload; }
 };
 
 // Transition Table
@@ -360,10 +354,14 @@ TEST(DeferredEventsTest, AsyncRuntimeExecution) {
  * @brief Test Intent: Verify configurable DeferredCapacity template parameter across all runtime wrappers.
  */
 TEST(DeferredEventsTest, ConfigurableDeferredCapacity) {
-    using CustomFsm = ::fsm::fsm<PipelineTable, ::fsm::no_ports, ::fsm::no_ports, PipelineRegisters, ::fsm::no_services, Initializing, ::fsm::no_observer, 32>;
-    using CustomDynamicFsm = ::fsm::dynamic_fsm<PipelineTable, ::fsm::no_ports, ::fsm::no_ports, PipelineRegisters, ::fsm::no_services, Initializing, 32>;
-    using CustomThreadSafeFsm = ::fsm::thread_safe_fsm<PipelineTable, ::fsm::no_ports, ::fsm::no_ports, PipelineRegisters, ::fsm::no_services, Initializing, 32>;
-    using CustomSpscFsm = ::fsm::spsc_fsm<PipelineTable, ::fsm::no_ports, ::fsm::no_ports, PipelineRegisters, ::fsm::no_services, 64, Initializing, 32>;
+    using CustomFsm = ::fsm::fsm<PipelineTable, ::fsm::no_ports, ::fsm::no_ports, PipelineRegisters, ::fsm::no_services,
+                                 Initializing, ::fsm::no_observer, 32>;
+    using CustomDynamicFsm = ::fsm::dynamic_fsm<PipelineTable, ::fsm::no_ports, ::fsm::no_ports, PipelineRegisters,
+                                                ::fsm::no_services, Initializing, 32>;
+    using CustomThreadSafeFsm = ::fsm::thread_safe_fsm<PipelineTable, ::fsm::no_ports, ::fsm::no_ports,
+                                                       PipelineRegisters, ::fsm::no_services, Initializing, 32>;
+    using CustomSpscFsm = ::fsm::spsc_fsm<PipelineTable, ::fsm::no_ports, ::fsm::no_ports, PipelineRegisters,
+                                          ::fsm::no_services, 64, Initializing, 32>;
 
     PipelineRegisters reg;
     CustomFsm m1(reg);

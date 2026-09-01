@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-#include "fsm/frontend/parser_interface.hpp"
+#include "fsm/frontend/common/parser_interface.hpp"
 
 namespace fsm::codegen {
 

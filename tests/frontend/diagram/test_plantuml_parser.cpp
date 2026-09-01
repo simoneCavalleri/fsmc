@@ -5,7 +5,7 @@
 
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
-#include "fsm/middleend/fsm_validator.hpp"
+#include "fsm/middleend/analysis/fsm_validator.hpp"
 
 using namespace fsm::codegen;
 
@@ -267,6 +267,58 @@ TEST(ParserTest, MermaidEntryExitPointAndPriority) {
     ASSERT_EQ(model.transitions.size(), 2u);
     EXPECT_EQ(model.transitions[0].priority, 4u);
     EXPECT_EQ(model.transitions[1].priority, 1u);
+}
+
+/**
+ * @brief Test Intent: Verify PlantUML and Mermaid parsing of @fsm:port directives into FsmIr.
+ */
+TEST(ParserTest, PlantUmlAndMermaidPortDirectives) {
+    // 1. PlantUML
+    const std::string puml = R"(
+    @startuml
+    ' @fsm:port name=sensor_temp type=float dir=in min=-40.0 max=125.0 constraint="self >= -40.0 and self <= 125.0" unit="[degC]"
+    ' @fsm:port name=valve_cmd type=float dir=out min=0.0 max=100.0 constraint="self >= 0.0 and self <= 100.0"
+    [*] --> Off
+    Off --> On : EvStart
+    @enduml
+    )";
+
+    PlantUmlParser puml_parser;
+    FsmIr puml_model;
+    std::string err;
+    ASSERT_TRUE(puml_parser.parse(puml, puml_model, err)) << err;
+
+    ASSERT_EQ(puml_model.ports.size(), 2u);
+    const auto* in_p = puml_model.find_port("sensor_temp");
+    ASSERT_NE(in_p, nullptr);
+    EXPECT_TRUE(in_p->is_in());
+    EXPECT_DOUBLE_EQ(in_p->min_value.value_or(0.0), -40.0);
+    EXPECT_DOUBLE_EQ(in_p->max_value.value_or(0.0), 125.0);
+
+    const auto* out_p = puml_model.find_port("valve_cmd");
+    ASSERT_NE(out_p, nullptr);
+    EXPECT_TRUE(out_p->is_out());
+    EXPECT_DOUBLE_EQ(out_p->min_value.value_or(0.0), 0.0);
+    EXPECT_DOUBLE_EQ(out_p->max_value.value_or(0.0), 100.0);
+
+    // 2. Mermaid
+    const std::string mmd = R"(
+    stateDiagram-v2
+        %% @fsm:port name=voltage_in type=float dir=in min=18.0 max=36.0
+        [*] --> Standby
+        Standby --> Active : EvPowerOn
+    )";
+
+    MermaidParser mmd_parser;
+    FsmIr mmd_model;
+    ASSERT_TRUE(mmd_parser.parse(mmd, mmd_model, err)) << err;
+
+    ASSERT_EQ(mmd_model.ports.size(), 1u);
+    const auto* v_in = mmd_model.find_port("voltage_in");
+    ASSERT_NE(v_in, nullptr);
+    EXPECT_TRUE(v_in->is_in());
+    EXPECT_DOUBLE_EQ(v_in->min_value.value_or(0.0), 18.0);
+    EXPECT_DOUBLE_EQ(v_in->max_value.value_or(0.0), 36.0);
 }
 
 }  // namespace

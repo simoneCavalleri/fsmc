@@ -10,7 +10,7 @@
 #include "fsm/frontend/formal/scxml_parser.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
-#include "fsm/middleend/fsm_validator.hpp"
+#include "fsm/middleend/analysis/fsm_validator.hpp"
 
 using namespace fsm::codegen;
 

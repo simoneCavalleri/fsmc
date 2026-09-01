@@ -10,8 +10,8 @@
 #include <utility>
 #include <vector>
 
-#include "fsm/frontend/guard_parser.hpp"
-#include "fsm/frontend/parser_interface.hpp"
+#include "fsm/frontend/directive/guard_parser.hpp"
+#include "fsm/frontend/common/parser_interface.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 namespace fsm::codegen {
@@ -33,6 +33,7 @@ struct JsonValue {
     [[nodiscard]] bool is_string() const { return type == JsonType::String; }
     [[nodiscard]] bool is_object() const { return type == JsonType::Object; }
     [[nodiscard]] bool is_array() const { return type == JsonType::Array; }
+    [[nodiscard]] bool is_number() const { return type == JsonType::Number; }
 
     [[nodiscard]] std::string get_string(const std::string& key, const std::string& default_val = "") const {
         if (!is_object()) {
@@ -41,6 +42,17 @@ struct JsonValue {
         auto find_it = obj_val.find(key);
         if (find_it != obj_val.end() && find_it->second.is_string()) {
             return find_it->second.str_val;
+        }
+        return default_val;
+    }
+
+    [[nodiscard]] double get_number(const std::string& key, double default_val = 0.0) const {
+        if (!is_object()) {
+            return default_val;
+        }
+        auto find_it = obj_val.find(key);
+        if (find_it != obj_val.end() && find_it->second.type == JsonType::Number) {
+            return find_it->second.num_val;
         }
         return default_val;
     }
@@ -337,6 +349,34 @@ class JsonStateParser : public IParser {
                     var.description = v_val.get_string("description");
                     if (!var.name.empty()) {
                         model.add_variable(std::move(var));
+                    }
+                }
+            }
+        }
+
+        // Top-level ports
+        const auto* ports_arr = root.get_child("ports");
+        if (ports_arr != nullptr && ports_arr->is_array()) {
+            for (const auto& p_val : ports_arr->arr_val) {
+                if (p_val.is_object()) {
+                    PortDefinition port;
+                    port.name = sanitize_identifier(p_val.get_string("name"));
+                    port.type = p_val.get_string("type", "float");
+                    std::string dir_str = p_val.get_string("direction", "in");
+                    port.direction = string_to_port_direction(dir_str);
+                    if (const auto* min_c = p_val.get_child("min")) {
+                        if (min_c->type == JsonType::Number) {
+                            port.min_value = min_c->num_val;
+                        }
+                    }
+                    if (const auto* max_c = p_val.get_child("max")) {
+                        if (max_c->type == JsonType::Number) {
+                            port.max_value = max_c->num_val;
+                        }
+                    }
+                    port.constraint = p_val.get_string("constraint");
+                    if (!port.name.empty()) {
+                        model.ports.push_back(std::move(port));
                     }
                 }
             }

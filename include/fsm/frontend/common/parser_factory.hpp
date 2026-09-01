@@ -10,12 +10,12 @@
 #include "fsm/frontend/diagram/json_parser.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
-#include "fsm/frontend/directive_parser.hpp"
+#include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/formal/cameo_xmi_parser.hpp"
 #include "fsm/frontend/formal/scxml_parser.hpp"
 #include "fsm/frontend/formal/smv_parser.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
-#include "fsm/frontend/parser_interface.hpp"
+#include "fsm/frontend/common/parser_interface.hpp"
 
 namespace fsm::codegen {
 

@@ -8,7 +8,7 @@
 #include <string_view>
 #include <vector>
 
-#include "fsm/frontend/ltl_parser.hpp"
+#include "fsm/frontend/directive/ltl_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 namespace fsm::codegen {
@@ -214,6 +214,87 @@ class DirectiveParser {
         }
 
         return prop;
+    }
+
+    // Parses @fsm:port name=sensor_val type=float dir=in [min=0] [max=100] [constraint="..."] [unit="..."] [desc="..."]
+    static std::optional<PortDefinition> parse_port_directive(std::string_view body) {
+        std::string str = trim(body);
+        if (str.empty())
+            return std::nullopt;
+
+        if (str.rfind("port", 0) == 0) {
+            str = trim(str.substr(4));
+        }
+
+        PortDefinition port;
+        auto n_pos = str.find("name=");
+        if (n_pos != std::string::npos) {
+            port.name = extract_quoted_or_word(str, n_pos + 5);
+        } else {
+            auto first_space = str.find_first_of(" \t");
+            if (first_space != std::string::npos) {
+                port.name = trim(str.substr(0, first_space));
+            } else {
+                port.name = str;
+            }
+        }
+
+        auto t_pos = str.find("type=");
+        if (t_pos != std::string::npos) {
+            port.type = extract_quoted_or_word(str, t_pos + 5);
+            port.type_kind = infer_type_kind(port.type);
+        }
+
+        auto d_pos = str.find("dir=");
+        if (d_pos == std::string::npos) {
+            d_pos = str.find("direction=");
+            if (d_pos != std::string::npos) {
+                d_pos += 10;
+            }
+        } else {
+            d_pos += 4;
+        }
+        if (d_pos != std::string::npos) {
+            std::string dir_str = extract_quoted_or_word(str, d_pos);
+            port.direction = string_to_port_direction(dir_str);
+        }
+
+        auto u_pos = str.find("unit=");
+        if (u_pos != std::string::npos) {
+            port.physical_unit = extract_quoted_or_word(str, u_pos + 5);
+        }
+
+        auto c_pos = str.find("constraint=");
+        if (c_pos != std::string::npos) {
+            port.constraint = extract_quoted_or_word(str, c_pos + 11);
+        }
+
+        auto min_pos = str.find("min=");
+        if (min_pos != std::string::npos) {
+            std::string m_str = extract_quoted_or_word(str, min_pos + 4);
+            if (!m_str.empty()) {
+                try {
+                    port.min_value = std::stod(m_str);
+                } catch (...) {}
+            }
+        }
+
+        auto max_pos = str.find("max=");
+        if (max_pos != std::string::npos) {
+            std::string m_str = extract_quoted_or_word(str, max_pos + 4);
+            if (!m_str.empty()) {
+                try {
+                    port.max_value = std::stod(m_str);
+                } catch (...) {}
+            }
+        }
+
+        auto desc_pos = str.find("desc=");
+        if (desc_pos != std::string::npos) {
+            port.description = extract_quoted_or_word(str, desc_pos + 5);
+        }
+
+        return port;
     }
 
     // Parses @fsm:var name=retry_count type=uint32_t init=0 [unit="[mm/s]"] [min=0] [max=5] [desc="..."]

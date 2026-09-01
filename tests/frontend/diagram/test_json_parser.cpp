@@ -179,4 +179,61 @@ TEST(JsonParserTest, DocumentInsertionOrderPreservation) {
     EXPECT_EQ(model.states[3].name, "BetaState");
 }
 
+/**
+ * @brief Test Intent: Verify parsing of v0.4.0 typed ports and range constraints in JSON schema.
+ */
+TEST(JsonParserTest, ParsePortsAndContracts) {
+    const std::string json_content = R"({
+  "id": "DualPortFSM",
+  "initial": "Idle",
+  "ports": [
+    {
+      "name": "sensor_in",
+      "type": "float",
+      "direction": "in",
+      "min": 0.0,
+      "max": 100.0,
+      "constraint": "self >= 0.0 and self <= 100.0"
+    },
+    {
+      "name": "actuator_out",
+      "type": "float",
+      "direction": "out",
+      "min": 0.0,
+      "max": 200.0,
+      "constraint": "self >= 0.0 and self <= 200.0"
+    }
+  ],
+  "states": {
+    "Idle": {
+      "on": {
+        "Trigger": "Running"
+      }
+    },
+    "Running": {}
+  }
+})";
+
+    JsonStateParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << err;
+
+    ASSERT_EQ(model.ports.size(), 2u);
+    const auto* in_p = model.find_port("sensor_in");
+    ASSERT_NE(in_p, nullptr);
+    EXPECT_TRUE(in_p->is_in());
+    EXPECT_FALSE(in_p->is_out());
+    EXPECT_DOUBLE_EQ(in_p->min_value.value_or(0.0), 0.0);
+    EXPECT_DOUBLE_EQ(in_p->max_value.value_or(0.0), 100.0);
+    EXPECT_EQ(in_p->constraint, "self >= 0.0 and self <= 100.0");
+
+    const auto* out_p = model.find_port("actuator_out");
+    ASSERT_NE(out_p, nullptr);
+    EXPECT_TRUE(out_p->is_out());
+    EXPECT_FALSE(out_p->is_in());
+    EXPECT_DOUBLE_EQ(out_p->min_value.value_or(0.0), 0.0);
+    EXPECT_DOUBLE_EQ(out_p->max_value.value_or(0.0), 200.0);
+}
+
 }  // namespace

@@ -10,8 +10,8 @@
 #include <utility>
 #include <vector>
 
-#include "fsm/frontend/guard_parser.hpp"
-#include "fsm/frontend/parser_interface.hpp"
+#include "fsm/frontend/directive/guard_parser.hpp"
+#include "fsm/frontend/common/parser_interface.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 namespace fsm::codegen {

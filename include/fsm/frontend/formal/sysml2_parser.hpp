@@ -8,9 +8,9 @@
 #include <utility>
 #include <vector>
 
-#include "fsm/frontend/directive_parser.hpp"
-#include "fsm/frontend/guard_parser.hpp"
-#include "fsm/frontend/parser_interface.hpp"
+#include "fsm/frontend/directive/directive_parser.hpp"
+#include "fsm/frontend/directive/guard_parser.hpp"
+#include "fsm/frontend/common/parser_interface.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 namespace fsm::codegen {
@@ -92,6 +92,16 @@ class Sysml2Parser : public IParser {
                         action_brace_depth++;
                     } else if (character == '}') {
                         action_brace_depth--;
+                        if (action_brace_depth == 0) {
+                            std::string trimmed_acc = trim(accumulated_stmt);
+                            if (trimmed_acc.find("port") != std::string::npos ||
+                                trimmed_acc.find("assert") != std::string::npos) {
+                                SysmlBlockKind unused_kind = SysmlBlockKind::ActionBlock;
+                                if (!flush_stmt(line_number, false, unused_kind)) {
+                                    return false;
+                                }
+                            }
+                        }
                     }
                     continue;
                 }
@@ -100,6 +110,8 @@ class Sysml2Parser : public IParser {
                     std::string trimmed_acc = trim(accumulated_stmt);
                     if (trimmed_acc.rfind("do", trimmed_acc.size() - 2) != std::string::npos ||
                         trimmed_acc.find("transition") != std::string::npos ||
+                        trimmed_acc.find("port") != std::string::npos ||
+                        trimmed_acc.find("assert") != std::string::npos ||
                         (trimmed_acc.size() >= 2 && trimmed_acc.substr(trimmed_acc.size() - 2) == "do")) {
                         action_brace_depth = 1;
                         accumulated_stmt += "{";
@@ -231,6 +243,22 @@ class Sysml2Parser : public IParser {
         return t;
     }
 
+    static std::string to_pascal_case(const std::string& str) {
+        std::string res;
+        bool cap = true;
+        for (char c : str) {
+            if (c == '_' || c == '-' || c == ' ') {
+                cap = true;
+            } else if (cap) {
+                res += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+                cap = false;
+            } else {
+                res += c;
+            }
+        }
+        return res.empty() ? "Custom" : res;
+    }
+
     static bool process_statement(const std::string& raw_stmt, FsmIr& model, std::vector<std::string>& state_stack,
                                   std::string& current_item_def, std::string& error_message, size_t line_number,
                                   bool is_block_open, SysmlBlockKind& out_kind) {
@@ -242,21 +270,84 @@ class Sysml2Parser : public IParser {
             return true;
         }
 
-        // 1. state def <Name> / package <Name>
-        static const std::regex state_def_regex(R"(^(?:state\s+def|package)\s+([A-Za-z_][A-Za-z0-9_]*))",
-                                                std::regex::optimize);
+        // 1. package <Name> / state def <Name>
+        static const std::regex package_def_regex(R"(^package\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
         std::smatch match;
-        if (std::regex_search(stmt, match, state_def_regex)) {
-            if (model.name.empty() || model.name == "MyStateMachine" || model.name == "GeneratedFSM") {
-                model.name = sanitize_identifier(match[1].str());
-            }
+        if (std::regex_search(stmt, match, package_def_regex)) {
+            model.ns = sanitize_identifier(match[1].str());
             if (is_block_open) {
-                out_kind = (stmt.rfind("package", 0) == 0) ? SysmlBlockKind::Package : SysmlBlockKind::StateDef;
+                out_kind = SysmlBlockKind::Package;
             }
             return true;
         }
 
-        // 2. Item Definition (Signal with Payload): item def / event def / attribute def / port def <Name>
+        static const std::regex state_def_regex(R"(^state\s+def\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
+        if (std::regex_search(stmt, match, state_def_regex)) {
+            model.name = sanitize_identifier(match[1].str());
+            if (is_block_open) {
+                out_kind = SysmlBlockKind::StateDef;
+            }
+            return true;
+        }
+
+        // 2b. Port declaration: (in|out|inout) port <name> : <Type> [ { assert constraint { <expr> } } ]
+        static const std::regex port_regex(
+            R"(^(in|out|inout)\s+port\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_:]+))", std::regex::optimize);
+        if (std::regex_search(stmt, match, port_regex)) {
+            std::string dir_str = match[1].str();
+            std::string port_name = sanitize_identifier(match[2].str());
+            std::string raw_type = match[3].str();
+            std::string cpp_type = map_sysml_type_to_cpp(raw_type);
+            std::string constraint_str;
+            auto assert_pos = stmt.find("assert");
+            if (assert_pos != std::string::npos) {
+                auto c_start = stmt.find('{', assert_pos);
+                auto c_end = stmt.rfind('}');
+                if (c_start != std::string::npos && c_end != std::string::npos && c_end > c_start) {
+                    constraint_str = trim(stmt.substr(c_start + 1, c_end - c_start - 1));
+                    while (!constraint_str.empty() && constraint_str.front() == '{')
+                        constraint_str = trim(constraint_str.substr(1));
+                    while (!constraint_str.empty() && constraint_str.back() == '}')
+                        constraint_str = trim(constraint_str.substr(0, constraint_str.size() - 1));
+                }
+            }
+
+            PortDirection dir = string_to_port_direction(dir_str);
+            std::optional<double> min_val = std::nullopt;
+            std::optional<double> max_val = std::nullopt;
+
+            if (!constraint_str.empty()) {
+                static const std::regex min_re(R"(self\s*>=\s*([0-9]+(?:\.[0-9]+)?))");
+                static const std::regex max_re(R"(self\s*<=\s*([0-9]+(?:\.[0-9]+)?))");
+                std::smatch m_min, m_max;
+                if (std::regex_search(constraint_str, m_min, min_re)) {
+                    try {
+                        min_val = std::stod(m_min[1].str());
+                    } catch (...) {
+                    }
+                }
+                if (std::regex_search(constraint_str, m_max, max_re)) {
+                    try {
+                        max_val = std::stod(m_max[1].str());
+                    } catch (...) {
+                    }
+                }
+            }
+
+            PortDefinition port_def(port_name, cpp_type, dir, min_val, max_val, constraint_str);
+            model.add_port(std::move(port_def));
+            return true;
+        }
+
+        // 2c. Action definition: action def <Name>; or action def <Name>
+        static const std::regex action_def_regex(R"(^action\s+def\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
+        if (std::regex_search(stmt, match, action_def_regex)) {
+            const std::string act_name = sanitize_identifier(match[1].str());
+            model.add_action(act_name);
+            return true;
+        }
+
+        // 2. Item Definition (Signal with Payload): item def / event def / attribute def <Name>
         static const std::regex item_def_regex(
             R"(^(?:item\s+def|event\s+def|attribute\s+def|port\s+def)\s+([A-Za-z_][A-Za-z0-9_]*))",
             std::regex::optimize);
@@ -526,19 +617,30 @@ class Sysml2Parser : public IParser {
         std::uint32_t priority = 0;
         std::optional<TimeTrigger> time_trigger;
 
+        static const std::regex trans_name_regex(R"(^transition\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
+        std::string trans_name;
+        std::smatch match;
+        if (std::regex_search(stmt, match, trans_name_regex)) {
+            std::string name_candidate = sanitize_identifier(match[1].str());
+            if (name_candidate != "from" && name_candidate != "first" &&
+                name_candidate != "accept" && name_candidate != "if" &&
+                name_candidate != "do" && name_candidate != "then") {
+                trans_name = name_candidate;
+            }
+        }
+
         static const std::regex prio_regex(R"(\b(?:priority|prio)\s*=?\s*(\d+))", std::regex::optimize);
         std::smatch prio_match;
         if (std::regex_search(stmt, prio_match, prio_regex)) {
             try {
                 priority = static_cast<std::uint32_t>(std::stoul(prio_match[1].str()));
-            } catch (const std::exception&) {
-                priority = 0;
+            } catch (...) {
             }
         }
 
         static const std::regex first_regex(R"(\b(?:first|from)\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
         static const std::regex accept_regex(
-            R"(\b(?:accept|when)\s+(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
+            R"(\b(?:accept|when)\s+(?:([A-Za-z_][A-Za-z0-9_]*)\s*:\s*)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
         static const std::regex after_regex(
             R"(\bafter\s+(\d+(?:\.\d+)?)\s*(?:\[(?:SI::|ISQ::)?([A-Za-z]+)\]|([A-Za-z]+))?)", std::regex::optimize);
         static const std::regex if_regex(R"(\bif\s+([^;]+?)(?=\s+(?:do|then|to|;|$)))", std::regex::optimize);
@@ -546,7 +648,6 @@ class Sysml2Parser : public IParser {
         static const std::regex do_regex(R"(\bdo\s+(?:action\s+)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
         static const std::regex then_regex(R"(\b(?:then|to)\s+([A-Za-z_][A-Za-z0-9_\[\]\*]*))", std::regex::optimize);
 
-        std::smatch match;
         if (std::regex_search(stmt, match, first_regex)) {
             source = sanitize_identifier(match[1].str());
         } else if (!state_stack.empty()) {
@@ -554,7 +655,7 @@ class Sysml2Parser : public IParser {
         }
 
         if (std::regex_search(stmt, match, accept_regex)) {
-            event = sanitize_identifier(match[1].str());
+            event = sanitize_identifier(match[2].str());
         } else if (std::regex_search(stmt, match, after_regex)) {
             double raw_val = 0.0;
             try {
@@ -582,28 +683,15 @@ class Sysml2Parser : public IParser {
             auto parsed = GuardExpressionParser::parse(raw_guard_expr);
             if (!parsed.cpp_type.empty()) {
                 guard = parsed.cpp_type;
-
-                std::string normalized_expr = raw_guard_expr;
-                static const std::regex not_re(R"(\bnot\b|\bNOT\b)", std::regex::optimize);
-                static const std::regex and_re(R"(\band\b|\bAND\b)", std::regex::optimize);
-                static const std::regex or_re(R"(\bor\b|\bOR\b)", std::regex::optimize);
-                normalized_expr = std::regex_replace(normalized_expr, not_re, "!");
-                normalized_expr = std::regex_replace(normalized_expr, and_re, "&&");
-                normalized_expr = std::regex_replace(normalized_expr, or_re, "||");
-
-                std::string cpp_expr = normalized_expr;
-                for (const auto& v : model.variables) {
-                    if (v.name.empty())
-                        continue;
-                    std::regex re(R"((^|[^A-Za-z0-9_.]))" + v.name + R"((?![A-Za-z0-9_]))");
-                    cpp_expr = std::regex_replace(cpp_expr, re, "$1ctx." + v.name);
-                }
-
-                const bool has_ctx_ref = (cpp_expr.find("ctx.") != std::string::npos);
                 for (const auto& atomic : parsed.atomic_guards) {
-                    model.add_guard(atomic, "", raw_guard_expr,
-                                    has_ctx_ref ? std::optional<std::string>{cpp_expr} : std::nullopt);
+                    model.add_guard(atomic);
                 }
+            } else if (!trans_name.empty()) {
+                guard = to_pascal_case(trans_name) + "Guard";
+                model.add_guard(guard, "", raw_guard_expr);
+            } else {
+                guard = "TransitionGuard_" + std::to_string(model.transitions.size() + 1);
+                model.add_guard(guard, "", raw_guard_expr);
             }
         }
 
@@ -644,6 +732,12 @@ class Sysml2Parser : public IParser {
                     } else {
                         assignments.push_back({var, var + " - 1"});
                     }
+                } else {
+                    std::string act_call = sanitize_identifier(statement);
+                    if (!act_call.empty()) {
+                        action = act_call;
+                        model.add_action(act_call);
+                    }
                 }
             }
 
@@ -655,14 +749,16 @@ class Sysml2Parser : public IParser {
                     } else if (a.expression == a.target_variable + " - 1" ||
                                a.expression == a.target_variable + " - 1.0") {
                         action = "decrement_" + a.target_variable;
+                    } else if (!trans_name.empty()) {
+                        action = to_pascal_case(trans_name) + "Action_" + a.target_variable;
                     } else {
                         action = "assign_" + a.target_variable;
                     }
+                } else if (!trans_name.empty()) {
+                    action = to_pascal_case(trans_name) + "Action";
                 } else {
                     action = "update_state_vars";
                 }
-            } else {
-                action = sanitize_identifier(block_content);
             }
         } else if (std::regex_search(stmt, match, do_regex)) {
             action = sanitize_identifier(match[1].str());

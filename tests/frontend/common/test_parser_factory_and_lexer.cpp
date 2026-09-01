@@ -8,8 +8,8 @@
 #include "fsm/frontend/formal/scxml_parser.hpp"
 #include "fsm/frontend/formal/smv_parser.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
-#include "fsm/frontend/lexer_utils.hpp"
-#include "fsm/frontend/parser_factory.hpp"
+#include "fsm/frontend/common/lexer_utils.hpp"
+#include "fsm/frontend/common/parser_factory.hpp"
 
 namespace {
 

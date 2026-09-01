@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "fsm/frontend/directive_parser.hpp"
+#include "fsm/frontend/directive/directive_parser.hpp"
 
 using namespace fsm::codegen;
 
@@ -99,6 +99,29 @@ TEST(DirectiveParserTest, ParseTransDirective) {
     EXPECT_EQ(trans.guard_ast->to_string(), "ctx.is_valid(payload)");
     ASSERT_TRUE(trans.action_sig.has_value());
     EXPECT_EQ(trans.action_sig->name, "ctx.on_data(payload)");
+}
+
+/**
+ * @brief Test Intent: Verify `@fsm:port` directive parsing with direction, numeric bounds, and constraint expression.
+ */
+TEST(DirectiveParserTest, ParsePortDirective) {
+    std::string line = "' @fsm:port name=sensor_val type=float dir=in min=0.0 max=100.0 constraint=\"self >= 0.0 and self <= 100.0\" unit=\"[degC]\" desc=\"Primary sensor\"";
+    EXPECT_TRUE(DirectiveParser::is_directive(line));
+
+    std::string body = DirectiveParser::extract_directive_body(line);
+    auto port = DirectiveParser::parse_port_directive(body);
+    ASSERT_TRUE(port.has_value());
+
+    EXPECT_EQ(port->name, "sensor_val");
+    EXPECT_EQ(port->type, "float");
+    EXPECT_TRUE(port->is_in());
+    EXPECT_FALSE(port->is_out());
+    EXPECT_DOUBLE_EQ(port->min_value.value_or(0.0), 0.0);
+    EXPECT_DOUBLE_EQ(port->max_value.value_or(0.0), 100.0);
+    EXPECT_EQ(port->constraint, "self >= 0.0 and self <= 100.0");
+    ASSERT_TRUE(port->physical_unit.has_value());
+    EXPECT_EQ(*port->physical_unit, "[degC]");
+    EXPECT_EQ(port->description, "Primary sensor");
 }
 
 }  // namespace

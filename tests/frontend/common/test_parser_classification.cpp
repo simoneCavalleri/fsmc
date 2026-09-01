@@ -8,8 +8,8 @@
 #include "fsm/frontend/formal/scxml_parser.hpp"
 #include "fsm/frontend/formal/smv_parser.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
-#include "fsm/frontend/parser_factory.hpp"
-#include "fsm/frontend/parser_interface.hpp"
+#include "fsm/frontend/common/parser_factory.hpp"
+#include "fsm/frontend/common/parser_interface.hpp"
 
 using namespace fsm::codegen;
 

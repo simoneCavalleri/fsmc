@@ -11,8 +11,8 @@
 #include <utility>
 #include <vector>
 
-#include "fsm/frontend/guard_parser.hpp"
-#include "fsm/frontend/parser_interface.hpp"
+#include "fsm/frontend/directive/guard_parser.hpp"
+#include "fsm/frontend/common/parser_interface.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 namespace fsm::codegen {
@@ -423,9 +423,11 @@ class CameoXmiParser : public IParser {
                             d_name = defer_node->get_attr("trigger");
                         }
                         if (!d_name.empty()) {
+                            std::string clean_name = sanitize_identifier(d_name);
                             auto* curr = model.find_state_mut(state_name);
                             if (curr != nullptr) {
-                                curr->deferred_events.push_back(sanitize_identifier(d_name));
+                                curr->deferred_events.push_back(clean_name);
+                                model.add_event(clean_name);
                             }
                         }
                     }

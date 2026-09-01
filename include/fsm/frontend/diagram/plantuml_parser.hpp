@@ -7,9 +7,9 @@
 #include <utility>
 #include <vector>
 
-#include "fsm/frontend/directive_parser.hpp"
-#include "fsm/frontend/guard_parser.hpp"
-#include "fsm/frontend/parser_interface.hpp"
+#include "fsm/frontend/directive/directive_parser.hpp"
+#include "fsm/frontend/directive/guard_parser.hpp"
+#include "fsm/frontend/common/parser_interface.hpp"
 
 namespace fsm::codegen {
 
@@ -48,6 +48,10 @@ class PlantUmlParser : public IParser {
                 if (body.rfind("var", 0) == 0) {
                     if (auto var = DirectiveParser::parse_variable_directive(body)) {
                         out_model.add_variable(std::move(*var));
+                    }
+                } else if (body.rfind("port", 0) == 0) {
+                    if (auto port = DirectiveParser::parse_port_directive(body)) {
+                        out_model.ports.push_back(std::move(*port));
                     }
                 } else if (body.rfind("property", 0) == 0) {
                     if (auto prop = DirectiveParser::parse_property_directive(body)) {

@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-#include "fsm/frontend/parser_interface.hpp"
+#include "fsm/frontend/common/parser_interface.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 namespace fsm::codegen {

@@ -97,9 +97,18 @@ class ScxmlParser : public IParser {
                 }
 
                 auto* curr_state = model.find_state_mut(state_name);
-                if (curr_state != nullptr && !sub_initial.empty()) {
-                    curr_state->is_composite = true;
-                    curr_state->initial_sub_state = sanitize_identifier(sub_initial);
+                if (curr_state != nullptr) {
+                    if (!sub_initial.empty()) {
+                        curr_state->is_composite = true;
+                        curr_state->initial_sub_state = sanitize_identifier(sub_initial);
+                    }
+                    std::string req = child->get_attr("satisfies");
+                    if (req.empty()) {
+                        req = child->get_attr("req");
+                    }
+                    if (!req.empty()) {
+                        curr_state->traceability_reqs.push_back(req);
+                    }
                 }
             }
         }
@@ -115,11 +124,45 @@ class ScxmlParser : public IParser {
                         std::string expr = data_node->get_attr("expr");
                         std::string type_str = data_node->get_attr("type");
                         if (!var_id.empty()) {
-                            VariableDefinition var;
-                            var.name = sanitize_identifier(var_id);
-                            var.initial_value = expr;
-                            var.type = type_str.empty() ? "uint32_t" : type_str;
-                            model.add_variable(std::move(var));
+                            std::string is_port = data_node->get_attr("port");
+                            std::string dir_str = data_node->get_attr("dir");
+                            if (is_port == "true" || !dir_str.empty()) {
+                                PortDefinition port;
+                                port.name = sanitize_identifier(var_id);
+                                port.type = type_str.empty() ? "Real" : type_str;
+                                if (dir_str == "out") {
+                                    port.direction = PortDirection::Out;
+                                } else if (dir_str == "inout") {
+                                    port.direction = PortDirection::InOut;
+                                } else {
+                                    port.direction = PortDirection::In;
+                                }
+                                std::string min_s = data_node->get_attr("min");
+                                if (!min_s.empty()) {
+                                    try {
+                                        port.min_value = std::stod(min_s);
+                                    } catch (...) {
+                                    }
+                                }
+                                std::string max_s = data_node->get_attr("max");
+                                if (!max_s.empty()) {
+                                    try {
+                                        port.max_value = std::stod(max_s);
+                                    } catch (...) {
+                                    }
+                                }
+                                std::string constraint = data_node->get_attr("constraint");
+                                if (!constraint.empty()) {
+                                    port.constraint = constraint;
+                                }
+                                model.ports.push_back(std::move(port));
+                            } else {
+                                VariableDefinition var;
+                                var.name = sanitize_identifier(var_id);
+                                var.initial_value = expr;
+                                var.type = type_str.empty() ? "uint32_t" : type_str;
+                                model.add_variable(std::move(var));
+                            }
                         }
                     }
                 }

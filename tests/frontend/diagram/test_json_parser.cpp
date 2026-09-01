@@ -180,7 +180,7 @@ TEST(JsonParserTest, DocumentInsertionOrderPreservation) {
 }
 
 /**
- * @brief Test Intent: Verify parsing of v0.4.0 typed ports and range constraints in JSON schema.
+ * @brief Test Intent: Verify parsing of typed ports and range constraints in JSON schema.
  */
 TEST(JsonParserTest, ParsePortsAndContracts) {
     const std::string json_content = R"({

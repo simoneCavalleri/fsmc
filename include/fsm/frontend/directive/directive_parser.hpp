@@ -29,7 +29,8 @@ class DirectiveParser {
         return trim(trimmed.substr(pos + 5));
     }
 
-    // Parses @fsm:state [history=shallow|deep] [satisfies=["REQ-1", "REQ-2"]] [do_activity="async_worker"]
+    // Parses @fsm:state [name="<name>"] [history=shallow|deep] [satisfies=["REQ-1", "REQ-2"]]
+    // [do_activity="async_worker"]
     static bool parse_state_directive(std::string_view body, StateNode& state) {
         std::string str(body);
         if (str.rfind("state", 0) == 0) {
@@ -74,10 +75,39 @@ class DirectiveParser {
         if (req_pos != std::string::npos) {
             auto list = extract_array_items(str, req_pos + 10);
             for (auto& item : list) {
-                state.traceability_reqs.push_back(std::move(item));
+                if (std::find(state.traceability_reqs.begin(), state.traceability_reqs.end(), item) ==
+                    state.traceability_reqs.end()) {
+                    state.traceability_reqs.push_back(std::move(item));
+                }
             }
         }
         return true;
+    }
+
+    static bool parse_state_directive(std::string_view body, FsmIr& model,
+                                      const std::vector<std::string>& parent_stack) {
+        std::string str(body);
+        if (str.rfind("state", 0) == 0) {
+            str = trim(str.substr(5));
+        }
+        std::string st_name;
+        auto n_pos = str.find("name=");
+        if (n_pos != std::string::npos) {
+            st_name = extract_quoted_or_word(str, n_pos + 5);
+        }
+        StateNode* st = nullptr;
+        if (!st_name.empty()) {
+            st = model.find_state_mut(st_name);
+            if (st == nullptr) {
+                st = &model.add_state(st_name, parent_stack.empty() ? "" : parent_stack.back());
+            }
+        } else if (!parent_stack.empty()) {
+            st = model.find_state_mut(parent_stack.back());
+        }
+        if (st != nullptr) {
+            return parse_state_directive(body, *st);
+        }
+        return false;
     }
 
     // Parses @fsm:defer [Ev1, Ev2]

@@ -61,12 +61,12 @@ class PlantUmlParser : public IParser {
                     if (auto sig = DirectiveParser::parse_signal_directive(body)) {
                         out_model.add_signal(std::move(*sig));
                     }
+                } else if (body.rfind("state", 0) == 0) {
+                    DirectiveParser::parse_state_directive(body, out_model, parent_stack);
                 } else if (!parent_stack.empty()) {
                     auto* st = out_model.find_state_mut(parent_stack.back());
                     if (st != nullptr) {
-                        if (body.rfind("state", 0) == 0) {
-                            DirectiveParser::parse_state_directive(body, *st);
-                        } else if (body.rfind("defer", 0) == 0) {
+                        if (body.rfind("defer", 0) == 0) {
                             DirectiveParser::parse_defer_directive(body, *st);
                         }
                     }
@@ -74,8 +74,18 @@ class PlantUmlParser : public IParser {
                 continue;
             }
 
-            if (starts_with(trimmed, "'") || starts_with(trimmed, "@startuml") || starts_with(trimmed, "@enduml") ||
-                starts_with(trimmed, "title ")) {
+            if (starts_with(trimmed, "@startuml")) {
+                if (trimmed.size() > 9) {
+                    std::string cand = std::string(trim(trimmed.substr(9)));
+                    if (!cand.empty() && cand.find('(') == std::string::npos && cand.find('\"') == std::string::npos &&
+                        cand.find(' ') == std::string::npos) {
+                        out_model.name = cand;
+                    }
+                }
+                continue;
+            }
+
+            if (starts_with(trimmed, "'") || starts_with(trimmed, "@enduml") || starts_with(trimmed, "title ")) {
                 continue;
             }
 
@@ -425,7 +435,7 @@ class PlantUmlParser : public IParser {
 
         // Parse Event, Guard, Action, Priority from label:
         // Format: EventName (prio=1) [GuardName] / ActionName
-        std::string event_name = "AnonymousEvent";
+        std::string event_name;
         std::optional<std::string> guard_name;
         std::optional<std::string> action_name;
         std::uint32_t priority = 0;
@@ -457,17 +467,21 @@ class PlantUmlParser : public IParser {
 
             // Check for Guard: [GuardName]
             const auto open_bracket = label.find('[');
-            const auto close_bracket = label.find(']', open_bracket);
-            if (open_bracket != std::string::npos && close_bracket != std::string::npos) {
-                const std::string grd =
-                    std::string(trim(label.substr(open_bracket + 1, close_bracket - open_bracket - 1)));
-                if (!grd.empty()) {
-                    auto parsed = GuardExpressionParser::parse(grd);
-                    if (!parsed.cpp_type.empty()) {
-                        guard_name = parsed.cpp_type;
-                        for (const auto& atomic : parsed.atomic_guards) {
-                            model.add_guard(atomic);
-                        }
+            const auto close_bracket = label.find(']');
+            if (open_bracket != std::string::npos && close_bracket != std::string::npos &&
+                close_bracket > open_bracket) {
+                std::string raw_guard = label.substr(open_bracket + 1, close_bracket - open_bracket - 1);
+                auto parsed = GuardExpressionParser::parse(raw_guard);
+                if (!parsed.cpp_type.empty()) {
+                    guard_name = parsed.cpp_type;
+                    for (const auto& atomic : parsed.atomic_guards) {
+                        model.add_guard(atomic);
+                    }
+                } else {
+                    std::string g = std::string(trim(raw_guard));
+                    if (!g.empty()) {
+                        guard_name = sanitize_identifier(g);
+                        model.add_guard(*guard_name);
                     }
                 }
                 label = label.substr(0, open_bracket) + label.substr(close_bracket + 1);
@@ -495,7 +509,9 @@ class PlantUmlParser : public IParser {
             }
         }
 
-        model.add_event(event_name);
+        if (!event_name.empty()) {
+            model.add_event(event_name);
+        }
         if (action_name) {
             model.add_action(*action_name);
         }

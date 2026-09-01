@@ -644,7 +644,7 @@ class Sysml2Parser : public IParser {
         static const std::regex after_regex(
             R"(\bafter\s+(\d+(?:\.\d+)?)\s*(?:\[(?:SI::|ISQ::)?([A-Za-z]+)\]|([A-Za-z]+))?)", std::regex::optimize);
         static const std::regex if_regex(R"(\bif\s+([^;]+?)(?=\s+(?:do|then|to|;|$)))", std::regex::optimize);
-        static const std::regex do_block_regex(R"(\bdo\s*\{([^}]+)\})", std::regex::optimize);
+        static const std::regex do_block_regex(R"(\bdo\s*(?:action\s*)?\{([^}]+)\})", std::regex::optimize);
         static const std::regex do_regex(R"(\bdo\s+(?:action\s+)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
         static const std::regex then_regex(R"(\b(?:then|to)\s+([A-Za-z_][A-Za-z0-9_\[\]\*]*))", std::regex::optimize);
 
@@ -705,9 +705,12 @@ class Sysml2Parser : public IParser {
                 if (statement.empty())
                     continue;
 
-                static const std::regex assign_regex(R"(^([A-Za-z_][A-Za-z0-9_]*)\s*(=|\+=|-=|\*=|\/=)\s*(.+)$)",
-                                                     std::regex::optimize);
-                static const std::regex inc_regex(R"(^([A-Za-z_][A-Za-z0-9_]*)\s*(\+\+|--)$)", std::regex::optimize);
+                static const std::regex assign_regex(
+                    R"(^(?:(?:out|in|reg|service|context)\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(=|\+=|-=|\*=|\/=)\s*(.+)$)",
+                    std::regex::optimize);
+                static const std::regex inc_regex(
+                    R"(^(?:(?:out|in|reg|service|context)\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(\+\+|--)$)",
+                    std::regex::optimize);
                 std::smatch assign_match;
                 if (std::regex_match(statement, assign_match, assign_regex)) {
                     std::string var = assign_match[1].str();
@@ -759,6 +762,7 @@ class Sysml2Parser : public IParser {
                 } else {
                     action = "update_state_vars";
                 }
+                model.add_action(action);
             }
         } else if (std::regex_search(stmt, match, do_regex)) {
             action = sanitize_identifier(match[1].str());

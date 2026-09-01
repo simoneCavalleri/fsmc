@@ -519,11 +519,27 @@ class PlaygroundPresetsRoundtripTest : public ::testing::Test {
         interval_analyzer.analyze(diag);
         EXPECT_FALSE(diag.has_errors()) << "[" << name << "] EFSM interval analysis found errors";
 
-        // 2. Transpilation to Other Formats
-        const std::vector<std::string> target_formats = {"plantuml", "mermaid", "dot", "sysml2", "smv", "cameo"};
+        // 2. Transpilation and Lossless Roundtrip across All Formats
+        const std::vector<std::string> target_formats = {"plantuml", "mermaid", "dot",  "sysml2",
+                                                         "json",     "cameo",   "scxml"};
         for (const auto& fmt : target_formats) {
             std::string exported = EmitterFactory::emit_diagram(model, fmt);
             EXPECT_FALSE(exported.empty()) << "[" << name << "] Failed to export diagram to format: " << fmt;
+
+            auto reimport_parser = ParserFactory::create_by_format(fmt);
+            if (reimport_parser != nullptr) {
+                FsmIr reimported_model;
+                std::string reimport_err;
+                bool reimport_ok = reimport_parser->parse(exported, reimported_model, reimport_err);
+                EXPECT_TRUE(reimport_ok) << "[" << name << "] Failed to reparse exported " << fmt << ": "
+                                         << reimport_err;
+                if (reimport_ok) {
+                    EXPECT_EQ(model.states.size(), reimported_model.states.size())
+                        << "[" << name << "] State count mismatch in " << fmt << " roundtrip";
+                    EXPECT_EQ(model.transitions.size(), reimported_model.transitions.size())
+                        << "[" << name << "] Transition count mismatch in " << fmt << " roundtrip";
+                }
+            }
         }
 
         // 3. C++ Code Generation (C++17 and C++20)

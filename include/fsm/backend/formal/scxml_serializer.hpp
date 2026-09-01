@@ -21,7 +21,19 @@ class ScxmlSerializer {
         if (!model.variables.empty() || !model.ports.empty()) {
             out << "  <datamodel>\n";
             for (const auto& port : model.ports) {
-                out << "    <data id=\"" << escape_xml(port.name) << "\" type=\"" << escape_xml(port.type) << "\"/>\n";
+                out << "    <data id=\"" << escape_xml(port.name) << "\" type=\"" << escape_xml(port.type)
+                    << "\" port=\"true\" dir=\""
+                    << (port.is_out() ? "out" : (port.direction == PortDirection::InOut ? "inout" : "in")) << "\"";
+                if (port.min_value.has_value()) {
+                    out << " min=\"" << *port.min_value << "\"";
+                }
+                if (port.max_value.has_value()) {
+                    out << " max=\"" << *port.max_value << "\"";
+                }
+                if (!port.constraint.empty()) {
+                    out << " constraint=\"" << escape_xml(port.constraint) << "\"";
+                }
+                out << "/>\n";
             }
             for (const auto& var : model.variables) {
                 out << "    <data id=\"" << escape_xml(var.name) << "\"";
@@ -53,6 +65,9 @@ class ScxmlSerializer {
         out << pad << "<state id=\"" << escape_xml(state.name) << "\"";
         if (!state.initial_sub_state.empty()) {
             out << " initial=\"" << escape_xml(state.initial_sub_state) << "\"";
+        }
+        if (!state.traceability_reqs.empty()) {
+            out << " satisfies=\"" << escape_xml(state.traceability_reqs.front()) << "\"";
         }
         out << ">\n";
 

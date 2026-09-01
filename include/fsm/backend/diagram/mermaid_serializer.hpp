@@ -140,8 +140,33 @@ class MermaidSerializer {
                 continue;
             }
             const auto& trans = model.transitions[idx];
-            out << "    " << trans.source << " --> " << trans.target;
+            std::string target = trans.target;
             std::string label = build_label(trans);
+
+            // Check if source is a descendant of target
+            std::string curr = trans.source;
+            bool is_descendant = false;
+            while (parent_map.count(curr) && !parent_map.at(curr).empty()) {
+                curr = parent_map.at(curr);
+                if (curr == trans.target) {
+                    is_descendant = true;
+                    break;
+                }
+            }
+            if (is_descendant) {
+                // Find initial sub-state of target
+                for (const auto& s : model.states) {
+                    if (s.name == trans.target && !s.initial_sub_state.empty()) {
+                        target = s.initial_sub_state;
+                        break;
+                    }
+                }
+                if (trans.target_is_history && label.find("[H]") == std::string::npos) {
+                    label = label.empty() ? "[H]" : label + " [H]";
+                }
+            }
+
+            out << "    " << trans.source << " --> " << target;
             if (!label.empty()) {
                 out << " : " << label;
             }
@@ -246,8 +271,19 @@ class MermaidSerializer {
             std::string src_parent = (src_it != parent_map.end()) ? src_it->second : "";
             if (src_parent == state.name) {
                 emitted_transitions.insert(idx);
-                out << pad << "    " << trans.source << " --> " << trans.target;
+                std::string target = trans.target;
                 std::string label = build_label(trans);
+                if (target == state.name) {
+                    if (!state.initial_sub_state.empty()) {
+                        target = state.initial_sub_state;
+                    } else {
+                        target = "[*]";
+                    }
+                    if (trans.target_is_history && label.find("[H]") == std::string::npos) {
+                        label = label.empty() ? "[H]" : label + " [H]";
+                    }
+                }
+                out << pad << "    " << trans.source << " --> " << target;
                 if (!label.empty()) {
                     out << " : " << label;
                 }

@@ -15,7 +15,11 @@ class PlantUmlSerializer {
   public:
     static std::string serialize(const FsmIr& model) {
         std::ostringstream out;
-        out << "@startuml\n";
+        if (!model.name.empty() && model.name != "MyStateMachine") {
+            out << "@startuml " << model.name << "\n";
+        } else {
+            out << "@startuml\n";
+        }
 
         // Properties
         for (const auto& prop : model.properties) {
@@ -186,6 +190,16 @@ class PlantUmlSerializer {
         std::string pad(indent * 2, ' ');
         out << pad << "state " << state.name << " {\n";
 
+        if (!state.traceability_reqs.empty()) {
+            out << pad << "  ' @fsm:state name=" << state.name << " satisfies=[";
+            for (size_t r = 0; r < state.traceability_reqs.size(); ++r) {
+                if (r > 0)
+                    out << ", ";
+                out << "\"" << state.traceability_reqs[r] << "\"";
+            }
+            out << "]\n";
+        }
+
         if (!state.initial_sub_state.empty()) {
             out << pad << "  [*] --> " << state.initial_sub_state << "\n";
         }
@@ -229,6 +243,15 @@ class PlantUmlSerializer {
                     out << pad << "  state " << child.name << " <<join>>\n";
                 } else {
                     out << pad << "  state " << child.name << "\n";
+                }
+                if (!child.traceability_reqs.empty()) {
+                    out << pad << "  ' @fsm:state name=" << child.name << " satisfies=[";
+                    for (size_t r = 0; r < child.traceability_reqs.size(); ++r) {
+                        if (r > 0)
+                            out << ", ";
+                        out << "\"" << child.traceability_reqs[r] << "\"";
+                    }
+                    out << "]\n";
                 }
                 if (child.time_invariant.has_value() && !child.time_invariant->empty()) {
                     out << pad << "  " << child.name << " : invariant " << *child.time_invariant << "\n";

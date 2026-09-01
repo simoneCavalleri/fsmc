@@ -745,14 +745,17 @@ const ModelManager = {
       const nameMatch = text.match(/(?:state\s+def|package)\s+([A-Za-z0-9_]+)/);
       if (nameMatch) name = nameMatch[1];
 
-      const cleanText = text.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+      let cleanText = text.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+      cleanText = cleanText.replace(/\{\s*assert\s+constraint[\s\S]*?\}\s*\}/g, ';');
       const stateStack = [];
 
       const processSysmlStmt = (stmt, stack) => {
         const s = stmt.replace(/\s+/g, ' ').trim();
-        if (!s || s.startsWith("item def") || s.startsWith("attribute") || s.startsWith("event def") || s === "entry" || s === "initial") return;
+        if (!s || s.startsWith("item def") || s.startsWith("attribute") || s.startsWith("event def") ||
+            s.startsWith("in port") || s.startsWith("out port") || s.startsWith("port") ||
+            s === "entry" || s === "initial") return;
 
-        const initMatch = s.match(/(?:(?:entry|initial)(?:\s*;)?\s*)?then\s+([A-Za-z0-9_]+)/);
+        const initMatch = s.match(/^(?:(?:entry|initial)(?:\s*;)?\s*)?then\s+([A-Za-z0-9_]+)/);
         if (initMatch) {
           if (stack.length === 0) {
             initial = initMatch[1];
@@ -817,7 +820,7 @@ const ModelManager = {
           return;
         }
 
-        const stateDecl = s.match(/^state\s+([A-Za-z0-9_]+)/);
+        const stateDecl = s.match(/^state\s+([A-Za-z0-9_]+)\s*$/);
         if (stateDecl && stateDecl[1] !== "def") {
           const sName = stateDecl[1];
           const parent = stack.length > 0 ? stack[stack.length - 1] : "";
@@ -832,21 +835,24 @@ const ModelManager = {
           const fromMatch = s.match(/(?:first|from)\s+([A-Za-z0-9_]+)/);
           const acceptMatch = s.match(/(?:accept|when)\s+(?:[A-Za-z0-9_]+\s*:\s*)?([A-Za-z0-9_]+)/);
           const ifMatch = s.match(/\sif\s+(.+?)(?=\sdo\s|\sthen\s|\sto\s|;|$)/);
-          const doMatch = s.match(/\sdo\s+([A-Za-z0-9_]+)/);
+          const doMatch = s.match(/\sdo\s+(?:\{([^}]+)\}|([A-Za-z0-9_]+))/);
           const thenMatch = s.match(/(?:then|to)\s+([A-Za-z0-9_\[\]\*]+)/);
 
           const src = fromMatch ? fromMatch[1] : (stack.length > 0 ? stack[stack.length - 1] : "");
-          let dst = thenMatch ? thenMatch[1] : src;
+          const rawDst = thenMatch ? thenMatch[1] : src;
+          let dst = rawDst;
           let isHist = false;
-          if (dst.includes("[H]")) {
+          let isDeepHist = false;
+          if (dst && dst.includes("[H")) {
             isHist = true;
+            isDeepHist = dst.includes("[H*]");
             dst = dst.replace(/\[H\*?\]/g, '');
           }
 
           if (src && dst) {
             const evt = acceptMatch ? acceptMatch[1] : "Anonymous";
             const guard = ifMatch ? ifMatch[1].trim() : "";
-            const action = doMatch ? doMatch[1].trim() : "";
+            const action = doMatch ? (doMatch[1] || doMatch[2]).trim() : "";
             states.add(src);
             states.add(dst);
             if (evt !== "Anonymous") events.add(evt);
@@ -857,46 +863,62 @@ const ModelManager = {
               guard: guard,
               action: action,
               is_internal: (src === dst && !thenMatch),
-              target_is_history: isHist
+              target_is_history: isHist,
+              target_is_deep_history: isDeepHist
             });
           }
         }
       };
 
       let currentStmt = "";
+      let inActionBrace = 0;
       for (let i = 0; i < cleanText.length; i++) {
         const ch = cleanText[i];
         if (ch === '{') {
           const stmt = currentStmt.trim();
-          currentStmt = "";
-          if (stmt) {
-            const stateDecl = stmt.match(/state\s+([A-Za-z0-9_]+)/);
-            if (stateDecl && stateDecl[1] !== "def") {
-              const sName = stateDecl[1];
-              const parent = stateStack.length > 0 ? stateStack[stateStack.length - 1] : "";
-              states.add(sName);
-              stateDetails.push({ name: sName, parent: parent, is_composite: true });
-              stateStack.push(sName);
-            }
-          }
-        } else if (ch === '}') {
-          const stmt = currentStmt.trim();
-          currentStmt = "";
-          if (stmt) {
-            processSysmlStmt(stmt, stateStack);
-          }
-          if (stateStack.length > 0) {
-            stateStack.pop();
-          }
-        } else if (ch === ';') {
-          const s = currentStmt.trim();
-          if (s === "entry" || s === "initial") {
-            currentStmt += "; ";
+          if (stmt.startsWith("state def") || stmt.startsWith("package")) {
+            currentStmt = "";
             continue;
           }
-          currentStmt = "";
-          if (s) {
-            processSysmlStmt(s, stateStack);
+          const stateDecl = stmt.match(/state\s+([A-Za-z0-9_]+)/);
+          if (stateDecl && stateDecl[1] !== "def") {
+            currentStmt = "";
+            const sName = stateDecl[1];
+            const parent = stateStack.length > 0 ? stateStack[stateStack.length - 1] : "";
+            states.add(sName);
+            stateDetails.push({ name: sName, parent: parent, is_composite: true });
+            stateStack.push(sName);
+          } else {
+            inActionBrace++;
+            currentStmt += "{";
+          }
+        } else if (ch === '}') {
+          if (inActionBrace > 0) {
+            inActionBrace--;
+            currentStmt += "}";
+          } else {
+            const stmt = currentStmt.trim();
+            currentStmt = "";
+            if (stmt) {
+              processSysmlStmt(stmt, stateStack);
+            }
+            if (stateStack.length > 0) {
+              stateStack.pop();
+            }
+          }
+        } else if (ch === ';') {
+          if (inActionBrace > 0) {
+            currentStmt += ";";
+          } else {
+            const s = currentStmt.trim();
+            if (s === "entry" || s === "initial") {
+              currentStmt += "; ";
+              continue;
+            }
+            currentStmt = "";
+            if (s) {
+              processSysmlStmt(s, stateStack);
+            }
           }
         } else {
           currentStmt += ch;
@@ -923,7 +945,10 @@ const ModelManager = {
           const parts = line.split('-->');
           const src = parts[0].trim();
           const rest = parts[1].trim();
-          const dst = rest.split(':')[0].trim().replace(/\[H\*?\]/g, '');
+          const rawDst = rest.split(':')[0].trim();
+          const isHist = rawDst.includes('[H');
+          const isDeepHist = rawDst.includes('[H*]');
+          const dst = rawDst.replace(/\[H\*?\]/g, '');
           let evt = "Anonymous";
           let guard = "";
           let action = "";
@@ -943,7 +968,16 @@ const ModelManager = {
             if (src && src !== '[*]') states.add(src);
             if (dst && dst !== '[*]') states.add(dst);
             if (evt && evt !== 'Anonymous') events.add(evt);
-            transitions.push({ source: src, target: dst, event: evt, guard: guard, action: action, is_internal: (src === dst) });
+            transitions.push({
+              source: src,
+              target: dst,
+              event: evt,
+              guard: guard,
+              action: action,
+              is_internal: (src === dst),
+              target_is_history: isHist,
+              target_is_deep_history: isDeepHist
+            });
           }
         }
       }
@@ -976,7 +1010,8 @@ const ModelManager = {
         if (t.guard) label += ` [${t.guard}]`;
         if (t.action) label += ` / ${t.action}`;
         const lblStr = label && label !== "Anonymous" ? ` : ${label}` : "";
-        out += `    ${t.source} --> ${t.is_internal ? t.source : t.target}${lblStr}\n`;
+        const cleanTarget = t.is_internal ? t.source : (t.target + (t.target_is_history ? (t.target_is_deep_history ? '[H*]' : '[H]') : ''));
+        out += `    ${t.source} --> ${cleanTarget}${lblStr}\n`;
       }
       return out.trim();
     }
@@ -990,7 +1025,8 @@ const ModelManager = {
         if (t.guard) label += ` [${t.guard}]`;
         if (t.action) label += ` / ${t.action}`;
         const lblStr = label && label !== "Anonymous" ? ` : ${label}` : "";
-        out += `${t.source} --> ${t.is_internal ? t.source : t.target}${lblStr}\n`;
+        const cleanTarget = t.is_internal ? t.source : (t.target + (t.target_is_history ? (t.target_is_deep_history ? '[H*]' : '[H]') : ''));
+        out += `${t.source} --> ${cleanTarget}${lblStr}\n`;
       }
       out += "@enduml";
       return out;
@@ -1005,11 +1041,12 @@ const ModelManager = {
       }
       out += "\n";
       for (const t of model.transitions) {
+        const cleanTarget = t.is_internal ? t.source : (t.target + (t.target_is_history ? (t.target_is_deep_history ? '[H*]' : '[H]') : ''));
         out += `    transition from ${t.source}`;
         if (t.event && t.event !== "Anonymous") out += ` accept ${t.event}`;
         if (t.guard) out += ` if ${t.guard}`;
         if (t.action) out += ` do ${t.action}`;
-        out += ` then ${t.is_internal ? t.source : t.target};\n`;
+        out += ` then ${cleanTarget};\n`;
       }
       out += "}";
       return out;
@@ -1405,19 +1442,31 @@ const GraphRenderer = {
     }
 
     for (const t of model.transitions) {
-      let label = t.event || "";
+      let label = (t.event && t.event !== "Anonymous") ? t.event : "";
       if (t.guard) {
         let cleanGuard = t.guard
           .replace(/fsm::and_<(.+?)>/g, (m, p) => p.replace(/,/g, ' && '))
           .replace(/fsm::or_<(.+?)>/g, (m, p) => p.replace(/,/g, ' || '))
           .replace(/fsm::not_<(.+?)>/g, (m, p) => `!${p.trim()}`)
-          .replace(/[<>]/g, '')
-          .replace(/&amp;/g, '&');
-        label += ` [${cleanGuard}]`;
+          .replace(/&amp;/g, '&')
+          .replace(/;/g, ' ');
+        label += label ? ` [${cleanGuard}]` : `[${cleanGuard}]`;
       }
-      if (t.action) label += ` / ${t.action}`;
-      const lblStr = label && label !== "Anonymous" ? ` : ${label}` : "";
-      out += `    ${t.source} --> ${t.is_internal ? t.source : t.target}${lblStr}\n`;
+      if (t.action) {
+        let cleanAct = t.action.replace(/;/g, ', ').replace(/,\s*$/, '').trim();
+        label += label ? ` / ${cleanAct}` : `/ ${cleanAct}`;
+      }
+
+      let effectiveTarget = t.target;
+      if (t.source !== t.target && getAncestorChain(model, t.source).includes(t.target)) {
+        effectiveTarget = resolveLeafState(model, t.target);
+        if (t.target_is_history && !label.includes("[H]")) {
+          label = label ? `${label} [H]` : `[H]`;
+        }
+      }
+
+      const lblStr = label ? ` : ${label}` : "";
+      out += `    ${t.source} --> ${t.is_internal ? t.source : effectiveTarget}${lblStr}\n`;
     }
     return out.trim();
   },
@@ -1814,7 +1863,12 @@ const App = {
 
     ViewportController.init();
 
-    document.getElementById("editor").oninput = () => this.update();
+    const editorEl = document.getElementById("editor");
+    editorEl.oninput = () => this.update();
+    editorEl.onchange = () => this.update();
+    editorEl.onkeyup = () => this.update();
+    editorEl.onpaste = () => setTimeout(() => this.update(), 10);
+
     document.getElementById("presetSelect").onchange = () => this.loadPreset();
     document.getElementById("formatSelect").onchange = () => this.onFormatChange();
     document.getElementById("stdSelect").onchange = () => this.update();

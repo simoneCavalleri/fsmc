@@ -30,6 +30,10 @@ compile_commands.json
 playground/fsmc.js
 playground/fsmc.wasm
 
+# Docs playground mirrored assets (only index.md is tracked)
+docs/playground/*
+!docs/playground/index.md
+
 # Scratch directory
 scratch/
 

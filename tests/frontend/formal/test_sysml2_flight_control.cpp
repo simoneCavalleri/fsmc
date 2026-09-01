@@ -289,10 +289,11 @@ TEST(SysML2FlightControlTest, RuntimeDualParadigmExecution) {
     EXPECT_DOUBLE_EQ(out.motor_thrust, 50.0);
     EXPECT_EQ(controller.registers().retry_counter, 0);
 
-    // 3. Periodic sampled control loop: step(in, out) with healthy battery (85%) -> No transition
+    // 3. Periodic sampled control loop: step(in, out) with healthy battery (85%) -> Steady (no transition)
     in.battery_percent = 85.0;
     auto step_res1 = controller.step(in, out);
-    EXPECT_FALSE(step_res1.is_success());  // Guard rejected (battery >= 20)
+    EXPECT_TRUE(step_res1.is_steady());
+    EXPECT_FALSE(step_res1.has_transitioned());
     EXPECT_TRUE(controller.is_in_state<InFlight>());
     EXPECT_DOUBLE_EQ(out.motor_thrust, 50.0);
     EXPECT_FALSE(out.failsafe_cmd);
@@ -300,7 +301,8 @@ TEST(SysML2FlightControlTest, RuntimeDualParadigmExecution) {
     // 4. Periodic sampled control loop: step(in, out) with critical battery (15%) -> ReturnToHome
     in.battery_percent = 15.0;
     auto step_res2 = controller.step(in, out);
-    EXPECT_TRUE(step_res2.is_success());
+    EXPECT_TRUE(step_res2.has_transitioned());
+    EXPECT_FALSE(step_res2.is_steady());
     EXPECT_TRUE(controller.is_in_state<ReturnToHome>());
     EXPECT_TRUE(out.failsafe_cmd);
     EXPECT_DOUBLE_EQ(out.motor_thrust, 15.0);

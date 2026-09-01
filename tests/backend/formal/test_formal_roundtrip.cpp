@@ -758,10 +758,10 @@ state def SatelliteSafety {
 }
 
 /**
- * @brief Test Intent: Verify lossless roundtrip of v0.4.0 Typed In/Out Ports and Numeric Assert Constraints across
- * SysML v2, JSON, and PlantUML.
+ * @brief Test Intent: Verify lossless roundtrip of Typed In/Out Ports and Numeric Assert Constraints across
+ *                      SysML v2, PlantUML, SCXML, JSON, and SMV models.
  */
-TEST(LosslessRoundtripTest, V040TypedPortsAndContractsRoundtrip) {
+TEST(LosslessRoundtripTest, TypedPortsAndContractsRoundtrip) {
     constexpr const char* kSysMLv2PortsModel = R"(
 package SpacecraftSubsystem {
     state def PowerManager {
@@ -823,6 +823,230 @@ package SpacecraftSubsystem {
     EXPECT_TRUE(in_puml->is_in());
     EXPECT_DOUBLE_EQ(in_puml->min_value.value_or(0.0), 0.0);
     EXPECT_DOUBLE_EQ(in_puml->max_value.value_or(0.0), 1400.0);
+}
+
+/**
+ * @brief Test Intent: Verify 100% lossless multi-format roundtrip and traceability requirements for Autonomous UAV
+ * Mission preset.
+ */
+TEST(LosslessRoundtripTest, AutonomousUavMissionPreset) {
+    constexpr const char* kUavSysml = R"(
+state def AutonomousUavMission {
+    in port battery_percent : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
+    in port altitude_m : Real { assert constraint { self >= 0.0 and self <= 10000.0; } }
+    in port gps_locked : Boolean;
+    out port motor_armed : Boolean;
+    out port camera_active : Boolean;
+
+    attribute waypoints_completed : Integer = 0;
+    attribute retry_count : Integer = 0;
+
+    event def CalibrationOk;
+    event def TakeoffCmd;
+    event def TargetAltitudeReached;
+    event def AreaReached;
+    event def NextSectorCmd;
+    event def PauseCmd;
+    event def ResumeMissionCmd;
+    event def LowBatteryEvent;
+    event def AbortCmd;
+    event def HomePointReached;
+    event def TouchdownEvent;
+    event def ShutdownCmd;
+
+    entry; then Preflight;
+
+    state Preflight {
+        satisfy requirement REQ_UAV_PRE_01;
+        entry; then SensorCalib;
+        state SensorCalib;
+        state SystemReady;
+
+        transition calib_done
+            first SensorCalib
+            accept CalibrationOk
+            do action { out.motor_armed = true; }
+            then SystemReady;
+    }
+
+    state InFlight {
+        satisfy requirement REQ_UAV_NAV_01;
+        do action async_flight_stabilizer;
+
+        entry; then Ascending;
+        state Ascending;
+
+        state Navigating {
+            defer EvTelemetryPing;
+            defer EvCameraSnap;
+
+            entry; then WaypointNav;
+            state WaypointNav;
+            state SearchPattern;
+
+            transition area_reached
+                first WaypointNav
+                accept AreaReached
+                do action { out.camera_active = true; }
+                then SearchPattern;
+
+            transition next_sector
+                first SearchPattern
+                accept NextSectorCmd
+                do action { reg.waypoints_completed = reg.waypoints_completed + 1; }
+                then WaypointNav;
+        }
+
+        state HoverPause {
+            satisfy requirement REQ_UAV_HOLD_01;
+        }
+
+        transition alt_reached
+            first Ascending
+            accept TargetAltitudeReached
+            do StartNavigation
+            then Navigating;
+
+        transition pause_mission
+            first Navigating
+            accept PauseCmd
+            do HoldPosition
+            then HoverPause;
+
+        transition resume_mission
+            first HoverPause
+            accept ResumeMissionCmd
+            do ResumeNavigation
+            then Navigating[H];
+    }
+
+    state FailSafe {
+        satisfy requirement REQ_UAV_SAFE_01;
+        entry; then ReturnToHome;
+        state ReturnToHome;
+        state SafeLanding;
+        state Landed;
+
+        transition home_reached
+            first ReturnToHome
+            accept HomePointReached
+            do DescendMotors
+            then SafeLanding;
+
+        transition touch_down
+            first SafeLanding
+            accept TouchdownEvent
+            do action { out.motor_armed = false; }
+            then Landed;
+    }
+
+    state Terminal;
+
+    transition takeoff
+        first Preflight
+        accept TakeoffCmd
+        if in.gps_locked and in.battery_percent > 20.0
+        do LaunchUav
+        then InFlight;
+
+    transition low_bat
+        first InFlight
+        if in.battery_percent < 15.0
+        do InitiateFailSafe
+        then FailSafe;
+
+    transition abort_flight
+        first InFlight
+        accept AbortCmd
+        do InitiateFailSafe
+        then FailSafe;
+
+    transition shutdown
+        first FailSafe
+        accept ShutdownCmd
+        do PowerOff
+        then Terminal;
+}
+)";
+
+    Sysml2Parser sysml_parser;
+    FsmIr sysml_ir;
+    std::string err;
+    ASSERT_TRUE(sysml_parser.parse(kUavSysml, sysml_ir, err)) << err;
+
+    EXPECT_EQ(sysml_ir.name, "AutonomousUavMission");
+    EXPECT_EQ(sysml_ir.ports.size(), 5u);
+    EXPECT_EQ(sysml_ir.variables.size(), 2u);
+
+    // Verify traceability reqs in SysML IR
+    const auto* pre_st = sysml_ir.find_state_by_name("Preflight");
+    ASSERT_NE(pre_st, nullptr);
+    ASSERT_EQ(pre_st->traceability_reqs.size(), 1u);
+    EXPECT_EQ(pre_st->traceability_reqs[0], "REQ_UAV_PRE_01");
+
+    const auto* nav_st = sysml_ir.find_state_by_name("InFlight");
+    ASSERT_NE(nav_st, nullptr);
+    ASSERT_EQ(nav_st->traceability_reqs.size(), 1u);
+    EXPECT_EQ(nav_st->traceability_reqs[0], "REQ_UAV_NAV_01");
+
+    auto verify_uav_model = [&](const FsmIr& ir, const std::string& fmt, bool check_reqs, bool check_ports_vars) {
+        if (!ir.name.empty() && ir.name != "GeneratedFSM") {
+            EXPECT_EQ(ir.name, "AutonomousUavMission") << "[" << fmt << "] Model name mismatch";
+        }
+        if (check_ports_vars) {
+            EXPECT_EQ(ir.ports.size(), 5u) << "[" << fmt << "] Port count mismatch";
+            EXPECT_EQ(ir.variables.size(), 2u) << "[" << fmt << "] Variable count mismatch";
+        }
+        if (check_reqs) {
+            const auto* p_pre = ir.find_state_by_name("Preflight");
+            ASSERT_NE(p_pre, nullptr) << "[" << fmt << "] Missing Preflight state";
+            ASSERT_EQ(p_pre->traceability_reqs.size(), 1u) << "[" << fmt << "] Preflight missing req";
+            EXPECT_EQ(p_pre->traceability_reqs[0], "REQ_UAV_PRE_01") << "[" << fmt << "]";
+
+            const auto* p_nav = ir.find_state_by_name("InFlight");
+            ASSERT_NE(p_nav, nullptr) << "[" << fmt << "] Missing InFlight state";
+            ASSERT_EQ(p_nav->traceability_reqs.size(), 1u) << "[" << fmt << "] InFlight missing req";
+            EXPECT_EQ(p_nav->traceability_reqs[0], "REQ_UAV_NAV_01") << "[" << fmt << "]";
+
+            const auto* p_hold = ir.find_state_by_name("HoverPause");
+            ASSERT_NE(p_hold, nullptr) << "[" << fmt << "] Missing HoverPause state";
+            ASSERT_EQ(p_hold->traceability_reqs.size(), 1u) << "[" << fmt << "] HoverPause missing req";
+            EXPECT_EQ(p_hold->traceability_reqs[0], "REQ_UAV_HOLD_01") << "[" << fmt << "]";
+
+            const auto* p_safe = ir.find_state_by_name("FailSafe");
+            ASSERT_NE(p_safe, nullptr) << "[" << fmt << "] Missing FailSafe state";
+            ASSERT_EQ(p_safe->traceability_reqs.size(), 1u) << "[" << fmt << "] FailSafe missing req";
+            EXPECT_EQ(p_safe->traceability_reqs[0], "REQ_UAV_SAFE_01") << "[" << fmt << "]";
+        }
+    };
+
+    // 1. PlantUML Fine-Grained Roundtrip
+    std::string puml = PlantUmlSerializer::serialize(sysml_ir);
+    PlantUmlParser puml_parser;
+    FsmIr puml_ir;
+    ASSERT_TRUE(puml_parser.parse(puml, puml_ir, err)) << "[PlantUML] " << err;
+    verify_uav_model(puml_ir, "PlantUML", true, true);
+
+    // 2. SysML v2 Fine-Grained Roundtrip
+    std::string sysml_out = Sysml2Serializer::serialize(sysml_ir);
+    Sysml2Parser sysml_re_parser;
+    FsmIr sysml_re_ir;
+    ASSERT_TRUE(sysml_re_parser.parse(sysml_out, sysml_re_ir, err)) << "[SysML v2] " << err;
+    verify_uav_model(sysml_re_ir, "SysML v2", true, true);
+
+    // 3. XState JSON Fine-Grained Roundtrip
+    std::string json_out = JsonSerializer::serialize(sysml_ir);
+    JsonStateParser json_parser;
+    FsmIr json_ir;
+    ASSERT_TRUE(json_parser.parse(json_out, json_ir, err)) << "[JSON] " << err;
+    verify_uav_model(json_ir, "JSON", true, true);
+
+    // 4. W3C SCXML Fine-Grained Roundtrip
+    std::string scxml_out = ScxmlSerializer::serialize(sysml_ir);
+    ScxmlParser scxml_parser;
+    FsmIr scxml_ir;
+    ASSERT_TRUE(scxml_parser.parse(scxml_out, scxml_ir, err)) << "[SCXML] " << err;
+    verify_uav_model(scxml_ir, "SCXML", true, true);
 }
 
 }  // namespace

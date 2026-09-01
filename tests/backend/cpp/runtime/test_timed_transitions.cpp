@@ -201,4 +201,72 @@ TEST(TimedTransitionsTest, AsyncReentrantActionSelfPost) {
     async_sm.stop_worker();
 }
 
+// ============================================================================
+// Discrete Sampled Residence Time Model & Async Invalidation
+// ============================================================================
+
+struct DiscreteRegs {
+    uint32_t elapsed_ticks = 0;
+};
+
+struct TickIncrementAction {
+    void operator()(DiscreteRegs& reg) const { reg.elapsed_ticks = 0; }
+};
+
+using DiscreteTable = fsm::transition_table<
+    fsm::transition<StateA, fsm::anonymous_event, StateB, TickIncrementAction, fsm::in_state_for<5>>>;
+
+/**
+ * @brief Test Intent: Verify discrete sampled time model with in_state_for guard and step_result.
+ */
+TEST(TimedTransitionsTest, SampledDiscreteInStateResidenceGuard) {
+    DiscreteRegs reg;
+    fsm::fsm<DiscreteTable, fsm::no_ports, fsm::no_ports, DiscreteRegs> sm(reg);
+    EXPECT_TRUE(sm.is_in_state<StateA>());
+
+    // Ticks 1 to 4: remains in StateA, returns steady
+    for (uint32_t tick = 1; tick <= 4; ++tick) {
+        sm.registers().elapsed_ticks = tick;
+        fsm::step_result res = sm.step();
+        EXPECT_TRUE(res.is_steady());
+        EXPECT_FALSE(res.has_transitioned());
+        EXPECT_TRUE(sm.is_in_state<StateA>());
+    }
+
+    // Tick 5: in_state_for<5> satisfied -> transitions to StateB, returns transitioned
+    sm.registers().elapsed_ticks = 5;
+    fsm::step_result res5 = sm.step();
+    EXPECT_TRUE(res5.has_transitioned());
+    EXPECT_FALSE(res5.is_steady());
+    EXPECT_TRUE(sm.is_in_state<StateB>());
+    EXPECT_EQ(sm.registers().elapsed_ticks, 0U);
+}
+
+/**
+ * @brief Test Intent: Verify that post_delayed invalidates stale timeouts when state changes before deadline.
+ */
+TEST(TimedTransitionsTest, AsyncTimeoutInvalidationOnStateChange) {
+    OrderRegisters reg;
+    fsm::thread_safe_fsm<OrderTable, fsm::no_ports, fsm::no_ports, OrderRegisters> async_sm(reg);
+    async_sm.start_worker();
+
+    // Schedule a state timeout Step1 for 100ms
+    async_sm.post_state_timeout(Step1{}, std::chrono::milliseconds(100));
+
+    // Manually trigger an immediate transition to StateB via send()
+    auto res = async_sm.send(Step1{});
+    EXPECT_TRUE(res.is_success());
+    EXPECT_TRUE(async_sm.is_in_state<StateB>());
+    EXPECT_EQ(async_sm.registers().log.size(), 1U);
+
+    // Wait 150ms for the delayed task to fire: since state changed from StateA to StateB,
+    // the stale task must be safely discarded without re-triggering or erroring
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+
+    EXPECT_EQ(async_sm.registers().log.size(), 1U);
+    EXPECT_TRUE(async_sm.is_in_state<StateB>());
+
+    async_sm.stop_worker();
+}
+
 }  // namespace

@@ -1,6 +1,6 @@
 /**
  * @file test_cpp_model_emitter.cpp
- * @brief Unit verification suite for C++ model emitter syntax generation (v0.4.0).
+ * @brief Unit verification suite for C++ model emitter syntax generation.
  *
  * Test Intent:
  * Verify that CppModelEmitter correctly serializes partitioned domain structures

@@ -18,6 +18,7 @@ import sys
 CORE_FILES = [
     "traits/type_list.hpp",
     "traits/dispatch_result.hpp",
+    "traits/step_result.hpp",
     "traits/reflection.hpp",
     "traits/hook_traits.hpp",
     "traits/observer_traits.hpp",

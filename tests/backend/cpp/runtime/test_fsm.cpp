@@ -307,7 +307,7 @@ TEST(FsmCoreTest, ConcurrentMultithreadedWorker) {
 }
 
 // ============================================================================
-// Dual-Channel Machine for v0.4.0 Mixed Paradigm Verification
+// Dual-Channel Machine for Mixed Paradigm Verification
 // ============================================================================
 
 struct CmdBoost {
@@ -410,7 +410,9 @@ TEST(FsmCoreTest, DualChannelMachineDualParadigmAndZeroHeap) {
 
     // Sampled step in Idle -> remains in Idle
     in.sensor_val = 20.0;
-    (void)fsm.step(in, out, srv);
+    auto step_idle = fsm.step(in, out, srv);
+    EXPECT_TRUE(step_idle.is_steady());
+    EXPECT_FALSE(step_idle.has_transitioned());
     EXPECT_TRUE(fsm.is_in<IdleState>());
 
     // Reactive dispatch: CmdBoost
@@ -423,7 +425,8 @@ TEST(FsmCoreTest, DualChannelMachineDualParadigmAndZeroHeap) {
     // Continuous sampled drop: sensor_val < 5.0 -> step() transitions back to Idle
     in.sensor_val = 2.5;
     auto step_drop = fsm.step(in, out, srv);
-    EXPECT_TRUE(step_drop.is_success());
+    EXPECT_TRUE(step_drop.has_transitioned());
+    EXPECT_FALSE(step_drop.is_steady());
     EXPECT_TRUE(fsm.is_in<IdleState>());
     EXPECT_DOUBLE_EQ(out.actuator_cmd, 0.0);
 

@@ -119,8 +119,8 @@ TEST(ZeroAllocRuntimeTest, SpscFsmOperations) {
     EXPECT_TRUE(spsc_machine.queue_empty());
 
     // Enqueue into static ring buffer (0 heap allocations, lock-free)
-    EXPECT_TRUE(spsc_machine.enqueue(EvStart{}));
-    EXPECT_TRUE(spsc_machine.enqueue(EvStop{}));
+    EXPECT_TRUE(spsc_machine.post(EvStart{}));
+    EXPECT_TRUE(spsc_machine.post(EvStop{}));
     EXPECT_EQ(spsc_machine.queue_size(), 2u);
 
     // Process one
@@ -167,7 +167,7 @@ TEST(ZeroAllocRuntimeTest, StaticRingBufferPeekAndClear) {
  * Scenario:
  * - Instantiate static SPSC FSM with capacity 2.
  * - Enqueue 2 events until queue_full() is true.
- * - Attempt to enqueue 3rd event and verify enqueue() returns false without exceptions or heap allocation.
+ * - Attempt to post 3rd event and verify post() returns false without exceptions or heap allocation.
  * - Process one event and verify queue accepts subsequent posts.
  */
 TEST(ZeroAllocRuntimeTest, SpscFsmQueueOverflowHandling) {
@@ -175,17 +175,17 @@ TEST(ZeroAllocRuntimeTest, SpscFsmQueueOverflowHandling) {
     fsm::spsc_fsm<MinimalTable, fsm::no_ports, fsm::no_ports, fsm::no_registers, fsm::no_services, 2> tiny_fsm;
     EXPECT_FALSE(tiny_fsm.queue_full());
 
-    EXPECT_TRUE(tiny_fsm.enqueue(EvStart{}));
-    EXPECT_TRUE(tiny_fsm.enqueue(EvStop{}));
+    EXPECT_TRUE(tiny_fsm.post(EvStart{}));
+    EXPECT_TRUE(tiny_fsm.post(EvStop{}));
     EXPECT_TRUE(tiny_fsm.queue_full());
 
     // Third event must be rejected (returns false, 0 dynamic allocation)
-    EXPECT_FALSE(tiny_fsm.enqueue(EvReset{}));
+    EXPECT_FALSE(tiny_fsm.post(EvReset{}));
     EXPECT_EQ(tiny_fsm.queue_size(), 2u);
 
     EXPECT_TRUE(tiny_fsm.process_one());
     EXPECT_FALSE(tiny_fsm.queue_full());
-    EXPECT_TRUE(tiny_fsm.enqueue(EvReset{}));
+    EXPECT_TRUE(tiny_fsm.post(EvReset{}));
 }
 
 /**

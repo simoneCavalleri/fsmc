@@ -296,6 +296,43 @@ class thread_safe_fsm {
     }
 
     // ========================================================================
+    // Sampled Synchronous Control Loop Step
+    // ========================================================================
+
+    step_result step(const in_ports_type& in, out_ports_type& out, services_type& srv) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.step(in, out, srv);
+    }
+
+    template <typename DurationRep>
+    step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out, services_type& srv) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.step(dt, in, out, srv);
+    }
+
+    step_result step(const in_ports_type& in, out_ports_type& out) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.step(in, out);
+    }
+
+    template <typename DurationRep>
+    step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.step(dt, in, out);
+    }
+
+    step_result step() {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.step();
+    }
+
+    template <typename DurationRep>
+    step_result step(DurationRep dt) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.step(dt);
+    }
+
+    // ========================================================================
     // Asynchronous Queueing
     // ========================================================================
 
@@ -345,13 +382,17 @@ class thread_safe_fsm {
     }
 
     template <typename Event, typename Rep, typename Period>
-    void post_delayed(Event event, std::chrono::duration<Rep, Period> delay) {
+    void post_delayed(Event event, std::chrono::duration<Rep, Period> delay, bool cancel_if_state_changes = false) {
         if (!worker_running_.load() && !is_calling_from_worker_thread()) {
             start_worker();
         }
         auto deadline = std::chrono::steady_clock::now() + delay;
-        auto task = [this, evt = std::move(event)](fsm_type&) {
+        const auto scheduled_state = cancel_if_state_changes ? current_state_index() : static_cast<std::size_t>(-1);
+        auto task = [this, evt = std::move(event), scheduled_state, cancel_if_state_changes](fsm_type&) {
             try {
+                if (cancel_if_state_changes && current_state_index() != scheduled_state) {
+                    return;  // Invalidate stale timeout
+                }
                 auto snap = execute_dispatch_under_lock(evt);
                 detail::invoke_notifications_outside_lock(evt, snap, last_exception_, dispatch_mutex_);
             } catch (...) {
@@ -360,6 +401,11 @@ class thread_safe_fsm {
             }
         };
         queue_.push_timed(deadline, std::move(task));
+    }
+
+    template <typename Event, typename Rep, typename Period>
+    void post_state_timeout(Event event, std::chrono::duration<Rep, Period> delay) {
+        post_delayed(std::move(event), delay, /*cancel_if_state_changes=*/true);
     }
 
     template <typename Event>

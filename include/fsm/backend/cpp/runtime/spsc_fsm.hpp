@@ -89,32 +89,16 @@ class spsc_fsm {
     // ========================================================================
 
     /**
-     * @brief Enqueues an event into the lock-free ring buffer in Wait-Free O(1) time.
-     * @param event The event payload instance to enqueue.
-     * @return true if enqueued successfully, false if the queue is full.
-     */
-    template <typename Event>
-    bool enqueue(Event&& event) noexcept {
-        return queue_.push(event_variant{std::forward<Event>(event)});
-    }
-
-    bool enqueue(const event_variant& event) noexcept { return queue_.push(event); }
-
-    /**
-     * @brief Fluent alias for enqueue() providing API parity with thread_safe_fsm.
+     * @brief Posts an event into the lock-free ring buffer in Wait-Free O(1) time.
+     * @param event The event payload instance to post.
+     * @return true if queued successfully, false if the queue is full.
      */
     template <typename Event>
     [[nodiscard]] bool post(Event&& event) noexcept {
-        return enqueue(std::forward<Event>(event));
+        return queue_.push(event_variant{std::forward<Event>(event)});
     }
 
-    /**
-     * @brief Fluent alias for enqueue() providing API parity with thread_safe_fsm.
-     */
-    template <typename Event>
-    [[nodiscard]] bool send(Event&& event) noexcept {
-        return enqueue(std::forward<Event>(event));
-    }
+    [[nodiscard]] bool post(const event_variant& event) noexcept { return queue_.push(event); }
 
     // ========================================================================
     // Consumer API (Single Consumer / Dedicated Worker Thread)
@@ -164,6 +148,57 @@ class spsc_fsm {
             ++count;
         }
         return count;
+    }
+
+    step_result step(const in_ports_type& in, out_ports_type& out, services_type& srv) {
+        seq_.fetch_add(1, std::memory_order_release);
+        step_result res = fsm_.step(in, out, srv);
+        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
+        seq_.fetch_add(1, std::memory_order_release);
+        return res;
+    }
+
+    template <typename DurationRep>
+    step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out, services_type& srv) {
+        seq_.fetch_add(1, std::memory_order_release);
+        step_result res = fsm_.step(dt, in, out, srv);
+        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
+        seq_.fetch_add(1, std::memory_order_release);
+        return res;
+    }
+
+    step_result step(const in_ports_type& in, out_ports_type& out) {
+        seq_.fetch_add(1, std::memory_order_release);
+        step_result res = fsm_.step(in, out);
+        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
+        seq_.fetch_add(1, std::memory_order_release);
+        return res;
+    }
+
+    template <typename DurationRep>
+    step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out) {
+        seq_.fetch_add(1, std::memory_order_release);
+        step_result res = fsm_.step(dt, in, out);
+        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
+        seq_.fetch_add(1, std::memory_order_release);
+        return res;
+    }
+
+    step_result step() {
+        seq_.fetch_add(1, std::memory_order_release);
+        step_result res = fsm_.step();
+        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
+        seq_.fetch_add(1, std::memory_order_release);
+        return res;
+    }
+
+    template <typename DurationRep>
+    step_result step(DurationRep dt) {
+        seq_.fetch_add(1, std::memory_order_release);
+        step_result res = fsm_.step(dt);
+        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
+        seq_.fetch_add(1, std::memory_order_release);
+        return res;
     }
 
     // ========================================================================

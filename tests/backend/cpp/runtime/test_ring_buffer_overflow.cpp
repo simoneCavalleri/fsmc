@@ -85,13 +85,13 @@ using TestFsmTable =
 TEST(SpscFsmTest, QueueOverflowRejection) {
     ::fsm::spsc_fsm<TestFsmTable, ::fsm::no_ports, ::fsm::no_ports, ::fsm::no_registers, ::fsm::no_services, 2> machine;
 
-    // Enqueue 2 events (capacity 2 is full)
-    EXPECT_TRUE(machine.enqueue(EvToggle{}));
-    EXPECT_TRUE(machine.enqueue(EvToggle{}));
+    // Post 2 events (capacity 2 is full)
+    EXPECT_TRUE(machine.post(EvToggle{}));
+    EXPECT_TRUE(machine.post(EvToggle{}));
     EXPECT_TRUE(machine.queue_full());
 
     // 3rd push rejected in wait-free O(1) time
-    EXPECT_FALSE(machine.enqueue(EvToggle{}));
+    EXPECT_FALSE(machine.post(EvToggle{}));
 
     EXPECT_EQ(machine.queue_size(), 2);
     EXPECT_TRUE(machine.process_one());

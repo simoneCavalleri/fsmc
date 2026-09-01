@@ -287,6 +287,51 @@ struct transition_info {
 
 // --- End: traits/dispatch_result.hpp ---
 
+// --- Begin: traits/step_result.hpp ---
+namespace fsm {
+
+// Result of a periodic sampled step() operation in the synchronous control loop
+enum class step_status : std::uint8_t {
+    steady,       // Machine remains nominally in active state (no continuous guard satisfied)
+    transitioned  // A continuous/sampled transition condition fired and state updated
+};
+
+inline constexpr std::string_view to_string(step_status s) noexcept {
+    switch (s) {
+        case step_status::steady:
+            return "steady";
+        case step_status::transitioned:
+            return "transitioned";
+    }
+    return "steady";
+}
+
+struct step_result {
+    step_status status = step_status::steady;
+    std::optional<transition_trace> trace = std::nullopt;
+
+    constexpr step_result() noexcept = default;
+    constexpr step_result(step_status s) noexcept : status(s), trace(std::nullopt) {}
+    constexpr step_result(step_status s, transition_trace t) noexcept : status(s), trace(t) {}
+    constexpr step_result(step_status s, std::optional<transition_trace> t) noexcept : status(s), trace(t) {}
+
+    [[nodiscard]] constexpr bool has_transitioned() const noexcept { return status == step_status::transitioned; }
+    [[nodiscard]] constexpr bool is_transitioned() const noexcept { return status == step_status::transitioned; }
+    [[nodiscard]] constexpr bool is_steady() const noexcept { return status == step_status::steady; }
+
+    [[nodiscard]] constexpr explicit operator bool() const noexcept { return has_transitioned(); }
+    constexpr bool operator==(const step_result& other) const noexcept { return status == other.status; }
+    constexpr bool operator==(step_status other_status) const noexcept { return status == other_status; }
+    constexpr bool operator!=(const step_result& other) const noexcept { return status != other.status; }
+    constexpr bool operator!=(step_status other_status) const noexcept { return status != other_status; }
+
+    [[nodiscard]] constexpr std::string_view to_string() const noexcept { return fsm::to_string(status); }
+};
+
+}  // namespace fsm
+
+// --- End: traits/step_result.hpp ---
+
 // --- Begin: traits/reflection.hpp ---
 namespace fsm {
 
@@ -1428,7 +1473,9 @@ struct anonymous_event {};
 using completion_event = anonymous_event;
 
 /**
- * @brief Timed Transition Trigger (elapsed duration).
+ * @brief Timed Transition Trigger (elapsed duration for Asynchronous Reactive Dispatch).
+ *
+ * Used for wall-clock / steady_clock timeout events posted to the async event queue.
  */
 template <typename Duration = std::chrono::milliseconds>
 struct after {
@@ -1437,11 +1484,62 @@ struct after {
 };
 
 /**
- * @brief Compile-time millisecond timed transition trigger.
+ * @brief Compile-time millisecond timed transition trigger for Asynchronous Reactive Dispatch.
  */
 template <std::int64_t Milliseconds>
 struct after_ms {
     static constexpr std::chrono::milliseconds duration{Milliseconds};
+};
+
+namespace detail {
+template <typename T, typename = void>
+struct has_elapsed_ticks : std::false_type {};
+template <typename T>
+struct has_elapsed_ticks<T, std::void_t<decltype(std::declval<T>().elapsed_ticks)>> : std::true_type {};
+
+template <typename T, typename = void>
+struct has_state_time_ms : std::false_type {};
+template <typename T>
+struct has_state_time_ms<T, std::void_t<decltype(std::declval<T>().state_time_ms)>> : std::true_type {};
+
+template <typename T, typename = void>
+struct has_state_elapsed_time : std::false_type {};
+template <typename T>
+struct has_state_elapsed_time<T, std::void_t<decltype(std::declval<T>().state_elapsed_time)>> : std::true_type {};
+}  // namespace detail
+
+/**
+ * @brief Discrete Time In-State Residence Guard (for Sampled Synchronous Control Loops).
+ *
+ * Checks if the state residence counter (stored deterministically in Registers z^-1)
+ * has reached or exceeded the specified threshold. Zero heap, zero thread, SMT verifiable.
+ *
+ * @tparam Threshold Value comparison threshold (ticks or time units).
+ */
+template <auto Threshold>
+struct in_state_for {
+    template <typename... Args>
+    constexpr bool operator()(const Args&... args) const noexcept {
+        return evaluate(args...);
+    }
+
+  private:
+    template <typename First, typename... Rest>
+    static constexpr bool evaluate(const First& first, const Rest&... rest) noexcept {
+        if constexpr (detail::has_elapsed_ticks<First>::value) {
+            return first.elapsed_ticks >= Threshold;
+        } else if constexpr (detail::has_state_time_ms<First>::value) {
+            return first.state_time_ms >= Threshold;
+        } else if constexpr (detail::has_state_elapsed_time<First>::value) {
+            return first.state_elapsed_time >= Threshold;
+        } else if constexpr (sizeof...(Rest) > 0) {
+            return evaluate(rest...);
+        } else {
+            return true;
+        }
+    }
+
+    static constexpr bool evaluate() noexcept { return true; }
 };
 
 /**
@@ -2167,28 +2265,52 @@ class fsm {
     // Dual-Mode Execution APIs (Sampled Control Loop & Event-Driven Reactive)
     // ========================================================================
 
-    dispatch_result step(const in_ports_type& in, out_ports_type& out, services_type& srv) {
+    step_result step(const in_ports_type& in, out_ports_type& out, services_type& srv) {
         auto res = dispatch_direct_ports(anonymous_event{}, in, out, srv);
         if constexpr (has_deferred) {
             if (res.is_success()) {
                 process_deferred_queue_ports(in, out, srv);
             }
         }
-        return res;
+        if (res.is_success()) {
+            return step_result{step_status::transitioned, res.trace};
+        }
+        return step_result{step_status::steady, res.trace};
     }
 
-    dispatch_result step(const in_ports_type& in, out_ports_type& out) {
+    template <typename DurationRep>
+    step_result step(DurationRep /*dt*/, const in_ports_type& in, out_ports_type& out, services_type& srv) {
+        return step(in, out, srv);
+    }
+
+    step_result step(const in_ports_type& in, out_ports_type& out) {
         services_type dummy_srv{};
         services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
         return step(in, out, srv);
     }
 
-    dispatch_result step() {
+    template <typename DurationRep>
+    step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out) {
+        services_type dummy_srv{};
+        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
+        return step(dt, in, out, srv);
+    }
+
+    step_result step() {
         in_ports_type dummy_in{};
         out_ports_type dummy_out{};
         services_type dummy_srv{};
         services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
         return step(dummy_in, dummy_out, srv);
+    }
+
+    template <typename DurationRep>
+    step_result step(DurationRep dt) {
+        in_ports_type dummy_in{};
+        out_ports_type dummy_out{};
+        services_type dummy_srv{};
+        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
+        return step(dt, dummy_in, dummy_out, srv);
     }
 
     template <typename Event>
@@ -3210,6 +3332,43 @@ class thread_safe_fsm {
     }
 
     // ========================================================================
+    // Sampled Synchronous Control Loop Step
+    // ========================================================================
+
+    step_result step(const in_ports_type& in, out_ports_type& out, services_type& srv) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.step(in, out, srv);
+    }
+
+    template <typename DurationRep>
+    step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out, services_type& srv) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.step(dt, in, out, srv);
+    }
+
+    step_result step(const in_ports_type& in, out_ports_type& out) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.step(in, out);
+    }
+
+    template <typename DurationRep>
+    step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.step(dt, in, out);
+    }
+
+    step_result step() {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.step();
+    }
+
+    template <typename DurationRep>
+    step_result step(DurationRep dt) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.step(dt);
+    }
+
+    // ========================================================================
     // Asynchronous Queueing
     // ========================================================================
 
@@ -3259,13 +3418,17 @@ class thread_safe_fsm {
     }
 
     template <typename Event, typename Rep, typename Period>
-    void post_delayed(Event event, std::chrono::duration<Rep, Period> delay) {
+    void post_delayed(Event event, std::chrono::duration<Rep, Period> delay, bool cancel_if_state_changes = false) {
         if (!worker_running_.load() && !is_calling_from_worker_thread()) {
             start_worker();
         }
         auto deadline = std::chrono::steady_clock::now() + delay;
-        auto task = [this, evt = std::move(event)](fsm_type&) {
+        const auto scheduled_state = cancel_if_state_changes ? current_state_index() : static_cast<std::size_t>(-1);
+        auto task = [this, evt = std::move(event), scheduled_state, cancel_if_state_changes](fsm_type&) {
             try {
+                if (cancel_if_state_changes && current_state_index() != scheduled_state) {
+                    return;  // Invalidate stale timeout
+                }
                 auto snap = execute_dispatch_under_lock(evt);
                 detail::invoke_notifications_outside_lock(evt, snap, last_exception_, dispatch_mutex_);
             } catch (...) {
@@ -3274,6 +3437,11 @@ class thread_safe_fsm {
             }
         };
         queue_.push_timed(deadline, std::move(task));
+    }
+
+    template <typename Event, typename Rep, typename Period>
+    void post_state_timeout(Event event, std::chrono::duration<Rep, Period> delay) {
+        post_delayed(std::move(event), delay, /*cancel_if_state_changes=*/true);
     }
 
     template <typename Event>
@@ -3506,32 +3674,16 @@ class spsc_fsm {
     // ========================================================================
 
     /**
-     * @brief Enqueues an event into the lock-free ring buffer in Wait-Free O(1) time.
-     * @param event The event payload instance to enqueue.
-     * @return true if enqueued successfully, false if the queue is full.
-     */
-    template <typename Event>
-    bool enqueue(Event&& event) noexcept {
-        return queue_.push(event_variant{std::forward<Event>(event)});
-    }
-
-    bool enqueue(const event_variant& event) noexcept { return queue_.push(event); }
-
-    /**
-     * @brief Fluent alias for enqueue() providing API parity with thread_safe_fsm.
+     * @brief Posts an event into the lock-free ring buffer in Wait-Free O(1) time.
+     * @param event The event payload instance to post.
+     * @return true if queued successfully, false if the queue is full.
      */
     template <typename Event>
     [[nodiscard]] bool post(Event&& event) noexcept {
-        return enqueue(std::forward<Event>(event));
+        return queue_.push(event_variant{std::forward<Event>(event)});
     }
 
-    /**
-     * @brief Fluent alias for enqueue() providing API parity with thread_safe_fsm.
-     */
-    template <typename Event>
-    [[nodiscard]] bool send(Event&& event) noexcept {
-        return enqueue(std::forward<Event>(event));
-    }
+    [[nodiscard]] bool post(const event_variant& event) noexcept { return queue_.push(event); }
 
     // ========================================================================
     // Consumer API (Single Consumer / Dedicated Worker Thread)
@@ -3581,6 +3733,57 @@ class spsc_fsm {
             ++count;
         }
         return count;
+    }
+
+    step_result step(const in_ports_type& in, out_ports_type& out, services_type& srv) {
+        seq_.fetch_add(1, std::memory_order_release);
+        step_result res = fsm_.step(in, out, srv);
+        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
+        seq_.fetch_add(1, std::memory_order_release);
+        return res;
+    }
+
+    template <typename DurationRep>
+    step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out, services_type& srv) {
+        seq_.fetch_add(1, std::memory_order_release);
+        step_result res = fsm_.step(dt, in, out, srv);
+        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
+        seq_.fetch_add(1, std::memory_order_release);
+        return res;
+    }
+
+    step_result step(const in_ports_type& in, out_ports_type& out) {
+        seq_.fetch_add(1, std::memory_order_release);
+        step_result res = fsm_.step(in, out);
+        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
+        seq_.fetch_add(1, std::memory_order_release);
+        return res;
+    }
+
+    template <typename DurationRep>
+    step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out) {
+        seq_.fetch_add(1, std::memory_order_release);
+        step_result res = fsm_.step(dt, in, out);
+        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
+        seq_.fetch_add(1, std::memory_order_release);
+        return res;
+    }
+
+    step_result step() {
+        seq_.fetch_add(1, std::memory_order_release);
+        step_result res = fsm_.step();
+        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
+        seq_.fetch_add(1, std::memory_order_release);
+        return res;
+    }
+
+    template <typename DurationRep>
+    step_result step(DurationRep dt) {
+        seq_.fetch_add(1, std::memory_order_release);
+        step_result res = fsm_.step(dt);
+        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
+        seq_.fetch_add(1, std::memory_order_release);
+        return res;
     }
 
     // ========================================================================

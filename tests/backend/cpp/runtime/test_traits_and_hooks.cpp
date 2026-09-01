@@ -413,19 +413,19 @@ TEST(TraitsAndHooksTest, DispatchResultTransitionTraceInspection) {
 }
 
 // ============================================================================
-// Legacy Poison Checks (v0.3.0 Monolithic Context Rejection)
+// Legacy Poison Checks (Monolithic Context Rejection)
 // ============================================================================
 
-struct LegacyContext {
-    int dummy{0};
+struct MonolithicContext {
+    int val = 0;
 };
 
 struct LegacyContextGuard {
-    bool operator()(LegacyContext& /*ctx*/) const { return true; }
+    bool operator()(const MonolithicContext& ctx) const { return ctx.val > 0; }
 };
 
 struct LegacyContextAction {
-    void operator()(LegacyContext& /*ctx*/) const {}
+    void operator()(MonolithicContext& ctx) const { ctx.val++; }
 };
 
 struct ModernInPorts {
@@ -445,8 +445,8 @@ struct ModernServices {
 };
 
 /**
- * @brief Test Intent: Certify at compile-time that legacy v0.3.0 signatures (guard(Context&), action(Context&)) are
- * rejected.
+ * @brief Test Intent: Certify at compile-time that legacy monolithic context signatures (guard(Context&),
+ * action(Context&)) are rejected.
  */
 TEST(TraitsAndHooksTest, LegacyContextPoisonCheck) {
     // 1. Verify Legacy Guard is NOT invocable with modern domain references

@@ -90,12 +90,12 @@ TEST(SpscFsmTest, BasicProducerConsumerExecution) {
     EXPECT_TRUE(machine.is_in_state<StateIdle>());
     EXPECT_EQ(machine.state_name(), "StateIdle");
 
-    // Producer thread enqueues sequence of events
+    // Producer thread posts sequence of events
     std::thread producer([&]() {
-        EXPECT_TRUE(machine.enqueue(EvStart{}));
-        EXPECT_TRUE(machine.enqueue(EvPause{}));
-        EXPECT_TRUE(machine.enqueue(EvResume{}));
-        EXPECT_TRUE(machine.enqueue(EvStop{}));
+        EXPECT_TRUE(machine.post(EvStart{}));
+        EXPECT_TRUE(machine.post(EvPause{}));
+        EXPECT_TRUE(machine.post(EvResume{}));
+        EXPECT_TRUE(machine.post(EvStop{}));
     });
     producer.join();
 
@@ -139,9 +139,9 @@ TEST(SpscFsmTest, ConcurrentLockFreeReads) {
 
     // Producer + Consumer execution
     for (int i = 0; i < kIterations; ++i) {
-        machine.enqueue(EvStart{});
+        machine.post(EvStart{});
         machine.process_one();
-        machine.enqueue(EvStop{});
+        machine.post(EvStop{});
         machine.process_one();
     }
 

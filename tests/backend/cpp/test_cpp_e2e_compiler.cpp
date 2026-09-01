@@ -209,7 +209,7 @@ int main() {
     in.sensor_temp = 95.0f;
     assert(in.validate_contracts());
     auto res_drop = fsm.step(in, out, srv);
-    assert(res_drop.is_success());
+    assert(res_drop.has_transitioned());
     assert(fsm.template is_in<Idle>());
     assert(out.alarm_active);
     assert(out.validate_contracts());

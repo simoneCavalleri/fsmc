@@ -151,28 +151,52 @@ class fsm {
     // Dual-Mode Execution APIs (Sampled Control Loop & Event-Driven Reactive)
     // ========================================================================
 
-    dispatch_result step(const in_ports_type& in, out_ports_type& out, services_type& srv) {
+    step_result step(const in_ports_type& in, out_ports_type& out, services_type& srv) {
         auto res = dispatch_direct_ports(anonymous_event{}, in, out, srv);
         if constexpr (has_deferred) {
             if (res.is_success()) {
                 process_deferred_queue_ports(in, out, srv);
             }
         }
-        return res;
+        if (res.is_success()) {
+            return step_result{step_status::transitioned, res.trace};
+        }
+        return step_result{step_status::steady, res.trace};
     }
 
-    dispatch_result step(const in_ports_type& in, out_ports_type& out) {
+    template <typename DurationRep>
+    step_result step(DurationRep /*dt*/, const in_ports_type& in, out_ports_type& out, services_type& srv) {
+        return step(in, out, srv);
+    }
+
+    step_result step(const in_ports_type& in, out_ports_type& out) {
         services_type dummy_srv{};
         services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
         return step(in, out, srv);
     }
 
-    dispatch_result step() {
+    template <typename DurationRep>
+    step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out) {
+        services_type dummy_srv{};
+        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
+        return step(dt, in, out, srv);
+    }
+
+    step_result step() {
         in_ports_type dummy_in{};
         out_ports_type dummy_out{};
         services_type dummy_srv{};
         services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
         return step(dummy_in, dummy_out, srv);
+    }
+
+    template <typename DurationRep>
+    step_result step(DurationRep dt) {
+        in_ports_type dummy_in{};
+        out_ports_type dummy_out{};
+        services_type dummy_srv{};
+        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
+        return step(dt, dummy_in, dummy_out, srv);
     }
 
     template <typename Event>

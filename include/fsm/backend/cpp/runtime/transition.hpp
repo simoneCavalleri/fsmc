@@ -30,7 +30,9 @@ struct anonymous_event {};
 using completion_event = anonymous_event;
 
 /**
- * @brief Timed Transition Trigger (elapsed duration).
+ * @brief Timed Transition Trigger (elapsed duration for Asynchronous Reactive Dispatch).
+ *
+ * Used for wall-clock / steady_clock timeout events posted to the async event queue.
  */
 template <typename Duration = std::chrono::milliseconds>
 struct after {
@@ -39,11 +41,62 @@ struct after {
 };
 
 /**
- * @brief Compile-time millisecond timed transition trigger.
+ * @brief Compile-time millisecond timed transition trigger for Asynchronous Reactive Dispatch.
  */
 template <std::int64_t Milliseconds>
 struct after_ms {
     static constexpr std::chrono::milliseconds duration{Milliseconds};
+};
+
+namespace detail {
+template <typename T, typename = void>
+struct has_elapsed_ticks : std::false_type {};
+template <typename T>
+struct has_elapsed_ticks<T, std::void_t<decltype(std::declval<T>().elapsed_ticks)>> : std::true_type {};
+
+template <typename T, typename = void>
+struct has_state_time_ms : std::false_type {};
+template <typename T>
+struct has_state_time_ms<T, std::void_t<decltype(std::declval<T>().state_time_ms)>> : std::true_type {};
+
+template <typename T, typename = void>
+struct has_state_elapsed_time : std::false_type {};
+template <typename T>
+struct has_state_elapsed_time<T, std::void_t<decltype(std::declval<T>().state_elapsed_time)>> : std::true_type {};
+}  // namespace detail
+
+/**
+ * @brief Discrete Time In-State Residence Guard (for Sampled Synchronous Control Loops).
+ *
+ * Checks if the state residence counter (stored deterministically in Registers z^-1)
+ * has reached or exceeded the specified threshold. Zero heap, zero thread, SMT verifiable.
+ *
+ * @tparam Threshold Value comparison threshold (ticks or time units).
+ */
+template <auto Threshold>
+struct in_state_for {
+    template <typename... Args>
+    constexpr bool operator()(const Args&... args) const noexcept {
+        return evaluate(args...);
+    }
+
+  private:
+    template <typename First, typename... Rest>
+    static constexpr bool evaluate(const First& first, const Rest&... rest) noexcept {
+        if constexpr (detail::has_elapsed_ticks<First>::value) {
+            return first.elapsed_ticks >= Threshold;
+        } else if constexpr (detail::has_state_time_ms<First>::value) {
+            return first.state_time_ms >= Threshold;
+        } else if constexpr (detail::has_state_elapsed_time<First>::value) {
+            return first.state_elapsed_time >= Threshold;
+        } else if constexpr (sizeof...(Rest) > 0) {
+            return evaluate(rest...);
+        } else {
+            return true;
+        }
+    }
+
+    static constexpr bool evaluate() noexcept { return true; }
 };
 
 /**

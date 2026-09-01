@@ -17,7 +17,6 @@ struct FsmcOptions {
     std::string rtm_format;
     std::string fsm_name;
     std::string ns_name = "fsm_generated";
-    std::string context_type = "no_context";
     std::string target_lang = "cpp";
     std::string format = "auto";
     std::string submachine_dir;
@@ -57,7 +56,6 @@ inline void print_help(const char* prog_name) {
         << "  -t, --target <lang>         Target code generator backend: 'cpp' (default)\n"
         << "  -n, --name <name>           Generated FSM class name (default: inferred from filename or 'MyFSM')\n"
         << "  --namespace, --package <ns> Generated namespace/package/module name (default: 'fsm_generated')\n"
-        << "  --context <type>            Hardware/Software context type name (default: 'no_context')\n"
         << "  --format <fmt>              Override input format: 'sysml2', 'plantuml', 'mermaid', 'cameo', 'scxml', "
            "'json', 'dot', 'auto'\n\n"
         << "Optimization & Code Transformation Options:\n"
@@ -126,8 +124,6 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             opts.fsm_name = argv[++idx];
         } else if ((arg == "--namespace" || arg == "--package") && idx + 1 < argc) {
             opts.ns_name = argv[++idx];
-        } else if (arg == "--context" && idx + 1 < argc) {
-            opts.context_type = argv[++idx];
         } else if (arg == "--format" && idx + 1 < argc) {
             opts.format = argv[++idx];
         } else if ((arg == "-e" || arg == "--export") && idx + 1 < argc) {

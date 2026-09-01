@@ -10,18 +10,18 @@
 
 #include "fsm/backend/emitter_factory.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
-#include "fsm/frontend/parser_factory.hpp"
-#include "fsm/frontend/parser_interface.hpp"
+#include "fsm/frontend/common/parser_factory.hpp"
+#include "fsm/frontend/common/parser_interface.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/ir/fsm_ir_serializer.hpp"
-#include "fsm/middleend/choice_inlining_pass.hpp"
-#include "fsm/middleend/dead_state_pruning_pass.hpp"
-#include "fsm/middleend/determinism_enforcement_pass.hpp"
-#include "fsm/middleend/efsm_interval_analysis.hpp"
-#include "fsm/middleend/guard_simplification_pass.hpp"
-#include "fsm/middleend/orthogonal_interference_pass.hpp"
+#include "fsm/middleend/passes/choice_inlining_pass.hpp"
+#include "fsm/middleend/passes/dead_state_pruning_pass.hpp"
+#include "fsm/middleend/passes/determinism_enforcement_pass.hpp"
+#include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
+#include "fsm/middleend/passes/guard_simplification_pass.hpp"
+#include "fsm/middleend/passes/orthogonal_interference_pass.hpp"
 #include "fsm/middleend/pass_manager.hpp"
-#include "fsm/middleend/submachine_inlining_pass.hpp"
+#include "fsm/middleend/passes/submachine_inlining_pass.hpp"
 #include "tools/common/file_utils.hpp"
 #include "tools/fsm-opt/opt_options.hpp"
 
@@ -36,7 +36,7 @@ class OptDriver {
         }
 
         if (opts.show_version) {
-            std::cout << "fsm-opt v0.3.0 (Formal FSM Intermediate Representation Optimizer & Linter)\n";
+            std::cout << "fsm-opt v0.4.0 (Formal FSM Intermediate Representation Optimizer & Linter)\n";
             return 0;
         }
 

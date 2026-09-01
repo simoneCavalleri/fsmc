@@ -8,20 +8,20 @@
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/backend/emitter_factory.hpp"
-#include "fsm/backend/rtm_emitter.hpp"
-#include "fsm/backend/runtime_exporter.hpp"
+#include "fsm/backend/rtm/rtm_emitter.hpp"
+#include "fsm/backend/cpp/runtime_exporter.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
-#include "fsm/frontend/parser_factory.hpp"
-#include "fsm/frontend/parser_interface.hpp"
+#include "fsm/frontend/common/parser_factory.hpp"
+#include "fsm/frontend/common/parser_interface.hpp"
 #include "fsm/ir/fsm_ir.hpp"
-#include "fsm/middleend/dead_state_pruning_pass.hpp"
-#include "fsm/middleend/determinism_enforcement_pass.hpp"
-#include "fsm/middleend/fsm_validator.hpp"
-#include "fsm/middleend/guard_simplification_pass.hpp"
-#include "fsm/middleend/model_checker.hpp"
-#include "fsm/middleend/orthogonal_interference_pass.hpp"
+#include "fsm/middleend/passes/dead_state_pruning_pass.hpp"
+#include "fsm/middleend/passes/determinism_enforcement_pass.hpp"
+#include "fsm/middleend/analysis/fsm_validator.hpp"
+#include "fsm/middleend/passes/guard_simplification_pass.hpp"
+#include "fsm/middleend/analysis/model_checker.hpp"
+#include "fsm/middleend/passes/orthogonal_interference_pass.hpp"
 #include "fsm/middleend/pass_manager.hpp"
-#include "fsm/middleend/submachine_inlining_pass.hpp"
+#include "fsm/middleend/passes/submachine_inlining_pass.hpp"
 #include "tools/common/file_utils.hpp"
 #include "tools/fsmc/fsmc_options.hpp"
 
@@ -36,7 +36,7 @@ class FsmcDriver {
         }
 
         if (opts.show_version) {
-            std::cout << "fsmc version 0.3.0 (Universal State Machine Compiler for Critical Systems)\n";
+            std::cout << "fsmc version 0.4.0 (Universal State Machine Compiler for Critical Systems)\n";
             return 0;
         }
 
@@ -104,9 +104,6 @@ class FsmcDriver {
         }
         if (!opts.ns_name.empty()) {
             model.ns = opts.ns_name;
-        }
-        if (!opts.context_type.empty()) {
-            model.context_type = opts.context_type;
         }
         model.thread_safe = opts.thread_safe;
 

@@ -9,10 +9,10 @@
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/backend/emitter_factory.hpp"
-#include "fsm/frontend/guard_parser.hpp"
-#include "fsm/frontend/parser_factory.hpp"
+#include "fsm/frontend/directive/guard_parser.hpp"
+#include "fsm/frontend/common/parser_factory.hpp"
 #include "fsm/ir/fsm_ir.hpp"
-#include "fsm/middleend/fsm_validator.hpp"
+#include "fsm/middleend/analysis/fsm_validator.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm;
@@ -46,7 +46,6 @@ std::string fsmc_wasm_compile(const std::string& source, const std::string& form
     FsmIr model;
     model.name = "WebPlaygroundFSM";
     model.ns = "fsm_playground";
-    model.context_type = "no_context";
     model.thread_safe = true;
 
     std::string err;
@@ -89,7 +88,28 @@ std::string fsmc_wasm_get_model(const std::string& source, const std::string& fo
     ss << "{\n"
        << "  \"name\": \"" << model.name << "\",\n"
        << "  \"initialState\": \"" << model.initial_state << "\",\n"
-       << "  \"states\": [\n";
+       << "  \"ports\": [\n";
+
+    for (size_t i = 0; i < model.ports.size(); ++i) {
+        const auto& p = model.ports[i];
+        ss << "    {\"name\": \"" << p.name << "\", "
+           << "\"type\": \"" << p.type << "\", "
+           << "\"direction\": \"" << (p.is_in() ? "in" : "out") << "\", "
+           << "\"min\": " << (p.min_value.has_value() ? std::to_string(*p.min_value) : "null") << ", "
+           << "\"max\": " << (p.max_value.has_value() ? std::to_string(*p.max_value) : "null") << "}"
+           << (i + 1 < model.ports.size() ? "," : "") << "\n";
+    }
+
+    ss << "  ],\n  \"variables\": [\n";
+    for (size_t i = 0; i < model.variables.size(); ++i) {
+        const auto& v = model.variables[i];
+        ss << "    {\"name\": \"" << v.name << "\", "
+           << "\"type\": \"" << v.type << "\", "
+           << "\"initial\": \"" << v.initial_value << "\"}"
+           << (i + 1 < model.variables.size() ? "," : "") << "\n";
+    }
+
+    ss << "  ],\n  \"states\": [\n";
 
     for (size_t i = 0; i < model.states.size(); ++i) {
         const auto& s = model.states[i];
@@ -155,30 +175,48 @@ std::string fsmc_wasm_verify(const std::string& source, const std::string& forma
     }
 
     const auto res = FsmValidator::validate(model);
+    DiagnosticEngine diag;
+    EFSMIntervalAnalyzer interval_analyzer(model);
+    interval_analyzer.analyze(diag);
+
+    bool overall_valid = res.is_valid && !diag.has_errors();
+
     std::stringstream ss;
     ss << "{\n"
-       << "  \"is_valid\": " << (res.is_valid ? "true" : "false") << ",\n"
+       << "  \"is_valid\": " << (overall_valid ? "true" : "false") << ",\n"
+       << "  \"port_count\": " << model.ports.size() << ",\n"
+       << "  \"variable_count\": " << model.variables.size() << ",\n"
        << "  \"state_count\": " << model.states.size() << ",\n"
        << "  \"event_count\": " << model.events.size() << ",\n"
        << "  \"transition_count\": " << model.transitions.size() << ",\n"
        << "  \"initial_state\": \"" << model.initial_state << "\",\n"
        << "  \"diagnostics\": [\n";
 
+    bool has_diag = false;
     for (size_t i = 0; i < res.diagnostics.size(); ++i) {
         const auto& d = res.diagnostics[i];
         std::string sev = (d.severity == DiagnosticSeverity::Error)            ? "ERROR"
                           : (d.severity == DiagnosticSeverity::SafetyCritical) ? "SAFETY_CRITICAL"
                           : (d.severity == DiagnosticSeverity::Warning)        ? "WARNING"
                                                                                : "INFO";
+        if (has_diag) ss << ",\n";
         ss << "    {\"severity\": \"" << sev << "\", \"category\": \"" << d.category << "\", \"message\": \""
            << d.message << "\"}";
-        if (i + 1 < res.diagnostics.size()) {
-            ss << ",";
-        }
-        ss << "\n";
+        has_diag = true;
     }
 
-    ss << "  ]\n}";
+    for (const auto& d : diag.get_diagnostics()) {
+        std::string sev = (d.severity == DiagnosticSeverity::Error)            ? "ERROR"
+                          : (d.severity == DiagnosticSeverity::SafetyCritical) ? "SAFETY_CRITICAL"
+                          : (d.severity == DiagnosticSeverity::Warning)        ? "WARNING"
+                                                                               : "INFO";
+        if (has_diag) ss << ",\n";
+        ss << "    {\"severity\": \"" << sev << "\", \"category\": \"IntervalAnalysis\", \"message\": \""
+           << d.message << "\"}";
+        has_diag = true;
+    }
+
+    ss << "\n  ]\n}";
     return ss.str();
 }
 

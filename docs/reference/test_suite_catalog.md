@@ -4,8 +4,8 @@
 > To update this file, run: `cmake --build build --target generate_test_catalog` or `python3 scripts/generate_test_catalog.py`.
 
 **Total Documented Subsystems**: 5  
-**Total Test Suites & Binaries**: 25  
-**Total Documented Test Cases**: 102  
+**Total Test Suites & Binaries**: 44  
+**Total Documented Test Cases**: 193  
 
 ---
 
@@ -436,6 +436,42 @@
 
 ## Middle-End Verification & Transformation Subsystem
 
+### [`test_guard_satisfiability.cpp`](../tests/middleend/analysis/test_guard_satisfiability.cpp) (`tests/middleend/analysis/test_guard_satisfiability.cpp`)
+#### `GuardSatisfiabilityTest.MutuallyExclusiveNumericGuardsNoWarning`
+**Test Intent**: Verify that provably disjoint numeric guard intervals emit no warnings.
+
+**Scenario**:
+  - Define two transitions on the same source state and event with guards 'x > 50' and 'x <= 30'.
+  - Run GuardSatisfiabilityPass and verify that diag.has_warnings() is false.
+
+#### `GuardSatisfiabilityTest.OverlappingGuardsEmitWarningW0301`
+**Test Intent**: Verify that overlapping guard intervals on the same event and priority emit warning W0301.
+
+**Scenario**:
+  - Define two transitions with guards 'x > 10' and 'x > 20' sharing identical priority 1.
+  - Run GuardSatisfiabilityPass and verify that diagnostic code W0301 is emitted.
+
+#### `GuardSatisfiabilityTest.DeadGuardEmitWarningW0302`
+**Test Intent**: Verify that contradictory guard conditions (e.g. x > 100 && x < 50) emit dead guard warning W0302.
+
+**Scenario**:
+  - Define a transition with guard 'x > 100 && x < 50' whose interval intersection is empty.
+  - Run GuardSatisfiabilityPass and verify that diagnostic code W0302 is emitted.
+
+#### `GuardSatisfiabilityTest.DifferentPrioritiesAvoidW0301`
+**Test Intent**: Verify that overlapping guards with differentiated transition priorities do not emit W0301.
+
+**Scenario**:
+  - Define two overlapping guards ('x > 10' and 'x > 20') with distinct priorities (priority 1 vs priority 2).
+  - Run GuardSatisfiabilityPass and verify that no ambiguity warning is emitted.
+
+#### `GuardSatisfiabilityTest.BooleanGuardsMutuallyExclusive`
+**Test Intent**: Verify that complementary boolean guards (enabled == true vs enabled == false) are recognized as disjoint.
+
+**Scenario**:
+  - Define two transitions on event 'Toggle' with boolean guards 'enabled == true' and 'enabled == false'.
+  - Run GuardSatisfiabilityPass and verify that diag.has_warnings() is false.
+
 ### [`test_model_checker.cpp`](../tests/middleend/analysis/test_model_checker.cpp) (`tests/middleend/analysis/test_model_checker.cpp`)
 #### `ModelCheckerTest.SoundModelVerification`
 **Test Intent**: Verify formal validation passes for a sound state machine with zero defects.
@@ -660,6 +696,597 @@
 ---
 
 ## C++ Backend Codegen Subsystem
+
+### [`test_async_and_guards.cpp`](../tests/backend/cpp/runtime/test_async_and_guards.cpp) (`tests/backend/cpp/runtime/test_async_and_guards.cpp`)
+#### `AsyncAndGuardsTest.GuardRejectionAndAcceptance`
+**Test Intent**: Verify guard predicate rejection, acceptance, and status tracking.
+
+**Scenario**:
+  - When allow_transition is false, dispatch returns guard_rejected and FSM stays in Initial.
+  - When allow_transition is true, dispatch succeeds and transitions to StateGuarded.
+
+#### `AsyncAndGuardsTest.DeferredEventsQueuingAndReplay`
+**Test Intent**: Verify runtime deferred event queueing and automated cascade replay.
+
+**Scenario**:
+  - Dispatch EvDeferred in StateInitialWithDeferred (queued with status deferred).
+  - Dispatch EvUnlock to enter StateGuarded (which accepts EvDeferred) -> triggers automatic replay into
+
+#### `AsyncAndGuardsTest.ThreadSafeFsmPostAsyncAndHandlers`
+**Test Intent**: Verify thread_safe_fsm asynchronous futures, callbacks, and failure handlers.
+
+**Scenario**:
+  - Post asynchronous events via `post_async()`, `post(evt, callback)`.
+  - Verify rejection, deferred, and failure handlers receive notifications.
+
+#### `AsyncAndGuardsTest.WorkerExceptionSafetyAndFuturePropagation`
+**Test Intent**: Verify worker thread resilience and future exception propagation.
+
+**Scenario**:
+  - Action throws an exception.
+  - Verify future.get() throws the propagated exception.
+  - Verify worker thread remains alive and processes subsequent events normally.
+
+#### `AsyncAndGuardsTest.ManualEnqueueAndAutoStartPostAsync`
+**Test Intent**: Verify manual queue polling mode, auto-starting worker for `post_async()`, and `with_registers`.
+
+**Scenario**:
+  - Enqueue events manually and drain with `process_all()`.
+  - Verify `post_async()` auto-starts background worker so futures never deadlock.
+  - Verify thread-safe mutable and const access to registers via `with_registers()`.
+
+#### `AsyncAndGuardsTest.TransitionInfoExplicitKind`
+**Test Intent**: Verify strongly-typed `transition_kind` inspection (external vs internal).
+
+**Scenario**:
+  - Construct external and internal transition_info structs.
+  - Verify is_external(), is_internal(), and to_string() formatters.
+
+#### `AsyncAndGuardsTest.ExceptionHandlerRegistrationAndLastException`
+**Test Intent**: Verify exception handler registration and `last_exception()` querying.
+
+**Scenario**:
+  - Register global exception handler on thread_safe_fsm.
+  - Post fire-and-forget event that throws.
+  - Verify handler captures exception and `last_exception()` returns non-null pointer until cleared.
+
+#### `AsyncAndGuardsTest.ObserverInvokedOutsideLockCanQueryState`
+**Test Intent**: Verify observers and handlers are invoked outside mutex to permit concurrent state querying.
+
+**Scenario**:
+  - Query current_state_name() from within observer callback.
+  - Verify no deadlock occurs and state name matches target.
+
+#### `AsyncAndGuardsTest.SelfStopWorkerFromWorkerThreadDoesNotDeadlock`
+**Test Intent**: Verify `stop_worker()` can be safely called from inside worker thread callbacks without self-join
+
+**Scenario**:
+  - Inside observer running on worker thread, call `ts_sm.stop_worker()`.
+  - Verify worker cleanly terminates without deadlock.
+
+#### `AsyncAndGuardsTest.CascadingEventsDuringShutdownDrained`
+**Test Intent**: Verify cascading events posted during shutdown or `process_all()` are completely drained.
+
+**Scenario**:
+  - Transitioning to StateB posts EvToC.
+  - Verify calling `stop_worker()` or `process_all()` drains both EvToB and cascading EvToC.
+
+#### `AsyncAndGuardsTest.DestructorDrainsAllQueuedTasksSafely`
+**Test Intent**: Verify thread_safe_fsm destructor cleanly drains pending tasks before releasing resources.
+
+**Scenario**:
+  - Enqueue tasks and let FSM go out of scope.
+  - Verify destructor processes all tasks.
+
+#### `AsyncAndGuardsTest.ModularTraitsAndRuntimeHeaders`
+**Test Intent**: Verify modular traits headers and direct `async_event_queue` push/pop mechanics.
+
+**Scenario**:
+  - Test type_list traits (size, contains).
+  - Test direct async_event_queue try_pop and queue size.
+
+#### `AsyncAndGuardsTest.ThreadSafeFsmReentrancyPreventionAndDraining`
+**Test Intent**: Verify thread_safe_fsm detects same-thread reentrant dispatch and safely defers/drains it without UB.
+
+### [`test_choice.cpp`](../tests/backend/cpp/runtime/test_choice.cpp) (`tests/backend/cpp/runtime/test_choice.cpp`)
+#### `ChoiceTest.ChoicePseudostateParsingAndCodegen`
+**Test Intent**: Verify Choice pseudostate expansion and code generation.
+
+**Scenario**:
+  - Parse PlantUML containing `state AuthChoice <<choice>>` and conditional outgoing branches.
+  - Verify Choice node is captured as a choice_node in the Formal IR.
+  - Verify C++ code generator expands the choice into direct guarded rows in the transition table
+  - (e.g., row<Idle, LoginCmd, AdminView>::when<IsAdminGuard> and row<Idle, LoginCmd, UserView>::when<IsUserGuard>).
+
+### [`test_composite_guards.cpp`](../tests/backend/cpp/runtime/test_composite_guards.cpp) (`tests/backend/cpp/runtime/test_composite_guards.cpp`)
+#### `CompositeGuardsTest.DirectCombinatorsEvaluation`
+**Test Intent**: Verify C++ compile-time composite guard combinators (`and_`, `or_`, `not_`).
+
+**Scenario**:
+  - Evaluate `not_<IsEmergencyStop>`.
+  - Evaluate 3-way conjunction `and_<IsPowerOk, IsDoorClosed, not_<IsEmergencyStop>>`.
+  - Evaluate disjunction `or_<IsEmergencyStop, not_<IsTempSafe>>`.
+  - Evaluate complex nested combinator: `(PowerOk && DoorClosed) || ManualOverride`.
+
+#### `CompositeGuardsTest.GuardExpressionParserBasicAndNested`
+**Test Intent**: Verify AST parsing and operator precedence in GuardExpressionParser.
+
+**Scenario**:
+  - Parse atomic guards, negation `!A`, conjunction `A && B`, and disjunction `A || B`.
+  - Verify `&&` binds tighter than `||` (`A || B && C` -> `fsm::or_<A, fsm::and_<B, C>>`).
+  - Verify parentheses override default precedence (`(A || B) && C` -> `fsm::and_<fsm::or_<A, B>, C>`).
+  - Verify 4-level deep nested boolean formulas.
+
+#### `CompositeGuardsTest.GuardExpressionParserEdgeCasesAndFuzzing`
+**Test Intent**: Verify whitespace resilience, empty inputs, and roundtrip diagram string formatting.
+
+**Scenario**:
+  - Parse expressions with irregular whitespace formatting.
+  - Test empty and whitespace-only guard strings.
+  - Test roundtrip conversion between C++ template representation and diagram string format.
+
+#### `CompositeGuardsTest.MultiFormatParserCompositeGuards`
+**Test Intent**: Verify composite guard expression extraction across all supported diagram parsers.
+
+**Scenario**:
+  - Parse composite guard expressions from PlantUML, Mermaid, SysML v2, SCXML, DOT, and JSON.
+  - Verify every parser properly decodes entities and compiles the expression into the normalized C++ template type.
+
+#### `CompositeGuardsTest.FsmRuntimeExecutionWithCompositeGuards`
+**Test Intent**: Verify end-to-end runtime evaluation of composite guards during event dispatch.
+
+**Scenario**:
+  - Define transition table with `fsm::and_<IsPowerOk, IsDoorClosed, fsm::not_<IsEmergencyStop>>`.
+  - Test failure with power off, door open, and emergency stop active.
+  - Test success when all composite conditions are satisfied, transitioning to Running.
+
+### [`test_context_contract.cpp`](../tests/backend/cpp/runtime/test_context_contract.cpp) (`tests/backend/cpp/runtime/test_context_contract.cpp`)
+#### `DomainContractTest.SignalValidatorExecution`
+**Test Intent**: Verify runtime and constexpr validation logic on typed signal structs.
+
+#### `DomainContractTest.Cpp20ConceptsValidation`
+**Test Intent**: Verify compile-time C++20 concept requirements on user-defined services/ports structs.
+
+#### `DomainContractTest.CompileTimeDomainSafety`
+**Test Intent**: Verify compile-time safety and initialization for Registers.
+
+#### `DomainContractTest.ThreadSafeWithRegistersMutation`
+**Test Intent**: Verify thread_safe_fsm::with_registers executes callable under internal lock.
+
+#### `DomainContractTest.SnapshotRegistersIsolation`
+**Test Intent**: Verify thread_safe_fsm::snapshot_registers is independent from subsequent mutations.
+
+#### `DomainContractTest.ThreadSafeWithRegistersConstReadOnly`
+**Test Intent**: Verify const overload of with_registers for read-only access.
+
+### [`test_deep_history_multi_level.cpp`](../tests/backend/cpp/runtime/test_deep_history_multi_level.cpp) (`tests/backend/cpp/runtime/test_deep_history_multi_level.cpp`)
+#### `DeepHistoryTest.FourLevelDeepHistoryAstAndCodegen`
+**Test Intent**: Verify AST construction and C++ codegen for 4-level deep hierarchical history.
+
+**Scenario**:
+  - Parse PlantUML with 4-level nesting (Operating -> SubSystem -> Module -> Level4Active/Calibrating).
+  - Verify deep history target flag `Operating[H*]`.
+  - Verify code generator emits history guards for deepest leaf substates.
+
+#### `DeepHistoryTest.RuntimeExecutionRestoresDeepLeafState`
+**Test Intent**: Verify runtime deep history restoration of deeply nested leaf states.
+
+**Scenario**:
+  - Navigate from Standby to Level4Active, then advance to Level4Calibrating.
+  - Interrupt with EStopEvent to transition to Emergency state.
+  - Dispatch ResumeDeepCmd -> verify runtime FSM restores Level4Calibrating leaf state directly.
+
+#### `DeepHistoryTest.InitialEntryWithoutPriorHistoryFallsBackToDefault`
+**Test Intent**: Verify default initial sub-state fallback when entering history with no prior visit.
+
+**Scenario**:
+  - Start FSM directly in Emergency state without having visited Operating before.
+  - Dispatch ResumeDeepCmd -> verify fallback transition to the default initial leaf (Level4Active).
+
+### [`test_deferred.cpp`](../tests/backend/cpp/runtime/test_deferred.cpp) (`tests/backend/cpp/runtime/test_deferred.cpp`)
+#### `DeferredEventsTest.PlantUmlParsing`
+**Test Intent**: Verify PlantUML `defer <Event>` directive parsing into state deferred events.
+
+**Scenario**:
+  - Parse PlantUML with `Initializing : defer RequestCmd` and `Initializing : defer DataPacket`.
+  - Verify IR state contains both deferred event names.
+
+#### `DeferredEventsTest.MermaidParsing`
+**Test Intent**: Verify Mermaid `defer <Event>` syntax parsing.
+
+**Scenario**:
+  - Parse Mermaid with `Booting : defer UserInput`.
+  - Verify Booting state records UserInput in deferred_events.
+
+#### `DeferredEventsTest.CameoParsing`
+**Test Intent**: Verify Cameo / MagicDraw XMI deferrableTrigger element parsing.
+
+**Scenario**:
+  - Parse OMG XMI containing `<deferrableTrigger name="RequestCmd"/>`.
+  - Verify state records RequestCmd in deferred_events list.
+
+#### `DeferredEventsTest.ScxmlParsing`
+**Test Intent**: Verify W3C SCXML `<defer event="..."/>` syntax parsing.
+
+**Scenario**:
+  - Parse SCXML with `<defer event="RequestCmd"/>` child element inside `<state>`.
+  - Verify parsed FsmIr captures the deferred event definition.
+
+#### `DeferredEventsTest.JsonParsing`
+**Test Intent**: Verify JSON statechart `"defer": [...]` array parsing.
+
+**Scenario**:
+  - Parse XState JSON with `"defer": ["RequestCmd", "DataPacket"]`.
+  - Verify both deferred events are captured in IR.
+
+#### `DeferredEventsTest.DotParsing`
+**Test Intent**: Verify Graphviz DOT `defer="A, B"` attribute parsing.
+
+**Scenario**:
+  - Parse DOT graph with `Initializing [defer="RequestCmd, DataPacket"]`.
+  - Verify parsed FsmIr captures both comma-separated deferred events.
+
+#### `DeferredEventsTest.SyncRuntimeCascadeReplay`
+**Test Intent**: Verify synchronous runtime cascade replay of deferred events upon state transitions.
+
+**Scenario**:
+  - Dispatch RequestCmd and DataPacket while in Initializing state (both must be deferred into queue).
+  - Dispatch InitDone: FSM enters Ready, automatically un-defers and processes RequestCmd (moving to Processing),
+
+#### `DeferredEventsTest.AsyncRuntimeExecution`
+**Test Intent**: Verify asynchronous multi-threaded deferred event processing.
+
+**Scenario**:
+  - Start thread_safe_fsm worker thread.
+  - Post deferred events from producer thread.
+  - Post trigger event and wait for worker thread to asynchronously cascade replay and reach Completed state.
+
+#### `DeferredEventsTest.ConfigurableDeferredCapacity`
+**Test Intent**: Verify configurable DeferredCapacity template parameter across all runtime wrappers.
+
+### [`test_fsm.cpp`](../tests/backend/cpp/runtime/test_fsm.cpp) (`tests/backend/cpp/runtime/test_fsm.cpp`)
+#### `FsmCoreTest.BasicTransitionsAndIntrospection`
+**Test Intent**: Verify basic synchronous state transitions and compile-time introspection.
+
+**Scenario**:
+  - Define a 3-state machine (Idle -> Running -> Stopped -> Idle).
+  - Verify compile-time type introspection (state_count, transition_count, has_state, has_event).
+  - Dispatch valid events in sequence and verify immediate active state updates.
+  - Dispatch unhandled events and verify that the machine remains in the current state with an unhandled result.
+
+#### `FsmCoreTest.HooksExecutionOrderAndPayloads`
+**Test Intent**: Verify strict lifecycle hook execution order and event payload forwarding.
+
+**Scenario**:
+  - When entering initial state StateA: StateA::on_enter() must be called.
+  - When transitioning StateA -> StateB with EventGotoB{"Hello FSM"}:
+  - 1. StateA::on_exit() is invoked.
+  - 2. CustomAction is executed with the payload.
+  - 3. StateB::on_enter(evt) is invoked with payload parameter.
+
+#### `FsmCoreTest.GuardValidation`
+**Test Intent**: Verify guard predicate rejection, acceptance, and dispatch result statuses.
+
+**Scenario**:
+  - With key != 42: guard returns false, transition is rejected, state remains Locked, status is guard_rejected.
+  - With an unhandled event: status is unhandled, state remains Locked.
+  - With key == 42: guard returns true, transition succeeds, state becomes Unlocked, status is success.
+
+#### `FsmCoreTest.ThreadSafeQueueManualProcessing`
+**Test Intent**: Verify thread_safe_fsm synchronous sending and manual batch processing.
+
+**Scenario**:
+  - Call send() synchronously to apply transition immediately under mutex.
+  - Call enqueue() to push events into thread-safe queue.
+  - Call process_all() to drain and execute queued events deterministically.
+
+#### `FsmCoreTest.ConcurrentMultithreadedWorker`
+**Test Intent**: Verify asynchronous background worker thread handling concurrent event posting.
+
+**Scenario**:
+  - Start worker thread with start_worker().
+  - Launch 10 concurrent producer threads, each posting 100 IncrementEvent events.
+  - Wait for worker thread to process all 1000 events.
+  - Verify final accumulated state count is exactly 1000 with zero race conditions.
+
+#### `FsmCoreTest.DualChannelMachineDualParadigmAndZeroHeap`
+**Test Intent**: Verify dual-mode execution (continuous sampled step + event-driven reactive dispatch) and zero-heap non-polymorphism.
+
+### [`test_hfsm.cpp`](../tests/backend/cpp/runtime/test_hfsm.cpp) (`tests/backend/cpp/runtime/test_hfsm.cpp`)
+#### `HfsmTest.PlantUmlCompositeStateParsing`
+**Test Intent**: Verify hierarchical state machine (HFSM) parsing from PlantUML syntax.
+
+**Scenario**:
+  - Parse PlantUML with nested `state Active { [*] --> Idle ... }` block and top-level transitions.
+  - Verify parent-child relationships (Idle and Processing have parent Active).
+  - Verify composite state properties (is_composite == true, initial_sub_state == Idle).
+  - Verify validation passes with zero errors.
+
+#### `HfsmTest.MermaidCompositeStateParsing`
+**Test Intent**: Verify hierarchical composite state machine parsing from Mermaid syntax.
+
+**Scenario**:
+  - Parse Mermaid `stateDiagram-v2` with `state Session { [*] --> Connected ... }`.
+  - Verify parent-child navigation and initial sub-state assignment for Session.
+  - Validate integrity through FsmValidator.
+
+### [`test_history.cpp`](../tests/backend/cpp/runtime/test_history.cpp) (`tests/backend/cpp/runtime/test_history.cpp`)
+#### `HistoryTest.PlantUmlHistoryTargetParsing`
+**Test Intent**: Verify PlantUML shallow history pseudo-state syntax parsing (`Operating[H]`).
+
+**Scenario**:
+  - Parse PlantUML with `Paused --> Operating[H] : Resume`.
+  - Verify target state is flagged with has_history == true and transition is target_is_history.
+
+#### `HistoryTest.MermaidDeepHistoryTargetParsing`
+**Test Intent**: Verify Mermaid deep history pseudo-state syntax parsing (`Operating[H*]`).
+
+**Scenario**:
+  - Parse Mermaid diagram with `Suspended --> Operating[H*] : Recover`.
+  - Verify target composite state is flagged with has_deep_history == true.
+
+#### `HistoryTest.HistoryCodegenExpansion`
+**Test Intent**: Verify code generation of history guards and sub-state parent metadata.
+
+**Scenario**:
+  - Generate C++20 header for FSM with shallow history.
+  - Verify generated substates contain `parent = "Operating"`.
+  - Verify transition table contains conditional rows guarded by `fsm::history_is<Operating, StepX>`.
+
+#### `HistoryTest.RuntimeHistoryRestoresLastVisitedSubstate`
+**Test Intent**: Verify runtime history recording and exact restoration of the last active sub-state.
+
+**Scenario**:
+  - Enter composite state Operating (sub-state Step1), advance to Step2.
+  - Dispatch Pause event to exit Operating -> Paused (fsm records Operating history as Step2).
+  - Dispatch Resume event to transition to Operating[H] -> verifies Step2 is restored.
+  - Advance to Step3, Pause, and Resume -> verifies Step3 is restored.
+
+#### `HistoryTest.BoundedHistoryStorageCapacity`
+**Test Intent**: Verify bounded compile-time max_history_capacity based on states with parent attribute.
+
+### [`test_internal_transition.cpp`](../tests/backend/cpp/runtime/test_internal_transition.cpp) (`tests/backend/cpp/runtime/test_internal_transition.cpp`)
+#### `InternalTransitionTest.RuntimeInternalTransitionExecutesActionWithoutEntryExit`
+**Test Intent**: Verify internal transitions execute actions without triggering state entry or exit hooks.
+
+**Scenario**:
+  - Enter initial ActiveState (on_enter hook runs).
+  - Dispatch internal transition event (PingEvent).
+  - Verify only the action executes, while on_exit and on_enter hooks are completely bypassed.
+
+#### `InternalTransitionTest.ParserInternalTransitionAndCodegen`
+**Test Intent**: Verify parser recognition of internal transitions and code generation to `fsm::internal_row`.
+
+**Scenario**:
+  - Parse PlantUML syntax `Idle : Ping / ResetWatchdog`.
+  - Verify transition is recorded with TransitionEdgeKind::Internal.
+  - Verify C++ generator outputs `fsm::internal_row<Idle, Ping>::then<ResetWatchdog>`.
+
+### [`test_observer.cpp`](../tests/backend/cpp/runtime/test_observer.cpp) (`tests/backend/cpp/runtime/test_observer.cpp`)
+#### `ObserverTest.SyncFsmObserverHooks`
+**Test Intent**: Verify synchronous observer callbacks receive comprehensive transition metadata.
+
+**Scenario**:
+  - Register observer callback receiving `fsm::transition_info`.
+  - Dispatch external transitions, internal transitions, and unhandled events.
+  - Verify observer receives correct source, target, event name, transition kind (external/internal),
+
+#### `ObserverTest.ThreadSafeFsmObserverHooks`
+**Test Intent**: Verify thread_safe_fsm observer firing asynchronously on background worker thread.
+
+**Scenario**:
+  - Register observer callback protected by mutex.
+  - Post 5 events into async queue.
+  - Wait for worker thread to process queue and verify all 5 transition events were recorded safely.
+
+#### `ObserverTest.ThreadSafeFsmPostAsyncAndUnhandledHandler`
+**Test Intent**: Verify `post_async()` returning `std::future<dispatch_result>` and unhandled handlers.
+
+**Scenario**:
+  - Call `post_async()` and block on `future.get()` for both valid and unhandled events.
+  - Verify unhandled handler is invoked on invalid events.
+
+#### `ObserverTest.ReentrantSendInsideObserverDeadlockFree`
+**Test Intent**: Verify reentrant `send()` calls from inside observer callbacks are deadlock-free.
+
+**Scenario**:
+  - Register observer callback that immediately issues another `send()` event synchronously.
+  - Verify recursive/reentrant lock acquisition completes without deadlock.
+
+### [`test_ring_buffer_overflow.cpp`](../tests/backend/cpp/runtime/test_ring_buffer_overflow.cpp) (`tests/backend/cpp/runtime/test_ring_buffer_overflow.cpp`)
+- *(Executable binary test verification)*
+
+### [`test_spsc_fsm.cpp`](../tests/backend/cpp/runtime/test_spsc_fsm.cpp) (`tests/backend/cpp/runtime/test_spsc_fsm.cpp`)
+#### `SpscFsmTest.CompileTimeIntrospection`
+**Test Intent**: Verify compile-time introspection on spsc_fsm.
+
+#### `SpscFsmTest.BasicProducerConsumerExecution`
+**Test Intent**: Verify basic SPSC execution across distinct producer and consumer threads.
+
+#### `SpscFsmTest.ConcurrentLockFreeReads`
+**Test Intent**: Verify lock-free concurrent reads while consumer executes transitions.
+
+### [`test_spsc_queue.cpp`](../tests/backend/cpp/runtime/test_spsc_queue.cpp) (`tests/backend/cpp/runtime/test_spsc_queue.cpp`)
+#### `SpscRingBufferTest.SingleThreadBasicOps`
+**Test Intent**: Verify single-threaded SPSC ring buffer FIFO semantics and capacity boundaries.
+
+**Scenario**:
+  - Push items until capacity is reached and verify queue reports full.
+  - Attempt to push beyond capacity and verify rejection.
+  - Pop all items and verify exact FIFO order and empty queue status.
+
+#### `SpscRingBufferTest.MultiThreadedConcurrentStress`
+**Test Intent**: Stress-test SPSC ring buffer under high-throughput concurrent multi-threading.
+
+**Scenario**:
+  - One producer thread continuously pushes 100,000 sequenced integers.
+  - One consumer thread continuously pops items into a consumed collection.
+  - Verify all 100,000 items are received in exact sequential order without data races or dropped elements.
+
+#### `SpscRingBufferTest.NonTrivialObjectLifecyclesAndEmplace`
+**Test Intent**: Verify exact constructor and destructor lifecycle management for non-trivial objects.
+
+**Scenario**:
+  - Emplace objects with multi-argument constructors into ring buffer.
+  - Pop objects and verify live instance count updates with exact 1-to-1 parity.
+  - Destroy the ring buffer and verify remaining slotted elements are cleanly destroyed with 0 leaks.
+
+#### `SpscRingBufferTest.SpscRingBufferByteStorageAndDefaultConstructible`
+**Test Intent**: Verify std::byte aligned storage and default constructibility static assertion.
+
+### [`test_thread_safe_stress.cpp`](../tests/backend/cpp/runtime/test_thread_safe_stress.cpp) (`tests/backend/cpp/runtime/test_thread_safe_stress.cpp`)
+#### `ThreadSafeStressTest.HighConcurrency20Threads50kEvents`
+**Test Intent**: Stress-test thread_safe_fsm under intense 20-thread concurrency (50,000 total events).
+
+**Scenario**:
+  - Launch 20 concurrent producer threads, each posting 2,500 mixed external and internal events.
+  - Concurrently run a consumer thread executing `process_all()`.
+  - Verify no deadlocks, segmentation faults, or lost events occur during high-contention locking.
+
+#### `ThreadSafeStressTest.ConcurrentTimedAndImmediateEvents`
+**Test Intent**: Verify thread-safe concurrency mixing immediate posts and delayed timed transitions.
+
+**Scenario**:
+  - Launch 8 threads simultaneously issuing immediate posts and delayed deadline posts.
+  - Wait for timed events to expire and drain.
+  - Verify all events are recorded without race conditions.
+
+### [`test_timed_transitions.cpp`](../tests/backend/cpp/runtime/test_timed_transitions.cpp) (`tests/backend/cpp/runtime/test_timed_transitions.cpp`)
+#### `TimedTransitionsTest.SyncTimedEventDispatch`
+**Test Intent**: Verify synchronous dispatch of compile-time duration timed events (`fsm::after_ms<500>`).
+
+**Scenario**:
+  - Define transition table with `Timeout500ms`.
+  - Dispatch timed event directly and verify transition from Connecting to Disconnected.
+
+#### `TimedTransitionsTest.AsyncPostDelayedPriorityChronologicalOrder`
+**Test Intent**: Verify chronological priority deadline scheduling with `post_delayed()`.
+
+**Scenario**:
+  - Post Step3 (60ms delay), Step2 (30ms delay), and Step1 (5ms delay) in reverse order.
+  - Verify priority queue executes events in strict chronological order: Step1 -> Step2 -> Step3.
+
+#### `TimedTransitionsTest.AsyncReentrantActionSelfPost`
+**Test Intent**: Verify recursive lock safety when actions self-post events to the asynchronous queue.
+
+**Scenario**:
+  - ActionSelfPost is executed on Step1, queries active state, and self-posts Step2 back into the FSM.
+  - Verify no deadlocks or mutex violations occur, reaching StateC smoothly.
+
+### [`test_traits_and_hooks.cpp`](../tests/backend/cpp/runtime/test_traits_and_hooks.cpp) (`tests/backend/cpp/runtime/test_traits_and_hooks.cpp`)
+#### `TraitsAndHooksTest.TypeListAlgorithms`
+**Test Intent**: Verify compile-time type list algorithms and transformations.
+
+**Scenario**:
+  - Validate size, front element extraction, list concatenation, and element presence (contains).
+  - Validate order-preserving deduplication (type_list_unique_t).
+  - Validate conversion to std::variant and std::tuple.
+
+#### `TraitsAndHooksTest.ReflectionAndDemangling`
+**Test Intent**: Verify compile-time name reflection, parent hierarchy querying, and type demangling.
+
+**Scenario**:
+  - Extract names from static member `::name`, member function `.name()`, and fallback type demangling.
+  - Extract event names and verify parent hierarchy relationship for nested composite states.
+
+#### `TraitsAndHooksTest.HookSafeInvocations`
+**Test Intent**: Verify hook detection and safe dispatch across all valid hook arities.
+
+#### `TraitsAndHooksTest.GuardAndActionMultiArityInvocations`
+**Test Intent**: Verify guard and action dispatch with variable argument signatures.
+
+#### `TraitsAndHooksTest.DispatchResultAndObserverPolicies`
+**Test Intent**: Verify dispatch_result statuses, boolean cast semantics, and observer detection traits.
+
+**Scenario**:
+  - Verify is_success(), is_deferred(), is_guard_rejected(), is_unhandled() statuses.
+  - Verify detection of dynamic vs no-op static observers.
+  - Verify compile-time detection of history pseudostates and deferred events across type_list.
+
+#### `TraitsAndHooksTest.DispatchResultTransitionTraceInspection`
+**Test Intent**: Verify transition_trace struct and trace introspection on dispatch_result.
+
+**Scenario**:
+  - Construct dispatch_result with explicit transition_trace.
+  - Verify access to source, target, event, guard, action, and transition_kind.
+  - Verify is_internal() and is_external() query helpers.
+
+#### `TraitsAndHooksTest.LegacyContextPoisonCheck`
+**Test Intent**: Certify at compile-time that legacy v0.3.0 signatures (guard(Context&), action(Context&)) are rejected.
+
+#### `TraitsAndHooksTest.StateNameStaticResolutionConsistency`
+**Test Intent**: Verify static state name resolution and compile-time string reflection.
+
+**Scenario**:
+  - Query get_state_name_static for struct with static constexpr std::string_view name.
+  - Verify fallback demangled name for struct without explicit name member.
+  - Verify target state name is populated in rejected guard dispatch trace.
+
+#### `TraitsAndHooksTest.HistoryIsOverloadAndTypeSafety`
+**Test Intent**: Verify history_is guard helper signature and type safety.
+
+**Scenario**:
+  - Instantiate fsm::history_is<Parent, Sub> guard.
+  - Invoke with multi-channel domain parameters and mock FSM instance.
+  - Verify history matches expected active substate.
+
+#### `TraitsAndHooksTest.ConceptAndScalarSanityCompliance`
+**Test Intent**: Verify C++20 Concept constraints (fsm::Guard and fsm::Action) and scalar type rejection.
+
+**Scenario**:
+  - Prove valid callable functors satisfy fsm::Guard and fsm::Action concepts.
+  - Prove default no_guard and no_action sentinel types satisfy concepts.
+  - Prove primitive scalar types (int, double) are rejected at compile time.
+
+### [`test_zero_alloc_runtime.cpp`](../tests/backend/cpp/runtime/test_zero_alloc_runtime.cpp) (`tests/backend/cpp/runtime/test_zero_alloc_runtime.cpp`)
+#### `ZeroAllocRuntimeTest.StaticRingBufferBasicOps`
+**Test Intent**: Verify boundary conditions, peek inspection, and FIFO ordering for static_ring_buffer.
+
+**Scenario**:
+  - Push items up to capacity 4.
+  - Verify rejection on overflow.
+  - Inspect head item via peek() without removing.
+  - Pop items and verify exact FIFO order.
+
+#### `ZeroAllocRuntimeTest.TrueCompileTimeZeroOverheadSize`
+**Test Intent**: Verify true zero-allocation footprint (sizeof <= 32 bytes) for embedded runtimes.
+
+**Scenario**:
+  - Check compile-time machine size with no_observer policy (no heap vectors or std::function objects).
+  - Dispatch transitions synchronously and verify state progression.
+
+#### `ZeroAllocRuntimeTest.SpscFsmOperations`
+**Test Intent**: Verify spsc_fsm operations with zero dynamic allocations and lock-free SPSC execution.
+
+**Scenario**:
+  - Enqueue events into fixed static queue.
+  - Process events one-by-one via process_one() and in batch via run_until_empty().
+  - Verify state inspection and queue queries.
+
+#### `ZeroAllocRuntimeTest.StaticRingBufferPeekAndClear`
+**Test Intent**: Verify mutable peek inspection and buffer clearing for static_ring_buffer.
+
+**Scenario**:
+  - Modify head item in place via mutable peek() pointer.
+  - Call clear() and verify size becomes 0 and empty() returns true.
+
+#### `ZeroAllocRuntimeTest.SpscFsmQueueOverflowHandling`
+**Test Intent**: Verify deterministic queue overflow rejection in spsc_fsm.
+
+**Scenario**:
+  - Instantiate static SPSC FSM with capacity 2.
+  - Enqueue 2 events until queue_full() is true.
+  - Attempt to enqueue 3rd event and verify enqueue() returns false without exceptions or heap allocation.
+  - Process one event and verify queue accepts subsequent posts.
+
+#### `ZeroAllocRuntimeTest.StaticVectorOperations`
+**Test Intent**: Verify static_vector operations (push, pop, erase, copy, move, bounds).
+
+#### `ZeroAllocRuntimeTest.StaticVectorResourceResetOnEraseAndPopBack`
+**Test Intent**: Verify static_vector RAII resource reset on pop_back and erase.
+
+#### `ZeroAllocRuntimeTest.TrueZeroAllocWithHistoryAndDeferredEvents`
+**Test Intent**: Verify that FSM with History and Deferred Events operates with 100% Zero-Heap storage.
 
 ### [`test_cpp17_standalone.cpp`](../tests/backend/cpp/test_cpp17_standalone.cpp) (`tests/backend/cpp/test_cpp17_standalone.cpp`)
 - *(Executable binary test verification)*

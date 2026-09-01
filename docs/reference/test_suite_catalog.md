@@ -1282,7 +1282,7 @@
 **Scenario**:
   - Instantiate static SPSC FSM with capacity 2.
   - Enqueue 2 events until queue_full() is true.
-  - Attempt to enqueue 3rd event and verify enqueue() returns false without exceptions or heap allocation.
+  - Attempt to post 3rd event and verify post() returns false without exceptions or heap allocation.
   - Process one event and verify queue accepts subsequent posts.
 
 #### `ZeroAllocRuntimeTest.StaticVectorOperations`

@@ -22,3 +22,7 @@ Safety-critical applications (such as aerospace, automotive, and medical robotic
                                              ▼                              ▼
                                      Dead Guard Warning             Counterexample Trace
 ```
+
+---
+
+For full details on interval analysis and model checking capabilities, see [EFSM Interval Analysis](interval_analysis.md) and [Model Checking (LTL/CTL)](model_checking.md).

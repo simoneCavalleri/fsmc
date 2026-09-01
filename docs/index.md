@@ -1,138 +1,208 @@
 # fsmc — Universal State Machine Compiler
 
-**`fsmc`** (Finite State Machine Compiler) is an open-source compiler toolchain that parses statechart models, performs formal verification analysis, and generates deterministic state machine code. 
+**`fsmc`** (Finite State Machine Compiler) is an open-source, format-agnostic compiler and formal verification toolchain for Model-Based statecharts. It bridges high-level modeling specifications—such as OMG SysML v2, W3C SCXML, and Cameo / MagicDraw (XMI)—with verification engines, format transpilers, and deterministic execution runtimes.
 
-Currently, `fsmc` provides a zero-allocation **C++ (C++17 / C++20)** code generator as its primary reference backend. The compiler is built around a decoupled, modular architecture with an Intermediate Representation (`FsmIr`), designed to be easily extended with additional backend targets (such as C, Rust, or hardware description languages) in the future.
-
-It bridges **Model-Based Systems Engineering (MBSE)** specifications—such as OMG SysML v2, W3C SCXML, and Cameo / MagicDraw (XMI)—with **embedded and real-time execution engines**.
-
+The architecture is centered around a strongly typed canonical Intermediate Representation (**`FsmIr`**), decoupling frontend model ingestion from middle-end verification passes and backend target emission.
 
 ---
 
-## Architectural Pipeline
-
-`fsmc` is organized as a modular compiler pipeline consisting of three stages:
+## Architecture Overview
 
 ```mermaid
 flowchart LR
     subgraph Frontend["1. Frontend Ingestion"]
-        SysML["SysML v2 / Cameo XMI"]
+        SysML["OMG SysML v2"]
+        XMI["Cameo / MagicDraw XMI"]
         SCXML["W3C SCXML"]
-        Diagrams["PlantUML / Mermaid / JSON"]
+        Diagrams["PlantUML / Mermaid / DOT / JSON"]
     end
 
-    subgraph MiddleEnd["2. Middle-End and Verification"]
-        IR["Canonical IR (FsmIr AST)"]
-        MC["LTL/CTL Model Checking"]
+    subgraph MiddleEnd["2. Canonical IR & Verification"]
+        IR["Canonical AST (FsmIr)<br/>Partitioned Memory Model"]
+        Passes["Optimization Passes"]
+        SMT["Z3 SMT Invariant Checking"]
+        MC["nuXmv Model Checking (LTL / CTL)"]
         Interval["EFSM Interval Analysis"]
-        Opt["PassManager and Optimizations"]
     end
 
-    subgraph Backend["3. Code Generation and Emitters"]
-        Sync["fsm::fsm (Synchronous)"]
-        SPSC["fsm::spsc_fsm (Lock-Free ISR)"]
-        MPSC["fsm::thread_safe_fsm (Async)"]
+    subgraph Backend["3. Backend Targets & Emitters"]
+        Transpile["Lossless Transpilation<br/>(SysML v2, SCXML, Diagrams)"]
         RTM["Traceability Matrix (RTM)"]
+        CppGen["C++17 / C++20 Runtime Target<br/>(Zero-Heap Reference Backend)"]
     end
-
 
     Frontend --> IR
-    IR --> Opt
-    Opt --> MC
-    Opt --> Interval
-    Opt --> Backend
+    IR --> Passes
+    Passes --> SMT
+    Passes --> MC
+    Passes --> Interval
+    Passes --> Backend
 ```
 
-1. **Frontend Ingestion**: Parses statechart models from OMG SysML v2, W3C SCXML, Cameo (XMI 2.1), PlantUML, Mermaid, Graphviz DOT, and XState JSON into a unified canonical intermediate representation (`FsmIr`).
-2. **Middle-End Analysis & Verification**:
-    - Validates model well-formedness (detects unreachable states, conflicting transitions, and non-deterministic choice points).
-    - Formally verifies safety invariants and temporal properties specified in Linear Temporal Logic (LTL) and Computation Tree Logic (CTL).
-    - Performs interval analysis on numeric variables for Extended Finite State Machines (EFSM).
-3. **Target Code Generation**: Emits header-only C++17 or C++20 state machine code, standalone single-header files with zero external dependencies, or requirement traceability matrices (RTM).
+### Compiler Subsystems
 
+1. **Frontend Ingestion**: Parses statechart models from OMG SysML v2, W3C SCXML, Cameo (XMI 2.1), PlantUML, Mermaid, Graphviz DOT, and XState JSON into the unified `FsmIr` AST.
+2. **Middle-End Analysis & Formal Verification**:
+    - **Structural Passes**: Detects unreachable states, conflicting transitions, deadlocks, and incomplete choice paths.
+    - **SMT Invariant Proving**: Evaluates datapath invariant assertions via Z3.
+    - **Symbolic Model Checking**: Proves temporal safety and liveness formulas specified in Linear Temporal Logic (LTL) and Computation Tree Logic (CTL) via nuXmv.
+    - **EFSM Interval Analysis**: Propagates value bounds over numeric variables and validates input port range contracts.
+3. **Backend Target Emission**:
+    - **Model Transpilation**: Converts models losslessly between supported representation formats.
+    - **Traceability Matrices**: Generates formal Requirement Traceability Matrices (RTM) in CSV and Markdown formats for DO-178C and ISO 26262 audits.
+    - **Target Code Generation**: Emits standalone, zero-heap C++17 or C++20 header files with strict 4-domain memory partitioning (`InPorts`, `OutPorts`, `Registers`, `Services`).
 
 ---
 
-## Quickstart Tutorial
+## Core Capabilities
 
-### 1. Define a State Machine (`mission.sysml`)
+| Capability | Description | Reference Documentation |
+| :--- | :--- | :--- |
+| **Universal Transpilation** | Ingest any supported format and export to any target format (e.g. SysML v2 to SCXML, Cameo to PlantUML). | [Modeling Languages](formal_languages/index.md) |
+| **Formal Verification** | Prove temporal safety properties (LTL/CTL) and datapath invariants at compile time before deployment. | [Verification & Safety](verification_and_safety/index.md) |
+| **Partitioned Memory Model** | Replaces unstructured context objects with 4 segregated domains: `InPorts`, `OutPorts`, `Registers`, and `Services`. | [Core Concepts](concepts/index.md) |
+| **Deterministic Execution** | C++ reference backend operates with 0 bytes heap allocation, 0 virtual tables, and $O(1)$ dispatch time. | [Memory & Real-Time](runtime_api/memory_and_realtime.md) |
+| **Interactive Web Playground** | Ingest, verify, transpile, and simulate statecharts directly in the browser via WebAssembly. | [Web Playground](playground/index.md) |
 
-Here is an example state machine defined in OMG SysML v2 textual notation:
+---
 
-```sysml
-state def AutonomousUavMission {
-    attribute battery_percent : Integer = 100;
-    attribute altitude_m : Integer = 0;
+## Quick Example: Ingestion to Code Execution
 
-    entry; then Preflight;
+### 1. Statechart Definition
 
-    state Preflight {
-        state SensorCalib;
-        state SystemReady;
+Define a state machine using your preferred input format:
 
-        transition calib_done
-            first SensorCalib
-            accept CalibrationOk
-            do ArmMotors
-            then SystemReady;
+=== "OMG SysML v2 (`mission.sysml`)"
+    ```sysml
+    package MissionSystem {
+        state def UavMission {
+            in port has_gps_lock : Boolean;
+            in port battery_percent : Integer { assert constraint { self >= 0 and self <= 100; } }
+            out port motor_active : Boolean;
+            attribute waypoints_completed : Integer = 0;
+
+            entry; then SensorCalib;
+
+            state SensorCalib {
+                transition on CalibrationOk do out.motor_active = true; then SystemReady;
+            }
+            state SystemReady {
+                transition on TakeoffCmd if in.has_gps_lock then Navigating;
+            }
+            state Navigating {
+                transition on LowBattery if in.battery_percent < 20 then ReturnToHome;
+                transition on AreaReached do reg.waypoints_completed += 1; then Navigating;
+            }
+            state ReturnToHome;
+        }
     }
+    ```
 
-    state InFlight {
-        transition low_battery
-            accept LowBatteryEvent
-            do TriggerFailSafe
-            then ReturnToHome;
-    }
+=== "PlantUML (`mission.puml`)"
+    ```plantuml
+    @startuml
+    [*] --> SensorCalib
 
-    state ReturnToHome;
+    SensorCalib --> SystemReady : CalibrationOk / out.motor_active = true
+    SystemReady --> Navigating : TakeoffCmd [in.has_gps_lock]
+    
+    Navigating --> ReturnToHome : LowBattery [in.battery_percent < 20]
+    Navigating --> Navigating : AreaReached / reg.waypoints_completed += 1
+    @enduml
+    ```
 
-    transition takeoff
-        first Preflight
-        accept TakeoffCmd
-        if HasGpsLockGuard
-        do LaunchUav
-        then InFlight;
-}
-```
+=== "W3C SCXML (`mission.scxml`)"
+    ```xml
+    <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="SensorCalib">
+      <state id="SensorCalib">
+        <transition event="CalibrationOk" target="SystemReady"/>
+      </state>
+      <state id="SystemReady">
+        <transition event="TakeoffCmd" cond="in.has_gps_lock" target="Navigating"/>
+      </state>
+      <state id="Navigating">
+        <transition event="LowBattery" cond="in.battery_percent &lt; 20" target="ReturnToHome"/>
+      </state>
+      <state id="ReturnToHome"/>
+    </scxml>
+    ```
 
-### 2. Generate the C++ Header
+=== "Mermaid (`mission.mmd`)"
+    ```mermaid
+    stateDiagram-v2
+        [*] --> SensorCalib
+        SensorCalib --> SystemReady : CalibrationOk
+        SystemReady --> Navigating : TakeoffCmd
+        Navigating --> ReturnToHome : LowBattery
+    ```
 
-Run `fsmc` to verify the model and generate a standalone C++20 header:
+---
 
-```bash
-# Verify invariants and generate standalone single-header C++ code
-fsmc -i mission.sysml -o uav_fsm.hpp --standard 20 --standalone --verify
-```
+### 2. Compilation and Verification via CLI
 
-### 3. Integrate into C++ Application
+The `fsmc` command-line interface provides unified access to all compiler pipeline stages:
 
-Instantiate the generated state machine with your application context:
+=== "Formal Verification"
+    ```bash
+    # Run middle-end verification passes (deadlock, completeness, LTL/CTL model checking)
+    fsmc -i mission.sysml --verify
+    ```
+
+=== "Format Transpilation"
+    ```bash
+    # Transpile SysML v2 to W3C SCXML
+    fsmc -i mission.sysml --format scxml -o mission.scxml
+
+    # Transpile Cameo XMI to PlantUML
+    fsmc -i cameo_model.xml --format puml -o model.puml
+    ```
+
+=== "Requirement Traceability (RTM)"
+    ```bash
+    # Export Requirement Traceability Matrix for DO-178C / ISO 26262 audit packages
+    fsmc -i mission.sysml --export-rtm rtm_matrix.csv
+    ```
+
+=== "C++ Code Generation"
+    ```bash
+    # Generate standalone C++20 single-header state machine
+    fsmc -i mission.sysml -o uav_fsm.hpp --std 20 --standalone
+    ```
+
+---
+
+### 3. Application Integration (C++ Target)
+
+Include the generated header and execute transitions with typed memory domains:
 
 ```cpp
 #include "uav_fsm.hpp"
 #include <iostream>
-
-struct UavContext {
-    int battery_percent = 100;
-    int altitude_m = 0;
-    bool has_gps_lock = true;
-};
-
-// Define clean type alias for the generated state machine
-using UavFsm = fsm::fsm<AutonomousUavMissionTable, UavContext, Preflight>;
+#include <cassert>
 
 int main() {
-    UavContext ctx;
-    UavFsm uav(ctx);
+    using namespace MissionSystem;
 
-    std::cout << "Initial state: " << uav.current_state_name() << "\n";
+    // 1. Initialize State Machine with Partitioned Memory
+    UavMissionRegisters reg{};
+    UavMissionServices srv{};
+    UavMissionFSM fsm(reg, srv);
 
-    // Dispatch events
-    uav.dispatch(CalibrationOk{});
-    std::cout << "State after calibration: " << uav.current_state_name() << "\n";
+    UavMissionInPorts in{.has_gps_lock = true, .battery_percent = 100};
+    UavMissionOutPorts out{};
 
-    uav.dispatch(TakeoffCmd{});
-    std::cout << "State after takeoff: " << uav.current_state_name() << "\n";
+    // 2. Reactive Event Dispatching
+    fsm.dispatch(CalibrationOk{}, in, out, srv);
+    assert(fsm.is_in<SystemReady>());
+    assert(out.motor_active == true);
+
+    fsm.dispatch(TakeoffCmd{}, in, out, srv);
+    assert(fsm.is_in<Navigating>());
+
+    // 3. Continuous Control Loop Step (Sampled Inputs)
+    in.battery_percent = 15; // Low battery condition
+    fsm.step(in, out, srv);  // Evaluates continuous transitions
+    assert(fsm.is_in<ReturnToHome>());
 
     return 0;
 }
@@ -140,21 +210,19 @@ int main() {
 
 ---
 
-## Documentation Structure
+## Documentation Directory
 
-- **[Getting Started](getting_started/index.md)**: Installation instructions via CMake, Conan, vcpkg, or binary builds, followed by CLI options and build system integration guides.
-- **[Step-by-Step Tutorials](tutorials/index.md)**: Progressive 5-step hands-on guides from writing your first model to formal verification and build integration.
-- **[Architecture & Concepts](concepts/index.md)**: Hierarchical state machines (HFSM), orthogonal regions, history states, event dispatch mechanics, and memory models.
-- **[Architectural Design Patterns](concepts/design_patterns.md)**: Practical engineering recipes for embedded ISR sensor pipelines, aerospace mission controllers, network protocol parsers, and multi-FSM coordination.
-- **[Modeling Languages](formal_languages/index.md)**: Syntax reference, examples, and import/export guides for SysML v2, SCXML, Cameo XMI, PlantUML, and Mermaid.
-- **[Verification & Safety](verification_and_safety/index.md)**: Guide to formal model checking (LTL/CTL), EFSM interval analysis, and requirement traceability matrices.
-- **[Runtime C++ API](runtime_api/index.md)**: Complete technical reference for `fsm::fsm`, `fsm::spsc_fsm`, `fsm::thread_safe_fsm`, and transition telemetry.
-- **[Interactive Playground](playground/index.md)**: WebAssembly-powered browser workspace to edit, visualize, simulate, and compile state machines interactively.
-
+- **[Getting Started](getting_started/index.md)**: System requirements, installation methods (CMake FetchContent, Conan, source builds), CLI reference, and build integration.
+- **[Step-by-Step Tutorials](tutorials/index.md)**: Progressive tutorials covering model design, datapath variables, hierarchical states (HFSM), formal verification, and code generation.
+- **[Architecture & Concepts](concepts/index.md)**: Semantics of the canonical IR, MBSE 4-domain memory architecture, and real-time execution guarantees.
+- **[Modeling Languages](formal_languages/index.md)**: Specifications and examples for SysML v2, Cameo XMI, SCXML, PlantUML, Mermaid, DOT, and JSON.
+- **[Verification & Safety](verification_and_safety/index.md)**: Formal verification using Z3 SMT solver, nuXmv model checker, EFSM interval analysis, and RTM generation.
+- **[Runtime C++ API](runtime_api/index.md)**: Synchronous Dual-Paradigm Core, Lock-Free SPSC, Thread-Safe MPSC, and Tracing API reference.
+- **[Compiler Internals](internals/architecture.md)**: Compiler pipeline internals, IR AST specification, pass manager, and contributor guide.
+- **[Interactive Playground](playground/index.md)**: In-browser compiler and simulation environment running via WebAssembly.
 
 ---
 
-## Trademarks & Disclaimers
+## License & Disclaimer
 
-All product names, logos, brands, and registered trademarks (such as SysML®, Cameo®, MagicDraw®, ARM®, FreeRTOS™, STM32®) mentioned in this documentation are property of their respective owners. Their mention is strictly for technical interoperability, compatibility identification, and reference purposes, and does not imply any affiliation, sponsorship, or endorsement.
-
+`fsmc` is an open-source software engineering tool provided **"AS IS" WITHOUT WARRANTY OF ANY KIND**, as specified in the [MIT License](file:///home/simone/dev/github/fsmc/LICENSE) and [`DISCLAIMER.md`](file:///home/simone/dev/github/fsmc/DISCLAIMER.md).

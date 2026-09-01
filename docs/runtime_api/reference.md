@@ -1,468 +1,306 @@
-# Runtime C++ API Reference
+# Full Runtime C++ API Reference
 
-This document describes the core C++ classes, lifecycle hooks, thread-safe asynchronous wrappers, error handlers, and real-time utilities provided by **`fsmc`**.
+This document provides the formal, comprehensive reference for all classes, types, traits, combinators, and containers in the `fsmc` C++ runtime library (`include/fsm/backend/cpp/runtime/`).
 
 ---
 
-## 1. `fsm::fsm<Table, Context, InitialState>` (Synchronous Engine)
+## 1. Core Engine: `fsm::fsm`
 
-
-The synchronous, zero-overhead compile-time finite state machine engine.
-
-### Header
 ```cpp
-#include "fsm/runtime/cpp/fsm.hpp" // or your generated standalone header
+#include "fsm/backend/cpp/runtime/fsm.hpp"
 ```
 
-### Key Characteristics
-- **Zero Heap Allocations**: All state storage uses `std::variant<States...>`. Transitions operate entirely on the stack.
-- **Deterministic Latency**: Transitions compile down to unrolled template folds with zero virtual functions.
-- **Context Injection**: Optional hardware/software context struct passed by reference to state machine constructors, guards, and actions.
+```cpp
+template <
+    typename Table,
+    typename InPorts = no_ports,
+    typename OutPorts = no_ports,
+    typename Registers = no_registers,
+    typename Services = no_services,
+    typename InitialState = typename Table::initial_state,
+    typename Observer = dynamic_observer
+>
+class fsm;
+```
+
+### Type Aliases
+- `table_type`: The underlying `fsm::transition_table<Rows...>`.
+- `in_ports_type`: The read-only input snapshot structure.
+- `out_ports_type`: The single-assignment output structure.
+- `registers_type`: The internal datapath state structure ($z^{-1}$ memory).
+- `services_type`: The abstract injected environment/driver interface.
+- `initial_state`: The root initial state type.
+- `observer_type`: The transition observer callback type.
+
+### Constructors
+- `constexpr fsm() noexcept`: Default constructs state machine in initial state.
+- `constexpr explicit fsm(const Registers& reg) noexcept`: Initializes with initial registers.
+- `constexpr fsm(const Registers& reg, Services& srv) noexcept`: Initializes with registers and bound services.
+- `constexpr fsm(const Registers& reg, Services& srv, Observer obs) noexcept`: Initializes with registers, services, and observer.
 
 ### Member Functions
 
-#### `dispatch(const Event& event) -> dispatch_result`
-Dispatches an event synchronously on the calling thread.
+#### Lifecycle & Execution
+- `dispatch_result step(const InPorts& in, OutPorts& out, Services& srv)`: Evaluates continuous condition transitions.
+- `dispatch_result step(const InPorts& in, OutPorts& out)`: Step overload omitting `Services`.
+- `dispatch_result step()`: Step overload for stateless state machines.
+- `template <typename Event> dispatch_result dispatch(const Event& ev, const InPorts& in, OutPorts& out, Services& srv)`: Synchronously evaluates transitions matching `Event`.
+- `template <typename Event> dispatch_result dispatch(const Event& ev, const InPorts& in, OutPorts& out)`: Dispatch overload omitting `Services`.
+- `template <typename Event> dispatch_result dispatch(const Event& ev)`: Dispatch overload for stateless state machines.
 
-- **Returns**: A `dispatch_result` representing whether the transition fired (`success`), was deferred (`deferred`), rejected by a guard (`guard_rejected`), or had no matching transition (`unhandled`).
-- **Complexity**: O(1) to O(N) compile-time unrolling where N is the number of transitions matching the active state.
+#### State Inspection
+- `template <typename State> [[nodiscard]] constexpr bool is_in() const noexcept`: Returns `true` if active state matches `State`.
+- `template <typename State> [[nodiscard]] constexpr bool is_in_state() const noexcept`: Alias for `is_in<State>()`.
+- `[[nodiscard]] constexpr std::size_t state_index() const noexcept`: Returns 0-based variant index of active state.
+- `[[nodiscard]] constexpr std::string_view current_state_name() const noexcept`: Returns human-readable name of active state.
 
+#### Internal Memory
+- `[[nodiscard]] constexpr Registers& registers() noexcept`: Mutable reference to internal registers.
+- `[[nodiscard]] constexpr const Registers& registers() const noexcept`: Read-only reference to internal registers.
 
-```cpp
-auto res = fsm.dispatch(StartMissionCmd{});
-if (res.is_success()) {
-    std::cout << "Transition executed successfully.\n";
-}
-```
-
-#### `is_in_state<State>() const -> bool`
-Checks at compile time whether the machine is currently in the specified state type.
-
-```cpp
-if (fsm.is_in_state<Cruising>()) {
-    std::cout << "Spacecraft is currently in Cruising state.\n";
-}
-```
-
-#### `current_state_name() const -> std::string_view`
-Returns the human-readable string name of the currently active state.
-
-```cpp
-std::cout << "Active state: " << fsm.current_state_name() << "\n";
-```
-
-#### `context() -> Context&` / `context() const -> const Context&`
-Direct access to the underlying context instance.
-
-> [!WARNING]
-> Direct `context()` access is non-synchronized. When using `thread_safe_fsm`, prefer `with_context()` for thread-safe access under lock.
-
-#### `set_observer(observer_type observer)` / `clear_observer()`
-Attaches a transition observer callback invoked immediately whenever a transition occurs.
-
-```cpp
-fsm.set_observer([](const fsm::transition_info& info) {
-    std::cout << "[TRANSITION] " << info.source 
-              << " --(" << info.event << ")--> " 
-              << info.target
-              << (info.is_internal ? " [INTERNAL]" : "") << "\n";
-});
-```
-
-The `fsm::transition_info` struct contains:
-
-- `source`: `std::string_view` name of the source state.
-- `target`: `std::string_view` name of the target state.
-- `event`: `std::string_view` name of the triggering event.
-- `is_internal`: `bool` indicating if the transition was internal.
+#### Telemetry
+- `void set_observer(Observer obs) noexcept`: Attaches transition observer.
+- `void clear_observer() noexcept`: Detaches active observer.
+- `[[nodiscard]] constexpr const Observer& observer() const noexcept`: Returns observer reference.
 
 ---
 
-## 2. `fsm::dispatch_result` & `fsm::dispatch_status`
+## 2. Transition Table Builders: `fsm::transition_table` & `fsm::row`
 
-Every event dispatch returns a `fsm::dispatch_result` carrying rich status information:
+### `fsm::row<Source, Event, Target, Guard, Action>`
+Declares a single transition edge:
+
+```cpp
+// Format: fsm::row<SourceState, Event, TargetState, GuardPredicate, ActionEffect>
+using MyRow = fsm::row<Idle, EvStart, Active, BatteryOkGuard, ArmMotorsAction>;
+```
+
+- `Source`: Originating state struct.
+- `Event`: Triggering event struct (or `fsm::anonymous_event` for continuous transitions).
+- `Target`: Target state struct, or `fsm::history<ParentState, FallbackState>`.
+- `Guard`: Optional boolean callable (defaults to `fsm::always_true`).
+- `Action`: Optional action callable (defaults to `fsm::no_action`).
+
+### `fsm::on` Fluent Builder
+```cpp
+using MyTable = fsm::transition_table<
+    decltype(fsm::on<EvStart>().from<Idle>().to<Active>().guard<BatteryOk>().action<ArmMotors>())
+>;
+```
+
+### Boolean Guard Combinators
+```cpp
+#include "fsm/backend/cpp/runtime/traits/combinators.hpp"
+
+using CombinedGuard = fsm::and_<GuardA, fsm::or_<GuardB, fsm::not_<GuardC>>>;
+```
+
+---
+
+## 3. Execution Status: `fsm::dispatch_result`
+
+```cpp
+#include "fsm/backend/cpp/runtime/dispatch_result.hpp"
+```
 
 ```cpp
 enum class dispatch_status : std::uint8_t {
     success,        // Transition executed successfully
-    deferred,       // Event was postponed via deferred_events directive
+    deferred,       // Event was deferred in current state
     guard_rejected, // Matching transition found, but guard evaluated to false
-    unhandled       // No matching transition defined for current state
+    unhandled       // No transition defined for event in active state
+};
+
+struct dispatch_result {
+    dispatch_status status{dispatch_status::unhandled};
+    std::string_view source_state{};
+    std::string_view target_state{};
+    bool is_internal{false};
+
+    [[nodiscard]] constexpr bool is_success() const noexcept;
+    [[nodiscard]] constexpr bool is_deferred() const noexcept;
+    [[nodiscard]] constexpr bool is_guard_rejected() const noexcept;
+    [[nodiscard]] constexpr bool is_unhandled() const noexcept;
+    [[nodiscard]] constexpr bool is_ok() const noexcept; // is_success() || is_deferred()
+    explicit constexpr operator bool() const noexcept { return is_ok(); }
 };
 ```
 
-### Methods & Traceability
-- `is_success() const noexcept -> bool`: Returns `true` if `status == dispatch_status::success`.
-- `is_deferred() const noexcept -> bool`: Returns `true` if `status == dispatch_status::deferred`.
-- `is_guard_rejected() const noexcept -> bool`: Returns `true` if `status == dispatch_status::guard_rejected`.
-- `is_unhandled() const noexcept -> bool`: Returns `true` if `status == dispatch_status::unhandled`.
-- `is_ok() const noexcept -> bool`: Returns `true` if `is_success() || is_deferred()`.
-- `explicit operator bool() const noexcept`: Implicitly convertible to `bool` (`is_ok()`).
-- `to_string() const noexcept -> std::string_view`: Returns `"success"`, `"deferred"`, `"guard_rejected"`, or `"unhandled"`.
-- `trace`: Optional `fsm::transition_trace` containing `{source, target, event, guard, action, kind}` for non-intrusive logging and black-box telemetry.
-
 ---
 
+## 4. Zero-Heap Storage: `fsm::static_vector<T, Capacity>`
 
-## 3. `fsm::thread_safe_fsm<Table, Context, InitialState>` (Thread-Safe Engine)
-
-An asynchronous, thread-safe wrapper around `fsm::fsm` providing queue-based execution, background worker threads, synchronized context access, and fine-grained error handlers.
-
-### Header
 ```cpp
-#include "fsm/runtime/cpp/thread_safe_fsm.hpp" // or your generated standalone header
+#include "fsm/backend/cpp/runtime/static_vector.hpp"
 ```
 
-### Core Execution Modes
-
-`thread_safe_fsm` supports two complementary execution models:
-
-1. **Background Worker Mode**: Events are queued and processed asynchronously by a dedicated worker thread (`post`, `post_async`).
-2. **Manual Polling Mode**: Events are enqueued without spawning threads (`enqueue`) and drained deterministically by the main/game loop (`process_one`, `process_all`).
-
----
-
-### Synchronous Thread-Safe Dispatch
-
-#### `send(const Event& event) -> dispatch_result`
-Executes a thread-safe synchronous transition on the calling thread:
-
-- Acquires `dispatch_mutex_` exclusively during state evaluation and action execution.
-- Captures transition info and observer notifications in an isolated snapshot.
-- Invokes observers outside the lock to minimize contention.
-- If an action throws, the exception is recorded in `last_exception()`, forwarded to the registered `exception_handler`, and rethrown to the caller.
+A fixed-capacity, stack-allocated sequential container with bounded $O(1)$ operations:
 
 ```cpp
-auto res = async_fsm.send(EmergencyStopCmd{});
-```
-
----
-
-### Asynchronous Worker Mode
-
-#### `post(Event event)`
-Asynchronous fire-and-forget event injection. Automatically ensures the background worker is running.
-If an action throws, the exception is caught, recorded in `last_exception()`, and passed to `exception_handler` without crashing the worker thread.
-
-```cpp
-async_fsm.post(SensorTelemetryEvent{temp, pressure});
-```
-
-#### `post(Event event, Callback&& on_complete)`
-Enqueues an event and executes `on_complete(const dispatch_result&)` outside the lock upon transition completion.
-
-```cpp
-async_fsm.post(ConnectCmd{}, [](const fsm::dispatch_result& res) {
-    std::cout << "Connect finished: " << res.to_string() << "\n";
-});
-```
-
-#### `post_async(Event event) -> std::future<dispatch_result>`
-Enqueues an event and returns a `std::future<dispatch_result>`. Automatically starts the worker so `future.get()` never deadlocks.
-
-```cpp
-auto fut = async_fsm.post_async(CalibrateSensorsCmd{});
-auto result = fut.get(); // Blocks until worker processes the event
-```
-
-#### `post_delayed(Event event, Duration delay)`
-Schedules an event to be dispatched after `delay` has elapsed (e.g. `std::chrono::milliseconds(500)`).
-
-```cpp
-async_fsm.post_delayed(HeartbeatTimeoutEvent{}, std::chrono::seconds(2));
-```
-
----
-
-### Manual Polling Mode (Single-Consumer)
-
-#### `enqueue(Event event)`
-Thread-safely pushes an event into the internal queue **without** auto-starting the worker thread. Rejects new external events if shutdown is in progress.
-
-```cpp
-manual_fsm.enqueue(UserInputEvent{key});
-```
-
-#### `process_one() -> bool`
-Processes a single pending event from the front of the queue in O(1) constant time (backed by `std::deque`).
-
-
-- **Contract**: Single-Consumer Polling Contract (called from the main loop).
-- **Return**: `true` if an event was processed; `false` if queue was empty, background worker was running, or polling was contested.
-
-```cpp
-while (manual_fsm.process_one()) {
-    // Process step-by-step
-}
-```
-
-#### `process_all() -> std::size_t`
-Drains all pending events in the queue, including any cascading self-posted events queued by transition actions.
-
-- **Return**: Total number of events processed.
-
-```cpp
-std::size_t processed = manual_fsm.process_all();
-```
-
----
-
-### Thread-Safe Context Access
-
-#### `with_context(Callable&& callable)`
-Executes `callable(Context&)` under the protection of `dispatch_mutex_`, ensuring serialized, race-free context mutations.
-
-```cpp
-async_fsm.with_context([](NetworkContext& ctx) {
-    ctx.retry_count = 0;
-    ctx.auth_token = "Bearer XYZ";
-});
-```
-
----
-
-### Lifecycle & Shutdown Contract
-
-```cpp
-// 1. Explicitly start background worker
-async_fsm.start_worker();
-
-// 2. Non-blocking asynchronous shutdown request (safe from any thread, including worker actions)
-async_fsm.request_stop();
-
-// 3. Synchronous join and complete event drain (called from owning managing thread)
-async_fsm.stop_worker();
-```
-
-> [!NOTE]
-> **Destruction Ownership Policy**: `thread_safe_fsm` must be owned and destroyed by an external managing thread. If an action running on the worker wishes to terminate the FSM, it calls `request_stop()`. Upon destruction (`~thread_safe_fsm()`), `stop_worker()` automatically joins the thread and drains all remaining events safely before purging queues.
-
----
-
-### Configurable Error & Dispatch Handlers
-
-All handlers are updated atomically under lock. Any in-flight dispatch retains its pre-dispatch handler snapshot; new configurations take effect for subsequent dispatches:
-
-```cpp
-// 1. Unhandled event notification
-async_fsm.set_unhandled_handler([](std::string_view event, std::string_view state) {
-    std::cerr << "[UNHANDLED] Event '" << event << "' ignored in state '" << state << "'\n";
-});
-
-// 2. Guard rejection notification
-async_fsm.set_guard_rejected_handler([](std::string_view event, std::string_view state) {
-    std::cerr << "[GUARD REJECTED] Event '" << event << "' blocked in state '" << state << "'\n";
-});
-
-// 3. Deferred event notification
-async_fsm.set_deferred_handler([](std::string_view event, std::string_view state) {
-    std::cout << "[DEFERRED] Event '" << event << "' postponed in state '" << state << "'\n";
-});
-
-// 4. General dispatch failure hook
-async_fsm.set_dispatch_failure_handler([](std::string_view evt, std::string_view state, fsm::dispatch_status status) {
-    std::cerr << "[FAILURE] Event '" << evt << "' failed with status: " << fsm::to_string(status) << "\n";
-});
-
-// 5. Exception handling & last exception retrieval
-async_fsm.set_exception_handler([](std::exception_ptr ex) {
-    try {
-        if (ex) std::rethrow_exception(ex);
-    } catch (const std::exception& e) {
-        std::cerr << "[EXCEPTION] Action error: " << e.what() << "\n";
-    }
-});
-```
-
----
-
-## 4. Composite Boolean Guards (`and_`, `or_`, `not_`)
-
-`fsmc` supports composable compile-time boolean predicate combinators with recursive short-circuit evaluation:
-
-```cpp
-#include "fsm/runtime/cpp/transition.hpp"
-
-// Conjunction: evaluates G1 && G2 && ...
-using GuardA = fsm::and_<PowerOkGuard, NetworkAvailableGuard>;
-
-// Disjunction: evaluates G1 || G2 || ...
-using GuardB = fsm::or_<ManualOverrideGuard, SafetyClearanceGuard>;
-
-// Inversion: evaluates !G
-using GuardC = fsm::not_<FaultActiveGuard>;
-
-// Nested composite expression: [PowerOk && (!Fault || Override)]
-using ComplexGuard = fsm::and_<
-    PowerOkGuard,
-    fsm::or_<fsm::not_<FaultActiveGuard>, ManualOverrideGuard>
->;
-```
-
----
-
-## 5. Deferred Events & History Resolution
-
-### Deferred Events
-States configured with `deferred_events: [EventA, EventB]` postpone matching events instead of dropping them. When transitioning to a new active state, deferred events are systematically replayed in FIFO order:
-
-```cpp
-std::size_t count = fsm.deferred_count();
-fsm.clear_deferred_events();
-```
-
-### History Pseudostates
-- **Shallow History (`[H]`)**: Restores the most recently active direct sub-state of a composite state.
-- **Deep History (`[H*]`)**: Recursively restores the entire active sub-state hierarchy down to leaf states.
-
----
-
-## 6. `fsm::spsc_ring_buffer<T, Capacity>` (Wait-Free & ISR-Safe)
-
-A lock-free, wait-free Single-Producer Single-Consumer circular queue designed for hard real-time systems and hardware **Interrupt Service Routines (ISR)**:
-
-### Guarantees
-- **Wait-Free Operations**: Both `push` and `pop` execute in O(1) constant time with zero locks and zero system calls.
-- **Cacheline Aligned**: Head and Tail atomic indices reside on distinct 64-byte cache lines (`alignas(64)`) to completely eliminate false sharing.
-
-- **Zero Dynamic Allocation**: Fixed contiguous ring storage.
-
-```cpp
-#include "fsm/runtime/cpp/spsc_ring_buffer.hpp"
-
-// Capacity must be a power of 2
-fsm::spsc_ring_buffer<SensorReadingEvent, 1024> isr_event_queue;
-
-// Producer (Hardware ISR / Interrupt context):
-extern "C" void USART1_IRQHandler() {
-    SensorReadingEvent event{read_uart_register()};
-    isr_event_queue.push(event); // Wait-free, never blocks
-}
-
-// Consumer (Main Thread / Task):
-void update_loop() {
-    SensorReadingEvent event;
-    while (isr_event_queue.pop(event)) {
-        fsm.dispatch(event);
-    }
-}
-```
-
----
-
-## 7. `fsm::static_ring_buffer<T, Capacity, Policy>` (Zero-Alloc with Overflow Policies)
-
-A deterministic circular buffer for microcontrollers and embedded bare-metal firmware requiring a static memory footprint with configurable overflow management:
-
-### Header
-```cpp
-#include "fsm/runtime/cpp/static_ring_buffer.hpp"
-```
-
-### Overflow Policies
-```cpp
-enum class OverflowPolicy : std::uint8_t {
-    DropOldest,        ///< Overwrites oldest unconsumed entry when capacity is reached (telemetry/streaming)
-    DropIncoming,      ///< Rejects incoming element when capacity is reached (default)
-    AssertOnOverflow   ///< Asserts/traps execution on overflow (hard real-time safety critical)
+template <typename T, std::size_t Capacity>
+class static_vector {
+public:
+    constexpr bool push_back(const T& value) noexcept;
+    constexpr bool push_back(T&& value) noexcept;
+    constexpr void pop_back() noexcept;
+    constexpr void erase(std::size_t index) noexcept;
+    constexpr void clear() noexcept;
+
+    [[nodiscard]] constexpr T& front() noexcept;
+    [[nodiscard]] constexpr const T& front() const noexcept;
+    [[nodiscard]] constexpr T& back() noexcept;
+    [[nodiscard]] constexpr const T& back() const noexcept;
+    [[nodiscard]] constexpr T& operator[](std::size_t index) noexcept;
+    [[nodiscard]] constexpr const T& operator[](std::size_t index) const noexcept;
+
+    [[nodiscard]] constexpr std::size_t size() const noexcept;
+    [[nodiscard]] constexpr bool empty() const noexcept;
+    [[nodiscard]] constexpr bool full() const noexcept;
+    [[nodiscard]] static constexpr std::size_t capacity() noexcept;
 };
 ```
 
-### Usage
+---
+
+## 5. Lock-Free SPSC Engine: `fsm::spsc_fsm`
+
 ```cpp
-// Drop oldest on overflow (telemetry buffer)
-fsm::static_ring_buffer<EventVariant, 32, fsm::OverflowPolicy::DropOldest> telemetry_queue;
-telemetry_queue.push(SensorReadingEvent{42.0f});
+#include "fsm/backend/cpp/runtime/spsc_fsm.hpp"
+```
 
-// Drop incoming on overflow (default)
-fsm::static_ring_buffer<EventVariant, 16, fsm::OverflowPolicy::DropIncoming> command_queue;
-bool accepted = command_queue.push(CommandEvent{});
+```cpp
+template <
+    typename Table,
+    typename InPorts = no_ports,
+    typename OutPorts = no_ports,
+    typename Registers = no_registers,
+    typename Services = no_services,
+    std::size_t QueueCapacity = 64,
+    typename InitialState = typename Table::initial_state
+>
+class spsc_fsm;
+```
 
-// Retrieve events
-EventVariant ev;
-if (command_queue.pop(ev)) {
-    // Process event
-}
+### Member Functions
+
+#### Producer Context (Wait-Free O(1), ISR-Safe)
+- `template <typename Event> bool post(Event&& ev) noexcept`: Enqueues event. Returns `false` if queue is full.
+- `template <typename Event> bool send(Event&& ev) noexcept`: Fluent alias for `post()`.
+- `template <typename Event> bool enqueue(Event&& ev) noexcept`: FIFO queue push.
+
+#### Consumer Context (RTOS Worker Thread)
+- `bool process_one(const InPorts& in, OutPorts& out, Services& srv) noexcept`: Pops and executes the single oldest event.
+- `std::size_t run_until_empty(const InPorts& in, OutPorts& out, Services& srv) noexcept`: Drains and executes all queued events.
+- `dispatch_result step(const InPorts& in, OutPorts& out, Services& srv) noexcept`: Evaluates continuous condition step.
+
+#### Reader Context (Lock-Free Seqlock)
+- `Registers snapshot_registers() const noexcept`: Captures consistent register snapshot using atomic sequence lock without blocking worker.
+- `std::string_view state_name() const noexcept`: Atomic load of active state name.
+- `template <typename State> bool is_in_state() const noexcept`: Atomic state type query.
+
+---
+
+## 6. Thread-Safe MPSC Engine: `fsm::thread_safe_fsm`
+
+```cpp
+#include "fsm/backend/cpp/runtime/thread_safe_fsm.hpp"
+```
+
+```cpp
+template <
+    typename Table,
+    typename InPorts = no_ports,
+    typename OutPorts = no_ports,
+    typename Registers = no_registers,
+    typename Services = no_services,
+    std::size_t MaxQueueSize = 256,
+    typename MutexPolicy = std::mutex
+>
+class thread_safe_fsm;
+```
+
+### Member Functions
+
+#### Asynchronous Operations
+- `template <typename Event> void post(Event&& ev)`: Asynchronous, non-blocking fire-and-forget push.
+- `template <typename Event, typename Callback> void post(Event&& ev, Callback&& cb)`: Push with completion callback.
+- `template <typename Event> std::future<dispatch_result> post_async(Event&& ev)`: Push returning `std::future<dispatch_result>`.
+- `template <typename Event, typename Rep, typename Period> void post_delayed(Event&& ev, std::chrono::duration<Rep, Period> delay)`: Schedules event to fire after duration.
+
+#### Synchronous & State Queries (Mutex Guarded)
+- `std::string_view current_state_name() const`: Returns active state name under mutex lock.
+- `template <typename State> bool is_in_state() const`: Checks state type under mutex lock.
+- `Registers snapshot_registers() const`: Returns copy of registers under mutex lock.
+- `template <typename Func> void with_registers(Func&& fn)`: Thread-safe callable execution with exclusive access to registers.
+
+---
+
+## 7. Action and Hook Channel Indexes: `fsm::channel_index`
+
+```cpp
+#include "fsm/backend/cpp/runtime/traits/hook_traits.hpp"
+```
+
+Constants identifying argument positions in compile-time multi-channel hook invocations:
+
+```cpp
+namespace fsm {
+
+inline constexpr std::size_t channel_index_event      = 0;
+inline constexpr std::size_t channel_index_src_state  = 1;
+inline constexpr std::size_t channel_index_dst_state  = 2;
+inline constexpr std::size_t channel_index_in_ports   = 3;
+inline constexpr std::size_t channel_index_out_ports  = 4;
+inline constexpr std::size_t channel_index_registers  = 5;
+inline constexpr std::size_t channel_index_services   = 6;
+inline constexpr std::size_t channel_index_fsm_inst   = 7;
+
+} // namespace fsm
 ```
 
 ---
 
-## 8. `fsm::spsc_fsm<Table, Context, QueueCapacity, InitialState>` (Lock-Free & ISR-Safe)
+## 8. C++20 Concepts: `fsm::Guard` and `fsm::Action`
 
-A zero-allocation, Wait-Free O(1) Single-Producer Single-Consumer FSM wrapper designed for Interrupt Service Routines (ISRs), hard real-time tasks, and multi-core embedded systems without locks or heap allocation:
-
-
-### Header
 ```cpp
-#include "fsm/runtime/cpp/spsc_fsm.hpp"
+#include "fsm/backend/cpp/runtime/traits/concepts.hpp"
 ```
 
-### Key Guarantees
-- **Wait-Free O(1) Producer**: `enqueue(Event)` returns in strictly bounded time without acquiring mutexes or spinning on atomics.
-- **Single Dedicated Consumer**: `process_one()` and `run_until_empty()` execute sequentially on the consumer thread.
-- **Lock-Free Context Snapshots**: `snapshot_context()` and `with_context()` utilize an internal seqlock mechanism to guarantee consistent reads without blocking the producer or consumer.
+Under C++20, callable predicates and transition actions are constrained using native concepts:
 
-### Usage
 ```cpp
-// 64-element power-of-two static lock-free ring buffer
-fsm::spsc_fsm<TransitionTable, SystemContext, 64> spsc_machine(ctx);
-
-// ISR Thread (Producer): Wait-Free O(1)
-void EXTI0_IRQHandler() {
-    spsc_machine.enqueue(TickEvent{});
-}
-
-// RTOS Task Thread (Consumer): Deterministic execution
-void Task_ControlLoop() {
-    spsc_machine.run_until_empty();
-}
-
-// Any Reader Thread: Atomic lock-free inspection
-auto state_name = spsc_machine.state_name();
-auto ctx_copy = spsc_machine.snapshot_context();
+template <typename GuardType, typename EventType, typename StateType, typename InPorts, typename Registers, typename Services>
+concept Guard;
 ```
+Matches any functor returning a type convertible to `bool`, accepting any permutation of `(event, state, in, reg, srv)` or parameterless `()`.
+
+```cpp
+template <typename ActionType, typename EventType, typename SrcStateType, typename DstStateType, typename InPorts, typename OutPorts, typename Registers, typename Services>
+concept Action;
+```
+Matches any functor callable with any valid permutation of `(event, src_state, dst_state, in, out, reg, srv)`.
 
 ---
 
+## 9. Compile-Time Metaprogramming Traits
 
-## 9. `fsm::deterministic_timer_manager<MaxTimers>` (Hardware Tick Timer)
-
-A standalone deterministic timer manager for handling `after(...)` and `every(...)` timeout transitions in hard real-time systems without spawning background threads:
-
-### Header
 ```cpp
-#include "fsm/runtime/cpp/deterministic_timer.hpp"
+#include "fsm/backend/cpp/runtime/traits/observer_traits.hpp"
+#include "fsm/backend/cpp/runtime/traits/reflection.hpp"
 ```
 
-### Usage
-```cpp
-// Manage up to 8 concurrent timed transitions
-fsm::deterministic_timer_manager<8> timer_mgr;
-
-// Schedule a 500ms single-shot timer
-timer_mgr.start_timer(1 /* timer_id */, 500 /* duration_ms */, false /* is_periodic */);
-
-// Invoked periodically by the hardware SysTick ISR (e.g. every 1ms)
-void SysTick_Handler() {
-    timer_mgr.tick(1 /* delta_ms */, [](std::uint32_t expired_timer_id) {
-        if (expired_timer_id == 1) {
-            fsm.dispatch(TimeoutEvent{});
-        }
-    });
-}
-```
+- `fsm::count_parent_states_v<StateList>`: Computes exact compile-time count of composite states with substates (bounded history capacity).
+- `fsm::is_substate_of_v<Child, Parent>`: Returns `true` if `Child` defines `static constexpr auto parent` matching `Parent`.
+- `fsm::get_state_name_static<T>()`: Returns compile-time `std::string_view` for state struct `T`.
 
 ---
 
-## 10. Compile-Time Reflection & Type Traits
+## 10. Decomposed Runtime Detail Modules
 
-```cpp
-#include "fsm/runtime/cpp/type_traits.hpp"
+For clean separation of concerns and maximum maintainability, internal engine mechanics are decomposed into isolated headers in `fsm/backend/cpp/runtime/detail/`:
 
-// Extract compile-time demangled event name
-std::string_view name = fsm::event_name<StartCmd>(); // "StartCmd"
-
-// C++20 Context Concept Verification
-template <typename T>
-concept ContextConcept = !std::is_reference_v<T>;
-```
+- **`detail/history_manager.hpp`**: Zero-overhead UML history storage with bounded capacity.
+- **`detail/deferred_manager.hpp`**: Event deferral FIFO queue and cascading replay engine.
+- **`detail/transition_executor.hpp`**: Unrolled compile-time transition fold dispatcher and 4-phase lifecycle runner.
+- **`detail/reentrancy_tracker.hpp`**: Atomic thread ID tracking and depth recursion management.
+- **`detail/notification_dispatcher.hpp`**: Snapshotting and out-of-lock observer callback dispatcher.

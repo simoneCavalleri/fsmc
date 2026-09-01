@@ -1,12 +1,10 @@
 # Tutorial 4: Formal Verification & Model Checking
 
-Traditional software testing relies on unit tests and code coverage. However, in safety-critical, aerospace, automotive, or medical devices, dynamic testing cannot explore all concurrent timing combinations.
-
-In this tutorial, you will learn how **`fsmc`** applies **Formal Methods**:
+In safety-critical systems (aerospace, automotive, medical devices, robotics), `fsmc` provides compile-time formal verification to mathematically prove system properties before execution:
 
 - Verifying graph invariants (**Deadlock**, **Livelock**, **Reachability**).
-- Specifying temporal logic properties (**LTL** and **CTL**).
-- Performing **EFSM Interval Analysis** to detect dead guard branches.
+- Specifying and checking temporal logic properties (**LTL** and **CTL**).
+- Performing **EFSM Interval Analysis** to validate numeric variable ranges and detect unreachable guard branches.
 - Generating the **Requirement Traceability Matrix (RTM)** for certification audits (DO-178C / ISO 26262).
 
 ---

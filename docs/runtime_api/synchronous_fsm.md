@@ -1,233 +1,217 @@
-# `fsm::fsm` (Synchronous Core Engine)
+# Synchronous Core Engine (`fsm::fsm`)
 
-`fsm::fsm<TransitionTable, Context, InitialState, Observer>` is the core synchronous execution engine of `fsmc`. It provides deterministic, zero-heap, compile-time unrolled finite state machine execution.
+`fsm::fsm` is the foundational execution engine of `fsmc`. It executes state transitions directly on the caller's stack with **zero dynamic memory allocation**, **zero virtual table overhead**, and deterministic $O(1)$ dispatch time.
+
+> [!NOTE]
+> For the universal building blocks shared across all execution engines (States, Events, 4-Domain Memory, Guard & Action signatures, and History), see the **[Universal Runtime Fundamentals](core_concepts.md)** chapter.
 
 ---
 
-## Class Template Synopsis
+## 1. Synchronous Execution Model
 
-```cpp
-namespace fsm {
+When invoking `dispatch()` or `step()` on `fsm::fsm`:
 
-template <
-    typename Table,
-    typename Context = no_context,
-    typename InitialState = typename Table::initial_state,
-    typename Observer = null_observer
->
-class fsm {
-public:
-    using table_type    = Table;
-    using context_type  = Context;
-    using state_type    = InitialState;
-    using observer_type = Observer;
+1. **Stack Execution**: Transition logic, guard evaluation, and action execution run synchronously within the caller's execution thread.
+2. **Deterministic Run-to-Completion (RTC)**: The state transition completes entirely before the function call returns.
+3. **Zero Queue Overhead**: No dynamic heap allocations or asynchronous queue latencies.
 
-    // Constructors
-    constexpr fsm() noexcept;
-    constexpr explicit fsm(Context& ctx) noexcept;
-    constexpr fsm(Context& ctx, Observer obs) noexcept;
-
-    // Event Dispatch
-    template <typename Event>
-    constexpr dispatch_result dispatch(const Event& event);
-
-
-    template <typename Event>
-    constexpr dispatch_result dispatch(Event&& event);
-
-    // State Inspection
-    template <typename State>
-    [[nodiscard]] constexpr bool is_in_state() const noexcept;
-
-    [[nodiscard]] constexpr std::size_t state_index() const noexcept;
-    [[nodiscard]] constexpr std::string_view current_state_name() const noexcept;
-
-    // Context Accessors
-    [[nodiscard]] constexpr Context& context() noexcept;
-    [[nodiscard]] constexpr const Context& context() const noexcept;
-
-    // Observer Attachment
-    void set_observer(Observer observer) noexcept;
-    [[nodiscard]] constexpr const Observer& observer() const noexcept;
-};
-
-} // namespace fsm
+```
+Caller Thread ──► fsm.dispatch(Event, in, out)
+                       │
+                       ├─► 1. Evaluate Transition Guard(s)
+                       ├─► 2. Execute on_exit(SourceState)
+                       ├─► 3. Execute Transition Action(s)
+                       ├─► 4. Mutate State Variant & Execute on_enter(TargetState)
+                       ▼
+Caller Thread ◄── Returns dispatch_result
 ```
 
 ---
 
-## Lifecycle Hooks & Hook Detection
+## 2. Reactive `dispatch()` vs Periodic `step()`
 
-`fsmc` uses compile-time SFINAE duck-typing (`hook_traits.hpp`) to invoke state lifecycle callbacks only when they are implemented. You never need to inherit from base classes or implement dummy methods.
+`fsm::fsm` provides two primary execution methods tailored for real-time control systems:
 
-### 1. State Entry Hooks (`on_entry`)
-Invoked immediately upon entering a state.
-```cpp
-struct SystemReady {
-    // Signature option 1: Context + Event
-    template <typename Event>
-    void on_entry(MyContext& ctx, const Event& ev) {
-        ctx.log_entry("SystemReady");
-    }
-
-    // Signature option 2: Context only
-    void on_entry(MyContext& ctx) {
-        ctx.power_on_indicators();
-    }
-
-    // Signature option 3: No parameters
-    void on_entry() {
-        hardware_gpio_high(PIN_LED_GREEN);
-    }
-};
-```
-
-### 2. State Exit Hooks (`on_exit`)
-Invoked immediately prior to leaving a state.
-```cpp
-struct ArmingMotors {
-    void on_exit(MyContext& ctx) {
-        ctx.reset_arming_timer();
-    }
-};
-```
-
-### 3. Transition Guards (`guard`)
-Guards are boolean predicates that determine if a candidate transition is legally allowed to execute. If a guard returns `false`, the engine evaluates subsequent matching rows or marks the event as `guard_rejected`.
-```cpp
-// Struct Functor Guard
-struct HasSufficientBattery {
-    bool operator()(const MyContext& ctx, const TakeoffCmd& cmd) const noexcept {
-        return ctx.battery_percent >= 30 && cmd.minimum_alt > 0;
-    }
-};
-
-// Or free function / lambda
-constexpr auto is_safe_altitude = [](const MyContext& ctx, const auto&) noexcept {
-    return ctx.altitude_m >= 10;
-};
-```
-
-### 4. Transition Actions (`action`)
-Side effects executed strictly when the transition fires, after the source state's `on_exit` and before the target state's `on_entry`.
-```cpp
-struct LogAndArmActuators {
-    void operator()(MyContext& ctx, const TakeoffCmd& cmd) const noexcept {
-        ctx.arming_timestamp = get_hardware_microseconds();
-        actuator_driver_enable();
-    }
-};
-```
+| Method | Execution Trigger | Primary Purpose | Emitted Trigger Type |
+| :--- | :--- | :--- | :--- |
+| **`dispatch(event, ...)`** | Discrete external event | Processes command triggers, sensor threshold interrupts, or network messages | Typed `Event` struct |
+| **`step(...)`** | Periodic sampled tick (e.g. 1 kHz control loop) | Evaluates continuous threshold guards directly against `InPorts` | `fsm::anonymous_event` |
 
 ---
 
-## Hierarchical HFSM & Advanced Features
+## 3. Complete End-to-End Control Application
 
-### 1. Nested Hierarchical States & Exit/Entry Cascades
-When transitioning between states in different hierarchy levels, `fsm::fsm` executes the Least Common Ancestor (LCA) exit/entry sequence:
+Here is a complete, self-contained C++ program showcasing the synchronous engine running an industrial motor controller with sensor snapshots, actuator buffers, internal persistent memory, and driver services:
 
-1. Exit source sub-state (`on_exit`).
-2. Exit source parent state (`on_exit`).
-3. Execute transition `action`.
-4. Enter target parent state (`on_entry`).
-5. Enter target sub-state (`on_entry`).
-
-### 2. Shallow History (`[H]`) and Deep History (`[H*]`)
-- **Shallow History `[H]`**: Remembers the most recently active direct sub-state of a composite state.
-- **Deep History `[H*]`**: Recursively restores the entire nested leaf state configuration across multi-level hierarchies.
-
-### 3. Internal Transitions (`transition_kind::internal`)
-Executes an action without exiting or re-entering the current state (`on_exit` and `on_entry` are bypassed).
-```cpp
-// Internal transition on telemetry ping: keeps state active, updates heartbeat counter
-fsm::internal_row<Navigating, TelemetryPing>::then<UpdateHeartbeatAction>
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Active : EvStart [BatteryOkGuard] / StartMotorAction()
+    Active --> Idle : EvStop / StopMotorAction()
+    Active --> Fault : [OverheatGuard] (Continuous step evaluation)
 ```
-
-### 4. Choice Pseudo-States
-Enforces conditional dynamic branching where multiple exit transitions from a choice point are evaluated in strict priority order against resolved guards.
-
----
-
-## Zero-Overhead & Memory Model Proof
-
-### Memory Layout
-For an FSM without observers, the memory footprint of `fsm::fsm` is strictly:
-```
-sizeof(fsm) = sizeof(Context*) + sizeof(state_id_t)
-```
-On a 32-bit microcontroller (ARM Cortex-M), this is only **5 to 8 bytes**.
-
-
-### Assembly Optimization
-Because transition matching is performed via compile-time fold expressions over typed rows, modern compilers (GCC 11+, Clang 13+, MSVC 19.29+) eliminate all intermediate templates and optimize the dispatch into a single direct jump table:
-
-```nasm
-; GCC -O3 disassembly for fsm.dispatch(TakeoffCmd{})
-dispatch_takeoff:
-    movzx   eax, BYTE PTR [rdi+8]   ; Load active state index
-    cmp     al, 2                   ; Check if in Preflight state
-    jne     .L_unhandled            ; Direct branch if not matching
-    mov     rax, QWORD PTR [rdi]    ; Load Context pointer
-    cmp     DWORD PTR [rax+4], 30   ; Guard check: ctx.battery_percent >= 30
-    jl      .L_guard_rejected
-    ; Execute Action inline
-    mov     DWORD PTR [rax+12], 1   ; ctx.motors_armed = true
-    ; Transition to InFlight (State ID = 3)
-    mov     BYTE PTR [rdi+8], 3     ; Update active state index
-    mov     eax, 1                  ; return dispatch_status::success
-    ret
-```
-
----
-
-## Complete Working Example
 
 ```cpp
-#include "uav_fsm.hpp"
 #include <iostream>
+#include <string_view>
+#include <string>
+#include <cassert>
+#include "fsm/backend/cpp/runtime/fsm.hpp"
 
-struct UavContext {
-    int battery_percent{100};
-    int altitude_m{0};
-    bool armed{false};
+// 1. States & Events
+struct Idle   { static constexpr std::string_view name = "Idle";   };
+struct Active { static constexpr std::string_view name = "Active"; };
+struct Fault  { static constexpr std::string_view name = "Fault";  };
+
+struct EvStart {};
+struct EvStop  {};
+
+// 2. Segregated Memory Domains (4-Tuple Model)
+struct MotorInPorts {
+    float battery_percent = 100.0f;
+    float temperature_celsius = 25.0f;
 };
 
-// Define clean type alias for the generated state machine
-using UavFsm = fsm::fsm<AutonomousUavMissionTable, UavContext, Preflight>;
+struct MotorOutPorts {
+    bool motor_enable = false;
+    float target_velocity = 0.0f;
+};
 
+struct MotorRegisters {
+    std::uint32_t cycle_counter = 0;
+};
+
+struct MotorServices {
+    void log_info(std::string_view msg) {
+        std::cout << "[LOG INFO] " << msg << "\n";
+    }
+};
+
+// 3. Guards and Action Functors (C++20 Concept Compliant)
+struct BatteryOkGuard {
+    bool operator()(const MotorInPorts& in) const noexcept {
+        return in.battery_percent >= 20.0f;
+    }
+};
+
+struct OverheatGuard {
+    bool operator()(const MotorInPorts& in) const noexcept {
+        return in.temperature_celsius > 85.0f;
+    }
+};
+
+struct StartMotorAction {
+    void operator()(const EvStart&, const MotorInPorts& in, MotorOutPorts& out, MotorRegisters& reg, MotorServices& srv) const {
+        out.motor_enable = true;
+        out.target_velocity = 1500.0f;
+        reg.cycle_counter += 1;
+        srv.log_info("Motors started with battery at " + std::to_string(in.battery_percent) + "%");
+    }
+};
+
+struct StopMotorAction {
+    void operator()(MotorOutPorts& out, MotorServices& srv) const {
+        out.motor_enable = false;
+        out.target_velocity = 0.0f;
+        srv.log_info("Motors stopped.");
+    }
+};
+
+// 4. Transition Table Definition
+using MotorTable = fsm::transition_table<
+    // Event-driven transitions:
+    fsm::row<Idle,   EvStart, Active>::when<BatteryOkGuard>::then<StartMotorAction>,
+    fsm::row<Active, EvStop,  Idle>::then<StopMotorAction>,
+    // Continuous sampled threshold transition (evaluated in step()):
+    fsm::row<Active, fsm::anonymous_event, Fault>::when<OverheatGuard>
+>;
+
+using MotorFSM = fsm::fsm<MotorTable, MotorInPorts, MotorOutPorts, MotorRegisters, MotorServices>;
+
+// 5. Execution Application
 int main() {
-    UavContext ctx;
-    UavFsm uav(ctx);
+    MotorRegisters reg{};
+    MotorServices srv;
+    MotorFSM fsm(reg, srv);
 
-    // Initial state check
-    std::cout << "Initial: " << uav.current_state_name() << "\n";
+    MotorInPorts in{.battery_percent = 85.0f, .temperature_celsius = 28.0f};
+    MotorOutPorts out{};
 
-
-    // Attach non-intrusive trace observer
-    uav.set_observer([](const fsm::transition_info& info) {
-        std::cout << "[TRACE] " << info.source << " -> " << info.target 
-                  << " (Event: " << info.event << ", Status: " 
-                  << to_string(info.status) << ")\n";
-    });
-
-    // 1. Dispatch calibration event
-    auto r1 = uav.dispatch(CalibrationOk{});
-    if (r1.is_success()) {
-        std::cout << "Calibrated. Active state: " << uav.current_state_name() << "\n";
+    // 1. Reactive Event Dispatching
+    fsm::dispatch_result res = fsm.dispatch(EvStart{}, in, out);
+    if (res.is_success()) {
+        std::cout << "Transitioned to: " << fsm.current_state_name() << "\n";
+        assert(out.motor_enable == true);
     }
 
-    // 2. Dispatch takeoff command
-    auto r2 = uav.dispatch(TakeoffCmd{});
-    if (r2.is_success()) {
-        std::cout << "In Flight. Motors Armed: " << std::boolalpha << ctx.armed << "\n";
+    // 2. Continuous Sampled Step (Evaluates continuous threshold transitions)
+    in.temperature_celsius = 92.0f; // Overheating condition
+    fsm.step(in, out);
+    if (fsm.is_in<Fault>()) {
+        std::cout << "Thermal protection triggered! State: " << fsm.current_state_name() << "\n";
     }
 
-    // 3. Inspect transition trace metadata
-    if (r2.trace.has_value()) {
-        std::cout << "Fired transition from " << r2.trace->source 
-                  << " to " << r2.trace->target << "\n";
-    }
-
+    // 3. State & Register Introspection
+    std::cout << "Total cycles executed: " << fsm.registers().cycle_counter << "\n";
     return 0;
 }
 ```
+
+---
+
+## 4. Parameter Injection Styles
+
+Depending on whether your state machine uses I/O ports or injected services, `fsmc` supports three call styles:
+
+### Style A: Call-Site I/O Injection (Latching Pattern)
+Pass inputs snapshot and output write buffer at every cycle:
+
+```cpp
+MotorInPorts in = read_sensors();
+MotorOutPorts out{};
+
+fsm.dispatch(EvStart{}, in, out); // Evaluates transition and populates out
+commit_actuators(out);
+```
+
+### Style B: Constructor-Bound Services (Omit `srv` at Call Site)
+If `Services&` was passed during construction (`fsm(reg, srv)`), you can omit `srv` at call sites:
+
+```cpp
+MotorFSM fsm(reg, srv);
+
+// InPorts and OutPorts passed per cycle; srv is used from constructor binding
+fsm.dispatch(EvStart{}, in, out);
+fsm.step(in, out);
+```
+
+### Style C: Stateless / Minimal State Machine (No Ports, No Services)
+For pure control flow with `fsm::no_ports` and `fsm::no_services`:
+
+```cpp
+using SimpleFSM = fsm::fsm<SimpleTable>;
+
+SimpleFSM fsm;
+fsm.dispatch(EvStart{});
+fsm.step();
+```
+
+---
+
+## 5. Temporary Stack Buffer Semantics for Single-Argument `dispatch(event)`
+
+If your state machine defines custom `InPorts` and `OutPorts`, but you invoke the shorthand single-argument `fsm.dispatch(event)`:
+
+1. **`InPorts`**: Constructs a temporary default-initialized `InPorts{}` on the stack for the duration of the call.
+2. **`OutPorts`**: Constructs a temporary `OutPorts{}` on the stack. Actions will write to it, but **the output values will be discarded when `dispatch()` returns**.
+3. **`Services`**: Automatically reuses the service bound at construction (`fsm(reg, srv)`).
+
+> [!IMPORTANT]
+> **Capturing Actuator Outputs**: If transition actions write actuator commands to `OutPorts`, always pass your output buffer `fsm.dispatch(event, in, out)` so your application can read and commit the results to hardware.
+
+---
+
+## 6. Next Steps
+- For asynchronous, lock-free ISR event ingestion, see **[Lock-Free SPSC Engine (`fsm::spsc_fsm`)](spsc_fsm.md)**.
+- For multi-threaded active object queues and timers, see **[Thread-Safe MPSC Engine (`fsm::thread_safe_fsm`)](thread_safe_fsm.md)**.
+- For complete method signatures and traits, see the **[Full Runtime API Reference](reference.md)**.

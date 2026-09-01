@@ -354,7 +354,7 @@ fsm::transition<Connecting, Timeout500ms, Disconnected, OnTimeoutAction>
 
 ### Asynchronous Deadline Scheduling (`thread_safe_fsm`)
 ```cpp
-fsm::thread_safe_fsm<MyTable, MyContext> sm(ctx);
+fsm::thread_safe_fsm<MyTable, MyInPorts, MyOutPorts, MyRegisters, MyServices> sm(reg, srv);
 sm.start_worker();
 
 // Schedule delayed events executed by worker in strict chronological priority:
@@ -403,10 +403,10 @@ When generating C++ code, `fsmc` generates stub definitions only for atomic pred
 ### C++ Guard Signature (Predicates)
 ```cpp
 struct ValidClearanceGuard {
-    [[nodiscard]] constexpr bool operator()(const AuthorizeCmd& evt,
-                                            const auto& src_state,
-                                            const MissionContext& ctx) const noexcept {
-        return ctx.flight_clearance_granted;
+    [[nodiscard]] constexpr bool operator()(const AuthorizeCmd& cmd,
+                                            const MissionInPorts& in,
+                                            const MissionRegisters& reg) const noexcept {
+        return cmd.is_valid() && in.flight_clearance_granted;
     }
 };
 ```
@@ -414,11 +414,12 @@ struct ValidClearanceGuard {
 ### C++ Action Signature
 ```cpp
 struct DeploySolarPanelsAction {
-    constexpr void operator()(const AltitudeReachedEvent& evt,
-                              auto& src_state,
-                              auto& dst_state,
-                              MissionContext& ctx) const {
-        ctx.solar_panels_deployed = true;
+    void operator()(MissionOutPorts& out,
+                    MissionRegisters& reg,
+                    MissionServices& srv) const {
+        out.solar_panels_deployed = true;
+        reg.deployment_cycle += 1;
+        srv.notify_ground_station("Solar panels deployed");
     }
 };
 ```

@@ -110,7 +110,7 @@ In hard real-time and safety-critical embedded systems, operating system backgro
 `fsmc` provides `fsm::deterministic_timer_manager<MaxTimers>`, an entirely synchronous, bounded, stack/BSS-allocated timer manager:
 
 ```cpp
-#include "fsm/runtime/cpp/deterministic_timer.hpp"
+#include "fsm/backend/cpp/runtime/deterministic_timer.hpp"
 
 // Allocate fixed 16-timer manager (0 heap allocations)
 fsm::deterministic_timer_manager<16> timers;

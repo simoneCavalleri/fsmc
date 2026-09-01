@@ -24,6 +24,7 @@ The IR subsystem is organized in modular, single-responsibility header files und
 | [`deterministic_id.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/deterministic_id.hpp) | Deterministic 64-bit FNV-1a canonical ID generator (`compute_deterministic_id`). |
 | [`state_kind.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/state_kind.hpp) | `StateKind` structural classification enum and string serializers. |
 | [`transition_edge_kind.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/transition_edge_kind.hpp) | `TransitionEdgeKind` edge semantics (`External`, `Internal`, `Local`). |
+| [`port_definition.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/port_definition.hpp) | Typed MBSE input/output ports (`PortDefinition`, `PortDirection`, `min_value`, `max_value`, constraints). |
 | [`signal_definition.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/signal_definition.hpp) | Typed signals, payload attributes (`SignalAttribute`), and predicate validators. |
 | [`variable_definition.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/variable_definition.hpp) | State variables (`VariableDefinition`) with `physical_unit`, `VariableTypeKind`, and SMT domains. |
 | [`action.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/action.hpp) | Action invocation signatures (`ActionSignature`) and structured assignments. |
@@ -45,8 +46,9 @@ The IR subsystem is organized in modular, single-responsibility header files und
 | `initial_state_id` / `initial_state` | `std::string` | Identifier or name of the root initial state. |
 | `states` | `std::vector<StateNode>` | Ordered collection of all state nodes in the graph. |
 | `transitions` | `std::vector<TransitionEdge>` | Ordered collection of all directed transition edges. |
+| `ports` | `std::vector<PortDefinition>` | Typed `InPorts` / `OutPorts` with formal domain range contracts (`min_value`, `max_value`, `constraint`). |
 | `signals` | `std::vector<SignalDefinition>` | Strongly-typed signal events with optional payload parameters and validators. |
-| `variables` | `std::vector<VariableDefinition>` | State variables with types, units, initial values, and bounded range domains (EFSM). |
+| `variables` | `std::vector<VariableDefinition>` | State variables (internal `Registers`) with types, units, initial values, and SMT bounds (EFSM). |
 | `properties` | `std::vector<FormalProperty>` | Formal temporal logic properties (LTL/CTL, Invariants, Safety/Liveness). |
 | `events` | `std::vector<EventModel>` | Event identifiers recognized by the machine. |
 | `guards` | `std::vector<GuardModel>` | Guard predicate identifiers evaluated by transition conditions. |
@@ -115,7 +117,34 @@ Represents a directed transition between states or pseudostates, with full suppo
 
 ---
 
-### 1.4 `FormalProperty` & Temporal Logic AST (LTL / CTL)
+### 1.4 `PortDefinition` & MBSE Domain Contracts (`port_definition.hpp`)
+
+`PortDefinition` represents typed input and output ports conforming to OMG SysML v2 and MBSE specifications:
+
+```cpp
+enum class PortDirection : std::uint8_t { In, Out, InOut };
+
+struct PortDefinition {
+    std::string name;
+    std::string type{"float"};
+    VariableTypeKind type_kind{VariableTypeKind::Float};
+    PortDirection direction{PortDirection::In};
+    std::optional<double> min_value;   // Lower range contract bound
+    std::optional<double> max_value;   // Upper range contract bound
+    std::string constraint;            // Formal assert constraint (e.g. "self >= 0.0 and self <= 100.0")
+    std::string default_value;
+    std::optional<std::string> physical_unit;
+    std::string description;
+};
+```
+
+#### MBSE 4-Domain Mapping:
+- **`direction == PortDirection::In`**: Mapped to the read-only `InPorts` domain structure with contract assertion verification (`validate_contracts()`).
+- **`direction == PortDirection::Out`**: Mapped to the single-assignment `OutPorts` domain structure.
+
+---
+
+### 1.5 `FormalProperty` & Temporal Logic AST (LTL / CTL)
 Enables formal verification via Model Checkers (nuXmv, Spin, Z3):
 
 ```cpp
@@ -141,7 +170,7 @@ struct FormalProperty {
 
 ---
 
-### 1.5 State Variables & Physical Units (`variable_definition.hpp`)
+### 1.6 State Variables & Physical Units (`variable_definition.hpp`)
 ```cpp
 enum class VariableTypeKind : std::uint8_t {
     Integer, Float, Boolean, String, Custom
@@ -228,10 +257,26 @@ Standby --> Navigating : StartMission [HasTelemetry] / ArmNav
   "id": "id_3a91b2c4e",
   "name": "IndustrialController",
   "ns": "industrial",
-  "context_type": "MachineContext",
   "initial_state_id": "Standby",
   "thread_safe": true,
   "satisfies_reqs": ["REQ-SAFETY-01", "REQ-REALTIME-02"],
+  "ports": [
+    {
+      "name": "sensor_temp",
+      "type": "float",
+      "direction": "in",
+      "min_value": -50.0,
+      "max_value": 150.0,
+      "constraint": "self >= -50.0 and self <= 150.0"
+    },
+    {
+      "name": "heater_power",
+      "type": "float",
+      "direction": "out",
+      "min_value": 0.0,
+      "max_value": 100.0
+    }
+  ],
   "variables": [
     {
       "name": "retry_count",

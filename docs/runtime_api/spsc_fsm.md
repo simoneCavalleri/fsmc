@@ -1,179 +1,147 @@
-# `fsm::spsc_fsm` (Lock-Free SPSC / ISR-Safe)
+# Lock-Free SPSC Engine (`fsm::spsc_fsm`)
 
-`fsm::spsc_fsm<TransitionTable, Context, QueueCapacity, InitialState>` is a specialized, zero-allocation Single-Producer Single-Consumer FSM execution engine designed for Interrupt Service Routines (ISRs), hard real-time control loops, and multi-core embedded systems.
+`fsm::spsc_fsm` is a zero-allocation, lock-free **Single-Producer Single-Consumer (SPSC)** state machine wrapper.
 
----
-
-## Class Template Synopsis
-
-```cpp
-namespace fsm {
-
-template <
-    typename Table,
-    typename Context = no_context,
-    std::size_t QueueCapacity = 64,
-    typename InitialState = typename Table::initial_state
->
-class spsc_fsm {
-public:
-    using table_type   = Table;
-    using context_type = Context;
-    using state_type   = InitialState;
-
-    static constexpr std::size_t capacity = QueueCapacity;
-
-    // Constructors
-    constexpr spsc_fsm() noexcept;
-    constexpr explicit spsc_fsm(Context ctx) noexcept;
-
-    // Producer Interface: Wait-Free O(1), ISR-Safe (Interrupt Context)
-    template <typename Event>
-    bool enqueue(const Event& ev) noexcept;
-
-    template <typename Event>
-    bool enqueue(Event&& ev) noexcept;
-
-    // Consumer Interface: Sequential Drain (RTOS Task / Control Thread)
-    bool process_one() noexcept;
-    std::size_t run_until_empty() noexcept;
-
-    // Reader Interface: Lock-Free Seqlock Snapshot (Telemetry / UI Thread)
-    [[nodiscard]] std::size_t state_index() const noexcept;
-    [[nodiscard]] std::string_view state_name() const noexcept;
-
-    template <typename State>
-    [[nodiscard]] bool is_in_state() const noexcept;
-
-    [[nodiscard]] Context snapshot_context() const noexcept;
-
-    template <typename Func>
-    void with_context(Func&& fn) const noexcept;
-
-    // Queue Capacity Queries
-    [[nodiscard]] bool is_queue_empty() const noexcept;
-    [[nodiscard]] bool is_queue_full() const noexcept;
-    [[nodiscard]] std::size_t queue_size() const noexcept;
-};
-
-} // namespace fsm
-```
+It is specifically engineered for **Hardware Interrupt Service Routines (ISRs)**, DMA callbacks, and bare-metal/RTOS control loops where mutex locking is unsafe or forbidden due to priority inversion risks.
 
 ---
 
-## Concurrency Architecture & Memory Ordering
+## Architecture Overview
 
 ```mermaid
-flowchart LR
-    subgraph Producer["1. ISR Producer - Wait-Free O(1)"]
-        HW["Hardware Interrupt (NVIC/PLIC)"]
-        Push["Atomic Store Head<br/>memory_order_release"]
-        HW --> Push
-    end
+sequenceDiagram
+    autonumber
+    participant ISR as Hardware ISR (Producer Thread)
+    participant Queue as Lock-Free Ring Buffer (Bounded Capacity)
+    participant Task as RTOS Control Task (Consumer Thread)
+    participant Reader as Telemetry / UI (Reader Thread)
 
-    subgraph RingBuffer["2. Bounded Lock-Free Ring Buffer"]
-        Queue["Static Array (QueueCapacity)<br/>Zero Heap Allocations"]
-    end
+    Note over ISR,Queue: Wait-Free O(1) Ingress
+    ISR->>Queue: post(SensorEvent) [Never blocks, never allocates]
 
-    subgraph Consumer["3. RTOS Task / Consumer Loop"]
-        Pop["Atomic Store Tail<br/>memory_order_release"]
-        Step["fsm::fsm Dispatch Execution"]
-        SeqLock["Update Context via Seqlock<br/>Atomic Sequence Number"]
-        Pop -->|run_until_empty| Step
-        Step --> SeqLock
-    end
+    Note over Queue,Task: Sequential RTC Execution
+    Task->>Queue: process_one(in, out, srv)
+    Note over Task: Drains event & executes fsm::fsm transition
 
-    subgraph Reader["4. Telemetry / Watchdog Task"]
-        Read["snapshot_context()<br/>Non-blocking Read Loop"]
-    end
-
-    Push -->|enqueue| Queue
-    Queue --> Pop
-    SeqLock -.-> Read
+    Note over Task,Reader: Seqlock Lock-Free Snapshot
+    Reader->>Task: snapshot_registers() [Consistent copy without blocking Task]
 ```
 
-
-
-### 1. Wait-Free O(1) Producer (`enqueue`)
-- **No Mutexes, No Locks, No Dynamic Memory**: Executes strictly within a constant number of CPU cycles (O(1)).
-
-- **Safe for Nested Hardware Interrupts**: Can be called directly inside high-frequency UART, SPI, DMA, or timer ISRs (e.g. ARM NVIC, RISC-V PLIC) without causing deadlock or priority inversion.
-- Returns `true` if the event was pushed to the ring buffer, or `false` if the buffer is full.
-
-### 2. Single Consumer Execution (`process_one`, `run_until_empty`)
-- Pops events from the ring buffer and executes state transitions sequentially on the main control thread or RTOS task.
-- Guarantees deterministic state ordering without race conditions.
-
-### 3. Lock-Free Seqlock Snapshot (`snapshot_context`)
-- Protects context reads from other threads (e.g. telemetry, GUI, or watchdog) using atomic sequence counting (`seqlock`).
-- Readers never block or delay the consumer thread.
+- **Producer Context (ISR / DMA)**: Calls `post()` / `enqueue()` in deterministic, wait-free $O(1)$ time.
+- **Consumer Context (RTOS Worker)**: Calls `process_one()` or `run_until_empty()` to execute state transitions sequentially in Run-to-Completion order.
+- **Reader Context (Telemetry / Loggers)**: Calls `snapshot_registers()` to capture consistent register snapshots via an atomic Sequence Lock (seqlock).
 
 ---
 
-## Bare-Metal Real-World Example (STM32 / FreeRTOS)
+## Practical Example: ADC Sensor ISR to Motor Task
 
 ```cpp
-#include "uav_fsm.hpp"
-#include <FreeRTOS.h>
-#include <task.h>
+#include <iostream>
+#include <cassert>
+#include "fsm/backend/cpp/runtime/spsc_fsm.hpp"
 
-// Global static SPSC FSM with 128-element lock-free ring buffer
-struct UavContext {
-    uint32_t battery_mv{14800};
-    int32_t altitude_cm{0};
-    bool failsafe_active{false};
+// 1. Define States and Events
+struct Standby { static constexpr std::string_view name = "Standby"; };
+struct Running { static constexpr std::string_view name = "Running"; };
+struct EStop   { static constexpr std::string_view name = "EStop";   };
+
+struct StartCmd {};
+struct OverheatFault { float temp_c; };
+
+// 2. Define Transition Table
+using MotorTable = fsm::transition_table<
+    fsm::row<Standby, StartCmd,      Running>,
+    fsm::row<Running, OverheatFault, EStop>,
+    fsm::row<EStop,   StartCmd,      Standby>
+>;
+
+// 3. Define Internal Registers
+struct MotorRegisters {
+    std::uint32_t fault_count = 0;
 };
 
-using UavSpscFsm = fsm::spsc_fsm<AutonomousUavMissionTable, UavContext, 128, Preflight>;
+// 4. Instantiate spsc_fsm with QueueCapacity = 64 (must be power of two)
+using SafeMotorFSM = fsm::spsc_fsm<MotorTable, fsm::no_ports, fsm::no_ports, MotorRegisters, fsm::no_services, 64>;
 
-static UavContext g_ctx;
-static UavSpscFsm g_fsm(g_ctx);
-
-
+SafeMotorFSM g_motor_fsm;
 
 // ----------------------------------------------------------------------------
-// 1. Hardware Sensor Interrupt (Producer - Wait-Free O(1))
+// Producer Thread: Simulated Hardware Interrupt Service Routine (ISR)
 // ----------------------------------------------------------------------------
-extern "C" void EXTI15_10_IRQHandler(void) {
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-
-    // Direct ISR event enqueue - never blocks, never allocates heap
-    bool ok = g_fsm.enqueue(LowBatteryEvent{});
-    if (!ok) {
-        // Queue full error handler (e.g., increment dropped telemetry counter)
-    }
-
-    // Clear interrupt flag
-    EXTI->PR = (1 << 13);
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-}
-
-// ----------------------------------------------------------------------------
-// 2. Control Loop RTOS Task (Consumer)
-// ----------------------------------------------------------------------------
-void Task_ControlLoop(void* pvParameters) {
-    while (true) {
-        // Drain all pending events received from hardware ISRs
-        std::size_t processed = g_fsm.run_until_empty();
-
-        // Run cyclic step every 10ms
-        vTaskDelay(pdMS_TO_TICKS(10));
+void on_adc_sensor_interrupt(float measured_temperature) {
+    if (measured_temperature > 90.0f) {
+        // Enqueue event from ISR in Wait-Free O(1) time (no locks, no heap allocations)
+        bool success = g_motor_fsm.post(OverheatFault{measured_temperature});
+        if (!success) {
+            // Queue was full: handle overflow according to safety policy
+        }
     }
 }
 
 // ----------------------------------------------------------------------------
-// 3. Telemetry Broadcast Task (Lock-Free Reader)
+// Consumer Thread: Main Control Loop / RTOS Worker Task
 // ----------------------------------------------------------------------------
-void Task_Telemetry(void* pvParameters) {
-    while (true) {
-        // Take lock-free snapshot without impacting the control loop
-        UavContext snap = g_fsm.snapshot_context();
-        std::string_view state = g_fsm.state_name();
+void rtos_control_task() {
+    // Start the motor
+    g_motor_fsm.post(StartCmd{});
 
-        // Broadcast over radio modem
-        radio_send_telemetry(state.data(), snap.altitude_cm, snap.battery_mv);
+    // Drain and process all pending events from the lock-free queue
+    std::size_t processed_count = g_motor_fsm.run_until_empty();
+    std::cout << "Processed " << processed_count << " events. State: " 
+              << g_motor_fsm.state_name() << "\n"; // Running
 
-        vTaskDelay(pdMS_TO_TICKS(100));
-    }
+    // Simulate sensor interrupt firing
+    on_adc_sensor_interrupt(98.5f);
+
+    // Drain queue again
+    g_motor_fsm.process_one();
+    std::cout << "After ISR fault: State is " << g_motor_fsm.state_name() << "\n"; // EStop
+    assert(g_motor_fsm.is_in_state<EStop>());
+}
+
+// ----------------------------------------------------------------------------
+// Reader Thread: Asynchronous Telemetry / Monitoring (Seqlock)
+// ----------------------------------------------------------------------------
+void telemetry_thread() {
+    // Non-blocking snapshot of internal registers without locking the consumer task
+    MotorRegisters snapshot = g_motor_fsm.snapshot_registers();
+    std::cout << "Telemetry: Total faults recorded = " << snapshot.fault_count << "\n";
+}
+
+int main() {
+    rtos_control_task();
+    telemetry_thread();
+    return 0;
 }
 ```
+
+---
+
+## Producer API Reference
+
+| Method | Latency Guarantee | Description |
+| :--- | :--- | :--- |
+| `bool post(Event&& event)` | Wait-Free $O(1)$ | Enqueues an event into the ring buffer. Returns `false` if full. |
+| `bool send(Event&& event)` | Wait-Free $O(1)$ | Fluent alias for `post()`. |
+| `bool enqueue(Event&& event)` | Wait-Free $O(1)$ | Standard FIFO push operation. |
+| `bool queue_full()` | $O(1)$ | Returns `true` if the circular queue has reached capacity. |
+
+---
+
+## Consumer API Reference
+
+| Method | Description |
+| :--- | :--- |
+| `bool process_one(in, out, srv)` | Pops and executes the single oldest event. Returns `false` if the queue was empty. |
+| `std::size_t run_until_empty(in, out, srv)` | Processes all currently queued events in a loop until the queue is completely drained. |
+| `std::size_t queue_size()` | Returns the current count of queued pending events. |
+
+---
+
+## Reader API Reference (Lock-Free Seqlock)
+
+| Method | Description |
+| :--- | :--- |
+| `Registers snapshot_registers()` | Captures a consistent copy of `Registers` using a sequence lock without mutexes or blocking the worker task. |
+| `std::string_view state_name()` | Returns the name string of the current active state via atomic load. |
+| `bool is_in_state<State>()` | Checks if the machine is currently in the specified `State` type. |

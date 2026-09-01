@@ -1,6 +1,6 @@
 # Quickstart Tutorial
 
-This tutorial walks through creating a complete, production-ready aerospace sub-system state machine from scratch, verifying its safety properties, and embedding it in C++.
+This tutorial walks through creating a complete, production-ready aerospace sub-system state machine from scratch, verifying its safety properties, and embedding it in C++ using **`fsmc` v0.4.0**.
 
 ---
 
@@ -16,15 +16,16 @@ We will model a flight mission state machine with three operating modes:
 
 ## Step 1: Author the State Machine Model
 
-Choose your preferred modeling syntax to define the UAV state machine:
+Choose your preferred modeling syntax to define the UAV state machine with typed I/O ports and internal registers:
 
 === "OMG SysML v2 (`uav_mission.sysml`)"
     ```sysml
     package UavMissionSystem {
         state def UavMissionStatechart {
-            attribute batteryLevel : Real = 100.0;
-            attribute isGpsLocked : Boolean = true;
-            attribute waypointReached : Boolean = false;
+            in port isGpsLocked : Boolean;
+            in port batteryLevel : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
+            out port waypointReached : Boolean;
+            attribute cycleCounter : Integer = 0;
 
             entry; then state SensorCalib;
 
@@ -32,15 +33,16 @@ Choose your preferred modeling syntax to define the UAV state machine:
                 transition on CalibrationOk to SystemReady;
             }
             state SystemReady {
-                transition on TakeoffCmd if isGpsLocked to WaypointNav;
+                transition on TakeoffCmd if in.isGpsLocked to WaypointNav;
             }
             state WaypointNav {
-                transition on AreaReached do waypointReached = true; to HoverPause;
-                transition on LowBatteryEvent if batteryLevel < 20.0 to ReturnToHome;
+                transition on AreaReached do out.waypointReached = true; to HoverPause;
+                transition on LowBatteryEvent if in.batteryLevel < 20.0 to ReturnToHome;
+                transition continuous_low_battery if in.batteryLevel < 20.0 to ReturnToHome;
             }
             state HoverPause {
                 transition on ResumeMissionCmd to WaypointNav;
-                transition on LowBatteryEvent if batteryLevel < 20.0 to ReturnToHome;
+                transition on LowBatteryEvent if in.batteryLevel < 20.0 to ReturnToHome;
             }
             state ReturnToHome {
                 transition on TouchdownEvent to Landed;
@@ -59,74 +61,24 @@ Choose your preferred modeling syntax to define the UAV state machine:
     [*] --> SensorCalib
 
     SensorCalib --> SystemReady : CalibrationOk
-    SystemReady --> WaypointNav : TakeoffCmd [isGpsLocked]
+    SystemReady --> WaypointNav : TakeoffCmd [in.isGpsLocked]
     
-    WaypointNav --> HoverPause : AreaReached / waypointReached=true
-    WaypointNav --> ReturnToHome : LowBatteryEvent [batteryLevel < 20.0]
+    WaypointNav --> HoverPause : AreaReached / out.waypointReached=true
+    WaypointNav --> ReturnToHome : LowBatteryEvent [in.batteryLevel < 20.0]
     
     HoverPause --> WaypointNav : ResumeMissionCmd
-    HoverPause --> ReturnToHome : LowBatteryEvent [batteryLevel < 20.0]
+    HoverPause --> ReturnToHome : LowBatteryEvent [in.batteryLevel < 20.0]
     
     ReturnToHome --> Landed : TouchdownEvent
     Landed --> [*] : ShutdownCmd
     @enduml
     ```
 
-=== "W3C SCXML (`uav_mission.scxml`)"
-    ```xml
-    <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="SensorCalib">
-        <datamodel>
-            <data id="batteryLevel" expr="100.0"/>
-            <data id="isGpsLocked" expr="true"/>
-            <data id="waypointReached" expr="false"/>
-        </datamodel>
-        <state id="SensorCalib">
-            <transition event="CalibrationOk" target="SystemReady"/>
-        </state>
-        <state id="SystemReady">
-            <transition event="TakeoffCmd" cond="isGpsLocked" target="WaypointNav"/>
-        </state>
-        <state id="WaypointNav">
-            <transition event="AreaReached" target="HoverPause">
-                <assign location="waypointReached" expr="true"/>
-            </transition>
-            <transition event="LowBatteryEvent" cond="batteryLevel &lt; 20.0" target="ReturnToHome"/>
-        </state>
-        <state id="HoverPause">
-            <transition event="ResumeMissionCmd" target="WaypointNav"/>
-            <transition event="LowBatteryEvent" cond="batteryLevel &lt; 20.0" target="ReturnToHome"/>
-        </state>
-        <state id="ReturnToHome">
-            <transition event="TouchdownEvent" target="Landed"/>
-        </state>
-        <state id="Landed">
-            <transition event="ShutdownCmd" target="FinalShutdown"/>
-        </state>
-        <final id="FinalShutdown"/>
-    </scxml>
-    ```
-
-=== "Mermaid (`uav_mission.mmd`)"
-    ```mmd
-    stateDiagram-v2
-        [*] --> SensorCalib
-        SensorCalib --> SystemReady: CalibrationOk
-        SystemReady --> WaypointNav: TakeoffCmd [isGpsLocked]
-        WaypointNav --> HoverPause: AreaReached
-        WaypointNav --> ReturnToHome: LowBatteryEvent [batteryLevel < 20.0]
-        HoverPause --> WaypointNav: ResumeMissionCmd
-        HoverPause --> ReturnToHome: LowBatteryEvent [batteryLevel < 20.0]
-        ReturnToHome --> Landed: TouchdownEvent
-        Landed --> [*]: ShutdownCmd
-    ```
-
-
-
 ---
 
-## Step 2: Formal Verification and Analysis
+## Step 2: Formally Verify the State Machine
 
-Before generating any code, run `fsmc` in verification mode to check for reachability, deadlocks, and interval consistency:
+Run `fsmc` with the `--verify` option to run middle-end passes (deadlock detection, choice completeness, interval domain analysis):
 
 ```bash
 fsmc -i uav_mission.sysml --verify
@@ -134,19 +86,11 @@ fsmc -i uav_mission.sysml --verify
 
 Expected output:
 ```text
+[INFO] Running Pass: HierarchyCanonicalizationPass ... OK (0.02ms)
+[INFO] Running Pass: GuardSimplificationPass ... OK (0.01ms)
+[INFO] Running Pass: EFSMDataPathPass ... OK (0.04ms)
+[INFO] Running Pass: ModelSafetyVerifier ... OK (0.03ms)
 ============================================================================
- Formal Model Verification Report: UavMissionStatechart
-============================================================================
- Input File:       uav_mission.sysml
- States:           6
- Total Events:     6
- Transitions:      7
- Choice Nodes:     0
- Deferred Triggers:0
-----------------------------------------------------------------------------
- Diagnostics:
-  (No warnings or errors detected. Model is formally sound!)
-----------------------------------------------------------------------------
  Verification Status: PASSED (Model Sound)
 ============================================================================
 ```
@@ -158,7 +102,7 @@ Expected output:
 Compile the model into a standalone C++20 header with namespace `avionics` and class name `UavMissionFSM`:
 
 ```bash
-fsmc -i uav_mission.sysml -o uav_mission_fsm.hpp --std 20 --namespace avionics --name UavMissionFSM
+fsmc -i uav_mission.sysml -o uav_mission_fsm.hpp --std 20 --standalone --namespace avionics --name UavMissionFSM
 ```
 
 ---
@@ -169,35 +113,42 @@ Create `main.cpp`:
 
 ```cpp
 #include "uav_mission_fsm.hpp"
+#include <cassert>
 #include <iostream>
 
 int main() {
-    // 1. Initialize context struct
-    avionics::UavMissionFSMContext ctx;
-    ctx.batteryLevel = 98.5;
-    ctx.isGpsLocked = true;
+    using namespace avionics;
 
-    // 2. Instantiate zero-allocation synchronous state machine
-    avionics::UavMissionFSM fsm(ctx);
+    // 1. Initialize internal registers and services
+    UavMissionFSMRegisters reg{0};
+    UavMissionFSMObserver obs;
+    UavMissionFSM fsm(reg);
 
+    // 2. Setup I/O port structures
+    UavMissionFSMInPorts in;
+    in.batteryLevel = 98.5;
+    in.isGpsLocked = true;
+    UavMissionFSMOutPorts out;
+
+    assert(in.validate_contracts());
     std::cout << "Current State: " << fsm.current_state_name() << "\n";
     // Output: SensorCalib
 
     // 3. Dispatch calibration completion event
-    fsm.dispatch(avionics::CalibrationOk{});
+    fsm.dispatch(CalibrationOk{}, in, out);
     std::cout << "Current State: " << fsm.current_state_name() << "\n";
     // Output: SystemReady
 
-    // 4. Dispatch takeoff command (guard evaluated against ctx.isGpsLocked)
-    auto result = fsm.dispatch(avionics::TakeoffCmd{});
+    // 4. Dispatch takeoff command (guard evaluated against in.isGpsLocked)
+    auto result = fsm.dispatch(TakeoffCmd{}, in, out);
     if (result.is_success()) {
         std::cout << "Takeoff successful. Current State: " << fsm.current_state_name() << "\n";
         // Output: WaypointNav
     }
 
-    // 5. Simulate battery drop in context and trigger emergency transition
-    ctx.batteryLevel = 14.2; // Critical level (< 20.0)
-    auto safe_res = fsm.dispatch(avionics::LowBatteryEvent{});
+    // 5. Simulate battery drop in InPorts and evaluate continuous sampled step
+    in.batteryLevel = 14.2; // Critical level (< 20.0)
+    auto safe_res = fsm.step(in, out);
     if (safe_res.is_success()) {
         std::cout << "Emergency fail-safe activated. Transitioned to: " 
                   << fsm.current_state_name() << "\n";
@@ -213,7 +164,7 @@ int main() {
 ## Step 5: Compile and Run
 
 ```bash
-g++ -std=c++20 main.cpp -o uav_app
+g++ -std=c++20 main.cpp -o uav_app -Wall -Wextra -Werror -pedantic
 ./uav_app
 ```
 

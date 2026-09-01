@@ -29,7 +29,6 @@ fsmc --export-runtime <directory> [--std 17|20]
 
 | `-n, --name <name>` | Generated state machine class/struct name. | Inferred from filename or `MyFSM` |
 | `--namespace, --package <ns>` | Generated namespace / package / module enclosing the state machine types. | `fsm_generated` |
-| `--context <type>` | Custom context struct type name passed to transitions and guards. | `no_context` |
 | `--format <fmt>` | Override input parser format: `sysml2`, `plantuml`, `mermaid`, `cameo`, `scxml`, `json`, `dot`, `auto`. | `auto` |
 | `-e, --export <fmt>` | Export diagram or formal model to: `mermaid`, `plantuml`, `sysml2`, `json`, `dot`, `scxml`, `cameo`, `smv`. | None |
 | `--submachine-dir <dir>` | Search directory for external submachine diagram files referenced in models. | Current directory |
@@ -62,7 +61,7 @@ fsmc --export-runtime <directory> [--std 17|20]
 | `--c++17, -std=c++17` | Shortcut alias to target C++17 standard. | `17` |
 | `--c++20, -std=c++20` | Shortcut alias to target C++20 standard. | `17` |
 | `--standalone` | Emit self-contained header with embedded zero-alloc runtime (0 external dependencies). | `true` |
-| `--modular` | Emit lightweight header that includes external `<fsm/runtime/cpp/fsm.hpp>`. | `false` |
+| `--modular` | Emit lightweight header that includes external `<fsm/backend/cpp/runtime/fsm.hpp>`. | `false` |
 | `--export-runtime <dir>` | Export standalone runtime library headers (`fsm.hpp`, `spsc_fsm.hpp`, etc.) to the specified directory. | None |
 | `--no-thread-safe` | Disable generation of the `thread_safe_fsm` asynchronous wrapper. | `false` |
 | `--no-stubs` | Do not emit default stub functors for actions and guards. | `false` |

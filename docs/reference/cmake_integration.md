@@ -26,7 +26,6 @@ fsmc_target_sources(
     NAME <GeneratedFSMClassName>
     [STANDARD <17|20>]
     [NAMESPACE <NamespaceName>]
-    [CONTEXT <ContextTypeName>]
     [STANDALONE]
     [MODULAR]
     [STRICT_DETERMINISM]
@@ -43,9 +42,8 @@ fsmc_target_sources(
 | `NAME` | String | Name of the generated C++ class (e.g. `UavMissionFSM`). |
 | `STANDARD` | Integer | C++ standard version (`17` or `20`). Default: `20`. |
 | `NAMESPACE` | String | C++ namespace to enclose generated types. Default: `fsm_generated`. |
-| `CONTEXT` | String | Name of the context struct. Default: `no_context`. |
 | `STANDALONE` | Flag | Generate self-contained header with embedded runtime. Default: `ON`. |
-| `MODULAR` | Flag | Generate header that includes `<fsm/runtime/cpp/fsm.hpp>`. |
+| `MODULAR` | Flag | Generate header that includes `<fsm/backend/cpp/runtime/fsm.hpp>`. |
 | `STRICT_DETERMINISM` | Flag | Fail compilation on non-deterministic branch collisions. |
 | `ALLOW_DIAGRAM_CODEGEN`| Flag | Allow code generation from visual diagram formats (PlantUML, Mermaid). |
 
@@ -64,7 +62,7 @@ include(FetchContent)
 FetchContent_Declare(
     fsmc
     GIT_REPOSITORY https://github.com/simoneCavalleri/fsmc.git
-    GIT_TAG        v0.3.0
+    GIT_TAG        v0.4.0
 )
 FetchContent_MakeAvailable(fsmc)
 
@@ -77,6 +75,5 @@ fsmc_target_sources(avionics_app
     NAME FlightControlFSM
     STANDARD 20
     NAMESPACE avionics
-    CONTEXT FlightContext
 )
 ```

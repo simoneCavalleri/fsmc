@@ -176,4 +176,4 @@ fsmc -i connection.sysml -e dot -o connection.dot
 
 ## Next Steps
 
-Now that you have built a basic state machine, let's learn how to add **Datapath Context Variables**, **Conditional Guards**, and **Lifecycle Actions** in **[Tutorial 2: Extended State Machines (EFSM), Guards & Datapath](02_guards_and_actions.md)**.
+Now that you have built a basic state machine, let's learn how to add **Partitioned I/O Ports, Internal Registers, Conditional Guards**, and **Lifecycle Actions** in **[Tutorial 2: Extended State Machines (EFSM), Guards & Datapath](02_guards_and_actions.md)**.

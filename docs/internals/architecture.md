@@ -11,27 +11,28 @@ The repository is structured into distinct, decoupled compiler layers on top of 
 ```text
 fsmc/
 ├── include/fsm/
-│   ├── ir/          # Unified AST & Semantic Model (FsmIr, StateNode, TransitionEdge, FNV-1a IDs, EFSM vars, LTL/INVAR)
-│   ├── middleend/   # PassManager, Dead State Pruning, Determinism, Guard Simplification, Inlining, TimedDeadlockPass & ModelChecker
+│   ├── ir/          # Unified AST & Semantic Model (FsmIr, StateNode, TransitionEdge, PortDefinition, FNV-1a IDs, EFSM vars, LTL/INVAR)
+│   ├── middleend/   # PassManager, Dead State Pruning, Determinism, Guard Satisfiability, Inlining, TimedDeadlockPass, EFSM Interval Analysis & ModelChecker
 │   ├── diagnostic/  # Rich DiagnosticEngine with ANSI colors, SourceSpan, and visual carets
 │   ├── frontend/    # Two-Category Parser Ingestion Infrastructure & ParserFactory
 │   │   ├── formal/  # High-Semantics Formal Models (SysML v2, W3C SCXML, Cameo / MagicDraw XMI, nuXmv SMV)
 │   │   └── diagram/ # Visual Diagram Sketch Notations (PlantUML, Mermaid, Graphviz DOT, XState JSON)
-│   ├── backend/     # Target Code Generators (C++17/20 Bare-Metal) & EmitterFactory (8 Serializers including nuXmv SMV)
-│   └── runtime/cpp/ # Canonical Real-Time Runtime Engine (fsm, lock-free SPSC FIFO, static buffer, timers, trait introspection)
+│   └── backend/     # Target Code Generators, EmitterFactory & Zero-Overhead C++ Runtime
+│       ├── cpp/     # C++17/C++20 Standalone Bundles & Modular Generators
+│       │   └── runtime/ # Canonical Zero-Heap Real-Time Runtime Engine (fsm, spsc_fsm, thread_safe_fsm, static_ring_buffer)
+│       ├── diagram/ # Visual Diagram Serializers (PlantUML, Mermaid, DOT, JSON)
+│       ├── formal/  # Formal Model Serializers (Cameo XMI, SCXML, SMV, SysML v2)
+│       └── rtm/     # Formal Requirement Traceability Matrix (RTM) Emitter
 ├── tools/
 │   ├── fsmc/        # Primary Multi-Format Compiler Driver CLI
 │   └── fsm-opt/     # Standalone Formal IR Optimizer, Linter & Roundtrip Formatter CLI
 ├── playground/      # Interactive WebAssembly Browser Playground (fsmc.wasm)
 ├── examples/        # Aerospace, Automotive ECU, and Resilient IoT Showcases
-├── tests/           # Modular GoogleTest Suites (49 suites, 100% pass)
-│   ├── core/        # Runtime engine, HFSM, choice, history, observers, timers
+├── tests/           # Modular GoogleTest Suites (54 suites, 100% pass)
+│   ├── backend/     # Codegen, roundtrip lossless export, and backend/cpp/runtime tests
 │   ├── frontend/    # Frontend tests partitioned into formal/ and diagram/
-│   │   ├── formal/  # Tests for SysML v2, SCXML, Cameo, and SMV parsers
-│   │   └── diagram/ # Tests for PlantUML, Mermaid, DOT, and JSON parsers
 │   ├── ir/          # Serialization and AST integrity
-│   ├── middleend/   # PassManager, deadlocks, timed analysis, and model checking
-│   ├── backend/     # Codegen, roundtrip lossless export, and emitters
+│   ├── middleend/   # PassManager, deadlocks, guard satisfiability, and model checking
 │   └── integration/ # CMake build integration and multi-target suites
 └── docs/            # Formal IR Specification, Architecture & Developer Guides
 ```
@@ -65,6 +66,7 @@ fsmc/
 │ 2. Formal Intermediate Representation (FsmIr)               │
 │  • Strongly-typed hierarchical AST & semantic model         │
 │  • Deterministic 64-bit FNV-1a IDs for states & transitions │
+│  • MBSE Typed Ports: InPorts, OutPorts with range contracts │
 │  • Structured Triggers: SignalTrigger, TimeTrigger, Anon    │
 │  • Composable boolean GuardAstNode (AND, OR, NOT)           │
 │  • Extended finite variables with Physical Units & Types    │
@@ -105,7 +107,7 @@ fsmc/
 
 ## 3. Frontend Classification (`FrontendKind`)
 
-`fsmc` classifies parsers into two distinct categories defined in `include/fsm/frontend/parser_interface.hpp`:
+`fsmc` classifies parsers into two distinct categories defined in `include/fsm/frontend/common/parser_interface.hpp`:
 
 ```cpp
 enum class FrontendKind : std::uint8_t {
@@ -201,7 +203,7 @@ where `Nin` is the number of incoming transitions and `Nout` is the number of ou
 
 ## 7. Hard Real-Time, Zero-Heap C++ Runtime Architecture
 
-The C++ runtime engine (`include/fsm/runtime/cpp/`) is designed for mission-critical, hard real-time embedded environments:
+The C++ runtime engine (`include/fsm/backend/cpp/runtime/`) is designed for mission-critical, hard real-time embedded environments:
 
 1. **Deterministic Ring Buffers & Overflow Policies**:
     - `fsm::static_ring_buffer<T, Capacity, Policy>` provides fixed-capacity zero-heap event buffering with configurable overflow policies:
@@ -209,7 +211,7 @@ The C++ runtime engine (`include/fsm/runtime/cpp/`) is designed for mission-crit
         - `OverflowPolicy::DropIncoming`: Discards new event on full queue (resilient backpressure).
         - `OverflowPolicy::AssertOnOverflow`: Traps execution immediately (hard real-time safety critical).
 2. **Lock-Free SPSC Engine (`fsm::spsc_fsm`)**:
-    - `fsm::spsc_fsm<Table, Context, Capacity, InitialState>` combines compile-time state machine folding with fixed-capacity static ring buffers, providing wait-free O(1) ISR event production and lock-free seqlock context reading.
+    - `fsm::spsc_fsm<Table, InPorts, OutPorts, Registers, Services, Capacity, InitialState>` combines compile-time state machine folding with fixed-capacity static ring buffers, providing wait-free O(1) ISR event production and lock-free seqlock registers reading.
 3. **Synchronous Deterministic Timer Manager**:
     - `fsm::deterministic_timer_manager<MaxTimers>` manages state machine timeout events via discrete `tick(delta_ms, callback)` invocations, perfectly matching hardware tick timers (SysTick) without background threads.
 

@@ -1,96 +1,138 @@
 # Guards and Action Effects
 
-Guards and actions form the computational layer of Extended Finite State Machines (EFSM). Guards evaluate predicates over events and context variables, while actions execute side effects and mutate context state.
+Guards and actions form the computational layer of Extended Finite State Machines (EFSM). In `fsmc`, computational datapath interactions are strictly partitioned across **4 orthogonal data domains**:
+
+```
+                       ┌─────────────────────────┐
+                       │       InPorts (in)      │ ──> Read-Only (Sensor values, bus inputs)
+                       │      Registers (reg)    │ ──> Encapsulated internal memory (z^-1)
+                       │    Event Payload (evt)  │ ──> Ephemeral trigger parameters
+                       └────────────┬────────────┘
+                                    │
+                         [ Guard Evaluation ]
+                                    │ (if true)
+                                    ▼
+                       ┌─────────────────────────┐
+                       │      OutPorts (out)     │ <── Write-Only (Actuator commands)
+                       │      Registers (reg)    │ <── Mutated internal state
+                       │      Services (srv)     │ <── Injected RPC / Side-effects
+                       └─────────────────────────┘
+```
 
 ---
 
 ## 1. Pure Guard Predicates
 
-Guards are side-effect-free boolean functions. In the `fsmc` execution model, guards receive references to the triggering event, the active state, and the user context struct.
+Guards are side-effect-free mathematical boolean functions evaluated during transition selection:
 
-=== "Conceptual Semantics"
-    A guard is a pure boolean predicate:
-    $$\text{Guard}: (\text{Event}, \text{State}, \text{Context}) \to \{\text{true}, \text{false}\}$$
-    If the predicate evaluates to `false`, the transition is rejected (`guard_rejected`) and the state machine remains in the source state.
+$$\text{Guard}: (\text{InPorts}, \text{Registers}, \text{Event}) \to \{\text{true}, \text{false}\}$$
 
-=== "C++ Reference Backend"
-    ```cpp
-    struct BatterySufficientGuard {
-        template <typename Event, typename State, typename Context>
-        [[nodiscard]] constexpr bool operator()(const Event& /*evt*/, const State& /*state*/, const Context& ctx) const noexcept {
-            return ctx.batterySoC >= 25.0f;
-        }
-    };
-    ```
+- If the guard evaluates to `true`, the transition is enabled and can proceed to execution.
+- If the guard evaluates to `false`, the transition is rejected, leaving the active state unchanged.
+- Guards have read-only access to `InPorts`, `Registers`, and trigger payloads. They are strictly prohibited from mutating machine state.
 
----
-
-## 2. Compile-Time Boolean Algebra & Composite Guards
-
-During compilation, the `GuardSimplificationPass` analyzes and reduces composite boolean guard trees algebraically:
-
-- Double negation elimination: `not(not A) => A`
-- Neutral elements: `A and true => A`, `A or false => A`
-- Dominant elements: `A and false => false`, `A or true => true`
-
-=== "Model Syntax"
+=== "OMG SysML v2"
     ```sysml
-    transition t_launch
-        first Preflight
-        accept LaunchCmd
-        if [has_gps_lock and (battery_pct >= 25 and not critical_fault)]
-        then InFlight;
+    transition on FlightCommand
+        if in.battery_soc >= 25.0 and reg.cycle_count < 1000
+        then Navigating;
     ```
 
-=== "C++ Reference Backend"
-    ```cpp
-    using SafeToLaunch = fsm::and_<
-        HasGpsLockGuard,
-        fsm::and_<BatterySufficientGuard, fsm::not_<CriticalErrorGuard>>
-    >;
+=== "W3C SCXML"
+    ```xml
+    <transition event="FlightCommand" cond="in.battery_soc &gt;= 25.0 &amp;&amp; reg.cycle_count &lt; 1000" target="Navigating"/>
     ```
 
 ---
 
-## 3. Automatic Resolved EFSM Expressions
+## 2. Action Effects and Side-Effect Isolation
 
-In formal models (SysML v2, Cameo, SCXML), guard expressions such as `[batteryLevel >= 20.0 and isGpsLocked]` and actions such as `do waypointIndex += 1;` are automatically parsed, type-checked, and emitted directly without requiring manual stub implementations:
+Actions execute computational side-effects when transitions fire or when states are entered or exited:
 
-=== "SysML v2 Specification"
+$$\text{Action}: (\text{OutPorts}, \text{Registers}, \text{Services}, \text{InPorts}, \text{Event}) \to \text{void}$$
+
+- **OutPorts**: Written by actions to produce actuator commands or output signals.
+- **Registers**: Mutated to update internal memory ($z^{-1}$, sequence counters, accumulator state).
+- **Services**: Invoked to trigger external environment side-effects (logging, network packets, driver calls).
+
+=== "OMG SysML v2"
     ```sysml
     transition climb_ok
         first Ascending
         accept AltitudeReached
-        if [batteryLevel >= 20.0 and isGpsLocked]
-        do action { waypointIndex += 1; }
+        if in.battery_soc >= 20.0
+        do action {
+            out.climb_rate = 0.0;
+            reg.waypoint_index = reg.waypoint_index + 1;
+        }
         then WaypointNav;
     ```
 
-=== "Emitted C++ Reference Code"
-    ```cpp
-    // Automatically emitted resolved guard in generated C++ header
-    struct Guard_batteryLevel_gte_20 {
-        template <typename Event, typename State, typename Context>
-        [[nodiscard]] constexpr bool operator()(const Event& /*evt*/, const State& /*state*/, const Context& ctx) const noexcept {
-            return ctx.batteryLevel >= 20.0 && ctx.isGpsLocked;
-        }
-    };
-
-    // Automatically emitted resolved action in generated C++ header
-    struct Action_increment_waypoint {
-        template <typename Event, typename SrcState, typename DstState, typename Context>
-        constexpr void operator()(const Event& /*evt*/, SrcState& /*src*/, DstState& /*dst*/, Context& ctx) const noexcept {
-            ctx.waypointIndex += 1;
-        }
-    };
+=== "W3C SCXML"
+    ```xml
+    <transition event="AltitudeReached" cond="in.battery_soc &gt;= 20.0" target="WaypointNav">
+      <assign location="out.climb_rate" expr="0.0"/>
+      <assign location="reg.waypoint_index" expr="reg.waypoint_index + 1"/>
+    </transition>
     ```
 
+---
+
+## 3. Compile-Time Boolean Algebra & Guard Simplification
+
+During middle-end optimization, the `GuardSimplificationPass` analyzes and reduces composite boolean guard trees algebraically before verification or target emission:
+
+- Double negation elimination: $\neg(\neg A) \iff A$
+- Neutral elements: $A \land \text{true} \iff A$, $A \lor \text{false} \iff A$
+- Dominant elements: $A \land \text{false} \iff \text{false}$, $A \lor \text{true} \iff \text{true}$
+- De Morgan's laws: $\neg(A \land B) \iff \neg A \lor \neg B$
 
 ---
 
 ## 4. Choice and Junction Inlining (`ChoiceInliningPass`)
 
-When models contain intermediate decision points (`<<choice>>` or `<<junction>>`), the middle-end optimizer inlines the decision trees directly into flat composite transitions.
+When models contain intermediate decision pseudostates (`<<choice>>` or `<<junction>>`), the middle-end optimizer inlines the decision tree directly into flat composite transitions.
 
-For example, a transition path `StateA -> ChoiceNode -> StateB` with incoming guard `G1` and outgoing guard `G2` is transformed into a direct edge `StateA -> StateB` guarded by `fsm::and_<G1, G2>` and executing the combined actions `A1` and `A2`. This eliminates intermediate state allocations and enables direct branch resolution.
+For example, a transition path `StateA -> ChoiceNode -> StateB` with incoming guard $G_1$ and outgoing guard $G_2$ is transformed into a direct composite transition `StateA -> StateB` guarded by $(G_1 \land G_2)$ and executing combined actions $(A_1; A_2)$.
 
+This eliminates intermediate pseudostate allocations and yields direct branch resolution in emitted targets.
+
+---
+
+## 5. Guard Satisfiability & Mutual Exclusivity (`GuardSatisfiabilityPass`)
+
+During compilation and verification, `fsmc` runs an in-process abstract interpretation pass to evaluate guard constraints:
+
+1. **Dead Guard Detection (`W0302`)**: Identifies guard conditions that are logically unsatisfiable or contradict variable domain bounds (e.g. `x > 50 && x < 20`).
+2. **Mutual Exclusivity & Overlap Verification (`W0301`)**: When multiple transitions originate from the same state on the same event with identical priority, `GuardSatisfiabilityPass` proves whether their interval domains are provably disjoint (e.g., `x > 50` vs `x <= 50`). If guard conditions overlap without priority differentiation, a non-deterministic ambiguity warning is emitted.
+
+```
+       [ Source State ] ─── Event E ───► [ Guard: x > 50  (Priority 1) ] ──► State A
+                        ─── Event E ───► [ Guard: x <= 30 (Priority 1) ] ──► State B
+                        ▲
+                        └─► Provably Disjoint Intervals => Deterministic & Verified!
+```
+
+---
+
+## 6. C++20 Concept Constraints (`fsm::Guard`, `fsm::Action`)
+
+In the modern C++20 runtime, transition definitions are constrained by compile-time concepts in [`fsm/backend/cpp/runtime/traits/concepts.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/backend/cpp/runtime/traits/concepts.hpp):
+
+- **`fsm::Guard<G, Event, State, InPorts, Registers, Services>`**: Ensures $G$ is a callable functor returning a type convertible to `bool`, accepting any valid subset of domain parameters.
+- **`fsm::Action<A, Event, SrcState, DstState, InPorts, OutPorts, Registers, Services>`**: Ensures $A$ is a callable functor accepting any valid subset of lifecycle arguments.
+
+Primitive scalar types (e.g., passing `int` instead of a functor) and mismatched signatures trigger clear, readable `static_assert` diagnostic messages during compilation.
+
+---
+
+## 7. Four-Phase Transition Lifecycle
+
+When a valid transition fires, the runtime executes actions in strict four-phase sequence:
+
+1. **Guard Evaluation**: Pure predicate check. If `false`, aborts without state mutation.
+2. **Source Exit**: `on_exit(src_state, event, in, out, reg, srv)`
+3. **Transition Action**: `action(event, src_state, dst_state, in, out, reg, srv)`
+4. **State Transition & Target Entry**: Assigns active variant and executes `on_enter(dst_state, event, in, out, reg, srv)`.
+
+For complete C++ runtime API details, see the dedicated **[Runtime C++ API](../runtime_api/index.md)** chapter.

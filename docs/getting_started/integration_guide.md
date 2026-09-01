@@ -45,7 +45,6 @@ fsmc_target_sources(my_app
     STANDARD 20
     STANDALONE
     NAMESPACE space
-    CONTEXT MissionContext
     NO_STUBS
 )
 ```
@@ -88,7 +87,7 @@ When compiling or embedding `fsmc` in your workspace:
 
 | Option | Default | Description |
 | :--- | :--- | :--- |
-| `FSMC_ENABLE_TESTING` | `ON` | Builds the 48 GoogleTest test suites. |
+| `FSMC_ENABLE_TESTING` | `ON` | Builds the 52 GoogleTest test suites. |
 | `FSMC_ENABLE_EXAMPLES` | `ON` | Builds showcase example targets. |
 | `FSMC_ENABLE_BENCHMARKS` | `ON` | Builds dispatch micro-benchmarks. |
 | `FSMC_ENABLE_SANITIZERS` | `OFF` | Enables Address & Undefined Sanitizers in Debug builds. |
@@ -104,10 +103,9 @@ When compiling or embedding `fsmc` in your workspace:
 | `NAME` | `string` | FSM class name (default: inferred from diagram file stem). |
 | `STANDARD` | `17` or `20` | Target C++ standard (default: `17`). |
 | `NAMESPACE` | `string` | C++ namespace wrapping states, events, and FSM aliases (default: `fsm_generated`). |
-| `CONTEXT` | `string` | Custom Context struct/class name (default: `no_context`). |
 | `OUTPUT_DIR` | `path` | Output directory for generated headers (default: `${CMAKE_CURRENT_BINARY_DIR}/generated_fsm`). |
 | `STANDALONE` | `flag` | Embeds the zero-overhead engine into the generated header (zero external dependencies). |
-| `MODULAR` | `flag` | Generates a header that includes external `<fsm/runtime/cpp/fsm.hpp>`. |
+| `MODULAR` | `flag` | Generates a header that includes external `<fsm/backend/cpp/runtime/fsm.hpp>`. |
 | `NO_THREAD_SAFE` | `flag` | Disables generation of the `thread_safe_fsm` wrapper alias. |
 | `NO_STUBS` | `flag` | Emits forward declarations for custom user-defined guard and action structs. |
 
@@ -120,7 +118,7 @@ Add `fsmc` in your `vcpkg.json`:
 ```json
 {
   "name": "my-project",
-  "version-string": "0.3.0",
+  "version-string": "0.4.0",
   "dependencies": [
     "fsmc"
   ]
@@ -128,10 +126,10 @@ Add `fsmc` in your `vcpkg.json`:
 ```
 
 ### Conan 2.0 Integration
-Add `fsmc/0.3.0` in your `conanfile.txt`:
+Add `fsmc/0.4.0` in your `conanfile.txt`:
 ```ini
 [requires]
-fsmc/0.3.0
+fsmc/0.4.0
 
 [generators]
 CMakeDeps

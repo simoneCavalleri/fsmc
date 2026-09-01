@@ -9,23 +9,23 @@ Transitions define the valid paths of state progression in response to incoming 
 In `fsmc`, transitions are triggered by four distinct classes of triggers:
 
 ### 1. Signal Triggers (External Events)
-Signal triggers represent discrete messages, sensor interrupts, or software commands passed to the state machine via `fsm.dispatch(Event{})` or `spsc_fsm.enqueue(Event{})`.
+Signal triggers represent discrete external stimuli, sensor interrupts, or software commands passed to the state machine. Signals can carry typed payload parameters (e.g. `TemperatureReading(sensor_id: Integer, val: Real)`).
 
-Signal types are represented as distinct, strongly-typed C++ structs:
-```cpp
-struct TemperatureThresholdExceeded {
-    float reading_celsius;
-    std::uint32_t sensor_id;
-};
+```sysml
+// Signal event definition with typed payload
+event def SensorThresholdExceeded {
+    attribute sensor_id : Integer;
+    attribute reading_celsius : Real;
+}
 ```
 
 ### 2. Timed Transitions (`after` and `every`)
 Timed triggers model real-time timeouts and periodic ticks:
 
-- `after(500ms)`: Single-shot relative timeout that begins counting when the source state is entered. If an external transition exits the state before 500ms elapse, the timer is automatically cancelled.
-- `every(100ms)`: Periodic heartbeat trigger that fires repeatedly as long as the source state remains active.
+- **Relative Timeout (`after`)**: Single-shot timer that begins counting when the source state is entered. If an external transition exits the state before the duration expires, the timer is automatically disarmed.
+- **Periodic Trigger (`every`)**: Periodic heartbeat trigger that fires repeatedly at fixed intervals as long as the source state remains active.
 
-`fsmc` supports both software-based background timers (`thread_safe_fsm`) and deterministic bare-metal tick managers (`deterministic_timer_manager`) that integrate with hardware SysTick ISRs.
+`fsmc` middle-end passes support formal verification of timed transitions (via Timed SMV / nuXmv). Execution targets can map timed transitions to hardware tick counters (SysTick) or RTOS timer queues.
 
 ### 3. Anonymous / Immediate Transitions
 Anonymous transitions have no event trigger. They fire automatically when the source state is entered and its entry actions complete (or when an incoming transition targeting the state evaluates to true).
@@ -50,7 +50,7 @@ When a transition fires, `fsmc` executes actions according to UML / SysML run-to
 
 1. **Guard Evaluation**: All candidate guards matching the current state and trigger are evaluated. If a guard returns `false`, the transition is rejected.
 2. **Exit Actions**: The active state's `on_exit` action is executed (ascending from the leaf substate up to the Least Common Ancestor).
-3. **Transition Effect**: The transition's action functor or context assignment is executed.
+3. **Transition Effect**: The transition's action functor is executed (mutating `OutPorts`, updating `Registers`, or invoking `Services`).
 4. **Target State Entry**: The target state's `on_entry` action is executed (descending from the Least Common Ancestor down to the target leaf state).
 5. **History Update**: Internal history tags are updated with the newly active substate configuration.
 

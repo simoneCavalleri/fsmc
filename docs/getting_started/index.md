@@ -1,22 +1,29 @@
 # Getting Started with `fsmc`
 
-Welcome to the **Getting Started** guide. This section provides everything you need to set up `fsmc`, compile your first state machine model into hard real-time C++, and integrate the toolchain into your build system.
+This section describes how to install `fsmc`, run verification passes, transpile statecharts between modeling formats, and integrate generated code into your build system.
 
 ---
 
-## Section Contents
+## Navigation & Contents
 
-| Topic | Description | Link |
+| Guide | Description | Target Audience |
 | :--- | :--- | :--- |
-| **Installation & Requirements** | Build and install `fsmc` from source, Conan package manager, or CMake FetchContent. | [Installation Guide](installation.md) |
-| **Quickstart Tutorial** | Step-by-step walkthrough creating an autonomous UAV flight mission statechart. | [Quickstart Tutorial](quickstart.md) |
-| **CLI Usage Reference** | Complete command-line manual for `fsmc` (compiler) and `fsm-opt` (optimizer). | [CLI Reference](cli_usage.md) |
-| **Build Systems Integration** | Integrating `fsmc_target_sources` with Modern CMake, FetchContent, and Conan. | [Build Integration](integration_guide.md) |
+| **[Installation & Setup](installation.md)** | System requirements, CMake `FetchContent`, Conan 2.0, vcpkg, and building from source. | All Users |
+| **[Quickstart Tutorial](quickstart.md)** | End-to-end walkthrough from authoring a statechart to formal verification and execution. | New Users |
+| **[CLI Reference (`fsmc` & `fsm-opt`)](cli_usage.md)** | Comprehensive command-line flag manual for compilation, verification, and standalone export. | Developers / CI |
+| **[Build System Integration](integration_guide.md)** | Automated CMake target integration using `fsmc_target_sources()` and package managers. | Build Engineers |
 
 ---
 
-## Recommended Learning Path
+## Compiler Workflows
 
-1. **Install the Compiler**: Follow the [Installation Guide](installation.md) to install `fsmc` and `fsm-opt` on Linux or macOS.
-2. **Build Your First Statechart**: Run through the [Quickstart Tutorial](quickstart.md) to author a SysML v2 / PlantUML model and compile it to C++20.
-3. **Explore Modeling Formats**: Review the [Modeling Languages](../formal_languages/index.md) section to choose between SysML v2, Cameo XMI, SCXML, or visual diagrams.
+Depending on your engineering workflow, `fsmc` supports three primary operational modes:
+
+### 1. Model-Based Engineering (MBSE & Transpilation)
+Author statecharts in high-level engineering formalisms (OMG SysML v2, Cameo / MagicDraw XMI, W3C SCXML). Use `fsmc` to transpile models losslessly between formats, generate visual diagrams, or produce requirement traceability matrices (RTM) for certification audits.
+
+### 2. Formal Verification & Static Analysis
+Run compile-time safety and liveness analysis without executing code. `fsmc` translates statecharts into formal transition systems, invoking SMT solvers (Z3) and symbolic model checkers (nuXmv) to prove temporal invariants (LTL/CTL).
+
+### 3. Target Code Generation
+Compile verified statecharts into standalone, zero-heap C++17 or C++20 header files. The generated code adheres to the MBSE 4-domain memory architecture (`InPorts`, `OutPorts`, `Registers`, `Services`) with zero dynamic memory allocation and deterministic execution bounds.

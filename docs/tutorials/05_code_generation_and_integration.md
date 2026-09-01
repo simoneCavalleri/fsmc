@@ -3,9 +3,9 @@
 In this final tutorial, you will learn how to turn your verified state machine models into production-ready software:
 
 - How `fsmc` uses the **Generation Gap Pattern** to ensure safe, non-destructive builds.
-- Generating standalone and modular C++ code (reference backend).
+- Generating standalone and modular C++ code (C++17 and C++20).
 - Integrating automated compilation into **CMake** (`fsmc_target_sources`).
-- The universal multi-backend architecture of `fsmc`.
+- Deploying with partitioned memory domains (`InPorts`, `OutPorts`, `Registers`, `Services`).
 
 ---
 
@@ -21,13 +21,13 @@ my_project/
 │   └── connection.sysml        <-- Source model (Source of Truth)
 ├── src/
 │   ├── main.cpp                <-- User Application Code (Untouched)
-│   └── connection_context.hpp  <-- User Business Logic (Untouched)
+│   └── connection_services.hpp <-- User Service Implementations (Untouched)
 └── build/generated/
     └── connection_fsm.hpp      <-- Generated Artifact (Regenerated automatically)
 ```
 
 1. **The generated file (`connection_fsm.hpp`) is never edited manually**. It lives in your `build/` directory.
-2. **Your custom logic lives in your context struct** (`connection_context.hpp`).
+2. **Your custom side-effects live in your services implementation** (`connection_services.hpp`).
 3. Whenever you update `connection.sysml`, `fsmc` regenerates the header in milliseconds. Your application code simply links against the updated transition table with **zero lost work**.
 
 ---
@@ -36,10 +36,10 @@ my_project/
 
 ```bash
 # Generate a self-contained C++20 header with zero external dependencies
-fsmc -i connection.sysml -o connection_fsm.hpp --standard 20 --standalone
+fsmc -i connection.sysml -o connection_fsm.hpp --std 20 --standalone
 
 # Generate a C++17 header
-fsmc -i connection.sysml -o connection_fsm.hpp --standard 17 --standalone
+fsmc -i connection.sysml -o connection_fsm.hpp --std 17 --standalone
 ```
 
 ---
@@ -49,35 +49,40 @@ fsmc -i connection.sysml -o connection_fsm.hpp --standard 17 --standalone
 In your `main.cpp`:
 
 ```cpp
+#include <cassert>
 #include <iostream>
 #include "connection_fsm.hpp"
 
-struct ConnectionContext {
-    int retry_count{0};
-
-    // Automatically invoked by fsmc runtime when entering Connected state
-    void on_entry(const conn::Connected&) {
-        std::cout << "[LOG] Connected to remote host.\n";
-    }
-
-    // Automatically invoked when exiting Connected state
-    void on_exit(const conn::Connected&) {
-        std::cout << "[LOG] Connection closed. Flushing socket.\n";
+struct ConcreteConnectionServices : public conn::ConnectionManagerServices {
+    void log(const std::string& msg) override {
+        std::cout << "[SERVICE LOG] " << msg << "\n";
     }
 };
 
 int main() {
-    ConnectionContext ctx;
-    conn::ConnectionManagerFSM fsm(ctx);
+    using namespace conn;
 
+    ConnectionManagerRegisters reg{0};
+    ConcreteConnectionServices srv;
+    ConnectionManagerFSM fsm(reg, srv);
+
+    ConnectionManagerInPorts in;
+    in.latency_ms = 45.0;
+    in.is_authenticated = true;
+    ConnectionManagerOutPorts out;
+
+    assert(in.validate_contracts());
     std::cout << "Initial state: " << fsm.current_state_name() << "\n";
 
-    // Dispatch typed events
-    fsm.dispatch(conn::ConnectCmd{});
+    // 1. Dispatch typed events
+    fsm.dispatch(ConnectCmd{}, in, out, srv);
     std::cout << "State after ConnectCmd: " << fsm.current_state_name() << "\n";
 
-    fsm.dispatch(conn::HandshakeOk{});
+    fsm.dispatch(HandshakeOk{}, in, out, srv);
     std::cout << "State after HandshakeOk: " << fsm.current_state_name() << "\n";
+
+    // 2. Sampled continuous step
+    fsm.step(in, out, srv);
 
     return 0;
 }
@@ -97,34 +102,24 @@ find_package(fsmc REQUIRED)
 
 add_executable(my_app
     src/main.cpp
-    src/connection_context.cpp
 )
 
-# Automatically compile .sysml / .puml into C++ headers on every build
+target_link_libraries(my_app PRIVATE fsmc::fsmc_runtime)
+
+# Automatically compile models/connection.sysml into ${CMAKE_CURRENT_BINARY_DIR}/generated_fsm/
 fsmc_target_sources(my_app
     DIAGRAMS models/connection.sysml
     NAME ConnectionManagerFSM
     STANDARD 20
-    NAMESPACE conn
     STANDALONE
+    NAMESPACE conn
 )
 ```
 
-When you edit `models/connection.sysml` and run `cmake --build build`:
-
-1. CMake recognizes that `connection.sysml` changed.
-2. CMake invokes `fsmc` to update `build/generated_my_app/connection_fsm.hpp`.
-3. The C++ compiler compiles your application against the new types.
-4. If a state or event was renamed in the model, the C++ compiler reports a type-safe compile error pointing directly to the line in `main.cpp` that needs updating.
-
 ---
 
-## 5. Summary: The Universal Vision of `fsmc`
+## 5. Next Steps
 
-You have now completed the entire `fsmc` workflow:
+Now that you have mastered the complete pipeline from modeling to code generation, proceed to the capstone chapter:
 
-1. **Model** visually (Mermaid, PlantUML) or formally (SysML v2, SCXML).
-2. **Optimize & Verify** mathematically (LTL/CTL, interval analysis).
-3. **Deploy** with zero overhead into production software.
-
-While C++17 and C++20 serve as the high-performance reference runtime backend implemented today, `fsmc`'s Intermediate Representation (`FsmIr`) is completely target-agnostic and designed to support additional language backends in the future.
+👉 **[Step 6: Complete Real-World Case Study (Autonomous UAV Controller)](06_real_world_case_study.md)**.

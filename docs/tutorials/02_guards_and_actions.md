@@ -2,113 +2,94 @@
 
 In pure finite state automata, states represent purely discrete symbolic stages. Real-world systems, however, depend on continuous numerical parameters—battery levels, retry counters, timeouts, and sensor readings.
 
-In this tutorial, you will learn how **`fsmc`** implements **Extended Finite State Machines (EFSM)**:
+In this tutorial, you will learn how **`fsmc` v0.4.0** implements **Extended Finite State Machines (EFSM)** using partitioned data domains:
 
-- Defining **Context Variables** and Datapath parameters.
-- Formulating **Guard Conditions** (`if [expr]`) with boolean combinators (`and`, `or`, `not`).
-- Executing **Actions** on transitions, `on_entry`, and `on_exit`.
+- Defining **InPorts** (read-only with range contracts), **OutPorts** (write-only), and **Registers** (internal memory).
+- Formulating **Guard Conditions** (`if [expr]`) over ports and registers.
+- Executing **Actions** that mutate `OutPorts`, update `Registers`, and trigger external `Services`.
 
 ---
 
-## 1. Extending the Connection Manager with Context Data
+## 1. Extending the Connection Manager with Partitioned Domains
 
-Let's extend our connection manager with state variables:
+Let's model our connection manager across 4 orthogonal domains:
 
-- `retry_count`: Integer counter tracking connection attempts (0..5).
-- `latency_ms`: Measured round-trip ping time.
-- `is_authenticated`: Boolean flag indicating token validity.
+- **`InPorts`**: `in.latency_ms` (measured ping time, $0..10000$), `in.is_authenticated` (token flag).
+- **`OutPorts`**: `out.socket_connected` (actuator relay flag).
+- **`Registers`**: `reg.retry_count` (internal attempt counter, $0..5$).
+- **`Services`**: `srv.log_event(msg)`, `srv.flush_buffers()`.
 
 ```mermaid
 stateDiagram-v2
     [*] --> Disconnected
-    Disconnected --> Connecting: ConnectCmd / retry_count = 0
-    Connecting --> Connected: HandshakeOk [is_authenticated] / retry_count = 0
-    Connecting --> Reconnecting: HandshakeFailed [retry_count < 3] / retry_count += 1
-    Connecting --> Disconnected: HandshakeFailed [retry_count >= 3]
+    Disconnected --> Connecting: ConnectCmd / reg.retry_count = 0
+    Connecting --> Connected: HandshakeOk [in.is_authenticated and in.latency_ms < 500.0] / out.socket_connected = true
+    Connecting --> Reconnecting: HandshakeFailed [reg.retry_count < 3] / reg.retry_count += 1
+    Connecting --> Disconnected: HandshakeFailed [reg.retry_count >= 3] / out.socket_connected = false
     Reconnecting --> Connecting: RetryTimeout
-    Connected --> Disconnected: DisconnectCmd
+    Connected --> Disconnected: DisconnectCmd / out.socket_connected = false
 ```
 
 ---
 
-## 2. Modeling EFSM in SysML v2 and Annotations
+## 2. Modeling EFSM in SysML v2
 
-=== "SysML v2 (Native EFSM)"
+```sysml
+state def ConnectionManager {
+    in port latency_ms : Real { assert constraint { self >= 0.0 and self <= 10000.0; } }
+    in port is_authenticated : Boolean;
+    out port socket_connected : Boolean;
+    attribute retry_count : Integer = 0;
 
-    ```sysml
-    state def ConnectionManager {
-        attribute retry_count: Integer = 0;
-        attribute latency_ms: Real = 0.0;
-        attribute is_authenticated: Boolean = false;
+    entry; then Disconnected;
 
-        entry; then Disconnected;
+    state Disconnected;
+    state Connecting;
+    state Connected;
+    state Reconnecting;
 
-        state Disconnected {
-            entry action { log("Offline"); }
+    transition t_connect
+        first Disconnected
+        accept ConnectCmd
+        do action { reg.retry_count = 0; }
+        then Connecting;
+
+    transition t_handshake_success
+        first Connecting
+        accept HandshakeOk
+        if in.is_authenticated and in.latency_ms < 500.0
+        do action {
+            out.socket_connected = true;
+            reg.retry_count = 0;
         }
+        then Connected;
 
-        state Connecting;
-        state Connected {
-            entry action { log("Session active"); }
-            exit action { flush_buffers(); }
-        }
-        state Reconnecting;
+    transition t_retry
+        first Connecting
+        accept HandshakeFailed
+        if reg.retry_count < 3
+        do action { reg.retry_count = reg.retry_count + 1; }
+        then Reconnecting;
 
-        transition t_connect
-            first Disconnected
-            accept ConnectCmd
-            do action { retry_count = 0; }
-            then Connecting;
+    transition t_abort
+        first Connecting
+        accept HandshakeFailed
+        if reg.retry_count >= 3
+        do action { out.socket_connected = false; }
+        then Disconnected;
 
-        transition t_handshake_success
-            first Connecting
-            accept HandshakeOk
-            if [is_authenticated and latency_ms < 500.0]
-            do action { retry_count = 0; }
-            then Connected;
+    transition t_retry_tick
+        first Reconnecting
+        accept RetryTimeout
+        then Connecting;
 
-        transition t_retry
-            first Connecting
-            accept HandshakeFailed
-            if [retry_count < 3]
-            do action { retry_count += 1; }
-            then Reconnecting;
-
-        transition t_abort
-            first Connecting
-            accept HandshakeFailed
-            if [retry_count >= 3]
-            do action { log("Max retries exceeded"); }
-            then Disconnected;
-
-        transition t_retry_tick
-            first Reconnecting
-            accept RetryTimeout
-            then Connecting;
-
-        transition t_disconnect
-            first Connected
-            accept DisconnectCmd
-            then Disconnected;
-    }
-    ```
-
-=== "Mermaid / PlantUML (Visual Directives)"
-
-    ```mermaid
-    stateDiagram-v2
-        %% @fsm:var int retry_count = 0
-        %% @fsm:var float latency_ms = 0.0
-        %% @fsm:var bool is_authenticated = false
-
-        [*] --> Disconnected
-        Disconnected --> Connecting: ConnectCmd / retry_count = 0
-        Connecting --> Connected: HandshakeOk [is_authenticated and latency_ms < 500] / retry_count = 0
-        Connecting --> Reconnecting: HandshakeFailed [retry_count < 3] / retry_count += 1
-        Connecting --> Disconnected: HandshakeFailed [retry_count >= 3]
-        Reconnecting --> Connecting: RetryTimeout
-        Connected --> Disconnected: DisconnectCmd
-    ```
+    transition t_disconnect
+        first Connected
+        accept DisconnectCmd
+        do action { out.socket_connected = false; }
+        then Disconnected;
+}
+```
 
 ---
 
@@ -118,12 +99,13 @@ During middle-end optimization, `fsmc` parses guard expressions into structured 
 
 1. **Boolean Simplification (`GuardSimplificationPass`)**:
    Redundant expressions are reduced algebraically:
-
-   - `not(not A) => A`
-   - `A and true => A`
-   - `A and false => false` (triggers static dead-branch pruning)
-2. **Deterministic Evaluation Order**:
-   Guards evaluating to mutually exclusive domains are verified to guarantee deterministic dispatch.
+    - `not(not A) => A`
+    - `A and true => A`
+    - `A and false => false` (triggers static dead-branch pruning)
+2. **EFSM Interval Analysis (`EFSMDataPathPass`)**:
+   Checks whether `in.latency_ms < 500.0` is satisfiable given the `[0, 10000]` input domain.
+3. **Deterministic Evaluation Order**:
+   Guards evaluating to mutually exclusive domains (`reg.retry_count < 3` vs `reg.retry_count >= 3`) are verified to guarantee deterministic dispatch.
 
 ---
 
@@ -132,13 +114,13 @@ During middle-end optimization, `fsmc` parses guard expressions into structured 
 When a transition executes, `fsmc` enforces the strict **UML 2.5 Run-to-Completion (RTC)** sequence:
 
 ```
-[1. Evaluate Guard]  --->  (Returns true)
-        |
-[2. Source State: on_exit()]
-        |
-[3. Transition: do Action()]
-        |
-[4. Target State: on_entry()]
+[1. Evaluate Guard(in, reg, cmd)]  --->  (Returns true)
+                |
+[2. Source State: on_exit(in, out, reg, srv)]
+                |
+[3. Transition: do Action(out, reg, srv, in, cmd)]
+                |
+[4. Target State: on_entry(in, out, reg, srv)]
 ```
 
 If the guard returns `false`, no exit actions occur, and the machine remains in the source state.

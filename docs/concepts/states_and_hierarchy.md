@@ -52,20 +52,47 @@ Restores only the immediate top-level child substate of the composite state. Any
 ### Deep History (`[H*]`)
 Recursively restores the full hierarchy chain down to the deepest active leaf state.
 
-=== "Conceptual Semantics (FsmIr)"
-    In the canonical Intermediate Representation, transitions targeting history pseudostates are marked with flags:
+=== "OMG SysML v2"
+    ```sysml
+    state Operational {
+        entry; then Standby;
+        state Standby;
+        state Processing;
+    }
+
+    state Suspended {
+        // Transition targeting the history of Operational
+        transition on ResumeCmd then Operational::[H];
+    }
+    ```
+
+=== "W3C SCXML"
+    ```xml
+    <state id="Operational">
+      <initial><target id="Standby"/></initial>
+      <history id="Operational_Hist" type="shallow">
+        <transition target="Standby"/>
+      </history>
+      <state id="Standby"/>
+      <state id="Processing"/>
+    </state>
+
+    <state id="Suspended">
+      <transition event="ResumeCmd" target="Operational_Hist"/>
+    </state>
+    ```
+
+=== "Canonical IR Semantics (`FsmIr`)"
+    In the canonical Intermediate Representation, transitions targeting history pseudostates specify:
 
     - `target_is_history: true` for shallow history `[H]`.
     - `target_is_deep_history: true` for deep history `[H*]`.
+    - `history_fallback_target`: the designated fallback substate if the parent composite state was never previously entered.
 
-=== "C++ Reference Backend"
-    In the C++ runtime, history is tracked without dynamic allocations by storing an active substate tag in the state machine's internal state storage:
+    *(For C++ target implementation details, see the [Runtime C++ API](../runtime_api/synchronous_fsm.md) chapter).*
 
-    ```cpp
-    // Transition into composite state with history
-    fsm::row<Suspended, ResumeCmd, fsm::history<Operational, Standby>>
-    ```
-    If `Operational` was previously active in substate `Processing`, `ResumeCmd` restores `Processing`. If `Operational` was never entered before, it enters the fallback substate `Standby`.
+> [!TIP]
+> **Exact Compile-Time History Allocation**: In the C++ runtime ([`detail/history_manager.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/backend/cpp/runtime/detail/history_manager.hpp)), the history storage buffer capacity is strictly bounded at compile-time by `count_parent_states_v<Table::states>` (the exact number of composite parents with substates), eliminating any heap usage and avoiding stack waste over total state count.
 
 
 ---
@@ -75,4 +102,4 @@ Recursively restores the full hierarchy chain down to the deepest active leaf st
 Orthogonal regions allow a composite state to execute multiple concurrent statecharts simultaneously. In `fsmc`:
 
 - Regions are defined as independent sub-statecharts executing synchronously within the parent state.
-- Middle-end passes (`OrthogonalInterferencePass`) statically analyze transitions across orthogonal regions to verify that concurrent actions do not perform unsynchronized read/write conflicts on the same shared context variables.
+- Middle-end passes (`OrthogonalInterferencePass`) statically analyze transitions across orthogonal regions to verify that concurrent actions do not perform unsynchronized read/write conflicts on the same shared registers or output ports.

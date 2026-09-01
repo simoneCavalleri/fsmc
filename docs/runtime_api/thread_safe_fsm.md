@@ -1,149 +1,115 @@
-# `fsm::thread_safe_fsm` (Thread-Safe MPSC Engine)
+# Thread-Safe Active Object Engine (`fsm::thread_safe_fsm`)
 
-`fsm::thread_safe_fsm<TransitionTable, Context, InitialState, Policy>` is an asynchronous Multi-Producer Single-Consumer (MPSC) state machine execution engine designed for multi-threaded services, robotics middleware (ROS 2), game engine architectures, and high-concurrency systems.
+`fsm::thread_safe_fsm` wraps the core synchronous engine in a thread-safe **Active Object** architecture with a dedicated background worker thread, thread-safe event queueing, asynchronous `std::future` results, and delayed timed event scheduling.
 
----
-
-## Class Template Synopsis
-
-```cpp
-namespace fsm {
-
-template <
-    typename Table,
-    typename Context = no_context,
-    typename InitialState = typename Table::initial_state
->
-class thread_safe_fsm {
-public:
-    using table_type   = Table;
-    using context_type = Context;
-    using state_type   = InitialState;
-
-    // Constructors & Lifecycle
-    explicit thread_safe_fsm(Context ctx = Context{});
-    ~thread_safe_fsm();
-
-    // 1. Asynchronous Fire-and-Forget Enqueue
-    template <typename Event>
-    void post(Event&& event);
-
-    // 2. Asynchronous Enqueue with std::future Result
-    template <typename Event>
-    std::future<dispatch_result> post_async(Event&& event);
-
-    // 3. Synchronous Dispatch (Blocks caller thread until execution completes)
-    template <typename Event>
-    dispatch_result dispatch_sync(const Event& event);
-
-    // Thread-Safe State Inspection
-    [[nodiscard]] std::string_view current_state_name() const;
-    [[nodiscard]] std::size_t state_index() const;
-
-    template <typename State>
-    [[nodiscard]] bool is_in_state() const;
-
-    // Synchronized Context Access
-    template <typename Func>
-    void with_context(Func&& fn);
-
-    template <typename Func>
-    auto with_context(Func&& fn) const;
-
-    // Worker Control
-    void stop();
-    [[nodiscard]] bool is_running() const noexcept;
-    [[nodiscard]] std::size_t pending_events_count() const;
-};
-
-} // namespace fsm
-```
+It is designed for desktop applications, multi-threaded backend services, and network protocol daemons where multiple producer threads concurrently post events.
 
 ---
 
-## Multi-Threaded Execution Flow
+## Architecture Overview
 
 ```mermaid
-flowchart TD
-    subgraph Producers["Concurrent Producer Threads"]
-        T1["Thread 1 (e.g. Network Socket)"]
-        T2["Thread 2 (e.g. User Interface)"]
-        T3["Thread 3 (e.g. Sensor Poller)"]
+flowchart LR
+    subgraph Producers["Multiple Producer Threads"]
+        T1["Thread 1 (UI)"]
+        T2["Thread 2 (Network Socket)"]
+        T3["Thread 3 (Timer)"]
     end
 
-    subgraph MPSCQueue["Thread-Safe Event Queue"]
-        Queue["Thread-Safe Bounded Ring Queue<br/>Protected by Mutex or Spinlock"]
+    subgraph Wrapper["fsm::thread_safe_fsm (Active Object)"]
+        Queue["Thread-Safe Queue + Condition Variable"]
+        Worker["Dedicated Background Worker Thread"]
+        Core["fsm::fsm Core (Run-to-Completion)"]
+        Queue --> Worker --> Core
     end
 
-    subgraph ConsumerWorker["Background Dedicated Worker Thread"]
-        Worker["Worker Loop (condition_variable wait)"]
-        CoreFSM["fsm::fsm Core Instance Execution"]
-        Promise["Fulfill std::promise"]
-        Worker --> CoreFSM
-        CoreFSM --> Promise
-    end
-
-    T1 -->|post| Queue
-    T2 -->|post_async| Queue
-    T3 -->|post| Queue
-    Queue -->|dequeue and notify| Worker
+    T1 -->|post / post_async| Queue
+    T2 -->|post / post_async| Queue
+    T3 -->|post_delayed| Queue
 ```
-
-
 
 ---
 
-## Complete Multi-Threaded Example
-
+## Practical Example: Network Connection Manager
 
 ```cpp
-#include "uav_fsm.hpp"
 #include <iostream>
-#include <thread>
-#include <vector>
+#include <chrono>
+#include <cassert>
+#include "fsm/backend/cpp/runtime/thread_safe_fsm.hpp"
 
-struct FlightContext {
-    int battery{100};
-    bool emergency{false};
-};
+using namespace std::chrono_literals;
 
-// Define clean type alias for thread-safe asynchronous FSM
-using ThreadSafeUavFSM = fsm::thread_safe_fsm<AutonomousUavMissionTable, FlightContext, Preflight>;
+// 1. Define States and Events
+struct Disconnected { static constexpr std::string_view name = "Disconnected"; };
+struct Connecting   { static constexpr std::string_view name = "Connecting";   };
+struct Connected    { static constexpr std::string_view name = "Connected";    };
+
+struct ConnectCmd    { std::string host; };
+struct HandshakeOk   {};
+struct DisconnectCmd {};
+
+// 2. Define Transition Table
+using NetTable = fsm::transition_table<
+    fsm::row<Disconnected, ConnectCmd,    Connecting>,
+    fsm::row<Connecting,   HandshakeOk,   Connected>,
+    fsm::row<Connected,    DisconnectCmd, Disconnected>
+>;
 
 int main() {
-    FlightContext ctx;
-    ThreadSafeUavFSM fsm(ctx);
+    // 3. Instantiate thread_safe_fsm (starts background worker thread)
+    fsm::thread_safe_fsm<NetTable> client;
 
-    std::cout << "Initial: " << fsm.current_state_name() << "\n";
+    std::cout << "Initial state: " << client.current_state_name() << "\n"; // Disconnected
 
+    // 4. Asynchronous Dispatch with std::future
+    std::future<fsm::dispatch_result> future_res = client.post_async(ConnectCmd{"api.server.com"});
+    
+    // Wait for the transition to complete on the worker thread
+    fsm::dispatch_result result = future_res.get();
+    if (result.is_success()) {
+        std::cout << "State after ConnectCmd: " << client.current_state_name() << "\n"; // Connecting
+    }
 
-    // 1. Thread 1: Post async calibration and wait for completion
-    std::thread worker1([&fsm]() {
-        std::future<fsm::dispatch_result> fut = fsm.post_async(CalibrationOk{});
-        fsm::dispatch_result res = fut.get(); // Wait for worker thread execution
-        std::cout << "[Thread 1] Calibration status: " << res.to_string() << "\n";
+    // 5. Scheduled Delayed Event (e.g. timeout after 50ms)
+    client.post_delayed(HandshakeOk{}, 20ms);
+
+    // Wait briefly for the timed event to fire
+    std::this_thread::sleep_for(50ms);
+    std::cout << "State after delayed handshake: " << client.current_state_name() << "\n"; // Connected
+    assert(client.is_in_state<Connected>());
+
+    // 6. Non-blocking fire-and-forget post with callback
+    client.post(DisconnectCmd{}, [](const fsm::dispatch_result& res) {
+        std::cout << "Callback: Disconnect completed with status = " 
+                  << static_cast<int>(res.status) << "\n";
     });
 
-    // 2. Thread 2: Fire-and-forget commands
-    std::thread worker2([&fsm]() {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        fsm.post(TakeoffCmd{});
-    });
+    std::this_thread::sleep_for(20ms);
+    std::cout << "Final state: " << client.current_state_name() << "\n"; // Disconnected
 
-    worker1.join();
-    worker2.join();
-
-    // Give worker time to process takeoff
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-    // Inspect safely from main thread
-    std::cout << "Current State: " << fsm.current_state_name() << "\n";
-
-    // Inspect context safely
-    fsm.with_context([](const FlightContext& c) {
-        std::cout << "Context Battery: " << c.battery << "%\n";
-    });
-
+    // Worker thread is automatically stopped and joined upon destruction
     return 0;
 }
 ```
+
+---
+
+## API Summary
+
+### Asynchronous Event Posting
+
+| Method | Return Type | Description |
+| :--- | :--- | :--- |
+| `post(event)` | `void` | Thread-safe, non-blocking fire-and-forget event push. |
+| `post(event, callback)` | `void` | Enqueues event and invokes `callback(dispatch_result)` upon completion. |
+| `post_async(event)` | `std::future<dispatch_result>` | Enqueues event and returns a future to await the transition result. |
+| `post_delayed(event, duration)` | `void` | Schedules an event to fire after the specified `std::chrono::duration` delay. |
+
+### Thread-Safe Inspection
+
+| Method | Return Type | Description |
+| :--- | :--- | :--- |
+| `current_state_name()` | `std::string_view` | Safely acquires lock and returns the active state name. |
+| `is_in_state<State>()` | `bool` | Checks active state under mutex synchronization. |
+| `snapshot_registers()` | `Registers` | Copies internal registers under mutex lock. |

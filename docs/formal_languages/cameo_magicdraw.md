@@ -6,7 +6,7 @@
 
 ## 1. Supported XMI 2.1 Constructs
 
-- **`uml:StateMachine`**: Root statechart element with name and context mappings.
+- **`uml:StateMachine`**: Root statechart element with name, port bindings, and domain mappings.
 - **`uml:Region`**: Root and composite state execution regions.
 - **`uml:State`**: Simple and composite states with `entry` and `exit` behaviors.
 - **`uml:Pseudostate`**: Initial, Choice, Junction, Shallow History (`[H]`), and Deep History (`[H*]`).

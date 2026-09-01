@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Synchronous continuous execution loop via `step(in, out, srv)` for periodic sampled systems (IEC 61131-3 / SCADE Lustre model).
   - Asynchronous event-driven execution via `dispatch(ev, in, out, srv)`.
   - Canonical *Read-Execute-Write* (Latching Pattern) ensuring immunity to torn-reads and race conditions.
+  - Asynchronous event push standardized on `post(Event&&)` across both `fsm::thread_safe_fsm` and lock-free `fsm::spsc_fsm`.
 - **NumericDomain Port Contracts & Validation**:
   - Full support for formal port range contracts (`min_value`, `max_value`, `assert constraint`) in SysML v2 (`in port`, `out port`), PlantUML (`@fsm:port`), Mermaid, JSON, SMV, and SCXML.
   - C++ emitter automatically generates inline `[[nodiscard]] constexpr bool validate_contracts() const noexcept` on `InPorts` and `OutPorts`.
@@ -29,14 +30,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Canonical header-only runtime relocated under `include/fsm/backend/cpp/runtime/` with runtime unit tests in `tests/backend/cpp/runtime/`.
   - Reorganized `tests/backend/cpp/` into thematic modules (`test_cpp_model_emitter.cpp`, `test_cpp_e2e_compiler.cpp`, CMake targets).
   - E2E integration test suite validating host `g++` compilation under `-Wall -Wextra -Werror -pedantic -Wconversion` on both `-std=c++17` and `-std=c++20`.
-- **Educational Overhaul & Real-World Capstone**:
+- **WebAssembly Interactive Playground & Visual Serializer Enhancements**:
+  - Full WebAssembly (`fsmc.wasm` / `fsmc.js`) module compiled with Embind and C++20 for instant in-browser compilation, validation, optimization, and diagram export.
+  - Robust SysML v2 parser supporting inline port constraints and compound `do { ... }` action blocks.
+  - Dagre-safe Mermaid state diagram serialization resolving child-to-ancestor transitions and history restoration (`[H]`, `[H*]`) without layout cycles.
+  - Lossless closed-loop cross-format transpilation across SysML v2, PlantUML, Mermaid, SCXML, Cameo XMI, and JSON.
+- **Educational Overhaul & Dedicated Engineering Guides**:
   - Added dedicated *Universal Runtime Fundamentals* chapter and *5 Architectural Design Patterns / Anti-Patterns*.
   - Added capstone *Step 6: Real-World Case Study (Autonomous UAV Flight Computer)* from SysML v2 model to C++20 real-time loop.
+  - Added dedicated *Unit Testing Guide* with GoogleTest, Catch2, Mock Services, and Invariant validation recipes.
+  - Added dedicated *FAQ & Troubleshooting Guide* with compiler error diagnostics and architectural checklists.
+  - Added *Dual-Paradigm Temporal Models Guide* contrasting discrete sampled dwell timers (`in_state_for<N>`) with continuous physical timers (`post_state_timeout`).
 
 ### 💥 Breaking Changes
 - **Complete Removal of Monolithic `Context`**:
   - `Context`, `no_context`, `with_context()`, and the `--context` CLI option have been eliminated.
   - All guards and actions must migrate to partitioned signatures (`guard(in, reg)` / `action(out, reg, srv)`).
+- **Removal of Legacy SPSC Producer Aliases**:
+  - Removed `fsm::spsc_fsm::send()` and `fsm::spsc_fsm::enqueue()`. All asynchronous event producers must call `post(Event&&)`.
 - **CMake Macro Update**:
   - Removed `CONTEXT` argument from `fsmc_target_sources(...)`.
 

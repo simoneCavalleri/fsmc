@@ -186,6 +186,13 @@ class CameoSerializer {
 
         out << "      </region>\n";
         out << "    </packagedElement>\n";
+
+        // Emit declared signals
+        for (const auto& sig : model.signals) {
+            out << "    <packagedElement xmi:type=\"uml:Signal\" xmi:id=\"_sig_" << sig.name << "\" name=\""
+                << escape_xml(sig.name) << "\"/>\n";
+        }
+
         out << "  </uml:Model>\n";
         out << "</xmi:XMI>\n";
         return out.str();

@@ -27,6 +27,26 @@ class DotSerializer {
                "fillcolor=\"#f8fafc\", color=\"#334155\", penwidth=1.2];\n";
         out << "    edge [fontname=\"Helvetica\", fontsize=9, color=\"#475569\", arrowsize=0.8];\n\n";
 
+        // Properties, Ports, Variables, Signals directives
+        for (const auto& prop : model.properties) {
+            out << "    // @fsm:property name=" << prop.name << " kind=" << property_kind_to_string(prop.kind)
+                << " ltl=\"" << prop.raw_formula << "\"\n";
+        }
+        for (const auto& port : model.ports) {
+            out << "    // @fsm:port name=" << port.name << " type=" << port.type
+                << " dir=" << (port.is_out() ? "out" : (port.direction == PortDirection::InOut ? "inout" : "in"))
+                << "\n";
+        }
+        for (const auto& var : model.variables) {
+            out << "    // @fsm:var name=" << var.name << " type=" << var.type << " init=" << var.initial_value << "\n";
+        }
+        for (const auto& sig : model.signals) {
+            out << "    // @fsm:signal " << sig.name << "\n";
+        }
+        if (!model.properties.empty() || !model.ports.empty() || !model.variables.empty() || !model.signals.empty()) {
+            out << "\n";
+        }
+
         // Map parent states
         std::map<std::string, std::string> parent_map;
         for (const auto& s : model.states) {

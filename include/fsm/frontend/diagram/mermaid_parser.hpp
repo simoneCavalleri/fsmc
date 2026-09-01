@@ -32,9 +32,30 @@ class MermaidParser : public IParser {
                 continue;
             }
 
+            // YAML frontmatter title / diagram title
+            if (starts_with(trimmed, "---") || starts_with(trimmed, "title:")) {
+                auto t_pos = trimmed.find("title:");
+                if (t_pos != std::string_view::npos) {
+                    std::string tname = std::string(trim(trimmed.substr(t_pos + 6)));
+                    auto dash_pos = tname.find("---");
+                    if (dash_pos != std::string::npos) {
+                        tname = std::string(trim(tname.substr(0, dash_pos)));
+                    }
+                    if (!tname.empty()) {
+                        out_model.name = sanitize_identifier(tname);
+                    }
+                }
+                continue;
+            }
+
             if (DirectiveParser::is_directive(trimmed)) {
                 std::string body = DirectiveParser::extract_directive_body(trimmed);
-                if (body.rfind("var", 0) == 0 || body.rfind("variable", 0) == 0) {
+                if (body.rfind("name", 0) == 0 || body.rfind("fsm", 0) == 0) {
+                    auto eq = body.find('=');
+                    if (eq != std::string::npos) {
+                        out_model.name = sanitize_identifier(trim(body.substr(eq + 1)));
+                    }
+                } else if (body.rfind("var", 0) == 0 || body.rfind("variable", 0) == 0) {
                     if (auto var = DirectiveParser::parse_variable_directive(body)) {
                         out_model.add_variable(std::move(*var));
                     }

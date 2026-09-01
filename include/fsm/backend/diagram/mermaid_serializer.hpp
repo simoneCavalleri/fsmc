@@ -15,6 +15,10 @@ class MermaidSerializer {
   public:
     static std::string serialize(const FsmIr& model) {
         std::ostringstream out;
+        if (!model.name.empty() && model.name != "GeneratedFSM" && model.name != "MyStateMachine") {
+            out << "---\ntitle: " << model.name << "\n---\n";
+            out << "%% @fsm:name " << model.name << "\n";
+        }
         out << "stateDiagram-v2\n";
 
         // Properties
@@ -120,17 +124,14 @@ class MermaidSerializer {
             out << "    [*] --> " << model.initial_state << "\n";
         }
 
-        // Emit composite states and their contents
+        // Emit top-level states in declaration order
         for (const auto& state : model.states) {
-            if (state.is_composite && state.parent_state.empty()) {
-                emit_state(out, state, model, parent_map, emitted_transitions, trans_order, 1);
-            }
-        }
-
-        // Emit top-level non-composite states
-        for (const auto& state : model.states) {
-            if (!state.is_composite && state.parent_state.empty()) {
-                emit_leaf_state(out, state, "    ");
+            if (state.parent_state.empty()) {
+                if (state.is_composite) {
+                    emit_state(out, state, model, parent_map, emitted_transitions, trans_order, 1);
+                } else {
+                    emit_leaf_state(out, state, "    ");
+                }
             }
         }
 
@@ -247,17 +248,14 @@ class MermaidSerializer {
             out << pad << "    [*] --> " << state.initial_sub_state << "\n";
         }
 
-        // 1. Emit child composite states first
+        // Emit child states in declaration order
         for (const auto& child : model.states) {
-            if (child.parent_state == state.name && child.is_composite) {
-                emit_state(out, child, model, parent_map, emitted_transitions, trans_order, indent + 1);
-            }
-        }
-
-        // 2. Emit non-composite child states and their actions
-        for (const auto& child : model.states) {
-            if (child.parent_state == state.name && !child.is_composite) {
-                emit_leaf_state(out, child, pad + "    ");
+            if (child.parent_state == state.name) {
+                if (child.is_composite) {
+                    emit_state(out, child, model, parent_map, emitted_transitions, trans_order, indent + 1);
+                } else {
+                    emit_leaf_state(out, child, pad + "    ");
+                }
             }
         }
 

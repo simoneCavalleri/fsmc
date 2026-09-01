@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "fsm/frontend/common/parser_interface.hpp"
+#include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
@@ -39,8 +40,33 @@ class DotParser : public IParser {
 
         while (std::getline(stream, line)) {
             std::string trimmed = trim_line(line);
-            if (trimmed.empty() || starts_with(trimmed, "//") || starts_with(trimmed, "#") ||
-                starts_with(trimmed, "/*")) {
+            if (trimmed.empty()) {
+                continue;
+            }
+
+            if (DirectiveParser::is_directive(trimmed)) {
+                std::string body = DirectiveParser::extract_directive_body(trimmed);
+                if (body.rfind("var", 0) == 0 || body.rfind("variable", 0) == 0) {
+                    if (auto var = DirectiveParser::parse_variable_directive(body)) {
+                        model.add_variable(std::move(*var));
+                    }
+                } else if (body.rfind("port", 0) == 0) {
+                    if (auto port = DirectiveParser::parse_port_directive(body)) {
+                        model.ports.push_back(std::move(*port));
+                    }
+                } else if (body.rfind("property", 0) == 0) {
+                    if (auto prop = DirectiveParser::parse_property_directive(body)) {
+                        model.add_property(std::move(*prop));
+                    }
+                } else if (body.rfind("signal", 0) == 0) {
+                    if (auto sig = DirectiveParser::parse_signal_directive(body)) {
+                        model.add_signal(std::move(*sig));
+                    }
+                }
+                continue;
+            }
+
+            if (starts_with(trimmed, "//") || starts_with(trimmed, "#") || starts_with(trimmed, "/*")) {
                 continue;
             }
 

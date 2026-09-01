@@ -57,6 +57,20 @@ class ScxmlParser : public IParser {
             model.initial_state = sanitize_identifier(root_init);
         }
 
+        // Parse signal directives from comments
+        {
+            std::string raw_str{content};
+            std::regex sig_re(R"(<!--\s*@fsm:signal\s+([A-Za-z0-9_]+)\s*-->)");
+            auto begin = std::sregex_iterator(raw_str.begin(), raw_str.end(), sig_re);
+            auto end = std::sregex_iterator();
+            for (auto i = begin; i != end; ++i) {
+                std::smatch match = *i;
+                SignalDefinition sig_def;
+                sig_def.name = sanitize_identifier(match[1].str());
+                model.add_signal(std::move(sig_def));
+            }
+        }
+
         parse_scxml_children(scxml_node, model, "");
 
         if (model.states.empty()) {
@@ -255,9 +269,13 @@ class ScxmlParser : public IParser {
             } else if (tag == "defer" || ends_with(tag, ":defer")) {
                 std::string defer_event = child->get_attr("event");
                 if (!defer_event.empty()) {
+                    std::string s_evt = sanitize_identifier(defer_event);
+                    SignalDefinition sig_def;
+                    sig_def.name = s_evt;
+                    model.add_signal(std::move(sig_def));
                     auto* curr_state = model.find_state_mut(current_parent_state);
                     if (curr_state != nullptr) {
-                        curr_state->deferred_events.push_back(sanitize_identifier(defer_event));
+                        curr_state->deferred_events.push_back(s_evt);
                     }
                 }
             } else if (tag == "invoke" || ends_with(tag, ":invoke")) {

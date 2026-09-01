@@ -115,48 +115,13 @@ class PlantUmlSerializer {
             out << "[*] --> " << model.initial_state << "\n";
         }
 
-        // Emit top-level composite states and their contents
+        // Emit top-level states in declaration order
         for (const auto& state : model.states) {
-            if (state.is_composite && state.parent_state.empty()) {
-                emit_state(out, state, model, parent_map, emitted_transitions, 0);
-            }
-        }
-
-        // Emit top-level non-composite states
-        for (const auto& state : model.states) {
-            if (!state.is_composite && state.parent_state.empty()) {
-                if (state.kind == StateKind::EntryPoint) {
-                    out << "state " << state.name << " <<entryPoint>>\n";
-                } else if (state.kind == StateKind::ExitPoint) {
-                    out << "state " << state.name << " <<exitPoint>>\n";
-                } else if (state.kind == StateKind::Fork) {
-                    out << "state " << state.name << " <<fork>>\n";
-                } else if (state.kind == StateKind::Join) {
-                    out << "state " << state.name << " <<join>>\n";
-                }
-                if (!state.traceability_reqs.empty()) {
-                    out << "' @fsm:state name=" << state.name << " satisfies=[";
-                    for (size_t r = 0; r < state.traceability_reqs.size(); ++r) {
-                        if (r > 0)
-                            out << ", ";
-                        out << "\"" << state.traceability_reqs[r] << "\"";
-                    }
-                    out << "]\n";
-                }
-                if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
-                    out << state.name << " : invariant " << *state.time_invariant << "\n";
-                }
-                for (const auto& act : state.entry_actions) {
-                    out << state.name << " : entry / " << act.name << "\n";
-                }
-                if (state.do_activity.has_value() && !state.do_activity->empty()) {
-                    out << state.name << " : do / " << *state.do_activity << "\n";
-                }
-                for (const auto& act : state.exit_actions) {
-                    out << state.name << " : exit / " << act.name << "\n";
-                }
-                for (const auto& d_evt : state.deferred_events) {
-                    out << state.name << " : defer " << d_evt << "\n";
+            if (state.parent_state.empty()) {
+                if (state.is_composite) {
+                    emit_state(out, state, model, parent_map, emitted_transitions, 0);
+                } else {
+                    emit_leaf_state(out, state, "");
                 }
             }
         }
@@ -184,6 +149,44 @@ class PlantUmlSerializer {
     }
 
   private:
+    static void emit_leaf_state(std::ostream& out, const StateNode& state, const std::string& pad) {
+        if (state.kind == StateKind::EntryPoint) {
+            out << pad << "state " << state.name << " <<entryPoint>>\n";
+        } else if (state.kind == StateKind::ExitPoint) {
+            out << pad << "state " << state.name << " <<exitPoint>>\n";
+        } else if (state.kind == StateKind::Fork) {
+            out << pad << "state " << state.name << " <<fork>>\n";
+        } else if (state.kind == StateKind::Join) {
+            out << pad << "state " << state.name << " <<join>>\n";
+        } else {
+            out << pad << "state " << state.name << "\n";
+        }
+        if (!state.traceability_reqs.empty()) {
+            out << pad << "' @fsm:state name=" << state.name << " satisfies=[";
+            for (size_t r = 0; r < state.traceability_reqs.size(); ++r) {
+                if (r > 0)
+                    out << ", ";
+                out << "\"" << state.traceability_reqs[r] << "\"";
+            }
+            out << "]\n";
+        }
+        if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
+            out << pad << state.name << " : invariant " << *state.time_invariant << "\n";
+        }
+        for (const auto& act : state.entry_actions) {
+            out << pad << state.name << " : entry / " << act.name << "\n";
+        }
+        if (state.do_activity.has_value() && !state.do_activity->empty()) {
+            out << pad << state.name << " : do / " << *state.do_activity << "\n";
+        }
+        for (const auto& act : state.exit_actions) {
+            out << pad << state.name << " : exit / " << act.name << "\n";
+        }
+        for (const auto& d_evt : state.deferred_events) {
+            out << pad << state.name << " : defer " << d_evt << "\n";
+        }
+    }
+
     static void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
                            const std::map<std::string, std::string>& parent_map, std::set<size_t>& emitted_transitions,
                            size_t indent) {
@@ -223,50 +226,13 @@ class PlantUmlSerializer {
             out << pad << "  " << state.name << " : defer " << d_evt << "\n";
         }
 
-        // 1. Child composite states
+        // Child states in declaration order
         for (const auto& child : model.states) {
-            if (child.parent_state == state.name && child.is_composite) {
-                emit_state(out, child, model, parent_map, emitted_transitions, indent + 1);
-            }
-        }
-
-        // 2. Child non-composite states
-        for (const auto& child : model.states) {
-            if (child.parent_state == state.name && !child.is_composite) {
-                if (child.kind == StateKind::EntryPoint) {
-                    out << pad << "  state " << child.name << " <<entryPoint>>\n";
-                } else if (child.kind == StateKind::ExitPoint) {
-                    out << pad << "  state " << child.name << " <<exitPoint>>\n";
-                } else if (child.kind == StateKind::Fork) {
-                    out << pad << "  state " << child.name << " <<fork>>\n";
-                } else if (child.kind == StateKind::Join) {
-                    out << pad << "  state " << child.name << " <<join>>\n";
+            if (child.parent_state == state.name) {
+                if (child.is_composite) {
+                    emit_state(out, child, model, parent_map, emitted_transitions, indent + 1);
                 } else {
-                    out << pad << "  state " << child.name << "\n";
-                }
-                if (!child.traceability_reqs.empty()) {
-                    out << pad << "  ' @fsm:state name=" << child.name << " satisfies=[";
-                    for (size_t r = 0; r < child.traceability_reqs.size(); ++r) {
-                        if (r > 0)
-                            out << ", ";
-                        out << "\"" << child.traceability_reqs[r] << "\"";
-                    }
-                    out << "]\n";
-                }
-                if (child.time_invariant.has_value() && !child.time_invariant->empty()) {
-                    out << pad << "  " << child.name << " : invariant " << *child.time_invariant << "\n";
-                }
-                for (const auto& act : child.entry_actions) {
-                    out << pad << "  " << child.name << " : entry / " << act.name << "\n";
-                }
-                if (child.do_activity.has_value() && !child.do_activity->empty()) {
-                    out << pad << "  " << child.name << " : do / " << *child.do_activity << "\n";
-                }
-                for (const auto& act : child.exit_actions) {
-                    out << pad << "  " << child.name << " : exit / " << act.name << "\n";
-                }
-                for (const auto& d_evt : child.deferred_events) {
-                    out << pad << "  " << child.name << " : defer " << d_evt << "\n";
+                    emit_leaf_state(out, child, pad + "  ");
                 }
             }
         }

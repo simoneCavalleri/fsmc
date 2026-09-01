@@ -515,13 +515,18 @@ const ModelManager = {
     return 'plantuml';
   },
 
+  setModule(m) {
+    fsmcModule = m;
+  },
+
   parse(text, format) {
     const fmt = format || this.detectFormat(text);
+    const mod = (typeof fsmcModule !== 'undefined' && fsmcModule) || (typeof window !== 'undefined' && window.fsmcModule) || (typeof global !== 'undefined' && global.fsmcModule);
 
     // 1. Try C++ WebAssembly parser if loaded
-    if (fsmcModule && fsmcModule.getModel && text && text.trim()) {
+    if (mod && mod.getModel && text && text.trim()) {
       try {
-        const res = JSON.parse(fsmcModule.getModel(text, fmt));
+        const res = JSON.parse(mod.getModel(text, fmt));
         if (res && !res.error && res.states && res.states.length > 0) {
           const statesArr = res.states;
           for (const s of statesArr) {
@@ -707,6 +712,11 @@ const ModelManager = {
       const lines = text.split('\n');
       for (const raw of lines) {
         const line = raw.trim();
+        const sigMatch = line.match(/\/\/\s*@fsm:signal\s+([A-Za-z0-9_]+)/);
+        if (sigMatch) {
+          events.add(sigMatch[1]);
+          continue;
+        }
         if (line.includes('->')) {
           const parts = line.split('->');
           const src = parts[0].replace(/;/g, '').trim();
@@ -751,9 +761,15 @@ const ModelManager = {
 
       const processSysmlStmt = (stmt, stack) => {
         const s = stmt.replace(/\s+/g, ' ').trim();
-        if (!s || s.startsWith("item def") || s.startsWith("attribute") || s.startsWith("event def") ||
+        if (!s || s.startsWith("attribute") ||
             s.startsWith("in port") || s.startsWith("out port") || s.startsWith("port") ||
             s === "entry" || s === "initial") return;
+
+        const evtDefMatch = s.match(/^(?:event\s+def|item\s+def)\s+([A-Za-z0-9_]+)/);
+        if (evtDefMatch) {
+          events.add(evtDefMatch[1]);
+          return;
+        }
 
         const initMatch = s.match(/^(?:(?:entry|initial)(?:\s*;)?\s*)?then\s+([A-Za-z0-9_]+)/);
         if (initMatch) {
@@ -809,6 +825,7 @@ const ModelManager = {
         const deferMatch = s.match(/^defer\s+([A-Za-z0-9_]+)/);
         if (deferMatch) {
           const evtName = deferMatch[1];
+          events.add(evtName);
           if (stack.length > 0) {
             const pName = stack[stack.length - 1];
             const pObj = stateDetails.find(d => d.name === pName);
@@ -931,7 +948,31 @@ const ModelManager = {
       const lines = text.split('\n');
       for (const raw of lines) {
         const line = raw.trim();
-        if (!line || line.startsWith('@') || line.startsWith('stateDiagram')) continue;
+        if (!line) continue;
+
+        const titleMatch = line.match(/(?:---\s*title:\s*([A-Za-z0-9_]+)|title:\s*([A-Za-z0-9_]+)|@startuml\s+([A-Za-z0-9_]+)|@fsm:name\s+([A-Za-z0-9_]+))/);
+        if (titleMatch) {
+          name = titleMatch[1] || titleMatch[2] || titleMatch[3] || titleMatch[4];
+          continue;
+        }
+
+        const sigMatch = line.match(/(?:'|%%|<!--)\s*@fsm:signal\s+([A-Za-z0-9_]+)/);
+        if (sigMatch) {
+          events.add(sigMatch[1]);
+          continue;
+        }
+
+        const scxmlNameMatch = line.match(/<scxml[^>]*name="([A-Za-z0-9_]+)"/);
+        if (scxmlNameMatch) {
+          name = scxmlNameMatch[1];
+        }
+
+        const scxmlDeferMatch = line.match(/<defer[^>]*event="([A-Za-z0-9_]+)"/);
+        if (scxmlDeferMatch) {
+          events.add(scxmlDeferMatch[1]);
+        }
+
+        if (line.startsWith('@') || line.startsWith('stateDiagram') || line.startsWith('<?xml') || line.startsWith('<scxml')) continue;
 
         if (line.startsWith('state ') && !line.includes('-->')) {
           const stName = line.replace('state ', '').split('{')[0].split('[')[0].trim();
@@ -1003,7 +1044,16 @@ const ModelManager = {
 
     // 1. Mermaid (stateDiagram-v2)
     if (toFormat === 'mermaid') {
-      let out = "stateDiagram-v2\n";
+      let out = "";
+      if (model.name && model.name !== "GeneratedFSM" && model.name !== "MyStateMachine") {
+        out += `--- title: ${model.name} ---\n`;
+      }
+      out += "stateDiagram-v2\n";
+      if (model.events && model.events.length > 0) {
+        for (const ev of model.events) {
+          if (ev && ev !== "Anonymous") out += `%% @fsm:signal ${ev}\n`;
+        }
+      }
       if (model.initialState) out += `    [*] --> ${model.initialState}\n`;
       for (const t of model.transitions) {
         let label = t.event || "";
@@ -1018,7 +1068,12 @@ const ModelManager = {
 
     // 2. PlantUML (@startuml)
     if (toFormat === 'plantuml') {
-      let out = "@startuml\n";
+      let out = (model.name && model.name !== "GeneratedFSM" && model.name !== "MyStateMachine") ? `@startuml ${model.name}\n` : "@startuml\n";
+      if (model.events && model.events.length > 0) {
+        for (const ev of model.events) {
+          if (ev && ev !== "Anonymous") out += `' @fsm:signal ${ev}\n`;
+        }
+      }
       if (model.initialState) out += `[*] --> ${model.initialState}\n\n`;
       for (const t of model.transitions) {
         let label = t.event || "";
@@ -1035,6 +1090,12 @@ const ModelManager = {
     // 3. OMG SysML v2
     if (toFormat === 'sysml2') {
       let out = `state def ${fsmName} {\n`;
+      if (model.events && model.events.length > 0) {
+        for (const ev of model.events) {
+          if (ev && ev !== "Anonymous") out += `    event def ${ev};\n`;
+        }
+        out += "\n";
+      }
       if (model.initialState) out += `    initial state ${model.initialState};\n\n`;
       for (const s of model.states) {
         out += `    state ${s};\n`;
@@ -1056,6 +1117,11 @@ const ModelManager = {
     if (toFormat === 'scxml') {
       let out = `<?xml version="1.0" encoding="UTF-8"?>\n`;
       out += `<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="${model.initialState}" name="${fsmName}">\n`;
+      if (model.events && model.events.length > 0) {
+        for (const ev of model.events) {
+          if (ev && ev !== "Anonymous") out += `  <!-- @fsm:signal ${ev} -->\n`;
+        }
+      }
       for (const s of model.states) {
         const transFromS = model.transitions.filter(t => t.source === s);
         if (transFromS.length === 0) {
@@ -1142,6 +1208,13 @@ const ModelManager = {
     // 7. Graphviz DOT
     if (toFormat === 'dot') {
       let out = `digraph ${fsmName} {\n`;
+      if (model.events) {
+        for (const ev of model.events) {
+          if (ev && ev !== "Anonymous" && ev !== "EVENT") {
+            out += `    // @fsm:signal ${ev}\n`;
+          }
+        }
+      }
       out += `    __start__ [shape=point];\n`;
       if (model.initialState) out += `    __start__ -> ${model.initialState};\n`;
       for (const t of model.transitions) {
@@ -1160,11 +1233,12 @@ const ModelManager = {
 
   export(source, fromFormat, toFormat) {
     if (fromFormat === toFormat) return source;
+    const mod = (typeof fsmcModule !== 'undefined' && fsmcModule) || (typeof window !== 'undefined' && window.fsmcModule) || (typeof global !== 'undefined' && global.fsmcModule);
 
     // 1. Try C++ WebAssembly transpile
-    if (fsmcModule && fsmcModule.exportDiagram && source && source.trim()) {
+    if (mod && mod.exportDiagram && source && source.trim()) {
       try {
-        const exported = fsmcModule.exportDiagram(source, fromFormat, toFormat);
+        const exported = mod.exportDiagram(source, fromFormat, toFormat);
         if (exported && !exported.startsWith("// [FSMC ERROR]")) {
           return exported;
         }
@@ -1179,9 +1253,10 @@ const ModelManager = {
   },
 
   optimize(source, format, outFormat = "") {
-    if (fsmcModule && fsmcModule.optimize && source && source.trim()) {
+    const mod = (typeof fsmcModule !== 'undefined' && fsmcModule) || (typeof window !== 'undefined' && window.fsmcModule) || (typeof global !== 'undefined' && global.fsmcModule);
+    if (mod && mod.optimize && source && source.trim()) {
       try {
-        const opt = fsmcModule.optimize(source, format, outFormat || format);
+        const opt = mod.optimize(source, format, outFormat || format);
         if (opt && !opt.startsWith("// [FSMC ERROR]")) {
           return opt;
         }
@@ -1193,10 +1268,11 @@ const ModelManager = {
   },
 
   generateCpp(source, format, isCpp20 = true, isStandalone = true) {
+    const mod = (typeof fsmcModule !== 'undefined' && fsmcModule) || (typeof window !== 'undefined' && window.fsmcModule) || (typeof global !== 'undefined' && global.fsmcModule);
     // 1. Try C++ WebAssembly compiler
-    if (fsmcModule && fsmcModule.compile && source && source.trim()) {
+    if (mod && mod.compile && source && source.trim()) {
       try {
-        const code = fsmcModule.compile(source, format, isCpp20 ? 20 : 17, isStandalone);
+        const code = mod.compile(source, format, isCpp20 ? 20 : 17, isStandalone);
         if (code && !code.startsWith("// [FSMC ERROR]")) {
           return code;
         }
@@ -1496,8 +1572,16 @@ const GraphRenderer = {
     if (window.mermaid && canonicalGraph) {
       const seq = ++renderSeq;
       try {
+        let renderGraph = canonicalGraph.trim();
+        const sdPos = renderGraph.indexOf("stateDiagram");
+        if (sdPos !== -1) {
+          renderGraph = renderGraph.slice(sdPos);
+        } else {
+          renderGraph = "stateDiagram-v2\n" + renderGraph;
+        }
+
         const id = "mermaid_svg_" + seq;
-        const { svg } = await mermaid.render(id, canonicalGraph);
+        const { svg } = await mermaid.render(id, renderGraph);
         if (seq === renderSeq) {
           canvas.innerHTML = svg;
           this.highlightActive(model.activeState);
@@ -1508,6 +1592,20 @@ const GraphRenderer = {
         console.warn("Mermaid layout notice:", err);
         const tempEl = document.getElementById("d" + "mermaid_svg_" + seq);
         if (tempEl) tempEl.remove();
+        // Fallback to pure canonical graph if WASM export had non-standard formatting
+        try {
+          const fallbackGraph = this.buildCanonicalGraph(model);
+          const fbId = "mermaid_svg_fb_" + seq;
+          const { svg } = await mermaid.render(fbId, fallbackGraph);
+          if (seq === renderSeq) {
+            canvas.innerHTML = svg;
+            this.highlightActive(model.activeState);
+            this.attachHandlers();
+            ViewportController.applyTransform(false);
+          }
+        } catch (fbErr) {
+          console.warn("Mermaid fallback layout notice:", fbErr);
+        }
       }
     }
   },
@@ -1830,7 +1928,9 @@ const SimulatorController = {
       container.appendChild(btn);
     }
 
-    const otherEvents = (ModelManager.currentModel.events || []).filter(e => !availableTrans.some(t => t.event === e));
+    const otherEvents = (ModelManager.currentModel.events || [])
+      .filter(e => !availableTrans.some(t => t.event === e))
+      .sort((a, b) => a.localeCompare(b));
     for (const evt of otherEvents) {
       const btn = document.createElement("button");
       btn.className = "btn-event disabled-trigger";

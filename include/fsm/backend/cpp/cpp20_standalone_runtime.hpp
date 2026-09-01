@@ -1612,9 +1612,8 @@ struct or_ {
 template <typename ParentState, typename SubState>
 struct history_is {
     template <typename Event, typename State, typename InPorts, typename Registers, typename Services, typename Fsm>
-    constexpr auto operator()(const Event& /*evt*/, const State& /*state*/, const InPorts& /*in*/,
-                              const Registers& /*reg*/, Services& /*srv*/, const Fsm& fsm) const
-        -> decltype(fsm.get_history(ParentState::name) == SubState::name) {
+    constexpr bool operator()(const Event&, const State&, const InPorts&, const Registers&, Services&,
+                              const Fsm& fsm) const noexcept {
         return fsm.get_history(ParentState::name) == SubState::name;
     }
 };

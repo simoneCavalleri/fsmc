@@ -297,6 +297,18 @@ class CameoXmiParser : public IParser {
         parse_state_machine_element(sm_node, model, "", id_to_name, id_is_choice, id_is_initial, id_is_history,
                                     id_is_deep_history);
 
+        // 3. Find and register all declared Signals
+        std::vector<std::shared_ptr<XmlNode>> signal_nodes;
+        find_signals(root, signal_nodes);
+        for (const auto& sig_node : signal_nodes) {
+            std::string sig_name = sig_node->get_attr("name");
+            if (!sig_name.empty()) {
+                SignalDefinition sig_def;
+                sig_def.name = sanitize_identifier(sig_name);
+                model.add_signal(std::move(sig_def));
+            }
+        }
+
         if (model.states.empty() && model.choice_nodes.empty()) {
             error_message = "Cameo XMI Parser: No valid states or transitions extracted from model.";
             return false;
@@ -310,6 +322,26 @@ class CameoXmiParser : public IParser {
     }
 
   private:
+    static void find_signals(const std::shared_ptr<XmlNode>& node, std::vector<std::shared_ptr<XmlNode>>& out_signals) {
+        if (!node)
+            return;
+        std::vector<std::shared_ptr<XmlNode>> work_list;
+        work_list.push_back(node);
+        while (!work_list.empty()) {
+            auto curr = work_list.back();
+            work_list.pop_back();
+            std::string type_attr = curr->get_attr("type");
+            std::string xmi_type = curr->get_attr("xmi:type");
+            if (curr->tag == "Signal" || ends_with(curr->tag, ":Signal") || type_attr == "uml:Signal" ||
+                xmi_type == "uml:Signal" || type_attr == "Signal" || xmi_type == "Signal") {
+                out_signals.push_back(curr);
+            }
+            for (const auto& child : curr->children) {
+                work_list.push_back(child);
+            }
+        }
+    }
+
     static void find_state_machines(const std::shared_ptr<XmlNode>& node,
                                     std::vector<std::shared_ptr<XmlNode>>& out_sm) {
         if (!node) {
@@ -526,16 +558,22 @@ class CameoXmiParser : public IParser {
         // Trigger / Event
         std::string event_name = trans_node->get_attr("trigger");
         if (event_name.empty()) {
+            event_name = trans_node->get_attr("event");
+        }
+        if (event_name.empty()) {
             for (const auto& trig : trans_node->find_children("trigger")) {
                 std::string t_name = trig->get_attr("name");
+                if (t_name.empty()) {
+                    t_name = trig->get_attr("event");
+                }
+                if (t_name.empty()) {
+                    t_name = trig->get_attr("signal");
+                }
                 if (!t_name.empty()) {
                     event_name = t_name;
                     break;
                 }
             }
-        }
-        if (event_name.empty()) {
-            event_name = trans_node->get_attr("name");
         }
 
         // Guard

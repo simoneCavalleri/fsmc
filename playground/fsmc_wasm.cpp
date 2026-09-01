@@ -137,8 +137,35 @@ std::string fsmc_wasm_get_model(const std::string& source, const std::string& fo
     }
 
     ss << "  ],\n  \"events\": [";
-    for (size_t i = 0; i < model.events.size(); ++i) {
-        ss << "\"" << model.events[i].name << "\"" << (i + 1 < model.events.size() ? ", " : "");
+    auto is_valid_ev = [](const std::string& name) {
+        return !name.empty() && name != "Anonymous" && name != "AnonymousEvent" && name != "anonymous_event";
+    };
+    std::vector<std::string> all_events;
+    std::set<std::string> seen_events;
+    for (const auto& sig : model.signals) {
+        if (is_valid_ev(sig.name) && seen_events.insert(sig.name).second) {
+            all_events.push_back(sig.name);
+        }
+    }
+    for (const auto& ev : model.events) {
+        if (is_valid_ev(ev.name) && seen_events.insert(ev.name).second) {
+            all_events.push_back(ev.name);
+        }
+    }
+    for (const auto& t : model.transitions) {
+        if (is_valid_ev(t.event) && seen_events.insert(t.event).second) {
+            all_events.push_back(t.event);
+        }
+    }
+    for (const auto& s : model.states) {
+        for (const auto& d : s.deferred_events) {
+            if (is_valid_ev(d) && seen_events.insert(d).second) {
+                all_events.push_back(d);
+            }
+        }
+    }
+    for (size_t i = 0; i < all_events.size(); ++i) {
+        ss << "\"" << all_events[i] << "\"" << (i + 1 < all_events.size() ? ", " : "");
     }
     ss << "],\n  \"transitions\": [\n";
 

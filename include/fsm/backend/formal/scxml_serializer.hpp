@@ -48,6 +48,11 @@ class ScxmlSerializer {
             out << "  </datamodel>\n";
         }
 
+        // Emit declared signals
+        for (const auto& sig : model.signals) {
+            out << "  <!-- @fsm:signal " << sig.name << " -->\n";
+        }
+
         // Emit top-level states recursively
         for (const auto& state : model.states) {
             if (state.parent_state.empty()) {

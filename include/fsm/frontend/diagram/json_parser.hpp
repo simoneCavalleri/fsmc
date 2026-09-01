@@ -612,6 +612,9 @@ class JsonStateParser : public IParser {
     static void parse_on_transitions(const JsonValue& on_obj, const std::string& source_state, FsmIr& model) {
         for (const auto& [event_key, trans_data] : on_obj.obj_members) {
             std::string event_name = sanitize_identifier(event_key);
+            if (event_key == "EVENT" || event_key == "always" || event_key.empty() || event_key == "anonymous") {
+                event_name = "Anonymous";
+            }
 
             // Simple form: "EVENT": "TargetState"
             if (trans_data.is_string()) {

@@ -14,8 +14,10 @@ class JsonSerializer {
   public:
     static std::string serialize(const FsmIr& model) {
         std::ostringstream out;
+        std::string sm_name = model.name.empty() ? "StateMachine" : model.name;
         out << "{\n";
-        out << "  \"id\": \"" << (model.name.empty() ? "StateMachine" : model.name) << "\",\n";
+        out << "  \"id\": \"" << sm_name << "\",\n";
+        out << "  \"name\": \"" << sm_name << "\",\n";
         if (!model.initial_state.empty()) {
             out << "  \"initial\": \"" << model.initial_state << "\",\n";
         }

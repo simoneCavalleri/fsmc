@@ -139,9 +139,11 @@ TEST(SpscFsmTest, ConcurrentLockFreeReads) {
 
     // Producer + Consumer execution
     for (int i = 0; i < kIterations; ++i) {
-        machine.post(EvStart{});
+        bool posted1 = machine.post(EvStart{});
+        EXPECT_TRUE(posted1);
         machine.process_one();
-        machine.post(EvStop{});
+        bool posted2 = machine.post(EvStop{});
+        EXPECT_TRUE(posted2);
         machine.process_one();
     }
 

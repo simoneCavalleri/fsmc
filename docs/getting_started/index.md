@@ -23,7 +23,7 @@ Depending on your engineering workflow, `fsmc` supports three primary operationa
 Author statecharts in high-level engineering formalisms (OMG SysML v2, Cameo / MagicDraw XMI, W3C SCXML). Use `fsmc` to transpile models losslessly between formats, generate visual diagrams, or produce requirement traceability matrices (RTM) for certification audits.
 
 ### 2. Formal Verification & Static Analysis
-Run compile-time safety and liveness analysis without executing code. `fsmc` translates statecharts into formal transition systems, invoking SMT solvers (Z3) and symbolic model checkers (nuXmv) to prove temporal invariants (LTL/CTL).
+Run compile-time safety and liveness analysis without executing code. `fsmc` translates statecharts into formal transition systems, verifying interval contracts and temporal invariants (LTL/CTL) natively and exporting to nuXmv / SMV.
 
 ### 3. Target Code Generation
 Compile verified statecharts into standalone, zero-heap C++17 or C++20 header files. The generated code adheres to the MBSE 4-domain memory architecture (`InPorts`, `OutPorts`, `Registers`, `Services`) with zero dynamic memory allocation and deterministic execution bounds.

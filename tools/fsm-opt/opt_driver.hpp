@@ -36,7 +36,7 @@ class OptDriver {
         }
 
         if (opts.show_version) {
-            std::cout << "fsm-opt v0.4.0 (Formal FSM Intermediate Representation Optimizer & Linter)\n";
+            std::cout << "fsm-opt v0.4.1 (Formal FSM Intermediate Representation Optimizer & Linter)\n";
             return 0;
         }
 

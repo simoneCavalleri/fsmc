@@ -326,7 +326,8 @@ class MermaidSerializer {
         if (trans.priority > 0) {
             label += "(prio=" + std::to_string(trans.priority) + ")";
         }
-        if (!trans.event.empty()) {
+        if (!trans.event.empty() && trans.event != "Anonymous" && trans.event != "AnonymousEvent" &&
+            trans.event != "anonymous") {
             if (!label.empty()) {
                 label += " ";
             }

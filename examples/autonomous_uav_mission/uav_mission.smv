@@ -1,6 +1,6 @@
 -- ============================================================================
--- nuXmv / SMV Formal Model: AutonomousUavMission
--- Generated automatically by fsmc
+-- nuXmv / SMV Formal Verification Model: AutonomousUavMission
+-- Generated automatically by fsmc (https://github.com/simoneCavalleri/fsmc)
 -- ============================================================================
 
 MODULE main
@@ -12,6 +12,7 @@ VAR
   battery_percent : 0..100;
   retry_count : 0..100;
   waypoints_completed : 0..100;
+  HasGpsLockGuard : boolean; -- input guard condition
 
 ASSIGN
   init(state) := Preflight;
@@ -21,18 +22,18 @@ ASSIGN
   init(waypoints_completed) := 0;
 
   next(state) := case
-    state = SensorCalib & event = CalibrationOk : SystemReady;
-    state = WaypointNav & event = AreaReached : SearchPattern;
-    state = SearchPattern & event = NextSectorCmd : WaypointNav;
-    state = Ascending & event = TargetAltitudeReached : Navigating;
-    state = Navigating & event = PauseCmd : HoverPause;
-    state = HoverPause & event = ResumeMissionCmd : Navigating;
-    state = ReturnToHome & event = HomePointReached : SafeLanding;
-    state = SafeLanding & event = TouchdownEvent : Landed;
-    state = Preflight & event = TakeoffCmd & (HasGpsLockGuard) : InFlight;
-    state = InFlight & event = LowBatteryEvent : FailSafe;
-    state = InFlight & event = AbortCmd : FailSafe;
-    state = FailSafe & event = ShutdownCmd : Terminal;
+    state = SensorCalib & event = CalibrationOk : SystemReady; -- action: ArmMotors
+    state = WaypointNav & event = AreaReached : SearchPattern; -- action: EnableSensors
+    state = SearchPattern & event = NextSectorCmd : WaypointNav; -- action: LogSectorCompleted
+    state = Ascending & event = TargetAltitudeReached : Navigating; -- action: StartNavigation
+    state = Navigating & event = PauseCmd : HoverPause; -- action: HoldPosition
+    state = HoverPause & event = ResumeMissionCmd : Navigating; -- action: ResumeNavigation
+    state = ReturnToHome & event = HomePointReached : SafeLanding; -- action: DescendMotors
+    state = SafeLanding & event = TouchdownEvent : Landed; -- action: DisarmMotors
+    state = Preflight & event = TakeoffCmd & (HasGpsLockGuard) : InFlight; -- action: LaunchUav
+    state = InFlight & event = LowBatteryEvent : FailSafe; -- action: InitiateFailSafe
+    state = InFlight & event = AbortCmd : FailSafe; -- action: InitiateFailSafe
+    state = FailSafe & event = ShutdownCmd : Terminal; -- action: PowerOff
     TRUE : state;
   esac;
 
@@ -41,11 +42,11 @@ ASSIGN
 -- ============================================================================
 
 INVARSPEC -- DisjointPreflightFlight
-  G (!((state = Preflight & state = InFlight)));
+  !((state = Preflight & state = InFlight));
 
 LTLSPEC -- MissionTerminationReached
   F (state = Landed);
 
 LTLSPEC -- SafeLandingOnLowBattery
-  G ((state = LowBattery -> F (state = SafeLanding)));
+  G ((event = LowBatteryEvent -> F (state = SafeLanding)));
 

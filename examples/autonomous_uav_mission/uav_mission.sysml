@@ -1,7 +1,7 @@
 // ============================================================================
 // Formal Verification Specifications (LTL / CTL)
 // ============================================================================
-// @fsm:property name=SafeLandingOnLowBattery kind=Safety ltl="G (LowBattery -> F SafeLanding)" req="REQ-UAV-SAFE-01" desc="Guarantees emergency return and landing upon low battery"
+// @fsm:property name=SafeLandingOnLowBattery kind=Safety ltl="G (LowBatteryEvent -> F SafeLanding)" req="REQ-UAV-SAFE-01" desc="Guarantees emergency return and landing upon low battery"
 // @fsm:property name=DisjointPreflightFlight kind=Invariant ltl="G (! (Preflight && InFlight))" req="REQ-UAV-SAFE-02" desc="Preflight checks and flight execution are mutually exclusive"
 // @fsm:property name=MissionTerminationReached kind=Reachability ltl="F Landed" req="REQ-UAV-LIVE-03" desc="A complete mission eventually reaches Landed state"
 

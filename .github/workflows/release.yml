@@ -1,106 +1,163 @@
-name: Release
+name: Release Pipeline
 
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag to release (e.g. v0.4.1)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
 
 jobs:
   build-release-binaries:
-    name: Build Binary (${{ matrix.os }})
+    name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
-            artifact_name: fsmc-linux-x86_64
-            binary_path: build/bin/fsmc
+            platform_id: linux-x86_64
+            archive_ext: tar.gz
           - os: macos-latest
-            artifact_name: fsmc-macos-arm64
-            binary_path: build/bin/fsmc
+            platform_id: macos-arm64
+            archive_ext: tar.gz
           - os: windows-latest
-            artifact_name: fsmc-windows-x86_64.exe
-            binary_path: build/bin/Release/fsmc.exe
+            platform_id: windows-x64
+            archive_ext: zip
 
-    timeout-minutes: 45
+    timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Install dependencies (Ubuntu)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ matrix.os }}-release
 
-      - name: Install dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install cmake
-
-      - name: Configure CMake (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-        timeout-minutes: 15
-
-      - name: Configure CMake (Windows MSVC)
-        if: runner.os == 'Windows'
-        run: |
-          cmake -B build -S . -A x64 -T host=x64
-        timeout-minutes: 15
-
-      - name: Build Release Binary
+      - name: Configure CMake (Release Mode, Tests Disabled)
         shell: bash
         run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            cmake --build build --config Release --parallel 2 --verbose
-          else
-            cmake --build build --config Release --parallel --verbose
+          TAG="${{ github.ref_name }}"
+          if [ -z "$TAG" ] || [ "$TAG" = "main" ] || [ "$TAG" = "develop" ]; then
+            TAG="${{ github.event.inputs.tag_name }}"
           fi
-        timeout-minutes: 30
+          [ -z "$TAG" ] && TAG="v0.4.1"
+          echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
 
-      - name: Package Binary
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DFSMC_ENABLE_TESTING=OFF \
+            -DFSMC_ENABLE_EXAMPLES=OFF \
+            -DFSMC_ENABLE_BENCHMARKS=OFF \
+            -DCMAKE_INSTALL_PREFIX=pkg_dist
+
+      - name: Build Compiler & Tools
         shell: bash
         run: |
+          cmake --build build --config Release --parallel
+
+      - name: Install to Package Staging Directory
+        shell: bash
+        run: |
+          cmake --install build --config Release --prefix pkg_dist
+
+      - name: Create Distribution Archive
+        shell: bash
+        run: |
+          ARCHIVE_NAME="fsmc-${{ env.RELEASE_TAG }}-${{ matrix.platform_id }}.${{ matrix.archive_ext }}"
           mkdir -p dist
-          cp "${{ matrix.binary_path }}" "dist/${{ matrix.artifact_name }}"
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp "build/bin/Release/fsm-opt.exe" "dist/fsm-opt-windows-x86_64.exe" 2>/dev/null || true
-          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
-            cp "build/bin/fsm-opt" "dist/fsm-opt-macos-arm64" 2>/dev/null || true
+          if [ "${{ matrix.archive_ext }}" = "zip" ]; then
+            7z a "dist/${ARCHIVE_NAME}" ./pkg_dist/*
           else
-            cp "build/bin/fsm-opt" "dist/fsm-opt-linux-x86_64" 2>/dev/null || true
+            tar -czf "dist/${ARCHIVE_NAME}" -C pkg_dist .
           fi
-        timeout-minutes: 5
 
-      - name: Upload Binary Artifact
+      - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
+          name: fsmc-${{ matrix.platform_id }}
           path: dist/*
+          retention-days: 1
 
-  create-github-release:
+  publish-github-release:
     name: Publish GitHub Release
     needs: build-release-binaries
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Download all artifacts
+      - name: Download all platform artifacts
         uses: actions/download-artifact@v4
         with:
-          path: release_assets
+          path: staging_dist
+          merge-multiple: true
 
-      - name: Create Release
+      - name: Prepare Standalone Headers & Checksums
+        shell: bash
+        run: |
+          mkdir -p release_assets
+          cp staging_dist/* release_assets/ 2>/dev/null || true
+
+          # Copy standalone zero-dependency runtime single headers
+          cp include/fsm/backend/cpp/cpp17_standalone_runtime.hpp release_assets/fsmc-cpp17-standalone.hpp
+          cp include/fsm/backend/cpp/cpp20_standalone_runtime.hpp release_assets/fsmc-cpp20-standalone.hpp
+
+          # Generate SHA256 checksums
+          cd release_assets
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          cd ..
+
+      - name: Extract Release Notes from CHANGELOG.md
+        id: extract_notes
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [ -z "$TAG" ] || [ "$TAG" = "main" ] || [ "$TAG" = "develop" ]; then
+            TAG="${{ github.event.inputs.tag_name }}"
+          fi
+          [ -z "$TAG" ] && TAG="v0.4.1"
+          VERSION="${TAG#v}"
+
+          python3 - <<EOF
+          import re
+
+          version = "${VERSION}"
+          with open("CHANGELOG.md", "r", encoding="utf-8") as f:
+              content = f.read()
+
+          pattern = rf"## \[{re.escape(version)}\][^\n]*\n(.*?)(?=\n## \[|\Z)"
+          match = re.search(pattern, content, re.DOTALL)
+
+          if match:
+              notes = match.group(1).strip()
+          else:
+              notes = f"Release {version}"
+
+          with open("RELEASE_NOTES.md", "w", encoding="utf-8") as f:
+              f.write(notes + "\n")
+          EOF
+
+          echo "Extracted release notes:"
+          cat RELEASE_NOTES.md
+
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release_assets/**/*
-          generate_release_notes: true
+          body_path: RELEASE_NOTES.md
+          files: release_assets/*
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

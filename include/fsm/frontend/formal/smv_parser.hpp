@@ -302,7 +302,19 @@ class SmvParser : public IParser {
             clean_line = line.substr(0, comment_pos);
         }
 
-        size_t colon = clean_line.find(':');
+        // Find the case target colon ':' that is not part of a '::' namespace qualifier
+        size_t colon = std::string::npos;
+        for (size_t i = clean_line.size(); i > 0; --i) {
+            size_t idx = i - 1;
+            if (clean_line[idx] == ':') {
+                bool is_double_colon = (idx > 0 && clean_line[idx - 1] == ':') ||
+                                       (idx + 1 < clean_line.size() && clean_line[idx + 1] == ':');
+                if (!is_double_colon) {
+                    colon = idx;
+                    break;
+                }
+            }
+        }
         if (colon == std::string::npos)
             return;
 
@@ -316,7 +328,7 @@ class SmvParser : public IParser {
             return;
 
         // Parse: state = S1 & event = E1 & [guard]
-        std::string source_state;
+        std::vector<std::string> source_states;
         std::string event_name;
         std::string guard_expr;
 
@@ -324,43 +336,54 @@ class SmvParser : public IParser {
         std::string clause;
         while (std::getline(ss, clause, '&')) {
             std::string c = trim(clause);
+            while (c.size() >= 2 && c.front() == '(' && c.back() == ')') {
+                c = trim(c.substr(1, c.size() - 2));
+            }
+            if (c.empty())
+                continue;
+
             if (c.rfind("state =", 0) == 0 || c.rfind("state=", 0) == 0) {
                 size_t eq = c.find('=');
-                source_state = sanitize_identifier(trim(c.substr(eq + 1)));
+                std::string s = sanitize_identifier(trim(c.substr(eq + 1)));
+                if (!s.empty()) {
+                    source_states.push_back(s);
+                }
             } else if (c.rfind("event =", 0) == 0 || c.rfind("event=", 0) == 0) {
                 size_t eq = c.find('=');
                 std::string ev = sanitize_identifier(trim(c.substr(eq + 1)));
-                if (ev != "none") {
+                if (ev != "none" && !ev.empty()) {
                     event_name = ev;
                 }
-            } else if (!c.empty()) {
-                while (c.size() >= 2 && c.front() == '(' && c.back() == ')') {
-                    c = trim(c.substr(1, c.size() - 2));
-                }
-                if (!c.empty()) {
-                    if (!guard_expr.empty())
-                        guard_expr += " && ";
-                    guard_expr += c;
-                }
+            } else if (c.rfind("timer_", 0) == 0) {
+                // Timer trigger condition (e.g. timer_State >= 500)
+                if (!guard_expr.empty())
+                    guard_expr += " && ";
+                guard_expr += c;
+            } else {
+                if (!guard_expr.empty())
+                    guard_expr += " && ";
+                guard_expr += c;
             }
         }
 
-        if (source_state.empty())
+        if (source_states.empty())
             return;
 
-        TransitionEdge trans;
-        trans.source = source_state;
-        trans.target = target_state;
-        trans.event = event_name;
-        if (!guard_expr.empty()) {
-            trans.guard = guard_expr;
-            model.add_guard(sanitize_identifier(guard_expr));
+        for (const auto& src : source_states) {
+            TransitionEdge trans;
+            trans.source = src;
+            trans.target = target_state;
+            trans.event = event_name;
+            if (!guard_expr.empty()) {
+                trans.guard = guard_expr;
+                model.add_guard(sanitize_identifier(guard_expr));
+            }
+            if (!action_from_comment.empty()) {
+                trans.action = action_from_comment;
+                model.add_action(action_from_comment);
+            }
+            model.add_transition(trans);
         }
-        if (!action_from_comment.empty()) {
-            trans.action = action_from_comment;
-            model.add_action(action_from_comment);
-        }
-        model.add_transition(trans);
     }
 
     static void parse_state_metadata_directive(const std::string& body, FsmIr& model) {

@@ -36,7 +36,7 @@ class FsmcDriver {
         }
 
         if (opts.show_version) {
-            std::cout << "fsmc version 0.4.0 (Universal State Machine Compiler for Critical Systems)\n";
+            std::cout << "fsmc version 0.4.1 (Universal State Machine Compiler & Optimization Infrastructure)\n";
             return 0;
         }
 
@@ -135,8 +135,10 @@ class FsmcDriver {
             pm.add_pass(std::make_unique<fsm::codegen::ChoiceInliningPassWrapper>());
             pm.add_pass(std::make_unique<fsm::codegen::TimedDeadlockPassWrapper>());
             pm.add_pass(std::make_unique<fsm::codegen::EFSMDataPathPass>());
-            pm.add_pass(std::make_unique<fsm::codegen::ModelSafetyVerifierPass>());
-            pm.add_pass(std::make_unique<fsm::codegen::ModelCheckingPass>());
+            if (opts.verify_mode || opts.export_diagram_format.empty()) {
+                pm.add_pass(std::make_unique<fsm::codegen::ModelSafetyVerifierPass>());
+                pm.add_pass(std::make_unique<fsm::codegen::ModelCheckingPass>());
+            }
 
             fsm::codegen::DiagnosticEngine diag;
             if (!pm.run(model, diag)) {

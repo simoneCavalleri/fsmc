@@ -13,36 +13,36 @@
 [![Tests](https://img.shields.io/badge/Tests-54%20Suites%20Passing-success.svg)](https://simoneCavalleri.github.io/fsmc/reference/test_suite_catalog/)
 
 **The Universal Finite State Machine Compiler, Optimization & Formal Verification Infrastructure.**  
-*Transpile, optimize, formally verify, and compile statecharts across 8 industry modeling formats and hard real-time C++ target architectures.*
+*Ingest, verify, optimize, transpile, and compile statecharts across 8 industry modeling formats with extensible target backends.*
 
-[📖 Documentation](https://simoneCavalleri.github.io/fsmc/) • [🚀 Quickstart](https://simoneCavalleri.github.io/fsmc/getting_started/quickstart/) • [💻 Interactive Playground](https://simoneCavalleri.github.io/fsmc/playground/) • [⚙️ CLI Reference](https://simoneCavalleri.github.io/fsmc/getting_started/cli_usage/) • [📚 Runtime API](https://simoneCavalleri.github.io/fsmc/runtime_api/synchronous_fsm/) • [📝 Changelog](CHANGELOG.md)
+[Documentation](https://simoneCavalleri.github.io/fsmc/) • [Quickstart](https://simoneCavalleri.github.io/fsmc/getting_started/quickstart/) • [Interactive Playground](https://simoneCavalleri.github.io/fsmc/playground/) • [CLI Reference](https://simoneCavalleri.github.io/fsmc/getting_started/cli_usage/) • [Runtime API](https://simoneCavalleri.github.io/fsmc/runtime_api/synchronous_fsm/) • [Changelog](CHANGELOG.md)
 
 </div>
 
 ---
 
-## 🏛️ Welcome to `fsmc`
+## Welcome to `fsmc`
 
-**`fsmc`** (Finite State Machine Compiler) is a modern, modular compiler infrastructure and formal verification engine designed for deterministic, safety-critical embedded systems.
+**`fsmc`** (Finite State Machine Compiler) is a modular, format-agnostic compiler infrastructure and verification toolchain for Finite State Machines and Hierarchical Statecharts.
 
-It bridges the gap between high-level **Model-Based Systems Engineering (MBSE)** specifications—such as OMG SysML v2, Cameo Systems Modeler (XMI), and W3C SCXML—and **hard real-time C++ implementations** (C++17 and C++20), guaranteeing that behavioral models are formally verified before execution and deployed with **zero dynamic heap allocations**, **zero virtual method tables**, and **strict domain separation (InPorts, OutPorts, Registers, Services)**.
+Built with a decoupled, three-stage compiler architecture (**Frontends $\to$ Canonical IR & Middle-End $\to$ Pluggable Backends**), `fsmc` bridges high-level Model-Based Systems Engineering (MBSE) specifications (OMG SysML v2, Cameo XMI, W3C SCXML, PlantUML, Mermaid, Graphviz DOT) with formal model checkers and deterministic target runtimes:
 
 ```mermaid
-flowchart LR
+flowchart TD
     subgraph Ingestion["1. Frontend Ingestion"]
-        SysML["OMG SysML v2\nCameo XMI 2.1\nW3C SCXML"]
-        Diagrams["PlantUML\nMermaid\nGraphviz DOT\nXState JSON"]
+        SysML["<b>MBSE & Formal Specs</b><br/>OMG SysML v2 • Cameo XMI 2.1<br/>W3C SCXML"]
+        Diagrams["<b>Visual & Web Diagrams</b><br/>PlantUML • Mermaid<br/>Graphviz DOT • XState JSON"]
     end
 
-    subgraph Compiler["2. Verification & Pass Pipeline"]
-        IR["Canonical FsmIr AST"]
-        Verify["Temporal Model Checking\nEFSM Interval Analysis\nDead Code & Determinism"]
-        RTM["Traceability Matrix (RTM)"]
+    subgraph Compiler["2. Canonical IR & Middle-End Passes"]
+        IR["<b>Canonical Metamodel (FsmIr)</b><br/>Partitioned Memory Model:<br/>InPorts • OutPorts • Registers • Services"]
+        Passes["<b>Analysis & Optimization Passes</b><br/>Temporal Model Checking • EFSM Intervals<br/>Dead Code Elimination • RTM Traceability"]
     end
 
-    subgraph Targets["3. Target Code & Diagnostics"]
-        CPP["C++17 / C++20 Dual-Paradigm Engine\n(In/Out Ports, Registers, Services)"]
-        Exports["Universal Transpilation\n(SysML, SCXML, SMV, PUML)"]
+    subgraph Targets["3. Extensible Target Backends"]
+        CPP["<b>Deterministic C++ Engine</b><br/>C++17 / C++20 • Zero Allocations<br/>Lock-Free SPSC • Thread-Safe MPSC"]
+        SMV["<b>Formal Model Checking Export</b><br/>Pure SMV Symbolic Logic<br/>for nuXmv Solver Suite"]
+        Transpile["<b>Universal Transpiler</b><br/>Lossless Roundtrip Conversion<br/>Across All Supported Formats"]
     end
 
     Ingestion --> Compiler
@@ -51,26 +51,27 @@ flowchart LR
 
 ---
 
-## 🌟 Key Capabilities
+## Key Capabilities
 
 | Capability | Technical Details | Documentation |
 | :--- | :--- | :--- |
-| **Universal Modeling** | Ingest and transpile across 8 formats: OMG SysML v2, Cameo / MagicDraw (OMG XMI), W3C SCXML, nuXmv / SMV, PlantUML, Mermaid, Graphviz DOT, and XState JSON. | [Modeling Languages](https://simoneCavalleri.github.io/fsmc/formal_languages/sysml_v2/) |
-| **Partitioned Domains** | Strict separation of `InPorts` (read-only), `OutPorts` (write-only), `Registers` ($z^{-1}$ memory), and `Services` (injected RPC/side-effects). | [Architecture](https://simoneCavalleri.github.io/fsmc/concepts/guards_and_actions/) |
+| **Universal Ingestion** | Ingest and parse statecharts from 8 formats: OMG SysML v2, Cameo / MagicDraw (OMG XMI), W3C SCXML, nuXmv / SMV, PlantUML, Mermaid, Graphviz DOT, and XState JSON. | [Modeling Languages](https://simoneCavalleri.github.io/fsmc/formal_languages/sysml_v2/) |
+| **Pluggable Backends** | Decoupled architecture supporting code generation for modern C++ (C++17/20), formal SMV logic for external provers, visual diagram transpilation, and future target languages. | [Architecture](https://simoneCavalleri.github.io/fsmc/internals/architecture/) |
+| **Partitioned Domains** | Clean separation of `InPorts` (read-only), `OutPorts` (write-only), `Registers` ($z^{-1}$ internal state), and `Services` (injected dependencies/side-effects). | [Architecture](https://simoneCavalleri.github.io/fsmc/concepts/guards_and_actions/) |
 | **Dual-Paradigm Execution** | Synchronous continuous sampled loop (`step(in, out)`) and asynchronous event-driven dispatch (`dispatch(ev, in, out)`). | [Runtime C++ API](https://simoneCavalleri.github.io/fsmc/runtime_api/synchronous_fsm/) |
-| **Formal Model Checking** | Integrated LTL/CTL temporal model checker verifying safety invariants, livelocks, deadlock freedom, and choice completeness before code emission. | [Model Checking](https://simoneCavalleri.github.io/fsmc/verification_and_safety/model_checking/) |
-| **EFSM Interval Analysis** | Abstract interpretation of numerical guard bounds (`<`, `>`, `<=`, `>=`) detecting dead transitions and runtime contract violations. | [Interval Analysis](https://simoneCavalleri.github.io/fsmc/verification_and_safety/interval_analysis/) |
-| **Safety Traceability (RTM)** | Automated Requirement Traceability Matrix export in Markdown and JSON linking `@fsm:req` tags to transitions and states. | [RTM Specification](https://simoneCavalleri.github.io/fsmc/verification_and_safety/rtm_matrix/) |
-| **Hard Real-Time C++ Runtime** | Zero-heap, zero-vtable, $O(1)$ dispatching, ISR-safe lock-free SPSC queue (`fsm::spsc_fsm`), and MPSC worker (`fsm::thread_safe_fsm`). | [Runtime C++ API](https://simoneCavalleri.github.io/fsmc/runtime_api/synchronous_fsm/) |
+| **Formal Model Checking** | Integrated LTL/CTL temporal model checker verifying safety invariants, livelocks, deadlock freedom, and choice completeness before emission. | [Model Checking](https://simoneCavalleri.github.io/fsmc/verification_and_safety/model_checking/) |
+| **EFSM Interval Analysis** | Abstract interpretation of numerical guard bounds (`<`, `>`, `<=`, `>=`) detecting dead transitions and contract violations. | [Interval Analysis](https://simoneCavalleri.github.io/fsmc/verification_and_safety/interval_analysis/) |
+| **Requirement Traceability (RTM)** | Automated Requirement Traceability Matrix export in Markdown, CSV, and JSON linking `@fsm:req` annotations to model elements. | [RTM Specification](https://simoneCavalleri.github.io/fsmc/verification_and_safety/rtm_matrix/) |
+| **Zero-Overhead C++ Backend** | Reference implementation with zero heap allocation, zero virtual tables, $O(1)$ dispatching, and thread-safe lock-free SPSC / MPSC wrappers. | [Runtime C++ API](https://simoneCavalleri.github.io/fsmc/runtime_api/synchronous_fsm/) |
 | **Live Web Playground** | Client-side WebAssembly compiler with live C++ generation, diagram visualization, and Monaco code editing directly in the browser. | [Try Playground](https://simoneCavalleri.github.io/fsmc/playground/) |
 
 ---
 
-## ⚡ Quickstart
+## Quickstart
 
 ### 1. Installation
 
-`fsmc` is available via Conan, CMake `FetchContent`, or manual source compilation:
+`fsmc` can be installed directly via CMake, integrated with CMake `FetchContent`, or packaged locally with Conan 2.0:
 
 ```bash
 # Build and install locally using CMake
@@ -79,7 +80,7 @@ cmake --build build -j$(nproc)
 sudo cmake --install build
 ```
 
-*For complete instructions (including Conan and vcpkg), see the [Installation Guide](https://simoneCavalleri.github.io/fsmc/getting_started/installation/).*
+*For complete instructions (including Conan and CMake FetchContent), see the [Installation Guide](https://simoneCavalleri.github.io/fsmc/getting_started/installation/).*
 
 ### 2. Compile a Model
 
@@ -118,7 +119,7 @@ fsmc -i satellite.sysml -o satellite_fsm.hpp --std 20 --standalone
 
 ---
 
-## 📚 Documentation Site Map
+## Documentation Site Map
 
 The complete, official documentation is hosted at **[simoneCavalleri.github.io/fsmc](https://simoneCavalleri.github.io/fsmc/)**:
 
@@ -132,7 +133,7 @@ The complete, official documentation is hosted at **[simoneCavalleri.github.io/f
 
 ---
 
-## 📄 License & Trademarks
+## License & Trademarks
 
 - **License**: `fsmc` is released under the permissive [MIT License](LICENSE).
 - **Trademarks**: All product names, logos, brands, and registered trademarks (such as SysML®, Cameo®, MagicDraw®, ARM®, FreeRTOS™, STM32®) mentioned in this repository and documentation are property of their respective owners. Their mention is strictly for technical interoperability, compatibility identification, and reference purposes, and does not imply any affiliation, sponsorship, or endorsement.

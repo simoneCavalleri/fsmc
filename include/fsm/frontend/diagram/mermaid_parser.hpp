@@ -541,7 +541,7 @@ class MermaidParser : public IParser {
 
         // Parse Event, Guard, Action, Priority from label:
         // Format: EventName (prio=1) [GuardName] / ActionName
-        std::string event_name = "AnonymousEvent";
+        std::string event_name;
         std::optional<std::string> guard_name;
         std::optional<std::string> action_name;
         std::uint32_t priority = 0;
@@ -591,7 +591,7 @@ class MermaidParser : public IParser {
 
             // Remaining is EventName
             const std::string evt = std::string(trim(label));
-            if (!evt.empty()) {
+            if (!evt.empty() && evt != "Anonymous" && evt != "AnonymousEvent" && evt != "anonymous") {
                 event_name = sanitize_identifier(evt);
             }
         }
@@ -611,7 +611,9 @@ class MermaidParser : public IParser {
             }
         }
 
-        model.add_event(event_name);
+        if (!event_name.empty()) {
+            model.add_event(event_name);
+        }
         if (action_name) {
             model.add_action(*action_name);
         }

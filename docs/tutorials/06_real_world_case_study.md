@@ -114,7 +114,7 @@ Before generating code, verify the formal model against LTL safety temporal prop
 
 ```bash
 # Verify SMT guard satisfiability, deadlocks, and temporal safety invariants
-fsmc --verify --verify-engine=nuxmv flight_controller.sysml
+fsmc -i flight_controller.sysml --verify
 ```
 
 **Verification Results Output:**

@@ -126,10 +126,10 @@ Add `fsmc` in your `vcpkg.json`:
 ```
 
 ### Conan 2.0 Integration
-Add `fsmc` in your `conanfile.txt`:
+After exporting `fsmc` to your local Conan cache (`conan create . --version 0.4.0`), consume it in your `conanfile.txt`:
 ```ini
 [requires]
-fsmc/latest
+fsmc/0.4.0
 
 [generators]
 CMakeDeps

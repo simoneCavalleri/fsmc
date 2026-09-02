@@ -27,10 +27,24 @@ namespace fsm {
  * semantics and seqlock synchronization.
  * Reviewed and found correct as-is: the seqlock in snapshot_registers() below
  * (odd/even sequence counter bracketing every register mutation, retried
- * read on the reader side) is a standard, sound seqlock — unlike
- * thread_safe_fsm, this wrapper has exactly one producer and one consumer by
- * construction, so there is no analogous reentrancy hazard to guard against.
+ * read on the reader side) is a standard, sound seqlock.
  */
+namespace detail {
+template <typename Variant, std::size_t... Is>
+constexpr std::string_view get_state_name_by_index_impl(std::size_t idx, std::index_sequence<Is...>) noexcept {
+    constexpr std::string_view names[] = {::fsm::get_state_name(std::variant_alternative_t<Is, Variant>{})...};
+    if (idx < sizeof...(Is)) {
+        return names[idx];
+    }
+    return "";
+}
+
+template <typename Variant>
+constexpr std::string_view get_state_name_by_index(std::size_t idx) noexcept {
+    return get_state_name_by_index_impl<Variant>(idx, std::make_index_sequence<std::variant_size_v<Variant>>{});
+}
+}  // namespace detail
+
 template <typename Table, typename InPorts = no_ports, typename OutPorts = no_ports, typename Registers = no_registers,
           typename Services = no_services, std::size_t QueueCapacity = 64,
           typename InitialState = typename Table::initial_state, std::size_t DeferredCapacity = 16>
@@ -206,7 +220,9 @@ class spsc_fsm {
     // ========================================================================
 
     [[nodiscard]] std::size_t state_index() const noexcept { return state_index_.load(std::memory_order_acquire); }
-    [[nodiscard]] std::string_view state_name() const noexcept { return fsm_.current_state_name(); }
+    [[nodiscard]] std::string_view state_name() const noexcept {
+        return detail::get_state_name_by_index<typename Table::state_variant>(state_index());
+    }
 
     template <typename State>
     [[nodiscard]] bool is_in() const noexcept {

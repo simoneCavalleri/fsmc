@@ -196,7 +196,7 @@ class DirectiveParser {
         if (n_pos != std::string::npos) {
             prop.name = extract_quoted_or_word(str, n_pos + 5);
         } else {
-            auto first_space = str.find_first_of(" \t");
+            auto first_space = str.find_first_of(" \t=");
             if (first_space != std::string::npos) {
                 prop.name = trim(str.substr(0, first_space));
             } else {
@@ -225,6 +225,23 @@ class DirectiveParser {
         if (f_pos != std::string::npos) {
             prop.raw_formula = extract_quoted_or_word(str, f_pos);
             prop.ast = LtlPropertyParser::parse(prop.raw_formula);
+        } else {
+            // Check for direct assignment: PropName = "..."
+            auto eq_pos = str.find('=');
+            if (eq_pos != std::string::npos) {
+                std::string after_eq = trim(str.substr(eq_pos + 1));
+                if (after_eq.rfind("formula=", 0) == std::string::npos &&
+                    after_eq.rfind("ltl=", 0) == std::string::npos && after_eq.rfind("kind=", 0) == std::string::npos) {
+                    prop.raw_formula = extract_quoted_or_word(str, eq_pos + 1);
+                    if (!prop.raw_formula.empty()) {
+                        if (prop.raw_formula.back() == ';') {
+                            prop.raw_formula.pop_back();
+                            prop.raw_formula = trim(prop.raw_formula);
+                        }
+                        prop.ast = LtlPropertyParser::parse(prop.raw_formula);
+                    }
+                }
+            }
         }
 
         // req="..."

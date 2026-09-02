@@ -145,7 +145,7 @@ struct PortDefinition {
 ---
 
 ### 1.5 `FormalProperty` & Temporal Logic AST (LTL / CTL)
-Enables formal verification via Model Checkers (nuXmv, Spin, Z3):
+Enables formal verification via the built-in model checker and external symbolic verification suites (nuXmv / SMV):
 
 ```cpp
 enum class TemporalOp : std::uint8_t {

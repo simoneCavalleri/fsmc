@@ -228,19 +228,19 @@ To ensure maximum safety, determinism, and real-time predictability, avoid these
 
 ---
 
-### ❌ Anti-Pattern 1: Impure Guards (Mutating State Inside Predicates)
+### Anti-Pattern 1: Impure Guards (Mutating State Inside Predicates)
 
 Guards in UML 2.5 and `fsmc` must be pure, side-effect-free mathematical predicates. If a guard mutates memory or calls external drivers, it causes nondeterministic execution and invalidates formal model checking passes:
 
 ```cpp
-// ❌ WRONG: Mutating registers in a guard causes nondeterministic bugs
+// [WRONG]: Mutating registers in a guard causes nondeterministic bugs
 struct BadGuard {
     bool operator()(MotorRegisters& reg) const {
         return ++reg.attempt_count > 3; // VIOLATION! Guard must be strictly read-only
     }
 };
 
-//  CORRECT: Read-only guard; perform mutations exclusively inside transition actions
+// [CORRECT]: Read-only guard; perform mutations exclusively inside transition actions
 struct GoodGuard {
     bool operator()(const MotorRegisters& reg) const noexcept {
         return reg.attempt_count >= 3;
@@ -255,17 +255,17 @@ struct IncrementAction {
 
 ---
 
-### ❌ Anti-Pattern 2: Reentrant / Recursive `dispatch()` Inside Actions
+### Anti-Pattern 2: Reentrant / Recursive `dispatch()` Inside Actions
 
 In `fsmc`, **the state machine instance is deliberately NOT injected into action functors**. Actions only receive domain-segregated references `(event, src, dst, in, out, registers, services)`. Attempting to capture an `fsm` instance (e.g. via lambda capture or global references) to invoke `fsm.dispatch()` from inside an action violates the fundamental Run-to-Completion (RTC) invariant and risks unbounded stack recursion:
 
 ```cpp
-// ❌ WRONG: Attempting recursive reentrant dispatch from within an action
+// [WRONG]: Attempting recursive reentrant dispatch from within an action
 auto recursive_action = [&](const EvFault&) {
     g_fsm.dispatch(EvEmergencyStop{}); // VIOLATION! Corrupts active transition stack & breaks RTC
 };
 
-//  CORRECT: Model Transition Paths in the Table Topology
+// [CORRECT]: Model Transition Paths in the Table Topology
 // Option A: Direct transition in the table:
 using MyTable = fsm::transition_table<
     fsm::row<Running, EvFault, EmergencyStopState>::then<DisarmHardwareAction>
@@ -284,19 +284,19 @@ fsm.post(EvEmergencyStop{});
 
 ---
 
-### ❌ Anti-Pattern 3: Blocking Calls & `sleep` Inside Real-Time Actions
+### Anti-Pattern 3: Blocking Calls & `sleep` Inside Real-Time Actions
 
 Placing `std::this_thread::sleep_for()` or blocking mutex locks inside an action freezes the caller thread (such as a 1 kHz RTOS control task or a hardware ISR), destroying deterministic Worst-Case Execution Time (WCET):
 
 ```cpp
-// ❌ WRONG: Blocking sleep inside synchronous transition action
+// [WRONG]: Blocking sleep inside synchronous transition action
 struct WaitAndRetryAction {
     void operator()() const {
         std::this_thread::sleep_for(std::chrono::seconds(2)); // VIOLATION! Freezes control loop
     }
 };
 
-//  CORRECT: Model Delays as States with Timed Events or Periodic Step Counters
+// [CORRECT]: Model Delays as States with Timed Events or Periodic Step Counters
 // Approach A (thread_safe_fsm): Use asynchronous delayed events:
 fsm.post_delayed(EvRetry{}, 2000ms);
 
@@ -308,12 +308,12 @@ struct TickAction {
 
 ---
 
-### ❌ Anti-Pattern 4: Stuffing I/O & Drivers into `Registers` (Catch-All Monolithic State)
+### Anti-Pattern 4: Stuffing I/O & Drivers into `Registers` (Catch-All Monolithic State)
 
 `Registers` in `fsmc` is strictly designed for **persistent internal datapath memory** ($z^{-1}$ delay, counters, accumulators, calibrated offsets). Putting sensor inputs, actuator commands, or raw hardware driver pointers directly into `Registers` breaks the synchronous latching invariant and prevents hardware test mocking:
 
 ```cpp
-// ❌ WRONG: Using Registers as a monolithic catch-all dump for I/O and hardware
+// [WRONG]: Using Registers as a monolithic catch-all dump for I/O and hardware
 struct BadRegisters {
     float sensor_temp;      // WRONG: Sensor input should be in InPorts (Read-Only)
     bool valve_open;        // WRONG: Actuator output should be in OutPorts (Write-Only)
@@ -321,7 +321,7 @@ struct BadRegisters {
     UARTDriver* uart_hw;    // WRONG: Hardware driver should be in Services (Injected)
 };
 
-//  CORRECT: Segregate into the 4 Canonical Domains
+// [CORRECT]: Segregate into the 4 Canonical Domains
 struct ValveInPorts   { float sensor_temp{0.0f}; };
 struct ValveOutPorts  { bool valve_open{false};  };
 struct ValveRegisters { uint32_t cycle_counter{0}; };
@@ -335,12 +335,12 @@ struct ValveServices  { virtual void transmit_uart(std::span<const uint8_t>) = 0
 
 ---
 
-### ❌ Anti-Pattern 5: State Machine by Boolean Flags (Flag Proliferation)
+### Anti-Pattern 5: State Machine by Boolean Flags (Flag Proliferation)
 
 Keeping a single monolithic state (e.g. `Operational`) and using 10 boolean flags inside `Registers` with giant `if-else` chains inside actions defeats the purpose of a formal state machine:
 
 ```cpp
-// ❌ WRONG: Reinventing a state machine using flags inside a single state
+// [WRONG]: Reinventing a state machine using flags inside a single state
 struct BadRegisters {
     bool is_calibrating{false};
     bool is_transmitting{false};
@@ -348,7 +348,7 @@ struct BadRegisters {
     bool is_reconnecting{false};
 };
 
-//  CORRECT: Model Distinct States in the Transition Table or Use Hierarchical HFSM
+// [CORRECT]: Model Distinct States in the Transition Table or Use Hierarchical HFSM
 struct Calibrating  { static constexpr std::string_view name = "Calibrating";  };
 struct Transmitting { static constexpr std::string_view name = "Transmitting"; };
 struct Paused       { static constexpr std::string_view name = "Paused";       };
@@ -356,7 +356,7 @@ struct Paused       { static constexpr std::string_view name = "Paused";       }
 
 ---
 
-### 💡 Gotcha: Single-Argument `dispatch(event)` vs `OutPorts` Buffers
+### Gotcha: Single-Argument `dispatch(event)` vs `OutPorts` Buffers
 
 Calling `fsm.dispatch(event)` is **100% idiomatic and recommended** for:
 
@@ -378,16 +378,16 @@ hardware_driver_commit(out);      // Commits commands to physical hardware
 
 ---
 
-### 💡 Best Practice: Disambiguating Overlapping Numeric Guards (`W0301`)
+### Best Practice: Disambiguating Overlapping Numeric Guards (`W0301`)
 
 If multiple transitions leave the same state on the same event with overlapping guard intervals, the compiler emits warning `W0301`. Resolve this either by making the intervals provably disjoint or adding explicit transition priorities:
 
 ```cpp
-//  Option A: Provably Disjoint Intervals (Clean - 0 Warnings)
+// Option A: Provably Disjoint Intervals (Clean - 0 Warnings)
 fsm::row<Idle, EvTick, StateA>::when<InTempAbove50>, // temp > 50.0
 fsm::row<Idle, EvTick, StateB>::when<InTempBelow30>  // temp <= 30.0
 
-//  Option B: Explicit Priority Disambiguation
+// Option B: Explicit Priority Disambiguation
 // Highest priority (priority: 1) evaluates first:
 fsm::row<Idle, EvTick, EmergencyMode, HighTempGuard, NoAction, 1>,
 fsm::row<Idle, EvTick, NormalMode,    AlwaysTrue,    NoAction, 2>

@@ -26,19 +26,19 @@ Common mistakes:
 
 1. **Guard `operator()` is non-const**:
    ```cpp
-   // ❌ WRONG: Non-const operator
+   // [WRONG]: Non-const operator
    struct OverTemp { bool operator()(const MotorInPorts& in) { return in.temp > 80.0f; } };
 
-   //  CORRECT: Const operator
+   // [CORRECT]: Const operator
    struct OverTemp { bool operator()(const MotorInPorts& in) const noexcept { return in.temp > 80.0f; } };
    ```
 
 2. **Action takes `InPorts` as mutable**:
    ```cpp
-   // ❌ WRONG: Mutable input port
+   // [WRONG]: Mutable input port
    struct BadAction { void operator()(MotorInPorts& in) const {} };
 
-   //  CORRECT: Const input port and mutable output port
+   // [CORRECT]: Const input port and mutable output port
    struct GoodAction { void operator()(const MotorInPorts& in, MotorOutPorts& out) const noexcept {} };
    ```
 
@@ -69,7 +69,7 @@ To fire an event, call `sm.dispatch(Event{})`.
 `fsm::row` is a compile-time type list requiring named functor types (structs). This guarantees:
 
 1. **Zero runtime overhead**: Inlines 100% into direct branch instructions with 0 indirect function pointers.
-2. **SMT / Formal Verifiability**: Enables the compiler to analyze and verify guard satisfiability formally in Z3 and nuXmv.
+2. **Formal Verifiability**: Enables the compiler to analyze guard satisfiability formally and model check properties in nuXmv.
 
 To define custom logic, write a lightweight 1-line struct:
 

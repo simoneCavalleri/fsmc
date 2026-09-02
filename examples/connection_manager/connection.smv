@@ -1,6 +1,6 @@
 -- ============================================================================
--- nuXmv / SMV Formal Model: ConnectionFSM
--- Generated automatically by fsmc
+-- nuXmv / SMV Formal Verification Model: ConnectionFSM
+-- Generated automatically by fsmc (https://github.com/simoneCavalleri/fsmc)
 -- ============================================================================
 
 MODULE main
@@ -8,22 +8,24 @@ MODULE main
 VAR
   state : {Connected, Connecting, Disconnected, Suspended};
   event : {none, ConnectCmd, HandshakeOkEvent, HandshakeFailedEvent, TimeoutEvent, NetworkDegradedEvent, DisconnectCmd, ConnectionLostEvent, NetworkRestoredEvent};
+  HasNetworkGuard : boolean; -- input guard condition
+  HasValidCredentialsGuard : boolean; -- input guard condition
 
 ASSIGN
   init(state) := Disconnected;
 
   next(state) := case
-    state = Disconnected & event = ConnectCmd & (fsm::and_<HasNetworkGuard, HasValidCredentialsGuard>) : Connecting;
-    state = Disconnected & event = ConnectCmd & (fsm::or_<fsm::not_<HasNetworkGuard>, fsm::not_<HasValidCredentialsGuard>>) : Disconnected;
-    state = Connecting & event = HandshakeOkEvent : Connected;
-    state = Connecting & event = HandshakeFailedEvent : Disconnected;
-    state = Connecting & event = TimeoutEvent : Disconnected;
-    state = Connected & event = NetworkDegradedEvent : Suspended;
-    state = Connected & event = DisconnectCmd : Disconnected;
-    state = Connected & event = ConnectionLostEvent : Disconnected;
-    state = Suspended & event = NetworkRestoredEvent : Connected;
-    state = Suspended & event = DisconnectCmd : Disconnected;
-    state = Suspended & event = TimeoutEvent : Disconnected;
+    state = Disconnected & event = ConnectCmd & ((HasNetworkGuard & HasValidCredentialsGuard)) : Connecting; -- action: InitSocketAction
+    state = Disconnected & event = ConnectCmd & ((!(HasNetworkGuard) | !(HasValidCredentialsGuard))) : Disconnected; -- action: LogErrorAction
+    state = Connecting & event = HandshakeOkEvent : Connected; -- action: SetupSessionAction
+    state = Connecting & event = HandshakeFailedEvent : Disconnected; -- action: CleanupAction
+    state = Connecting & event = TimeoutEvent : Disconnected; -- action: CleanupAction
+    state = Connected & event = NetworkDegradedEvent : Suspended; -- action: PauseQueueAction
+    state = Connected & event = DisconnectCmd : Disconnected; -- action: CloseSocketAction
+    state = Connected & event = ConnectionLostEvent : Disconnected; -- action: CleanupAction
+    state = Suspended & event = NetworkRestoredEvent : Connected; -- action: ResumeQueueAction
+    state = Suspended & event = DisconnectCmd : Disconnected; -- action: CloseSocketAction
+    state = Suspended & event = TimeoutEvent : Disconnected; -- action: CleanupAction
     TRUE : state;
   esac;
 

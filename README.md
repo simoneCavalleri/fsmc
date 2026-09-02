@@ -28,23 +28,21 @@
 Built with a decoupled, three-stage compiler architecture (**Frontends $\to$ Canonical IR & Middle-End $\to$ Pluggable Backends**), `fsmc` bridges high-level Model-Based Systems Engineering (MBSE) specifications (OMG SysML v2, Cameo XMI, W3C SCXML, PlantUML, Mermaid, Graphviz DOT) with formal model checkers and deterministic target runtimes:
 
 ```mermaid
-flowchart LR
+flowchart TD
     subgraph Ingestion["1. Frontend Ingestion"]
-        SysML["OMG SysML v2<br/>Cameo XMI 2.1<br/>W3C SCXML"]
-        Diagrams["PlantUML<br/>Mermaid<br/>Graphviz DOT<br/>XState JSON"]
+        SysML["<b>MBSE & Formal Specs</b><br/>OMG SysML v2 • Cameo XMI 2.1<br/>W3C SCXML"]
+        Diagrams["<b>Visual & Web Diagrams</b><br/>PlantUML • Mermaid<br/>Graphviz DOT • XState JSON"]
     end
 
-    subgraph Compiler["2. Canonical IR & Middle-End"]
-        IR["Canonical AST (FsmIr)<br/>Partitioned Memory Model"]
-        Verify["Temporal Model Checking<br/>EFSM Interval Analysis<br/>Dead Code & Determinism"]
-        RTM["Requirement Traceability (RTM)"]
+    subgraph Compiler["2. Canonical IR & Middle-End Passes"]
+        IR["<b>Canonical Metamodel (FsmIr)</b><br/>Partitioned Memory Model:<br/>InPorts • OutPorts • Registers • Services"]
+        Passes["<b>Analysis & Optimization Passes</b><br/>Temporal Model Checking • EFSM Intervals<br/>Dead Code Elimination • RTM Traceability"]
     end
 
-    subgraph Targets["3. Extensible Backends"]
-        CPP["Modern C++ Engine (C++17 / C++20)<br/>(Zero-Heap, In/Out Ports, Registers)"]
-        SMV["Formal Logic Export<br/>(nuXmv / NuSMV SMV)"]
-        Transpile["Universal Transpilation<br/>(SysML v2, SCXML, PUML, DOT)"]
-        Extensible["Pluggable Backend Architecture<br/>(Custom Runtimes & Target Languages)"]
+    subgraph Targets["3. Extensible Target Backends"]
+        CPP["<b>Deterministic C++ Engine</b><br/>C++17 / C++20 • Zero Allocations<br/>Lock-Free SPSC • Thread-Safe MPSC"]
+        SMV["<b>Formal Model Checking Export</b><br/>Pure SMV Symbolic Logic<br/>for nuXmv Solver Suite"]
+        Transpile["<b>Universal Transpiler</b><br/>Lossless Roundtrip Conversion<br/>Across All Supported Formats"]
     end
 
     Ingestion --> Compiler

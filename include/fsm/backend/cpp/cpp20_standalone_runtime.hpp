@@ -2951,7 +2951,8 @@ class async_event_queue {
                 return false;
             }
             if (!timed_queue_.empty()) {
-                cv_.wait_until(lock, timed_queue_.top().deadline);
+                const auto next_deadline = timed_queue_.top().deadline;
+                cv_.wait_until(lock, next_deadline);
             } else {
                 cv_.wait(lock);
             }

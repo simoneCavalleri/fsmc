@@ -165,7 +165,7 @@ int main() {
     // Scenario 1: Nominal Acceleration & Cruising Speed
     // ------------------------------------------------------------------------
     print_header("SCENARIO 1: Nominal Acceleration & Closed-Loop Speed Control");
-    print_telemetry_hud(async_fsm.registers(), async_fsm.current_state_name());
+    print_telemetry_hud(async_fsm.snapshot_registers(), async_fsm.current_state_name());
 
     std::cout << "\n--> [App] Dispatching StartCmd (Target: 4500 RPM)...\n";
     async_fsm.post(fsm_generated::StartCmd{});
@@ -204,7 +204,7 @@ int main() {
     std::cout << "\n--> [App] Rotor stopped...\n";
     async_fsm.post(fsm_generated::StoppedEvent{});
     std::this_thread::sleep_for(std::chrono::milliseconds(40));
-    print_telemetry_hud(async_fsm.registers(), async_fsm.current_state_name());
+    print_telemetry_hud(async_fsm.snapshot_registers(), async_fsm.current_state_name());
 
     // ------------------------------------------------------------------------
     // Scenario 4: Hardware Fault Injection & Safety Interlock Recovery
@@ -217,20 +217,20 @@ int main() {
     std::cout << "\n--> [App] INJECTING HARDWARE FAULT: 150A Phase Overcurrent Spike!\n";
     async_fsm.post(fsm_generated::OvercurrentEvent{});
     std::this_thread::sleep_for(std::chrono::milliseconds(40));
-    print_telemetry_hud(async_fsm.registers(), async_fsm.current_state_name());
+    print_telemetry_hud(async_fsm.snapshot_registers(), async_fsm.current_state_name());
 
     std::cout << "\n--> [App] Attempting Reset while Inverter Overheated (85°C)...\n";
-    async_fsm.registers().inverter_temp_celsius = 85.0F;
+    async_fsm.with_registers([](auto& r) { r.inverter_temp_celsius = 85.0F; });
     async_fsm.post(fsm_generated::ResetFaultCmd{});
     std::this_thread::sleep_for(std::chrono::milliseconds(40));
     std::cout << "  (Reset correctly REJECTED by IsThermalSafeGuard! State remains: " << async_fsm.current_state_name()
               << ")\n";
 
     std::cout << "\n--> [App] Inverter cooled down to 42°C -> Retrying Reset...\n";
-    async_fsm.registers().inverter_temp_celsius = 42.0F;
+    async_fsm.with_registers([](auto& r) { r.inverter_temp_celsius = 42.0F; });
     async_fsm.post(fsm_generated::ResetFaultCmd{});
     std::this_thread::sleep_for(std::chrono::milliseconds(40));
-    print_telemetry_hud(async_fsm.registers(), async_fsm.current_state_name());
+    print_telemetry_hud(async_fsm.snapshot_registers(), async_fsm.current_state_name());
 
     // Clean shutdown
     async_fsm.stop_worker();

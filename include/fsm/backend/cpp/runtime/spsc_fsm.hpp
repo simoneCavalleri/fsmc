@@ -51,6 +51,9 @@ template <typename Table, typename InPorts = no_ports, typename OutPorts = no_po
 class spsc_fsm {
     static_assert((QueueCapacity > 1) && ((QueueCapacity & (QueueCapacity - 1)) == 0),
                   "spsc_fsm QueueCapacity must be a power of two");
+    static_assert(
+        std::is_trivially_copyable_v<Registers> || std::is_same_v<Registers, no_registers>,
+        "spsc_fsm requires Registers to be trivially copyable for sound seqlock snapshots without torn reads.");
 
   public:
     using fsm_type = fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, no_observer, DeferredCapacity>;
@@ -138,8 +141,18 @@ class spsc_fsm {
         }
 
         seq_.fetch_add(1, std::memory_order_release);
-        services_type dummy_srv{};
-        services_type& srv = (fsm_.get_services() != nullptr) ? *fsm_.get_services() : dummy_srv;
+        auto resolve_srv = [&]() -> services_type& {
+            if (fsm_.get_services() != nullptr) {
+                return *fsm_.get_services();
+            }
+            if constexpr (std::is_default_constructible_v<services_type>) {
+                static services_type dummy{};
+                return dummy;
+            } else {
+                std::terminate();
+            }
+        };
+        services_type& srv = resolve_srv();
         std::visit(
             [this, &in, &out, &srv](const auto& evt) { (void)this->fsm_.dispatch_direct_ports(evt, in, out, srv); },
             *item);
@@ -226,12 +239,16 @@ class spsc_fsm {
 
     template <typename State>
     [[nodiscard]] bool is_in() const noexcept {
-        return fsm_.template is_in<State>();
+        if constexpr (Table::template has_state<State>) {
+            return state_index() == type_list_index_of_v<State, typename Table::states>;
+        } else {
+            return false;
+        }
     }
 
     template <typename State>
     [[nodiscard]] bool is_in_state() const noexcept {
-        return fsm_.template is_in_state<State>();
+        return is_in<State>();
     }
 
     /**
@@ -279,5 +296,31 @@ class spsc_fsm {
     std::atomic<std::size_t> state_index_{0};
     mutable std::atomic<std::uint32_t> seq_{0};
 };
+
+// Partial specialization for policy-based config
+template <typename RealTable, typename... Policies, typename InPorts, typename OutPorts, typename Registers,
+          typename Services, std::size_t QueueCapacity, typename InitialState, std::size_t DeferredCapacity>
+class spsc_fsm<config<RealTable, Policies...>, InPorts, OutPorts, Registers, Services, QueueCapacity, InitialState,
+               DeferredCapacity> : public spsc_fsm<RealTable, typename config<RealTable, Policies...>::in_ports_type,
+                                                   typename config<RealTable, Policies...>::out_ports_type,
+                                                   typename config<RealTable, Policies...>::registers_type,
+                                                   typename config<RealTable, Policies...>::services_type,
+                                                   config<RealTable, Policies...>::queue_capacity,
+                                                   typename config<RealTable, Policies...>::initial_state_type,
+                                                   config<RealTable, Policies...>::deferred_capacity> {
+    using base_type =
+        spsc_fsm<RealTable, typename config<RealTable, Policies...>::in_ports_type,
+                 typename config<RealTable, Policies...>::out_ports_type,
+                 typename config<RealTable, Policies...>::registers_type,
+                 typename config<RealTable, Policies...>::services_type, config<RealTable, Policies...>::queue_capacity,
+                 typename config<RealTable, Policies...>::initial_state_type,
+                 config<RealTable, Policies...>::deferred_capacity>;
+
+  public:
+    using base_type::base_type;
+};
+
+template <typename Table, typename... Policies>
+using make_spsc_fsm = spsc_fsm<config<Table, Policies...>>;
 
 }  // namespace fsm

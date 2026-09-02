@@ -24,8 +24,18 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
                                               std::index_sequence<Indices...> /*indices*/) {
     constexpr bool has_observer = !std::is_same_v<std::decay_t<ObserverCallback>, no_observer>;
 
-    Services dummy_srv{};
-    Services& srv = (services_ != nullptr) ? *services_ : dummy_srv;
+    auto resolve_srv = [&]() -> Services& {
+        if (services_ != nullptr) {
+            return *services_;
+        }
+        if constexpr (std::is_default_constructible_v<Services>) {
+            static Services dummy{};
+            return dummy;
+        } else {
+            std::terminate();
+        }
+    };
+    Services& srv = resolve_srv();
 
     bool any_guard_rejected = false;
     std::optional<transition_trace> executed_trace = std::nullopt;

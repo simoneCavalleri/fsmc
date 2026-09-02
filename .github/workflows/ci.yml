@@ -150,11 +150,7 @@ jobs:
       - name: Build fsmc, Generated Tests & Showcases
         shell: bash
         run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            cmake --build build --config Release --parallel 2
-          else
-            cmake --build build --config Release --parallel
-          fi
+          cmake --build build --config Release --parallel 2
 
       - name: Run Test Suite via CTest
         run: |
@@ -207,7 +203,7 @@ jobs:
             -DFSMC_ENABLE_BENCHMARKS=OFF
 
       - name: Build with ASan & UBSan
-        run: cmake --build build --parallel
+        run: cmake --build build --parallel 2
 
       - name: Run Test Suite under ASan + UBSan
         env:

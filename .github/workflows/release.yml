@@ -63,7 +63,7 @@ jobs:
       - name: Build Compiler & Tools
         shell: bash
         run: |
-          cmake --build build --config Release --parallel
+          cmake --build build --config Release --parallel 2
 
       - name: Install to Package Staging Directory
         shell: bash

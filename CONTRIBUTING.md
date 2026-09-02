@@ -87,44 +87,9 @@ The compiler pipeline follows a clean, single-pass layered architecture:
 
 ---
 
-## 5. Developer Certificate of Origin (DCO) & Intellectual Property Cleanliness
+## 5. Submitting Pull Requests
 
-To ensure that all contributions are legally clean and compatible with the project's MIT License, `fsmc` adopts the **Developer Certificate of Origin (DCO) Version 1.1** (standardized by the Linux Foundation).
-
-By submitting a pull request, patch, or commit to this repository, you certify that:
-
-```text
-Developer Certificate of Origin
-Version 1.1
-
-Copyright (C) 2004, 2006 The Linux Foundation and its contributors.
-
-By making a contribution to this project, I certify that:
-
-(a) The contribution was created in whole or in part by me and I
-    have the right to submit it under the open source license
-    indicated in the file; or
-
-(b) The contribution is based upon previous work that, to the best
-    of my knowledge, is covered under an appropriate open source
-    license and I have the right under that license to submit that
-    work with modifications, whether created in whole or in part
-    by me, under the same open source license; or
-
-(c) The contribution was provided directly to me by some other
-    person who certified (a), (b) or (c) and I have not modified
-    it.
-
-(d) I understand and agree that this project and the contribution
-    are public and that a record of the contribution (including all
-    personal information I submit with it, including my sign-off) is
-    maintained indefinitely and may be redistributed consistent with
-    this project or the open source license(s) involved.
-```
-
-### Signing Off Commits
-To signify compliance with the DCO, add a `Signed-off-by` line to each commit message:
-
-```bash
-git commit -s -m "frontend: add support for custom state attribute"
-```
+1. **Fork & Branch**: Create a feature branch from `develop` (`git checkout -b feature/my-feature`).
+2. **Format Code**: Format source files with `clang-format`.
+3. **Verify Tests**: Ensure all tests pass with `ctest --test-dir build --output-on-failure`.
+4. **Open a PR**: Submit a Pull Request targeting the `develop` branch with a brief description of your changes.

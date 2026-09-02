@@ -20,9 +20,9 @@ flowchart LR
     subgraph MiddleEnd["2. Canonical IR & Verification"]
         IR["Canonical AST (FsmIr)<br/>Partitioned Memory Model"]
         Passes["Optimization Passes"]
-        SMT["Z3 SMT Invariant Checking"]
+        SMT["EFSM Interval & Guard Analysis"]
         MC["nuXmv Model Checking (LTL / CTL)"]
-        Interval["EFSM Interval Analysis"]
+        Interval["Contract Range Validation"]
     end
 
     subgraph Backend["3. Backend Targets & Emitters"]
@@ -44,13 +44,14 @@ flowchart LR
 1. **Frontend Ingestion**: Parses statechart models from OMG SysML v2, W3C SCXML, Cameo (XMI 2.1), PlantUML, Mermaid, Graphviz DOT, and XState JSON into the unified `FsmIr` AST.
 2. **Middle-End Analysis & Formal Verification**:
     - **Structural Passes**: Detects unreachable states, conflicting transitions, deadlocks, and incomplete choice paths.
-    - **SMT Invariant Proving**: Evaluates datapath invariant assertions via Z3.
-    - **Symbolic Model Checking**: Proves temporal safety and liveness formulas specified in Linear Temporal Logic (LTL) and Computation Tree Logic (CTL) via nuXmv.
-    - **EFSM Interval Analysis**: Propagates value bounds over numeric variables and validates input port range contracts.
+    - **EFSM Invariant & Guard Analysis**: Evaluates datapath contracts, range constraints, and guard satisfiability via static abstract interpretation over interval lattices.
+    - **Symbolic Model Checking**: Proves temporal safety and liveness formulas specified in Linear Temporal Logic (LTL) and Computation Tree Logic (CTL) natively and exports to nuXmv / SMV.
+    - **Contract Validation**: Propagates value bounds over numeric variables and validates input/output port range contracts.
 3. **Backend Target Emission**:
-    - **Model Transpilation**: Converts models losslessly between supported representation formats.
-    - **Traceability Matrices**: Generates formal Requirement Traceability Matrices (RTM) in CSV and Markdown formats for DO-178C and ISO 26262 audits.
-    - **Target Code Generation**: Emits standalone, zero-heap C++17 or C++20 header files with strict 4-domain memory partitioning (`InPorts`, `OutPorts`, `Registers`, `Services`).
+    - **Model Transpilation**: Converts models losslessly between supported representation formats (SysML v2, SCXML, PlantUML, Mermaid, DOT).
+    - **Formal Logic Emitters**: Generates symbolic transition systems for external model checkers (SMV / nuXmv).
+    - **Traceability Matrices**: Generates formal Requirement Traceability Matrices (RTM) in CSV, JSON, and Markdown formats linking `@fsm:req` annotations to model elements.
+    - **Target Code Generation**: Emits standalone, zero-heap C++17 or C++20 header files with strict 4-domain memory partitioning (`InPorts`, `OutPorts`, `Registers`, `Services`), designed with an open architecture to support additional target languages.
 
 ---
 
@@ -216,13 +217,13 @@ int main() {
 - **[Step-by-Step Tutorials](tutorials/index.md)**: Progressive tutorials covering model design, datapath variables, hierarchical states (HFSM), formal verification, and code generation.
 - **[Architecture & Concepts](concepts/index.md)**: Semantics of the canonical IR, MBSE 4-domain memory architecture, and real-time execution guarantees.
 - **[Modeling Languages](formal_languages/index.md)**: Specifications and examples for SysML v2, Cameo XMI, SCXML, PlantUML, Mermaid, DOT, and JSON.
-- **[Verification & Safety](verification_and_safety/index.md)**: Formal verification using Z3 SMT solver, nuXmv model checker, EFSM interval analysis, and RTM generation.
+- **[Verification & Safety](verification_and_safety/index.md)**: Formal verification using built-in model checking, EFSM interval analysis, nuXmv SMV export, and RTM generation.
 - **[Runtime C++ API](runtime_api/index.md)**: Synchronous Dual-Paradigm Core, Lock-Free SPSC, Thread-Safe MPSC, and Tracing API reference.
 - **[Compiler Internals](internals/architecture.md)**: Compiler pipeline internals, IR AST specification, pass manager, and contributor guide.
 - **[Interactive Playground](playground/index.md)**: In-browser compiler and simulation environment running via WebAssembly.
 
 ---
 
-## License & Disclaimer
+## License
 
-`fsmc` is an open-source software engineering tool provided **"AS IS" WITHOUT WARRANTY OF ANY KIND**, as specified in the [MIT License](file:///home/simone/dev/github/fsmc/LICENSE) and [`DISCLAIMER.md`](file:///home/simone/dev/github/fsmc/DISCLAIMER.md).
+`fsmc` is open-source software licensed under the [MIT License](file:///home/simone/dev/github/fsmc/LICENSE).

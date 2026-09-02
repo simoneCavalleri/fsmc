@@ -1,8 +1,8 @@
 # Requirement Traceability Matrix (RTM)
 
-Safety-critical certification standards—such as **DO-178C (Aerospace)**, **ISO 26262 (Automotive)**, **ECSS (Space)**, and **IEC 62304 (Medical)**—mandate bidirectional traceability between system requirements, architecture design, formal verification outcomes, and generated code artifacts.
+Maintaining clear traceability between functional requirements, model elements, and formal properties helps ensure that system behavior directly maps to its design specifications.
 
-`fsmc` automates this verification workflow via the `RtmEmitter`.
+`fsmc` provides built-in requirement mapping and report generation via the `RtmEmitter`.
 
 ---
 
@@ -80,4 +80,24 @@ To generate the traceability report during compilation:
     }
   ]
 }
+```
+
+---
+
+## 4. Automated CI/CD Certification Gate
+
+You can embed compliance matrix generation into your continuous integration pipeline (GitHub Actions, GitLab CI, Jenkins) as a blocking quality gate:
+
+```yaml
+- name: Verify Requirements Compliance (RTM Gate)
+  run: |
+    # Generate RTM JSON report
+    fsmc -i models/engine.sysml --req-audit --rtm-output build/rtm_report.json
+    
+    # Assert 100% compliance using jq
+    COMPLIANCE=$(jq '.compliance_percentage' build/rtm_report.json)
+    if (( $(echo "$COMPLIANCE < 100.0" | bc -l) )); then
+      echo "::error::Requirement Traceability compliance is $COMPLIANCE% (< 100%)!"
+      exit 1
+    fi
 ```

@@ -86,7 +86,7 @@ In event-driven and multi-threaded architectures:
 | **Transition Type** | Continuous anonymous transition | Explicit typed event / timeout trigger |
 | **Evaluation Result** | `steady` or `transitioned` | `success`, `deferred`, `guard_rejected`, `unhandled` |
 | **Real-Time Guarantee** | **Hard Real-Time** ($O(1)$ stack, 0 heap, 0 locks) | **Soft Real-Time** (Queue scheduling, Active Object) |
-| **SMT Verification (Z3)** | Bit-vector & Linear Integer/Real Arithmetic | Bounded non-deterministic event arrivals |
+| **EFSM Interval Analysis** | Interval Arithmetic & Bound Propagation | Bounded non-deterministic event arrivals |
 | **Model Checking (nuXmv)** | Discrete transition relations (`next(timer) := ...`) | Timed automata / Continuous clocks |
 
 ---
@@ -156,7 +156,7 @@ sequenceDiagram
 
 The clean separation of sampled discrete time into **Registers ($z^{-1}$)** guarantees exact formal correspondence between the specification model, the verification engine, and the generated target code:
 
-1. **SMT Invariant Proving (Z3):** Dwell time conditions become standard integer arithmetic constraints:
+1. **EFSM Interval Analysis / Static Invariant Proving:** Dwell time conditions become standard integer arithmetic constraints:
    $$\text{Inv}_k \implies \left(\text{dwell\_ticks} \ge N \implies \text{NextState} = S_{\text{target}}\right)$$
 2. **Symbolic Model Checking (nuXmv / SMV):** Sampled timers are compiled into exact deterministic transition relations:
    ```smv

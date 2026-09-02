@@ -122,4 +122,4 @@ fsmc_target_sources(my_app
 
 Now that you have mastered the complete pipeline from modeling to code generation, proceed to the capstone chapter:
 
-👉 **[Step 6: Complete Real-World Case Study (Autonomous UAV Controller)](06_real_world_case_study.md)**.
+Proceed to **[Step 6: Complete Real-World Case Study (Autonomous UAV Controller)](06_real_world_case_study.md)**.

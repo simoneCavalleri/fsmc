@@ -13,6 +13,7 @@ Welcome to the **`fsmc` Developer & Contributing Hub**. Whether you are extendin
 | **CMake Integration Reference** | Build System Automation | Documentation of `fsmc_target_sources` macro and imported CMake interface libraries. | [CMake Reference](../reference/cmake_integration.md) |
 | **Compiler Architecture** | Pipeline & Drivers | Detailed design of compiler stages, data flow, and Intermediate Representation. | [Compiler Architecture](../internals/architecture.md) |
 | **Canonical IR AST Specification** | Data Model | Formal specification of `FsmIr`, `StateNode`, `TransitionEdge`, and port definitions. | [IR Specification](../internals/fsm_ir_specification.md) |
+| **Release Changelog** | Version History | Comprehensive log of all additions, architectural improvements, and breaking changes per release. | [Changelog (GitHub)](https://github.com/simoneCavalleri/fsmc/blob/main/CHANGELOG.md) |
 
 ---
 

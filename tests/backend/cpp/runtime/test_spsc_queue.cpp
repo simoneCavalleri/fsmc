@@ -163,4 +163,39 @@ TEST(SpscRingBufferTest, SpscRingBufferByteStorageAndDefaultConstructible) {
     EXPECT_TRUE(ring.empty());
 }
 
+struct NonDefaultType {
+    int val;
+    explicit NonDefaultType(int v) : val(v) {}
+    NonDefaultType(const NonDefaultType&) = default;
+    NonDefaultType(NonDefaultType&&) noexcept = default;
+    NonDefaultType& operator=(const NonDefaultType&) = default;
+    NonDefaultType& operator=(NonDefaultType&&) noexcept = default;
+};
+static_assert(!std::is_default_constructible_v<NonDefaultType>);
+
+/**
+ * @brief Test Intent: Verify SPSC ring buffer supports non-default-constructible payload types.
+ *
+ * Scenario:
+ * - Emplace instances of NonDefaultType into ring buffer.
+ * - Pop values and verify content preservation.
+ * - Verify in-place destructor clean-up without default construction requirements.
+ */
+TEST(SpscRingBufferTest, NonDefaultConstructiblePayload) {
+    fsm::spsc_ring_buffer<NonDefaultType, 4> q;
+    EXPECT_TRUE(q.emplace(42));
+    EXPECT_TRUE(q.emplace(84));
+    EXPECT_EQ(q.size(), 2u);
+
+    auto item1 = q.pop();
+    ASSERT_TRUE(item1.has_value());
+    EXPECT_EQ(item1->val, 42);
+
+    auto item2 = q.pop();
+    ASSERT_TRUE(item2.has_value());
+    EXPECT_EQ(item2->val, 84);
+
+    EXPECT_TRUE(q.empty());
+}
+
 }  // namespace

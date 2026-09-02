@@ -118,13 +118,16 @@ TEST(SpscFsmTest, ConcurrentLockFreeReads) {
     std::atomic<bool> running{true};
     constexpr int kIterations = 10000;
 
-    // Reader thread 1: inspects state_name and state_index
+    // Reader thread 1: inspects state_name, state_index, and lock-free is_in()
     std::thread reader([&]() {
         while (running.load(std::memory_order_relaxed)) {
             auto idx = machine.state_index();
             EXPECT_LE(idx, 2u);
             auto name = machine.state_name();
             EXPECT_FALSE(name.empty());
+            (void)machine.is_in<StateIdle>();
+            (void)machine.is_in<StateActive>();
+            (void)machine.is_in<StatePaused>();
         }
     });
 
@@ -152,9 +155,27 @@ TEST(SpscFsmTest, ConcurrentLockFreeReads) {
     context_reader.join();
 
     EXPECT_TRUE(machine.is_in_state<StateIdle>());
+    EXPECT_TRUE(machine.is_in<StateIdle>());
+    EXPECT_FALSE(machine.is_in<StateActive>());
+    EXPECT_FALSE(machine.is_in<StatePaused>());
     auto reg_snap = machine.snapshot_registers();
     EXPECT_EQ(reg_snap.counter1, static_cast<uint64_t>(kIterations * 2));
     EXPECT_EQ(reg_snap.counter2, static_cast<uint64_t>(kIterations * 2));
+}
+
+/**
+ * @brief Test Intent: Verify compile-time validation of trivially copyable registers for spsc_fsm.
+ *
+ * Scenario:
+ * - Verify std::is_trivially_copyable_v is true for SampleRegisters and no_registers.
+ * - Demonstrate compile-time compatibility with spsc_fsm.
+ */
+TEST(SpscFsmTest, SpscFsmTriviallyCopyableConstraint) {
+    static_assert(std::is_trivially_copyable_v<SampleRegisters>);
+    static_assert(std::is_trivially_copyable_v<fsm::no_registers>);
+    fsm::spsc_fsm<SpscTestTable, fsm::no_ports, fsm::no_ports, SampleRegisters> fsm;
+    EXPECT_TRUE(fsm.is_in<StateIdle>());
+    EXPECT_FALSE(fsm.is_in<StateActive>());
 }
 
 }  // namespace

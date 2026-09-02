@@ -342,9 +342,10 @@ TEST(DeferredEventsTest, AsyncRuntimeExecution) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    EXPECT_TRUE(async_sm.registers().init_done_called);
-    EXPECT_TRUE(async_sm.registers().request_handled);
-    EXPECT_EQ(async_sm.registers().received_payload, 99);
+    auto reg_snap = async_sm.snapshot_registers();
+    EXPECT_TRUE(reg_snap.init_done_called);
+    EXPECT_TRUE(reg_snap.request_handled);
+    EXPECT_EQ(reg_snap.received_payload, 99);
     EXPECT_EQ(async_sm.deferred_count(), 0U);
 
     async_sm.stop_worker();

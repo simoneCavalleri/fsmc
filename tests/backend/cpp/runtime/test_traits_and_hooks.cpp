@@ -174,6 +174,7 @@ TEST(TraitsAndHooksTest, ReflectionAndDemangling) {
 
     // State name fallback reflection via type demangling
     AnonymousEvent anon;
+    EXPECT_EQ(fsm::get_event_name(anon), "AnonymousEvent");
     EXPECT_EQ(fsm::get_type_name<AnonymousEvent>(), "AnonymousEvent");
 
     // Event name reflection

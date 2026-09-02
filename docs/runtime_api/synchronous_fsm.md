@@ -126,7 +126,14 @@ using MotorTable = fsm::transition_table<
     fsm::row<Active, fsm::anonymous_event, Fault>::when<OverheatGuard>
 >;
 
-using MotorFSM = fsm::fsm<MotorTable, MotorInPorts, MotorOutPorts, MotorRegisters, MotorServices>;
+// Modern Policy-Based Configuration (v0.5.0+):
+using MotorFSM = fsm::make_fsm<
+    MotorTable,
+    fsm::with_ports<MotorInPorts, MotorOutPorts>,
+    fsm::with_registers<MotorRegisters>,
+    fsm::with_services<MotorServices>
+>;
+// (Legacy positional syntax is also supported: fsm::fsm<MotorTable, MotorInPorts, MotorOutPorts, MotorRegisters, MotorServices>)
 
 // 5. Execution Application
 int main() {
@@ -185,6 +192,10 @@ MotorFSM fsm(reg, srv);
 fsm.dispatch(EvStart{}, in, out);
 fsm.step(in, out);
 ```
+
+> [!TIP]
+> **Non-Default Constructible Services**:  
+> In `v0.5.0+`, `Services` is not required to have a default constructor. The runtime directly references `*services_` provided at construction time, avoiding spurious dummy stack instantiations. This allows `Services` to hold hardware references, open sockets, or non-copyable handles configured at initialization.
 
 ### Style C: Stateless / Minimal State Machine (No Ports, No Services)
 For pure control flow with `fsm::no_ports` and `fsm::no_services`:

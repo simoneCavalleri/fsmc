@@ -74,7 +74,36 @@ class fsm;
 
 ---
 
-## 2. Transition Table Builders: `fsm::transition_table` & `fsm::row`
+## 2. Policy-Based Configuration: `fsm::config` (v0.5.0+)
+
+```cpp
+#include "fsm/backend/cpp/runtime/config.hpp"
+```
+
+The policy configuration metaprogramming structure extracts and binds state machine domains in arbitrary order:
+
+```cpp
+template <typename Table, typename... Policies>
+struct config;
+```
+
+### Semantic Policy Modifier Tags
+- `fsm::with_registers<T>`: Specifies internal datapath state type (default: `no_registers`).
+- `fsm::with_ports<In, Out>`: Specifies input and output port structures (default: `no_ports, no_ports`).
+- `fsm::with_services<Srv>`: Specifies external injected service interface (default: `no_services`).
+- `fsm::with_observer<Obs>`: Specifies compile-time observer type (default: `no_observer`).
+- `fsm::with_initial_state<State>`: Overrides root initial state type (default: `Table::initial_state`).
+- `fsm::with_deferred_capacity<N>`: Configures static capacity of deferred event queue (default: `16`).
+- `fsm::with_queue_capacity<N>`: Configures ring buffer capacity in SPSC/async wrappers (default: `64`).
+
+### Modern Factory Type Aliases
+- `template <typename Table, typename... Policies> using make_fsm`: Instantiates synchronous core engine with extracted policies.
+- `template <typename Table, typename... Policies> using make_spsc_fsm`: Instantiates lock-free SPSC engine with extracted policies.
+- `template <typename Table, typename... Policies> using make_thread_safe_fsm`: Instantiates active object engine with extracted policies.
+
+---
+
+## 3. Transition Table Builders: `fsm::transition_table` & `fsm::row`
 
 ### `fsm::row<Source, Event, Target, Guard, Action>`
 Declares a single transition edge:
@@ -249,7 +278,7 @@ class spsc_fsm;
 
 ---
 
-## 6. Thread-Safe MPSC Engine: `fsm::thread_safe_fsm`
+## 7. Thread-Safe MPSC Engine: `fsm::thread_safe_fsm`
 
 ```cpp
 #include "fsm/backend/cpp/runtime/thread_safe_fsm.hpp"
@@ -262,8 +291,8 @@ template <
     typename OutPorts = no_ports,
     typename Registers = no_registers,
     typename Services = no_services,
-    std::size_t MaxQueueSize = 256,
-    typename MutexPolicy = std::mutex
+    typename InitialState = typename Table::initial_state,
+    std::size_t MaxQueueSize = 256
 >
 class thread_safe_fsm;
 ```
@@ -285,12 +314,19 @@ class thread_safe_fsm;
 - `template <typename DurationRep> step_result step(DurationRep dt, const InPorts& in, OutPorts& out)`: Step with $\Delta t$ and constructor-bound services.
 - `std::string_view current_state_name() const`: Returns active state name under mutex lock.
 - `template <typename State> bool is_in_state() const`: Checks state type under mutex lock.
-- `Registers snapshot_registers() const`: Returns copy of registers under mutex lock.
-- `template <typename Func> void with_registers(Func&& fn)`: Thread-safe callable execution with exclusive access to registers.
+- `template <typename State> bool is_in() const`: Alias for `is_in_state<State>()`.
+
+#### Safe-by-Design Datapath Access (v0.5.0+)
+- `registers_type snapshot_registers() const`: Safely returns an isolated, consistent copy of internal registers under mutex lock.
+- `void update_registers(registers_type reg)`: Atomically updates internal registers under mutex lock.
+- `template <typename Func> decltype(auto) with_registers(Func&& fn)`: Executes callable `fn(registers)` inside exclusive mutex lock.
+
+> [!IMPORTANT]
+> **Data Race Prevention**: Direct naked references via `registers()` and `unsafe_registers()` were **permanently removed in `v0.5.0`** to eliminate data races and torn reads. Always use `with_registers()`, `update_registers()`, or `snapshot_registers()`.
 
 ---
 
-## 7. Action and Hook Channel Indexes: `fsm::channel_index`
+## 8. Action and Hook Channel Indexes: `fsm::channel_index`
 
 ```cpp
 #include "fsm/backend/cpp/runtime/traits/hook_traits.hpp"
@@ -315,7 +351,7 @@ inline constexpr std::size_t channel_index_fsm_inst   = 7;
 
 ---
 
-## 8. C++20 Concepts: `fsm::Guard` and `fsm::Action`
+## 9. C++20 Concepts: `fsm::Guard` and `fsm::Action`
 
 ```cpp
 #include "fsm/backend/cpp/runtime/traits/concepts.hpp"
@@ -337,7 +373,7 @@ Matches any functor callable with any valid permutation of `(event, src_state, d
 
 ---
 
-## 9. Compile-Time Metaprogramming Traits
+## 10. Compile-Time Metaprogramming Traits
 
 ```cpp
 #include "fsm/backend/cpp/runtime/traits/observer_traits.hpp"
@@ -350,7 +386,7 @@ Matches any functor callable with any valid permutation of `(event, src_state, d
 
 ---
 
-## 10. Decomposed Runtime Detail Modules
+## 11. Decomposed Runtime Detail Modules
 
 For clean separation of concerns and maximum maintainability, internal engine mechanics are decomposed into isolated headers in `fsm/backend/cpp/runtime/detail/`:
 

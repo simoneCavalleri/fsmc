@@ -89,71 +89,80 @@ markdown_extensions:
       toc_depth: 3
 
 nav:
-
   - Overview: index.md
+
   - Getting Started:
-      - getting_started/index.md
+      - Introduction: getting_started/index.md
       - Installation & Requirements: getting_started/installation.md
       - Quickstart Tutorial: getting_started/quickstart.md
-      - CLI Reference (fsmc & fsm-opt): getting_started/cli_usage.md
+      - Quick Reference (Cheat Sheet): getting_started/quick_reference.md
       - Build Systems Integration: getting_started/integration_guide.md
-  - Step-by-Step Tutorials:
-      - tutorials/index.md
-      - "1. First State Machine": tutorials/01_first_statechart.md
-      - "2. EFSM, Guards & Datapath": tutorials/02_guards_and_actions.md
-      - "3. Hierarchical HFSM & History": tutorials/03_hierarchical_hfsm.md
-      - "4. Formal Verification & Safety": tutorials/04_formal_verification.md
-      - "5. Code Generation & Integration": tutorials/05_code_generation_and_integration.md
-      - "6. Real-World Project (UAV Controller)": tutorials/06_real_world_case_study.md
-  - Architecture & Concepts:
-      - concepts/index.md
-      - States & HFSM Hierarchy: concepts/states_and_hierarchy.md
-      - Transitions & Triggers: concepts/transitions_and_events.md
-      - Guards & Action Effects: concepts/guards_and_actions.md
-      - Dual-Paradigm Temporal Models: concepts/temporal_models.md
-      - Execution Semantics & Metamodel: concepts/execution_semantics.md
+      - Interactive Web Playground: playground/index.md
 
-  - Modeling Languages:
-      - formal_languages/index.md
-      - OMG SysML v2: formal_languages/sysml_v2.md
-      - Cameo / MagicDraw (XMI 2.1): formal_languages/cameo_magicdraw.md
-      - W3C SCXML: formal_languages/scxml.md
-      - nuXmv / SMV Formal Logic: formal_languages/smv_nuxmv.md
-      - Visual Diagrams: formal_languages/diagrams.md
-      - Comprehensive UML Reference: formal_languages/uml_reference.md
-  - Verification & Safety:
-      - verification_and_safety/index.md
-      - Model Checking (LTL/CTL): verification_and_safety/model_checking.md
-      - EFSM Interval Analysis: verification_and_safety/interval_analysis.md
-      - Requirement Traceability (RTM): verification_and_safety/rtm_matrix.md
-  - Runtime C++ API:
-      - Overview & Quickstart: runtime_api/index.md
-      - Core Building Blocks: runtime_api/core_concepts.md
-      - Execution Engines:
-          - 1. Synchronous & Control Loops (fsm::fsm): runtime_api/synchronous_fsm.md
-          - 2. Lock-Free & ISR (fsm::spsc_fsm): runtime_api/spsc_fsm.md
-          - 3. Multi-Threaded Active Object (fsm::thread_safe_fsm): runtime_api/thread_safe_fsm.md
-      - Advanced & Real-Time:
-          - Memory Layout & WCET: runtime_api/memory_and_realtime.md
-          - Tracing & Telemetry: runtime_api/introspection_trace.md
-      - Patterns & Reference:
-          - Architectural Design Patterns: runtime_api/design_patterns.md
+  - Systems Modeling & Safety:
+      - Introduction: formal_languages/index.md
+      - Modeling Languages:
+          - OMG SysML v2: formal_languages/sysml_v2.md
+          - Cameo / MagicDraw: formal_languages/cameo_magicdraw.md
+          - W3C SCXML: formal_languages/scxml.md
+          - nuXmv / SMV Logic: formal_languages/smv_nuxmv.md
+          - Visual Diagrams: formal_languages/diagrams.md
+          - UML Specification Reference: formal_languages/uml_reference.md
+      - Formal Verification:
+          - Verification Overview: verification_and_safety/index.md
+          - Model Checking (LTL/CTL): verification_and_safety/model_checking.md
+          - EFSM Interval Analysis: verification_and_safety/interval_analysis.md
+          - Requirement Traceability (RTM): verification_and_safety/rtm_matrix.md
+
+  - Target Backends & Runtimes:
+      - Overview & Target Matrix: runtime_api/index.md
+      - C++ Reference Backend:
+          - Core Building Blocks: runtime_api/core_concepts.md
+          - Policy-Based Configuration: runtime_api/policy_configuration.md
+          - Execution Engines:
+              - Synchronous Engine (fsm): runtime_api/synchronous_fsm.md
+              - Lock-Free SPSC (spsc_fsm): runtime_api/spsc_fsm.md
+              - Active Object (thread_safe): runtime_api/thread_safe_fsm.md
+          - Real-Time & Reliability:
+              - Memory Layout & WCET: runtime_api/memory_and_realtime.md
+              - Tracing & Telemetry: runtime_api/introspection_trace.md
+              - Architectural Design Patterns: runtime_api/design_patterns.md
+      - Multi-Target Roadmap: runtime_api/multi_target_roadmap.md
+
+  - Tutorials & Practical Guides:
+      - Tutorials Overview: tutorials/index.md
+      - Step-by-Step Tutorials:
+          - 1. First State Machine: tutorials/01_first_statechart.md
+          - 2. EFSM & Datapath: tutorials/02_guards_and_actions.md
+          - 3. HFSM & History: tutorials/03_hierarchical_hfsm.md
+          - 4. Formal Verification: tutorials/04_formal_verification.md
+          - 5. Codegen & Integration: tutorials/05_code_generation_and_integration.md
+          - 6. UAV Flight Controller: tutorials/06_real_world_case_study.md
+      - Practical Guides:
           - Unit Testing Guide: runtime_api/testing_guide.md
-          - FAQ & Troubleshooting: runtime_api/faq_and_troubleshooting.md
-          - Full API Reference: runtime_api/reference.md
+          - Troubleshooting & FAQ: runtime_api/faq_and_troubleshooting.md
 
-  - Compiler Internals:
-      - internals/index.md
-      - Compiler Architecture: internals/architecture.md
-      - Canonical IR AST Specification: internals/fsm_ir_specification.md
-
-  - Developer & Contributing:
-      - contributing/index.md
-      - Developer Guide: internals/developer_guide.md
+  - Technical Reference:
+      - Overview: reference/index.md
+      - CLI Reference (fsmc): getting_started/cli_usage.md
+      - C++ Runtime API Reference: runtime_api/reference.md
+      - CMake Build Integration: reference/cmake_integration.md
+      - Canonical IR Specification: internals/fsm_ir_specification.md
       - Test Suite Catalog: reference/test_suite_catalog.md
-      - CMake Target Reference: reference/cmake_integration.md
 
-  - Interactive Playground: playground/index.md
+  - Architecture & Internals:
+      - Overview: internals/index.md
+      - Theoretical Concepts:
+          - Concepts Overview: concepts/index.md
+          - Execution Semantics: concepts/execution_semantics.md
+          - Dual-Paradigm Models: concepts/temporal_models.md
+          - States & HFSM Hierarchy: concepts/states_and_hierarchy.md
+          - Transitions & Triggers: concepts/transitions_and_events.md
+          - Guards & Action Effects: concepts/guards_and_actions.md
+      - Compiler Infrastructure:
+          - Pipeline & Subsystems: internals/architecture.md
+          - Developer Guide: internals/developer_guide.md
+          - Contributing Guide: contributing/index.md
 
 
 

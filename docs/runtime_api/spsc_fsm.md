@@ -55,13 +55,20 @@ using MotorTable = fsm::transition_table<
     fsm::row<EStop,   StartCmd,      Standby>
 >;
 
-// 3. Define Internal Registers
+// 3. Define Internal Registers (must be Trivially Copyable for sound seqlock snapshots)
 struct MotorRegisters {
     std::uint32_t fault_count = 0;
 };
+static_assert(std::is_trivially_copyable_v<MotorRegisters>);
 
 // 4. Instantiate spsc_fsm with QueueCapacity = 64 (must be power of two)
-using SafeMotorFSM = fsm::spsc_fsm<MotorTable, fsm::no_ports, fsm::no_ports, MotorRegisters, fsm::no_services, 64>;
+// Modern Policy Instantiation (v0.5.0+):
+using SafeMotorFSM = fsm::make_spsc_fsm<
+    MotorTable,
+    fsm::with_registers<MotorRegisters>,
+    fsm::with_queue_capacity<64>
+>;
+// (Legacy syntax: fsm::spsc_fsm<MotorTable, fsm::no_ports, fsm::no_ports, MotorRegisters, fsm::no_services, 64>)
 
 SafeMotorFSM g_motor_fsm;
 
@@ -176,6 +183,12 @@ void rtos_periodic_control_task(void* param) {
 
 | Method | Description |
 | :--- | :--- |
-| `Registers snapshot_registers()` | Captures a consistent copy of `Registers` using a sequence lock without mutexes or blocking the worker task. |
-| `std::string_view state_name()` | Returns the name string of the current active state via atomic load. |
-| `bool is_in_state<State>()` | Checks if the machine is currently in the specified `State` type. |
+| `Registers snapshot_registers()` | Captures a consistent copy of `Registers` using an atomic sequence lock without mutexes or blocking the worker task. |
+| `with_registers(Callable&& fn)` | Executes `fn(Registers copy)` over a safe seqlock snapshot. |
+| `std::string_view state_name()` | Returns the name string of the current active state via atomic acquire-load and compile-time table lookup. |
+| `bool is_in<State>()` | Checks active state in $O(1)$ lock-free time via atomic index comparison (`type_list_index_of_v`). |
+| `bool is_in_state<State>()` | Alias for `is_in<State>()`. |
+
+> [!IMPORTANT]
+> **Seqlock Trivially Copyable Contract**:  
+> In compliance with the ISO C++ memory model, `fsm::spsc_fsm` requires `Registers` to satisfy `std::is_trivially_copyable_v<Registers>` (or `fsm::no_registers`). This compile-time contract ensures that concurrent non-atomic reads during active writer cycles cannot produce torn pointer reads, undefined behavior, or memory corruption. For complex types requiring dynamic heap allocations, use `fsm::thread_safe_fsm`.

@@ -130,3 +130,10 @@ If the guard returns `false`, no exit actions occur, and the machine remains in 
 ## Next Steps
 
 In **[Tutorial 3: Hierarchical Statecharts (HFSM) & History](03_hierarchical_hfsm.md)**, you will learn how to nest state machines into composite superstates and restore memory configurations using History pseudostates.
+
+---
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--fsmc-border);">
+    <a href="01_first_statechart.md" style="font-weight: 600; color: var(--fsmc-primary);">← Tutorial 1: First State Machine</a>
+    <a href="03_hierarchical_hfsm.md" style="font-weight: 600; color: var(--fsmc-primary);">Tutorial 3: HFSM & History →</a>
+</div>

@@ -164,50 +164,110 @@ The `fsmc` command-line interface provides unified access to all compiler pipeli
     fsmc -i mission.sysml --rtm-output rtm_matrix.md
     ```
 
-=== "C++ Code Generation"
+=== "Code Generation"
     ```bash
-    # Generate standalone C++20 single-header state machine
-    fsmc -i mission.sysml -o uav_fsm.hpp --std 20 --standalone
+    # Generate standalone C++17 / C++20 single-header runtime (Production)
+    fsmc -i mission.sysml -o uav_fsm.hpp --target cpp --std 20 --standalone
+
+    # Generate Rust no_std module (In Development)
+    fsmc -i mission.sysml -o uav_fsm.rs --target rust
+
+    # Generate ISO C99 MISRA-C compliant header & implementation (Planned)
+    fsmc -i mission.sysml -o uav_fsm.h --target c
     ```
 
 ---
 
-### 3. Application Integration (C++ Target)
+### 3. Application Integration
 
-Include the generated header and execute transitions with typed memory domains:
+Execute transitions using the segregated 4-domain memory model across target languages:
 
-```cpp
-#include "uav_fsm.hpp"
-#include <iostream>
-#include <cassert>
+=== "C++ Target (Production v0.5.0)"
+    ```cpp
+    #include "uav_fsm.hpp"
+    #include <iostream>
+    #include <cassert>
 
-int main() {
-    using namespace MissionSystem;
+    int main() {
+        using namespace MissionSystem;
 
-    // 1. Initialize State Machine with Partitioned Memory
-    UavMissionRegisters reg{};
-    UavMissionServices srv{};
-    UavMissionFSM fsm(reg, srv);
+        // 1. Initialize State Machine with Partitioned Memory
+        UavMissionRegisters reg{};
+        UavMissionServices srv{};
+        UavMissionFSM fsm(reg, srv);
 
-    UavMissionInPorts in{.has_gps_lock = true, .battery_percent = 100};
-    UavMissionOutPorts out{};
+        UavMissionInPorts in{.has_gps_lock = true, .battery_percent = 100};
+        UavMissionOutPorts out{};
 
-    // 2. Reactive Event Dispatching
-    fsm.dispatch(CalibrationOk{}, in, out);
-    assert(fsm.is_in<SystemReady>());
-    assert(out.motor_active == true);
+        // 2. Reactive Event Dispatching
+        fsm.dispatch(CalibrationOk{}, in, out);
+        assert(fsm.is_in<SystemReady>());
+        assert(out.motor_active == true);
 
-    fsm.dispatch(TakeoffCmd{}, in, out);
-    assert(fsm.is_in<Navigating>());
+        fsm.dispatch(TakeoffCmd{}, in, out);
+        assert(fsm.is_in<Navigating>());
 
-    // 3. Continuous Control Loop Step (Sampled Inputs)
-    in.battery_percent = 15; // Low battery condition
-    fsm.step(in, out);       // Evaluates continuous transitions
-    assert(fsm.is_in<ReturnToHome>());
+        // 3. Continuous Control Loop Step (Sampled Inputs)
+        in.battery_percent = 15; // Low battery condition
+        fsm.step(in, out);       // Evaluates continuous transitions
+        assert(fsm.is_in<ReturnToHome>());
 
-    return 0;
-}
-```
+        return 0;
+    }
+    ```
+
+=== "Rust Target (Roadmap Preview)"
+    > [!NOTE]
+    > **Roadmap Preview**: Rust `#![no_std]` code generation is an upcoming roadmap feature. C++ is the active production runtime in `v0.5.0`.
+
+    ```rust
+    // Generated Rust no_std State Machine
+    use uav_fsm::prelude::*;
+
+    fn main() {
+        let mut fsm = UavMissionFsm::new(UavRegisters::default());
+        let mut in_ports = UavInPorts { has_gps_lock: true, battery_percent: 100 };
+        let mut out_ports = UavOutPorts::default();
+
+        // 1. Reactive Event Dispatching
+        fsm.dispatch(&Event::CalibrationOk, &in_ports, &mut out_ports);
+        assert_eq!(fsm.state(), State::SystemReady);
+
+        // 2. Continuous Control Loop Step (Sampled Inputs)
+        in_ports.battery_percent = 15;
+        fsm.step(&in_ports, &mut out_ports);
+        assert_eq!(fsm.state(), State::ReturnToHome);
+    }
+    ```
+
+=== "C Target (MISRA-C Roadmap)"
+    > [!NOTE]
+    > **Roadmap Preview**: ISO C99 / MISRA-C code generation is an upcoming roadmap feature. C++ is the active production runtime in `v0.5.0`.
+
+    ```c
+    #include "uav_fsm.h"
+    #include <assert.h>
+
+    int main(void) {
+        uav_fsm_t fsm;
+        uav_registers_t reg = {0};
+        uav_in_ports_t in = {.has_gps_lock = true, .battery_percent = 100};
+        uav_out_ports_t out = {0};
+
+        uav_fsm_init(&fsm, &reg);
+
+        /* 1. Reactive Event Dispatching */
+        uav_fsm_dispatch(&fsm, UAV_EV_CALIB_OK, &in, &out);
+        assert(fsm.current_state == UAV_STATE_READY);
+
+        /* 2. Continuous Control Loop Step */
+        in.battery_percent = 15;
+        uav_fsm_step(&fsm, &in, &out);
+        assert(fsm.current_state == UAV_STATE_RTH);
+
+        return 0;
+    }
+    ```
 
 ---
 

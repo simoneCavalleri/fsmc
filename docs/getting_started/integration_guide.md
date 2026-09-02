@@ -1,12 +1,14 @@
 # Integration & Build System Guide
 
-This guide details how to integrate **`fsmc`** into modern C++ projects using **Modern CMake (Target-Based)**, **FetchContent**, **CPM.cmake**, **vcpkg**, **Conan**, or direct single-header standalone inclusion.
+This guide details how to integrate **`fsmc`** and its generated state machines into diverse build systems across C++, Rust, and C ecosystems, as well as CI/CD quality gates.
 
 ---
 
-## 1. Modern CMake Integration (`fsmc_target_sources` & `fsmc::fsmc_runtime`)
+## 1. C/C++ Ecosystem: Modern CMake Integration
 
-`fsmc` provides target-based CMake packages exporting granular interface libraries:
+`fsmc` provides target-based CMake packages exporting granular interface libraries and code generation macros.
+
+### Available Targets
 
 | CMake Target | Alias | Description |
 | :--- | :--- | :--- |
@@ -17,7 +19,7 @@ This guide details how to integrate **`fsmc`** into modern C++ projects using **
 | `fsmc_backend`  | `fsmc::backend` | C++17/20 generators and graphical emitters. |
 | `fsmc_compiler` | `fsmc::compiler` | Full compiler pipeline aggregating all modular libraries. |
 
-### Basic Setup
+### Basic CMake Application Setup
 
 ```cmake
 cmake_minimum_required(VERSION 3.16)
@@ -26,34 +28,31 @@ project(MyApplication LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 1. Find fsmc package
+# 1. Locate installed fsmc package
 find_package(fsmc CONFIG REQUIRED)
 
 # 2. Define application target and link runtime
 add_executable(my_app src/main.cpp)
 target_link_libraries(my_app PRIVATE fsmc::runtime)
 
-# 3. Automatically compile state machine diagrams
-# Note: fsmc_target_sources automatically handles both formal specifications
-# (SysML v2, SCXML, Cameo XMI, nuXmv SMV) and visual diagrams (PlantUML, Mermaid, DOT, JSON).
+# 3. Automatically transpile models during build
 fsmc_target_sources(my_app
     DIAGRAMS
-        models/mission.puml
-        models/protocol.mmd
         models/spacecraft.sysml
+        models/mission.puml
     NAME MissionFSM
     STANDARD 20
     STANDALONE
-    NAMESPACE space
+    NAMESPACE avionics
     NO_STUBS
 )
 ```
 
 ---
 
-## 2. FetchContent Integration (Zero-Install Setup)
+## 2. FetchContent Integration (Zero-Install C++ Setup)
 
-To use `fsmc` without installing it system-wide:
+To consume `fsmc` directly from Git without system-wide pre-installation:
 
 ```cmake
 include(FetchContent)
@@ -62,7 +61,8 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/simoneCavalleri/fsmc.git
     GIT_TAG main
 )
-# Disable test/example builds for downstream consumers
+
+# Disable test and benchmark targets for downstream consumers
 set(FSMC_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 set(FSMC_ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(FSMC_ENABLE_BENCHMARKS OFF CACHE BOOL "" FORCE)
@@ -81,67 +81,198 @@ fsmc_target_sources(my_app
 
 ---
 
-## 3. CMake Configuration Options
-
-When compiling or embedding `fsmc` in your workspace:
-
-| Option | Default | Description |
-| :--- | :--- | :--- |
-| `FSMC_ENABLE_TESTING` | `ON` | Builds the 54 GoogleTest test suites. |
-| `FSMC_ENABLE_EXAMPLES` | `ON` | Builds showcase example targets. |
-| `FSMC_ENABLE_BENCHMARKS` | `ON` | Builds dispatch micro-benchmarks. |
-| `FSMC_ENABLE_SANITIZERS` | `OFF` | Enables Address & Undefined Sanitizers in Debug builds. |
-| `FSMC_BUILD_WASM` | `OFF` | Builds WebAssembly playground targets (Emscripten). |
-
----
-
-## 4. `fsmc_target_sources` Parameter Reference
+## 3. `fsmc_target_sources` Parameter Reference
 
 | Parameter | Type | Description |
 | :--- | :--- | :--- |
-| `DIAGRAMS` | `list` (**Required**) | Paths to `.sysml`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, or `.dot` files (automatically passes `--allow-diagram-codegen` for visual formats). |
-| `NAME` | `string` | FSM class name (default: inferred from diagram file stem). |
+| `DIAGRAMS` | `list` (**Required**) | Paths to `.sysml`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, or `.dot` files. |
+| `NAME` | `string` | Generated state machine class name (default: inferred from diagram file stem). |
 | `STANDARD` | `17` or `20` | Target C++ standard (default: `17`). |
 | `NAMESPACE` | `string` | C++ namespace wrapping states, events, and FSM aliases (default: `fsm_generated`). |
 | `OUTPUT_DIR` | `path` | Output directory for generated headers (default: `${CMAKE_CURRENT_BINARY_DIR}/generated_fsm`). |
-| `STANDALONE` | `flag` | Embeds the zero-overhead engine into the generated header (zero external dependencies). |
+| `STANDALONE` | `flag` | Embeds the zero-overhead engine directly into the generated header (zero dependencies). |
 | `MODULAR` | `flag` | Generates a header that includes external `<fsm/backend/cpp/runtime/fsm.hpp>`. |
 | `NO_THREAD_SAFE` | `flag` | Disables generation of the `thread_safe_fsm` wrapper alias. |
 | `NO_STUBS` | `flag` | Emits forward declarations for custom user-defined guard and action structs. |
 
 ---
 
-## 5. Package Managers
+## 4. C/C++ Package Managers
 
-### vcpkg Integration
-Add `fsmc` in your `vcpkg.json`:
-```json
-{
-  "name": "my-project",
-  "version-string": "1.0.0",
-  "dependencies": [
-    "fsmc"
-  ]
-}
+=== "Conan 2.0"
+    After exporting `fsmc` to your local Conan cache (`conan create . --version 0.5.0`), reference it in `conanfile.txt`:
+    ```ini
+    [requires]
+    fsmc/0.5.0
+
+    [generators]
+    CMakeDeps
+    CMakeToolchain
+    ```
+
+=== "vcpkg"
+    Declare `fsmc` in your project's `vcpkg.json`:
+    ```json
+    {
+      "name": "my-project",
+      "version-string": "1.0.0",
+      "dependencies": [
+        "fsmc"
+      ]
+    }
+    ```
+
+---
+
+## 5. Rust Ecosystem: Cargo & `build.rs` (Roadmap Preview)
+
+> [!NOTE]
+> **Roadmap Preview**: The Rust target emitter is currently under design and active development. The pattern below illustrates the upcoming Cargo build integration workflow.
+
+In Rust projects targeting `#![no_std]` bare-metal firmware or native services, models can be automatically recompiled whenever diagram files change using a standard Cargo `build.rs` build script.
+
+### Directory Structure
+```text
+my_rust_project/
+├── Cargo.toml
+├── build.rs
+├── models/
+│   └── flight.sysml
+└── src/
+    ├── main.rs
+    └── generated/
+        └── flight_fsm.rs (generated by build.rs)
 ```
 
-### Conan 2.0 Integration
-After exporting `fsmc` to your local Conan cache (`conan create . --version 0.4.0`), consume it in your `conanfile.txt`:
-```ini
-[requires]
-fsmc/0.4.0
+### `build.rs` Pattern
+```rust
+// build.rs
+use std::process::Command;
 
-[generators]
-CMakeDeps
-CMakeToolchain
+fn main() {
+    let model_path = "models/flight.sysml";
+    let output_path = "src/generated/flight_fsm.rs";
+
+    // Re-run this build script only if the SysML model changes
+    println!("cargo:rerun-if-changed={}", model_path);
+
+    let status = Command::new("fsmc")
+        .args(["-i", model_path, "-o", output_path, "--target", "rust", "--namespace", "avionics"])
+        .status()
+        .expect("Failed to execute fsmc. Ensure fsmc binary is installed and in PATH.");
+
+    if !status.success() {
+        panic!("fsmc compilation failed for {}", model_path);
+    }
+}
 ```
 
 ---
 
-## 6. Standalone Single-Header Usage (Zero Dependencies)
+## 6. Embedded C Ecosystem: Makefile & Meson (Roadmap Preview)
 
-Generate headers manually via CLI:
+> [!NOTE]
+> **Roadmap Preview**: The ISO C99 / MISRA-C target emitter is currently under design. The patterns below illustrate the upcoming build integration workflow for automotive and RTOS projects.
+
+For automotive AUTOSAR Classic, aerospace, or RTOS projects with custom toolchains (IAR, Keil, GCC-ARM):
+
+=== "GNU Makefile"
+    ```makefile
+    # Makefile rule for automatic code generation
+    MODEL = models/uav_mission.sysml
+    GEN_DIR = src/generated
+    GEN_HDR = $(GEN_DIR)/uav_mission_fsm.h
+
+    all: app
+
+    $(GEN_HDR): $(MODEL)
+    	@mkdir -p $(GEN_DIR)
+    	fsmc -i $< -o $(GEN_HDR) --target c --prefix avionics_
+
+    src/main.o: src/main.c $(GEN_HDR)
+    	$(CC) -std=c99 -Wall -Wextra -I$(GEN_DIR) -c $< -o $@
+
+    app: src/main.o
+    	$(CC) $^ -o $@
+    ```
+
+=== "Meson Build"
+    ```meson
+    project('embedded_ecu', 'c', default_options: ['c_std=c99'])
+
+    fsmc_bin = find_program('fsmc', required: true)
+
+    fsm_gen = custom_target(
+      'fsm_generation',
+      input: 'models/uav_mission.sysml',
+      output: ['uav_mission_fsm.h', 'uav_mission_fsm.c'],
+      command: [fsmc_bin, '-i', '@INPUT@', '-o', '@OUTPUT0@', '--target', 'c', '--prefix', 'avionics_']
+    )
+
+    executable('ecu_app', 'src/main.c', fsm_gen)
+    ```
+
+---
+
+## 7. Standalone Drop-in (Zero Dependencies)
+
+When building firmware where integrating a compiler into the build system is not desirable, generate self-contained artifacts manually:
+
 ```bash
-./build/bin/fsmc -i model.sysml -o model_fsm.hpp --std 20 --standalone
+# C++ Standalone Single-Header
+fsmc -i model.sysml -o model_fsm.hpp --target cpp --std 20 --standalone
+
+# Rust Standalone Module
+fsmc -i model.sysml -o model_fsm.rs --target rust
+
+# C99 Standalone Header & Implementation
+fsmc -i model.sysml -o model_fsm.h --target c
 ```
-Drop `model_fsm.hpp` directly into your C++ project without any external runtime dependencies.
+
+Drop the generated files directly into your source repository. They require **no external runtime libraries, no dynamic linkers, and no third-party package dependencies**.
+
+---
+
+## 8. CI/CD Quality Gate: Formal Verification in CI
+
+Prevent broken models or unreachable states from ever reaching your main branch by integrating `fsmc verify` into your automated CI pipeline.
+
+=== "GitHub Actions (`.github/workflows/verify.yml`)"
+    ```yaml
+    name: Model Formal Verification Quality Gate
+
+    on: [push, pull_request]
+
+    jobs:
+      verify-models:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+
+          - name: Install fsmc
+            run: |
+              # Download pre-built release binary or build from source
+              sudo cp fsmc /usr/local/bin/fsmc
+              sudo chmod +x /usr/local/bin/fsmc
+
+          - name: Run Formal Verification on All Statechart Models
+            run: |
+              # Fails the pipeline if deadlocks, incomplete guards, or invariant violations exist
+              fsmc verify models/spacecraft.sysml
+              fsmc verify models/protocol.scxml --ltl "G (Request -> F Response)"
+    ```
+
+=== "GitLab CI (`.gitlab-ci.yml`)"
+    ```yaml
+    stages:
+      - verify
+      - build
+
+    verify-models:
+      stage: verify
+      image: ubuntu:22.04
+      script:
+        - fsmc verify models/*.sysml
+      rules:
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    ```

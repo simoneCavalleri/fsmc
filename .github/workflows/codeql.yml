@@ -39,8 +39,8 @@ jobs:
       - name: Build C++ Target for CodeQL
         if: matrix.language == 'c-cpp'
         run: |
-          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DFSMC_ENABLE_TESTING=ON
-          cmake --build build --parallel
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DFSMC_ENABLE_TESTING=OFF -DFSMC_ENABLE_EXAMPLES=ON -DFSMC_ENABLE_BENCHMARKS=OFF
+          cmake --build build -j2
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3

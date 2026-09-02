@@ -108,11 +108,11 @@ class Sysml2Parser : public IParser {
 
                 if (character == '{') {
                     std::string trimmed_acc = trim(accumulated_stmt);
-                    if (trimmed_acc.rfind("do", trimmed_acc.size() - 2) != std::string::npos ||
-                        trimmed_acc.find("transition") != std::string::npos ||
-                        trimmed_acc.find("port") != std::string::npos ||
-                        trimmed_acc.find("assert") != std::string::npos ||
-                        (trimmed_acc.size() >= 2 && trimmed_acc.substr(trimmed_acc.size() - 2) == "do")) {
+                    bool is_action_block = (trimmed_acc == "do" || trimmed_acc.ends_with(" do") || trimmed_acc.ends_with("\tdo") ||
+                                            trimmed_acc.find("port") != std::string::npos ||
+                                            trimmed_acc.find("assert") != std::string::npos ||
+                                            trimmed_acc.find("transition") != std::string::npos);
+                    if (is_action_block) {
                         action_brace_depth = 1;
                         accumulated_stmt += "{";
                         continue;

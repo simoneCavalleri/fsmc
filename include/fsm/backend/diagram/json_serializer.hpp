@@ -259,7 +259,10 @@ class JsonSerializer {
         std::map<std::string, std::vector<const TransitionEdge*>> grouped_trans;
         for (const auto& t : model.transitions) {
             if (t.source == state.name) {
-                std::string evt = t.event.empty() ? "EVENT" : t.event;
+                std::string evt = (t.event.empty() || t.event == "Anonymous" || t.event == "AnonymousEvent" ||
+                                   t.event == "anonymous")
+                                      ? "always"
+                                      : t.event;
                 if (grouped_trans.find(evt) == grouped_trans.end()) {
                     event_order.push_back(evt);
                 }

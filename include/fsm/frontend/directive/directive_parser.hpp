@@ -231,8 +231,7 @@ class DirectiveParser {
             if (eq_pos != std::string::npos) {
                 std::string after_eq = trim(str.substr(eq_pos + 1));
                 if (after_eq.rfind("formula=", 0) == std::string::npos &&
-                    after_eq.rfind("ltl=", 0) == std::string::npos &&
-                    after_eq.rfind("kind=", 0) == std::string::npos) {
+                    after_eq.rfind("ltl=", 0) == std::string::npos && after_eq.rfind("kind=", 0) == std::string::npos) {
                     prop.raw_formula = extract_quoted_or_word(str, eq_pos + 1);
                     if (!prop.raw_formula.empty()) {
                         if (prop.raw_formula.back() == ';') {

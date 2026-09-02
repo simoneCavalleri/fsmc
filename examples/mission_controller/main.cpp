@@ -197,6 +197,7 @@ int main() {
         abort_fsm.dispatch(mission::CalibrationOkEvent{}, denied_in, out);
         auto abort_res = abort_fsm.dispatch(mission::AuthorizeCmd{}, denied_in, out);
         assert(abort_res.is_success());
+        (void)abort_res;
         assert(abort_fsm.is_in_state<mission::Aborted>());
         assert(abort_fsm.registers().alarm_triggered_count == 1);
         std::cout << "  (Choice pseudostate deterministically routed to Aborted state: "
@@ -252,6 +253,7 @@ int main() {
     std::cout << "\n--> [Telemetry] Drogue & main parachutes deployed -> Touchdown!\n";
     res = fsm.dispatch(mission::TouchdownEvent{}, in, out);
     assert(res.is_success());
+    (void)res;
     assert(fsm.is_in_state<mission::MissionCompleted>());
     print_spacecraft_hud(fsm.registers(), fsm.current_state_name());
 

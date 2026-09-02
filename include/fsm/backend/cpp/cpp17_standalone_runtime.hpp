@@ -10,6 +10,11 @@
 
 #include "fsm/backend/cpp/cpp_options.hpp"
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Woverlength-strings"
+#endif
+
 namespace fsm::codegen {
 
 class Cpp17StandaloneRuntime {
@@ -54,6 +59,9 @@ class Cpp17StandaloneRuntime {
 // ============================================================================
 // Core Runtime (C++17)
 // ============================================================================
+)raw_fsm_runtime";
+
+        out << R"raw_fsm_runtime(
 // --- Begin: traits/type_list.hpp ---
 #if defined(__has_cpp_attribute)
 #if __has_cpp_attribute(no_unique_address) && __cplusplus >= 202002L
@@ -188,7 +196,9 @@ using type_list_front_t = typename type_list_front<List>::type;
 }  // namespace fsm
 
 // --- End: traits/type_list.hpp ---
+)raw_fsm_runtime";
 
+        out << R"raw_fsm_runtime(
 // --- Begin: traits/dispatch_result.hpp ---
 namespace fsm {
 
@@ -286,7 +296,9 @@ struct transition_info {
 }  // namespace fsm
 
 // --- End: traits/dispatch_result.hpp ---
+)raw_fsm_runtime";
 
+        out << R"raw_fsm_runtime(
 // --- Begin: traits/step_result.hpp ---
 namespace fsm {
 
@@ -331,7 +343,9 @@ struct step_result {
 }  // namespace fsm
 
 // --- End: traits/step_result.hpp ---
+)raw_fsm_runtime";
 
+        out << R"raw_fsm_runtime(
 // --- Begin: traits/reflection.hpp ---
 namespace fsm {
 
@@ -487,7 +501,9 @@ constexpr std::string_view get_parent_name() noexcept {
 }  // namespace fsm
 
 // --- End: traits/reflection.hpp ---
+)raw_fsm_runtime";
 
+        out << R"raw_fsm_runtime(
 // --- Begin: traits/hook_traits.hpp ---
 namespace fsm {
 
@@ -1035,7 +1051,9 @@ constexpr void call_action(Action& action, Args&&... args) {
 }  // namespace fsm
 
 // --- End: traits/hook_traits.hpp ---
+)raw_fsm_runtime";
 
+        out << R"raw_fsm_runtime(
 // --- Begin: traits/observer_traits.hpp ---
 namespace fsm {
 
@@ -1169,7 +1187,9 @@ struct any_state_has_deferred<type_list<States...>> : std::disjunction<detail::h
 }  // namespace fsm
 
 // --- End: traits/observer_traits.hpp ---
+)raw_fsm_runtime";
 
+        out << R"raw_fsm_runtime(
 // --- Begin: traits/concepts.hpp ---
 #if __cplusplus >= 202002L
 #endif
@@ -1271,11 +1291,15 @@ concept Action =
 }  // namespace fsm
 
 // --- End: traits/concepts.hpp ---
+)raw_fsm_runtime";
 
+        out << R"raw_fsm_runtime(
 // --- Begin: type_traits.hpp ---
 
 // --- End: type_traits.hpp ---
+)raw_fsm_runtime";
 
+        out << R"raw_fsm_runtime(
 // --- Begin: static_vector.hpp ---
 namespace fsm {
 
@@ -1446,7 +1470,9 @@ class static_vector {
 }  // namespace fsm
 
 // --- End: static_vector.hpp ---
+)raw_fsm_runtime";
 
+        out << R"raw_fsm_runtime(
 // --- Begin: transition.hpp ---
 namespace fsm {
 
@@ -1727,7 +1753,9 @@ constexpr auto make_transition(ActionType action = {}, GuardType guard = {}) {
 }  // namespace fsm
 
 // --- End: transition.hpp ---
+)raw_fsm_runtime";
 
+        out << R"raw_fsm_runtime(
 // --- Begin: transition_table.hpp ---
 namespace fsm {
 
@@ -1851,7 +1879,9 @@ constexpr auto make_transition_table(Transitions&&... trs) {
 }  // namespace fsm
 
 // --- End: transition_table.hpp ---
+)raw_fsm_runtime";
 
+        out << R"raw_fsm_runtime(
 // --- Begin: detail/history_manager.hpp ---
 namespace fsm {
 
@@ -1919,7 +1949,9 @@ class history_manager<Table, false> {
 }  // namespace fsm
 
 // --- End: detail/history_manager.hpp ---
+)raw_fsm_runtime";
 
+        out << R"raw_fsm_runtime(
 // --- Begin: detail/deferred_manager.hpp ---
 namespace fsm::detail {
 
@@ -1990,7 +2022,9 @@ class deferred_manager<Table, DeferredCapacity, false> {
 }  // namespace fsm::detail
 
 // --- End: detail/deferred_manager.hpp ---
+)raw_fsm_runtime";
 
+        out << R"raw_fsm_runtime(
 // --- Begin: detail/transition_executor.hpp ---
 namespace fsm::detail {
 
@@ -2121,7 +2155,9 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
 }  // namespace fsm::detail
 
 // --- End: detail/transition_executor.hpp ---
+)raw_fsm_runtime";
 
+        out << R"raw_fsm_runtime(
 // --- Begin: fsm.hpp ---
 namespace fsm {
 
@@ -2554,14 +2590,17 @@ using dynamic_fsm =
 }  // namespace fsm
 
 // --- End: fsm.hpp ---
-
 )raw_fsm_runtime";
 
         if (opts.thread_safe) {
             out << R"raw_fsm_runtime(
+
 // ============================================================================
 // Thread-Safe & Asynchronous Runtime (C++17)
 // ============================================================================
+)raw_fsm_runtime";
+
+            out << R"raw_fsm_runtime(
 // --- Begin: spsc_ring_buffer.hpp ---
 namespace fsm {
 
@@ -2674,7 +2713,9 @@ class spsc_ring_buffer {
 }  // namespace fsm
 
 // --- End: spsc_ring_buffer.hpp ---
+)raw_fsm_runtime";
 
+            out << R"raw_fsm_runtime(
 // --- Begin: static_ring_buffer.hpp ---
 namespace fsm {
 
@@ -2785,7 +2826,9 @@ class static_ring_buffer {
 }  // namespace fsm
 
 // --- End: static_ring_buffer.hpp ---
+)raw_fsm_runtime";
 
+            out << R"raw_fsm_runtime(
 // --- Begin: async_types.hpp ---
 namespace fsm {
 
@@ -2809,7 +2852,9 @@ struct timed_event {
 }  // namespace fsm
 
 // --- End: async_types.hpp ---
+)raw_fsm_runtime";
 
+            out << R"raw_fsm_runtime(
 // --- Begin: async_event_queue.hpp ---
 namespace fsm {
 
@@ -2945,7 +2990,9 @@ class async_event_queue {
 }  // namespace fsm
 
 // --- End: async_event_queue.hpp ---
+)raw_fsm_runtime";
 
+            out << R"raw_fsm_runtime(
 // --- Begin: detail/reentrancy_tracker.hpp ---
 namespace fsm::detail {
 
@@ -2982,7 +3029,9 @@ class reentrancy_tracker {
 }  // namespace fsm::detail
 
 // --- End: detail/reentrancy_tracker.hpp ---
+)raw_fsm_runtime";
 
+            out << R"raw_fsm_runtime(
 // --- Begin: detail/notification_dispatcher.hpp ---
 namespace fsm::detail {
 
@@ -3056,7 +3105,9 @@ inline void invoke_notifications_outside_lock(const Event& evt, const dispatch_s
 }  // namespace fsm::detail
 
 // --- End: detail/notification_dispatcher.hpp ---
+)raw_fsm_runtime";
 
+            out << R"raw_fsm_runtime(
 // --- Begin: thread_safe_fsm.hpp ---
 namespace fsm {
 
@@ -3595,7 +3646,9 @@ class thread_safe_fsm {
 }  // namespace fsm
 
 // --- End: thread_safe_fsm.hpp ---
+)raw_fsm_runtime";
 
+            out << R"raw_fsm_runtime(
 // --- Begin: spsc_fsm.hpp ---
 namespace fsm {
 
@@ -3616,7 +3669,7 @@ namespace fsm {
 namespace detail {
 template <typename Variant, std::size_t... Is>
 constexpr std::string_view get_state_name_by_index_impl(std::size_t idx, std::index_sequence<Is...>) noexcept {
-    constexpr std::string_view names[] = { ::fsm::get_state_name(std::variant_alternative_t<Is, Variant>{})... };
+    constexpr std::string_view names[] = {::fsm::get_state_name(std::variant_alternative_t<Is, Variant>{})...};
     if (idx < sizeof...(Is)) {
         return names[idx];
     }
@@ -3867,10 +3920,13 @@ class spsc_fsm {
 }  // namespace fsm
 
 // --- End: spsc_fsm.hpp ---
-
 )raw_fsm_runtime";
         }
     }
 };
 
 }  // namespace fsm::codegen
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif

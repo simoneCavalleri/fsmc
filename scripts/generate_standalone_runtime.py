@@ -79,9 +79,9 @@ def clean_file_content(filepath):
     return system_includes, "".join(body_lines)
 
 def bundle_files(base_dir, file_list):
-    """Bundles multiple runtime files into unified system includes and unified body."""
+    """Bundles multiple runtime files into unified system includes and a list of chunks."""
     all_sys_includes = []
-    bodies = []
+    chunks = []
     
     for rel_path in file_list:
         full_path = os.path.join(base_dir, rel_path)
@@ -93,17 +93,36 @@ def bundle_files(base_dir, file_list):
             if inc not in all_sys_includes:
                 all_sys_includes.append(inc)
         
-        bodies.append(f"// --- Begin: {rel_path} ---\n" + body + f"\n// --- End: {rel_path} ---\n")
+        chunks.append((rel_path, body))
         
-    return all_sys_includes, "\n".join(bodies)
+    return all_sys_includes, chunks
 
-def generate_emitter_header(class_name, standard_name, core_incs, core_body, thread_incs, thread_body):
+def generate_emitter_header(class_name, standard_name, core_incs, core_chunks, thread_incs, thread_chunks):
     """Generates the C++ emitter header file containing the raw string literals."""
     
     # Format system includes
     core_inc_str = "\n".join(f'#include <{inc}>' for inc in sorted(core_incs))
     thread_inc_str = "\n".join(f'#include <{inc}>' for inc in sorted(thread_incs) if inc not in core_incs)
     
+    core_emits = []
+    for rel_path, body in core_chunks:
+        core_emits.append(f"""        out << R"raw_fsm_runtime(
+// --- Begin: {rel_path} ---
+{body}
+// --- End: {rel_path} ---
+)raw_fsm_runtime";""")
+
+    thread_emits = []
+    for rel_path, body in thread_chunks:
+        thread_emits.append(f"""        out << R"raw_fsm_runtime(
+// --- Begin: {rel_path} ---
+{body}
+// --- End: {rel_path} ---
+)raw_fsm_runtime";""")
+
+    core_emits_str = "\n\n".join(core_emits)
+    thread_emits_str = "\n\n".join(thread_emits)
+
     return f"""#pragma once
 
 // ============================================================================
@@ -115,6 +134,11 @@ def generate_emitter_header(class_name, standard_name, core_incs, core_body, thr
 #include <ostream>
 
 #include "fsm/backend/cpp/cpp_options.hpp"
+
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Woverlength-strings"
+#endif
 
 namespace fsm::codegen {{
 
@@ -138,21 +162,28 @@ class {class_name} {{
 // ============================================================================
 // Core Runtime ({standard_name})
 // ============================================================================
-{core_body}
 )raw_fsm_runtime";
+
+{core_emits_str}
 
         if (opts.thread_safe) {{
             out << R"raw_fsm_runtime(
+
 // ============================================================================
 // Thread-Safe & Asynchronous Runtime ({standard_name})
 // ============================================================================
-{thread_body}
 )raw_fsm_runtime";
+
+{thread_emits_str}
         }}
     }}
 }};
 
 }}  // namespace fsm::codegen
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 """
 
 def main():
@@ -168,14 +199,14 @@ def main():
         print(f"Error: Runtime directory not found: {runtime_dir}", file=sys.stderr)
         return 1
 
-    core_incs, core_body = bundle_files(runtime_dir, CORE_FILES)
-    thread_incs, thread_body = bundle_files(runtime_dir, THREAD_FILES)
+    core_incs, core_chunks = bundle_files(runtime_dir, CORE_FILES)
+    thread_incs, thread_chunks = bundle_files(runtime_dir, THREAD_FILES)
 
     # 1. C++20 Standalone Runtime
     cpp20_code = generate_emitter_header(
         "Cpp20StandaloneRuntime", "C++20",
-        core_incs, core_body,
-        thread_incs, thread_body
+        core_incs, core_chunks,
+        thread_incs, thread_chunks
     )
     cpp20_path = os.path.join(backend_cpp_dir, "cpp20_standalone_runtime.hpp")
 
@@ -185,8 +216,8 @@ def main():
     cpp17_thread_incs = [i for i in thread_incs if i != "concepts" and i != "stop_token"]
     cpp17_code = generate_emitter_header(
         "Cpp17StandaloneRuntime", "C++17",
-        cpp17_core_incs, core_body,
-        cpp17_thread_incs, thread_body
+        cpp17_core_incs, core_chunks,
+        cpp17_thread_incs, thread_chunks
     )
     cpp17_path = os.path.join(backend_cpp_dir, "cpp17_standalone_runtime.hpp")
 

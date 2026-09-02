@@ -287,7 +287,7 @@ class SmvSerializer {
     }
 
     static void extract_smv_identifiers(const std::string& expr, const std::set<std::string>& known,
-                                       std::set<std::string>& out_free) {
+                                        std::set<std::string>& out_free) {
         std::string cur;
         for (std::size_t i = 0; i <= expr.length(); ++i) {
             char c = (i < expr.length()) ? expr[i] : '\0';
@@ -321,8 +321,8 @@ class SmvSerializer {
         bool changed = true;
         while (changed) {
             changed = false;
-            for (const auto& [prefix, op] : {std::pair{"fsm::not_<", "!"}, std::pair{"fsm::and_<", " & "},
-                                             std::pair{"fsm::or_<", " | "}}) {
+            for (const auto& [prefix, op] :
+                 {std::pair{"fsm::not_<", "!"}, std::pair{"fsm::and_<", " & "}, std::pair{"fsm::or_<", " | "}}) {
                 size_t p = s.find(prefix);
                 if (p != std::string::npos) {
                     size_t start = p + std::string(prefix).length();

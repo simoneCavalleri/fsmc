@@ -32,7 +32,7 @@ namespace fsm {
 namespace detail {
 template <typename Variant, std::size_t... Is>
 constexpr std::string_view get_state_name_by_index_impl(std::size_t idx, std::index_sequence<Is...>) noexcept {
-    constexpr std::string_view names[] = { ::fsm::get_state_name(std::variant_alternative_t<Is, Variant>{})... };
+    constexpr std::string_view names[] = {::fsm::get_state_name(std::variant_alternative_t<Is, Variant>{})...};
     if (idx < sizeof...(Is)) {
         return names[idx];
     }

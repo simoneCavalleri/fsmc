@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 project(fsmc
-    VERSION 0.4.0
+    VERSION 0.4.1
     DESCRIPTION "A universal zero-overhead State Machine compiler for modern C++ (C++17/20)"
     HOMEPAGE_URL "https://github.com/simoneCavalleri/fsmc"
     LANGUAGES CXX
@@ -23,13 +23,22 @@ option(FSMC_ENABLE_TESTING "Build the test suites" ON)
 option(FSMC_ENABLE_EXAMPLES "Build example applications" ON)
 option(FSMC_ENABLE_BENCHMARKS "Build micro-benchmarks" ON)
 option(FSMC_ENABLE_SANITIZERS "Enable Address and Undefined sanitizers (Debug only)" OFF)
+option(FSMC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors (-Werror)" OFF)
 option(FSMC_BUILD_WASM "Build WebAssembly playground (Emscripten)" OFF)
 
 # Compiler warnings & quality flags
 if(MSVC)
-    add_compile_options(/W4 /WX- /permissive- /utf-8 /bigobj /FS)
+    add_compile_options(/W4 /permissive- /utf-8 /bigobj /FS)
+    if(FSMC_WARNINGS_AS_ERRORS)
+        add_compile_options(/WX)
+    else()
+        add_compile_options(/WX-)
+    endif()
 else()
     add_compile_options(-Wall -Wextra -Wpedantic -Wshadow -Wnon-virtual-dtor)
+    if(FSMC_WARNINGS_AS_ERRORS)
+        add_compile_options(-Werror)
+    endif()
     if(FSMC_ENABLE_SANITIZERS AND CMAKE_BUILD_TYPE STREQUAL "Debug")
         add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
         add_link_options(-fsanitize=address,undefined)

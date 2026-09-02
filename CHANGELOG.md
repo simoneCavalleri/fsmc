@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.1] - 2026-09-02
+
+### 🐛 Fixed
+- **Lock-Free Concurrency & Sanitizer Cleanliness (`spsc_fsm.hpp`)**:
+  - Replaced dynamic variant visitation in `spsc_fsm::state_name()` with compile-time table lookup (`detail::get_state_name_by_index`), eliminating data races under AddressSanitizer and UndefinedBehaviorSanitizer.
+  - SPSC state inspection is now 100% thread-safe with atomic acquire-release semantics.
+- **SMV Parser Robustness (`smv_parser.hpp`)**:
+  - Fixed case target colon parsing when transition guards contain namespace `::` qualifiers (e.g. `fsm::and_`).
+  - Improved handling of parenthesized clauses in transition conditions.
+- **Immediate / Eventless Transition Serialization (`mermaid_parser.hpp`, `mermaid_serializer.hpp`, `json_serializer.hpp`)**:
+  - Eliminated spurious `AnonymousEvent` string injection when parsing and rendering guarded transitions without event triggers.
+  - Mapped eventless immediate transitions in XState JSON to standard `"always"` property key.
+- **Clean SMV Emission (`smv_serializer.hpp`)**:
+  - Maintained pure, standard SMV output for nuXmv model checking without polluting comment directives.
+
+### 🛡️ CI/CD & Quality Gates
+- **Modernized GitHub Actions CI Pipeline**:
+  - Added `hendrikmuhs/ccache-action` reducing clean CI build times from ~4 min to ~35 sec.
+  - Added AddressSanitizer and UndefinedBehaviorSanitizer automated matrix job (`-fsanitize=address,undefined`).
+  - Added GitHub CodeQL security analysis workflow for C++ and Python.
+  - Added automated nuXmv 2.0.0 symbolic model checking verification matrix.
+  - Added strict MkDocs documentation build verification (`mkdocs build --strict`).
+  - Enforced zero compiler warnings (`-DFSMC_WARNINGS_AS_ERRORS=ON` / `-Werror`).
+
+### 📚 Documentation & Tooling
+- **Neutral Compiler Positioning & Pluggable Architecture**:
+  - Repositioned `fsmc` documentation as a universal, modular compiler infrastructure with an extensible backend architecture.
+  - Expanded Lossless Diagram Directives (`@fsm:*`) reference for PlantUML, Mermaid, DOT, SCXML.
+  - Expanded in-depth reference chapters for SysML v2, Cameo XMI, W3C SCXML, and nuXmv formal verification.
+  - Reorganized Cross-Format Feature Matrix into clean, categorized comparison tables.
+  - Synchronized `vcpkg.json`, Conan recipes, CMake install rules, and standalone single-header runtimes (`0.4.1`).
+- **Playground Enhancements**:
+  - Restricted the left editor format dropdown strictly to Authoring formats for 100% conservative round-trip fidelity.
+
+---
+
 ## [0.4.0] - 2026-09-01
 
 ### 🚀 Added

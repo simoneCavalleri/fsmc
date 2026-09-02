@@ -943,6 +943,125 @@ const ModelManager = {
       }
     }
 
+    // Format: nuXmv / NuSMV / SMV Formal Verification Language
+    else if (fmt === 'smv') {
+      const modMatch = text.match(/MODULE\s+([A-Za-z0-9_]+)/);
+      if (modMatch && modMatch[1] !== 'main') name = modMatch[1];
+
+      const lines = text.split('\n');
+      let currentSection = "";
+
+      for (let raw of lines) {
+        let line = raw.trim();
+        if (!line || line.startsWith("--")) continue;
+
+        if (line === "VAR") {
+          currentSection = "var";
+          continue;
+        }
+        if (line === "ASSIGN") {
+          currentSection = "assign";
+          continue;
+        }
+        if (line.includes("next(state)") && line.includes("case")) {
+          currentSection = "next_state";
+          continue;
+        }
+        if (line === "esac;" || line === "esac") {
+          currentSection = "";
+          continue;
+        }
+
+        if (currentSection === "var") {
+          if (line.startsWith("state :") || line.startsWith("state:")) {
+            const enumMatch = line.match(/\{([^}]+)\}/);
+            if (enumMatch) {
+              const stateTokens = enumMatch[1].split(',').map(s => s.trim()).filter(Boolean);
+              for (const s of stateTokens) {
+                states.add(s);
+                stateDetails.push({ name: s, parent: "", is_composite: false });
+              }
+            }
+          } else if (line.startsWith("event :") || line.startsWith("event:")) {
+            const enumMatch = line.match(/\{([^}]+)\}/);
+            if (enumMatch) {
+              const evTokens = enumMatch[1].split(',').map(e => e.trim()).filter(e => e && e !== "none");
+              for (const ev of evTokens) {
+                events.add(ev);
+              }
+            }
+          }
+        } else if (currentSection === "assign") {
+          if (line.startsWith("init(state)")) {
+            const eqIdx = line.indexOf(":=");
+            if (eqIdx !== -1) {
+              let initSt = line.substring(eqIdx + 2).replace(/;/g, '').trim();
+              if (initSt) initial = initSt;
+            }
+          }
+        } else if (currentSection === "next_state") {
+          if (line.includes("TRUE :") || line.includes("TRUE:")) continue;
+
+          let colonIdx = -1;
+          for (let i = line.length - 1; i >= 0; i--) {
+            if (line[i] === ':') {
+              const isDouble = (i > 0 && line[i - 1] === ':') || (i + 1 < line.length && line[i + 1] === ':');
+              if (!isDouble) {
+                colonIdx = i;
+                break;
+              }
+            }
+          }
+          if (colonIdx === -1) continue;
+
+          let commentAct = "";
+          const commentPos = line.indexOf("--");
+          if (commentPos !== -1 && commentPos > colonIdx) {
+            const cStr = line.substring(commentPos);
+            const actMatch = cStr.match(/action:\s*([A-Za-z0-9_]+)/);
+            if (actMatch) commentAct = actMatch[1];
+            line = line.substring(0, commentPos).trim();
+          }
+
+          const condPart = line.substring(0, colonIdx).trim();
+          const targetPart = line.substring(colonIdx + 1).replace(/;/g, '').trim();
+          if (!targetPart) continue;
+
+          const clauses = condPart.split('&').map(c => c.trim().replace(/^\(+|\)+$/g, '').trim());
+          let srcState = "";
+          let evName = "Anonymous";
+          let guardParts = [];
+
+          for (const c of clauses) {
+            if (c.startsWith("state =") || c.startsWith("state=")) {
+              srcState = c.split('=')[1].trim();
+            } else if (c.startsWith("event =") || c.startsWith("event=")) {
+              const ev = c.split('=')[1].trim();
+              if (ev && ev !== "none") {
+                evName = ev;
+                events.add(ev);
+              }
+            } else if (c) {
+              guardParts.push(c);
+            }
+          }
+
+          if (srcState && targetPart) {
+            states.add(srcState);
+            states.add(targetPart);
+            transitions.push({
+              source: srcState,
+              target: targetPart,
+              event: evName,
+              guard: guardParts.join(" && "),
+              action: commentAct,
+              is_internal: (srcState === targetPart)
+            });
+          }
+        }
+      }
+    }
+
     // Format: PlantUML / Mermaid
     else {
       const lines = text.split('\n');
@@ -1051,15 +1170,15 @@ const ModelManager = {
       out += "stateDiagram-v2\n";
       if (model.events && model.events.length > 0) {
         for (const ev of model.events) {
-          if (ev && ev !== "Anonymous") out += `%% @fsm:signal ${ev}\n`;
+          if (ev && ev !== "Anonymous" && ev !== "AnonymousEvent" && ev !== "anonymous") out += `%% @fsm:signal ${ev}\n`;
         }
       }
       if (model.initialState) out += `    [*] --> ${model.initialState}\n`;
       for (const t of model.transitions) {
-        let label = t.event || "";
-        if (t.guard) label += ` [${t.guard}]`;
-        if (t.action) label += ` / ${t.action}`;
-        const lblStr = label && label !== "Anonymous" ? ` : ${label}` : "";
+        let label = (t.event && t.event !== "Anonymous" && t.event !== "AnonymousEvent" && t.event !== "anonymous") ? t.event : "";
+        if (t.guard) label += (label ? " " : "") + `[${t.guard}]`;
+        if (t.action) label += (label ? " " : "") + `/ ${t.action}`;
+        const lblStr = label ? ` : ${label}` : "";
         const cleanTarget = t.is_internal ? t.source : (t.target + (t.target_is_history ? (t.target_is_deep_history ? '[H*]' : '[H]') : ''));
         out += `    ${t.source} --> ${cleanTarget}${lblStr}\n`;
       }
@@ -1071,15 +1190,15 @@ const ModelManager = {
       let out = (model.name && model.name !== "GeneratedFSM" && model.name !== "MyStateMachine") ? `@startuml ${model.name}\n` : "@startuml\n";
       if (model.events && model.events.length > 0) {
         for (const ev of model.events) {
-          if (ev && ev !== "Anonymous") out += `' @fsm:signal ${ev}\n`;
+          if (ev && ev !== "Anonymous" && ev !== "AnonymousEvent" && ev !== "anonymous") out += `' @fsm:signal ${ev}\n`;
         }
       }
       if (model.initialState) out += `[*] --> ${model.initialState}\n\n`;
       for (const t of model.transitions) {
-        let label = t.event || "";
-        if (t.guard) label += ` [${t.guard}]`;
-        if (t.action) label += ` / ${t.action}`;
-        const lblStr = label && label !== "Anonymous" ? ` : ${label}` : "";
+        let label = (t.event && t.event !== "Anonymous" && t.event !== "AnonymousEvent" && t.event !== "anonymous") ? t.event : "";
+        if (t.guard) label += (label ? " " : "") + `[${t.guard}]`;
+        if (t.action) label += (label ? " " : "") + `/ ${t.action}`;
+        const lblStr = label ? ` : ${label}` : "";
         const cleanTarget = t.is_internal ? t.source : (t.target + (t.target_is_history ? (t.target_is_deep_history ? '[H*]' : '[H]') : ''));
         out += `${t.source} --> ${cleanTarget}${lblStr}\n`;
       }
@@ -1092,7 +1211,7 @@ const ModelManager = {
       let out = `state def ${fsmName} {\n`;
       if (model.events && model.events.length > 0) {
         for (const ev of model.events) {
-          if (ev && ev !== "Anonymous") out += `    event def ${ev};\n`;
+          if (ev && ev !== "Anonymous" && ev !== "AnonymousEvent" && ev !== "anonymous") out += `    event def ${ev};\n`;
         }
         out += "\n";
       }
@@ -1104,7 +1223,7 @@ const ModelManager = {
       for (const t of model.transitions) {
         const cleanTarget = t.is_internal ? t.source : (t.target + (t.target_is_history ? (t.target_is_deep_history ? '[H*]' : '[H]') : ''));
         out += `    transition from ${t.source}`;
-        if (t.event && t.event !== "Anonymous") out += ` accept ${t.event}`;
+        if (t.event && t.event !== "Anonymous" && t.event !== "AnonymousEvent" && t.event !== "anonymous") out += ` accept ${t.event}`;
         if (t.guard) out += ` if ${t.guard}`;
         if (t.action) out += ` do ${t.action}`;
         out += ` then ${cleanTarget};\n`;
@@ -1296,7 +1415,7 @@ const ModelManager = {
     const fsmName = rawName.endsWith("FSM") ? rawName : rawName + "FSM";
 
     let code = `// ============================================================================\n`;
-    code += `// Generated by fsmc v0.4.0 (The Universal State Machine Compiler)\n`;
+    code += `// Generated by fsmc v0.4.1 (The Universal State Machine Compiler)\n`;
     code += `// Target: C++${isCpp20 ? '20' : '17'} (${isStandalone ? 'Standalone 0-Deps' : 'Modular'})\n`;
     code += `// ============================================================================\n#pragma once\n\n`;
 
@@ -1518,7 +1637,7 @@ const GraphRenderer = {
     }
 
     for (const t of model.transitions) {
-      let label = (t.event && t.event !== "Anonymous") ? t.event : "";
+      let label = (t.event && t.event !== "Anonymous" && t.event !== "AnonymousEvent" && t.event !== "anonymous") ? t.event : "";
       if (t.guard) {
         let cleanGuard = t.guard
           .replace(/fsm::and_<(.+?)>/g, (m, p) => p.replace(/,/g, ' && '))

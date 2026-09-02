@@ -1,12 +1,12 @@
 # Transition Trace, Telemetry & Introspection
 
-`fsmc` provides rich, non-intrusive transition trace telemetry, observer callbacks, and deterministic tick-based timer management without heap memory allocations or performance overhead.
+`fsmc` provides rich, non-intrusive transition trace telemetry, observer callbacks, and deterministic tick-based timer management with **0 bytes dynamic memory allocation** and zero performance overhead.
 
 ---
 
-## 1. `fsm::dispatch_result` & `fsm::transition_trace`
+## 1. `fsm::dispatch_result` & `fsm::step_result`
 
-Every call to `dispatch()`, `dispatch_sync()`, or `post_async()` returns an `fsm::dispatch_result` holding the dispatch status and an optional `transition_trace`:
+Every call to `dispatch()` or `post_async()` returns an `fsm::dispatch_result`, while periodic calls to `step()` return an `fsm::step_result`. Both structs carry an optional `fsm::transition_trace`:
 
 ```cpp
 namespace fsm {
@@ -16,6 +16,11 @@ enum class dispatch_status : std::uint8_t {
     deferred,       // Event was deferred by the active state
     guard_rejected, // Matching transition found, but guard evaluated to false
     unhandled       // No transition defined for (current_state, event)
+};
+
+enum class step_status : std::uint8_t {
+    steady,         // Machine remains nominally in active state
+    transitioned    // A continuous transition condition fired
 };
 
 enum class transition_kind : std::uint8_t {
@@ -44,6 +49,16 @@ struct dispatch_result {
     [[nodiscard]] constexpr bool is_guard_rejected() const noexcept;
     [[nodiscard]] constexpr bool is_unhandled() const noexcept;
     [[nodiscard]] constexpr bool is_ok() const noexcept; // success || deferred
+    [[nodiscard]] constexpr std::string_view to_string() const noexcept;
+};
+
+struct step_result {
+    step_status status = step_status::steady;
+    std::optional<transition_trace> trace = std::nullopt;
+
+    [[nodiscard]] constexpr bool has_transitioned() const noexcept;
+    [[nodiscard]] constexpr bool is_steady() const noexcept;
+    [[nodiscard]] constexpr explicit operator bool() const noexcept { return has_transitioned(); }
     [[nodiscard]] constexpr std::string_view to_string() const noexcept;
 };
 

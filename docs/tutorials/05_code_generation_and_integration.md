@@ -74,15 +74,15 @@ int main() {
     assert(in.validate_contracts());
     std::cout << "Initial state: " << fsm.current_state_name() << "\n";
 
-    // 1. Dispatch typed events
-    fsm.dispatch(ConnectCmd{}, in, out, srv);
+    // 1. Dispatch typed events (srv is automatically bound from constructor)
+    fsm.dispatch(ConnectCmd{}, in, out);
     std::cout << "State after ConnectCmd: " << fsm.current_state_name() << "\n";
 
-    fsm.dispatch(HandshakeOk{}, in, out, srv);
+    fsm.dispatch(HandshakeOk{}, in, out);
     std::cout << "State after HandshakeOk: " << fsm.current_state_name() << "\n";
 
     // 2. Sampled continuous step
-    fsm.step(in, out, srv);
+    fsm.step(in, out);
 
     return 0;
 }

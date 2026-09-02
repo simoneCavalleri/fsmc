@@ -20,7 +20,7 @@ sequenceDiagram
     ISR->>Queue: post(SensorEvent) [Never blocks, never allocates]
 
     Note over Queue,Task: Sequential RTC Execution
-    Task->>Queue: process_one(in, out, srv)
+    Task->>Queue: process_one(in, out)
     Note over Task: Drains event & executes fsm::fsm transition
 
     Note over Task,Reader: Seqlock Lock-Free Snapshot
@@ -165,9 +165,9 @@ void rtos_periodic_control_task(void* param) {
 
 | Method | Description |
 | :--- | :--- |
-| `bool process_one(in, out, srv)` | Pops and executes the single oldest event. Returns `false` if the queue was empty. |
-| `std::size_t run_until_empty(in, out, srv)` | Processes all currently queued events in a loop until the queue is completely drained. |
-| `step_result step([dt], in, out, srv)` | Evaluates continuous condition transitions and dwell timers (`in_state_for`) on the current state. |
+| `bool process_one([in, out])` | Pops and executes the single oldest event. Returns `false` if the queue was empty. |
+| `std::size_t run_until_empty([in, out])` | Processes all currently queued events in a loop until the queue is completely drained. |
+| `step_result step([dt], [in, out])` | Evaluates continuous condition transitions and dwell timers (`in_state_for`) on the current state. |
 | `std::size_t queue_size()` | Returns the current count of queued pending events. |
 
 ---

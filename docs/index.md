@@ -90,7 +90,7 @@ Define a state machine using your preferred input format:
                 transition on TakeoffCmd if in.has_gps_lock then Navigating;
             }
             state Navigating {
-                transition on LowBattery if in.battery_percent < 20 then ReturnToHome;
+                transition if in.battery_percent < 20 then ReturnToHome;
                 transition on AreaReached do reg.waypoints_completed += 1; then Navigating;
             }
             state ReturnToHome;
@@ -106,7 +106,7 @@ Define a state machine using your preferred input format:
     SensorCalib --> SystemReady : CalibrationOk / out.motor_active = true
     SystemReady --> Navigating : TakeoffCmd [in.has_gps_lock]
     
-    Navigating --> ReturnToHome : LowBattery [in.battery_percent < 20]
+    Navigating --> ReturnToHome : [in.battery_percent < 20]
     Navigating --> Navigating : AreaReached / reg.waypoints_completed += 1
     @enduml
     ```
@@ -121,7 +121,7 @@ Define a state machine using your preferred input format:
         <transition event="TakeoffCmd" cond="in.has_gps_lock" target="Navigating"/>
       </state>
       <state id="Navigating">
-        <transition event="LowBattery" cond="in.battery_percent &lt; 20" target="ReturnToHome"/>
+        <transition cond="in.battery_percent &lt; 20" target="ReturnToHome"/>
       </state>
       <state id="ReturnToHome"/>
     </scxml>
@@ -133,7 +133,7 @@ Define a state machine using your preferred input format:
         [*] --> SensorCalib
         SensorCalib --> SystemReady : CalibrationOk
         SystemReady --> Navigating : TakeoffCmd
-        Navigating --> ReturnToHome : LowBattery
+        Navigating --> ReturnToHome : [battery_percent < 20]
     ```
 
 ---
@@ -160,7 +160,7 @@ The `fsmc` command-line interface provides unified access to all compiler pipeli
 === "Requirement Traceability (RTM)"
     ```bash
     # Export Requirement Traceability Matrix for DO-178C / ISO 26262 audit packages
-    fsmc -i mission.sysml --export-rtm rtm_matrix.csv
+    fsmc -i mission.sysml --rtm-output rtm_matrix.md
     ```
 
 === "C++ Code Generation"
@@ -192,16 +192,16 @@ int main() {
     UavMissionOutPorts out{};
 
     // 2. Reactive Event Dispatching
-    fsm.dispatch(CalibrationOk{}, in, out, srv);
+    fsm.dispatch(CalibrationOk{}, in, out);
     assert(fsm.is_in<SystemReady>());
     assert(out.motor_active == true);
 
-    fsm.dispatch(TakeoffCmd{}, in, out, srv);
+    fsm.dispatch(TakeoffCmd{}, in, out);
     assert(fsm.is_in<Navigating>());
 
     // 3. Continuous Control Loop Step (Sampled Inputs)
     in.battery_percent = 15; // Low battery condition
-    fsm.step(in, out, srv);  // Evaluates continuous transitions
+    fsm.step(in, out);       // Evaluates continuous transitions
     assert(fsm.is_in<ReturnToHome>());
 
     return 0;

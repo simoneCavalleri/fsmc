@@ -23,14 +23,16 @@ The `fsmc_target_sources` macro hooks into your target's build graph, creating c
 fsmc_target_sources(
     <TargetName>
     DIAGRAMS <diagram1> [<diagram2>...]
-    NAME <GeneratedFSMClassName>
+    [NAME <GeneratedFSMClassName>]
     [STANDARD <17|20>]
     [NAMESPACE <NamespaceName>]
+    [OUTPUT_DIR <OutputDirectory>]
     [STANDALONE]
     [MODULAR]
-    [STRICT_DETERMINISM]
-    [PRUNE_DEAD_STATES]
-    [ALLOW_DIAGRAM_CODEGEN]
+    [NO_THREAD_SAFE]
+    [NO_STUBS]
+    [FORMAT <FormatName>]
+    [TARGET_LANG <Language>]
 )
 ```
 
@@ -40,12 +42,15 @@ fsmc_target_sources(
 | `<TargetName>` | Target | The CMake target (executable or library) receiving the generated header. |
 | `DIAGRAMS` | Files | List of input statechart files (`.sysml`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, `.dot`). |
 | `NAME` | String | Name of the generated C++ class (e.g. `UavMissionFSM`). |
-| `STANDARD` | Integer | C++ standard version (`17` or `20`). Default: `20`. |
+| `STANDARD` | Integer | C++ standard version (`17` or `20`). Default: `17`. |
 | `NAMESPACE` | String | C++ namespace to enclose generated types. Default: `fsm_generated`. |
-| `STANDALONE` | Flag | Generate self-contained header with embedded runtime. Default: `ON`. |
+| `OUTPUT_DIR` | Path | Output directory for generated headers (default: `${CMAKE_CURRENT_BINARY_DIR}/generated_<target>`). |
+| `STANDALONE` | Flag | Generate self-contained header with embedded zero-alloc runtime. |
 | `MODULAR` | Flag | Generate header that includes `<fsm/backend/cpp/runtime/fsm.hpp>`. |
-| `STRICT_DETERMINISM` | Flag | Fail compilation on non-deterministic branch collisions. |
-| `ALLOW_DIAGRAM_CODEGEN`| Flag | Allow code generation from visual diagram formats (PlantUML, Mermaid). |
+| `NO_THREAD_SAFE` | Flag | Disable generation of the `thread_safe_fsm` asynchronous wrapper. |
+| `NO_STUBS` | Flag | Disable generation of default stubs for custom actions and guards. |
+| `FORMAT` | String | Override input model format parser (`sysml2`, `plantuml`, `mermaid`, etc.). |
+| `TARGET_LANG` | String | Target code generator language (`cpp`). |
 
 ---
 

@@ -57,7 +57,7 @@ void SensorProcessingTask(void* params) {
         SensorOutPorts out{};
 
         // Drain all pending events sequentially
-        g_fsm.run_until_empty(in, out, srv);
+        g_fsm.run_until_empty(in, out);
 
         commit_hardware_pins(out);
         vTaskDelay(pdMS_TO_TICKS(10));
@@ -97,6 +97,12 @@ state def MissionController {
 
         state HoverPause;
 
+        transition pause_cmd first Navigating accept PauseCmd then HoverPause;
+        transition resume_cmd first HoverPause accept ResumeCmd then Navigating[H*];
+    }
+}
+```
+
 ```mermaid
 stateDiagram-v2
     [*] --> Standby
@@ -131,17 +137,18 @@ int main() {
     in.battery_pct = 100.0f;
     MissionOutPorts out;
 
-    fsm.dispatch(TakeoffCmd{}, in, out, srv);
-    fsm.dispatch(AltReached{}, in, out, srv);
-    fsm.dispatch(AreaReached{}, in, out, srv);
+    // Services (srv) are bound at construction: dispatch only needs (event, in, out)
+    fsm.dispatch(TakeoffCmd{}, in, out);
+    fsm.dispatch(AltReached{}, in, out);
+    fsm.dispatch(AreaReached{}, in, out);
     std::cout << "State before pause: " << fsm.current_state_name() << "\n"; // SearchPattern
 
     // Pause mission
-    fsm.dispatch(PauseCmd{}, in, out, srv);
+    fsm.dispatch(PauseCmd{}, in, out);
     std::cout << "Paused state: " << fsm.current_state_name() << "\n"; // HoverPause
 
     // Resume: Deep history restores exact active substate SearchPattern
-    fsm.dispatch(ResumeCmd{}, in, out, srv);
+    fsm.dispatch(ResumeCmd{}, in, out);
     std::cout << "State after resume: " << fsm.current_state_name() << "\n"; // SearchPattern
     return 0;
 }
@@ -182,19 +189,35 @@ struct Handshaking {
 };
 struct Connected { static constexpr std::string_view name = "Connected"; };
 
-struct GatewayTable = fsm::transition_table<
+struct GatewayRegisters {
+    std::uint32_t reconnect_delay_ms = 1000;
+};
+
+struct GatewayServices {
+    virtual void send_telemetry(const EvTelemetryData& data) = 0;
+    virtual void schedule_reconnect(std::chrono::milliseconds delay) = 0;
+};
+
+struct SendTelemetryAction {
+    void operator()(const EvTelemetryData& ev, GatewayServices& srv) const {
+        srv.send_telemetry(ev);
+    }
+};
+
+struct ScheduleBackoffAction {
+    void operator()(const SocketError&, GatewayRegisters& reg, GatewayServices& srv) const {
+        reg.reconnect_delay_ms = std::min(reg.reconnect_delay_ms * 2, 30000u);
+        std::cout << "[GATEWAY] Reconnecting in " << reg.reconnect_delay_ms << "ms...\n";
+        srv.schedule_reconnect(std::chrono::milliseconds(reg.reconnect_delay_ms));
+    }
+};
+
+using GatewayTable = fsm::transition_table<
     fsm::row<Disconnected, ConnectCmd,      Handshaking>,
     fsm::row<Handshaking,  HandshakeOk,     Connected>,
     fsm::row<Connected,    EvTelemetryData, Connected>::then<SendTelemetryAction>,
     fsm::row<Connected,    SocketError,     Disconnected>::then<ScheduleBackoffAction>
 >;
-
-void ScheduleBackoffAction::operator()(const SocketError&, GatewayRegisters& reg, fsm::thread_safe_fsm<GatewayTable>& fsm) const {
-    reg.reconnect_delay_ms = std::min(reg.reconnect_delay_ms * 2, 30000u);
-    std::cout << "[GATEWAY] Reconnecting in " << reg.reconnect_delay_ms << "ms...\n";
-    // Timed delayed event posted safely from worker thread
-    fsm.post_delayed(ConnectCmd{}, std::chrono::milliseconds(reg.reconnect_delay_ms));
-}
 ```
 
 ---

@@ -18,7 +18,8 @@ template <
     typename Registers = no_registers,
     typename Services = no_services,
     typename InitialState = typename Table::initial_state,
-    typename Observer = dynamic_observer
+    typename Observer = no_observer,
+    std::size_t DeferredCapacity = 16
 >
 class fsm;
 ```
@@ -29,24 +30,32 @@ class fsm;
 - `out_ports_type`: The single-assignment output structure.
 - `registers_type`: The internal datapath state structure ($z^{-1}$ memory).
 - `services_type`: The abstract injected environment/driver interface.
-- `initial_state`: The root initial state type.
+- `initial_state_type`: The root initial state type.
 - `observer_type`: The transition observer callback type.
 
 ### Constructors
-- `constexpr fsm() noexcept`: Default constructs state machine in initial state.
-- `constexpr explicit fsm(const Registers& reg) noexcept`: Initializes with initial registers.
-- `constexpr fsm(const Registers& reg, Services& srv) noexcept`: Initializes with registers and bound services.
-- `constexpr fsm(const Registers& reg, Services& srv, Observer obs) noexcept`: Initializes with registers, services, and observer.
+- `constexpr fsm()`: Default constructs state machine in initial state.
+- `constexpr explicit fsm(services_type& srv, Table table = Table{})`: Initializes with bound external services.
+- `constexpr explicit fsm(registers_type reg, Table table = Table{})`: Initializes with initial registers.
+- `constexpr explicit fsm(registers_type reg, services_type& srv, Table table = Table{})`: Initializes with registers and bound services.
+- `template <typename InitState> constexpr explicit fsm(InitState&& initial, Table table = Table{})`: Initializes with custom initial state.
+- `template <typename InitState> constexpr explicit fsm(InitState&& initial, services_type& srv, Table table = Table{})`: Initializes with custom initial state and bound services.
 
 ### Member Functions
 
+> [!TIP]
+> **Which Overload to Call?**
+> - **Standard (Recommended for 90% of apps)**: If services were passed at construction (`fsm(reg, srv)`), call `fsm.dispatch(ev, in, out)` and `fsm.step(in, out)`.
+> - **Stateless / No-Ports (Events Only)**: If your model defines no ports, call `fsm.dispatch(ev)` (`step()` is only needed if using anonymous transitions).
+> - **Dynamic / Call-Site Injection (Production & Testing)**: If services were not bound at construction (e.g. multi-channel dispatch, hardware failover, or unit testing with mocks), pass `srv` explicitly: `fsm.dispatch(ev, in, out, srv)`.
+
 #### Lifecycle & Execution
-- `step_result step(const InPorts& in, OutPorts& out, Services& srv)`: Evaluates continuous condition transitions.
-- `template <typename DurationRep> step_result step(DurationRep dt, const InPorts& in, OutPorts& out, Services& srv)`: Evaluates continuous transitions with explicit $\Delta t$.
-- `step_result step(const InPorts& in, OutPorts& out)`: Step overload omitting `Services`.
+- `step_result step(const in_ports_type& in, out_ports_type& out, services_type& srv)`: Evaluates continuous condition transitions.
+- `template <typename DurationRep> step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out, services_type& srv)`: Evaluates continuous transitions with explicit $\Delta t$.
+- `step_result step(const in_ports_type& in, out_ports_type& out)`: Step overload omitting `Services` (uses constructor-bound services or default).
 - `step_result step()`: Step overload for stateless state machines.
-- `template <typename Event> dispatch_result dispatch(const Event& ev, const InPorts& in, OutPorts& out, Services& srv)`: Synchronously evaluates transitions matching `Event`.
-- `template <typename Event> dispatch_result dispatch(const Event& ev, const InPorts& in, OutPorts& out)`: Dispatch overload omitting `Services`.
+- `template <typename Event> dispatch_result dispatch(const Event& ev, const in_ports_type& in, out_ports_type& out, services_type& srv)`: Synchronously evaluates transitions matching `Event`.
+- `template <typename Event> dispatch_result dispatch(const Event& ev, const in_ports_type& in, out_ports_type& out)`: Dispatch overload omitting `Services` (uses constructor-bound services or default).
 - `template <typename Event> dispatch_result dispatch(const Event& ev)`: Dispatch overload for stateless state machines.
 
 #### State Inspection
@@ -60,9 +69,8 @@ class fsm;
 - `[[nodiscard]] constexpr const Registers& registers() const noexcept`: Read-only reference to internal registers.
 
 #### Telemetry
-- `void set_observer(Observer obs) noexcept`: Attaches transition observer.
+- `template <typename Callback> void set_observer(Callback observer)`: Attaches transition observer callback.
 - `void clear_observer() noexcept`: Detaches active observer.
-- `[[nodiscard]] constexpr const Observer& observer() const noexcept`: Returns observer reference.
 
 ---
 
@@ -98,12 +106,31 @@ using CombinedGuard = fsm::and_<GuardA, fsm::or_<GuardB, fsm::not_<GuardC>>>;
 
 ---
 
-## 3. Execution Status: `fsm::dispatch_result`
+## 3. Execution Status: `fsm::dispatch_result` & `fsm::step_result`
 
 ```cpp
 #include "fsm/backend/cpp/runtime/dispatch_result.hpp"
+#include "fsm/backend/cpp/runtime/step_result.hpp"
 ```
 
+### `fsm::transition_trace`
+```cpp
+enum class transition_kind : std::uint8_t { external, internal };
+
+struct transition_trace {
+    std::string_view source{};
+    std::string_view target{};
+    std::string_view event{};
+    std::string_view guard{};
+    std::string_view action{};
+    transition_kind kind{transition_kind::external};
+
+    [[nodiscard]] constexpr bool is_internal() const noexcept;
+    [[nodiscard]] constexpr bool is_external() const noexcept;
+};
+```
+
+### `fsm::dispatch_result`
 ```cpp
 enum class dispatch_status : std::uint8_t {
     success,        // Transition executed successfully
@@ -114,9 +141,7 @@ enum class dispatch_status : std::uint8_t {
 
 struct dispatch_result {
     dispatch_status status{dispatch_status::unhandled};
-    std::string_view source_state{};
-    std::string_view target_state{};
-    bool is_internal{false};
+    std::optional<transition_trace> trace{std::nullopt};
 
     [[nodiscard]] constexpr bool is_success() const noexcept;
     [[nodiscard]] constexpr bool is_deferred() const noexcept;
@@ -124,6 +149,26 @@ struct dispatch_result {
     [[nodiscard]] constexpr bool is_unhandled() const noexcept;
     [[nodiscard]] constexpr bool is_ok() const noexcept; // is_success() || is_deferred()
     explicit constexpr operator bool() const noexcept { return is_ok(); }
+    [[nodiscard]] constexpr std::string_view to_string() const noexcept;
+};
+```
+
+### `fsm::step_result`
+```cpp
+enum class step_status : std::uint8_t {
+    steady,        // Machine remains nominally in active state
+    transitioned   // A continuous transition condition fired
+};
+
+struct step_result {
+    step_status status{step_status::steady};
+    std::optional<transition_trace> trace{std::nullopt};
+
+    [[nodiscard]] constexpr bool has_transitioned() const noexcept;
+    [[nodiscard]] constexpr bool is_transitioned() const noexcept;
+    [[nodiscard]] constexpr bool is_steady() const noexcept;
+    explicit constexpr operator bool() const noexcept { return has_transitioned(); }
+    [[nodiscard]] constexpr std::string_view to_string() const noexcept;
 };
 ```
 
@@ -189,10 +234,13 @@ class spsc_fsm;
 - `template <typename Event> bool enqueue(Event&& ev) noexcept`: FIFO queue push.
 
 #### Consumer Context (RTOS Worker Thread)
-- `bool process_one(const InPorts& in, OutPorts& out, Services& srv) noexcept`: Pops and executes the single oldest event.
-- `std::size_t run_until_empty(const InPorts& in, OutPorts& out, Services& srv) noexcept`: Drains and executes all queued events.
-- `step_result step(const InPorts& in, OutPorts& out, Services& srv) noexcept`: Evaluates continuous condition step.
-- `template <typename DurationRep> step_result step(DurationRep dt, const InPorts& in, OutPorts& out, Services& srv) noexcept`: Evaluates continuous step with $\Delta t$.
+- `bool process_one()`: Pops and executes the single oldest event.
+- `bool process_one(const in_ports_type& in, out_ports_type& out)`: Pops and executes oldest event with I/O snapshot.
+- `std::size_t run_until_empty()`: Drains and executes all queued events.
+- `std::size_t run_until_empty(const in_ports_type& in, out_ports_type& out)`: Drains and executes all queued events with I/O snapshot.
+- `step_result step()`: Evaluates continuous condition step.
+- `step_result step(const in_ports_type& in, out_ports_type& out)`: Evaluates continuous condition step with I/O snapshot.
+- `template <typename DurationRep> step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out)`: Evaluates continuous step with $\Delta t$.
 
 #### Reader Context (Lock-Free Seqlock)
 - `Registers snapshot_registers() const noexcept`: Captures consistent register snapshot using atomic sequence lock without blocking worker.
@@ -231,7 +279,10 @@ class thread_safe_fsm;
 
 #### Synchronous & State Queries (Mutex Guarded)
 - `step_result step(const InPorts& in, OutPorts& out, Services& srv)`: Thread-safe continuous step evaluation under lock.
+- `step_result step(const InPorts& in, OutPorts& out)`: Step overload using constructor-bound services.
+- `step_result step()`: Step overload for stateless state machines.
 - `template <typename DurationRep> step_result step(DurationRep dt, const InPorts& in, OutPorts& out, Services& srv)`: Step with $\Delta t$.
+- `template <typename DurationRep> step_result step(DurationRep dt, const InPorts& in, OutPorts& out)`: Step with $\Delta t$ and constructor-bound services.
 - `std::string_view current_state_name() const`: Returns active state name under mutex lock.
 - `template <typename State> bool is_in_state() const`: Checks state type under mutex lock.
 - `Registers snapshot_registers() const`: Returns copy of registers under mutex lock.

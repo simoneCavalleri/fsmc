@@ -97,7 +97,7 @@ flowchart TD
 | **`InPorts`** | Read-only input snapshot ($t$) | Sensor readings, ADC values, digital switches | Passed at call site: `dispatch(ev, in, out)` |
 | **`OutPorts`** | Single-assignment write buffer | Motor PWM, relay triggers, actuator commands | Passed at call site: `dispatch(ev, in, out)` |
 | **`Registers`** | Persistent internal state ($z^{-1}$) | Cycle counters, accumulators, calibrated offsets | Passed at construction: `fsm(reg)` |
-| **`Services`** | External environment interface | Hardware drivers, logging, RTOS timer RPCs | Bound at construction `fsm(reg, srv)` or call site |
+| **`Services`** | External environment interface | Hardware drivers, logging, RTOS timer RPCs | Bound at construction `fsm(reg, srv)` (omitted at call site), or injected per call: `dispatch(ev, in, out, srv)` |
 
 ```cpp
 struct MotorInPorts   { float battery_percent{100.0f}; float temperature{25.0f}; };
@@ -105,6 +105,13 @@ struct MotorOutPorts  { bool motor_enable{false}; float target_velocity{0.0f};  
 struct MotorRegisters { std::uint32_t cycle_counter{0}; std::uint32_t error_count{0}; };
 struct MotorServices  { virtual void log_info(std::string_view msg) = 0; };
 ```
+
+> [!TIP]
+> **Which Call Style Should I Use?**
+> - **Standard Style (Recommended for 90% of apps)**: Bind services at construction (`MyFSM fsm(reg, srv);`), then simply call `fsm.dispatch(ev, in, out);` and `fsm.step(in, out);`.
+> - **Minimal / Pure Logic (Events Only)**: If you don't use I/O ports or services, construct `MyFSM fsm;` and simply call `fsm.dispatch(ev);` (`step()` is not needed).
+> - **Pure I/O (No Services)**: If you only use ports and registers, construct `MyFSM fsm(reg);` and call `fsm.dispatch(ev, in, out);` and `fsm.step(in, out);`.
+> - **Dynamic / Multi-Channel (Production & Testing)**: If services vary at runtime (e.g. multi-channel dispatch, redundant failover drivers, or unit testing with mocks), construct `MyFSM fsm(reg);` and inject `srv` per call: `fsm.dispatch(ev, in, out, srv);`.
 
 ---
 

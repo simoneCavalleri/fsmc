@@ -13,7 +13,7 @@ This guide details how to integrate **`fsmc`** into modern C++ projects using **
 | `fsmc_runtime` | `fsmc::runtime`, `fsmc::fsmc_runtime` | Embedded zero-allocation header-only runtime (`fsm`, `spsc_ring_buffer`, `static_ring_buffer`). |
 | `fsmc_ir` | `fsmc::ir` | Strongly-typed AST, semantic graph model, and JSON serializer. |
 | `fsmc_middleend`| `fsmc::middleend` | `PassManager`, hierarchy canonicalizer, safety verifiers. |
-| `fsmc_frontend` | `fsmc::frontend` | 7 Ingestion parsers (SysML v2, XMI, SCXML, JSON, DOT, PUML, MMD). |
+| `fsmc_frontend` | `fsmc::frontend` | 8 Ingestion parsers (SysML v2, Cameo XMI, SCXML, nuXmv SMV, JSON, DOT, PUML, MMD). |
 | `fsmc_backend`  | `fsmc::backend` | C++17/20 generators and graphical emitters. |
 | `fsmc_compiler` | `fsmc::compiler` | Full compiler pipeline aggregating all modular libraries. |
 
@@ -87,7 +87,7 @@ When compiling or embedding `fsmc` in your workspace:
 
 | Option | Default | Description |
 | :--- | :--- | :--- |
-| `FSMC_ENABLE_TESTING` | `ON` | Builds the 52 GoogleTest test suites. |
+| `FSMC_ENABLE_TESTING` | `ON` | Builds the 54 GoogleTest test suites. |
 | `FSMC_ENABLE_EXAMPLES` | `ON` | Builds showcase example targets. |
 | `FSMC_ENABLE_BENCHMARKS` | `ON` | Builds dispatch micro-benchmarks. |
 | `FSMC_ENABLE_SANITIZERS` | `OFF` | Enables Address & Undefined Sanitizers in Debug builds. |

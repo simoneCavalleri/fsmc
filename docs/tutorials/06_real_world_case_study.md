@@ -145,13 +145,13 @@ add_executable(flight_computer main.cpp)
 
 # Automatically compile SysML v2 into C++20 header at build time
 fsmc_target_sources(flight_computer
-    SOURCES flight_controller.sysml
+    DIAGRAMS flight_controller.sysml
     OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated
-    BACKEND cpp20
+    STANDARD 20
     NAMESPACE uav::fsm
 )
 
-target_link_libraries(flight_computer PRIVATE fsmc::runtime_cpp20)
+target_link_libraries(flight_computer PRIVATE fsmc::runtime)
 ```
 
 ---

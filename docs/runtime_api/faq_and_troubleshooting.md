@@ -84,3 +84,13 @@ struct IsArmedGuard { bool operator()(const InPorts& in) const noexcept { return
 In asynchronous execution ([`fsm::thread_safe_fsm`](thread_safe_fsm.md)), **`post_state_timeout(event, duration)`** automatically captures the active state at registration time:
 
 - If an external event causes the state machine to transition before the timer expires, the obsolete timeout is **silently discarded with zero side-effects** when popped from the priority queue.
+
+---
+
+### Q6: In a Pure Logic / Stateless state machine, do I ever need to call `step()`?
+
+**In 99% of cases, NO.**
+
+A pure logic or stateless state machine (e.g. protocol parser, UI navigation, turn-based game loop) is purely event-driven: it only reacts to explicit events via `sm.dispatch(Event{})`.
+
+Calling `step()` is only necessary in the rare case where your model defines **spontaneous / anonymous sequence transitions** (transitions without an `on Event` trigger) or discrete cycle dwell timers (`in_state_for<Ticks>`).

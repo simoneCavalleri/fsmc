@@ -149,7 +149,7 @@ int main() {
     // 5. Simulate battery drop in InPorts and evaluate continuous sampled step
     in.batteryLevel = 14.2; // Critical level (< 20.0)
     auto safe_res = fsm.step(in, out);
-    if (safe_res.is_success()) {
+    if (safe_res.has_transitioned()) {
         std::cout << "Emergency fail-safe activated. Transitioned to: " 
                   << fsm.current_state_name() << "\n";
         // Output: ReturnToHome

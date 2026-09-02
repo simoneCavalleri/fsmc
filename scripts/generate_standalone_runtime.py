@@ -114,7 +114,7 @@ def generate_emitter_header(class_name, standard_name, core_incs, core_chunks, t
 
     thread_emits = []
     for rel_path, body in thread_chunks:
-        thread_emits.append(f"""        out << R"raw_fsm_runtime(
+        thread_emits.append(f"""            out << R"raw_fsm_runtime(
 // --- Begin: {rel_path} ---
 {body}
 // --- End: {rel_path} ---

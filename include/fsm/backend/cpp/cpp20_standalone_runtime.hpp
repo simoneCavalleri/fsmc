@@ -194,6 +194,29 @@ struct type_list_front<type_list<Head, Tail...>> {
 template <typename List>
 using type_list_front_t = typename type_list_front<List>::type;
 
+// Find 0-based index of T in type_list
+template <typename T, typename List>
+struct type_list_index_of;
+
+template <typename T, typename... Tail>
+struct type_list_index_of<T, type_list<T, Tail...>> : std::integral_constant<std::size_t, 0> {};
+
+template <typename T, typename Head, typename... Tail>
+struct type_list_index_of<T, type_list<Head, Tail...>> {
+  private:
+    static constexpr std::size_t tail_val = type_list_index_of<T, type_list<Tail...>>::value;
+
+  public:
+    static constexpr std::size_t value =
+        (tail_val == static_cast<std::size_t>(-1)) ? static_cast<std::size_t>(-1) : 1 + tail_val;
+};
+
+template <typename T>
+struct type_list_index_of<T, type_list<>> : std::integral_constant<std::size_t, static_cast<std::size_t>(-1)> {};
+
+template <typename T, typename List>
+inline constexpr std::size_t type_list_index_of_v = type_list_index_of<T, List>::value;
+
 }  // namespace fsm
 
 // --- End: traits/type_list.hpp ---
@@ -1301,6 +1324,192 @@ concept Action =
 )raw_fsm_runtime";
 
         out << R"raw_fsm_runtime(
+// --- Begin: config.hpp ---
+namespace fsm {
+
+// ============================================================================
+// Semantic Policy Modifiers for Policy-Based FSM Configuration
+// ============================================================================
+
+template <typename RegistersType>
+struct with_registers {
+    using type = RegistersType;
+};
+
+template <typename InPortsType, typename OutPortsType = no_ports>
+struct with_ports {
+    using in_type = InPortsType;
+    using out_type = OutPortsType;
+};
+
+template <typename ServicesType>
+struct with_services {
+    using type = ServicesType;
+};
+
+template <typename ObserverType>
+struct with_observer {
+    using type = ObserverType;
+};
+
+template <typename InitialStateType>
+struct with_initial_state {
+    using type = InitialStateType;
+};
+
+template <std::size_t N>
+struct with_deferred_capacity {
+    static constexpr std::size_t value = N;
+};
+
+template <std::size_t N>
+struct with_queue_capacity {
+    static constexpr std::size_t value = N;
+};
+
+// ============================================================================
+// Internal Policy Extraction Helpers
+// ============================================================================
+
+namespace detail {
+
+// Registers extraction
+template <typename Default, typename... Policies>
+struct extract_registers {
+    using type = Default;
+};
+
+template <typename Default, typename R, typename... Rest>
+struct extract_registers<Default, with_registers<R>, Rest...> {
+    using type = R;
+};
+
+template <typename Default, typename Other, typename... Rest>
+struct extract_registers<Default, Other, Rest...> : extract_registers<Default, Rest...> {};
+
+// InPorts & OutPorts extraction
+template <typename DefaultIn, typename DefaultOut, typename... Policies>
+struct extract_ports {
+    using in_type = DefaultIn;
+    using out_type = DefaultOut;
+};
+
+template <typename DefaultIn, typename DefaultOut, typename In, typename Out, typename... Rest>
+struct extract_ports<DefaultIn, DefaultOut, with_ports<In, Out>, Rest...> {
+    using in_type = In;
+    using out_type = Out;
+};
+
+template <typename DefaultIn, typename DefaultOut, typename Other, typename... Rest>
+struct extract_ports<DefaultIn, DefaultOut, Other, Rest...> : extract_ports<DefaultIn, DefaultOut, Rest...> {};
+
+// Services extraction
+template <typename Default, typename... Policies>
+struct extract_services {
+    using type = Default;
+};
+
+template <typename Default, typename Srv, typename... Rest>
+struct extract_services<Default, with_services<Srv>, Rest...> {
+    using type = Srv;
+};
+
+template <typename Default, typename Other, typename... Rest>
+struct extract_services<Default, Other, Rest...> : extract_services<Default, Rest...> {};
+
+// Observer extraction
+template <typename Default, typename... Policies>
+struct extract_observer {
+    using type = Default;
+};
+
+template <typename Default, typename Obs, typename... Rest>
+struct extract_observer<Default, with_observer<Obs>, Rest...> {
+    using type = Obs;
+};
+
+template <typename Default, typename Other, typename... Rest>
+struct extract_observer<Default, Other, Rest...> : extract_observer<Default, Rest...> {};
+
+// Initial State extraction
+template <typename Default, typename... Policies>
+struct extract_initial_state {
+    using type = Default;
+};
+
+template <typename Default, typename St, typename... Rest>
+struct extract_initial_state<Default, with_initial_state<St>, Rest...> {
+    using type = St;
+};
+
+template <typename Default, typename Other, typename... Rest>
+struct extract_initial_state<Default, Other, Rest...> : extract_initial_state<Default, Rest...> {};
+
+// Deferred Capacity extraction
+template <std::size_t Default, typename... Policies>
+struct extract_deferred_capacity {
+    static constexpr std::size_t value = Default;
+};
+
+template <std::size_t Default, std::size_t N, typename... Rest>
+struct extract_deferred_capacity<Default, with_deferred_capacity<N>, Rest...> {
+    static constexpr std::size_t value = N;
+};
+
+template <std::size_t Default, typename Other, typename... Rest>
+struct extract_deferred_capacity<Default, Other, Rest...> : extract_deferred_capacity<Default, Rest...> {};
+
+// Queue Capacity extraction
+template <std::size_t Default, typename... Policies>
+struct extract_queue_capacity {
+    static constexpr std::size_t value = Default;
+};
+
+template <std::size_t Default, std::size_t N, typename... Rest>
+struct extract_queue_capacity<Default, with_queue_capacity<N>, Rest...> {
+    static constexpr std::size_t value = N;
+};
+
+template <std::size_t Default, typename Other, typename... Rest>
+struct extract_queue_capacity<Default, Other, Rest...> : extract_queue_capacity<Default, Rest...> {};
+
+}  // namespace detail
+
+// ============================================================================
+// Unified Policy-Based FSM Configuration
+// ============================================================================
+
+template <typename Table, typename... Policies>
+struct config {
+    using table_type = Table;
+    using in_ports_type = typename detail::extract_ports<no_ports, no_ports, Policies...>::in_type;
+    using out_ports_type = typename detail::extract_ports<no_ports, no_ports, Policies...>::out_type;
+    using registers_type = typename detail::extract_registers<no_registers, Policies...>::type;
+    using services_type = typename detail::extract_services<no_services, Policies...>::type;
+    using initial_state_type = typename detail::extract_initial_state<typename Table::initial_state, Policies...>::type;
+    using initial_state = initial_state_type;
+    using observer_type = typename detail::extract_observer<no_observer, Policies...>::type;
+
+    static constexpr std::size_t deferred_capacity = detail::extract_deferred_capacity<16, Policies...>::value;
+    static constexpr std::size_t queue_capacity = detail::extract_queue_capacity<64, Policies...>::value;
+};
+
+// Trait detecting if a type is an fsm::config instantiation
+template <typename T>
+struct is_config : std::false_type {};
+
+template <typename Table, typename... Policies>
+struct is_config<config<Table, Policies...>> : std::true_type {};
+
+template <typename T>
+inline constexpr bool is_config_v = is_config<T>::value;
+
+}  // namespace fsm
+
+// --- End: config.hpp ---
+)raw_fsm_runtime";
+
+        out << R"raw_fsm_runtime(
 // --- Begin: static_vector.hpp ---
 namespace fsm {
 
@@ -2038,8 +2247,18 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
                                               std::index_sequence<Indices...> /*indices*/) {
     constexpr bool has_observer = !std::is_same_v<std::decay_t<ObserverCallback>, no_observer>;
 
-    Services dummy_srv{};
-    Services& srv = (services_ != nullptr) ? *services_ : dummy_srv;
+    auto resolve_srv = [&]() -> Services& {
+        if (services_ != nullptr) {
+            return *services_;
+        }
+        if constexpr (std::is_default_constructible_v<Services>) {
+            static Services dummy{};
+            return dummy;
+        } else {
+            std::terminate();
+        }
+    };
+    Services& srv = resolve_srv();
 
     bool any_guard_rejected = false;
     std::optional<transition_trace> executed_trace = std::nullopt;
@@ -2319,34 +2538,24 @@ class fsm {
         return step(in, out, srv);
     }
 
-    step_result step(const in_ports_type& in, out_ports_type& out) {
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        return step(in, out, srv);
-    }
+    step_result step(const in_ports_type& in, out_ports_type& out) { return step(in, out, resolve_services()); }
 
     template <typename DurationRep>
     step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out) {
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        return step(dt, in, out, srv);
+        return step(dt, in, out, resolve_services());
     }
 
     step_result step() {
         in_ports_type dummy_in{};
         out_ports_type dummy_out{};
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        return step(dummy_in, dummy_out, srv);
+        return step(dummy_in, dummy_out);
     }
 
     template <typename DurationRep>
     step_result step(DurationRep dt) {
         in_ports_type dummy_in{};
         out_ports_type dummy_out{};
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        return step(dt, dummy_in, dummy_out, srv);
+        return step(dt, dummy_in, dummy_out);
     }
 
     template <typename Event>
@@ -2400,18 +2609,14 @@ class fsm {
 
     template <typename Event>
     dispatch_result dispatch(const Event& event, const in_ports_type& in, out_ports_type& out) {
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        return dispatch(event, in, out, srv);
+        return dispatch(event, in, out, resolve_services());
     }
 
     template <typename Event>
     dispatch_result dispatch(const Event& event) {
         in_ports_type dummy_in{};
         out_ports_type dummy_out{};
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        return dispatch(event, dummy_in, dummy_out, srv);
+        return dispatch(event, dummy_in, dummy_out);
     }
 
     template <typename Event>
@@ -2434,9 +2639,7 @@ class fsm {
     dispatch_result dispatch_direct(const Event& event) {
         in_ports_type dummy_in{};
         out_ports_type dummy_out{};
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        return dispatch_direct_ports(event, dummy_in, dummy_out, srv);
+        return dispatch_direct_ports(event, dummy_in, dummy_out, resolve_services());
     }
 
     // Deferred events management
@@ -2449,9 +2652,7 @@ class fsm {
     void process_deferred_queue() {
         in_ports_type dummy_in{};
         out_ports_type dummy_out{};
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        process_deferred_queue_ports(dummy_in, dummy_out, srv);
+        process_deferred_queue_ports(dummy_in, dummy_out, resolve_services());
     }
 
     template <bool D = has_deferred>
@@ -2563,13 +2764,23 @@ class fsm {
     }
 
   private:
+    [[nodiscard]] services_type& resolve_services() const {
+        if (services_ != nullptr) {
+            return *services_;
+        }
+        if constexpr (std::is_default_constructible_v<services_type>) {
+            static services_type dummy{};
+            return dummy;
+        } else {
+            std::terminate();
+        }
+    }
+
     void enter_initial_state() {
         if (auto* state = std::get_if<initial_state_type>(&current_state_)) {
             in_ports_type dummy_in{};
             out_ports_type dummy_out{};
-            services_type dummy_srv{};
-            services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-            call_on_enter(*state, dummy_in, dummy_out, registers_, srv);
+            call_on_enter(*state, dummy_in, dummy_out, registers_, resolve_services());
         }
     }
 
@@ -2587,6 +2798,32 @@ template <typename Table, typename InPorts = no_ports, typename OutPorts = no_po
           std::size_t DeferredCapacity = 16>
 using dynamic_fsm =
     fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, dynamic_observer, DeferredCapacity>;
+
+// Partial specialization for policy-based config
+template <typename RealTable, typename... Policies, typename InPorts, typename OutPorts, typename Registers,
+          typename Services, typename InitialState, typename Observer, std::size_t DeferredCapacity>
+class fsm<config<RealTable, Policies...>, InPorts, OutPorts, Registers, Services, InitialState, Observer,
+          DeferredCapacity> : public fsm<RealTable, typename config<RealTable, Policies...>::in_ports_type,
+                                         typename config<RealTable, Policies...>::out_ports_type,
+                                         typename config<RealTable, Policies...>::registers_type,
+                                         typename config<RealTable, Policies...>::services_type,
+                                         typename config<RealTable, Policies...>::initial_state_type,
+                                         typename config<RealTable, Policies...>::observer_type,
+                                         config<RealTable, Policies...>::deferred_capacity> {
+    using base_type =
+        fsm<RealTable, typename config<RealTable, Policies...>::in_ports_type,
+            typename config<RealTable, Policies...>::out_ports_type,
+            typename config<RealTable, Policies...>::registers_type,
+            typename config<RealTable, Policies...>::services_type,
+            typename config<RealTable, Policies...>::initial_state_type,
+            typename config<RealTable, Policies...>::observer_type, config<RealTable, Policies...>::deferred_capacity>;
+
+  public:
+    using base_type::base_type;
+};
+
+template <typename Table, typename... Policies>
+using make_fsm = fsm<config<Table, Policies...>>;
 
 }  // namespace fsm
 
@@ -2618,9 +2855,6 @@ template <typename T, std::size_t Capacity = 1024>
 class spsc_ring_buffer {
     static_assert((Capacity > 1) && ((Capacity & (Capacity - 1)) == 0),
                   "spsc_ring_buffer Capacity must be a power of two");
-    static_assert(std::is_default_constructible_v<T>,
-                  "spsc_ring_buffer<T> requires T to be default-constructible "
-                  "(needed by pop()/the destructor's drain loop)");
 
   public:
     using value_type = T;
@@ -2629,9 +2863,11 @@ class spsc_ring_buffer {
     spsc_ring_buffer() = default;
 
     ~spsc_ring_buffer() {
-        T item;
-        while (pop(item)) {
-            // Drain remaining elements invoking destructors
+        const std::size_t head = head_.load(std::memory_order_relaxed);
+        std::size_t tail = tail_.load(std::memory_order_relaxed);
+        while (tail != head) {
+            get_slot(tail)->~T();
+            ++tail;
         }
     }
 
@@ -2675,11 +2911,18 @@ class spsc_ring_buffer {
     }
 
     [[nodiscard]] std::optional<T> pop() noexcept(std::is_nothrow_move_constructible_v<T>) {
-        T item;
-        if (pop(item)) {
-            return item;
+        const std::size_t tail = tail_.load(std::memory_order_relaxed);
+        const std::size_t head = head_.load(std::memory_order_acquire);
+
+        if (tail == head) {
+            return std::nullopt;
         }
-        return std::nullopt;
+
+        T* slot = get_slot(tail);
+        std::optional<T> res(std::move(*slot));
+        slot->~T();
+        tail_.store(tail + 1, std::memory_order_release);
+        return res;
     }
 
     [[nodiscard]] bool empty() const noexcept {
@@ -2693,7 +2936,7 @@ class spsc_ring_buffer {
     [[nodiscard]] std::size_t size() const noexcept {
         const std::size_t head = head_.load(std::memory_order_relaxed);
         const std::size_t tail = tail_.load(std::memory_order_relaxed);
-        return head >= tail ? (head - tail) : 0;
+        return head - tail;
     }
 
     [[nodiscard]] constexpr std::size_t capacity() const noexcept { return Capacity; }
@@ -3242,9 +3485,9 @@ class thread_safe_fsm {
     }
 
     // State & Register Access
-    [[nodiscard]] registers_type& registers() noexcept { return fsm_.registers(); }
-
-    [[nodiscard]] const registers_type& registers() const noexcept { return fsm_.registers(); }
+    /**
+     * @brief Thread-safe snapshot copy of internal discrete registers.
+     */
 
     [[nodiscard]] registers_type snapshot_registers() const {
         if (reentrancy_.is_reentrant_call()) {
@@ -3645,6 +3888,30 @@ class thread_safe_fsm {
     std::exception_ptr last_exception_{nullptr};
 };
 
+// Partial specialization for policy-based config
+template <typename RealTable, typename... Policies, typename InPorts, typename OutPorts, typename Registers,
+          typename Services, typename InitialState, std::size_t DeferredCapacity>
+class thread_safe_fsm<config<RealTable, Policies...>, InPorts, OutPorts, Registers, Services, InitialState,
+                      DeferredCapacity>
+    : public thread_safe_fsm<RealTable, typename config<RealTable, Policies...>::in_ports_type,
+                             typename config<RealTable, Policies...>::out_ports_type,
+                             typename config<RealTable, Policies...>::registers_type,
+                             typename config<RealTable, Policies...>::services_type,
+                             typename config<RealTable, Policies...>::initial_state_type,
+                             config<RealTable, Policies...>::deferred_capacity> {
+    using base_type = thread_safe_fsm<
+        RealTable, typename config<RealTable, Policies...>::in_ports_type,
+        typename config<RealTable, Policies...>::out_ports_type,
+        typename config<RealTable, Policies...>::registers_type, typename config<RealTable, Policies...>::services_type,
+        typename config<RealTable, Policies...>::initial_state_type, config<RealTable, Policies...>::deferred_capacity>;
+
+  public:
+    using base_type::base_type;
+};
+
+template <typename Table, typename... Policies>
+using make_thread_safe_fsm = thread_safe_fsm<config<Table, Policies...>>;
+
 }  // namespace fsm
 
 // --- End: thread_safe_fsm.hpp ---
@@ -3690,6 +3957,9 @@ template <typename Table, typename InPorts = no_ports, typename OutPorts = no_po
 class spsc_fsm {
     static_assert((QueueCapacity > 1) && ((QueueCapacity & (QueueCapacity - 1)) == 0),
                   "spsc_fsm QueueCapacity must be a power of two");
+    static_assert(
+        std::is_trivially_copyable_v<Registers> || std::is_same_v<Registers, no_registers>,
+        "spsc_fsm requires Registers to be trivially copyable for sound seqlock snapshots without torn reads.");
 
   public:
     using fsm_type = fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, no_observer, DeferredCapacity>;
@@ -3777,8 +4047,18 @@ class spsc_fsm {
         }
 
         seq_.fetch_add(1, std::memory_order_release);
-        services_type dummy_srv{};
-        services_type& srv = (fsm_.get_services() != nullptr) ? *fsm_.get_services() : dummy_srv;
+        auto resolve_srv = [&]() -> services_type& {
+            if (fsm_.get_services() != nullptr) {
+                return *fsm_.get_services();
+            }
+            if constexpr (std::is_default_constructible_v<services_type>) {
+                static services_type dummy{};
+                return dummy;
+            } else {
+                std::terminate();
+            }
+        };
+        services_type& srv = resolve_srv();
         std::visit(
             [this, &in, &out, &srv](const auto& evt) { (void)this->fsm_.dispatch_direct_ports(evt, in, out, srv); },
             *item);
@@ -3865,12 +4145,16 @@ class spsc_fsm {
 
     template <typename State>
     [[nodiscard]] bool is_in() const noexcept {
-        return fsm_.template is_in<State>();
+        if constexpr (Table::template has_state<State>) {
+            return state_index() == type_list_index_of_v<State, typename Table::states>;
+        } else {
+            return false;
+        }
     }
 
     template <typename State>
     [[nodiscard]] bool is_in_state() const noexcept {
-        return fsm_.template is_in_state<State>();
+        return is_in<State>();
     }
 
     /**
@@ -3918,6 +4202,32 @@ class spsc_fsm {
     std::atomic<std::size_t> state_index_{0};
     mutable std::atomic<std::uint32_t> seq_{0};
 };
+
+// Partial specialization for policy-based config
+template <typename RealTable, typename... Policies, typename InPorts, typename OutPorts, typename Registers,
+          typename Services, std::size_t QueueCapacity, typename InitialState, std::size_t DeferredCapacity>
+class spsc_fsm<config<RealTable, Policies...>, InPorts, OutPorts, Registers, Services, QueueCapacity, InitialState,
+               DeferredCapacity> : public spsc_fsm<RealTable, typename config<RealTable, Policies...>::in_ports_type,
+                                                   typename config<RealTable, Policies...>::out_ports_type,
+                                                   typename config<RealTable, Policies...>::registers_type,
+                                                   typename config<RealTable, Policies...>::services_type,
+                                                   config<RealTable, Policies...>::queue_capacity,
+                                                   typename config<RealTable, Policies...>::initial_state_type,
+                                                   config<RealTable, Policies...>::deferred_capacity> {
+    using base_type =
+        spsc_fsm<RealTable, typename config<RealTable, Policies...>::in_ports_type,
+                 typename config<RealTable, Policies...>::out_ports_type,
+                 typename config<RealTable, Policies...>::registers_type,
+                 typename config<RealTable, Policies...>::services_type, config<RealTable, Policies...>::queue_capacity,
+                 typename config<RealTable, Policies...>::initial_state_type,
+                 config<RealTable, Policies...>::deferred_capacity>;
+
+  public:
+    using base_type::base_type;
+};
+
+template <typename Table, typename... Policies>
+using make_spsc_fsm = spsc_fsm<config<Table, Policies...>>;
 
 }  // namespace fsm
 

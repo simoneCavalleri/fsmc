@@ -24,6 +24,7 @@ CORE_FILES = [
     "traits/observer_traits.hpp",
     "traits/concepts.hpp",
     "type_traits.hpp",
+    "config.hpp",
     "static_vector.hpp",
     "transition.hpp",
     "transition_table.hpp",

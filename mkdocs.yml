@@ -162,6 +162,7 @@ nav:
       - Compiler Infrastructure:
           - Pipeline & Subsystems: internals/architecture.md
           - Developer Guide: internals/developer_guide.md
+          - v0.6.0 Architecture Roadmap: internals/roadmap_v0.6.0.md
           - Contributing Guide: contributing/index.md
 
 

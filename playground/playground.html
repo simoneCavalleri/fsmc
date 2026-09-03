@@ -3,159 +3,290 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>fsmc — Live Web Playground & State Machine Simulator</title>
+  <title>fsmc Studio — Live WebAssembly FSM Compiler, Formal Verification & Simulator</title>
   <link rel="stylesheet" href="playground.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js"></script>
 </head>
 <body>
 
-  <!-- Top Header Navigation -->
-  <header>
+  <!-- Top Header Navigation (Workbench Toolbar) -->
+  <header class="ide-header">
     <div class="logo-area">
-      <div class="logo-badge">fsmc</div>
+      <div class="logo-badge">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="5" cy="6" r="3"></circle>
+          <circle cx="19" cy="6" r="3"></circle>
+          <circle cx="12" cy="18" r="3"></circle>
+          <path d="M7.8 7.5l8.4 0"></path>
+          <path d="M6.6 8.6L10.4 15.4"></path>
+          <path d="M17.4 8.6L13.6 15.4"></path>
+        </svg>
+        <span>fsmc</span>
+      </div>
       <div class="logo-title">
-        fsmc IDE
-        <span class="sub">Universal FSM Compiler, Optimizer & Formal Simulator</span>
+        fsmc Studio
+        <span class="version-badge">v0.5.0</span>
       </div>
     </div>
+
     <div class="nav-controls">
       <div class="control-group">
         <span class="control-label">Preset:</span>
-        <select id="presetSelect">
-          <option value="autonomous_uav_mission">Autonomous UAV Mission (Native SysML v2: EFSM Vars, Typed Signals, LTL)</option>
-          <option value="industrial_press">Industrial Press (Native SCXML: Datamodel, OnEntry, OnExit, Assign)</option>
-          <option value="connection_manager">Connection Manager (Native PlantUML: Entry/Exit, Defer, Properties)</option>
-          <option value="smart_thermostat">Smart IoT Thermostat (Native JSON: Context, Signals, Formal Verification)</option>
-          <option value="satellite_mission">Satellite Flight Controller (Native Cameo XMI: Activities & Triggers)</option>
-          <option value="async_motor_controller">Automotive Motor ECU (Native Mermaid: Lifecycle Hooks, History)</option>
+        <select id="presetSelect" class="styled-select">
+          <option value="autonomous_uav_mission">UAV Mission (SysML v2)</option>
+          <option value="industrial_press">Industrial Press (SCXML)</option>
+          <option value="connection_manager">Connection Mgr (PlantUML)</option>
+          <option value="smart_thermostat">IoT Thermostat (JSON)</option>
+          <option value="satellite_mission">Satellite Flight (Cameo)</option>
+          <option value="async_motor_controller">Motor ECU (Mermaid)</option>
         </select>
       </div>
 
       <div class="control-group">
         <span class="control-label">Format:</span>
-        <select id="formatSelect">
-          <option value="sysml2" selected>OMG SysML v2 (.sysml)</option>
-          <option value="scxml">W3C SCXML (.scxml)</option>
-          <option value="cameo">Cameo / MagicDraw (OMG XMI)</option>
-          <option value="plantuml">PlantUML (@startuml)</option>
-          <option value="mermaid">Mermaid (stateDiagram-v2)</option>
-          <option value="json">XState JSON (.json)</option>
-          <option value="dot">Graphviz DOT (.dot)</option>
+        <select id="formatSelect" class="styled-select">
+          <option value="sysml2" selected>SysML v2</option>
+          <option value="scxml">SCXML</option>
+          <option value="cameo">Cameo XMI</option>
+          <option value="plantuml">PlantUML</option>
+          <option value="mermaid">Mermaid</option>
+          <option value="json">XState JSON</option>
+          <option value="dot">Graphviz</option>
         </select>
       </div>
 
       <div class="control-group">
-        <span class="control-label">C++ Std:</span>
-        <select id="stdSelect">
-          <option value="20">C++20 (Concepts & Type-Safe)</option>
-          <option value="17">C++17 (Zero-Overhead Tables)</option>
+        <span class="control-label">Std:</span>
+        <select id="stdSelect" class="styled-select">
+          <option value="20">C++20</option>
+          <option value="17">C++17</option>
         </select>
       </div>
 
-      <button id="optBtn" class="btn-secondary" title="Run Middle-End PassManager optimizations (dead-state pruning, guard simplification)">⚡ Optimize IR</button>
-      <button id="copyBtn" class="btn-primary" title="Copy self-contained Single-Header C++ library to clipboard">📋 Copy Single-Header</button>
-      <button id="downloadBtn" class="btn-secondary" title="Download self-contained Single-Header C++ .hpp file">📥 Download .hpp</button>
+      <button id="optBtn" class="btn-secondary" title="Run Middle-End optimizations (dead-state pruning, guard simplification)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+        <span>Optimize</span>
+      </button>
+
+      <button id="copyBtn" class="btn-primary" title="Copy self-contained Single-Header C++ library to clipboard">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+        <span id="copyBtnText">Copy Header</span>
+      </button>
+
+      <button id="downloadBtn" class="btn-secondary" title="Download self-contained Single-Header C++ .hpp file">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        <span>Download</span>
+      </button>
     </div>
   </header>
 
-  <!-- Workspace Resizable Multi-Column Layout -->
+  <!-- Workspace 2-Pane Tabbed Workbench -->
   <main class="workspace" id="workspace">
 
-    <!-- Column 1: Diagram Code Editor & Diagnostics -->
-    <div class="panel col-panel" id="panelEditor">
-      <div class="panel-header">
-        <div class="panel-title">
-          <span class="badge">01</span> Statechart Diagram Editor
+    <!-- Primary Workspace (Main Canvas) -->
+    <section class="main-canvas" id="mainCanvas">
+      <!-- Main Canvas Tab Bar -->
+      <div class="canvas-tabs-bar">
+        <div class="canvas-tabs" id="canvasTabs">
+          <button class="tab-item active" data-view="split" title="Side-by-side Code and Visual Statechart">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="3" x2="12" y2="21"></line></svg>
+            <span>Split View</span>
+          </button>
+          <button class="tab-item" data-view="editor" title="Full-width Statechart Source Editor">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+            <span>Statechart Editor</span>
+          </button>
+          <button class="tab-item" data-view="visual" title="Full-width Topological Diagram Graph">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+            <span>Topological Graph</span>
+          </button>
+          <button class="tab-item" data-view="cpp" title="Generated Zero-Overhead C++ Header">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+            <span>Generated C++</span>
+          </button>
         </div>
-        <span id="formatBadge" class="format-badge">MERMAID</span>
+        <div class="canvas-tools">
+          <span id="formatBadge" class="format-badge">SYSML2</span>
+        </div>
       </div>
-      <div class="panel-content editor-panel-content">
-        <textarea id="editor" class="code-editor" spellcheck="false"></textarea>
-        <div class="resizer-h" id="resizerDiagnostics"></div>
-        <div class="diagnostics-panel" id="diagnosticsWrapper">
-          <div class="diag-header">
-            <span>Formal Model Diagnostics</span>
-            <span id="modelStatusBadge" class="status-pill status-ok">SOUND</span>
+
+      <!-- Main Canvas Viewport Container -->
+      <div class="canvas-content view-split" id="canvasContent">
+
+        <!-- Editor Pane -->
+        <div class="pane-view" id="editorPane">
+          <div class="pane-title-bar">
+            <span>Model Source Definition</span>
           </div>
-          <div id="diagnostics" class="diag-container"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Vertical Resizer 1 -->
-    <div class="resizer-v" id="resizerCol1" title="Drag to resize columns (Double click to reset)"></div>
-
-    <!-- Column 2: Live Graph Visualizer -->
-    <div class="panel col-panel" id="panelVisual">
-      <div class="panel-header">
-        <div class="panel-title">
-          <span class="badge">02</span> Visual Statechart Graph
-        </div>
-        <div class="header-actions">
-          <button id="zoomOutBtn" class="btn-icon" title="Zoom Out">−</button>
-          <span id="zoomLevelBadge" class="zoom-badge">100%</span>
-          <button id="zoomInBtn" class="btn-icon" title="Zoom In">+</button>
-          <button id="zoomResetBtn" class="btn-icon" title="Reset Zoom">Fit</button>
-          <button id="resetSimBtn" class="btn-icon" style="color: var(--accent-yellow); margin-left: 4px;" title="Reset Simulation State">↺ Reset</button>
-        </div>
-      </div>
-      <div class="panel-content diagram-canvas" id="mermaidCanvas">
-        <!-- Rendered Interactive Graph -->
-      </div>
-    </div>
-
-    <!-- Vertical Resizer 2 -->
-    <div class="resizer-v" id="resizerCol2" title="Drag to resize columns (Double click to reset)"></div>
-
-    <!-- Column 3: Generated C++ Code & Interactive Simulator -->
-    <div class="split-column col-panel" id="panelRight">
-
-      <!-- Top: Generated C++ Header -->
-      <div class="panel sub-panel" id="panelCpp">
-        <div class="panel-header">
-          <div class="panel-title">
-            <span class="badge">03</span> Generated C++ Header
-          </div>
-          <span class="sub-badge">Zero Overhead (0 Deps)</span>
-        </div>
-        <div class="panel-content">
-          <pre id="cppPreview" class="code-preview"></pre>
-        </div>
-      </div>
-
-      <!-- Horizontal Resizer inside Column 3 -->
-      <div class="resizer-h" id="resizerSplitCol" title="Drag to resize subpanels"></div>
-
-      <!-- Bottom: Interactive State Machine Simulator -->
-      <div class="panel sub-panel" id="panelSim">
-        <div class="panel-header">
-          <div class="panel-title">
-            <span class="badge">04</span> Interactive Simulator
+          <div class="editor-wrapper">
+            <div class="line-numbers" id="lineNumbers"></div>
+            <textarea id="editor" class="code-editor" spellcheck="false" wrap="off"></textarea>
           </div>
         </div>
-        <div class="panel-content sim-container">
+
+        <!-- Split View Vertical Resizer -->
+        <div class="resizer-v sub-resizer" id="resizerSplitView" title="Drag to adjust split ratio (Double click to reset)"></div>
+
+        <!-- Topological Visual Graph Pane -->
+        <div class="pane-view" id="visualPane">
+          <div class="pane-title-bar">
+            <span>Topological Statechart</span>
+            <div class="graph-toolbar">
+              <button id="zoomOutBtn" class="btn-icon" title="Zoom Out">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              </button>
+              <span id="zoomLevelBadge" class="zoom-badge">100%</span>
+              <button id="zoomInBtn" class="btn-icon" title="Zoom In">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              </button>
+              <button id="zoomResetBtn" class="btn-icon" title="Fit to Viewport">Fit</button>
+              <button id="exportSvgBtn" class="btn-icon" title="Export SVG Diagram">SVG</button>
+              <button id="resetSimBtn" class="btn-icon btn-reset" title="Reset Simulation State">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                <span>Reset</span>
+              </button>
+            </div>
+          </div>
+          <div class="diagram-canvas" id="mermaidCanvas">
+            <!-- Rendered Interactive SVG Graph -->
+          </div>
+        </div>
+
+        <!-- Generated C++ Pane (Activated via Tab) -->
+        <div class="pane-view" id="cppPane">
+          <div class="pane-title-bar">
+            <span>Production Single-Header C++ (Zero Allocations, 0 Dependencies)</span>
+          </div>
+          <div class="output-preview-container">
+            <pre id="cppPreview" class="code-preview"></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Main Vertical Resizer (between Canvas and Inspector) -->
+    <div class="resizer-v" id="resizerMain" title="Drag to resize Inspector (Double click to reset)"></div>
+
+    <!-- Secondary Panel: Dockable Inspector & Runtime Simulator -->
+    <aside class="inspector-panel" id="inspectorPanel">
+      <!-- Inspector Tabs Bar -->
+      <div class="inspector-tabs-bar">
+        <div class="inspector-tabs" id="inspectorTabs">
+          <button class="tab-item active" data-tab="simulator" title="Real-time Simulator & 4-Domain Datapath">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
+            <span>Simulator & Datapath</span>
+          </button>
+          <button class="tab-item" data-tab="verification" title="Formal Verification, SMT Bounds & LTL Properties">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            <span>Verification & SMT</span>
+          </button>
+        </div>
+        <div class="inspector-header-badge">
+          <span id="modelStatusBadge" class="status-pill status-ok">SOUND</span>
+        </div>
+      </div>
+
+      <!-- Inspector Tab Content Views -->
+      <div class="inspector-content" id="inspectorContent">
+
+        <!-- Page 1: Simulator & Datapath -->
+        <div class="tab-page active" id="pageSimulator">
+          <!-- Active State Hero Banner -->
           <div class="state-badge-container">
             <span class="state-label">Active State:</span>
-            <div id="activeStateBadge" class="state-badge">Disconnected</div>
+            <div id="activeStateBadge" class="state-badge">
+              <span class="state-pulse-dot"></span>
+              <span id="activeStateText">--</span>
+            </div>
+            <button id="stepBtn" class="btn-step" title="Execute Sampled Periodic Step Cycle (step(in, out))">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              <span>Clock Step(dt)</span>
+            </button>
           </div>
 
-          <div>
-            <div class="sim-section-title">Dispatch Event Trigger:</div>
+          <!-- Event Triggers -->
+          <div class="sim-section">
+            <div class="sim-section-title">
+              <span>Event Dispatch Triggers</span>
+            </div>
             <div id="eventButtons" class="event-buttons-grid"></div>
           </div>
 
+          <!-- 4-Domain Datapath Inspector -->
+          <div class="datapath-inspector" id="datapathInspector">
+            <!-- InPorts Section -->
+            <div class="inspector-card" id="inPortsSection">
+              <div class="inspector-card-header">
+                <span class="domain-tag inports-tag">InPorts</span>
+                <span class="domain-desc">Continuous Sensor Inputs</span>
+              </div>
+              <div id="inPortsList" class="ports-list"></div>
+            </div>
+
+            <!-- Registers Section -->
+            <div class="inspector-card" id="registersSection">
+              <div class="inspector-card-header">
+                <span class="domain-tag registers-tag">Registers</span>
+                <span class="domain-desc">Discrete z⁻¹ State Memory</span>
+              </div>
+              <div id="registersList" class="registers-list"></div>
+            </div>
+
+            <!-- OutPorts Section -->
+            <div class="inspector-card" id="outPortsSection">
+              <div class="inspector-card-header">
+                <span class="domain-tag outports-tag">OutPorts</span>
+                <span class="domain-desc">Actuator & Signal Outputs</span>
+              </div>
+              <div id="outPortsList" class="outports-list"></div>
+            </div>
+          </div>
+
+          <!-- Execution History Log -->
           <div class="history-wrapper">
             <div class="history-header">
-              <span>Execution Log:</span>
-              <a href="#" id="clearLogBtn">Clear Log</a>
+              <span>Execution Trace Log:</span>
+              <button id="clearLogBtn" class="btn-text">Clear Log</button>
             </div>
             <div id="historyLog" class="history-log"></div>
+          </div>
         </div>
-      </div>
 
-    </div>
+        <!-- Page 2: Formal Verification & Model Diagnostics -->
+        <div class="tab-page" id="pageVerification">
+          <div class="verif-summary-banner">
+            <div class="verif-summary-title">Formal Model Checker & SMT Soundness</div>
+            <div class="verif-summary-desc">Static analysis of disjoint guard orthogonality, trap-state deadlock freedom, and range contracts.</div>
+          </div>
+          <div id="diagnostics" class="diag-container"></div>
+        </div>
+
+      </div>
+    </aside>
 
   </main>
+
+  <!-- Bottom IDE Status Bar -->
+  <footer class="ide-status-bar" id="ideStatusBar">
+    <div class="status-left">
+      <span id="statusPreset">Preset: Autonomous UAV Mission</span>
+      <span class="status-sep">|</span>
+      <span id="statusFormat">Format: OMG SysML v2</span>
+      <span class="status-sep">|</span>
+      <span id="statusEditorStats">Lines: -- • Chars: --</span>
+    </div>
+    <div class="status-center">
+      <span id="statusSoundness">SMT Safety Invariants: Sound (0 Violations)</span>
+    </div>
+    <div class="status-right">
+      <span id="statusTarget">Target: C++20 Standalone</span>
+      <span class="status-sep">|</span>
+      <span>Heap: Zero-Allocation (0 B)</span>
+      <span class="status-sep">|</span>
+      <span class="status-wasm-ready">WASM: Active</span>
+    </div>
+  </footer>
 
   <script src="fsmc.js"></script>
   <script src="playground.js"></script>

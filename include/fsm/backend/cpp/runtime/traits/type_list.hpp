@@ -135,4 +135,27 @@ struct type_list_front<type_list<Head, Tail...>> {
 template <typename List>
 using type_list_front_t = typename type_list_front<List>::type;
 
+// Find 0-based index of T in type_list
+template <typename T, typename List>
+struct type_list_index_of;
+
+template <typename T, typename... Tail>
+struct type_list_index_of<T, type_list<T, Tail...>> : std::integral_constant<std::size_t, 0> {};
+
+template <typename T, typename Head, typename... Tail>
+struct type_list_index_of<T, type_list<Head, Tail...>> {
+  private:
+    static constexpr std::size_t tail_val = type_list_index_of<T, type_list<Tail...>>::value;
+
+  public:
+    static constexpr std::size_t value =
+        (tail_val == static_cast<std::size_t>(-1)) ? static_cast<std::size_t>(-1) : 1 + tail_val;
+};
+
+template <typename T>
+struct type_list_index_of<T, type_list<>> : std::integral_constant<std::size_t, static_cast<std::size_t>(-1)> {};
+
+template <typename T, typename List>
+inline constexpr std::size_t type_list_index_of_v = type_list_index_of<T, List>::value;
+
 }  // namespace fsm

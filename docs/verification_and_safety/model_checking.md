@@ -106,6 +106,19 @@ You can compose complex multi-condition specifications using standard boolean op
 @fsm:property CriticalFaultBrake = "G ((SensorFault && HighSpeed) -> F EmergencyBrake)";
 ```
 
+---
+
+### Mission-Critical Safety Patterns (ISO 26262 / DO-178C / IEC 61508)
+
+For functional safety certification under automotive (ISO 26262 ASIL-D) or aerospace (DO-178C DAL-A) standards, statecharts must satisfy canonical formal verification patterns:
+
+| Safety Archetype | Informal Requirement | Canonical LTL Template | Concrete `fsmc` Example |
+| :--- | :--- | :--- | :--- |
+| **Deadlock Freedom** | The machine can never enter an unintended trap state without escape transitions. | `G (!Deadlock)` | Built-in analysis (`fsmc verify`) |
+| **Hazard Invariant** | Dangerous actuator states can never occur when safety interlocks are triggered. | `G (HazardTrigger -> SafeState)` | `G (DoorOpen -> !Spin)` |
+| **Fault Recovery (Response)** | Every detected fault condition must deterministically trigger safe degraded recovery. | `G (Fault -> F RecoveryState)` | `G (LowBattery -> F Landed)` |
+| **Strict Ordering (Precedence)** | A critical high-energy state can only be activated if preceded by complete self-test. | `!ArmState U SelfTestPassed` | `!Armed U CalibrationDone` |
+| **Reversibility / Home Reachability** | From any operational failure, the system can always return to a standby state. | `G (F Standby)` | `G (F Idle)` |
 
 ---
 
@@ -292,6 +305,68 @@ A liveness violation (`G (P -> F Q)`) occurs when the system can enter an infini
         }
     }
     ```
+
+---
+
+## CLI Formal Verification with `fsmc verify` (v0.5.0+)
+
+Starting in **`v0.5.0`**, `fsmc` provides first-class, standalone model checking directly via the command line through the `verify` sub-command:
+
+```bash
+fsmc verify <model_file> [options]
+```
+
+### Options and Flags
+
+| Option | Argument | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--engine` | `auto`, `nuxmv` | Specifies the underlying verification engine. `auto` uses the internal graph model checker. | `auto` |
+| `--ltl` | `"<formula>"` | Injects an ad-hoc LTL formula for verification on the input model. | `""` |
+| `--ctl` | `"<formula>"` | Injects an ad-hoc CTL formula for verification on the input model. | `""` |
+
+### 1. Verifying Structural Soundness and Built-in Invariants
+
+```bash
+fsmc verify examples/connection_manager/connection.smv
+```
+
+**Output:**
+```text
+============================================================================
+ Formal Model Verification Report: Connection
+============================================================================
+ Input File:       examples/connection_manager/connection.smv
+ States:           4
+ Total Events:     8
+ Transitions:      11
+ Choice Nodes:     0
+ Deferred Triggers:0
+----------------------------------------------------------------------------
+ Diagnostics:
+  (No warnings or errors detected. Model is formally sound!)
+----------------------------------------------------------------------------
+ Verification Status: PASSED (Model Sound & Properties Verified)
+============================================================================
+```
+
+### 2. Ad-hoc LTL Verification with Execution Counterexample Trace
+
+When verifying custom temporal properties from the CLI, any violation generates an exact state-by-state counterexample execution trace:
+
+```bash
+fsmc verify examples/connection_manager/connection.smv \
+    --ltl "G (State == Closed -> F State == Established)"
+```
+
+**Output:**
+```text
+error[E_MODEL_CHECK_VIOLATION]: Formal property 'cli_ltl_property' [Safety] VIOLATED: Invariant 'G (State == Closed -> F State == Established)' evaluated to false in state 'Suspended'
+Counterexample execution trace:
+    Step 0: State 'Disconnected' --[ConnectCmd if ((HasNetworkGuard && HasValidCredentialsGuard))]--> (Initial active state)
+    Step 1: State 'Connecting' --[HandshakeOkEvent]--> (Normal transition execution)
+    Step 2: State 'Connected' --[NetworkDegradedEvent]--> (Normal transition execution)
+    Step 3: State 'Suspended' (Invariant 'G (State == Closed -> F State == Established)' evaluated to false in state 'Suspended')
+```
 
 ---
 

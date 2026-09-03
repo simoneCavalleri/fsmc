@@ -238,10 +238,31 @@ void on_timer_tick(const SensorData& raw_sensors) {
 | :--- | :--- | :--- |
 | `step([dt], in, out, srv)` | `step_result` | Thread-safe evaluation of continuous anonymous transitions under mutex lock. |
 
-### Thread-Safe Inspection
+### Thread-Safe Inspection & State Access
 
 | Method | Return Type | Description |
 | :--- | :--- | :--- |
 | `current_state_name()` | `std::string_view` | Safely acquires lock and returns the active state name. |
 | `is_in_state<State>()` | `bool` | Checks active state under mutex synchronization. |
-| `snapshot_registers()` | `Registers` | Copies internal registers under mutex lock. |
+| `is_in<State>()` | `bool` | Alias for `is_in_state<State>()`. |
+| `snapshot_registers()` | `Registers` | Copies internal registers under `dispatch_mutex_` lock. |
+| `update_registers(Registers reg)` | `void` | Safely updates internal registers under `dispatch_mutex_` lock. |
+| `with_registers(Callable&& fn)` | `auto` | Executes callable `fn(registers)` inside an exclusive mutex lock guard. |
+
+> [!IMPORTANT]
+> **Safe-by-Design Concurrency Guarantee (v0.5.0+)**:  
+> To eliminate concurrency bugs and torn-state reads in multi-threaded environments, `thread_safe_fsm` completely omits unsynchronized naked references (`registers()`).
+>
+> All datapath interactions are strictly guarded under `dispatch_mutex_`:
+> 1. **`with_registers([](Registers& reg) { ... })`**: Executes mutations or multi-field operations atomically under mutex lock.
+> 2. **`update_registers(new_regs)`**: Atomically writes updated registers under mutex lock.
+> 3. **`snapshot_registers()`**: Atomically returns a consistent, isolated copy of the registers struct for safe telemetry, UI rendering, or diagnostics without holding locks.
+>
+> **Modern Policy Instantiation (v0.5.0+)**:
+> ```cpp
+> using NetFSM = fsm::make_thread_safe_fsm<
+>     NetTable,
+>     fsm::with_registers<NetRegisters>,
+>     fsm::with_services<SocketService>
+> >;
+> ```

@@ -88,7 +88,7 @@ TEST(DomainContractTest, CompileTimeDomainSafety) {
     EXPECT_EQ(machine.registers().status_code, 123);
 
     fsm::thread_safe_fsm<Table, fsm::no_ports, fsm::no_ports, DeviceRegisters> ts_machine(reg);
-    EXPECT_EQ(ts_machine.registers().status_code, 123);
+    EXPECT_EQ(ts_machine.snapshot_registers().status_code, 123);
 }
 
 /**

@@ -34,6 +34,9 @@ struct FsmcOptions {
     bool thread_safe = true;
     bool include_stubs = true;
     bool verify_mode = false;
+    std::string verify_engine = "auto";  // --engine=auto|nuxmv|internal
+    std::string ltl_spec;                // --ltl "<formula>"
+    std::string ctl_spec;                // --ctl "<formula>"
     bool show_help = false;
     bool show_version = false;
     bool is_valid = true;
@@ -85,11 +88,13 @@ inline void print_help(const char* prog_name) {
         << "  --no-stubs                  Do not emit default stub functors for actions and guards\n"
         << "  --allow-diagram-codegen     Allow C++ code generation from visual diagram formats (PlantUML, Mermaid, "
            "etc.)\n\n"
-        << "Model Analysis & Diagram Export:\n"
+        << "Model Analysis & Formal Verification:\n"
         << "  -e, --export <fmt>          Export diagram or formal model to: 'mermaid', 'plantuml', 'sysml2', 'json', "
            "'dot', 'scxml', 'cameo', 'smv'\n"
-        << "  --verify, --check           Run formal model checker (livelock, choice completeness, reachability) and "
-           "exit\n\n"
+        << "  --verify, verify            Run formal verification (deadlock, choice completeness, reachability)\n"
+        << "  --engine <auto|nuxmv>       Verification engine (default: 'auto')\n"
+        << "  --ltl <formula>             Verify custom Linear Temporal Logic specification\n"
+        << "  --ctl <formula>             Verify custom Computation Tree Logic specification\n\n"
         << "General Options:\n"
         << "  -h, --help                  Show this help message and exit\n"
         << "  -v, --version               Show version information and exit\n\n";
@@ -175,7 +180,15 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             opts.standalone = true;
         } else if (arg == "--modular") {
             opts.standalone = false;
-        } else if (arg == "--verify" || arg == "--check") {
+        } else if (arg == "--verify" || arg == "--check" || arg == "verify") {
+            opts.verify_mode = true;
+        } else if (arg == "--engine" && idx + 1 < argc) {
+            opts.verify_engine = argv[++idx];
+        } else if (arg == "--ltl" && idx + 1 < argc) {
+            opts.ltl_spec = argv[++idx];
+            opts.verify_mode = true;
+        } else if (arg == "--ctl" && idx + 1 < argc) {
+            opts.ctl_spec = argv[++idx];
             opts.verify_mode = true;
         } else if (arg == "--no-thread-safe") {
             opts.thread_safe = false;

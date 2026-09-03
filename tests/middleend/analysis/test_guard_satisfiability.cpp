@@ -211,4 +211,26 @@ TEST(GuardSatisfiabilityTest, BooleanGuardsMutuallyExclusive) {
     EXPECT_FALSE(diag.has_warnings());
 }
 
+/**
+ * @brief Test Intent: Verify zero-allocation parse_guard_domain with qualifiers and numeric formats.
+ *
+ * Scenario:
+ * - Test parse_guard_domain with qualifiers (in., reg.) and relational operators (>=, <, ==).
+ * - Verify interval boundaries are parsed accurately without throwing.
+ */
+TEST(GuardSatisfiabilityTest, FastZeroAllocationIntervalParsing) {
+    auto ival1 = EFSMIntervalAnalyzer::parse_guard_domain("in.temp >= 75.5", "temp");
+    ASSERT_TRUE(ival1.has_value());
+    EXPECT_DOUBLE_EQ(ival1->lo, 75.5);
+
+    auto ival2 = EFSMIntervalAnalyzer::parse_guard_domain("reg.count < 100", "count");
+    ASSERT_TRUE(ival2.has_value());
+    EXPECT_LT(ival2->hi, 100.0);
+
+    auto ival3 = EFSMIntervalAnalyzer::parse_guard_domain("state_val == 42", "state_val");
+    ASSERT_TRUE(ival3.has_value());
+    EXPECT_DOUBLE_EQ(ival3->lo, 42.0);
+    EXPECT_DOUBLE_EQ(ival3->hi, 42.0);
+}
+
 }  // namespace

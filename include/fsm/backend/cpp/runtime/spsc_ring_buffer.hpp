@@ -23,9 +23,6 @@ template <typename T, std::size_t Capacity = 1024>
 class spsc_ring_buffer {
     static_assert((Capacity > 1) && ((Capacity & (Capacity - 1)) == 0),
                   "spsc_ring_buffer Capacity must be a power of two");
-    static_assert(std::is_default_constructible_v<T>,
-                  "spsc_ring_buffer<T> requires T to be default-constructible "
-                  "(needed by pop()/the destructor's drain loop)");
 
   public:
     using value_type = T;
@@ -34,9 +31,11 @@ class spsc_ring_buffer {
     spsc_ring_buffer() = default;
 
     ~spsc_ring_buffer() {
-        T item;
-        while (pop(item)) {
-            // Drain remaining elements invoking destructors
+        const std::size_t head = head_.load(std::memory_order_relaxed);
+        std::size_t tail = tail_.load(std::memory_order_relaxed);
+        while (tail != head) {
+            get_slot(tail)->~T();
+            ++tail;
         }
     }
 
@@ -80,11 +79,18 @@ class spsc_ring_buffer {
     }
 
     [[nodiscard]] std::optional<T> pop() noexcept(std::is_nothrow_move_constructible_v<T>) {
-        T item;
-        if (pop(item)) {
-            return item;
+        const std::size_t tail = tail_.load(std::memory_order_relaxed);
+        const std::size_t head = head_.load(std::memory_order_acquire);
+
+        if (tail == head) {
+            return std::nullopt;
         }
-        return std::nullopt;
+
+        T* slot = get_slot(tail);
+        std::optional<T> res(std::move(*slot));
+        slot->~T();
+        tail_.store(tail + 1, std::memory_order_release);
+        return res;
     }
 
     [[nodiscard]] bool empty() const noexcept {
@@ -98,7 +104,7 @@ class spsc_ring_buffer {
     [[nodiscard]] std::size_t size() const noexcept {
         const std::size_t head = head_.load(std::memory_order_relaxed);
         const std::size_t tail = tail_.load(std::memory_order_relaxed);
-        return head >= tail ? (head - tail) : 0;
+        return head - tail;
     }
 
     [[nodiscard]] constexpr std::size_t capacity() const noexcept { return Capacity; }

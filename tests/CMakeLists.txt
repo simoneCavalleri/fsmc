@@ -10,6 +10,7 @@ include(FetchContent)
 FetchContent_Declare(
     googletest
     URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+    URL_HASH SHA256=1f357c27ca988c3f7c6b4bf68a9395005ac6761f034046e9dde0896e3aba00e4
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
@@ -68,6 +69,7 @@ add_fsm_unit_test(test_context_contract DIR backend/cpp/runtime)
 add_fsm_unit_test(test_traits_and_hooks DIR backend/cpp/runtime)
 add_fsm_unit_test(test_ring_buffer_overflow DIR backend/cpp/runtime)
 add_fsm_unit_test(test_spsc_fsm DIR backend/cpp/runtime)
+add_fsm_unit_test(test_policy_config DIR backend/cpp/runtime)
 
 # ==============================================================================
 # Frontend Common, Directives & Lexer Tests (tests/frontend/)

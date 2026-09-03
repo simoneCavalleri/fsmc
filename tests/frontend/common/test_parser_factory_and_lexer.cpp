@@ -167,4 +167,26 @@ TEST(ParserFactoryAndLexerTest, LexerUtilsParseTransitionLabel) {
     EXPECT_FALSE(a4.has_value());
 }
 
+/**
+ * @brief Test Intent: Verify C++ reserved keyword detection and escaping utilities.
+ *
+ * Scenario:
+ * - Verify standard C++ keywords (class, default, switch, volatile, template) return true from is_cpp_keyword.
+ * - Verify non-keywords return false.
+ * - Verify escape_cpp_keyword appends trailing underscore to keywords and preserves user identifiers.
+ */
+TEST(ParserFactoryAndLexerTest, CppKeywordEscaping) {
+    EXPECT_TRUE(is_cpp_keyword("class"));
+    EXPECT_TRUE(is_cpp_keyword("default"));
+    EXPECT_TRUE(is_cpp_keyword("switch"));
+    EXPECT_TRUE(is_cpp_keyword("volatile"));
+    EXPECT_TRUE(is_cpp_keyword("template"));
+    EXPECT_FALSE(is_cpp_keyword("MotorState"));
+    EXPECT_FALSE(is_cpp_keyword("StartCmd"));
+
+    EXPECT_EQ(escape_cpp_keyword("class"), "class_");
+    EXPECT_EQ(escape_cpp_keyword("default"), "default_");
+    EXPECT_EQ(escape_cpp_keyword("Running"), "Running");
+}
+
 }  // namespace

@@ -36,7 +36,7 @@ class FsmcDriver {
         }
 
         if (opts.show_version) {
-            std::cout << "fsmc version 0.4.1 (Universal State Machine Compiler & Optimization Infrastructure)\n";
+            std::cout << "fsmc version 0.5.0 (Universal State Machine Compiler & Optimization Infrastructure)\n";
             return 0;
         }
 
@@ -106,6 +106,16 @@ class FsmcDriver {
             model.ns = opts.ns_name;
         }
         model.thread_safe = opts.thread_safe;
+
+        // Inject custom CLI verification properties if specified
+        if (!opts.ltl_spec.empty()) {
+            model.add_property(fsm::codegen::FormalProperty("cli_ltl_property", fsm::codegen::PropertyKind::Safety,
+                                                            opts.ltl_spec, "CLI specified LTL specification"));
+        }
+        if (!opts.ctl_spec.empty()) {
+            model.add_property(fsm::codegen::FormalProperty("cli_ctl_property", fsm::codegen::PropertyKind::Safety,
+                                                            opts.ctl_spec, "CLI specified CTL specification"));
+        }
 
         // Requirement audit
         if (opts.req_audit) {
@@ -368,12 +378,37 @@ class FsmcDriver {
             }
         }
 
+        bool all_valid = validation.is_valid;
+
+        if (!model.properties.empty()) {
+            std::cout << "----------------------------------------------------------------------------\n"
+                      << " Formal Temporal Properties (" << model.properties.size() << "):\n";
+            fsm::codegen::ModelChecker checker(model);
+            auto mc_results = checker.verify_all();
+            for (const auto& res : mc_results) {
+                if (res.passed) {
+                    std::cout << "  [PASSED] " << res.property_name << " (" << res.property_formula << ")\n";
+                } else {
+                    all_valid = false;
+                    std::cout << "  [VIOLATION] " << res.property_name << " (" << res.property_formula << ")\n";
+                    if (!res.violation_reason.empty()) {
+                        std::cout << "    Reason: " << res.violation_reason << "\n";
+                    }
+                    std::string ce = res.format_counterexample();
+                    if (!ce.empty()) {
+                        std::cout << "  " << ce;
+                    }
+                }
+            }
+        }
+
         std::cout << "----------------------------------------------------------------------------\n"
                   << " Verification Status: "
-                  << (validation.is_valid ? "PASSED (Model Sound)" : "FAILED (Errors Detected)") << "\n"
+                  << (all_valid ? "PASSED (Model Sound & Properties Verified)" : "FAILED (Errors/Violations Detected)")
+                  << "\n"
                   << "============================================================================\n";
 
-        return validation.is_valid ? 0 : 1;
+        return all_valid ? 0 : 1;
     }
 };
 

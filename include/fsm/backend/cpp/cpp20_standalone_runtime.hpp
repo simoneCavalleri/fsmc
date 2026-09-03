@@ -194,6 +194,29 @@ struct type_list_front<type_list<Head, Tail...>> {
 template <typename List>
 using type_list_front_t = typename type_list_front<List>::type;
 
+// Find 0-based index of T in type_list
+template <typename T, typename List>
+struct type_list_index_of;
+
+template <typename T, typename... Tail>
+struct type_list_index_of<T, type_list<T, Tail...>> : std::integral_constant<std::size_t, 0> {};
+
+template <typename T, typename Head, typename... Tail>
+struct type_list_index_of<T, type_list<Head, Tail...>> {
+  private:
+    static constexpr std::size_t tail_val = type_list_index_of<T, type_list<Tail...>>::value;
+
+  public:
+    static constexpr std::size_t value =
+        (tail_val == static_cast<std::size_t>(-1)) ? static_cast<std::size_t>(-1) : 1 + tail_val;
+};
+
+template <typename T>
+struct type_list_index_of<T, type_list<>> : std::integral_constant<std::size_t, static_cast<std::size_t>(-1)> {};
+
+template <typename T, typename List>
+inline constexpr std::size_t type_list_index_of_v = type_list_index_of<T, List>::value;
+
 }  // namespace fsm
 
 // --- End: traits/type_list.hpp ---
@@ -505,142 +528,17 @@ constexpr std::string_view get_parent_name() noexcept {
 )raw_fsm_runtime";
 
         out << R"raw_fsm_runtime(
-// --- Begin: traits/hook_traits.hpp ---
+// --- Begin: traits/guard_traits.hpp ---
+#if defined(__cpp_concepts) && __cpp_concepts >= 201907L && __cplusplus >= 202002L
+#endif
+
 namespace fsm {
 
 // ============================================================================
-// Detection Idiom & Hook Invocations (on_enter, on_exit, guard, action)
+// Guard Detection & Fallback Invocations
 // Partitioned Domain Model: InPorts (const &), OutPorts (&), Registers (&), Services (&)
 // ============================================================================
 
-namespace detail {
-
-// on_enter(event, in, out, reg, srv)
-template <typename State, typename Event, typename InPorts, typename OutPorts, typename Registers, typename Services,
-          typename = void>
-struct has_on_enter_full : std::false_type {};
-
-template <typename State, typename Event, typename InPorts, typename OutPorts, typename Registers, typename Services>
-struct has_on_enter_full<State, Event, InPorts, OutPorts, Registers, Services,
-                         std::void_t<decltype(std::declval<State&>().on_enter(
-                             std::declval<const Event&>(), std::declval<const InPorts&>(), std::declval<OutPorts&>(),
-                             std::declval<Registers&>(), std::declval<Services&>()))>> : std::true_type {};
-
-// on_enter(event)
-template <typename State, typename Event, typename = void>
-struct has_on_enter_event : std::false_type {};
-
-template <typename State, typename Event>
-struct has_on_enter_event<State, Event,
-                          std::void_t<decltype(std::declval<State&>().on_enter(std::declval<const Event&>()))>>
-    : std::true_type {};
-
-// on_enter(in, out, reg, srv)
-template <typename State, typename InPorts, typename OutPorts, typename Registers, typename Services, typename = void>
-struct has_on_enter_ports : std::false_type {};
-
-template <typename State, typename InPorts, typename OutPorts, typename Registers, typename Services>
-struct has_on_enter_ports<
-    State, InPorts, OutPorts, Registers, Services,
-    std::void_t<decltype(std::declval<State&>().on_enter(std::declval<const InPorts&>(), std::declval<OutPorts&>(),
-                                                         std::declval<Registers&>(), std::declval<Services&>()))>>
-    : std::true_type {};
-
-// on_enter()
-template <typename State, typename = void>
-struct has_on_enter_void : std::false_type {};
-
-template <typename State>
-struct has_on_enter_void<State, std::void_t<decltype(std::declval<State&>().on_enter())>> : std::true_type {};
-
-// on_exit(event, in, out, reg, srv)
-template <typename State, typename Event, typename InPorts, typename OutPorts, typename Registers, typename Services,
-          typename = void>
-struct has_on_exit_full : std::false_type {};
-
-template <typename State, typename Event, typename InPorts, typename OutPorts, typename Registers, typename Services>
-struct has_on_exit_full<State, Event, InPorts, OutPorts, Registers, Services,
-                        std::void_t<decltype(std::declval<State&>().on_exit(
-                            std::declval<const Event&>(), std::declval<const InPorts&>(), std::declval<OutPorts&>(),
-                            std::declval<Registers&>(), std::declval<Services&>()))>> : std::true_type {};
-
-// on_exit(event)
-template <typename State, typename Event, typename = void>
-struct has_on_exit_event : std::false_type {};
-
-template <typename State, typename Event>
-struct has_on_exit_event<State, Event,
-                         std::void_t<decltype(std::declval<State&>().on_exit(std::declval<const Event&>()))>>
-    : std::true_type {};
-
-// on_exit()
-template <typename State, typename = void>
-struct has_on_exit_void : std::false_type {};
-
-template <typename State>
-struct has_on_exit_void<State, std::void_t<decltype(std::declval<State&>().on_exit())>> : std::true_type {};
-
-}  // namespace detail
-
-// ----------------------------------------------------------------------------
-// Safe invocation of on_enter hook
-// ----------------------------------------------------------------------------
-template <typename State, typename Event, typename InPorts, typename OutPorts, typename Registers, typename Services>
-constexpr void call_on_enter(State& state, const Event& event, const InPorts& in, OutPorts& out, Registers& reg,
-                             Services& srv) {
-    if constexpr (detail::has_on_enter_full<State, Event, InPorts, OutPorts, Registers, Services>::value) {
-        state.on_enter(event, in, out, reg, srv);
-    } else if constexpr (detail::has_on_enter_event<State, Event>::value) {
-        state.on_enter(event);
-    } else if constexpr (detail::has_on_enter_void<State>::value) {
-        state.on_enter();
-    }
-}
-
-template <typename State, typename InPorts, typename OutPorts, typename Registers, typename Services>
-constexpr void call_on_enter(State& state, const InPorts& in, OutPorts& out, Registers& reg, Services& srv) {
-    if constexpr (detail::has_on_enter_ports<State, InPorts, OutPorts, Registers, Services>::value) {
-        state.on_enter(in, out, reg, srv);
-    } else if constexpr (detail::has_on_enter_void<State>::value) {
-        state.on_enter();
-    }
-}
-
-template <typename State>
-constexpr void call_on_enter(State& state) {
-    if constexpr (detail::has_on_enter_void<State>::value) {
-        state.on_enter();
-    }
-}
-
-// ----------------------------------------------------------------------------
-// Safe invocation of on_exit hook
-// ----------------------------------------------------------------------------
-template <typename State, typename Event, typename InPorts, typename OutPorts, typename Registers, typename Services>
-constexpr void call_on_exit(State& state, const Event& event, const InPorts& in, OutPorts& out, Registers& reg,
-                            Services& srv) {
-    if constexpr (detail::has_on_exit_full<State, Event, InPorts, OutPorts, Registers, Services>::value) {
-        state.on_exit(event, in, out, reg, srv);
-    } else if constexpr (detail::has_on_exit_event<State, Event>::value) {
-        state.on_exit(event);
-    } else if constexpr (detail::has_on_exit_void<State>::value) {
-        state.on_exit();
-    }
-}
-
-template <typename State>
-constexpr void call_on_exit(State& state) {
-    if constexpr (detail::has_on_exit_void<State>::value) {
-        state.on_exit();
-    }
-}
-
-// ----------------------------------------------------------------------------
-// Safe invocation of guard
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// Safe invocation of guard and action fallbacks
-// ----------------------------------------------------------------------------
 namespace detail {
 
 template <std::size_t I, typename Tuple>
@@ -838,6 +736,41 @@ constexpr bool invoke_guard_fallback(const Guard& guard, Tuple& t) {
 #endif
 }
 
+}  // namespace detail
+
+// ----------------------------------------------------------------------------
+// Safe invocation of guard
+// ----------------------------------------------------------------------------
+template <typename Guard, typename... Args>
+constexpr bool call_guard(const Guard& guard, Args&&... args) {
+    if constexpr (std::is_invocable_r_v<bool, Guard, Args...>) {
+        return guard(std::forward<Args>(args)...);
+    } else {
+        auto t = std::forward_as_tuple(args...);
+        return detail::invoke_guard_fallback(guard, t);
+    }
+}
+
+}  // namespace fsm
+
+// --- End: traits/guard_traits.hpp ---
+)raw_fsm_runtime";
+
+        out << R"raw_fsm_runtime(
+// --- Begin: traits/action_traits.hpp ---
+#if defined(__cpp_concepts) && __cpp_concepts >= 201907L && __cplusplus >= 202002L
+#endif
+
+
+namespace fsm {
+
+// ============================================================================
+// Action Detection & Fallback Invocations
+// Partitioned Domain Model: InPorts (const &), OutPorts (&), Registers (&), Services (&)
+// ============================================================================
+
+namespace detail {
+
 // Action channel tuple layout: (0: evt, 1: src, 2: dst, 3: in, 4: out, 5: reg, 6: srv)
 template <typename Action, typename Tuple>
 constexpr void invoke_action_fallback(Action& action, Tuple& t) {
@@ -1024,19 +957,6 @@ constexpr void invoke_action_fallback(Action& action, Tuple& t) {
 }  // namespace detail
 
 // ----------------------------------------------------------------------------
-// Safe invocation of guard
-// ----------------------------------------------------------------------------
-template <typename Guard, typename... Args>
-constexpr bool call_guard(const Guard& guard, Args&&... args) {
-    if constexpr (std::is_invocable_r_v<bool, Guard, Args...>) {
-        return guard(std::forward<Args>(args)...);
-    } else {
-        auto t = std::forward_as_tuple(args...);
-        return detail::invoke_guard_fallback(guard, t);
-    }
-}
-
-// ----------------------------------------------------------------------------
 // Safe invocation of action
 // ----------------------------------------------------------------------------
 template <typename Action, typename... Args>
@@ -1048,6 +968,179 @@ constexpr void call_action(Action& action, Args&&... args) {
         detail::invoke_action_fallback(action, t);
     }
 }
+
+}  // namespace fsm
+
+// --- End: traits/action_traits.hpp ---
+)raw_fsm_runtime";
+
+        out << R"raw_fsm_runtime(
+// --- Begin: traits/lifecycle_traits.hpp ---
+namespace fsm {
+
+// ============================================================================
+// State Lifecycle Detection & Invocations (on_enter, on_exit)
+// Partitioned Domain Model: InPorts (const &), OutPorts (&), Registers (&), Services (&)
+// ============================================================================
+
+namespace detail {
+
+// on_enter(event, in, out, reg, srv)
+template <typename State, typename Event, typename InPorts, typename OutPorts, typename Registers, typename Services,
+          typename = void>
+struct has_on_enter_full : std::false_type {};
+
+template <typename State, typename Event, typename InPorts, typename OutPorts, typename Registers, typename Services>
+struct has_on_enter_full<State, Event, InPorts, OutPorts, Registers, Services,
+                         std::void_t<decltype(std::declval<State&>().on_enter(
+                             std::declval<const Event&>(), std::declval<const InPorts&>(), std::declval<OutPorts&>(),
+                             std::declval<Registers&>(), std::declval<Services&>()))>> : std::true_type {};
+
+// on_enter(event)
+template <typename State, typename Event, typename = void>
+struct has_on_enter_event : std::false_type {};
+
+template <typename State, typename Event>
+struct has_on_enter_event<State, Event,
+                          std::void_t<decltype(std::declval<State&>().on_enter(std::declval<const Event&>()))>>
+    : std::true_type {};
+
+// on_enter(in, out, reg, srv)
+template <typename State, typename InPorts, typename OutPorts, typename Registers, typename Services, typename = void>
+struct has_on_enter_ports : std::false_type {};
+
+template <typename State, typename InPorts, typename OutPorts, typename Registers, typename Services>
+struct has_on_enter_ports<
+    State, InPorts, OutPorts, Registers, Services,
+    std::void_t<decltype(std::declval<State&>().on_enter(std::declval<const InPorts&>(), std::declval<OutPorts&>(),
+                                                         std::declval<Registers&>(), std::declval<Services&>()))>>
+    : std::true_type {};
+
+// on_enter()
+template <typename State, typename = void>
+struct has_on_enter_void : std::false_type {};
+
+template <typename State>
+struct has_on_enter_void<State, std::void_t<decltype(std::declval<State&>().on_enter())>> : std::true_type {};
+
+// on_exit(event, in, out, reg, srv)
+template <typename State, typename Event, typename InPorts, typename OutPorts, typename Registers, typename Services,
+          typename = void>
+struct has_on_exit_full : std::false_type {};
+
+template <typename State, typename Event, typename InPorts, typename OutPorts, typename Registers, typename Services>
+struct has_on_exit_full<State, Event, InPorts, OutPorts, Registers, Services,
+                        std::void_t<decltype(std::declval<State&>().on_exit(
+                            std::declval<const Event&>(), std::declval<const InPorts&>(), std::declval<OutPorts&>(),
+                            std::declval<Registers&>(), std::declval<Services&>()))>> : std::true_type {};
+
+// on_exit(event)
+template <typename State, typename Event, typename = void>
+struct has_on_exit_event : std::false_type {};
+
+template <typename State, typename Event>
+struct has_on_exit_event<State, Event,
+                         std::void_t<decltype(std::declval<State&>().on_exit(std::declval<const Event&>()))>>
+    : std::true_type {};
+
+// on_exit()
+template <typename State, typename = void>
+struct has_on_exit_void : std::false_type {};
+
+template <typename State>
+struct has_on_exit_void<State, std::void_t<decltype(std::declval<State&>().on_exit())>> : std::true_type {};
+
+}  // namespace detail
+
+// ----------------------------------------------------------------------------
+// Safe invocation of on_enter hook
+// ----------------------------------------------------------------------------
+template <typename State, typename Event, typename InPorts, typename OutPorts, typename Registers, typename Services>
+constexpr void call_on_enter(State& state, const Event& event, const InPorts& in, OutPorts& out, Registers& reg,
+                             Services& srv) {
+    if constexpr (detail::has_on_enter_full<State, Event, InPorts, OutPorts, Registers, Services>::value) {
+        state.on_enter(event, in, out, reg, srv);
+    } else if constexpr (detail::has_on_enter_event<State, Event>::value) {
+        state.on_enter(event);
+    } else if constexpr (detail::has_on_enter_void<State>::value) {
+        state.on_enter();
+    }
+}
+
+template <typename State, typename InPorts, typename OutPorts, typename Registers, typename Services>
+constexpr void call_on_enter(State& state, const InPorts& in, OutPorts& out, Registers& reg, Services& srv) {
+    if constexpr (detail::has_on_enter_ports<State, InPorts, OutPorts, Registers, Services>::value) {
+        state.on_enter(in, out, reg, srv);
+    } else if constexpr (detail::has_on_enter_void<State>::value) {
+        state.on_enter();
+    }
+}
+
+template <typename State, typename Event>
+constexpr void call_on_enter(State& state, const Event& event) {
+    if constexpr (detail::has_on_enter_event<State, Event>::value) {
+        state.on_enter(event);
+    } else if constexpr (detail::has_on_enter_void<State>::value) {
+        state.on_enter();
+    }
+}
+
+template <typename State>
+constexpr void call_on_enter(State& state) {
+    if constexpr (detail::has_on_enter_void<State>::value) {
+        state.on_enter();
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Safe invocation of on_exit hook
+// ----------------------------------------------------------------------------
+template <typename State, typename Event, typename InPorts, typename OutPorts, typename Registers, typename Services>
+constexpr void call_on_exit(State& state, const Event& event, const InPorts& in, OutPorts& out, Registers& reg,
+                            Services& srv) {
+    if constexpr (detail::has_on_exit_full<State, Event, InPorts, OutPorts, Registers, Services>::value) {
+        state.on_exit(event, in, out, reg, srv);
+    } else if constexpr (detail::has_on_exit_event<State, Event>::value) {
+        state.on_exit(event);
+    } else if constexpr (detail::has_on_exit_void<State>::value) {
+        state.on_exit();
+    }
+}
+
+template <typename State, typename Event>
+constexpr void call_on_exit(State& state, const Event& event) {
+    if constexpr (detail::has_on_exit_event<State, Event>::value) {
+        state.on_exit(event);
+    } else if constexpr (detail::has_on_exit_void<State>::value) {
+        state.on_exit();
+    }
+}
+
+template <typename State>
+constexpr void call_on_exit(State& state) {
+    if constexpr (detail::has_on_exit_void<State>::value) {
+        state.on_exit();
+    }
+}
+
+}  // namespace fsm
+
+// --- End: traits/lifecycle_traits.hpp ---
+)raw_fsm_runtime";
+
+        out << R"raw_fsm_runtime(
+// --- Begin: traits/hook_traits.hpp ---
+namespace fsm {
+
+// ============================================================================
+// Detection Idiom & Hook Invocations (on_enter, on_exit, guard, action)
+// Partitioned Domain Model: InPorts (const &), OutPorts (&), Registers (&), Services (&)
+//
+// Note: This umbrella header aggregates modular sub-headers:
+// - lifecycle_traits.hpp (on_enter, on_exit)
+// - guard_traits.hpp     (guard fallbacks & call_guard)
+// - action_traits.hpp    (action fallbacks & call_action)
+// ============================================================================
 
 }  // namespace fsm
 
@@ -1298,6 +1391,192 @@ concept Action =
 // --- Begin: type_traits.hpp ---
 
 // --- End: type_traits.hpp ---
+)raw_fsm_runtime";
+
+        out << R"raw_fsm_runtime(
+// --- Begin: config.hpp ---
+namespace fsm {
+
+// ============================================================================
+// Semantic Policy Modifiers for Policy-Based FSM Configuration
+// ============================================================================
+
+template <typename RegistersType>
+struct with_registers {
+    using type = RegistersType;
+};
+
+template <typename InPortsType, typename OutPortsType = no_ports>
+struct with_ports {
+    using in_type = InPortsType;
+    using out_type = OutPortsType;
+};
+
+template <typename ServicesType>
+struct with_services {
+    using type = ServicesType;
+};
+
+template <typename ObserverType>
+struct with_observer {
+    using type = ObserverType;
+};
+
+template <typename InitialStateType>
+struct with_initial_state {
+    using type = InitialStateType;
+};
+
+template <std::size_t N>
+struct with_deferred_capacity {
+    static constexpr std::size_t value = N;
+};
+
+template <std::size_t N>
+struct with_queue_capacity {
+    static constexpr std::size_t value = N;
+};
+
+// ============================================================================
+// Internal Policy Extraction Helpers
+// ============================================================================
+
+namespace detail {
+
+// Registers extraction
+template <typename Default, typename... Policies>
+struct extract_registers {
+    using type = Default;
+};
+
+template <typename Default, typename R, typename... Rest>
+struct extract_registers<Default, with_registers<R>, Rest...> {
+    using type = R;
+};
+
+template <typename Default, typename Other, typename... Rest>
+struct extract_registers<Default, Other, Rest...> : extract_registers<Default, Rest...> {};
+
+// InPorts & OutPorts extraction
+template <typename DefaultIn, typename DefaultOut, typename... Policies>
+struct extract_ports {
+    using in_type = DefaultIn;
+    using out_type = DefaultOut;
+};
+
+template <typename DefaultIn, typename DefaultOut, typename In, typename Out, typename... Rest>
+struct extract_ports<DefaultIn, DefaultOut, with_ports<In, Out>, Rest...> {
+    using in_type = In;
+    using out_type = Out;
+};
+
+template <typename DefaultIn, typename DefaultOut, typename Other, typename... Rest>
+struct extract_ports<DefaultIn, DefaultOut, Other, Rest...> : extract_ports<DefaultIn, DefaultOut, Rest...> {};
+
+// Services extraction
+template <typename Default, typename... Policies>
+struct extract_services {
+    using type = Default;
+};
+
+template <typename Default, typename Srv, typename... Rest>
+struct extract_services<Default, with_services<Srv>, Rest...> {
+    using type = Srv;
+};
+
+template <typename Default, typename Other, typename... Rest>
+struct extract_services<Default, Other, Rest...> : extract_services<Default, Rest...> {};
+
+// Observer extraction
+template <typename Default, typename... Policies>
+struct extract_observer {
+    using type = Default;
+};
+
+template <typename Default, typename Obs, typename... Rest>
+struct extract_observer<Default, with_observer<Obs>, Rest...> {
+    using type = Obs;
+};
+
+template <typename Default, typename Other, typename... Rest>
+struct extract_observer<Default, Other, Rest...> : extract_observer<Default, Rest...> {};
+
+// Initial State extraction
+template <typename Default, typename... Policies>
+struct extract_initial_state {
+    using type = Default;
+};
+
+template <typename Default, typename St, typename... Rest>
+struct extract_initial_state<Default, with_initial_state<St>, Rest...> {
+    using type = St;
+};
+
+template <typename Default, typename Other, typename... Rest>
+struct extract_initial_state<Default, Other, Rest...> : extract_initial_state<Default, Rest...> {};
+
+// Deferred Capacity extraction
+template <std::size_t Default, typename... Policies>
+struct extract_deferred_capacity {
+    static constexpr std::size_t value = Default;
+};
+
+template <std::size_t Default, std::size_t N, typename... Rest>
+struct extract_deferred_capacity<Default, with_deferred_capacity<N>, Rest...> {
+    static constexpr std::size_t value = N;
+};
+
+template <std::size_t Default, typename Other, typename... Rest>
+struct extract_deferred_capacity<Default, Other, Rest...> : extract_deferred_capacity<Default, Rest...> {};
+
+// Queue Capacity extraction
+template <std::size_t Default, typename... Policies>
+struct extract_queue_capacity {
+    static constexpr std::size_t value = Default;
+};
+
+template <std::size_t Default, std::size_t N, typename... Rest>
+struct extract_queue_capacity<Default, with_queue_capacity<N>, Rest...> {
+    static constexpr std::size_t value = N;
+};
+
+template <std::size_t Default, typename Other, typename... Rest>
+struct extract_queue_capacity<Default, Other, Rest...> : extract_queue_capacity<Default, Rest...> {};
+
+}  // namespace detail
+
+// ============================================================================
+// Unified Policy-Based FSM Configuration
+// ============================================================================
+
+template <typename Table, typename... Policies>
+struct config {
+    using table_type = Table;
+    using in_ports_type = typename detail::extract_ports<no_ports, no_ports, Policies...>::in_type;
+    using out_ports_type = typename detail::extract_ports<no_ports, no_ports, Policies...>::out_type;
+    using registers_type = typename detail::extract_registers<no_registers, Policies...>::type;
+    using services_type = typename detail::extract_services<no_services, Policies...>::type;
+    using initial_state_type = typename detail::extract_initial_state<typename Table::initial_state, Policies...>::type;
+    using initial_state = initial_state_type;
+    using observer_type = typename detail::extract_observer<no_observer, Policies...>::type;
+
+    static constexpr std::size_t deferred_capacity = detail::extract_deferred_capacity<16, Policies...>::value;
+    static constexpr std::size_t queue_capacity = detail::extract_queue_capacity<64, Policies...>::value;
+};
+
+// Trait detecting if a type is an fsm::config instantiation
+template <typename T>
+struct is_config : std::false_type {};
+
+template <typename Table, typename... Policies>
+struct is_config<config<Table, Policies...>> : std::true_type {};
+
+template <typename T>
+inline constexpr bool is_config_v = is_config<T>::value;
+
+}  // namespace fsm
+
+// --- End: config.hpp ---
 )raw_fsm_runtime";
 
         out << R"raw_fsm_runtime(
@@ -2038,8 +2317,18 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
                                               std::index_sequence<Indices...> /*indices*/) {
     constexpr bool has_observer = !std::is_same_v<std::decay_t<ObserverCallback>, no_observer>;
 
-    Services dummy_srv{};
-    Services& srv = (services_ != nullptr) ? *services_ : dummy_srv;
+    auto resolve_srv = [&]() -> Services& {
+        if (services_ != nullptr) {
+            return *services_;
+        }
+        if constexpr (std::is_default_constructible_v<Services>) {
+            static Services dummy{};
+            return dummy;
+        } else {
+            std::terminate();
+        }
+    };
+    Services& srv = resolve_srv();
 
     bool any_guard_rejected = false;
     std::optional<transition_trace> executed_trace = std::nullopt;
@@ -2319,34 +2608,24 @@ class fsm {
         return step(in, out, srv);
     }
 
-    step_result step(const in_ports_type& in, out_ports_type& out) {
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        return step(in, out, srv);
-    }
+    step_result step(const in_ports_type& in, out_ports_type& out) { return step(in, out, resolve_services()); }
 
     template <typename DurationRep>
     step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out) {
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        return step(dt, in, out, srv);
+        return step(dt, in, out, resolve_services());
     }
 
     step_result step() {
         in_ports_type dummy_in{};
         out_ports_type dummy_out{};
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        return step(dummy_in, dummy_out, srv);
+        return step(dummy_in, dummy_out);
     }
 
     template <typename DurationRep>
     step_result step(DurationRep dt) {
         in_ports_type dummy_in{};
         out_ports_type dummy_out{};
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        return step(dt, dummy_in, dummy_out, srv);
+        return step(dt, dummy_in, dummy_out);
     }
 
     template <typename Event>
@@ -2400,18 +2679,14 @@ class fsm {
 
     template <typename Event>
     dispatch_result dispatch(const Event& event, const in_ports_type& in, out_ports_type& out) {
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        return dispatch(event, in, out, srv);
+        return dispatch(event, in, out, resolve_services());
     }
 
     template <typename Event>
     dispatch_result dispatch(const Event& event) {
         in_ports_type dummy_in{};
         out_ports_type dummy_out{};
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        return dispatch(event, dummy_in, dummy_out, srv);
+        return dispatch(event, dummy_in, dummy_out);
     }
 
     template <typename Event>
@@ -2434,9 +2709,7 @@ class fsm {
     dispatch_result dispatch_direct(const Event& event) {
         in_ports_type dummy_in{};
         out_ports_type dummy_out{};
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        return dispatch_direct_ports(event, dummy_in, dummy_out, srv);
+        return dispatch_direct_ports(event, dummy_in, dummy_out, resolve_services());
     }
 
     // Deferred events management
@@ -2449,9 +2722,7 @@ class fsm {
     void process_deferred_queue() {
         in_ports_type dummy_in{};
         out_ports_type dummy_out{};
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        process_deferred_queue_ports(dummy_in, dummy_out, srv);
+        process_deferred_queue_ports(dummy_in, dummy_out, resolve_services());
     }
 
     template <bool D = has_deferred>
@@ -2563,13 +2834,23 @@ class fsm {
     }
 
   private:
+    [[nodiscard]] services_type& resolve_services() const {
+        if (services_ != nullptr) {
+            return *services_;
+        }
+        if constexpr (std::is_default_constructible_v<services_type>) {
+            static services_type dummy{};
+            return dummy;
+        } else {
+            std::terminate();
+        }
+    }
+
     void enter_initial_state() {
         if (auto* state = std::get_if<initial_state_type>(&current_state_)) {
             in_ports_type dummy_in{};
             out_ports_type dummy_out{};
-            services_type dummy_srv{};
-            services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-            call_on_enter(*state, dummy_in, dummy_out, registers_, srv);
+            call_on_enter(*state, dummy_in, dummy_out, registers_, resolve_services());
         }
     }
 
@@ -2591,6 +2872,41 @@ using dynamic_fsm =
 }  // namespace fsm
 
 // --- End: fsm.hpp ---
+)raw_fsm_runtime";
+
+        out << R"raw_fsm_runtime(
+// --- Begin: detail/fsm_policy_adapter.hpp ---
+namespace fsm {
+
+// Partial specialization for policy-based config
+template <typename RealTable, typename... Policies, typename InPorts, typename OutPorts, typename Registers,
+          typename Services, typename InitialState, typename Observer, std::size_t DeferredCapacity>
+class fsm<config<RealTable, Policies...>, InPorts, OutPorts, Registers, Services, InitialState, Observer,
+          DeferredCapacity> : public fsm<RealTable, typename config<RealTable, Policies...>::in_ports_type,
+                                         typename config<RealTable, Policies...>::out_ports_type,
+                                         typename config<RealTable, Policies...>::registers_type,
+                                         typename config<RealTable, Policies...>::services_type,
+                                         typename config<RealTable, Policies...>::initial_state_type,
+                                         typename config<RealTable, Policies...>::observer_type,
+                                         config<RealTable, Policies...>::deferred_capacity> {
+    using base_type =
+        fsm<RealTable, typename config<RealTable, Policies...>::in_ports_type,
+            typename config<RealTable, Policies...>::out_ports_type,
+            typename config<RealTable, Policies...>::registers_type,
+            typename config<RealTable, Policies...>::services_type,
+            typename config<RealTable, Policies...>::initial_state_type,
+            typename config<RealTable, Policies...>::observer_type, config<RealTable, Policies...>::deferred_capacity>;
+
+  public:
+    using base_type::base_type;
+};
+
+template <typename Table, typename... Policies>
+using make_fsm = fsm<config<Table, Policies...>>;
+
+}  // namespace fsm
+
+// --- End: detail/fsm_policy_adapter.hpp ---
 )raw_fsm_runtime";
 
         if (opts.thread_safe) {
@@ -2618,9 +2934,6 @@ template <typename T, std::size_t Capacity = 1024>
 class spsc_ring_buffer {
     static_assert((Capacity > 1) && ((Capacity & (Capacity - 1)) == 0),
                   "spsc_ring_buffer Capacity must be a power of two");
-    static_assert(std::is_default_constructible_v<T>,
-                  "spsc_ring_buffer<T> requires T to be default-constructible "
-                  "(needed by pop()/the destructor's drain loop)");
 
   public:
     using value_type = T;
@@ -2629,9 +2942,11 @@ class spsc_ring_buffer {
     spsc_ring_buffer() = default;
 
     ~spsc_ring_buffer() {
-        T item;
-        while (pop(item)) {
-            // Drain remaining elements invoking destructors
+        const std::size_t head = head_.load(std::memory_order_relaxed);
+        std::size_t tail = tail_.load(std::memory_order_relaxed);
+        while (tail != head) {
+            get_slot(tail)->~T();
+            ++tail;
         }
     }
 
@@ -2675,11 +2990,18 @@ class spsc_ring_buffer {
     }
 
     [[nodiscard]] std::optional<T> pop() noexcept(std::is_nothrow_move_constructible_v<T>) {
-        T item;
-        if (pop(item)) {
-            return item;
+        const std::size_t tail = tail_.load(std::memory_order_relaxed);
+        const std::size_t head = head_.load(std::memory_order_acquire);
+
+        if (tail == head) {
+            return std::nullopt;
         }
-        return std::nullopt;
+
+        T* slot = get_slot(tail);
+        std::optional<T> res(std::move(*slot));
+        slot->~T();
+        tail_.store(tail + 1, std::memory_order_release);
+        return res;
     }
 
     [[nodiscard]] bool empty() const noexcept {
@@ -2693,7 +3015,7 @@ class spsc_ring_buffer {
     [[nodiscard]] std::size_t size() const noexcept {
         const std::size_t head = head_.load(std::memory_order_relaxed);
         const std::size_t tail = tail_.load(std::memory_order_relaxed);
-        return head >= tail ? (head - tail) : 0;
+        return head - tail;
     }
 
     [[nodiscard]] constexpr std::size_t capacity() const noexcept { return Capacity; }
@@ -3110,6 +3432,163 @@ inline void invoke_notifications_outside_lock(const Event& evt, const dispatch_s
 )raw_fsm_runtime";
 
             out << R"raw_fsm_runtime(
+// --- Begin: detail/diagnostic_handlers.hpp ---
+namespace fsm::detail {
+
+/**
+ * @brief Manages thread-safe registration, storage, and snapshotting of diagnostic callbacks.
+ */
+class diagnostic_handler_manager {
+  public:
+    using observer_fn = std::function<void(const transition_info&)>;
+
+    void set_unhandled_handler(unhandled_handler h) { unhandled_handler_ = std::move(h); }
+    void set_guard_rejected_handler(guard_rejected_handler h) { guard_rejected_handler_ = std::move(h); }
+    void set_deferred_handler(deferred_handler h) { deferred_handler_ = std::move(h); }
+    void set_dispatch_failure_handler(dispatch_failure_handler h) { failure_handler_ = std::move(h); }
+    void set_exception_handler(exception_handler h) { exception_handler_ = std::move(h); }
+    void set_user_observer(observer_fn obs) { user_observer_ = std::move(obs); }
+    void clear_user_observer() { user_observer_ = nullptr; }
+
+    [[nodiscard]] exception_handler get_exception_handler_copy() const { return exception_handler_; }
+
+    [[nodiscard]] std::exception_ptr last_exception() const noexcept { return last_exception_; }
+    void set_last_exception(std::exception_ptr ep) noexcept { last_exception_ = ep; }
+    void clear_last_exception() noexcept { last_exception_ = nullptr; }
+
+    std::vector<transition_info>& notification_buffer() noexcept { return notification_buffer_; }
+    const std::vector<transition_info>& notification_buffer() const noexcept { return notification_buffer_; }
+
+    void populate_snapshot_handlers(dispatch_snapshot& snap) const {
+        snap.unhandled_h = unhandled_handler_;
+        snap.guard_rejected_h = guard_rejected_handler_;
+        snap.deferred_h = deferred_handler_;
+        snap.failure_h = failure_handler_;
+        snap.exception_h = exception_handler_;
+        snap.observer_h = user_observer_;
+    }
+
+  private:
+    observer_fn user_observer_{nullptr};
+    std::vector<transition_info> notification_buffer_;
+    unhandled_handler unhandled_handler_{nullptr};
+    guard_rejected_handler guard_rejected_handler_{nullptr};
+    deferred_handler deferred_handler_{nullptr};
+    dispatch_failure_handler failure_handler_{nullptr};
+    exception_handler exception_handler_{nullptr};
+    std::exception_ptr last_exception_{nullptr};
+};
+
+}  // namespace fsm::detail
+
+// --- End: detail/diagnostic_handlers.hpp ---
+)raw_fsm_runtime";
+
+            out << R"raw_fsm_runtime(
+// --- Begin: detail/worker_thread_controller.hpp ---
+namespace fsm::detail {
+
+/**
+ * @brief Manages the active-object event queue and background worker thread lifecycle.
+ */
+template <typename Task, typename FsmRef>
+class worker_thread_controller {
+  public:
+    worker_thread_controller() = default;
+
+    ~worker_thread_controller() { stop_worker(); }
+
+    worker_thread_controller(const worker_thread_controller&) = delete;
+    worker_thread_controller& operator=(const worker_thread_controller&) = delete;
+    worker_thread_controller(worker_thread_controller&&) = delete;
+    worker_thread_controller& operator=(worker_thread_controller&&) = delete;
+
+    void start_worker(FsmRef& fsm) {
+        bool expected = false;
+        if (worker_running_.compare_exchange_strong(expected, true)) {
+            queue_.start();
+            worker_thread_ = std::thread([this, &fsm]() { worker_loop(fsm); });
+        }
+    }
+
+    void stop_worker() {
+        bool expected = true;
+        if (worker_running_.compare_exchange_strong(expected, false)) {
+            queue_.stop();
+            if (worker_thread_.joinable()) {
+                if (std::this_thread::get_id() != worker_thread_.get_id()) {
+                    worker_thread_.join();
+                } else {
+                    worker_thread_.detach();
+                }
+            }
+        }
+    }
+
+    [[nodiscard]] bool is_worker_running() const noexcept { return worker_running_.load(std::memory_order_relaxed); }
+
+    [[nodiscard]] bool is_calling_from_worker_thread() const noexcept {
+        return worker_thread_.get_id() == std::this_thread::get_id();
+    }
+
+    void clear_queue() { queue_.clear(); }
+
+    [[nodiscard]] std::size_t pending_events_count() const noexcept { return queue_.size(); }
+
+    [[nodiscard]] bool is_queue_empty() const noexcept { return queue_.empty(); }
+
+    void push(Task task) { queue_.push(std::move(task)); }
+
+    template <typename Rep, typename Period>
+    void push_timed(std::chrono::time_point<std::chrono::steady_clock, std::chrono::duration<Rep, Period>> deadline,
+                    Task task) {
+        queue_.push_timed(deadline, std::move(task));
+    }
+
+    bool process_one(FsmRef& fsm) {
+        Task task;
+        if (queue_.try_pop(task)) {
+            task(fsm);
+            return true;
+        }
+        return false;
+    }
+
+    std::size_t run_until_empty(FsmRef& fsm) {
+        std::size_t processed = 0;
+        while (process_one(fsm)) {
+            ++processed;
+        }
+        return processed;
+    }
+
+    void wait_until_idle() {
+        while (!is_queue_empty()) {
+            std::this_thread::yield();
+        }
+    }
+
+  private:
+    void worker_loop(FsmRef& fsm) {
+        while (worker_running_.load(std::memory_order_relaxed)) {
+            Task task;
+            if (queue_.pop_wait(task)) {
+                task(fsm);
+            }
+        }
+    }
+
+    async_event_queue<Task> queue_{};
+    std::atomic<bool> worker_running_{false};
+    std::thread worker_thread_{};
+};
+
+}  // namespace fsm::detail
+
+// --- End: detail/worker_thread_controller.hpp ---
+)raw_fsm_runtime";
+
+            out << R"raw_fsm_runtime(
 // --- Begin: thread_safe_fsm.hpp ---
 namespace fsm {
 
@@ -3162,19 +3641,19 @@ class thread_safe_fsm {
     using exception_handler = ::fsm::exception_handler;
 
     thread_safe_fsm() {
-        fsm_.set_observer([this](const transition_info& info) { notification_buffer_.push_back(info); });
+        fsm_.set_observer([this](const transition_info& info) { diagnostics_.notification_buffer().push_back(info); });
     }
 
     explicit thread_safe_fsm(services_type& srv) : fsm_(srv) {
-        fsm_.set_observer([this](const transition_info& info) { notification_buffer_.push_back(info); });
+        fsm_.set_observer([this](const transition_info& info) { diagnostics_.notification_buffer().push_back(info); });
     }
 
     explicit thread_safe_fsm(registers_type reg) : fsm_(std::move(reg)) {
-        fsm_.set_observer([this](const transition_info& info) { notification_buffer_.push_back(info); });
+        fsm_.set_observer([this](const transition_info& info) { diagnostics_.notification_buffer().push_back(info); });
     }
 
     thread_safe_fsm(registers_type reg, services_type& srv) : fsm_(std::move(reg), srv) {
-        fsm_.set_observer([this](const transition_info& info) { notification_buffer_.push_back(info); });
+        fsm_.set_observer([this](const transition_info& info) { diagnostics_.notification_buffer().push_back(info); });
     }
 
     ~thread_safe_fsm() {
@@ -3190,62 +3669,58 @@ class thread_safe_fsm {
     // Diagnostic Callbacks
     void set_unhandled_handler(unhandled_handler handler) {
         std::scoped_lock lock(dispatch_mutex_);
-        unhandled_handler_ = std::move(handler);
+        diagnostics_.set_unhandled_handler(std::move(handler));
     }
 
     void set_guard_rejected_handler(guard_rejected_handler handler) {
         std::scoped_lock lock(dispatch_mutex_);
-        guard_rejected_handler_ = std::move(handler);
+        diagnostics_.set_guard_rejected_handler(std::move(handler));
     }
 
     void set_deferred_handler(deferred_handler handler) {
         std::scoped_lock lock(dispatch_mutex_);
-        deferred_handler_ = std::move(handler);
+        diagnostics_.set_deferred_handler(std::move(handler));
     }
 
     void set_dispatch_failure_handler(dispatch_failure_handler handler) {
         std::scoped_lock lock(dispatch_mutex_);
-        failure_handler_ = std::move(handler);
+        diagnostics_.set_dispatch_failure_handler(std::move(handler));
     }
 
     void set_exception_handler(exception_handler handler) {
         std::scoped_lock lock(dispatch_mutex_);
-        exception_handler_ = std::move(handler);
+        diagnostics_.set_exception_handler(std::move(handler));
     }
 
     template <typename Callback>
     void set_observer(Callback&& observer) {
         std::scoped_lock lock(dispatch_mutex_);
-        user_observer_ = std::forward<Callback>(observer);
+        diagnostics_.set_user_observer(std::forward<Callback>(observer));
     }
 
     void clear_observer() {
         std::scoped_lock lock(dispatch_mutex_);
-        user_observer_ = nullptr;
+        diagnostics_.clear_user_observer();
     }
 
     [[nodiscard]] std::exception_ptr last_exception() const {
         if (reentrancy_.is_reentrant_call()) {
-            return last_exception_;
+            return diagnostics_.last_exception();
         }
         std::scoped_lock lock(dispatch_mutex_);
-        return last_exception_;
+        return diagnostics_.last_exception();
     }
 
     void clear_last_exception() {
         if (reentrancy_.is_reentrant_call()) {
-            last_exception_ = nullptr;
+            diagnostics_.clear_last_exception();
             return;
         }
         std::scoped_lock lock(dispatch_mutex_);
-        last_exception_ = nullptr;
+        diagnostics_.clear_last_exception();
     }
 
     // State & Register Access
-    [[nodiscard]] registers_type& registers() noexcept { return fsm_.registers(); }
-
-    [[nodiscard]] const registers_type& registers() const noexcept { return fsm_.registers(); }
-
     [[nodiscard]] registers_type snapshot_registers() const {
         if (reentrancy_.is_reentrant_call()) {
             return fsm_.registers();
@@ -3353,7 +3828,9 @@ class thread_safe_fsm {
     template <typename Event>
     dispatch_result send(const Event& event) {
         auto snap = execute_dispatch_under_lock(event);
-        detail::invoke_notifications_outside_lock(event, snap, last_exception_, dispatch_mutex_);
+        auto last_ex = diagnostics_.last_exception();
+        detail::invoke_notifications_outside_lock(event, snap, last_ex, dispatch_mutex_);
+        diagnostics_.set_last_exception(last_ex);
         drain_reentrant_queue_if_outermost();
         return snap.result;
     }
@@ -3367,18 +3844,15 @@ class thread_safe_fsm {
         {
             std::scoped_lock lock(dispatch_mutex_);
             detail::reentrancy_tracker::depth_guard depth_guard(reentrancy_);
-            notification_buffer_.clear();
+            diagnostics_.notification_buffer().clear();
             snap.result = fsm_.dispatch(event, in, out);
             snap.state_name = std::string(fsm_.current_state_name());
-            snap.notifications = std::move(notification_buffer_);
-            snap.unhandled_h = unhandled_handler_;
-            snap.guard_rejected_h = guard_rejected_handler_;
-            snap.deferred_h = deferred_handler_;
-            snap.failure_h = failure_handler_;
-            snap.exception_h = exception_handler_;
-            snap.observer_h = user_observer_;
+            snap.notifications = std::move(diagnostics_.notification_buffer());
+            diagnostics_.populate_snapshot_handlers(snap);
         }
-        detail::invoke_notifications_outside_lock(event, snap, last_exception_, dispatch_mutex_);
+        auto last_ex = diagnostics_.last_exception();
+        detail::invoke_notifications_outside_lock(event, snap, last_ex, dispatch_mutex_);
+        diagnostics_.set_last_exception(last_ex);
         drain_reentrant_queue_if_outermost();
         return snap.result;
     }
@@ -3431,25 +3905,29 @@ class thread_safe_fsm {
 
     template <typename Event, typename Callback>
     void post(Event event, Callback&& callback) {
-        if (!worker_running_.load() && !is_calling_from_worker_thread()) {
+        if (!worker_.is_worker_running() && !worker_.is_calling_from_worker_thread()) {
             start_worker();
         }
         auto task = [this, evt = std::move(event), cb = std::forward<Callback>(callback)](fsm_type&) mutable {
             try {
                 auto snap = execute_dispatch_under_lock(evt);
-                detail::invoke_notifications_outside_lock(evt, snap, last_exception_, dispatch_mutex_);
+                auto last_ex = diagnostics_.last_exception();
+                detail::invoke_notifications_outside_lock(evt, snap, last_ex, dispatch_mutex_);
+                diagnostics_.set_last_exception(last_ex);
                 cb(snap.result);
             } catch (...) {
-                detail::handle_exception_outside_lock(std::current_exception(), get_exception_handler_copy(),
-                                                      last_exception_, dispatch_mutex_);
+                auto last_ex = diagnostics_.last_exception();
+                detail::handle_exception_outside_lock(
+                    std::current_exception(), diagnostics_.get_exception_handler_copy(), last_ex, dispatch_mutex_);
+                diagnostics_.set_last_exception(last_ex);
             }
         };
-        queue_.push(std::move(task));
+        worker_.push(std::move(task));
     }
 
     template <typename Event>
     [[nodiscard]] std::future<dispatch_result> post_async(Event event) {
-        if (!worker_running_.load() && !is_calling_from_worker_thread()) {
+        if (!worker_.is_worker_running() && !worker_.is_calling_from_worker_thread()) {
             start_worker();
         }
         auto promise = std::make_shared<std::promise<dispatch_result>>();
@@ -3457,21 +3935,25 @@ class thread_safe_fsm {
         auto task = [this, evt = std::move(event), p = promise](fsm_type&) mutable {
             try {
                 auto snap = execute_dispatch_under_lock(evt);
-                detail::invoke_notifications_outside_lock(evt, snap, last_exception_, dispatch_mutex_);
+                auto last_ex = diagnostics_.last_exception();
+                detail::invoke_notifications_outside_lock(evt, snap, last_ex, dispatch_mutex_);
+                diagnostics_.set_last_exception(last_ex);
                 p->set_value(snap.result);
             } catch (...) {
                 p->set_exception(std::current_exception());
-                detail::handle_exception_outside_lock(std::current_exception(), get_exception_handler_copy(),
-                                                      last_exception_, dispatch_mutex_);
+                auto last_ex = diagnostics_.last_exception();
+                detail::handle_exception_outside_lock(
+                    std::current_exception(), diagnostics_.get_exception_handler_copy(), last_ex, dispatch_mutex_);
+                diagnostics_.set_last_exception(last_ex);
             }
         };
-        queue_.push(std::move(task));
+        worker_.push(std::move(task));
         return future;
     }
 
     template <typename Event, typename Rep, typename Period>
     void post_delayed(Event event, std::chrono::duration<Rep, Period> delay, bool cancel_if_state_changes = false) {
-        if (!worker_running_.load() && !is_calling_from_worker_thread()) {
+        if (!worker_.is_worker_running() && !worker_.is_calling_from_worker_thread()) {
             start_worker();
         }
         auto deadline = std::chrono::steady_clock::now() + delay;
@@ -3482,13 +3964,17 @@ class thread_safe_fsm {
                     return;  // Invalidate stale timeout
                 }
                 auto snap = execute_dispatch_under_lock(evt);
-                detail::invoke_notifications_outside_lock(evt, snap, last_exception_, dispatch_mutex_);
+                auto last_ex = diagnostics_.last_exception();
+                detail::invoke_notifications_outside_lock(evt, snap, last_ex, dispatch_mutex_);
+                diagnostics_.set_last_exception(last_ex);
             } catch (...) {
-                detail::handle_exception_outside_lock(std::current_exception(), get_exception_handler_copy(),
-                                                      last_exception_, dispatch_mutex_);
+                auto last_ex = diagnostics_.last_exception();
+                detail::handle_exception_outside_lock(
+                    std::current_exception(), diagnostics_.get_exception_handler_copy(), last_ex, dispatch_mutex_);
+                diagnostics_.set_last_exception(last_ex);
             }
         };
-        queue_.push_timed(deadline, std::move(task));
+        worker_.push_timed(deadline, std::move(task));
     }
 
     template <typename Event, typename Rep, typename Period>
@@ -3501,73 +3987,41 @@ class thread_safe_fsm {
         auto task = [this, evt = std::move(event)](fsm_type&) {
             try {
                 auto snap = execute_dispatch_under_lock(evt);
-                detail::invoke_notifications_outside_lock(evt, snap, last_exception_, dispatch_mutex_);
+                auto last_ex = diagnostics_.last_exception();
+                detail::invoke_notifications_outside_lock(evt, snap, last_ex, dispatch_mutex_);
+                diagnostics_.set_last_exception(last_ex);
             } catch (...) {
-                detail::handle_exception_outside_lock(std::current_exception(), get_exception_handler_copy(),
-                                                      last_exception_, dispatch_mutex_);
+                auto last_ex = diagnostics_.last_exception();
+                detail::handle_exception_outside_lock(
+                    std::current_exception(), diagnostics_.get_exception_handler_copy(), last_ex, dispatch_mutex_);
+                diagnostics_.set_last_exception(last_ex);
             }
         };
-        queue_.push(std::move(task));
+        worker_.push(std::move(task));
     }
 
     // ========================================================================
     // Worker Thread Control
     // ========================================================================
 
-    void start_worker() {
-        bool expected = false;
-        if (worker_running_.compare_exchange_strong(expected, true)) {
-            queue_.start();
-            worker_thread_ = std::thread([this]() { worker_loop(); });
-        }
-    }
+    void start_worker() { worker_.start_worker(fsm_); }
 
     void stop_worker() {
-        bool expected = true;
-        if (worker_running_.compare_exchange_strong(expected, false)) {
-            queue_.stop();
-            if (worker_thread_.joinable()) {
-                if (std::this_thread::get_id() != worker_thread_.get_id()) {
-                    worker_thread_.join();
-                } else {
-                    worker_thread_.detach();
-                }
-            }
-            process_all();
-        }
+        worker_.stop_worker();
+        process_all();
     }
 
-    [[nodiscard]] bool is_worker_running() const noexcept { return worker_running_.load(); }
+    [[nodiscard]] bool is_worker_running() const noexcept { return worker_.is_worker_running(); }
 
-    void clear_queue() { queue_.clear(); }
-    [[nodiscard]] std::size_t pending_events_count() const noexcept { return queue_.size(); }
-    [[nodiscard]] std::size_t pending_events() const noexcept { return queue_.size(); }
-    [[nodiscard]] bool is_queue_empty() const noexcept { return queue_.empty(); }
+    void clear_queue() { worker_.clear_queue(); }
+    [[nodiscard]] std::size_t pending_events_count() const noexcept { return worker_.pending_events_count(); }
+    [[nodiscard]] std::size_t pending_events() const noexcept { return worker_.pending_events_count(); }
+    [[nodiscard]] bool is_queue_empty() const noexcept { return worker_.is_queue_empty(); }
 
-    bool process_one() {
-        event_handler task;
-        if (queue_.try_pop(task)) {
-            task(fsm_);
-            return true;
-        }
-        return false;
-    }
-
-    std::size_t run_until_empty() {
-        std::size_t processed = 0;
-        while (process_one()) {
-            ++processed;
-        }
-        return processed;
-    }
-
+    bool process_one() { return worker_.process_one(fsm_); }
+    std::size_t run_until_empty() { return worker_.run_until_empty(fsm_); }
     std::size_t process_all() { return run_until_empty(); }
-
-    void wait_until_idle() {
-        while (!is_queue_empty()) {
-            std::this_thread::yield();
-        }
-    }
+    void wait_until_idle() { worker_.wait_until_idle(); }
 
   private:
     template <typename Event>
@@ -3577,8 +4031,7 @@ class thread_safe_fsm {
     }
 
     void drain_reentrant_queue_if_outermost() {
-        if (reentrancy_.depth() == 0 && !worker_running_.load(std::memory_order_relaxed) &&
-            !is_calling_from_worker_thread()) {
+        if (reentrancy_.depth() == 0 && !worker_.is_worker_running() && !worker_.is_calling_from_worker_thread()) {
             process_all();
         }
     }
@@ -3589,65 +4042,64 @@ class thread_safe_fsm {
             detail::dispatch_snapshot snap;
             snap.result = queue_reentrant_event(evt);
             snap.state_name = std::string(fsm_.current_state_name());
-            snap.deferred_h = deferred_handler_;
-            snap.exception_h = exception_handler_;
+            diagnostics_.populate_snapshot_handlers(snap);
             return snap;
         }
 
         detail::dispatch_snapshot snap;
         std::scoped_lock lock(dispatch_mutex_);
         detail::reentrancy_tracker::depth_guard depth_guard(reentrancy_);
-        notification_buffer_.clear();
+        diagnostics_.notification_buffer().clear();
         snap.result = fsm_.dispatch(evt);
         snap.state_name = std::string(fsm_.current_state_name());
-        snap.notifications = std::move(notification_buffer_);
-        snap.unhandled_h = unhandled_handler_;
-        snap.guard_rejected_h = guard_rejected_handler_;
-        snap.deferred_h = deferred_handler_;
-        snap.failure_h = failure_handler_;
-        snap.exception_h = exception_handler_;
-        snap.observer_h = user_observer_;
+        snap.notifications = std::move(diagnostics_.notification_buffer());
+        diagnostics_.populate_snapshot_handlers(snap);
         return snap;
-    }
-
-    exception_handler get_exception_handler_copy() {
-        std::scoped_lock lock(dispatch_mutex_);
-        return exception_handler_;
-    }
-
-    bool is_calling_from_worker_thread() const noexcept {
-        return worker_thread_.get_id() == std::this_thread::get_id();
-    }
-
-    void worker_loop() {
-        while (worker_running_.load()) {
-            event_handler task;
-            if (queue_.pop_wait(task)) {
-                task(fsm_);
-            }
-        }
     }
 
     mutable std::mutex dispatch_mutex_;
     fsm_type fsm_;
-    async_event_queue<event_handler> queue_;
-    std::atomic<bool> worker_running_{false};
-    std::thread worker_thread_;
+    detail::worker_thread_controller<event_handler, fsm_type> worker_{};
     detail::reentrancy_tracker reentrancy_{};
-
-    std::function<void(const transition_info&)> user_observer_{nullptr};
-    std::vector<transition_info> notification_buffer_;
-    unhandled_handler unhandled_handler_{nullptr};
-    guard_rejected_handler guard_rejected_handler_{nullptr};
-    deferred_handler deferred_handler_{nullptr};
-    dispatch_failure_handler failure_handler_{nullptr};
-    exception_handler exception_handler_{nullptr};
-    std::exception_ptr last_exception_{nullptr};
+    detail::diagnostic_handler_manager diagnostics_{};
 };
 
 }  // namespace fsm
 
 // --- End: thread_safe_fsm.hpp ---
+)raw_fsm_runtime";
+
+            out << R"raw_fsm_runtime(
+// --- Begin: detail/thread_safe_policy_adapter.hpp ---
+namespace fsm {
+
+// Partial specialization for policy-based config
+template <typename RealTable, typename... Policies, typename InPorts, typename OutPorts, typename Registers,
+          typename Services, typename InitialState, std::size_t DeferredCapacity>
+class thread_safe_fsm<config<RealTable, Policies...>, InPorts, OutPorts, Registers, Services, InitialState,
+                      DeferredCapacity>
+    : public thread_safe_fsm<RealTable, typename config<RealTable, Policies...>::in_ports_type,
+                             typename config<RealTable, Policies...>::out_ports_type,
+                             typename config<RealTable, Policies...>::registers_type,
+                             typename config<RealTable, Policies...>::services_type,
+                             typename config<RealTable, Policies...>::initial_state_type,
+                             config<RealTable, Policies...>::deferred_capacity> {
+    using base_type = thread_safe_fsm<
+        RealTable, typename config<RealTable, Policies...>::in_ports_type,
+        typename config<RealTable, Policies...>::out_ports_type,
+        typename config<RealTable, Policies...>::registers_type, typename config<RealTable, Policies...>::services_type,
+        typename config<RealTable, Policies...>::initial_state_type, config<RealTable, Policies...>::deferred_capacity>;
+
+  public:
+    using base_type::base_type;
+};
+
+template <typename Table, typename... Policies>
+using make_thread_safe_fsm = thread_safe_fsm<config<Table, Policies...>>;
+
+}  // namespace fsm
+
+// --- End: detail/thread_safe_policy_adapter.hpp ---
 )raw_fsm_runtime";
 
             out << R"raw_fsm_runtime(
@@ -3690,6 +4142,9 @@ template <typename Table, typename InPorts = no_ports, typename OutPorts = no_po
 class spsc_fsm {
     static_assert((QueueCapacity > 1) && ((QueueCapacity & (QueueCapacity - 1)) == 0),
                   "spsc_fsm QueueCapacity must be a power of two");
+    static_assert(
+        std::is_trivially_copyable_v<Registers> || std::is_same_v<Registers, no_registers>,
+        "spsc_fsm requires Registers to be trivially copyable for sound seqlock snapshots without torn reads.");
 
   public:
     using fsm_type = fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, no_observer, DeferredCapacity>;
@@ -3777,8 +4232,18 @@ class spsc_fsm {
         }
 
         seq_.fetch_add(1, std::memory_order_release);
-        services_type dummy_srv{};
-        services_type& srv = (fsm_.get_services() != nullptr) ? *fsm_.get_services() : dummy_srv;
+        auto resolve_srv = [&]() -> services_type& {
+            if (fsm_.get_services() != nullptr) {
+                return *fsm_.get_services();
+            }
+            if constexpr (std::is_default_constructible_v<services_type>) {
+                static services_type dummy{};
+                return dummy;
+            } else {
+                std::terminate();
+            }
+        };
+        services_type& srv = resolve_srv();
         std::visit(
             [this, &in, &out, &srv](const auto& evt) { (void)this->fsm_.dispatch_direct_ports(evt, in, out, srv); },
             *item);
@@ -3865,12 +4330,16 @@ class spsc_fsm {
 
     template <typename State>
     [[nodiscard]] bool is_in() const noexcept {
-        return fsm_.template is_in<State>();
+        if constexpr (Table::template has_state<State>) {
+            return state_index() == type_list_index_of_v<State, typename Table::states>;
+        } else {
+            return false;
+        }
     }
 
     template <typename State>
     [[nodiscard]] bool is_in_state() const noexcept {
-        return fsm_.template is_in_state<State>();
+        return is_in<State>();
     }
 
     /**
@@ -3922,6 +4391,41 @@ class spsc_fsm {
 }  // namespace fsm
 
 // --- End: spsc_fsm.hpp ---
+)raw_fsm_runtime";
+
+            out << R"raw_fsm_runtime(
+// --- Begin: detail/spsc_policy_adapter.hpp ---
+namespace fsm {
+
+// Partial specialization for policy-based config
+template <typename RealTable, typename... Policies, typename InPorts, typename OutPorts, typename Registers,
+          typename Services, std::size_t QueueCapacity, typename InitialState, std::size_t DeferredCapacity>
+class spsc_fsm<config<RealTable, Policies...>, InPorts, OutPorts, Registers, Services, QueueCapacity, InitialState,
+               DeferredCapacity> : public spsc_fsm<RealTable, typename config<RealTable, Policies...>::in_ports_type,
+                                                   typename config<RealTable, Policies...>::out_ports_type,
+                                                   typename config<RealTable, Policies...>::registers_type,
+                                                   typename config<RealTable, Policies...>::services_type,
+                                                   config<RealTable, Policies...>::queue_capacity,
+                                                   typename config<RealTable, Policies...>::initial_state_type,
+                                                   config<RealTable, Policies...>::deferred_capacity> {
+    using base_type =
+        spsc_fsm<RealTable, typename config<RealTable, Policies...>::in_ports_type,
+                 typename config<RealTable, Policies...>::out_ports_type,
+                 typename config<RealTable, Policies...>::registers_type,
+                 typename config<RealTable, Policies...>::services_type, config<RealTable, Policies...>::queue_capacity,
+                 typename config<RealTable, Policies...>::initial_state_type,
+                 config<RealTable, Policies...>::deferred_capacity>;
+
+  public:
+    using base_type::base_type;
+};
+
+template <typename Table, typename... Policies>
+using make_spsc_fsm = spsc_fsm<config<Table, Policies...>>;
+
+}  // namespace fsm
+
+// --- End: detail/spsc_policy_adapter.hpp ---
 )raw_fsm_runtime";
         }
     }

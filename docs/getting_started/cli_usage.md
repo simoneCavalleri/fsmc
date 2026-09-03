@@ -46,7 +46,11 @@ fsmc --export-runtime <directory> [--std 17|20]
 #### Safety, Verification and Compliance
 | Flag | Description | Default |
 | :--- | :--- | :--- |
+| `verify <file>` | Standalone sub-command to run formal verification, deadlocks, invariants, and LTL/CTL checks. | - |
 | `--verify, --check` | Run formal model checker (livelock, choice completeness, EFSM interval analysis, reachability) and exit. | `false` |
+| `--engine <auto\|nuxmv>` | Verification engine to use for model checking (`auto` or `nuxmv`). | `auto` |
+| `--ltl "<formula>"` | Injects an ad-hoc Linear Temporal Logic property for verification. | `""` |
+| `--ctl "<formula>"` | Injects an ad-hoc Computation Tree Logic property for verification. | `""` |
 | `-Werror` | Treat all compiler diagnostics and middle-end warnings as fatal errors. | `false` |
 | `--strict-determinism` | Fail compilation on non-deterministic branch collisions or unprioritized triggers. | `false` |
 | `--check-races` | Perform static data-race analysis across parallel orthogonal regions. | `false` |

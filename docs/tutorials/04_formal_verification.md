@@ -108,3 +108,10 @@ Run `fsmc --req-audit --rtm-output audit_report.md` to produce a complete requir
 ## Next Steps
 
 Now that your state machine is formally proven, let's learn how to **compile it and integrate it into your application** safely in **[Tutorial 5: Code Generation & Build Integration](05_code_generation_and_integration.md)**.
+
+---
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--fsmc-border);">
+    <a href="03_hierarchical_hfsm.md" style="font-weight: 600; color: var(--fsmc-primary);">← Tutorial 3: HFSM & History</a>
+    <a href="05_code_generation_and_integration.md" style="font-weight: 600; color: var(--fsmc-primary);">Tutorial 5: Codegen & Integration →</a>
+</div>

@@ -265,7 +265,6 @@ class EFSMIntervalAnalyzer {
         return findings;
     }
 
-  private:
     static std::string strip_qualifier(const std::string& name) {
         auto pos = name.rfind('.');
         if (pos != std::string::npos) {
@@ -283,35 +282,117 @@ class EFSMIntervalAnalyzer {
         return s;
     }
 
-    static std::optional<Interval> parse_guard_domain(const std::string& expr, const std::string& var_name) {
-        // Match: [in.|reg.|out.]?var > c, >= c, < c, <= c, == c
-        std::string var_pattern = R"((?:(?:in|reg|out|cmd|event|payload)\.)?)" + var_name;
-        std::regex gt_re(var_pattern + R"(\s*>\s*([+-]?\d+(?:\.\d+)?[fFuUlL]*))");
-        std::regex gte_re(var_pattern + R"(\s*>=\s*([+-]?\d+(?:\.\d+)?[fFuUlL]*))");
-        std::regex lt_re(var_pattern + R"(\s*<\s*([+-]?\d+(?:\.\d+)?[fFuUlL]*))");
-        std::regex lte_re(var_pattern + R"(\s*<=\s*([+-]?\d+(?:\.\d+)?[fFuUlL]*))");
-        std::regex eq_re(var_pattern + R"(\s*==\s*([+-]?\d+(?:\.\d+)?[fFuUlL]*))");
+    static std::optional<Interval> parse_guard_domain(std::string_view expr, std::string_view var_name) {
+        // Scan for var_name in expr, optionally preceded by in., reg., out., cmd., event., payload.
+        size_t pos = 0;
+        while (pos < expr.size()) {
+            size_t found = expr.find(var_name, pos);
+            if (found == std::string_view::npos) {
+                return std::nullopt;
+            }
 
-        std::smatch match;
-        if (std::regex_search(expr, match, gte_re)) {
-            double c = std::stod(clean_number_literal(match[1].str()));
-            return Interval(c, std::numeric_limits<double>::infinity());
-        }
-        if (std::regex_search(expr, match, gt_re)) {
-            double c = std::stod(clean_number_literal(match[1].str()));
-            return Interval(c + 1e-6, std::numeric_limits<double>::infinity());
-        }
-        if (std::regex_search(expr, match, lte_re)) {
-            double c = std::stod(clean_number_literal(match[1].str()));
-            return Interval(-std::numeric_limits<double>::infinity(), c);
-        }
-        if (std::regex_search(expr, match, lt_re)) {
-            double c = std::stod(clean_number_literal(match[1].str()));
-            return Interval(-std::numeric_limits<double>::infinity(), c - 1e-6);
-        }
-        if (std::regex_search(expr, match, eq_re)) {
-            double c = std::stod(clean_number_literal(match[1].str()));
-            return Interval(c, c);
+            // Verify prefix: either at start, or preceded by '.', whitespace, or non-alnum
+            bool prefix_ok = false;
+            if (found == 0) {
+                prefix_ok = true;
+            } else {
+                char before = expr[found - 1];
+                if (before == '.') {
+                    // Check if qualifier is in/reg/out/cmd/event/payload
+                    std::string_view prefix_str = expr.substr(0, found - 1);
+                    auto last_delim = prefix_str.find_last_of(" \t\r\n(");
+                    std::string_view qual =
+                        (last_delim == std::string_view::npos) ? prefix_str : prefix_str.substr(last_delim + 1);
+                    if (qual == "in" || qual == "reg" || qual == "out" || qual == "cmd" || qual == "event" ||
+                        qual == "payload") {
+                        prefix_ok = true;
+                    }
+                } else if (!std::isalnum(static_cast<unsigned char>(before)) && before != '_') {
+                    prefix_ok = true;
+                }
+            }
+
+            // Verify suffix: character after var_name must not be alnum or '_'
+            size_t after_var = found + var_name.size();
+            bool suffix_ok = false;
+            if (after_var >= expr.size()) {
+                suffix_ok = true;
+            } else {
+                char after = expr[after_var];
+                if (!std::isalnum(static_cast<unsigned char>(after)) && after != '_') {
+                    suffix_ok = true;
+                }
+            }
+
+            if (prefix_ok && suffix_ok) {
+                // Found matching variable! Look for relational operator following var_name
+                std::string_view rem = expr.substr(after_var);
+                while (!rem.empty() && (rem.front() == ' ' || rem.front() == '\t')) {
+                    rem.remove_prefix(1);
+                }
+
+                enum class Op { Gte, Gt, Lte, Lt, Eq, Unknown };
+                Op op = Op::Unknown;
+                if (rem.size() >= 2 && rem[0] == '>' && rem[1] == '=') {
+                    op = Op::Gte;
+                    rem.remove_prefix(2);
+                } else if (!rem.empty() && rem[0] == '>') {
+                    op = Op::Gt;
+                    rem.remove_prefix(1);
+                } else if (rem.size() >= 2 && rem[0] == '<' && rem[1] == '=') {
+                    op = Op::Lte;
+                    rem.remove_prefix(2);
+                } else if (!rem.empty() && rem[0] == '<') {
+                    op = Op::Lt;
+                    rem.remove_prefix(1);
+                } else if (rem.size() >= 2 && rem[0] == '=' && rem[1] == '=') {
+                    op = Op::Eq;
+                    rem.remove_prefix(2);
+                }
+
+                if (op != Op::Unknown) {
+                    while (!rem.empty() && (rem.front() == ' ' || rem.front() == '\t')) {
+                        rem.remove_prefix(1);
+                    }
+                    // Parse number
+                    size_t num_len = 0;
+                    if (!rem.empty() && (rem[0] == '+' || rem[0] == '-')) {
+                        num_len++;
+                    }
+                    bool has_digits = false;
+                    while (num_len < rem.size() &&
+                           (std::isdigit(static_cast<unsigned char>(rem[num_len])) || rem[num_len] == '.')) {
+                        if (std::isdigit(static_cast<unsigned char>(rem[num_len]))) {
+                            has_digits = true;
+                        }
+                        num_len++;
+                    }
+                    if (has_digits) {
+                        std::string num_str(rem.substr(0, num_len));
+                        try {
+                            double c = std::stod(num_str);
+                            switch (op) {
+                                case Op::Gte:
+                                    return Interval(c, std::numeric_limits<double>::infinity());
+                                case Op::Gt:
+                                    return Interval(c + 1e-6, std::numeric_limits<double>::infinity());
+                                case Op::Lte:
+                                    return Interval(-std::numeric_limits<double>::infinity(), c);
+                                case Op::Lt:
+                                    return Interval(-std::numeric_limits<double>::infinity(), c - 1e-6);
+                                case Op::Eq:
+                                    return Interval(c, c);
+                                default:
+                                    break;
+                            }
+                        } catch (...) {
+                            return std::nullopt;
+                        }
+                    }
+                }
+            }
+
+            pos = found + 1;
         }
 
         return std::nullopt;
@@ -348,16 +429,17 @@ class EFSMIntervalAnalyzer {
         }
 
         // 3. var += k / var = var + k
-        std::regex add_re(
-            R"((?:(?:in|reg|out)\.)?)" + var +
-            R"(\s*\+\s*([+-]?\d+(?:\.\d+)?[fFuUlL]*)|([+-]?\d+(?:\.\d+)?[fFuUlL]*)\s*\+\s*(?:(?:in|reg|out)\.)?)" +
-            var);
+        static const std::regex add_re(
+            R"((?:(?:in|reg|out)\.)?([a-zA-Z0-9_]+)\s*\+\s*([+-]?\d+(?:\.\d+)?[fFuUlL]*)|([+-]?\d+(?:\.\d+)?[fFuUlL]*)\s*\+\s*(?:(?:in|reg|out)\.)?([a-zA-Z0-9_]+))");
         std::smatch match;
         if (std::regex_search(expr, match, add_re)) {
-            std::string num_str = match[1].matched ? match[1].str() : match[2].str();
-            double k = std::stod(clean_number_literal(num_str));
-            env[var] = env[var].add(k);
-            return;
+            std::string matched_var = match[1].matched ? match[1].str() : match[4].str();
+            if (matched_var == var) {
+                std::string num_str = match[1].matched ? match[2].str() : match[3].str();
+                double k = std::stod(clean_number_literal(num_str));
+                env[var] = env[var].add(k);
+                return;
+            }
         }
 
         // 4. var -= k / var = var - k

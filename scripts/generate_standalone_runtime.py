@@ -20,10 +20,14 @@ CORE_FILES = [
     "traits/dispatch_result.hpp",
     "traits/step_result.hpp",
     "traits/reflection.hpp",
+    "traits/guard_traits.hpp",
+    "traits/action_traits.hpp",
+    "traits/lifecycle_traits.hpp",
     "traits/hook_traits.hpp",
     "traits/observer_traits.hpp",
     "traits/concepts.hpp",
     "type_traits.hpp",
+    "config.hpp",
     "static_vector.hpp",
     "transition.hpp",
     "transition_table.hpp",
@@ -31,6 +35,7 @@ CORE_FILES = [
     "detail/deferred_manager.hpp",
     "detail/transition_executor.hpp",
     "fsm.hpp",
+    "detail/fsm_policy_adapter.hpp",
 ]
 
 THREAD_FILES = [
@@ -40,8 +45,12 @@ THREAD_FILES = [
     "async_event_queue.hpp",
     "detail/reentrancy_tracker.hpp",
     "detail/notification_dispatcher.hpp",
+    "detail/diagnostic_handlers.hpp",
+    "detail/worker_thread_controller.hpp",
     "thread_safe_fsm.hpp",
+    "detail/thread_safe_policy_adapter.hpp",
     "spsc_fsm.hpp",
+    "detail/spsc_policy_adapter.hpp",
 ]
 
 

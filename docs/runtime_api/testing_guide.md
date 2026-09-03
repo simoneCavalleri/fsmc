@@ -182,4 +182,38 @@ TEST(DroneServiceTest, ActionCallsServiceDriver) {
     sm.dispatch(EvStart{}, in, out);
     // Verify hardware mock interaction
 }
+
+---
+
+## 4. Testing Multi-Threaded State Machines (`v0.5.0+`)
+
+When unit testing `fsm::thread_safe_fsm`, remember that direct access via `registers()` is prohibited. Always use `snapshot_registers()` to inspect outcomes deterministically:
+
+```cpp
+#include "fsm/backend/cpp/runtime/thread_safe_fsm.hpp"
+
+TEST(AsyncDroneTest, AsyncDispatchAndSnapshotInspection) {
+    // Arrange using modern policy instantiation:
+    using AsyncDroneFSM = fsm::make_thread_safe_fsm<
+        DroneTable,
+        fsm::with_registers<DroneRegisters>
+    >;
+
+    AsyncDroneFSM async_sm;
+    async_sm.start_worker();
+
+    // Act: post event asynchronously
+    std::future<fsm::dispatch_result> fut = async_sm.post_async(EvStart{});
+    fsm::dispatch_result res = fut.get();
+
+    // Assert
+    EXPECT_TRUE(res.is_success());
+    EXPECT_TRUE(async_sm.is_in_state<Running>());
+
+    // Safe-by-Design datapath inspection (no data races):
+    DroneRegisters snapshot = async_sm.snapshot_registers();
+    EXPECT_EQ(snapshot.start_count, 1u);
+
+    async_sm.stop_worker();
+}
 ```

@@ -138,21 +138,31 @@
     .md-sidebar--primary {
         position: sticky;
         top: 48px;
-        width: 18.5rem !important;
+        width: 20.5rem !important;
         flex-shrink: 0;
         background-color: var(--fsmc-sidebar-bg) !important;
         border-right: 1px solid var(--fsmc-border) !important;
     }
 
+    /* Fix MkDocs Material default padding-right: calc(100% - 11.5rem) that squeezes text into half the sidebar! */
+    .md-sidebar--primary .md-sidebar__inner {
+        padding-right: 0 !important;
+        padding-left: 0 !important;
+        width: 100% !important;
+    }
+
     .md-sidebar--primary .md-sidebar__scrollwrap {
+        width: 100% !important;
+        box-sizing: border-box !important;
         background-color: var(--fsmc-sidebar-bg) !important;
         padding: 1.25rem 0.85rem !important;
     }
 
-    /* Hide redundant root nav title and TOC label on desktop */
+    /* Hide redundant root nav title and TOC label on desktop (fixes duplicate Overview) */
     .md-sidebar--primary .md-nav--primary > .md-nav__title,
     .md-sidebar--primary label.md-nav__link[for="__toc"],
-    .md-sidebar--primary .md-nav__item > label.md-nav__link[for="__toc"] {
+    .md-sidebar--primary .md-nav__item > label.md-nav__link[for="__toc"],
+    label.md-nav__link[for="__toc"] {
         display: none !important;
     }
 }
@@ -176,8 +186,8 @@
     }
 }
 
-/* Shared Chapter Navigation Styling */
-.md-nav__container {
+/* Level 1 Chapter Navigation Container */
+.md-nav--primary > .md-nav__list > .md-nav__item > .md-nav__container {
     display: flex !important;
     align-items: center !important;
     justify-content: space-between !important;
@@ -190,18 +200,18 @@
     border: none !important;
 }
 
-.md-nav__container:hover {
+.md-nav--primary > .md-nav__list > .md-nav__item > .md-nav__container:hover {
     background-color: rgba(2, 132, 199, 0.08) !important;
     color: var(--fsmc-primary) !important;
 }
 
-.md-nav__item--active > .md-nav__container {
+.md-nav--primary > .md-nav__list > .md-nav__item--active > .md-nav__container {
     background-color: var(--fsmc-primary-light) !important;
     color: var(--fsmc-primary-dark) !important;
 }
 
-/* Text link inside container */
-.md-nav__container > a.md-nav__link {
+/* Level 1: Primary text link inside container */
+.md-nav--primary > .md-nav__list > .md-nav__item > .md-nav__container > a.md-nav__link {
     flex: 1 1 auto !important;
     display: flex !important;
     align-items: center !important;
@@ -213,8 +223,8 @@
     background: transparent !important;
 }
 
-/* Expansion chevron label inside container */
-.md-nav__container > label.md-nav__link {
+/* Level 1: Expansion chevron label inside container */
+.md-nav--primary > .md-nav__list > .md-nav__item > .md-nav__container > label.md-nav__link {
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -226,11 +236,11 @@
     height: 100% !important;
 }
 
-.md-nav__container > label.md-nav__link:hover {
+.md-nav--primary > .md-nav__list > .md-nav__item > .md-nav__container > label.md-nav__link:hover {
     color: var(--fsmc-primary) !important;
 }
 
-/* Expansion chevron icon centering & rotation */
+/* Universal chevron icon centering & rotation */
 .md-nav__icon.md-icon {
     display: inline-flex !important;
     align-items: center !important;
@@ -244,17 +254,20 @@
     transition: transform 0.2s ease !important;
 }
 
-.md-nav__item--active > .md-nav__container > label.md-nav__link .md-icon {
-    transform: rotate(90deg);
-}
-
 .md-nav__icon.md-icon svg {
     display: block;
     height: 0.95rem;
     width: 0.95rem;
 }
 
-/* Standalone Top-Level Chapter Links (e.g., Overview, Playground) */
+/* Rotate chevron when category or chapter is expanded */
+.md-nav__item--nested > .md-nav__toggle:checked ~ .md-nav__container label.md-nav__link .md-icon,
+.md-nav__item--nested > .md-nav__toggle:checked ~ label.md-nav__link .md-icon,
+.md-nav__item--active > .md-nav__container > label.md-nav__link .md-icon {
+    transform: rotate(90deg) !important;
+}
+
+/* Level 1: Standalone Top-Level Chapter Links (e.g., Overview) */
 .md-nav > .md-nav__list > .md-nav__item > a.md-nav__link {
     display: flex !important;
     align-items: center !important;
@@ -278,39 +291,140 @@
     background-color: var(--fsmc-primary-light) !important;
 }
 
-/* Subpages Container Under Expanded Chapter */
-.md-nav__list .md-nav__list {
-    border-left: 2px solid var(--fsmc-border);
-    margin-left: 0.85rem;
-    padding-left: 0.5rem;
-    margin-top: 0.2rem;
-    margin-bottom: 0.4rem;
+/* Level 1: Pure Collapsible Chapter Labels (e.g., Technical Reference, Architecture) */
+.md-nav > .md-nav__list > .md-nav__item > label.md-nav__link:not([for="__toc"]) {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    font-size: 0.88rem !important;
+    font-weight: 600 !important;
+    color: var(--fsmc-text) !important;
+    padding: 0.5rem 0.75rem !important;
+    border-radius: 6px !important;
+    margin: 0.15rem 0 !important;
+    cursor: pointer !important;
+    transition: all 0.15s ease;
+    white-space: normal !important;
+    line-height: 1.35 !important;
 }
 
-/* Subpage Links */
-.md-nav__list .md-nav__list .md-nav__link {
-    font-size: 0.83rem !important;
+.md-nav > .md-nav__list > .md-nav__item > label.md-nav__link:not([for="__toc"]):hover {
+    color: var(--fsmc-primary) !important;
+    background-color: rgba(2, 132, 199, 0.08) !important;
+}
+
+.md-nav > .md-nav__list > .md-nav__item--active > label.md-nav__link:not([for="__toc"]) {
+    color: var(--fsmc-primary-dark) !important;
+    font-weight: 700 !important;
+    background-color: var(--fsmc-primary-light) !important;
+}
+
+/* Level 2 Sub-category Headings (e.g. MODELING LANGUAGES, FORMAL VERIFICATION, EXECUTION ENGINES) */
+.md-nav__list .md-nav__list > .md-nav__item > label.md-nav__link:not([for="__toc"]),
+.md-nav__list .md-nav__list > .md-nav__item > .md-nav__container,
+.md-nav__list .md-nav__list > .md-nav__item > .md-nav__container > a.md-nav__link {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    font-size: 0.73rem !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.06em !important;
+    color: var(--fsmc-text-muted) !important;
+    cursor: pointer !important;
+    transition: color 0.15s ease;
+    border: none !important;
+    background: transparent !important;
+    white-space: normal !important;
+    line-height: 1.35 !important;
+}
+
+.md-nav__list .md-nav__list > .md-nav__item > label.md-nav__link:not([for="__toc"]),
+.md-nav__list .md-nav__list > .md-nav__item > .md-nav__container {
+    padding: 0.45rem 0.5rem 0.2rem 0.65rem !important;
+    margin: 0.35rem 0 0.1rem 0 !important;
+}
+
+.md-nav__list .md-nav__list > .md-nav__item > .md-nav__container > a.md-nav__link {
+    padding: 0 !important;
+    flex: 1 1 auto !important;
+}
+
+.md-nav__list .md-nav__list > .md-nav__item > label.md-nav__link:not([for="__toc"]):hover,
+.md-nav__list .md-nav__list > .md-nav__item > .md-nav__container:hover,
+.md-nav__list .md-nav__list > .md-nav__item > .md-nav__container:hover > a.md-nav__link {
+    color: var(--fsmc-primary) !important;
+    background: transparent !important;
+}
+
+.md-nav__list .md-nav__list > .md-nav__item--active > label.md-nav__link:not([for="__toc"]),
+.md-nav__list .md-nav__list > .md-nav__item--active > .md-nav__container,
+.md-nav__list .md-nav__list > .md-nav__item--active > .md-nav__container > a.md-nav__link {
+    color: var(--fsmc-primary) !important;
+    background: transparent !important;
+    border: none !important;
+}
+
+/* Subpages Container Guideline Tracks */
+.md-nav__list .md-nav__list {
+    border-left: 1.5px solid var(--fsmc-border);
+    margin-left: 0.85rem;
+    padding-left: 0.4rem;
+    margin-top: 0.15rem;
+    margin-bottom: 0.35rem;
+}
+
+/* Third-level Nested Guideline Track (inside sub-categories) */
+.md-nav__list .md-nav__list .md-nav__list {
+    border-left: 1.5px solid var(--fsmc-border);
+    margin-left: 0.75rem;
+    padding-left: 0.4rem;
+    margin-top: 0.1rem;
+    margin-bottom: 0.25rem;
+}
+
+/* Subpage Leaf Links (Level 2 Direct & Level 3 Articles) */
+.md-nav__list .md-nav__list a.md-nav__link {
+    font-size: 0.82rem !important;
     font-weight: 400 !important;
     color: var(--fsmc-text-secondary) !important;
     padding: 0.35rem 0.65rem !important;
-    border-radius: 5px;
+    border-radius: 4px;
     margin: 0.08rem 0;
     transition: all 0.15s ease;
+    white-space: normal !important;
+    line-height: 1.35 !important;
 }
 
-.md-nav__list .md-nav__list .md-nav__link:hover {
+.md-nav__list .md-nav__list a.md-nav__link:hover {
     color: var(--fsmc-primary) !important;
-    background-color: rgba(2, 132, 199, 0.08);
+    background-color: rgba(2, 132, 199, 0.08) !important;
 }
 
-/* Active Subpage Highlight */
-.md-nav__list .md-nav__list .md-nav__item--active > .md-nav__link {
+/* Active Leaf Page Highlight (ONLY on the open article, never on parent categories) */
+.md-sidebar--primary a.md-nav__link--active {
     color: var(--fsmc-primary-dark) !important;
     font-weight: 600 !important;
     background-color: var(--fsmc-primary-hover) !important;
     border-left: 3px solid var(--fsmc-primary) !important;
-    border-radius: 0 5px 5px 0 !important;
+    border-radius: 0 4px 4px 0 !important;
     padding-left: calc(0.65rem - 3px) !important;
+}
+
+/* Allow graceful text wrapping for all nav links in sidebar */
+.md-sidebar--primary .md-ellipsis {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+    display: inline !important;
+    line-height: 1.35 !important;
+    word-break: normal !important;
+}
+
+.md-sidebar--primary .md-nav__link {
+    white-space: normal !important;
+    line-height: 1.35 !important;
+    height: auto !important;
 }
 
 /* --------------------------------------------------------------------------
@@ -610,67 +724,26 @@ kbd {
 }
 
 /* ==========================================================================
-   Modern Right-Hand Table of Contents (TOC) & Sidebar Navigation
+   Eliminate Right-Hand Table of Contents (TOC) to Maximize Content Area
    ========================================================================== */
-@media screen and (min-width: 60em) {
-    .md-sidebar--secondary {
-        padding-top: 1.25rem;
+.md-sidebar--secondary {
+    display: none !important;
+}
+
+@media screen and (min-width: 76.25em) {
+    .md-grid {
+        max-width: 86rem !important;
     }
 
-    /* TOC Container & Title */
-    .md-sidebar--secondary .md-nav__title {
-        font-size: 0.78rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: var(--fsmc-text-muted);
-        margin-bottom: 0.5rem;
-        padding-left: 0.6rem;
+    .md-content {
+        flex-grow: 1 !important;
+        min-width: 0 !important;
     }
 
-    /* Hide mobile drawer back arrow on desktop */
-    .md-sidebar--secondary .md-nav__title .md-nav__icon {
-        display: none !important;
-    }
-
-
-    /* Base TOC link */
-    .md-sidebar--secondary .md-nav__link {
-        font-size: 0.78rem;
-        line-height: 1.45;
-        padding: 0.28rem 0.6rem;
-        border-radius: 4px;
-        color: var(--fsmc-text-muted);
-        transition: all 0.15s ease-in-out;
-        display: block;
-        border-left: 2px solid transparent;
-    }
-
-    .md-sidebar--secondary .md-nav__link:hover {
-        color: var(--fsmc-primary);
-        background-color: var(--fsmc-code-bg);
-    }
-
-    /* Active TOC Link */
-    .md-sidebar--secondary .md-nav__link--active,
-    .md-sidebar--secondary .md-nav__item--active > .md-nav__link {
-        color: var(--fsmc-primary) !important;
-        font-weight: 600;
-        background-color: rgba(37, 99, 235, 0.06);
-        border-left: 2px solid var(--fsmc-primary) !important;
-        padding-left: 0.6rem;
-    }
-
-    /* Nested Sub-headings (H3 / H4) */
-    .md-sidebar--secondary .md-nav__list .md-nav__list {
-        padding-left: 0.6rem;
-        margin-left: 0.4rem;
-        border-left: 1px solid var(--fsmc-border);
-    }
-
-    .md-sidebar--secondary .md-nav__list .md-nav__list .md-nav__link {
-        font-size: 0.74rem;
-        padding: 0.22rem 0.5rem;
+    .md-content__inner {
+        max-width: 100% !important;
+        margin-right: 2.5rem !important;
+        margin-left: 2rem !important;
     }
 }
 

@@ -165,7 +165,7 @@ Here is the complete application code implementing the control loop, hardware se
 #include <chrono>
 #include <thread>
 #include <cassert>
-#include "generated/flight_controller.hpp"
+#include "flight_controller_fsm.hpp"
 
 using namespace uav::fsm;
 using namespace std::chrono_literals;
@@ -253,3 +253,10 @@ int main() {
 2. **Mathematical Verification Before Deployment**: Formal model checkers guarantee the absence of deadlocks, unreachable states, and safety invariant violations before a single line of C++ is compiled.
 3. **Zero-Heap Determinism**: The generated C++ state machine executes entirely on the stack with $O(1)$ dispatch time, making it suitable for DO-178C / ISO 26262 safety-critical avionics.
 4. **Seamless History Restoration**: Shallow History `[H]` allows complex hierarchical navigation states to be paused and resumed without custom state-tracking boilerplate.
+
+---
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--fsmc-border);">
+    <a href="05_code_generation_and_integration.md" style="font-weight: 600; color: var(--fsmc-primary);">← Tutorial 5: Codegen & Integration</a>
+    <a href="index.md" style="font-weight: 600; color: var(--fsmc-text-muted);">Tutorials Overview →</a>
+</div>

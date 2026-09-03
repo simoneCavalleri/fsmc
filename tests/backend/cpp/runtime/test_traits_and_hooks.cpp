@@ -610,4 +610,27 @@ TEST(TraitsAndHooksTest, ConceptAndScalarSanityCompliance) {
 }
 #endif
 
+/**
+ * @brief Test Intent: Verify type_list_index_of compile-time index computation and termination.
+ *
+ * Scenario:
+ * - Query index of first element (should be 0).
+ * - Query index of intermediate and last elements.
+ * - Query index of type not present in list (should return static_cast<std::size_t>(-1)).
+ */
+TEST(TraitsAndHooksTest, TypeListIndexOfCompileTimeLookup) {
+    using MyList = fsm::type_list<int, double, char, void*>;
+    static_assert(fsm::type_list_index_of_v<int, MyList> == 0);
+    static_assert(fsm::type_list_index_of_v<double, MyList> == 1);
+    static_assert(fsm::type_list_index_of_v<char, MyList> == 2);
+    static_assert(fsm::type_list_index_of_v<void*, MyList> == 3);
+    static_assert(fsm::type_list_index_of_v<float, MyList> == static_cast<std::size_t>(-1));
+
+    EXPECT_EQ((fsm::type_list_index_of_v<int, MyList>), 0u);
+    EXPECT_EQ((fsm::type_list_index_of_v<double, MyList>), 1u);
+    EXPECT_EQ((fsm::type_list_index_of_v<char, MyList>), 2u);
+    EXPECT_EQ((fsm::type_list_index_of_v<void*, MyList>), 3u);
+    EXPECT_EQ((fsm::type_list_index_of_v<float, MyList>), static_cast<std::size_t>(-1));
+}
+
 }  // namespace

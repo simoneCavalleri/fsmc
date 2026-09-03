@@ -4,6 +4,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "fsm/backend/cpp/runtime/config.hpp"
 #include "fsm/backend/cpp/runtime/detail/deferred_manager.hpp"
 #include "fsm/backend/cpp/runtime/detail/history_manager.hpp"
 #include "fsm/backend/cpp/runtime/detail/transition_executor.hpp"
@@ -169,34 +170,24 @@ class fsm {
         return step(in, out, srv);
     }
 
-    step_result step(const in_ports_type& in, out_ports_type& out) {
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        return step(in, out, srv);
-    }
+    step_result step(const in_ports_type& in, out_ports_type& out) { return step(in, out, resolve_services()); }
 
     template <typename DurationRep>
     step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out) {
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        return step(dt, in, out, srv);
+        return step(dt, in, out, resolve_services());
     }
 
     step_result step() {
         in_ports_type dummy_in{};
         out_ports_type dummy_out{};
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        return step(dummy_in, dummy_out, srv);
+        return step(dummy_in, dummy_out);
     }
 
     template <typename DurationRep>
     step_result step(DurationRep dt) {
         in_ports_type dummy_in{};
         out_ports_type dummy_out{};
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        return step(dt, dummy_in, dummy_out, srv);
+        return step(dt, dummy_in, dummy_out);
     }
 
     template <typename Event>
@@ -250,18 +241,14 @@ class fsm {
 
     template <typename Event>
     dispatch_result dispatch(const Event& event, const in_ports_type& in, out_ports_type& out) {
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        return dispatch(event, in, out, srv);
+        return dispatch(event, in, out, resolve_services());
     }
 
     template <typename Event>
     dispatch_result dispatch(const Event& event) {
         in_ports_type dummy_in{};
         out_ports_type dummy_out{};
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        return dispatch(event, dummy_in, dummy_out, srv);
+        return dispatch(event, dummy_in, dummy_out);
     }
 
     template <typename Event>
@@ -284,9 +271,7 @@ class fsm {
     dispatch_result dispatch_direct(const Event& event) {
         in_ports_type dummy_in{};
         out_ports_type dummy_out{};
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        return dispatch_direct_ports(event, dummy_in, dummy_out, srv);
+        return dispatch_direct_ports(event, dummy_in, dummy_out, resolve_services());
     }
 
     // Deferred events management
@@ -299,9 +284,7 @@ class fsm {
     void process_deferred_queue() {
         in_ports_type dummy_in{};
         out_ports_type dummy_out{};
-        services_type dummy_srv{};
-        services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-        process_deferred_queue_ports(dummy_in, dummy_out, srv);
+        process_deferred_queue_ports(dummy_in, dummy_out, resolve_services());
     }
 
     template <bool D = has_deferred>
@@ -413,13 +396,23 @@ class fsm {
     }
 
   private:
+    [[nodiscard]] services_type& resolve_services() const {
+        if (services_ != nullptr) {
+            return *services_;
+        }
+        if constexpr (std::is_default_constructible_v<services_type>) {
+            static services_type dummy{};
+            return dummy;
+        } else {
+            std::terminate();
+        }
+    }
+
     void enter_initial_state() {
         if (auto* state = std::get_if<initial_state_type>(&current_state_)) {
             in_ports_type dummy_in{};
             out_ports_type dummy_out{};
-            services_type dummy_srv{};
-            services_type& srv = (services_ != nullptr) ? *services_ : dummy_srv;
-            call_on_enter(*state, dummy_in, dummy_out, registers_, srv);
+            call_on_enter(*state, dummy_in, dummy_out, registers_, resolve_services());
         }
     }
 
@@ -439,3 +432,5 @@ using dynamic_fsm =
     fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, dynamic_observer, DeferredCapacity>;
 
 }  // namespace fsm
+
+#include "fsm/backend/cpp/runtime/detail/fsm_policy_adapter.hpp"

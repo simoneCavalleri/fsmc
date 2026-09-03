@@ -1,8 +1,21 @@
-# Runtime C++ API Guide
+# Target Backends & Execution Runtimes
 
-`fsmc` provides a modern, header-only, **100% zero-heap, zero-vtable, and zero-exception** C++17/C++20 runtime library located in [`include/fsm/backend/cpp/runtime/`](file:///home/simone/dev/github/fsmc/include/fsm/backend/cpp/runtime/).
+The `fsmc` compiler translates state machine models into deterministic, formally verified execution runtimes across multiple target programming languages.
 
-It can be generated as a self-contained single-header state machine (`--standalone`) with **zero external dependencies**, making it immediately embeddable into bare-metal microcontrollers, hard real-time RTOS firmware, and high-performance desktop applications.
+The **C++ Reference Backend** (`v0.5.0+`) provides a header-only, **100% zero-heap, zero-vtable, and zero-exception** C++17/C++20 runtime library located in [`include/fsm/backend/cpp/runtime/`](file:///home/simone/dev/github/fsmc/include/fsm/backend/cpp/runtime/). For planned Rust (`no_std`) and ISO C99 / MISRA-C code generators, see the **[Multi-Target Architecture & Roadmap](multi_target_roadmap.md)**.
+
+---
+
+## Language Support Matrix
+
+| Target Language | Minimum Standard | Concurrency Models | Safety & Certifications | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **C++ Target** | C++17 / C++20 | Synchronous stack, Lock-Free SPSC, Active Object | Zero-Heap, Hard Real-Time | **Production (v0.5.0+)** |
+| **Rust Target** | Rust 2021 (`no_std`) | Typestate transitions, lock-free static channels | Compile-time memory safety, zero panic | **Preview / In Development** |
+| **C Target** | ISO C99 / C11 | Static transition table, switch-case dispatch | MISRA-C:2012, DO-178C DAL-A, zero malloc | **Preview / Planned RFC** |
+
+> [!NOTE]
+> **Production vs. Preview**: The **C++ Backend** is the only production-ready target in `v0.5.0`. Rust and C code generation are preview targets currently being designed and implemented.
 
 ---
 
@@ -51,24 +64,32 @@ int main() {
 
 ## Choose Your Execution Engine
 
-`fsmc` provides three specialized execution engines sharing the exact same statechart logic:
+`fsmc` provides three specialized execution engines sharing the exact same transition table logic:
 
 ```mermaid
 flowchart TD
-    Start["Select Concurrency Model"] --> Q1{"Asynchronous Queue Needed?"}
+    Start["System Architecture Requirements"] --> Q1{"Do you need an asynchronous event queue?"}
     
-    Q1 -->|No| Sync["1. fsm::fsm (Synchronous)<br/>Direct stack execution<br/>Zero threading overhead"]
-    Q1 -->|Yes| Q2{"Producer Source?"}
+    Q1 -->|No: Hard Real-Time / Single Thread| Sync["1. fsm::fsm (Synchronous Engine)<br/>• Hard real-time control loops<br/>• Direct caller stack execution<br/>• 0 bytes heap, 0 mutexes, O(1) WCET"]
+    Q1 -->|Yes: Asynchronous Ingress| Q2{"Are events posted from Hardware ISRs / DMA?"}
     
-    Q2 -->|ISR or Single Thread| SPSC["2. fsm::spsc_fsm (Lock-Free SPSC)<br/>Wait-free ring buffer<br/>ISR-safe seqlock"]
-    Q2 -->|Multi-Threaded| MPSC["3. fsm::thread_safe_fsm (Active Object)<br/>Worker thread with queue<br/>Futures & timed delays"]
+    Q2 -->|Yes: ISR / Bare-Metal RTOS| SPSC["2. fsm::spsc_fsm (Lock-Free SPSC Engine)<br/>• Single-Producer Single-Consumer<br/>• Wait-free ring buffer (no locks)<br/>• Atomic seqlock for telemetry"]
+    Q2 -->|No: Multi-Threaded Application| MPSC["3. fsm::thread_safe_fsm (Active Object Engine)<br/>• Multi-Producer Single-Consumer<br/>• Dedicated background worker thread<br/>• std::future & std::chrono physical timers"]
 ```
 
-| Engine | Concurrency Model | Target Environment | Dedicated Guide |
+### Comprehensive Engine Comparison Matrix
+
+| Architectural Dimension | Synchronous Engine (`fsm::fsm`) | Lock-Free Engine (`fsm::spsc_fsm`) | Active Object Engine (`fsm::thread_safe_fsm`) |
 | :--- | :--- | :--- | :--- |
-| **[`fsm::fsm`](synchronous_fsm.md)** | Synchronous (Caller Thread) | Bare-metal, sampled control loops, deterministic statecharts | [Synchronous Core Guide →](synchronous_fsm.md) |
-| **[`fsm::spsc_fsm`](spsc_fsm.md)** | Single-Producer Single-Consumer | Hardware ISRs, DMA callbacks, lock-free RTOS tasks | [Lock-Free SPSC Guide →](spsc_fsm.md) |
-| **[`fsm::thread_safe_fsm`](thread_safe_fsm.md)** | Multi-Producer Single-Consumer | Multi-threaded services, network daemons, UI event loops | [Thread-Safe MPSC Guide →](thread_safe_fsm.md) |
+| **Modern Factory Alias** | `fsm::make_fsm<Table, Policies...>` | `fsm::make_spsc_fsm<Table, Policies...>` | `fsm::make_thread_safe_fsm<Table, Policies...>` |
+| **Concurrency Model** | Single-threaded (runs on caller's stack) | Single-Producer Single-Consumer (Lock-Free) | Multi-Producer Single-Consumer (Active Object) |
+| **Heap Allocation** | **0 bytes** (100% stack / static) | **0 bytes** (pre-allocated static ring buffer) | **0 bytes** core (std::function queue tasks) |
+| **Synchronization Overhead** | **Zero** (no atomics, no mutexes) | **Wait-free $O(1)$** ingest (atomic acquire-release) | **Mutex-guarded** queue & condition variable |
+| **ISR Safety** | Safe if called within ISR context | **Guaranteed Wait-Free ISR Ingress** | Unsafe from ISRs (uses `std::mutex`) |
+| **Timed Event Scheduling** | Discrete cycle step (`step(dt)`) | Discrete cycle step (`step(dt)`) | **Physical timers** (`post_delayed`, `post_state_timeout`) |
+| **Datapath Access Pattern** | Direct `registers()` | Lock-Free `snapshot_registers()` via seqlock | Safe-by-Design `with_registers()` / `snapshot_registers()` |
+| **Target Platforms** | Bare-metal, DSP, FPGA soft-cores, RTOS | Microcontroller ISRs, DMA handlers, RTOS tasks | Linux, Windows, macOS, ROS2 nodes, network daemons |
+| **Dedicated Guide** | [Synchronous Core Guide →](synchronous_fsm.md) | [Lock-Free SPSC Guide →](spsc_fsm.md) | [Thread-Safe MPSC Guide →](thread_safe_fsm.md) |
 
 ---
 

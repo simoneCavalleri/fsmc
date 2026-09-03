@@ -121,10 +121,11 @@ TEST(TimedTransitionsTest, AsyncPostDelayedPriorityChronologicalOrder) {
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
 
-    ASSERT_EQ(async_sm.registers().log.size(), 3U);
-    EXPECT_EQ(async_sm.registers().log[0], "A->B");
-    EXPECT_EQ(async_sm.registers().log[1], "B->C");
-    EXPECT_EQ(async_sm.registers().log[2], "C->D");
+    auto snap = async_sm.snapshot_registers();
+    ASSERT_EQ(snap.log.size(), 3U);
+    EXPECT_EQ(snap.log[0], "A->B");
+    EXPECT_EQ(snap.log[1], "B->C");
+    EXPECT_EQ(snap.log[2], "C->D");
 
     async_sm.stop_worker();
 }
@@ -182,7 +183,7 @@ void ActionFinal::operator()(const Step2& /*evt*/, StateB& /*src*/, StateC& /*ds
 TEST(TimedTransitionsTest, AsyncReentrantActionSelfPost) {
     ReentrantRegisters reg;
     ReentrantActionSm async_sm(reg);
-    async_sm.registers().sm_ptr = &async_sm;
+    async_sm.with_registers([&](auto& r) { r.sm_ptr = &async_sm; });
 
     async_sm.start_worker();
 
@@ -194,8 +195,9 @@ TEST(TimedTransitionsTest, AsyncReentrantActionSelfPost) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    EXPECT_TRUE(async_sm.registers().self_post_executed);
-    EXPECT_TRUE(async_sm.registers().final_executed);
+    auto reentrant_snap = async_sm.snapshot_registers();
+    EXPECT_TRUE(reentrant_snap.self_post_executed);
+    EXPECT_TRUE(reentrant_snap.final_executed);
     EXPECT_TRUE(async_sm.is_in_state<StateC>());
 
     async_sm.stop_worker();
@@ -243,9 +245,14 @@ TEST(TimedTransitionsTest, SampledDiscreteInStateResidenceGuard) {
 }
 
 /**
- * @brief Test Intent: Verify that post_delayed invalidates stale timeouts when state changes before deadline.
+ * @brief Test Intent: Verify delayed timed event cancellation upon mid-flight state transitions.
+ *
+ * Scenario:
+ * - Post delayed state timeout for StateA -> StateB.
+ * - Manually trigger an immediate external transition before the timer fires.
+ * - Verify that when the timer expires, the obsolete callback is safely discarded without effect.
  */
-TEST(TimedTransitionsTest, AsyncTimeoutInvalidationOnStateChange) {
+TEST(TimedTransitionsTest, StaleTimerCancellationOnStateChange) {
     OrderRegisters reg;
     fsm::thread_safe_fsm<OrderTable, fsm::no_ports, fsm::no_ports, OrderRegisters> async_sm(reg);
     async_sm.start_worker();
@@ -257,13 +264,13 @@ TEST(TimedTransitionsTest, AsyncTimeoutInvalidationOnStateChange) {
     auto res = async_sm.send(Step1{});
     EXPECT_TRUE(res.is_success());
     EXPECT_TRUE(async_sm.is_in_state<StateB>());
-    EXPECT_EQ(async_sm.registers().log.size(), 1U);
+    EXPECT_EQ(async_sm.snapshot_registers().log.size(), 1U);
 
     // Wait 150ms for the delayed task to fire: since state changed from StateA to StateB,
     // the stale task must be safely discarded without re-triggering or erroring
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
 
-    EXPECT_EQ(async_sm.registers().log.size(), 1U);
+    EXPECT_EQ(async_sm.snapshot_registers().log.size(), 1U);
     EXPECT_TRUE(async_sm.is_in_state<StateB>());
 
     async_sm.stop_worker();

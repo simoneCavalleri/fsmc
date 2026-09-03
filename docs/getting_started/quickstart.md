@@ -97,81 +97,188 @@ Expected output:
 
 ---
 
-## Step 3: Generate the C++ State Machine
+## Step 3: Generate the State Machine
 
-Compile the model into a standalone C++20 header with namespace `avionics` and class name `UavMissionFSM`:
+=== "C++ Target (Production v0.5.0)"
+    Compile the model into a standalone C++20 header with namespace `avionics` and class name `UavMissionFSM`:
+    ```bash
+    fsmc -i uav_mission.sysml -o uav_mission_fsm.hpp --target cpp --std 20 --standalone --namespace avionics --name UavMissionFSM
+    ```
 
-```bash
-fsmc -i uav_mission.sysml -o uav_mission_fsm.hpp --std 20 --standalone --namespace avionics --name UavMissionFSM
-```
+=== "Rust Target (Roadmap Preview)"
+    > [!NOTE]
+    > **Upcoming Target Preview**: Rust code generation is currently in development under the multi-target roadmap. In `v0.5.0`, the C++ target is the active production runtime.
+
+    Compile the model into an idiomatic `#![no_std]` Rust module:
+    ```bash
+    fsmc -i uav_mission.sysml -o uav_mission_fsm.rs --target rust --namespace avionics
+    ```
+
+=== "C Target (MISRA-C Roadmap)"
+    > [!NOTE]
+    > **Upcoming Target Preview**: ISO C99 / MISRA-C code generation is currently in development under the multi-target roadmap. In `v0.5.0`, the C++ target is the active production runtime.
+
+    Compile the model into MISRA-C:2012 compliant C headers and sources:
+    ```bash
+    fsmc -i uav_mission.sysml -o uav_mission_fsm.h --target c --prefix avionics_
+    ```
 
 ---
 
 ## Step 4: Write the Application Code
 
-Create `main.cpp`:
+=== "C++ Target (Production v0.5.0)"
+    Create `main.cpp`:
+    ```cpp
+    #include "uav_mission_fsm.hpp"
+    #include <cassert>
+    #include <iostream>
 
-```cpp
-#include "uav_mission_fsm.hpp"
-#include <cassert>
-#include <iostream>
+    int main() {
+        using namespace avionics;
 
-int main() {
-    using namespace avionics;
+        // 1. Initialize internal registers and state machine
+        UavMissionFSMRegisters reg{0};
+        UavMissionFSM fsm(reg);
 
-    // 1. Initialize internal registers and services
-    UavMissionFSMRegisters reg{0};
-    UavMissionFSMObserver obs;
-    UavMissionFSM fsm(reg);
+        // 2. Setup I/O port structures
+        UavMissionFSMInPorts in;
+        in.batteryLevel = 98.5;
+        in.isGpsLocked = true;
+        UavMissionFSMOutPorts out;
 
-    // 2. Setup I/O port structures
-    UavMissionFSMInPorts in;
-    in.batteryLevel = 98.5;
-    in.isGpsLocked = true;
-    UavMissionFSMOutPorts out;
+        assert(in.validate_contracts());
+        std::cout << "Current State: " << fsm.current_state_name() << "\n";
+        // Output: SensorCalib
 
-    assert(in.validate_contracts());
-    std::cout << "Current State: " << fsm.current_state_name() << "\n";
-    // Output: SensorCalib
+        // 3. Dispatch calibration completion event
+        fsm.dispatch(CalibrationOk{}, in, out);
+        std::cout << "Current State: " << fsm.current_state_name() << "\n";
+        // Output: SystemReady
 
-    // 3. Dispatch calibration completion event
-    fsm.dispatch(CalibrationOk{}, in, out);
-    std::cout << "Current State: " << fsm.current_state_name() << "\n";
-    // Output: SystemReady
+        // 4. Dispatch takeoff command (guard evaluated against in.isGpsLocked)
+        auto result = fsm.dispatch(TakeoffCmd{}, in, out);
+        if (result.is_success()) {
+            std::cout << "Takeoff successful. Current State: " << fsm.current_state_name() << "\n";
+            // Output: WaypointNav
+        }
 
-    // 4. Dispatch takeoff command (guard evaluated against in.isGpsLocked)
-    auto result = fsm.dispatch(TakeoffCmd{}, in, out);
-    if (result.is_success()) {
-        std::cout << "Takeoff successful. Current State: " << fsm.current_state_name() << "\n";
-        // Output: WaypointNav
+        // 5. Simulate battery drop in InPorts and evaluate continuous sampled step
+        in.batteryLevel = 14.2; // Critical level (< 20.0)
+        auto safe_res = fsm.step(in, out);
+        if (safe_res.has_transitioned()) {
+            std::cout << "Emergency fail-safe activated. Transitioned to: " 
+                      << fsm.current_state_name() << "\n";
+            // Output: ReturnToHome
+        }
+
+        return 0;
     }
+    ```
 
-    // 5. Simulate battery drop in InPorts and evaluate continuous sampled step
-    in.batteryLevel = 14.2; // Critical level (< 20.0)
-    auto safe_res = fsm.step(in, out);
-    if (safe_res.has_transitioned()) {
-        std::cout << "Emergency fail-safe activated. Transitioned to: " 
-                  << fsm.current_state_name() << "\n";
-        // Output: ReturnToHome
+=== "Rust Target (Roadmap Preview)"
+    > [!NOTE]
+    > **Upcoming Target Preview**: Preview of planned `#![no_std]` Rust application integration.
+
+    Create `main.rs`:
+    ```rust
+    use avionics::uav_mission_fsm::*;
+
+    fn main() {
+        let mut fsm = UavMissionFsm::new(UavRegisters::default());
+        let mut in_ports = UavInPorts { battery_level: 98.5, is_gps_locked: true };
+        let mut out_ports = UavOutPorts::default();
+
+        println!("Current State: {:?}", fsm.state());
+
+        // 1. Dispatch calibration completion event
+        fsm.dispatch(&Event::CalibrationOk, &in_ports, &mut out_ports);
+        println!("Current State: {:?}", fsm.state());
+
+        // 2. Dispatch takeoff command
+        let res = fsm.dispatch(&Event::TakeoffCmd, &in_ports, &mut out_ports);
+        if res.is_transitioned() {
+            println!("Takeoff successful. Current State: {:?}", fsm.state());
+        }
+
+        // 3. Continuous sampled step (battery drop)
+        in_ports.battery_level = 14.2;
+        let safe_res = fsm.step(&in_ports, &mut out_ports);
+        if safe_res.is_transitioned() {
+            println!("Emergency fail-safe activated. Transitioned to: {:?}", fsm.state());
+        }
     }
+    ```
 
-    return 0;
-}
-```
+=== "C Target (MISRA-C Roadmap)"
+    > [!NOTE]
+    > **Upcoming Target Preview**: Preview of planned ISO C99 MISRA-C application integration.
+
+    Create `main.c`:
+    ```c
+    #include "uav_mission_fsm.h"
+    #include <stdio.h>
+    #include <assert.h>
+
+    int main(void) {
+        avionics_uav_fsm_t fsm;
+        avionics_registers_t reg = {0};
+        avionics_in_ports_t in = {.battery_level = 98.5f, .is_gps_locked = true};
+        avionics_out_ports_t out = {0};
+
+        avionics_uav_fsm_init(&fsm, &reg);
+        printf("Current State: %d\n", fsm.current_state);
+
+        /* 1. Dispatch calibration completion */
+        avionics_uav_fsm_dispatch(&fsm, AVIONICS_EV_CALIB_OK, &in, &out);
+        printf("Current State: %d\n", fsm.current_state);
+
+        /* 2. Dispatch takeoff command */
+        fsm_result_t res = avionics_uav_fsm_dispatch(&fsm, AVIONICS_EV_TAKEOFF, &in, &out);
+        if (res == FSM_TRANSITIONED) {
+            printf("Takeoff successful. Current State: %d\n", fsm.current_state);
+        }
+
+        /* 3. Continuous sampled step (battery drop) */
+        in.battery_level = 14.2f;
+        avionics_uav_fsm_step(&fsm, &in, &out);
+        printf("Emergency fail-safe activated. Transitioned to: %d\n", fsm.current_state);
+
+        return 0;
+    }
+    ```
 
 ---
 
 ## Step 5: Compile and Run
 
-```bash
-g++ -std=c++20 main.cpp -o uav_app -Wall -Wextra -Werror -pedantic
-./uav_app
-```
+=== "C++ Target (Production v0.5.0)"
+    ```bash
+    g++ -std=c++20 main.cpp -o uav_app -Wall -Wextra -Werror -pedantic
+    ./uav_app
+    ```
 
-Output:
-```text
-Current State: SensorCalib
-Current State: SystemReady
-Takeoff successful. Current State: WaypointNav
-Emergency fail-safe activated. Transitioned to: ReturnToHome
-```
+    Output:
+    ```text
+    Current State: SensorCalib
+    Current State: SystemReady
+    Takeoff successful. Current State: WaypointNav
+    Emergency fail-safe activated. Transitioned to: ReturnToHome
+    ```
+
+=== "Rust Target (Roadmap Preview)"
+    > [!NOTE]
+    > **Upcoming Target Preview**: Build command for future Rust target releases.
+
+    ```bash
+    cargo run --release
+    ```
+
+=== "C Target (MISRA-C Roadmap)"
+    > [!NOTE]
+    > **Upcoming Target Preview**: Build command for future C target releases.
+
+    ```bash
+    gcc -std=c99 main.c uav_mission_fsm.c -o uav_app -Wall -Wextra -pedantic
+    ./uav_app
+    ```

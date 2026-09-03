@@ -441,4 +441,53 @@ TEST(FsmCoreTest, DualChannelMachineDualParadigmAndZeroHeap) {
     EXPECT_TRUE(srv.alert_triggered);
 }
 
+// ============================================================================
+// Test: Non-Default-Constructible Services
+// ============================================================================
+
+struct HardwareHandleServices {
+    int bus_id;
+    explicit HardwareHandleServices(int id) : bus_id(id) {}
+    HardwareHandleServices(const HardwareHandleServices&) = delete;
+    HardwareHandleServices& operator=(const HardwareHandleServices&) = delete;
+};
+static_assert(!std::is_default_constructible_v<HardwareHandleServices>);
+
+struct StateS1 {
+    static constexpr std::string_view name = "StateS1";
+};
+struct StateS2 {
+    static constexpr std::string_view name = "StateS2";
+};
+struct SrvEvent {
+    static constexpr std::string_view name = "SrvEvent";
+};
+
+using SrvTable = fsm::transition_table<fsm::transition<StateS1, SrvEvent, StateS2>>;
+
+/**
+ * @brief Test Intent: Verify fsm supports non-default-constructible Services when bound in constructor.
+ *
+ * Scenario:
+ * - Construct an fsm instance passing a non-default-constructible Services object by reference.
+ * - Call step() and dispatch() overloads that omit the srv parameter.
+ * - Verify the runtime dereferences the bound services without stack-allocating a dummy instance.
+ */
+TEST(FsmCoreTest, NonDefaultConstructibleServicesSupport) {
+    HardwareHandleServices srv(42);
+    fsm::no_registers reg;
+    fsm::fsm<SrvTable, fsm::no_ports, fsm::no_ports, fsm::no_registers, HardwareHandleServices> machine(reg, srv);
+
+    EXPECT_TRUE(machine.is_in<StateS1>());
+
+    // Verify step without srv compiles and executes
+    auto step_res = machine.step();
+    EXPECT_TRUE(step_res.is_steady());
+
+    // Verify dispatch without srv compiles and executes
+    auto disp_res = machine.dispatch(SrvEvent{});
+    EXPECT_TRUE(disp_res.is_success());
+    EXPECT_TRUE(machine.is_in<StateS2>());
+}
+
 }  // namespace

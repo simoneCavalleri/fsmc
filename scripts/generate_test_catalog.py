@@ -17,12 +17,15 @@ from pathlib import Path
 
 # Subsystem directory mappings
 SUBSYSTEMS = [
-    ("Core Runtime Subsystem", "tests/core"),
+    ("Core Runtime Subsystem", "tests/backend/cpp/runtime"),
+    ("C++ Backend Codegen Subsystem", "tests/backend/cpp"),
+    ("Diagram & Emitter Backend Subsystem", "tests/backend/diagram"),
+    ("Formal Model Checking & nuXmv Subsystem", "tests/backend/formal"),
+    ("Requirements Traceability (RTM) Subsystem", "tests/backend/rtm"),
+    ("Diagnostic Engine Subsystem", "tests/diagnostic"),
     ("Frontend Parser Subsystem", "tests/frontend"),
     ("Formal IR Subsystem", "tests/ir"),
     ("Middle-End Verification & Transformation Subsystem", "tests/middleend"),
-    ("C++ Backend Codegen Subsystem", "tests/backend/cpp"),
-    ("Diagram & Emitter Backend Subsystem", "tests/backend/emitters"),
     ("Integration & Build Subsystem", "tests/integration"),
     ("System Examples & Workflows", "examples"),
 ]
@@ -69,6 +72,7 @@ def generate_catalog(root_dir: Path) -> str:
     total_files = 0
     total_tests = 0
     all_data = []
+    seen_files = set()
 
     for subsystem_name, subpath in SUBSYSTEMS:
         full_dir = root_dir / subpath
@@ -77,6 +81,10 @@ def generate_catalog(root_dir: Path) -> str:
 
         files_data = []
         for file_path in sorted(full_dir.glob("**/*.cpp")):
+            if file_path in seen_files:
+                continue
+            seen_files.add(file_path)
+
             content = file_path.read_text(encoding="utf-8")
             tests = extract_test_info(content)
             if tests or file_path.name.startswith("test_") or "example" in file_path.name:

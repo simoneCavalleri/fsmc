@@ -15,6 +15,7 @@
 #include "fsm/frontend/formal/cameo_xmi_parser.hpp"
 #include "fsm/frontend/formal/scxml_parser.hpp"
 #include "fsm/frontend/formal/smv_parser.hpp"
+#include "fsm/frontend/formal/stateflow_parser.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 
 namespace fsm::codegen {
@@ -24,6 +25,9 @@ class ParserFactory {
     static std::unique_ptr<IParser> create_by_format(std::string_view format_name) {
         if (format_name == "sysml" || format_name == "sysml2") {
             return std::make_unique<Sysml2Parser>();
+        }
+        if (format_name == "stateflow" || format_name == "sfx" || format_name == "simulink") {
+            return std::make_unique<StateflowParser>();
         }
         if (format_name == "plantuml" || format_name == "puml") {
             return std::make_unique<PlantUmlParser>();
@@ -67,6 +71,9 @@ class ParserFactory {
         if (ext == ".scxml") {
             return std::make_unique<ScxmlParser>();
         }
+        if (ext == ".sfx" || ext == ".stateflow") {
+            return std::make_unique<StateflowParser>();
+        }
         if (ext == ".smv") {
             return std::make_unique<SmvParser>();
         }
@@ -106,6 +113,8 @@ class ParserFactory {
             return "sysml2";
         if (source.find("<scxml") != std::string_view::npos)
             return "scxml";
+        if (source.find("<Stateflow") != std::string_view::npos || source.find("<chart") != std::string_view::npos)
+            return "stateflow";
         if (source.find("MODULE") != std::string_view::npos &&
             (source.find("VAR") != std::string_view::npos || source.find("ASSIGN") != std::string_view::npos ||
              source.find("LTLSPEC") != std::string_view::npos))
@@ -126,15 +135,15 @@ class ParserFactory {
         for (auto& c : f) {
             c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         }
-        if (f == "sysml" || f == "sysml2" || f == "scxml" || f == "cameo" || f == "xmi" || f == "smv" || f == "nusmv" ||
-            f == "nuxmv") {
+        if (f == "sysml" || f == "sysml2" || f == "scxml" || f == "stateflow" || f == "cameo" || f == "xmi" ||
+            f == "smv" || f == "nusmv" || f == "nuxmv") {
             return FrontendKind::Formal;
         }
         return FrontendKind::Diagram;
     }
 
     static std::vector<std::string> supported_formats() {
-        return {"sysml2", "plantuml", "mermaid", "cameo", "scxml", "smv", "json", "dot"};
+        return {"sysml2", "plantuml", "mermaid", "cameo", "scxml", "stateflow", "smv", "json", "dot"};
     }
 };
 

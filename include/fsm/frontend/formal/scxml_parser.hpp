@@ -91,20 +91,34 @@ class ScxmlParser : public IParser {
         // Pass 1: Register all state definitions at this level in document order
         for (const auto& child : parent_node->children) {
             const std::string tag = child->tag;
-            if (tag == "state" || ends_with(tag, ":state") || tag == "parallel") {
+            if (tag == "state" || ends_with(tag, ":state") || tag == "parallel" || ends_with(tag, ":parallel") ||
+                tag == "final" || ends_with(tag, ":final")) {
                 std::string state_id = child->get_attr("id");
                 if (state_id.empty()) {
                     state_id = "State_" + std::to_string(model.states.size() + 1);
                 }
                 const std::string state_name = sanitize_identifier(state_id);
-                model.add_state(state_name, current_parent_state);
+                StateKind kind = StateKind::Atomic;
+                if (tag == "parallel" || ends_with(tag, ":parallel")) {
+                    kind = StateKind::Parallel;
+                } else if (tag == "final" || ends_with(tag, ":final")) {
+                    kind = StateKind::Final;
+                }
+                model.add_state(state_name, current_parent_state, kind);
 
                 std::string sub_initial = child->get_attr("initial");
                 if (!current_parent_state.empty()) {
                     auto* parent = model.find_state_mut(current_parent_state);
                     if (parent != nullptr) {
                         parent->is_composite = true;
-                        if (parent->initial_sub_state.empty()) {
+                        if (parent->kind == StateKind::Parallel) {
+                            OrthogonalRegion reg;
+                            reg.id = state_name;
+                            reg.name = state_name;
+                            reg.initial_state_id = sub_initial.empty() ? state_name : sanitize_identifier(sub_initial);
+                            reg.state_ids.push_back(state_name);
+                            parent->orthogonal_regions.push_back(std::move(reg));
+                        } else if (parent->initial_sub_state.empty()) {
                             parent->initial_sub_state = state_name;
                         }
                     }
@@ -245,7 +259,8 @@ class ScxmlParser : public IParser {
                         curr_state->exit_actions.push_back(std::move(act));
                     }
                 }
-            } else if (tag == "state" || ends_with(tag, ":state") || tag == "parallel") {
+            } else if (tag == "state" || ends_with(tag, ":state") || tag == "parallel" || ends_with(tag, ":parallel") ||
+                       tag == "final" || ends_with(tag, ":final")) {
                 std::string state_id = child->get_attr("id");
                 if (state_id.empty()) {
                     state_id = "State_" + std::to_string(model.states.size() + 1);
@@ -314,7 +329,8 @@ class ScxmlParser : public IParser {
                 if (!loc.empty()) {
                     assignments.push_back({loc, expr});
                 }
-            } else if (child->tag == "send" || child->tag == "raise" || ends_with(child->tag, ":send")) {
+            } else if (child->tag == "send" || child->tag == "raise" || ends_with(child->tag, ":send") ||
+                       ends_with(child->tag, ":raise")) {
                 std::string send_event = child->get_attr("event");
                 if (!send_event.empty()) {
                     action = send_event;

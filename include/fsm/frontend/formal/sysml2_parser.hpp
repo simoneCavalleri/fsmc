@@ -20,7 +20,7 @@ class Sysml2Parser : public IParser {
     [[nodiscard]] FrontendKind kind() const noexcept override { return FrontendKind::Formal; }
     [[nodiscard]] std::string_view format_name() const noexcept override { return "sysml2"; }
 
-    enum class SysmlBlockKind : std::uint8_t { Package, StateDef, State, ItemDef, ActionBlock };
+    enum class SysmlBlockKind : std::uint8_t { Package, StateDef, State, ItemDef, EnumDef, StructDef, ActionBlock };
 
     bool parse(std::string_view content, FsmIr& model, std::string& error_message) override {
         std::string content_str(content);
@@ -31,14 +31,16 @@ class Sysml2Parser : public IParser {
         std::vector<std::string> state_stack;
         std::vector<SysmlBlockKind> block_stack;
         std::string current_item_def;
+        std::string current_enum_def;
+        std::string current_struct_def;
         std::string accumulated_stmt;
 
         auto flush_stmt = [&](size_t current_line, bool is_block_open, SysmlBlockKind& out_kind) -> bool {
             accumulated_stmt = trim(accumulated_stmt);
             out_kind = SysmlBlockKind::ActionBlock;
             if (!accumulated_stmt.empty()) {
-                if (!process_statement(accumulated_stmt, model, state_stack, current_item_def, error_message,
-                                       current_line, is_block_open, out_kind)) {
+                if (!process_statement(accumulated_stmt, model, state_stack, current_item_def, current_enum_def,
+                                       current_struct_def, error_message, current_line, is_block_open, out_kind)) {
                     return false;
                 }
                 accumulated_stmt.clear();
@@ -146,6 +148,10 @@ class Sysml2Parser : public IParser {
                             state_stack.pop_back();
                         } else if (popped_kind == SysmlBlockKind::ItemDef) {
                             current_item_def.clear();
+                        } else if (popped_kind == SysmlBlockKind::EnumDef) {
+                            current_enum_def.clear();
+                        } else if (popped_kind == SysmlBlockKind::StructDef) {
+                            current_struct_def.clear();
                         }
                     }
                 } else {
@@ -261,7 +267,8 @@ class Sysml2Parser : public IParser {
     }
 
     static bool process_statement(const std::string& raw_stmt, FsmIr& model, std::vector<std::string>& state_stack,
-                                  std::string& current_item_def, std::string& error_message, size_t line_number,
+                                  std::string& current_item_def, std::string& current_enum_def,
+                                  std::string& current_struct_def, std::string& error_message, size_t line_number,
                                   bool is_block_open, SysmlBlockKind& out_kind) {
         (void)error_message;
         (void)line_number;
@@ -287,6 +294,54 @@ class Sysml2Parser : public IParser {
             model.name = sanitize_identifier(match[1].str());
             if (is_block_open) {
                 out_kind = SysmlBlockKind::StateDef;
+            }
+            return true;
+        }
+
+        // 2a. Enum Definition: enum def <Name> [ :> <Underlying> ]
+        static const std::regex enum_def_regex(R"(^enum\s+def\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*:>\s*([A-Za-z0-9_:]+))?)",
+                                               std::regex::optimize);
+        if (std::regex_search(stmt, match, enum_def_regex)) {
+            const std::string enum_name = sanitize_identifier(match[1].str());
+            const std::string underlying = match[2].matched ? map_sysml_type_to_cpp(match[2].str()) : "uint8_t";
+            EnumDefinition enum_def(enum_name, underlying);
+            model.add_enum(std::move(enum_def));
+            if (is_block_open) {
+                current_enum_def = enum_name;
+                out_kind = SysmlBlockKind::EnumDef;
+            }
+            return true;
+        }
+
+        // 2a-2. Enum Literal: enum <LitName> [ = <val> ]
+        static const std::regex enum_lit_regex(R"(^enum\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*=\s*(-?\d+))?)",
+                                               std::regex::optimize);
+        if (!current_enum_def.empty() && std::regex_search(stmt, match, enum_lit_regex)) {
+            const std::string lit_name = sanitize_identifier(match[1].str());
+            std::optional<int64_t> val = std::nullopt;
+            if (match[2].matched) {
+                try {
+                    val = std::stoll(match[2].str());
+                } catch (...) {
+                }
+            }
+            if (auto* en = model.find_enum_mut(current_enum_def)) {
+                en->add_literal(EnumLiteral(lit_name, val));
+            }
+            return true;
+        }
+
+        // 2a-3. Struct / Datatype Definition: (struct def|datatype def) <Name>
+        static const std::regex struct_def_regex(R"(^(struct\s+def|datatype\s+def)\s+([A-Za-z_][A-Za-z0-9_]*))",
+                                                 std::regex::optimize);
+        if (std::regex_search(stmt, match, struct_def_regex)) {
+            bool is_dt = (match[1].str().find("datatype") != std::string::npos);
+            const std::string struct_name = sanitize_identifier(match[2].str());
+            StructDefinition struct_def(struct_name, is_dt);
+            model.add_struct(std::move(struct_def));
+            if (is_block_open) {
+                current_struct_def = struct_name;
+                out_kind = SysmlBlockKind::StructDef;
             }
             return true;
         }
@@ -375,7 +430,18 @@ class Sysml2Parser : public IParser {
             const std::string unit_str = match[3].matched ? trim(match[3].str()) : "";
             const std::string init_val = match[4].matched ? trim(match[4].str()) : "";
 
-            if (!current_item_def.empty()) {
+            if (!current_struct_def.empty()) {
+                // Member field inside a Struct / Datatype Definition
+                if (auto* st = model.find_struct_mut(current_struct_def)) {
+                    std::string clean_unit = unit_str;
+                    if (clean_unit.size() >= 2 && clean_unit.front() == '[' && clean_unit.back() == ']') {
+                        clean_unit = clean_unit.substr(1, clean_unit.size() - 2);
+                    }
+                    std::optional<std::string> unit_opt =
+                        clean_unit.empty() ? std::nullopt : std::make_optional(clean_unit);
+                    st->add_field(StructField(attr_name, cpp_type, init_val, unit_opt));
+                }
+            } else if (!current_item_def.empty()) {
                 // Member attribute inside a Signal / Item Definition
                 for (auto& sig : model.signals) {
                     if (sig.name == current_item_def) {
@@ -499,6 +565,16 @@ class Sysml2Parser : public IParser {
             const std::string name = sanitize_identifier(match[2].str());
             const std::string parent_name = state_stack.empty() ? "" : state_stack.back();
             model.add_or_get_state(name, parent_name, is_entry ? StateKind::EntryPoint : StateKind::ExitPoint);
+            return true;
+        }
+
+        // 7a-2. Fork and Join pseudostates: fork <Name>; / join <Name>;
+        static const std::regex fork_join_regex(R"(^(fork|join)\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
+        if (std::regex_search(stmt, match, fork_join_regex)) {
+            bool is_fork = (match[1].str() == "fork");
+            const std::string name = sanitize_identifier(match[2].str());
+            const std::string parent_name = state_stack.empty() ? "" : state_stack.back();
+            model.add_or_get_state(name, parent_name, is_fork ? StateKind::Fork : StateKind::Join);
             return true;
         }
 
@@ -639,11 +715,14 @@ class Sysml2Parser : public IParser {
         }
 
         static const std::regex first_regex(R"(\b(?:first|from)\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
+        static const std::regex after_regex(
+            R"(\b(?:accept\s+)?after\s*(?:\(\s*(\d+(?:\.\d+)?)\s*(?:\[(?:SI::|ISQ::)?([A-Za-z]+)\]|([A-Za-z]+))?\s*\)|(\d+(?:\.\d+)?)\s*(?:\[(?:SI::|ISQ::)?([A-Za-z]+)\]|([A-Za-z]+))?))",
+            std::regex::optimize);
+        static const std::regex at_regex(R"(\b(?:accept\s+)?at\s*(?:\(\s*([^)]+)\s*\)|([A-Za-z0-9_:]+)))",
+                                         std::regex::optimize);
         static const std::regex accept_regex(
             R"(\b(?:accept|when)\s+(?:([A-Za-z_][A-Za-z0-9_]*)\s*:\s*)?([A-Za-z_][A-Za-z0-9_]*))",
             std::regex::optimize);
-        static const std::regex after_regex(
-            R"(\bafter\s+(\d+(?:\.\d+)?)\s*(?:\[(?:SI::|ISQ::)?([A-Za-z]+)\]|([A-Za-z]+))?)", std::regex::optimize);
         static const std::regex if_regex(R"(\bif\s+([^;]+?)(?=\s+(?:do|then|to|;|$)))", std::regex::optimize);
         static const std::regex do_block_regex(R"(\bdo\s*(?:action\s*)?\{([^}]+)\})", std::regex::optimize);
         static const std::regex do_regex(R"(\bdo\s+(?:action\s+)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
@@ -655,28 +734,38 @@ class Sysml2Parser : public IParser {
             source = state_stack.back();
         }
 
-        if (std::regex_search(stmt, match, accept_regex)) {
-            event = sanitize_identifier(match[2].str());
-        } else if (std::regex_search(stmt, match, after_regex)) {
+        if (std::regex_search(stmt, match, after_regex)) {
+            std::string val_str = match[1].matched ? match[1].str() : match[4].str();
+            std::string unit_str = match[2].matched   ? match[2].str()
+                                   : match[3].matched ? match[3].str()
+                                   : match[5].matched ? match[5].str()
+                                   : match[6].matched ? match[6].str()
+                                                      : "ms";
             double raw_val = 0.0;
             try {
-                raw_val = std::stod(match[1].str());
+                raw_val = std::stod(val_str);
             } catch (const std::exception&) {
                 raw_val = 1.0;
             }
-            std::string unit = match[2].matched ? match[2].str() : (match[3].matched ? match[3].str() : "ms");
             uint64_t duration_ms = static_cast<uint64_t>(raw_val);
-            if (unit == "s" || unit == "sec" || unit == "seconds") {
+            if (unit_str == "s" || unit_str == "sec" || unit_str == "seconds") {
                 duration_ms = static_cast<uint64_t>(raw_val * 1000.0);
-            } else if (unit == "min") {
+            } else if (unit_str == "min") {
                 duration_ms = static_cast<uint64_t>(raw_val * 60000.0);
-            } else if (unit == "h") {
+            } else if (unit_str == "h") {
                 duration_ms = static_cast<uint64_t>(raw_val * 3600000.0);
             }
             if (duration_ms == 0)
                 duration_ms = 1;
             time_trigger = TimeTrigger(TimeTriggerKind::After, duration_ms, TimeUnit::Milliseconds);
             event = "after_" + std::to_string(duration_ms) + "ms";
+        } else if (std::regex_search(stmt, match, at_regex)) {
+            std::string at_target = match[1].matched ? match[1].str() : match[2].str();
+            time_trigger = TimeTrigger(TimeTriggerKind::At, 0, TimeUnit::Milliseconds);
+            time_trigger->dynamic_expression = trim(at_target);
+            event = "at_" + sanitize_identifier(at_target);
+        } else if (std::regex_search(stmt, match, accept_regex)) {
+            event = sanitize_identifier(match[2].str());
         }
 
         if (std::regex_search(stmt, match, if_regex)) {

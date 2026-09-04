@@ -91,8 +91,11 @@ add_fsm_unit_test(test_dot_parser DIR frontend/diagram)
 # ==============================================================================
 add_fsm_unit_test(test_sysml2_parser DIR frontend/formal)
 add_fsm_unit_test(test_sysml2_flight_control DIR frontend/formal)
+add_fsm_unit_test(test_sysml2_structured_data DIR frontend/formal)
 add_fsm_unit_test(test_cameo_parser DIR frontend/formal)
 add_fsm_unit_test(test_scxml_parser DIR frontend/formal)
+add_fsm_unit_test(test_scxml_semantic_completeness DIR frontend/formal)
+add_fsm_unit_test(test_stateflow_parser DIR frontend/formal)
 add_fsm_unit_test(test_smv_parser DIR frontend/formal)
 
 # ==============================================================================

@@ -4,8 +4,8 @@
 > To update this file, run: `cmake --build build --target generate_test_catalog` or `python3 scripts/generate_test_catalog.py`.
 
 **Total Documented Subsystems**: 10  
-**Total Test Suites & Binaries**: 50  
-**Total Documented Test Cases**: 232  
+**Total Test Suites & Binaries**: 53  
+**Total Documented Test Cases**: 242  
 
 ---
 
@@ -1192,6 +1192,29 @@
   - Parse `<onentry>` and `<onexit>` action blocks with variable assignments.
   - Verify FsmIr variables and state lifecycle action signatures are captured.
 
+### [`test_scxml_semantic_completeness.cpp`](../tests/frontend/formal/test_scxml_semantic_completeness.cpp) (`tests/frontend/formal/test_scxml_semantic_completeness.cpp`)
+#### `ScxmlSemanticCompletenessTest.ParallelOrthogonalRegions`
+**Test Intent**: Verify SCXML parallel element creates StateKind::Parallel and orthogonal regions.
+
+**Scenario**:
+  - Ingest SCXML with root parallel and child states representing concurrent orthogonal regions.
+  - Verify StateKind::Parallel and populated orthogonal_regions vector in parent state.
+
+#### `ScxmlSemanticCompletenessTest.FinalStatesAndCompletionEvents`
+**Test Intent**: Verify SCXML final element creates StateKind::Final state nodes and completion transitions.
+
+**Scenario**:
+  - Ingest SCXML with composite state ending in <final id="TaskDone">.
+  - Ingest completion transition triggered by done.state.TaskDone.
+  - Verify StateKind::Final and transition trigger.
+
+#### `ScxmlSemanticCompletenessTest.SendAndRaiseEventsDispatch`
+**Test Intent**: Verify SCXML send and raise elements dispatch internal events and register actions.
+
+**Scenario**:
+  - Parse transition containing <raise event="EvInternalAlert"/> and onentry with <send event="EvTelemetrySync"/>.
+  - Verify events are registered in FsmIr event model.
+
 ### [`test_smv_parser.cpp`](../tests/frontend/formal/test_smv_parser.cpp) (`tests/frontend/formal/test_smv_parser.cpp`)
 #### `SmvParserTest.BasicSmvParsing`
 **Test Intent**: Verify formal nuXmv / SMV parsing of states, events, and transitions.
@@ -1207,6 +1230,30 @@
 
 #### `SmvParserTest.NegativeErrorHandling`
 **Test Intent**: Error handling for invalid/empty SMV content.
+
+### [`test_stateflow_parser.cpp`](../tests/frontend/formal/test_stateflow_parser.cpp) (`tests/frontend/formal/test_stateflow_parser.cpp`)
+#### `StateflowParserTest.BasicChartIngestion`
+**Test Intent**: Verify Stateflow XML model ingestion, state hierarchies, and transition labels.
+
+**Scenario**:
+  - Ingest Stateflow XML chart with states and transitions formatted as Event [Guard] / { Action }.
+  - Verify parsed state machine hierarchy, triggers, guards, and actions.
+
+#### `StateflowParserTest.TemporalLogicTriggers`
+**Test Intent**: Verify Stateflow temporal logic syntax after(N, sec) and after(N, msec).
+
+**Scenario**:
+  - Parse transition with labelString="after(500, msec)".
+  - Parse transition with labelString="after(2, sec)".
+  - Verify synthesized TimeTrigger structures.
+
+#### `StateflowParserTest.ParserFactoryIntegration`
+**Test Intent**: Verify ParserFactory auto-detection and registration for Stateflow models.
+
+**Scenario**:
+  - Query ParserFactory by format name "stateflow".
+  - Query ParserFactory by extension ".sfx" and ".stateflow".
+  - Query ParserFactory detect_format_from_content on XML containing <Stateflow>.
 
 ### [`test_sysml2_flight_control.cpp`](../tests/frontend/formal/test_sysml2_flight_control.cpp) (`tests/frontend/formal/test_sysml2_flight_control.cpp`)
 - *(Executable binary test verification)*
@@ -1274,6 +1321,35 @@
   - Parse `do { counter = counter + 1; }` on a transition.
   - Verify the IR emits a named semantic action (increment_counter) rather than a raw expression.
   - Parse `do { value += 5; }` and verify an assign_value action with += semantics.
+
+### [`test_sysml2_structured_data.cpp`](../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
+#### `Sysml2StructuredDataTest.EnumDefinitionsIngestion`
+**Test Intent**: Verify SysML v2 ingestion of user-defined enum definitions and literals.
+
+**Scenario**:
+  - Parse SysML v2 source containing enum def with default and custom underlying types.
+  - Verify parsed EnumDefinition models in FsmIr (names, literals, values).
+
+#### `Sysml2StructuredDataTest.StructAndDatatypeDefinitionsIngestion`
+**Test Intent**: Verify SysML v2 ingestion of struct def and datatype def with physical units and initializers.
+
+**Scenario**:
+  - Parse struct def with attribute types, units, and default values.
+  - Parse datatype def and verify is_datatype flag is set.
+
+#### `Sysml2StructuredDataTest.NativeTemporalTriggersIngestion`
+**Test Intent**: Verify native temporal triggers accept after(duration) and accept at(time) in SysML v2.
+
+**Scenario**:
+  - Parse transitions with accept after 500 [ms], after(2.5 [s]), and accept at(12:00).
+  - Verify synthesized TimeTrigger objects in FsmIr transition edges.
+
+#### `Sysml2StructuredDataTest.ConnectionPseudostatesIngestion`
+**Test Intent**: Verify fork, join, entry point, and exit point pseudostates in SysML v2.
+
+**Scenario**:
+  - Parse SysML v2 containing fork, join, entry point, and exit point pseudostates.
+  - Verify StateKind attributes in FsmIr state nodes.
 
 ---
 

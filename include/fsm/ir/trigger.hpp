@@ -14,9 +14,9 @@ namespace fsm::codegen {
 // Triggers (Signal, Timed, Anonymous)
 // ============================================================================
 
-enum class TriggerType : std::uint8_t { Signal, TimeAfter, TimeEvery, Anonymous };
+enum class TriggerType : std::uint8_t { Signal, TimeAfter, TimeEvery, TimeAt, Anonymous };
 
-enum class TimeTriggerKind : std::uint8_t { After, Every };
+enum class TimeTriggerKind : std::uint8_t { After, Every, At };
 
 enum class TimeUnit : std::uint8_t { Nanoseconds, Microseconds, Milliseconds, Seconds, Minutes };
 
@@ -56,6 +56,8 @@ inline std::string_view time_trigger_kind_to_string(TimeTriggerKind kind) noexce
             return "after";
         case TimeTriggerKind::Every:
             return "every";
+        case TimeTriggerKind::At:
+            return "at";
     }
     return "after";
 }
@@ -63,6 +65,8 @@ inline std::string_view time_trigger_kind_to_string(TimeTriggerKind kind) noexce
 inline TimeTriggerKind time_trigger_kind_from_string(std::string_view str) noexcept {
     if (str == "every" || str == "periodic" || str == "TimeEvery")
         return TimeTriggerKind::Every;
+    if (str == "at" || str == "TimeAt")
+        return TimeTriggerKind::At;
     return TimeTriggerKind::After;
 }
 

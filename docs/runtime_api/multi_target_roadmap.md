@@ -5,7 +5,7 @@
 Its architecture strictly decouples model ingestion and formal verification from target code emission using a canonical Intermediate Representation (**`FsmIr`**). While C++ serves as the initial reference production backend, the metamodel natively maps to diverse programming languages and safety-critical execution runtimes.
 
 > [!IMPORTANT]
-> **Active Production Target vs. Roadmap Previews**: As of version `v0.5.0`, the **C++ Reference Backend** (`C++17/C++20`) is the sole production-ready code generation target. The **Rust** (`no_std`) and **C** (`MISRA-C:2012`) backends described in this roadmap represent **preview specifications and RFC designs** currently under active development.
+> **Active Production Target vs. Roadmap Previews**: As of version `v0.5.0`, the **C++ Reference Backend** (`C++17/C++20`) is the sole production-ready code generation target. The **Rust** (`no_std`) and **C** (`Embedded C`) backends described in this roadmap represent **preview specifications and RFC designs** currently under active development.
 
 ---
 
@@ -15,7 +15,7 @@ Its architecture strictly decouples model ingestion and formal verification from
 | :--- | :--- | :--- | :--- | :--- |
 | **C++ Target** | C++17 / C++20 | Synchronous stack, Lock-Free SPSC, Active Object | Zero heap, zero vtable, $O(1)$ WCET | **Production (v0.5.0+)** |
 | **Rust Target** | Rust 2021 (`no_std`) | Typestate transitions, lock-free static channels | Compile-time memory safety, zero panic | **Preview / In Development** |
-| **C Target** | ISO C99 / C11 | Static transition table, switch-case dispatch | MISRA-C:2012, DO-178C DAL-A, zero malloc | **Preview / Planned RFC** |
+| **C Target** | ISO C99 / C11 | Static transition table, switch-case dispatch | Embedded C, zero malloc | **Preview / Planned RFC** |
 
 ---
 
@@ -109,12 +109,12 @@ impl LampFsm {
 
 ---
 
-## 4. ISO C99 / C11 Backend — MISRA-C & Aerospace
+## 4. ISO C99 / C11 Backend — Embedded C & High-Integrity Systems
 
-The C target generator is engineered specifically for mission-critical and safety-certified industries (automotive ISO 26262 ASIL-D, aerospace DO-178C DAL-A, medical IEC 62304).
+The C target generator is engineered specifically for mission-critical and resource-constrained embedded systems (automotive, aerospace, medical).
 
 ### Core Tenets
-1. **Strict MISRA-C:2012 Compliance**: Zero dynamic allocations (`malloc`/`free`), zero recursive calls, bounded loops, and strict type conversions.
+1. **Deterministic Embedded C**: Zero dynamic allocations (`malloc`/`free`), zero recursive calls, bounded loops, and strict type conversions.
 2. **Compact Binary Footprint**: Encoded as flat switch-case or compact read-only ROM lookup tables.
 3. **Deterministic WCET**: Bounded worst-case execution time with zero dynamic dispatch overhead.
 4. **Clean Integration**: Simple C headers compatible with legacy codebases and automotive AUTOSAR Classic runtimes.

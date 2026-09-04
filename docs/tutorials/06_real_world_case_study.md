@@ -251,7 +251,7 @@ int main() {
 
 1. **Model-Driven Development (MBSE)**: The entire statechart, memory domains, and safety rules are authored in a clean, single-source-of-truth model file (`flight_controller.sysml`).
 2. **Mathematical Verification Before Deployment**: Formal model checkers guarantee the absence of deadlocks, unreachable states, and safety invariant violations before a single line of C++ is compiled.
-3. **Zero-Heap Determinism**: The generated C++ state machine executes entirely on the stack with $O(1)$ dispatch time, making it suitable for DO-178C / ISO 26262 safety-critical avionics.
+3. **Zero-Heap Determinism**: The generated C++ state machine executes entirely on the stack with $O(1)$ dispatch time, making it suitable for safety-critical avionics and hard real-time systems.
 4. **Seamless History Restoration**: Shallow History `[H]` allows complex hierarchical navigation states to be paused and resumed without custom state-tracking boilerplate.
 
 ---

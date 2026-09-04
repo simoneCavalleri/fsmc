@@ -11,7 +11,7 @@
 namespace fsm {
 
 /**
- * @brief Formal audit trace entry for embedded flight recorder (DO-178C).
+ * @brief Formal audit trace entry for embedded flight recorder.
  */
 struct TraceEntry {
     std::uint64_t tick{0};

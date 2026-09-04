@@ -84,12 +84,12 @@ To generate the traceability report during compilation:
 
 ---
 
-## 4. Automated CI/CD Certification Gate
+## 4. Automated CI/CD Quality Gate
 
-You can embed compliance matrix generation into your continuous integration pipeline (GitHub Actions, GitLab CI, Jenkins) as a blocking quality gate:
+You can embed requirement traceability checks into your continuous integration pipeline (GitHub Actions, GitLab CI, Jenkins) as a blocking quality gate:
 
 ```yaml
-- name: Verify Requirements Compliance (RTM Gate)
+- name: Verify Requirements Coverage (RTM Gate)
   run: |
     # Generate RTM JSON report
     fsmc -i models/engine.sysml --req-audit --rtm-output build/rtm_report.json

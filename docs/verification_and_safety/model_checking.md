@@ -108,9 +108,9 @@ You can compose complex multi-condition specifications using standard boolean op
 
 ---
 
-### Mission-Critical Safety Patterns (ISO 26262 / DO-178C / IEC 61508)
+### Mission-Critical Formal Safety Patterns
 
-For functional safety certification under automotive (ISO 26262 ASIL-D) or aerospace (DO-178C DAL-A) standards, statecharts must satisfy canonical formal verification patterns:
+In safety-critical and high-integrity statecharts, formal specifications typically express canonical verification patterns:
 
 | Safety Archetype | Informal Requirement | Canonical LTL Template | Concrete `fsmc` Example |
 | :--- | :--- | :--- | :--- |

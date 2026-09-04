@@ -52,12 +52,12 @@ my_project/
     fsmc -i connection.sysml -o connection_fsm.rs --target rust --namespace conn
     ```
 
-=== "C Target (MISRA-C Roadmap)"
+=== "C Target (Embedded C Roadmap)"
     > [!NOTE]
-    > **Roadmap Preview**: ISO C99 / MISRA-C code generation is an upcoming multi-target release feature. In `v0.5.0`, C++ is the active production runtime.
+    > **Roadmap Preview**: ISO C99 embedded C code generation is an upcoming multi-target release feature. In `v0.5.0`, C++ is the active production runtime.
 
     ```bash
-    # Generate MISRA-C compliant header and implementation
+    # Generate embedded C header and implementation
     fsmc -i connection.sysml -o connection_fsm.h --target c --prefix conn_
     ```
 
@@ -129,7 +129,7 @@ my_project/
     }
     ```
 
-=== "C Target (MISRA-C Roadmap)"
+=== "C Target (Embedded C Roadmap)"
     > [!NOTE]
     > **Roadmap Preview**: Preview of upcoming ISO C99 application code.
 

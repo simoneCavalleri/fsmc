@@ -114,11 +114,11 @@ Expected output:
     fsmc -i uav_mission.sysml -o uav_mission_fsm.rs --target rust --namespace avionics
     ```
 
-=== "C Target (MISRA-C Roadmap)"
+=== "C Target (Embedded C Roadmap)"
     > [!NOTE]
-    > **Upcoming Target Preview**: ISO C99 / MISRA-C code generation is currently in development under the multi-target roadmap. In `v0.5.0`, the C++ target is the active production runtime.
+    > **Upcoming Target Preview**: ISO C99 embedded C code generation is currently in development under the multi-target roadmap. In `v0.5.0`, the C++ target is the active production runtime.
 
-    Compile the model into MISRA-C:2012 compliant C headers and sources:
+    Compile the model into deterministic, zero-heap C headers and sources:
     ```bash
     fsmc -i uav_mission.sysml -o uav_mission_fsm.h --target c --prefix avionics_
     ```
@@ -210,9 +210,9 @@ Expected output:
     }
     ```
 
-=== "C Target (MISRA-C Roadmap)"
+=== "C Target (Embedded C Roadmap)"
     > [!NOTE]
-    > **Upcoming Target Preview**: Preview of planned ISO C99 MISRA-C application integration.
+    > **Upcoming Target Preview**: Preview of planned ISO C99 embedded C application integration.
 
     Create `main.c`:
     ```c
@@ -274,7 +274,7 @@ Expected output:
     cargo run --release
     ```
 
-=== "C Target (MISRA-C Roadmap)"
+=== "C Target (Embedded C Roadmap)"
     > [!NOTE]
     > **Upcoming Target Preview**: Build command for future C target releases.
 

@@ -1,6 +1,6 @@
 # C++ Runtime Memory Architecture & Real-Time Guarantees
 
-In embedded systems, automotive firmware (ISO 26262 ASIL D), and aerospace controllers (DO-178C DAL A), dynamic memory allocations (`malloc`, `new`, `std::vector`, `std::function`) and dynamic virtual tables are strictly prohibited due to heap fragmentation and non-deterministic timing risks.
+In safety-critical embedded systems, automotive firmware, and aerospace controllers, dynamic memory allocations (`malloc`, `new`, `std::vector`, `std::function`) and dynamic virtual tables are strictly prohibited due to heap fragmentation and non-deterministic timing risks.
 
 The `fsmc` C++17/C++20 reference backend is engineered to provide **100% zero-heap, zero-vtable, and zero-exception** guarantees.
 

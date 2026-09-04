@@ -5,7 +5,7 @@ In safety-critical systems (aerospace, automotive, medical devices, robotics), `
 - Verifying graph invariants (**Deadlock**, **Livelock**, **Reachability**).
 - Specifying and checking temporal logic properties (**LTL** and **CTL**).
 - Performing **EFSM Interval Analysis** to validate numeric variable ranges and detect unreachable guard branches.
-- Generating the **Requirement Traceability Matrix (RTM)** for certification audits (DO-178C / ISO 26262).
+- Generating the **Requirement Traceability Matrix (RTM)** for verification and design assurance audits.
 
 ---
 
@@ -87,7 +87,7 @@ warning[W0402]: Unsatisfiable guard [battery_pct > 120] on transition t_impossib
 
 ## 4. Generating Requirement Traceability (RTM)
 
-For DO-178C, ISO 26262, or IEC 62304 certification audits, tag model elements with `@fsm:req`:
+For formal requirement tracing and verification audits, tag model elements with `@fsm:req`:
 
 ```sysml
 //@fsm:req REQ-FLIGHT-042: Autonomous altitude hold loop

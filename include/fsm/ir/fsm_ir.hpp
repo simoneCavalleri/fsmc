@@ -44,7 +44,7 @@ struct FsmIr {
     std::string initial_state;                ///< Initial state unqualified name
     std::string initial_state_id;             ///< Initial state deterministic ID
     bool thread_safe = true;                  ///< Whether to generate thread-safe wrappers
-    std::vector<std::string> satisfies_reqs;  ///< DO-178C requirement traceability IDs
+    std::vector<std::string> satisfies_reqs;  ///< Requirement traceability IDs
 
     std::vector<StateNode> states;              ///< Hierarchy of state nodes (simple, composite, parallel)
     std::vector<TransitionEdge> transitions;    ///< Directed transition edges with triggers, guards, actions

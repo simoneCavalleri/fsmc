@@ -64,7 +64,7 @@ fsmc_target_sources(autonomous_uav_mission_example
 
 add_test(NAME autonomous_uav_mission_example COMMAND autonomous_uav_mission_example)
 
-# Showcase 5: Avionics Flight Management System (DO-178C Level A Reference Case Study)
+# Showcase 5: Avionics Flight Management System (High-Integrity Reference Case Study)
 add_executable(flight_management_system_example flight_management_system/main.cpp)
 target_link_libraries(flight_management_system_example PRIVATE fsmc_runtime)
 set_target_properties(flight_management_system_example PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)

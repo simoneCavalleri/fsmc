@@ -172,7 +172,7 @@ fn main() {
 ## 6. Embedded C Ecosystem: Makefile & Meson (Roadmap Preview)
 
 > [!NOTE]
-> **Roadmap Preview**: The ISO C99 / MISRA-C target emitter is currently under design. The patterns below illustrate the upcoming build integration workflow for automotive and RTOS projects.
+> **Roadmap Preview**: The ISO C99 embedded C target emitter is currently under design. The patterns below illustrate the upcoming build integration workflow for automotive and RTOS projects.
 
 For automotive AUTOSAR Classic, aerospace, or RTOS projects with custom toolchains (IAR, Keil, GCC-ARM):
 

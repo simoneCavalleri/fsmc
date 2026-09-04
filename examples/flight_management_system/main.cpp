@@ -3,7 +3,7 @@
  * @brief Reference Avionics Flight Management System (FMS) Case Study.
  *
  * Demonstrates:
- * - DO-178C Level A Safety-Critical Architecture
+ * - Deterministic, High-Integrity Safety-Oriented Architecture
  * - Zero dynamic heap allocations across all execution phases
  * - SysML v2 Strongly-Typed Enums and Structured Data
  * - Circular Black-Box Flight Recorder (Audit Trail)
@@ -20,7 +20,7 @@
 int main() {
     std::cout << "============================================================================\n";
     std::cout << " Avionics Flight Management System (FMS) Reference Case Study\n";
-    std::cout << " Compliance: DO-178C Level A / MISRA C++ / Zero Dynamic Heap Allocations\n";
+    std::cout << " Architecture: Deterministic High-Integrity / Zero Dynamic Heap Allocations\n";
     std::cout << "============================================================================\n\n";
 
     // 1. Setup Partitioned Domain Structures (Stack-Allocated, Zero Heap)
@@ -128,10 +128,10 @@ int main() {
     std::cout << "  Tick 150ms: Expired Timers = " << exp_tick2 << " (Expected: 1)\n";
     assert(exp_tick2 == 1);
 
-    // 11. Dump DO-178C Black-Box Audit Trail
-    std::cout << "\n[DO-178C AUDIT TRAIL] Flight Recorder Black-Box Trace Dump:\n";
+    // 11. Dump Flight Recorder Audit Trail
+    std::cout << "\n[SAFETY AUDIT TRAIL] Flight Recorder Black-Box Trace Dump:\n";
     fms_core.observer().dump(std::cout);
 
-    std::cout << "\n[SUCCESS] Flight Management System Case Study executed with 100% compliance!\n";
+    std::cout << "\n[SUCCESS] Flight Management System Case Study executed successfully!\n";
     return 0;
 }

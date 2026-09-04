@@ -141,7 +141,7 @@ export const ModelManager = {
     }
     const model = await this.parse(source, format);
     let out = "// ============================================================================\n";
-    out += `// Auto-Generated MC/DC Test Suite for '${model.name || "FSM"}' (DO-178C Level A)\n`;
+    out += `// Auto-Generated MC/DC Test Suite for '${model.name || "FSM"}'\n`;
     out += "// Synthesized by fsmc verification harness engine\n";
     out += "// ============================================================================\n\n";
     out += "#include <gtest/gtest.h>\n#include <string_view>\n\n";

@@ -2,17 +2,17 @@
 
 The `fsmc` compiler translates state machine models into deterministic, formally verified execution runtimes across multiple target programming languages.
 
-The **C++ Reference Backend** (`v0.5.0+`) provides a header-only, **100% zero-heap, zero-vtable, and zero-exception** C++17/C++20 runtime library located in [`include/fsm/backend/cpp/runtime/`](file:///home/simone/dev/github/fsmc/include/fsm/backend/cpp/runtime/). For planned Rust (`no_std`) and ISO C99 / MISRA-C code generators, see the **[Multi-Target Architecture & Roadmap](multi_target_roadmap.md)**.
+The **C++ Reference Backend** (`v0.5.0+`) provides a header-only, **100% zero-heap, zero-vtable, and zero-exception** C++17/C++20 runtime library located in [`include/fsm/backend/cpp/runtime/`](file:///home/simone/dev/github/fsmc/include/fsm/backend/cpp/runtime/). For planned Rust (`no_std`) and ISO C99 code generators, see the **[Multi-Target Architecture & Roadmap](multi_target_roadmap.md)**.
 
 ---
 
 ## Language Support Matrix
 
-| Target Language | Minimum Standard | Concurrency Models | Safety & Certifications | Status |
+| Target Language | Minimum Standard | Concurrency Models | Safety & Reliability | Status |
 | :--- | :--- | :--- | :--- | :--- |
 | **C++ Target** | C++17 / C++20 | Synchronous stack, Lock-Free SPSC, Active Object | Zero-Heap, Hard Real-Time | **Production (v0.5.0+)** |
 | **Rust Target** | Rust 2021 (`no_std`) | Typestate transitions, lock-free static channels | Compile-time memory safety, zero panic | **Preview / In Development** |
-| **C Target** | ISO C99 / C11 | Static transition table, switch-case dispatch | MISRA-C:2012, DO-178C DAL-A, zero malloc | **Preview / Planned RFC** |
+| **C Target** | ISO C99 / C11 | Static transition table, switch-case dispatch | Embedded C, zero malloc | **Preview / Planned RFC** |
 
 > [!NOTE]
 > **Production vs. Preview**: The **C++ Backend** is the only production-ready target in `v0.5.0`. Rust and C code generation are preview targets currently being designed and implemented.

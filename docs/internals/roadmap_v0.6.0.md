@@ -17,7 +17,7 @@
 
 The design philosophy of `fsmc` is founded on four immutable principles:
 1. **Zero dynamic heap allocation at runtime ($O(1)$ time complexity, zero malloc, zero runtime exceptions).**
-2. **Strict mathematical determinism and formal sound verification (DO-178C, ISO 26262).**
+2. **Strict mathematical determinism and formal sound verification.**
 3. **Decoupled 3-tier compiler architecture:** `Frontend (Ingestion/AST) -> Middle-End (FsmIr passes, optimization, verification) -> Backend (Code emission, serialization)`.
 4. **Format-agnostic universal MBSE bridging:** Direct synthesis of production embedded code from high-level formal engineering models.
 
@@ -166,7 +166,7 @@ fsm-opt --load-pass-plugin=libCustomVerifier.so --passes=canonicalize,custom-ver
 
 ---
 
-## 4. Pillar 3: C++ Real-Time Runtime & Safety Tooling (DO-178C)
+## 4. Pillar 3: C++ Real-Time Runtime & Safety Verification Tooling
 
 ### 4.1 Deterministic Tick Scheduling in Synchronous `fsm::fsm`
 * Integrates `deterministic_timer_manager` into the core synchronous runtime `fsm::fsm`.
@@ -180,10 +180,10 @@ fsm-opt --load-pass-plugin=libCustomVerifier.so --passes=canonicalize,custom-ver
 ### 4.3 Automated MC/DC Test Harness Synthesis (`--emit-test-harness`)
 * For every composite boolean guard (e.g. `fsm::and_<A, fsm::or_<B, C>>`), `fsmc` automatically synthesizes an executable unit test suite (GoogleTest / Catch2):
   * Emits the minimal $N+1$ test cases proving **Modified Condition / Decision Coverage (MC/DC)**.
-  * Eliminates manual truth table calculations required for DO-178C DAL-A verification.
+  * Eliminates manual truth table calculations required for rigorous condition independence verification.
 
 ### 4.4 Automated Requirements Traceability Matrix (`--req-audit`)
-* Evaluates `@fsm:req`, `@fsm:safety_level`, and `@fsm:asil` tags.
+* Evaluates `@fsm:req` and `@fsm:safety_level` tags.
 * Generates an exportable matrix (`rtm.json` / `rtm.md`) mapping every state, transition, and guard to system requirements. Flags any unmapped logic as dead-code violations.
 * Injects Doxygen `@satisfies` and `@trace` tags into generated C++ headers.
 

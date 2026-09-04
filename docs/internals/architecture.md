@@ -300,7 +300,7 @@ To support complex boolean logic in model diagrams (e.g. `[PowerOk && (!Fault ||
    - Serve as primary authoring languages for continuous roundtrip, semantic analysis, and target code generation (such as C++17/20 bare-metal runtimes).
 
 2. **Formal Verification Sink (`nuXmv / SMV`)**:
-   - **Role**: Serves as a pure, standard **Symbolic Model Checking Target** for mission-critical and safety-critical verification (DO-178C, ISO 26262, ECSS).
+   - **Role**: Serves as a pure, standard **Symbolic Model Checking Target** for mission-critical and safety-critical verification.
    - **Mathematical Formalism**: Emits a standard finite Kripke structure `M = <S, S0, R, L>` with explicit transition relations (`ASSIGN next(state) := case ... esac;`), finite-domain variables (`0..100`, `boolean`), discrete clock counters (`timer_<state> : 0..N`), and temporal logic goals (`LTLSPEC`, `INVARSPEC`).
    - **Design Philosophy**: SMV is kept clean and canonical—free of unnatural pseudo-directives—so that emitted files are immediately verifiable by external tools (`nuxmv`, `NuSMV`, `MathSAT`) without preprocessing.
 

@@ -15,7 +15,7 @@ namespace fsm::codegen {
 /**
  * @brief Formal Middle-End Pass: Worst-Case Execution Time (WCET) & Zeno-Cycle Analysis.
  *
- * Verifies bounded execution and real-time determinism (DO-178C DAL-A):
+ * Verifies bounded execution and real-time determinism:
  * 1. Statically detects Zeno-cycles (zero-time loops of eventless/immediate micro-steps).
  * 2. Computes the deterministic upper bound on micro-steps per macro-step.
  */

@@ -160,7 +160,7 @@ The `fsmc` command-line interface provides unified access to all compiler pipeli
 
 === "Requirement Traceability (RTM)"
     ```bash
-    # Export Requirement Traceability Matrix for DO-178C / ISO 26262 audit packages
+    # Export Requirement Traceability Matrix for verification audits
     fsmc -i mission.sysml --rtm-output rtm_matrix.md
     ```
 
@@ -172,7 +172,7 @@ The `fsmc` command-line interface provides unified access to all compiler pipeli
     # Generate Rust no_std module (In Development)
     fsmc -i mission.sysml -o uav_fsm.rs --target rust
 
-    # Generate ISO C99 MISRA-C compliant header & implementation (Planned)
+    # Generate ISO C99 header & implementation (Planned)
     fsmc -i mission.sysml -o uav_fsm.h --target c
     ```
 
@@ -240,9 +240,9 @@ Execute transitions using the segregated 4-domain memory model across target lan
     }
     ```
 
-=== "C Target (MISRA-C Roadmap)"
+=== "C Target (Embedded C Roadmap)"
     > [!NOTE]
-    > **Roadmap Preview**: ISO C99 / MISRA-C code generation is an upcoming roadmap feature. C++ is the active production runtime in `v0.5.0`.
+    > **Roadmap Preview**: ISO C99 code generation is an upcoming roadmap feature. C++ is the active production runtime in `v0.5.0`.
 
     ```c
     #include "uav_fsm.h"

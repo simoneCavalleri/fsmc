@@ -15,7 +15,7 @@ The `fsmc` CLI works across all model formats and target code generators:
 # Code Generation (C++ Standalone Header)
 fsmc -i flight.sysml -o flight_fsm.hpp --target cpp --std 20
 
-# Code Generation (Rust no_std / C MISRA-C)
+# Code Generation (Rust no_std / Embedded C)
 fsmc -i flight.sysml -o flight_fsm.rs --target rust
 fsmc -i flight.sysml -o flight_fsm.h  --target c
 
@@ -72,7 +72,7 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
     }
     ```
 
-=== "C Target (MISRA-C Roadmap)"
+=== "C Target (Embedded C Roadmap)"
     ```c
     /* Static constant transition table in ROM (zero heap) */
     static const fsm_transition_t FLIGHT_TRANSITIONS[] = {
@@ -129,7 +129,7 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
     let async_fsm = AsyncFsm::spawn(registers, services);
     ```
 
-=== "C Target (MISRA-C Roadmap)"
+=== "C Target (Embedded C Roadmap)"
     ```c
     /* 1. Synchronous instance (stack or BSS, zero dynamic allocation) */
     flight_fsm_t sync_fsm;
@@ -187,7 +187,7 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
     }
     ```
 
-=== "C Target (MISRA-C Roadmap)"
+=== "C Target (Embedded C Roadmap)"
     ```c
     /* Guard: Const-qualified pointer inspection */
     bool guard_target_reachable(const in_ports_t* const in, const registers_t* const reg, const move_cmd_t* const ev) {
@@ -246,7 +246,7 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
     let snap = consumer.snapshot_registers();
     ```
 
-=== "C Target (MISRA-C Roadmap)"
+=== "C Target (Embedded C Roadmap)"
     ```c
     /* 1. Reactive event dispatch */
     fsm_result_t res = flight_fsm_dispatch(&fsm, EV_START, &in_ports, &out_ports);

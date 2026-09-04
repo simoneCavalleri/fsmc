@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include "fsm/backend/formal/sysml2_serializer.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
@@ -249,6 +250,56 @@ package Topology {
     const auto* join_node = model.find_state("JoinRendezvous");
     ASSERT_NE(join_node, nullptr);
     EXPECT_EQ(join_node->kind, StateKind::Join);
+}
+
+/**
+ * @brief Test Intent: Verify lossless SysML v2 serialization and re-ingestion roundtrip for enums and structs.
+ */
+TEST(Sysml2StructuredDataTest, Sysml2StructuredDataRoundtrip) {
+    const std::string sysml_src = R"(
+package RoundtripTest {
+    state def DataSM {
+        enum def SystemMode {
+            enum Init = 0;
+            enum Run = 1;
+            enum Error = 2;
+        }
+
+        struct def TelemetryPacket {
+            attribute packet_id : Integer = 100;
+            attribute signal_strength_db : Real;
+            attribute is_valid : Boolean;
+        }
+
+        state Active;
+    }
+}
+)";
+
+    Sysml2Parser parser;
+    FsmIr original_model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml_src, original_model, err)) << "Error: " << err;
+
+    // Serialize to SysML v2
+    std::string emitted_sysml = Sysml2Serializer::serialize(original_model);
+    EXPECT_NE(emitted_sysml.find("enum def SystemMode"), std::string::npos);
+    EXPECT_NE(emitted_sysml.find("struct def TelemetryPacket"), std::string::npos);
+
+    // Re-parse emitted SysML v2
+    FsmIr reloaded_model;
+    ASSERT_TRUE(parser.parse(emitted_sysml, reloaded_model, err)) << "Re-parse error: " << err << "\nEmitted:\n" << emitted_sysml;
+
+    // Verify roundtrip equivalence
+    ASSERT_EQ(reloaded_model.enums.size(), 1U);
+    EXPECT_EQ(reloaded_model.enums[0].name, "SystemMode");
+    ASSERT_EQ(reloaded_model.enums[0].literals.size(), 3U);
+    EXPECT_EQ(reloaded_model.enums[0].literals[0].name, "Init");
+
+    ASSERT_EQ(reloaded_model.structs.size(), 1U);
+    EXPECT_EQ(reloaded_model.structs[0].name, "TelemetryPacket");
+    ASSERT_EQ(reloaded_model.structs[0].fields.size(), 3U);
+    EXPECT_EQ(reloaded_model.structs[0].fields[0].name, "packet_id");
 }
 
 }  // namespace

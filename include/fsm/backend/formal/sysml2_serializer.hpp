@@ -16,6 +16,43 @@ class Sysml2Serializer {
         std::string model_name = model.name.empty() ? "GeneratedStateMachine" : model.name;
         out << "state def " << model_name << " {\n";
 
+        // Native SysML v2 Enumerations
+        for (const auto& en : model.enums) {
+            out << "    enum def " << en.name;
+            if (!en.underlying_type.empty() && en.underlying_type != "uint8_t") {
+                out << " :> " << en.underlying_type;
+            }
+            out << " {\n";
+            for (const auto& lit : en.literals) {
+                out << "        enum " << lit.name;
+                if (lit.value.has_value()) {
+                    out << " = " << *lit.value;
+                }
+                out << ";\n";
+            }
+            out << "    }\n";
+        }
+        if (!model.enums.empty()) {
+            out << "\n";
+        }
+
+        // Native SysML v2 Structs & Datatypes
+        for (const auto& st : model.structs) {
+            std::string def_keyword = st.is_datatype ? "datatype def " : "struct def ";
+            out << "    " << def_keyword << st.name << " {\n";
+            for (const auto& f : st.fields) {
+                out << "        attribute " << f.name << " : " << map_cpp_type_to_sysml(f.type);
+                if (!f.default_value.empty()) {
+                    out << " = " << f.default_value;
+                }
+                out << ";\n";
+            }
+            out << "    }\n";
+        }
+        if (!model.structs.empty()) {
+            out << "\n";
+        }
+
         // Native SysML v2 Typed Ports (InPorts / OutPorts / InOutPorts)
         for (const auto& port : model.ports) {
             std::string dir_str =

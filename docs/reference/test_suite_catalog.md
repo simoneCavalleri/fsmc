@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 10  
 **Total Test Suites & Binaries**: 55  
-**Total Documented Test Cases**: 257  
+**Total Documented Test Cases**: 258  
 
 ---
 
@@ -1400,6 +1400,9 @@
 **Scenario**:
   - Parse SysML v2 containing fork, join, entry point, and exit point pseudostates.
   - Verify StateKind attributes in FsmIr state nodes.
+
+#### `Sysml2StructuredDataTest.Sysml2StructuredDataRoundtrip`
+**Test Intent**: Verify lossless SysML v2 serialization and re-ingestion roundtrip for enums and structs.
 
 ---
 

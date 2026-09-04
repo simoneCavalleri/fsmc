@@ -71,6 +71,69 @@ class JsonSerializer {
             out << "  ],\n";
         }
 
+        // Enums
+        if (!model.enums.empty()) {
+            out << "  \"enums\": [\n";
+            for (size_t e = 0; e < model.enums.size(); ++e) {
+                const auto& en = model.enums[e];
+                out << "    {\n";
+                out << "      \"name\": \"" << escape_json(en.name) << "\",\n";
+                out << "      \"type\": \"" << escape_json(en.underlying_type) << "\",\n";
+                out << "      \"literals\": [\n";
+                for (size_t l = 0; l < en.literals.size(); ++l) {
+                    const auto& lit = en.literals[l];
+                    out << "        { \"name\": \"" << escape_json(lit.name) << "\"";
+                    if (lit.value.has_value()) {
+                        out << ", \"value\": " << *lit.value;
+                    }
+                    out << " }";
+                    if (l + 1 < en.literals.size()) {
+                        out << ",";
+                    }
+                    out << "\n";
+                }
+                out << "      ]\n";
+                out << "    }";
+                if (e + 1 < model.enums.size()) {
+                    out << ",";
+                }
+                out << "\n";
+            }
+            out << "  ],\n";
+        }
+
+        // Structs
+        if (!model.structs.empty()) {
+            out << "  \"structs\": [\n";
+            for (size_t st_i = 0; st_i < model.structs.size(); ++st_i) {
+                const auto& st = model.structs[st_i];
+                out << "    {\n";
+                out << "      \"name\": \"" << escape_json(st.name) << "\",\n";
+                out << "      \"is_datatype\": " << (st.is_datatype ? "true" : "false") << ",\n";
+                out << "      \"fields\": [\n";
+                for (size_t f = 0; f < st.fields.size(); ++f) {
+                    const auto& field = st.fields[f];
+                    out << "        { \"name\": \"" << escape_json(field.name) << "\", \"type\": \""
+                        << escape_json(field.type) << "\"";
+                    if (!field.default_value.empty()) {
+                        out << ", \"default\": \"" << escape_json(field.default_value) << "\"";
+                    }
+                    out << " }";
+                    if (f + 1 < st.fields.size()) {
+                        out << ",";
+                    }
+                    out << "\n";
+                }
+                out << "      ]\n";
+                out << "    }";
+                if (st_i + 1 < model.structs.size()) {
+                    out << ",";
+                }
+                out << "\n";
+            }
+            out << "  ],\n";
+        }
+
         // Signals
         if (!model.signals.empty()) {
             out << "  \"signals\": [\n";

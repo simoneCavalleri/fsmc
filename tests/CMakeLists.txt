@@ -103,6 +103,7 @@ add_fsm_unit_test(test_fsm_ir DIR ir)
 # ==============================================================================
 # Middle-End & Verification Tests (tests/middleend/)
 # ==============================================================================
+add_fsm_unit_test(test_data_definitions_ir DIR middleend)
 add_fsm_unit_test(test_pass_manager DIR middleend)
 add_fsm_unit_test(test_middleend_passes DIR middleend/passes)
 add_fsm_unit_test(test_model_checker DIR middleend/analysis)

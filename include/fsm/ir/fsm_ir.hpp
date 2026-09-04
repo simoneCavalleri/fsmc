@@ -11,6 +11,7 @@
 
 #include "fsm/ir/action.hpp"
 #include "fsm/ir/deterministic_id.hpp"
+#include "fsm/ir/enum_definition.hpp"
 #include "fsm/ir/event_model.hpp"
 #include "fsm/ir/formal_property.hpp"
 #include "fsm/ir/guard.hpp"
@@ -19,6 +20,7 @@
 #include "fsm/ir/signal_definition.hpp"
 #include "fsm/ir/state_kind.hpp"
 #include "fsm/ir/state_node.hpp"
+#include "fsm/ir/struct_definition.hpp"
 #include "fsm/ir/transition_edge.hpp"
 #include "fsm/ir/transition_edge_kind.hpp"
 #include "fsm/ir/trigger.hpp"
@@ -49,6 +51,8 @@ struct FsmIr {
     std::vector<PortDefinition> ports;          ///< Typed InPorts / OutPorts with range contracts
     std::vector<SignalDefinition> signals;      ///< MBSE typed signal definitions
     std::vector<VariableDefinition> variables;  ///< Internal registers with datapath bounds
+    std::vector<EnumDefinition> enums;          ///< User-defined enum definitions
+    std::vector<StructDefinition> structs;      ///< User-defined struct and datatype definitions
     std::vector<FormalProperty> properties;     ///< Formal LTL/CTL temporal verification specifications
     std::vector<EventModel> events;             ///< Registered event definitions
     std::vector<GuardModel> guards;             ///< Guard predicates with C++ / SMT expressions
@@ -162,6 +166,38 @@ struct FsmIr {
         return nullptr;
     }
 
+    [[nodiscard]] const EnumDefinition* find_enum(std::string_view enum_name) const noexcept {
+        for (const auto& e : enums) {
+            if (e.name == enum_name)
+                return &e;
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] EnumDefinition* find_enum_mut(std::string_view enum_name) noexcept {
+        for (auto& e : enums) {
+            if (e.name == enum_name)
+                return &e;
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] const StructDefinition* find_struct(std::string_view struct_name) const noexcept {
+        for (const auto& s : structs) {
+            if (s.name == struct_name)
+                return &s;
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] StructDefinition* find_struct_mut(std::string_view struct_name) noexcept {
+        for (auto& s : structs) {
+            if (s.name == struct_name)
+                return &s;
+        }
+        return nullptr;
+    }
+
     [[nodiscard]] const FormalProperty* find_property(std::string_view prop_name) const noexcept {
         for (const auto& prop : properties) {
             if (prop.name == prop_name)
@@ -254,6 +290,26 @@ struct FsmIr {
             }
         }
         variables.push_back(std::move(var));
+    }
+
+    void add_enum(EnumDefinition def) {
+        for (auto& existing : enums) {
+            if (existing.name == def.name) {
+                existing = std::move(def);
+                return;
+            }
+        }
+        enums.push_back(std::move(def));
+    }
+
+    void add_struct(StructDefinition def) {
+        for (auto& existing : structs) {
+            if (existing.name == def.name) {
+                existing = std::move(def);
+                return;
+            }
+        }
+        structs.push_back(std::move(def));
     }
 
     void add_property(FormalProperty prop) {
@@ -411,6 +467,12 @@ struct FsmIr {
         // Sort variables by name
         std::sort(variables.begin(), variables.end(),
                   [](const VariableDefinition& a, const VariableDefinition& b) { return a.name < b.name; });
+        // Sort enums by name
+        std::sort(enums.begin(), enums.end(),
+                  [](const EnumDefinition& a, const EnumDefinition& b) { return a.name < b.name; });
+        // Sort structs by name
+        std::sort(structs.begin(), structs.end(),
+                  [](const StructDefinition& a, const StructDefinition& b) { return a.name < b.name; });
         // Sort properties by name
         std::sort(properties.begin(), properties.end(),
                   [](const FormalProperty& a, const FormalProperty& b) { return a.name < b.name; });
@@ -420,7 +482,8 @@ struct FsmIr {
         return name == other.name && ns == other.ns && initial_state_id == other.initial_state_id &&
                thread_safe == other.thread_safe && satisfies_reqs == other.satisfies_reqs && states == other.states &&
                transitions == other.transitions && ports == other.ports && signals == other.signals &&
-               variables == other.variables && properties == other.properties;
+               variables == other.variables && enums == other.enums && structs == other.structs &&
+               properties == other.properties;
     }
 };
 
@@ -437,6 +500,10 @@ using PortDirection = codegen::PortDirection;
 using SignalDefinition = codegen::SignalDefinition;
 using SignalAttribute = codegen::SignalAttribute;
 using VariableDefinition = codegen::VariableDefinition;
+using EnumDefinition = codegen::EnumDefinition;
+using EnumLiteral = codegen::EnumLiteral;
+using StructDefinition = codegen::StructDefinition;
+using StructField = codegen::StructField;
 using ActionAssignment = codegen::ActionAssignment;
 using TemporalOp = codegen::TemporalOp;
 using PropertyAstNode = codegen::PropertyAstNode;

@@ -99,6 +99,79 @@ class FsmIrSerializer {
         }
         ss << indent << "],\n";
 
+        // User-Defined Enums (SysML v2 enum def)
+        ss << indent << "\"enums\": [\n";
+        for (std::size_t i = 0; i < ir.enums.size(); ++i) {
+            const auto& en = ir.enums[i];
+            ss << indent << indent << "{\n";
+            ss << indent << indent << indent << "\"name\": \"" << escape_json(en.name) << "\",\n";
+            ss << indent << indent << indent << "\"underlying_type\": \"" << escape_json(en.underlying_type) << "\",\n";
+            ss << indent << indent << indent << "\"description\": \"" << escape_json(en.description) << "\",\n";
+            ss << indent << indent << indent << "\"literals\": [\n";
+            for (std::size_t l = 0; l < en.literals.size(); ++l) {
+                const auto& lit = en.literals[l];
+                ss << indent << indent << indent << indent << "{\"name\": \"" << escape_json(lit.name) << "\"";
+                if (lit.value.has_value()) {
+                    ss << ", \"value\": " << *lit.value;
+                } else {
+                    ss << ", \"value\": null";
+                }
+                ss << ", \"description\": \"" << escape_json(lit.description) << "\"}";
+                if (l + 1 < en.literals.size()) {
+                    ss << ",";
+                }
+                ss << "\n";
+            }
+            ss << indent << indent << indent << "]\n";
+            ss << indent << indent << "}" << (i + 1 < ir.enums.size() ? "," : "") << "\n";
+        }
+        ss << indent << "],\n";
+
+        // Structured Data Definitions (SysML v2 struct def & datatype def)
+        ss << indent << "\"structs\": [\n";
+        for (std::size_t i = 0; i < ir.structs.size(); ++i) {
+            const auto& st = ir.structs[i];
+            ss << indent << indent << "{\n";
+            ss << indent << indent << indent << "\"name\": \"" << escape_json(st.name) << "\",\n";
+            ss << indent << indent << indent << "\"is_datatype\": " << (st.is_datatype ? "true" : "false") << ",\n";
+            ss << indent << indent << indent << "\"description\": \"" << escape_json(st.description) << "\",\n";
+            ss << indent << indent << indent << "\"fields\": [\n";
+            for (std::size_t f = 0; f < st.fields.size(); ++f) {
+                const auto& field = st.fields[f];
+                ss << indent << indent << indent << indent << "{\n";
+                ss << indent << indent << indent << indent << indent << "\"name\": \"" << escape_json(field.name)
+                   << "\",\n";
+                ss << indent << indent << indent << indent << indent << "\"type\": \"" << escape_json(field.type)
+                   << "\",\n";
+                ss << indent << indent << indent << indent << indent << "\"default_value\": \""
+                   << escape_json(field.default_value) << "\",\n";
+                if (field.physical_unit.has_value()) {
+                    ss << indent << indent << indent << indent << indent << "\"physical_unit\": \""
+                       << escape_json(*field.physical_unit) << "\",\n";
+                } else {
+                    ss << indent << indent << indent << indent << indent << "\"physical_unit\": null,\n";
+                }
+                if (field.min_value.has_value()) {
+                    ss << indent << indent << indent << indent << indent << "\"min_value\": " << *field.min_value
+                       << ",\n";
+                } else {
+                    ss << indent << indent << indent << indent << indent << "\"min_value\": null,\n";
+                }
+                if (field.max_value.has_value()) {
+                    ss << indent << indent << indent << indent << indent << "\"max_value\": " << *field.max_value
+                       << ",\n";
+                } else {
+                    ss << indent << indent << indent << indent << indent << "\"max_value\": null,\n";
+                }
+                ss << indent << indent << indent << indent << indent << "\"description\": \""
+                   << escape_json(field.description) << "\"\n";
+                ss << indent << indent << indent << indent << "}" << (f + 1 < st.fields.size() ? "," : "") << "\n";
+            }
+            ss << indent << indent << indent << "]\n";
+            ss << indent << indent << "}" << (i + 1 < ir.structs.size() ? "," : "") << "\n";
+        }
+        ss << indent << "],\n";
+
         // Formal Properties (LTL/CTL & Safety Invariants)
         ss << indent << "\"properties\": [\n";
         for (std::size_t i = 0; i < ir.properties.size(); ++i) {

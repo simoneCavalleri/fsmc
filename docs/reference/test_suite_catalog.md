@@ -4,8 +4,8 @@
 > To update this file, run: `cmake --build build --target generate_test_catalog` or `python3 scripts/generate_test_catalog.py`.
 
 **Total Documented Subsystems**: 10  
-**Total Test Suites & Binaries**: 49  
-**Total Documented Test Cases**: 227  
+**Total Test Suites & Binaries**: 50  
+**Total Documented Test Cases**: 232  
 
 ---
 
@@ -1602,6 +1602,48 @@
   - Define InPort `sensor_temp` bounded to [-50.0, 50.0].
   - Transition has guard `in.sensor_temp > 90.0f`.
   - Verify analyzer detects unsatisfiable guard and reports diagnostic.
+
+### [`test_data_definitions_ir.cpp`](../tests/middleend/test_data_definitions_ir.cpp) (`tests/middleend/test_data_definitions_ir.cpp`)
+#### `DataDefinitionsIrTest.EnumDefinitionAndLiterals`
+**Test Intent**: Verify EnumDefinition and EnumLiteral creation, query methods, and value semantics.
+
+**Scenario**:
+  - Instantiate EnumLiteral with default and explicit numeric values.
+  - Create EnumDefinition with custom underlying integer type and literals.
+  - Verify lookup methods has_literal, find_literal, find_literal_mut, and add_literal.
+  - Validate structural equality via operator==.
+
+#### `DataDefinitionsIrTest.StructDefinitionAndFields`
+**Test Intent**: Verify StructDefinition and StructField attributes, ISQ units, domain contracts, and equality.
+
+**Scenario**:
+  - Instantiate StructField with type, default initializer, ISQ physical units, and min/max contracts.
+  - Create StructDefinition for both composite structs and value datatypes (is_datatype).
+  - Verify field lookup, mutation, and structural equality via operator==.
+
+#### `DataDefinitionsIrTest.FsmIrIntegration`
+**Test Intent**: Verify FsmIr metamodel container integration, lookup methods, and canonical sorting.
+
+**Scenario**:
+  - Register multiple enums and structs inside FsmIr.
+  - Validate find_enum, find_enum_mut, find_struct, and find_struct_mut.
+  - Call canonicalize() and verify deterministic alphabetical sorting for enums and structs.
+  - Verify FsmIr::operator== includes enums and structs in equality checks.
+
+#### `DataDefinitionsIrTest.FsmIrJsonSerializationRoundtrip`
+**Test Intent**: Verify lossless JSON IR serialization for user-defined enums and struct definitions.
+
+**Scenario**:
+  - Build FsmIr with complete enum and struct definitions including contracts, units, and descriptions.
+  - Serialize to JSON using FsmIrSerializer::serialize_json.
+  - Verify presence and structure of "enums" and "structs" JSON arrays.
+
+#### `DataDefinitionsIrTest.DiagramJsonSerializerExport`
+**Test Intent**: Verify diagram JsonSerializer emission of enums and structs for Studio Playground export.
+
+**Scenario**:
+  - Serialize FsmIr with enums and structs using JsonSerializer::serialize.
+  - Verify enums and structs sections are rendered properly in diagram JSON.
 
 ### [`test_pass_manager.cpp`](../tests/middleend/test_pass_manager.cpp) (`tests/middleend/test_pass_manager.cpp`)
 #### `PassManagerTest.RunDefaultPipeline`

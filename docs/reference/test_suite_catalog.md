@@ -4,8 +4,8 @@
 > To update this file, run: `cmake --build build --target generate_test_catalog` or `python3 scripts/generate_test_catalog.py`.
 
 **Total Documented Subsystems**: 10  
-**Total Test Suites & Binaries**: 53  
-**Total Documented Test Cases**: 242  
+**Total Test Suites & Binaries**: 54  
+**Total Documented Test Cases**: 249  
 
 ---
 
@@ -1678,6 +1678,64 @@
   - Define InPort `sensor_temp` bounded to [-50.0, 50.0].
   - Transition has guard `in.sensor_temp > 90.0f`.
   - Verify analyzer detects unsatisfiable guard and reports diagnostic.
+
+### [`test_middleend_v060_passes.cpp`](../tests/middleend/passes/test_middleend_v060_passes.cpp) (`tests/middleend/passes/test_middleend_v060_passes.cpp`)
+#### `MiddleEndV060PassesTest.OrthogonalProductCartesianExpansion`
+**Test Intent**: Verify OrthogonalProductPass expands concurrent regions into Cartesian product states.
+
+**Scenario**:
+  - Create a Parallel state with 2 orthogonal regions:
+  - Region 1: states A1, A2 with transition A1 -> A2 on EvA.
+  - Region 2: states B1, B2 with transition B1 -> B2 on EvB.
+  - Execute OrthogonalProductPass.
+  - Verify the parent is transformed into StateKind::Composite with 4 product states:
+
+#### `MiddleEndV060PassesTest.WcetAnalysisZenoCycleDetection`
+**Test Intent**: Verify WcetAnalysisPass detects infinite zero-time Zeno cycles.
+
+**Scenario**:
+  - Create cyclic eventless transitions between states LoopA and LoopB.
+  - Execute WcetAnalysisPass.
+  - Verify pass returns false and reports diagnostic error E_ZENO_CYCLE.
+
+#### `MiddleEndV060PassesTest.WcetAnalysisBoundedMicroSteps`
+**Test Intent**: Verify WcetAnalysisPass computes bounded micro-steps for terminating chains.
+
+**Scenario**:
+  - Create a linear sequence of eventless transitions Step1 -> Step2 -> Step3 -> Quiescent.
+  - Execute WcetAnalysisPass.
+  - Verify pass passes without error and calculates max micro-steps equal to 3.
+
+#### `MiddleEndV060PassesTest.ConstantFoldingGuardEvaluation`
+**Test Intent**: Verify ConstantFoldingPass folds tautological guards and eliminates false transitions.
+
+**Scenario**:
+  - Create transition T1 with guard "1 == 1" (tautology).
+  - Create transition T2 with guard "0 == 1" (contradiction).
+  - Create transition T3 with guard "5 > 2" (tautology).
+  - Execute ConstantFoldingPass.
+  - Verify T1 and T3 have guards stripped (unconditional), and T2 is eliminated from IR.
+
+#### `MiddleEndV060PassesTest.StateMinimizationEquivalencePartitioning`
+**Test Intent**: Verify StateMinimizationPass merges behaviorally equivalent states.
+
+**Scenario**:
+  - Create states StateA, StateB1, StateB2.
+  - Both StateB1 and StateB2 transition to StateA on EvReset with same action and guard,
+
+#### `MiddleEndV060PassesTest.PipeThroughUnixFilter`
+**Test Intent**: Verify PipeThroughPass filters IR faithfully through an external Unix command.
+
+**Scenario**:
+  - Pipe IR through the standard POSIX utility 'cat'.
+  - Verify IR roundtrips with preserved states, transitions and metadata.
+
+#### `MiddleEndV060PassesTest.PluginLoaderErrorHandling`
+**Test Intent**: Verify PluginLoader handles non-existent or invalid plugin files gracefully.
+
+**Scenario**:
+  - Attempt to load a non-existent shared library.
+  - Verify load_plugin returns false and logs diagnostic error E_PLUGIN_LOAD.
 
 ### [`test_data_definitions_ir.cpp`](../tests/middleend/test_data_definitions_ir.cpp) (`tests/middleend/test_data_definitions_ir.cpp`)
 #### `DataDefinitionsIrTest.EnumDefinitionAndLiterals`

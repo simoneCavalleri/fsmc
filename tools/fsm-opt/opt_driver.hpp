@@ -110,12 +110,33 @@ class OptDriver {
                     pm.add_pass(std::make_unique<fsm::codegen::ModelSafetyVerifierPass>());
                 } else if (p_name == "model-checking") {
                     pm.add_pass(std::make_unique<fsm::codegen::ModelCheckingPass>());
+                } else if (p_name == "orthogonal-product") {
+                    pm.add_pass(std::make_unique<fsm::codegen::OrthogonalProductPassWrapper>());
+                } else if (p_name == "wcet-analysis") {
+                    pm.add_pass(std::make_unique<fsm::codegen::WcetAnalysisPassWrapper>());
+                } else if (p_name == "constant-folding") {
+                    pm.add_pass(std::make_unique<fsm::codegen::ConstantFoldingPassWrapper>());
+                } else if (p_name == "state-minimization") {
+                    pm.add_pass(std::make_unique<fsm::codegen::StateMinimizationPassWrapper>());
+                } else if (p_name == "pipe-through") {
+                    pm.add_pass(std::make_unique<fsm::codegen::PipeThroughPassWrapper>(opts.pipe_through_cmd));
                 } else {
                     std::cerr << "[WARNING] Unrecognized pass name: '" << p_name << "'. Skipping.\n";
                 }
             }
         } else {
             pm = fsm::codegen::PassManager::create_optimizing_pipeline(opts.prune_dead);
+        }
+
+        for (const auto& plugin_path : opts.pass_plugins) {
+            fsm::codegen::DiagnosticEngine plugin_diag;
+            if (!pm.load_plugin(plugin_path, plugin_diag)) {
+                std::cerr << plugin_diag.render_to_string(content);
+                return 1;
+            }
+        }
+        if (!opts.pipe_through_cmd.empty() && opts.custom_passes.empty()) {
+            pm.add_pass(std::make_unique<fsm::codegen::PipeThroughPassWrapper>(opts.pipe_through_cmd));
         }
 
         fsm::codegen::DiagnosticEngine diag;

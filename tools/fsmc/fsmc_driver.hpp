@@ -149,6 +149,16 @@ class FsmcDriver {
                 pm.add_pass(std::make_unique<fsm::codegen::ModelSafetyVerifierPass>());
                 pm.add_pass(std::make_unique<fsm::codegen::ModelCheckingPass>());
             }
+            for (const auto& plugin_path : opts.pass_plugins) {
+                fsm::codegen::DiagnosticEngine plugin_diag;
+                if (!pm.load_plugin(plugin_path, plugin_diag)) {
+                    std::cerr << plugin_diag.render_to_string(content);
+                    return 1;
+                }
+            }
+            if (!opts.pipe_through_cmd.empty()) {
+                pm.add_pass(std::make_unique<fsm::codegen::PipeThroughPassWrapper>(opts.pipe_through_cmd));
+            }
 
             fsm::codegen::DiagnosticEngine diag;
             if (!pm.run(model, diag)) {

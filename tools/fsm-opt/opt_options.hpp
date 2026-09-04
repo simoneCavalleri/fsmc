@@ -19,6 +19,8 @@ struct OptOptions {
     bool print_before_all = false;
     bool print_after_all = false;
     bool werror = false;
+    std::string pipe_through_cmd;
+    std::vector<std::string> pass_plugins;
     bool show_help = false;
     bool show_version = false;
     bool list_passes = false;
@@ -84,6 +86,11 @@ inline void print_available_passes() {
               << " 10. efsm-data-path       - Abstract interpretation for unreachable data paths/dead guards\n"
               << " 11. safety-verifier      - Graph reachability, deadlock traps, and livelock cycle check\n"
               << " 12. model-checking       - Formal verification of temporal LTL/CTL formulas\n"
+              << " 13. orthogonal-product   - Cartesian product expansion of parallel orthogonal regions\n"
+              << " 14. wcet-analysis        - Analyzes micro-step execution chains and detects Zeno-cycles\n"
+              << " 15. constant-folding     - Folds constant guard conditions and prunes dead transitions\n"
+              << " 16. state-minimization   - DFA state minimization via Hopcroft/Moore partitioning\n"
+              << " 17. pipe-through         - Filters and transforms IR via external Unix command\n"
               << "============================================================================\n";
 }
 
@@ -144,6 +151,14 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
             opts.profile = true;
         } else if (arg == "--verify" || arg == "--check") {
             opts.verify_only = true;
+        } else if (arg == "--pipe-through" && i + 1 < argc) {
+            opts.pipe_through_cmd = argv[++i];
+        } else if (arg.rfind("--pipe-through=", 0) == 0) {
+            opts.pipe_through_cmd = std::string(arg.substr(15));
+        } else if (arg == "--load-pass-plugin" && i + 1 < argc) {
+            opts.pass_plugins.push_back(argv[++i]);
+        } else if (arg.rfind("--load-pass-plugin=", 0) == 0) {
+            opts.pass_plugins.push_back(std::string(arg.substr(19)));
         } else if (!arg.starts_with("-")) {
             if (opts.input_path.empty()) {
                 opts.input_path = arg;

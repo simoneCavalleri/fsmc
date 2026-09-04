@@ -34,9 +34,11 @@ struct FsmcOptions {
     bool thread_safe = true;
     bool include_stubs = true;
     bool verify_mode = false;
-    std::string verify_engine = "auto";  // --engine=auto|nuxmv|internal
-    std::string ltl_spec;                // --ltl "<formula>"
-    std::string ctl_spec;                // --ctl "<formula>"
+    std::string verify_engine = "auto";     // --engine=auto|nuxmv|internal
+    std::string ltl_spec;                   // --ltl "<formula>"
+    std::string ctl_spec;                   // --ctl "<formula>"
+    std::string pipe_through_cmd;           // --pipe-through "<cmd>"
+    std::vector<std::string> pass_plugins;  // --load-pass-plugin "<path.so>"
     bool show_help = false;
     bool show_version = false;
     bool is_valid = true;
@@ -196,6 +198,14 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             opts.include_stubs = false;
         } else if (arg == "--allow-diagram-codegen") {
             opts.allow_diagram_codegen = true;
+        } else if (arg == "--pipe-through" && idx + 1 < argc) {
+            opts.pipe_through_cmd = argv[++idx];
+        } else if (arg.rfind("--pipe-through=", 0) == 0) {
+            opts.pipe_through_cmd = arg.substr(15);
+        } else if (arg == "--load-pass-plugin" && idx + 1 < argc) {
+            opts.pass_plugins.push_back(argv[++idx]);
+        } else if (arg.rfind("--load-pass-plugin=", 0) == 0) {
+            opts.pass_plugins.push_back(arg.substr(19));
         } else if (!arg.empty() && arg[0] != '-') {
             if (opts.input_file.empty()) {
                 opts.input_file = arg;

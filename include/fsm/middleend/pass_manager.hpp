@@ -15,12 +15,18 @@
 #include "fsm/middleend/analysis/guard_satisfiability_pass.hpp"
 #include "fsm/middleend/analysis/model_checker.hpp"
 #include "fsm/middleend/passes/choice_inlining_pass.hpp"
+#include "fsm/middleend/passes/constant_folding_pass.hpp"
 #include "fsm/middleend/passes/dead_state_pruning_pass.hpp"
 #include "fsm/middleend/passes/determinism_enforcement_pass.hpp"
 #include "fsm/middleend/passes/guard_simplification_pass.hpp"
 #include "fsm/middleend/passes/orthogonal_interference_pass.hpp"
+#include "fsm/middleend/passes/orthogonal_product_pass.hpp"
+#include "fsm/middleend/passes/pipe_through_pass.hpp"
+#include "fsm/middleend/passes/state_minimization_pass.hpp"
 #include "fsm/middleend/passes/submachine_inlining_pass.hpp"
 #include "fsm/middleend/passes/timed_deadlock_pass.hpp"
+#include "fsm/middleend/passes/wcet_analysis_pass.hpp"
+#include "fsm/middleend/plugin/plugin_loader.hpp"
 
 namespace fsm::codegen {
 
@@ -400,6 +406,78 @@ class EFSMDataPathPass : public IPass {
 };
 
 // ============================================================================
+// Pass: OrthogonalProductPassWrapper
+// ============================================================================
+class OrthogonalProductPassWrapper : public IPass {
+  public:
+    [[nodiscard]] std::string name() const override { return OrthogonalProductPass::name(); }
+    [[nodiscard]] std::string description() const override { return OrthogonalProductPass::description(); }
+
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override {
+        OrthogonalProductPass pass;
+        return pass.run(ir, diag);
+    }
+};
+
+// ============================================================================
+// Pass: WcetAnalysisPassWrapper
+// ============================================================================
+class WcetAnalysisPassWrapper : public IPass {
+  public:
+    explicit WcetAnalysisPassWrapper(std::size_t max_microstep_threshold = 100) : pass_(max_microstep_threshold) {}
+    [[nodiscard]] std::string name() const override { return WcetAnalysisPass::name(); }
+    [[nodiscard]] std::string description() const override { return WcetAnalysisPass::description(); }
+
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override { return pass_.run(ir, diag); }
+
+  private:
+    WcetAnalysisPass pass_;
+};
+
+// ============================================================================
+// Pass: ConstantFoldingPassWrapper
+// ============================================================================
+class ConstantFoldingPassWrapper : public IPass {
+  public:
+    [[nodiscard]] std::string name() const override { return ConstantFoldingPass::name(); }
+    [[nodiscard]] std::string description() const override { return ConstantFoldingPass::description(); }
+
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override {
+        ConstantFoldingPass pass;
+        return pass.run(ir, diag);
+    }
+};
+
+// ============================================================================
+// Pass: StateMinimizationPassWrapper
+// ============================================================================
+class StateMinimizationPassWrapper : public IPass {
+  public:
+    [[nodiscard]] std::string name() const override { return StateMinimizationPass::name(); }
+    [[nodiscard]] std::string description() const override { return StateMinimizationPass::description(); }
+
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override {
+        StateMinimizationPass pass;
+        return pass.run(ir, diag);
+    }
+};
+
+// ============================================================================
+// Pass: PipeThroughPassWrapper
+// ============================================================================
+class PipeThroughPassWrapper : public IPass {
+  public:
+    explicit PipeThroughPassWrapper(std::string cmd) : pass_(std::move(cmd)) {}
+    [[nodiscard]] std::string name() const override { return PipeThroughPass::name(); }
+    [[nodiscard]] std::string description() const override { return PipeThroughPass::description(); }
+
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override { return pass_.run(ir, diag); }
+
+  private:
+    PipeThroughPass pass_;
+};
+
+// ============================================================================
 // PassManager: Pipeline Coordinator
 // ============================================================================
 class PassManager {
@@ -422,18 +500,23 @@ class PassManager {
         return pm;
     }
 
-    static PassManager create_optimizing_pipeline(bool prune_dead_states = true) {
+    static PassManager create_optimizing_pipeline(bool prune_dead_states = true, bool minimize_states = false) {
         PassManager pm;
         pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
         pm.add_pass(std::make_unique<GuardSimplificationPassWrapper>());
+        pm.add_pass(std::make_unique<ConstantFoldingPassWrapper>());
         pm.add_pass(std::make_unique<DeterminismEnforcementPassWrapper>());
         pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
         if (prune_dead_states) {
             pm.add_pass(std::make_unique<DeadStatePruningPassWrapper>(true));
         }
+        if (minimize_states) {
+            pm.add_pass(std::make_unique<StateMinimizationPassWrapper>());
+        }
         pm.add_pass(std::make_unique<ChoiceCompletenessPass>());
         pm.add_pass(std::make_unique<ChoiceInliningPassWrapper>());
         pm.add_pass(std::make_unique<TimedDeadlockPassWrapper>());
+        pm.add_pass(std::make_unique<WcetAnalysisPassWrapper>());
         pm.add_pass(std::make_unique<EFSMDataPathPass>());
         pm.add_pass(std::make_unique<GuardSatisfiabilityPassWrapper>());
         pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
@@ -442,6 +525,10 @@ class PassManager {
     }
 
     void add_pass(std::unique_ptr<IPass> pass) { passes_.push_back(std::move(pass)); }
+
+    bool load_plugin(const std::string& plugin_path, DiagnosticEngine& diag) {
+        return plugin_loader_.load_plugin(plugin_path, *this, diag);
+    }
 
     bool run(FsmIr& ir, DiagnosticEngine& diag) {
         stats_.clear();
@@ -469,6 +556,7 @@ class PassManager {
   private:
     std::vector<std::unique_ptr<IPass>> passes_;
     std::vector<PassExecutionStats> stats_;
+    PluginLoader plugin_loader_;
 };
 
 }  // namespace fsm::codegen
@@ -481,11 +569,17 @@ using HierarchyCanonicalizationPass = ::fsm::codegen::HierarchyCanonicalizationP
 using GuardSimplificationPassWrapper = ::fsm::codegen::GuardSimplificationPassWrapper;
 using DeterminismEnforcementPassWrapper = ::fsm::codegen::DeterminismEnforcementPassWrapper;
 using OrthogonalInterferencePassWrapper = ::fsm::codegen::OrthogonalInterferencePassWrapper;
+using OrthogonalProductPassWrapper = ::fsm::codegen::OrthogonalProductPassWrapper;
 using DeadStatePruningPassWrapper = ::fsm::codegen::DeadStatePruningPassWrapper;
 using ChoiceCompletenessPass = ::fsm::codegen::ChoiceCompletenessPass;
 using ChoiceInliningPassWrapper = ::fsm::codegen::ChoiceInliningPassWrapper;
 using TimedDeadlockPassWrapper = ::fsm::codegen::TimedDeadlockPassWrapper;
+using WcetAnalysisPassWrapper = ::fsm::codegen::WcetAnalysisPassWrapper;
+using ConstantFoldingPassWrapper = ::fsm::codegen::ConstantFoldingPassWrapper;
+using StateMinimizationPassWrapper = ::fsm::codegen::StateMinimizationPassWrapper;
+using PipeThroughPassWrapper = ::fsm::codegen::PipeThroughPassWrapper;
 using EFSMDataPathPass = ::fsm::codegen::EFSMDataPathPass;
 using ModelSafetyVerifierPass = ::fsm::codegen::ModelSafetyVerifierPass;
 using ModelCheckingPass = ::fsm::codegen::ModelCheckingPass;
+using PluginLoader = ::fsm::codegen::PluginLoader;
 }  // namespace fsm

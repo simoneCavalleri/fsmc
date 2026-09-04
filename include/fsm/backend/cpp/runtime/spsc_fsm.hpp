@@ -228,6 +228,28 @@ class spsc_fsm {
         return res;
     }
 
+    std::size_t tick(std::uint64_t delta_ms) {
+        return fsm_.tick(delta_ms);
+    }
+
+    template <typename Callback>
+    std::size_t tick(std::uint64_t delta_ms, Callback on_expired) {
+        return fsm_.tick(delta_ms, on_expired);
+    }
+
+    template <typename Rep, typename Period>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt) {
+        return fsm_.tick(dt);
+    }
+
+    template <typename Rep, typename Period, typename Callback>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired) {
+        return fsm_.tick(dt, on_expired);
+    }
+
+    [[nodiscard]] auto& timer_manager() noexcept { return fsm_.timer_manager(); }
+    [[nodiscard]] const auto& timer_manager() const noexcept { return fsm_.timer_manager(); }
+
     // ========================================================================
     // Read & Introspection API
     // ========================================================================

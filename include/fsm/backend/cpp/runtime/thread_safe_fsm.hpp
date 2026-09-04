@@ -227,6 +227,9 @@ class thread_safe_fsm {
         fsm_.clear_deferred_events();
     }
 
+    [[nodiscard]] auto& timer_manager() noexcept { return fsm_.timer_manager(); }
+    [[nodiscard]] const auto& timer_manager() const noexcept { return fsm_.timer_manager(); }
+
     template <typename Callable>
     auto with_state(Callable&& fn) const {
         if (reentrancy_.is_reentrant_call()) {
@@ -324,6 +327,29 @@ class thread_safe_fsm {
     step_result step(DurationRep dt) {
         std::scoped_lock lock(dispatch_mutex_);
         return fsm_.step(dt);
+    }
+
+    std::size_t tick(std::uint64_t delta_ms) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.tick(delta_ms);
+    }
+
+    template <typename Callback>
+    std::size_t tick(std::uint64_t delta_ms, Callback on_expired) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.tick(delta_ms, on_expired);
+    }
+
+    template <typename Rep, typename Period>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.tick(dt);
+    }
+
+    template <typename Rep, typename Period, typename Callback>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.tick(dt, on_expired);
     }
 
     // ========================================================================

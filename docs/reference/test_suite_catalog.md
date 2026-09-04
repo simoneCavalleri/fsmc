@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 10  
 **Total Test Suites & Binaries**: 55  
-**Total Documented Test Cases**: 255  
+**Total Documented Test Cases**: 257  
 
 ---
 
@@ -587,6 +587,12 @@
   - Post delayed state timeout for StateA -> StateB.
   - Manually trigger an immediate external transition before the timer fires.
   - Verify that when the timer expires, the obsolete callback is safely discarded without effect.
+
+#### `TimedTransitionsTest.UnifiedStepWithDeterministicTick`
+**Test Intent**: Verify unified step(dt) advancing deterministic timer manager and observer tick.
+
+#### `TimedTransitionsTest.TickExpiredCallbackAndThreadSafeWrappers`
+**Test Intent**: Verify tick(dt, on_expired) callback and thread-safe / SPSC wrappers.
 
 ### [`test_traits_and_hooks.cpp`](../tests/backend/cpp/runtime/test_traits_and_hooks.cpp) (`tests/backend/cpp/runtime/test_traits_and_hooks.cpp`)
 #### `TraitsAndHooksTest.TypeListAlgorithms`

@@ -1193,6 +1193,18 @@ struct is_dynamic_observer<std::function<void(const transition_info&)>> : std::t
 template <typename T>
 inline constexpr bool is_dynamic_observer_v = is_dynamic_observer<T>::value;
 
+namespace detail {
+template <typename T, typename = void>
+struct has_advance_tick : std::false_type {};
+
+template <typename T>
+struct has_advance_tick<T, std::void_t<decltype(std::declval<T>().advance_tick(std::declval<std::uint64_t>()))>>
+    : std::true_type {};
+}  // namespace detail
+
+template <typename T>
+inline constexpr bool has_advance_tick_v = detail::has_advance_tick<T>::value;
+
 // Empty tag type for non-allocated optional sub-objects
 struct empty_storage {};
 
@@ -2962,7 +2974,12 @@ class fsm {
     }
 
     template <typename DurationRep>
-    step_result step(DurationRep /*dt*/, const in_ports_type& in, out_ports_type& out, services_type& srv) {
+    step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out, services_type& srv) {
+        if constexpr (std::is_integral_v<DurationRep>) {
+            this->tick(static_cast<std::uint64_t>(dt));
+        } else {
+            this->tick(dt);
+        }
         return step(in, out, srv);
     }
 
@@ -3194,18 +3211,33 @@ class fsm {
     }
 
     /**
-     * @brief Advances deterministic real-time clocks by delta_ms.
+     * @brief Advances deterministic real-time clocks by delta_ms and invokes on_expired on expired timers.
+     * Also automatically advances observer tick timestamp if the observer supports advance_tick.
      * @param delta_ms Elapsed milliseconds in hard real-time cycle.
+     * @param on_expired Functor called for each expired timer.
      * @return Number of timers that expired during this tick.
      */
+    template <typename Callback>
+    std::size_t tick(std::uint64_t delta_ms, Callback on_expired) {
+        if constexpr (has_advance_tick_v<observer_type>) {
+            observer_.advance_tick(delta_ms);
+        }
+        return timer_mgr_.tick(delta_ms, on_expired);
+    }
+
     std::size_t tick(std::uint64_t delta_ms) {
-        return timer_mgr_.tick(delta_ms, [](std::uint32_t /*timer_id*/) {});
+        return tick(delta_ms, [](std::uint32_t /*timer_id*/) {});
+    }
+
+    template <typename Rep, typename Period, typename Callback>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired) {
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(dt).count();
+        return tick(static_cast<std::uint64_t>(ms > 0 ? ms : 1), on_expired);
     }
 
     template <typename Rep, typename Period>
     std::size_t tick(std::chrono::duration<Rep, Period> dt) {
-        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(dt).count();
-        return tick(static_cast<std::uint64_t>(ms > 0 ? ms : 1));
+        return tick(dt, [](std::uint32_t /*timer_id*/) {});
     }
 
   protected:
@@ -4187,6 +4219,9 @@ class thread_safe_fsm {
         fsm_.clear_deferred_events();
     }
 
+    [[nodiscard]] auto& timer_manager() noexcept { return fsm_.timer_manager(); }
+    [[nodiscard]] const auto& timer_manager() const noexcept { return fsm_.timer_manager(); }
+
     template <typename Callable>
     auto with_state(Callable&& fn) const {
         if (reentrancy_.is_reentrant_call()) {
@@ -4284,6 +4319,29 @@ class thread_safe_fsm {
     step_result step(DurationRep dt) {
         std::scoped_lock lock(dispatch_mutex_);
         return fsm_.step(dt);
+    }
+
+    std::size_t tick(std::uint64_t delta_ms) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.tick(delta_ms);
+    }
+
+    template <typename Callback>
+    std::size_t tick(std::uint64_t delta_ms, Callback on_expired) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.tick(delta_ms, on_expired);
+    }
+
+    template <typename Rep, typename Period>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.tick(dt);
+    }
+
+    template <typename Rep, typename Period, typename Callback>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.tick(dt, on_expired);
     }
 
     // ========================================================================
@@ -4710,6 +4768,28 @@ class spsc_fsm {
         seq_.fetch_add(1, std::memory_order_release);
         return res;
     }
+
+    std::size_t tick(std::uint64_t delta_ms) {
+        return fsm_.tick(delta_ms);
+    }
+
+    template <typename Callback>
+    std::size_t tick(std::uint64_t delta_ms, Callback on_expired) {
+        return fsm_.tick(delta_ms, on_expired);
+    }
+
+    template <typename Rep, typename Period>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt) {
+        return fsm_.tick(dt);
+    }
+
+    template <typename Rep, typename Period, typename Callback>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired) {
+        return fsm_.tick(dt, on_expired);
+    }
+
+    [[nodiscard]] auto& timer_manager() noexcept { return fsm_.timer_manager(); }
+    [[nodiscard]] const auto& timer_manager() const noexcept { return fsm_.timer_manager(); }
 
     // ========================================================================
     // Read & Introspection API

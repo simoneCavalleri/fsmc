@@ -173,7 +173,12 @@ class fsm {
     }
 
     template <typename DurationRep>
-    step_result step(DurationRep /*dt*/, const in_ports_type& in, out_ports_type& out, services_type& srv) {
+    step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out, services_type& srv) {
+        if constexpr (std::is_integral_v<DurationRep>) {
+            this->tick(static_cast<std::uint64_t>(dt));
+        } else {
+            this->tick(dt);
+        }
         return step(in, out, srv);
     }
 
@@ -405,18 +410,33 @@ class fsm {
     }
 
     /**
-     * @brief Advances deterministic real-time clocks by delta_ms.
+     * @brief Advances deterministic real-time clocks by delta_ms and invokes on_expired on expired timers.
+     * Also automatically advances observer tick timestamp if the observer supports advance_tick.
      * @param delta_ms Elapsed milliseconds in hard real-time cycle.
+     * @param on_expired Functor called for each expired timer.
      * @return Number of timers that expired during this tick.
      */
+    template <typename Callback>
+    std::size_t tick(std::uint64_t delta_ms, Callback on_expired) {
+        if constexpr (has_advance_tick_v<observer_type>) {
+            observer_.advance_tick(delta_ms);
+        }
+        return timer_mgr_.tick(delta_ms, on_expired);
+    }
+
     std::size_t tick(std::uint64_t delta_ms) {
-        return timer_mgr_.tick(delta_ms, [](std::uint32_t /*timer_id*/) {});
+        return tick(delta_ms, [](std::uint32_t /*timer_id*/) {});
+    }
+
+    template <typename Rep, typename Period, typename Callback>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired) {
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(dt).count();
+        return tick(static_cast<std::uint64_t>(ms > 0 ? ms : 1), on_expired);
     }
 
     template <typename Rep, typename Period>
     std::size_t tick(std::chrono::duration<Rep, Period> dt) {
-        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(dt).count();
-        return tick(static_cast<std::uint64_t>(ms > 0 ? ms : 1));
+        return tick(dt, [](std::uint32_t /*timer_id*/) {});
     }
 
   protected:

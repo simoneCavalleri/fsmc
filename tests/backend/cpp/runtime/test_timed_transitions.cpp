@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "fsm/backend/cpp/runtime/fsm.hpp"
+#include "fsm/backend/cpp/runtime/spsc_fsm.hpp"
 #include "fsm/backend/cpp/runtime/thread_safe_fsm.hpp"
 #include "fsm/backend/cpp/runtime/transition.hpp"
 
@@ -274,6 +275,56 @@ TEST(TimedTransitionsTest, StaleTimerCancellationOnStateChange) {
     EXPECT_TRUE(async_sm.is_in_state<StateB>());
 
     async_sm.stop_worker();
+}
+
+/**
+ * @brief Test Intent: Verify unified step(dt) advancing deterministic timer manager and observer tick.
+ */
+TEST(TimedTransitionsTest, UnifiedStepWithDeterministicTick) {
+    fsm::fsm<ConnTable, fsm::no_ports, fsm::no_ports, fsm::no_registers, fsm::no_services, Connecting,
+             fsm::flight_recorder_observer<16>, 16, 4>
+        sm;
+
+    EXPECT_TRUE(sm.is_in_state<Connecting>());
+    EXPECT_TRUE(sm.timer_manager().start_timer(1, 100));
+    EXPECT_EQ(sm.timer_manager().active_count(), 1U);
+
+    // Step 1: 40ms -> timer not expired
+    auto res1 = sm.step(std::chrono::milliseconds(40));
+    EXPECT_TRUE(res1.is_steady());
+    EXPECT_EQ(sm.timer_manager().active_count(), 1U);
+
+    // Step 2: 70ms -> total 110ms >= 100ms -> timer expired
+    auto res2 = sm.step(std::chrono::milliseconds(70));
+    EXPECT_TRUE(res2.is_steady());
+    EXPECT_EQ(sm.timer_manager().active_count(), 0U);
+}
+
+/**
+ * @brief Test Intent: Verify tick(dt, on_expired) callback and thread-safe / SPSC wrappers.
+ */
+TEST(TimedTransitionsTest, TickExpiredCallbackAndThreadSafeWrappers) {
+    fsm::fsm<ConnTable, fsm::no_ports, fsm::no_ports, fsm::no_registers, fsm::no_services, Connecting,
+             fsm::no_observer, 16, 4>
+        sm;
+
+    EXPECT_TRUE(sm.timer_manager().start_timer(42, 50));
+    std::uint32_t expired_id = 0;
+    std::size_t expired_count = sm.tick(60, [&](std::uint32_t id) { expired_id = id; });
+    EXPECT_EQ(expired_count, 1U);
+    EXPECT_EQ(expired_id, 42U);
+
+    // Thread-safe wrapper
+    fsm::thread_safe_fsm<ConnTable> ts_sm;
+    EXPECT_TRUE(ts_sm.timer_manager().start_timer(7, 30));
+    std::size_t ts_exp = ts_sm.tick(std::chrono::milliseconds(40));
+    EXPECT_EQ(ts_exp, 1U);
+
+    // SPSC wrapper
+    fsm::spsc_fsm<ConnTable> spsc_sm;
+    EXPECT_TRUE(spsc_sm.timer_manager().start_timer(9, 20));
+    std::size_t spsc_exp = spsc_sm.tick(25);
+    EXPECT_EQ(spsc_exp, 1U);
 }
 
 }  // namespace

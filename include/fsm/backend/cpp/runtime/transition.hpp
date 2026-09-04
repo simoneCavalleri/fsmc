@@ -48,6 +48,18 @@ struct after_ms {
     static constexpr std::chrono::milliseconds duration{Milliseconds};
 };
 
+template <typename T>
+struct is_timed_event : std::false_type {};
+
+template <typename Duration>
+struct is_timed_event<after<Duration>> : std::true_type {};
+
+template <std::int64_t Milliseconds>
+struct is_timed_event<after_ms<Milliseconds>> : std::true_type {};
+
+template <typename T>
+inline constexpr bool is_timed_event_v = is_timed_event<T>::value;
+
 namespace detail {
 template <typename T, typename = void>
 struct has_elapsed_ticks : std::false_type {};

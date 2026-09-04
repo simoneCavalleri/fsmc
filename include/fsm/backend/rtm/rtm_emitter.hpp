@@ -42,6 +42,31 @@ struct RequirementRecord {
  */
 class RtmEmitter {
   public:
+    static void audit_traceability(const FsmIr& ir, DiagnosticEngine& diag) {
+        std::size_t untraced_states = 0;
+        for (const auto& s : ir.states) {
+            if (s.kind == StateKind::Final || ir.is_choice_node(s.name))
+                continue;
+            if (s.traceability_reqs.empty()) {
+                untraced_states++;
+                diag.report(
+                    Diagnostic::info("I_RTM_UNTRACED",
+                                     "State '" + s.name + "' has no formal traceability requirement link (@fsm:req)."));
+            }
+        }
+        std::size_t untraced_trans = 0;
+        for (const auto& t : ir.transitions) {
+            if (t.traceability_reqs.empty()) {
+                untraced_trans++;
+            }
+        }
+        diag.report(Diagnostic::info("I_RTM_AUDIT_SUMMARY",
+                                     "Traceability Audit: " + std::to_string(ir.states.size() - untraced_states) + "/" +
+                                         std::to_string(ir.states.size()) + " states linked, " +
+                                         std::to_string(ir.transitions.size() - untraced_trans) + "/" +
+                                         std::to_string(ir.transitions.size()) + " transitions linked."));
+    }
+
     static std::string emit(const FsmIr& ir, const std::vector<ModelCheckResult>& results,
                             RtmFormat format = RtmFormat::Markdown) {
         auto records = aggregate_records(ir, results);

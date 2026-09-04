@@ -18,7 +18,114 @@ namespace fsm::codegen {
 
 class CppModelEmitter {
   public:
+    static void emit_enums(std::ostream& out, const FsmIr& model) {
+        if (model.enums.empty()) {
+            return;
+        }
+
+        out << "// ============================================================================\n";
+        out << "// Strongly-Typed Enumerations (SysML v2 / Formal IR)\n";
+        out << "// ============================================================================\n\n";
+
+        for (const auto& en : model.enums) {
+            out << "/**\n";
+            out << " * @enum " << en.name << "\n";
+            out << " * @brief Enumeration definition for '" << en.name << "'.\n";
+            out << " */\n";
+            out << "enum class " << en.name << " : " << (en.underlying_type.empty() ? "uint8_t" : en.underlying_type)
+                << " {\n";
+            for (size_t i = 0; i < en.literals.size(); ++i) {
+                const auto& lit = en.literals[i];
+                out << "    " << lit.name;
+                if (lit.value.has_value()) {
+                    out << " = " << *lit.value;
+                }
+                if (i + 1 < en.literals.size()) {
+                    out << ",";
+                }
+                if (!lit.description.empty()) {
+                    out << " // " << lit.description;
+                }
+                out << "\n";
+            }
+            out << "};\n\n";
+
+            out << "[[nodiscard]] constexpr std::string_view to_string(" << en.name << " val) noexcept {\n";
+            out << "    switch (val) {\n";
+            for (const auto& lit : en.literals) {
+                out << "        case " << en.name << "::" << lit.name << ": return \"" << lit.name << "\";\n";
+            }
+            out << "        default: return \"unknown\";\n";
+            out << "    }\n";
+            out << "}\n\n";
+        }
+    }
+
+    static void emit_structs(std::ostream& out, const FsmIr& model) {
+        if (model.structs.empty()) {
+            return;
+        }
+
+        out << "// ============================================================================\n";
+        out << "// Structured Data Definitions (SysML v2 struct / datatype def)\n";
+        out << "// ============================================================================\n\n";
+
+        for (const auto& st : model.structs) {
+            out << "/**\n";
+            out << " * @struct " << st.name << "\n";
+            if (!st.description.empty()) {
+                out << " * @brief " << st.description << "\n";
+            } else {
+                out << " * @brief Structured datatype '" << st.name << "'.\n";
+            }
+            out << " */\n";
+            out << "struct " << st.name << " {\n";
+            for (const auto& field : st.fields) {
+                out << "    " << field.type << " " << field.name;
+                if (!field.default_value.empty()) {
+                    out << "{" << field.default_value << "}";
+                } else if (field.type == "bool" || field.type == "Boolean") {
+                    out << "{false}";
+                } else if (field.type == "double" || field.type == "float" || field.type == "Real") {
+                    out << "{0.0}";
+                } else if (field.type == "int" || field.type == "int32_t" || field.type == "uint32_t" ||
+                           field.type == "uint8_t" || field.type == "Integer") {
+                    out << "{0}";
+                } else {
+                    out << "{}";
+                }
+                out << ";";
+                if (!field.description.empty()) {
+                    out << " // " << field.description;
+                }
+                out << "\n";
+            }
+
+            if (!st.fields.empty()) {
+                out << "\n    bool operator==(const " << st.name << "& other) const noexcept {\n";
+                out << "        return ";
+                for (size_t i = 0; i < st.fields.size(); ++i) {
+                    if (i > 0)
+                        out << " &&\n               ";
+                    out << st.fields[i].name << " == other." << st.fields[i].name;
+                }
+                out << ";\n";
+                out << "    }\n";
+                out << "    bool operator!=(const " << st.name << "& other) const noexcept {\n";
+                out << "        return !(*this == other);\n";
+                out << "    }\n";
+            } else {
+                out << "    bool operator==(const " << st.name << "&) const noexcept { return true; }\n";
+                out << "    bool operator!=(const " << st.name << "&) const noexcept { return false; }\n";
+            }
+            out << "};\n\n";
+        }
+    }
+
     static void emit_domain_structures(std::ostream& out, const FsmIr& model) {
+        emit_enums(out, model);
+        emit_structs(out, model);
+
         out << "// ============================================================================\n";
         out << "// Partitioned I/O Ports, Internal Registers & Environment Services\n";
         out << "// ============================================================================\n\n";
@@ -827,6 +934,8 @@ class CppModelEmitter {
     }
 
     static void emit_model(std::ostream& out, const FsmIr& model, const GeneratorOptions& options) {
+        emit_enums(out, model);
+        emit_structs(out, model);
         emit_domain_structures(out, model);
         emit_events(out, model);
         emit_states(out, model);

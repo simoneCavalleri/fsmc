@@ -29,6 +29,8 @@ CORE_FILES = [
     "type_traits.hpp",
     "config.hpp",
     "static_vector.hpp",
+    "deterministic_timer.hpp",
+    "flight_recorder.hpp",
     "transition.hpp",
     "transition_table.hpp",
     "detail/history_manager.hpp",

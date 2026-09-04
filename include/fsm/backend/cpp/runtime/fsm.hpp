@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <string_view>
 #include <type_traits>
 #include <utility>
@@ -8,6 +9,8 @@
 #include "fsm/backend/cpp/runtime/detail/deferred_manager.hpp"
 #include "fsm/backend/cpp/runtime/detail/history_manager.hpp"
 #include "fsm/backend/cpp/runtime/detail/transition_executor.hpp"
+#include "fsm/backend/cpp/runtime/deterministic_timer.hpp"
+#include "fsm/backend/cpp/runtime/flight_recorder.hpp"
 #include "fsm/backend/cpp/runtime/static_vector.hpp"
 #include "fsm/backend/cpp/runtime/transition_table.hpp"
 
@@ -76,7 +79,11 @@ namespace fsm {
  */
 template <typename Table, typename InPorts = no_ports, typename OutPorts = no_ports, typename Registers = no_registers,
           typename Services = no_services, typename InitialState = typename Table::initial_state,
-          typename Observer = no_observer, std::size_t DeferredCapacity = 16>
+          typename Observer = no_observer, std::size_t DeferredCapacity = 16,
+          std::size_t TimerCapacity =
+              (detail::table_timed_events_count_v<Table> > 0
+                   ? (detail::table_timed_events_count_v<Table> > 4 ? detail::table_timed_events_count_v<Table> : 4)
+                   : 0)>
 class fsm {
   public:
     using table_type = Table;
@@ -389,6 +396,26 @@ class fsm {
                           current_state_);
     }
 
+    [[nodiscard]] constexpr deterministic_timer_manager<TimerCapacity>& timer_manager() noexcept { return timer_mgr_; }
+    [[nodiscard]] constexpr const deterministic_timer_manager<TimerCapacity>& timer_manager() const noexcept {
+        return timer_mgr_;
+    }
+
+    /**
+     * @brief Advances deterministic real-time clocks by delta_ms.
+     * @param delta_ms Elapsed milliseconds in hard real-time cycle.
+     * @return Number of timers that expired during this tick.
+     */
+    std::size_t tick(std::uint64_t delta_ms) {
+        return timer_mgr_.tick(delta_ms, [](std::uint32_t /*timer_id*/) {});
+    }
+
+    template <typename Rep, typename Period>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt) {
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(dt).count();
+        return tick(static_cast<std::uint64_t>(ms > 0 ? ms : 1));
+    }
+
   protected:
     template <typename Event, typename State>
     void on_unhandled_event(const Event& /*event*/, const State& /*src*/) {
@@ -423,13 +450,22 @@ class fsm {
     FSMC_NO_UNIQUE_ADDRESS observer_type observer_{};
     FSMC_NO_UNIQUE_ADDRESS detail::history_manager<Table, has_history> history_mgr_{};
     FSMC_NO_UNIQUE_ADDRESS detail::deferred_manager<Table, DeferredCapacity, has_deferred> deferred_mgr_{};
+    FSMC_NO_UNIQUE_ADDRESS deterministic_timer_manager<TimerCapacity> timer_mgr_{};
 };
 
 template <typename Table, typename InPorts = no_ports, typename OutPorts = no_ports, typename Registers = no_registers,
           typename Services = no_services, typename InitialState = typename Table::initial_state,
-          std::size_t DeferredCapacity = 16>
+          std::size_t DeferredCapacity = 16,
+          std::size_t TimerCapacity =
+              (detail::table_timed_events_count_v<Table> > 0
+                   ? (detail::table_timed_events_count_v<Table> > 4 ? detail::table_timed_events_count_v<Table> : 4)
+                   : 0)>
 using dynamic_fsm =
-    fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, dynamic_observer, DeferredCapacity>;
+    fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, dynamic_observer, DeferredCapacity, TimerCapacity>;
+
+template <typename Table, std::size_t MaxTimers = 8>
+using timed_fsm = fsm<Table, no_ports, no_ports, no_registers, no_services, typename Table::initial_state, no_observer,
+                      16, MaxTimers>;
 
 }  // namespace fsm
 

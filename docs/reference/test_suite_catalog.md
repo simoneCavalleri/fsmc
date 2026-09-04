@@ -4,8 +4,8 @@
 > To update this file, run: `cmake --build build --target generate_test_catalog` or `python3 scripts/generate_test_catalog.py`.
 
 **Total Documented Subsystems**: 10  
-**Total Test Suites & Binaries**: 54  
-**Total Documented Test Cases**: 249  
+**Total Test Suites & Binaries**: 55  
+**Total Documented Test Cases**: 255  
 
 ---
 
@@ -257,6 +257,37 @@
 
 #### `DeferredEventsTest.ConfigurableDeferredCapacity`
 **Test Intent**: Verify configurable DeferredCapacity template parameter across all runtime wrappers.
+
+### [`test_flight_recorder.cpp`](../tests/backend/cpp/runtime/test_flight_recorder.cpp) (`tests/backend/cpp/runtime/test_flight_recorder.cpp`)
+#### `FlightRecorderTest.CircularRingBufferPushAndWrap`
+**Test Intent**: Verify TraceBuffer circular ring buffer pushes and overwrites without allocations.
+
+**Scenario**:
+  - Create TraceBuffer with fixed capacity 4.
+  - Push 6 entries.
+  - Verify size saturates at 4 and oldest entries are evicted in FIFO order.
+
+#### `FlightRecorderTest.ChronologicalIndexingAndDump`
+**Test Intent**: Verify chronological indexing, last_entry retrieval and dump formatting.
+
+**Scenario**:
+  - Push entries to TraceBuffer and test last_entry and dump output.
+
+#### `FlightRecorderTest.FlightRecorderObserverRecording`
+**Test Intent**: Verify flight_recorder_observer records transitions and tracks ticks.
+
+**Scenario**:
+  - Instantiate flight_recorder_observer and dispatch synthetic on_transition calls.
+  - Verify recorded items in the inner buffer.
+
+#### `FlightRecorderTest.FsmDeterministicTimerTick`
+**Test Intent**: Verify fsm::fsm integrates deterministic timer manager and synchronous tick().
+
+**Scenario**:
+  - Instantiate synchronous fsm.
+  - Start a timer via timer_manager().
+  - Step time with tick(50) and tick(60).
+  - Verify timer expiration count.
 
 ### [`test_fsm.cpp`](../tests/backend/cpp/runtime/test_fsm.cpp) (`tests/backend/cpp/runtime/test_fsm.cpp`)
 #### `FsmCoreTest.BasicTransitionsAndIntrospection`
@@ -748,6 +779,14 @@
   - Emit guards with include_stubs = true.
   - Verify generated struct returns the direct expression.
 
+#### `CppModelEmitterTest.EnumAndStructDefinitionsEmission`
+**Test Intent**: Verify C++ emission of SysML v2 / formal IR Enums and Structs.
+
+**Scenario**:
+  - Define EnumDefinition 'FlightMode' with explicit underlying type and literals.
+  - Define StructDefinition 'Waypoint' with typed fields and default values.
+  - Emit via CppModelEmitter and verify enum class, to_string constexpr, and struct definitions.
+
 ### [`test_generated_fsm.cpp`](../tests/backend/cpp/test_generated_fsm.cpp) (`tests/backend/cpp/test_generated_fsm.cpp`)
 - *(Executable binary test verification)*
 
@@ -906,7 +945,12 @@
 ## Requirements Traceability (RTM) Subsystem
 
 ### [`test_rtm_emitter.cpp`](../tests/backend/rtm/test_rtm_emitter.cpp) (`tests/backend/rtm/test_rtm_emitter.cpp`)
-- *(Executable binary test verification)*
+#### `RtmEmitterTest.AuditTraceabilityVerification`
+**Test Intent**: Verify RtmEmitter::audit_traceability reports untraced states and summary statistics.
+
+**Scenario**:
+  - Run audit_traceability on model where some states lack formal traceability tags.
+  - Verify diagnostic engine receives audit notifications.
 
 ---
 

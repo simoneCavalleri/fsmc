@@ -74,4 +74,31 @@ TEST(RtmEmitterTest, MarkdownAndJsonGeneration) {
     EXPECT_NE(json_violated.find("\"status\": \"VIOLATED\""), std::string::npos);
 }
 
+/**
+ * @brief Test Intent: Verify RtmEmitter::audit_traceability reports untraced states and summary statistics.
+ *
+ * Scenario:
+ * - Run audit_traceability on model where some states lack formal traceability tags.
+ * - Verify diagnostic engine receives audit notifications.
+ */
+TEST(RtmEmitterTest, AuditTraceabilityVerification) {
+    FsmIr model;
+    model.name = "AuditTest";
+    model.add_state("S1");
+    auto& s2 = model.add_state("S2");
+    s2.traceability_reqs.push_back("REQ-TEST-01");
+
+    DiagnosticEngine diag;
+    RtmEmitter::audit_traceability(model, diag);
+
+    EXPECT_FALSE(diag.has_errors());
+    bool found_audit_summary = false;
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "I_RTM_AUDIT_SUMMARY") {
+            found_audit_summary = true;
+        }
+    }
+    EXPECT_TRUE(found_audit_summary);
+}
+
 }  // namespace

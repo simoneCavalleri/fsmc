@@ -271,3 +271,65 @@ TEST(CppModelEmitterTest, EfsmResolvedGuardGeneration) {
     EXPECT_NE(str.find("struct battery_check {"), std::string::npos);
     EXPECT_NE(str.find("return in.soc > 30.0f && !reg.is_faulty;"), std::string::npos);
 }
+
+/**
+ * @brief Test Intent: Verify C++ emission of SysML v2 / formal IR Enums and Structs.
+ *
+ * Scenario:
+ * - Define EnumDefinition 'FlightMode' with explicit underlying type and literals.
+ * - Define StructDefinition 'Waypoint' with typed fields and default values.
+ * - Emit via CppModelEmitter and verify enum class, to_string constexpr, and struct definitions.
+ */
+TEST(CppModelEmitterTest, EnumAndStructDefinitionsEmission) {
+    FsmIr model;
+    model.name = "NavigationComputer";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+
+    // Enum
+    EnumDefinition flight_mode("FlightMode", "uint16_t", "Operational flight mode");
+    flight_mode.add_literal(EnumLiteral{"Standby", 0, "Idle on ground"});
+    flight_mode.add_literal(EnumLiteral{"EnRoute", 10, "Cruising waypoint navigation"});
+    flight_mode.add_literal(EnumLiteral{"Approach", 20, "Instrument landing approach"});
+    model.add_enum(flight_mode);
+
+    // Struct
+    StructDefinition waypoint("Waypoint", false, "Navigation waypoint coordinate");
+    StructField lat{"lat", "double", "0.0"};
+    lat.description = "Latitude in degrees";
+    waypoint.add_field(lat);
+
+    StructField lon{"lon", "double", "0.0"};
+    lon.description = "Longitude in degrees";
+    waypoint.add_field(lon);
+
+    StructField alt{"alt_m", "float", "1000.0f"};
+    alt.description = "Target altitude in meters";
+    waypoint.add_field(alt);
+
+    StructField fly{"is_flyover", "bool", "false"};
+    fly.description = "Flyover vs flyby";
+    waypoint.add_field(fly);
+    model.add_struct(waypoint);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    CppModelEmitter::emit_model(out, model, opts);
+    std::string str = out.str();
+
+    // Verify Enum class and to_string
+    EXPECT_NE(str.find("enum class FlightMode : uint16_t {"), std::string::npos);
+    EXPECT_NE(str.find("Standby = 0, // Idle on ground"), std::string::npos);
+    EXPECT_NE(str.find("EnRoute = 10, // Cruising waypoint navigation"), std::string::npos);
+    EXPECT_NE(str.find("Approach = 20 // Instrument landing approach"), std::string::npos);
+    EXPECT_NE(str.find("constexpr std::string_view to_string(FlightMode val) noexcept"), std::string::npos);
+    EXPECT_NE(str.find("case FlightMode::Standby: return \"Standby\";"), std::string::npos);
+
+    // Verify Struct and equality operators
+    EXPECT_NE(str.find("struct Waypoint {"), std::string::npos);
+    EXPECT_NE(str.find("double lat{0.0}; // Latitude in degrees"), std::string::npos);
+    EXPECT_NE(str.find("float alt_m{1000.0f}; // Target altitude in meters"), std::string::npos);
+    EXPECT_NE(str.find("bool is_flyover{false}; // Flyover vs flyby"), std::string::npos);
+    EXPECT_NE(str.find("bool operator==(const Waypoint& other) const noexcept"), std::string::npos);
+    EXPECT_NE(str.find("lat == other.lat &&"), std::string::npos);
+}

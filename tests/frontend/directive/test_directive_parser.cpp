@@ -126,4 +126,66 @@ TEST(DirectiveParserTest, ParsePortDirective) {
     EXPECT_EQ(port->description, "Primary sensor");
 }
 
+/**
+ * @brief Test Intent: Verify `@fsm:enum` directive parsing and roundtrip serialization.
+ */
+TEST(DirectiveParserTest, ParseEnumDirective) {
+    std::string line =
+        "' @fsm:enum name=OperatingMode type=uint8_t literals=[Standby=0, Armed=1, Active=2] desc=\"Operating modes\"";
+    EXPECT_TRUE(DirectiveParser::is_directive(line));
+
+    std::string body = DirectiveParser::extract_directive_body(line);
+    auto en = DirectiveParser::parse_enum_directive(body);
+    ASSERT_TRUE(en.has_value());
+
+    EXPECT_EQ(en->name, "OperatingMode");
+    EXPECT_EQ(en->underlying_type, "uint8_t");
+    EXPECT_EQ(en->description, "Operating modes");
+    ASSERT_EQ(en->literals.size(), 3u);
+    EXPECT_EQ(en->literals[0].name, "Standby");
+    EXPECT_EQ(en->literals[0].value, 0);
+    EXPECT_EQ(en->literals[1].name, "Armed");
+    EXPECT_EQ(en->literals[1].value, 1);
+    EXPECT_EQ(en->literals[2].name, "Active");
+    EXPECT_EQ(en->literals[2].value, 2);
+
+    std::string formatted = DirectiveParser::format_enum_directive(*en);
+    auto en2 = DirectiveParser::parse_enum_directive(formatted);
+    ASSERT_TRUE(en2.has_value());
+    EXPECT_EQ(*en, *en2);
+}
+
+/**
+ * @brief Test Intent: Verify `@fsm:struct` directive parsing and roundtrip serialization.
+ */
+TEST(DirectiveParserTest, ParseStructDirective) {
+    std::string line =
+        "// @fsm:struct name=Waypoint is_datatype=true fields=[lat:float=0.0, lon:float=0.0, alt:int32=100] desc=\"Waypoint record\"";
+    EXPECT_TRUE(DirectiveParser::is_directive(line));
+
+    std::string body = DirectiveParser::extract_directive_body(line);
+    auto st = DirectiveParser::parse_struct_directive(body);
+    ASSERT_TRUE(st.has_value());
+
+    EXPECT_EQ(st->name, "Waypoint");
+    EXPECT_TRUE(st->is_datatype);
+    EXPECT_EQ(st->description, "Waypoint record");
+    ASSERT_EQ(st->fields.size(), 3u);
+    EXPECT_EQ(st->fields[0].name, "lat");
+    EXPECT_EQ(st->fields[0].type, "float");
+    EXPECT_EQ(st->fields[0].default_value, "0.0");
+    EXPECT_EQ(st->fields[1].name, "lon");
+    EXPECT_EQ(st->fields[1].type, "float");
+    EXPECT_EQ(st->fields[1].default_value, "0.0");
+    EXPECT_EQ(st->fields[2].name, "alt");
+    EXPECT_EQ(st->fields[2].type, "int32");
+    EXPECT_EQ(st->fields[2].default_value, "100");
+
+    std::string formatted = DirectiveParser::format_struct_directive(*st);
+    auto st2 = DirectiveParser::parse_struct_directive(formatted);
+    ASSERT_TRUE(st2.has_value());
+    EXPECT_EQ(*st, *st2);
+}
+
 }  // namespace
+

@@ -409,6 +409,70 @@ class JsonStateParser : public IParser {
             }
         }
 
+        // Top-level enums
+        const auto* enums_arr = root.get_child("enums");
+        if (enums_arr != nullptr && enums_arr->is_array()) {
+            for (const auto& e_val : enums_arr->arr_val) {
+                if (e_val.is_object()) {
+                    EnumDefinition en;
+                    en.name = sanitize_identifier(e_val.get_string("name"));
+                    en.underlying_type = e_val.get_string("type", "uint8_t");
+                    en.description = e_val.get_string("description");
+                    const auto* lits_arr = e_val.get_child("literals");
+                    if (lits_arr != nullptr && lits_arr->is_array()) {
+                        for (const auto& l_val : lits_arr->arr_val) {
+                            if (l_val.is_object()) {
+                                std::string l_name = sanitize_identifier(l_val.get_string("name"));
+                                std::optional<int64_t> l_num;
+                                if (const auto* v_num = l_val.get_child("value")) {
+                                    if (v_num->type == JsonType::Number) {
+                                        l_num = static_cast<int64_t>(v_num->num_val);
+                                    }
+                                }
+                                if (!l_name.empty()) {
+                                    en.add_literal(l_name, l_num);
+                                }
+                            }
+                        }
+                    }
+                    if (!en.name.empty()) {
+                        model.add_enum(std::move(en));
+                    }
+                }
+            }
+        }
+
+        // Top-level structs
+        const auto* structs_arr = root.get_child("structs");
+        if (structs_arr != nullptr && structs_arr->is_array()) {
+            for (const auto& s_val : structs_arr->arr_val) {
+                if (s_val.is_object()) {
+                    StructDefinition st;
+                    st.name = sanitize_identifier(s_val.get_string("name"));
+                    st.description = s_val.get_string("description");
+                    if (const auto* dt_val = s_val.get_child("is_datatype")) {
+                        st.is_datatype = (dt_val->type == JsonType::Bool && dt_val->bool_val);
+                    }
+                    const auto* fields_arr = s_val.get_child("fields");
+                    if (fields_arr != nullptr && fields_arr->is_array()) {
+                        for (const auto& f_val : fields_arr->arr_val) {
+                            if (f_val.is_object()) {
+                                std::string f_name = sanitize_identifier(f_val.get_string("name"));
+                                std::string f_type = f_val.get_string("type", "string");
+                                std::string f_def = f_val.get_string("default");
+                                if (!f_name.empty()) {
+                                    st.add_field(StructField(f_name, f_type, f_def));
+                                }
+                            }
+                        }
+                    }
+                    if (!st.name.empty()) {
+                        model.add_struct(std::move(st));
+                    }
+                }
+            }
+        }
+
         // Top-level formal properties
         const auto* props_arr = root.get_child("properties");
         if (props_arr != nullptr && props_arr->is_array()) {

@@ -55,22 +55,8 @@ class MermaidParser : public IParser {
                     if (eq != std::string::npos) {
                         out_model.name = sanitize_identifier(trim(body.substr(eq + 1)));
                     }
-                } else if (body.rfind("var", 0) == 0 || body.rfind("variable", 0) == 0) {
-                    if (auto var = DirectiveParser::parse_variable_directive(body)) {
-                        out_model.add_variable(std::move(*var));
-                    }
-                } else if (body.rfind("port", 0) == 0) {
-                    if (auto port = DirectiveParser::parse_port_directive(body)) {
-                        out_model.ports.push_back(std::move(*port));
-                    }
-                } else if (body.rfind("property", 0) == 0) {
-                    if (auto prop = DirectiveParser::parse_property_directive(body)) {
-                        out_model.add_property(std::move(*prop));
-                    }
-                } else if (body.rfind("signal", 0) == 0) {
-                    if (auto sig = DirectiveParser::parse_signal_directive(body)) {
-                        out_model.add_signal(std::move(*sig));
-                    }
+                } else if (DirectiveParser::parse_model_directive(body, out_model)) {
+                    continue;
                 } else if (body.rfind("state", 0) == 0) {
                     // Check if state name is provided
                     auto n_pos = body.find("name=");

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 10  
 **Total Test Suites & Binaries**: 55  
-**Total Documented Test Cases**: 258  
+**Total Documented Test Cases**: 261  
 
 ---
 
@@ -946,6 +946,9 @@
 #### `LosslessRoundtripTest.AutonomousUavMissionPreset`
 **Test Intent**: Verify 100% lossless multi-format roundtrip and traceability requirements for Autonomous UAV
 
+#### `LosslessRoundtripTest.UniversalDataDefinitionsRoundtripAcrossAllFormats`
+**Test Intent**: Verify universal lossless roundtrip of enum and struct definitions
+
 ---
 
 ## Requirements Traceability (RTM) Subsystem
@@ -1168,6 +1171,12 @@
 
 #### `DirectiveParserTest.ParsePortDirective`
 **Test Intent**: Verify `@fsm:port` directive parsing with direction, numeric bounds, and constraint expression.
+
+#### `DirectiveParserTest.ParseEnumDirective`
+**Test Intent**: Verify `@fsm:enum` directive parsing and roundtrip serialization.
+
+#### `DirectiveParserTest.ParseStructDirective`
+**Test Intent**: Verify `@fsm:struct` directive parsing and roundtrip serialization.
 
 ### [`test_cameo_parser.cpp`](../tests/frontend/formal/test_cameo_parser.cpp) (`tests/frontend/formal/test_cameo_parser.cpp`)
 #### `CameoParserTest.BasicXmiParsing`

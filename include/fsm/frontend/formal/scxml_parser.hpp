@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "fsm/frontend/common/parser_interface.hpp"
+#include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/frontend/formal/cameo_xmi_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
@@ -57,17 +58,16 @@ class ScxmlParser : public IParser {
             model.initial_state = sanitize_identifier(root_init);
         }
 
-        // Parse signal directives from comments
+        // Parse @fsm directives from comments
         {
             std::string raw_str{content};
-            std::regex sig_re(R"(<!--\s*@fsm:signal\s+([A-Za-z0-9_]+)\s*-->)");
-            auto begin = std::sregex_iterator(raw_str.begin(), raw_str.end(), sig_re);
+            std::regex comment_re(R"(<!--\s*@fsm:([^\r\n-]+?)\s*-->)");
+            auto begin = std::sregex_iterator(raw_str.begin(), raw_str.end(), comment_re);
             auto end = std::sregex_iterator();
             for (auto i = begin; i != end; ++i) {
                 std::smatch match = *i;
-                SignalDefinition sig_def;
-                sig_def.name = sanitize_identifier(match[1].str());
-                model.add_signal(std::move(sig_def));
+                std::string body = match[1].str();
+                DirectiveParser::parse_model_directive(body, model);
             }
         }
 

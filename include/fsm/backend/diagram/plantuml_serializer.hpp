@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
@@ -97,7 +98,18 @@ class PlantUmlSerializer {
             }
         }
 
-        if (!model.properties.empty() || !model.variables.empty() || !model.signals.empty()) {
+        // Enums
+        for (const auto& en : model.enums) {
+            out << "' @fsm:enum " << DirectiveParser::format_enum_directive(en) << "\n";
+        }
+
+        // Structs
+        for (const auto& st : model.structs) {
+            out << "' @fsm:struct " << DirectiveParser::format_struct_directive(st) << "\n";
+        }
+
+        if (!model.properties.empty() || !model.variables.empty() || !model.signals.empty() ||
+            !model.enums.empty() || !model.structs.empty()) {
             out << "\n";
         }
 

@@ -6,6 +6,7 @@
 #include <sstream>
 #include <string>
 
+#include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
@@ -21,6 +22,13 @@ class CameoSerializer {
         out << "<xmi:XMI xmi:version=\"2.1\" xmlns:uml=\"http://www.omg.org/spec/UML/20090901\" "
                "xmlns:xmi=\"http://schema.omg.org/spec/XMI/2.1\">\n";
         out << "  <uml:Model xmi:id=\"_m1\" name=\"" << escape_xml(model_name) << "Model\">\n";
+        // Emit declared enums & structs as formal directives
+        for (const auto& en : model.enums) {
+            out << "    <!-- @fsm:enum " << DirectiveParser::format_enum_directive(en) << " -->\n";
+        }
+        for (const auto& st : model.structs) {
+            out << "    <!-- @fsm:struct " << DirectiveParser::format_struct_directive(st) << " -->\n";
+        }
         out << "    <packagedElement xmi:type=\"uml:StateMachine\" xmi:id=\"_sm1\" name=\"" << escape_xml(model_name)
             << "\">\n";
         out << "      <region xmi:id=\"_r1\">\n";

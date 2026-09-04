@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
@@ -43,7 +44,14 @@ class DotSerializer {
         for (const auto& sig : model.signals) {
             out << "    // @fsm:signal " << sig.name << "\n";
         }
-        if (!model.properties.empty() || !model.ports.empty() || !model.variables.empty() || !model.signals.empty()) {
+        for (const auto& en : model.enums) {
+            out << "    // @fsm:enum " << DirectiveParser::format_enum_directive(en) << "\n";
+        }
+        for (const auto& st : model.structs) {
+            out << "    // @fsm:struct " << DirectiveParser::format_struct_directive(st) << "\n";
+        }
+        if (!model.properties.empty() || !model.ports.empty() || !model.variables.empty() || !model.signals.empty() ||
+            !model.enums.empty() || !model.structs.empty()) {
             out << "\n";
         }
 

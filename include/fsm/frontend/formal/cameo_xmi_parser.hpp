@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "fsm/frontend/common/parser_interface.hpp"
+#include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
@@ -268,6 +269,20 @@ class CameoXmiParser : public IParser {
 
         // Map xmi:id -> State Name
         std::map<std::string, std::string> id_to_name;
+
+        // Parse @fsm directives from comments
+        {
+            std::string raw_str{content};
+            std::regex comment_re(R"(<!--\s*@fsm:([^\r\n-]+?)\s*-->)");
+            auto begin = std::sregex_iterator(raw_str.begin(), raw_str.end(), comment_re);
+            auto end = std::sregex_iterator();
+            for (auto i = begin; i != end; ++i) {
+                std::smatch match = *i;
+                std::string body = match[1].str();
+                DirectiveParser::parse_model_directive(body, model);
+            }
+        }
+
         // Map xmi:id -> is_choice
         std::map<std::string, bool> id_is_choice;
         // Map xmi:id -> is_initial

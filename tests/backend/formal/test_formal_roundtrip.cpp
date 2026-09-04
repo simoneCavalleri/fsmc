@@ -57,6 +57,39 @@ void assert_ir_equivalent(const FsmIr& ir1, const FsmIr& ir2, const std::string&
         EXPECT_TRUE(found) << path_info << " Missing transition: " << t1.source << " --(" << t1.event << ")--> "
                            << t1.target;
     }
+
+    EXPECT_EQ(ir1.enums.size(), ir2.enums.size()) << path_info << " Enums size mismatch";
+    for (const auto& e1 : ir1.enums) {
+        const auto* e2 = ir2.find_enum(e1.name);
+        ASSERT_NE(e2, nullptr) << path_info << " Missing enum: " << e1.name;
+        EXPECT_EQ(e1.underlying_type, e2->underlying_type)
+            << path_info << " Enum: " << e1.name << " underlying type mismatch";
+        EXPECT_EQ(e1.literals.size(), e2->literals.size())
+            << path_info << " Enum: " << e1.name << " literals count mismatch";
+        for (size_t li = 0; li < e1.literals.size(); ++li) {
+            EXPECT_EQ(e1.literals[li].name, e2->literals[li].name) << path_info;
+            if (e1.literals[li].value.has_value() && e2->literals[li].value.has_value()) {
+                EXPECT_EQ(*e1.literals[li].value, *e2->literals[li].value) << path_info;
+            }
+        }
+    }
+
+    EXPECT_EQ(ir1.structs.size(), ir2.structs.size()) << path_info << " Structs size mismatch";
+    for (const auto& s1 : ir1.structs) {
+        const auto* s2 = ir2.find_struct(s1.name);
+        ASSERT_NE(s2, nullptr) << path_info << " Missing struct: " << s1.name;
+        EXPECT_EQ(s1.is_datatype, s2->is_datatype)
+            << path_info << " Struct: " << s1.name << " is_datatype mismatch";
+        EXPECT_EQ(s1.fields.size(), s2->fields.size())
+            << path_info << " Struct: " << s1.name << " fields count mismatch";
+        for (size_t fi = 0; fi < s1.fields.size(); ++fi) {
+            EXPECT_EQ(s1.fields[fi].name, s2->fields[fi].name) << path_info;
+            EXPECT_EQ(s1.fields[fi].type, s2->fields[fi].type) << path_info;
+            if (!s1.fields[fi].default_value.empty() && !s2->fields[fi].default_value.empty()) {
+                EXPECT_EQ(s1.fields[fi].default_value, s2->fields[fi].default_value) << path_info;
+            }
+        }
+    }
 }
 
 void verify_roundtrip(const FsmIr& baseline) {
@@ -1049,4 +1082,43 @@ state def AutonomousUavMission {
     verify_uav_model(scxml_ir, "SCXML", true, true);
 }
 
+/**
+ * @brief Test Intent: Verify universal lossless roundtrip of enum and struct definitions
+ * across all 7 supported diagram and schema formats (Mermaid, PlantUML, SysML v2, JSON, DOT, SCXML, Cameo XMI).
+ */
+TEST(LosslessRoundtripTest, UniversalDataDefinitionsRoundtripAcrossAllFormats) {
+    FsmIr baseline;
+    baseline.name = "DataDefsFsm";
+    baseline.initial_state = "Idle";
+
+    StateNode s_idle;
+    s_idle.name = "Idle";
+    baseline.states.push_back(s_idle);
+
+    StateNode s_active;
+    s_active.name = "Active";
+    baseline.states.push_back(s_active);
+
+    TransitionEdge t1;
+    t1.source = "Idle";
+    t1.target = "Active";
+    t1.event = "EvStart";
+    baseline.transitions.push_back(t1);
+
+    EnumDefinition en("FlightMode", "uint8_t", "UAV flight modes");
+    en.add_literal("Manual", 0);
+    en.add_literal("Auto", 1);
+    en.add_literal("Failsafe", 2);
+    baseline.add_enum(en);
+
+    StructDefinition st("Waypoint", true, "3D Waypoint definition");
+    st.add_field(StructField("latitude", "float", "0.0"));
+    st.add_field(StructField("longitude", "float", "0.0"));
+    st.add_field(StructField("altitude", "uint32_t", "100"));
+    baseline.add_struct(st);
+
+    verify_roundtrip(baseline);
+}
+
 }  // namespace
+

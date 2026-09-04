@@ -428,6 +428,224 @@ class DirectiveParser {
         return var;
     }
 
+    // Parses @fsm:enum name=FlightPhase [type=uint8_t] literals=[Preflight=0, Taxi=1, Cruise=2] [desc="..."]
+    static std::optional<EnumDefinition> parse_enum_directive(std::string_view body) {
+        std::string str = trim(body);
+        if (str.empty())
+            return std::nullopt;
+
+        if (str.rfind("enum", 0) == 0) {
+            str = trim(str.substr(4));
+        }
+
+        EnumDefinition en;
+        auto n_pos = str.find("name=");
+        if (n_pos != std::string::npos) {
+            en.name = extract_quoted_or_word(str, n_pos + 5);
+        } else {
+            auto first_space = str.find_first_of(" \t");
+            if (first_space != std::string::npos) {
+                en.name = trim(str.substr(0, first_space));
+            } else {
+                en.name = str;
+            }
+        }
+
+        if (en.name.empty()) {
+            return std::nullopt;
+        }
+
+        auto t_pos = str.find("type=");
+        if (t_pos != std::string::npos) {
+            en.underlying_type = extract_quoted_or_word(str, t_pos + 5);
+        }
+        if (en.underlying_type.empty()) {
+            en.underlying_type = "uint8_t";
+        }
+
+        auto d_pos = str.find("desc=");
+        if (d_pos != std::string::npos) {
+            en.description = extract_quoted_or_word(str, d_pos + 5);
+        }
+
+        auto lit_pos = str.find("literals=");
+        if (lit_pos != std::string::npos) {
+            auto items = extract_array_items(str, lit_pos + 9);
+            for (const auto& item : items) {
+                auto eq_pos = item.find('=');
+                if (eq_pos != std::string::npos) {
+                    std::string lname = trim_ws(item.substr(0, eq_pos));
+                    std::string lval = trim_ws(item.substr(eq_pos + 1));
+                    if (!lname.empty()) {
+                        try {
+                            en.add_literal(lname, std::stoll(lval));
+                        } catch (...) {
+                            en.add_literal(lname);
+                        }
+                    }
+                } else {
+                    std::string lname = trim_ws(item);
+                    if (!lname.empty()) {
+                        en.add_literal(lname);
+                    }
+                }
+            }
+        }
+
+        return en;
+    }
+
+    // Parses @fsm:struct name=Waypoint [is_datatype=true] fields=[latitude_deg:Real=0.0, longitude_deg:Real=0.0] [desc="..."]
+    static std::optional<StructDefinition> parse_struct_directive(std::string_view body) {
+        std::string str = trim(body);
+        if (str.empty())
+            return std::nullopt;
+
+        if (str.rfind("struct", 0) == 0) {
+            str = trim(str.substr(6));
+        }
+
+        StructDefinition st;
+        auto n_pos = str.find("name=");
+        if (n_pos != std::string::npos) {
+            st.name = extract_quoted_or_word(str, n_pos + 5);
+        } else {
+            auto first_space = str.find_first_of(" \t");
+            if (first_space != std::string::npos) {
+                st.name = trim(str.substr(0, first_space));
+            } else {
+                st.name = str;
+            }
+        }
+
+        if (st.name.empty()) {
+            return std::nullopt;
+        }
+
+        auto dt_pos = str.find("is_datatype=");
+        if (dt_pos != std::string::npos) {
+            std::string val = extract_quoted_or_word(str, dt_pos + 12);
+            st.is_datatype = (val == "true" || val == "1");
+        }
+
+        auto d_pos = str.find("desc=");
+        if (d_pos != std::string::npos) {
+            st.description = extract_quoted_or_word(str, d_pos + 5);
+        }
+
+        auto f_pos = str.find("fields=");
+        if (f_pos != std::string::npos) {
+            auto items = extract_array_items(str, f_pos + 7);
+            for (const auto& item : items) {
+                std::string fname;
+                std::string ftype = "string";
+                std::string fdefault;
+
+                auto colon_pos = item.find(':');
+                if (colon_pos != std::string::npos) {
+                    fname = trim_ws(item.substr(0, colon_pos));
+                    std::string rest = item.substr(colon_pos + 1);
+                    auto eq_pos = rest.find('=');
+                    if (eq_pos != std::string::npos) {
+                        ftype = trim_ws(rest.substr(0, eq_pos));
+                        fdefault = trim_ws(rest.substr(eq_pos + 1));
+                    } else {
+                        ftype = trim_ws(rest);
+                    }
+                } else {
+                    auto eq_pos = item.find('=');
+                    if (eq_pos != std::string::npos) {
+                        fname = trim_ws(item.substr(0, eq_pos));
+                        fdefault = trim_ws(item.substr(eq_pos + 1));
+                    } else {
+                        fname = trim_ws(item);
+                    }
+                }
+
+                if (!fname.empty()) {
+                    StructField field(fname, ftype, fdefault);
+                    st.add_field(std::move(field));
+                }
+            }
+        }
+
+        return st;
+    }
+
+    // Formats an EnumDefinition into @fsm:enum directive argument string
+    static std::string format_enum_directive(const EnumDefinition& en) {
+        std::string out = "name=" + en.name + " type=" + (en.underlying_type.empty() ? "uint8_t" : en.underlying_type) + " literals=[";
+        for (size_t i = 0; i < en.literals.size(); ++i) {
+            if (i > 0) out += ", ";
+            out += en.literals[i].name;
+            if (en.literals[i].value.has_value()) {
+                out += "=" + std::to_string(*en.literals[i].value);
+            }
+        }
+        out += "]";
+        if (!en.description.empty()) {
+            out += " desc=\"" + en.description + "\"";
+        }
+        return out;
+    }
+
+    // Formats a StructDefinition into @fsm:struct directive argument string
+    static std::string format_struct_directive(const StructDefinition& st) {
+        std::string out = "name=" + st.name;
+        if (st.is_datatype) {
+            out += " is_datatype=true";
+        }
+        out += " fields=[";
+        for (size_t i = 0; i < st.fields.size(); ++i) {
+            if (i > 0) out += ", ";
+            out += st.fields[i].name + ":" + st.fields[i].type;
+            if (!st.fields[i].default_value.empty()) {
+                out += "=" + st.fields[i].default_value;
+            }
+        }
+        out += "]";
+        if (!st.description.empty()) {
+            out += " desc=\"" + st.description + "\"";
+        }
+        return out;
+    }
+
+    // Parses any model-level directive (var, port, property, signal, enum, struct)
+    static bool parse_model_directive(std::string_view body, FsmIr& model) {
+        if (body.rfind("var", 0) == 0 || body.rfind("variable", 0) == 0) {
+            if (auto var = parse_variable_directive(body)) {
+                model.add_variable(std::move(*var));
+                return true;
+            }
+        } else if (body.rfind("port", 0) == 0) {
+            if (auto port = parse_port_directive(body)) {
+                model.ports.push_back(std::move(*port));
+                return true;
+            }
+        } else if (body.rfind("property", 0) == 0) {
+            if (auto prop = parse_property_directive(body)) {
+                model.add_property(std::move(*prop));
+                return true;
+            }
+        } else if (body.rfind("signal", 0) == 0) {
+            if (auto sig = parse_signal_directive(body)) {
+                model.add_signal(std::move(*sig));
+                return true;
+            }
+        } else if (body.rfind("enum", 0) == 0) {
+            if (auto en = parse_enum_directive(body)) {
+                model.add_enum(std::move(*en));
+                return true;
+            }
+        } else if (body.rfind("struct", 0) == 0) {
+            if (auto st = parse_struct_directive(body)) {
+                model.add_struct(std::move(*st));
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Parses @fsm:trans [id="<hash>"] [guard_ast="..."] [action_sig="..."]
     static bool parse_trans_directive(std::string_view body, TransitionEdge& trans) {
         std::string str(body);
@@ -472,6 +690,14 @@ class DirectiveParser {
         if (start == std::string::npos)
             return "";
         auto end = s.find_last_not_of(" \t\r\n;");
+        return std::string(s.substr(start, end - start + 1));
+    }
+
+    static std::string trim_ws(std::string_view s) {
+        auto start = s.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos)
+            return "";
+        auto end = s.find_last_not_of(" \t\r\n");
         return std::string(s.substr(start, end - start + 1));
     }
 

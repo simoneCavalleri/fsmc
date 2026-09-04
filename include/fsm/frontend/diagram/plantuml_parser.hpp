@@ -45,22 +45,8 @@ class PlantUmlParser : public IParser {
 
             if (DirectiveParser::is_directive(trimmed)) {
                 std::string body = DirectiveParser::extract_directive_body(trimmed);
-                if (body.rfind("var", 0) == 0) {
-                    if (auto var = DirectiveParser::parse_variable_directive(body)) {
-                        out_model.add_variable(std::move(*var));
-                    }
-                } else if (body.rfind("port", 0) == 0) {
-                    if (auto port = DirectiveParser::parse_port_directive(body)) {
-                        out_model.ports.push_back(std::move(*port));
-                    }
-                } else if (body.rfind("property", 0) == 0) {
-                    if (auto prop = DirectiveParser::parse_property_directive(body)) {
-                        out_model.add_property(std::move(*prop));
-                    }
-                } else if (body.rfind("signal", 0) == 0) {
-                    if (auto sig = DirectiveParser::parse_signal_directive(body)) {
-                        out_model.add_signal(std::move(*sig));
-                    }
+                if (DirectiveParser::parse_model_directive(body, out_model)) {
+                    continue;
                 } else if (body.rfind("state", 0) == 0) {
                     DirectiveParser::parse_state_directive(body, out_model, parent_stack);
                 } else if (!parent_stack.empty()) {

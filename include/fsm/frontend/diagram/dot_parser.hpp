@@ -46,23 +46,7 @@ class DotParser : public IParser {
 
             if (DirectiveParser::is_directive(trimmed)) {
                 std::string body = DirectiveParser::extract_directive_body(trimmed);
-                if (body.rfind("var", 0) == 0 || body.rfind("variable", 0) == 0) {
-                    if (auto var = DirectiveParser::parse_variable_directive(body)) {
-                        model.add_variable(std::move(*var));
-                    }
-                } else if (body.rfind("port", 0) == 0) {
-                    if (auto port = DirectiveParser::parse_port_directive(body)) {
-                        model.ports.push_back(std::move(*port));
-                    }
-                } else if (body.rfind("property", 0) == 0) {
-                    if (auto prop = DirectiveParser::parse_property_directive(body)) {
-                        model.add_property(std::move(*prop));
-                    }
-                } else if (body.rfind("signal", 0) == 0) {
-                    if (auto sig = DirectiveParser::parse_signal_directive(body)) {
-                        model.add_signal(std::move(*sig));
-                    }
-                }
+                DirectiveParser::parse_model_directive(body, model);
                 continue;
             }
 

@@ -79,6 +79,11 @@ struct EnumDefinition {
         literals.push_back(std::move(lit));
     }
 
+    void add_literal(std::string lit_name, std::optional<int64_t> val = std::nullopt, std::string desc = "") {
+        add_literal(EnumLiteral(std::move(lit_name), val, std::move(desc)));
+    }
+
+
     bool operator==(const EnumDefinition& other) const noexcept {
         return name == other.name && underlying_type == other.underlying_type && literals == other.literals &&
                description == other.description;

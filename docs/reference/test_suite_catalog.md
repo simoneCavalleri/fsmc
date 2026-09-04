@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 10  
 **Total Test Suites & Binaries**: 55  
-**Total Documented Test Cases**: 261  
+**Total Documented Test Cases**: 262  
 
 ---
 
@@ -1313,6 +1313,14 @@
   - Query ParserFactory by format name "stateflow".
   - Query ParserFactory by extension ".sfx" and ".stateflow".
   - Query ParserFactory detect_format_from_content on XML containing <Stateflow>.
+
+#### `StateflowParserTest.SerializerRoundtripWithDirectives`
+**Test Intent**: Verify StateflowSerializer XML generation, EmitterFactory registration, and full lossless parsing.
+
+**Scenario**:
+  - Construct FsmIr with hierarchy, parallel state, history junction, do_activity, directives (var, port, enum, struct).
+  - Serialize to Stateflow XML using StateflowSerializer and EmitterFactory.
+  - Parse back with StateflowParser and verify all structural and metadata elements.
 
 ### [`test_sysml2_flight_control.cpp`](../tests/frontend/formal/test_sysml2_flight_control.cpp) (`tests/frontend/formal/test_sysml2_flight_control.cpp`)
 - *(Executable binary test verification)*

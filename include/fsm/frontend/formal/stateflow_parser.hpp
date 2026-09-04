@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "fsm/frontend/common/parser_interface.hpp"
+#include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/frontend/formal/cameo_xmi_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
@@ -56,6 +57,24 @@ class StateflowParser : public IParser {
             model.name = sanitize_identifier(chart_name);
         } else {
             model.name = "StateflowChart";
+        }
+
+        std::string chart_initial = chart_node->get_attr("initial");
+        if (!chart_initial.empty()) {
+            model.initial_state = sanitize_identifier(chart_initial);
+        }
+
+        // Parse @fsm directives from XML comments
+        {
+            std::string raw_str{content};
+            std::regex comment_re(R"(<!--\s*@fsm:([^\r\n-]+?)\s*-->)");
+            auto begin = std::sregex_iterator(raw_str.begin(), raw_str.end(), comment_re);
+            auto end = std::sregex_iterator();
+            for (auto i = begin; i != end; ++i) {
+                std::smatch match = *i;
+                std::string body = match[1].str();
+                DirectiveParser::parse_model_directive(body, model);
+            }
         }
 
         // Parse Stateflow elements
@@ -114,8 +133,31 @@ class StateflowParser : public IParser {
                     }
                 }
 
+                std::string during_act = child->get_attr("during");
+                if (during_act.empty()) {
+                    during_act = child->get_attr("do_activity");
+                }
+                if (!during_act.empty()) {
+                    if (auto* s = model.find_state_mut(st_name)) {
+                        s->do_activity = sanitize_identifier(during_act);
+                    }
+                }
+
                 // Recursively parse child states and transitions
                 parse_chart_elements(child, model, st_name);
+            } else if (child->tag == "junction" || child->tag == "Junction") {
+                std::string jtype = child->get_attr("type");
+                if (jtype == "HISTORY" || jtype == "history") {
+                    if (auto* s = model.find_state_mut(parent_state)) {
+                        s->has_history = true;
+                        s->has_deep_history = false;
+                    }
+                } else if (jtype == "HISTORY_DEEP" || jtype == "deep_history") {
+                    if (auto* s = model.find_state_mut(parent_state)) {
+                        s->has_history = true;
+                        s->has_deep_history = true;
+                    }
+                }
             } else if (child->tag == "transition" || child->tag == "Transition") {
                 parse_stateflow_transition(child, model, parent_state);
             }
@@ -126,6 +168,13 @@ class StateflowParser : public IParser {
                                     const std::string& scope) {
         std::string src = trans_node->get_attr("src");
         std::string dst = trans_node->get_attr("dst");
+        if (src.empty() && !dst.empty()) {
+            if (scope.empty() && model.initial_state.empty()) {
+                model.initial_state = sanitize_identifier(dst);
+            }
+            return;
+        }
+
         std::string label = trans_node->get_attr("labelString");
         if (label.empty()) {
             label = trans_node->get_attr("label");

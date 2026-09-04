@@ -13,6 +13,7 @@
 #include "fsm/backend/formal/cameo_serializer.hpp"
 #include "fsm/backend/formal/scxml_serializer.hpp"
 #include "fsm/backend/formal/smv_serializer.hpp"
+#include "fsm/backend/formal/stateflow_serializer.hpp"
 #include "fsm/backend/formal/sysml2_serializer.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/ir/fsm_ir_serializer.hpp"
@@ -49,11 +50,14 @@ class EmitterFactory {
         if (format == "smv" || format == "nuxmv") {
             return SmvSerializer::serialize(ir);
         }
+        if (format == "stateflow" || format == "sfx" || format == "simulink") {
+            return StateflowSerializer::serialize(ir);
+        }
         return "";
     }
 
     static std::vector<std::string> supported_formats() {
-        return {"ir", "plantuml", "mermaid", "sysml2", "json", "dot", "scxml", "cameo", "smv"};
+        return {"ir", "plantuml", "mermaid", "sysml2", "json", "dot", "scxml", "cameo", "smv", "stateflow"};
     }
 };
 

@@ -7,6 +7,7 @@
 #include "fsm/backend/formal/cameo_serializer.hpp"
 #include "fsm/backend/formal/scxml_serializer.hpp"
 #include "fsm/backend/formal/smv_serializer.hpp"
+#include "fsm/backend/formal/stateflow_serializer.hpp"
 #include "fsm/backend/formal/sysml2_serializer.hpp"
 #include "fsm/frontend/diagram/dot_parser.hpp"
 #include "fsm/frontend/diagram/json_parser.hpp"
@@ -15,6 +16,7 @@
 #include "fsm/frontend/formal/cameo_xmi_parser.hpp"
 #include "fsm/frontend/formal/scxml_parser.hpp"
 #include "fsm/frontend/formal/smv_parser.hpp"
+#include "fsm/frontend/formal/stateflow_parser.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/ir/fsm_ir_serializer.hpp"
@@ -143,6 +145,13 @@ void verify_roundtrip(const FsmIr& baseline) {
     FsmIr xmi_ir;
     ASSERT_TRUE(xmi_parser.parse(xmi_str, xmi_ir, err)) << "Cameo XMI parse error: " << err;
     assert_ir_equivalent(baseline, xmi_ir, "Cameo XMI roundtrip");
+
+    // 8. MathWorks Simulink Stateflow XML
+    const std::string sf_str = StateflowSerializer::serialize(baseline);
+    StateflowParser sf_parser;
+    FsmIr sf_ir;
+    ASSERT_TRUE(sf_parser.parse(sf_str, sf_ir, err)) << "Stateflow parse error: " << err;
+    assert_ir_equivalent(baseline, sf_ir, "Stateflow roundtrip");
 }
 
 /**

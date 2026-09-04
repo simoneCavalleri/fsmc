@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include "fsm/backend/emitter_factory.hpp"
+#include "fsm/backend/formal/stateflow_serializer.hpp"
 #include "fsm/frontend/common/parser_factory.hpp"
 #include "fsm/frontend/formal/stateflow_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
@@ -129,4 +131,122 @@ TEST(StateflowParserTest, ParserFactoryIntegration) {
     EXPECT_EQ(detected, "stateflow");
 }
 
+/**
+ * @brief Test Intent: Verify StateflowSerializer XML generation, EmitterFactory registration, and full lossless parsing.
+ *
+ * Scenario:
+ * - Construct FsmIr with hierarchy, parallel state, history junction, do_activity, directives (var, port, enum, struct).
+ * - Serialize to Stateflow XML using StateflowSerializer and EmitterFactory.
+ * - Parse back with StateflowParser and verify all structural and metadata elements.
+ */
+TEST(StateflowParserTest, SerializerRoundtripWithDirectives) {
+    FsmIr baseline;
+    baseline.name = "FlightControlSF";
+    baseline.initial_state = "Ground";
+
+    baseline.add_state("Ground");
+    baseline.add_state("Airborne");
+    auto* s_airborne = baseline.find_state_mut("Airborne");
+    ASSERT_NE(s_airborne, nullptr);
+    s_airborne->has_history = true;
+    s_airborne->do_activity = "attitude_stabilizer";
+
+    baseline.add_state("Climb", "Airborne");
+    baseline.add_state("Cruise", "Airborne");
+
+    TransitionEdge t1;
+    t1.source = "Ground";
+    t1.target = "Airborne";
+    t1.event = "TakeoffCmd";
+    t1.guard = "alt_agl > 10.0";
+    t1.action = "retract_gear";
+    baseline.add_transition(t1);
+
+    TransitionEdge t2;
+    t2.source = "Climb";
+    t2.target = "Cruise";
+    t2.trigger = TimeTrigger(TimeTriggerKind::After, 1500, TimeUnit::Milliseconds);
+    t2.action = "level_off";
+    baseline.add_transition(t2);
+
+    EnumDefinition en("FlightPhase", "uint8_t", "Flight phases");
+    en.add_literal("Takeoff", 1);
+    en.add_literal("Enroute", 2);
+    baseline.add_enum(en);
+
+    StructDefinition st("NavData", true, "Navigation packet");
+    st.add_field(StructField("lat", "float", "0.0"));
+    st.add_field(StructField("alt", "uint32_t", "100"));
+    baseline.add_struct(st);
+
+    VariableDefinition var;
+    var.name = "speed_kts";
+    var.type = "float";
+    var.initial_value = "0.0";
+    baseline.add_variable(var);
+
+    PortDefinition port;
+    port.name = "throttle_cmd";
+    port.type = "float";
+    port.direction = PortDirection::In;
+    baseline.ports.push_back(port);
+
+    // EmitterFactory verification
+    std::string factory_xml = EmitterFactory::emit_diagram(baseline, "stateflow");
+    EXPECT_FALSE(factory_xml.empty());
+    EXPECT_NE(factory_xml.find("<Stateflow>"), std::string::npos);
+    EXPECT_NE(factory_xml.find("FlightControlSFMachine"), std::string::npos);
+
+    // StateflowSerializer verification
+    std::string xml = StateflowSerializer::serialize(baseline);
+    EXPECT_NE(xml.find("@fsm:enum"), std::string::npos);
+    EXPECT_NE(xml.find("@fsm:struct"), std::string::npos);
+    EXPECT_NE(xml.find("@fsm:var"), std::string::npos);
+    EXPECT_NE(xml.find("@fsm:port"), std::string::npos);
+    EXPECT_NE(xml.find("after(1500, msec)"), std::string::npos);
+    EXPECT_NE(xml.find("type=\"HISTORY\""), std::string::npos);
+
+    // Parse back
+    StateflowParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << "Stateflow parse error: " << err;
+
+    EXPECT_EQ(parsed.name, baseline.name);
+    EXPECT_EQ(parsed.initial_state, baseline.initial_state);
+    EXPECT_EQ(parsed.states.size(), baseline.states.size());
+
+    const auto* p_airborne = parsed.find_state("Airborne");
+    ASSERT_NE(p_airborne, nullptr);
+    EXPECT_TRUE(p_airborne->is_composite);
+    EXPECT_TRUE(p_airborne->has_history);
+    ASSERT_TRUE(p_airborne->do_activity.has_value());
+    EXPECT_EQ(*p_airborne->do_activity, "attitude_stabilizer");
+
+    const auto* p_cruise = parsed.find_state("Cruise");
+    ASSERT_NE(p_cruise, nullptr);
+    EXPECT_EQ(p_cruise->parent_state, "Airborne");
+
+    // Verify directives
+    ASSERT_EQ(parsed.enums.size(), 1u);
+    EXPECT_EQ(parsed.enums[0].name, "FlightPhase");
+    ASSERT_EQ(parsed.structs.size(), 1u);
+    EXPECT_EQ(parsed.structs[0].name, "NavData");
+    ASSERT_EQ(parsed.variables.size(), 1u);
+    EXPECT_EQ(parsed.variables[0].name, "speed_kts");
+    ASSERT_EQ(parsed.ports.size(), 1u);
+    EXPECT_EQ(parsed.ports[0].name, "throttle_cmd");
+
+    // Verify transitions
+    ASSERT_EQ(parsed.transitions.size(), 2u);
+    const auto& pt2 = parsed.transitions[1];
+    EXPECT_EQ(pt2.source, "Climb");
+    EXPECT_EQ(pt2.target, "Cruise");
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(pt2.trigger));
+    EXPECT_EQ(std::get<TimeTrigger>(pt2.trigger).duration_ms, 1500u);
+    ASSERT_TRUE(pt2.action.has_value());
+    EXPECT_EQ(*pt2.action, "level_off");
+}
+
 }  // namespace
+

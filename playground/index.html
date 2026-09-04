@@ -25,7 +25,7 @@
       </div>
       <div class="logo-title">
         fsmc Studio
-        <span class="version-badge">v0.5.0</span>
+        <span class="version-badge">v0.6.0</span>
       </div>
     </div>
 
@@ -68,6 +68,16 @@
         <span>Optimize</span>
       </button>
 
+      <button id="mcdcBtn" class="btn-secondary" title="Synthesize DO-178C Level A MC/DC Test Suite">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+        <span>MC/DC</span>
+      </button>
+
+      <button id="rtmBtn" class="btn-secondary" title="Audit DO-178C Requirements Traceability Matrix (RTM)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+        <span>RTM Audit</span>
+      </button>
+
       <button id="copyBtn" class="btn-primary" title="Copy self-contained Single-Header C++ library to clipboard">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
         <span id="copyBtnText">Copy Header</span>
@@ -103,6 +113,14 @@
           <button class="tab-item" data-view="cpp" title="Generated Zero-Overhead C++ Header">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
             <span>Generated C++</span>
+          </button>
+          <button class="tab-item" data-view="mcdc" title="Generated DO-178C MC/DC Test Suite">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+            <span>MC/DC Suite</span>
+          </button>
+          <button class="tab-item" data-view="rtm" title="Requirements Traceability Matrix (DO-178C)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+            <span>RTM Traceability</span>
           </button>
         </div>
         <div class="canvas-tools">
@@ -162,6 +180,26 @@
           </div>
         </div>
 
+        <!-- MC/DC Test Suite Pane -->
+        <div class="pane-view" id="mcdcPane">
+          <div class="pane-title-bar">
+            <span>DO-178C Level A MC/DC Test Vectors & Independence Pairs (GoogleTest)</span>
+          </div>
+          <div class="output-preview-container">
+            <pre id="mcdcPreview" class="code-preview"></pre>
+          </div>
+        </div>
+
+        <!-- RTM Traceability Pane -->
+        <div class="pane-view" id="rtmPane">
+          <div class="pane-title-bar">
+            <span>DO-178C Requirements Traceability Matrix & Completeness Audit Report</span>
+          </div>
+          <div class="output-preview-container">
+            <pre id="rtmPreview" class="code-preview"></pre>
+          </div>
+        </div>
+
       </div>
     </section>
 
@@ -205,6 +243,23 @@
             </button>
           </div>
 
+          <!-- Time-Travel Flight Recorder (DO-178C Black-Box Audit) -->
+          <div class="flight-recorder-bar" id="flightRecorderBar">
+            <div class="recorder-header">
+              <div class="recorder-title">
+                <span class="recorder-pulse-dot"></span>
+                <span>Flight Recorder (DO-178C Audit)</span>
+              </div>
+              <span id="recorderStatus" class="recorder-badge">Buffer: 0 / 64</span>
+            </div>
+            <div class="recorder-controls">
+              <button id="recBackBtn" class="btn-step-mini" title="Step Back to Previous State">◀</button>
+              <input type="range" id="timeTravelSlider" min="0" max="0" value="0" step="1" class="timeline-slider" title="Scrub Timeline (Time-Travel)">
+              <button id="recForwardBtn" class="btn-step-mini" title="Step Forward">▶</button>
+              <button id="recLiveBtn" class="btn-live active" title="Return to Live Execution">Live</button>
+            </div>
+          </div>
+
           <!-- Event Triggers -->
           <div class="sim-section">
             <div class="sim-section-title">
@@ -240,6 +295,15 @@
                 <span class="domain-desc">Actuator & Signal Outputs</span>
               </div>
               <div id="outPortsList" class="outports-list"></div>
+            </div>
+
+            <!-- Structured Data (Enums & Structs) Section -->
+            <div class="inspector-card" id="structuredDataSection">
+              <div class="inspector-card-header">
+                <span class="domain-tag datatypes-tag">DataTypes</span>
+                <span class="domain-desc">SysML v2 Enums & Records</span>
+              </div>
+              <div id="structuredDataList" class="structured-data-list"></div>
             </div>
           </div>
 

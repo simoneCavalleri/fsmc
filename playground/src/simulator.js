@@ -18,6 +18,105 @@ export const SimulatorController = {
   // Shallow history memory: composite state name -> last active direct child
   historyMap: {},
 
+  flightRecorder: {
+    capacity: 64,
+    buffer: [],
+    currentIndex: -1,
+    isTimeTraveling: false
+  },
+
+  _recordFlightSnapshot(event = "", reason = "") {
+    if (this.flightRecorder.isTimeTraveling) return;
+    const snap = {
+      stepId: this.flightRecorder.buffer.length + 1,
+      timestamp: new Date().toISOString().substring(11, 23),
+      state: ModelManager.currentModel.activeState,
+      event: event || (reason ? `[${reason}]` : "[step]"),
+      inPorts: JSON.parse(JSON.stringify(this.datapath.inPorts || {})),
+      registers: JSON.parse(JSON.stringify(this.datapath.registers || {})),
+      outPorts: JSON.parse(JSON.stringify(this.datapath.outPorts || {}))
+    };
+    this.flightRecorder.buffer.push(snap);
+    if (this.flightRecorder.buffer.length > this.flightRecorder.capacity) {
+      this.flightRecorder.buffer.shift();
+    }
+    this.updateFlightRecorderUI();
+  },
+
+  updateFlightRecorderUI() {
+    const slider = document.getElementById("timeTravelSlider");
+    const status = document.getElementById("recorderStatus");
+    const liveBtn = document.getElementById("recLiveBtn");
+    const count = this.flightRecorder.buffer.length;
+    if (status) {
+      status.textContent = `Buffer: ${count} / ${this.flightRecorder.capacity}`;
+    }
+    if (slider) {
+      slider.max = Math.max(0, count - 1);
+      if (!this.flightRecorder.isTimeTraveling) {
+        slider.value = Math.max(0, count - 1);
+      }
+    }
+    if (liveBtn) {
+      liveBtn.className = this.flightRecorder.isTimeTraveling ? "btn-live" : "btn-live active";
+    }
+  },
+
+  timeTravelTo(index) {
+    if (index < 0 || index >= this.flightRecorder.buffer.length) return;
+    const count = this.flightRecorder.buffer.length;
+    if (index === count - 1) {
+      this.returnToLive();
+      return;
+    }
+    this.flightRecorder.currentIndex = index;
+    this.flightRecorder.isTimeTraveling = true;
+    const snap = this.flightRecorder.buffer[index];
+    ModelManager.currentModel.activeState = snap.state;
+    this.updateActiveStateBadge(`[HIST #${snap.stepId}] ${snap.state}`);
+    GraphRenderer.highlightActive(snap.state);
+    this.datapath.inPorts = JSON.parse(JSON.stringify(snap.inPorts));
+    this.datapath.registers = JSON.parse(JSON.stringify(snap.registers));
+    this.datapath.outPorts = JSON.parse(JSON.stringify(snap.outPorts));
+    this.renderDatapathUI();
+    this.updateFlightRecorderUI();
+    const slider = document.getElementById("timeTravelSlider");
+    if (slider) slider.value = index;
+    this.log(`[TIME-TRAVEL] Inspected historical snapshot #${snap.stepId} at state '${snap.state}' (trigger: ${snap.event})`, "WARN");
+  },
+
+  stepBack() {
+    const count = this.flightRecorder.buffer.length;
+    if (count === 0) return;
+    let target = this.flightRecorder.isTimeTraveling ? this.flightRecorder.currentIndex - 1 : count - 2;
+    if (target >= 0) this.timeTravelTo(target);
+  },
+
+  stepForward() {
+    if (!this.flightRecorder.isTimeTraveling) return;
+    const target = this.flightRecorder.currentIndex + 1;
+    if (target < this.flightRecorder.buffer.length) this.timeTravelTo(target);
+  },
+
+  returnToLive() {
+    if (!this.flightRecorder.isTimeTraveling) return;
+    this.flightRecorder.isTimeTraveling = false;
+    this.flightRecorder.currentIndex = -1;
+    const count = this.flightRecorder.buffer.length;
+    if (count > 0) {
+      const snap = this.flightRecorder.buffer[count - 1];
+      ModelManager.currentModel.activeState = snap.state;
+      this.updateActiveStateBadge(snap.state);
+      GraphRenderer.highlightActive(snap.state);
+      this.datapath.inPorts = JSON.parse(JSON.stringify(snap.inPorts));
+      this.datapath.registers = JSON.parse(JSON.stringify(snap.registers));
+      this.datapath.outPorts = JSON.parse(JSON.stringify(snap.outPorts));
+      this.renderDatapathUI();
+    }
+    this.updateFlightRecorderUI();
+    this.log(`[TIME-TRAVEL] Returned to live execution mode`, "INFO");
+  },
+
   _recordHistory(leafState) {
     const ancestors = getAncestorChain(ModelManager.currentModel, leafState);
     for (let i = 1; i < ancestors.length; i++) {
@@ -397,6 +496,10 @@ export const SimulatorController = {
       outPorts:  nextOut
     };
 
+    if (reset || this.flightRecorder.buffer.length === 0) {
+      this._recordFlightSnapshot("", "initial");
+    }
+
     this.renderDatapathUI();
   },
 
@@ -404,6 +507,7 @@ export const SimulatorController = {
     const inContainer  = document.getElementById("inPortsList");
     const regContainer = document.getElementById("registersList");
     const outContainer = document.getElementById("outPortsList");
+    const dataContainer = document.getElementById("structuredDataList");
 
     if (inContainer) {
       inContainer.innerHTML = "";
@@ -456,6 +560,30 @@ export const SimulatorController = {
         row.className = "outport-led-row";
         row.innerHTML = `<span class="outport-led ${o.value ? 'active' : ''}" id="led_${name}"></span><span class="outport-name">${name}: ${o.value ? 'ACTIVE' : 'IDLE'}</span>`;
         outContainer.appendChild(row);
+      }
+    }
+
+    if (dataContainer) {
+      dataContainer.innerHTML = "";
+      const enums = (ModelManager.currentModel && ModelManager.currentModel.enums) || [];
+      const structs = (ModelManager.currentModel && ModelManager.currentModel.structs) || [];
+      if (enums.length === 0 && structs.length === 0) {
+        dataContainer.innerHTML = '<div style="color:var(--text-muted);font-size:0.75rem;">No custom enums or structs declared</div>';
+      } else {
+        for (const en of enums) {
+          const item = document.createElement("div");
+          item.className = "data-type-item";
+          const lits = (en.literals || []).map(l => l.name + (l.value !== undefined ? `=${l.value}` : '')).join(', ');
+          item.innerHTML = `<div class="data-type-header">enum class ${en.name} : ${en.underlying_type || 'uint8_t'}</div><div class="data-type-fields">{ ${lits} }</div>`;
+          dataContainer.appendChild(item);
+        }
+        for (const st of structs) {
+          const item = document.createElement("div");
+          item.className = "data-type-item";
+          const flds = (st.fields || []).map(f => `${f.type} ${f.name}${f.default_value ? '{' + f.default_value + '}' : ''}`).join('; ');
+          item.innerHTML = `<div class="data-type-header">struct ${st.name}</div><div class="data-type-fields">{ ${flds} }</div>`;
+          dataContainer.appendChild(item);
+        }
       }
     }
   },
@@ -565,19 +693,23 @@ export const SimulatorController = {
   },
 
   step() {
+    if (this.flightRecorder.isTimeTraveling) this.returnToLive();
     if (this.datapath.registers["cycle_count"]) this.datapath.registers["cycle_count"].value++;
     const curr = ModelManager.currentModel.activeState;
     this.renderDatapathUI();
+    this._recordFlightSnapshot("", "clock-step");
     this.log(`[CLOCK STEP] Sampled cyclic tick (dt=10ms) evaluated in state '${curr}'`, "INFO");
   },
 
   setState(targetState, guard = "", action = "") {
+    if (this.flightRecorder.isTimeTraveling) this.returnToLive();
     const leaf = resolveLeafState(ModelManager.currentModel, targetState);
     const prev = ModelManager.currentModel.activeState;
     if (prev) this._recordHistory(prev);
     ModelManager.currentModel.activeState = leaf;
     this.updateActiveStateBadge(leaf);
     GraphRenderer.highlightActive(leaf);
+    this._recordFlightSnapshot("", guard ? `guard:${guard}` : "override");
     let msg = `State override: ${prev} -> ${leaf}`;
     if (guard)  msg += ` [guard: ${guard}]`;
     if (action) msg += ` -> Action: ${action}()`;
@@ -602,6 +734,7 @@ export const SimulatorController = {
   },
 
   dispatch(eventName) {
+    if (this.flightRecorder.isTimeTraveling) this.returnToLive();
     const curr = ModelManager.currentModel.activeState;
     const availableTrans = getAvailableTransitions(ModelManager.currentModel, curr);
     const matching = availableTrans.filter(t => t.event === eventName);
@@ -632,6 +765,7 @@ export const SimulatorController = {
       let msg = `[${eventName}] Internal in '${curr}'`;
       if (cleanGuard) msg += ` [guard: ${cleanGuard}]`;
       if (t.action)   msg += ` -> Action: ${t.action}()`;
+      this._recordFlightSnapshot(eventName, "internal");
       this.log(msg, "INFO");
     } else {
       const prev = ModelManager.currentModel.activeState;
@@ -640,6 +774,7 @@ export const SimulatorController = {
       ModelManager.currentModel.activeState = targetLeaf;
       this.updateActiveStateBadge(targetLeaf);
       GraphRenderer.highlightActive(targetLeaf);
+      this._recordFlightSnapshot(eventName, cleanGuard);
 
       const histLabel = (t.target_is_history || t.target_is_deep_history)
         ? (t.target_is_deep_history ? ` (deep history -> ${targetLeaf})` : ` (history -> ${targetLeaf})`)

@@ -9,6 +9,8 @@
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/backend/emitter_factory.hpp"
+#include "fsm/backend/rtm/rtm_emitter.hpp"
+#include "fsm/backend/verification/mcdc_harness_generator.hpp"
 #include "fsm/frontend/common/parser_factory.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
@@ -108,6 +110,37 @@ std::string fsmc_wasm_get_model(const std::string& source, const std::string& fo
            << "\"initial\": \"" << v.initial_value << "\"}" << (i + 1 < model.variables.size() ? "," : "") << "\n";
     }
 
+    ss << "  ],\n  \"enums\": [\n";
+    for (size_t i = 0; i < model.enums.size(); ++i) {
+        const auto& en = model.enums[i];
+        ss << "    {\"name\": \"" << en.name << "\", \"underlying_type\": \"" << en.underlying_type
+           << "\", \"literals\": [";
+        for (size_t j = 0; j < en.literals.size(); ++j) {
+            const auto& lit = en.literals[j];
+            ss << "{\"name\": \"" << lit.name << "\"";
+            if (lit.value.has_value()) {
+                ss << ", \"value\": " << *lit.value;
+            }
+            if (!lit.description.empty()) {
+                ss << ", \"description\": \"" << lit.description << "\"";
+            }
+            ss << "}" << (j + 1 < en.literals.size() ? ", " : "");
+        }
+        ss << "]}" << (i + 1 < model.enums.size() ? "," : "") << "\n";
+    }
+    ss << "  ],\n  \"structs\": [\n";
+    for (size_t i = 0; i < model.structs.size(); ++i) {
+        const auto& st = model.structs[i];
+        ss << "    {\"name\": \"" << st.name << "\", \"description\": \"" << st.description << "\", \"fields\": [";
+        for (size_t j = 0; j < st.fields.size(); ++j) {
+            const auto& f = st.fields[j];
+            ss << "{\"name\": \"" << f.name << "\", \"type\": \"" << f.type << "\", \"default_value\": \""
+               << f.default_value << "\"}";
+            if (j + 1 < st.fields.size())
+                ss << ", ";
+        }
+        ss << "]}" << (i + 1 < model.structs.size() ? "," : "") << "\n";
+    }
     ss << "  ],\n  \"states\": [\n";
 
     for (size_t i = 0; i < model.states.size(); ++i) {
@@ -268,6 +301,25 @@ std::string fsmc_wasm_optimize(const std::string& source, const std::string& for
     return "// [FSMC ERROR] Unsupported target format: " + target_fmt;
 }
 
+std::string fsmc_wasm_generate_mcdc(const std::string& source, const std::string& format) {
+    FsmIr model;
+    std::string err;
+    if (!parse_with_fallback(source, format, model, err)) {
+        return "// [FSMC ERROR] Parsing failed:\n// " + err;
+    }
+    return McdcHarnessGenerator::generate_gtest_harness(model);
+}
+
+std::string fsmc_wasm_audit_rtm(const std::string& source, const std::string& format) {
+    FsmIr model;
+    std::string err;
+    if (!parse_with_fallback(source, format, model, err)) {
+        return "{\"is_compliant\": false, \"untraced_states\": [\"" + err + "\"]}";
+    }
+    DiagnosticEngine diag;
+    return RtmEmitter::audit_traceability(model, diag);
+}
+
 #ifdef __EMSCRIPTEN__
 EMSCRIPTEN_BINDINGS(fsmc_wasm_module) {
     emscripten::function("compile", &fsmc_wasm_compile);
@@ -275,5 +327,7 @@ EMSCRIPTEN_BINDINGS(fsmc_wasm_module) {
     emscripten::function("getModel", &fsmc_wasm_get_model);
     emscripten::function("verify", &fsmc_wasm_verify);
     emscripten::function("optimize", &fsmc_wasm_optimize);
+    emscripten::function("generateMcdc", &fsmc_wasm_generate_mcdc);
+    emscripten::function("auditRtm", &fsmc_wasm_audit_rtm);
 }
 #endif

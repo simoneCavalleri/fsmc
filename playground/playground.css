@@ -1068,3 +1068,130 @@ button {
     display: none;
   }
 }
+
+/* ==========================================================================
+   7. Flight Recorder Time-Travel & Structured DataTypes
+   ========================================================================== */
+.flight-recorder-bar {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.recorder-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.recorder-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.recorder-pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-purple);
+  box-shadow: 0 0 6px var(--accent-purple);
+}
+
+.recorder-badge {
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  color: var(--accent-purple);
+  background: var(--accent-purple-subtle);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.recorder-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-step-mini {
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: 3px 7px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.btn-step-mini:hover {
+  background: var(--border-default);
+}
+
+.timeline-slider {
+  flex: 1;
+  accent-color: var(--accent-purple);
+  cursor: pointer;
+}
+
+.btn-live {
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.btn-live.active {
+  background: var(--accent-green-subtle);
+  color: var(--accent-green);
+  border-color: var(--accent-green);
+}
+
+.datatypes-tag {
+  background: var(--accent-purple-subtle);
+  color: var(--accent-purple);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.structured-data-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.data-type-item {
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+}
+
+.data-type-header {
+  font-weight: 600;
+  color: var(--accent-purple);
+  margin-bottom: 2px;
+}
+
+.data-type-fields {
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  margin-left: 6px;
+}
+

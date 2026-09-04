@@ -86,6 +86,24 @@ export const App = {
     const stepBtn = document.getElementById("stepBtn");
     if (stepBtn) stepBtn.onclick = () => SimulatorController.step();
 
+    const mcdcBtn = document.getElementById("mcdcBtn");
+    if (mcdcBtn) mcdcBtn.onclick = () => this.switchCanvasTab("mcdc");
+
+    const rtmBtn = document.getElementById("rtmBtn");
+    if (rtmBtn) rtmBtn.onclick = () => this.switchCanvasTab("rtm");
+
+    const recBackBtn = document.getElementById("recBackBtn");
+    if (recBackBtn) recBackBtn.onclick = () => SimulatorController.stepBack();
+
+    const recForwardBtn = document.getElementById("recForwardBtn");
+    if (recForwardBtn) recForwardBtn.onclick = () => SimulatorController.stepForward();
+
+    const recLiveBtn = document.getElementById("recLiveBtn");
+    if (recLiveBtn) recLiveBtn.onclick = () => SimulatorController.returnToLive();
+
+    const timeSlider = document.getElementById("timeTravelSlider");
+    if (timeSlider) timeSlider.oninput = () => SimulatorController.timeTravelTo(parseInt(timeSlider.value, 10));
+
     this.initCanvasTabs();
     this.initInspectorTabs();
     this.initLineNumbers();
@@ -108,29 +126,25 @@ export const App = {
         if (content) content.className = `canvas-content view-${view}`;
         if (view === 'visual' || view === 'split') ViewportController.applyTransform();
         if (view === 'cpp') this.renderCppOutput();
+        if (view === 'mcdc') this.renderMcdcOutput();
+        if (view === 'rtm') this.renderRtmOutput();
       };
     });
   },
 
-  initInspectorTabs() {
-    const tabs     = document.querySelectorAll("#inspectorTabs .tab-item");
-    const pageSim  = document.getElementById("pageSimulator");
-    const pageVerif = document.getElementById("pageVerification");
-    tabs.forEach(btn => {
-      btn.onclick = () => {
-        tabs.forEach(t => t.classList.remove("active"));
-        btn.classList.add("active");
-        const tab = btn.getAttribute("data-tab");
-        this.currentInspectorTab = tab;
-        if (tab === "simulator") {
-          pageSim?.classList.add("active");
-          pageVerif?.classList.remove("active");
-        } else {
-          pageSim?.classList.remove("active");
-          pageVerif?.classList.add("active");
-        }
-      };
+  switchCanvasTab(view) {
+    const tabs    = document.querySelectorAll("#canvasTabs .tab-item");
+    const content = document.getElementById("canvasContent");
+    tabs.forEach(t => {
+      if (t.getAttribute("data-view") === view) t.classList.add("active");
+      else t.classList.remove("active");
     });
+    this.currentCanvasView = view;
+    if (content) content.className = `canvas-content view-${view}`;
+    if (view === 'visual' || view === 'split') ViewportController.applyTransform();
+    if (view === 'cpp') this.renderCppOutput();
+    if (view === 'mcdc') this.renderMcdcOutput();
+    if (view === 'rtm') this.renderRtmOutput();
   },
 
   async renderCppOutput() {
@@ -140,6 +154,24 @@ export const App = {
     const preview = document.getElementById("cppPreview");
     if (preview) {
       preview.textContent = await ModelManager.generateCpp(code, format, isCpp20, true);
+    }
+  },
+
+  async renderMcdcOutput() {
+    const code   = document.getElementById("editor").value;
+    const format = document.getElementById("formatSelect").value;
+    const preview = document.getElementById("mcdcPreview");
+    if (preview) {
+      preview.textContent = await ModelManager.generateMcdc(code, format);
+    }
+  },
+
+  async renderRtmOutput() {
+    const code   = document.getElementById("editor").value;
+    const format = document.getElementById("formatSelect").value;
+    const preview = document.getElementById("rtmPreview");
+    if (preview) {
+      preview.textContent = await ModelManager.auditRtm(code, format);
     }
   },
 

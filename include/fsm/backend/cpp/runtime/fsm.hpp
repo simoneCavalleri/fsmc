@@ -341,6 +341,9 @@ class fsm {
         }
     }
 
+    [[nodiscard]] const observer_type& observer() const noexcept { return observer_; }
+    [[nodiscard]] observer_type& observer() noexcept { return observer_; }
+
     // History state management
     template <bool H = has_history>
     void record_history(std::string_view parent, std::string_view substate) {

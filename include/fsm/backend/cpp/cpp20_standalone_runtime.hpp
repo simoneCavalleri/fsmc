@@ -2045,6 +2045,17 @@ class flight_recorder_observer {
     void set_tick(std::uint64_t tick) noexcept { current_tick_ = tick; }
     void advance_tick(std::uint64_t dt = 1) noexcept { current_tick_ += dt; }
 
+    void operator()(const transition_info& info) noexcept {
+        recorder_.record(current_tick_, info.source, info.event, info.target,
+                         info.status == dispatch_status::success);
+    }
+
+    void operator()(const transition_info& info) const noexcept {
+        const_cast<TraceBuffer<Capacity>&>(recorder_).record(
+            current_tick_, info.source, info.event, info.target,
+            info.status == dispatch_status::success);
+    }
+
     template <typename State, typename Event>
     void on_transition(const State& /*src*/, const Event& /*evt*/, std::string_view src_name, std::string_view evt_name,
                        std::string_view dst_name) noexcept {
@@ -2053,6 +2064,8 @@ class flight_recorder_observer {
 
     [[nodiscard]] const TraceBuffer<Capacity>& recorder() const noexcept { return recorder_; }
     [[nodiscard]] TraceBuffer<Capacity>& recorder() noexcept { return recorder_; }
+
+    void dump(std::ostream& os) const { recorder_.dump(os); }
 
   private:
     std::uint64_t current_tick_{0};
@@ -3117,6 +3130,9 @@ class fsm {
             observer_.callback = nullptr;
         }
     }
+
+    [[nodiscard]] const observer_type& observer() const noexcept { return observer_; }
+    [[nodiscard]] observer_type& observer() noexcept { return observer_; }
 
     // History state management
     template <bool H = has_history>

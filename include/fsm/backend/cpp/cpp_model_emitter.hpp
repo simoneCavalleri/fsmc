@@ -934,8 +934,6 @@ class CppModelEmitter {
     }
 
     static void emit_model(std::ostream& out, const FsmIr& model, const GeneratorOptions& options) {
-        emit_enums(out, model);
-        emit_structs(out, model);
         emit_domain_structures(out, model);
         emit_events(out, model);
         emit_states(out, model);

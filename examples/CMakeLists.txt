@@ -63,3 +63,19 @@ fsmc_target_sources(autonomous_uav_mission_example
 )
 
 add_test(NAME autonomous_uav_mission_example COMMAND autonomous_uav_mission_example)
+
+# Showcase 5: Avionics Flight Management System (DO-178C Level A Reference Case Study)
+add_executable(flight_management_system_example flight_management_system/main.cpp)
+target_link_libraries(flight_management_system_example PRIVATE fsmc_runtime)
+set_target_properties(flight_management_system_example PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+
+fsmc_target_sources(flight_management_system_example
+    DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/flight_management_system/fms.sysml
+    NAME FlightManagementSystem
+    STANDARD 20
+    STANDALONE
+    NAMESPACE avionics
+)
+
+add_test(NAME flight_management_system_example COMMAND flight_management_system_example)
+

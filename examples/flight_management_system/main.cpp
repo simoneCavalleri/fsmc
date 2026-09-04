@@ -35,16 +35,15 @@ int main() {
     registers.nav_cycles = 0;
 
     // 2. Instantiate Synchronous FMS Core with Flight Recorder Observer (Stack-Allocated)
-    using FmsWithRecorder = fsm::fsm<
+    using FmsWithRecorder = fsm::make_fsm<
         avionics::FlightManagementSystemTable,
-        avionics::FlightManagementSystemInPorts,
-        avionics::FlightManagementSystemOutPorts,
-        avionics::FlightManagementSystemRegisters,
-        avionics::FlightManagementSystemServices,
-        avionics::PreflightState,
-        fsm::flight_recorder_observer<64>,
-        16, // DeferredCapacity
-        8   // TimerCapacity
+        fsm::with_initial_state<avionics::PreflightState>,
+        fsm::with_ports<avionics::FlightManagementSystemInPorts, avionics::FlightManagementSystemOutPorts>,
+        fsm::with_registers<avionics::FlightManagementSystemRegisters>,
+        fsm::with_services<avionics::FlightManagementSystemServices>,
+        fsm::with_trace_buffer<64>,
+        fsm::with_deferred_capacity<16>,
+        fsm::with_timer_capacity<8>
     >;
 
     FmsWithRecorder fms_core;

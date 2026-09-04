@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 10  
 **Total Test Suites & Binaries**: 55  
-**Total Documented Test Cases**: 262  
+**Total Documented Test Cases**: 265  
 
 ---
 
@@ -482,6 +482,17 @@
   - Instantiate thread_safe_fsm via fsm::make_thread_safe_fsm.
   - Verify with_registers and snapshot_registers without uncoordinated naked references.
 
+#### `PolicyConfigTest.TimerCapacityAndTraceBufferPolicies`
+**Test Intent**: Verify with_timer_capacity and with_trace_buffer extraction and execution.
+
+**Scenario**:
+  - Instantiate config with with_trace_buffer<16> and with_timer_capacity<8>.
+  - Verify policy types and compile-time capacity extraction.
+  - Execute timer ticking and observer transition logging.
+
+#### `PolicyConfigTest.FluentOnTransitionBuilder`
+**Test Intent**: Verify fluent on transition table syntax (both type-level and decltype expressions).
+
 ### [`test_ring_buffer_overflow.cpp`](../tests/backend/cpp/runtime/test_ring_buffer_overflow.cpp) (`tests/backend/cpp/runtime/test_ring_buffer_overflow.cpp`)
 - *(Executable binary test verification)*
 
@@ -792,6 +803,9 @@
   - Define EnumDefinition 'FlightMode' with explicit underlying type and literals.
   - Define StructDefinition 'Waypoint' with typed fields and default values.
   - Emit via CppModelEmitter and verify enum class, to_string constexpr, and struct definitions.
+
+#### `CppModelEmitterTest.FluentFactoryAliasesEmission`
+**Test Intent**: Verify C++ emission of modern fluent factory aliases (make_fsm, make_thread_safe_fsm, make_spsc_fsm).
 
 ### [`test_generated_fsm.cpp`](../tests/backend/cpp/test_generated_fsm.cpp) (`tests/backend/cpp/test_generated_fsm.cpp`)
 - *(Executable binary test verification)*

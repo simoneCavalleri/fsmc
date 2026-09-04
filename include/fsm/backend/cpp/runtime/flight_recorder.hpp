@@ -8,6 +8,8 @@
 #include <ostream>
 #include <string_view>
 
+#include "fsm/backend/cpp/runtime/traits/dispatch_result.hpp"
+
 namespace fsm {
 
 /**

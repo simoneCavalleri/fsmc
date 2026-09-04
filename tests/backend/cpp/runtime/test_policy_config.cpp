@@ -164,4 +164,59 @@ TEST(PolicyConfigTest, MakeThreadSafeFsmSafeByDesign) {
     EXPECT_TRUE(async_machine.is_in<StateB>());
 }
 
+/**
+ * @brief Test Intent: Verify with_timer_capacity and with_trace_buffer extraction and execution.
+ *
+ * Scenario:
+ * - Instantiate config with with_trace_buffer<16> and with_timer_capacity<8>.
+ * - Verify policy types and compile-time capacity extraction.
+ * - Execute timer ticking and observer transition logging.
+ */
+TEST(PolicyConfigTest, TimerCapacityAndTraceBufferPolicies) {
+    using Cfg = fsm::config<PolicyTestTable, fsm::with_trace_buffer<16>, fsm::with_timer_capacity<8>>;
+
+    static_assert(Cfg::timer_capacity == 8);
+    static_assert(std::is_same_v<typename Cfg::observer_type, fsm::flight_recorder_observer<16>>);
+
+    fsm::make_fsm<PolicyTestTable, fsm::with_trace_buffer<16>, fsm::with_timer_capacity<8>> sm;
+    EXPECT_TRUE(sm.is_in<StateA>());
+
+    // Start a timer and step time
+    sm.timer_manager().start_timer(1, 100);
+    EXPECT_TRUE(sm.timer_manager().is_timer_active(1));
+    std::size_t expired = sm.tick(150);
+    EXPECT_EQ(expired, 1u);
+
+    // Dispatch transition and check observer trace
+    sm.dispatch(EvNext{});
+    EXPECT_TRUE(sm.is_in<StateB>());
+    EXPECT_EQ(sm.observer().recorder().size(), 1u);
+    EXPECT_EQ(sm.observer().recorder()[0].target_state, "StateB");
+}
+
+/**
+ * @brief Test Intent: Verify fluent on transition table syntax (both type-level and decltype expressions).
+ */
+TEST(PolicyConfigTest, FluentOnTransitionBuilder) {
+    // 1. Single-argument fluent on<Event>::from<Source>::to<Target>
+    using FluentTable1 = fsm::transition_table<
+        fsm::on<EvNext>::from<StateA>::to<StateB>,
+        fsm::on<EvNext>::from<StateB>::to<StateA>
+    >;
+    fsm::make_fsm<FluentTable1> sm1;
+    EXPECT_TRUE(sm1.is_in<StateA>());
+    sm1.dispatch(EvNext{});
+    EXPECT_TRUE(sm1.is_in<StateB>());
+
+    // 2. Direct on<Event, Source>::to<Target>
+    using FluentTable2 = fsm::transition_table<
+        fsm::on<EvNext, StateA>::to<StateB>,
+        fsm::on<EvNext, StateB>::to<StateA>
+    >;
+    fsm::make_fsm<FluentTable2> sm2;
+    EXPECT_TRUE(sm2.is_in<StateA>());
+    sm2.dispatch(EvNext{});
+    EXPECT_TRUE(sm2.is_in<StateB>());
+}
+
 }  // namespace

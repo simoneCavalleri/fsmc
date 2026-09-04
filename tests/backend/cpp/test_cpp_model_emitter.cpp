@@ -333,3 +333,26 @@ TEST(CppModelEmitterTest, EnumAndStructDefinitionsEmission) {
     EXPECT_NE(str.find("bool operator==(const Waypoint& other) const noexcept"), std::string::npos);
     EXPECT_NE(str.find("lat == other.lat &&"), std::string::npos);
 }
+
+/**
+ * @brief Test Intent: Verify C++ emission of modern fluent factory aliases (make_fsm, make_thread_safe_fsm, make_spsc_fsm).
+ */
+TEST(CppModelEmitterTest, FluentFactoryAliasesEmission) {
+    auto model = create_sample_ir();
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    CppModelEmitter::emit_model(out, model, opts);
+    std::string str = out.str();
+
+    EXPECT_NE(str.find("using DeviceController = ::fsm::make_fsm<"), std::string::npos);
+    EXPECT_NE(str.find("::fsm::with_initial_state<Idle>"), std::string::npos);
+    EXPECT_NE(str.find("::fsm::with_ports<DeviceControllerInPorts, DeviceControllerOutPorts>"), std::string::npos);
+    EXPECT_NE(str.find("::fsm::with_registers<DeviceControllerRegisters>"), std::string::npos);
+    EXPECT_NE(str.find("::fsm::with_services<DeviceControllerServices>"), std::string::npos);
+    EXPECT_NE(str.find("::fsm::with_observer<::fsm::dynamic_observer>"), std::string::npos);
+
+    EXPECT_NE(str.find("using ThreadSafeDeviceController = ::fsm::make_thread_safe_fsm<"), std::string::npos);
+    EXPECT_NE(str.find("using SpscDeviceController = ::fsm::make_spsc_fsm<"), std::string::npos);
+    EXPECT_NE(str.find("::fsm::with_queue_capacity<64>"), std::string::npos);
+}

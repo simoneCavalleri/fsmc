@@ -279,11 +279,22 @@ struct internal_row : internal_transition<State, EventType, ActionType, GuardTyp
     using then = internal_row<State, EventType, NewAction, GuardType>;
 };
 
-// Fluent Event-First Builder: on<Event, Source>::to<Target>::when<Guard>::then<Action>
-template <typename EventType, typename SourceState>
+// Fluent Event-First Builder:
+// - on<Event, Source>::to<Target>::when<Guard>::then<Action>
+// - on<Event>::from<Source>::to<Target>::when<Guard>::then<Action>
+template <typename EventType, typename SourceState = void>
 struct on {
     template <typename TargetState>
     using to = row<SourceState, EventType, TargetState>;
+
+    template <typename Src>
+    using from = on<EventType, Src>;
+};
+
+template <typename EventType>
+struct on<EventType, void> {
+    template <typename Src>
+    using from = on<EventType, Src>;
 };
 
 // Helper for fluent creation

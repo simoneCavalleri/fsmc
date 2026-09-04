@@ -912,25 +912,39 @@ class CppModelEmitter {
         out << " * @brief Primary Synchronous Core State Machine instance for '" << model.name
             << "' on caller stack.\n";
         out << " */\n";
-        out << "using " << model.name << " = fsm::fsm<" << table_type_name << ", " << model.name << "InPorts, "
-            << model.name << "OutPorts, " << model.name << "Registers, " << model.name << "Services, " << init_state
-            << ", fsm::dynamic_observer>;\n\n";
+        out << "using " << model.name << " = ::fsm::make_fsm<\n";
+        out << "    " << table_type_name << ",\n";
+        out << "    ::fsm::with_initial_state<" << init_state << ">,\n";
+        out << "    ::fsm::with_ports<" << model.name << "InPorts, " << model.name << "OutPorts>,\n";
+        out << "    ::fsm::with_registers<" << model.name << "Registers>,\n";
+        out << "    ::fsm::with_services<" << model.name << "Services>,\n";
+        out << "    ::fsm::with_observer<::fsm::dynamic_observer>\n";
+        out << ">;\n\n";
 
         out << "/**\n";
         out << " * @typedef ThreadSafe" << model.name << "\n";
         out << " * @brief Thread-Safe Active Object State Machine for '" << model.name << "'.\n";
         out << " */\n";
-        out << "using ThreadSafe" << model.name << " = fsm::thread_safe_fsm<" << table_type_name << ", " << model.name
-            << "InPorts, " << model.name << "OutPorts, " << model.name << "Registers, " << model.name << "Services, "
-            << init_state << ">;\n\n";
+        out << "using ThreadSafe" << model.name << " = ::fsm::make_thread_safe_fsm<\n";
+        out << "    " << table_type_name << ",\n";
+        out << "    ::fsm::with_initial_state<" << init_state << ">,\n";
+        out << "    ::fsm::with_ports<" << model.name << "InPorts, " << model.name << "OutPorts>,\n";
+        out << "    ::fsm::with_registers<" << model.name << "Registers>,\n";
+        out << "    ::fsm::with_services<" << model.name << "Services>\n";
+        out << ">;\n\n";
 
         out << "/**\n";
         out << " * @typedef Spsc" << model.name << "\n";
         out << " * @brief Lock-Free Single-Producer Single-Consumer State Machine for '" << model.name << "'.\n";
         out << " */\n";
-        out << "using Spsc" << model.name << " = fsm::spsc_fsm<" << table_type_name << ", " << model.name << "InPorts, "
-            << model.name << "OutPorts, " << model.name << "Registers, " << model.name << "Services, 64, " << init_state
-            << ">;\n";
+        out << "using Spsc" << model.name << " = ::fsm::make_spsc_fsm<\n";
+        out << "    " << table_type_name << ",\n";
+        out << "    ::fsm::with_initial_state<" << init_state << ">,\n";
+        out << "    ::fsm::with_ports<" << model.name << "InPorts, " << model.name << "OutPorts>,\n";
+        out << "    ::fsm::with_registers<" << model.name << "Registers>,\n";
+        out << "    ::fsm::with_services<" << model.name << "Services>,\n";
+        out << "    ::fsm::with_queue_capacity<64>\n";
+        out << ">;\n";
     }
 
     static void emit_model(std::ostream& out, const FsmIr& model, const GeneratorOptions& options) {

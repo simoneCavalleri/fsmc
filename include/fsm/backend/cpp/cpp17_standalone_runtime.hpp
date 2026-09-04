@@ -1450,6 +1450,20 @@ struct with_queue_capacity {
     static constexpr std::size_t value = N;
 };
 
+template <std::size_t N>
+struct with_timer_capacity {
+    static constexpr std::size_t value = N;
+};
+
+template <std::size_t N>
+struct with_trace_buffer {
+    static constexpr std::size_t value = N;
+};
+
+// Forward declaration for observer mapping
+template <std::size_t Capacity>
+class flight_recorder_observer;
+
 // ============================================================================
 // Internal Policy Extraction Helpers
 // ============================================================================
@@ -1511,6 +1525,11 @@ struct extract_observer<Default, with_observer<Obs>, Rest...> {
     using type = Obs;
 };
 
+template <typename Default, std::size_t N, typename... Rest>
+struct extract_observer<Default, with_trace_buffer<N>, Rest...> {
+    using type = flight_recorder_observer<N>;
+};
+
 template <typename Default, typename Other, typename... Rest>
 struct extract_observer<Default, Other, Rest...> : extract_observer<Default, Rest...> {};
 
@@ -1556,6 +1575,20 @@ struct extract_queue_capacity<Default, with_queue_capacity<N>, Rest...> {
 template <std::size_t Default, typename Other, typename... Rest>
 struct extract_queue_capacity<Default, Other, Rest...> : extract_queue_capacity<Default, Rest...> {};
 
+// Timer Capacity extraction
+template <std::size_t Default, typename... Policies>
+struct extract_timer_capacity {
+    static constexpr std::size_t value = Default;
+};
+
+template <std::size_t Default, std::size_t N, typename... Rest>
+struct extract_timer_capacity<Default, with_timer_capacity<N>, Rest...> {
+    static constexpr std::size_t value = N;
+};
+
+template <std::size_t Default, typename Other, typename... Rest>
+struct extract_timer_capacity<Default, Other, Rest...> : extract_timer_capacity<Default, Rest...> {};
+
 }  // namespace detail
 
 // ============================================================================
@@ -1575,6 +1608,7 @@ struct config {
 
     static constexpr std::size_t deferred_capacity = detail::extract_deferred_capacity<16, Policies...>::value;
     static constexpr std::size_t queue_capacity = detail::extract_queue_capacity<64, Policies...>::value;
+    static constexpr std::size_t timer_capacity = detail::extract_timer_capacity<0, Policies...>::value;
 };
 
 // Trait detecting if a type is an fsm::config instantiation
@@ -2364,11 +2398,22 @@ struct internal_row : internal_transition<State, EventType, ActionType, GuardTyp
     using then = internal_row<State, EventType, NewAction, GuardType>;
 };
 
-// Fluent Event-First Builder: on<Event, Source>::to<Target>::when<Guard>::then<Action>
-template <typename EventType, typename SourceState>
+// Fluent Event-First Builder:
+// - on<Event, Source>::to<Target>::when<Guard>::then<Action>
+// - on<Event>::from<Source>::to<Target>::when<Guard>::then<Action>
+template <typename EventType, typename SourceState = void>
 struct on {
     template <typename TargetState>
     using to = row<SourceState, EventType, TargetState>;
+
+    template <typename Src>
+    using from = on<EventType, Src>;
+};
+
+template <typename EventType>
+struct on<EventType, void> {
+    template <typename Src>
+    using from = on<EventType, Src>;
 };
 
 // Helper for fluent creation
@@ -3312,14 +3357,16 @@ class fsm<config<RealTable, Policies...>, InPorts, OutPorts, Registers, Services
                  typename config<RealTable, Policies...>::services_type,
                  typename config<RealTable, Policies...>::initial_state_type,
                  typename config<RealTable, Policies...>::observer_type,
-                 config<RealTable, Policies...>::deferred_capacity, TimerCapacity> {
+                 config<RealTable, Policies...>::deferred_capacity,
+                 config<RealTable, Policies...>::timer_capacity> {
     using base_type = fsm<RealTable, typename config<RealTable, Policies...>::in_ports_type,
                           typename config<RealTable, Policies...>::out_ports_type,
                           typename config<RealTable, Policies...>::registers_type,
                           typename config<RealTable, Policies...>::services_type,
                           typename config<RealTable, Policies...>::initial_state_type,
                           typename config<RealTable, Policies...>::observer_type,
-                          config<RealTable, Policies...>::deferred_capacity, TimerCapacity>;
+                          config<RealTable, Policies...>::deferred_capacity,
+                          config<RealTable, Policies...>::timer_capacity>;
 
   public:
     using base_type::base_type;

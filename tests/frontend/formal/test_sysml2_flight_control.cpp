@@ -159,8 +159,13 @@ using FlightControlTable =
                                    ReturnToHome>::when<LowBatteryCriticalGuard>::then<LowBatteryCriticalAction>,
                           fsm::row<InFlight, EmergencyStopCmd, Terminated>::then<SendIotAlertAction>>;
 
-using FlightControlFSM =
-    fsm::fsm<FlightControlTable, FlightInPorts, FlightOutPorts, FlightRegisters, MockFlightServices, Preflight>;
+using FlightControlFSM = fsm::make_fsm<
+    FlightControlTable,
+    fsm::with_initial_state<Preflight>,
+    fsm::with_ports<FlightInPorts, FlightOutPorts>,
+    fsm::with_registers<FlightRegisters>,
+    fsm::with_services<MockFlightServices>
+>;
 
 }  // namespace
 

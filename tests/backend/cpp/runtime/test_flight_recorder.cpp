@@ -19,8 +19,8 @@ struct EvNext {
     static constexpr std::string_view name() noexcept { return "EvNext"; }
 };
 
-using TestTable = transition_table<row<StateA, EvNext, StateB, no_action, no_guard>,
-                                   row<StateB, EvNext, StateA, no_action, no_guard>>;
+using TestTable = transition_table<row<StateA, EvNext, StateB>,
+                                   row<StateB, EvNext, StateA>>;
 
 /**
  * @brief Test Intent: Verify TraceBuffer circular ring buffer pushes and overwrites without allocations.
@@ -109,7 +109,7 @@ TEST(FlightRecorderTest, FlightRecorderObserverRecording) {
  * - Verify timer expiration count.
  */
 TEST(FlightRecorderTest, FsmDeterministicTimerTick) {
-    ::fsm::timed_fsm<TestTable, 4> sm;
+    make_fsm<TestTable, with_timer_capacity<4>> sm;
     EXPECT_TRUE(sm.is_in<StateA>());
 
     // Start a 100ms timer

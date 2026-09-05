@@ -5,7 +5,7 @@
 #include <utility>
 #include <vector>
 
-namespace fsm::codegen {
+namespace fsm::ir {
 
 // ============================================================================
 // Guard AST, Operations & Models
@@ -55,6 +55,18 @@ struct GuardAstNode {
         return expression;
     }
 
+    void collect_atomic_guards(std::vector<std::string>& out) const {
+        if (op == GuardOp::None) {
+            if (!expression.empty() && expression != "else" && expression != "otherwise" && expression != "default") {
+                out.push_back(expression);
+            }
+        } else {
+            for (const auto& child : children) {
+                child.collect_atomic_guards(out);
+            }
+        }
+    }
+
     bool operator==(const GuardAstNode& other) const noexcept {
         return op == other.op && expression == other.expression && children == other.children;
     }
@@ -77,4 +89,11 @@ struct GuardModel {
     bool operator<(const GuardModel& other) const noexcept { return name < other.name; }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::ir
+
+namespace fsm {
+using GuardOp = ir::GuardOp;
+using GuardAstNode = ir::GuardAstNode;
+using GuardModel = ir::GuardModel;
+}
+

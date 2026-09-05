@@ -6,7 +6,7 @@
 #include <utility>
 #include <vector>
 
-namespace fsm::codegen {
+namespace fsm::ir {
 
 // ============================================================================
 // Structured Data Definitions (MBSE / SysML v2 struct def & datatype def)
@@ -97,4 +97,10 @@ struct StructDefinition {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::ir
+
+namespace fsm {
+using StructField = ir::StructField;
+using StructDefinition = ir::StructDefinition;
+}
+

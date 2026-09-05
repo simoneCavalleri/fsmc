@@ -8,7 +8,7 @@
 
 #include "fsm/ir/variable_definition.hpp"
 
-namespace fsm::codegen {
+namespace fsm::ir {
 
 // ============================================================================
 // Port Definitions & Domain Contracts (SysML v2 / MBSE Typed Ports)
@@ -81,4 +81,12 @@ struct PortDefinition {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::ir
+
+namespace fsm {
+using PortDirection = ir::PortDirection;
+using ir::port_direction_to_string;
+using ir::string_to_port_direction;
+using PortDefinition = ir::PortDefinition;
+}
+

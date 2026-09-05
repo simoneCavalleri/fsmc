@@ -9,7 +9,7 @@
 
 #include "fsm/ir/deterministic_id.hpp"
 
-namespace fsm::codegen {
+namespace fsm::ir {
 
 // ============================================================================
 // Formal Verification & Temporal Logic (LTL / CTL / Invariants)
@@ -190,4 +190,16 @@ struct FormalProperty {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::ir
+
+namespace fsm {
+using TemporalOp = ir::TemporalOp;
+using PropertyAstNode = ir::PropertyAstNode;
+using PropertyKind = ir::PropertyKind;
+using FormalProperty = ir::FormalProperty;
+using ir::temporal_op_to_string;
+using ir::property_kind_to_string;
+using ir::property_kind_from_string;
+
+}
+

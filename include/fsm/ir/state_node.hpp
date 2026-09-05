@@ -10,7 +10,7 @@
 #include "fsm/ir/region.hpp"
 #include "fsm/ir/state_kind.hpp"
 
-namespace fsm::codegen {
+namespace fsm::ir {
 
 // ============================================================================
 // StateNode in the Formal IR
@@ -38,9 +38,10 @@ struct StateNode {
 
     std::vector<ActionSignature> entry_actions;  ///< Ordered entry action signatures
     std::vector<ActionSignature> exit_actions;   ///< Ordered exit action signatures
-    std::optional<std::string> entry_action;
-    std::optional<std::string> exit_action;
-    std::optional<std::string> do_activity;  ///< Async background activity (e.g., coroutine/worker)
+    std::optional<std::string> do_activity;      ///< Async background activity (e.g., coroutine/worker)
+
+    std::vector<uint32_t> outgoing_transitions;  ///< Contiguous indices into FsmIr::transitions (O(1) graph traversal)
+    std::vector<uint32_t> incoming_transitions;  ///< Contiguous indices into FsmIr::transitions (O(1) graph traversal)
 
     std::optional<std::string>
         time_invariant;  ///< Timed Automata permanence constraint (e.g., "stay_duration <= 500ms")
@@ -59,6 +60,25 @@ struct StateNode {
     StateNode(std::string state_id, std::string state_name, std::string state_fqn, StateKind state_kind)
         : id(std::move(state_id)), name(std::move(state_name)), fqn(std::move(state_fqn)), kind(state_kind) {}
 
+    [[nodiscard]] std::string get_entry_action() const {
+        return entry_actions.empty() ? "" : entry_actions.front().name;
+    }
+    [[nodiscard]] std::string get_exit_action() const {
+        return exit_actions.empty() ? "" : exit_actions.front().name;
+    }
+    void set_entry_action(std::string act) {
+        entry_actions.clear();
+        if (!act.empty()) {
+            entry_actions.emplace_back(act, act);
+        }
+    }
+    void set_exit_action(std::string act) {
+        exit_actions.clear();
+        if (!act.empty()) {
+            exit_actions.emplace_back(act, act);
+        }
+    }
+
     bool operator<(const StateNode& other) const noexcept { return name < other.name; }
 
     bool operator==(const StateNode& other) const noexcept {
@@ -68,8 +88,15 @@ struct StateNode {
                entry_actions == other.entry_actions && exit_actions == other.exit_actions &&
                do_activity == other.do_activity && time_invariant == other.time_invariant &&
                deferred_events == other.deferred_events && traceability_reqs == other.traceability_reqs &&
-               description == other.description;
+               description == other.description &&
+               outgoing_transitions == other.outgoing_transitions &&
+               incoming_transitions == other.incoming_transitions;
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::ir
+
+namespace fsm {
+using StateNode = ir::StateNode;
+}
+

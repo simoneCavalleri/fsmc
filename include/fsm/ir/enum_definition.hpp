@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-namespace fsm::codegen {
+namespace fsm::ir {
 
 // ============================================================================
 // Enum Definitions & Literals (MBSE / SysML v2 / C++ Codegen)
@@ -90,4 +90,10 @@ struct EnumDefinition {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::ir
+
+namespace fsm {
+using EnumLiteral = ir::EnumLiteral;
+using EnumDefinition = ir::EnumDefinition;
+}
+

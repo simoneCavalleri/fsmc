@@ -4,7 +4,7 @@
 #include <string>
 #include <string_view>
 
-namespace fsm::codegen {
+namespace fsm::ir {
 
 // ============================================================================
 // StateKind: Structural State Classification
@@ -86,4 +86,11 @@ inline StateKind state_kind_from_string(std::string_view str) {
     return StateKind::Atomic;
 }
 
-}  // namespace fsm::codegen
+}  // namespace fsm::ir
+
+namespace fsm {
+using StateKind = ir::StateKind;
+using ir::state_kind_to_string;
+using ir::state_kind_from_string;
+}
+

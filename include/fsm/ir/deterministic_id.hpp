@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-namespace fsm::codegen {
+namespace fsm::ir {
 
 // ============================================================================
 // Deterministic Hash Generator for IDs (Order-Invariant / Canonical)
@@ -24,4 +24,9 @@ inline std::string compute_deterministic_id(std::string_view canonical_str) {
     return oss.str();
 }
 
-}  // namespace fsm::codegen
+}  // namespace fsm::ir
+
+namespace fsm {
+using ir::compute_deterministic_id;
+}
+

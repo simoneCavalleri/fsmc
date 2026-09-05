@@ -4,7 +4,7 @@
 #include <utility>
 #include <vector>
 
-namespace fsm::codegen {
+namespace fsm::ir {
 
 // ============================================================================
 // Orthogonal Region & Submachine States
@@ -48,4 +48,11 @@ struct SubmachineRef {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::ir
+
+namespace fsm {
+using OrthogonalRegion = ir::OrthogonalRegion;
+using PortMapping = ir::PortMapping;
+using SubmachineRef = ir::SubmachineRef;
+}
+

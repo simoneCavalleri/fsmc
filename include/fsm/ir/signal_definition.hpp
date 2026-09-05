@@ -4,7 +4,7 @@
 #include <utility>
 #include <vector>
 
-namespace fsm::codegen {
+namespace fsm::ir {
 
 // ============================================================================
 // Signal / Payload Definitions & Attributes
@@ -39,4 +39,10 @@ struct SignalDefinition {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::ir
+
+namespace fsm {
+using SignalAttribute = ir::SignalAttribute;
+using SignalDefinition = ir::SignalDefinition;
+}
+

@@ -6,7 +6,7 @@
 
 #include "fsm/ir/transition_edge.hpp"
 
-namespace fsm::codegen {
+namespace fsm::ir {
 
 // ============================================================================
 // Event & Choice Node Models
@@ -29,4 +29,10 @@ struct ChoiceNodeModel {
     explicit ChoiceNodeModel(std::string choice_name = "") : name(std::move(choice_name)) {}
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::ir
+
+namespace fsm {
+using EventModel = ir::EventModel;
+using ChoiceNodeModel = ir::ChoiceNodeModel;
+}
+

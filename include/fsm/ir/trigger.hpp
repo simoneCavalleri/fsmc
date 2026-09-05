@@ -8,7 +8,7 @@
 #include <variant>
 #include <vector>
 
-namespace fsm::codegen {
+namespace fsm::ir {
 
 // ============================================================================
 // Triggers (Signal, Timed, Anonymous)
@@ -155,4 +155,18 @@ struct AnonymousTrigger {
 
 using TriggerVariant = std::variant<SignalTrigger, TimeTrigger, AnonymousTrigger>;
 
-}  // namespace fsm::codegen
+}  // namespace fsm::ir
+
+namespace fsm {
+using TriggerType = ir::TriggerType;
+using TimeTriggerKind = ir::TimeTriggerKind;
+using TimeUnit = ir::TimeUnit;
+using ir::time_unit_to_string;
+using ir::time_unit_from_string;
+
+using SignalTrigger = ir::SignalTrigger;
+using TimeTrigger = ir::TimeTrigger;
+using AnonymousTrigger = ir::AnonymousTrigger;
+using TriggerVariant = ir::TriggerVariant;
+}
+

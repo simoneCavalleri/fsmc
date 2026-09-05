@@ -4,7 +4,7 @@
 #include <string>
 #include <string_view>
 
-namespace fsm::codegen {
+namespace fsm::ir {
 
 // ============================================================================
 // TransitionEdgeKind: Edge Semantics
@@ -32,4 +32,11 @@ inline TransitionEdgeKind transition_edge_kind_from_string(std::string_view str)
     return TransitionEdgeKind::External;
 }
 
-}  // namespace fsm::codegen
+}  // namespace fsm::ir
+
+namespace fsm {
+using TransitionEdgeKind = ir::TransitionEdgeKind;
+using ir::transition_edge_kind_to_string;
+using ir::transition_edge_kind_from_string;
+}
+

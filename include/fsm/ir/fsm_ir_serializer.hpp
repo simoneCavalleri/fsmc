@@ -7,7 +7,7 @@
 
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::ir {
 
 class FsmIrSerializer {
   public:
@@ -21,9 +21,19 @@ class FsmIrSerializer {
         ss << "{\n";
         ss << indent << "\"id\": \"" << escape_json(ir.id) << "\",\n";
         ss << indent << "\"name\": \"" << escape_json(ir.name) << "\",\n";
-        ss << indent << "\"ns\": \"" << escape_json(ir.ns) << "\",\n";
+        ss << indent << "\"package\": \"" << escape_json(ir.package) << "\",\n";
         ss << indent << "\"initial_state_id\": \"" << escape_json(ir.initial_state_id) << "\",\n";
-        ss << indent << "\"thread_safe\": " << (ir.thread_safe ? "true" : "false") << ",\n";
+
+        // Attributes
+        ss << indent << "\"attributes\": {";
+        bool first_attr = true;
+        for (const auto& [k, v] : ir.attributes) {
+            if (!first_attr)
+                ss << ", ";
+            first_attr = false;
+            ss << "\"" << escape_json(k) << "\": \"" << escape_json(v) << "\"";
+        }
+        ss << "},\n";
 
         // Requirements
         ss << indent << "\"satisfies_reqs\": [";
@@ -100,9 +110,10 @@ class FsmIrSerializer {
         ss << indent << "],\n";
 
         // User-Defined Enums (SysML v2 enum def)
+        const auto enums = ir.get_enums();
         ss << indent << "\"enums\": [\n";
-        for (std::size_t i = 0; i < ir.enums.size(); ++i) {
-            const auto& en = ir.enums[i];
+        for (std::size_t i = 0; i < enums.size(); ++i) {
+            const auto& en = enums[i];
             ss << indent << indent << "{\n";
             ss << indent << indent << indent << "\"name\": \"" << escape_json(en.name) << "\",\n";
             ss << indent << indent << indent << "\"underlying_type\": \"" << escape_json(en.underlying_type) << "\",\n";
@@ -123,14 +134,15 @@ class FsmIrSerializer {
                 ss << "\n";
             }
             ss << indent << indent << indent << "]\n";
-            ss << indent << indent << "}" << (i + 1 < ir.enums.size() ? "," : "") << "\n";
+            ss << indent << indent << "}" << (i + 1 < enums.size() ? "," : "") << "\n";
         }
         ss << indent << "],\n";
 
         // Structured Data Definitions (SysML v2 struct def & datatype def)
+        const auto structs = ir.get_structs();
         ss << indent << "\"structs\": [\n";
-        for (std::size_t i = 0; i < ir.structs.size(); ++i) {
-            const auto& st = ir.structs[i];
+        for (std::size_t i = 0; i < structs.size(); ++i) {
+            const auto& st = structs[i];
             ss << indent << indent << "{\n";
             ss << indent << indent << indent << "\"name\": \"" << escape_json(st.name) << "\",\n";
             ss << indent << indent << indent << "\"is_datatype\": " << (st.is_datatype ? "true" : "false") << ",\n";
@@ -168,7 +180,70 @@ class FsmIrSerializer {
                 ss << indent << indent << indent << indent << "}" << (f + 1 < st.fields.size() ? "," : "") << "\n";
             }
             ss << indent << indent << indent << "]\n";
-            ss << indent << indent << "}" << (i + 1 < ir.structs.size() ? "," : "") << "\n";
+            ss << indent << indent << "}" << (i + 1 < structs.size() ? "," : "") << "\n";
+        }
+        ss << indent << "],\n";
+
+        // Compound User-Defined Types (Enum, Struct, Alias)
+        ss << indent << "\"types\": [\n";
+        for (std::size_t i = 0; i < ir.custom_types.size(); ++i) {
+            const auto& ct = ir.custom_types[i];
+            ss << indent << indent << "{\n";
+            ss << indent << indent << indent << "\"name\": \"" << escape_json(ct.name) << "\",\n";
+            ss << indent << indent << indent << "\"kind\": \"" << type_kind_to_string(ct.kind) << "\",\n";
+            ss << indent << indent << indent << "\"underlying_type\": \"" << escape_json(ct.underlying_type) << "\",\n";
+            ss << indent << indent << indent << "\"is_datatype\": " << (ct.is_datatype ? "true" : "false") << ",\n";
+            ss << indent << indent << indent << "\"description\": \"" << escape_json(ct.description) << "\",\n";
+            ss << indent << indent << indent << "\"literals\": [\n";
+            for (std::size_t l = 0; l < ct.literals.size(); ++l) {
+                const auto& lit = ct.literals[l];
+                ss << indent << indent << indent << indent << "{\"name\": \"" << escape_json(lit.name) << "\"";
+                if (lit.value.has_value()) {
+                    ss << ", \"value\": " << *lit.value;
+                } else {
+                    ss << ", \"value\": null";
+                }
+                ss << ", \"description\": \"" << escape_json(lit.description) << "\"}";
+                if (l + 1 < ct.literals.size()) {
+                    ss << ",";
+                }
+                ss << "\n";
+            }
+            ss << indent << indent << indent << "],\n";
+            ss << indent << indent << indent << "\"fields\": [\n";
+            for (std::size_t f = 0; f < ct.fields.size(); ++f) {
+                const auto& field = ct.fields[f];
+                ss << indent << indent << indent << indent << "{\n";
+                ss << indent << indent << indent << indent << indent << "\"name\": \"" << escape_json(field.name)
+                   << "\",\n";
+                ss << indent << indent << indent << indent << indent << "\"type\": \"" << escape_json(field.type)
+                   << "\",\n";
+                ss << indent << indent << indent << indent << indent << "\"default_value\": \""
+                   << escape_json(field.default_value) << "\",\n";
+                if (field.physical_unit.has_value()) {
+                    ss << indent << indent << indent << indent << indent << "\"physical_unit\": \""
+                       << escape_json(*field.physical_unit) << "\",\n";
+                } else {
+                    ss << indent << indent << indent << indent << indent << "\"physical_unit\": null,\n";
+                }
+                if (field.min_value.has_value()) {
+                    ss << indent << indent << indent << indent << indent << "\"min_value\": " << *field.min_value
+                       << ",\n";
+                } else {
+                    ss << indent << indent << indent << indent << indent << "\"min_value\": null,\n";
+                }
+                if (field.max_value.has_value()) {
+                    ss << indent << indent << indent << indent << indent << "\"max_value\": " << *field.max_value
+                       << ",\n";
+                } else {
+                    ss << indent << indent << indent << indent << indent << "\"max_value\": null,\n";
+                }
+                ss << indent << indent << indent << indent << indent << "\"description\": \""
+                   << escape_json(field.description) << "\"\n";
+                ss << indent << indent << indent << indent << "}" << (f + 1 < ct.fields.size() ? "," : "") << "\n";
+            }
+            ss << indent << indent << indent << "]\n";
+            ss << indent << indent << "}" << (i + 1 < ir.custom_types.size() ? "," : "") << "\n";
         }
         ss << indent << "],\n";
 
@@ -309,8 +384,8 @@ class FsmIrSerializer {
             const auto& tr = ir.transitions[i];
             ss << indent << indent << "{\n";
             ss << indent << indent << indent << "\"id\": \"" << escape_json(tr.id) << "\",\n";
-            ss << indent << indent << indent << "\"source_id\": \"" << escape_json(tr.source_id) << "\",\n";
-            ss << indent << indent << indent << "\"target_id\": \"" << escape_json(tr.target_id) << "\",\n";
+            ss << indent << indent << indent << "\"source\": \"" << escape_json(tr.source) << "\",\n";
+            ss << indent << indent << indent << "\"target\": \"" << escape_json(tr.target) << "\",\n";
             ss << indent << indent << indent << "\"source_ids\": [";
             for (std::size_t s = 0; s < tr.source_ids.size(); ++s) {
                 if (s > 0)
@@ -354,8 +429,14 @@ class FsmIrSerializer {
                 for (std::size_t a = 0; a < tr.action_sig->assignments.size(); ++a) {
                     if (a > 0)
                         ss << ", ";
-                    ss << "{\"variable\": \"" << escape_json(tr.action_sig->assignments[a].target_variable)
-                       << "\", \"expression\": \"" << escape_json(tr.action_sig->assignments[a].expression) << "\"}";
+                    const auto& assign = tr.action_sig->assignments[a];
+                    ss << "{\"variable\": \"" << escape_json(assign.target_variable)
+                       << "\", \"op\": \"" << assignment_op_to_string(assign.op)
+                       << "\", \"expression\": \"" << escape_json(assign.expression) << "\"";
+                    if (assign.expr_ast.has_value()) {
+                        ss << ", \"ast\": " << assign.expr_ast->to_json();
+                    }
+                    ss << "}";
                 }
                 ss << "]\n";
             } else {
@@ -405,8 +486,9 @@ class FsmIrSerializer {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::ir
 
 namespace fsm {
-using FsmIrSerializer = fsm::codegen::FsmIrSerializer;
+using FsmIrSerializer = ir::FsmIrSerializer;
 }  // namespace fsm
+

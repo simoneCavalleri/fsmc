@@ -6,7 +6,7 @@
 #include <string_view>
 #include <utility>
 
-namespace fsm::codegen {
+namespace fsm::ir {
 
 // ============================================================================
 // State Variables (Extended Finite State Machine - EFSM)
@@ -84,4 +84,12 @@ struct VariableDefinition {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::ir
+
+namespace fsm {
+using VariableTypeKind = ir::VariableTypeKind;
+using ir::variable_type_kind_to_string;
+using ir::infer_type_kind;
+using VariableDefinition = ir::VariableDefinition;
+}
+

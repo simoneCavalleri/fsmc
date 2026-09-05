@@ -7,7 +7,11 @@
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/middleend/analysis/fsm_validator.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend;
+using namespace fsm::middleend::analysis;
+using namespace fsm::middleend;
+using namespace fsm::ir;
 
 namespace {
 
@@ -36,7 +40,7 @@ TEST(ParserTest, MermaidBasicParsingAndValidation) {
 
     EXPECT_EQ(model.initial_state, "Idle");
     EXPECT_EQ(model.states.size(), 3u);   // Idle, WaitingForCan, Running
-    EXPECT_EQ(model.events.size(), 3u);   // CmdStart, CmdStop, CanOk
+    EXPECT_EQ(model.signals.size(), 3u);  // CmdStart, CmdStop, CanOk
     EXPECT_EQ(model.guards.size(), 2u);   // CanStartGuard, IsReady
     EXPECT_EQ(model.actions.size(), 2u);  // OnStartAction, OnStopAction
     EXPECT_EQ(model.transitions.size(), 4u);
@@ -107,7 +111,7 @@ TEST(ParserTest, PlantUmlBasicParsingAndValidation) {
 
     EXPECT_EQ(model.initial_state, "Standby");
     EXPECT_EQ(model.states.size(), 2u);
-    EXPECT_EQ(model.events.size(), 2u);
+    EXPECT_EQ(model.signals.size(), 2u);
     EXPECT_EQ(model.guards.size(), 1u);
     EXPECT_EQ(model.actions.size(), 2u);
     EXPECT_EQ(model.transitions.size(), 2u);

@@ -5,7 +5,7 @@
 
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::frontend {
 
 /**
  * @brief Classification of state machine frontends for compilation guarantees.
@@ -197,4 +197,8 @@ inline std::string sanitize_identifier(std::string_view str) {
     return result;
 }
 
-}  // namespace fsm::codegen
+}  // namespace fsm::frontend
+
+namespace fsm {
+using namespace frontend;
+}  // namespace fsm

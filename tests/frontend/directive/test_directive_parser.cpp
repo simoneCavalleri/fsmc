@@ -2,7 +2,9 @@
 
 #include "fsm/frontend/directive/directive_parser.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend::directive;
+using namespace fsm::frontend;
+using namespace fsm::ir;
 
 namespace {
 

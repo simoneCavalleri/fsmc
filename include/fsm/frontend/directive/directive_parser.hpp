@@ -11,7 +11,7 @@
 #include "fsm/frontend/directive/ltl_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::frontend::directive {
 
 class DirectiveParser {
   public:
@@ -589,8 +589,44 @@ class DirectiveParser {
         return out;
     }
 
+    static std::string format_enum_directive(const TypeDefinition& en) {
+        std::string out = "name=" + en.name + " type=" + (en.underlying_type.empty() ? "uint8_t" : en.underlying_type) + " literals=[";
+        for (size_t i = 0; i < en.literals.size(); ++i) {
+            if (i > 0) out += ", ";
+            out += en.literals[i].name;
+            if (en.literals[i].value.has_value()) {
+                out += "=" + std::to_string(*en.literals[i].value);
+            }
+        }
+        out += "]";
+        if (!en.description.empty()) {
+            out += " desc=\"" + en.description + "\"";
+        }
+        return out;
+    }
+
     // Formats a StructDefinition into @fsm:struct directive argument string
     static std::string format_struct_directive(const StructDefinition& st) {
+        std::string out = "name=" + st.name;
+        if (st.is_datatype) {
+            out += " is_datatype=true";
+        }
+        out += " fields=[";
+        for (size_t i = 0; i < st.fields.size(); ++i) {
+            if (i > 0) out += ", ";
+            out += st.fields[i].name + ":" + st.fields[i].type;
+            if (!st.fields[i].default_value.empty()) {
+                out += "=" + st.fields[i].default_value;
+            }
+        }
+        out += "]";
+        if (!st.description.empty()) {
+            out += " desc=\"" + st.description + "\"";
+        }
+        return out;
+    }
+
+    static std::string format_struct_directive(const TypeDefinition& st) {
         std::string out = "name=" + st.name;
         if (st.is_datatype) {
             out += " is_datatype=true";
@@ -746,4 +782,8 @@ class DirectiveParser {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::frontend::directive
+
+namespace fsm::frontend {
+using directive::DirectiveParser;
+}  // namespace fsm::frontend

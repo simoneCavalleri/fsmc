@@ -11,7 +11,7 @@
 #include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
 
-namespace fsm::codegen {
+namespace fsm::frontend::diagram {
 
 class MermaidParser : public IParser {
   public:
@@ -626,4 +626,8 @@ class MermaidParser : public IParser {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::frontend::diagram
+
+namespace fsm::frontend {
+using diagram::MermaidParser;
+}  // namespace fsm::frontend

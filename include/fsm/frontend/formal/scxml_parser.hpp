@@ -15,7 +15,7 @@
 #include "fsm/frontend/formal/cameo_xmi_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::frontend::formal {
 
 class ScxmlParser : public IParser {
   public:
@@ -399,4 +399,8 @@ class ScxmlParser : public IParser {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::frontend::formal
+
+namespace fsm::frontend {
+using formal::ScxmlParser;
+}  // namespace fsm::frontend

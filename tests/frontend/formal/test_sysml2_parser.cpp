@@ -7,7 +7,13 @@
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/fsm_validator.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend::formal;
+using namespace fsm::frontend;
+using namespace fsm::backend::cpp;
+using namespace fsm::backend;
+using namespace fsm::middleend::analysis;
+using namespace fsm::middleend;
+using namespace fsm::ir;
 
 namespace {
 
@@ -52,7 +58,7 @@ TEST(Sysml2ParserTest, MultilineTransitionParsing) {
     ASSERT_NE(model.find_state("Standby"), nullptr);
     ASSERT_NE(model.find_state("InFlight"), nullptr);
     ASSERT_NE(model.find_state("Aborted"), nullptr);
-    EXPECT_EQ(model.events.size(), 1u);
+    EXPECT_EQ(model.signals.size(), 1u);
     EXPECT_EQ(model.guards.size(), 2u);
     EXPECT_EQ(model.actions.size(), 2u);
     EXPECT_EQ(model.transitions.size(), 2u);

@@ -13,7 +13,10 @@
 
 namespace {
 
-using namespace fsm::codegen;
+using namespace fsm::frontend;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend::formal;
+using namespace fsm::ir;
 
 // ============================================================================
 // 1. Parser Factory Format and Extension Resolution Tests

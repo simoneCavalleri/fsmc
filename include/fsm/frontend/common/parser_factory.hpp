@@ -18,7 +18,7 @@
 #include "fsm/frontend/formal/stateflow_parser.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 
-namespace fsm::codegen {
+namespace fsm::frontend {
 
 class ParserFactory {
   public:
@@ -147,4 +147,8 @@ class ParserFactory {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::frontend
+
+namespace fsm {
+using namespace frontend;
+}  // namespace fsm

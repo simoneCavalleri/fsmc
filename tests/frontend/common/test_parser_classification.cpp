@@ -11,7 +11,10 @@
 #include "fsm/frontend/formal/smv_parser.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend::formal;
+using namespace fsm::ir;
 
 TEST(FrontendClassificationTest, FormalParsersClassification) {
     Sysml2Parser sysml_parser;

@@ -10,7 +10,7 @@
 #include "fsm/frontend/common/parser_interface.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::frontend::directive {
 
 /**
  * @brief Tokenizer and Recursive-Descent Parser for Linear Temporal Logic (LTL)
@@ -345,8 +345,8 @@ class LtlPropertyParser {
     size_t token_idx_{0};
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::frontend::directive
 
-namespace fsm {
-using LtlPropertyParser = ::fsm::codegen::LtlPropertyParser;
-}  // namespace fsm
+namespace fsm::frontend {
+using directive::LtlPropertyParser;
+}  // namespace fsm::frontend

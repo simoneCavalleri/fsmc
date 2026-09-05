@@ -7,7 +7,11 @@
 #include "fsm/frontend/formal/smv_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend::formal;
+using namespace fsm::frontend;
+using namespace fsm::backend::cpp;
+using namespace fsm::backend;
+using namespace fsm::ir;
 
 namespace {
 
@@ -41,7 +45,7 @@ ASSIGN
     EXPECT_EQ(model.name, "ConnectionControllerFSM");
     EXPECT_EQ(model.initial_state, "Disconnected");
     EXPECT_EQ(model.states.size(), 3u);
-    EXPECT_EQ(model.events.size(), 3u);
+    EXPECT_EQ(model.signals.size(), 3u);
     EXPECT_EQ(model.transitions.size(), 3u);
 
     EXPECT_EQ(parser.kind(), FrontendKind::Formal);

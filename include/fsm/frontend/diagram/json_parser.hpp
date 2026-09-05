@@ -14,7 +14,7 @@
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::frontend::diagram {
 
 // ============================================================================
 // Lightweight Zero-Dependency JSON Value Representation
@@ -337,6 +337,20 @@ class JsonStateParser : public IParser {
             model.initial_state = sanitize_identifier(init_state);
         }
 
+        std::string pkg = root.get_string("package");
+        if (!pkg.empty()) {
+            model.package = pkg;
+        }
+
+        const auto* attrs_obj = root.get_child("attributes");
+        if (attrs_obj != nullptr && attrs_obj->is_object()) {
+            for (const auto& [k, v] : attrs_obj->obj_val) {
+                if (v.is_string()) {
+                    model.attributes[k] = v.str_val;
+                }
+            }
+        }
+
         // Top-level variables / context
         const auto* vars_arr = root.get_child("variables");
         if (vars_arr != nullptr && vars_arr->is_array()) {
@@ -473,6 +487,77 @@ class JsonStateParser : public IParser {
             }
         }
 
+        // Top-level compound types (Enum, Struct, Alias)
+        const auto* types_arr = root.get_child("types");
+        if (types_arr != nullptr && types_arr->is_array()) {
+            for (const auto& t_val : types_arr->arr_val) {
+                if (t_val.is_object()) {
+                    TypeDefinition td;
+                    td.name = sanitize_identifier(t_val.get_string("name"));
+                    std::string kind_str = t_val.get_string("kind", "struct");
+                    td.kind = string_to_type_kind(kind_str);
+                    td.underlying_type = t_val.get_string("underlying_type");
+                    td.description = t_val.get_string("description");
+                    if (const auto* dt_val = t_val.get_child("is_datatype")) {
+                        td.is_datatype = (dt_val->type == JsonType::Bool && dt_val->bool_val);
+                    }
+                    const auto* lits_arr = t_val.get_child("literals");
+                    if (lits_arr != nullptr && lits_arr->is_array()) {
+                        for (const auto& l_val : lits_arr->arr_val) {
+                            if (l_val.is_object()) {
+                                std::string l_name = sanitize_identifier(l_val.get_string("name"));
+                                std::optional<int64_t> l_num;
+                                if (const auto* v_num = l_val.get_child("value")) {
+                                    if (v_num->type == JsonType::Number) {
+                                        l_num = static_cast<int64_t>(v_num->num_val);
+                                    }
+                                }
+                                std::string l_desc = l_val.get_string("description");
+                                if (!l_name.empty()) {
+                                    td.add_literal(l_name, l_num, l_desc);
+                                }
+                            }
+                        }
+                    }
+                    const auto* fields_arr = t_val.get_child("fields");
+                    if (fields_arr != nullptr && fields_arr->is_array()) {
+                        for (const auto& f_val : fields_arr->arr_val) {
+                            if (f_val.is_object()) {
+                                std::string f_name = sanitize_identifier(f_val.get_string("name"));
+                                std::string f_type = f_val.get_string("type", "string");
+                                std::string f_def = f_val.get_string("default_value", f_val.get_string("default"));
+                                std::string f_desc = f_val.get_string("description");
+                                std::optional<std::string> unit;
+                                if (const auto* u_val = f_val.get_child("physical_unit")) {
+                                    if (u_val->type == JsonType::String && !u_val->str_val.empty()) {
+                                        unit = u_val->str_val;
+                                    }
+                                }
+                                std::optional<double> min_v;
+                                if (const auto* min_val = f_val.get_child("min_value")) {
+                                    if (min_val->type == JsonType::Number) {
+                                        min_v = min_val->num_val;
+                                    }
+                                }
+                                std::optional<double> max_v;
+                                if (const auto* max_val = f_val.get_child("max_value")) {
+                                    if (max_val->type == JsonType::Number) {
+                                        max_v = max_val->num_val;
+                                    }
+                                }
+                                if (!f_name.empty()) {
+                                    td.add_field(StructField(f_name, f_type, f_def, unit, min_v, max_v, f_desc));
+                                }
+                            }
+                        }
+                    }
+                    if (!td.name.empty()) {
+                        model.add_type(std::move(td));
+                    }
+                }
+            }
+        }
+
         // Top-level formal properties
         const auto* props_arr = root.get_child("properties");
         if (props_arr != nullptr && props_arr->is_array()) {
@@ -509,6 +594,18 @@ class JsonStateParser : public IParser {
         const auto* states_obj = root.get_child("states");
         if (states_obj != nullptr && states_obj->is_object()) {
             parse_states_object(*states_obj, model, "");
+        } else if (states_obj != nullptr && states_obj->is_array()) {
+            for (const auto& s_item : states_obj->arr_val) {
+                if (s_item.is_object()) {
+                    std::string s_name = sanitize_identifier(s_item.get_string("name"));
+                    if (s_name.empty()) {
+                        s_name = sanitize_identifier(s_item.get_string("id"));
+                    }
+                    if (!s_name.empty()) {
+                        model.add_state(s_name);
+                    }
+                }
+            }
         } else {
             error_message = "JSON Parser: Missing or invalid 'states' object in JSON.";
             return false;
@@ -806,4 +903,11 @@ class JsonStateParser : public IParser {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::frontend::diagram
+
+namespace fsm::frontend {
+using diagram::JsonStateParser;
+using diagram::JsonValue;
+using diagram::JsonType;
+using diagram::SimpleJsonParser;
+}  // namespace fsm::frontend

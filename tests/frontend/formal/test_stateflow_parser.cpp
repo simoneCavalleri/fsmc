@@ -6,7 +6,11 @@
 #include "fsm/frontend/formal/stateflow_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend::formal;
+using namespace fsm::frontend;
+using namespace fsm::backend::formal;
+using namespace fsm::backend;
+using namespace fsm::ir;
 
 namespace {
 
@@ -228,10 +232,13 @@ TEST(StateflowParserTest, SerializerRoundtripWithDirectives) {
     EXPECT_EQ(p_cruise->parent_state, "Airborne");
 
     // Verify directives
-    ASSERT_EQ(parsed.enums.size(), 1u);
-    EXPECT_EQ(parsed.enums[0].name, "FlightPhase");
-    ASSERT_EQ(parsed.structs.size(), 1u);
-    EXPECT_EQ(parsed.structs[0].name, "NavData");
+    ASSERT_EQ(parsed.custom_types.size(), 2u);
+    const auto* fp = parsed.find_enum("FlightPhase");
+    ASSERT_NE(fp, nullptr);
+    EXPECT_EQ(fp->name, "FlightPhase");
+    const auto* nd = parsed.find_struct("NavData");
+    ASSERT_NE(nd, nullptr);
+    EXPECT_EQ(nd->name, "NavData");
     ASSERT_EQ(parsed.variables.size(), 1u);
     EXPECT_EQ(parsed.variables[0].name, "speed_kts");
     ASSERT_EQ(parsed.ports.size(), 1u);

@@ -11,7 +11,7 @@
 #include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
 
-namespace fsm::codegen {
+namespace fsm::frontend::diagram {
 
 class PlantUmlParser : public IParser {
   public:
@@ -524,4 +524,8 @@ class PlantUmlParser : public IParser {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::frontend::diagram
+
+namespace fsm::frontend {
+using diagram::PlantUmlParser;
+}  // namespace fsm::frontend

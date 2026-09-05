@@ -15,7 +15,7 @@
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::frontend::diagram {
 
 class DotParser : public IParser {
   public:
@@ -355,4 +355,8 @@ class DotParser : public IParser {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::frontend::diagram
+
+namespace fsm::frontend {
+using diagram::DotParser;
+}  // namespace fsm::frontend

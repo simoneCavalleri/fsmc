@@ -12,7 +12,7 @@
 #include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::frontend::formal {
 
 /**
  * @brief Formal parser for nuXmv / NuSMV / SMV Formal Verification Language.
@@ -550,4 +550,8 @@ class SmvParser : public IParser {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::frontend::formal
+
+namespace fsm::frontend {
+using formal::SmvParser;
+}  // namespace fsm::frontend

@@ -3,7 +3,9 @@
 #include "fsm/frontend/formal/scxml_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend::formal;
+using namespace fsm::frontend;
+using namespace fsm::ir;
 
 namespace {
 

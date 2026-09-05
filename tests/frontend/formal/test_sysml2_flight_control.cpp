@@ -11,6 +11,13 @@
 
 namespace {
 
+using namespace fsm::ir;
+using namespace fsm::diagnostic;
+using namespace fsm::frontend::formal;
+using namespace fsm::middleend;
+using namespace fsm::middleend::analysis;
+using namespace fsm::backend::cpp;
+
 constexpr const char* kFlightControlSysMLv2 = R"(
 package FlightControlSystem {
     event def TakeoffCmd {
@@ -174,15 +181,16 @@ using FlightControlFSM = fsm::make_fsm<
 // ============================================================================
 
 TEST(SysML2FlightControlTest, ParseFlightMissionControllerSysMLv2) {
-    fsm::codegen::FsmIr model;
+    fsm::ir::FsmIr model;
     std::string error;
-    fsm::codegen::Sysml2Parser parser;
+    Sysml2Parser parser;
 
     bool ok = parser.parse(kFlightControlSysMLv2, model, error);
     ASSERT_TRUE(ok) << "Parser error: " << error;
 
     EXPECT_EQ(model.name, "FlightMissionController");
-    EXPECT_EQ(model.ns, "FlightControlSystem");
+    EXPECT_EQ(model.package, "FlightControlSystem");
+
 
     // Ports
     ASSERT_EQ(model.ports.size(), 5);
@@ -209,12 +217,8 @@ TEST(SysML2FlightControlTest, ParseFlightMissionControllerSysMLv2) {
     EXPECT_EQ(model.variables[0].initial_value, "0");
 
     // Events / Signals
-    EXPECT_TRUE(
-        model.find_signal("TakeoffCmd") != nullptr ||
-        std::any_of(model.events.begin(), model.events.end(), [](const auto& e) { return e.name == "TakeoffCmd"; }));
-    EXPECT_TRUE(model.find_signal("EmergencyStopCmd") != nullptr ||
-                std::any_of(model.events.begin(), model.events.end(),
-                            [](const auto& e) { return e.name == "EmergencyStopCmd"; }));
+    EXPECT_TRUE(model.find_signal("TakeoffCmd") != nullptr);
+    EXPECT_TRUE(model.find_signal("EmergencyStopCmd") != nullptr);
 
     // States
     EXPECT_NE(model.find_state("Preflight"), nullptr);
@@ -228,35 +232,36 @@ TEST(SysML2FlightControlTest, ParseFlightMissionControllerSysMLv2) {
 }
 
 TEST(SysML2FlightControlTest, VerificationPassesAndIntervalAnalysis) {
-    fsm::codegen::FsmIr model;
+    fsm::ir::FsmIr model;
     std::string error;
-    fsm::codegen::Sysml2Parser parser;
+    Sysml2Parser parser;
     ASSERT_TRUE(parser.parse(kFlightControlSysMLv2, model, error));
 
-    fsm::codegen::DiagnosticEngine diag;
-    fsm::codegen::EFSMIntervalAnalyzer interval_analyzer(model);
+    DiagnosticEngine diag;
+    EFSMIntervalAnalyzer interval_analyzer(model);
     auto findings = interval_analyzer.analyze(diag);
 
     // The spec is consistent and valid -> no contract violations
     EXPECT_FALSE(diag.has_errors());
 
-    auto pm = fsm::codegen::PassManager::create_default_pipeline();
+    auto pm = PassManager::create_default_pipeline();
     bool passes_ok = pm.run(model, diag);
     EXPECT_TRUE(passes_ok);
     EXPECT_FALSE(diag.has_errors());
 }
 
 TEST(SysML2FlightControlTest, CppCodeGeneration) {
-    fsm::codegen::FsmIr model;
+    fsm::ir::FsmIr model;
     std::string error;
-    fsm::codegen::Sysml2Parser parser;
+    Sysml2Parser parser;
     ASSERT_TRUE(parser.parse(kFlightControlSysMLv2, model, error));
 
+
     std::ostringstream ss;
-    fsm::codegen::GeneratorOptions opts;
-    opts.cpp_standard = fsm::codegen::CppStandard::Cpp20;
+    GeneratorOptions opts;
+    opts.cpp_standard = CppStandard::Cpp20;
     opts.include_stubs = true;
-    fsm::codegen::CppModelEmitter::emit_model(ss, model, opts);
+    CppModelEmitter::emit_model(ss, model, opts);
 
     std::string generated_code = ss.str();
     EXPECT_NE(generated_code.find("FlightMissionControllerInPorts"), std::string::npos);

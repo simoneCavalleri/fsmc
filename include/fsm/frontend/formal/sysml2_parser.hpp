@@ -13,7 +13,7 @@
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::frontend::formal {
 
 class Sysml2Parser : public IParser {
   public:
@@ -282,7 +282,8 @@ class Sysml2Parser : public IParser {
         static const std::regex package_def_regex(R"(^package\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
         std::smatch match;
         if (std::regex_search(stmt, match, package_def_regex)) {
-            model.ns = sanitize_identifier(match[1].str());
+            model.package = sanitize_identifier(match[1].str());
+
             if (is_block_open) {
                 out_kind = SysmlBlockKind::Package;
             }
@@ -946,4 +947,8 @@ class Sysml2Parser : public IParser {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::frontend::formal
+
+namespace fsm::frontend {
+using formal::Sysml2Parser;
+}  // namespace fsm::frontend

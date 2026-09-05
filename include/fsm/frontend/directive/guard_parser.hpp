@@ -9,7 +9,7 @@
 
 #include "fsm/frontend/common/parser_interface.hpp"
 
-namespace fsm::codegen {
+namespace fsm::frontend::directive {
 
 struct ParsedGuardResult {
     std::string cpp_type;
@@ -272,4 +272,9 @@ class GuardExpressionParser {
     size_t token_idx_{0};
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::frontend::directive
+
+namespace fsm::frontend {
+using directive::GuardExpressionParser;
+using directive::ParsedGuardResult;
+}  // namespace fsm::frontend

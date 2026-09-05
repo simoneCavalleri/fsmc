@@ -10,7 +10,7 @@
 
 #include "fsm/frontend/common/parser_interface.hpp"
 
-namespace fsm::codegen {
+namespace fsm::frontend {
 
 class LexerUtils {
   public:
@@ -79,4 +79,8 @@ class LexerUtils {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::frontend
+
+namespace fsm {
+using namespace frontend;
+}  // namespace fsm

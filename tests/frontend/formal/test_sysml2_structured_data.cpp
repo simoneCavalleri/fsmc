@@ -4,7 +4,11 @@
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend::formal;
+using namespace fsm::frontend;
+using namespace fsm::backend::formal;
+using namespace fsm::backend;
+using namespace fsm::ir;
 
 namespace {
 
@@ -43,7 +47,7 @@ package Avionics {
     bool success = parser.parse(sysml_src, model, err);
 
     ASSERT_TRUE(success) << "Parser error: " << err;
-    ASSERT_EQ(model.enums.size(), 2u);
+    ASSERT_EQ(model.get_enums().size(), 2u);
 
     // Verify FmsOperatingMode
     const auto* fms_mode = model.find_enum("FmsOperatingMode");
@@ -106,7 +110,7 @@ package Navigation {
     bool success = parser.parse(sysml_src, model, err);
 
     ASSERT_TRUE(success) << "Parser error: " << err;
-    ASSERT_EQ(model.structs.size(), 2u);
+    ASSERT_EQ(model.get_structs().size(), 2u);
 
     // Verify FlightPlanWaypoint
     const auto* wp = model.find_struct("FlightPlanWaypoint");
@@ -291,15 +295,17 @@ package RoundtripTest {
     ASSERT_TRUE(parser.parse(emitted_sysml, reloaded_model, err)) << "Re-parse error: " << err << "\nEmitted:\n" << emitted_sysml;
 
     // Verify roundtrip equivalence
-    ASSERT_EQ(reloaded_model.enums.size(), 1U);
-    EXPECT_EQ(reloaded_model.enums[0].name, "SystemMode");
-    ASSERT_EQ(reloaded_model.enums[0].literals.size(), 3U);
-    EXPECT_EQ(reloaded_model.enums[0].literals[0].name, "Init");
+    auto reloaded_enums = reloaded_model.get_enums();
+    ASSERT_EQ(reloaded_enums.size(), 1U);
+    EXPECT_EQ(reloaded_enums[0].name, "SystemMode");
+    ASSERT_EQ(reloaded_enums[0].literals.size(), 3U);
+    EXPECT_EQ(reloaded_enums[0].literals[0].name, "Init");
 
-    ASSERT_EQ(reloaded_model.structs.size(), 1U);
-    EXPECT_EQ(reloaded_model.structs[0].name, "TelemetryPacket");
-    ASSERT_EQ(reloaded_model.structs[0].fields.size(), 3U);
-    EXPECT_EQ(reloaded_model.structs[0].fields[0].name, "packet_id");
+    auto reloaded_structs = reloaded_model.get_structs();
+    ASSERT_EQ(reloaded_structs.size(), 1U);
+    EXPECT_EQ(reloaded_structs[0].name, "TelemetryPacket");
+    ASSERT_EQ(reloaded_structs[0].fields.size(), 3U);
+    EXPECT_EQ(reloaded_structs[0].fields[0].name, "packet_id");
 }
 
 }  // namespace

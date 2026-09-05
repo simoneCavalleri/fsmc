@@ -6,7 +6,11 @@
 #include "fsm/frontend/diagram/json_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend;
+using namespace fsm::backend::cpp;
+using namespace fsm::backend;
+using namespace fsm::ir;
 
 namespace {
 
@@ -59,7 +63,7 @@ TEST(JsonParserTest, BasicJsonParsing) {
     EXPECT_EQ(model.name, "JsonConnectionFSM");
     EXPECT_EQ(model.initial_state, "Disconnected");
     EXPECT_EQ(model.states.size(), 3u);
-    EXPECT_EQ(model.events.size(), 4u);
+    EXPECT_EQ(model.signals.size(), 4u);
     EXPECT_EQ(model.guards.size(), 1u);
     EXPECT_EQ(model.actions.size(), 3u);
 }

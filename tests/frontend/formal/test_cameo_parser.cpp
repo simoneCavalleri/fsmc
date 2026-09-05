@@ -7,7 +7,13 @@
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/fsm_validator.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend::formal;
+using namespace fsm::frontend;
+using namespace fsm::backend::cpp;
+using namespace fsm::backend;
+using namespace fsm::middleend::analysis;
+using namespace fsm::middleend;
+using namespace fsm::ir;
 
 namespace {
 
@@ -58,7 +64,7 @@ TEST(CameoParserTest, BasicXmiParsing) {
     EXPECT_EQ(model.name, "DeviceProtocolFSM");
     EXPECT_EQ(model.initial_state, "Disconnected");
     EXPECT_EQ(model.states.size(), 3u);
-    EXPECT_EQ(model.events.size(), 3u);
+    EXPECT_EQ(model.signals.size(), 3u);
     EXPECT_EQ(model.guards.size(), 1u);
     EXPECT_EQ(model.actions.size(), 3u);
     EXPECT_EQ(model.transitions.size(), 3u);

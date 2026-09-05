@@ -16,7 +16,7 @@
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::frontend::formal {
 
 // ============================================================================
 // Lightweight XML Element Representation
@@ -681,4 +681,11 @@ class CameoXmiParser : public IParser {
     }
 };
 
-}  // namespace fsm::codegen
+using CameoParser = CameoXmiParser;
+
+}  // namespace fsm::frontend::formal
+
+namespace fsm::frontend {
+using formal::CameoXmiParser;
+using formal::CameoParser;
+}  // namespace fsm::frontend

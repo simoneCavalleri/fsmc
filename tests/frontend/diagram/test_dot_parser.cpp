@@ -6,7 +6,11 @@
 #include "fsm/frontend/diagram/dot_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend;
+using namespace fsm::backend::cpp;
+using namespace fsm::backend;
+using namespace fsm::ir;
 
 namespace {
 

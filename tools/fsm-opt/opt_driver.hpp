@@ -27,6 +27,11 @@
 
 namespace fsm::tools {
 
+using namespace fsm::diagnostic;
+using namespace fsm::frontend;
+using namespace fsm::middleend;
+using namespace fsm::backend;
+
 class OptDriver {
   public:
     static int run(const OptOptions& opts) {
@@ -64,13 +69,13 @@ class OptDriver {
             return 1;
         }
 
-        auto parser = fsm::codegen::ParserFactory::create(opts.input_path, opts.format_override);
+        auto parser = ParserFactory::create(opts.input_path, opts.format_override);
         if (!parser) {
             std::cerr << "Error: Cannot find suitable parser for: " << opts.input_path << "\n";
             return 1;
         }
 
-        fsm::codegen::FsmIr ir;
+        fsm::ir::FsmIr ir;
         std::string err;
         if (!parser->parse(content, ir, err)) {
             std::cerr << "Frontend Parse Error: " << err << "\n";
@@ -79,67 +84,67 @@ class OptDriver {
 
         if (opts.print_before_all) {
             std::cout << "\n=== [IR BEFORE PASSES] ===\n"
-                      << fsm::codegen::FsmIrSerializer::serialize_json(ir) << "\n"
+                      << fsm::ir::FsmIrSerializer::serialize_json(ir) << "\n"
                       << "==========================\n";
         }
 
         // Build Pass Pipeline
-        fsm::codegen::PassManager pm;
+        PassManager pm;
         if (!opts.custom_passes.empty()) {
             auto pass_names = split_string(opts.custom_passes, ',');
             for (const auto& p_name : pass_names) {
                 if (p_name == "canonicalize") {
-                    pm.add_pass(std::make_unique<fsm::codegen::HierarchyCanonicalizationPass>());
+                    pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
                 } else if (p_name == "guard-simplification") {
-                    pm.add_pass(std::make_unique<fsm::codegen::GuardSimplificationPassWrapper>());
+                    pm.add_pass(std::make_unique<GuardSimplificationPassWrapper>());
                 } else if (p_name == "determinism") {
-                    pm.add_pass(std::make_unique<fsm::codegen::DeterminismEnforcementPassWrapper>());
+                    pm.add_pass(std::make_unique<DeterminismEnforcementPassWrapper>());
                 } else if (p_name == "race-check") {
-                    pm.add_pass(std::make_unique<fsm::codegen::OrthogonalInterferencePassWrapper>());
+                    pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
                 } else if (p_name == "dead-state-pruning") {
-                    pm.add_pass(std::make_unique<fsm::codegen::DeadStatePruningPassWrapper>(true));
+                    pm.add_pass(std::make_unique<DeadStatePruningPassWrapper>(true));
                 } else if (p_name == "choice-completeness") {
-                    pm.add_pass(std::make_unique<fsm::codegen::ChoiceCompletenessPass>());
+                    pm.add_pass(std::make_unique<ChoiceCompletenessPass>());
                 } else if (p_name == "choice-inlining") {
-                    pm.add_pass(std::make_unique<fsm::codegen::ChoiceInliningPassWrapper>());
+                    pm.add_pass(std::make_unique<ChoiceInliningPassWrapper>());
                 } else if (p_name == "timed-deadlock") {
-                    pm.add_pass(std::make_unique<fsm::codegen::TimedDeadlockPassWrapper>());
+                    pm.add_pass(std::make_unique<TimedDeadlockPassWrapper>());
                 } else if (p_name == "efsm-data-path") {
-                    pm.add_pass(std::make_unique<fsm::codegen::EFSMDataPathPass>());
+                    pm.add_pass(std::make_unique<EFSMDataPathPass>());
                 } else if (p_name == "safety-verifier") {
-                    pm.add_pass(std::make_unique<fsm::codegen::ModelSafetyVerifierPass>());
+                    pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
                 } else if (p_name == "model-checking") {
-                    pm.add_pass(std::make_unique<fsm::codegen::ModelCheckingPass>());
+                    pm.add_pass(std::make_unique<ModelCheckingPass>());
                 } else if (p_name == "orthogonal-product") {
-                    pm.add_pass(std::make_unique<fsm::codegen::OrthogonalProductPassWrapper>());
+                    pm.add_pass(std::make_unique<OrthogonalProductPassWrapper>());
                 } else if (p_name == "wcet-analysis") {
-                    pm.add_pass(std::make_unique<fsm::codegen::WcetAnalysisPassWrapper>());
+                    pm.add_pass(std::make_unique<WcetAnalysisPassWrapper>());
                 } else if (p_name == "constant-folding") {
-                    pm.add_pass(std::make_unique<fsm::codegen::ConstantFoldingPassWrapper>());
+                    pm.add_pass(std::make_unique<ConstantFoldingPassWrapper>());
                 } else if (p_name == "state-minimization") {
-                    pm.add_pass(std::make_unique<fsm::codegen::StateMinimizationPassWrapper>());
+                    pm.add_pass(std::make_unique<StateMinimizationPassWrapper>());
                 } else if (p_name == "pipe-through") {
-                    pm.add_pass(std::make_unique<fsm::codegen::PipeThroughPassWrapper>(opts.pipe_through_cmd));
+                    pm.add_pass(std::make_unique<PipeThroughPassWrapper>(opts.pipe_through_cmd));
                 } else {
                     std::cerr << "[WARNING] Unrecognized pass name: '" << p_name << "'. Skipping.\n";
                 }
             }
         } else {
-            pm = fsm::codegen::PassManager::create_optimizing_pipeline(opts.prune_dead);
+            pm = PassManager::create_optimizing_pipeline(opts.prune_dead);
         }
 
         for (const auto& plugin_path : opts.pass_plugins) {
-            fsm::codegen::DiagnosticEngine plugin_diag;
+            DiagnosticEngine plugin_diag;
             if (!pm.load_plugin(plugin_path, plugin_diag)) {
                 std::cerr << plugin_diag.render_to_string(content);
                 return 1;
             }
         }
         if (!opts.pipe_through_cmd.empty() && opts.custom_passes.empty()) {
-            pm.add_pass(std::make_unique<fsm::codegen::PipeThroughPassWrapper>(opts.pipe_through_cmd));
+            pm.add_pass(std::make_unique<PipeThroughPassWrapper>(opts.pipe_through_cmd));
         }
 
-        fsm::codegen::DiagnosticEngine diag;
+        DiagnosticEngine diag;
         if (!pm.run(ir, diag)) {
             std::cerr << diag.render_to_string(content);
             return 1;
@@ -155,7 +160,7 @@ class OptDriver {
 
         if (opts.print_after_all) {
             std::cout << "\n=== [IR AFTER PASSES] ===\n"
-                      << fsm::codegen::FsmIrSerializer::serialize_json(ir) << "\n"
+                      << fsm::ir::FsmIrSerializer::serialize_json(ir) << "\n"
                       << "=========================\n";
         }
 
@@ -178,9 +183,9 @@ class OptDriver {
         // Serialization & Emission
         std::string output_str;
         if (opts.emit_format == "ir" || opts.emit_format == "json") {
-            output_str = fsm::codegen::FsmIrSerializer::serialize_json(ir);
+            output_str = fsm::ir::FsmIrSerializer::serialize_json(ir);
         } else {
-            output_str = fsm::codegen::EmitterFactory::emit_diagram(ir, opts.emit_format);
+            output_str = EmitterFactory::emit_diagram(ir, opts.emit_format);
             if (output_str.empty()) {
                 std::cerr << "Error: Unsupported output format: " << opts.emit_format << "\n";
                 return 1;
@@ -214,10 +219,10 @@ class OptDriver {
         return tokens;
     }
 
-    static void print_metrics(const fsm::codegen::FsmIr& ir) {
+    static void print_metrics(const fsm::ir::FsmIr& ir) {
         std::cout << "\n=== [FSM Formal IR Graph Metrics: " << ir.name << "] ===\n"
                   << "  - States (Total):      " << ir.states.size() << "\n"
-                  << "  - Events (Signals):    " << ir.events.size() << "\n"
+                  << "  - Events (Signals):    " << ir.signals.size() << "\n"
                   << "  - Transitions (Edges): " << ir.transitions.size() << "\n"
                   << "  - Guards (Predicates): " << ir.guards.size() << "\n"
                   << "  - Actions (Effects):   " << ir.actions.size() << "\n"

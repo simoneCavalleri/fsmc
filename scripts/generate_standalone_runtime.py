@@ -151,7 +151,7 @@ def generate_emitter_header(class_name, standard_name, core_incs, core_chunks, t
 #pragma clang diagnostic ignored "-Woverlength-strings"
 #endif
 
-namespace fsm::codegen {{
+namespace fsm::backend::cpp {{
 
 class {class_name} {{
   public:
@@ -190,7 +190,11 @@ class {class_name} {{
     }}
 }};
 
-}}  // namespace fsm::codegen
+}}  // namespace fsm::backend::cpp
+
+namespace fsm::backend {{
+using cpp::{class_name};
+}}  // namespace fsm::backend
 
 #if defined(__clang__)
 #pragma clang diagnostic pop

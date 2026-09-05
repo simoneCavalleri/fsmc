@@ -18,7 +18,11 @@
 #include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm;
-using namespace fsm::codegen;
+using namespace fsm::ir;
+using namespace fsm::diagnostic;
+using namespace fsm::frontend;
+using namespace fsm::middleend;
+using namespace fsm::backend;
 
 namespace {
 
@@ -47,8 +51,7 @@ bool parse_with_fallback(const std::string& source, const std::string& format, F
 std::string fsmc_wasm_compile(const std::string& source, const std::string& format, int standard, bool standalone) {
     FsmIr model;
     model.name = "WebPlaygroundFSM";
-    model.ns = "fsm_playground";
-    model.thread_safe = true;
+    model.package = "fsm_playground";
 
     std::string err;
     if (!parse_with_fallback(source, format, model, err)) {
@@ -56,10 +59,12 @@ std::string fsmc_wasm_compile(const std::string& source, const std::string& form
     }
 
     GeneratorOptions opts;
+    opts.target_namespace = "fsm_playground";
     opts.cpp_standard = (standard == 20) ? CppStandard::Cpp20 : CppStandard::Cpp17;
     opts.standalone = standalone;
     opts.include_stubs = true;
     opts.thread_safe = true;
+
 
     return CppGenerator::generate_header(model, opts);
 }
@@ -110,9 +115,10 @@ std::string fsmc_wasm_get_model(const std::string& source, const std::string& fo
            << "\"initial\": \"" << v.initial_value << "\"}" << (i + 1 < model.variables.size() ? "," : "") << "\n";
     }
 
+    const auto enums = model.get_enums();
     ss << "  ],\n  \"enums\": [\n";
-    for (size_t i = 0; i < model.enums.size(); ++i) {
-        const auto& en = model.enums[i];
+    for (size_t i = 0; i < enums.size(); ++i) {
+        const auto& en = enums[i];
         ss << "    {\"name\": \"" << en.name << "\", \"underlying_type\": \"" << en.underlying_type
            << "\", \"literals\": [";
         for (size_t j = 0; j < en.literals.size(); ++j) {
@@ -126,11 +132,12 @@ std::string fsmc_wasm_get_model(const std::string& source, const std::string& fo
             }
             ss << "}" << (j + 1 < en.literals.size() ? ", " : "");
         }
-        ss << "]}" << (i + 1 < model.enums.size() ? "," : "") << "\n";
+        ss << "]}" << (i + 1 < enums.size() ? "," : "") << "\n";
     }
+    const auto structs = model.get_structs();
     ss << "  ],\n  \"structs\": [\n";
-    for (size_t i = 0; i < model.structs.size(); ++i) {
-        const auto& st = model.structs[i];
+    for (size_t i = 0; i < structs.size(); ++i) {
+        const auto& st = structs[i];
         ss << "    {\"name\": \"" << st.name << "\", \"description\": \"" << st.description << "\", \"fields\": [";
         for (size_t j = 0; j < st.fields.size(); ++j) {
             const auto& f = st.fields[j];
@@ -139,7 +146,7 @@ std::string fsmc_wasm_get_model(const std::string& source, const std::string& fo
             if (j + 1 < st.fields.size())
                 ss << ", ";
         }
-        ss << "]}" << (i + 1 < model.structs.size() ? "," : "") << "\n";
+        ss << "]}" << (i + 1 < structs.size() ? "," : "") << "\n";
     }
     ss << "  ],\n  \"states\": [\n";
 
@@ -178,11 +185,6 @@ std::string fsmc_wasm_get_model(const std::string& source, const std::string& fo
     for (const auto& sig : model.signals) {
         if (is_valid_ev(sig.name) && seen_events.insert(sig.name).second) {
             all_events.push_back(sig.name);
-        }
-    }
-    for (const auto& ev : model.events) {
-        if (is_valid_ev(ev.name) && seen_events.insert(ev.name).second) {
-            all_events.push_back(ev.name);
         }
     }
     for (const auto& t : model.transitions) {
@@ -246,7 +248,7 @@ std::string fsmc_wasm_verify(const std::string& source, const std::string& forma
        << "  \"port_count\": " << model.ports.size() << ",\n"
        << "  \"variable_count\": " << model.variables.size() << ",\n"
        << "  \"state_count\": " << model.states.size() << ",\n"
-       << "  \"event_count\": " << model.events.size() << ",\n"
+       << "  \"event_count\": " << model.signals.size() << ",\n"
        << "  \"transition_count\": " << model.transitions.size() << ",\n"
        << "  \"initial_state\": \"" << model.initial_state << "\",\n"
        << "  \"diagnostics\": [\n";

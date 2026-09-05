@@ -27,6 +27,11 @@
 
 namespace fsm::tools {
 
+using namespace fsm::diagnostic;
+using namespace fsm::frontend;
+using namespace fsm::middleend;
+using namespace fsm::backend;
+
 class FsmcDriver {
   public:
     static int run(const FsmcOptions& opts) {
@@ -49,7 +54,7 @@ class FsmcDriver {
         // Export standalone runtime if requested
         if (!opts.export_runtime_dir.empty()) {
             std::string err;
-            if (!fsm::codegen::RuntimeExporter::export_runtime(opts.export_runtime_dir, opts.cpp_standard, err)) {
+            if (!RuntimeExporter::export_runtime(opts.export_runtime_dir, opts.cpp_standard, err)) {
                 std::cerr << "Error: " << err << "\n";
                 return 1;
             }
@@ -70,13 +75,13 @@ class FsmcDriver {
         }
 
         // Parse input model
-        auto parser = fsm::codegen::ParserFactory::create(opts.input_file, opts.format);
+        auto parser = ParserFactory::create(opts.input_file, opts.format);
         if (!parser) {
             std::cerr << "Error: Could not instantiate parser for input: " << opts.input_file << "\n";
             return 1;
         }
 
-        fsm::codegen::FsmIr model;
+        fsm::ir::FsmIr model;
         std::string parse_error;
         if (!parser->parse(content, model, parse_error)) {
             std::cerr << "Syntax Error in " << opts.input_file << ":\n" << parse_error << "\n";
@@ -84,7 +89,7 @@ class FsmcDriver {
         }
 
         // Warning for diagram sources
-        if (parser->kind() == fsm::codegen::FrontendKind::Diagram) {
+        if (parser->kind() == FrontendKind::Diagram) {
             std::cerr << "warning[W0301]: Untyped or inferred symbol in diagram source: '" << opts.input_file << "'\n";
             if (!opts.allow_diagram_codegen && !opts.verify_mode && opts.export_diagram_format.empty() &&
                 opts.rtm_output_file.empty()) {
@@ -103,19 +108,20 @@ class FsmcDriver {
             model.name = infer_fsm_name_from_file(opts.input_file);
         }
         if (!opts.ns_name.empty()) {
-            model.ns = opts.ns_name;
+            model.package = opts.ns_name;
         }
-        model.thread_safe = opts.thread_safe;
+
 
         // Inject custom CLI verification properties if specified
         if (!opts.ltl_spec.empty()) {
-            model.add_property(fsm::codegen::FormalProperty("cli_ltl_property", fsm::codegen::PropertyKind::Safety,
-                                                            opts.ltl_spec, "CLI specified LTL specification"));
+            model.add_property(fsm::ir::FormalProperty("cli_ltl_property", fsm::ir::PropertyKind::Safety,
+                                                       opts.ltl_spec, "CLI specified LTL specification"));
         }
         if (!opts.ctl_spec.empty()) {
-            model.add_property(fsm::codegen::FormalProperty("cli_ctl_property", fsm::codegen::PropertyKind::Safety,
-                                                            opts.ctl_spec, "CLI specified CTL specification"));
+            model.add_property(fsm::ir::FormalProperty("cli_ctl_property", fsm::ir::PropertyKind::Safety,
+                                                       opts.ctl_spec, "CLI specified CTL specification"));
         }
+
 
         // Requirement audit
         if (opts.req_audit) {
@@ -124,43 +130,43 @@ class FsmcDriver {
 
         // Execute Middle-End Optimization Passes
         if (opts.opt_level > 0) {
-            fsm::codegen::PassManager pm;
-            pm.add_pass(std::make_unique<fsm::codegen::HierarchyCanonicalizationPass>());
+            PassManager pm;
+            pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
             if (opts.simplify_guards) {
-                pm.add_pass(std::make_unique<fsm::codegen::GuardSimplificationPassWrapper>());
+                pm.add_pass(std::make_unique<GuardSimplificationPassWrapper>());
             }
             if (opts.strict_determinism) {
-                pm.add_pass(std::make_unique<fsm::codegen::DeterminismEnforcementPassWrapper>());
+                pm.add_pass(std::make_unique<DeterminismEnforcementPassWrapper>());
             }
             if (opts.check_races) {
-                pm.add_pass(std::make_unique<fsm::codegen::OrthogonalInterferencePassWrapper>());
+                pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
             }
             if (opts.inline_submachines) {
                 pm.add_pass(create_submachine_pass(opts));
             }
             if (opts.prune_dead_states || opts.opt_level >= 2) {
-                pm.add_pass(std::make_unique<fsm::codegen::DeadStatePruningPassWrapper>(true));
+                pm.add_pass(std::make_unique<DeadStatePruningPassWrapper>(true));
             }
-            pm.add_pass(std::make_unique<fsm::codegen::ChoiceCompletenessPass>());
-            pm.add_pass(std::make_unique<fsm::codegen::ChoiceInliningPassWrapper>());
-            pm.add_pass(std::make_unique<fsm::codegen::TimedDeadlockPassWrapper>());
-            pm.add_pass(std::make_unique<fsm::codegen::EFSMDataPathPass>());
+            pm.add_pass(std::make_unique<ChoiceCompletenessPass>());
+            pm.add_pass(std::make_unique<ChoiceInliningPassWrapper>());
+            pm.add_pass(std::make_unique<TimedDeadlockPassWrapper>());
+            pm.add_pass(std::make_unique<EFSMDataPathPass>());
             if (opts.verify_mode || opts.export_diagram_format.empty()) {
-                pm.add_pass(std::make_unique<fsm::codegen::ModelSafetyVerifierPass>());
-                pm.add_pass(std::make_unique<fsm::codegen::ModelCheckingPass>());
+                pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
+                pm.add_pass(std::make_unique<ModelCheckingPass>());
             }
             for (const auto& plugin_path : opts.pass_plugins) {
-                fsm::codegen::DiagnosticEngine plugin_diag;
+                DiagnosticEngine plugin_diag;
                 if (!pm.load_plugin(plugin_path, plugin_diag)) {
                     std::cerr << plugin_diag.render_to_string(content);
                     return 1;
                 }
             }
             if (!opts.pipe_through_cmd.empty()) {
-                pm.add_pass(std::make_unique<fsm::codegen::PipeThroughPassWrapper>(opts.pipe_through_cmd));
+                pm.add_pass(std::make_unique<PipeThroughPassWrapper>(opts.pipe_through_cmd));
             }
 
-            fsm::codegen::DiagnosticEngine diag;
+            DiagnosticEngine diag;
             if (!pm.run(model, diag)) {
                 std::cerr << diag.render_to_string(content);
                 return 1;
@@ -169,9 +175,9 @@ class FsmcDriver {
             if (opts.werror && !diag.get_diagnostics().empty()) {
                 bool has_warnings = false;
                 for (const auto& d : diag.get_diagnostics()) {
-                    if (d.severity == fsm::codegen::DiagnosticSeverity::Warning ||
-                        d.severity == fsm::codegen::DiagnosticSeverity::Fatal ||
-                        d.severity == fsm::codegen::DiagnosticSeverity::Error) {
+                    if (d.severity == DiagnosticSeverity::Warning ||
+                        d.severity == DiagnosticSeverity::Fatal ||
+                        d.severity == DiagnosticSeverity::Error) {
                         has_warnings = true;
                         break;
                     }
@@ -185,7 +191,7 @@ class FsmcDriver {
         }
 
         // Semantic validation
-        const auto validation = fsm::codegen::FsmValidator::validate(model);
+        const auto validation = FsmValidator::validate(model);
 
         if (opts.verify_mode) {
             return print_verification_report(opts, model, validation);
@@ -205,16 +211,16 @@ class FsmcDriver {
 
         // RTM Export
         if (!opts.rtm_output_file.empty()) {
-            fsm::codegen::ModelChecker checker(model);
+            ModelChecker checker(model);
             auto mc_results = checker.verify_all();
-            fsm::codegen::RtmFormat rtm_fmt = fsm::codegen::RtmFormat::Markdown;
+            RtmFormat rtm_fmt = RtmFormat::Markdown;
             if (!opts.rtm_format.empty()) {
-                rtm_fmt = fsm::codegen::rtm_format_from_string(opts.rtm_format);
+                rtm_fmt = rtm_format_from_string(opts.rtm_format);
             } else if (ends_with(opts.rtm_output_file, ".json")) {
-                rtm_fmt = fsm::codegen::RtmFormat::Json;
+                rtm_fmt = RtmFormat::Json;
             }
 
-            std::string rtm_content = fsm::codegen::RtmEmitter::emit(model, mc_results, rtm_fmt);
+            std::string rtm_content = RtmEmitter::emit(model, mc_results, rtm_fmt);
             std::string write_err;
             if (!write_file_content(opts.rtm_output_file, rtm_content, write_err)) {
                 std::cerr << "Error: " << write_err << "\n";
@@ -226,7 +232,7 @@ class FsmcDriver {
         // Diagram Export
         if (!opts.export_diagram_format.empty()) {
             std::string exported_diagram =
-                fsm::codegen::EmitterFactory::emit_diagram(model, opts.export_diagram_format);
+                EmitterFactory::emit_diagram(model, opts.export_diagram_format);
             if (exported_diagram.empty()) {
                 std::cerr << "Error: Unsupported export diagram format: '" << opts.export_diagram_format
                           << "'. Supported: mermaid, plantuml, sysml2, json, dot, scxml, cameo, smv\n";
@@ -248,13 +254,15 @@ class FsmcDriver {
         }
 
         // Generate C++ code
-        fsm::codegen::GeneratorOptions gen_opts;
+        GeneratorOptions gen_opts;
         gen_opts.cpp_standard = opts.cpp_standard;
         gen_opts.standalone = opts.standalone;
         gen_opts.include_stubs = opts.include_stubs;
         gen_opts.thread_safe = opts.thread_safe;
+        gen_opts.target_namespace = opts.ns_name;
 
-        const std::string generated_code = fsm::codegen::CppGenerator::generate_header(model, gen_opts);
+
+        const std::string generated_code = CppGenerator::generate_header(model, gen_opts);
 
         if (!opts.output_file.empty()) {
             std::string write_err;
@@ -262,11 +270,11 @@ class FsmcDriver {
                 std::cerr << "Error: " << write_err << "\n";
                 return 1;
             }
-            const std::string std_label = (opts.cpp_standard == fsm::codegen::CppStandard::Cpp20) ? "C++20" : "C++17";
+            const std::string std_label = (opts.cpp_standard == CppStandard::Cpp20) ? "C++20" : "C++17";
             std::cout << "[SUCCESS] " << std_label << " (" << (opts.standalone ? "Standalone" : "Modular")
                       << ") generated successfully to: " << opts.output_file << "\n"
                       << "  - States: " << model.states.size() << "\n"
-                      << "  - Events: " << model.events.size() << "\n"
+                      << "  - Events: " << model.signals.size() << "\n"
                       << "  - Transitions: " << model.transitions.size() << "\n"
                       << "  - Guards: " << model.guards.size() << "\n"
                       << "  - Actions: " << model.actions.size() << "\n";
@@ -278,7 +286,7 @@ class FsmcDriver {
     }
 
   private:
-    static void perform_req_audit(const fsm::codegen::FsmIr& model) {
+    static void perform_req_audit(const fsm::ir::FsmIr& model) {
         std::cout << "============================================================================\n"
                   << " Requirement Traceability Matrix (@fsm:req) : " << model.name << "\n"
                   << "============================================================================\n";
@@ -304,10 +312,10 @@ class FsmcDriver {
                   << "============================================================================\n\n";
     }
 
-    static std::unique_ptr<fsm::codegen::IPass> create_submachine_pass(const FsmcOptions& opts) {
-        auto loaded_submachines = std::make_shared<std::map<std::string, fsm::codegen::FsmIr>>();
-        auto sub_pass = std::make_unique<fsm::codegen::SubmachineInliningPass>(
-            [opts, loaded_submachines](const std::string& sub_name) -> const fsm::codegen::FsmIr* {
+    static std::unique_ptr<IPass> create_submachine_pass(const FsmcOptions& opts) {
+        auto loaded_submachines = std::make_shared<std::map<std::string, fsm::ir::FsmIr>>();
+        auto sub_pass = std::make_unique<SubmachineInliningPass>(
+            [opts, loaded_submachines](const std::string& sub_name) -> const fsm::ir::FsmIr* {
                 if (loaded_submachines->count(sub_name) != 0) {
                     return &(*loaded_submachines)[sub_name];
                 }
@@ -319,9 +327,9 @@ class FsmcDriver {
                         std::string read_err;
                         std::string sub_content = read_file_content(candidate.string(), read_err);
                         if (read_err.empty()) {
-                            auto sub_parser = fsm::codegen::ParserFactory::create(candidate.string(), "auto");
+                            auto sub_parser = ParserFactory::create(candidate.string(), "auto");
                             if (sub_parser) {
-                                fsm::codegen::FsmIr sub_ir;
+                                fsm::ir::FsmIr sub_ir;
                                 std::string sub_err;
                                 if (sub_parser->parse(sub_content, sub_ir, sub_err)) {
                                     (*loaded_submachines)[sub_name] = std::move(sub_ir);
@@ -334,27 +342,27 @@ class FsmcDriver {
                 return nullptr;
             });
 
-        class SubmachineWrapper : public fsm::codegen::IPass {
+        class SubmachineWrapper : public IPass {
           public:
-            explicit SubmachineWrapper(std::unique_ptr<fsm::codegen::SubmachineInliningPass> pass)
+            explicit SubmachineWrapper(std::unique_ptr<SubmachineInliningPass> pass)
                 : pass_(std::move(pass)) {}
-            [[nodiscard]] std::string name() const override { return fsm::codegen::SubmachineInliningPass::name(); }
+            [[nodiscard]] std::string name() const override { return SubmachineInliningPass::name(); }
             [[nodiscard]] std::string description() const override {
-                return fsm::codegen::SubmachineInliningPass::description();
+                return SubmachineInliningPass::description();
             }
-            bool run(fsm::codegen::FsmIr& ir, fsm::codegen::DiagnosticEngine& diag) override {
+            bool run(fsm::ir::FsmIr& ir, DiagnosticEngine& diag) override {
                 return pass_->run(ir, diag);
             }
 
           private:
-            std::unique_ptr<fsm::codegen::SubmachineInliningPass> pass_;
+            std::unique_ptr<SubmachineInliningPass> pass_;
         };
 
         return std::make_unique<SubmachineWrapper>(std::move(sub_pass));
     }
 
-    static int print_verification_report(const FsmcOptions& opts, const fsm::codegen::FsmIr& model,
-                                         const fsm::codegen::ValidationResult& validation) {
+    static int print_verification_report(const FsmcOptions& opts, const fsm::ir::FsmIr& model,
+                                         const ValidationResult& validation) {
         std::size_t total_deferred = 0;
         for (const auto& s : model.states) {
             total_deferred += s.deferred_events.size();
@@ -365,7 +373,7 @@ class FsmcDriver {
                   << "============================================================================\n"
                   << " Input File:       " << opts.input_file << "\n"
                   << " States:           " << model.states.size() << "\n"
-                  << " Total Events:     " << model.events.size() << "\n"
+                  << " Total Events:     " << model.signals.size() << "\n"
                   << " Transitions:      " << model.transitions.size() << "\n"
                   << " Choice Nodes:     " << model.choice_nodes.size() << "\n"
                   << " Deferred Triggers:" << total_deferred << "\n"
@@ -377,11 +385,11 @@ class FsmcDriver {
         } else {
             for (const auto& diag : validation.diagnostics) {
                 std::string level_tag = "[INFO]";
-                if (diag.severity == fsm::codegen::DiagnosticSeverity::Warning) {
+                if (diag.severity == DiagnosticSeverity::Warning) {
                     level_tag = "[WARNING]";
-                } else if (diag.severity == fsm::codegen::DiagnosticSeverity::SafetyCritical) {
+                } else if (diag.severity == DiagnosticSeverity::SafetyCritical) {
                     level_tag = "[SAFETY CRITICAL]";
-                } else if (diag.severity == fsm::codegen::DiagnosticSeverity::Error) {
+                } else if (diag.severity == DiagnosticSeverity::Error) {
                     level_tag = "[ERROR]";
                 }
                 std::cout << "  " << level_tag << " (" << diag.category << "): " << diag.message << "\n";
@@ -393,7 +401,7 @@ class FsmcDriver {
         if (!model.properties.empty()) {
             std::cout << "----------------------------------------------------------------------------\n"
                       << " Formal Temporal Properties (" << model.properties.size() << "):\n";
-            fsm::codegen::ModelChecker checker(model);
+            ModelChecker checker(model);
             auto mc_results = checker.verify_all();
             for (const auto& res : mc_results) {
                 if (res.passed) {

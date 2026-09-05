@@ -188,11 +188,11 @@ Operating --> Idle : StopCmd / PowerOff
 @enduml)";
 
 static void BM_Compiler_PlantUml_Parse(benchmark::State& state) {
-    fsm::codegen::PlantUmlParser parser;
+    fsm::frontend::diagram::PlantUmlParser parser;
     std::string err;
 
     for (auto _ : state) {
-        fsm::codegen::FsmIr ir;
+        fsm::ir::FsmIr ir;
         bool ok = parser.parse(SAMPLE_PUML, ir, err);
         benchmark::DoNotOptimize(ok);
     }
@@ -212,11 +212,11 @@ static const std::string SAMPLE_SYSML = R"(state def Spacecraft {
 })";
 
 static void BM_Compiler_Sysml2_Parse(benchmark::State& state) {
-    fsm::codegen::Sysml2Parser parser;
+    fsm::frontend::formal::Sysml2Parser parser;
     std::string err;
 
     for (auto _ : state) {
-        fsm::codegen::FsmIr ir;
+        fsm::ir::FsmIr ir;
         bool ok = parser.parse(SAMPLE_SYSML, ir, err);
         benchmark::DoNotOptimize(ok);
     }
@@ -229,19 +229,19 @@ BENCHMARK(BM_Compiler_Sysml2_Parse);
 // ============================================================================
 
 static void BM_Compiler_PassManager_Pipeline(benchmark::State& state) {
-    fsm::codegen::PlantUmlParser parser;
-    fsm::codegen::FsmIr ir_template;
+    fsm::frontend::diagram::PlantUmlParser parser;
+    fsm::ir::FsmIr ir_template;
     std::string err;
     parser.parse(SAMPLE_PUML, ir_template, err);
 
-    fsm::codegen::PassManager pm;
-    pm.add_pass(std::make_unique<fsm::codegen::HierarchyCanonicalizationPass>());
-    pm.add_pass(std::make_unique<fsm::codegen::ChoiceCompletenessPass>());
-    pm.add_pass(std::make_unique<fsm::codegen::ModelSafetyVerifierPass>());
+    fsm::middleend::PassManager pm;
+    pm.add_pass(std::make_unique<fsm::middleend::passes::HierarchyCanonicalizationPass>());
+    pm.add_pass(std::make_unique<fsm::middleend::passes::ChoiceCompletenessPass>());
+    pm.add_pass(std::make_unique<fsm::middleend::passes::ModelSafetyVerifierPass>());
 
     for (auto _ : state) {
-        fsm::codegen::FsmIr ir = ir_template;
-        fsm::codegen::DiagnosticEngine diag;
+        fsm::ir::FsmIr ir = ir_template;
+        fsm::diagnostic::DiagnosticEngine diag;
         bool ok = pm.run(ir, diag);
         benchmark::DoNotOptimize(ok);
     }
@@ -249,17 +249,17 @@ static void BM_Compiler_PassManager_Pipeline(benchmark::State& state) {
 BENCHMARK(BM_Compiler_PassManager_Pipeline);
 
 static void BM_Compiler_CppGenerator(benchmark::State& state) {
-    fsm::codegen::PlantUmlParser parser;
-    fsm::codegen::FsmIr ir;
+    fsm::frontend::diagram::PlantUmlParser parser;
+    fsm::ir::FsmIr ir;
     std::string err;
     parser.parse(SAMPLE_PUML, ir, err);
 
-    fsm::codegen::GeneratorOptions opts;
-    opts.cpp_standard = fsm::codegen::CppStandard::Cpp20;
+    fsm::backend::cpp::GeneratorOptions opts;
+    opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
     opts.standalone = true;
 
     for (auto _ : state) {
-        std::string code = fsm::codegen::CppGenerator::generate_header(ir, opts);
+        std::string code = fsm::backend::cpp::CppGenerator::generate_header(ir, opts);
         benchmark::DoNotOptimize(code);
     }
 }

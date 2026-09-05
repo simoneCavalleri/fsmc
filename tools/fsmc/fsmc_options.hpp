@@ -20,7 +20,7 @@ struct FsmcOptions {
     std::string target_lang = "cpp";
     std::string format = "auto";
     std::string submachine_dir;
-    fsm::codegen::CppStandard cpp_standard = fsm::codegen::CppStandard::Cpp17;
+    fsm::backend::cpp::CppStandard cpp_standard = fsm::backend::cpp::CppStandard::Cpp17;
     int opt_level = 1;                   // -O0, -O1, -O2
     bool prune_dead_states = false;      // --prune-dead-states
     bool simplify_guards = true;         // --no-guard-simplification
@@ -166,18 +166,18 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
         } else if (arg == "--std" && idx + 1 < argc) {
             const std::string std_val = argv[++idx];
             if (std_val == "17" || std_val == "c++17" || std_val == "C++17") {
-                opts.cpp_standard = fsm::codegen::CppStandard::Cpp17;
+                opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp17;
             } else if (std_val == "20" || std_val == "c++20" || std_val == "C++20") {
-                opts.cpp_standard = fsm::codegen::CppStandard::Cpp20;
+                opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
             } else {
                 opts.is_valid = false;
                 opts.error_message = "Unsupported C++ standard: " + std_val + " (expected 17 or 20)";
                 return opts;
             }
         } else if (arg == "--c++17" || arg == "-std=c++17") {
-            opts.cpp_standard = fsm::codegen::CppStandard::Cpp17;
+            opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp17;
         } else if (arg == "--c++20" || arg == "-std=c++20") {
-            opts.cpp_standard = fsm::codegen::CppStandard::Cpp20;
+            opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
         } else if (arg == "--standalone") {
             opts.standalone = true;
         } else if (arg == "--modular") {

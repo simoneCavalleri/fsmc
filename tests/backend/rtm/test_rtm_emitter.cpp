@@ -1,9 +1,13 @@
 #include <gtest/gtest.h>
 
 #include "fsm/backend/rtm/rtm_emitter.hpp"
+#include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::diagnostic;
+using namespace fsm::backend::rtm;
+using namespace fsm::backend;
+using namespace fsm::ir;
 
 namespace {
 

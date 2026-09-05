@@ -3,7 +3,9 @@
 #include "fsm/backend/verification/mcdc_harness_generator.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::backend::verification;
+using namespace fsm::backend;
+using namespace fsm::ir;
 
 namespace {
 

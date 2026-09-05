@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <limits>
 #include <map>
+
 #include <optional>
 #include <ostream>
 #include <regex>
@@ -14,12 +16,13 @@
 #include "fsm/backend/cpp/cpp_options.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::backend::cpp {
 
 class CppModelEmitter {
   public:
     static void emit_enums(std::ostream& out, const FsmIr& model) {
-        if (model.enums.empty()) {
+        const auto enums = model.get_enums();
+        if (enums.empty()) {
             return;
         }
 
@@ -27,7 +30,7 @@ class CppModelEmitter {
         out << "// Strongly-Typed Enumerations (SysML v2 / Formal IR)\n";
         out << "// ============================================================================\n\n";
 
-        for (const auto& en : model.enums) {
+        for (const auto& en : enums) {
             out << "/**\n";
             out << " * @enum " << en.name << "\n";
             out << " * @brief Enumeration definition for '" << en.name << "'.\n";
@@ -62,7 +65,8 @@ class CppModelEmitter {
     }
 
     static void emit_structs(std::ostream& out, const FsmIr& model) {
-        if (model.structs.empty()) {
+        const auto structs = model.get_structs();
+        if (structs.empty()) {
             return;
         }
 
@@ -70,7 +74,7 @@ class CppModelEmitter {
         out << "// Structured Data Definitions (SysML v2 struct / datatype def)\n";
         out << "// ============================================================================\n\n";
 
-        for (const auto& st : model.structs) {
+        for (const auto& st : structs) {
             out << "/**\n";
             out << " * @struct " << st.name << "\n";
             if (!st.description.empty()) {
@@ -340,7 +344,7 @@ class CppModelEmitter {
     }
 
     static void emit_events(std::ostream& out, const FsmIr& model) {
-        if (model.events.empty() && model.signals.empty()) {
+        if (model.signals.empty()) {
             return;
         }
 
@@ -348,38 +352,32 @@ class CppModelEmitter {
         out << "// Events & Signals\n";
         out << "// ============================================================================\n\n";
 
-        for (const auto& event_item : model.events) {
-            if (event_item.name == "anonymous_event" || event_item.name == "completion_event") {
+        for (const auto& sig : model.signals) {
+            if (sig.name == "anonymous_event" || sig.name == "completion_event") {
                 continue;
             }
-            out << "/**\n";
-            out << " * @struct " << event_item.name << "\n";
-            out << " * @brief Signal trigger '" << event_item.name << "'.\n";
-            if (!event_item.description.empty()) {
-                out << " * @details " << event_item.description << "\n";
-            }
-            out << " */\n";
-            out << "struct " << event_item.name << " {\n";
-            out << "    static constexpr std::string_view name = \"" << event_item.name << "\";\n";
-
-            if (!event_item.description.empty()) {
-                out << "    // Description: " << event_item.description << "\n";
-            }
-            out << "};\n\n";
-        }
-
-        for (const auto& sig : model.signals) {
-            bool already_emitted = false;
-            for (const auto& ev : model.events) {
-                if (ev.name == sig.name) {
-                    already_emitted = true;
-                    break;
+            if (sig.attributes.empty()) {
+                out << "/**\n";
+                out << " * @struct " << sig.name << "\n";
+                out << " * @brief Signal trigger '" << sig.name << "'.\n";
+                if (!sig.description.empty()) {
+                    out << " * @details " << sig.description << "\n";
                 }
-            }
-            if (!already_emitted) {
+                out << " */\n";
+                out << "struct " << sig.name << " {\n";
+                out << "    static constexpr std::string_view name = \"" << sig.name << "\";\n";
+
+                if (!sig.description.empty()) {
+                    out << "    // Description: " << sig.description << "\n";
+                }
+                out << "};\n\n";
+            } else {
                 out << "/**\n";
                 out << " * @struct " << sig.name << "\n";
                 out << " * @brief Parameterized signal payload for '" << sig.name << "'.\n";
+                if (!sig.description.empty()) {
+                    out << " * @details " << sig.description << "\n";
+                }
                 out << " */\n";
                 out << "struct " << sig.name << " {\n";
                 out << "    static constexpr std::string_view name = \"" << sig.name << "\";\n";
@@ -549,6 +547,15 @@ class CppModelEmitter {
             out << "// ============================================================================\n\n";
 
             for (const auto& guard_item : model.guards) {
+                if (guard_item.name.find("::") != std::string::npos ||
+                    guard_item.name.find('<') != std::string::npos ||
+                    guard_item.name.find('>') != std::string::npos ||
+                    guard_item.name.find(' ') != std::string::npos ||
+                    guard_item.name.find('&') != std::string::npos ||
+                    guard_item.name.find('|') != std::string::npos ||
+                    guard_item.name.find('!') != std::string::npos) {
+                    continue;
+                }
                 const bool has_expr = guard_item.cpp_expression.has_value() && !guard_item.cpp_expression->empty();
                 std::string expr = has_expr ? *guard_item.cpp_expression : "true";
                 bool references_event = expr.find("cmd") != std::string::npos ||
@@ -819,8 +826,12 @@ class CppModelEmitter {
         out << "using " << table_type_name << " = ::fsm::transition_table<";
 
         std::vector<TransitionEdge> transitions = model.transitions;
-        std::stable_sort(transitions.begin(), transitions.end(),
-                         [](const auto& a, const auto& b) { return a.priority > b.priority; });
+        std::stable_sort(transitions.begin(), transitions.end(), [](const auto& a, const auto& b) {
+            auto pa = (a.priority == 0) ? std::numeric_limits<std::uint32_t>::max() : a.priority;
+            auto pb = (b.priority == 0) ? std::numeric_limits<std::uint32_t>::max() : b.priority;
+            return pa < pb;
+        });
+
 
         for (const auto& t : transitions) {
             std::string event_type = t.event;
@@ -958,4 +969,8 @@ class CppModelEmitter {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::backend::cpp
+
+namespace fsm::backend {
+using cpp::CppModelEmitter;
+}  // namespace fsm::backend

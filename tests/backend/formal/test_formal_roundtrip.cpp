@@ -21,7 +21,13 @@
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/ir/fsm_ir_serializer.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend::formal;
+using namespace fsm::backend;
+using namespace fsm::backend::diagram;
+using namespace fsm::backend::formal;
+using namespace fsm::ir;
 
 namespace {
 
@@ -60,35 +66,33 @@ void assert_ir_equivalent(const FsmIr& ir1, const FsmIr& ir2, const std::string&
                            << t1.target;
     }
 
-    EXPECT_EQ(ir1.enums.size(), ir2.enums.size()) << path_info << " Enums size mismatch";
-    for (const auto& e1 : ir1.enums) {
-        const auto* e2 = ir2.find_enum(e1.name);
-        ASSERT_NE(e2, nullptr) << path_info << " Missing enum: " << e1.name;
-        EXPECT_EQ(e1.underlying_type, e2->underlying_type)
-            << path_info << " Enum: " << e1.name << " underlying type mismatch";
-        EXPECT_EQ(e1.literals.size(), e2->literals.size())
-            << path_info << " Enum: " << e1.name << " literals count mismatch";
-        for (size_t li = 0; li < e1.literals.size(); ++li) {
-            EXPECT_EQ(e1.literals[li].name, e2->literals[li].name) << path_info;
-            if (e1.literals[li].value.has_value() && e2->literals[li].value.has_value()) {
-                EXPECT_EQ(*e1.literals[li].value, *e2->literals[li].value) << path_info;
+    EXPECT_EQ(ir1.custom_types.size(), ir2.custom_types.size()) << path_info << " Custom types size mismatch";
+    for (const auto& t1 : ir1.custom_types) {
+        const auto* t2 = ir2.find_type(t1.name);
+        ASSERT_NE(t2, nullptr) << path_info << " Missing type: " << t1.name;
+        EXPECT_EQ(t1.kind, t2->kind) << path_info << " Type: " << t1.name << " kind mismatch";
+        if (t1.is_enum()) {
+            EXPECT_EQ(t1.underlying_type, t2->underlying_type)
+                << path_info << " Enum: " << t1.name << " underlying type mismatch";
+            EXPECT_EQ(t1.literals.size(), t2->literals.size())
+                << path_info << " Enum: " << t1.name << " literals count mismatch";
+            for (size_t li = 0; li < t1.literals.size(); ++li) {
+                EXPECT_EQ(t1.literals[li].name, t2->literals[li].name) << path_info;
+                if (t1.literals[li].value.has_value() && t2->literals[li].value.has_value()) {
+                    EXPECT_EQ(*t1.literals[li].value, *t2->literals[li].value) << path_info;
+                }
             }
-        }
-    }
-
-    EXPECT_EQ(ir1.structs.size(), ir2.structs.size()) << path_info << " Structs size mismatch";
-    for (const auto& s1 : ir1.structs) {
-        const auto* s2 = ir2.find_struct(s1.name);
-        ASSERT_NE(s2, nullptr) << path_info << " Missing struct: " << s1.name;
-        EXPECT_EQ(s1.is_datatype, s2->is_datatype)
-            << path_info << " Struct: " << s1.name << " is_datatype mismatch";
-        EXPECT_EQ(s1.fields.size(), s2->fields.size())
-            << path_info << " Struct: " << s1.name << " fields count mismatch";
-        for (size_t fi = 0; fi < s1.fields.size(); ++fi) {
-            EXPECT_EQ(s1.fields[fi].name, s2->fields[fi].name) << path_info;
-            EXPECT_EQ(s1.fields[fi].type, s2->fields[fi].type) << path_info;
-            if (!s1.fields[fi].default_value.empty() && !s2->fields[fi].default_value.empty()) {
-                EXPECT_EQ(s1.fields[fi].default_value, s2->fields[fi].default_value) << path_info;
+        } else if (t1.is_struct()) {
+            EXPECT_EQ(t1.is_datatype, t2->is_datatype)
+                << path_info << " Struct: " << t1.name << " is_datatype mismatch";
+            EXPECT_EQ(t1.fields.size(), t2->fields.size())
+                << path_info << " Struct: " << t1.name << " fields count mismatch";
+            for (size_t fi = 0; fi < t1.fields.size(); ++fi) {
+                EXPECT_EQ(t1.fields[fi].name, t2->fields[fi].name) << path_info;
+                EXPECT_EQ(t1.fields[fi].type, t2->fields[fi].type) << path_info;
+                if (!t1.fields[fi].default_value.empty() && !t2->fields[fi].default_value.empty()) {
+                    EXPECT_EQ(t1.fields[fi].default_value, t2->fields[fi].default_value) << path_info;
+                }
             }
         }
     }
@@ -789,7 +793,7 @@ state def SatelliteSafety {
     FsmIr smv_ir;
     ASSERT_TRUE(smv_parser.parse(smv, smv_ir, err)) << "SMV parse error: " << err;
     EXPECT_EQ(smv_ir.states.size(), model.states.size());
-    EXPECT_EQ(smv_ir.events.size(), model.events.size());
+    EXPECT_EQ(smv_ir.signals.size(), model.signals.size());
 
     // Serialize SMV to Mermaid and reparse
     const std::string mmd = MermaidSerializer::serialize(smv_ir);

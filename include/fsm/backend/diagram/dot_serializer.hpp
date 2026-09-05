@@ -11,7 +11,7 @@
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::backend::diagram {
 
 class DotSerializer {
   public:
@@ -44,14 +44,15 @@ class DotSerializer {
         for (const auto& sig : model.signals) {
             out << "    // @fsm:signal " << sig.name << "\n";
         }
-        for (const auto& en : model.enums) {
-            out << "    // @fsm:enum " << DirectiveParser::format_enum_directive(en) << "\n";
-        }
-        for (const auto& st : model.structs) {
-            out << "    // @fsm:struct " << DirectiveParser::format_struct_directive(st) << "\n";
+        for (const auto& ct : model.custom_types) {
+            if (ct.is_enum()) {
+                out << "    // @fsm:enum " << DirectiveParser::format_enum_directive(ct) << "\n";
+            } else if (ct.is_struct()) {
+                out << "    // @fsm:struct " << DirectiveParser::format_struct_directive(ct) << "\n";
+            }
         }
         if (!model.properties.empty() || !model.ports.empty() || !model.variables.empty() || !model.signals.empty() ||
-            !model.enums.empty() || !model.structs.empty()) {
+            !model.custom_types.empty()) {
             out << "\n";
         }
 
@@ -239,4 +240,8 @@ class DotSerializer {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::backend::diagram
+
+namespace fsm::backend {
+using diagram::DotSerializer;
+}  // namespace fsm::backend

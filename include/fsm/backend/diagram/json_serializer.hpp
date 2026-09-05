@@ -8,7 +8,7 @@
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::backend::diagram {
 
 class JsonSerializer {
   public:
@@ -72,10 +72,11 @@ class JsonSerializer {
         }
 
         // Enums
-        if (!model.enums.empty()) {
+        const auto enums = model.get_enums();
+        if (!enums.empty()) {
             out << "  \"enums\": [\n";
-            for (size_t e = 0; e < model.enums.size(); ++e) {
-                const auto& en = model.enums[e];
+            for (size_t e = 0; e < enums.size(); ++e) {
+                const auto& en = enums[e];
                 out << "    {\n";
                 out << "      \"name\": \"" << escape_json(en.name) << "\",\n";
                 out << "      \"type\": \"" << escape_json(en.underlying_type) << "\",\n";
@@ -94,7 +95,7 @@ class JsonSerializer {
                 }
                 out << "      ]\n";
                 out << "    }";
-                if (e + 1 < model.enums.size()) {
+                if (e + 1 < enums.size()) {
                     out << ",";
                 }
                 out << "\n";
@@ -103,10 +104,11 @@ class JsonSerializer {
         }
 
         // Structs
-        if (!model.structs.empty()) {
+        const auto structs = model.get_structs();
+        if (!structs.empty()) {
             out << "  \"structs\": [\n";
-            for (size_t st_i = 0; st_i < model.structs.size(); ++st_i) {
-                const auto& st = model.structs[st_i];
+            for (size_t st_i = 0; st_i < structs.size(); ++st_i) {
+                const auto& st = structs[st_i];
                 out << "    {\n";
                 out << "      \"name\": \"" << escape_json(st.name) << "\",\n";
                 out << "      \"is_datatype\": " << (st.is_datatype ? "true" : "false") << ",\n";
@@ -126,7 +128,7 @@ class JsonSerializer {
                 }
                 out << "      ]\n";
                 out << "    }";
-                if (st_i + 1 < model.structs.size()) {
+                if (st_i + 1 < structs.size()) {
                     out << ",";
                 }
                 out << "\n";
@@ -440,4 +442,8 @@ class JsonSerializer {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::backend::diagram
+
+namespace fsm::backend {
+using diagram::JsonSerializer;
+}  // namespace fsm::backend

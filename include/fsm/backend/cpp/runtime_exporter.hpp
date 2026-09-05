@@ -9,7 +9,7 @@
 
 namespace fs = std::filesystem;
 
-namespace fsm::codegen {
+namespace fsm::backend::cpp {
 
 class RuntimeExporter {
   public:
@@ -37,10 +37,12 @@ class RuntimeExporter {
 
             FsmIr empty_model;
             empty_model.name = "";
-            empty_model.ns = "";
+            empty_model.package = "";
 
             GeneratorOptions opts;
+            opts.target_namespace = "";
             opts.cpp_standard = standard;
+
             opts.standalone = true;
             opts.thread_safe = true;
             opts.include_stubs = false;
@@ -58,4 +60,8 @@ class RuntimeExporter {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::backend::cpp
+
+namespace fsm::backend {
+using cpp::RuntimeExporter;
+}  // namespace fsm::backend

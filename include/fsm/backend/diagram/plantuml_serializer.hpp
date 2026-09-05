@@ -10,7 +10,7 @@
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::backend::diagram {
 
 class PlantUmlSerializer {
   public:
@@ -98,18 +98,17 @@ class PlantUmlSerializer {
             }
         }
 
-        // Enums
-        for (const auto& en : model.enums) {
-            out << "' @fsm:enum " << DirectiveParser::format_enum_directive(en) << "\n";
-        }
-
-        // Structs
-        for (const auto& st : model.structs) {
-            out << "' @fsm:struct " << DirectiveParser::format_struct_directive(st) << "\n";
+        // Custom compound types (Enums and Structs)
+        for (const auto& ct : model.custom_types) {
+            if (ct.is_enum()) {
+                out << "' @fsm:enum " << DirectiveParser::format_enum_directive(ct) << "\n";
+            } else if (ct.is_struct()) {
+                out << "' @fsm:struct " << DirectiveParser::format_struct_directive(ct) << "\n";
+            }
         }
 
         if (!model.properties.empty() || !model.variables.empty() || !model.signals.empty() ||
-            !model.enums.empty() || !model.structs.empty()) {
+            !model.custom_types.empty()) {
             out << "\n";
         }
 
@@ -302,4 +301,8 @@ class PlantUmlSerializer {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::backend::diagram
+
+namespace fsm::backend {
+using diagram::PlantUmlSerializer;
+}  // namespace fsm::backend

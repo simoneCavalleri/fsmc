@@ -12,7 +12,10 @@
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/model_checker.hpp"
 
-namespace fsm::codegen {
+namespace fsm::backend::rtm {
+
+using ::fsm::middleend::analysis::ModelCheckResult;
+using ::fsm::diagnostic::Diagnostic;
 
 enum class RtmFormat { Json, Markdown };
 
@@ -292,4 +295,10 @@ class RtmEmitter {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::backend::rtm
+
+namespace fsm::backend {
+using rtm::RtmFormat;
+using rtm::rtm_format_from_string;
+using rtm::RtmEmitter;
+}  // namespace fsm::backend

@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <limits>
 #include <map>
+
 #include <set>
 #include <sstream>
 #include <string>
@@ -12,7 +14,7 @@
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::backend::formal {
 
 /**
  * @brief Serializer for nuXmv / NuSMV / SMV Formal Verification Language.
@@ -59,8 +61,8 @@ class SmvSerializer {
             add_state(c.name);
         }
         for (const auto& t : model.transitions) {
-            add_state(t.source.empty() ? t.source_id : t.source);
-            add_state(t.target.empty() ? t.target_id : t.target);
+            add_state(t.source);
+            add_state(t.target);
         }
         if (state_names.empty()) {
             state_names.push_back("Idle");
@@ -70,11 +72,11 @@ class SmvSerializer {
         for (std::size_t i = 0; i < state_names.size(); ++i) {
             if (i > 0)
                 out << ", ";
-            out << state_names[i];
+            out << sanitize_smv_ident(state_names[i]);
         }
         out << "};\n";
 
-        // Event enumeration
+        // Global Event enumeration
         out << "  event : {none";
         std::vector<std::string> event_names;
         for (const auto& t : model.transitions) {
@@ -84,10 +86,10 @@ class SmvSerializer {
                 event_names.push_back(evt);
             }
         }
-        for (const auto& ev : model.events) {
-            if (!ev.name.empty() && ev.name != "none" &&
-                std::find(event_names.begin(), event_names.end(), ev.name) == event_names.end()) {
-                event_names.push_back(ev.name);
+        for (const auto& sig : model.signals) {
+            if (!sig.name.empty() && sig.name != "none" &&
+                std::find(event_names.begin(), event_names.end(), sig.name) == event_names.end()) {
+                event_names.push_back(sig.name);
             }
         }
         for (const auto& e : event_names) {
@@ -161,7 +163,7 @@ class SmvSerializer {
         for (const auto& t : model.transitions) {
             if (std::holds_alternative<TimeTrigger>(t.trigger)) {
                 const auto& tt = std::get<TimeTrigger>(t.trigger);
-                std::string src = t.source.empty() ? t.source_id : t.source;
+                const std::string& src = t.source;
                 if (!src.empty()) {
                     std::uint64_t dur = tt.duration_in_ms();
                     if (dur == 0)
@@ -209,12 +211,16 @@ class SmvSerializer {
         // State transitions: next(state) := case ... esac;
         out << "  next(state) := case\n";
         auto sorted_transitions = model.transitions;
-        std::stable_sort(sorted_transitions.begin(), sorted_transitions.end(),
-                         [](const auto& a, const auto& b) { return a.priority > b.priority; });
+        std::stable_sort(sorted_transitions.begin(), sorted_transitions.end(), [](const auto& a, const auto& b) {
+            auto pa = (a.priority == 0) ? std::numeric_limits<std::uint32_t>::max() : a.priority;
+            auto pb = (b.priority == 0) ? std::numeric_limits<std::uint32_t>::max() : b.priority;
+            return pa < pb;
+        });
+
 
         for (const auto& t : sorted_transitions) {
-            std::string src = t.source.empty() ? t.source_id : t.source;
-            std::string dst = t.target.empty() ? t.target_id : t.target;
+            const std::string& src = t.source;
+            const std::string& dst = t.target;
             std::string evt = t.event.empty() ? t.get_trigger_name() : t.event;
 
             if (src.empty() || dst.empty())
@@ -475,8 +481,8 @@ class SmvSerializer {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::backend::formal
 
-namespace fsm {
-using SmvSerializer = ::fsm::codegen::SmvSerializer;
-}  // namespace fsm
+namespace fsm::backend {
+using formal::SmvSerializer;
+}  // namespace fsm::backend

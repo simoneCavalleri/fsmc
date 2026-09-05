@@ -27,7 +27,9 @@
 #include "fsm/backend/cpp/runtime_exporter.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::backend::cpp;
+using namespace fsm::backend;
+using namespace fsm::ir;
 namespace fs = std::filesystem;
 
 namespace {
@@ -35,7 +37,8 @@ namespace {
 FsmIr create_industrial_efsm_model() {
     FsmIr model;
     model.name = "IndustrialThermostat";
-    model.ns = "industrial";
+    model.package = "industrial";
+
     model.initial_state = "Idle";
 
     // 1. InPorts (Sensor inputs with numeric range contracts)

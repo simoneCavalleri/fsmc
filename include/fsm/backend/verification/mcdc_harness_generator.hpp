@@ -14,7 +14,7 @@
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::backend::verification {
 
 /**
  * @brief Test Vector for a single MC/DC evaluation.
@@ -337,4 +337,10 @@ class McdcHarnessGenerator {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::backend::verification
+
+namespace fsm::backend {
+using verification::McdcTestVector;
+using verification::McdcIndependencePair;
+using verification::McdcHarnessGenerator;
+}  // namespace fsm::backend

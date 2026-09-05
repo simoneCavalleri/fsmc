@@ -19,7 +19,13 @@
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend::formal;
+using namespace fsm::backend;
+using namespace fsm::backend::diagram;
+using namespace fsm::backend::formal;
+using namespace fsm::ir;
 
 namespace {
 
@@ -411,12 +417,13 @@ TEST(FormatExportTest, SmvFormalModelVerificationExport) {
     EXPECT_NE(smv_out.find("init(retry_count) := 0;"), std::string::npos);
     EXPECT_NE(smv_out.find("init(is_armed) := FALSE;"), std::string::npos);
 
-    // 3. Check transition prioritization in case statements (priority 10 must appear before priority 1)
+    // 3. Check transition prioritization in case statements (priority 1 must appear before priority 10)
     auto pos_prio10 = smv_out.find("state = Standby & event = EvSend & (retry_count < 3 & is_armed) : Transmitting;");
     auto pos_prio1 = smv_out.find("state = Standby & event = EvSend & (retry_count >= 3) : SafeHold;");
     ASSERT_NE(pos_prio10, std::string::npos);
     ASSERT_NE(pos_prio1, std::string::npos);
-    EXPECT_LT(pos_prio10, pos_prio1);
+    EXPECT_LT(pos_prio1, pos_prio10);
+
 
     // 4. Check INVARSPEC and LTLSPEC
     EXPECT_NE(smv_out.find("INVARSPEC -- SafeStateInvariant"), std::string::npos);

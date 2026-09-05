@@ -15,7 +15,13 @@
 #include "fsm/frontend/formal/cameo_xmi_parser.hpp"
 #include "fsm/frontend/formal/scxml_parser.hpp"
 
-using namespace ::fsm::codegen;
+using namespace fsm::backend::cpp;
+using namespace fsm::backend;
+using namespace fsm::frontend;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend::formal;
+using namespace fsm::ir;
+
 
 namespace {
 

@@ -5,7 +5,8 @@
 
 namespace {
 
-using namespace fsm::codegen;
+using namespace fsm::backend;
+using namespace fsm::ir;
 
 TEST(EmitterFactoryTest, SupportedFormats) {
     auto formats = EmitterFactory::supported_formats();

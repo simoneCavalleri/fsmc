@@ -19,14 +19,17 @@
 #include "fsm/backend/cpp/cpp_options.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::backend::cpp;
+using namespace fsm::backend;
+using namespace fsm::ir;
 
 namespace {
 
 FsmIr create_sample_ir() {
     FsmIr model;
     model.name = "DeviceController";
-    model.ns = "test_ns";
+    model.package = "test_ns";
+
     model.initial_state = "Idle";
 
     // InPorts
@@ -44,11 +47,8 @@ FsmIr create_sample_ir() {
     model.variables.emplace_back("retry_count", "uint32_t", "0");
 
     // Events
-    EventModel ev_start{"StartCmd"};
-    model.events.push_back(ev_start);
-
-    EventModel ev_stop{"StopCmd"};
-    model.events.push_back(ev_stop);
+    model.add_event("StartCmd");
+    model.add_event("StopCmd");
 
     // States
     StateNode st_idle{"Idle"};
@@ -219,15 +219,16 @@ TEST(CppModelEmitterTest, TransitionTablePriorityOrdering) {
     StateNode fault("Fault");
     model.add_state(fault);
 
-    // Low priority transition (prio 1)
+    // High priority transition (precedence 1)
+    TransitionEdge t_high("t2", "Idle", "Fault", SignalTrigger("EvTick"));
+    t_high.priority = 1;
+    model.add_transition(t_high);
+
+    // Low priority transition (precedence 100)
     TransitionEdge t_low("t1", "Idle", "Running", SignalTrigger("EvTick"));
-    t_low.priority = 1;
+    t_low.priority = 100;
     model.add_transition(t_low);
 
-    // High priority transition (prio 100)
-    TransitionEdge t_high("t2", "Idle", "Fault", SignalTrigger("EvTick"));
-    t_high.priority = 100;
-    model.add_transition(t_high);
 
     std::ostringstream out;
     GeneratorOptions opts;

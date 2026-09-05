@@ -8,7 +8,7 @@
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::backend::formal {
 
 class ScxmlSerializer {
   public:
@@ -54,14 +54,13 @@ class ScxmlSerializer {
             out << "  <!-- @fsm:signal " << sig.name << " -->\n";
         }
 
-        // Emit declared enums
-        for (const auto& en : model.enums) {
-            out << "  <!-- @fsm:enum " << DirectiveParser::format_enum_directive(en) << " -->\n";
-        }
-
-        // Emit declared structs
-        for (const auto& st : model.structs) {
-            out << "  <!-- @fsm:struct " << DirectiveParser::format_struct_directive(st) << " -->\n";
+        // Emit declared custom types (enums and structs)
+        for (const auto& ct : model.custom_types) {
+            if (ct.is_enum()) {
+                out << "  <!-- @fsm:enum " << DirectiveParser::format_enum_directive(ct) << " -->\n";
+            } else if (ct.is_struct()) {
+                out << "  <!-- @fsm:struct " << DirectiveParser::format_struct_directive(ct) << " -->\n";
+            }
         }
 
         // Emit top-level states recursively
@@ -208,4 +207,8 @@ class ScxmlSerializer {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::backend::formal
+
+namespace fsm::backend {
+using formal::ScxmlSerializer;
+}  // namespace fsm::backend

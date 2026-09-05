@@ -15,7 +15,7 @@
 #pragma clang diagnostic ignored "-Woverlength-strings"
 #endif
 
-namespace fsm::codegen {
+namespace fsm::backend::cpp {
 
 class Cpp17StandaloneRuntime {
   public:
@@ -4950,7 +4950,11 @@ using make_spsc_fsm = spsc_fsm<config<Table, Policies...>>;
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::backend::cpp
+
+namespace fsm::backend {
+using cpp::Cpp17StandaloneRuntime;
+}  // namespace fsm::backend
 
 #if defined(__clang__)
 #pragma clang diagnostic pop

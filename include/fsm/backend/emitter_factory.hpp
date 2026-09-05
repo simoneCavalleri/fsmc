@@ -18,7 +18,7 @@
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/ir/fsm_ir_serializer.hpp"
 
-namespace fsm::codegen {
+namespace fsm::backend {
 
 class EmitterFactory {
   public:
@@ -61,4 +61,8 @@ class EmitterFactory {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::backend
+
+namespace fsm {
+using namespace backend;
+}  // namespace fsm

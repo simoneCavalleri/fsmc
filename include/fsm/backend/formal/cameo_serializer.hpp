@@ -10,7 +10,7 @@
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::backend::formal {
 
 class CameoSerializer {
   public:
@@ -23,11 +23,12 @@ class CameoSerializer {
                "xmlns:xmi=\"http://schema.omg.org/spec/XMI/2.1\">\n";
         out << "  <uml:Model xmi:id=\"_m1\" name=\"" << escape_xml(model_name) << "Model\">\n";
         // Emit declared enums & structs as formal directives
-        for (const auto& en : model.enums) {
-            out << "    <!-- @fsm:enum " << DirectiveParser::format_enum_directive(en) << " -->\n";
-        }
-        for (const auto& st : model.structs) {
-            out << "    <!-- @fsm:struct " << DirectiveParser::format_struct_directive(st) << " -->\n";
+        for (const auto& ct : model.custom_types) {
+            if (ct.is_enum()) {
+                out << "    <!-- @fsm:enum " << DirectiveParser::format_enum_directive(ct) << " -->\n";
+            } else if (ct.is_struct()) {
+                out << "    <!-- @fsm:struct " << DirectiveParser::format_struct_directive(ct) << " -->\n";
+            }
         }
         out << "    <packagedElement xmi:type=\"uml:StateMachine\" xmi:id=\"_sm1\" name=\"" << escape_xml(model_name)
             << "\">\n";
@@ -236,4 +237,8 @@ class CameoSerializer {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::backend::formal
+
+namespace fsm::backend {
+using formal::CameoSerializer;
+}  // namespace fsm::backend

@@ -14,6 +14,11 @@
 
 namespace {
 
+using namespace fsm::frontend;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend::directive;
+using namespace fsm::frontend::formal;
+
 // Test typed in-ports
 struct SafetyInPorts {
     bool power_ok = true;
@@ -146,7 +151,7 @@ TEST(CompositeGuardsTest, DirectCombinatorsEvaluation) {
 TEST(CompositeGuardsTest, GuardExpressionParserBasicAndNested) {
     // 1. Single identifier
     {
-        auto res = fsm::codegen::GuardExpressionParser::parse("EmergencyStop");
+        auto res = GuardExpressionParser::parse("EmergencyStop");
         EXPECT_EQ(res.cpp_type, "EmergencyStop");
         ASSERT_EQ(res.atomic_guards.size(), 1u);
         EXPECT_EQ(res.atomic_guards[0], "EmergencyStop");
@@ -154,7 +159,7 @@ TEST(CompositeGuardsTest, GuardExpressionParserBasicAndNested) {
 
     // 2. Unary Not
     {
-        auto res = fsm::codegen::GuardExpressionParser::parse("!EmergencyStop");
+        auto res = GuardExpressionParser::parse("!EmergencyStop");
         EXPECT_EQ(res.cpp_type, "fsm::not_<EmergencyStop>");
         ASSERT_EQ(res.atomic_guards.size(), 1u);
         EXPECT_EQ(res.atomic_guards[0], "EmergencyStop");
@@ -162,28 +167,28 @@ TEST(CompositeGuardsTest, GuardExpressionParserBasicAndNested) {
 
     // 3. Binary And
     {
-        auto res = fsm::codegen::GuardExpressionParser::parse("PowerOk && !EmergencyStop");
+        auto res = GuardExpressionParser::parse("PowerOk && !EmergencyStop");
         EXPECT_EQ(res.cpp_type, "fsm::and_<PowerOk, fsm::not_<EmergencyStop>>");
         ASSERT_EQ(res.atomic_guards.size(), 2u);
     }
 
     // 4. Precedence: && binds tighter than ||
     {
-        auto res = fsm::codegen::GuardExpressionParser::parse("A || B && C");
+        auto res = GuardExpressionParser::parse("A || B && C");
         EXPECT_EQ(res.cpp_type, "fsm::or_<A, fsm::and_<B, C>>");
         ASSERT_EQ(res.atomic_guards.size(), 3u);
     }
 
     // 5. Parentheses overriding precedence
     {
-        auto res = fsm::codegen::GuardExpressionParser::parse("(A || B) && C");
+        auto res = GuardExpressionParser::parse("(A || B) && C");
         EXPECT_EQ(res.cpp_type, "fsm::and_<fsm::or_<A, B>, C>");
         ASSERT_EQ(res.atomic_guards.size(), 3u);
     }
 
     // 6. Deep 4-level nesting
     {
-        auto res = fsm::codegen::GuardExpressionParser::parse("((A && !B) || (C && (D || !E)))");
+        auto res = GuardExpressionParser::parse("((A && !B) || (C && (D || !E)))");
         EXPECT_EQ(res.cpp_type, "fsm::or_<fsm::and_<A, fsm::not_<B>>, fsm::and_<C, fsm::or_<D, fsm::not_<E>>>>");
         ASSERT_EQ(res.atomic_guards.size(), 5u);
     }
@@ -200,22 +205,22 @@ TEST(CompositeGuardsTest, GuardExpressionParserBasicAndNested) {
 TEST(CompositeGuardsTest, GuardExpressionParserEdgeCasesAndFuzzing) {
     // 1. Whitespace resilience
     {
-        auto res = fsm::codegen::GuardExpressionParser::parse("  !  EmergencyStop   ");
+        auto res = GuardExpressionParser::parse("  !  EmergencyStop   ");
         EXPECT_EQ(res.cpp_type, "fsm::not_<EmergencyStop>");
     }
     {
-        auto res = fsm::codegen::GuardExpressionParser::parse("A&&! B || ( C&&D )");
+        auto res = GuardExpressionParser::parse("A&&! B || ( C&&D )");
         EXPECT_EQ(res.cpp_type, "fsm::or_<fsm::and_<A, fsm::not_<B>>, fsm::and_<C, D>>");
     }
 
     // 2. Empty or whitespace-only expressions
     {
-        auto res = fsm::codegen::GuardExpressionParser::parse("");
+        auto res = GuardExpressionParser::parse("");
         EXPECT_TRUE(res.cpp_type.empty());
         EXPECT_TRUE(res.atomic_guards.empty());
     }
     {
-        auto res = fsm::codegen::GuardExpressionParser::parse("   \t\n  ");
+        auto res = GuardExpressionParser::parse("   \t\n  ");
         EXPECT_TRUE(res.cpp_type.empty());
         EXPECT_TRUE(res.atomic_guards.empty());
     }
@@ -223,16 +228,16 @@ TEST(CompositeGuardsTest, GuardExpressionParserEdgeCasesAndFuzzing) {
     // 3. Roundtrip diagram string formatting
     {
         std::string cpp_t = "fsm::and_<SafetyOk, fsm::not_<EStop>>";
-        std::string diagram_s = fsm::codegen::GuardExpressionParser::to_diagram_string(cpp_t);
+        std::string diagram_s = GuardExpressionParser::to_diagram_string(cpp_t);
         EXPECT_EQ(diagram_s, "SafetyOk && !EStop");
 
         // Re-parsing diagram string gives identical C++ type
-        auto reparsed = fsm::codegen::GuardExpressionParser::parse(diagram_s);
+        auto reparsed = GuardExpressionParser::parse(diagram_s);
         EXPECT_EQ(reparsed.cpp_type, cpp_t);
     }
     {
         std::string cpp_t = "fsm::or_<fsm::and_<A, B>, fsm::not_<C>>";
-        std::string diagram_s = fsm::codegen::GuardExpressionParser::to_diagram_string(cpp_t);
+        std::string diagram_s = GuardExpressionParser::to_diagram_string(cpp_t);
         EXPECT_EQ(diagram_s, "A && B || !C");
     }
 }
@@ -247,8 +252,8 @@ TEST(CompositeGuardsTest, GuardExpressionParserEdgeCasesAndFuzzing) {
 TEST(CompositeGuardsTest, MultiFormatParserCompositeGuards) {
     // 1. PlantUML
     {
-        fsm::codegen::PlantUmlParser parser;
-        fsm::codegen::FsmIr model;
+        PlantUmlParser parser;
+        fsm::ir::FsmIr model;
         std::string err;
         std::string puml = R"(
 @startuml
@@ -266,8 +271,8 @@ Running --> Off : StopCmd
 
     // 2. Mermaid
     {
-        fsm::codegen::MermaidParser parser;
-        fsm::codegen::FsmIr model;
+        MermaidParser parser;
+        fsm::ir::FsmIr model;
         std::string err;
         std::string mmd = R"(
 stateDiagram-v2
@@ -282,8 +287,8 @@ stateDiagram-v2
 
     // 3. SysML v2
     {
-        fsm::codegen::Sysml2Parser parser;
-        fsm::codegen::FsmIr model;
+        Sysml2Parser parser;
+        fsm::ir::FsmIr model;
         std::string err;
         std::string sysml = R"(
 state def MachineFSM {
@@ -300,8 +305,8 @@ state def MachineFSM {
 
     // 4. SCXML
     {
-        fsm::codegen::ScxmlParser parser;
-        fsm::codegen::FsmIr model;
+        ScxmlParser parser;
+        fsm::ir::FsmIr model;
         std::string err;
         std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Off">
@@ -317,8 +322,8 @@ state def MachineFSM {
 
     // 5. DOT
     {
-        fsm::codegen::DotParser parser;
-        fsm::codegen::FsmIr model;
+        DotParser parser;
+        fsm::ir::FsmIr model;
         std::string err;
         std::string dot = R"(
 digraph FSM {
@@ -334,8 +339,8 @@ digraph FSM {
 
     // 6. JSON (XState)
     {
-        fsm::codegen::JsonStateParser parser;
-        fsm::codegen::FsmIr model;
+        JsonStateParser parser;
+        fsm::ir::FsmIr model;
         std::string err;
         std::string json = R"({
     "id": "MachineFSM",

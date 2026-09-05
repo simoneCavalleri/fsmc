@@ -10,7 +10,7 @@
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::backend::formal {
 
 /**
  * @brief Serializer for MathWorks Simulink Stateflow XML chart models.
@@ -100,14 +100,13 @@ class StateflowSerializer {
             out << " -->\n";
         }
 
-        // Enums
-        for (const auto& en : model.enums) {
-            out << "    <!-- @fsm:enum " << DirectiveParser::format_enum_directive(en) << " -->\n";
-        }
-
-        // Structs
-        for (const auto& st : model.structs) {
-            out << "    <!-- @fsm:struct " << DirectiveParser::format_struct_directive(st) << " -->\n";
+        // Custom compound types (Enums and Structs)
+        for (const auto& ct : model.custom_types) {
+            if (ct.is_enum()) {
+                out << "    <!-- @fsm:enum " << DirectiveParser::format_enum_directive(ct) << " -->\n";
+            } else if (ct.is_struct()) {
+                out << "    <!-- @fsm:struct " << DirectiveParser::format_struct_directive(ct) << " -->\n";
+            }
         }
 
         out << "    <chart id=\"1\" name=\"" << escape_xml(chart_name) << "\"";
@@ -249,4 +248,8 @@ class StateflowSerializer {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::backend::formal
+
+namespace fsm::backend {
+using formal::StateflowSerializer;
+}  // namespace fsm::backend

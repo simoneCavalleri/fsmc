@@ -12,7 +12,10 @@
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/passes/choice_inlining_pass.hpp"
 
-namespace fsm::codegen {
+namespace fsm::backend::cpp {
+
+using ::fsm::diagnostic::DiagnosticEngine;
+using ::fsm::middleend::passes::ChoiceInliningPass;
 
 class CppGenerator {
   public:
@@ -55,18 +58,29 @@ class CppGenerator {
             out << "#include <iostream>\n\n";
         }
 
-        if (!processed_model.ns.empty()) {
-            out << "namespace " << processed_model.ns << " {\n\n";
+        std::string effective_ns = options.target_namespace;
+        if (effective_ns.empty()) {
+            effective_ns = !processed_model.package.empty() ? processed_model.package : "fsm_generated";
         }
+
+        if (!effective_ns.empty()) {
+            out << "namespace " << effective_ns << " {\n\n";
+        }
+
 
         CppModelEmitter::emit_model(out, processed_model, options);
 
-        if (!processed_model.ns.empty()) {
-            out << "\n} // namespace " << processed_model.ns << "\n";
+        if (!effective_ns.empty()) {
+            out << "\n} // namespace " << effective_ns << "\n";
         }
+
 
         return out.str();
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::backend::cpp
+
+namespace fsm::backend {
+using cpp::CppGenerator;
+}  // namespace fsm::backend

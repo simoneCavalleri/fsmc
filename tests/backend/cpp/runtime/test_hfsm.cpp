@@ -7,7 +7,13 @@
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/middleend/analysis/fsm_validator.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::backend::cpp;
+using namespace fsm::backend;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend;
+using namespace fsm::middleend::analysis;
+using namespace fsm::middleend;
+using namespace fsm::ir;
 
 namespace {
 

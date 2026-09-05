@@ -7,7 +7,7 @@
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::backend::formal {
 
 class Sysml2Serializer {
   public:
@@ -17,7 +17,11 @@ class Sysml2Serializer {
         out << "state def " << model_name << " {\n";
 
         // Native SysML v2 Enumerations
-        for (const auto& en : model.enums) {
+        bool has_enums = false;
+        for (const auto& en : model.custom_types) {
+            if (!en.is_enum())
+                continue;
+            has_enums = true;
             out << "    enum def " << en.name;
             if (!en.underlying_type.empty() && en.underlying_type != "uint8_t") {
                 out << " :> " << en.underlying_type;
@@ -32,12 +36,16 @@ class Sysml2Serializer {
             }
             out << "    }\n";
         }
-        if (!model.enums.empty()) {
+        if (has_enums) {
             out << "\n";
         }
 
         // Native SysML v2 Structs & Datatypes
-        for (const auto& st : model.structs) {
+        bool has_structs = false;
+        for (const auto& st : model.custom_types) {
+            if (!st.is_struct())
+                continue;
+            has_structs = true;
             std::string def_keyword = st.is_datatype ? "datatype def " : "struct def ";
             out << "    " << def_keyword << st.name << " {\n";
             for (const auto& f : st.fields) {
@@ -49,7 +57,7 @@ class Sysml2Serializer {
             }
             out << "    }\n";
         }
-        if (!model.structs.empty()) {
+        if (has_structs) {
             out << "\n";
         }
 
@@ -237,4 +245,8 @@ class Sysml2Serializer {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::backend::formal
+
+namespace fsm::backend {
+using formal::Sysml2Serializer;
+}  // namespace fsm::backend

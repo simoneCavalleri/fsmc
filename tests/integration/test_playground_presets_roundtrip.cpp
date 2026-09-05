@@ -27,7 +27,12 @@
 
 namespace fs = std::filesystem;
 using namespace fsm;
-using namespace fsm::codegen;
+using namespace fsm::ir;
+using namespace fsm::frontend;
+using namespace fsm::middleend;
+using namespace fsm::middleend::analysis;
+using namespace fsm::backend;
+using namespace fsm::backend::cpp;
 
 namespace {
 

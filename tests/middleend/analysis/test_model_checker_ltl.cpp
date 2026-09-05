@@ -7,7 +7,14 @@
 #include "fsm/middleend/analysis/model_checker.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::ir;
+using namespace fsm::diagnostic;
+using namespace fsm::frontend;
+using namespace fsm::frontend::directive;
+using namespace fsm::middleend;
+using namespace fsm::middleend::analysis;
+using namespace fsm::backend;
+using namespace fsm::backend::formal;
 
 namespace {
 

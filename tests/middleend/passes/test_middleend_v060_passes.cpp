@@ -10,7 +10,11 @@
 #include "fsm/middleend/passes/wcet_analysis_pass.hpp"
 #include "fsm/middleend/plugin/plugin_loader.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::diagnostic;
+using namespace fsm::middleend;
+using namespace fsm::middleend::passes;
+using namespace fsm::middleend::plugin;
+using namespace fsm::ir;
 
 namespace {
 

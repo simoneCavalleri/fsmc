@@ -10,7 +10,7 @@
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::middleend::passes {
 
 /**
  * @brief Target-Agnostic Middle-End Pass: Splicing and inlining of modular Submachine Statecharts.
@@ -84,8 +84,8 @@ class SubmachineInliningPass {
                 TransitionEdge cloned_t = sub_t;
                 cloned_t.source = name_map[sub_t.source];
                 cloned_t.target = name_map[sub_t.target];
-                cloned_t.source_id = cloned_t.source;
-                cloned_t.target_id = cloned_t.target;
+                cloned_t.source_ids = {cloned_t.source};
+                cloned_t.target_ids = {cloned_t.target};
                 cloned_t.id = compute_deterministic_id(cloned_t.source + "->" + cloned_t.target + ":" + cloned_t.event);
                 inlined_transitions.push_back(std::move(cloned_t));
             }
@@ -116,8 +116,8 @@ class SubmachineInliningPass {
     SubmachineResolver resolver_;
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::middleend::passes
 
-namespace fsm {
-using SubmachineInliningPass = ::fsm::codegen::SubmachineInliningPass;
-}  // namespace fsm
+namespace fsm::middleend {
+using passes::SubmachineInliningPass;
+}  // namespace fsm::middleend

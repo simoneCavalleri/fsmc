@@ -16,7 +16,7 @@
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
 
-namespace fsm::codegen {
+namespace fsm::middleend::analysis {
 
 struct CounterexampleStep {
     std::size_t step_index{0};
@@ -138,8 +138,8 @@ class ModelChecker {
         }
 
         for (const auto& t : ir_.transitions) {
-            std::string src = t.source.empty() ? t.source_id : t.source;
-            std::string dst = t.target.empty() ? t.target_id : t.target;
+            const std::string& src = t.source;
+            const std::string& dst = t.target;
             if (!src.empty() && !dst.empty()) {
                 GraphEdge edge;
                 edge.target = dst;
@@ -339,10 +339,10 @@ class ModelChecker {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::middleend::analysis
 
-namespace fsm {
-using CounterexampleStep = ::fsm::codegen::CounterexampleStep;
-using ModelCheckResult = ::fsm::codegen::ModelCheckResult;
-using ModelChecker = ::fsm::codegen::ModelChecker;
-}  // namespace fsm
+namespace fsm::middleend {
+using analysis::ModelChecker;
+using analysis::ModelCheckResult;
+using analysis::CounterexampleStep;
+}  // namespace fsm::middleend

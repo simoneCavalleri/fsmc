@@ -2,7 +2,11 @@
 
 #include "fsm/middleend/pass_manager.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::diagnostic;
+using namespace fsm::middleend;
+using namespace fsm::middleend::passes;
+using namespace fsm::middleend::analysis;
+using namespace fsm::ir;
 
 namespace {
 

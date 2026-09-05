@@ -7,7 +7,7 @@
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/ir/trigger.hpp"
 
-namespace fsm::codegen {
+namespace fsm::middleend::passes {
 
 /**
  * @brief Middle-end verification pass detecting conflicting timed transitions and immediate transitions.
@@ -30,7 +30,7 @@ class TimedDeadlockPass {
             std::vector<const TransitionEdge*> immediate_transitions;
 
             for (const auto& trans : ir.transitions) {
-                if (trans.source == st.name || trans.source_id == st.name) {
+                if (trans.source == st.name) {
                     if (std::holds_alternative<TimeTrigger>(trans.trigger)) {
                         timed_transitions.push_back(&trans);
                     } else {
@@ -85,8 +85,8 @@ class TimedDeadlockPass {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::middleend::passes
 
-namespace fsm {
-using TimedDeadlockPass = ::fsm::codegen::TimedDeadlockPass;
-}  // namespace fsm
+namespace fsm::middleend {
+using passes::TimedDeadlockPass;
+}  // namespace fsm::middleend

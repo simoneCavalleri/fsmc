@@ -16,7 +16,7 @@
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
 
-namespace fsm::codegen {
+namespace fsm::middleend::analysis {
 
 /**
  * @brief In-process Middle-End Analysis Pass: Evaluates guard mutual exclusivity and satisfiability.
@@ -38,7 +38,7 @@ class GuardSatisfiabilityPass {
         // Group transitions by (source, event)
         std::map<std::pair<std::string, std::string>, std::vector<const TransitionEdge*>> groups;
         for (const auto& t : ir.transitions) {
-            std::string src = t.source_id.empty() ? t.source : t.source_id;
+            std::string src = t.source;
             groups[{src, t.event}].push_back(&t);
         }
 
@@ -201,4 +201,8 @@ class GuardSatisfiabilityPass {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::middleend::analysis
+
+namespace fsm::middleend {
+using analysis::GuardSatisfiabilityPass;
+}  // namespace fsm::middleend

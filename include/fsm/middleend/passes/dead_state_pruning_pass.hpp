@@ -9,7 +9,7 @@
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::middleend::passes {
 
 /**
  * @brief Target-Agnostic Middle-End Pass: Dead State Elimination & Dead Transition Pruning.
@@ -57,7 +57,7 @@ class DeadStatePruningPass {
             }
 
             for (const auto& t : ir.transitions) {
-                if (t.source == curr || t.source_id == curr) {
+                if (t.source == curr) {
                     // Statically dead transition
                     if (t.guard.has_value() && *t.guard == "false") {
                         continue;
@@ -112,8 +112,8 @@ class DeadStatePruningPass {
     bool prune_{true};
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::middleend::passes
 
-namespace fsm {
-using DeadStatePruningPass = ::fsm::codegen::DeadStatePruningPass;
-}  // namespace fsm
+namespace fsm::middleend {
+using passes::DeadStatePruningPass;
+}  // namespace fsm::middleend

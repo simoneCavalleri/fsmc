@@ -12,7 +12,9 @@
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/ir/fsm_ir_serializer.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::ir;
+using namespace fsm::backend::diagram;
+using namespace fsm::backend;
 
 namespace {
 
@@ -154,7 +156,8 @@ TEST(DataDefinitionsIrTest, StructDefinitionAndFields) {
 TEST(DataDefinitionsIrTest, FsmIrIntegration) {
     FsmIr ir;
     ir.name = "FlightControlUnit";
-    ir.ns = "avionics";
+    ir.package = "avionics";
+
 
     // Add enums in non-alphabetical order
     EnumDefinition enum_b("LateralMode", "uint8_t");
@@ -196,19 +199,22 @@ TEST(DataDefinitionsIrTest, FsmIrIntegration) {
     // Canonicalization
     ir.canonicalize();
 
-    ASSERT_EQ(ir.enums.size(), 2u);
-    EXPECT_EQ(ir.enums[0].name, "AutoPilotState");
-    EXPECT_EQ(ir.enums[1].name, "LateralMode");
+    ASSERT_EQ(ir.custom_types.size(), 4u);
+    auto enums = ir.get_enums();
+    ASSERT_EQ(enums.size(), 2u);
+    EXPECT_EQ(enums[0].name, "AutoPilotState");
+    EXPECT_EQ(enums[1].name, "LateralMode");
 
-    ASSERT_EQ(ir.structs.size(), 2u);
-    EXPECT_EQ(ir.structs[0].name, "AirData");
-    EXPECT_EQ(ir.structs[1].name, "Waypoint");
+    auto structs = ir.get_structs();
+    ASSERT_EQ(structs.size(), 2u);
+    EXPECT_EQ(structs[0].name, "AirData");
+    EXPECT_EQ(structs[1].name, "Waypoint");
 
     // Structural equality check on FsmIr
     FsmIr ir_copy = ir;
     EXPECT_EQ(ir, ir_copy);
 
-    ir_copy.enums[0].underlying_type = "uint32_t";
+    ir_copy.custom_types[0].underlying_type = "uint32_t";
     EXPECT_NE(ir, ir_copy);
 }
 
@@ -223,7 +229,8 @@ TEST(DataDefinitionsIrTest, FsmIrIntegration) {
 TEST(DataDefinitionsIrTest, FsmIrJsonSerializationRoundtrip) {
     FsmIr ir;
     ir.name = "AvionicsMissionComputer";
-    ir.ns = "fms";
+    ir.package = "fms";
+
 
     // Enum
     EnumDefinition mode("NavMode", "uint8_t", "Navigation operating modes");

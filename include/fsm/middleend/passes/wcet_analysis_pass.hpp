@@ -10,7 +10,7 @@
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::middleend::passes {
 
 /**
  * @brief Formal Middle-End Pass: Worst-Case Execution Time (WCET) & Zeno-Cycle Analysis.
@@ -148,4 +148,8 @@ class WcetAnalysisPass {
     std::size_t max_micro_steps_{0};
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::middleend::passes
+
+namespace fsm::middleend {
+using passes::WcetAnalysisPass;
+}  // namespace fsm::middleend

@@ -14,6 +14,7 @@
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/middleend/analysis/guard_satisfiability_pass.hpp"
 #include "fsm/middleend/analysis/model_checker.hpp"
+#include "fsm/middleend/analysis/semantic_analyzer.hpp"
 #include "fsm/middleend/passes/choice_inlining_pass.hpp"
 #include "fsm/middleend/passes/constant_folding_pass.hpp"
 #include "fsm/middleend/passes/dead_state_pruning_pass.hpp"
@@ -21,6 +22,7 @@
 #include "fsm/middleend/passes/guard_simplification_pass.hpp"
 #include "fsm/middleend/passes/orthogonal_interference_pass.hpp"
 #include "fsm/middleend/passes/orthogonal_product_pass.hpp"
+#include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
 #include "fsm/middleend/passes/pipe_through_pass.hpp"
 #include "fsm/middleend/passes/state_minimization_pass.hpp"
 #include "fsm/middleend/passes/submachine_inlining_pass.hpp"
@@ -28,7 +30,11 @@
 #include "fsm/middleend/passes/wcet_analysis_pass.hpp"
 #include "fsm/middleend/plugin/plugin_loader.hpp"
 
-namespace fsm::codegen {
+namespace fsm::middleend {
+
+using namespace diagnostic;
+using namespace analysis;
+using namespace passes;
 
 struct PassExecutionStats {
     std::string pass_name;
@@ -59,6 +65,21 @@ class HierarchyCanonicalizationPass : public IPass {
         ir.normalize_hierarchy();
         ir.canonicalize();
         return true;
+    }
+};
+
+// ============================================================================
+// Pass: SemanticValidationPass
+// ============================================================================
+class SemanticValidationPass : public IPass {
+  public:
+    [[nodiscard]] std::string name() const override { return "SemanticValidation"; }
+    [[nodiscard]] std::string description() const override {
+        return "Validates variable/port targets, type resolution, and algebraic assignment semantics";
+    }
+
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override {
+        return ::fsm::middleend::SemanticAnalyzer::validate(ir, diag);
     }
 };
 
@@ -133,7 +154,7 @@ class ChoiceCompletenessPass : public IPass {
         for (const auto& choice : ir.choice_nodes) {
             std::vector<const TransitionEdge*> outgoing;
             for (const auto& t : ir.transitions) {
-                if (t.source == choice.name || t.source_id == choice.name) {
+                if (t.source == choice.name) {
                     outgoing.push_back(&t);
                 }
             }
@@ -236,7 +257,7 @@ class ModelSafetyVerifierPass : public IPass {
 
             // 3. Outgoing transitions
             for (const auto& t : ir.transitions) {
-                if (t.source == curr || t.source_id == curr) {
+                if (t.source == curr) {
                     if (reachable.count(t.target) == 0 && !t.target.empty()) {
                         reachable.insert(t.target);
                         queue.push(t.target);
@@ -257,7 +278,7 @@ class ModelSafetyVerifierPass : public IPass {
         auto has_outgoing_hierarchical = [&](const StateNode& state) {
             // Check direct outgoing
             for (const auto& t : ir.transitions) {
-                if (t.source == state.name || t.source_id == state.name) {
+                if (t.source == state.name) {
                     return true;
                 }
             }
@@ -265,7 +286,7 @@ class ModelSafetyVerifierPass : public IPass {
             std::string parent_name = state.parent_state;
             while (!parent_name.empty()) {
                 for (const auto& t : ir.transitions) {
-                    if (t.source == parent_name || t.source_id == parent_name) {
+                    if (t.source == parent_name) {
                         return true;
                     }
                 }
@@ -281,7 +302,7 @@ class ModelSafetyVerifierPass : public IPass {
                 for (const auto& child : ir.states) {
                     if (child.parent_state == c_curr) {
                         for (const auto& t : ir.transitions) {
-                            if (t.source == child.name || t.source_id == child.name) {
+                            if (t.source == child.name) {
                                 return true;
                             }
                         }
@@ -300,7 +321,7 @@ class ModelSafetyVerifierPass : public IPass {
 
             bool has_in = false;
             for (const auto& t : ir.transitions) {
-                if (t.target == s.name || t.target_id == s.name) {
+                if (t.target == s.name) {
                     has_in = true;
                     break;
                 }
@@ -487,6 +508,7 @@ class PassManager {
     static PassManager create_default_pipeline() {
         PassManager pm;
         pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
+        pm.add_pass(std::make_unique<SemanticValidationPass>());
         pm.add_pass(std::make_unique<GuardSimplificationPassWrapper>());
         pm.add_pass(std::make_unique<DeterminismEnforcementPassWrapper>());
         pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
@@ -503,6 +525,7 @@ class PassManager {
     static PassManager create_optimizing_pipeline(bool prune_dead_states = true, bool minimize_states = false) {
         PassManager pm;
         pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
+        pm.add_pass(std::make_unique<SemanticValidationPass>());
         pm.add_pass(std::make_unique<GuardSimplificationPassWrapper>());
         pm.add_pass(std::make_unique<ConstantFoldingPassWrapper>());
         pm.add_pass(std::make_unique<DeterminismEnforcementPassWrapper>());
@@ -559,27 +582,27 @@ class PassManager {
     PluginLoader plugin_loader_;
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::middleend
+
+namespace fsm::middleend::passes {
+using middleend::HierarchyCanonicalizationPass;
+using middleend::GuardSimplificationPassWrapper;
+using middleend::DeterminismEnforcementPassWrapper;
+using middleend::OrthogonalInterferencePassWrapper;
+using middleend::DeadStatePruningPassWrapper;
+using middleend::ChoiceCompletenessPass;
+using middleend::ChoiceInliningPassWrapper;
+using middleend::TimedDeadlockPassWrapper;
+using middleend::EFSMDataPathPass;
+using middleend::ModelSafetyVerifierPass;
+using middleend::ModelCheckingPass;
+using middleend::OrthogonalProductPassWrapper;
+using middleend::WcetAnalysisPassWrapper;
+using middleend::ConstantFoldingPassWrapper;
+using middleend::StateMinimizationPassWrapper;
+using middleend::PipeThroughPassWrapper;
+}  // namespace fsm::middleend::passes
 
 namespace fsm {
-using PassManager = ::fsm::codegen::PassManager;
-using IPass = ::fsm::codegen::IPass;
-using PassExecutionStats = ::fsm::codegen::PassExecutionStats;
-using HierarchyCanonicalizationPass = ::fsm::codegen::HierarchyCanonicalizationPass;
-using GuardSimplificationPassWrapper = ::fsm::codegen::GuardSimplificationPassWrapper;
-using DeterminismEnforcementPassWrapper = ::fsm::codegen::DeterminismEnforcementPassWrapper;
-using OrthogonalInterferencePassWrapper = ::fsm::codegen::OrthogonalInterferencePassWrapper;
-using OrthogonalProductPassWrapper = ::fsm::codegen::OrthogonalProductPassWrapper;
-using DeadStatePruningPassWrapper = ::fsm::codegen::DeadStatePruningPassWrapper;
-using ChoiceCompletenessPass = ::fsm::codegen::ChoiceCompletenessPass;
-using ChoiceInliningPassWrapper = ::fsm::codegen::ChoiceInliningPassWrapper;
-using TimedDeadlockPassWrapper = ::fsm::codegen::TimedDeadlockPassWrapper;
-using WcetAnalysisPassWrapper = ::fsm::codegen::WcetAnalysisPassWrapper;
-using ConstantFoldingPassWrapper = ::fsm::codegen::ConstantFoldingPassWrapper;
-using StateMinimizationPassWrapper = ::fsm::codegen::StateMinimizationPassWrapper;
-using PipeThroughPassWrapper = ::fsm::codegen::PipeThroughPassWrapper;
-using EFSMDataPathPass = ::fsm::codegen::EFSMDataPathPass;
-using ModelSafetyVerifierPass = ::fsm::codegen::ModelSafetyVerifierPass;
-using ModelCheckingPass = ::fsm::codegen::ModelCheckingPass;
-using PluginLoader = ::fsm::codegen::PluginLoader;
+using namespace middleend;
 }  // namespace fsm

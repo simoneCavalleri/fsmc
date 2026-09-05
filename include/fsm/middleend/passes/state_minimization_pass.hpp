@@ -11,7 +11,7 @@
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::middleend::passes {
 
 /**
  * @brief Middle-End Optimization Pass: DFA State Minimization (Hopcroft/Moore Partitioning).
@@ -191,4 +191,8 @@ class StateMinimizationPass {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::middleend::passes
+
+namespace fsm::middleend {
+using passes::StateMinimizationPass;
+}  // namespace fsm::middleend

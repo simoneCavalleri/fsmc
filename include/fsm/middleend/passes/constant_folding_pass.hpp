@@ -9,7 +9,7 @@
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::middleend::passes {
 
 /**
  * @brief Middle-End Optimization Pass: Constant Folding and Dead Transition Elimination.
@@ -127,4 +127,8 @@ class ConstantFoldingPass {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::middleend::passes
+
+namespace fsm::middleend {
+using passes::ConstantFoldingPass;
+}  // namespace fsm::middleend

@@ -16,7 +16,10 @@
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/guard_satisfiability_pass.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::diagnostic;
+using namespace fsm::middleend;
+using namespace fsm::middleend::analysis;
+using namespace fsm::ir;
 
 namespace {
 

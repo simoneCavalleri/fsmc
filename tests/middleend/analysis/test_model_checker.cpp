@@ -7,7 +7,12 @@
 #include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
 #include "fsm/middleend/analysis/fsm_validator.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend;
+using namespace fsm::frontend::diagram;
+using namespace fsm::middleend;
+using namespace fsm::middleend::analysis;
+using namespace fsm::diagnostic;
+using namespace fsm::ir;
 
 namespace {
 

@@ -1,14 +1,16 @@
 #pragma once
 
 #include <algorithm>
+#include <limits>
 #include <map>
+
 #include <string>
 #include <vector>
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::middleend::passes {
 
 /**
  * @brief Target-Agnostic Middle-End Pass: Enforces transition determinism and canonical priority ordering.
@@ -29,7 +31,7 @@ class DeterminismEnforcementPass {
         // Group transitions by (source, event)
         std::map<std::pair<std::string, std::string>, std::vector<TransitionEdge*>> groups;
         for (auto& t : ir.transitions) {
-            std::string src = t.source_id.empty() ? t.source : t.source_id;
+            std::string src = t.source;
             groups[{src, t.event}].push_back(&t);
         }
 
@@ -74,8 +76,10 @@ class DeterminismEnforcementPass {
                                  return a.source < b.source;
                              if (a.event != b.event)
                                  return a.event < b.event;
-                             if (a.priority != b.priority)
-                                 return a.priority < b.priority;  // Lower number = higher priority
+                             auto pa = (a.priority == 0) ? std::numeric_limits<std::uint32_t>::max() : a.priority;
+                             auto pb = (b.priority == 0) ? std::numeric_limits<std::uint32_t>::max() : b.priority;
+                             if (pa != pb)
+                                 return pa < pb;  // Canonical precedence: lower non-zero number = higher priority
                              return a.target < b.target;
                          });
 
@@ -83,8 +87,8 @@ class DeterminismEnforcementPass {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::middleend::passes
 
-namespace fsm {
-using DeterminismEnforcementPass = ::fsm::codegen::DeterminismEnforcementPass;
-}  // namespace fsm
+namespace fsm::middleend {
+using passes::DeterminismEnforcementPass;
+}  // namespace fsm::middleend

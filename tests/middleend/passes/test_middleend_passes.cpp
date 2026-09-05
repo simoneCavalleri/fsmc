@@ -8,7 +8,11 @@
 #include "fsm/middleend/passes/orthogonal_interference_pass.hpp"
 #include "fsm/middleend/passes/submachine_inlining_pass.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::diagnostic;
+using namespace fsm::middleend;
+using namespace fsm::middleend::passes;
+using namespace fsm::middleend::analysis;
+using namespace fsm::ir;
 
 namespace {
 

@@ -7,7 +7,7 @@
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::middleend::passes {
 
 /**
  * @brief Target-Agnostic Middle-End Pass: Static concurrency & data-race analysis for parallel (AND) orthogonal
@@ -42,7 +42,7 @@ class OrthogonalInterferencePass {
                     // Collect variables modified in region A
                     std::vector<std::pair<const TransitionEdge*, std::string>> writes_a;
                     for (const auto& t : ir.transitions) {
-                        if (states_a.count(t.source) != 0 || states_a.count(t.source_id) != 0) {
+                        if (states_a.count(t.source) != 0) {
                             if (t.action_sig.has_value()) {
                                 for (const auto& assign : t.action_sig->assignments) {
                                     writes_a.emplace_back(&t, assign.target_variable);
@@ -54,7 +54,7 @@ class OrthogonalInterferencePass {
                     // Collect variables modified in region B
                     std::vector<std::pair<const TransitionEdge*, std::string>> writes_b;
                     for (const auto& t : ir.transitions) {
-                        if (states_b.count(t.source) != 0 || states_b.count(t.source_id) != 0) {
+                        if (states_b.count(t.source) != 0) {
                             if (t.action_sig.has_value()) {
                                 for (const auto& assign : t.action_sig->assignments) {
                                     writes_b.emplace_back(&t, assign.target_variable);
@@ -83,8 +83,8 @@ class OrthogonalInterferencePass {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::middleend::passes
 
-namespace fsm {
-using OrthogonalInterferencePass = ::fsm::codegen::OrthogonalInterferencePass;
-}  // namespace fsm
+namespace fsm::middleend {
+using passes::OrthogonalInterferencePass;
+}  // namespace fsm::middleend

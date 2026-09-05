@@ -10,7 +10,7 @@
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/ir/guard.hpp"
 
-namespace fsm::codegen {
+namespace fsm::middleend::passes {
 
 /**
  * @brief Target-Agnostic Middle-End Pass: Algebraic simplification and canonicalization of Guard ASTs.
@@ -155,8 +155,8 @@ class GuardSimplificationPass {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::middleend::passes
 
-namespace fsm {
-using GuardSimplificationPass = ::fsm::codegen::GuardSimplificationPass;
-}  // namespace fsm
+namespace fsm::middleend {
+using passes::GuardSimplificationPass;
+}  // namespace fsm::middleend

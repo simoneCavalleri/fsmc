@@ -11,7 +11,7 @@
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::middleend::passes {
 
 /**
  * @brief Target-Agnostic Middle-End Pass: Orthogonal Region Cartesian Product Expansion.
@@ -348,4 +348,8 @@ class OrthogonalProductPass {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::middleend::passes
+
+namespace fsm::middleend {
+using passes::OrthogonalProductPass;
+}  // namespace fsm::middleend

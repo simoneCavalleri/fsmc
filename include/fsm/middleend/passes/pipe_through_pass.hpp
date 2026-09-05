@@ -16,7 +16,10 @@
 #include "fsm/frontend/diagram/json_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::middleend::passes {
+
+using ::fsm::backend::diagram::JsonSerializer;
+using ::fsm::frontend::diagram::JsonStateParser;
 
 /**
  * @brief Middle-End Open Toolchain Pass: External Unix Filter Pipe.
@@ -126,4 +129,8 @@ class PipeThroughPass {
     std::string command_;
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::middleend::passes
+
+namespace fsm::middleend {
+using passes::PipeThroughPass;
+}  // namespace fsm::middleend

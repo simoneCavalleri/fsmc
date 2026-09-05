@@ -8,7 +8,12 @@
 #include "fsm/middleend/passes/timed_deadlock_pass.hpp"
 
 using namespace fsm;
-using namespace fsm::codegen;
+using namespace fsm::diagnostic;
+using namespace fsm::middleend;
+using namespace fsm::middleend::passes;
+using namespace fsm::backend;
+using namespace fsm::backend::formal;
+using namespace fsm::ir;
 
 TEST(TimedDeadlockPassTest, DetectsRacingTimeoutWithoutPriority) {
     FsmIr model;

@@ -8,16 +8,18 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 
-namespace fsm::codegen {
-
+namespace fsm::middleend {
 class PassManager;
+}
+
+namespace fsm::middleend::plugin {
 
 /**
  * @brief Dynamic Shared Library Plugin Loader for Middle-End Compiler Passes.
  *
  * Loads external C/C++ shared objects (.so / .dylib) at runtime using dlopen/dlsym,
  * executing the exported registration entry point:
- * `extern "C" void fsmc_register_passes(fsm::codegen::PassManager& pm)`
+ * `extern "C" void fsmc_register_passes(fsm::middleend::PassManager& pm)`
  */
 class PluginLoader {
   public:
@@ -83,4 +85,8 @@ class PluginLoader {
     std::vector<void*> handles_;
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::middleend::plugin
+
+namespace fsm::middleend {
+using plugin::PluginLoader;
+}  // namespace fsm::middleend

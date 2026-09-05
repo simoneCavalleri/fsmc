@@ -16,7 +16,7 @@
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::middleend::analysis {
 
 /**
  * @brief Numeric Interval representation for Abstract Interpretation over EFSM Data Paths.
@@ -159,7 +159,7 @@ class EFSMIntervalAnalyzer {
 
             // Inspect all outgoing transitions from curr_state
             for (const auto& t : ir_.transitions) {
-                if (t.source != curr_state && t.source_id != curr_state) {
+                if (t.source != curr_state) {
                     continue;
                 }
 
@@ -457,4 +457,9 @@ class EFSMIntervalAnalyzer {
     const FsmIr& ir_;
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::middleend::analysis
+
+namespace fsm::middleend {
+using analysis::Interval;
+using analysis::EFSMIntervalAnalyzer;
+}  // namespace fsm::middleend

@@ -12,8 +12,9 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/analysis/semantic_analyzer.hpp"
 
-namespace fsm::codegen {
+namespace fsm::middleend::analysis {
 
 struct DiagnosticMessage {
     DiagnosticSeverity severity;
@@ -91,6 +92,18 @@ class FsmValidator {
 
         // 8. Formal Verification: Timed Transition Priority & Redundancy
         validate_timed_transitions(model, result);
+
+        // 9. Semantic Validation (Datapath & Typed Action Semantics)
+        std::vector<std::string> sem_errors;
+        std::vector<std::string> sem_warnings;
+        if (!middleend::SemanticAnalyzer::validate(model, sem_errors, sem_warnings)) {
+            for (const auto& err : sem_errors) {
+                result.add_error("Semantics", err);
+            }
+        }
+        for (const auto& warn : sem_warnings) {
+            result.add_warning("Semantics", warn);
+        }
 
         return result;
     }
@@ -403,4 +416,10 @@ class FsmValidator {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::middleend::analysis
+
+namespace fsm::middleend {
+using analysis::FsmValidator;
+using analysis::ValidationResult;
+using analysis::DiagnosticMessage;
+}  // namespace fsm::middleend

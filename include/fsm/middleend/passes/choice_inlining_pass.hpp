@@ -11,7 +11,7 @@
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::middleend::passes {
 
 /**
  * @brief Target-Agnostic Middle-End Pass: Choice & Junction Pseudostate Inlining.
@@ -53,9 +53,9 @@ class ChoiceInliningPass {
             std::vector<TransitionEdge> outgoing;
 
             for (const auto& t : ir.transitions) {
-                if (t.target == choice_name || t.target_id == choice_name) {
+                if (t.target == choice_name) {
                     incoming.push_back(t);
-                } else if (t.source == choice_name || t.source_id == choice_name) {
+                } else if (t.source == choice_name) {
                     outgoing.push_back(t);
                 }
             }
@@ -70,10 +70,8 @@ class ChoiceInliningPass {
                 for (const auto& out : outgoing) {
                     TransitionEdge composite;
                     composite.source = in.source;
-                    composite.source_id = in.source_id;
                     composite.source_ids = in.source_ids;
                     composite.target = out.target;
-                    composite.target_id = out.target_id;
                     composite.target_ids = out.target_ids;
                     composite.event = in.event.empty() ? out.event : in.event;
                     composite.trigger = in.trigger;
@@ -137,8 +135,7 @@ class ChoiceInliningPass {
             // Remove original incoming & outgoing edges
             ir.transitions.erase(std::remove_if(ir.transitions.begin(), ir.transitions.end(),
                                                 [&](const TransitionEdge& t) {
-                                                    return t.target == choice_name || t.target_id == choice_name ||
-                                                           t.source == choice_name || t.source_id == choice_name;
+                                                    return t.target == choice_name || t.source == choice_name;
                                                 }),
                                  ir.transitions.end());
 
@@ -162,4 +159,8 @@ class ChoiceInliningPass {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::middleend::passes
+
+namespace fsm::middleend {
+using passes::ChoiceInliningPass;
+}  // namespace fsm::middleend

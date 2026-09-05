@@ -2,7 +2,8 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::diagnostic;
+
 
 namespace {
 

@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-namespace fsm::codegen {
+namespace fsm::diagnostic {
 
 /**
  * @brief Severity level for compiler and verification diagnostics.
@@ -163,11 +163,9 @@ class DiagnosticEngine {
     bool has_errors_{false};
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::diagnostic
 
 namespace fsm {
-using DiagnosticEngine = ::fsm::codegen::DiagnosticEngine;
-using Diagnostic = ::fsm::codegen::Diagnostic;
-using DiagnosticSeverity = ::fsm::codegen::DiagnosticSeverity;
-using SourceSpan = ::fsm::codegen::SourceSpan;
+using namespace diagnostic;
 }  // namespace fsm
+

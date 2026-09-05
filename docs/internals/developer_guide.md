@@ -67,7 +67,7 @@ Create your parser class under `include/fsm/frontend/formal/` (for formal models
 #include <string>
 #include "fsm/frontend/common/parser_interface.hpp"
 
-namespace fsm::codegen {
+namespace fsm::frontend {
 
 class CustomModelParser : public IParser {
 public:
@@ -79,7 +79,7 @@ public:
         return FrontendKind::Formal;
     }
 
-    bool parse(std::string_view source_code, FsmIr& out_model, std::string& out_error) override {
+    bool parse(std::string_view source_code, fsm::ir::FsmIr& out_model, std::string& out_error) override {
         out_model.name = "ParsedStateMachine";
 
         // Step 1: Parse states and transitions
@@ -95,7 +95,7 @@ public:
     }
 };
 
-} // namespace fsm::codegen
+} // namespace fsm::frontend
 ```
 
 #### 2. Register in `ParserFactory`
@@ -127,12 +127,12 @@ public:
         return "RedundantTransitionPass";
     }
 
-    PassResult run(fsm::codegen::FsmIr& model, fsm::codegen::DiagnosticEngine& diag) override {
+    PassResult run(fsm::ir::FsmIr& model, fsm::diagnostic::DiagnosticEngine& diag) override {
         bool modified = false;
 
         for (const auto& trans : model.transitions) {
             if (trans.source == trans.target && !trans.guard.has_value() && trans.event.empty()) {
-                diag.report(fsm::codegen::Diagnostic::warning(
+                diag.report(fsm::diagnostic::Diagnostic::warning(
                     "W0401",
                     "Spontaneous unguarded self-transition on state '" + trans.source + "' causes infinite livelocks."
                 ));
@@ -164,7 +164,7 @@ Create your serializer in `include/fsm/backend/`:
 #include <sstream>
 #include "fsm/backend/emitter_interface.hpp"
 
-namespace fsm::codegen {
+namespace fsm::backend {
 
 class CustomGraphEmitter : public IEmitter {
 public:
@@ -172,7 +172,7 @@ public:
         return "custom_graph";
     }
 
-    [[nodiscard]] std::string emit(const FsmIr& model, const GeneratorOptions& options) const override {
+    [[nodiscard]] std::string emit(const fsm::ir::FsmIr& model, const cpp::GeneratorOptions& options) const override {
         std::ostringstream ss;
         ss << "# State Machine: " << model.name << "\n";
         for (const auto& t : model.transitions) {
@@ -182,7 +182,7 @@ public:
     }
 };
 
-} // namespace fsm::codegen
+} // namespace fsm::backend
 ```
 
 #### 2. Register in `EmitterFactory`
@@ -225,7 +225,7 @@ All unit tests follow strict conventions:
 TEST(CustomParserTest, IngestGuardedTransition) {
     // Arrange
     const std::string source = "state Idle -> Active on EvStart if in.temp > 50;";
-    fsm::codegen::FsmIr model;
+    fsm::ir::FsmIr model;
     std::string error;
     CustomParser parser;
 

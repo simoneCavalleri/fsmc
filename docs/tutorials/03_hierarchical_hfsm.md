@@ -135,9 +135,4 @@ stateDiagram-v2
 
 Now that you can design expressive, hierarchical statecharts, let's explore how to **mathematically prove their safety** before generating code in **[Tutorial 4: Formal Verification & Model Checking](04_formal_verification.md)**.
 
----
 
-<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--fsmc-border);">
-    <a href="02_guards_and_actions.md" style="font-weight: 600; color: var(--fsmc-primary);">← Tutorial 2: EFSM & Datapath</a>
-    <a href="04_formal_verification.md" style="font-weight: 600; color: var(--fsmc-primary);">Tutorial 4: Formal Verification →</a>
-</div>

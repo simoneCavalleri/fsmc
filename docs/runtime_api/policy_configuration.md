@@ -37,6 +37,8 @@ using MyFSM = fsm::make_fsm<MyTable, fsm::with_registers<MyRegisters>>;
 | `fsm::with_ports<In, Out>` | Binds continuous input and output hardware port structs | `fsm::no_ports`, `fsm::no_ports` |
 | `fsm::with_services<Srv>` | Binds external OS/hardware interface services (drivers, timers) | `fsm::no_services` |
 | `fsm::with_observer<Obs>` | Configures compile-time telemetry and transition hooks | `fsm::no_observer` |
+| `fsm::with_trace_buffer<N>` | Configures zero-allocation circular flight recorder with capacity $N$ | None (or default observer) |
+| `fsm::with_timer_capacity<N>` | Configures capacity $N$ for deterministic synchronous timer manager | `0` (timers disabled) |
 | `fsm::with_initial_state<State>` | Overrides the table's default initial state | `Table::initial_state` |
 | `fsm::with_deferred_capacity<N>` | Configures static capacity of deferred event queues | `16` |
 | `fsm::with_queue_capacity<N>` | Configures ring buffer capacity in SPSC/async engines | `64` |
@@ -86,6 +88,15 @@ fsm::make_fsm<SimpleTable> machine;
 // Configured FSM with internal registers
 FlightRegisters regs{100.0, 0.0};
 fsm::make_fsm<FlightTable, fsm::with_registers<FlightRegisters>> machine(regs);
+
+// Configured FSM with Blackbox Flight Recorder and Deterministic Timers (v0.6.0+)
+using SafeFlightFsm = fsm::make_fsm<
+    FlightTable,
+    fsm::with_registers<FlightRegisters>,
+    fsm::with_trace_buffer<64>,
+    fsm::with_timer_capacity<8>
+>;
+SafeFlightFsm flight_sm(regs);
 ```
 
 ### B. Lock-Free SPSC Ring Buffer Engine (`make_spsc_fsm`)

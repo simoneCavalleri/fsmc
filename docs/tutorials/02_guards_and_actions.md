@@ -127,13 +127,31 @@ If the guard returns `false`, no exit actions occur, and the machine remains in 
 
 ---
 
+## 5. Inspecting Transitions with `dispatch_result`
+
+Every `dispatch()` call returns a `fsm::dispatch_result` carrying zero-overhead trace metadata:
+
+```cpp
+fsm::dispatch_result res = fsm.dispatch(HandshakeFailed{}, in, out);
+
+if (res.is_success()) {
+    // res.trace is std::optional<fsm::transition_trace>
+    const fsm::transition_trace& tr = *res.trace;
+    std::cout << tr.source          // "Connecting"
+              << " --[" << tr.event // "HandshakeFailed"
+              << "]--> " << tr.target << "\n"; // "Reconnecting" or "Disconnected"
+} else if (res.is_guard_rejected()) {
+    // Guard returned false: no state change, no side-effects
+    std::cout << "Guard blocked transition.\n";
+}
+```
+
+`dispatch_result` is non-allocating: all `transition_trace` fields are `std::string_view` pointing into static storage. It adds zero runtime overhead when not used.
+
+---
+
 ## Next Steps
 
 In **[Tutorial 3: Hierarchical Statecharts (HFSM) & History](03_hierarchical_hfsm.md)**, you will learn how to nest state machines into composite superstates and restore memory configurations using History pseudostates.
 
----
 
-<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--fsmc-border);">
-    <a href="01_first_statechart.md" style="font-weight: 600; color: var(--fsmc-primary);">← Tutorial 1: First State Machine</a>
-    <a href="03_hierarchical_hfsm.md" style="font-weight: 600; color: var(--fsmc-primary);">Tutorial 3: HFSM & History →</a>
-</div>

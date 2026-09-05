@@ -67,27 +67,55 @@ struct step_result {
 
 ---
 
+---
+
 ## 2. Zero-Allocation Flight Recorder Telemetry
 
-Because all `std::string_view` literals in `transition_trace` reference static string data in the compiler's read-only data section (`.rodata`), inspecting and serializing traces performs **zero string heap allocations**:
+For post-mortem auditing, blackbox event logging, and hard real-time diagnostics, `fsmc` provides `fsm::TraceBuffer<Capacity>` and `fsm::flight_recorder_observer<Capacity>` ([`flight_recorder.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/backend/cpp/runtime/flight_recorder.hpp)).
+
+### Architectural Properties:
+* **0 Bytes Dynamic Allocation**: Storage resides entirely on the stack, in `.bss`, or within the FSM object.
+* **O(1) Push and Query Time**: Constant-time circular ring buffer recording with deterministic wrap-around.
+* **Chronological Logical Indexing**: `recorder[0]` always accesses the oldest recorded entry, and `recorder[size - 1]` accesses the newest, irrespective of internal circular wrap-around.
 
 ```cpp
-auto res = fsm.dispatch(TakeoffCmd{});
+#include <fsm/backend/cpp/runtime/fsm.hpp>
+#include <fsm/backend/cpp/runtime/flight_recorder.hpp>
 
-if (res.is_success() && res.trace.has_value()) {
-    std::cout << "[FLIGHT RECORDER] Transition Fired:\n"
-              << "  Source: " << res.trace->source << "\n"
-              << "  Target: " << res.trace->target << "\n"
-              << "  Event:  " << res.trace->event  << "\n"
-              << "  Guard:  " << res.trace->guard  << "\n"
-              << "  Action: " << res.trace->action << "\n"
-              << "  Kind:   " << to_string(res.trace->kind) << "\n";
-} else if (res.is_guard_rejected()) {
-    std::cerr << "[GUARD REJECTED] Takeoff rejected by guard: " 
-              << (res.trace ? res.trace->guard : "Unknown") << "\n";
-} else if (res.is_unhandled()) {
-    std::cerr << "[UNHANDLED] Event not accepted in current state\n";
+// 1. Configure FSM with a 64-entry Blackbox Flight Recorder
+using FmsEngine = fsm::make_fsm<
+    FlightTable,
+    fsm::with_initial_state<PreflightState>,
+    fsm::with_trace_buffer<64>,
+    fsm::with_timer_capacity<8>
+>;
+
+FmsEngine sm;
+
+// 2. Dispatch transitions and advance deterministic ticks
+sm.dispatch(EvArmed{});
+sm.tick(100); // Advances internal timers and updates flight recorder tick timestamp
+sm.dispatch(EvTakeoff{});
+
+// 3. Inspect recent trace entries or dump table
+auto& recorder = sm.observer().recorder();
+
+if (auto last = recorder.last_entry(); last.has_value()) {
+    std::cout << "Last transition at tick " << last->tick 
+              << ": " << last->source_state << " -> " << last->target_state << "\n";
 }
+
+// 4. Dump formatted ASCII flight recorder audit table
+recorder.dump(std::cout);
+```
+
+### Formatted Output Dump Example:
+```text
+=== FSM Flight Recorder Audit Trace (2/64 entries) ===
+TICK      SOURCE                   EVENT                    TARGET                   STATUS
+--------------------------------------------------------------------------------------------
+0         Preflight                EvArmed                  Armed                    TAKEN
+100       Armed                    EvTakeoff                Ascending                TAKEN
 ```
 
 ---
@@ -106,10 +134,10 @@ struct transition_info {
 };
 ```
 
-Attach an observer to the FSM instance:
+Attach a custom observer to the FSM instance:
 
 ```cpp
-fsm.set_observer([](const fsm::transition_info& info) {
+sm.set_observer([](const fsm::transition_info& info) {
     if (info.is_success()) {
         CAN_Bus_SendLog(info.source.data(), info.target.data(), info.event.data());
     }
@@ -120,25 +148,40 @@ fsm.set_observer([](const fsm::transition_info& info) {
 
 ## 4. Deterministic Tick-Based Timer Manager
 
-In hard real-time and safety-critical embedded systems, operating system background timers (`std::thread`, POSIX timers) introduce non-determinism and thread scheduling jitter. 
+In hard real-time and embedded systems, operating system background timers (`std::thread`, POSIX timers) introduce non-determinism and thread scheduling jitter. 
 
-`fsmc` provides `fsm::deterministic_timer_manager<MaxTimers>`, an entirely synchronous, bounded, stack/BSS-allocated timer manager:
+`fsmc` provides a fully integrated, zero-allocation synchronous timer engine configured via `fsm::with_timer_capacity<MaxTimers>`:
 
 ```cpp
-#include "fsm/backend/cpp/runtime/deterministic_timer.hpp"
+using MyFsm = fsm::make_fsm<
+    MyTable,
+    fsm::with_initial_state<IdleState>,
+    fsm::with_timer_capacity<8> // Allocate fixed 8-timer manager (0 heap allocations)
+>;
 
-// Allocate fixed 16-timer manager (0 heap allocations)
+MyFsm sm;
+
+// Advance time synchronously in your periodic control loop
+void periodic_task_10ms() {
+    uint64_t dt_ms = 10;
+    
+    // 1. tick(dt) decrements active timers and fires expired timed transitions
+    sm.tick(dt_ms);
+    
+    // 2. step() evaluates continuous conditions or during actions
+    sm.step();
+}
+```
+
+The underlying `fsm::deterministic_timer_manager<N>` can also be used as a standalone timer utility:
+
+```cpp
+#include "fsm/backend/cpp/runtime/deterministic_timer_manager.hpp"
+
 fsm::deterministic_timer_manager<16> timers;
-
-// 1. Schedule a one-shot or periodic timer
 timers.start_timer(1001 /* timer_id */, 500 /* duration_ms */, false /* periodic */);
 
-// 2. Advance time synchronously in your control loop tick
-uint64_t delta_ms = 10;
-timers.tick(delta_ms, [&](uint32_t expired_timer_id) {
-    if (expired_timer_id == 1001) {
-        // Dispatch timeout event into FSM
-        fsm.dispatch(TimeoutEvent{});
-    }
+timers.tick(10, [](uint32_t expired_id) {
+    std::cout << "Timer expired: " << expired_id << "\n";
 });
 ```

@@ -28,14 +28,105 @@ Caller Thread ◄── Returns dispatch_result
 
 ---
 
-## 2. Reactive `dispatch()` vs Periodic `step()`
+---
 
-`fsm::fsm` provides two primary execution methods tailored for real-time control systems:
+## 2. Deterministic Execution Primitives: `dispatch()` vs `tick()` vs `step()` vs `step(dt)`
 
-| Method | Execution Trigger | Return Type | Primary Purpose | Emitted Trigger Type |
-| :--- | :--- | :--- | :--- | :--- |
-| **`dispatch(event, ...)`** | Discrete external event | `fsm::dispatch_result` (`success`, `deferred`, `guard_rejected`, `unhandled`) | Processes command triggers, sensor threshold interrupts, or network messages | Typed `Event` struct |
-| **`step([dt], ...)`** | Periodic sampled tick (e.g. 1 kHz control loop) | `fsm::step_result` (`steady`, `transitioned`) | Evaluates continuous threshold guards directly against `InPorts` and `Registers` ($z^{-1}$) | `fsm::anonymous_event` |
+In real-time embedded systems, a state machine must handle two orthogonal dimensions of execution:
+1. **Discrete Events**: Asynchronous interrupts, user commands, or network messages arriving at arbitrary points in time.
+2. **Discrete Time Progression**: The passage of physical time ($\Delta t$), timer countdowns, and continuous sensor threshold evaluations.
+
+To provide total deterministic control with **0 background OS threads** and **0 hidden delays**, `fsmc` structures execution across four distinct primitives:
+
+```mermaid
+flowchart TD
+    subgraph PeriodicLoop["Periodic Control Loop (e.g., 100 Hz / 10 ms Task)"]
+        direction TB
+        START["Cycle Start (dt = 10 ms)"] --> TICK
+        
+        subgraph TimeProgression["1. Time Progression: tick(dt)"]
+            TICK["sm.tick(dt)<br/>• Decrements internal timers<br/>• Fires timer callbacks<br/>• Advances Flight Recorder tick timestamp"]
+        end
+        
+        TICK --> STEP
+        
+        subgraph ContinuousEvaluation["2. Continuous Evaluation: step()"]
+            STEP["sm.step(in, out)<br/>• Dispatches anonymous_event<br/>• Evaluates continuous port/register guards<br/>• Flushes deferred event queue"]
+        end
+        
+        STEP --> END["Cycle Complete"]
+    end
+    
+    subgraph Unified["Combined Loop Primitive"]
+        COMBINED["sm.step(dt, in, out)"] -.->|Internally executes| TICK
+        COMBINED -.->|Immediately followed by| STEP
+    end
+```
+
+### Comprehensive Primitive Semantics
+
+| Primitive | Operation Under the Hood | Advances Time? | Evaluates Continuous Guards? | Flushes Deferred Queue? | Typical Use Case |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`tick(dt, [callback])`** | Decrements active timers in `deterministic_timer_manager`, calls expiration callbacks, advances Flight Recorder tick timestamp. | **Yes** ($+\Delta t$) | **No** | **No** | Advancing model time in multi-rate architectures or decoupled hardware timer ISRs. |
+| **`step([in, out, srv])`** | Dispatches `fsm::anonymous_event`, evaluates continuous threshold guards against current `InPorts` and `Registers`, processes deferred events. | **No** | **Yes** | **Yes** (if transitioned) | Polling sensor threshold conditions without advancing the timer clock. |
+| **`step(dt, [in, out])`** | **Unified Primitive**: Internally calls `this->tick(dt)` and immediately executes `this->step(in, out)`. | **Yes** ($+\Delta t$) | **Yes** | **Yes** (if transitioned) | **Standard choice** for fixed-rate control loops (e.g. 10 ms cyclic task). |
+| **`dispatch(Event)`** | Evaluates discrete transitions matching strongly-typed struct `Event`. If unhandled and marked deferrable, saves into deferred queue. | **No** | **No** | **Yes** (if transitioned) | Asynchronous command interrupts, CAN bus packets, or telemetry events. |
+
+---
+
+### How Timed Transitions (`after(duration)`) Work
+
+When a statechart defines a timed transition such as:
+```sysml
+state Armed {
+    transition on after(500 ms) then LaunchTimeout;
+}
+```
+
+The compiler and runtime coordinate time deterministically:
+1. **Timer Allocation**: The state machine reserves an internal timer ID in its compile-time bounded `deterministic_timer_manager<TimerCapacity>`.
+2. **State Entry**: Upon entering `Armed`, the timer is armed with duration `500`.
+3. **Time Progression**: Each call to `sm.tick(dt)` or `sm.step(dt)` subtracts $\Delta t$ from the active timer countdown.
+4. **Expiration**: When the countdown reaches zero:
+   * If using `sm.tick(dt, on_expired)`, the callback is notified with the expired timer ID.
+   * In generated models with timed triggers, the expiration triggers the transition directly to `LaunchTimeout`.
+5. **State Exit**: If an external event (e.g. `EvCancel`) causes a transition out of `Armed` before the timeout elapses, the timer is automatically disarmed, preventing stale timeout triggers.
+
+---
+
+### Practical Control Loop Implementation
+
+Here is how a real-time periodic control task integrates both discrete event dispatching and deterministic time stepping:
+
+```cpp
+// 100 Hz Control Task (Period = 10 ms)
+void control_loop_task(MyFsm& sm, MotorInPorts& in, MotorOutPorts& out) {
+    constexpr uint64_t dt_ms = 10;
+    
+    // 1. Read hardware sensors into InPorts snapshot
+    in.temperature_celsius = Hardware_ReadThermistor();
+    in.battery_percent = Hardware_ReadBatterySoc();
+    
+    // 2. Process any asynchronous discrete command received from CAN/UART
+    if (Hardware_HasCommandPacket()) {
+        auto cmd = Hardware_ReadCommandPacket();
+        if (cmd.id == CMD_ARM) {
+            sm.dispatch(EvArm{}, in, out);
+        }
+    }
+    
+    // 3. Advance time by dt and evaluate continuous guards
+    // (This ticks timers, checks after(..) timeouts, and evaluates continuous guards)
+    fsm::step_result res = sm.step(dt_ms, in, out);
+    
+    if (res.has_transitioned()) {
+        // Trace transition if needed
+    }
+    
+    // 4. Write OutPorts snapshot to physical actuator hardware
+    Hardware_SetMotorPwm(out.motor_enable ? out.target_velocity : 0.0f);
+}
+```
 
 ---
 

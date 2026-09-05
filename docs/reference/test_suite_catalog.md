@@ -1493,6 +1493,33 @@
   - Generate 10,000 unique hierarchical state keys.
   - Verify each computed deterministic ID is completely unique with 0 collisions.
 
+#### `FsmIrTest.TypeDefinitionKindAndFactories`
+**Test Intent**: Verify TypeDefinition, TypeKind (Enum, Struct, Alias), field/literal queries, and mutation.
+
+#### `FsmIrTest.CustomTypesMetamodelIntegration`
+**Test Intent**: Verify FsmIr custom_types storage, find_type, has_type, canonical sorting, and structural equality.
+
+#### `FsmIrTest.ExpressionAstNodeFactoriesAndStringification`
+**Test Intent**: Verify ExpressionAstNode factories for literals, refs, unary/binary ops, operator precedence, and JSON serialization.
+
+#### `FsmIrTest.ExpressionAstNodeAlgebraicParser`
+**Test Intent**: Verify algebraic expression parser with precedence climbing, parentheses, bitwise/shift ops, and raw fallback.
+
+#### `FsmIrTest.ActionAssignmentOperatorsAndAST`
+**Test Intent**: Verify ActionAssignment with AssignmentOp, structured AST, text statements parser, and operator roundtrips.
+
+#### `FsmIrTest.JsonSerializationAndDeserializationCustomTypes`
+**Test Intent**: Verify top-level `"types": [...]` array and algebraic assignment JSON serialization and roundtrip parsing.
+
+#### `FsmIrTest.SemanticValidationPassAndFailures`
+**Test Intent**: Verify FsmIr::validate_semantics detecting undeclared targets, read-only InPort writes, unknown types, and mismatches.
+
+#### `FsmIrTest.PassManagerSemanticValidationExecution`
+**Test Intent**: Verify SemanticValidationPass execution within PassManager pipeline and diagnostic error reporting.
+
+#### `FsmIrTest.FsmValidatorIntegration`
+**Test Intent**: Verify FsmValidator stage 9 integration reporting semantic violations.
+
 #### `FsmIrTest.FormalPropertyAstConstruction`
 **Test Intent**: Verify manual AST construction for temporal logic implications (`P -> Q`).
 

@@ -103,6 +103,7 @@ nav:
       - Introduction: formal_languages/index.md
       - Modeling Languages:
           - OMG SysML v2: formal_languages/sysml_v2.md
+          - MathWorks Stateflow: formal_languages/stateflow.md
           - Cameo / MagicDraw: formal_languages/cameo_magicdraw.md
           - W3C SCXML: formal_languages/scxml.md
           - nuXmv / SMV Logic: formal_languages/smv_nuxmv.md
@@ -112,6 +113,7 @@ nav:
           - Verification Overview: verification_and_safety/index.md
           - Model Checking (LTL/CTL): verification_and_safety/model_checking.md
           - EFSM Interval Analysis: verification_and_safety/interval_analysis.md
+          - MC/DC Test Synthesis: verification_and_safety/mcdc_synthesis.md
           - Requirement Traceability (RTM): verification_and_safety/rtm_matrix.md
 
   - Target Backends & Runtimes:
@@ -161,6 +163,7 @@ nav:
           - Guards & Action Effects: concepts/guards_and_actions.md
       - Compiler Infrastructure:
           - Pipeline & Subsystems: internals/architecture.md
+          - Middle-End Passes Catalogue: internals/middleend_passes.md
           - Developer Guide: internals/developer_guide.md
           - v0.6.0 Architecture Roadmap: internals/roadmap_v0.6.0.md
           - Contributing Guide: contributing/index.md

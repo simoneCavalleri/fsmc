@@ -28,7 +28,7 @@ fsmc/
 │   └── fsm-opt/     # Standalone Formal IR Optimizer, Linter & Roundtrip Formatter CLI
 ├── playground/      # Interactive WebAssembly Browser Playground (fsmc.wasm)
 ├── examples/        # Aerospace, Automotive ECU, and Resilient IoT Showcases
-├── tests/           # Modular GoogleTest Suites (54 suites, 100% pass)
+├── tests/           # Modular GoogleTest Suites (63 suites, 100% pass)
 │   ├── backend/     # Codegen, roundtrip lossless export, and backend/cpp/runtime tests
 │   ├── frontend/    # Frontend tests partitioned into formal/ and diagram/
 │   ├── ir/          # Serialization and AST integrity
@@ -44,7 +44,7 @@ fsmc/
 `fsmc` operates as a multi-stage compiler structured in three distinct tiers: **Frontend Ingestion**, **Middle-End Pass Pipeline**, and **Backend Code Generators & Emitters**.
 
 ```
-  Model File (.sysml / .xmi / .scxml / .puml / .mmd / .dot / .json / .smv)
+  Model File (.sysml / .xmi / .scxml / .puml / .mmd / .dot / .json / .sfx / .stateflow / .smv)
            │
            ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -53,6 +53,7 @@ fsmc/
 │    - SysML v2 Parser (Native textual .sysml grammar)        │
 │    - Cameo / MagicDraw Parser (OMG XMI 2.x XML parser)      │
 │    - W3C SCXML Parser (State Chart XML specification)       │
+│    - MathWorks Stateflow Parser (Simulink XML/JSON format)  │
 │    - nuXmv / SMV Parser (Formal symbolic specification)     │
 │  • Visual Diagrams (include/fsm/frontend/diagram/):         │
 │    - PlantUML Parser (State diagram block tokenization)     │
@@ -79,10 +80,17 @@ fsmc/
 │  • DeadStatePruningPass (Prunes unreachable states & dead tr)│
 │  • DeterminismEnforcementPass (Detects nondeterministic br) │
 │  • GuardSimplificationPass (Algebraic boolean optimization)  │
+│  • ConstantFoldingPass (Register propagation & tautologies) │
+│  • DeadActionPass (Eliminates unused / dead actions)        │
+│  • OrthogonalProductPass (Cartesian product flattening)     │
+│  • StateMinimizationPass (Hopcroft/Moore bisimulation)      │
+│  • WcetAnalysisPass (Micro-step cascade & Zeno detection)   │
 │  • SubmachineInliningPass (Inlines modular submachines)     │
 │  • TimedDeadlockPass (Detects 0ms timeouts & racing timers) │
 │  • OrthogonalInterferencePass (Detects concurrent races)    │
 │  • Formal ModelChecker (Temporal LTL/CTL & Safety Invariants)│
+│  • PipeThroughPass (Streaming Unix JSON filter pipeline)    │
+│  • PluginLoader (Dynamic runtime C++ pass plugin loading)   │
 │  • Rich DiagnosticEngine (Rust/Clang-style visual carets)   │
 └──────────────────────────────┬──────────────────────────────┘
                                │
@@ -91,13 +99,15 @@ fsmc/
 ┌───────────────────────────────┐   ┌───────────────────────────┐
 │ 4a. C++ Code Generator Engine │   │ 4b. Diagram & SMV Emitters│
 │  • Bounded Choice Flattening  │   │  • SysML v2 Serializer    │
-│  • Standalone (SSOT bundled)  │   │  • PlantUML Serializer    │
-│  • Modular C++ (.hpp/.cpp)    │   │  • Mermaid Serializer     │
-│  • C++17 (SFINAE) / C++20     │   │  • Cameo XMI Serializer   │
-│  • Zero-heap embedded runtime │   │  • SCXML Serializer       │
-│  • Thread-safe async wrappers │   │  • Graphviz DOT Serializer│
-│  • Deterministic timer manager│   │  • JSON IR Serializer     │
-│  • Ring buffer overflow policy│   │  • nuXmv / SMV Serializer │
+│  • Standalone (SSOT bundled)  │   │  • Stateflow Serializer   │
+│  • Modular C++ (.hpp/.cpp)    │   │  • PlantUML Serializer    │
+│  • C++17 (SFINAE) / C++20     │   │  • Mermaid Serializer     │
+│  • Zero-heap embedded runtime │   │  • Cameo XMI Serializer   │
+│  • Thread-safe async wrappers │   │  • SCXML Serializer       │
+│  • Deterministic timer manager│   │  • Graphviz DOT Serializer│
+│  • Blackbox Flight Recorder   │   │  • JSON IR Serializer     │
+│  • MC/DC Test Harness Gen     │   │  • nuXmv / SMV Serializer │
+│  • Ring buffer overflow policy│   │  • RTM Traceability Matrix│
 └───────────────┬───────────────┘   └─────────────┬─────────────┘
                 ▼                                 ▼
        Generated C++ Header               Exported Diagram / SMV

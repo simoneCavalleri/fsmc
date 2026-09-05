@@ -23,6 +23,34 @@ The model checking pass analyzes the state graph:
 2. **Choice Branch Completeness**: Verifies that `choice` pseudostates contain a mandatory fallback `else` or exhaustive guards.
 3. **Deadlock / Sink State Traps**: Detects unintentional terminal states.
 
+You can also select the verification engine and pass ad-hoc temporal logic formulas directly on the command line:
+
+```bash
+# Use the nuXmv backend explicitly
+fsmc -i flight_controller.sysml --verify --engine nuxmv
+
+# Verify a custom LTL safety property inline (no model annotation required)
+fsmc -i flight_controller.sysml --verify --ltl "G !(ThrusterActive && ValveClosed)"
+
+# Verify a CTL reachability property
+fsmc -i flight_controller.sysml --verify --ctl "EF EmergencyLanding"
+```
+
+**Example verification output with counterexample trace:**
+```
+[PASS]  Guard Satisfiability : 6/6 transitions disjoint (0 W_EFSM_UNSATISFIABLE_GUARD)
+[PASS]  Deadlock Freedom      : All non-terminal states have deterministic outgoing paths
+[PASS]  LTL: G !(ThrusterActive && ValveClosed)  -> TRUE
+[FAIL]  LTL: G (LaunchCmd -> F InOrbit)          -> VIOLATED
+
+Counterexample trace (7 steps):
+  Step 0 : Booting
+  Step 1 : Booting     -- LaunchCmd  --> Ascending
+  Step 2 : Ascending   -- AbortCmd   --> SafeHold     <-- loop detected
+  ...
+  Hint: AbortCmd can fire from Ascending, preventing InOrbit from being reached.
+```
+
 ---
 
 ## 2. Specifying Temporal Logic Properties (LTL & CTL)
@@ -109,9 +137,4 @@ Run `fsmc --req-audit --rtm-output audit_report.md` to produce a complete requir
 
 Now that your state machine is formally proven, let's learn how to **compile it and integrate it into your application** safely in **[Tutorial 5: Code Generation & Build Integration](05_code_generation_and_integration.md)**.
 
----
 
-<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--fsmc-border);">
-    <a href="03_hierarchical_hfsm.md" style="font-weight: 600; color: var(--fsmc-primary);">← Tutorial 3: HFSM & History</a>
-    <a href="05_code_generation_and_integration.md" style="font-weight: 600; color: var(--fsmc-primary);">Tutorial 5: Codegen & Integration →</a>
-</div>

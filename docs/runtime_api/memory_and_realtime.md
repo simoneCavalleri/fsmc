@@ -31,6 +31,12 @@ flowchart TD
             subgraph F5["5. Service Injected Binding"]
                 P["Services* (Non-Owning Reference)<br/>External Hardware / OS Driver<br/><b>0 Bytes Overhead — Direct Pointer</b>"]
             end
+            subgraph F6["6. Deterministic Timers"]
+                T["deterministic_timer_manager&lt;K&gt;<br/>Static Timer Slot Array<br/><b>0 Bytes Heap — Stack Inline</b>"]
+            end
+            subgraph F7["7. Flight Recorder Buffer"]
+                TR["TraceBuffer&lt;Cap&gt; (Circular Ring)<br/>O(1) Chronological History<br/><b>0 Bytes Heap — Stack Inline</b>"]
+            end
         end
     end
 
@@ -51,6 +57,8 @@ flowchart TD
 | **Virtual Table Overhead** | **0 Bytes** | Compile-time template dispatch (`!std::is_polymorphic_v`) |
 | **State Storage** | Contiguous inline memory | `std::variant<States...>` |
 | **History & Deferred Events** | Fixed-capacity stack storage | Inline `fsm::static_vector` and `event_variant` |
+| **Deterministic Timers** | Zero-allocation countdown slots | Fixed `deterministic_timer_manager<K>` |
+| **Flight Recorder Telemetry** | Bounded circular audit trail | Static `TraceBuffer<Capacity>` with $O(1)$ push |
 | **Transition Dispatch** | Deterministic $O(1)$ execution time | Compile-time unrolled fold expressions |
 | **Event Queues** | Wait-free $O(1)$ insertion | Static power-of-two circular ring buffer |
 

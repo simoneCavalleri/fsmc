@@ -178,9 +178,4 @@ fsmc -i connection.sysml -e dot -o connection.dot
 
 Now that you have built a basic state machine, let's learn how to add **Partitioned I/O Ports, Internal Registers, Conditional Guards**, and **Lifecycle Actions** in **[Tutorial 2: Extended State Machines (EFSM), Guards & Datapath](02_guards_and_actions.md)**.
 
----
 
-<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--fsmc-border);">
-    <a href="index.md" style="font-weight: 600; color: var(--fsmc-text-muted);">← Tutorials Overview</a>
-    <a href="02_guards_and_actions.md" style="font-weight: 600; color: var(--fsmc-primary);">Tutorial 2: EFSM & Datapath →</a>
-</div>

@@ -135,11 +135,11 @@ using CombinedGuard = fsm::and_<GuardA, fsm::or_<GuardB, fsm::not_<GuardC>>>;
 
 ---
 
-## 3. Execution Status: `fsm::dispatch_result` & `fsm::step_result`
+## 4. Execution Status: `fsm::dispatch_result` & `fsm::step_result`
 
 ```cpp
-#include "fsm/backend/cpp/runtime/dispatch_result.hpp"
-#include "fsm/backend/cpp/runtime/step_result.hpp"
+#include "fsm/backend/cpp/runtime/traits/dispatch_result.hpp"
+#include "fsm/backend/cpp/runtime/traits/step_result.hpp"
 ```
 
 ### `fsm::transition_trace`
@@ -259,8 +259,7 @@ class spsc_fsm;
 ### Member Functions
 
 #### Producer Context (Wait-Free O(1), ISR-Safe)
-- `template <typename Event> bool post(Event&& ev) noexcept`: Enqueues event. Returns `false` if queue is full.
-- `template <typename Event> bool enqueue(Event&& ev) noexcept`: FIFO queue push.
+- `template <typename Event> bool post(Event&& ev) noexcept`: Enqueues event into the ring buffer. Returns `false` if the queue is full.
 
 #### Consumer Context (RTOS Worker Thread)
 - `bool process_one()`: Pops and executes the single oldest event.
@@ -275,6 +274,25 @@ class spsc_fsm;
 - `Registers snapshot_registers() const noexcept`: Captures consistent register snapshot using atomic sequence lock without blocking worker.
 - `std::string_view state_name() const noexcept`: Atomic load of active state name.
 - `template <typename State> bool is_in_state() const noexcept`: Atomic state type query.
+
+---
+
+## 6. SPSC Policy-Based Alias: `fsm::make_spsc_fsm`
+
+```cpp
+template <typename Table, typename... Policies>
+using make_spsc_fsm = spsc_fsm<config<Table, Policies...>>;
+```
+
+Equivalent to `spsc_fsm` but uses the policy modifier system (`with_registers<T>`, `with_queue_capacity<N>`, etc.) instead of raw positional template arguments:
+
+```cpp
+// Modern policy-based (preferred):
+fsm::make_spsc_fsm<SensorTable,
+    fsm::with_registers<SensorRegisters>,
+    fsm::with_queue_capacity<256>
+> spsc_sm(regs);
+```
 
 ---
 

@@ -12,16 +12,34 @@
 ```sysml
 package SpacecraftSubsystems {
     state def FlightController {
+        // 0. Data Definitions (Enums and Structs)
+        enum def FlightPhase {
+            Preflight;
+            Ascent;
+            Cruise;
+            Descent;
+            Terminal;
+        }
+
+        struct def NavigationVector {
+            attribute latitude : Real;
+            attribute longitude : Real;
+            attribute altitude : Real;
+        }
+
         // 1. Read-only Input Ports with formal range constraints
         in port sensor_altitude : Real { assert constraint { self >= 0.0 and self <= 100000.0; } }
         in port gps_lock : Boolean;
+        in port target_waypoint : NavigationVector;
 
         // 2. Write-only Output Ports
         out port thruster_level : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
+        out port active_phase : FlightPhase;
 
         // 3. Persistent Internal Memory (Registers / z^-1 state)
         attribute orbit_count : Integer = 0;
         attribute fault_counter : Integer = 0;
+        attribute current_pos : NavigationVector;
 
         // 4. Initial transition entry point
         entry; then Preflight;
@@ -71,8 +89,12 @@ state EmergencyHold;
 | :--- | :--- | :--- |
 | **Full Explicit** | `transition tr1 first Idle accept EvStart if in.gps_lock do action { out.thrust = 50.0; } then Running;` | Complete specification with explicit source, trigger, guard, action, and target. |
 | **Shorthand Trigger** | `transition on EvStart to Running;` | Inline trigger inside a state block targeting `Running`. |
-| **Timed Dwell** | `transition on after 500 ms then TimeoutFault;` | Discrete-time dwell delay transition. |
+| **Temporal Trigger (after)** | `transition on after(500 ms) then TimeoutFault;` | Discrete-time dwell delay transition. |
+| **Temporal Trigger (at)** | `transition on at(12:00:00) then ScheduledSync;` | Absolute clock trigger transition. |
 | **Guarded Shorthand** | `transition if in.sensor_altitude <= 0.0 then Landed;` | Immediate guard-evaluated transition. |
+| **Fork Pseudostate** | `fork Fork1; transition first St1 then Fork1; transition first Fork1 then ParallelA;` | Spawns concurrent execution across orthogonal regions. |
+| **Join Pseudostate** | `join Join1; transition first ParallelA then Join1; transition first Join1 then St2;` | Synchronizes completion of orthogonal regions. |
+| **Connection Point** | `entry point En1; exit point Ex1;` | Structured entry and exit connection points across state boundaries. |
 
 ---
 

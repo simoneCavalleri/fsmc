@@ -1,3 +1,8 @@
+/**
+ * @file test_sysml2_flight_control.cpp
+ * @brief Integration verification suite for OMG SysML v2 Flight Mission Controller pipeline.
+ */
+
 #include <gtest/gtest.h>
 
 #include <sstream>
@@ -10,6 +15,13 @@
 #include "fsm/middleend/pass_manager.hpp"
 
 namespace {
+
+using namespace fsm::ir;
+using namespace fsm::diagnostic;
+using namespace fsm::frontend::formal;
+using namespace fsm::middleend;
+using namespace fsm::middleend::analysis;
+using namespace fsm::backend::cpp;
 
 constexpr const char* kFlightControlSysMLv2 = R"(
 package FlightControlSystem {
@@ -159,8 +171,9 @@ using FlightControlTable =
                                    ReturnToHome>::when<LowBatteryCriticalGuard>::then<LowBatteryCriticalAction>,
                           fsm::row<InFlight, EmergencyStopCmd, Terminated>::then<SendIotAlertAction>>;
 
-using FlightControlFSM =
-    fsm::fsm<FlightControlTable, FlightInPorts, FlightOutPorts, FlightRegisters, MockFlightServices, Preflight>;
+using FlightControlFSM = fsm::make_fsm<FlightControlTable, fsm::with_initial_state<Preflight>,
+                                       fsm::with_ports<FlightInPorts, FlightOutPorts>,
+                                       fsm::with_registers<FlightRegisters>, fsm::with_services<MockFlightServices>>;
 
 }  // namespace
 
@@ -168,16 +181,21 @@ using FlightControlFSM =
 // Unit Tests
 // ============================================================================
 
-TEST(SysML2FlightControlTest, ParseFlightMissionControllerSysMLv2) {
-    fsm::codegen::FsmIr model;
+/**
+ * @brief Verify SysML v2 parsing of aerospace FlightMissionController specification.
+ * @scenario Parse SysML v2 model with typed ports, range assertions, and mission states.
+ * @expected States, transitions, in/out ports, and constraints fully captured in FsmIr.
+ */
+TEST(Sysml2FlightControl, FlightMissionController_ParsedIntoValidFsmIr) {
+    fsm::ir::FsmIr model;
     std::string error;
-    fsm::codegen::Sysml2Parser parser;
+    Sysml2Parser parser;
 
     bool ok = parser.parse(kFlightControlSysMLv2, model, error);
     ASSERT_TRUE(ok) << "Parser error: " << error;
 
     EXPECT_EQ(model.name, "FlightMissionController");
-    EXPECT_EQ(model.ns, "FlightControlSystem");
+    EXPECT_EQ(model.package, "FlightControlSystem");
 
     // Ports
     ASSERT_EQ(model.ports.size(), 5);
@@ -204,12 +222,8 @@ TEST(SysML2FlightControlTest, ParseFlightMissionControllerSysMLv2) {
     EXPECT_EQ(model.variables[0].initial_value, "0");
 
     // Events / Signals
-    EXPECT_TRUE(
-        model.find_signal("TakeoffCmd") != nullptr ||
-        std::any_of(model.events.begin(), model.events.end(), [](const auto& e) { return e.name == "TakeoffCmd"; }));
-    EXPECT_TRUE(model.find_signal("EmergencyStopCmd") != nullptr ||
-                std::any_of(model.events.begin(), model.events.end(),
-                            [](const auto& e) { return e.name == "EmergencyStopCmd"; }));
+    EXPECT_TRUE(model.find_signal("TakeoffCmd") != nullptr);
+    EXPECT_TRUE(model.find_signal("EmergencyStopCmd") != nullptr);
 
     // States
     EXPECT_NE(model.find_state("Preflight"), nullptr);
@@ -222,36 +236,46 @@ TEST(SysML2FlightControlTest, ParseFlightMissionControllerSysMLv2) {
                             [](const auto& a) { return a.name == "SendIotAlert"; }));
 }
 
-TEST(SysML2FlightControlTest, VerificationPassesAndIntervalAnalysis) {
-    fsm::codegen::FsmIr model;
+/**
+ * @brief Verify middle-end safety passes and EFSM interval analysis on flight control model.
+ * @scenario Execute interval analysis and safety verification pass on parsed model.
+ * @expected Passes run without errors and prove variable bounds invariants.
+ */
+TEST(Sysml2FlightControl, IntervalAnalysis_ProvesVariableSafety) {
+    fsm::ir::FsmIr model;
     std::string error;
-    fsm::codegen::Sysml2Parser parser;
+    Sysml2Parser parser;
     ASSERT_TRUE(parser.parse(kFlightControlSysMLv2, model, error));
 
-    fsm::codegen::DiagnosticEngine diag;
-    fsm::codegen::EFSMIntervalAnalyzer interval_analyzer(model);
+    DiagnosticEngine diag;
+    EFSMIntervalAnalyzer interval_analyzer(model);
     auto findings = interval_analyzer.analyze(diag);
 
     // The spec is consistent and valid -> no contract violations
     EXPECT_FALSE(diag.has_errors());
 
-    auto pm = fsm::codegen::PassManager::create_default_pipeline();
+    auto pm = PassManager::create_default_pipeline();
     bool passes_ok = pm.run(model, diag);
     EXPECT_TRUE(passes_ok);
     EXPECT_FALSE(diag.has_errors());
 }
 
-TEST(SysML2FlightControlTest, CppCodeGeneration) {
-    fsm::codegen::FsmIr model;
+/**
+ * @brief Verify C++ code generation for flight control system.
+ * @scenario Invoke CppModelEmitter to generate header code for FlightMissionController.
+ * @expected Emitted C++ code contains all states, typed events, and guard predicates.
+ */
+TEST(Sysml2FlightControl, CppCodeGeneration_ProducesCompilableHeader) {
+    fsm::ir::FsmIr model;
     std::string error;
-    fsm::codegen::Sysml2Parser parser;
+    Sysml2Parser parser;
     ASSERT_TRUE(parser.parse(kFlightControlSysMLv2, model, error));
 
     std::ostringstream ss;
-    fsm::codegen::GeneratorOptions opts;
-    opts.cpp_standard = fsm::codegen::CppStandard::Cpp20;
+    GeneratorOptions opts;
+    opts.cpp_standard = CppStandard::Cpp20;
     opts.include_stubs = true;
-    fsm::codegen::CppModelEmitter::emit_model(ss, model, opts);
+    CppModelEmitter::emit_model(ss, model, opts);
 
     std::string generated_code = ss.str();
     EXPECT_NE(generated_code.find("FlightMissionControllerInPorts"), std::string::npos);
@@ -262,7 +286,12 @@ TEST(SysML2FlightControlTest, CppCodeGeneration) {
     EXPECT_NE(generated_code.find("SendIotAlert"), std::string::npos);
 }
 
-TEST(SysML2FlightControlTest, RuntimeDualParadigmExecution) {
+/**
+ * @brief Verify execution of flight controller under dual synchronous and asynchronous runtime.
+ * @scenario Instantiate runtime state machine, set port inputs, and dispatch TakeoffCmd.
+ * @expected State machine transitions to InFlight, updates outputs, and executes entry actions.
+ */
+TEST(Sysml2FlightControl, DualParadigmRuntime_ExecutesTransitions) {
     MockFlightServices services;
     FlightControlFSM controller(services);
 
@@ -308,7 +337,12 @@ TEST(SysML2FlightControlTest, RuntimeDualParadigmExecution) {
     EXPECT_DOUBLE_EQ(out.motor_thrust, 15.0);
 }
 
-TEST(SysML2FlightControlTest, RuntimeEmergencyStopExecution) {
+/**
+ * @brief Verify runtime emergency stop failsafe transition.
+ * @scenario Dispatch EmergencyStopCmd event during InFlight state.
+ * @expected State machine transitions immediately to Failsafe state and activates failsafe cmd.
+ */
+TEST(Sysml2FlightControl, EmergencyStop_TransitionsToSafeFailsafe) {
     MockFlightServices services;
     FlightControlFSM controller(services);
 

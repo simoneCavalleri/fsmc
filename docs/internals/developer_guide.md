@@ -7,7 +7,7 @@ Welcome to the **`fsmc` Developer & Contributor Guide**. This guide details how 
 ## 1. Architectural Foundations
 
 1. **Zero-Heap, Zero-Exception Embedded Runtime:**
-   The C++ runtime library ([`include/fsm/backend/cpp/runtime/`](file:///home/simone/dev/github/fsmc/include/fsm/backend/cpp/runtime/)) and emitted standalone state machines operate with **0 bytes dynamic heap allocation** (`malloc`/`new`), no virtual tables, and no C++ exceptions. Stack storage for advanced features (UML History, deferred event queues) is strictly bounded at compile-time.
+   The C++ runtime library ([`include/fsm/backend/cpp/runtime/`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/backend/cpp/runtime/)) and emitted standalone state machines operate with **0 bytes dynamic heap allocation** (`malloc`/`new`), no virtual tables, and no C++ exceptions. Stack storage for advanced features (UML History, deferred event queues) is strictly bounded at compile-time.
 2. **MBSE 4-Domain Segregated Datapath:**
    State machines do not rely on monolithic context objects. Transitions interact through 4 strictly segregated memory domains:
     - **`InPorts`**: Read-only input snapshot with formal contract ranges.
@@ -67,7 +67,7 @@ Create your parser class under `include/fsm/frontend/formal/` (for formal models
 #include <string>
 #include "fsm/frontend/common/parser_interface.hpp"
 
-namespace fsm::codegen {
+namespace fsm::frontend {
 
 class CustomModelParser : public IParser {
 public:
@@ -79,7 +79,7 @@ public:
         return FrontendKind::Formal;
     }
 
-    bool parse(std::string_view source_code, FsmIr& out_model, std::string& out_error) override {
+    bool parse(std::string_view source_code, fsm::ir::FsmIr& out_model, std::string& out_error) override {
         out_model.name = "ParsedStateMachine";
 
         // Step 1: Parse states and transitions
@@ -95,11 +95,11 @@ public:
     }
 };
 
-} // namespace fsm::codegen
+} // namespace fsm::frontend
 ```
 
 #### 2. Register in `ParserFactory`
-Register your new parser in [`include/fsm/frontend/common/parser_factory.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/frontend/common/parser_factory.hpp).
+Register your new parser in [`include/fsm/frontend/common/parser_factory.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/frontend/common/parser_factory.hpp).
 
 #### 3. Add Unit Tests
 Add test cases in `tests/frontend/` using the Arrange-Act-Assert (AAA) pattern to verify state hierarchy, event triggers, and error reporting.
@@ -116,7 +116,7 @@ Create your pass in `include/fsm/middleend/passes/` or `include/fsm/middleend/an
 ```cpp
 #pragma once
 
-#include "fsm/middleend/pass.hpp"
+#include "fsm/middleend/pass_manager.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 
 namespace fsm::middleend {
@@ -127,12 +127,12 @@ public:
         return "RedundantTransitionPass";
     }
 
-    PassResult run(fsm::codegen::FsmIr& model, fsm::codegen::DiagnosticEngine& diag) override {
+    PassResult run(fsm::ir::FsmIr& model, fsm::diagnostic::DiagnosticEngine& diag) override {
         bool modified = false;
 
         for (const auto& trans : model.transitions) {
             if (trans.source == trans.target && !trans.guard.has_value() && trans.event.empty()) {
-                diag.report(fsm::codegen::Diagnostic::warning(
+                diag.report(fsm::diagnostic::Diagnostic::warning(
                     "W0401",
                     "Spontaneous unguarded self-transition on state '" + trans.source + "' causes infinite livelocks."
                 ));
@@ -147,32 +147,29 @@ public:
 ```
 
 #### 2. Register in `PassManager`
-Register the pass in [`include/fsm/middleend/pass_manager.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/middleend/pass_manager.hpp) within the default or optimizing pipeline.
+Register the pass in [`include/fsm/middleend/pass_manager.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/middleend/pass_manager.hpp) within the default or optimizing pipeline.
 
 ---
 
-### Recipe C: Writing a Backend Emitter / Serializer
+### Recipe C: Writing a Backend Serializer
 
-To emit a new programming language target or diagram syntax:
+To emit a new textual diagram or formal MBSE format:
 
-#### 1. Inherit from `IEmitter`
-Create your serializer in `include/fsm/backend/`:
+#### 1. Implement a Format Serializer
+Create your serializer in `include/fsm/backend/diagram/` or `include/fsm/backend/formal/`:
 
 ```cpp
 #pragma once
 
 #include <sstream>
-#include "fsm/backend/emitter_interface.hpp"
+#include <string>
+#include "fsm/ir/fsm_ir.hpp"
 
-namespace fsm::codegen {
+namespace fsm::backend::diagram {
 
-class CustomGraphEmitter : public IEmitter {
+class CustomGraphSerializer {
 public:
-    [[nodiscard]] std::string_view format_name() const noexcept override {
-        return "custom_graph";
-    }
-
-    [[nodiscard]] std::string emit(const FsmIr& model, const GeneratorOptions& options) const override {
+    static std::string serialize(const fsm::ir::FsmIr& model) {
         std::ostringstream ss;
         ss << "# State Machine: " << model.name << "\n";
         for (const auto& t : model.transitions) {
@@ -182,11 +179,11 @@ public:
     }
 };
 
-} // namespace fsm::codegen
+} // namespace fsm::backend::diagram
 ```
 
 #### 2. Register in `EmitterFactory`
-Add the emitter to [`include/fsm/backend/emitter_factory.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/backend/emitter_factory.hpp).
+Dispatch the new serializer in `EmitterFactory::emit_diagram` in [`src/backend/emitter_factory.cpp`](https://github.com/simoneCavalleri/fsmc/blob/main/src/backend/emitter_factory.cpp) and register its format identifier in `EmitterFactory::supported_formats()`.
 
 ---
 
@@ -194,7 +191,7 @@ Add the emitter to [`include/fsm/backend/emitter_factory.hpp`](file:///home/simo
 
 When enhancing the C++ runtime engine:
 
-1. **Edit Canonical Headers**: Make changes inside [`include/fsm/backend/cpp/runtime/`](file:///home/simone/dev/github/fsmc/include/fsm/backend/cpp/runtime/). Keep concerns separated in `detail/` (`history_manager.hpp`, `deferred_manager.hpp`, `transition_executor.hpp`, `reentrancy_tracker.hpp`, `notification_dispatcher.hpp`).
+1. **Edit Canonical Headers**: Make changes inside [`include/fsm/backend/cpp/runtime/`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/backend/cpp/runtime/). Keep concerns separated in `detail/` (`history_manager.hpp`, `deferred_manager.hpp`, `transition_executor.hpp`, `reentrancy_tracker.hpp`, `notification_dispatcher.hpp`).
 2. **Synchronize Standalone Bundles**: Run the standalone generation script to update the single-header distribution files:
    ```bash
    python3 scripts/generate_standalone_runtime.py
@@ -225,7 +222,7 @@ All unit tests follow strict conventions:
 TEST(CustomParserTest, IngestGuardedTransition) {
     // Arrange
     const std::string source = "state Idle -> Active on EvStart if in.temp > 50;";
-    fsm::codegen::FsmIr model;
+    fsm::ir::FsmIr model;
     std::string error;
     CustomParser parser;
 

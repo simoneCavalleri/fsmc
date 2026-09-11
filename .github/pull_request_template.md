@@ -23,13 +23,13 @@
 ## Architecture & Subsystem Impact
 
 <!-- Which compiler tier does this PR modify? -->
-- [ ] `include/fsm/frontend/` (SysML v2, UML/Cameo XMI, SCXML, JSON, PlantUML, Mermaid, DOT)
-- [ ] `include/fsm/ir/` (Core FsmIr metamodel, Port/Variable definitions, LTL properties)
-- [ ] `include/fsm/middleend/` (Optimization passes, dead-state pruning, interval analysis, SMT/Z3, nuXmv)
+- [ ] `include/fsm/frontend/` (SysML v2, UML/Cameo XMI, SCXML, Stateflow, JSON, PlantUML, Mermaid, DOT)
+- [ ] `include/fsm/ir/` (Core FsmIr metamodel, Port/Variable definitions, LTL/CTL properties)
+- [ ] `include/fsm/middleend/` (Optimization passes, dead-state pruning, interval analysis, nuXmv model checking)
 - [ ] `include/fsm/backend/` (C++17/C++20 generators, standalone runtime emitter, diagram serializers)
-- [ ] `include/fsm/runtime/` (Synchronous FSM, SPSC ring buffer, MPSC thread-safe FSM, lifecycle hooks)
+- [ ] `include/fsm/backend/cpp/runtime/` (Synchronous FSM, SPSC ring buffer, MPSC thread-safe FSM, lifecycle hooks)
 - [ ] `tools/` (fsmc, fsm-opt CLI binaries)
-- [ ] `playground/` (WebAssembly IDE bindings)
+- [ ] `examples/` (End-to-end showcases and reference models)
 
 ## Verification & Testing
 

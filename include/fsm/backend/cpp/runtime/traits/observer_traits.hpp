@@ -52,6 +52,18 @@ struct is_dynamic_observer<std::function<void(const transition_info&)>> : std::t
 template <typename T>
 inline constexpr bool is_dynamic_observer_v = is_dynamic_observer<T>::value;
 
+namespace detail {
+template <typename T, typename = void>
+struct has_advance_tick : std::false_type {};
+
+template <typename T>
+struct has_advance_tick<T, std::void_t<decltype(std::declval<T>().advance_tick(std::declval<std::uint64_t>()))>>
+    : std::true_type {};
+}  // namespace detail
+
+template <typename T>
+inline constexpr bool has_advance_tick_v = detail::has_advance_tick<T>::value;
+
 // Empty tag type for non-allocated optional sub-objects
 struct empty_storage {};
 

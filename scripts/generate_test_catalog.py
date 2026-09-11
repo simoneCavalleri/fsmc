@@ -20,6 +20,8 @@ SUBSYSTEMS = [
     ("Core Runtime Subsystem", "tests/backend/cpp/runtime"),
     ("C++ Backend Codegen Subsystem", "tests/backend/cpp"),
     ("Diagram & Emitter Backend Subsystem", "tests/backend/diagram"),
+    ("Multi-Format Emitter & Factory Subsystem", "tests/backend/common"),
+    ("MC/DC Verification & Harness Subsystem", "tests/backend/verification"),
     ("Formal Model Checking & nuXmv Subsystem", "tests/backend/formal"),
     ("Requirements Traceability (RTM) Subsystem", "tests/backend/rtm"),
     ("Diagnostic Engine Subsystem", "tests/diagnostic"),
@@ -45,7 +47,7 @@ def extract_test_info(content: str):
         doc_text = "\n".join(lines).strip()
 
         # Extract Brief Intent
-        brief_match = re.search(r"@brief\s+Test\s+Intent:\s*(.*?)(?=\n\n|\n[A-Z@]|Scenario:|$)", doc_text, re.DOTALL | re.IGNORECASE)
+        brief_match = re.search(r"@brief\s+(?:Test\s+Intent:\s*)?(.*?)(?=\n\n|\n[A-Z@]|Scenario:|$)", doc_text, re.DOTALL | re.IGNORECASE)
         brief = brief_match.group(1).strip() if brief_match else ""
 
         # Extract Scenario

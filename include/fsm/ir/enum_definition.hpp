@@ -1,0 +1,113 @@
+/**
+ * @file enum_definition.hpp
+ * @brief Enumeration Definitions, Literals, and Underlying Types in FSM IR.
+ */
+
+#pragma once
+
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+namespace fsm::ir {
+
+/**
+ * @brief Represents an individual literal within an enumeration definition.
+ */
+struct EnumLiteral {
+    std::string name;              ///< Literal identifier (e.g. "Standby", "Active")
+    std::optional<int64_t> value;  ///< Explicit numeric value if assigned
+    std::string description;       ///< Optional documentation or annotation
+
+    EnumLiteral() = default;
+    explicit EnumLiteral(std::string lit_name, std::optional<int64_t> val = std::nullopt, std::string desc = "")
+        : name(std::move(lit_name)), value(val), description(std::move(desc)) {}
+
+    bool operator==(const EnumLiteral& other) const noexcept {
+        return name == other.name && value == other.value && description == other.description;
+    }
+};
+
+/**
+ * @brief Represents a user-defined enumeration type definition in the FSM IR.
+ *
+ * Mapped to C++ `enum class <Name> : <UnderlyingType>` during code emission,
+ * enabling strong typing and reflection serializers (`to_string()`).
+ */
+struct EnumDefinition {
+    std::string name;  ///< Enumeration type name (e.g. "FmsOperatingMode")
+    std::string underlying_type{
+        "uint8_t"};                     ///< Underlying integer type (default uint8_t for embedded memory efficiency)
+    std::vector<EnumLiteral> literals;  ///< Sequence of enumeration literals
+    std::string description;            ///< Optional type-level documentation
+
+    EnumDefinition() = default;
+    explicit EnumDefinition(std::string enum_name, std::string underlying = "uint8_t", std::string desc = "")
+        : name(std::move(enum_name)), underlying_type(std::move(underlying)), description(std::move(desc)) {}
+
+    /**
+     * @brief Checks whether a literal with the given name exists in the enumeration.
+     */
+    [[nodiscard]] bool has_literal(std::string_view lit_name) const noexcept {
+        return find_literal(lit_name) != nullptr;
+    }
+
+    /**
+     * @brief Finds an enum literal by name.
+     * @param lit_name The literal identifier.
+     * @return Const pointer to EnumLiteral if found, nullptr otherwise.
+     */
+    [[nodiscard]] const EnumLiteral* find_literal(std::string_view lit_name) const noexcept {
+        for (const auto& lit : literals) {
+            if (lit.name == lit_name) {
+                return &lit;
+            }
+        }
+        return nullptr;
+    }
+
+    /**
+     * @brief Finds a mutable enum literal by name.
+     * @param lit_name The literal identifier.
+     * @return Mutable pointer to EnumLiteral if found, nullptr otherwise.
+     */
+    [[nodiscard]] EnumLiteral* find_literal_mut(std::string_view lit_name) noexcept {
+        for (auto& lit : literals) {
+            if (lit.name == lit_name) {
+                return &lit;
+            }
+        }
+        return nullptr;
+    }
+
+    /**
+     * @brief Adds or updates a literal in the enumeration.
+     * @param lit The literal to add.
+     */
+    void add_literal(EnumLiteral lit) {
+        for (auto& existing : literals) {
+            if (existing.name == lit.name) {
+                existing = std::move(lit);
+                return;
+            }
+        }
+        literals.push_back(std::move(lit));
+    }
+
+    /**
+     * @brief Adds a literal by name, optional numeric value, and description.
+     */
+    void add_literal(std::string lit_name, std::optional<int64_t> val = std::nullopt, std::string desc = "") {
+        add_literal(EnumLiteral(std::move(lit_name), val, std::move(desc)));
+    }
+
+    bool operator==(const EnumDefinition& other) const noexcept {
+        return name == other.name && underlying_type == other.underlying_type && literals == other.literals &&
+               description == other.description;
+    }
+};
+
+}  // namespace fsm::ir

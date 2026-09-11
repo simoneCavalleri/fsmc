@@ -19,6 +19,8 @@ struct OptOptions {
     bool print_before_all = false;
     bool print_after_all = false;
     bool werror = false;
+    std::string pipe_through_cmd;
+    std::vector<std::string> pass_plugins;
     bool show_help = false;
     bool show_version = false;
     bool list_passes = false;
@@ -84,6 +86,24 @@ inline void print_available_passes() {
               << " 10. efsm-data-path       - Abstract interpretation for unreachable data paths/dead guards\n"
               << " 11. safety-verifier      - Graph reachability, deadlock traps, and livelock cycle check\n"
               << " 12. model-checking       - Formal verification of temporal LTL/CTL formulas\n"
+              << " 13. orthogonal-product   - Cartesian product expansion of parallel orthogonal regions\n"
+              << " 14. wcet-analysis        - Analyzes micro-step execution chains and detects Zeno-cycles\n"
+              << " 15. constant-folding     - Folds constant guard conditions and prunes dead transitions\n"
+              << " 16. state-minimization   - DFA state minimization via Hopcroft/Moore partitioning\n"
+              << " 17. guard-satisfiability - SMT-based or domain-based guard unsatisfiability analysis\n"
+              << " 18. fork-join-lowering   - Lowers fork splits and join rendezvous barriers\n"
+              << " 19. history-lowering     - Lowers shallow and deep history to shadow registers\n"
+              << " 20. deferred-event-lowering - Lowers deferred events into bounded FIFO buffers\n"
+              << " 21. boundary-action-fusion - Flattens LCA boundary cascades into linear action sequences\n"
+              << " 22. dead-action-elimination - Dead store elimination (DSE) across datapath variables\n"
+              << " 23. register-liveness    - Liveness analysis and variable interference graph\n"
+              << " 24. transition-fusion    - Fuses deterministic zero-time microsteps into macro-transitions\n"
+              << " 25. common-action-factoring - Factors identical actions across convergent/divergent edges\n"
+              << " 26. livelock-analysis    - Detects non-progressive internal cycles\n"
+              << " 27. priority-conflict-check - Verifies hierarchical preemption determinism\n"
+              << " 28. timed-invariants-verifier - Formally verifies clock invariants vs outgoing deadlines\n"
+              << " 29. event-queue-bound    - Computes static upper bound on event queue depth\n"
+              << " 30. pipe-through         - Filters and transforms IR via external Unix command\n"
               << "============================================================================\n";
 }
 
@@ -104,11 +124,26 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
             opts.list_passes = true;
             return opts;
         }
-        if ((arg == "-i" || arg == "--input") && i + 1 < argc) {
+        if (arg == "-i" || arg == "--input") {
+            if (i + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + std::string(arg);
+                return opts;
+            }
             opts.input_path = argv[++i];
-        } else if ((arg == "-o" || arg == "--output") && i + 1 < argc) {
+        } else if (arg == "-o" || arg == "--output") {
+            if (i + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + std::string(arg);
+                return opts;
+            }
             opts.output_path = argv[++i];
-        } else if (arg == "--format" && i + 1 < argc) {
+        } else if (arg == "--format") {
+            if (i + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + std::string(arg);
+                return opts;
+            }
             opts.format_override = argv[++i];
         } else if (arg.starts_with("--passes=")) {
             opts.custom_passes = arg.substr(9);
@@ -144,6 +179,24 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
             opts.profile = true;
         } else if (arg == "--verify" || arg == "--check") {
             opts.verify_only = true;
+        } else if (arg == "--pipe-through") {
+            if (i + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + std::string(arg);
+                return opts;
+            }
+            opts.pipe_through_cmd = argv[++i];
+        } else if (arg.rfind("--pipe-through=", 0) == 0) {
+            opts.pipe_through_cmd = std::string(arg.substr(15));
+        } else if (arg == "--load-pass-plugin") {
+            if (i + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + std::string(arg);
+                return opts;
+            }
+            opts.pass_plugins.push_back(argv[++i]);
+        } else if (arg.rfind("--load-pass-plugin=", 0) == 0) {
+            opts.pass_plugins.push_back(std::string(arg.substr(19)));
         } else if (!arg.starts_with("-")) {
             if (opts.input_path.empty()) {
                 opts.input_path = arg;

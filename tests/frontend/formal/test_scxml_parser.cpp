@@ -1,3 +1,8 @@
+/**
+ * @file test_scxml_parser.cpp
+ * @brief Unit test suite for the W3C SCXML (State Chart XML) frontend parser.
+ */
+
 #include <gtest/gtest.h>
 
 #include <string>
@@ -6,18 +11,20 @@
 #include "fsm/frontend/formal/scxml_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend::formal;
+using namespace fsm::frontend;
+using namespace fsm::backend::cpp;
+using namespace fsm::backend;
+using namespace fsm::ir;
 
 namespace {
 
 /**
- * @brief Test Intent: Verify W3C SCXML parsing with internal transitions and `<send event="..."/>` actions.
- *
- * Scenario:
- * - Parse SCXML document with transitions containing guards (`cond="..."`) and child action tags (`<send>`).
- * - Verify targetless transitions are categorized as internal transitions.
+ * @brief Verify W3C SCXML document parsing with internal transitions.
+ * @scenario Parse basic SCXML document with state declarations, event transitions, and type=internal.
+ * @expected FsmIr populated with states, transitions, and transition type classification.
  */
-TEST(ScxmlParserTest, BasicScxmlParsingWithInternalTransitions) {
+TEST(ScxmlParser, BasicScxmlDocument_ParsedIntoValidFsmIr) {
     const std::string scxml_content = R"(<?xml version="1.0" encoding="UTF-8"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Disconnected" name="ScxmlConnectionFSM">
   <state id="Disconnected">
@@ -70,13 +77,11 @@ TEST(ScxmlParserTest, BasicScxmlParsingWithInternalTransitions) {
 }
 
 /**
- * @brief Test Intent: Verify SCXML industrial press controller snippet with attribute-based actions.
- *
- * Scenario:
- * - Parse 6-state industrial machine with transition attributes `action="ActionName"`.
- * - Verify all 9 transitions, guards, and action bindings are captured.
+ * @brief Verify parsing of real-world industrial press SCXML specification.
+ * @scenario Parse SCXML industrial press controller with compound states and guard conditions.
+ * @expected Hierarchy, safety guards, and action scripts faithfully imported.
  */
-TEST(ScxmlParserTest, UserReportedIndustrialPressSnippet) {
+TEST(ScxmlParser, IndustrialPressSnippet_ParsedIntoValidFsmIr) {
     const std::string scxml_content = R"(<?xml version="1.0" encoding="UTF-8"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Idle" name="GeneratedFSM">
   <state id="Idle">
@@ -115,13 +120,11 @@ TEST(ScxmlParserTest, UserReportedIndustrialPressSnippet) {
 }
 
 /**
- * @brief Test Intent: Verify SCXML attribute ordering permutations and self-closing `<state .../>` tags.
- *
- * Scenario:
- * - Parse SCXML with varying XML attribute order and empty leaf states.
- * - Verify seamless parsing without tag mismatch errors.
+ * @brief Verify robustness against SCXML attribute permutations and self-closing state tags.
+ * @scenario Parse SCXML with varied attribute orders, empty states, and self-closing tags.
+ * @expected Parser processes document without syntax errors or missing nodes.
  */
-TEST(ScxmlParserTest, AttributePermutationsAndSelfClosingStates) {
+TEST(ScxmlParser, AttributePermutationsAndSelfClosingStates_ParsedCorrectly) {
     const std::string scxml_content = R"(<?xml version="1.0" encoding="UTF-8"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="S1">
   <state id="S1">
@@ -145,14 +148,11 @@ TEST(ScxmlParserTest, AttributePermutationsAndSelfClosingStates) {
 }
 
 /**
- * @brief Test Intent: Verify W3C SCXML `<datamodel>`, `<data>`, `<onentry>`, `<onexit>`, and `<assign>` tags.
- *
- * Scenario:
- * - Parse SCXML datamodel definitions (`<data id="..." expr="..." type="..."/>`).
- * - Parse `<onentry>` and `<onexit>` action blocks with variable assignments.
- * - Verify FsmIr variables and state lifecycle action signatures are captured.
+ * @brief Verify SCXML <datamodel>, <onentry>, and <onexit> lifecycle hooks.
+ * @scenario Parse SCXML declaring data variables, initial values, and entry/exit scripts.
+ * @expected FsmIr variables populated and lifecycle actions captured in state nodes.
  */
-TEST(ScxmlParserTest, NativeDatamodelAndLifecycleHooks) {
+TEST(ScxmlParser, NativeDatamodelAndLifecycleHooks_CapturedInIr) {
     const std::string scxml_content = R"(<?xml version="1.0" encoding="UTF-8"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Init" name="DatamodelFSM">
   <datamodel>
@@ -193,16 +193,16 @@ TEST(ScxmlParserTest, NativeDatamodelAndLifecycleHooks) {
     ASSERT_EQ(init_st->entry_actions.size(), 1u);
     EXPECT_EQ(init_st->entry_actions[0].name, "InitSensors");
     ASSERT_EQ(init_st->entry_actions[0].assignments.size(), 1u);
-    EXPECT_EQ(init_st->entry_actions[0].assignments[0].target_variable, "retry_count");
+    EXPECT_EQ(init_st->entry_actions[0].assignments[0].target, "retry_count");
 
     ASSERT_EQ(init_st->exit_actions.size(), 1u);
     EXPECT_EQ(init_st->exit_actions[0].name, "Cleanup");
 
     // Check transition assignments
     ASSERT_EQ(model.transitions.size(), 1u);
-    ASSERT_TRUE(model.transitions[0].action_sig.has_value());
-    ASSERT_EQ(model.transitions[0].action_sig->assignments.size(), 1u);
-    EXPECT_EQ(model.transitions[0].action_sig->assignments[0].target_variable, "retry_count");
+    ASSERT_TRUE(model.transitions[0].transition_action.has_value());
+    ASSERT_EQ(model.transitions[0].transition_action->assignments.size(), 1u);
+    EXPECT_EQ(model.transitions[0].transition_action->assignments[0].target, "retry_count");
 }
 
 }  // namespace

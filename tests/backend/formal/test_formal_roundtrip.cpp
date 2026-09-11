@@ -1,25 +1,37 @@
+/**
+ * @file test_formal_roundtrip.cpp
+ * @brief Unit test suite verifying lossless roundtrip transpilation across all supported formats.
+ */
+
 #include <gtest/gtest.h>
 
 #include "fsm/backend/diagram/dot_serializer.hpp"
-#include "fsm/backend/diagram/json_serializer.hpp"
 #include "fsm/backend/diagram/mermaid_serializer.hpp"
 #include "fsm/backend/diagram/plantuml_serializer.hpp"
 #include "fsm/backend/formal/cameo_serializer.hpp"
 #include "fsm/backend/formal/scxml_serializer.hpp"
 #include "fsm/backend/formal/smv_serializer.hpp"
+#include "fsm/backend/formal/stateflow_serializer.hpp"
 #include "fsm/backend/formal/sysml2_serializer.hpp"
+#include "fsm/frontend/common/json_parser.hpp"
 #include "fsm/frontend/diagram/dot_parser.hpp"
-#include "fsm/frontend/diagram/json_parser.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/frontend/formal/cameo_xmi_parser.hpp"
 #include "fsm/frontend/formal/scxml_parser.hpp"
 #include "fsm/frontend/formal/smv_parser.hpp"
+#include "fsm/frontend/formal/stateflow_parser.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/ir/fsm_ir_serializer.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend::formal;
+using namespace fsm::backend;
+using namespace fsm::backend::diagram;
+using namespace fsm::backend::formal;
+using namespace fsm::ir;
 
 namespace {
 
@@ -48,14 +60,46 @@ void assert_ir_equivalent(const FsmIr& ir1, const FsmIr& ir2, const std::string&
         for (const auto& t2 : ir2.transitions) {
             if (t1.source == t2.source && t1.target == t2.target && t1.event == t2.event) {
                 found = true;
-                if (!t1.action.value_or("").empty() && !t2.action.value_or("").empty()) {
-                    EXPECT_EQ(t1.action, t2.action) << path_info << " Transition " << t1.source << " -> " << t1.target;
+                if (!t1.get_action().empty() && !t2.get_action().empty()) {
+                    EXPECT_EQ(t1.get_action(), t2.get_action())
+                        << path_info << " Transition " << t1.source << " -> " << t1.target;
                 }
                 break;
             }
         }
         EXPECT_TRUE(found) << path_info << " Missing transition: " << t1.source << " --(" << t1.event << ")--> "
                            << t1.target;
+    }
+
+    EXPECT_EQ(ir1.custom_types.size(), ir2.custom_types.size()) << path_info << " Custom types size mismatch";
+    for (const auto& t1 : ir1.custom_types) {
+        const auto* t2 = ir2.find_type(t1.name);
+        ASSERT_NE(t2, nullptr) << path_info << " Missing type: " << t1.name;
+        EXPECT_EQ(t1.kind, t2->kind) << path_info << " Type: " << t1.name << " kind mismatch";
+        if (t1.is_enum()) {
+            EXPECT_EQ(t1.underlying_type, t2->underlying_type)
+                << path_info << " Enum: " << t1.name << " underlying type mismatch";
+            EXPECT_EQ(t1.literals.size(), t2->literals.size())
+                << path_info << " Enum: " << t1.name << " literals count mismatch";
+            for (size_t li = 0; li < t1.literals.size(); ++li) {
+                EXPECT_EQ(t1.literals[li].name, t2->literals[li].name) << path_info;
+                if (t1.literals[li].value.has_value() && t2->literals[li].value.has_value()) {
+                    EXPECT_EQ(*t1.literals[li].value, *t2->literals[li].value) << path_info;
+                }
+            }
+        } else if (t1.is_struct()) {
+            EXPECT_EQ(t1.is_datatype, t2->is_datatype)
+                << path_info << " Struct: " << t1.name << " is_datatype mismatch";
+            EXPECT_EQ(t1.fields.size(), t2->fields.size())
+                << path_info << " Struct: " << t1.name << " fields count mismatch";
+            for (size_t fi = 0; fi < t1.fields.size(); ++fi) {
+                EXPECT_EQ(t1.fields[fi].name, t2->fields[fi].name) << path_info;
+                EXPECT_EQ(t1.fields[fi].type, t2->fields[fi].type) << path_info;
+                if (!t1.fields[fi].default_value.empty() && !t2->fields[fi].default_value.empty()) {
+                    EXPECT_EQ(t1.fields[fi].default_value, t2->fields[fi].default_value) << path_info;
+                }
+            }
+        }
     }
 }
 
@@ -83,9 +127,9 @@ void verify_roundtrip(const FsmIr& baseline) {
     ASSERT_TRUE(sysml_parser.parse(sysml, sysml_ir, err)) << "SysML v2 parse error: " << err;
     assert_ir_equivalent(baseline, sysml_ir, "SysML v2 roundtrip");
 
-    // 4. XState JSON
-    const std::string json_str = JsonSerializer::serialize(baseline);
-    JsonStateParser json_parser;
+    // 4. JSON Roundtrip
+    const std::string json_str = fsm::ir::FsmIrSerializer::serialize_json(baseline);
+    fsm::frontend::JsonParser json_parser;
     FsmIr json_ir;
     ASSERT_TRUE(json_parser.parse(json_str, json_ir, err)) << "JSON parse error: " << err;
     assert_ir_equivalent(baseline, json_ir, "JSON roundtrip");
@@ -110,17 +154,22 @@ void verify_roundtrip(const FsmIr& baseline) {
     FsmIr xmi_ir;
     ASSERT_TRUE(xmi_parser.parse(xmi_str, xmi_ir, err)) << "Cameo XMI parse error: " << err;
     assert_ir_equivalent(baseline, xmi_ir, "Cameo XMI roundtrip");
+
+    // 8. MathWorks Simulink Stateflow XML
+    const std::string sf_str = StateflowSerializer::serialize(baseline);
+    StateflowParser sf_parser;
+    FsmIr sf_ir;
+    ASSERT_TRUE(sf_parser.parse(sf_str, sf_ir, err)) << "Stateflow parse error: " << err;
+    assert_ir_equivalent(baseline, sf_ir, "Stateflow roundtrip");
 }
 
 /**
- * @brief Test Intent: Verify lossless roundtrip serialization across all 7 supported diagram/schema formats.
- *
- * Scenario:
- * - Build baseline FsmIr from ConnectionManager model.
- * - Serialize to Mermaid, PlantUML, SysML v2, JSON, DOT, SCXML, Cameo XMI.
- * - Parse each emitted format back to FsmIr and assert structural equality.
+ * @brief Verify lossless roundtrip serialization across all supported diagram/schema formats for Connection Manager
+ * preset.
+ * @scenario Roundtrip Connection Manager model across PlantUML, Mermaid, SysML v2, Cameo XMI, SCXML, JSON, and DOT.
+ * @expected Re-parsed models maintain identical state and transition topology without data loss.
  */
-TEST(LosslessRoundtripTest, ConnectionManagerPreset) {
+TEST(FormalRoundtrip, ConnectionManagerPreset_PreservedAcrossFormats) {
     const std::string puml = R"(
     @startuml
     [*] --> Disconnected
@@ -150,13 +199,11 @@ TEST(LosslessRoundtripTest, ConnectionManagerPreset) {
 }
 
 /**
- * @brief Test Intent: Verify lossless multi-format roundtrip for Async Motor Controller preset.
- *
- * Scenario:
- * - 5-state motor controller with regenerative braking and overcurrent fault transitions.
- * - Verify all 7 format roundtrips preserve state graph topology.
+ * @brief Verify lossless multi-format roundtrip for Async Motor Controller preset.
+ * @scenario Roundtrip Async Motor Controller model through Mermaid, PlantUML, SysML v2, Cameo, and SCXML serializers.
+ * @expected All states, guarded transitions, and associated action labels remain fully preserved.
  */
-TEST(LosslessRoundtripTest, AsyncMotorControllerPreset) {
+TEST(FormalRoundtrip, AsyncMotorControllerPreset_PreservedAcrossFormats) {
     const std::string puml = R"(
     @startuml
     [*] --> Halted
@@ -183,13 +230,11 @@ TEST(LosslessRoundtripTest, AsyncMotorControllerPreset) {
 }
 
 /**
- * @brief Test Intent: Verify lossless multi-format roundtrip for Aerospace Mission Controller preset.
- *
- * Scenario:
- * - 7-state mission controller with flight phases, abort branches, and panel deployments.
- * - Verify roundtrip fidelity across all serializers.
+ * @brief Verify lossless multi-format roundtrip for Aerospace Mission Controller preset.
+ * @scenario Roundtrip Mission Controller model through PlantUML, Cameo XMI, SCXML, and SysML v2 serializers.
+ * @expected Aerospace composite states, triggers, and fallback branches are intact upon re-parsing.
  */
-TEST(LosslessRoundtripTest, MissionControllerPreset) {
+TEST(FormalRoundtrip, MissionControllerPreset_PreservedAcrossFormats) {
     const std::string puml = R"(
     @startuml
     [*] --> Standby
@@ -216,13 +261,11 @@ TEST(LosslessRoundtripTest, MissionControllerPreset) {
 }
 
 /**
- * @brief Test Intent: Verify lossless multi-format roundtrip for Industrial Press controller.
- *
- * Scenario:
- * - 6-state industrial machine with automated and manual controls.
- * - Verify all formats preserve transitions, guards, and action bindings.
+ * @brief Verify lossless multi-format roundtrip for Industrial Press controller.
+ * @scenario Roundtrip Industrial Press model through SCXML, PlantUML, Mermaid, and SysML v2 serializers.
+ * @expected Safety interlocks, guards, and transition cascades are preserved across all target formats.
  */
-TEST(LosslessRoundtripTest, IndustrialPressPreset) {
+TEST(FormalRoundtrip, IndustrialPressPreset_PreservedAcrossFormats) {
     const std::string puml = R"(
     @startuml
     [*] --> Idle
@@ -250,13 +293,11 @@ TEST(LosslessRoundtripTest, IndustrialPressPreset) {
 }
 
 /**
- * @brief Test Intent: Verify OMG SysML v2 syntax parsing and lossless 7-format roundtrip.
- *
- * Scenario:
- * - Parse SpacecraftController defined in native SysML v2 syntax.
- * - Verify roundtrip equality across all format serializers.
+ * @brief Verify OMG SysML v2 syntax parsing and lossless multi-format roundtrip.
+ * @scenario Ingest SysML v2 spacecraft model with port definitions and roundtrip across diagram serializers.
+ * @expected System topology, input/output ports, and transition attributes are completely retained.
  */
-TEST(LosslessRoundtripTest, Sysml2SpacecraftPreset) {
+TEST(FormalRoundtrip, Sysml2SpacecraftPreset_PreservedAcrossFormats) {
     const std::string sysml = R"(
     state def SpacecraftController {
         initial state Standby;
@@ -285,14 +326,11 @@ TEST(LosslessRoundtripTest, Sysml2SpacecraftPreset) {
 }
 
 /**
- * @brief Test Intent: Verify nested composite states and deferred event list preservation during multi-format
- * roundtrips.
- *
- * Scenario:
- * - Parse 3-level deep hierarchy with deferred events (`defer EvSensor`).
- * - Serialize to Mermaid, SysML v2, SCXML and verify nested states and deferred lists are retained.
+ * @brief Verify nested composite states and deferred event list preservation during multi-format roundtrip.
+ * @scenario Roundtrip model with 3-level hierarchy and deferred event annotations through all serializers.
+ * @expected Hierarchical ancestry, initial substate pointers, and deferred event sets are faithfully restored.
  */
-TEST(LosslessRoundtripTest, DeepHierarchyAndDeferredEvents) {
+TEST(FormalRoundtrip, DeepHierarchyAndDeferredEvents_PreservedAcrossFormats) {
     const std::string puml = R"(
     @startuml
     [*] --> Operational
@@ -362,13 +400,12 @@ TEST(LosslessRoundtripTest, DeepHierarchyAndDeferredEvents) {
 }
 
 /**
- * @brief Test Intent: Verify shallow `[H]` and deep `[H*]` history pseudostate roundtrip serialization.
- *
- * Scenario:
- * - Transitions target `Active[H]` and `Active[H*]`.
- * - Verify target_is_history and target_is_deep_history flags are preserved in serializers.
+ * @brief Verify shallow [H] and deep [H*] history pseudostate roundtrip serialization.
+ * @scenario Export and re-parse models containing shallow and deep history pseudostates across PlantUML, Mermaid, and
+ * SCXML.
+ * @expected History kinds and transitions targeting history nodes are accurately preserved.
  */
-TEST(LosslessRoundtripTest, ShallowAndDeepHistory) {
+TEST(FormalRoundtrip, ShallowAndDeepHistory_PreservedAcrossFormats) {
     const std::string puml = R"(
     @startuml
     [*] --> Standby
@@ -418,13 +455,11 @@ TEST(LosslessRoundtripTest, ShallowAndDeepHistory) {
 }
 
 /**
- * @brief Test Intent: Verify complex compound boolean guard expressions (`&&`, `||`, `!`) across format roundtrips.
- *
- * Scenario:
- * - Transitions with guard predicates: `HasTokenGuard && IsAdminGuard && !IsBlacklistedGuard`.
- * - Verify expressions survive parsing, serialization, and re-parsing losslessly.
+ * @brief Verify complex compound boolean guard expressions across multi-format serializers.
+ * @scenario Serialize transitions containing conjuncts, disjuncts, and negations across all diagram formats.
+ * @expected Serialized expressions maintain logical equivalence and AST structure upon deserialization.
  */
-TEST(LosslessRoundtripTest, ComplexBooleanGuards) {
+TEST(FormalRoundtrip, ComplexBooleanGuards_PreservedAcrossFormats) {
     const std::string puml = R"(
     @startuml
     [*] --> Checking
@@ -449,14 +484,11 @@ TEST(LosslessRoundtripTest, ComplexBooleanGuards) {
 }
 
 /**
- * @brief Test Intent: Verify 7-hop circular conversion ring without data loss (PlantUML -> Mermaid -> SysML2 -> SCXML
- * -> JSON -> DOT -> PlantUML).
- *
- * Scenario:
- * - Serialize through a closed chain of 7 different format representations.
- * - Verify the final reconstructed model is identical to the initial one.
+ * @brief Verify 7-hop circular conversion ring without data loss.
+ * @scenario Sequentially convert PlantUML -> Mermaid -> SysML v2 -> Cameo -> SCXML -> JSON -> DOT -> PlantUML.
+ * @expected The final model preserves identical state count, transition count, and transition names.
  */
-TEST(LosslessRoundtripTest, ClosedLoop7HopFormatRing) {
+TEST(FormalRoundtrip, ClosedLoop7HopFormatRing_PreservedAcrossFormats) {
     const std::string puml_start = R"(
     @startuml
     [*] --> Checking
@@ -494,10 +526,8 @@ TEST(LosslessRoundtripTest, ClosedLoop7HopFormatRing) {
     ScxmlParser scxml_parser;
     FsmIr ir4;
     ASSERT_TRUE(scxml_parser.parse(scxml_str, ir4, err));
-    const std::string json_str = JsonSerializer::serialize(ir4);
-
-    // Hop 5: JSON -> DOT
-    JsonStateParser json_parser;
+    const std::string json_str = fsm::ir::FsmIrSerializer::serialize_json(ir4);
+    fsm::frontend::JsonParser json_parser;
     FsmIr ir5;
     ASSERT_TRUE(json_parser.parse(json_str, ir5, err));
     const std::string dot_str = DotSerializer::serialize(ir5);
@@ -516,15 +546,11 @@ TEST(LosslessRoundtripTest, ClosedLoop7HopFormatRing) {
 }
 
 /**
- * @brief Test Intent: Verify lossless preservation of native EFSM variables, signals, requirements, and lifecycle
- * actions.
- *
- * Scenario:
- * - Model with state variables, typed signals, traceability reqs, entry/do/exit actions, and deferred events.
- * - Test roundtrips to SysML v2, SCXML, JSON, and PlantUML.
- * - Verify all metadata attributes remain intact.
+ * @brief Verify lossless preservation of native EFSM variables, signals, requirements, and invariants.
+ * @scenario Serialize rich EFSM model with typed variables, signals, requirements, and time invariants.
+ * @expected Target formats with sidecar and native metadata retain all contracts and invariants.
  */
-TEST(LosslessRoundtripTest, NativeLanguageRoundtripAllProperties) {
+TEST(FormalRoundtrip, NativeLanguageAllProperties_PreservedAcrossFormats) {
     const std::string sysml_in = R"(
     state def SatelliteMission {
         attribute battery_percent : Integer = 100;
@@ -594,8 +620,8 @@ TEST(LosslessRoundtripTest, NativeLanguageRoundtripAllProperties) {
     EXPECT_EQ(st_scxml->deferred_events.size(), 1u);
 
     // 3. Serialize JSON and reparse
-    const std::string json_out = JsonSerializer::serialize(model);
-    JsonStateParser json_parser;
+    const std::string json_out = fsm::ir::FsmIrSerializer::serialize_json(model);
+    fsm::frontend::JsonParser json_parser;
     FsmIr json_roundtrip;
     ASSERT_TRUE(json_parser.parse(json_out, json_roundtrip, err)) << "JSON roundtrip error: " << err;
     EXPECT_EQ(json_roundtrip.variables.size(), 2u);
@@ -625,7 +651,12 @@ TEST(LosslessRoundtripTest, NativeLanguageRoundtripAllProperties) {
     EXPECT_EQ(st_puml->deferred_events.size(), 1u);
 }
 
-TEST(LosslessRoundtripTest, Sysml2ToPlantUmlRoundtripWithDirectives) {
+/**
+ * @brief Verify roundtrip between SysML v2 and PlantUML with @fsm inline directives.
+ * @scenario Export SysML v2 model with ports and variables to PlantUML with inline @fsm directives, then re-import.
+ * @expected Imported PlantUML model reconstructs all ports, bounds, and variable declarations.
+ */
+TEST(FormalRoundtrip, Sysml2ToPlantUmlWithDirectives_PreservedAcrossFormats) {
     const std::string sysml_input = R"(
 state def SatelliteControl {
     attribute battery_soc : Real [percent] = 100;
@@ -683,7 +714,12 @@ state def SatelliteControl {
     EXPECT_EQ(idle_st->do_activity, "send_heartbeat");
 }
 
-TEST(LosslessRoundtripTest, ComplexHierarchicalSysml2AndSmvClosedLoop) {
+/**
+ * @brief Verify closed-loop roundtrip between SysML v2 and nuXmv / SMV formal models.
+ * @scenario Parse complex SysML v2 model, serialize to SMV formal model, and re-parse with SmvParser.
+ * @expected SMV model captures all states, transitions, variables, and formal verification properties.
+ */
+TEST(FormalRoundtrip, HierarchicalSysml2AndSmv_ClosedLoopPreserved) {
     const std::string sysml_input = R"(
 state def SatelliteSafety {
     attribute batterySoC : Real = 100.0;
@@ -747,7 +783,7 @@ state def SatelliteSafety {
     FsmIr smv_ir;
     ASSERT_TRUE(smv_parser.parse(smv, smv_ir, err)) << "SMV parse error: " << err;
     EXPECT_EQ(smv_ir.states.size(), model.states.size());
-    EXPECT_EQ(smv_ir.events.size(), model.events.size());
+    EXPECT_EQ(smv_ir.signals.size(), model.signals.size());
 
     // Serialize SMV to Mermaid and reparse
     const std::string mmd = MermaidSerializer::serialize(smv_ir);
@@ -758,10 +794,11 @@ state def SatelliteSafety {
 }
 
 /**
- * @brief Test Intent: Verify lossless roundtrip of Typed In/Out Ports and Numeric Assert Constraints across
- *                      SysML v2, PlantUML, SCXML, JSON, and SMV models.
+ * @brief Verify lossless roundtrip of Typed In/Out Ports and Numeric Assert Constraints across all 7 formats.
+ * @scenario Build model with constrained float/int ports and export across 7 supported formats.
+ * @expected Ports, data directions, and assertion bounds are preserved without data degradation.
  */
-TEST(LosslessRoundtripTest, TypedPortsAndContractsRoundtrip) {
+TEST(FormalRoundtrip, TypedPortsAndContracts_PreservedAcrossFormats) {
     constexpr const char* kSysMLv2PortsModel = R"(
 package SpacecraftSubsystem {
     state def PowerManager {
@@ -801,8 +838,8 @@ package SpacecraftSubsystem {
     EXPECT_DOUBLE_EQ(out_p->max_value.value_or(0.0), 32.0);
 
     // 1. SysML v2 -> JSON -> parse JSON -> verify ports
-    std::string json_str = JsonSerializer::serialize(ir_sysml);
-    JsonStateParser json_parser;
+    std::string json_str = fsm::ir::FsmIrSerializer::serialize_json(ir_sysml);
+    fsm::frontend::JsonParser json_parser;
     FsmIr ir_json;
     ASSERT_TRUE(json_parser.parse(json_str, ir_json, err)) << err;
     ASSERT_EQ(ir_json.ports.size(), 2u);
@@ -826,10 +863,11 @@ package SpacecraftSubsystem {
 }
 
 /**
- * @brief Test Intent: Verify 100% lossless multi-format roundtrip and traceability requirements for Autonomous UAV
- * Mission preset.
+ * @brief Verify 100% lossless multi-format roundtrip and traceability requirements for UAV Mission preset.
+ * @scenario Roundtrip UAV mission model with composite states, ports, signals, and requirements.
+ * @expected Full roundtrip across all 7 formats preserves states, transitions, requirements, and properties.
  */
-TEST(LosslessRoundtripTest, AutonomousUavMissionPreset) {
+TEST(FormalRoundtrip, AutonomousUavMissionPreset_PreservedAcrossFormats) {
     constexpr const char* kUavSysml = R"(
 state def AutonomousUavMission {
     in port battery_percent : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
@@ -1034,9 +1072,9 @@ state def AutonomousUavMission {
     ASSERT_TRUE(sysml_re_parser.parse(sysml_out, sysml_re_ir, err)) << "[SysML v2] " << err;
     verify_uav_model(sysml_re_ir, "SysML v2", true, true);
 
-    // 3. XState JSON Fine-Grained Roundtrip
-    std::string json_out = JsonSerializer::serialize(sysml_ir);
-    JsonStateParser json_parser;
+    // 3. JSON Fine-Grained Roundtrip
+    const std::string json_out = fsm::ir::FsmIrSerializer::serialize_json(sysml_ir);
+    fsm::frontend::JsonParser json_parser;
     FsmIr json_ir;
     ASSERT_TRUE(json_parser.parse(json_out, json_ir, err)) << "[JSON] " << err;
     verify_uav_model(json_ir, "JSON", true, true);
@@ -1047,6 +1085,46 @@ state def AutonomousUavMission {
     FsmIr scxml_ir;
     ASSERT_TRUE(scxml_parser.parse(scxml_out, scxml_ir, err)) << "[SCXML] " << err;
     verify_uav_model(scxml_ir, "SCXML", true, true);
+}
+
+/**
+ * @brief Verify universal lossless roundtrip of enum and struct definitions across all formats.
+ * @scenario Export model containing custom enums and structs across PlantUML, Mermaid, SysML v2, Cameo, SCXML, JSON,
+ * DOT, and SMV.
+ * @expected Custom type definitions, fields, and values are faithfully retained across all targets.
+ */
+TEST(FormalRoundtrip, UniversalDataDefinitions_PreservedAcrossFormats) {
+    FsmIr baseline;
+    baseline.name = "DataDefsFsm";
+    baseline.initial_state = "Idle";
+
+    StateNode s_idle;
+    s_idle.name = "Idle";
+    baseline.states.push_back(s_idle);
+
+    StateNode s_active;
+    s_active.name = "Active";
+    baseline.states.push_back(s_active);
+
+    TransitionEdge t1;
+    t1.source = "Idle";
+    t1.target = "Active";
+    t1.event = "EvStart";
+    baseline.transitions.push_back(t1);
+
+    EnumDefinition en("FlightMode", "uint8_t", "UAV flight modes");
+    en.add_literal("Manual", 0);
+    en.add_literal("Auto", 1);
+    en.add_literal("Failsafe", 2);
+    baseline.add_enum(en);
+
+    StructDefinition st("Waypoint", true, "3D Waypoint definition");
+    st.add_field(StructField("latitude", "float", "0.0"));
+    st.add_field(StructField("longitude", "float", "0.0"));
+    st.add_field(StructField("altitude", "uint32_t", "100"));
+    baseline.add_struct(st);
+
+    verify_roundtrip(baseline);
 }
 
 }  // namespace

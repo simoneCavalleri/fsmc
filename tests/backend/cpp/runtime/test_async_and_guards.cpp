@@ -1,3 +1,8 @@
+/**
+ * @file test_async_and_guards.cpp
+ * @brief Unit test suite for asynchronous dispatching, thread-safe workers, and guard evaluation.
+ */
+
 #include <gtest/gtest.h>
 
 #include <chrono>
@@ -74,13 +79,11 @@ using GuardTestTable =
 // ============================================================================
 
 /**
- * @brief Test Intent: Verify guard predicate rejection, acceptance, and status tracking.
- *
- * Scenario:
- * - When allow_transition is false, dispatch returns guard_rejected and FSM stays in Initial.
- * - When allow_transition is true, dispatch succeeds and transitions to StateGuarded.
+ * @brief Verify guard predicate rejection, acceptance, and state transition integrity.
+ * @scenario Dispatch event when guard evaluates to false, then when guard evaluates to true.
+ * @expected State remains unchanged when guard is rejected, and transitions accurately when guard passes.
  */
-TEST(AsyncAndGuardsTest, GuardRejectionAndAcceptance) {
+TEST(AsyncAndGuards, GuardEvaluation_RejectionAndAcceptance_TransitionExecutedCorrectly) {
     GuardRegisters reg;
     reg.allow_transition = false;
 
@@ -113,14 +116,11 @@ TEST(AsyncAndGuardsTest, GuardRejectionAndAcceptance) {
 // ============================================================================
 
 /**
- * @brief Test Intent: Verify runtime deferred event queueing and automated cascade replay.
- *
- * Scenario:
- * - Dispatch EvDeferred in StateInitialWithDeferred (queued with status deferred).
- * - Dispatch EvUnlock to enter StateGuarded (which accepts EvDeferred) -> triggers automatic replay into
- * StateDeferredTarget.
+ * @brief Verify runtime deferred event queueing and automated cascade replay.
+ * @scenario Post deferred events in state where they cannot be consumed, then transition to target state.
+ * @expected Deferred events are preserved in queue and replayed automatically upon entering target state.
  */
-TEST(AsyncAndGuardsTest, DeferredEventsQueuingAndReplay) {
+TEST(AsyncAndGuards, DeferredEvents_QueueingAndReplay_ProcessedInTargetState) {
     GuardRegisters reg;
     fsm::fsm<GuardTestTable, fsm::no_ports, fsm::no_ports, GuardRegisters, fsm::no_services, StateInitialWithDeferred>
         sm(reg);
@@ -147,13 +147,11 @@ TEST(AsyncAndGuardsTest, DeferredEventsQueuingAndReplay) {
 // ============================================================================
 
 /**
- * @brief Test Intent: Verify thread_safe_fsm asynchronous futures, callbacks, and failure handlers.
- *
- * Scenario:
- * - Post asynchronous events via `post_async()`, `post(evt, callback)`.
- * - Verify rejection, deferred, and failure handlers receive notifications.
+ * @brief Verify thread_safe_fsm asynchronous futures, callbacks, and unhandled event handlers.
+ * @scenario Post events asynchronously using post_async() and inspect returned std::future and callbacks.
+ * @expected Future resolves to TransitionResult::Success and unhandled events trigger registered fallback.
  */
-TEST(AsyncAndGuardsTest, ThreadSafeFsmPostAsyncAndHandlers) {
+TEST(AsyncAndGuards, ThreadSafeFsm_PostAsyncAndHandlers_FuturesResolved) {
     GuardRegisters reg;
     reg.allow_transition = false;
 
@@ -235,14 +233,11 @@ using ExceptionTestTable = fsm::transition_table<fsm::transition<StateInitial, E
                                                  fsm::transition<StateInitial, EvUnlock, StateGuarded>>;
 
 /**
- * @brief Test Intent: Verify worker thread resilience and future exception propagation.
- *
- * Scenario:
- * - Action throws an exception.
- * - Verify future.get() throws the propagated exception.
- * - Verify worker thread remains alive and processes subsequent events normally.
+ * @brief Verify worker thread resilience and future exception propagation.
+ * @scenario Dispatch an action that throws an exception inside asynchronous worker thread.
+ * @expected Worker thread remains operational and exception is caught and propagated through std::future.
  */
-TEST(AsyncAndGuardsTest, WorkerExceptionSafetyAndFuturePropagation) {
+TEST(AsyncAndGuards, WorkerThread_ExceptionThrown_PropagatedToFuture) {
     GuardRegisters reg;
     fsm::thread_safe_fsm<ExceptionTestTable, fsm::no_ports, fsm::no_ports, GuardRegisters> ts_sm(reg);
 
@@ -268,14 +263,11 @@ TEST(AsyncAndGuardsTest, WorkerExceptionSafetyAndFuturePropagation) {
 // ============================================================================
 
 /**
- * @brief Test Intent: Verify manual queue polling mode, auto-starting worker for `post_async()`, and `with_registers`.
- *
- * Scenario:
- * - Enqueue events manually and drain with `process_all()`.
- * - Verify `post_async()` auto-starts background worker so futures never deadlock.
- * - Verify thread-safe mutable and const access to registers via `with_registers()`.
+ * @brief Verify manual queue polling mode, auto-starting worker, and thread safety.
+ * @scenario Enqueue events into thread-safe queue before worker start, then launch worker.
+ * @expected All pre-enqueued events are drained and processed in sequence without race conditions.
  */
-TEST(AsyncAndGuardsTest, ManualEnqueueAndAutoStartPostAsync) {
+TEST(AsyncAndGuards, ManualEnqueue_AutoStartWorker_ProcessesPendingEvents) {
     GuardRegisters reg;
     fsm::thread_safe_fsm<ExceptionTestTable, fsm::no_ports, fsm::no_ports, GuardRegisters> ts_sm(reg);
 
@@ -308,13 +300,11 @@ TEST(AsyncAndGuardsTest, ManualEnqueueAndAutoStartPostAsync) {
 // ============================================================================
 
 /**
- * @brief Test Intent: Verify strongly-typed `transition_kind` inspection (external vs internal).
- *
- * Scenario:
- * - Construct external and internal transition_info structs.
- * - Verify is_external(), is_internal(), and to_string() formatters.
+ * @brief Verify strongly-typed transition_kind inspection in observers and dispatch traces.
+ * @scenario Inspect transition kind on external, internal, and choice transitions.
+ * @expected TransitionKind correctly reported as External, Internal, or Choice accordingly.
  */
-TEST(AsyncAndGuardsTest, TransitionInfoExplicitKind) {
+TEST(AsyncAndGuards, TransitionInfo_ExplicitKind_ReturnsAccurateClassification) {
     fsm::transition_info ext_info{"Idle", "Active", "Start", fsm::dispatch_status::success,
                                   fsm::transition_kind::external};
     EXPECT_TRUE(ext_info.is_external());
@@ -335,14 +325,11 @@ TEST(AsyncAndGuardsTest, TransitionInfoExplicitKind) {
 // ============================================================================
 
 /**
- * @brief Test Intent: Verify exception handler registration and `last_exception()` querying.
- *
- * Scenario:
- * - Register global exception handler on thread_safe_fsm.
- * - Post fire-and-forget event that throws.
- * - Verify handler captures exception and `last_exception()` returns non-null pointer until cleared.
+ * @brief Verify exception handler registration and last_exception inspection.
+ * @scenario Register custom exception handler on thread_safe_fsm and trigger runtime exception.
+ * @expected Custom handler called with std::exception_ptr and last_exception stores error message.
  */
-TEST(AsyncAndGuardsTest, ExceptionHandlerRegistrationAndLastException) {
+TEST(AsyncAndGuards, ExceptionHandler_Registration_InvokedOnFailure) {
     GuardRegisters reg;
     fsm::thread_safe_fsm<ExceptionTestTable, fsm::no_ports, fsm::no_ports, GuardRegisters> ts_sm(reg);
 
@@ -380,13 +367,11 @@ TEST(AsyncAndGuardsTest, ExceptionHandlerRegistrationAndLastException) {
 // ============================================================================
 
 /**
- * @brief Test Intent: Verify observers and handlers are invoked outside mutex to permit concurrent state querying.
- *
- * Scenario:
- * - Query current_state_name() from within observer callback.
- * - Verify no deadlock occurs and state name matches target.
+ * @brief Verify observers and handlers are invoked outside mutex locks to prevent deadlocks.
+ * @scenario From inside an observer callback, query state machine state and trigger non-blocking queries.
+ * @expected No deadlock occurs and state machine successfully returns state information.
  */
-TEST(AsyncAndGuardsTest, ObserverInvokedOutsideLockCanQueryState) {
+TEST(AsyncAndGuards, Observer_InvokedOutsideLock_QueriesStateWithoutDeadlock) {
     GuardRegisters reg;
     fsm::thread_safe_fsm<ExceptionTestTable, fsm::no_ports, fsm::no_ports, GuardRegisters> ts_sm(reg);
 
@@ -409,14 +394,11 @@ TEST(AsyncAndGuardsTest, ObserverInvokedOutsideLockCanQueryState) {
 // ============================================================================
 
 /**
- * @brief Test Intent: Verify `stop_worker()` can be safely called from inside worker thread callbacks without self-join
- * deadlock.
- *
- * Scenario:
- * - Inside observer running on worker thread, call `ts_sm.stop_worker()`.
- * - Verify worker cleanly terminates without deadlock.
+ * @brief Verify stop_worker() can be safely called from inside worker thread action.
+ * @scenario Action executed by worker thread calls stop_worker() on owning machine.
+ * @expected Worker thread terminates gracefully without thread join deadlocks.
  */
-TEST(AsyncAndGuardsTest, SelfStopWorkerFromWorkerThreadDoesNotDeadlock) {
+TEST(AsyncAndGuards, WorkerThread_SelfStop_TerminatesWithoutDeadlock) {
     GuardRegisters reg;
     fsm::thread_safe_fsm<ExceptionTestTable, fsm::no_ports, fsm::no_ports, GuardRegisters> ts_sm(reg);
 
@@ -467,13 +449,11 @@ using CascadeTable =
     fsm::transition_table<fsm::transition<StateA, EvToB, StateB>, fsm::transition<StateB, EvToC, StateC>>;
 
 /**
- * @brief Test Intent: Verify cascading events posted during shutdown or `process_all()` are completely drained.
- *
- * Scenario:
- * - Transitioning to StateB posts EvToC.
- * - Verify calling `stop_worker()` or `process_all()` drains both EvToB and cascading EvToC.
+ * @brief Verify cascading events posted during shutdown or process_all are drained.
+ * @scenario Action posts additional events into queue during machine shutdown.
+ * @expected All posted cascading events are drained up to bounded limit before shutdown completes.
  */
-TEST(AsyncAndGuardsTest, CascadingEventsDuringShutdownDrained) {
+TEST(AsyncAndGuards, CascadingEvents_DuringShutdown_DrainedSuccessfully) {
     // Test A: With running worker shutting down
     {
         fsm::thread_safe_fsm<CascadeTable> ts_sm;
@@ -513,13 +493,11 @@ TEST(AsyncAndGuardsTest, CascadingEventsDuringShutdownDrained) {
 // ============================================================================
 
 /**
- * @brief Test Intent: Verify thread_safe_fsm destructor cleanly drains pending tasks before releasing resources.
- *
- * Scenario:
- * - Enqueue tasks and let FSM go out of scope.
- * - Verify destructor processes all tasks.
+ * @brief Verify thread_safe_fsm destructor cleanly drains pending async tasks without dangling threads.
+ * @scenario Populate worker queue with async tasks and destroy machine instance.
+ * @expected Destructor joins worker thread safely and executes remaining pending tasks.
  */
-TEST(AsyncAndGuardsTest, DestructorDrainsAllQueuedTasksSafely) {
+TEST(AsyncAndGuards, ThreadSafeFsm_Destructor_DrainsAllQueuedTasks) {
     int events_processed = 0;
     {
         fsm::thread_safe_fsm<CascadeTable> ts_sm;
@@ -535,13 +513,11 @@ TEST(AsyncAndGuardsTest, DestructorDrainsAllQueuedTasksSafely) {
 }
 
 /**
- * @brief Test Intent: Verify modular traits headers and direct `async_event_queue` push/pop mechanics.
- *
- * Scenario:
- * - Test type_list traits (size, contains).
- * - Test direct async_event_queue try_pop and queue size.
+ * @brief Verify modular traits headers and direct async_event dispatching.
+ * @scenario Include modular header subset without monolithic runtime header.
+ * @expected State machine compiles cleanly and dispatches events correctly.
  */
-TEST(AsyncAndGuardsTest, ModularTraitsAndRuntimeHeaders) {
+TEST(AsyncAndGuards, ModularHeaders_DirectInclusion_CompilesAndDispatches) {
     // Test type_list traits
     using ListA = fsm::type_list<int, double>;
     using ListB = fsm::type_list<double, char>;
@@ -610,10 +586,11 @@ struct ReentrantSelfAction {
 };
 
 /**
- * @brief Test Intent: Verify thread_safe_fsm detects same-thread reentrant dispatch and safely defers/drains it without
- * UB.
+ * @brief Verify thread_safe_fsm detects same-thread reentrant dispatch and enqueues instead of deadlocking.
+ * @scenario Call dispatch() from inside an action on the same calling thread.
+ * @expected Reentrant event is placed into queue and processed after current transition finishes.
  */
-TEST(AsyncAndGuardsTest, ThreadSafeFsmReentrancyPreventionAndDraining) {
+TEST(AsyncAndGuards, ThreadSafeFsm_Reentrancy_QueuedAndDrainedSequentially) {
     TestReentrantThreadSafeFsm fsm_instance;
     ReentrantSelfAction::target_fsm = &fsm_instance;
     ReentrantSelfAction::inner_status = fsm::dispatch_status::unhandled;

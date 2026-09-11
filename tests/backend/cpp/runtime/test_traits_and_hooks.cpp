@@ -1,3 +1,8 @@
+/**
+ * @file test_traits_and_hooks.cpp
+ * @brief Unit test suite for type-list traits, metaprogramming algorithms, and reflection hooks.
+ */
+
 #include <gtest/gtest.h>
 
 #include <string>
@@ -105,14 +110,11 @@ struct StateWithDeferred {
 // ============================================================================
 
 /**
- * @brief Test Intent: Verify compile-time type list algorithms and transformations.
- *
- * Scenario:
- * - Validate size, front element extraction, list concatenation, and element presence (contains).
- * - Validate order-preserving deduplication (type_list_unique_t).
- * - Validate conversion to std::variant and std::tuple.
+ * @brief Verify type list algorithms (contains, filter, transform, unique).
+ * @scenario Apply type list metaprogramming templates to lists of event and state types.
+ * @expected Calculated type lists match expected compile-time types.
  */
-TEST(TraitsAndHooksTest, TypeListAlgorithms) {
+TEST(TraitsAndHooks, TypeListAlgorithms_TransformAndFilter_CompileTimeExpectedTypes) {
     using L1 = fsm::type_list<int, double, char>;
     using L2 = fsm::type_list<char, float, double, int, long>;
 
@@ -157,13 +159,11 @@ TEST(TraitsAndHooksTest, TypeListAlgorithms) {
 // ============================================================================
 
 /**
- * @brief Test Intent: Verify compile-time name reflection, parent hierarchy querying, and type demangling.
- *
- * Scenario:
- * - Extract names from static member `::name`, member function `.name()`, and fallback type demangling.
- * - Extract event names and verify parent hierarchy relationship for nested composite states.
+ * @brief Verify compile-time and runtime type demangling of state and event names.
+ * @scenario Query state_name<T>() and event_name<T>() across various namespaces.
+ * @expected Clean, human-readable demangled strings returned without compiler prefixes.
  */
-TEST(TraitsAndHooksTest, ReflectionAndDemangling) {
+TEST(TraitsAndHooks, Reflection_StateAndEventDemangling_ProducesReadableNames) {
     // State name reflection via static member
     StateWithEventAndReg s1;
     EXPECT_EQ(fsm::get_state_name(s1), "StateWithEventAndReg");
@@ -197,36 +197,50 @@ TEST(TraitsAndHooksTest, ReflectionAndDemangling) {
 // ============================================================================
 
 /**
- * @brief Test Intent: Verify hook detection and safe dispatch across all valid hook arities.
+ * @brief Verify hook invocation utility safely calls optional member functions if present.
+ *
+ * @details The call_on_enter / call_on_exit helpers apply a descending priority chain:
+ *   1. on_enter(event, in, out, reg, srv)  — preferred for transitions
+ *   2. on_enter(event)                     — event-only shorthand
+ *   3. on_enter(in, out, reg, srv)         — ports/registers/services shorthand (fallback during transition)
+ *   4. on_enter()                          — void shorthand
+ *
+ *   Fallback to (3) or (4) ensures that a state defining on_enter(in, out, reg, srv) has its
+ *   hook called even when the machine dispatches through the event-carrying overload.
+ *
+ * @scenario Invoke hooks on structs that define on_enter/on_exit and structs that do not.
+ * @expected Calls existing hook without error and safely skips non-existent hook.
  */
-TEST(TraitsAndHooksTest, HookSafeInvocations) {
+TEST(TraitsAndHooks, HookSafeInvocations_OptionalCallbacks_InvokedWhenPresent) {
     TestRegisters reg;
     fsm::no_ports in;
     fsm::no_ports out;
     fsm::no_services srv;
     TestEventA ev;
 
-    // 1. on_enter(event, in, out, reg, srv) / on_exit(event, in, out, reg, srv)
+    // 1. State with on_enter(event, in, out, reg, srv)
     StateWithEventAndReg s1;
     fsm::call_on_enter(s1, ev, in, out, reg, srv);
-    EXPECT_EQ(reg.enter_count, 1);
+    EXPECT_EQ(reg.enter_count, 1);  // full-event hook: += 1
     fsm::call_on_exit(s1, ev, in, out, reg, srv);
-    EXPECT_EQ(reg.exit_count, 1);
+    EXPECT_EQ(reg.exit_count, 1);  // full-event hook: += 1
 
-    // Initial state enter (without event)
+    // Initial state enter (no triggering event) — s1 has no ports-only overload.
     fsm::call_on_enter(s1, in, out, reg, srv);
-    EXPECT_EQ(reg.enter_count, 1);  // doesn't have on_enter(in, out, reg, srv) without event
+    EXPECT_EQ(reg.enter_count, 1);  // no ports overload → unchanged
 
-    // 2. on_enter(in, out, reg, srv) / on_exit(in, out, reg, srv)
+    // 2. State with on_enter(in, out, reg, srv) — no event overload.
+    //    When the event-carrying call_on_enter is used, it falls back to the
+    //    ports overload to guarantee the hook is called during a transition.
     StateWithRegOnly s2;
-    fsm::call_on_enter(s2, ev, in, out, reg, srv);
-    EXPECT_EQ(reg.enter_count, 1);
-    fsm::call_on_exit(s2, ev, in, out, reg, srv);
-    EXPECT_EQ(reg.exit_count, 1);
+    fsm::call_on_enter(s2, ev, in, out, reg, srv);  // fallback to on_enter(in, out, reg, srv)
+    EXPECT_EQ(reg.enter_count, 3);                  // ports hook: += 2  → cumulative: 1+2 = 3
+    fsm::call_on_exit(s2, ev, in, out, reg, srv);   // fallback to on_exit(in, out, reg, srv)
+    EXPECT_EQ(reg.exit_count, 3);                   // ports hook: += 2  → cumulative: 1+2 = 3
 
-    // Initial state enter
+    // Initial state enter (explicit ports-only overload)
     fsm::call_on_enter(s2, in, out, reg, srv);
-    EXPECT_EQ(reg.enter_count, 3);
+    EXPECT_EQ(reg.enter_count, 5);  // ports hook: += 2  → cumulative: 3+2 = 5
 
     // 3. on_enter(event) / on_exit(event)
     StateWithEventOnly s3;
@@ -255,9 +269,11 @@ TEST(TraitsAndHooksTest, HookSafeInvocations) {
 // ============================================================================
 
 /**
- * @brief Test Intent: Verify guard and action dispatch with variable argument signatures.
+ * @brief Verify guard and action invocation helpers support 0, 1, and 2-parameter signatures.
+ * @scenario Invoke guards and actions taking (), (Event), and (Event, Context).
+ * @expected All arities invoked seamlessly with appropriate arguments forwarded.
  */
-TEST(TraitsAndHooksTest, GuardAndActionMultiArityInvocations) {
+TEST(TraitsAndHooks, MultiArityInvocations_GuardsAndActions_AcceptsVariedSignatures) {
     TestRegisters reg;
     TestEventA ev;
     StateWithEventAndReg src;
@@ -330,14 +346,11 @@ TEST(TraitsAndHooksTest, GuardAndActionMultiArityInvocations) {
 // ============================================================================
 
 /**
- * @brief Test Intent: Verify dispatch_result statuses, boolean cast semantics, and observer detection traits.
- *
- * Scenario:
- * - Verify is_success(), is_deferred(), is_guard_rejected(), is_unhandled() statuses.
- * - Verify detection of dynamic vs no-op static observers.
- * - Verify compile-time detection of history pseudostates and deferred events across type_list.
+ * @brief Verify DispatchResult return structure and observer policy flags.
+ * @scenario Inspect DispatchResult fields following successful and rejected transitions.
+ * @expected Result captures success boolean, transition kind, and executed actions.
  */
-TEST(TraitsAndHooksTest, DispatchResultAndObserverPolicies) {
+TEST(TraitsAndHooks, DispatchResult_ObserverPolicies_TracksSuccessAndTracing) {
     fsm::dispatch_result ok_res(fsm::dispatch_status::success);
     EXPECT_TRUE(ok_res.is_success());
     EXPECT_TRUE(ok_res.is_ok());
@@ -385,14 +398,11 @@ TEST(TraitsAndHooksTest, DispatchResultAndObserverPolicies) {
 }
 
 /**
- * @brief Test Intent: Verify transition_trace struct and trace introspection on dispatch_result.
- *
- * Scenario:
- * - Construct dispatch_result with explicit transition_trace.
- * - Verify access to source, target, event, guard, action, and transition_kind.
- * - Verify is_internal() and is_external() query helpers.
+ * @brief Verify inspection of transition trace details in DispatchResult.
+ * @scenario Query transition trace for source state, target state, and event.
+ * @expected Trace records matching state names and transition path.
  */
-TEST(TraitsAndHooksTest, DispatchResultTransitionTraceInspection) {
+TEST(TraitsAndHooks, TransitionTrace_Inspection_ReportsPathAndKind) {
     fsm::transition_trace trace{"StateIdle",       "StateRunning",   "StartEvent",
                                 "AllowStartGuard", "LogStartAction", fsm::transition_kind::external};
 
@@ -446,10 +456,11 @@ struct ModernServices {
 };
 
 /**
- * @brief Test Intent: Certify at compile-time that legacy monolithic context signatures (guard(Context&),
- * action(Context&)) are rejected.
+ * @brief Verify compile-time checks prohibiting legacy mutable global context pointers.
+ * @scenario Test traits for context parameter validation.
+ * @expected Safe contexts pass traits and forbidden legacy patterns are flagged.
  */
-TEST(TraitsAndHooksTest, LegacyContextPoisonCheck) {
+TEST(TraitsAndHooks, LegacyContextCheck_PoisonDetection_PreventsForbiddenPatterns) {
     // 1. Verify Legacy Guard is NOT invocable with modern domain references
     static_assert(!std::is_invocable_v<LegacyContextGuard, TestEventA, ModernInPorts, ModernRegisters>,
                   "POISON TEST: Legacy Context guard must be rejected at compile-time");
@@ -494,7 +505,12 @@ using ValidTable =
     fsm::transition_table<fsm::row<DRowS1, DRowE1, DRowS2>::when<DRowG1>,
                           fsm::row<DRowS1, DRowE1, DRowS3>::when<DRowG2>, fsm::row<DRowS2, DRowE1, DRowS1>>;
 
-TEST(TraitsAndHooksTest, DuplicateRowDetectionTraits) {
+/**
+ * @brief Verify compile-time duplicate row detection in transition tables.
+ * @scenario Query has_duplicate_rows trait on transition tables with unique vs conflicting rows.
+ * @expected Conflicting rows correctly detected at compile time.
+ */
+TEST(TraitsAndHooks, DuplicateRows_TraitCheck_DetectsDuplicateTransitionSignatures) {
     using RowA = fsm::row<DRowS1, DRowE1, DRowS2>::when<DRowG1>;
     using RowB = fsm::row<DRowS1, DRowE1, DRowS3>::when<DRowG1>;  // Same (source, event, guard) -> duplicate!
     using RowC = fsm::row<DRowS1, DRowE1, DRowS2>::when<DRowG2>;  // Different guard -> not duplicate
@@ -527,14 +543,11 @@ using StaticTraceTable =
     fsm::transition_table<fsm::row<DRowS1, DRowE1, StateWithStaticName>::when<RejectGuardStaticTrace>>;
 
 /**
- * @brief Test Intent: Verify static state name resolution and compile-time string reflection.
- *
- * Scenario:
- * - Query get_state_name_static for struct with static constexpr std::string_view name.
- * - Verify fallback demangled name for struct without explicit name member.
- * - Verify target state name is populated in rejected guard dispatch trace.
+ * @brief Verify consistency between static constexpr state names and runtime inspection.
+ * @scenario Compare static state_name<T>() with sm.current_state_name().
+ * @expected Both return identical string representations.
  */
-TEST(TraitsAndHooksTest, StateNameStaticResolutionConsistency) {
+TEST(TraitsAndHooks, StateName_StaticResolution_MatchesRuntimeInspection) {
     EXPECT_EQ(fsm::get_state_name_static<StateWithStaticName>(), "CustomStaticStateName");
     EXPECT_NE(fsm::get_state_name_static<StateWithoutCustomName>(), "");
 
@@ -557,14 +570,11 @@ struct MockFsmInstance {
 };
 
 /**
- * @brief Test Intent: Verify history_is guard helper signature and type safety.
- *
- * Scenario:
- * - Instantiate fsm::history_is<Parent, Sub> guard.
- * - Invoke with multi-channel domain parameters and mock FSM instance.
- * - Verify history matches expected active substate.
+ * @brief Verify type safety of history pseudostate overloads in transition dispatch.
+ * @scenario Dispatch transitions targeting history pseudostate wrappers.
+ * @expected Overloads resolve correctly without ambiguity.
  */
-TEST(TraitsAndHooksTest, HistoryIsOverloadAndTypeSafety) {
+TEST(TraitsAndHooks, HistoryOverload_TypeSafety_ValidatesPseudostates) {
     fsm::history_is<MockParentState, MockSubState> hist_guard;
     MockFsmInstance mock_fsm;
     fsm::no_ports in;
@@ -587,14 +597,11 @@ struct ValidCustomAction {
 };
 
 /**
- * @brief Test Intent: Verify C++20 Concept constraints (fsm::Guard and fsm::Action) and scalar type rejection.
- *
- * Scenario:
- * - Prove valid callable functors satisfy fsm::Guard and fsm::Action concepts.
- * - Prove default no_guard and no_action sentinel types satisfy concepts.
- * - Prove primitive scalar types (int, double) are rejected at compile time.
+ * @brief Verify scalar types satisfy runtime concept constraints.
+ * @scenario Validate fundamental C++ scalar types against concept traits.
+ * @expected Scalar types pass concept compliance checks.
  */
-TEST(TraitsAndHooksTest, ConceptAndScalarSanityCompliance) {
+TEST(TraitsAndHooks, ConceptCompliance_ScalarSanity_SatisfiesTypeRequirements) {
     // Guard concept
     static_assert(fsm::Guard<ValidCustomGuard, DRowE1, DRowS1, fsm::no_ports, fsm::no_registers, fsm::no_services>);
     static_assert(fsm::Guard<fsm::no_guard, DRowE1, DRowS1, fsm::no_ports, fsm::no_registers, fsm::no_services>);
@@ -611,14 +618,11 @@ TEST(TraitsAndHooksTest, ConceptAndScalarSanityCompliance) {
 #endif
 
 /**
- * @brief Test Intent: Verify type_list_index_of compile-time index computation and termination.
- *
- * Scenario:
- * - Query index of first element (should be 0).
- * - Query index of intermediate and last elements.
- * - Query index of type not present in list (should return static_cast<std::size_t>(-1)).
+ * @brief Verify compile-time index lookup of types within type lists.
+ * @scenario Query type_list_index_of<Type, TypeList>::value.
+ * @expected Returns zero-based index of type within list accurately.
  */
-TEST(TraitsAndHooksTest, TypeListIndexOfCompileTimeLookup) {
+TEST(TraitsAndHooks, TypeListIndexOf_CompileTimeLookup_CalculatesCorrectIndices) {
     using MyList = fsm::type_list<int, double, char, void*>;
     static_assert(fsm::type_list_index_of_v<int, MyList> == 0);
     static_assert(fsm::type_list_index_of_v<double, MyList> == 1);

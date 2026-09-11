@@ -152,6 +152,37 @@ class thread_safe_fsm {
         diagnostics_.clear_last_exception();
     }
 
+    [[nodiscard]] std::uint64_t state_residence_time() const {
+        if (reentrancy_.is_reentrant_call()) {
+            return fsm_.state_residence_time();
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.state_residence_time();
+    }
+
+    [[nodiscard]] bool has_invariant_violation() const {
+        if (reentrancy_.is_reentrant_call()) {
+            return fsm_.has_invariant_violation();
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.has_invariant_violation();
+    }
+
+    [[nodiscard]] bool is_invariant_satisfied() const { return !has_invariant_violation(); }
+
+    [[nodiscard]] std::optional<invariant_violation_info> last_invariant_violation() const {
+        if (reentrancy_.is_reentrant_call()) {
+            return fsm_.last_invariant_violation();
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.last_invariant_violation();
+    }
+
+    void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
+        std::scoped_lock lock(dispatch_mutex_);
+        fsm_.set_invariant_violation_handler(std::move(handler));
+    }
+
     // State & Register Access
     [[nodiscard]] registers_type snapshot_registers() const {
         if (reentrancy_.is_reentrant_call()) {
@@ -226,6 +257,9 @@ class thread_safe_fsm {
         std::scoped_lock lock(dispatch_mutex_);
         fsm_.clear_deferred_events();
     }
+
+    [[nodiscard]] auto& timer_manager() noexcept { return fsm_.timer_manager(); }
+    [[nodiscard]] const auto& timer_manager() const noexcept { return fsm_.timer_manager(); }
 
     template <typename Callable>
     auto with_state(Callable&& fn) const {
@@ -324,6 +358,29 @@ class thread_safe_fsm {
     step_result step(DurationRep dt) {
         std::scoped_lock lock(dispatch_mutex_);
         return fsm_.step(dt);
+    }
+
+    std::size_t tick(std::uint64_t delta_ms) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.tick(delta_ms);
+    }
+
+    template <typename Callback>
+    std::size_t tick(std::uint64_t delta_ms, Callback on_expired) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.tick(delta_ms, on_expired);
+    }
+
+    template <typename Rep, typename Period>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.tick(dt);
+    }
+
+    template <typename Rep, typename Period, typename Callback>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.tick(dt, on_expired);
     }
 
     // ========================================================================

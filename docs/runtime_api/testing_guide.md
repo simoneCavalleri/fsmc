@@ -217,3 +217,58 @@ TEST(AsyncDroneTest, AsyncDispatchAndSnapshotInspection) {
     async_sm.stop_worker();
 }
 ```
+
+---
+
+## 5. Testing with the Embedded Blackbox Flight Recorder (v0.6.0+)
+
+Starting in `v0.6.0`, unit tests can assert transition sequences, historical states, and event execution order using `with_trace_buffer<N>`:
+
+```cpp
+#include "fsm/backend/cpp/runtime/fsm.hpp"
+#include <gtest/gtest.h>
+
+TEST(FlightRecorderTest, VerifyExecutionTraceSequence) {
+    using TestFSM = fsm::make_fsm<
+        DroneTable,
+        fsm::with_registers<DroneRegisters>,
+        fsm::with_trace_buffer<16>
+    >;
+
+    DroneRegisters reg{};
+    TestFSM sm(reg);
+
+    DroneInPorts in{};
+    DroneOutPorts out{};
+
+    sm.dispatch(EvStart{}, in, out);
+    sm.dispatch(EvLand{}, in, out);
+
+    const auto& recorder = sm.observer().recorder();
+    ASSERT_EQ(recorder.size(), 2u);
+
+    // Verify chronological sequence
+    EXPECT_EQ(recorder[0].source_state, "Idle");
+    EXPECT_EQ(recorder[0].event_name, "EvStart");
+    EXPECT_EQ(recorder[0].target_state, "Hovering");
+
+    EXPECT_EQ(recorder[1].source_state, "Hovering");
+    EXPECT_EQ(recorder[1].event_name, "EvLand");
+    EXPECT_EQ(recorder[1].target_state, "Landed");
+}
+```
+
+---
+
+## 6. Automated MC/DC Safety Test Synthesis (v0.6.0+)
+
+For DO-178C and ISO 26262 compliance testing, `fsmc` can automatically synthesize complete GoogleTest test harnesses verifying Modified Condition / Decision Coverage (MC/DC) for all transition guards:
+
+```bash
+fsmc -i drone.sysml --emit-test-harness test_drone_mcdc.cpp
+g++ -std=c++20 test_drone_mcdc.cpp -lgtest -lgtest_main -pthread -o mcdc_tests
+./mcdc_tests
+```
+
+For complete details on condition independence pairs and truth table derivation, see the **[MC/DC Test Synthesis Guide](../verification_and_safety/mcdc_synthesis.md)**.
+

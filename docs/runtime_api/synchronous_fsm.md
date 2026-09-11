@@ -28,14 +28,105 @@ Caller Thread ◄── Returns dispatch_result
 
 ---
 
-## 2. Reactive `dispatch()` vs Periodic `step()`
+---
 
-`fsm::fsm` provides two primary execution methods tailored for real-time control systems:
+## 2. Deterministic Execution Primitives: `dispatch()` vs `tick()` vs `step()` vs `step(dt)`
 
-| Method | Execution Trigger | Return Type | Primary Purpose | Emitted Trigger Type |
-| :--- | :--- | :--- | :--- | :--- |
-| **`dispatch(event, ...)`** | Discrete external event | `fsm::dispatch_result` (`success`, `deferred`, `guard_rejected`, `unhandled`) | Processes command triggers, sensor threshold interrupts, or network messages | Typed `Event` struct |
-| **`step([dt], ...)`** | Periodic sampled tick (e.g. 1 kHz control loop) | `fsm::step_result` (`steady`, `transitioned`) | Evaluates continuous threshold guards directly against `InPorts` and `Registers` ($z^{-1}$) | `fsm::anonymous_event` |
+In real-time embedded systems, a state machine must handle two orthogonal dimensions of execution:
+1. **Discrete Events**: Asynchronous interrupts, user commands, or network messages arriving at arbitrary points in time.
+2. **Discrete Time Progression**: The passage of physical time ($\Delta t$), timer countdowns, and continuous sensor threshold evaluations.
+
+To provide total deterministic control with **0 background OS threads** and **0 hidden delays**, `fsmc` structures execution across four distinct primitives:
+
+```mermaid
+flowchart TD
+    subgraph PeriodicLoop["Periodic Control Loop (e.g., 100 Hz / 10 ms Task)"]
+        direction TB
+        START["Cycle Start (dt = 10 ms)"] --> TICK
+        
+        subgraph TimeProgression["1. Time Progression: tick(dt)"]
+            TICK["sm.tick(dt)<br/>• Decrements internal timers<br/>• Fires timer callbacks<br/>• Advances Flight Recorder tick timestamp"]
+        end
+        
+        TICK --> STEP
+        
+        subgraph ContinuousEvaluation["2. Continuous Evaluation: step()"]
+            STEP["sm.step(in, out)<br/>• Dispatches anonymous_event<br/>• Evaluates continuous port/register guards<br/>• Flushes deferred event queue"]
+        end
+        
+        STEP --> END["Cycle Complete"]
+    end
+    
+    subgraph Unified["Combined Loop Primitive"]
+        COMBINED["sm.step(dt, in, out)"] -.->|Internally executes| TICK
+        COMBINED -.->|Immediately followed by| STEP
+    end
+```
+
+### Comprehensive Primitive Semantics
+
+| Primitive | Operation Under the Hood | Advances Time? | Evaluates Continuous Guards? | Flushes Deferred Queue? | Typical Use Case |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`tick(dt, [callback])`** | Decrements active timers in `deterministic_timer_manager`, calls expiration callbacks, advances Flight Recorder tick timestamp. | **Yes** ($+\Delta t$) | **No** | **No** | Advancing model time in multi-rate architectures or decoupled hardware timer ISRs. |
+| **`step([in, out, srv])`** | Dispatches `fsm::anonymous_event`, evaluates continuous threshold guards against current `InPorts` and `Registers`, processes deferred events. | **No** | **Yes** | **Yes** (if transitioned) | Polling sensor threshold conditions without advancing the timer clock. |
+| **`step(dt, [in, out])`** | **Unified Primitive**: Internally calls `this->tick(dt)` and immediately executes `this->step(in, out)`. | **Yes** ($+\Delta t$) | **Yes** | **Yes** (if transitioned) | **Standard choice** for fixed-rate control loops (e.g. 10 ms cyclic task). |
+| **`dispatch(Event)`** | Evaluates discrete transitions matching strongly-typed struct `Event`. If unhandled and marked deferrable, saves into deferred queue. | **No** | **No** | **Yes** (if transitioned) | Asynchronous command interrupts, CAN bus packets, or telemetry events. |
+
+---
+
+### How Timed Transitions (`after(duration)`) Work
+
+When a statechart defines a timed transition such as:
+```sysml
+state Armed {
+    transition on after(500 ms) then LaunchTimeout;
+}
+```
+
+The compiler and runtime coordinate time deterministically:
+1. **Timer Allocation**: The state machine reserves an internal timer ID in its compile-time bounded `deterministic_timer_manager<TimerCapacity>`.
+2. **State Entry**: Upon entering `Armed`, the timer is armed with duration `500`.
+3. **Time Progression**: Each call to `sm.tick(dt)` or `sm.step(dt)` subtracts $\Delta t$ from the active timer countdown.
+4. **Expiration**: When the countdown reaches zero:
+   * If using `sm.tick(dt, on_expired)`, the callback is notified with the expired timer ID.
+   * In generated models with timed triggers, the expiration triggers the transition directly to `LaunchTimeout`.
+5. **State Exit**: If an external event (e.g. `EvCancel`) causes a transition out of `Armed` before the timeout elapses, the timer is automatically disarmed, preventing stale timeout triggers.
+
+---
+
+### Practical Control Loop Implementation
+
+Here is how a real-time periodic control task integrates both discrete event dispatching and deterministic time stepping:
+
+```cpp
+// 100 Hz Control Task (Period = 10 ms)
+void control_loop_task(MyFsm& sm, MotorInPorts& in, MotorOutPorts& out) {
+    constexpr uint64_t dt_ms = 10;
+    
+    // 1. Read hardware sensors into InPorts snapshot
+    in.temperature_celsius = Hardware_ReadThermistor();
+    in.battery_percent = Hardware_ReadBatterySoc();
+    
+    // 2. Process any asynchronous discrete command received from CAN/UART
+    if (Hardware_HasCommandPacket()) {
+        auto cmd = Hardware_ReadCommandPacket();
+        if (cmd.id == CMD_ARM) {
+            sm.dispatch(EvArm{}, in, out);
+        }
+    }
+    
+    // 3. Advance time by dt and evaluate continuous guards
+    // (This ticks timers, checks after(..) timeouts, and evaluates continuous guards)
+    fsm::step_result res = sm.step(dt_ms, in, out);
+    
+    if (res.has_transitioned()) {
+        // Trace transition if needed
+    }
+    
+    // 4. Write OutPorts snapshot to physical actuator hardware
+    Hardware_SetMotorPwm(out.motor_enable ? out.target_velocity : 0.0f);
+}
+```
 
 ---
 
@@ -269,7 +360,118 @@ If your state machine defines custom `InPorts` and `OutPorts`, but you invoke th
 
 ---
 
-## 7. Next Steps
+## 7. Deterministic Real-Time Timers with `sm.tick(dt)`
+
+The synchronous `fsm::fsm` engine integrates `deterministic_timer_manager` directly into the core runtime without requiring threads, operating system timers, or dynamic memory allocation.
+
+Bare-metal main loops, cyclic tasks, and Timer Interrupt Service Routines (ISRs) can advance internal state dwell and timed transitions deterministically:
+
+```cpp
+#include "fsm/backend/cpp/runtime/fsm.hpp"
+#include <chrono>
+#include <iostream>
+
+using namespace std::chrono_literals;
+
+// Define FSM with timer capacity
+using TimedFSM = fsm::make_fsm<
+    MyTable,
+    fsm::with_registers<Registers>,
+    fsm::with_timer_capacity<8>
+>;
+
+int main() {
+    Registers reg{};
+    TimedFSM fsm(reg);
+
+    // 1. Advance time by fixed duration (e.g. 10ms control loop period)
+    std::size_t expired_count = fsm.tick(10ms);
+
+    // 2. Advance time with an on_expired callback hook
+    fsm.tick(50ms, [](std::uint32_t timer_id) {
+        std::cout << "Timer " << timer_id << " expired!\n";
+    });
+
+    return 0;
+}
+```
+
+---
+
+## 8. Embedded Blackbox Flight Recorder (`with_trace_buffer<N>`)
+
+For aerospace, automotive, and high-integrity embedded applications, `fsmc` provides **`with_trace_buffer<Capacity>`**. This policy installs a compile-time static circular ring buffer (`TraceBuffer<Capacity>`) that records transitions, states, and event triggers with zero dynamic heap allocation:
+
+```cpp
+// FSM with 64-entry flight recorder
+using SafetyFSM = fsm::make_fsm<
+    MyTable,
+    fsm::with_registers<Registers>,
+    fsm::with_trace_buffer<64>
+>;
+
+SafetyFSM fsm(reg);
+
+// Execute transitions...
+fsm.dispatch(EvStart{}, in, out);
+fsm.dispatch(EvFault{}, in, out);
+
+// Inspect post-mortem trace buffer (e.g. inside an assertion failure or crash dump)
+const auto& recorder = fsm.observer().recorder();
+std::cout << "Recorded transitions: " << recorder.size() << " / " << recorder.capacity() << "\n";
+
+for (std::size_t i = 0; i < recorder.size(); ++i) {
+    const fsm::TraceEntry& entry = recorder[i]; // 0 = oldest recorded entry
+    std::cout << "[" << entry.tick << "] "
+              << entry.source_state << " --(" << entry.event_name << ")--> "
+              << entry.target_state << "\n";
+}
+```
+
+---
+
+## 9. State Residence Time Invariants (`max_stay_duration_ms`)
+
+For safety-critical systems requiring strict temporal permanence guarantees (e.g., maximum permitted time in a transient `Arming` or `Calibrating` mode before entering fallback), states can define a compile-time permanence limit:
+
+```cpp
+struct ArmingState {
+    static constexpr std::string_view name = "Arming";
+    static constexpr std::uint64_t max_stay_duration_ms = 500ULL; // Maximum 500ms permitted
+};
+```
+
+### Zero-Overhead Guarantee
+When transition tables do not define states with `max_stay_duration_ms`, the underlying `detail::invariant_manager<Table, false>` uses `[[no_unique_address]]` and occupies **0 bytes**, guaranteeing that minimal state machines maintain `sizeof(MinimalFSM) <= 32`.
+
+### Invariant Monitoring and Callbacks
+When permanence constraints exist, `fsm.tick(dt)` automatically accumulates state residence duration:
+
+```cpp
+TimedSafetyFSM fsm(reg);
+
+// Register an immediate violation callback
+fsm.on_invariant_violation([](const fsm::invariant_violation_info& info) {
+    std::cerr << "TEMPORAL INVARIANT VIOLATED in state '" << info.state_name
+              << "': elapsed " << info.elapsed_ms
+              << "ms exceeds bound of " << info.max_allowed_ms << "ms!\n";
+});
+
+// Periodic execution loop
+fsm.tick(100ms);
+
+if (fsm.has_invariant_violation()) {
+    const auto& violation = fsm.last_invariant_violation();
+    if (violation) {
+        // Trigger emergency failover or safe-mode transition
+        fsm.dispatch(EvEmergencyShutdown{}, in, out);
+    }
+}
+```
+
+---
+
+## 10. Next Steps
 - For asynchronous, lock-free ISR event ingestion, see **[Lock-Free SPSC Engine (`fsm::spsc_fsm`)](spsc_fsm.md)**.
 - For multi-threaded active object queues and timers, see **[Thread-Safe MPSC Engine (`fsm::thread_safe_fsm`)](thread_safe_fsm.md)**.
 - For complete method signatures and traits, see the **[Full Runtime API Reference](reference.md)**.

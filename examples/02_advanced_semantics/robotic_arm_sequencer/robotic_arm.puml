@@ -1,0 +1,67 @@
+@startuml RoboticArmFSM
+skinparam monochrome true
+skinparam state {
+  BackgroundColor White
+  BorderColor Black
+  ArrowColor Black
+}
+
+' ============================================================================
+' OMG PlantUML State Machine: 6-DOF Industrial Robotic Tool Sequencer
+' Demonstrating: Deep History [H*], Nested Compound States, Typed MBSE Ports
+' ============================================================================
+
+' Typed MBSE I/O Ports with range bounds
+' @fsm:port name=payload_weight_kg type=float32 dir=in min=0.0 max=35.0
+' @fsm:port name=motor_torque_nm type=float32 dir=out min=0.0 max=250.0
+' @fsm:port name=tool_gripper_closed type=bool dir=out
+' @fsm:port name=emergency_stop type=bool dir=in
+
+[*] --> Standby
+
+state Standby {
+}
+
+Standby --> Operational : PowerUpCmd / InitializeServosAction
+
+state Operational {
+    [*] --> Idle
+
+    state Idle {
+    }
+
+    state Machining {
+        [*] --> Roughing
+
+        state Roughing {
+        }
+
+        state SemiFinishing {
+        }
+
+        state Finishing {
+        }
+
+        Roughing --> SemiFinishing : StepFinishingCmd / AdvanceToolpathAction
+        SemiFinishing --> Finishing : StepFinishingCmd / AdvanceToolpathAction
+    }
+
+    state ToolCalibration {
+    }
+
+    Idle --> Machining : StartJobCmd [PayloadWeightValidGuard] / SpinSpindleAction
+    Machining --> ToolCalibration : CalibrateToolCmd / RetractArmAction
+    ToolCalibration --> Machining[H*] : CalibrationOkEvent / RestoreOffsetsAction
+}
+
+state SafetyInterlocked {
+    SafetyInterlocked : entry / EngageBrakesAction
+    SafetyInterlocked : exit / ReleaseBrakesAction
+}
+
+Machining --> SafetyInterlocked : SafetyPauseCmd / CutPowerAction
+SafetyInterlocked --> Machining[H*] : ResumeJobCmd [SafetyInterlockClearedGuard] / WarmupServosAction
+Finishing --> Standby : JobCompleteCmd / EngageBrakesAction
+Operational --> Standby : EStopCmd / EngageBrakesAction
+
+@enduml

@@ -1,97 +1,30 @@
+/**
+ * @file test_plantuml_parser.cpp
+ * @brief Unit test suite for the PlantUML state diagram parser and frontend dialect.
+ */
+
 #include <gtest/gtest.h>
 
 #include <optional>
 #include <string>
 
-#include "fsm/frontend/diagram/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/middleend/analysis/fsm_validator.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend;
+using namespace fsm::middleend::analysis;
+using namespace fsm::middleend;
+using namespace fsm::ir;
 
 namespace {
 
 /**
- * @brief Test Intent: Verify Mermaid syntax parsing, state aliases, guard/action extraction, and validation.
- *
- * Scenario:
- * - Parse Mermaid `stateDiagram-v2` with state aliases, transition labels, guards `[Guard]`, and actions `/ Action`.
- * - Verify FsmIr element counts and validation pass.
+ * @brief Verify basic PlantUML syntax parsing and model validation.
+ * @scenario Parse PlantUML with transitions, guards, actions, and initial state pointer.
+ * @expected FsmIr elements accurately populated and FsmValidator passes without errors.
  */
-TEST(ParserTest, MermaidBasicParsingAndValidation) {
-    const std::string mmd = R"(
-    stateDiagram-v2
-        [*] --> Idle
-        state "Waiting for CAN" as WaitingForCan
-        Idle --> WaitingForCan : CmdStart [CanStartGuard] / OnStartAction
-        Idle --> Idle : CmdStop / OnStopAction
-        WaitingForCan --> Running : CanOk [IsReady]
-        Running --> Idle : CmdStop
-    )";
-
-    MermaidParser parser;
-    FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err;
-
-    EXPECT_EQ(model.initial_state, "Idle");
-    EXPECT_EQ(model.states.size(), 3u);   // Idle, WaitingForCan, Running
-    EXPECT_EQ(model.events.size(), 3u);   // CmdStart, CmdStop, CanOk
-    EXPECT_EQ(model.guards.size(), 2u);   // CanStartGuard, IsReady
-    EXPECT_EQ(model.actions.size(), 2u);  // OnStartAction, OnStopAction
-    EXPECT_EQ(model.transitions.size(), 4u);
-
-    const auto validation = FsmValidator::validate(model);
-    EXPECT_TRUE(validation.is_valid);
-    EXPECT_TRUE(validation.errors.empty());
-}
-
-/**
- * @brief Test Intent: Verify Mermaid comment stripping (`%%`), note stripping, and composite state hierarchy.
- *
- * Scenario:
- * - Parse Mermaid diagram containing comments, notes, and nested composite states.
- * - Verify parent-child links and initial sub-state assignment.
- */
-TEST(ParserTest, MermaidCommentsNotesAndComplexHierarchy) {
-    const std::string mmd = R"(
-    stateDiagram-v2
-        %% This is a top-level mermaid comment
-        [*] --> SuperState
-        
-        state SuperState {
-            [*] --> SubA
-            SubA --> SubB : NextEvt / StepAction
-            note right of SubB: This is a note
-        }
-        SuperState --> Finished : CompleteEvt
-    )";
-
-    MermaidParser parser;
-    FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err;
-
-    EXPECT_EQ(model.initial_state, "SuperState");
-    ASSERT_NE(model.find_state("SuperState"), nullptr);
-    EXPECT_TRUE(model.find_state("SuperState")->is_composite);
-    EXPECT_EQ(model.find_state("SuperState")->initial_sub_state, "SubA");
-
-    ASSERT_NE(model.find_state("SubA"), nullptr);
-    EXPECT_EQ(model.find_state("SubA")->parent_state, "SuperState");
-
-    ASSERT_NE(model.find_state("SubB"), nullptr);
-    EXPECT_EQ(model.find_state("SubB")->parent_state, "SuperState");
-}
-
-/**
- * @brief Test Intent: Verify basic PlantUML syntax parsing and model validation.
- *
- * Scenario:
- * - Parse PlantUML with transitions, guards, actions, and initial state pointer.
- * - Verify FsmIr element extraction and FsmValidator passing.
- */
-TEST(ParserTest, PlantUmlBasicParsingAndValidation) {
+TEST(PlantUmlParser, BasicDiagram_ParsedIntoValidFsmIr) {
     const std::string puml = R"(
     @startuml
     [*] --> Standby
@@ -107,7 +40,7 @@ TEST(ParserTest, PlantUmlBasicParsingAndValidation) {
 
     EXPECT_EQ(model.initial_state, "Standby");
     EXPECT_EQ(model.states.size(), 2u);
-    EXPECT_EQ(model.events.size(), 2u);
+    EXPECT_EQ(model.signals.size(), 2u);
     EXPECT_EQ(model.guards.size(), 1u);
     EXPECT_EQ(model.actions.size(), 2u);
     EXPECT_EQ(model.transitions.size(), 2u);
@@ -117,13 +50,11 @@ TEST(ParserTest, PlantUmlBasicParsingAndValidation) {
 }
 
 /**
- * @brief Test Intent: Verify PlantUML single-line and multi-line comment stripping and composite states.
- *
- * Scenario:
- * - Parse PlantUML containing `' comment` and `/' ... '/` block comments with internal transitions.
- * - Verify hierarchy and internal state actions.
+ * @brief Verify PlantUML single-line and multi-line comment stripping and composite states.
+ * @scenario Parse PlantUML containing single-line (' ...) and block (/ ... /') comments with nested states.
+ * @expected Comments discarded, composite hierarchy parsed, and substate parent links established.
  */
-TEST(ParserTest, PlantUmlCommentsAndCompositeHierarchy) {
+TEST(PlantUmlParser, CommentsAndCompositeHierarchy_ParsedCorrectly) {
     const std::string puml = R"(
     @startuml
     ' Single line comment
@@ -153,17 +84,14 @@ TEST(ParserTest, PlantUmlCommentsAndCompositeHierarchy) {
 }
 
 /**
- * @brief Test Intent: Verify FsmValidator detects undefined transition target states.
- *
- * Scenario:
- * - Construct FsmIr with transition to a non-existent state `UnknownTarget`.
- * - Verify FsmValidator::validate() reports errors and fails validity check.
+ * @brief Verify FsmValidator detects undefined transition target states in PlantUML models.
+ * @scenario Construct FsmIr with transition to a non-existent state `UnknownTarget`.
+ * @expected FsmValidator reports error diagnostics and marks model invalid.
  */
-TEST(ParserTest, ValidatorDetectsMissingTargetAndDeadlocks) {
+TEST(PlantUmlParser, UndefinedTargetState_DetectedByValidator) {
     FsmIr model;
     model.initial_state = "Idle";
     model.add_state("Idle");
-    // Transition to unknown target
     model.transitions.emplace_back("Idle", "UnknownTarget", "MyEvent", std::nullopt, std::nullopt, "");
 
     const auto validation = FsmValidator::validate(model);
@@ -172,32 +100,25 @@ TEST(ParserTest, ValidatorDetectsMissingTargetAndDeadlocks) {
 }
 
 /**
- * @brief Test Intent: Verify parsers gracefully reject empty and whitespace-only inputs.
- *
- * Scenario:
- * - Feed empty string and whitespace-only string to PlantUmlParser and MermaidParser.
- * - Verify parser returns false with an informative error message.
+ * @brief Verify PlantUML parser gracefully rejects empty input.
+ * @scenario Feed empty string to PlantUmlParser.
+ * @expected Parser returns false with an informative error message.
  */
-TEST(ParserTest, ParserRejectsEmptyInput) {
+TEST(PlantUmlParser, EmptyInput_GracefullyRejected) {
     PlantUmlParser puml_parser;
-    MermaidParser mmd_parser;
     FsmIr model;
     std::string err;
 
     EXPECT_FALSE(puml_parser.parse("", model, err));
-    EXPECT_FALSE(mmd_parser.parse("   \n\t ", model, err));
 }
 
 /**
- * @brief Test Intent: Verify PlantUML parsing of entryPoint, exitPoint, stay duration (time invariant), and transition
- * priority.
- *
- * Scenario:
- * - Parse PlantUML with `state ep <<entryPoint>>`, `state xp <<exitPoint>>`, `Active : invariant stay <= 100ms`, and
- * `(prio=3)`.
- * - Verify IR captures StateKind::EntryPoint, StateKind::ExitPoint, time_invariant, and transition priority.
+ * @brief Verify PlantUML parsing of entryPoint, exitPoint, time invariants, and transition priorities.
+ * @scenario Parse PlantUML containing entryPoint and exitPoint pseudostates, time invariant stay limit, and transition
+ * priorities.
+ * @expected IR captures StateKind::EntryPoint, StateKind::ExitPoint, time_invariant, and explicit priorities.
  */
-TEST(ParserTest, PlantUmlEntryExitPointPriorityAndInvariant) {
+TEST(PlantUmlParser, EntryExitPointPriorityAndInvariant_CapturedInIr) {
     const std::string puml = R"(
     @startuml
     [*] --> Idle
@@ -235,45 +156,11 @@ TEST(ParserTest, PlantUmlEntryExitPointPriorityAndInvariant) {
 }
 
 /**
- * @brief Test Intent: Verify Mermaid parsing of entryPoint, exitPoint, and transition priority.
- *
- * Scenario:
- * - Parse Mermaid with `state ep <<entryPoint>>`, `state xp <<exitPoint>>`, and `Idle --> Active : (prio=4) EvStart`.
- * - Verify IR captures StateKind::EntryPoint, StateKind::ExitPoint, and transition priority.
+ * @brief Verify PlantUML parsing of @fsm:port inline directives into FsmIr ports.
+ * @scenario Parse PlantUML containing @fsm:port comments with range constraints and physical units.
+ * @expected Inbound and outbound ports added to FsmIr with bounds and units populated.
  */
-TEST(ParserTest, MermaidEntryExitPointAndPriority) {
-    const std::string mmd = R"(
-    stateDiagram-v2
-        [*] --> Idle
-        state ep <<entryPoint>>
-        state xp <<exitPoint>>
-        Idle --> Active : (prio=4) EvStart [CanStart] / OnStart
-        Active --> xp : (prio=1) EvFinish
-    )";
-
-    MermaidParser parser;
-    FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err;
-
-    const auto* ep = model.find_state("ep");
-    ASSERT_NE(ep, nullptr);
-    EXPECT_EQ(ep->kind, StateKind::EntryPoint);
-
-    const auto* xp = model.find_state("xp");
-    ASSERT_NE(xp, nullptr);
-    EXPECT_EQ(xp->kind, StateKind::ExitPoint);
-
-    ASSERT_EQ(model.transitions.size(), 2u);
-    EXPECT_EQ(model.transitions[0].priority, 4u);
-    EXPECT_EQ(model.transitions[1].priority, 1u);
-}
-
-/**
- * @brief Test Intent: Verify PlantUML and Mermaid parsing of @fsm:port directives into FsmIr.
- */
-TEST(ParserTest, PlantUmlAndMermaidPortDirectives) {
-    // 1. PlantUML
+TEST(PlantUmlParser, PortDirectives_ParsedWithAttributesAndConstraints) {
     const std::string puml = R"(
     @startuml
     ' @fsm:port name=sensor_temp type=float dir=in min=-40.0 max=125.0 constraint="self >= -40.0 and self <= 125.0" unit="[degC]"
@@ -300,25 +187,6 @@ TEST(ParserTest, PlantUmlAndMermaidPortDirectives) {
     EXPECT_TRUE(out_p->is_out());
     EXPECT_DOUBLE_EQ(out_p->min_value.value_or(0.0), 0.0);
     EXPECT_DOUBLE_EQ(out_p->max_value.value_or(0.0), 100.0);
-
-    // 2. Mermaid
-    const std::string mmd = R"(
-    stateDiagram-v2
-        %% @fsm:port name=voltage_in type=float dir=in min=18.0 max=36.0
-        [*] --> Standby
-        Standby --> Active : EvPowerOn
-    )";
-
-    MermaidParser mmd_parser;
-    FsmIr mmd_model;
-    ASSERT_TRUE(mmd_parser.parse(mmd, mmd_model, err)) << err;
-
-    ASSERT_EQ(mmd_model.ports.size(), 1u);
-    const auto* v_in = mmd_model.find_port("voltage_in");
-    ASSERT_NE(v_in, nullptr);
-    EXPECT_TRUE(v_in->is_in());
-    EXPECT_DOUBLE_EQ(v_in->min_value.value_or(0.0), 18.0);
-    EXPECT_DOUBLE_EQ(v_in->max_value.value_or(0.0), 36.0);
 }
 
 }  // namespace

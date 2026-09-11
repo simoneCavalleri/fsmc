@@ -1,3 +1,8 @@
+/**
+ * @file test_choice.cpp
+ * @brief Unit test suite for choice pseudostates and conditional branching in runtime.
+ */
+
 #include <gtest/gtest.h>
 
 #include <string>
@@ -6,20 +11,22 @@
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/middleend/analysis/fsm_validator.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::backend::cpp;
+using namespace fsm::backend;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend;
+using namespace fsm::middleend::analysis;
+using namespace fsm::middleend;
+using namespace fsm::ir;
 
 namespace {
 
 /**
- * @brief Test Intent: Verify Choice pseudostate expansion and code generation.
- *
- * Scenario:
- * - Parse PlantUML containing `state AuthChoice <<choice>>` and conditional outgoing branches.
- * - Verify Choice node is captured as a choice_node in the Formal IR.
- * - Verify C++ code generator expands the choice into direct guarded rows in the transition table
- *   (e.g., row<Idle, LoginCmd, AdminView>::when<IsAdminGuard> and row<Idle, LoginCmd, UserView>::when<IsUserGuard>).
+ * @brief Verify choice pseudostate parsing, code generation, and conditional runtime branching.
+ * @scenario Instantiate state machine with Choice node guarded by mutually exclusive conditions.
+ * @expected Machine evaluates guards dynamically at Choice node and branches to selected target state.
  */
-TEST(ChoiceTest, ChoicePseudostateParsingAndCodegen) {
+TEST(ChoicePseudostate, ChoicePseudostate_ConditionalEvaluation_BranchesToTarget) {
     const std::string puml = R"(
     @startuml
     [*] --> Idle

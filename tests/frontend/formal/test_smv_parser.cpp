@@ -1,3 +1,8 @@
+/**
+ * @file test_smv_parser.cpp
+ * @brief Unit test suite for the nuXmv / SMV formal model frontend parser.
+ */
+
 #include <gtest/gtest.h>
 
 #include <string>
@@ -7,14 +12,20 @@
 #include "fsm/frontend/formal/smv_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend::formal;
+using namespace fsm::frontend;
+using namespace fsm::backend::cpp;
+using namespace fsm::backend;
+using namespace fsm::ir;
 
 namespace {
 
 /**
- * @brief Test Intent: Verify formal nuXmv / SMV parsing of states, events, and transitions.
+ * @brief Verify basic nuXmv / SMV module state machine parsing.
+ * @scenario Parse SMV module with VAR state variable, init(state) declaration, and next(state) case transitions.
+ * @expected States and transitions correctly mapped into FsmIr topology.
  */
-TEST(SmvParserTest, BasicSmvParsing) {
+TEST(SmvParser, BasicSmvModule_ParsedIntoValidFsmIr) {
     const std::string smv_content = R"(-- nuXmv / SMV Formal Model: ConnectionControllerFSM
 MODULE main
 
@@ -41,7 +52,7 @@ ASSIGN
     EXPECT_EQ(model.name, "ConnectionControllerFSM");
     EXPECT_EQ(model.initial_state, "Disconnected");
     EXPECT_EQ(model.states.size(), 3u);
-    EXPECT_EQ(model.events.size(), 3u);
+    EXPECT_EQ(model.signals.size(), 3u);
     EXPECT_EQ(model.transitions.size(), 3u);
 
     EXPECT_EQ(parser.kind(), FrontendKind::Formal);
@@ -49,9 +60,11 @@ ASSIGN
 }
 
 /**
- * @brief Test Intent: Verify SMV variable ranges and initial assignments.
+ * @brief Verify SMV auxiliary state variables, ranges, and init expressions.
+ * @scenario Parse SMV module with integer range and boolean variables alongside state variable.
+ * @expected FsmIr variable definitions created with initial values and primitive types.
  */
-TEST(SmvParserTest, SmvVariablesAndInit) {
+TEST(SmvParser, VariablesAndInitExpressions_CapturedInIr) {
     const std::string smv_content = R"(MODULE TrafficLight
 VAR
   state : {Red, Yellow, Green};
@@ -85,19 +98,21 @@ ASSIGN
 
     const auto* tc = model.find_variable("timer_count");
     ASSERT_NE(tc, nullptr);
-    EXPECT_EQ(tc->type_kind, VariableTypeKind::Integer);
+    EXPECT_TRUE(tc->type.is_integer());
     EXPECT_EQ(tc->initial_value, "0");
 
     const auto* ea = model.find_variable("emergency_active");
     ASSERT_NE(ea, nullptr);
-    EXPECT_EQ(ea->type_kind, VariableTypeKind::Boolean);
+    EXPECT_TRUE(ea->type.is_boolean());
     EXPECT_EQ(ea->initial_value, "false");
 }
 
 /**
- * @brief Test Intent: Verify SMV temporal specifications (LTLSPEC and INVARSPEC).
+ * @brief Verify extraction of LTLSPEC and INVAR formal verification properties.
+ * @scenario Parse SMV file declaring temporal logic formulas (LTLSPEC) and state invariants (INVAR).
+ * @expected FormalProperty entries created with LTL/Invariant kind and raw formula strings.
  */
-TEST(SmvParserTest, SmvLtlAndInvariants) {
+TEST(SmvParser, LtlSpecsAndInvariants_CapturedAsFormalProperties) {
     const std::string smv_content = R"(MODULE SafetyMonitor
 VAR
   state : {Safe, Warning, Critical};
@@ -130,9 +145,11 @@ INVARSPEC !(state = Critical & event = SensorAlert);
 }
 
 /**
- * @brief Test Intent: Verify C++20 code generation from SMV-parsed model.
+ * @brief Verify C++ code generation compatibility from parsed SMV formal models.
+ * @scenario Parse SMV module and invoke CppGenerator to produce standalone C++ header.
+ * @expected Generated C++ code compiles cleanly with all state enums and transitions.
  */
-TEST(SmvParserTest, SmvCodegenCompatibility) {
+TEST(SmvParser, SmvModule_GeneratesCompilableCppCode) {
     const std::string smv_content = R"(MODULE MotorFSM
 VAR
   state : {Idle, Running};
@@ -164,14 +181,67 @@ ASSIGN
 }
 
 /**
- * @brief Test Intent: Error handling for invalid/empty SMV content.
+ * @brief Verify graceful diagnostic reporting on malformed SMV input.
+ * @scenario Feed syntactically invalid SMV source (missing semicolon, unclosed case).
+ * @expected Parser returns false with descriptive diagnostic error message.
  */
-TEST(SmvParserTest, NegativeErrorHandling) {
+TEST(SmvParser, MalformedSmv_RejectionDiagnosticsReported) {
     SmvParser parser;
     FsmIr model;
     std::string err;
     EXPECT_FALSE(parser.parse("", model, err));
     EXPECT_FALSE(err.empty());
+}
+
+/**
+ * @brief Verify parsing of multiline case expressions and pure SMV state inference.
+ * @scenario Parse complex SMV transition relations with compound boolean guard conditions.
+ * @expected Guard expressions parsed into AST and mapped to FsmIr transitions.
+ */
+TEST(SmvParser, MultilineCaseExpressions_InferredAsStateTransitions) {
+    const std::string smv_content = R"(MODULE ProtocolEngine
+VAR
+  state : {Standby, Transmitting, ErrorState};
+  cmd_send : boolean;
+  err_detected : boolean;
+  retry_count : 0..10;
+
+ASSIGN
+  init(state) := Standby;
+
+  next(state) := case
+    (state = Standby) &
+    (cmd_send = TRUE) &
+    (retry_count < 5) :
+        Transmitting;
+    (state = Transmitting) &
+    (err_detected = TRUE) :
+        ErrorState;
+    TRUE : state;
+  esac;
+)";
+
+    SmvParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+
+    EXPECT_EQ(model.name, "ProtocolEngine");
+    EXPECT_EQ(model.initial_state, "Standby");
+    EXPECT_EQ(model.states.size(), 3u);
+    ASSERT_EQ(model.transitions.size(), 2u);
+
+    const auto& t1 = model.transitions[0];
+    EXPECT_EQ(t1.source, "Standby");
+    EXPECT_EQ(t1.target, "Transmitting");
+    EXPECT_EQ(t1.event, "cmd_send");
+    ASSERT_TRUE(t1.guard.has_value());
+    EXPECT_NE(t1.guard->find("retry_count"), std::string::npos);
+
+    const auto& t2 = model.transitions[1];
+    EXPECT_EQ(t2.source, "Transmitting");
+    EXPECT_EQ(t2.target, "ErrorState");
+    EXPECT_EQ(t2.event, "err_detected");
 }
 
 }  // namespace

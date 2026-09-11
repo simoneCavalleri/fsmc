@@ -1,3 +1,8 @@
+/**
+ * @file test_context_contract.cpp
+ * @brief Unit test suite for domain context contracts, signal validators, and compile-time safety.
+ */
+
 #include <gtest/gtest.h>
 
 #include <concepts>
@@ -38,9 +43,11 @@ struct IncompleteServices {
 };
 
 /**
- * @brief Test Intent: Verify runtime and constexpr validation logic on typed signal structs.
+ * @brief Verify runtime signal attribute validation predicates.
+ * @scenario Dispatch signal with valid and out-of-range payload attributes.
+ * @expected Validator accepts valid payload and rejects invalid payload with error diagnostic.
  */
-TEST(DomainContractTest, SignalValidatorExecution) {
+TEST(DomainContract, SignalValidator_FieldConstraints_EnforcedAtRuntime) {
     std::uint8_t dummy_buf[4] = {1, 2, 3, 4};
     EvPacketRecv valid_packet(4, dummy_buf);
     EXPECT_TRUE(valid_packet.is_valid());
@@ -53,9 +60,11 @@ TEST(DomainContractTest, SignalValidatorExecution) {
 }
 
 /**
- * @brief Test Intent: Verify compile-time C++20 concept requirements on user-defined services/ports structs.
+ * @brief Verify C++20 domain concepts enforcing event, state, and context type requirements.
+ * @scenario Check types against fsm::Signal, fsm::State, and fsm::Context concepts.
+ * @expected Compliant types satisfy concepts and non-compliant types fail at compile time.
  */
-TEST(DomainContractTest, Cpp20ConceptsValidation) {
+TEST(DomainContract, Cpp20Concepts_TypeValidation_EnsuresDomainSafety) {
     static_assert(StateMachineServiceContract<ValidDeviceServices>);
     static_assert(!StateMachineServiceContract<IncompleteServices>);
     static_assert(!StateMachineServiceContract<int>);
@@ -67,9 +76,11 @@ TEST(DomainContractTest, Cpp20ConceptsValidation) {
 }
 
 /**
- * @brief Test Intent: Verify compile-time safety and initialization for Registers.
+ * @brief Verify compile-time assertions guarding against contract violations.
+ * @scenario Instantiate state machine templates with conforming domain parameters.
+ * @expected Static assertions succeed and state machine compiles with zero errors.
  */
-TEST(DomainContractTest, CompileTimeDomainSafety) {
+TEST(DomainContract, CompileTimeSafety_StaticAsserts_RejectInvalidContracts) {
     struct StateA {};
     struct StateB {};
     struct EventX {};
@@ -92,9 +103,11 @@ TEST(DomainContractTest, CompileTimeDomainSafety) {
 }
 
 /**
- * @brief Test Intent: Verify thread_safe_fsm::with_registers executes callable under internal lock.
+ * @brief Verify thread-safe state variable register mutation.
+ * @scenario Dispatch transitions that modify context registers under multi-threaded concurrency.
+ * @expected Registers updated atomically with consistent state across threads.
  */
-TEST(DomainContractTest, ThreadSafeWithRegistersMutation) {
+TEST(DomainContract, RegistersMutation_ThreadSafeFsm_ModifiesStateSafely) {
     struct CounterReg {
         int value = 0;
     };
@@ -115,9 +128,11 @@ TEST(DomainContractTest, ThreadSafeWithRegistersMutation) {
 }
 
 /**
- * @brief Test Intent: Verify thread_safe_fsm::snapshot_registers is independent from subsequent mutations.
+ * @brief Verify state isolation using snapshot registers.
+ * @scenario Capture register snapshot, mutate machine state, and verify snapshot.
+ * @expected Snapshot retains point-in-time register values independent of subsequent mutations.
  */
-TEST(DomainContractTest, SnapshotRegistersIsolation) {
+TEST(DomainContract, SnapshotRegisters_StateIsolation_MaintainsSeparateCopies) {
     struct DeltaReg {
         int counter = 0;
     };
@@ -142,9 +157,11 @@ TEST(DomainContractTest, SnapshotRegistersIsolation) {
 }
 
 /**
- * @brief Test Intent: Verify const overload of with_registers for read-only access.
+ * @brief Verify const read-only access to context registers.
+ * @scenario Access registers through const reference in guard evaluation.
+ * @expected Values read correctly without allowing accidental mutation.
  */
-TEST(DomainContractTest, ThreadSafeWithRegistersConstReadOnly) {
+TEST(DomainContract, RegistersConstReadOnly_ConstAccess_PreventsMutation) {
     struct ReadReg {
         double temperature = 36.6;
     };

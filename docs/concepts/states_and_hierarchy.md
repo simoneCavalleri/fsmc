@@ -92,7 +92,7 @@ Recursively restores the full hierarchy chain down to the deepest active leaf st
     *(For C++ target implementation details, see the [Runtime C++ API](../runtime_api/synchronous_fsm.md) chapter).*
 
 > [!TIP]
-> **Exact Compile-Time History Allocation**: In the C++ runtime ([`detail/history_manager.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/backend/cpp/runtime/detail/history_manager.hpp)), the history storage buffer capacity is strictly bounded at compile-time by `count_parent_states_v<Table::states>` (the exact number of composite parents with substates), eliminating any heap usage and avoiding stack waste over total state count.
+> **Exact Compile-Time History Allocation**: In the C++ runtime ([`detail/history_manager.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/backend/cpp/runtime/detail/history_manager.hpp)), the history storage buffer capacity is strictly bounded at compile-time by `count_parent_states_v<Table::states>` (the exact number of composite parents with substates), eliminating any heap usage and avoiding stack waste over total state count.
 
 
 ---
@@ -103,3 +103,5 @@ Orthogonal regions allow a composite state to execute multiple concurrent statec
 
 - Regions are defined as independent sub-statecharts executing synchronously within the parent state.
 - Middle-end passes (`OrthogonalInterferencePass`) statically analyze transitions across orthogonal regions to verify that concurrent actions do not perform unsynchronized read/write conflicts on the same shared registers or output ports.
+- **Cartesian Product Lowering (`OrthogonalProductPass`)**: Prior to C++ backend code generation, concurrent orthogonal regions are synthesized into flat Cartesian product states ($S_A \times S_B$). To guarantee bounded compilation times and prevent combinatorial explosion, the product space is bounded at 1024 states; exceeding this limit emits fatal diagnostic `EORTHO003`.
+- **C++ Backend Preflight Validation**: The C++ emitter runs a strict preflight validator (`CppBackendValidator`) that rejects unlowered orthogonal regions with diagnostic `ECPP010`, ensuring all parallel concurrency is formally resolved into deterministic flat state machines before code generation.

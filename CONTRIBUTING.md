@@ -19,7 +19,7 @@ cmake -B build -S . -DFSMC_ENABLE_TESTING=ON -DFSMC_ENABLE_EXAMPLES=ON
 # Build everything
 cmake --build build -j$(nproc)
 
-# Run the full test suite (53 test suites)
+# Run the full test suite (84 CTest targets)
 ctest --test-dir build --output-on-failure
 ```
 
@@ -36,18 +36,18 @@ The compiler pipeline follows a clean, single-pass layered architecture:
 
 ```
 [ Frontend ]   ──>  [ FsmIr AST ]  ──>  [ Middle-End Passes ]  ──>  [ Backend Emitters ]  ──>  [ Zero-Heap Runtime ]
-(Parsers)           (Core Metamodel)     (Intervals, SMT, Opt)       (C++17/C++20, Diagram)      (fsm, spsc_fsm)
+(Parsers)           (Core Metamodel)     (Intervals, Passes)         (C++17/C++20, Diagram)      (fsm, spsc_fsm)
 ```
 
 ### Subsystems Breakdown
 
 | Subsystem | Location | Description |
 | :--- | :--- | :--- |
-| **Frontend** | `include/fsm/frontend/` | Ingests modeling formats into `FsmIr` (`formal/` for SysML/SCXML/XMI; `diagram/` for PlantUML/Mermaid/DOT). |
+| **Frontend** | `include/fsm/frontend/` | Ingests modeling formats into `FsmIr` (`formal/` for SysML/SCXML/XMI/Stateflow; `diagram/` for PlantUML/Mermaid/DOT/JSON). |
 | **IR Metamodel** | `include/fsm/ir/` | `FsmIr` root struct containing states, transitions, typed ports, datapath variables, and LTL properties. |
-| **Middle-End** | `include/fsm/middleend/` | Analysis and optimization passes (`PassManager`, `EFSMIntervalAnalyzer`, SMT/Z3, nuXmv model checking). |
+| **Middle-End** | `include/fsm/middleend/` | Analysis and optimization passes (`PassManager`, `EFSMIntervalAnalyzer`, nuXmv model checking). |
 | **Backend** | `include/fsm/backend/` | C++17/C++20 code generation (`cpp/`) and diagram/formal serializers (`formal/`, `diagram/`). |
-| **Runtime** | `include/fsm/runtime/` | Header-only runtime library: `fsm` (synchronous), `spsc_fsm` (lock-free ISR), `thread_safe_fsm` (MPSC). |
+| **Runtime** | `include/fsm/backend/cpp/runtime/` | Header-only runtime library: `fsm` (synchronous), `spsc_fsm` (lock-free ISR), `thread_safe_fsm` (MPSC). |
 | **Tools** | `tools/` | `fsmc` (main compiler CLI) and `fsm-opt` (middle-end optimizer CLI). |
 
 ---
@@ -67,11 +67,10 @@ The compiler pipeline follows a clean, single-pass layered architecture:
 3. Register the pass in [`include/fsm/middleend/pass_manager.hpp`](include/fsm/middleend/pass_manager.hpp).
 4. Add unit tests in `tests/middleend/`.
 
-### Adding a Backend Emitter
-1. Inherit from `IEmitter` in `include/fsm/backend/`.
-2. Implement `emit(model, options)` returning the formatted string.
-3. Register the format in [`include/fsm/backend/emitter_factory.hpp`](include/fsm/backend/emitter_factory.hpp).
-4. Add roundtrip tests in `tests/backend/`.
+### Adding a Backend Serializer or Emitter
+1. Implement a format serializer with `static std::string serialize(const FsmIr& model);` under `include/fsm/backend/diagram/` or `include/fsm/backend/formal/`.
+2. Dispatch the format in `EmitterFactory::emit_diagram` in [`include/fsm/backend/emitter_factory.hpp`](include/fsm/backend/emitter_factory.hpp).
+3. Add roundtrip tests in `tests/backend/`.
 
 ---
 

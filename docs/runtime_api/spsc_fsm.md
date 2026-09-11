@@ -175,11 +175,12 @@ void rtos_periodic_control_task(void* param) {
 | `bool process_one([in, out])` | Pops and executes the single oldest event. Returns `false` if the queue was empty. |
 | `std::size_t run_until_empty([in, out])` | Processes all currently queued events in a loop until the queue is completely drained. |
 | `step_result step([dt], [in, out])` | Evaluates continuous condition transitions and dwell timers (`in_state_for`) on the current state. |
+| `std::size_t tick(dt, [on_expired])` | Advances deterministic timer manager by duration `dt` and executes callbacks for expired timers. |
 | `std::size_t queue_size()` | Returns the current count of queued pending events. |
 
 ---
 
-## Reader API Reference (Lock-Free Seqlock)
+## Reader API Reference (Lock-Free Seqlock & Invariants)
 
 | Method | Description |
 | :--- | :--- |
@@ -188,6 +189,11 @@ void rtos_periodic_control_task(void* param) {
 | `std::string_view state_name()` | Returns the name string of the current active state via atomic acquire-load and compile-time table lookup. |
 | `bool is_in<State>()` | Checks active state in $O(1)$ lock-free time via atomic index comparison (`type_list_index_of_v`). |
 | `bool is_in_state<State>()` | Alias for `is_in<State>()`. |
+| `bool is_invariant_satisfied()` | Lock-free check if current state residence satisfies permanence invariant. |
+| `bool has_invariant_violation()` | Lock-free check if an invariant violation has occurred. |
+| `std::optional<invariant_violation_info> last_invariant_violation()` | Retrieves metadata of the most recent invariant violation. |
+| `void on_invariant_violation(handler)` | Registers callback hook executed when an invariant violation occurs. |
+| `void clear_invariant_violation()` | Resets invariant violation status and cached info. |
 
 > [!IMPORTANT]
 > **Seqlock Trivially Copyable Contract**:  

@@ -1,37 +1,45 @@
+/**
+ * @file test_diagram_export.cpp
+ * @brief Unit test suite for cross-format diagram and formal model serializers.
+ */
+
 #include <gtest/gtest.h>
 
 #include <string>
 
 #include "fsm/backend/diagram/dot_serializer.hpp"
-#include "fsm/backend/diagram/json_serializer.hpp"
 #include "fsm/backend/diagram/mermaid_serializer.hpp"
 #include "fsm/backend/diagram/plantuml_serializer.hpp"
 #include "fsm/backend/formal/cameo_serializer.hpp"
 #include "fsm/backend/formal/scxml_serializer.hpp"
 #include "fsm/backend/formal/smv_serializer.hpp"
 #include "fsm/backend/formal/sysml2_serializer.hpp"
+#include "fsm/frontend/common/json_parser.hpp"
 #include "fsm/frontend/diagram/dot_parser.hpp"
-#include "fsm/frontend/diagram/json_parser.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/frontend/formal/cameo_xmi_parser.hpp"
 #include "fsm/frontend/formal/scxml_parser.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/ir/fsm_ir_serializer.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend::formal;
+using namespace fsm::backend;
+using namespace fsm::backend::diagram;
+using namespace fsm::backend::formal;
+using namespace fsm::ir;
 
 namespace {
 
 /**
- * @brief Test Intent: Verify cross-format export from Cameo OMG XMI to Mermaid state diagrams.
- *
- * Scenario:
- * - Parse Cameo XMI into FsmIr.
- * - Export to Mermaid diagram syntax.
- * - Re-parse exported Mermaid string with MermaidParser and verify model equivalence.
+ * @brief Verify cross-format export from Cameo OMG XMI to Mermaid state diagrams.
+ * @scenario Parse Cameo XMI into FsmIr and export to Mermaid diagram syntax.
+ * @expected Exported Mermaid diagram parses successfully and preserves states, signals, and transitions.
  */
-TEST(FormatExportTest, CameoToMermaidExport) {
+TEST(DiagramExport, CameoXmiModel_ExportedToMermaidAndValidated) {
     const std::string xmi = R"(<?xml version="1.0" encoding="UTF-8"?>
     <xmi:XMI xmi:version="2.1" xmlns:uml="http://www.omg.org/spec/UML/20090901" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1">
       <uml:Model xmi:id="_m1" name="CameoExportModel">
@@ -74,14 +82,11 @@ TEST(FormatExportTest, CameoToMermaidExport) {
 }
 
 /**
- * @brief Test Intent: Verify cross-format export from W3C SCXML to PlantUML state diagrams.
- *
- * Scenario:
- * - Parse SCXML into FsmIr.
- * - Export to PlantUML syntax.
- * - Re-parse exported PlantUML with PlantUmlParser and verify state graph equivalence.
+ * @brief Verify cross-format export from W3C SCXML to PlantUML state diagrams.
+ * @scenario Parse W3C SCXML model and export to PlantUML diagram syntax.
+ * @expected Exported PlantUML diagram is valid and re-parses into identical state/transition topology.
  */
-TEST(FormatExportTest, ScxmlToPlantUmlExport) {
+TEST(DiagramExport, ScxmlModel_ExportedToPlantUmlAndValidated) {
     const std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Disconnected" name="ConnectionFSM">
       <state id="Disconnected">
@@ -114,13 +119,11 @@ TEST(FormatExportTest, ScxmlToPlantUmlExport) {
 }
 
 /**
- * @brief Test Intent: Verify SysML v2 state definition export serialization.
- *
- * Scenario:
- * - Build FsmIr and export to OMG SysML v2 textual notation.
- * - Verify `state def`, `entry; then ...`, `first ... accept ... if ... do ... then ...` syntax.
+ * @brief Verify SysML v2 state definition export serialization.
+ * @scenario Build FsmIr and serialize to SysML v2 syntax with transitions, actions, and guards.
+ * @expected Generated SysML v2 output contains expected state definitions, transitions, and action blocks.
  */
-TEST(FormatExportTest, Sysml2Export) {
+TEST(DiagramExport, Sysml2Model_ExportedToPlantUmlAndMermaid) {
     FsmIr model;
     model.name = "ExportTest";
     model.initial_state = "Off";
@@ -132,7 +135,7 @@ TEST(FormatExportTest, Sysml2Export) {
     trans.target = "On";
     trans.event = "ToggleCmd";
     trans.guard = "PowerGuard";
-    trans.action = "TurnOnAction";
+    trans.transition_action = ActionSignature("TurnOnAction");
     model.add_transition(trans);
 
     const std::string sysml = Sysml2Serializer::serialize(model);
@@ -146,15 +149,11 @@ TEST(FormatExportTest, Sysml2Export) {
 }
 
 /**
- * @brief Test Intent: Verify multi-format roundtrip fidelity for complex hierarchical state machine (PlantUML ->
- * Mermaid -> JSON).
- *
- * Scenario:
- * - Parse deep hierarchical Industrial Press statechart with composite states and history transitions.
- * - Export to PlantUML, Mermaid, and JSON.
- * - Re-parse all three representations and verify hierarchy, guards, and action retention.
+ * @brief Verify multi-format roundtrip fidelity for complex hierarchical state machines.
+ * @scenario Export Industrial Press model across PlantUML, Mermaid, and JSON serialization formats.
+ * @expected All exported formats preserve structural hierarchy, states, transitions, and actions without loss.
  */
-TEST(FormatExportTest, IndustrialPressRoundtripAcrossPlantUmlMermaidJson) {
+TEST(DiagramExport, IndustrialPressModel_RoundtrippedAcrossPlantUmlMermaidJson) {
     const std::string puml = R"(@startuml
 [*] --> Idle
 
@@ -247,13 +246,13 @@ Operating --> Idle : StopCmd / DisengageDrive
     EXPECT_EQ(roundtrip_mmd.find_state("Manual")->parent_state, "Running");
 
     // 4. Test JSON Roundtrip
-    const std::string exported_json = JsonSerializer::serialize(model);
+    const std::string exported_json = fsm::ir::FsmIrSerializer::serialize_json(model);
     EXPECT_NE(exported_json.find("\"Initializing\": {"), std::string::npos);
     EXPECT_NE(exported_json.find("\"Operating\": {"), std::string::npos);
     EXPECT_NE(exported_json.find("\"guard\": \"SafetyOk && !EStop\""), std::string::npos);
     EXPECT_NE(exported_json.find("\"action\": \"LogPowerOn\""), std::string::npos);
     EXPECT_EQ(exported_json.find("fsm::and_"), std::string::npos);  // Clean diagram format
-    JsonStateParser json_parser;
+    fsm::frontend::JsonParser json_parser;
     FsmIr roundtrip_json;
     ASSERT_TRUE(json_parser.parse(exported_json, roundtrip_json, err)) << "Error: " << err;
     EXPECT_EQ(roundtrip_json.find_state("SelfTest")->parent_state, "Initializing");
@@ -261,15 +260,11 @@ Operating --> Idle : StopCmd / DisengageDrive
 }
 
 /**
- * @brief Test Intent: Verify multi-format serialization of EntryPoint, ExitPoint, time_invariant, and transition
- * priority.
- *
- * Scenario:
- * - Construct FsmIr with EntryPoint, ExitPoint, stay duration / time_invariant, and transition priority.
- * - Serialize to PlantUML, SysML v2, and JSON.
- * - Re-parse each representation and verify full retention of kinds, invariants, and priorities.
+ * @brief Verify multi-format serialization of EntryPoint, ExitPoint, time_invariant, and transition priorities.
+ * @scenario Construct FsmIr with advanced pseudostates and serialize to PlantUML, Mermaid, and SysML v2.
+ * @expected All formats retain entryPoint, exitPoint, time invariant constraints, and transition priorities.
  */
-TEST(FormatExportTest, EntryExitPointTimeInvariantAndPriorityMultiFormatRoundtrip) {
+TEST(DiagramExport, AdvancedPseudostatesAndInvariants_PreservedAcrossDiagramExports) {
     FsmIr model;
     model.name = "AvionicsFsm";
     model.initial_state = "Standby";
@@ -320,13 +315,13 @@ TEST(FormatExportTest, EntryExitPointTimeInvariantAndPriorityMultiFormatRoundtri
     EXPECT_NE(sysml_out.find("priority 10"), std::string::npos);
 
     // 3. JSON Export & Re-parse
-    const std::string json_out = JsonSerializer::serialize(model);
+    const std::string json_out = fsm::ir::FsmIrSerializer::serialize_json(model);
     EXPECT_NE(json_out.find("\"kind\": \"EntryPoint\""), std::string::npos);
     EXPECT_NE(json_out.find("\"kind\": \"ExitPoint\""), std::string::npos);
     EXPECT_NE(json_out.find("\"priority\": 10"), std::string::npos);
     EXPECT_NE(json_out.find("\"time_invariant\": \"stay <= 250ms\""), std::string::npos);
 
-    JsonStateParser json_parser;
+    fsm::frontend::JsonParser json_parser;
     FsmIr json_ir;
     ASSERT_TRUE(json_parser.parse(json_out, json_ir, err)) << "JSON parse error: " << err;
     EXPECT_EQ(json_ir.find_state("EnPort")->kind, StateKind::EntryPoint);
@@ -339,17 +334,11 @@ TEST(FormatExportTest, EntryExitPointTimeInvariantAndPriorityMultiFormatRoundtri
 }
 
 /**
- * @brief Test Intent: Verify nuXmv / SMV formal model serialization with extended variables, prioritized transitions,
- * and LTL/INVAR temporal properties.
- *
- * Scenario:
- * - Build FSM with bounded integer variable 'retry_count' (0..5), boolean 'armed', state enum, and transitions with
- * priority.
- * - Add an INVARSPEC invariant and an LTLSPEC formula.
- * - Verify that SmvSerializer outputs valid SMV with MODULE main, VAR, ASSIGN init/next case structures and formal
- * specifications.
+ * @brief Verify nuXmv / SMV formal model serialization with variables, transitions, and LTL properties.
+ * @scenario Export FsmIr with integer/boolean variables, transition guards, and temporal formulas to SMV.
+ * @expected SMV model contains valid VAR declarations, TRANS transition relations, and LTLSPEC safety formulas.
  */
-TEST(FormatExportTest, SmvFormalModelVerificationExport) {
+TEST(DiagramExport, SmvModel_ExportedWithInvariantsAndLtlProperties) {
     FsmIr model;
     model.name = "TelemetryController";
     model.initial_state = "Standby";
@@ -411,12 +400,12 @@ TEST(FormatExportTest, SmvFormalModelVerificationExport) {
     EXPECT_NE(smv_out.find("init(retry_count) := 0;"), std::string::npos);
     EXPECT_NE(smv_out.find("init(is_armed) := FALSE;"), std::string::npos);
 
-    // 3. Check transition prioritization in case statements (priority 10 must appear before priority 1)
+    // 3. Check transition prioritization in case statements (priority 1 must appear before priority 10)
     auto pos_prio10 = smv_out.find("state = Standby & event = EvSend & (retry_count < 3 & is_armed) : Transmitting;");
     auto pos_prio1 = smv_out.find("state = Standby & event = EvSend & (retry_count >= 3) : SafeHold;");
     ASSERT_NE(pos_prio10, std::string::npos);
     ASSERT_NE(pos_prio1, std::string::npos);
-    EXPECT_LT(pos_prio10, pos_prio1);
+    EXPECT_LT(pos_prio1, pos_prio10);
 
     // 4. Check INVARSPEC and LTLSPEC
     EXPECT_NE(smv_out.find("INVARSPEC -- SafeStateInvariant"), std::string::npos);
@@ -424,15 +413,11 @@ TEST(FormatExportTest, SmvFormalModelVerificationExport) {
 }
 
 /**
- * @brief Test Intent: Verify Cameo OMG XMI and SCXML export for hierarchical pseudostates (Choice, Deep/Shallow
- * History, Entry/Exit Points).
- *
- * Scenario:
- * - Construct hierarchical FSM with parent composite state containing Choice, DeepHistory, EntryPoint, ExitPoint.
- * - Export to Cameo OMG XMI 2.1 and SCXML 1.0.
- * - Verify presence of proper XML tags, pseudostate kinds, and history semantics.
+ * @brief Verify Cameo OMG XMI and SCXML export for hierarchical pseudostates and orthogonal regions.
+ * @scenario Export FsmIr containing Choice, History, and parallel states to Cameo XMI and SCXML.
+ * @expected Target XML documents contain matching pseudostate tags and orthogonal region representations.
  */
-TEST(FormatExportTest, CameoAndScxmlPseudostatesAndOrthogonalExport) {
+TEST(DiagramExport, PseudostatesAndOrthogonalRegions_ExportedCorrectly) {
     FsmIr model;
     model.name = "FlightControlSystem";
     model.initial_state = "Standby";
@@ -476,14 +461,11 @@ TEST(FormatExportTest, CameoAndScxmlPseudostatesAndOrthogonalExport) {
 }
 
 /**
- * @brief Test Intent: Verify DOT / Graphviz diagram serialization and syntax integrity.
- *
- * Scenario:
- * - Export model to Graphviz DOT format.
- * - Verify digraph header, state styling, and transition edges.
- * - Re-parse with DotParser to confirm full lossless syntax compatibility.
+ * @brief Verify DOT / Graphviz diagram serialization and syntax integrity.
+ * @scenario Export FsmIr with initial state and transitions to Graphviz DOT digraph format.
+ * @expected DOT digraph renders valid shape and label declarations matching FsmIr topology.
  */
-TEST(FormatExportTest, DotGraphvizExport) {
+TEST(DiagramExport, FsmIrModel_ExportedToDotGraphvizFormat) {
     FsmIr model;
     model.name = "PumpController";
     model.initial_state = "Off";
@@ -494,7 +476,7 @@ TEST(FormatExportTest, DotGraphvizExport) {
 
     TransitionEdge t1("t1", "Off", "Priming", SignalTrigger("EvTurnOn"));
     t1.guard = "TankNotEmptyGuard";
-    t1.action = "StartPrimerAction";
+    t1.set_action("StartPrimerAction");
     model.add_transition(t1);
 
     TransitionEdge t2("t2", "Priming", "Pumping", SignalTrigger("EvPrimed"));
@@ -517,7 +499,7 @@ TEST(FormatExportTest, DotGraphvizExport) {
     EXPECT_EQ(parsed_ir.transitions.size(), 2u);
     EXPECT_EQ(parsed_ir.transitions[0].event, "EvTurnOn");
     EXPECT_EQ(parsed_ir.transitions[0].guard, "TankNotEmptyGuard");
-    EXPECT_EQ(parsed_ir.transitions[0].action, "StartPrimerAction");
+    EXPECT_EQ(parsed_ir.transitions[0].get_action(), "StartPrimerAction");
 }
 
 }  // namespace

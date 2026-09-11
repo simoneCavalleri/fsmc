@@ -22,9 +22,11 @@ import json
 import re
 
 EXAMPLES = [
-    ("connection_manager", "examples/connection_manager/connection.puml", "plantuml"),
-    ("async_motor_controller", "examples/async_motor_controller/motor.mmd", "mermaid"),
-    ("mission_controller", "examples/mission_controller/mission.puml", "plantuml"),
+    ("network_protocol", "examples/01_basic_patterns/network_protocol/connection.puml", "plantuml"),
+    ("robotic_arm", "examples/02_advanced_semantics/robotic_arm_sequencer/robotic_arm.puml", "plantuml"),
+    ("automotive_bms", "examples/03_concurrency_and_timing/automotive_bms/bms.puml", "plantuml"),
+    ("flight_control", "examples/04_formal_verification/flight_control_modes/fms.puml", "plantuml"),
+    ("sensor_pipeline", "examples/05_custom_toolchain/plugin_and_pipeline/sensor_pipeline.puml", "plantuml"),
 ]
 
 def run_cmd(cmd, input_text=None):

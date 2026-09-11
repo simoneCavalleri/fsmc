@@ -228,6 +228,26 @@ class spsc_fsm {
         return res;
     }
 
+    std::size_t tick(std::uint64_t delta_ms) { return fsm_.tick(delta_ms); }
+
+    template <typename Callback>
+    std::size_t tick(std::uint64_t delta_ms, Callback on_expired) {
+        return fsm_.tick(delta_ms, on_expired);
+    }
+
+    template <typename Rep, typename Period>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt) {
+        return fsm_.tick(dt);
+    }
+
+    template <typename Rep, typename Period, typename Callback>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired) {
+        return fsm_.tick(dt, on_expired);
+    }
+
+    [[nodiscard]] auto& timer_manager() noexcept { return fsm_.timer_manager(); }
+    [[nodiscard]] const auto& timer_manager() const noexcept { return fsm_.timer_manager(); }
+
     // ========================================================================
     // Read & Introspection API
     // ========================================================================
@@ -249,6 +269,16 @@ class spsc_fsm {
     template <typename State>
     [[nodiscard]] bool is_in_state() const noexcept {
         return is_in<State>();
+    }
+
+    [[nodiscard]] std::uint64_t state_residence_time() const noexcept { return fsm_.state_residence_time(); }
+    [[nodiscard]] bool has_invariant_violation() const noexcept { return fsm_.has_invariant_violation(); }
+    [[nodiscard]] bool is_invariant_satisfied() const noexcept { return fsm_.is_invariant_satisfied(); }
+    [[nodiscard]] const std::optional<invariant_violation_info>& last_invariant_violation() const noexcept {
+        return fsm_.last_invariant_violation();
+    }
+    void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
+        fsm_.set_invariant_violation_handler(std::move(handler));
     }
 
     /**

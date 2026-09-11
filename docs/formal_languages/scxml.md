@@ -13,10 +13,11 @@
 | `<scxml>` | `name`, `initial`, `version="1.0"` | Root state machine model |
 | `<datamodel>` | `<data id="..." expr="..."/>` | Internal memory registers (`Registers`) |
 | `<state>` | `id`, `initial` | Simple atomic state or composite parent state |
-| `<parallel>` | `id` | Orthogonal parallel execution regions |
+| `<parallel>` | `id` | Orthogonal concurrent execution regions (flattened via `OrthogonalProductPass`) |
 | `<history>` | `id`, `type="shallow\|deep"` | History pseudostate with $z^{-1}$ memory |
-| `<final>` | `id` | Final termination state |
+| `<final>` | `id` | Final termination state emitting completion event `done.state.<id>` |
 | `<transition>` | `event`, `cond`, `target`, `delay` | Transition with event trigger, guard, target, and timed dwell |
+| `<send>` / `<raise>` | `event="..."` | Internal event dispatch and cascade execution |
 | `<onentry>` / `<onexit>` | `<script>`, executable content | State entry and exit lifecycle actions |
 
 ---

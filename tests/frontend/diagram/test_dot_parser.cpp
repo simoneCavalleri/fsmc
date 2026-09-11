@@ -1,3 +1,8 @@
+/**
+ * @file test_dot_parser.cpp
+ * @brief Unit test suite for the Graphviz DOT statechart parser.
+ */
+
 #include <gtest/gtest.h>
 
 #include <string>
@@ -6,18 +11,20 @@
 #include "fsm/frontend/diagram/dot_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend;
+using namespace fsm::backend::cpp;
+using namespace fsm::backend;
+using namespace fsm::ir;
 
 namespace {
 
 /**
- * @brief Test Intent: Verify Graphviz DOT graph parsing with transition labels and initial pseudostate (`__start__`).
- *
- * Scenario:
- * - Parse Graphviz DOT `digraph` with edge labels formatted as `event [guard] / action`.
- * - Verify initial point node points to Disconnected, and transitions are populated into FsmIr.
+ * @brief Verify Graphviz DOT graph parsing with transition labels and initial pseudostate.
+ * @scenario Parse Graphviz DOT digraph with edge labels formatted as 'event [guard] / action' and point initial node.
+ * @expected Initial state assigned to Disconnected and all 3 states and 5 transitions loaded into FsmIr.
  */
-TEST(DotParserTest, BasicDotParsing) {
+TEST(DotParser, BasicDotDigraph_ParsedIntoValidFsmIr) {
     const std::string dot_content = R"(digraph DotConnectionFSM {
     __start__ [shape=point];
     __start__ -> Disconnected;
@@ -43,13 +50,11 @@ TEST(DotParserTest, BasicDotParsing) {
 }
 
 /**
- * @brief Test Intent: Verify DOT `subgraph cluster_<Name>` parsing into hierarchical composite states.
- *
- * Scenario:
- * - Parse DOT graph containing a cluster subgraph `cluster_InFlight`.
- * - Verify InFlight is parsed as a Composite StateKind with nested sub-states.
+ * @brief Verify DOT subgraph cluster parsing into hierarchical composite states.
+ * @scenario Parse DOT graph containing a cluster subgraph 'cluster_InFlight' with sub-start node.
+ * @expected InFlight created as Composite StateKind with nested sub-states populated.
  */
-TEST(DotParserTest, CompositeClusterParsing) {
+TEST(DotParser, ClusterSubgraph_ParsedAsCompositeState) {
     const std::string dot_content = R"(digraph MissionFSM {
     start [shape=point];
     start -> Standby;

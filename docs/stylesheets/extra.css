@@ -747,28 +747,3 @@ kbd {
     }
 }
 
-
-/* Interactive Playground Frame */
-.playground-frame-container {
-    width: 100%;
-    height: 85vh;
-    min-height: 520px;
-    border: 1px solid var(--fsmc-border);
-    border-radius: 8px;
-    overflow: hidden;
-    margin-top: 1rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-}
-
-@media screen and (max-width: 60em) {
-    .playground-frame-container {
-        height: 75vh;
-        min-height: 440px;
-    }
-}
-
-.playground-frame-container iframe {
-    width: 100%;
-    height: 100%;
-    border: none;
-}

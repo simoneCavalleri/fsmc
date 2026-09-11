@@ -1,0 +1,28 @@
+@startuml
+' @fsm:port name=has_network_interface type=bool dir=in
+' @fsm:port name=has_valid_credentials type=bool dir=in
+' @fsm:port name=rx_bytes_per_sec type=float dir=in min=0.0 max=10000000.0
+' @fsm:port name=tx_bytes_per_sec type=float dir=out min=0.0 max=10000000.0
+
+[*] --> Disconnected
+
+state "Disconnected State" as Disconnected
+state "Connecting to Remote Server" as Connecting
+state "Connected and Ready" as Connected
+state "Connection Suspended" as Suspended
+
+Disconnected --> Connecting : ConnectCmd [HasNetworkGuard && HasValidCredentialsGuard] / InitSocketAction
+Disconnected --> Disconnected : ConnectCmd [!HasNetworkGuard || !HasValidCredentialsGuard] / LogErrorAction
+
+Connecting --> Connected : HandshakeOkEvent / SetupSessionAction
+Connecting --> Disconnected : HandshakeFailedEvent / CleanupAction
+Connecting --> Disconnected : TimeoutEvent / CleanupAction
+
+Connected --> Suspended : NetworkDegradedEvent / PauseQueueAction
+Connected --> Disconnected : DisconnectCmd / CloseSocketAction
+Connected --> Disconnected : ConnectionLostEvent / CleanupAction
+
+Suspended --> Connected : NetworkRestoredEvent / ResumeQueueAction
+Suspended --> Disconnected : DisconnectCmd / CloseSocketAction
+Suspended --> Disconnected : TimeoutEvent / CleanupAction
+@enduml

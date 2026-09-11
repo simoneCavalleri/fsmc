@@ -1,3 +1,8 @@
+/**
+ * @file test_spsc_queue.cpp
+ * @brief Unit test suite for lock-free SPSC ring buffer memory management and lifecycles.
+ */
+
 #include <gtest/gtest.h>
 
 #include <atomic>
@@ -9,14 +14,11 @@
 namespace {
 
 /**
- * @brief Test Intent: Verify single-threaded SPSC ring buffer FIFO semantics and capacity boundaries.
- *
- * Scenario:
- * - Push items until capacity is reached and verify queue reports full.
- * - Attempt to push beyond capacity and verify rejection.
- * - Pop all items and verify exact FIFO order and empty queue status.
+ * @brief Verify single-thread push, pop, empty, and full operations on SPSC ring buffer.
+ * @scenario Push elements into ring buffer and pop them back.
+ * @expected Elements popped in exact insertion order and size metrics update accurately.
  */
-TEST(SpscRingBufferTest, SingleThreadBasicOps) {
+TEST(SpscRingBuffer, SingleThreadOps_PushAndPop_OperatesCorrectly) {
     fsm::spsc_ring_buffer<int, 8> queue;
 
     EXPECT_TRUE(queue.empty());
@@ -41,14 +43,11 @@ TEST(SpscRingBufferTest, SingleThreadBasicOps) {
 }
 
 /**
- * @brief Test Intent: Stress-test SPSC ring buffer under high-throughput concurrent multi-threading.
- *
- * Scenario:
- * - One producer thread continuously pushes 100,000 sequenced integers.
- * - One consumer thread continuously pops items into a consumed collection.
- * - Verify all 100,000 items are received in exact sequential order without data races or dropped elements.
+ * @brief Verify concurrent multi-threaded stress test on SPSC ring buffer.
+ * @scenario Run dedicated producer and consumer threads transferring 100,000 items.
+ * @expected All 100,000 items received in order with zero data loss and no deadlocks.
  */
-TEST(SpscRingBufferTest, MultiThreadedConcurrentStress) {
+TEST(SpscRingBuffer, ConcurrentStress_ProducerConsumer_ZeroDataLoss) {
     constexpr std::size_t TotalItems = 100000;
     fsm::spsc_ring_buffer<std::size_t, 1024> queue;
 
@@ -117,14 +116,11 @@ struct Tracker {
 };
 
 /**
- * @brief Test Intent: Verify exact constructor and destructor lifecycle management for non-trivial objects.
- *
- * Scenario:
- * - Emplace objects with multi-argument constructors into ring buffer.
- * - Pop objects and verify live instance count updates with exact 1-to-1 parity.
- * - Destroy the ring buffer and verify remaining slotted elements are cleanly destroyed with 0 leaks.
+ * @brief Verify non-trivial object construction and destruction lifecycles in ring buffer.
+ * @scenario Emplace objects with custom constructors and destructors into ring buffer.
+ * @expected Constructors and destructors called matching exact allocation and pop counts.
  */
-TEST(SpscRingBufferTest, NonTrivialObjectLifecyclesAndEmplace) {
+TEST(SpscRingBuffer, NonTrivialObjects_EmplaceAndPop_ConstructedAndDestroyedCorrectly) {
     Tracker::live_count = 0;
     {
         fsm::spsc_ring_buffer<Tracker, 8> q;
@@ -146,9 +142,11 @@ TEST(SpscRingBufferTest, NonTrivialObjectLifecyclesAndEmplace) {
 }
 
 /**
- * @brief Test Intent: Verify std::byte aligned storage and default constructibility static assertion.
+ * @brief Verify raw byte storage and default constructible handling.
+ * @scenario Instantiate ring buffer on aligned byte storage buffer.
+ * @expected Objects constructed directly in place without default initialization overhead.
  */
-TEST(SpscRingBufferTest, SpscRingBufferByteStorageAndDefaultConstructible) {
+TEST(SpscRingBuffer, ByteStorage_DefaultConstructible_AllocatedAccurately) {
     static_assert(std::is_default_constructible_v<int>, "int is default constructible");
     fsm::spsc_ring_buffer<int, 16> ring;
     EXPECT_TRUE(ring.empty());
@@ -174,14 +172,11 @@ struct NonDefaultType {
 static_assert(!std::is_default_constructible_v<NonDefaultType>);
 
 /**
- * @brief Test Intent: Verify SPSC ring buffer supports non-default-constructible payload types.
- *
- * Scenario:
- * - Emplace instances of NonDefaultType into ring buffer.
- * - Pop values and verify content preservation.
- * - Verify in-place destructor clean-up without default construction requirements.
+ * @brief Verify in-place emplacement of non-default-constructible payloads.
+ * @scenario Emplace types without default constructors into ring buffer.
+ * @expected In-place construction succeeds cleanly.
  */
-TEST(SpscRingBufferTest, NonDefaultConstructiblePayload) {
+TEST(SpscRingBuffer, NonDefaultConstructible_Emplace_ConstructsInPlace) {
     fsm::spsc_ring_buffer<NonDefaultType, 4> q;
     EXPECT_TRUE(q.emplace(42));
     EXPECT_TRUE(q.emplace(84));

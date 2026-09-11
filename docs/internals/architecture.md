@@ -11,24 +11,23 @@ The repository is structured into distinct, decoupled compiler layers on top of 
 ```text
 fsmc/
 ├── include/fsm/
-│   ├── ir/          # Unified AST & Semantic Model (FsmIr, StateNode, TransitionEdge, PortDefinition, FNV-1a IDs, EFSM vars, LTL/INVAR)
+│   ├── ir/          # Unified AST & Semantic Model (FsmIr, StateNode, TransitionEdge, PortDefinition, FNV-1a IDs, EFSM vars, LTL/INVAR, Serializer/Deserializer)
 │   ├── middleend/   # PassManager, Dead State Pruning, Determinism, Guard Satisfiability, Inlining, TimedDeadlockPass, EFSM Interval Analysis & ModelChecker
 │   ├── diagnostic/  # Rich DiagnosticEngine with ANSI colors, SourceSpan, and visual carets
 │   ├── frontend/    # Two-Category Parser Ingestion Infrastructure & ParserFactory
-│   │   ├── formal/  # High-Semantics Formal Models (SysML v2, W3C SCXML, Cameo / MagicDraw XMI, nuXmv SMV)
+│   │   ├── formal/  # High-Semantics Formal Models (SysML v2, W3C SCXML, Cameo / MagicDraw XMI, Stateflow XML, nuXmv SMV)
 │   │   └── diagram/ # Visual Diagram Sketch Notations (PlantUML, Mermaid, Graphviz DOT, XState JSON)
 │   └── backend/     # Target Code Generators, EmitterFactory & Zero-Overhead C++ Runtime
 │       ├── cpp/     # C++17/C++20 Standalone Bundles & Modular Generators
 │       │   └── runtime/ # Canonical Zero-Heap Real-Time Runtime Engine (fsm, spsc_fsm, thread_safe_fsm, static_ring_buffer)
 │       ├── diagram/ # Visual Diagram Serializers (PlantUML, Mermaid, DOT, JSON)
-│       ├── formal/  # Formal Model Serializers (Cameo XMI, SCXML, SMV, SysML v2)
+│       ├── formal/  # Formal Model Serializers (Cameo XMI, SCXML, Stateflow XML, SMV, SysML v2)
 │       └── rtm/     # Formal Requirement Traceability Matrix (RTM) Emitter
 ├── tools/
 │   ├── fsmc/        # Primary Multi-Format Compiler Driver CLI
 │   └── fsm-opt/     # Standalone Formal IR Optimizer, Linter & Roundtrip Formatter CLI
-├── playground/      # Interactive WebAssembly Browser Playground (fsmc.wasm)
 ├── examples/        # Aerospace, Automotive ECU, and Resilient IoT Showcases
-├── tests/           # Modular GoogleTest Suites (54 suites, 100% pass)
+├── tests/           # Modular GoogleTest Suites (84 test targets, 100% pass)
 │   ├── backend/     # Codegen, roundtrip lossless export, and backend/cpp/runtime tests
 │   ├── frontend/    # Frontend tests partitioned into formal/ and diagram/
 │   ├── ir/          # Serialization and AST integrity
@@ -44,7 +43,7 @@ fsmc/
 `fsmc` operates as a multi-stage compiler structured in three distinct tiers: **Frontend Ingestion**, **Middle-End Pass Pipeline**, and **Backend Code Generators & Emitters**.
 
 ```
-  Model File (.sysml / .xmi / .scxml / .puml / .mmd / .dot / .json / .smv)
+  Model File (.sysml / .xmi / .scxml / .puml / .mmd / .dot / .json / .sfx / .stateflow / .smv)
            │
            ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -53,6 +52,7 @@ fsmc/
 │    - SysML v2 Parser (Native textual .sysml grammar)        │
 │    - Cameo / MagicDraw Parser (OMG XMI 2.x XML parser)      │
 │    - W3C SCXML Parser (State Chart XML specification)       │
+│    - MathWorks Stateflow Parser (Simulink XML/JSON format)  │
 │    - nuXmv / SMV Parser (Formal symbolic specification)     │
 │  • Visual Diagrams (include/fsm/frontend/diagram/):         │
 │    - PlantUML Parser (State diagram block tokenization)     │
@@ -75,14 +75,18 @@ fsmc/
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 3. Middle-End Optimizer & Verifier (PassManager)            │
-│  • DeadStatePruningPass (Prunes unreachable states & dead tr)│
-│  • DeterminismEnforcementPass (Detects nondeterministic br) │
-│  • GuardSimplificationPass (Algebraic boolean optimization)  │
-│  • SubmachineInliningPass (Inlines modular submachines)     │
-│  • TimedDeadlockPass (Detects 0ms timeouts & racing timers) │
-│  • OrthogonalInterferencePass (Detects concurrent races)    │
-│  • Formal ModelChecker (Temporal LTL/CTL & Safety Invariants)│
+│ 3. Middle-End Optimizer & Verifier (28 Passes, 7 Stages)    │
+│  • Stage 1: Canonicalization & Semantic Validation          │
+│  • Stage 2: Structural Lowering (LCA Action Fusion, Choice, │
+│             Fork/Join, Orthogonal Product, History, Deferred│
+│  • Stage 3: Formal Safety & Invariant Verification (Livelock│
+│             Priority Conflict, Timed Invariants, Event Queue│
+│  • Stage 4: Symbolic Model Checking (Deadlocks, LTL/CTL)    │
+│  • Stage 5: Optimization (Constant Folding, Dead State/Act, │
+│             Action Factoring, Transition Fusion, Minimiz.)  │
+│  • Stage 6: Data-Path Optimization (Intervals, Liveness)    │
+│  • Stage 7: Backend Handoff (Determinism, WCET Analysis)    │
+│  • Extensibility: PipeThroughPass & Dynamic C++ Pass Plugins │
 │  • Rich DiagnosticEngine (Rust/Clang-style visual carets)   │
 └──────────────────────────────┬──────────────────────────────┘
                                │
@@ -90,14 +94,18 @@ fsmc/
             ▼                                     ▼
 ┌───────────────────────────────┐   ┌───────────────────────────┐
 │ 4a. C++ Code Generator Engine │   │ 4b. Diagram & SMV Emitters│
-│  • Bounded Choice Flattening  │   │  • SysML v2 Serializer    │
-│  • Standalone (SSOT bundled)  │   │  • PlantUML Serializer    │
-│  • Modular C++ (.hpp/.cpp)    │   │  • Mermaid Serializer     │
-│  • C++17 (SFINAE) / C++20     │   │  • Cameo XMI Serializer   │
-│  • Zero-heap embedded runtime │   │  • SCXML Serializer       │
-│  • Thread-safe async wrappers │   │  • Graphviz DOT Serializer│
-│  • Deterministic timer manager│   │  • JSON IR Serializer     │
-│  • Ring buffer overflow policy│   │  • nuXmv / SMV Serializer │
+│  • Backend Preflight Validator│   │  • SysML v2 Serializer    │
+│  • LCA Boundary Action Fusion │   │  • Stateflow Serializer   │
+│  • Cartesian Product Lowering │   │  • PlantUML Serializer    │
+│  • Standalone (SSOT bundled)  │   │  • Mermaid Serializer     │
+│  • Modular C++ (.hpp/.cpp)    │   │  • Cameo XMI Serializer   │
+│  • C++17 (SFINAE) / C++20     │   │  • SCXML Serializer       │
+│  • Zero-heap embedded runtime │   │  • Graphviz DOT Serializer│
+│  • State Residence Invariants │   │  • JSON IR Serializer     │
+│  • Deterministic timer manager│   │  • nuXmv / SMV Serializer │
+│  • Blackbox Flight Recorder   │   │  • RTM Traceability Matrix│
+│  • MC/DC Test Harness Gen     │   │  • Companion Manifest Side│
+│  • SPSC & Thread-safe wrappers│   │                           │
 └───────────────┬───────────────┘   └─────────────┬─────────────┘
                 ▼                                 ▼
        Generated C++ Header               Exported Diagram / SMV
@@ -269,7 +277,7 @@ To support complex boolean logic in model diagrams (e.g. `[PowerOk && (!Fault ||
  │                   Authoring & Visual Statechart Formats                         │
  │  • OMG SysML v2 (.sysml)       • W3C SCXML (.scxml)     • Cameo XMI (.cameo)    │
  │  • PlantUML (@startuml)        • Mermaid (stateDiagram) • XState JSON (.json)   │
- │  • Graphviz DOT (.dot)                                                          │
+ │  • Graphviz DOT (.dot)         • MathWorks Stateflow XML (.xml / .sfx)          │
  │                                                                                 │
  │  Semantics: Hierarchical HFSM, Typed Signals, Abstract Action Signatures,       │
  │             Deferred Events, Physical Quantity Constraints, Target Codegen.     │
@@ -296,11 +304,11 @@ To support complex boolean logic in model diagrams (e.g. `[PowerOk && (!Fault ||
 ### Distinct Roles in the Compiler Architecture
 
 1. **Authoring & Executable Modeling (Language-Agnostic Frontends & Emitters)**:
-   - **SysML v2, SCXML, Cameo XMI, PlantUML, Mermaid, JSON, DOT**: Designed to model operational behavior with rich, language-agnostic software semantics (composite state trees, abstract entry/exit/do action signatures, event deferrals, physical unit constraints).
+   - **SysML v2, SCXML, Cameo XMI, Stateflow XML, PlantUML, Mermaid, JSON, DOT**: Designed to model operational behavior with rich, language-agnostic software semantics (composite state trees, abstract entry/exit/do action signatures, event deferrals, physical unit constraints).
    - Serve as primary authoring languages for continuous roundtrip, semantic analysis, and target code generation (such as C++17/20 bare-metal runtimes).
 
 2. **Formal Verification Sink (`nuXmv / SMV`)**:
-   - **Role**: Serves as a pure, standard **Symbolic Model Checking Target** for mission-critical and safety-critical verification (DO-178C, ISO 26262, ECSS).
+   - **Role**: Serves as a pure, standard **Symbolic Model Checking Target** for mission-critical and safety-critical verification.
    - **Mathematical Formalism**: Emits a standard finite Kripke structure `M = <S, S0, R, L>` with explicit transition relations (`ASSIGN next(state) := case ... esac;`), finite-domain variables (`0..100`, `boolean`), discrete clock counters (`timer_<state> : 0..N`), and temporal logic goals (`LTLSPEC`, `INVARSPEC`).
    - **Design Philosophy**: SMV is kept clean and canonical—free of unnatural pseudo-directives—so that emitted files are immediately verifiable by external tools (`nuxmv`, `NuSMV`, `MathSAT`) without preprocessing.
 

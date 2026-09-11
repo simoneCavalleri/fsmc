@@ -1,13 +1,28 @@
+/**
+ * @file test_rtm_emitter.cpp
+ * @brief Unit test suite for the Requirements Traceability Matrix (RTM) emitter.
+ */
+
 #include <gtest/gtest.h>
 
 #include "fsm/backend/rtm/rtm_emitter.hpp"
+#include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::diagnostic;
+using namespace fsm::backend::rtm;
+using namespace fsm::backend;
+using namespace fsm::ir;
 
 namespace {
 
-TEST(RtmEmitterTest, MarkdownAndJsonGeneration) {
+/**
+ * @brief Verify Markdown and JSON export of Requirements Traceability Matrix with verification outcomes.
+ * @scenario Construct model with requirements-annotated states/transitions/properties and export passed and failed
+ * results.
+ * @expected Markdown table and JSON document generated with accurate compliance percentage and requirement statuses.
+ */
+TEST(RtmEmitter, TraceabilityResults_EmittedInMarkdownAndJson) {
     FsmIr model;
     model.name = "FlightControlFSM";
     model.initial_state = "Idle";
@@ -72,6 +87,31 @@ TEST(RtmEmitterTest, MarkdownAndJsonGeneration) {
     std::string json_violated = RtmEmitter::emit(model, failed_results, RtmFormat::Json);
     EXPECT_NE(json_violated.find("\"compliance_rate\": 50.0"), std::string::npos);
     EXPECT_NE(json_violated.find("\"status\": \"VIOLATED\""), std::string::npos);
+}
+
+/**
+ * @brief Verify RtmEmitter::audit_traceability reports untraced states and summary statistics.
+ * @scenario Run audit_traceability on model where some states lack formal traceability tags.
+ * @expected DiagnosticEngine receives informative audit notifications with summary code.
+ */
+TEST(RtmEmitter, UntracedElements_AuditedWithSummaryDiagnostic) {
+    FsmIr model;
+    model.name = "AuditTest";
+    model.add_state("S1");
+    auto& s2 = model.add_state("S2");
+    s2.traceability_reqs.push_back("REQ-TEST-01");
+
+    DiagnosticEngine diag;
+    RtmEmitter::audit_traceability(model, diag);
+
+    EXPECT_FALSE(diag.has_errors());
+    bool found_audit_summary = false;
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "I_RTM_AUDIT_SUMMARY") {
+            found_audit_summary = true;
+        }
+    }
+    EXPECT_TRUE(found_audit_summary);
 }
 
 }  // namespace

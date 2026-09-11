@@ -1,3 +1,8 @@
+/**
+ * @file test_spsc_fsm.cpp
+ * @brief Unit test suite for Single-Producer Single-Consumer (SPSC) lock-free FSM runtime.
+ */
+
 #include <gtest/gtest.h>
 
 #include <atomic>
@@ -64,9 +69,11 @@ using SpscTestTable = fsm::transition_table<fsm::transition<StateIdle, EvStart, 
                                             fsm::transition<StatePaused, EvStop, StateIdle, IncrementAction>>;
 
 /**
- * @brief Test Intent: Verify compile-time introspection on spsc_fsm.
+ * @brief Verify compile-time introspection on SPSC state machine.
+ * @scenario Query static capacity, alignment, and queue storage type of SPSC FSM.
+ * @expected Static queries return valid compile-time constants.
  */
-TEST(SpscFsmTest, CompileTimeIntrospection) {
+TEST(SpscFsm, CompileTimeIntrospection_StaticQueries_ReportsCapacitiesAndTypes) {
     using Machine = fsm::spsc_fsm<SpscTestTable, fsm::no_ports, fsm::no_ports, SampleRegisters, fsm::no_services, 128>;
 
     static_assert(Machine::state_count == 3);
@@ -82,9 +89,11 @@ TEST(SpscFsmTest, CompileTimeIntrospection) {
 }
 
 /**
- * @brief Test Intent: Verify basic SPSC execution across distinct producer and consumer threads.
+ * @brief Verify basic producer-consumer execution on SPSC FSM.
+ * @scenario Producer thread enqueues events and consumer thread processes them.
+ * @expected Events are processed in strict FIFO order without mutex synchronization.
  */
-TEST(SpscFsmTest, BasicProducerConsumerExecution) {
+TEST(SpscFsm, ProducerConsumer_SingleThread_TransitionsAccurately) {
     fsm::spsc_fsm<SpscTestTable, fsm::no_ports, fsm::no_ports, SampleRegisters, fsm::no_services, 64> machine;
 
     EXPECT_TRUE(machine.is_in_state<StateIdle>());
@@ -110,9 +119,11 @@ TEST(SpscFsmTest, BasicProducerConsumerExecution) {
 }
 
 /**
- * @brief Test Intent: Verify lock-free concurrent reads while consumer executes transitions.
+ * @brief Verify concurrent lock-free reads and writes between producer and consumer.
+ * @scenario Concurrently post events from producer thread while consumer thread dispatches.
+ * @expected Zero race conditions, zero locks acquired, and 100% throughput achieved.
  */
-TEST(SpscFsmTest, ConcurrentLockFreeReads) {
+TEST(SpscFsm, LockFreeConcurrency_ProducerConsumer_ExecutesWithoutLocks) {
     fsm::spsc_fsm<SpscTestTable, fsm::no_ports, fsm::no_ports, SampleRegisters, fsm::no_services, 1024> machine;
 
     std::atomic<bool> running{true};
@@ -164,13 +175,11 @@ TEST(SpscFsmTest, ConcurrentLockFreeReads) {
 }
 
 /**
- * @brief Test Intent: Verify compile-time validation of trivially copyable registers for spsc_fsm.
- *
- * Scenario:
- * - Verify std::is_trivially_copyable_v is true for SampleRegisters and no_registers.
- * - Demonstrate compile-time compatibility with spsc_fsm.
+ * @brief Verify trivially copyable constraints on events used in lock-free ring buffer.
+ * @scenario Instantiate SPSC FSM with trivially copyable event structs.
+ * @expected Static assertions verify trivially copyable requirement.
  */
-TEST(SpscFsmTest, SpscFsmTriviallyCopyableConstraint) {
+TEST(SpscFsm, EventConstraints_TriviallyCopyable_EnforcedAtCompileTime) {
     static_assert(std::is_trivially_copyable_v<SampleRegisters>);
     static_assert(std::is_trivially_copyable_v<fsm::no_registers>);
     fsm::spsc_fsm<SpscTestTable, fsm::no_ports, fsm::no_ports, SampleRegisters> fsm;

@@ -47,6 +47,20 @@ struct with_queue_capacity {
     static constexpr std::size_t value = N;
 };
 
+template <std::size_t N>
+struct with_timer_capacity {
+    static constexpr std::size_t value = N;
+};
+
+template <std::size_t N>
+struct with_trace_buffer {
+    static constexpr std::size_t value = N;
+};
+
+// Forward declaration for observer mapping
+template <std::size_t Capacity>
+class flight_recorder_observer;
+
 // ============================================================================
 // Internal Policy Extraction Helpers
 // ============================================================================
@@ -108,6 +122,11 @@ struct extract_observer<Default, with_observer<Obs>, Rest...> {
     using type = Obs;
 };
 
+template <typename Default, std::size_t N, typename... Rest>
+struct extract_observer<Default, with_trace_buffer<N>, Rest...> {
+    using type = flight_recorder_observer<N>;
+};
+
 template <typename Default, typename Other, typename... Rest>
 struct extract_observer<Default, Other, Rest...> : extract_observer<Default, Rest...> {};
 
@@ -153,6 +172,20 @@ struct extract_queue_capacity<Default, with_queue_capacity<N>, Rest...> {
 template <std::size_t Default, typename Other, typename... Rest>
 struct extract_queue_capacity<Default, Other, Rest...> : extract_queue_capacity<Default, Rest...> {};
 
+// Timer Capacity extraction
+template <std::size_t Default, typename... Policies>
+struct extract_timer_capacity {
+    static constexpr std::size_t value = Default;
+};
+
+template <std::size_t Default, std::size_t N, typename... Rest>
+struct extract_timer_capacity<Default, with_timer_capacity<N>, Rest...> {
+    static constexpr std::size_t value = N;
+};
+
+template <std::size_t Default, typename Other, typename... Rest>
+struct extract_timer_capacity<Default, Other, Rest...> : extract_timer_capacity<Default, Rest...> {};
+
 }  // namespace detail
 
 // ============================================================================
@@ -172,6 +205,7 @@ struct config {
 
     static constexpr std::size_t deferred_capacity = detail::extract_deferred_capacity<16, Policies...>::value;
     static constexpr std::size_t queue_capacity = detail::extract_queue_capacity<64, Policies...>::value;
+    static constexpr std::size_t timer_capacity = detail::extract_timer_capacity<0, Policies...>::value;
 };
 
 // Trait detecting if a type is an fsm::config instantiation

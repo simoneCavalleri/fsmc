@@ -1,22 +1,29 @@
+/**
+ * @file signal_definition.hpp
+ * @brief MBSE Typed Signal Definitions, Payloads, Attributes, and Validators for the FSM IR.
+ */
+
 #pragma once
 
 #include <string>
 #include <utility>
 #include <vector>
 
-namespace fsm::codegen {
+#include "fsm/ir/data_type.hpp"
 
-// ============================================================================
-// Signal / Payload Definitions & Attributes
-// ============================================================================
+namespace fsm::ir {
 
+/**
+ * @brief Attribute payload parameter within a typed signal definition.
+ */
 struct SignalAttribute {
-    std::string name;
-    std::string type;  // e.g. "uint32_t", "const uint8_t*", "std::string"
-    std::string default_value;
+    std::string name;                          ///< Attribute name identifier
+    DataType type{PrimitiveTypeKind::UInt32};  ///< Canonical language-neutral data type
+    std::string default_value;                 ///< Default value expression
 
     SignalAttribute() = default;
-    SignalAttribute(std::string attr_name, std::string attr_type, std::string def_val = "")
+
+    SignalAttribute(std::string attr_name, DataType attr_type, std::string def_val = "")
         : name(std::move(attr_name)), type(std::move(attr_type)), default_value(std::move(def_val)) {}
 
     bool operator==(const SignalAttribute& other) const noexcept {
@@ -24,11 +31,14 @@ struct SignalAttribute {
     }
 };
 
+/**
+ * @brief MBSE Signal Definition representing asynchronous events with typed attributes and validation predicates.
+ */
 struct SignalDefinition {
-    std::string name;
-    std::vector<SignalAttribute> attributes;
-    std::vector<std::string> validators;  // Predicates e.g. "len > 0", "ptr != nullptr"
-    std::string description;
+    std::string name;                         ///< Unique signal name (e.g. "PacketReceived")
+    std::vector<SignalAttribute> attributes;  ///< Sequence of payload attributes
+    std::vector<std::string> validators;      ///< Predicate assertions (e.g. "len > 0", "ptr != nullptr")
+    std::string description;                  ///< Human-readable documentation comment
 
     SignalDefinition() = default;
     explicit SignalDefinition(std::string sig_name) : name(std::move(sig_name)) {}
@@ -39,4 +49,4 @@ struct SignalDefinition {
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::ir

@@ -48,6 +48,48 @@ struct after_ms {
     static constexpr std::chrono::milliseconds duration{Milliseconds};
 };
 
+/**
+ * @brief Compile-time periodic millisecond timed transition trigger.
+ */
+template <std::int64_t Milliseconds>
+struct every_ms {
+    static constexpr std::chrono::milliseconds duration{Milliseconds};
+};
+
+template <typename T>
+struct is_timed_event : std::false_type {};
+
+template <typename Duration>
+struct is_timed_event<after<Duration>> : std::true_type {};
+
+template <std::int64_t Milliseconds>
+struct is_timed_event<after_ms<Milliseconds>> : std::true_type {};
+
+template <std::int64_t Milliseconds>
+struct is_timed_event<every_ms<Milliseconds>> : std::true_type {};
+
+template <typename T>
+struct static_timed_event_traits {
+    static constexpr bool supported = false;
+};
+
+template <std::int64_t Milliseconds>
+struct static_timed_event_traits<after_ms<Milliseconds>> {
+    static constexpr bool supported = true;
+    static constexpr std::uint64_t duration_ms = static_cast<std::uint64_t>(Milliseconds);
+    static constexpr bool periodic = false;
+};
+
+template <std::int64_t Milliseconds>
+struct static_timed_event_traits<every_ms<Milliseconds>> {
+    static constexpr bool supported = true;
+    static constexpr std::uint64_t duration_ms = static_cast<std::uint64_t>(Milliseconds);
+    static constexpr bool periodic = true;
+};
+
+template <typename T>
+inline constexpr bool is_timed_event_v = is_timed_event<T>::value;
+
 namespace detail {
 template <typename T, typename = void>
 struct has_elapsed_ticks : std::false_type {};
@@ -267,11 +309,22 @@ struct internal_row : internal_transition<State, EventType, ActionType, GuardTyp
     using then = internal_row<State, EventType, NewAction, GuardType>;
 };
 
-// Fluent Event-First Builder: on<Event, Source>::to<Target>::when<Guard>::then<Action>
-template <typename EventType, typename SourceState>
+// Fluent Event-First Builder:
+// - on<Event, Source>::to<Target>::when<Guard>::then<Action>
+// - on<Event>::from<Source>::to<Target>::when<Guard>::then<Action>
+template <typename EventType, typename SourceState = void>
 struct on {
     template <typename TargetState>
     using to = row<SourceState, EventType, TargetState>;
+
+    template <typename Src>
+    using from = on<EventType, Src>;
+};
+
+template <typename EventType>
+struct on<EventType, void> {
+    template <typename Src>
+    using from = on<EventType, Src>;
 };
 
 // Helper for fluent creation

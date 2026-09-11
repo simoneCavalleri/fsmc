@@ -1,3 +1,8 @@
+/**
+ * @file test_sysml2_parser.cpp
+ * @brief Unit test suite for the OMG SysML v2 State Definition frontend parser.
+ */
+
 #include <gtest/gtest.h>
 
 #include <string>
@@ -7,18 +12,22 @@
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/fsm_validator.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend::formal;
+using namespace fsm::frontend;
+using namespace fsm::backend::cpp;
+using namespace fsm::backend;
+using namespace fsm::middleend::analysis;
+using namespace fsm::middleend;
+using namespace fsm::ir;
 
 namespace {
 
 /**
- * @brief Test Intent: Verify OMG SysML v2 multi-line transition syntax parsing.
- *
- * Scenario:
- * - Parse `transition name first Source accept Event if Guard do Action then Target;`.
- * - Verify name, initial state, triggers, guards, actions, and target states are captured in IR.
+ * @brief Verify multiline SysML v2 transition syntax with accept, if, and do clauses.
+ * @scenario Parse SysML v2 transitions spanning multiple lines with triggers and guards.
+ * @expected FsmIr captures source, target, signal, guard, and action correctly.
  */
-TEST(Sysml2ParserTest, MultilineTransitionParsing) {
+TEST(Sysml2Parser, MultilineTransitions_ParsedIntoValidFsmIr) {
     const std::string sysml_text = R"(
     state def MissionBehavior {
         entry; then Standby;
@@ -52,20 +61,18 @@ TEST(Sysml2ParserTest, MultilineTransitionParsing) {
     ASSERT_NE(model.find_state("Standby"), nullptr);
     ASSERT_NE(model.find_state("InFlight"), nullptr);
     ASSERT_NE(model.find_state("Aborted"), nullptr);
-    EXPECT_EQ(model.events.size(), 1u);
+    EXPECT_EQ(model.signals.size(), 1u);
     EXPECT_EQ(model.guards.size(), 2u);
     EXPECT_EQ(model.actions.size(), 2u);
     EXPECT_EQ(model.transitions.size(), 2u);
 }
 
 /**
- * @brief Test Intent: Verify OMG SysML v2 compact transition syntax parsing.
- *
- * Scenario:
- * - Parse shorthand `transition from S accept E do A then D;`.
- * - Verify all transition elements are populated into the transition table model.
+ * @brief Verify compact inline SysML v2 transition syntax (first S1; then S2;).
+ * @scenario Parse compact transitions between states with inline accept triggers.
+ * @expected Transitions and target states correctly populated in FsmIr.
  */
-TEST(Sysml2ParserTest, CompactTransitionParsing) {
+TEST(Sysml2Parser, CompactTransitions_ParsedIntoValidFsmIr) {
     const std::string sysml_text = R"(
     state def DeviceProtocol {
         entry; then Disconnected;
@@ -93,13 +100,11 @@ TEST(Sysml2ParserTest, CompactTransitionParsing) {
 }
 
 /**
- * @brief Test Intent: Verify SysML v2 composite state hierarchy and C++ code generator emission.
- *
- * Scenario:
- * - Parse nested `state Standby { entry; then Diagnostics; ... }`.
- * - Verify composite metadata and compile generated C++ standalone code.
+ * @brief Verify nested composite states in SysML v2 and downstream code generation.
+ * @scenario Parse composite state definitions with nested initial and leaf states.
+ * @expected Composite hierarchy formed and C++ code generator successfully produces header.
  */
-TEST(Sysml2ParserTest, CompositeStatesAndCodegen) {
+TEST(Sysml2Parser, CompositeStates_ParsedAndCodeGenerated) {
     const std::string sysml_text = R"(
     state def Spacecraft {
         entry; then Standby;
@@ -146,15 +151,11 @@ TEST(Sysml2ParserTest, CompositeStatesAndCodegen) {
 }
 
 /**
- * @brief Test Intent: Verify SysML v2 attribute declarations, typed item defs (signals), and state actions.
- *
- * Scenario:
- * - Parse `attribute battery_percent : Integer = 100;`.
- * - Parse `item def EvTelemetry { attribute battery_mv : Integer; ... }`.
- * - Parse `satisfy requirement ...`, `entry action`, `do action`, `exit action`, `defer`.
- * - Verify types are mapped correctly to C++ primitives (uint32_t, float, bool).
+ * @brief Verify SysML v2 attribute definitions and item def message payload types.
+ * @scenario Parse SysML v2 model declaring typed attributes, initial values, and item defs.
+ * @expected FsmIr variables and signal payload structs created matching declarations.
  */
-TEST(Sysml2ParserTest, NativeSysml2AttributesAndItemDefs) {
+TEST(Sysml2Parser, NativeAttributesAndItemDefs_CapturedInIr) {
     const std::string sysml_text = R"(
     state def SatelliteBehavior {
         attribute battery_percent : Integer = 100;
@@ -234,14 +235,11 @@ TEST(Sysml2ParserTest, NativeSysml2AttributesAndItemDefs) {
 }
 
 /**
- * @brief Test Intent: Verify SysML v2 parallel orthogonal states and submachine references.
- *
- * Scenario:
- * - Parse `parallel state Operational { state NavRegion ... state CommsRegion ... }`.
- * - Parse submachine invocation `state SubGuidance :> GuidanceSubmachine;`.
- * - Verify IR correctly classifies states and links submachines.
+ * @brief Verify parallel orthogonal regions and submachine references in SysML v2.
+ * @scenario Parse parallel state defs with orthogonal regions and submachine invocations.
+ * @expected Orthogonal regions and submachine links captured in StateNode structures.
  */
-TEST(Sysml2ParserTest, ParallelRegionsAndSubmachineRef) {
+TEST(Sysml2Parser, ParallelRegionsAndSubmachines_ParsedCorrectly) {
     const std::string sysml_text = R"(
     state def AvionicsController {
         entry; then Operational;
@@ -272,15 +270,11 @@ TEST(Sysml2ParserTest, ParallelRegionsAndSubmachineRef) {
 }
 
 /**
- * @brief Test Intent: Verify SysML v2 parsing of EntryPoint, ExitPoint, stay duration (time invariant), and transition
- * priorities.
- *
- * Scenario:
- * - Parse state machine with `entry point EnPort;`, `exit point ExPort;`, `stay duration <= 500[ms];`, and `transition
- * [priority=10]`.
- * - Verify IR captures StateKind::EntryPoint, StateKind::ExitPoint, time_invariant, and transition priority.
+ * @brief Verify entryPoint, exitPoint, stay duration invariants, and transition priorities.
+ * @scenario Parse SysML v2 model with entry/exit points, stay duration assertions, and priorities.
+ * @expected IR captures StateKind::EntryPoint, StateKind::ExitPoint, invariants, and priorities.
  */
-TEST(Sysml2ParserTest, EntryExitPointTimeInvariantAndPriority) {
+TEST(Sysml2Parser, EntryExitPointAndInvariants_CapturedInIr) {
     const std::string sysml_text = R"(
     state def TimedFlightController {
         entry; then Standby;
@@ -330,15 +324,11 @@ TEST(Sysml2ParserTest, EntryExitPointTimeInvariantAndPriority) {
 }
 
 /**
- * @brief Test Intent: Verify SysML v2 choice pseudostate guard parsing with comparison operators.
- *
- * Scenario:
- * - Parse a `decide` node with outgoing branches guarded by `> 30.0`, `!= false`, and `else`.
- * - Verify that the IR captures distinct, non-empty guard expressions for each branch.
- * - Verify that boolean keyword aliases (not, and, or) are normalized to C++ operators.
- * - Verify that the choice node is eliminated and transitions are inlined from the source state.
+ * @brief Verify choice pseudostate parsing with relational comparison guards.
+ * @scenario Parse SysML v2 choice nodes branching on variable relational conditions.
+ * @expected Choice pseudostates and conditional branches correctly represented in FsmIr.
  */
-TEST(Sysml2ParserTest, ChoiceNodeComparisonGuardParsing) {
+TEST(Sysml2Parser, ChoiceNodeComparisonGuards_ParsedCorrectly) {
     const std::string sysml_text = R"(
     state def BootSequencer {
         entry; then Booting;
@@ -409,14 +399,11 @@ TEST(Sysml2ParserTest, ChoiceNodeComparisonGuardParsing) {
 }
 
 /**
- * @brief Test Intent: Verify SysML v2 semantic EFSM action parsing from do { } assignment blocks.
- *
- * Scenario:
- * - Parse `do { counter = counter + 1; }` on a transition.
- * - Verify the IR emits a named semantic action (increment_counter) rather than a raw expression.
- * - Parse `do { value += 5; }` and verify an assign_value action with += semantics.
+ * @brief Verify semantic EFSM variable assignment actions in transition do blocks.
+ * @scenario Parse SysML v2 transitions with do actions modifying state variables (x = x + 1).
+ * @expected Assignment expressions captured in ActionSignature AST.
  */
-TEST(Sysml2ParserTest, SemanticEfsmAssignmentActionParsing) {
+TEST(Sysml2Parser, EfsmAssignmentActions_ParsedCorrectly) {
     const std::string sysml_text = R"(
     state def OrbitalCycleTracker {
         attribute orbitCycleCount : Integer = 0;
@@ -457,16 +444,137 @@ TEST(Sysml2ParserTest, SemanticEfsmAssignmentActionParsing) {
     // Transition 1: increment action for orbitCycleCount
     ASSERT_EQ(model.transitions.size(), 2u);
     const auto& t1 = model.transitions[0];
-    ASSERT_TRUE(t1.action.has_value()) << "cycle_complete transition must have a semantic action";
+    ASSERT_TRUE(t1.transition_action.has_value()) << "cycle_complete transition must have a semantic action";
     // Semantic name should be increment_orbitCycleCount or similar
-    EXPECT_NE(t1.action.value().find("orbitCycleCount"), std::string::npos)
-        << "Action name must reference variable: " << t1.action.value();
+    EXPECT_NE(t1.transition_action->name.find("orbitCycleCount"), std::string::npos)
+        << "Action name must reference variable: " << t1.transition_action->name;
 
     // Transition 2: compound-assign action for energyBudget
     const auto& t2 = model.transitions[1];
-    ASSERT_TRUE(t2.action.has_value()) << "budget_update transition must have a semantic action";
-    EXPECT_NE(t2.action.value().find("energyBudget"), std::string::npos)
-        << "Action name must reference variable: " << t2.action.value();
+    ASSERT_TRUE(t2.transition_action.has_value()) << "budget_update transition must have a semantic action";
+    EXPECT_NE(t2.transition_action->name.find("energyBudget"), std::string::npos)
+        << "Action name must reference variable: " << t2.transition_action->name;
+}
+
+/**
+ * @brief Verify robust brace balancing and structural block filtering in SysML v2 files.
+ * @scenario Parse SysML v2 package containing non-statechart blocks (part def, item def).
+ * @expected State machine isolated cleanly without syntax confusion from adjacent blocks.
+ */
+TEST(Sysml2Parser, StructuralBlockFiltering_BalancesBraces) {
+    const std::string sysml_text = R"(
+    import ScalarValues::*;
+
+    part def PowerPlant {
+        part cell1 : FuelCell;
+        part cell2 : FuelCell;
+        connect cell1.bus to cell2.bus;
+    }
+
+    state def CoreController {
+        attribute status_code : Integer = 0;
+
+        part power : PowerPlant;
+        connect power.out to core.in;
+
+        entry; then Standby;
+
+        state Standby {
+            entry do action {
+                if (status_code == 0) {
+                    status_code = 1;
+                }
+            }
+        }
+
+        state Running;
+
+        transition start_mission
+            first Standby
+            accept StartCmd
+            then Running;
+    }
+    )";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+
+    EXPECT_EQ(model.name, "CoreController");
+    EXPECT_EQ(model.initial_state, "Standby");
+
+    // Must only contain Standby and Running - no non-FSM parts or connections as states!
+    ASSERT_EQ(model.states.size(), 2u);
+    EXPECT_NE(model.find_state("Standby"), nullptr);
+    EXPECT_NE(model.find_state("Running"), nullptr);
+    EXPECT_EQ(model.find_state("PowerPlant"), nullptr);
+    EXPECT_EQ(model.find_state("cell1"), nullptr);
+    EXPECT_EQ(model.find_state("cell2"), nullptr);
+
+    // Only 1 real transition: start_mission (no connect statements parsed as transitions)
+    ASSERT_EQ(model.transitions.size(), 1u);
+    EXPECT_EQ(model.transitions[0].source, "Standby");
+    EXPECT_EQ(model.transitions[0].target, "Running");
+    EXPECT_EQ(model.transitions[0].event, "StartCmd");
+
+    // Standby has entry action recorded
+    const auto* standby = model.find_state("Standby");
+    ASSERT_NE(standby, nullptr);
+    EXPECT_FALSE(standby->entry_actions.empty());
+
+    // Variable status_code correctly imported and mapped to uint32_t
+    ASSERT_EQ(model.variables.size(), 1u);
+    EXPECT_EQ(model.variables[0].name, "status_code");
+    EXPECT_EQ(model.variables[0].type, "uint32_t");
+}
+
+/**
+ * @brief Verify SysML v2 'send Signal via port' action statement parsing.
+ * @scenario Parse transitions containing 'send TelemetryCmd via telemetry_port' action statements.
+ * @expected Action parsed with outbound port target and signal definition.
+ */
+TEST(Sysml2Parser, SendSignalViaPort_ParsedIntoActionIr) {
+    const std::string sysml_text = R"(
+    state def TelemetrySystem {
+        out port telem_port : TelemetryPort;
+
+        entry; then Active;
+
+        state Active {
+            do send StatusUpdate(1) via telem_port;
+        }
+
+        transition emit_ping
+            first Active
+            accept PingEvent
+            do send PingResponse via telem_port
+            then Active;
+    }
+    )";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+
+    EXPECT_EQ(model.name, "TelemetrySystem");
+    const auto* port = model.find_port("telem_port");
+    ASSERT_NE(port, nullptr);
+    EXPECT_EQ(port->direction, PortDirection::Out);
+
+    // State send action
+    const auto* active_state = model.find_state("Active");
+    ASSERT_NE(active_state, nullptr);
+    ASSERT_FALSE(active_state->entry_actions.empty());
+    EXPECT_EQ(active_state->entry_actions[0].name, "send_StatusUpdate_via_telem_port");
+    ASSERT_FALSE(active_state->entry_actions[0].instructions.empty());
+
+    // Transition send action
+    ASSERT_FALSE(model.transitions.empty());
+    EXPECT_TRUE(model.transitions[0].transition_action.has_value());
+    EXPECT_EQ(model.transitions[0].transition_action->name, "send_PingResponse_via_telem_port");
+    ASSERT_FALSE(model.transitions[0].transition_action->instructions.empty());
 }
 
 }  // namespace

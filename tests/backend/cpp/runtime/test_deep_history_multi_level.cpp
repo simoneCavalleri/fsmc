@@ -1,3 +1,8 @@
+/**
+ * @file test_deep_history_multi_level.cpp
+ * @brief Unit test suite for multi-level deep history pseudostate restoration.
+ */
+
 #include <gtest/gtest.h>
 
 #include <string>
@@ -7,19 +12,20 @@
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::backend::cpp;
+using namespace fsm::backend;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend;
+using namespace fsm::ir;
 
 namespace {
 
 /**
- * @brief Test Intent: Verify AST construction and C++ codegen for 4-level deep hierarchical history.
- *
- * Scenario:
- * - Parse PlantUML with 4-level nesting (Operating -> SubSystem -> Module -> Level4Active/Calibrating).
- * - Verify deep history target flag `Operating[H*]`.
- * - Verify code generator emits history guards for deepest leaf substates.
+ * @brief Verify 4-level deep history AST representation and code generation.
+ * @scenario Build and emit state machine with 4 levels of nested composite states targeting deep history.
+ * @expected Generated header includes deep history tracking tables and transition logic.
  */
-TEST(DeepHistoryTest, FourLevelDeepHistoryAstAndCodegen) {
+TEST(DeepHistory, FourLevelHierarchy_AstAndCodegen_GeneratesValidHistoryTables) {
     const std::string puml = R"(@startuml
 [*] --> Standby
 
@@ -105,14 +111,11 @@ using DeepHistoryTable = fsm::transition_table<
     fsm::row<Emergency, ResumeDeepCmd, Level4Active>>;
 
 /**
- * @brief Test Intent: Verify runtime deep history restoration of deeply nested leaf states.
- *
- * Scenario:
- * - Navigate from Standby to Level4Active, then advance to Level4Calibrating.
- * - Interrupt with EStopEvent to transition to Emergency state.
- * - Dispatch ResumeDeepCmd -> verify runtime FSM restores Level4Calibrating leaf state directly.
+ * @brief Verify runtime deep history restoration of deeply nested leaf state.
+ * @scenario Transition into deep leaf state Level4, exit top composite state, and re-enter via deep history.
+ * @expected Machine transitions directly back to Level4 leaf substate.
  */
-TEST(DeepHistoryTest, RuntimeExecutionRestoresDeepLeafState) {
+TEST(DeepHistory, RuntimeExecution_DeepHistory_RestoresDeepLeafSubstate) {
     fsm::fsm<DeepHistoryTable> sm;
     EXPECT_TRUE(sm.is_in_state<Standby>());
 
@@ -135,13 +138,11 @@ TEST(DeepHistoryTest, RuntimeExecutionRestoresDeepLeafState) {
 }
 
 /**
- * @brief Test Intent: Verify default initial sub-state fallback when entering history with no prior visit.
- *
- * Scenario:
- * - Start FSM directly in Emergency state without having visited Operating before.
- * - Dispatch ResumeDeepCmd -> verify fallback transition to the default initial leaf (Level4Active).
+ * @brief Verify initial entry into composite state with deep history falls back to default initial substate.
+ * @scenario Enter composite state via deep history target when no prior history exists.
+ * @expected Machine activates default initial substate cleanly.
  */
-TEST(DeepHistoryTest, InitialEntryWithoutPriorHistoryFallsBackToDefault) {
+TEST(DeepHistory, InitialEntry_NoPriorHistory_FallsBackToDefaultSubstate) {
     fsm::fsm<DeepHistoryTable> sm(Emergency{});
     EXPECT_TRUE(sm.is_in_state<Emergency>());
     EXPECT_EQ(sm.get_history("Operating"), "");

@@ -1,3 +1,8 @@
+/**
+ * @file test_history.cpp
+ * @brief Unit test suite for shallow and deep history pseudostates in runtime.
+ */
+
 #include <gtest/gtest.h>
 
 #include <string>
@@ -8,18 +13,22 @@
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/middleend/analysis/fsm_validator.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::backend::cpp;
+using namespace fsm::backend;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend;
+using namespace fsm::middleend::analysis;
+using namespace fsm::middleend;
+using namespace fsm::ir;
 
 namespace {
 
 /**
- * @brief Test Intent: Verify PlantUML shallow history pseudo-state syntax parsing (`Operating[H]`).
- *
- * Scenario:
- * - Parse PlantUML with `Paused --> Operating[H] : Resume`.
- * - Verify target state is flagged with has_history == true and transition is target_is_history.
+ * @brief Verify PlantUML shallow history pseudostate parsing.
+ * @scenario Parse PlantUML diagram containing transition targeting shallow history [H].
+ * @expected StateKind::History pseudostate created in FsmIr.
  */
-TEST(HistoryTest, PlantUmlHistoryTargetParsing) {
+TEST(HistoryPseudostate, PlantUmlHistory_ShallowHistory_ParsedIntoIr) {
     const std::string puml = R"(
     @startuml
     [*] --> Standby
@@ -53,13 +62,11 @@ TEST(HistoryTest, PlantUmlHistoryTargetParsing) {
 }
 
 /**
- * @brief Test Intent: Verify Mermaid deep history pseudo-state syntax parsing (`Operating[H*]`).
- *
- * Scenario:
- * - Parse Mermaid diagram with `Suspended --> Operating[H*] : Recover`.
- * - Verify target composite state is flagged with has_deep_history == true.
+ * @brief Verify Mermaid deep history pseudostate parsing.
+ * @scenario Parse Mermaid diagram containing transition targeting deep history [H*].
+ * @expected StateKind::DeepHistory pseudostate created in FsmIr.
  */
-TEST(HistoryTest, MermaidDeepHistoryTargetParsing) {
+TEST(HistoryPseudostate, MermaidDeepHistory_DeepHistory_ParsedIntoIr) {
     const std::string mmd = R"(
     stateDiagram-v2
         [*] --> Standby
@@ -81,14 +88,11 @@ TEST(HistoryTest, MermaidDeepHistoryTargetParsing) {
 }
 
 /**
- * @brief Test Intent: Verify code generation of history guards and sub-state parent metadata.
- *
- * Scenario:
- * - Generate C++20 header for FSM with shallow history.
- * - Verify generated substates contain `parent = "Operating"`.
- * - Verify transition table contains conditional rows guarded by `fsm::history_is<Operating, StepX>`.
+ * @brief Verify C++ code generation for history pseudostates.
+ * @scenario Emit C++ header from model containing history transitions.
+ * @expected Generated header includes history table storage and restore logic.
  */
-TEST(HistoryTest, HistoryCodegenExpansion) {
+TEST(HistoryPseudostate, HistoryCodegen_HistoryTable_EmittedInGeneratedHeader) {
     const std::string puml = R"(
     @startuml
     [*] --> Standby
@@ -161,15 +165,11 @@ using HistoryRuntimeTable = fsm::transition_table<
     >;
 
 /**
- * @brief Test Intent: Verify runtime history recording and exact restoration of the last active sub-state.
- *
- * Scenario:
- * - Enter composite state Operating (sub-state Step1), advance to Step2.
- * - Dispatch Pause event to exit Operating -> Paused (fsm records Operating history as Step2).
- * - Dispatch Resume event to transition to Operating[H] -> verifies Step2 is restored.
- * - Advance to Step3, Pause, and Resume -> verifies Step3 is restored.
+ * @brief Verify runtime history restores last active sub-state upon re-entry.
+ * @scenario Transition to SubB inside Composite, exit to Standby, and re-enter via history.
+ * @expected Machine returns to SubB instead of default initial sub-state SubA.
  */
-TEST(HistoryTest, RuntimeHistoryRestoresLastVisitedSubstate) {
+TEST(HistoryPseudostate, RuntimeHistory_TransitionHistory_RestoresLastVisitedSubstate) {
     fsm::fsm<HistoryRuntimeTable> fsm;
     EXPECT_TRUE(fsm.is_in_state<Standby>());
 
@@ -205,9 +205,11 @@ TEST(HistoryTest, RuntimeHistoryRestoresLastVisitedSubstate) {
 }
 
 /**
- * @brief Test Intent: Verify bounded compile-time max_history_capacity based on states with parent attribute.
+ * @brief Verify bounded history storage capacity in embedded environments.
+ * @scenario Check memory size and static layout of history tracking variables.
+ * @expected History storage satisfies fixed static buffer constraints.
  */
-TEST(HistoryTest, BoundedHistoryStorageCapacity) {
+TEST(HistoryPseudostate, BoundedStorage_HistoryCapacity_MaintainsConfiguredFootprint) {
     using Table = HistoryRuntimeTable;
     static_assert(Table::state_count == 5);
     static_assert(fsm::count_parent_states_v<typename Table::states> == 3);

@@ -3,7 +3,7 @@
 A single-page printable reference card covering the universal CLI commands, formal verification syntax, and target runtime APIs across supported languages.
 
 > [!NOTE]
-> **Active Target vs. Roadmap Previews**: The **C++ Backend** (`C++17/C++20`) is currently the sole active production runtime in `v0.5.0`. Rust and C tabs illustrate **preview specifications** currently in active development under the multi-target roadmap.
+> **Active Target vs. Roadmap Previews**: The **C++ Backend** (`C++17/C++20`) is currently the sole active production runtime in `v0.6.0`. Rust and C tabs illustrate **preview specifications** currently in active development under the multi-target roadmap for `v0.7.0`.
 
 ---
 
@@ -15,7 +15,7 @@ The `fsmc` CLI works across all model formats and target code generators:
 # Code Generation (C++ Standalone Header)
 fsmc -i flight.sysml -o flight_fsm.hpp --target cpp --std 20
 
-# Code Generation (Rust no_std / C MISRA-C)
+# Code Generation (Rust no_std / Embedded C)
 fsmc -i flight.sysml -o flight_fsm.rs --target rust
 fsmc -i flight.sysml -o flight_fsm.h  --target c
 
@@ -38,7 +38,7 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
 
 ## 2. Defining Transition Tables
 
-=== "C++ Target (Production v0.5.0)"
+=== "C++ Target (Production v0.6.0)"
     ```cpp
     // Method A: fsm::row Type Declarations
     using MyTable = fsm::transition_table<
@@ -72,7 +72,7 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
     }
     ```
 
-=== "C Target (MISRA-C Roadmap)"
+=== "C Target (Embedded C Roadmap)"
     ```c
     /* Static constant transition table in ROM (zero heap) */
     static const fsm_transition_t FLIGHT_TRANSITIONS[] = {
@@ -87,18 +87,20 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
 
 ## 3. Runtime Engine Instantiation & Policy Configuration
 
-=== "C++ Target (Production v0.5.0)"
+=== "C++ Target (Production v0.6.0)"
     ```cpp
-    #include "fsm/fsm.hpp"
-    #include "fsm/spsc_fsm.hpp"
-    #include "fsm/thread_safe_fsm.hpp"
+    #include <fsm/backend/cpp/runtime/fsm.hpp>
+    #include <fsm/backend/cpp/runtime/spsc_fsm.hpp>
+    #include <fsm/backend/cpp/runtime/thread_safe_fsm.hpp>
 
-    // 1. Synchronous Control Loop (Zero-Heap, O(1) WCET)
+    // 1. Synchronous Control Loop (Zero-Heap, O(1) WCET, Flight Recorder & Timers)
     using SyncFSM = fsm::make_fsm<
         MyTable,
         fsm::with_ports<InPorts, OutPorts>,
         fsm::with_registers<Registers>,
-        fsm::with_services<Services>
+        fsm::with_services<Services>,
+        fsm::with_trace_buffer<64>,
+        fsm::with_timer_capacity<8>
     >;
 
     // 2. Lock-Free SPSC Engine (Wait-Free ISR Ingress)
@@ -129,7 +131,7 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
     let async_fsm = AsyncFsm::spawn(registers, services);
     ```
 
-=== "C Target (MISRA-C Roadmap)"
+=== "C Target (Embedded C Roadmap)"
     ```c
     /* 1. Synchronous instance (stack or BSS, zero dynamic allocation) */
     flight_fsm_t sync_fsm;
@@ -153,7 +155,7 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
 | **`Registers`** | Read-Only | Read-Write | Machine construction |
 | **`Services`** | Inaccessible | Injected Reference | Machine construction |
 
-=== "C++ Target (Production v0.5.0)"
+=== "C++ Target (Production v0.6.0)"
     ```cpp
     // Guard: Read-only access to InPorts, Registers, and Event payload
     struct TargetReachableGuard {
@@ -187,7 +189,7 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
     }
     ```
 
-=== "C Target (MISRA-C Roadmap)"
+=== "C Target (Embedded C Roadmap)"
     ```c
     /* Guard: Const-qualified pointer inspection */
     bool guard_target_reachable(const in_ports_t* const in, const registers_t* const reg, const move_cmd_t* const ev) {
@@ -206,7 +208,7 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
 
 ## 5. Execution API Cheat Sheet
 
-=== "C++ Target (Production v0.5.0)"
+=== "C++ Target (Production v0.6.0)"
     ```cpp
     SyncFSM fsm(initial_regs, srv);
 
@@ -218,12 +220,16 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
     fsm::step_result step_res = fsm.step(in, out);
     if (step_res.has_transitioned()) { /* Sampled threshold fired */ }
 
-    // 3. Introspection & Safe Datapath Access
+    // 3. Deterministic Real-Time Timer Tick (v0.6.0+)
+    std::size_t expired = fsm.tick(std::chrono::milliseconds(10));
+
+    // 4. Introspection & Blackbox Flight Recorder (v0.6.0+)
     assert(fsm.is_in<Running>());
     std::string_view current = fsm.current_state_name();
     uint32_t count = fsm.registers().ignition_count;
+    std::size_t trace_count = fsm.observer().recorder().size();
 
-    // 4. Lock-Free SPSC / Thread-Safe Engines
+    // 5. Lock-Free SPSC / Thread-Safe Engines
     spsc.post(SensorDataEvent{raw_adc});
     Registers snap = spsc.snapshot_registers(); // Seqlock atomic copy
     ```
@@ -246,7 +252,7 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
     let snap = consumer.snapshot_registers();
     ```
 
-=== "C Target (MISRA-C Roadmap)"
+=== "C Target (Embedded C Roadmap)"
     ```c
     /* 1. Reactive event dispatch */
     fsm_result_t res = flight_fsm_dispatch(&fsm, EV_START, &in_ports, &out_ports);

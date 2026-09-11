@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.0] - 2026-09-11
+
+### Breaking Changes
+- **C++ Backend Preflight Lowering Contracts**:
+  - Enforced strict compile-time preflight validation rejecting unlowered structural pseudostates (`Fork`, `Join`, `Choice`, `Junction` via diagnostic `ECPP009`) and unlowered parallel orthogonal regions (`ECPP010`) before C++ code emission.
+  - Implemented combinatorial state bound on Cartesian product state generation (`OrthogonalProductPass`), aborting with diagnostic `EORTHO003` if product state count exceeds 1024 states.
+- **Clean Nested Namespaces Architecture**:
+  - Reorganized compiler and intermediate representation symbols into dedicated, clean nested namespaces:
+    - `fsm::ir`: `FsmIr`, `StateNode`, `TransitionEdge`, `PortDefinition`, `RegisterDefinition`, `EnumDefinition`, `StructDefinition`, `DataType`, `FormalProperty`, `ConcurrencySemantics`.
+    - `fsm::frontend`: `Sysml2Parser`, `ScxmlParser`, `StateflowParser`, `CameoParser`, `PlantUmlParser`, `MermaidParser`, `DotParser`, `JsonParser`, `XmlParser`, `DiagramSidecarLoader`.
+    - `fsm::middleend`: `PassManager`, `IPass`, analysis and transformation passes across 7 stages, and `PluginLoader`.
+    - `fsm::backend`: `CppGenerator`, `CppModelEmitter`, `CppBackendValidator`, diagram emitters (`PlantUmlEmitter`, `MermaidEmitter`, `Sysml2Emitter`, `StateflowSerializer`, `CameoSerializer`), `SmvEmitter`, `McdcHarnessGenerator`, `RtmEmitter`, `CompanionManifestEmitter`.
+    - `fsm::diagnostic`: `DiagnosticEngine`, `Diagnostic`, `DiagnosticSeverity`.
+- **JSON IR Serialization Refactoring (`fsm/ir/`)**:
+  - Separated monolithic JSON handling into distinct compiled units: `fsm::ir::FsmIrSerializer` and `fsm::ir::FsmIrDeserializer`.
+
+### Added
+- **C++ Runtime State Time Invariants**:
+  - Implemented zero-overhead state residence time invariant manager `detail::invariant_manager<Table, HasInvariants>`. For state machines without time invariants, the manager occupies 0 bytes (`[[no_unique_address]]`), strictly preserving `sizeof(MinimalFSM) <= 32`.
+  - Added compile-time `max_stay_duration_ms` permanence limit trait emission in `CppModelEmitter`.
+  - Added runtime invariant queries and callbacks across synchronous `fsm`, `spsc_fsm`, and `thread_safe_fsm`: `is_invariant_satisfied()`, `has_invariant_violation()`, `last_invariant_violation()`, and `on_invariant_violation(callback)` / `set_invariant_violation_handler(callback)`.
+  - Added `fsm::invariant_violation_info` structure capturing violated state, elapsed permanence time, and maximum stay duration.
+- **Structural Lowering & Boundary Action Fusion**:
+  - **LCA Action Fusion (`BoundaryActionFusionPass`)**: Spliced hierarchical transition actions into strict Lowest Common Ancestor (LCA) order: leaf exit path $\to$ transition action $\to$ leaf entry path, clearing lowered state hooks to eliminate duplicate action executions.
+  - **Orthogonal Product Lowering (`OrthogonalProductPass`)**: Synthesized Cartesian product states ($S_A \times S_B$) flattening concurrent orthogonal regions into deterministic single-active-state automata, with action deduplication and intra-region transition isolation.
+  - **Choice & Junction Inlining (`ChoiceInliningPass`)**: Inlined dynamic choice and junction nodes into composite guarded transitions directly on model states.
+  - **Fork & Join Lowering (`ForkJoinLoweringPass`)**: Lowered fork splits and join rendezvous barriers into product-state transitions.
+  - **History & Deferred Lowering (`HistoryLoweringPass`, `DeferredEventLoweringPass`)**: Lowered shallow/deep history into shadow state registers and deferred events into bounded static queues.
+- **Middle-End 7-Stage Pipeline & 30 Available Passes**:
+  - Multi-stage pass manager pipeline (`create_verified_7stage_pipeline`) with explicit dependency and prerequisite validation.
+  - 28 registered standard passes across 7 formal stages:
+    - Normalization: `HierarchyFlatteningPass`, `ChoiceInliningPass`, `ForkJoinLoweringPass`, `HistoryLoweringPass`, `DeferredEventLoweringPass`, `BoundaryActionFusionPass`.
+    - Orthogonal Decomposition: `OrthogonalProductPass`.
+    - Local Optimization: `DeadActionEliminationPass`, `CommonActionFactoringPass`, `TransitionFusionPass`.
+    - Dataflow & Datapath: `RegisterLivenessPass`, `ConstantFoldingPass`, `EFSMDataPathPass`.
+    - Global Graph Simplification: `DeadStatePruningPass`, `GuardSimplificationPass`, `StateMinimizationPass`.
+    - Static Safety & Determinism: `PriorityConflictPass`, `LivelockAnalysisPass`, `TimedDeadlockPass`, `TimedInvariantsVerifierPass`, `EventQueueBoundPass`, `GuardSatisfiabilityPass`, `WcetAnalysisPass`.
+    - Formal Verification: `ModelCheckingPass` (LTL/CTL).
+  - Extensibility: `PipeThroughPass` (`--pipe-through <cmd>`) for Unix streaming filter pipelines and dynamic runtime C++ plugins (`--load-pass-plugin <path.so>`) via `dlopen`.
+- **Frontend MBSE Semantic Completeness**:
+  - **SysML v2 Structured Types & Triggers**: `enum def`, `struct def` / `datatype def`, dot-notation member access in guards and actions (`in.telemetry.altitude > 1000.0`), `accept after <duration>`, `accept at <time>`, `entry point`/`exit point`, `fork`/`join`, signal send actions (`do send <Signal>(...) via <Port>`).
+  - **W3C SCXML Completeness**: `<parallel id="...">` orthogonal regions, internal event cascades (`<send>`, `<raise>`), state termination and completion events via `<final>` and `done.state.<id>`.
+  - **MathWorks Simulink Stateflow Ingestion & Serialization**: Native parser (`StateflowParser`) and serializer (`StateflowSerializer`) for Simulink Stateflow charts, enabling closed-loop lossless 8-format roundtrip conversion across SysML v2, SCXML, Stateflow, Cameo XMI, PlantUML, Mermaid, Graphviz DOT, and Canonical JSON.
+  - **Diagram Companion Manifest Sidecars**: Companion sidecar configuration manifests (`-s, --sidecar <file.yaml|json>`) for non-textual or informal diagram formats.
+- **C++ Runtime & Safety Tooling**:
+  - **Deterministic Real-Time Timers**: Integrated `deterministic_timer_manager` into `fsm`, `spsc_fsm`, and `thread_safe_fsm` with `sm.tick(dt)` and `sm.step(dt)`, plus timer expiry callbacks `sm.tick(dt, on_expired)`.
+  - **Non-Default-Constructible Services**: Added constructor support and forwarding for service interfaces that do not provide a default constructor.
+  - **Blackbox Flight Recorder (`with_trace_buffer<N>`)**: Zero-allocation circular ring buffer (`TraceBuffer<Capacity>`) logging transition history, states, events, and tick timestamps.
+  - **MC/DC Test Harness Synthesis (`--emit-test-harness <file>`)**: Automated derivation of independence pairs ($n+1$) from composite boolean guards (`McdcHarnessGenerator`), synthesizing complete GoogleTest harnesses.
+  - **Requirements Traceability Matrix (`--req-audit`, `--rtm-output`)**: Formal verification audit mapping `@fsm:req` directives to states, transitions, and properties with report generation in Markdown and JSON.
+  - **Synchronized Standalone Runtimes**: Single-header self-contained runtimes `cpp17_standalone_runtime.hpp` and `cpp20_standalone_runtime.hpp`.
+- **CLI Robustness & Error Contracts**:
+  - Comprehensive argument and input validation across `fsmc` and `fsm-opt`, guaranteeing graceful non-zero termination with stable diagnostic categories on missing inputs, unknown options, missing option arguments, nonexistent files, or malformed models without abnormal process crashes.
+- **Showcase Examples**:
+  - **Standalone Embedded IoT Controller** (`examples/00_standalone_iot_controller/`): Zero-dependency single-header deployment targeting bare-metal microcontrollers and embedded Linux gateways.
+  - **Avionics Flight Management System (FMS)** (`examples/04_formal_verification/flight_control_modes/`): Dual-axis flight guidance modes with formal LTL/CTL model checking and MC/DC test harness generation.
+- **Build Infrastructure**:
+  - Added `fsmc_compiler` static library target with native Precompiled Headers (PCH) in CMake.
+  - Scaled test infrastructure to **84 CTest targets** (100% pass rate) with automated verification catalog validation (`scripts/generate_test_catalog.py`).
+
+### Changed
+- **Metamodel Header Organization**:
+  - Relocated metamodel and graph headers into clean include layout under `include/fsm/ir/`: `clock_definition.hpp`, `concurrency_semantics.hpp`, `data_type.hpp`, and `fsm_graph_ops.hpp`.
+- **Runtime Include Paths**:
+  - Standardized C++ runtime headers under `<fsm/backend/cpp/runtime/...>`.
+
+### Removed
+- **Decommissioning of WebAssembly Playground**:
+  - Removed deprecated in-repo browser playground (`playground/`) to focus engineering resources on native CLI tooling (`fsmc`, `fsm-opt`), hard real-time zero-overhead C++ runtime engines, and formal MBSE interoperability.
+
+### Fixed
+- **Destruction Order Crash**: Fixed heap corruption / segfault when non-default-constructible services or registered resources were destructed out of order.
+- **OrthogonalProductPass Zombie Transitions**: Fixed invalid transitions referring to pruned source or target sub-states during Cartesian product lowering.
+- **Pinned Parent Invalidation**: Preserved hierarchical state parenting during deep copy and transformation passes (`pinned_parent`).
+- **Cross-Platform nuXmv & Plugin Discovery**: Fixed binary path lookup for nuXmv and dynamic shared library loading (`.so` / `.dylib`) in `PluginLoader`.
+- **Qualified Service & Port Emitted Types**: Fixed namespace collision in `CppModelEmitter` where emitted `fsm::no_services`, `fsm::no_ports`, and `fsm::no_registers` conflicted with user namespaces ending in `::fsm` (e.g. `uav::fsm`).
+- **CLI Error Handling & Stability**: Eliminated abnormal crashes and unhandled exceptions on invalid CLI flags, nonexistent files, or malformed models.
+
+---
+
 ## [0.5.0] - 2026-09-03
 
 ### Breaking Changes

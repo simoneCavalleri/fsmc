@@ -144,4 +144,33 @@ class deterministic_timer_manager {
     std::array<timer_entry, MaxTimers> timers_{};
 };
 
+/**
+ * @brief Zero-overhead specialization for FSMs without deterministic timers (0 bytes).
+ */
+template <>
+class deterministic_timer_manager<0> {
+  public:
+    static constexpr std::size_t max_timers = 0;
+
+    constexpr deterministic_timer_manager() noexcept = default;
+
+    constexpr bool start_timer(std::uint32_t /*timer_id*/, std::uint64_t /*duration_ms*/,
+                               bool /*periodic*/ = false) noexcept {
+        return false;
+    }
+
+    constexpr bool cancel_timer(std::uint32_t /*timer_id*/) noexcept { return false; }
+
+    constexpr void reset() noexcept {}
+
+    [[nodiscard]] constexpr bool is_timer_active(std::uint32_t /*timer_id*/) const noexcept { return false; }
+
+    template <typename Callback>
+    std::size_t tick(std::uint64_t /*delta_ms*/, Callback /*on_expired*/) noexcept {
+        return 0;
+    }
+
+    [[nodiscard]] constexpr std::size_t active_count() const noexcept { return 0; }
+};
+
 }  // namespace fsm

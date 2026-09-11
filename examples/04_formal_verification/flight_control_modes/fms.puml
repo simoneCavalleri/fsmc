@@ -1,0 +1,53 @@
+@startuml FlightControlModeManager
+skinparam monochrome true
+skinparam state {
+  BackgroundColor White
+  BorderColor Black
+  ArrowColor Black
+}
+
+' ============================================================================
+' PlantUML Model: DO-178C Level A Flight Control Mode Manager
+' Demonstrating: Formal LTL Properties, MBSE Ports, Requirement Traceability
+' ============================================================================
+
+' Formal Temporal Properties
+' @fsm:property name=MutualExclusion kind=Safety formula="G !(ManualFlight && AutopilotNav)" req="REQ-FBW-MUTEX-01"
+' @fsm:property name=FailsafeDirectLaw kind=Safety formula="G (SensorIrregularityFault -> F EmergencyDirectLaw)" req="REQ-FBW-FAILSAFE-04"
+' @fsm:property name=AutopilotReachable kind=Reachability formula="F AutopilotNav" req="REQ-FBW-AUTO-03"
+
+' Typed MBSE I/O Ports with range bounds
+' @fsm:port name=airspeed_knots type=float32 dir=in min=0.0 max=600.0
+' @fsm:port name=radar_altitude_ft type=float32 dir=in min=0.0 max=60000.0
+' @fsm:port name=hydraulic_pressure_psi type=float32 dir=in min=0.0 max=3500.0
+' @fsm:port name=flight_director_engaged type=bool dir=out
+' @fsm:port name=direct_law_annunciator type=bool dir=out
+
+[*] --> GroundInit
+
+state GroundInit {
+    GroundInit : entry / CalibrateAirDataSensors
+    GroundInit : stay <= 500ms
+}
+
+state ManualFlight {
+    ManualFlight : entry / EngagePitchRollAugmentation
+}
+
+state AutopilotNav {
+    AutopilotNav : entry / ArmGuidanceCouplers
+    AutopilotNav : exit / DisarmGuidanceCouplers
+}
+
+state EmergencyDirectLaw {
+    EmergencyDirectLaw : entry / AnnunciateDirectLawWarning
+}
+
+GroundInit --> ManualFlight : LiftoffDetectedCmd / TrimElevatorsAction
+ManualFlight --> AutopilotNav : EngageAutopilotCmd [AirspeedValidGuard] / ConnectFlightDirectorAction
+AutopilotNav --> ManualFlight : DisengageAutopilotCmd / DisconnectFlightDirectorAction
+
+AutopilotNav --> EmergencyDirectLaw : SensorIrregularityFault / BypassFlightEnvelopeAction
+ManualFlight --> EmergencyDirectLaw : HydraulicPressureLossFault / SwitchMechanicalBackupAction
+
+@enduml

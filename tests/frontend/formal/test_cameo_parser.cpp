@@ -1,25 +1,37 @@
+/**
+ * @file test_cameo_parser.cpp
+ * @brief Unit test suite for the Cameo Systems Modeler (OMG XMI 2.x) frontend parser.
+ */
+
 #include <gtest/gtest.h>
 
 #include <string>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
+#include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/frontend/formal/cameo_xmi_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/fsm_validator.hpp"
+#include "fsm/middleend/passes/choice_inlining_pass.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend::formal;
+using namespace fsm::frontend;
+using namespace fsm::backend::cpp;
+using namespace fsm::backend;
+using namespace fsm::diagnostic;
+using namespace fsm::middleend::analysis;
+using namespace fsm::middleend;
+using namespace fsm::middleend::passes;
+using namespace fsm::ir;
 
 namespace {
 
 /**
- * @brief Test Intent: Verify Cameo Systems Modeler OMG XMI 2.x standard XML schema parsing.
- *
- * Scenario:
- * - Parse XML containing `<uml:StateMachine>`, `<subvertex xmi:type="uml:State">`, `<transition>`, `<trigger>`,
- * `<effect>`.
- * - Verify initial pseudostate and transitions are mapped accurately to FsmIr.
+ * @brief Verify Cameo OMG XMI 2.x standard XML document parsing.
+ * @scenario Parse Cameo XMI state machine containing initial, simple states, and transitions.
+ * @expected Model correctly populated with state names, signals, and initial pseudostate pointer.
  */
-TEST(CameoParserTest, BasicXmiParsing) {
+TEST(CameoParser, BasicXmiDocument_ParsedIntoValidFsmIr) {
     const std::string xmi_content = R"(<?xml version="1.0" encoding="UTF-8"?>
 <xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20131001">
   <uml:Model xmi:id="_model_1" name="CameoModel">
@@ -58,20 +70,18 @@ TEST(CameoParserTest, BasicXmiParsing) {
     EXPECT_EQ(model.name, "DeviceProtocolFSM");
     EXPECT_EQ(model.initial_state, "Disconnected");
     EXPECT_EQ(model.states.size(), 3u);
-    EXPECT_EQ(model.events.size(), 3u);
+    EXPECT_EQ(model.signals.size(), 3u);
     EXPECT_EQ(model.guards.size(), 1u);
     EXPECT_EQ(model.actions.size(), 3u);
     EXPECT_EQ(model.transitions.size(), 3u);
 }
 
 /**
- * @brief Test Intent: Verify Cameo nested composite regions and choice pseudostates (`kind="choice"`).
- *
- * Scenario:
- * - Parse XML with nested regions and choice nodes.
- * - Verify choice resolution and composite state structure.
+ * @brief Verify Cameo nested composite regions and choice pseudostates.
+ * @scenario Parse XMI containing sub-regions and choice pseudostates with conditional guards.
+ * @expected Composite hierarchy and choice branching nodes correctly modeled in FsmIr.
  */
-TEST(CameoParserTest, CompositeAndChoiceParsing) {
+TEST(CameoParser, CompositeAndChoicePseudostates_ParsedIntoValidFsmIr) {
     const std::string xmi_content = R"(<?xml version="1.0" encoding="UTF-8"?>
 <xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20131001">
   <uml:Model xmi:id="_model_2" name="SpacecraftModel">
@@ -124,6 +134,11 @@ TEST(CameoParserTest, CompositeAndChoiceParsing) {
     ASSERT_NE(inflight, nullptr);
     EXPECT_TRUE(inflight->is_composite);
 
+    // Choice pseudostates must be inlined before C++ emission (as the real pipeline does).
+    DiagnosticEngine diag;
+    ASSERT_TRUE(ChoiceInliningPass::run(model, diag)) << "ChoiceInliningPass failed: " << diag.render_to_string();
+    EXPECT_FALSE(model.is_choice_node("ClearanceChoice")) << "ClearanceChoice should have been removed by inlining";
+
     GeneratorOptions opts;
     opts.cpp_standard = CppStandard::Cpp20;
     opts.standalone = true;
@@ -136,13 +151,11 @@ TEST(CameoParserTest, CompositeAndChoiceParsing) {
 }
 
 /**
- * @brief Test Intent: Verify attribute-style XML transition properties (`trigger=...`, `guard=...`, `effect=...`).
- *
- * Scenario:
- * - Parse XML with inline attributes instead of child XML nodes.
- * - Verify actions and guards are identified accurately.
+ * @brief Verify attribute-style XML transition properties (trigger, guard, effect).
+ * @scenario Parse XMI transitions using attribute-based trigger and effect notations.
+ * @expected Triggers, guards, and action effects mapped to FsmIr TransitionEdge components.
  */
-TEST(CameoParserTest, AttributeStyleEffectAndActionParsing) {
+TEST(CameoParser, AttributeStyleEffectsAndActions_ParsedIntoValidFsmIr) {
     const std::string xmi_content = R"(<?xml version="1.0" encoding="UTF-8"?>
 <xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20131001">
   <uml:Model xmi:id="_m1" name="IndustrialPressModel">
@@ -176,13 +189,11 @@ TEST(CameoParserTest, AttributeStyleEffectAndActionParsing) {
 }
 
 /**
- * @brief Test Intent: Verify Cameo `<entry>`, `<doActivity>`, `<exit>`, and `<deferrableTrigger>` parsing.
- *
- * Scenario:
- * - Parse XML containing state lifecycle activities.
- * - Verify actions and deferred events are recorded on StateNode.
+ * @brief Verify Cameo entry, doActivity, and exit behavior parsing.
+ * @scenario Parse XMI states declaring entry, doActivity, and exit opaque behaviors.
+ * @expected StateNode captures entry_actions, do_activity, and exit_actions lists.
  */
-TEST(CameoParserTest, NativeEntryExitAndDoActivity) {
+TEST(CameoParser, NativeEntryExitAndDoActivity_CapturedInStateNode) {
     const std::string xmi_content = R"(<?xml version="1.0" encoding="UTF-8"?>
 <xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20131001">
   <uml:Model xmi:id="_m1" name="UavModel">
@@ -218,14 +229,11 @@ TEST(CameoParserTest, NativeEntryExitAndDoActivity) {
 }
 
 /**
- * @brief Test Intent: Verify XML entity decoding (`&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;`) and identifier
- * sanitization.
- *
- * Scenario:
- * - Parse XML with encoded entity characters in attribute values.
- * - Verify entities are unescaped before identifier sanitization.
+ * @brief Verify XML entity decoding in transition guards and state names.
+ * @scenario Parse XMI containing escaped characters (&amp;, &lt;, &gt;) in guard expressions.
+ * @expected Entity sequences decoded into C++ boolean operators in FsmIr guards.
  */
-TEST(CameoParserTest, XmlEntityDecodingInNamesAndGuards) {
+TEST(CameoParser, XmlEntitiesInNamesAndGuards_DecodedCorrectly) {
     const std::string xmi_content = R"(<?xml version="1.0" encoding="UTF-8"?>
 <xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20131001">
   <uml:Model xmi:id="_m1" name="EntityModel">
@@ -252,16 +260,15 @@ TEST(CameoParserTest, XmlEntityDecodingInNamesAndGuards) {
 
     ASSERT_EQ(model.transitions.size(), 1u);
     EXPECT_EQ(model.transitions[0].event, "A__B_Event");
-    EXPECT_EQ(model.transitions[0].action, "Action_Special_Tag");
+    EXPECT_EQ(model.transitions[0].get_action(), "Action_Special_Tag");
 }
 
 /**
- * @brief Test Intent: Verify Cameo UML pseudostates (`shallowHistory`, `deepHistory`, `junction`).
- *
- * Scenario:
- * - Parse XML with UML pseudostates and verify parsing completes cleanly.
+ * @brief Verify Cameo UML history and junction pseudostate parsing.
+ * @scenario Parse XMI declaring shallowHistory, deepHistory, and junction vertices.
+ * @expected IR captures StateKind::History, StateKind::DeepHistory, and StateKind::Junction.
  */
-TEST(CameoParserTest, HistoryAndJunctionPseudostates) {
+TEST(CameoParser, HistoryAndJunctionPseudostates_PreservedInIr) {
     const std::string xmi_content = R"(<?xml version="1.0" encoding="UTF-8"?>
 <xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20131001">
   <uml:Model xmi:id="_m1" name="HistoryModel">
@@ -285,6 +292,66 @@ TEST(CameoParserTest, HistoryAndJunctionPseudostates) {
 
     EXPECT_EQ(model.states.size(), 1u);
     EXPECT_EQ(model.initial_state, "ActiveState");
+}
+
+/**
+ * @brief Verify two-pass resolution of cross-referenced Signal events and SysML profile stereotypes.
+ * @scenario Parse XMI where triggers reference external signal definitions and custom stereotypes.
+ * @expected Signal definitions resolved and stereotypes preserved in state/transition metadata.
+ */
+TEST(CameoParser, CrossReferencedTriggersAndSysmlProfiles_ResolvedCorrectly) {
+    const std::string xmi_content = R"(<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+         xmlns:uml="http://www.omg.org/spec/UML/20131001"
+         xmlns:sysml="http://www.omg.org/spec/SysML/20150709/SysML">
+  <uml:Model xmi:id="_m1" name="AvionicsSafetyModel">
+    <packagedElement xmi:type="uml:Signal" xmi:id="_sig_engage" name="EvEngageSafety"/>
+    <packagedElement xmi:type="uml:SignalEvent" xmi:id="_se_engage" name="SignalEvent_Engage" signal="_sig_engage"/>
+
+    <packagedElement xmi:type="uml:StateMachine" xmi:id="_sm1" name="SafetyFSM">
+      <region xmi:id="_r1">
+        <subvertex xmi:type="uml:Pseudostate" xmi:id="_ps_init" kind="initial"/>
+        <subvertex xmi:type="uml:State" xmi:id="_st_norm" name="NormalMode"/>
+        <subvertex xmi:type="uml:State" xmi:id="_st_safe" name="SafeMode"/>
+
+        <transition xmi:id="_tr_init" source="_ps_init" target="_st_norm"/>
+        <transition xmi:id="_tr_safe" source="_st_norm" target="_st_safe">
+          <trigger xmi:id="_trig_1" xmi:idref="_se_engage"/>
+        </transition>
+      </region>
+    </packagedElement>
+
+    <!-- Graphical diagram clutter that should be filtered out -->
+    <uml:Diagram xmi:id="_diag_1" name="SafetyDiagram">
+      <DiagramElement xmi:id="_de_1" x="100" y="200" width="80" height="40"/>
+    </uml:Diagram>
+  </uml:Model>
+
+  <!-- External SysML Requirement profile applied to state via base_Element -->
+  <sysml:Requirement xmi:id="_req_safe" base_Element="_st_safe" id="REQ_SAFETY_001" text="Must transition to SafeMode"/>
+</xmi:XMI>)";
+
+    CameoXmiParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xmi_content, model, err)) << "Error: " << err;
+
+    EXPECT_EQ(model.name, "SafetyFSM");
+    EXPECT_EQ(model.initial_state, "NormalMode");
+    EXPECT_EQ(model.states.size(), 2u);
+    ASSERT_EQ(model.transitions.size(), 1u);
+
+    // Verify cross-referenced trigger resolved to EvEngageSafety or SignalEvent_Engage
+    const auto& tr = model.transitions[0];
+    EXPECT_EQ(tr.source, "NormalMode");
+    EXPECT_EQ(tr.target, "SafeMode");
+    EXPECT_TRUE(tr.event == "EvEngageSafety" || tr.event == "SignalEvent_Engage");
+
+    // Verify external requirement was relinked to SafeMode state
+    const auto* safe_state = model.find_state("SafeMode");
+    ASSERT_NE(safe_state, nullptr);
+    ASSERT_FALSE(safe_state->traceability_reqs.empty());
+    EXPECT_EQ(safe_state->traceability_reqs[0], "REQ_SAFETY_001");
 }
 
 }  // namespace

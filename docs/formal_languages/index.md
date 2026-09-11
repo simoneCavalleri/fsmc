@@ -8,7 +8,8 @@
 
 | Format | Standard / Domain | Ingestion & Export Capabilities | Reference Guide |
 | :--- | :--- | :--- | :--- |
-| **OMG SysML v2** | Textual MBSE | First-class textual SysML v2 syntax (`state def`, `transition on`, actions, ports, constraints). | [SysML v2 Guide](sysml_v2.md) |
+| **OMG SysML v2** | Textual MBSE | First-class textual SysML v2 syntax (`state def`, `transition on`, actions, ports, constraints, enums, structs). | [SysML v2 Guide](sysml_v2.md) |
+| **MathWorks Stateflow** | Industrial Control | Simulink Stateflow XML chart models with temporal triggers (`after(N, sec)`), hierarchy, and transitions. | [Stateflow Guide](stateflow.md) |
 | **Cameo / MagicDraw** | Industrial CASE MBSE | OMG XMI 2.1 / 2.4 interchange standard exported by Dassault Systèmes Cameo / MagicDraw. | [Cameo XMI Guide](cameo_magicdraw.md) |
 | **W3C SCXML** | Formal Web / Telecom | XML-based State Chart XML standard with datamodels, event parameters, and parallel regions. | [W3C SCXML Guide](scxml.md) |
 | **nuXmv / SMV** | Formal Verification | Symbolic transition system specifications with temporal LTL (`LTLSPEC`) and CTL (`CTLSPEC`) formulas. | [nuXmv / SMV Guide](smv_nuxmv.md) |

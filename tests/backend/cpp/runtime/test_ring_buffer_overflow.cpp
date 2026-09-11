@@ -1,3 +1,8 @@
+/**
+ * @file test_ring_buffer_overflow.cpp
+ * @brief Unit test suite for ring buffer overflow policies (DropIncoming, DropOldest).
+ */
+
 #include <gtest/gtest.h>
 
 #include <thread>
@@ -9,7 +14,12 @@
 
 using namespace fsm;
 
-TEST(RingBufferOverflowTest, DropIncomingPolicy) {
+/**
+ * @brief Verify DropIncoming ring buffer overflow policy.
+ * @scenario Fill ring buffer to capacity and push additional event under DropIncoming policy.
+ * @expected New incoming event is rejected/dropped and existing queue elements are preserved.
+ */
+TEST(RingBufferOverflow, DropIncomingPolicy_QueueFull_DropsNewIncomingEvents) {
     static_ring_buffer<int, 3> rb;
     EXPECT_TRUE(rb.push(10, OverflowPolicy::DropIncoming));
     EXPECT_TRUE(rb.push(20, OverflowPolicy::DropIncoming));
@@ -36,7 +46,12 @@ TEST(RingBufferOverflowTest, DropIncomingPolicy) {
     EXPECT_TRUE(rb.empty());
 }
 
-TEST(RingBufferOverflowTest, DropOldestPolicy) {
+/**
+ * @brief Verify DropOldest ring buffer overflow policy.
+ * @scenario Fill ring buffer to capacity and push additional event under DropOldest policy.
+ * @expected Oldest event is overwritten and new incoming event is appended.
+ */
+TEST(RingBufferOverflow, DropOldestPolicy_QueueFull_OverwritesOldestEvents) {
     static_ring_buffer<int, 3> rb;
     EXPECT_TRUE(rb.push(10, OverflowPolicy::DropOldest));
     EXPECT_TRUE(rb.push(20, OverflowPolicy::DropOldest));
@@ -82,7 +97,12 @@ struct EvToggle {
 using TestFsmTable =
     ::fsm::transition_table<::fsm::transition<StateA, EvToggle, StateB>, ::fsm::transition<StateB, EvToggle, StateA>>;
 
-TEST(SpscFsmTest, QueueOverflowRejection) {
+/**
+ * @brief Verify SPSC queue overflow rejection under fixed capacity.
+ * @scenario Enqueue more events than fixed queue capacity into SPSC machine.
+ * @expected Overflow is detected and excess events are rejected according to policy.
+ */
+TEST(SpscFsm, QueueOverflow_ExcessEventsRejected) {
     ::fsm::spsc_fsm<TestFsmTable, ::fsm::no_ports, ::fsm::no_ports, ::fsm::no_registers, ::fsm::no_services, 2> machine;
 
     // Post 2 events (capacity 2 is full)

@@ -23,14 +23,14 @@ fsmc --export-runtime <directory> [--std 17|20]
 #### Input and Output Options
 | Flag | Description | Default |
 | :--- | :--- | :--- |
-| `-i, --input <file>` | Path to input model file (`.sysml`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, `.dot`). | Positional argument |
+| `-i, --input <file>` | Path to input model file (`.sysml`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, `.dot`, `.sfx`, `.stateflow`, `.xml`). | Positional argument |
 | `-o, --output <file>` | Path to output generated code or exported diagram file. | `stdout` |
 | `-t, --target <lang>` | Target code generator backend: `cpp` (default). | `cpp` |
-
 | `-n, --name <name>` | Generated state machine class/struct name. | Inferred from filename or `MyFSM` |
 | `--namespace, --package <ns>` | Generated namespace / package / module enclosing the state machine types. | `fsm_generated` |
-| `--format <fmt>` | Override input parser format: `sysml2`, `plantuml`, `mermaid`, `cameo`, `scxml`, `json`, `dot`, `auto`. | `auto` |
-| `-e, --export <fmt>` | Export diagram or formal model to: `mermaid`, `plantuml`, `sysml2`, `json`, `dot`, `scxml`, `cameo`, `smv`. | None |
+| `--format <fmt>` | Override input parser format: `sysml2`, `plantuml`, `mermaid`, `cameo`, `scxml`, `json`, `dot`, `stateflow`, `auto`. | `auto` |
+| `-e, --export <fmt>` | Export diagram or formal model to: `mermaid`, `plantuml`, `sysml2`, `json`, `dot`, `scxml`, `cameo`, `stateflow`, `smv`. | None |
+| `-s, --sidecar <file>` | Explicit companion manifest file (`.fsm.yaml`, `.fsm.json`) for diagram ingestion and external property attachment. | None |
 | `--submachine-dir <dir>` | Search directory for external submachine diagram files referenced in models. | Current directory |
 
 #### Optimization and Code Transformation
@@ -42,18 +42,21 @@ fsmc --export-runtime <directory> [--std 17|20]
 | `--prune-dead-states` | Prune unreachable states and statically dead transitions before codegen. | `false` (active in `-O2`) |
 | `--no-guard-simplification` | Disable algebraic boolean reductions on guard expressions. | `false` |
 | `--inline-submachines` | Inline modular submachines referenced via `SubmachineRef` into a single flat/composite FSM. | `false` |
+| `--pipe-through <cmd>` | Stream canonical JSON IR through an external Unix filter/tool and re-read stdout. | None |
+| `--load-pass-plugin <path>` | Dynamically load a C++ shared library (`.so`) implementing custom `fsm::Pass` transformations. | None |
 
 #### Safety, Verification and Compliance
 | Flag | Description | Default |
 | :--- | :--- | :--- |
 | `verify <file>` | Standalone sub-command to run formal verification, deadlocks, invariants, and LTL/CTL checks. | - |
 | `--verify, --check` | Run formal model checker (livelock, choice completeness, EFSM interval analysis, reachability) and exit. | `false` |
-| `--engine <auto\|nuxmv>` | Verification engine to use for model checking (`auto` or `nuxmv`). | `auto` |
+| `--engine <auto\|nuxmv>` | Verification engine selector (runs internal `ModelChecker`; for nuXmv solver execution, export via `-e smv`). | `auto` |
 | `--ltl "<formula>"` | Injects an ad-hoc Linear Temporal Logic property for verification. | `""` |
 | `--ctl "<formula>"` | Injects an ad-hoc Computation Tree Logic property for verification. | `""` |
 | `-Werror` | Treat all compiler diagnostics and middle-end warnings as fatal errors. | `false` |
 | `--strict-determinism` | Fail compilation on non-deterministic branch collisions or unprioritized triggers. | `false` |
 | `--check-races` | Perform static data-race analysis across parallel orthogonal regions. | `false` |
+| `--emit-test-harness <file>` | Synthesize a standalone GoogleTest C++ harness verifying MC/DC condition coverage (C++ API: `McdcHarnessGenerator`). | None |
 | `--req-audit` | Print Requirement Traceability Matrix (`@fsm:req`) to terminal before code generation. | `false` |
 | `--rtm-output <file>` | Export Requirement Traceability Matrix report to a file. | None |
 | `--rtm-format <json\|md>` | Format for Requirement Traceability Matrix export (`markdown` or `json`). | Inferred from file extension |
@@ -94,19 +97,21 @@ fsm-opt [OPTIONS] <input_model>
 #### Input and Output Options
 | Flag | Description | Default |
 | :--- | :--- | :--- |
-| `-i, --input <file>` | Input model or IR file (`.sysml`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, `.dot`). | Positional argument |
+| `-i, --input <file>` | Input model or IR file (`.sysml`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, `.dot`, `.sfx`, `.stateflow`, `.xml`). | Positional argument |
 | `-o, --output <file>` | Output file path for transformed IR or emitted model. | `stdout` |
-| `--format <fmt>` | Override parser format (`sysml2`, `plantuml`, `mermaid`, `cameo`, `scxml`, `json`, `dot`). | `auto` |
+| `--format <fmt>` | Override parser format (`sysml2`, `plantuml`, `mermaid`, `cameo`, `scxml`, `json`, `dot`, `stateflow`). | `auto` |
 
 #### Pass Pipeline and Optimization
-| Flag | Description |
-| :--- | :--- |
-| `--passes=<p1,p2,...>` | Execute a custom comma-separated list of middle-end passes. |
-| `--list-passes` | List all available registered Middle-End passes and exit. |
-| `--prune-dead` | Enable dead state and dead transition pruning pass. |
-| `--print-before-all` | Dump IR state in JSON format before executing pass pipeline. |
-| `--print-after-all` | Dump IR state in JSON format after executing pass pipeline. |
-| `-Werror` | Treat all diagnostic warnings as fatal errors. |
+| Flag | Description | Default |
+| :--- | :--- | :--- |
+| `--passes=<p1,p2,...>` | Execute a custom comma-separated list of middle-end passes. | Standard pipeline |
+| `--list-passes` | List all available registered Middle-End passes and exit. | - |
+| `--prune-dead` | Enable dead state and dead transition pruning pass. | `false` |
+| `--pipe-through <cmd>` | Stream canonical JSON IR through an external Unix filter/tool and re-read stdout. | None |
+| `--load-pass-plugin <path>` | Dynamically load a C++ shared library (`.so`) implementing custom `fsm::Pass` transformations. | None |
+| `--print-before-all` | Dump IR state in JSON format before executing pass pipeline. | `false` |
+| `--print-after-all` | Dump IR state in JSON format after executing pass pipeline. | `false` |
+| `-Werror` | Treat all diagnostic warnings as fatal errors. | `false` |
 
 #### IR Serialization and Formal Emission
 | Flag | Description | Default |
@@ -119,6 +124,7 @@ fsm-opt [OPTIONS] <input_model>
 | `--emit-dot` | Emit canonical Graphviz DOT diagram. | None |
 | `--emit-scxml` | Emit canonical W3C SCXML statechart. | None |
 | `--emit-cameo` | Emit canonical Cameo / MagicDraw OMG XMI 2.1 model. | None |
+| `--emit-stateflow` | Emit canonical MathWorks Simulink Stateflow XML chart. | None |
 | `--emit-smv` | Emit canonical nuXmv / SMV formal verification specification. | None |
 
 #### Analysis, Model Checking and Metrics
@@ -138,7 +144,7 @@ fsm-opt [OPTIONS] <input_model>
 
 ## 3. Middle-End Optimization Passes Catalogue
 
-The `fsmc` middle-end provides 12 modular passes executable via `fsm-opt --passes=...` or automatically configured by compiler optimization levels (`-O0`, `-O1`, `-O2`):
+The `fsmc` middle-end provides 30 modular passes (28 standard passes across 7 pipeline stages, plus dynamic plugins and the pipe-through filter) executable via `fsm-opt --passes=...` or automatically configured by compiler optimization levels (`-O0`, `-O1`, `-O2`):
 
 1. **`canonicalize`**: Normalizes state hierarchy, fully qualified names (`FQN`), and sorts nodes and transitions into deterministic order.
 2. **`guard-simplification`**: Bottom-up boolean algebra reduction (`not(not A) => A`, `A and true => A`, `A and false => false`).
@@ -152,3 +158,21 @@ The `fsmc` middle-end provides 12 modular passes executable via `fsm-opt --passe
 10. **`efsm-data-path`**: Abstract interpretation for unreachable variable intervals and dead guard constraints.
 11. **`safety-verifier`**: Graph reachability, deadlock traps, and livelock cycle validation.
 12. **`model-checking`**: Formal symbolic verification of temporal LTL and CTL formulas against Kripke state transition graphs.
+13. **`orthogonal-product`**: Cartesian product expansion and flattening of parallel orthogonal regions ($S_A \times S_B$).
+14. **`wcet-analysis`**: Static Worst-Case Execution Time estimation, micro-step cascade bounds, and Zeno-cycle detection.
+15. **`constant-folding`**: Register value propagation, boolean algebra simplification, and tautology/contradiction dead branch pruning.
+16. **`state-minimization`**: Hopcroft/Moore state minimization collapsing bisimilar/equivalent states into minimal representations.
+17. **`guard-satisfiability`**: SMT-based or domain-based guard unsatisfiability analysis.
+18. **`fork-join-lowering`**: Lowers fork splits and join rendezvous barriers into product-state transitions.
+19. **`history-lowering`**: Lowers shallow and deep history into shadow state registers.
+20. **`deferred-event-lowering`**: Lowers deferred events into bounded FIFO buffers.
+21. **`boundary-action-fusion`**: Flattens LCA boundary cascades into linear action sequences (exit $\to$ transition action $\to$ entry).
+22. **`dead-action-elimination`**: Dead store elimination (DSE) across datapath variables and unused assignments.
+23. **`register-liveness`**: Liveness analysis and variable interference graph construction.
+24. **`transition-fusion`**: Fuses deterministic zero-time microsteps into macro-transitions.
+25. **`common-action-factoring`**: Factors identical actions across convergent/divergent transition edges.
+26. **`livelock-analysis`**: Detects non-progressive internal cycles.
+27. **`priority-conflict-check`**: Verifies hierarchical preemption determinism and priority uniqueness.
+28. **`timed-invariants-verifier`**: Formally verifies clock invariants against outgoing transition deadlines.
+29. **`event-queue-bound`**: Computes static upper bound on event queue depth.
+30. **`pipe-through`**: Filters and transforms IR via external Unix command.

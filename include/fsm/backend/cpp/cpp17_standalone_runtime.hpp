@@ -15,7 +15,7 @@
 #pragma clang diagnostic ignored "-Woverlength-strings"
 #endif
 
-namespace fsm::codegen {
+namespace fsm::backend::cpp {
 
 class Cpp17StandaloneRuntime {
   public:
@@ -28,8 +28,10 @@ class Cpp17StandaloneRuntime {
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <iomanip>
 #include <iterator>
 #include <optional>
+#include <ostream>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
@@ -1042,6 +1044,17 @@ struct has_on_exit_event<State, Event,
                          std::void_t<decltype(std::declval<State&>().on_exit(std::declval<const Event&>()))>>
     : std::true_type {};
 
+// on_exit(in, out, reg, srv)
+template <typename State, typename InPorts, typename OutPorts, typename Registers, typename Services, typename = void>
+struct has_on_exit_ports : std::false_type {};
+
+template <typename State, typename InPorts, typename OutPorts, typename Registers, typename Services>
+struct has_on_exit_ports<
+    State, InPorts, OutPorts, Registers, Services,
+    std::void_t<decltype(std::declval<State&>().on_exit(std::declval<const InPorts&>(), std::declval<OutPorts&>(),
+                                                        std::declval<Registers&>(), std::declval<Services&>()))>>
+    : std::true_type {};
+
 // on_exit()
 template <typename State, typename = void>
 struct has_on_exit_void : std::false_type {};
@@ -1061,6 +1074,8 @@ constexpr void call_on_enter(State& state, const Event& event, const InPorts& in
         state.on_enter(event, in, out, reg, srv);
     } else if constexpr (detail::has_on_enter_event<State, Event>::value) {
         state.on_enter(event);
+    } else if constexpr (detail::has_on_enter_ports<State, InPorts, OutPorts, Registers, Services>::value) {
+        state.on_enter(in, out, reg, srv);
     } else if constexpr (detail::has_on_enter_void<State>::value) {
         state.on_enter();
     }
@@ -1101,6 +1116,8 @@ constexpr void call_on_exit(State& state, const Event& event, const InPorts& in,
         state.on_exit(event, in, out, reg, srv);
     } else if constexpr (detail::has_on_exit_event<State, Event>::value) {
         state.on_exit(event);
+    } else if constexpr (detail::has_on_exit_ports<State, InPorts, OutPorts, Registers, Services>::value) {
+        state.on_exit(in, out, reg, srv);
     } else if constexpr (detail::has_on_exit_void<State>::value) {
         state.on_exit();
     }
@@ -1121,6 +1138,49 @@ constexpr void call_on_exit(State& state) {
         state.on_exit();
     }
 }
+
+// ============================================================================
+// State Time Invariant / Permanence Bounds
+// ============================================================================
+
+namespace detail {
+
+template <typename State, typename = void>
+struct state_time_invariant_traits {
+    static constexpr bool has_invariant = false;
+    static constexpr std::uint64_t max_stay_duration_ms = UINT64_MAX;
+};
+
+template <typename State>
+struct state_time_invariant_traits<State, std::void_t<decltype(State::max_stay_duration_ms)>> {
+    static constexpr bool has_invariant = true;
+    static constexpr std::uint64_t max_stay_duration_ms = State::max_stay_duration_ms;
+};
+
+}  // namespace detail
+
+template <typename State>
+inline constexpr bool has_time_invariant_v = detail::state_time_invariant_traits<State>::has_invariant;
+
+template <typename State>
+inline constexpr std::uint64_t state_max_stay_ms_v = detail::state_time_invariant_traits<State>::max_stay_duration_ms;
+
+/**
+ * @brief Structured runtime diagnostic information on state time invariant violation.
+ */
+struct invariant_violation_info {
+    std::string_view state_name{};
+    std::uint64_t residence_time_ms{0};
+    std::uint64_t max_stay_duration_ms{0};
+
+    [[nodiscard]] constexpr bool operator==(const invariant_violation_info& other) const noexcept {
+        return state_name == other.state_name && residence_time_ms == other.residence_time_ms &&
+               max_stay_duration_ms == other.max_stay_duration_ms;
+    }
+    [[nodiscard]] constexpr bool operator!=(const invariant_violation_info& other) const noexcept {
+        return !(*this == other);
+    }
+};
 
 }  // namespace fsm
 
@@ -1190,6 +1250,18 @@ struct is_dynamic_observer<std::function<void(const transition_info&)>> : std::t
 
 template <typename T>
 inline constexpr bool is_dynamic_observer_v = is_dynamic_observer<T>::value;
+
+namespace detail {
+template <typename T, typename = void>
+struct has_advance_tick : std::false_type {};
+
+template <typename T>
+struct has_advance_tick<T, std::void_t<decltype(std::declval<T>().advance_tick(std::declval<std::uint64_t>()))>>
+    : std::true_type {};
+}  // namespace detail
+
+template <typename T>
+inline constexpr bool has_advance_tick_v = detail::has_advance_tick<T>::value;
 
 // Empty tag type for non-allocated optional sub-objects
 struct empty_storage {};
@@ -1436,6 +1508,20 @@ struct with_queue_capacity {
     static constexpr std::size_t value = N;
 };
 
+template <std::size_t N>
+struct with_timer_capacity {
+    static constexpr std::size_t value = N;
+};
+
+template <std::size_t N>
+struct with_trace_buffer {
+    static constexpr std::size_t value = N;
+};
+
+// Forward declaration for observer mapping
+template <std::size_t Capacity>
+class flight_recorder_observer;
+
 // ============================================================================
 // Internal Policy Extraction Helpers
 // ============================================================================
@@ -1497,6 +1583,11 @@ struct extract_observer<Default, with_observer<Obs>, Rest...> {
     using type = Obs;
 };
 
+template <typename Default, std::size_t N, typename... Rest>
+struct extract_observer<Default, with_trace_buffer<N>, Rest...> {
+    using type = flight_recorder_observer<N>;
+};
+
 template <typename Default, typename Other, typename... Rest>
 struct extract_observer<Default, Other, Rest...> : extract_observer<Default, Rest...> {};
 
@@ -1542,6 +1633,20 @@ struct extract_queue_capacity<Default, with_queue_capacity<N>, Rest...> {
 template <std::size_t Default, typename Other, typename... Rest>
 struct extract_queue_capacity<Default, Other, Rest...> : extract_queue_capacity<Default, Rest...> {};
 
+// Timer Capacity extraction
+template <std::size_t Default, typename... Policies>
+struct extract_timer_capacity {
+    static constexpr std::size_t value = Default;
+};
+
+template <std::size_t Default, std::size_t N, typename... Rest>
+struct extract_timer_capacity<Default, with_timer_capacity<N>, Rest...> {
+    static constexpr std::size_t value = N;
+};
+
+template <std::size_t Default, typename Other, typename... Rest>
+struct extract_timer_capacity<Default, Other, Rest...> : extract_timer_capacity<Default, Rest...> {};
+
 }  // namespace detail
 
 // ============================================================================
@@ -1561,6 +1666,7 @@ struct config {
 
     static constexpr std::size_t deferred_capacity = detail::extract_deferred_capacity<16, Policies...>::value;
     static constexpr std::size_t queue_capacity = detail::extract_queue_capacity<64, Policies...>::value;
+    static constexpr std::size_t timer_capacity = detail::extract_timer_capacity<0, Policies...>::value;
 };
 
 // Trait detecting if a type is an fsm::config instantiation
@@ -1589,7 +1695,7 @@ namespace fsm {
  * - 0 dynamic memory allocations (malloc/new)
  * - 0 heap fragmentation
  * - Deterministic O(1) push_back, pop_back, and indexed access
- * - Safe for hard real-time, embedded systems, MISRA C++, and ISR contexts
+ * - Safe for hard real-time, embedded systems, safety-critical environments, and ISR contexts
  *
  * @tparam T The element type stored in the vector.
  * @tparam Capacity Maximum number of elements the inline storage can hold.
@@ -1752,6 +1858,327 @@ class static_vector {
 )raw_fsm_runtime";
 
         out << R"raw_fsm_runtime(
+// --- Begin: deterministic_timer.hpp ---
+namespace fsm {
+
+/**
+ * @brief Deterministic, zero-allocation tick-based timer entry.
+ */
+struct timer_entry {
+    std::uint32_t timer_id{0};
+    std::uint64_t interval_ms{0};
+    std::uint64_t elapsed_ms{0};
+    bool periodic{false};
+    bool active{false};
+};
+
+/**
+ * @brief Zero-heap, deterministic tick-based timer manager.
+ *
+ * Designed for hard real-time and safety-critical embedded systems where background
+ * threads (such as std::thread or POSIX timers) are prohibited. Timers are stepped
+ * synchronously via tick() calls.
+ *
+ * @tparam MaxTimers Maximum number of concurrent active timers (statically allocated).
+ */
+template <std::size_t MaxTimers = 32>
+class deterministic_timer_manager {
+  public:
+    static constexpr std::size_t max_timers = MaxTimers;
+
+    constexpr deterministic_timer_manager() noexcept = default;
+
+    /**
+     * @brief Starts or restarts a timer.
+     * @param timer_id Unique identifier for the timer (e.g. state hash or transition ID).
+     * @param duration_ms Timeout duration in milliseconds.
+     * @param periodic If true, restarts automatically upon expiration.
+     * @return true if successfully scheduled, false if max timer capacity reached.
+     */
+    constexpr bool start_timer(std::uint32_t timer_id, std::uint64_t duration_ms, bool periodic = false) noexcept {
+        // Check if timer already exists
+        for (auto& entry : timers_) {
+            if (entry.active && entry.timer_id == timer_id) {
+                entry.interval_ms = duration_ms;
+                entry.elapsed_ms = 0;
+                entry.periodic = periodic;
+                return true;
+            }
+        }
+        // Find empty slot
+        for (auto& entry : timers_) {
+            if (!entry.active) {
+                entry.timer_id = timer_id;
+                entry.interval_ms = duration_ms;
+                entry.elapsed_ms = 0;
+                entry.periodic = periodic;
+                entry.active = true;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @brief Cancels an active timer by ID.
+     */
+    constexpr bool cancel_timer(std::uint32_t timer_id) noexcept {
+        for (auto& entry : timers_) {
+            if (entry.active && entry.timer_id == timer_id) {
+                entry.active = false;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @brief Resets all timers.
+     */
+    constexpr void reset() noexcept {
+        for (auto& entry : timers_) {
+            entry.active = false;
+            entry.elapsed_ms = 0;
+        }
+    }
+
+    /**
+     * @brief Checks if a specific timer is active.
+     */
+    [[nodiscard]] constexpr bool is_timer_active(std::uint32_t timer_id) const noexcept {
+        for (const auto& entry : timers_) {
+            if (entry.active && entry.timer_id == timer_id) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @brief Advances time by delta_ms and invokes callback on expired timers.
+     * @tparam Callback Callable with signature void(std::uint32_t timer_id)
+     * @param delta_ms Elapsed milliseconds to advance.
+     * @param on_expired Functor called for each expired timer.
+     * @return Number of expired timers in this tick step.
+     */
+    template <typename Callback>
+    std::size_t tick(std::uint64_t delta_ms, Callback on_expired) {
+        std::size_t expired_count = 0;
+        for (auto& entry : timers_) {
+            if (!entry.active) {
+                continue;
+            }
+            entry.elapsed_ms += delta_ms;
+            if (entry.elapsed_ms >= entry.interval_ms) {
+                ++expired_count;
+                std::uint32_t id = entry.timer_id;
+                if (entry.periodic) {
+                    entry.elapsed_ms = entry.elapsed_ms % entry.interval_ms;
+                } else {
+                    entry.active = false;
+                }
+                on_expired(id);
+            }
+        }
+        return expired_count;
+    }
+
+    [[nodiscard]] constexpr std::size_t active_count() const noexcept {
+        std::size_t count = 0;
+        for (const auto& entry : timers_) {
+            if (entry.active) {
+                ++count;
+            }
+        }
+        return count;
+    }
+
+  private:
+    std::array<timer_entry, MaxTimers> timers_{};
+};
+
+/**
+ * @brief Zero-overhead specialization for FSMs without deterministic timers (0 bytes).
+ */
+template <>
+class deterministic_timer_manager<0> {
+  public:
+    static constexpr std::size_t max_timers = 0;
+
+    constexpr deterministic_timer_manager() noexcept = default;
+
+    constexpr bool start_timer(std::uint32_t /*timer_id*/, std::uint64_t /*duration_ms*/,
+                               bool /*periodic*/ = false) noexcept {
+        return false;
+    }
+
+    constexpr bool cancel_timer(std::uint32_t /*timer_id*/) noexcept { return false; }
+
+    constexpr void reset() noexcept {}
+
+    [[nodiscard]] constexpr bool is_timer_active(std::uint32_t /*timer_id*/) const noexcept { return false; }
+
+    template <typename Callback>
+    std::size_t tick(std::uint64_t /*delta_ms*/, Callback /*on_expired*/) noexcept {
+        return 0;
+    }
+
+    [[nodiscard]] constexpr std::size_t active_count() const noexcept { return 0; }
+};
+
+}  // namespace fsm
+
+// --- End: deterministic_timer.hpp ---
+)raw_fsm_runtime";
+
+        out << R"raw_fsm_runtime(
+// --- Begin: flight_recorder.hpp ---
+namespace fsm {
+
+/**
+ * @brief Formal audit trace entry for embedded flight recorder.
+ */
+struct TraceEntry {
+    std::uint64_t tick{0};
+    std::string_view source_state{};
+    std::string_view event_name{};
+    std::string_view target_state{};
+    bool transition_taken{true};
+
+    constexpr bool operator==(const TraceEntry& other) const noexcept {
+        return tick == other.tick && source_state == other.source_state && event_name == other.event_name &&
+               target_state == other.target_state && transition_taken == other.transition_taken;
+    }
+};
+
+/**
+ * @brief Lock-Free Zero-Allocation Circular Ring Buffer Flight Recorder.
+ *
+ * Implements deterministic black-box flight data recording for safety-critical
+ * and hard real-time systems. Guaranteed O(1) push and read complexity with zero
+ * dynamic heap allocation.
+ *
+ * @tparam Capacity Fixed compile-time ring buffer capacity.
+ */
+template <std::size_t Capacity = 64>
+class TraceBuffer {
+  public:
+    static constexpr std::size_t capacity_val = Capacity;
+
+    constexpr TraceBuffer() noexcept = default;
+
+    /**
+     * @brief Records a new transition event into the ring buffer.
+     * Overwrites oldest entry when capacity is reached.
+     */
+    constexpr void record(std::uint64_t tick, std::string_view source, std::string_view event, std::string_view target,
+                          bool taken = true) noexcept {
+        buffer_[head_] = TraceEntry{tick, source, event, target, taken};
+        head_ = (head_ + 1) % Capacity;
+        if (count_ < Capacity) {
+            ++count_;
+        }
+    }
+
+    constexpr void push(const TraceEntry& entry) noexcept {
+        record(entry.tick, entry.source_state, entry.event_name, entry.target_state, entry.transition_taken);
+    }
+
+    [[nodiscard]] constexpr std::size_t size() const noexcept { return count_; }
+    [[nodiscard]] constexpr std::size_t capacity() const noexcept { return Capacity; }
+    [[nodiscard]] constexpr bool empty() const noexcept { return count_ == 0; }
+    [[nodiscard]] constexpr bool full() const noexcept { return count_ == Capacity; }
+
+    constexpr void clear() noexcept {
+        head_ = 0;
+        count_ = 0;
+    }
+
+    /**
+     * @brief Accesses recorded entry in chronological order (0 = oldest recorded entry).
+     */
+    [[nodiscard]] constexpr const TraceEntry& operator[](std::size_t index) const noexcept {
+        std::size_t start = (count_ == Capacity) ? head_ : 0;
+        std::size_t actual_idx = (start + index) % Capacity;
+        return buffer_[actual_idx];
+    }
+
+    /**
+     * @brief Returns the most recent recorded trace entry, if any.
+     */
+    [[nodiscard]] constexpr std::optional<TraceEntry> last_entry() const noexcept {
+        if (count_ == 0) {
+            return std::nullopt;
+        }
+        std::size_t last_idx = (head_ + Capacity - 1) % Capacity;
+        return buffer_[last_idx];
+    }
+
+    /**
+     * @brief Formats human-readable flight recorder dump table to output stream.
+     */
+    void dump(std::ostream& os) const {
+        os << "=== FSM Flight Recorder Audit Trace (" << count_ << "/" << Capacity << " entries) ===\n";
+        os << std::left << std::setw(10) << "TICK" << std::setw(25) << "SOURCE" << std::setw(25) << "EVENT"
+           << std::setw(25) << "TARGET" << "STATUS\n";
+        os << std::string(92, '-') << "\n";
+
+        for (std::size_t i = 0; i < count_; ++i) {
+            const auto& entry = (*this)[i];
+            os << std::left << std::setw(10) << entry.tick << std::setw(25) << entry.source_state << std::setw(25)
+               << entry.event_name << std::setw(25) << entry.target_state
+               << (entry.transition_taken ? "TAKEN" : "IGNORED") << "\n";
+        }
+    }
+
+  private:
+    std::array<TraceEntry, Capacity> buffer_{};
+    std::size_t head_{0};
+    std::size_t count_{0};
+};
+
+/**
+ * @brief Telemetry Observer adapter that writes transitions directly into a Flight Recorder.
+ */
+template <std::size_t Capacity = 64>
+class flight_recorder_observer {
+  public:
+    explicit flight_recorder_observer(std::uint64_t initial_tick = 0) noexcept : current_tick_(initial_tick) {}
+
+    void set_tick(std::uint64_t tick) noexcept { current_tick_ = tick; }
+    void advance_tick(std::uint64_t dt = 1) noexcept { current_tick_ += dt; }
+
+    void operator()(const transition_info& info) noexcept {
+        recorder_.record(current_tick_, info.source, info.event, info.target, info.status == dispatch_status::success);
+    }
+
+    void operator()(const transition_info& info) const noexcept {
+        const_cast<TraceBuffer<Capacity>&>(recorder_).record(current_tick_, info.source, info.event, info.target,
+                                                             info.status == dispatch_status::success);
+    }
+
+    template <typename State, typename Event>
+    void on_transition(const State& /*src*/, const Event& /*evt*/, std::string_view src_name, std::string_view evt_name,
+                       std::string_view dst_name) noexcept {
+        recorder_.record(current_tick_, src_name, evt_name, dst_name, true);
+    }
+
+    [[nodiscard]] const TraceBuffer<Capacity>& recorder() const noexcept { return recorder_; }
+    [[nodiscard]] TraceBuffer<Capacity>& recorder() noexcept { return recorder_; }
+
+    void dump(std::ostream& os) const { recorder_.dump(os); }
+
+  private:
+    std::uint64_t current_tick_{0};
+    TraceBuffer<Capacity> recorder_{};
+};
+
+}  // namespace fsm
+
+// --- End: flight_recorder.hpp ---
+)raw_fsm_runtime";
+
+        out << R"raw_fsm_runtime(
 // --- Begin: transition.hpp ---
 namespace fsm {
 
@@ -1795,6 +2222,48 @@ template <std::int64_t Milliseconds>
 struct after_ms {
     static constexpr std::chrono::milliseconds duration{Milliseconds};
 };
+
+/**
+ * @brief Compile-time periodic millisecond timed transition trigger.
+ */
+template <std::int64_t Milliseconds>
+struct every_ms {
+    static constexpr std::chrono::milliseconds duration{Milliseconds};
+};
+
+template <typename T>
+struct is_timed_event : std::false_type {};
+
+template <typename Duration>
+struct is_timed_event<after<Duration>> : std::true_type {};
+
+template <std::int64_t Milliseconds>
+struct is_timed_event<after_ms<Milliseconds>> : std::true_type {};
+
+template <std::int64_t Milliseconds>
+struct is_timed_event<every_ms<Milliseconds>> : std::true_type {};
+
+template <typename T>
+struct static_timed_event_traits {
+    static constexpr bool supported = false;
+};
+
+template <std::int64_t Milliseconds>
+struct static_timed_event_traits<after_ms<Milliseconds>> {
+    static constexpr bool supported = true;
+    static constexpr std::uint64_t duration_ms = static_cast<std::uint64_t>(Milliseconds);
+    static constexpr bool periodic = false;
+};
+
+template <std::int64_t Milliseconds>
+struct static_timed_event_traits<every_ms<Milliseconds>> {
+    static constexpr bool supported = true;
+    static constexpr std::uint64_t duration_ms = static_cast<std::uint64_t>(Milliseconds);
+    static constexpr bool periodic = true;
+};
+
+template <typename T>
+inline constexpr bool is_timed_event_v = is_timed_event<T>::value;
 
 namespace detail {
 template <typename T, typename = void>
@@ -2015,11 +2484,22 @@ struct internal_row : internal_transition<State, EventType, ActionType, GuardTyp
     using then = internal_row<State, EventType, NewAction, GuardType>;
 };
 
-// Fluent Event-First Builder: on<Event, Source>::to<Target>::when<Guard>::then<Action>
-template <typename EventType, typename SourceState>
+// Fluent Event-First Builder:
+// - on<Event, Source>::to<Target>::when<Guard>::then<Action>
+// - on<Event>::from<Source>::to<Target>::when<Guard>::then<Action>
+template <typename EventType, typename SourceState = void>
 struct on {
     template <typename TargetState>
     using to = row<SourceState, EventType, TargetState>;
+
+    template <typename Src>
+    using from = on<EventType, Src>;
+};
+
+template <typename EventType>
+struct on<EventType, void> {
+    template <typename Src>
+    using from = on<EventType, Src>;
 };
 
 // Helper for fluent creation
@@ -2112,6 +2592,24 @@ struct has_any_duplicate_row<Head, Tail...> {
 
 template <>
 struct has_any_duplicate_row<std::tuple<>> {};
+
+template <typename EventList>
+struct count_timed_events;
+
+template <typename... Events>
+struct count_timed_events<type_list<Events...>> {
+    static constexpr std::size_t value = (0 + ... + (is_timed_event_v<Events> ? 1 : 0));
+};
+
+template <typename Table, typename = void>
+struct table_timed_events_count : std::integral_constant<std::size_t, 0> {};
+
+template <typename Table>
+struct table_timed_events_count<Table, std::void_t<typename Table::events>>
+    : count_timed_events<typename Table::events> {};
+
+template <typename Table>
+inline constexpr std::size_t table_timed_events_count_v = table_timed_events_count<Table>::value;
 
 }  // namespace detail
 
@@ -2301,6 +2799,115 @@ class deferred_manager<Table, DeferredCapacity, false> {
 }  // namespace fsm::detail
 
 // --- End: detail/deferred_manager.hpp ---
+)raw_fsm_runtime";
+
+        out << R"raw_fsm_runtime(
+// --- Begin: detail/invariant_manager.hpp ---
+namespace fsm {
+
+namespace detail {
+
+template <typename StateList>
+struct any_state_has_time_invariant : std::false_type {};
+
+template <typename... States>
+struct any_state_has_time_invariant<type_list<States...>> : std::bool_constant<(has_time_invariant_v<States> || ...)> {
+};
+
+template <typename Table, typename = void>
+struct table_has_time_invariants : std::false_type {};
+
+template <typename Table>
+struct table_has_time_invariants<Table, std::void_t<typename Table::states>>
+    : any_state_has_time_invariant<typename Table::states> {};
+
+template <typename Table>
+inline constexpr bool table_has_time_invariants_v = table_has_time_invariants<Table>::value;
+
+template <typename Table, bool HasInvariants = table_has_time_invariants_v<Table>>
+class invariant_manager;
+
+// Active invariant manager when at least one state declares time invariant / permanence bound
+template <typename Table>
+class invariant_manager<Table, true> {
+  public:
+    void reset() noexcept {
+        residence_time_ms_ = 0;
+        last_violation_.reset();
+    }
+
+    void advance_time(std::uint64_t delta_ms) noexcept { residence_time_ms_ += delta_ms; }
+
+    [[nodiscard]] std::uint64_t state_residence_time() const noexcept { return residence_time_ms_; }
+
+    [[nodiscard]] bool has_invariant_violation() const noexcept { return last_violation_.has_value(); }
+
+    [[nodiscard]] bool is_invariant_satisfied() const noexcept { return !last_violation_.has_value(); }
+
+    [[nodiscard]] const std::optional<invariant_violation_info>& last_invariant_violation() const noexcept {
+        return last_violation_;
+    }
+
+    void clear_invariant_violation() noexcept { last_violation_.reset(); }
+
+    void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
+        violation_handler_ = std::move(handler);
+    }
+
+    template <typename CurrentStateVariant>
+    bool check_invariants(const CurrentStateVariant& state_var) {
+        return std::visit(
+            [this](const auto& st) {
+                using S = std::decay_t<decltype(st)>;
+                if constexpr (has_time_invariant_v<S>) {
+                    if (residence_time_ms_ > state_max_stay_ms_v<S>) {
+                        invariant_violation_info info{::fsm::get_state_name(st), residence_time_ms_,
+                                                      state_max_stay_ms_v<S>};
+                        last_violation_ = info;
+                        if (violation_handler_) {
+                            violation_handler_(info);
+                        }
+                        return false;
+                    }
+                }
+                last_violation_.reset();
+                return true;
+            },
+            state_var);
+    }
+
+  private:
+    std::uint64_t residence_time_ms_{0};
+    std::optional<invariant_violation_info> last_violation_{std::nullopt};
+    std::function<void(const invariant_violation_info&)> violation_handler_{};
+};
+
+// Zero-overhead empty invariant manager when NO states declare time invariants (0 bytes with [[no_unique_address]])
+template <typename Table>
+class invariant_manager<Table, false> {
+  public:
+    constexpr void reset() noexcept {}
+    constexpr void advance_time(std::uint64_t /*delta_ms*/) noexcept {}
+    [[nodiscard]] constexpr std::uint64_t state_residence_time() const noexcept { return 0; }
+    [[nodiscard]] constexpr bool has_invariant_violation() const noexcept { return false; }
+    [[nodiscard]] constexpr bool is_invariant_satisfied() const noexcept { return true; }
+    [[nodiscard]] const std::optional<invariant_violation_info>& last_invariant_violation() const noexcept {
+        static const std::optional<invariant_violation_info> empty_violation{std::nullopt};
+        return empty_violation;
+    }
+    constexpr void clear_invariant_violation() noexcept {}
+    void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> /*handler*/) noexcept {}
+
+    template <typename CurrentStateVariant>
+    constexpr bool check_invariants(const CurrentStateVariant& /*state_var*/) const noexcept {
+        return true;
+    }
+};
+
+}  // namespace detail
+}  // namespace fsm
+
+// --- End: detail/invariant_manager.hpp ---
 )raw_fsm_runtime";
 
         out << R"raw_fsm_runtime(
@@ -2513,7 +3120,11 @@ namespace fsm {
  */
 template <typename Table, typename InPorts = no_ports, typename OutPorts = no_ports, typename Registers = no_registers,
           typename Services = no_services, typename InitialState = typename Table::initial_state,
-          typename Observer = no_observer, std::size_t DeferredCapacity = 16>
+          typename Observer = no_observer, std::size_t DeferredCapacity = 16,
+          std::size_t TimerCapacity =
+              (detail::table_timed_events_count_v<Table> > 0
+                   ? (detail::table_timed_events_count_v<Table> > 4 ? detail::table_timed_events_count_v<Table> : 4)
+                   : 0)>
 class fsm {
   public:
     using table_type = Table;
@@ -2528,6 +3139,7 @@ class fsm {
     static constexpr bool has_history = any_state_has_history<typename Table::states>::value;
     static constexpr bool has_deferred = any_state_has_deferred<typename Table::states>::value;
     static constexpr bool has_observer = !std::is_same_v<observer_type, no_observer>;
+    static constexpr bool has_invariants = detail::table_has_time_invariants_v<Table>;
 
     using history_entry = ::fsm::history_entry;
 
@@ -2603,7 +3215,12 @@ class fsm {
     }
 
     template <typename DurationRep>
-    step_result step(DurationRep /*dt*/, const in_ports_type& in, out_ports_type& out, services_type& srv) {
+    step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out, services_type& srv) {
+        if constexpr (std::is_integral_v<DurationRep>) {
+            this->tick(static_cast<std::uint64_t>(dt));
+        } else {
+            this->tick(dt);
+        }
         return step(in, out, srv);
     }
 
@@ -2771,6 +3388,9 @@ class fsm {
         }
     }
 
+    [[nodiscard]] const observer_type& observer() const noexcept { return observer_; }
+    [[nodiscard]] observer_type& observer() noexcept { return observer_; }
+
     // History state management
     template <bool H = has_history>
     void record_history(std::string_view parent, std::string_view substate) {
@@ -2819,11 +3439,73 @@ class fsm {
     template <typename StateType>
     void set_current_state_variant(StateType&& new_state) {
         current_state_ = std::forward<StateType>(new_state);
+        invariant_mgr_.reset();
+        refresh_timers_for_current_state();
     }
 
     [[nodiscard]] std::string_view current_state_name() const {
         return std::visit([](const auto& state) -> std::string_view { return ::fsm::get_state_name(state); },
                           current_state_);
+    }
+
+    [[nodiscard]] constexpr deterministic_timer_manager<TimerCapacity>& timer_manager() noexcept { return timer_mgr_; }
+    [[nodiscard]] constexpr const deterministic_timer_manager<TimerCapacity>& timer_manager() const noexcept {
+        return timer_mgr_;
+    }
+
+    [[nodiscard]] std::uint64_t state_residence_time() const noexcept { return invariant_mgr_.state_residence_time(); }
+
+    [[nodiscard]] bool has_invariant_violation() const noexcept { return invariant_mgr_.has_invariant_violation(); }
+
+    [[nodiscard]] bool is_invariant_satisfied() const noexcept { return invariant_mgr_.is_invariant_satisfied(); }
+
+    [[nodiscard]] const std::optional<invariant_violation_info>& last_invariant_violation() const noexcept {
+        return invariant_mgr_.last_invariant_violation();
+    }
+
+    void clear_invariant_violation() noexcept { invariant_mgr_.clear_invariant_violation(); }
+
+    void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
+        invariant_mgr_.set_invariant_violation_handler(std::move(handler));
+    }
+
+    bool check_invariants() { return invariant_mgr_.check_invariants(current_state_); }
+
+    /**
+     * @brief Advances deterministic real-time clocks by delta_ms and invokes on_expired on expired timers.
+     * Also automatically advances observer tick timestamp if the observer supports advance_tick.
+     * Evaluates state time permanence invariants at the end of the tick.
+     * @param delta_ms Elapsed milliseconds in hard real-time cycle.
+     * @param on_expired Functor called for each expired timer.
+     * @return Number of timers that expired during this tick.
+     */
+    template <typename Callback>
+    std::size_t tick(std::uint64_t delta_ms, Callback on_expired) {
+        if constexpr (has_advance_tick_v<observer_type>) {
+            observer_.advance_tick(delta_ms);
+        }
+        invariant_mgr_.advance_time(delta_ms);
+        auto expired = timer_mgr_.tick(delta_ms, [this, &on_expired](std::uint32_t timer_id) {
+            dispatch_timed_timer(timer_id);
+            on_expired(timer_id);
+        });
+        invariant_mgr_.check_invariants(current_state_);
+        return expired;
+    }
+
+    std::size_t tick(std::uint64_t delta_ms) {
+        return tick(delta_ms, [](std::uint32_t /*timer_id*/) {});
+    }
+
+    template <typename Rep, typename Period, typename Callback>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired) {
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(dt).count();
+        return tick(static_cast<std::uint64_t>(ms > 0 ? ms : 1), on_expired);
+    }
+
+    template <typename Rep, typename Period>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt) {
+        return tick(dt, [](std::uint32_t /*timer_id*/) {});
     }
 
   protected:
@@ -2851,6 +3533,57 @@ class fsm {
             out_ports_type dummy_out{};
             call_on_enter(*state, dummy_in, dummy_out, registers_, resolve_services());
         }
+        invariant_mgr_.reset();
+        refresh_timers_for_current_state();
+    }
+
+    template <typename State, std::size_t Index>
+    void arm_timer_for_row() {
+        using row_type = std::tuple_element_t<Index, decltype(Table::rows)>;
+        using event_type = typename row_type::event;
+        if constexpr (is_timed_event_v<event_type> && static_timed_event_traits<event_type>::supported &&
+                      (std::is_same_v<State, typename row_type::source> ||
+                       is_substate_of_v<State, typename row_type::source>)) {
+            timer_mgr_.start_timer(static_cast<std::uint32_t>(Index + 1),
+                                   static_timed_event_traits<event_type>::duration_ms,
+                                   static_timed_event_traits<event_type>::periodic);
+        }
+    }
+
+    template <typename State, std::size_t... Indices>
+    void arm_timers_for_state(std::index_sequence<Indices...>) {
+        (arm_timer_for_row<State, Indices>(), ...);
+    }
+
+    void refresh_timers_for_current_state() {
+        timer_mgr_.reset();
+        std::visit(
+            [this](const auto& state) {
+                using state_type = std::decay_t<decltype(state)>;
+                this->arm_timers_for_state<state_type>(
+                    std::make_index_sequence<std::tuple_size_v<decltype(Table::rows)>>{});
+            },
+            current_state_);
+    }
+
+    template <std::size_t Index>
+    void dispatch_timed_timer_at_index(std::uint32_t timer_id) {
+        using row_type = std::tuple_element_t<Index, decltype(Table::rows)>;
+        using event_type = typename row_type::event;
+        if constexpr (is_timed_event_v<event_type> && static_timed_event_traits<event_type>::supported) {
+            if (timer_id == static_cast<std::uint32_t>(Index + 1)) {
+                (void)dispatch(event_type{});
+            }
+        }
+    }
+
+    template <std::size_t... Indices>
+    void dispatch_timed_timer_impl(std::uint32_t timer_id, std::index_sequence<Indices...>) {
+        (dispatch_timed_timer_at_index<Indices>(timer_id), ...);
+    }
+
+    void dispatch_timed_timer(std::uint32_t timer_id) {
+        dispatch_timed_timer_impl(timer_id, std::make_index_sequence<std::tuple_size_v<decltype(Table::rows)>>{});
     }
 
     state_variant current_state_;
@@ -2860,13 +3593,23 @@ class fsm {
     FSMC_NO_UNIQUE_ADDRESS observer_type observer_{};
     FSMC_NO_UNIQUE_ADDRESS detail::history_manager<Table, has_history> history_mgr_{};
     FSMC_NO_UNIQUE_ADDRESS detail::deferred_manager<Table, DeferredCapacity, has_deferred> deferred_mgr_{};
+    FSMC_NO_UNIQUE_ADDRESS deterministic_timer_manager<TimerCapacity> timer_mgr_{};
+    FSMC_NO_UNIQUE_ADDRESS detail::invariant_manager<Table, has_invariants> invariant_mgr_{};
 };
 
 template <typename Table, typename InPorts = no_ports, typename OutPorts = no_ports, typename Registers = no_registers,
           typename Services = no_services, typename InitialState = typename Table::initial_state,
-          std::size_t DeferredCapacity = 16>
+          std::size_t DeferredCapacity = 16,
+          std::size_t TimerCapacity =
+              (detail::table_timed_events_count_v<Table> > 0
+                   ? (detail::table_timed_events_count_v<Table> > 4 ? detail::table_timed_events_count_v<Table> : 4)
+                   : 0)>
 using dynamic_fsm =
-    fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, dynamic_observer, DeferredCapacity>;
+    fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, dynamic_observer, DeferredCapacity, TimerCapacity>;
+
+template <typename Table, std::size_t MaxTimers = 8>
+using timed_fsm = fsm<Table, no_ports, no_ports, no_registers, no_services, typename Table::initial_state, no_observer,
+                      16, MaxTimers>;
 
 }  // namespace fsm
 
@@ -2879,22 +3622,38 @@ namespace fsm {
 
 // Partial specialization for policy-based config
 template <typename RealTable, typename... Policies, typename InPorts, typename OutPorts, typename Registers,
-          typename Services, typename InitialState, typename Observer, std::size_t DeferredCapacity>
+          typename Services, typename InitialState, typename Observer, std::size_t DeferredCapacity,
+          std::size_t TimerCapacity>
 class fsm<config<RealTable, Policies...>, InPorts, OutPorts, Registers, Services, InitialState, Observer,
-          DeferredCapacity> : public fsm<RealTable, typename config<RealTable, Policies...>::in_ports_type,
-                                         typename config<RealTable, Policies...>::out_ports_type,
-                                         typename config<RealTable, Policies...>::registers_type,
-                                         typename config<RealTable, Policies...>::services_type,
-                                         typename config<RealTable, Policies...>::initial_state_type,
-                                         typename config<RealTable, Policies...>::observer_type,
-                                         config<RealTable, Policies...>::deferred_capacity> {
-    using base_type =
-        fsm<RealTable, typename config<RealTable, Policies...>::in_ports_type,
-            typename config<RealTable, Policies...>::out_ports_type,
-            typename config<RealTable, Policies...>::registers_type,
-            typename config<RealTable, Policies...>::services_type,
-            typename config<RealTable, Policies...>::initial_state_type,
-            typename config<RealTable, Policies...>::observer_type, config<RealTable, Policies...>::deferred_capacity>;
+          DeferredCapacity, TimerCapacity>
+    : public fsm<RealTable, typename config<RealTable, Policies...>::in_ports_type,
+                 typename config<RealTable, Policies...>::out_ports_type,
+                 typename config<RealTable, Policies...>::registers_type,
+                 typename config<RealTable, Policies...>::services_type,
+                 typename config<RealTable, Policies...>::initial_state_type,
+                 typename config<RealTable, Policies...>::observer_type,
+                 config<RealTable, Policies...>::deferred_capacity,
+                 (config<RealTable, Policies...>::timer_capacity > 0
+                      ? config<RealTable, Policies...>::timer_capacity
+                      : (detail::table_timed_events_count_v<RealTable> > 0
+                             ? (detail::table_timed_events_count_v<RealTable> > 4
+                                    ? detail::table_timed_events_count_v<RealTable>
+                                    : 4)
+                             : 0))> {
+    static constexpr std::size_t effective_timer_capacity =
+        (config<RealTable, Policies...>::timer_capacity > 0
+             ? config<RealTable, Policies...>::timer_capacity
+             : (detail::table_timed_events_count_v<RealTable> > 0
+                    ? (detail::table_timed_events_count_v<RealTable> > 4 ? detail::table_timed_events_count_v<RealTable>
+                                                                         : 4)
+                    : 0));
+    using base_type = fsm<RealTable, typename config<RealTable, Policies...>::in_ports_type,
+                          typename config<RealTable, Policies...>::out_ports_type,
+                          typename config<RealTable, Policies...>::registers_type,
+                          typename config<RealTable, Policies...>::services_type,
+                          typename config<RealTable, Policies...>::initial_state_type,
+                          typename config<RealTable, Policies...>::observer_type,
+                          config<RealTable, Policies...>::deferred_capacity, effective_timer_capacity>;
 
   public:
     using base_type::base_type;
@@ -3027,9 +3786,19 @@ class spsc_ring_buffer {
         return reinterpret_cast<T*>(raw_storage_.data() + (index & IndexMask) * sizeof(T));
     }
 
+    // C4324: MSVC warns when a struct is padded due to __declspec(align) / alignas.
+    // This padding is intentional: head_ and tail_ are placed on separate cache lines
+    // to eliminate false sharing between the producer and consumer threads.
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4324)
+#endif
     alignas(cache_line_size) std::atomic<std::size_t> head_{0};
     alignas(cache_line_size) std::atomic<std::size_t> tail_{0};
     alignas(alignof(T)) std::array<std::byte, sizeof(T) * Capacity> raw_storage_;
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 };
 
 }  // namespace fsm
@@ -3719,6 +4488,37 @@ class thread_safe_fsm {
         diagnostics_.clear_last_exception();
     }
 
+    [[nodiscard]] std::uint64_t state_residence_time() const {
+        if (reentrancy_.is_reentrant_call()) {
+            return fsm_.state_residence_time();
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.state_residence_time();
+    }
+
+    [[nodiscard]] bool has_invariant_violation() const {
+        if (reentrancy_.is_reentrant_call()) {
+            return fsm_.has_invariant_violation();
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.has_invariant_violation();
+    }
+
+    [[nodiscard]] bool is_invariant_satisfied() const { return !has_invariant_violation(); }
+
+    [[nodiscard]] std::optional<invariant_violation_info> last_invariant_violation() const {
+        if (reentrancy_.is_reentrant_call()) {
+            return fsm_.last_invariant_violation();
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.last_invariant_violation();
+    }
+
+    void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
+        std::scoped_lock lock(dispatch_mutex_);
+        fsm_.set_invariant_violation_handler(std::move(handler));
+    }
+
     // State & Register Access
     [[nodiscard]] registers_type snapshot_registers() const {
         if (reentrancy_.is_reentrant_call()) {
@@ -3793,6 +4593,9 @@ class thread_safe_fsm {
         std::scoped_lock lock(dispatch_mutex_);
         fsm_.clear_deferred_events();
     }
+
+    [[nodiscard]] auto& timer_manager() noexcept { return fsm_.timer_manager(); }
+    [[nodiscard]] const auto& timer_manager() const noexcept { return fsm_.timer_manager(); }
 
     template <typename Callable>
     auto with_state(Callable&& fn) const {
@@ -3891,6 +4694,29 @@ class thread_safe_fsm {
     step_result step(DurationRep dt) {
         std::scoped_lock lock(dispatch_mutex_);
         return fsm_.step(dt);
+    }
+
+    std::size_t tick(std::uint64_t delta_ms) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.tick(delta_ms);
+    }
+
+    template <typename Callback>
+    std::size_t tick(std::uint64_t delta_ms, Callback on_expired) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.tick(delta_ms, on_expired);
+    }
+
+    template <typename Rep, typename Period>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.tick(dt);
+    }
+
+    template <typename Rep, typename Period, typename Callback>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired) {
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.tick(dt, on_expired);
     }
 
     // ========================================================================
@@ -4318,6 +5144,26 @@ class spsc_fsm {
         return res;
     }
 
+    std::size_t tick(std::uint64_t delta_ms) { return fsm_.tick(delta_ms); }
+
+    template <typename Callback>
+    std::size_t tick(std::uint64_t delta_ms, Callback on_expired) {
+        return fsm_.tick(delta_ms, on_expired);
+    }
+
+    template <typename Rep, typename Period>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt) {
+        return fsm_.tick(dt);
+    }
+
+    template <typename Rep, typename Period, typename Callback>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired) {
+        return fsm_.tick(dt, on_expired);
+    }
+
+    [[nodiscard]] auto& timer_manager() noexcept { return fsm_.timer_manager(); }
+    [[nodiscard]] const auto& timer_manager() const noexcept { return fsm_.timer_manager(); }
+
     // ========================================================================
     // Read & Introspection API
     // ========================================================================
@@ -4339,6 +5185,16 @@ class spsc_fsm {
     template <typename State>
     [[nodiscard]] bool is_in_state() const noexcept {
         return is_in<State>();
+    }
+
+    [[nodiscard]] std::uint64_t state_residence_time() const noexcept { return fsm_.state_residence_time(); }
+    [[nodiscard]] bool has_invariant_violation() const noexcept { return fsm_.has_invariant_violation(); }
+    [[nodiscard]] bool is_invariant_satisfied() const noexcept { return fsm_.is_invariant_satisfied(); }
+    [[nodiscard]] const std::optional<invariant_violation_info>& last_invariant_violation() const noexcept {
+        return fsm_.last_invariant_violation();
+    }
+    void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
+        fsm_.set_invariant_violation_handler(std::move(handler));
     }
 
     /**
@@ -4430,7 +5286,11 @@ using make_spsc_fsm = spsc_fsm<config<Table, Policies...>>;
     }
 };
 
-}  // namespace fsm::codegen
+}  // namespace fsm::backend::cpp
+
+namespace fsm::backend {
+using cpp::Cpp17StandaloneRuntime;
+}  // namespace fsm::backend
 
 #if defined(__clang__)
 #pragma clang diagnostic pop

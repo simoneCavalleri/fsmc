@@ -252,3 +252,47 @@ fsmc -i uav_control.puml -o uav_fsm.hpp --std 20 --allow-diagram-codegen
 ```
 
 Transpilation between diagram formats (e.g. `--export mermaid`, `--export scxml`, `--export smv`) does not require the flag and operates directly on any diagram input.
+
+---
+
+## 6. Diagram Companion Sidecars (`-s / --sidecar`, `--emit-sidecar`)
+
+When working with visual diagrams where embedding directives directly inside the diagram source is not desired or practical, `fsmc` supports decoupled **companion sidecar manifests** (`.fsm.yaml` or `.fsm.json`).
+
+### Attaching an External Sidecar (`-s, --sidecar <file>`)
+Attach an external YAML or JSON manifest providing typed ports, registers, invariants, and formal properties to an informal diagram:
+
+```bash
+fsmc -i flight_control.puml -s flight_control.fsm.yaml -o flight_fsm.hpp --allow-diagram-codegen
+```
+
+Example companion sidecar (`flight_control.fsm.yaml`):
+```yaml
+package: aerospace::guidance
+name: FlightControlFSM
+ports:
+  - name: altitude_m
+    type: float
+    direction: in
+    min: 0.0
+    max: 15000.0
+  - name: throttle_pct
+    type: float
+    direction: out
+    min: 0.0
+    max: 100.0
+registers:
+  - name: waypoints_completed
+    type: uint32_t
+    init: 0
+properties:
+  - name: NeverNegativeAltitude
+    formula: "G (altitude_m >= 0.0)"
+```
+
+### Emitting a Companion Sidecar (`--emit-sidecar <file>`)
+When transpiling rich formal specifications (SysML v2, Cameo XMI, SCXML) to visual diagrams, use `--emit-sidecar` to preserve typed datapath metadata and formal constraints alongside the visual layout:
+
+```bash
+fsmc -i mission.sysml -e plantuml -o mission.puml --emit-sidecar mission.fsm.yaml
+```

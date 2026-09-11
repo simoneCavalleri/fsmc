@@ -26,14 +26,6 @@ CMakeSettings.json
 CMakeUserPresets.json
 compile_commands.json
 
-# WebAssembly generated files in playground
-playground/fsmc.js
-playground/fsmc.wasm
-
-# Docs playground mirrored assets (only index.md is tracked)
-docs/playground/*
-!docs/playground/index.md
-
 # Scratch directory
 scratch/
 
@@ -41,7 +33,10 @@ scratch/
 site/
 .cache/
 
-# Python Virtual Environments
+# Python Virtual Environments & Caches
 .venv/
 venv/
 env/
+__pycache__/
+*.py[cod]
+*$py.class

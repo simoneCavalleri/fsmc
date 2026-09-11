@@ -9,7 +9,7 @@ Welcome to the **`fsmc` Developer & Contributing Hub**. Whether you are extendin
 | Resource | Focus Area | Description | Link |
 | :--- | :--- | :--- | :--- |
 | **Developer Guide & Recipes** | Extensibility & Workflows | Step-by-step developer recipes for adding parsers, middle-end passes, serializers, and runtime features. | [Developer Guide](../internals/developer_guide.md) |
-| **Test Suite Catalog** | Quality & Verification | Comprehensive catalog of all 54 GoogleTest suites with test scenarios and intents. | [Test Suite Catalog](../reference/test_suite_catalog.md) |
+| **Test Suite Catalog** | Quality & Verification | Comprehensive catalog of all 84 CTest targets with test scenarios and intents. | [Test Suite Catalog](../reference/test_suite_catalog.md) |
 | **CMake Integration Reference** | Build System Automation | Documentation of `fsmc_target_sources` macro and imported CMake interface libraries. | [CMake Reference](../reference/cmake_integration.md) |
 | **Compiler Architecture** | Pipeline & Drivers | Detailed design of compiler stages, data flow, and Intermediate Representation. | [Compiler Architecture](../internals/architecture.md) |
 | **Canonical IR AST Specification** | Data Model | Formal specification of `FsmIr`, `StateNode`, `TransitionEdge`, and port definitions. | [IR Specification](../internals/fsm_ir_specification.md) |
@@ -27,7 +27,7 @@ Welcome to the **`fsmc` Developer & Contributing Hub**. Whether you are extendin
 
 2. **Configure and Build C++ Targets:**
    ```bash
-   cmake -B build -DCMAKE_BUILD_TYPE=Debug -DFSMC_BUILD_TESTS=ON
+   cmake -B build -DCMAKE_BUILD_TYPE=Debug -DFSMC_ENABLE_TESTING=ON
    cmake --build build -j$(nproc)
    ```
 
@@ -43,7 +43,7 @@ Welcome to the **`fsmc` Developer & Contributing Hub**. Whether you are extendin
    # Step A: Ensure standalone runtime headers are synchronized
    python3 scripts/generate_standalone_runtime.py --check
 
-   # Step B: Run all 54 CTest test suites (100% must pass)
+   # Step B: Run all 84 CTest targets (100% must pass)
    ctest --test-dir build --output-on-failure
 
    # Step C: Verify documentation builds with zero errors

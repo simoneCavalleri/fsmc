@@ -95,7 +95,7 @@ fsmc_target_sources(flight_control
 ### Method 3: Package Managers (vcpkg & Conan 2.0)
 
 === "vcpkg (Manifest Mode & Git Registry)"
-    The repository root includes a [`vcpkg.json`](file:///home/simone/dev/github/fsmc/vcpkg.json) manifest. To consume `fsmc` via vcpkg in your downstream project, declare it as a Git registry in your project's `vcpkg-configuration.json`:
+    The repository root includes a [`vcpkg.json`](https://github.com/simoneCavalleri/fsmc/blob/main/vcpkg.json) manifest. To consume `fsmc` via vcpkg in your downstream project, declare it as a Git registry in your project's `vcpkg-configuration.json`:
 
     ```json
     {
@@ -129,7 +129,7 @@ fsmc_target_sources(flight_control
     # 1. Clone repository and create local Conan package
     git clone https://github.com/simoneCavalleri/fsmc.git
     cd fsmc
-    conan create . --version 0.5.0 -s build_type=Release
+    conan create . --version 0.6.0 -s build_type=Release
     ```
 
     Once created in your local cache, consume it in your project:
@@ -137,7 +137,7 @@ fsmc_target_sources(flight_control
     ```ini
     # conanfile.txt
     [requires]
-    fsmc/0.5.0
+    fsmc/0.6.0
 
     [generators]
     CMakeDeps
@@ -150,7 +150,7 @@ fsmc_target_sources(flight_control
 
 If your target is a bare-metal microcontroller (ARM Cortex-M, RISC-V, ESP32) with no external build system dependencies, you can copy the standalone zero-dependency runtime header directly from the repository:
 
-- C++20 Standalone Runtime: [`include/fsm/backend/cpp/cpp20_standalone_runtime.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/backend/cpp/cpp20_standalone_runtime.hpp)
-- C++17 Standalone Runtime: [`include/fsm/backend/cpp/cpp17_standalone_runtime.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/backend/cpp/cpp17_standalone_runtime.hpp)
+- C++20 Standalone Runtime: [`include/fsm/backend/cpp/cpp20_standalone_runtime.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/backend/cpp/cpp20_standalone_runtime.hpp)
+- C++17 Standalone Runtime: [`include/fsm/backend/cpp/cpp17_standalone_runtime.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/backend/cpp/cpp17_standalone_runtime.hpp)
 
 These single-header files require zero external dependencies beyond standard C++ type traits and atomic headers.

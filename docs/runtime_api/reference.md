@@ -57,12 +57,22 @@ class fsm;
 - `template <typename Event> dispatch_result dispatch(const Event& ev, const in_ports_type& in, out_ports_type& out, services_type& srv)`: Synchronously evaluates transitions matching `Event`.
 - `template <typename Event> dispatch_result dispatch(const Event& ev, const in_ports_type& in, out_ports_type& out)`: Dispatch overload omitting `Services` (uses constructor-bound services or default).
 - `template <typename Event> dispatch_result dispatch(const Event& ev)`: Dispatch overload for stateless state machines.
+- `template <typename Rep, typename Period> std::size_t tick(std::chrono::duration<Rep, Period> dt)`: Advances deterministic timer manager by `dt`. Returns number of expired timers.
+- `template <typename Rep, typename Period, typename Callback> std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired)`: Advances deterministic timers and invokes `on_expired(timer_id)` for each expired timer.
 
 #### State Inspection
 - `template <typename State> [[nodiscard]] constexpr bool is_in() const noexcept`: Returns `true` if active state matches `State`.
 - `template <typename State> [[nodiscard]] constexpr bool is_in_state() const noexcept`: Alias for `is_in<State>()`.
 - `[[nodiscard]] constexpr std::size_t state_index() const noexcept`: Returns 0-based variant index of active state.
 - `[[nodiscard]] constexpr std::string_view current_state_name() const noexcept`: Returns human-readable name of active state.
+
+#### State Residence Time Invariants
+- `[[nodiscard]] constexpr bool is_invariant_satisfied() const noexcept`: Returns `true` if current state residence time does not violate any `max_stay_duration_ms` constraint.
+- `[[nodiscard]] constexpr bool has_invariant_violation() const noexcept`: Returns `true` if an invariant violation has been detected.
+- `[[nodiscard]] const std::optional<invariant_violation_info>& last_invariant_violation() const noexcept`: Returns metadata about the most recent invariant violation (state, elapsed ms, max allowed ms).
+- `void on_invariant_violation(std::function<void(const invariant_violation_info&)> handler)`: Attaches callback invoked immediately when an invariant violation occurs during `tick()`.
+- `void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler)`: Alias for `on_invariant_violation()`.
+- `void clear_invariant_violation() noexcept`: Resets invariant violation status and cached info.
 
 #### Internal Memory
 - `[[nodiscard]] constexpr Registers& registers() noexcept`: Mutable reference to internal registers.
@@ -71,10 +81,11 @@ class fsm;
 #### Telemetry
 - `template <typename Callback> void set_observer(Callback observer)`: Attaches transition observer callback.
 - `void clear_observer() noexcept`: Detaches active observer.
+- `[[nodiscard]] constexpr observer_type& observer() noexcept`: Returns reference to active observer (e.g. `flight_recorder_observer`).
 
 ---
 
-## 2. Policy-Based Configuration: `fsm::config` (v0.5.0+)
+## 2. Policy-Based Configuration: `fsm::config`
 
 ```cpp
 #include "fsm/backend/cpp/runtime/config.hpp"
@@ -92,6 +103,8 @@ struct config;
 - `fsm::with_ports<In, Out>`: Specifies input and output port structures (default: `no_ports, no_ports`).
 - `fsm::with_services<Srv>`: Specifies external injected service interface (default: `no_services`).
 - `fsm::with_observer<Obs>`: Specifies compile-time observer type (default: `no_observer`).
+- `fsm::with_trace_buffer<Capacity>`: Installs zero-allocation circular ring buffer flight recorder (`TraceBuffer<Capacity>`).
+- `fsm::with_timer_capacity<N>`: Configures static capacity of deterministic timer manager (default: `4`).
 - `fsm::with_initial_state<State>`: Overrides root initial state type (default: `Table::initial_state`).
 - `fsm::with_deferred_capacity<N>`: Configures static capacity of deferred event queue (default: `16`).
 - `fsm::with_queue_capacity<N>`: Configures ring buffer capacity in SPSC/async wrappers (default: `64`).
@@ -128,18 +141,18 @@ using MyTable = fsm::transition_table<
 
 ### Boolean Guard Combinators
 ```cpp
-#include "fsm/backend/cpp/runtime/traits/combinators.hpp"
+#include <fsm/backend/cpp/runtime/transition.hpp>
 
 using CombinedGuard = fsm::and_<GuardA, fsm::or_<GuardB, fsm::not_<GuardC>>>;
 ```
 
 ---
 
-## 3. Execution Status: `fsm::dispatch_result` & `fsm::step_result`
+## 4. Execution Status: `fsm::dispatch_result` & `fsm::step_result`
 
 ```cpp
-#include "fsm/backend/cpp/runtime/dispatch_result.hpp"
-#include "fsm/backend/cpp/runtime/step_result.hpp"
+#include "fsm/backend/cpp/runtime/traits/dispatch_result.hpp"
+#include "fsm/backend/cpp/runtime/traits/step_result.hpp"
 ```
 
 ### `fsm::transition_trace`
@@ -259,8 +272,7 @@ class spsc_fsm;
 ### Member Functions
 
 #### Producer Context (Wait-Free O(1), ISR-Safe)
-- `template <typename Event> bool post(Event&& ev) noexcept`: Enqueues event. Returns `false` if queue is full.
-- `template <typename Event> bool enqueue(Event&& ev) noexcept`: FIFO queue push.
+- `template <typename Event> bool post(Event&& ev) noexcept`: Enqueues event into the ring buffer. Returns `false` if the queue is full.
 
 #### Consumer Context (RTOS Worker Thread)
 - `bool process_one()`: Pops and executes the single oldest event.
@@ -270,11 +282,37 @@ class spsc_fsm;
 - `step_result step()`: Evaluates continuous condition step.
 - `step_result step(const in_ports_type& in, out_ports_type& out)`: Evaluates continuous condition step with I/O snapshot.
 - `template <typename DurationRep> step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out)`: Evaluates continuous step with $\Delta t$.
+- `template <typename Rep, typename Period> std::size_t tick(std::chrono::duration<Rep, Period> dt)`: Advances deterministic timer manager by `dt`.
+- `template <typename Rep, typename Period, typename Callback> std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired)`: Advances timers and invokes `on_expired(timer_id)`.
 
-#### Reader Context (Lock-Free Seqlock)
+#### Reader Context & Invariant Inspection (Lock-Free)
 - `Registers snapshot_registers() const noexcept`: Captures consistent register snapshot using atomic sequence lock without blocking worker.
 - `std::string_view state_name() const noexcept`: Atomic load of active state name.
 - `template <typename State> bool is_in_state() const noexcept`: Atomic state type query.
+- `bool is_invariant_satisfied() const noexcept`: Checks if current state residence satisfies permanence invariant.
+- `bool has_invariant_violation() const noexcept`: Checks if an invariant violation has occurred.
+- `std::optional<invariant_violation_info> last_invariant_violation() const noexcept`: Returns last invariant violation info.
+- `void on_invariant_violation(std::function<void(const invariant_violation_info&)> handler)`: Attaches invariant violation callback.
+- `void clear_invariant_violation() noexcept`: Resets invariant violation status.
+
+---
+
+## 6. SPSC Policy-Based Alias: `fsm::make_spsc_fsm`
+
+```cpp
+template <typename Table, typename... Policies>
+using make_spsc_fsm = spsc_fsm<config<Table, Policies...>>;
+```
+
+Equivalent to `spsc_fsm` but uses the policy modifier system (`with_registers<T>`, `with_queue_capacity<N>`, etc.) instead of raw positional template arguments:
+
+```cpp
+// Modern policy-based (preferred):
+fsm::make_spsc_fsm<SensorTable,
+    fsm::with_registers<SensorRegisters>,
+    fsm::with_queue_capacity<256>
+> spsc_sm(regs);
+```
 
 ---
 
@@ -312,17 +350,24 @@ class thread_safe_fsm;
 - `step_result step()`: Step overload for stateless state machines.
 - `template <typename DurationRep> step_result step(DurationRep dt, const InPorts& in, OutPorts& out, Services& srv)`: Step with $\Delta t$.
 - `template <typename DurationRep> step_result step(DurationRep dt, const InPorts& in, OutPorts& out)`: Step with $\Delta t$ and constructor-bound services.
+- `template <typename Rep, typename Period> std::size_t tick(std::chrono::duration<Rep, Period> dt)`: Thread-safe timer tick under mutex.
+- `template <typename Rep, typename Period, typename Callback> std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired)`: Thread-safe timer tick with expiration callback.
 - `std::string_view current_state_name() const`: Returns active state name under mutex lock.
 - `template <typename State> bool is_in_state() const`: Checks state type under mutex lock.
 - `template <typename State> bool is_in() const`: Alias for `is_in_state<State>()`.
+- `bool is_invariant_satisfied() const`: Thread-safe permanence invariant check.
+- `bool has_invariant_violation() const`: Thread-safe invariant violation check.
+- `std::optional<invariant_violation_info> last_invariant_violation() const`: Thread-safe retrieval of violation info.
+- `void on_invariant_violation(std::function<void(const invariant_violation_info&)> handler)`: Attaches invariant violation callback.
+- `void clear_invariant_violation()`: Resets invariant violation status under mutex lock.
 
-#### Safe-by-Design Datapath Access (v0.5.0+)
+#### Safe-by-Design Datapath Access
 - `registers_type snapshot_registers() const`: Safely returns an isolated, consistent copy of internal registers under mutex lock.
 - `void update_registers(registers_type reg)`: Atomically updates internal registers under mutex lock.
 - `template <typename Func> decltype(auto) with_registers(Func&& fn)`: Executes callable `fn(registers)` inside exclusive mutex lock.
 
 > [!IMPORTANT]
-> **Data Race Prevention**: Direct naked references via `registers()` and `unsafe_registers()` were **permanently removed in `v0.5.0`** to eliminate data races and torn reads. Always use `with_registers()`, `update_registers()`, or `snapshot_registers()`.
+> **Data Race Prevention**: Direct naked references via `registers()` and `unsafe_registers()` were permanently removed to eliminate data races and torn reads. Always use `with_registers()`, `update_registers()`, or `snapshot_registers()`.
 
 ---
 

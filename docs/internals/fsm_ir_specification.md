@@ -4,9 +4,10 @@ This document provides the formal specification of the **`FsmIr` (Finite State M
 
 ```
 [ Frontend Parsers ] ──▶  FsmIr  ──▶ [ PassManager ] ──▶ [ Codegen Backends & Serializers ]
-(PlantUML, Mermaid,       (AST)      (Optimization &      (C++17, C++20, JSON, SysML v2,
-SysML v2, Cameo, SCXML,              Verification)         Mermaid, PlantUML)
-JSON, Graphviz DOT)
+(SysML v2, Cameo XMI,     (AST)      (30 Optimization &   (C++17, C++20, JSON, SysML v2,
+ SCXML, Stateflow XML,                Verification Passes) Cameo, SCXML, Stateflow, SMV,
+ PlantUML, Mermaid, DOT,                                   Mermaid, PlantUML, DOT, RTM)
+ JSON, nuXmv SMV)
 ```
 
 ---
@@ -21,38 +22,49 @@ The IR subsystem is organized in modular, single-responsibility header files und
 
 | Module Header | Description |
 | :--- | :--- |
-| [`deterministic_id.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/deterministic_id.hpp) | Deterministic 64-bit FNV-1a canonical ID generator (`compute_deterministic_id`). |
-| [`state_kind.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/state_kind.hpp) | `StateKind` structural classification enum and string serializers. |
-| [`transition_edge_kind.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/transition_edge_kind.hpp) | `TransitionEdgeKind` edge semantics (`External`, `Internal`, `Local`). |
-| [`port_definition.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/port_definition.hpp) | Typed MBSE input/output ports (`PortDefinition`, `PortDirection`, `min_value`, `max_value`, constraints). |
-| [`signal_definition.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/signal_definition.hpp) | Typed signals, payload attributes (`SignalAttribute`), and predicate validators. |
-| [`variable_definition.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/variable_definition.hpp) | State variables (`VariableDefinition`) with `physical_unit`, `VariableTypeKind`, and SMT domains. |
-| [`action.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/action.hpp) | Action invocation signatures (`ActionSignature`) and structured assignments. |
-| [`guard.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/guard.hpp) | Composable boolean guard AST trees (`GuardAstNode`, `GuardOp`). |
-| [`formal_property.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/formal_property.hpp) | Temporal logic AST (`PropertyAstNode`, `TemporalOp`, `FormalProperty`). |
-| [`trigger.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/trigger.hpp) | Strongly-typed `SignalTrigger`, `TimeTrigger` (after/every with units), `AnonymousTrigger`. |
-| [`region.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/region.hpp) | Orthogonal regions (`OrthogonalRegion`) and submachine references (`SubmachineRef`). |
-| [`state_node.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/state_node.hpp) | Hierarchical state graph node (`StateNode`). |
-| [`transition_edge.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/transition_edge.hpp) | Directed transition edge representation (`TransitionEdge`). |
-| [`event_model.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/event_model.hpp) | Event models and choice pseudostates (`ChoiceNodeModel`). |
-| [`fsm_ir.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/fsm_ir.hpp) | Root `FsmIr` container, lookup API, canonicalizer, and `fsm::` namespace aliases. |
-| [`fsm_ir_serializer.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/ir/fsm_ir_serializer.hpp) | Canonical JSON schema exporter and roundtrip serializer. |
+| [`deterministic_id.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/deterministic_id.hpp) | Deterministic 64-bit FNV-1a canonical ID generator (`compute_deterministic_id`). |
+| [`state_kind.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/state_kind.hpp) | `StateKind` structural classification enum and string serializers. |
+| [`transition_edge_kind.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/transition_edge_kind.hpp) | `TransitionEdgeKind` edge semantics (`External`, `Internal`, `Local`). |
+| [`port_definition.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/port_definition.hpp) | Typed MBSE input/output ports (`PortDefinition`, `PortDirection`, `min_value`, `max_value`, constraints). |
+| [`signal_definition.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/signal_definition.hpp) | Typed signals, payload attributes (`SignalAttribute`), and predicate validators. |
+| [`variable_definition.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/variable_definition.hpp) | State variables (`VariableDefinition`) with `physical_unit`, `VariableTypeKind`, and SMT domains. |
+| [`enum_definition.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/enum_definition.hpp) | User-defined enumerations (`EnumDefinition`, `EnumLiteral`) with optional integer values. |
+| [`struct_definition.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/struct_definition.hpp) | User-defined compound structures (`StructDefinition`, `StructField`) for typed ports and registers. |
+| [`type_definition.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/type_definition.hpp) | Compound user-defined types metamodel (`TypeDefinition`, `TypeKind`: `Enum`, `Struct`, `Alias`). |
+| [`data_type.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/data_type.hpp) | Primitive, array, and structured type system (`DataType`, `PrimitiveTypeKind`). |
+| [`clock_definition.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/clock_definition.hpp) | Clock definitions and state permanence time limits (`ClockDefinition`, `TimeInvariant`). |
+| [`concurrency_semantics.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/concurrency_semantics.hpp) | Concurrency semantics metadata (`ConcurrencySemantics`, `DispatchModel`, `OrthogonalConflictModel`). |
+| [`expression.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/expression.hpp) | Algebraic expression AST metamodel (`ExpressionAstNode`, `ExpressionKind`, `ExpressionOp`). |
+| [`action.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/action.hpp) | Action invocation signatures (`ActionSignature`), assignment operators (`AssignmentOp`), and algebraic assignments. |
+| [`guard.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/guard.hpp) | Composable boolean guard AST trees (`GuardAstNode`, `GuardOp`). |
+| [`formal_property.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/formal_property.hpp) | Temporal logic AST (`PropertyAstNode`, `TemporalOp`, `FormalProperty`). |
+| [`trigger.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/trigger.hpp) | Strongly-typed `SignalTrigger`, `TimeTrigger` (after/every with units), `AnonymousTrigger`. |
+| [`region.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/region.hpp) | Orthogonal regions (`OrthogonalRegion`) and submachine references (`SubmachineRef`). |
+| [`state_node.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/state_node.hpp) | Hierarchical state graph node (`StateNode`). |
+| [`transition_edge.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/transition_edge.hpp) | Directed transition edge representation (`TransitionEdge`). |
+| [`event_model.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/event_model.hpp) | Event models and choice pseudostates (`ChoiceNodeModel`). |
+| [`fsm_graph_ops.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/fsm_graph_ops.hpp) | Graph utility algorithms, topological sort, and cycle detection. |
+| [`fsm_ir.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/fsm_ir.hpp) | Root `FsmIr` container, type lookup API, semantic validator, and canonicalizer. |
+| [`fsm_ir_serializer.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/fsm_ir_serializer.hpp) | Canonical JSON schema exporter and serializer (`fsm::ir::FsmIrSerializer`). |
+| [`fsm_ir_deserializer.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/fsm_ir_deserializer.hpp) | Canonical JSON schema parser and deserializer (`fsm::ir::FsmIrDeserializer`). |
 
 #### `FsmIr` Root Schema:
 
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `name` | `std::string` | Canonical name of the state machine class. |
+| `package` | `std::string` | Backend-agnostic package / namespace identifier (e.g. `"avionics.guidance"`). |
 | `initial_state_id` / `initial_state` | `std::string` | Identifier or name of the root initial state. |
 | `states` | `std::vector<StateNode>` | Ordered collection of all state nodes in the graph. |
 | `transitions` | `std::vector<TransitionEdge>` | Ordered collection of all directed transition edges. |
 | `ports` | `std::vector<PortDefinition>` | Typed `InPorts` / `OutPorts` with formal domain range contracts (`min_value`, `max_value`, `constraint`). |
-| `signals` | `std::vector<SignalDefinition>` | Strongly-typed signal events with optional payload parameters and validators. |
+| `signals` | `std::vector<SignalDefinition>` | Canonical source of truth for all events and typed signals (`SignalDefinition`). |
 | `variables` | `std::vector<VariableDefinition>` | State variables (internal `Registers`) with types, units, initial values, and SMT bounds (EFSM). |
+| `custom_types` | `std::vector<TypeDefinition>` | Canonical source of truth for user-defined compound types (`Enum`, `Struct`, `Alias`). |
+| `attributes` | `std::unordered_map<std::string, std::string>` | Extensible metadata key-value pairs (e.g., standard, version, domain-specific annotations). |
 | `properties` | `std::vector<FormalProperty>` | Formal temporal logic properties (LTL/CTL, Invariants, Safety/Liveness). |
-| `events` | `std::vector<EventModel>` | Event identifiers recognized by the machine. |
-| `guards` | `std::vector<GuardModel>` | Guard predicate identifiers evaluated by transition conditions. |
-| `actions` | `std::vector<ActionModel>` | Action routine identifiers invoked on transitions or state lifecycle. |
+| `guards` | `std::vector<GuardModel>` | Guard predicate identifiers synthesized from transition conditions. |
+| `actions` | `std::vector<ActionModel>` | Action routine identifiers synthesized from transitions and state entry/exit actions. |
 | `choice_nodes` | `std::vector<ChoiceNodeModel>` | Dynamic choice pseudostate descriptors. |
 
 ---
@@ -76,6 +88,8 @@ Represents atomic states, composite hierarchical states, orthogonal regions, pse
 | `has_history` | `bool` | Shallow history restoration enabled (`[H]`). |
 | `has_deep_history` | `bool` | Deep history restoration enabled (`[H*]`). |
 | `entry_actions` / `exit_actions` | `std::vector<ActionSignature>` | Ordered sequence of entry and exit action invocations. |
+| `outgoing_transitions` | `std::vector<uint32_t>` | Contiguous indices into `FsmIr::transitions` for $O(1)$ graph traversal. |
+| `incoming_transitions` | `std::vector<uint32_t>` | Contiguous indices into `FsmIr::transitions` for $O(1)$ graph traversal. |
 | `do_activity` | `std::optional<std::string>` | Asynchronous background worker or coroutine. |
 | `deferred_events` | `std::vector<std::string>` | List of event types deferred while active in this state. |
 | `traceability_reqs` | `std::vector<std::string>` | Requirements satisfied by this state (e.g. `["REQ-SAFETY-01"]`). |
@@ -89,8 +103,8 @@ Represents a directed transition between states or pseudostates, with full suppo
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `id` | `std::string` | Deterministic FNV-1a unique hash computed over source, target, trigger, and guard. |
-| `source` / `source_id` | `std::string` | Source state name / deterministic identifier. |
-| `target` / `target_id` | `std::string` | Target state name / deterministic identifier. |
+| `source` | `std::string` | Source state name. |
+| `target` | `std::string` | Target state name. |
 | `source_ids` | `std::vector<std::string>` | Multi-source endpoints for **Join** rendezvous synchronization. |
 | `target_ids` | `std::vector<std::string>` | Multi-target endpoints for **Fork** parallel branch splits. |
 | `event` | `std::string` | Triggering event name (or empty for anonymous transitions). |
@@ -98,6 +112,7 @@ Represents a directed transition between states or pseudostates, with full suppo
 | `guard_ast` | `std::optional<GuardAstNode>` | Structured AST representation for boolean guard logic (`AND`, `OR`, `NOT`). |
 | `action_sig` | `std::optional<ActionSignature>` | Action invocation signature, arguments, and variable assignments (`assignments`). |
 | `kind` | `TransitionEdgeKind` | `External` (default lifecycle), `Internal` (in-place execution), `Local`. |
+| `priority` | `std::uint32_t` | Evaluation precedence contract (`1 = Highest, 2 = Next, ..., 0 = Default/Lowest`). |
 | `target_is_history` | `bool` | Target is shallow history `[H]`. |
 | `target_is_deep_history` | `bool` | Target is deep history `[H*]`. |
 
@@ -194,10 +209,57 @@ struct VariableDefinition {
 };
 
 struct ActionAssignment {
-    std::string target_variable; // e.g. "retry_count"
-    std::string expression;      // e.g. "retry_count + 1"
+    std::string target_variable;                        // Target register or port (e.g. "retry_count")
+    AssignmentOp op{AssignmentOp::Assign};              // =, +=, -=, *=, /=, %=, <<=, >>=, &=, |=, ^=
+    std::string expression;                             // Canonical text representation (e.g. "retry_count + 1")
+    std::optional<ExpressionAstNode> expr_ast;          // Structured algebraic expression AST
 };
 ```
+
+---
+
+### 1.7 Structured Data Metamodels (`enum_definition.hpp` & `struct_definition.hpp`)
+
+`fsmc` supports user-defined structured data types for ports, signals, and internal register memory:
+
+```cpp
+// include/fsm/ir/enum_definition.hpp
+struct EnumLiteral {
+    std::string name;
+    std::optional<int64_t> value;
+    std::string description;
+};
+
+struct EnumDefinition {
+    std::string name;
+    std::vector<EnumLiteral> literals;
+    std::string description;
+
+    [[nodiscard]] bool has_literal(std::string_view lit_name) const;
+    [[nodiscard]] std::optional<int64_t> get_literal_value(std::string_view lit_name) const;
+};
+
+// include/fsm/ir/struct_definition.hpp
+struct StructField {
+    std::string name;
+    std::string type;
+    std::string default_value;
+    std::optional<std::string> unit;
+    std::optional<double> min_value;
+    std::optional<double> max_value;
+    std::string description;
+};
+
+struct StructDefinition {
+    std::string name;
+    std::vector<StructField> fields;
+    std::string description;
+
+    [[nodiscard]] const StructField* find_field(std::string_view field_name) const;
+};
+```
+
+These definitions are preserved losslessly across all 9 supported frontends and diagram serializers, and map to clean C++17/20 `enum class` and `struct` declarations in generated code.
 
 ---
 
@@ -250,7 +312,7 @@ Standby --> Navigating : StartMission [HasTelemetry] / ArmNav
 
 ## 4. Canonical JSON Serialization Schema
 
-`FsmIr` serializes directly to a canonical JSON schema via [`FsmIrSerializer`](file:///home/simone/dev/github/fsmc/include/fsm/ir/fsm_ir_serializer.hpp):
+`FsmIr` serializes directly to a canonical JSON schema via [`FsmIrSerializer`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/fsm_ir_serializer.hpp) and parses back from JSON via [`FsmIrDeserializer`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/ir/fsm_ir_deserializer.hpp):
 
 ```json
 {

@@ -1,4 +1,4 @@
-name: Deploy Documentation & Playground to GitHub Pages
+name: Deploy Documentation to GitHub Pages
 
 on:
   push:
@@ -7,7 +7,6 @@ on:
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
-      - 'playground/**'
       - 'include/**'
       - 'tools/**'
       - 'CMakeLists.txt'
@@ -42,23 +41,9 @@ jobs:
         run: |
           pip install mkdocs mkdocs-material pymdown-extensions
 
-      - name: Setup Emscripten SDK
-        uses: mymindstorm/setup-emsdk@v14
-        with:
-          version: 3.1.58
-
-      - name: Build fsmc WebAssembly Module
-        run: |
-          emcmake cmake -B build-wasm -DFSMC_BUILD_WASM=ON -DFSMC_ENABLE_TESTING=OFF -DFSMC_ENABLE_BENCHMARKS=OFF -DFSMC_ENABLE_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release
-          cmake --build build-wasm --config Release --target fsmc_wasm
-          test -f playground/fsmc.js || cp -f build-wasm/playground/fsmc.js playground/fsmc.js 2>/dev/null || true
-
       - name: Build MkDocs Site
         run: |
-          mkdocs build
-          mkdir -p site/playground
-          cp -r playground/* site/playground/
-          cp -f playground/index.html site/playground/playground.html 2>/dev/null || true
+          mkdocs build --strict
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

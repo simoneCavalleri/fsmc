@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag to release (e.g. v0.4.1)'
+        description: 'Tag to release (e.g. v0.6.0)'
         required: false
         default: ''
 
@@ -50,7 +50,7 @@ jobs:
           if [ -z "$TAG" ] || [ "$TAG" = "main" ] || [ "$TAG" = "develop" ]; then
             TAG="${{ github.event.inputs.tag_name }}"
           fi
-          [ -z "$TAG" ] && TAG="v0.4.1"
+          [ -z "$TAG" ] && TAG="v0.6.0"
           echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
 
           cmake -B build -S . \
@@ -127,7 +127,7 @@ jobs:
           if [ -z "$TAG" ] || [ "$TAG" = "main" ] || [ "$TAG" = "develop" ]; then
             TAG="${{ github.event.inputs.tag_name }}"
           fi
-          [ -z "$TAG" ] && TAG="v0.4.1"
+          [ -z "$TAG" ] && TAG="v0.6.0"
           VERSION="${TAG#v}"
 
           python3 - <<EOF

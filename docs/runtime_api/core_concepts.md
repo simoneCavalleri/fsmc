@@ -322,32 +322,44 @@ using HfsmTable = fsm::transition_table<
 flowchart TD
     Start["How do you want to manage time in C++?"] --> Decision{"Is your machine in a periodic control loop<br/>or an asynchronous event-driven system?"}
 
-    Decision -- "Periodic Loop (100 Hz / 1 kHz)" --> Disc["1. Discrete Sampled Time (step)<br/>- Automatic: fsm::in_state_for<Ticks><br/>- Custom: Registers dt accumulation<br/>- Hard Real-Time, 0 heap, 0 jitter"]
+    Decision -- "Periodic Loop (100 Hz / 1 kHz)" --> Disc["1. Discrete Sampled Time (step)<br/>- Register-based: fsm::in_state_for<Ticks><br/>  (user increments elapsed_ticks in Registers)<br/>- Custom: Registers dt accumulation<br/>- Hard Real-Time, 0 heap, 0 jitter"]
     
     Decision -- "Asynchronous / Multi-Thread" --> Async["2. Asynchronous Physical Timers (dispatch)<br/>- post_delayed(event, 500ms)<br/>- post_state_timeout(event, 500ms) with auto-cancellation<br/>- Uses std::chrono & background worker"]
 ```
 
-### Pattern A: Automatic Sampled Dwell Time (`fsm::in_state_for<N>`)
-In periodic control loops (e.g. 100 Hz timer), transition automatically after residing in a state for $N$ cycles:
+### Pattern A: Discrete Sampled Dwell Time (`fsm::in_state_for<N>`)
+In periodic control loops (e.g. 100 Hz timer), transition automatically after the Registers field `elapsed_ticks` (or `state_time_ms` / `state_elapsed_time`) reaches the threshold $N$.
+
+`in_state_for<N>` reads directly from your Registers struct — **you are responsible for incrementing the counter in your control loop**. The runtime resets it to zero on each outgoing transition via your reset action:
 
 ```cpp
-struct PreCharge { static constexpr std::string_view name = "PreCharge"; };
-struct Ready     { static constexpr std::string_view name = "Ready";     };
+struct TimedRegs   { std::uint32_t elapsed_ticks = 0; };
+struct PreCharge   { static constexpr std::string_view name = "PreCharge"; };
+struct Ready       { static constexpr std::string_view name = "Ready";     };
+
+// Reset elapsed_ticks when the transition fires:
+struct ResetTicks {
+    void operator()(TimedRegs& reg) const noexcept { reg.elapsed_ticks = 0; }
+};
 
 using Table = fsm::transition_table<
-    // Automatically transition to Ready after 50 periodic step() ticks in PreCharge:
-    fsm::row<PreCharge, fsm::anonymous_event, Ready>::when<fsm::in_state_for<50>>
+    // Transition to Ready after elapsed_ticks >= 50 in PreCharge:
+    fsm::row<PreCharge, fsm::anonymous_event, Ready>::when<fsm::in_state_for<50>>::then<ResetTicks>
 >;
 
+TimedRegs reg{};
+fsm::make_fsm<Table, fsm::with_registers<TimedRegs>> sm(reg);
+
 // In periodic control loop (e.g. 100 Hz):
-fsm::step_result res = sm.step(in, out);
+reg.elapsed_ticks++;        // ← user increments each cycle
+fsm::step_result res = sm.step();
 if (res.has_transitioned()) {
     std::cout << "50 ticks elapsed -> Transitioned to Ready!\n";
 }
 ```
 
-> [!TIP]
-> `fsmc` automatically tracks state residence. When the machine enters any new state, its internal dwell counter resets to zero in $O(1)$ time without wall-clock drift.
+> [!IMPORTANT]
+> **`in_state_for<N>` is not magic**: it simply evaluates `registers.elapsed_ticks >= N`. Your control loop must increment `elapsed_ticks` each cycle. The reset action (`ResetTicks`) should zero it when the transition fires, ready for the next state's dwell measurement.
 
 ### Pattern B: Delta-Time Accumulation in `Registers` ($z^{-1}$)
 When the time period $\Delta t$ fluctuates (e.g. OS scheduling jitter), accumulate physical elapsed time inside `Registers`:
@@ -388,6 +400,42 @@ sm.post(EvAuthSuccess{}); // Transitions to Connected
 
 ---
 
+### Pattern D: Hardware Timer Manager — `step(dt)` with `with_timer_capacity<N>`
+
+> [!NOTE]
+> `step(dt, in, out)` advances the **built-in synchronous timer manager** — a separate compile-time subsystem activated via `fsm::with_timer_capacity<N>` — **not** the `in_state_for<N>` counter. These two systems are independent.
+
+When you use `fsm::with_timer_capacity<N>`, the runtime maintains an internal priority queue of timers. You advance it by passing `dt` (milliseconds or `std::chrono::duration`) to `step`:
+
+```cpp
+using TimerFSM = fsm::make_fsm<
+    MyTable,
+    fsm::with_timer_capacity<8>   // enable built-in timer manager
+>;
+
+TimerFSM sm;
+
+// Schedule an internal timer to fire EvTimeout after 500 ms:
+sm.arm_timer(EvTimeout{}, 500);   // 500 ms
+
+// In control loop — pass dt to advance the timer manager clock:
+while (running) {
+    auto dt_ms = measure_elapsed_ms();
+    sm.step(dt_ms, in, out);      // advances timers + evaluates anonymous transitions
+}
+```
+
+`in_state_for<N>` and `with_timer_capacity<N>` are **independent**:
+
+| | `in_state_for<N>` | `with_timer_capacity<N>` |
+|---|---|---|
+| Counter management | **User** increments `reg.elapsed_ticks` each cycle | **Runtime** advances via `step(dt)` / `tick(dt)` |
+| Threshold unit | Abstract ticks | Milliseconds (`std::uint64_t`) |
+| Heap usage | Zero | Zero (fixed compile-time capacity) |
+| `step()` argument | No `dt` needed | Requires `step(dt, ...)` |
+
+---
+
 ## 10. Developer Cookbook: 5 Common Idioms
 
 ### Idiom 1: Event with a Typed Payload
@@ -416,13 +464,17 @@ Stay in a state for a deterministic number of ticks or time:
 ```cpp
 struct StandbyRegs { std::uint32_t elapsed_ticks = 0; };
 
+struct ResetElapsed {
+    void operator()(StandbyRegs& reg) const noexcept { reg.elapsed_ticks = 0; }
+};
+
 using Table = fsm::transition_table<
-    // After 10 periodic step() ticks, transition to Active automatically:
-    fsm::row<Standby, fsm::anonymous_event, Active>::when<fsm::in_state_for<10>>
+    // Transition after elapsed_ticks >= 10 (user increments each cycle):
+    fsm::row<Standby, fsm::anonymous_event, Active>::when<fsm::in_state_for<10>>::then<ResetElapsed>
 >;
 
 // In periodic control loop (e.g. 100 Hz):
-reg.elapsed_ticks++;
+reg.elapsed_ticks++;        // ← must be incremented by caller each cycle
 fsm::step_result res = sm.step(in, out);
 if (res.has_transitioned()) {
     std::cout << "10 ticks reached! Transitioned to Active.\n";

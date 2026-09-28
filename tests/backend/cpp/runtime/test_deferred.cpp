@@ -1,3 +1,8 @@
+/**
+ * @file test_deferred.cpp
+ * @brief Unit test suite for deferred event queueing, capacity limits, and replay semantics.
+ */
+
 #include <gtest/gtest.h>
 
 #include <chrono>
@@ -8,14 +13,19 @@
 #include "fsm/backend/cpp/runtime/fsm.hpp"
 #include "fsm/backend/cpp/runtime/spsc_fsm.hpp"
 #include "fsm/backend/cpp/runtime/thread_safe_fsm.hpp"
+#include "fsm/frontend/common/json_parser.hpp"
 #include "fsm/frontend/diagram/dot_parser.hpp"
-#include "fsm/frontend/diagram/json_parser.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/frontend/formal/cameo_xmi_parser.hpp"
 #include "fsm/frontend/formal/scxml_parser.hpp"
 
-using namespace ::fsm::codegen;
+using namespace fsm::backend::cpp;
+using namespace fsm::backend;
+using namespace fsm::frontend;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend::formal;
+using namespace fsm::ir;
 
 namespace {
 
@@ -24,13 +34,11 @@ namespace {
 // ============================================================================
 
 /**
- * @brief Test Intent: Verify PlantUML `defer <Event>` directive parsing into state deferred events.
- *
- * Scenario:
- * - Parse PlantUML with `Initializing : defer RequestCmd` and `Initializing : defer DataPacket`.
- * - Verify IR state contains both deferred event names.
+ * @brief Verify PlantUML parsing of deferred events.
+ * @scenario Parse PlantUML diagram with 'State : EventName / defer' notation.
+ * @expected FsmIr state node captures deferred event in deferred_events list.
  */
-TEST(DeferredEventsTest, PlantUmlParsing) {
+TEST(DeferredEvents, PlantUml_DeferredEvents_ParsedIntoIr) {
     const std::string puml = R"(
     @startuml
     [*] --> Initializing
@@ -56,13 +64,11 @@ TEST(DeferredEventsTest, PlantUmlParsing) {
 }
 
 /**
- * @brief Test Intent: Verify Mermaid `defer <Event>` syntax parsing.
- *
- * Scenario:
- * - Parse Mermaid with `Booting : defer UserInput`.
- * - Verify Booting state records UserInput in deferred_events.
+ * @brief Verify Mermaid parsing of deferred events.
+ * @scenario Parse Mermaid diagram with deferred event directive.
+ * @expected FsmIr state node captures deferred event in deferred_events list.
  */
-TEST(DeferredEventsTest, MermaidParsing) {
+TEST(DeferredEvents, Mermaid_DeferredEvents_ParsedIntoIr) {
     const std::string mmd = R"(
     stateDiagram-v2
         [*] --> Booting
@@ -82,13 +88,11 @@ TEST(DeferredEventsTest, MermaidParsing) {
 }
 
 /**
- * @brief Test Intent: Verify Cameo / MagicDraw XMI deferrableTrigger element parsing.
- *
- * Scenario:
- * - Parse OMG XMI containing `<deferrableTrigger name="RequestCmd"/>`.
- * - Verify state records RequestCmd in deferred_events list.
+ * @brief Verify Cameo OMG XMI parsing of deferred events.
+ * @scenario Parse Cameo XMI state containing deferrableTrigger elements.
+ * @expected FsmIr state node captures deferred event in deferred_events list.
  */
-TEST(DeferredEventsTest, CameoParsing) {
+TEST(DeferredEvents, Cameo_DeferredEvents_ParsedIntoIr) {
     const std::string xmi = R"(<?xml version="1.0" encoding="UTF-8"?>
     <xmi:XMI xmi:version="2.1" xmlns:uml="http://www.omg.org/spec/UML/20090901" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1">
       <uml:Model xmi:id="_m1" name="CameoDeferModel">
@@ -118,13 +122,11 @@ TEST(DeferredEventsTest, CameoParsing) {
 }
 
 /**
- * @brief Test Intent: Verify W3C SCXML `<defer event="..."/>` syntax parsing.
- *
- * Scenario:
- * - Parse SCXML with `<defer event="RequestCmd"/>` child element inside `<state>`.
- * - Verify parsed FsmIr captures the deferred event definition.
+ * @brief Verify SCXML parsing of deferred events.
+ * @scenario Parse SCXML state with deferred event configuration.
+ * @expected FsmIr state node captures deferred event in deferred_events list.
  */
-TEST(DeferredEventsTest, ScxmlParsing) {
+TEST(DeferredEvents, Scxml_DeferredEvents_ParsedIntoIr) {
     const std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
     <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Initializing" name="DeferSM">
       <state id="Initializing">
@@ -146,13 +148,11 @@ TEST(DeferredEventsTest, ScxmlParsing) {
 }
 
 /**
- * @brief Test Intent: Verify JSON statechart `"defer": [...]` array parsing.
- *
- * Scenario:
- * - Parse XState JSON with `"defer": ["RequestCmd", "DataPacket"]`.
- * - Verify both deferred events are captured in IR.
+ * @brief Verify XState JSON parsing of deferred events.
+ * @scenario Parse JSON schema containing deferred events array on state.
+ * @expected FsmIr state node captures deferred event in deferred_events list.
  */
-TEST(DeferredEventsTest, JsonParsing) {
+TEST(DeferredEvents, Json_DeferredEvents_ParsedIntoIr) {
     const std::string json = R"({
       "id": "DeferSM",
       "initial": "Initializing",
@@ -167,7 +167,7 @@ TEST(DeferredEventsTest, JsonParsing) {
       }
     })";
 
-    JsonStateParser parser;
+    JsonParser parser;
     FsmIr model;
     std::string err;
     ASSERT_TRUE(parser.parse(json, model, err)) << "Error: " << err;
@@ -180,13 +180,11 @@ TEST(DeferredEventsTest, JsonParsing) {
 }
 
 /**
- * @brief Test Intent: Verify Graphviz DOT `defer="A, B"` attribute parsing.
- *
- * Scenario:
- * - Parse DOT graph with `Initializing [defer="RequestCmd, DataPacket"]`.
- * - Verify parsed FsmIr captures both comma-separated deferred events.
+ * @brief Verify Graphviz DOT parsing of deferred events.
+ * @scenario Parse DOT digraph with deferred event state attribute.
+ * @expected FsmIr state node captures deferred event in deferred_events list.
  */
-TEST(DeferredEventsTest, DotParsing) {
+TEST(DeferredEvents, Dot_DeferredEvents_ParsedIntoIr) {
     const std::string dot = R"(
     digraph DeferFSM {
         __start__ [shape=point];
@@ -265,15 +263,11 @@ using PipelineTable =
                             ::fsm::transition<Processing, DataPacket, Completed, OnPacketAction, ::fsm::no_guard>>;
 
 /**
- * @brief Test Intent: Verify synchronous runtime cascade replay of deferred events upon state transitions.
- *
- * Scenario:
- * - Dispatch RequestCmd and DataPacket while in Initializing state (both must be deferred into queue).
- * - Dispatch InitDone: FSM enters Ready, automatically un-defers and processes RequestCmd (moving to Processing),
- *   and automatically un-defers DataPacket (moving to Completed).
- * - Verify all payload and context modifications occurred in proper FIFO order.
+ * @brief Verify synchronous runtime deferred event cascade replay.
+ * @scenario Dispatch event while deferred, transition to consuming state, and observe replay.
+ * @expected Deferred event is replayed and transitions machine to final expected state.
  */
-TEST(DeferredEventsTest, SyncRuntimeCascadeReplay) {
+TEST(DeferredEvents, SyncRuntime_CascadeReplay_DispatchesDeferredEvents) {
     PipelineRegisters reg;
     ::fsm::fsm<PipelineTable, ::fsm::no_ports, ::fsm::no_ports, PipelineRegisters> sm(reg);
 
@@ -312,14 +306,11 @@ TEST(DeferredEventsTest, SyncRuntimeCascadeReplay) {
 }
 
 /**
- * @brief Test Intent: Verify asynchronous multi-threaded deferred event processing.
- *
- * Scenario:
- * - Start thread_safe_fsm worker thread.
- * - Post deferred events from producer thread.
- * - Post trigger event and wait for worker thread to asynchronously cascade replay and reach Completed state.
+ * @brief Verify asynchronous worker processing of deferred events.
+ * @scenario Post deferred events to thread-safe worker and trigger state change.
+ * @expected Deferred events replayed in FIFO chronological order by worker thread.
  */
-TEST(DeferredEventsTest, AsyncRuntimeExecution) {
+TEST(DeferredEvents, AsyncRuntime_DeferredEvents_ProcessedInChronologicalOrder) {
     PipelineRegisters reg;
     ::fsm::thread_safe_fsm<PipelineTable, ::fsm::no_ports, ::fsm::no_ports, PipelineRegisters> async_sm(reg);
     async_sm.start_worker();
@@ -352,9 +343,11 @@ TEST(DeferredEventsTest, AsyncRuntimeExecution) {
 }
 
 /**
- * @brief Test Intent: Verify configurable DeferredCapacity template parameter across all runtime wrappers.
+ * @brief Verify configurable deferred queue capacity and overflow handling.
+ * @scenario Exceed configured deferred capacity with excessive events.
+ * @expected Queue enforces maximum bound without memory leak or unbounded allocation.
  */
-TEST(DeferredEventsTest, ConfigurableDeferredCapacity) {
+TEST(DeferredEvents, BoundedCapacity_DeferredQueue_EnforcesConfiguredSize) {
     using CustomFsm = ::fsm::fsm<PipelineTable, ::fsm::no_ports, ::fsm::no_ports, PipelineRegisters, ::fsm::no_services,
                                  Initializing, ::fsm::no_observer, 32>;
     using CustomDynamicFsm = ::fsm::dynamic_fsm<PipelineTable, ::fsm::no_ports, ::fsm::no_ports, PipelineRegisters,

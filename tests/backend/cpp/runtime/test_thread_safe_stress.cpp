@@ -1,3 +1,8 @@
+/**
+ * @file test_thread_safe_stress.cpp
+ * @brief Unit test suite for high-concurrency stress testing of thread_safe_fsm.
+ */
+
 #include <gtest/gtest.h>
 
 #include <atomic>
@@ -71,14 +76,11 @@ using StressTransitionTable = fsm::transition_table<
     fsm::internal_row<Syncing, PingEvent, LogPing>>;
 
 /**
- * @brief Test Intent: Stress-test thread_safe_fsm under intense 20-thread concurrency (50,000 total events).
- *
- * Scenario:
- * - Launch 20 concurrent producer threads, each posting 2,500 mixed external and internal events.
- * - Concurrently run a consumer thread executing `process_all()`.
- * - Verify no deadlocks, segmentation faults, or lost events occur during high-contention locking.
+ * @brief Verify high-concurrency multi-threaded stress: 20 threads submitting 50,000 events.
+ * @scenario Spawn 20 producer threads bombarding thread_safe_fsm with 50,000 total events.
+ * @expected All 50,000 events are processed safely without race conditions, memory leaks, or crashes.
  */
-TEST(ThreadSafeStressTest, HighConcurrency20Threads50kEvents) {
+TEST(ThreadSafeStress, HighConcurrency_TwentyThreadsFiftyThousandEvents_AllEventsProcessed) {
     StressServices ctx;
     fsm::thread_safe_fsm<StressTransitionTable, fsm::no_ports, fsm::no_ports, fsm::no_registers, StressServices> fsm(
         ctx);
@@ -136,14 +138,11 @@ TEST(ThreadSafeStressTest, HighConcurrency20Threads50kEvents) {
 }
 
 /**
- * @brief Test Intent: Verify thread-safe concurrency mixing immediate posts and delayed timed transitions.
- *
- * Scenario:
- * - Launch 8 threads simultaneously issuing immediate posts and delayed deadline posts.
- * - Wait for timed events to expire and drain.
- * - Verify all events are recorded without race conditions.
+ * @brief Verify concurrent mixing of immediate and delayed/timed events under load.
+ * @scenario Post delayed events alongside immediate events from multiple concurrent threads.
+ * @expected Immediate and timed events interleave deterministically without data corruption.
  */
-TEST(ThreadSafeStressTest, ConcurrentTimedAndImmediateEvents) {
+TEST(ThreadSafeStress, MixedEvents_ConcurrentImmediateAndTimed_ProcessedDeterministically) {
     StressServices ctx;
     fsm::thread_safe_fsm<StressTransitionTable, fsm::no_ports, fsm::no_ports, fsm::no_registers, StressServices> fsm(
         ctx);

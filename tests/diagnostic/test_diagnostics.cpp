@@ -1,20 +1,22 @@
+/**
+ * @file test_diagnostics.cpp
+ * @brief Unit test suite for the compiler diagnostic engine and source caret rendering.
+ */
+
 #include <gtest/gtest.h>
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::diagnostic;
 
 namespace {
 
 /**
- * @brief Test Intent: Verify diagnostic engine source code rendering with line numbers, caret underlines, and help
- * tips.
- *
- * Scenario:
- * - Report a warning diagnostic with a specific SourceSpan (line 2, col 7, length 11) and help suggestion.
- * - Verify rendered output contains file location, source code excerpt, caret underline `^~~~~~~~~~~`, and suggestion.
+ * @brief Verify diagnostic engine source code rendering with line numbers, caret underlines, and help tips.
+ * @scenario Report a warning diagnostic with a specific SourceSpan (line 2, col 7, length 11) and help suggestion.
+ * @expected Rendered output contains file location, source code excerpt, caret underline '^~~~~~~~~~~', and suggestion.
  */
-TEST(DiagnosticEngineTest, ErrorRenderingWithCaret) {
+TEST(DiagnosticEngine, WarningWithSourceSpan_RenderedWithCaretUnderlineAndHelp) {
     const std::string dummy_source =
         "@startuml\n"
         "state CheckChoice <<choice>>\n"

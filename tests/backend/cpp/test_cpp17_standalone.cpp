@@ -1,11 +1,9 @@
 /**
  * @file test_cpp17_standalone.cpp
  * @brief Standalone verification executable for C++17 standalone code generation.
- *
- * Test Intent:
- * Prove that the generated C++17 standalone FSM header (with embedded zero-dependency runtime)
- * compiles under C++17 mode, transitions correctly between states synchronously, and supports
- * asynchronous event posting with the thread-safe worker.
+ * @scenario Instantiate generated C++17 ConnectionFSM17 state machine and dispatch synchronous and asynchronous events.
+ * @expected State machine initializes, transitions accurately, processes asynchronous queues, and terminates without
+ * error.
  */
 
 #include <cassert>

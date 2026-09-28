@@ -1,0 +1,61 @@
+@startuml BatteryManagementSystem
+skinparam monochrome true
+skinparam state {
+  BackgroundColor White
+  BorderColor Black
+  ArrowColor Black
+}
+
+' ============================================================================
+' PlantUML Model: High-Voltage Automotive BMS (ISO 26262 ASIL-D)
+' Demonstrating: Parallel Orthogonal Regions, Clocks, Time Invariants, Race Checking
+' ============================================================================
+
+' Typed MBSE I/O Ports with range bounds
+' @fsm:port name=pack_voltage_v type=float32 dir=in min=250.0 max=450.0
+' @fsm:port name=max_cell_temp_c type=float32 dir=in min=-20.0 max=65.0
+' @fsm:port name=isolation_resistance_kohm type=float32 dir=in min=100.0 max=10000.0
+' @fsm:port name=cooling_pump_pwm type=float32 dir=out min=0.0 max=100.0
+' @fsm:port name=contactors_closed type=bool dir=out
+' @fsm:port name=balancing_active type=bool dir=out
+
+[*] --> Standby
+
+Standby --> Operational : PrechargeCompleteCmd / CloseMainContactorsAction
+
+state Operational {
+    state ThermalSupervision {
+        [*] --> ThermalNominal
+        ThermalNominal : stay <= 100ms
+        ActiveCooling : stay <= 50ms
+
+        ThermalNominal --> ActiveCooling : HighTempWarningEvent / RampCoolingPumpAction
+        ActiveCooling --> ThermalDerating : CriticalTempEvent / ThrottleDischargeAction
+        ActiveCooling --> ThermalNominal : TempNominalEvent / StopCoolingPumpAction
+    }
+    --
+    state CellBalancing {
+        [*] --> BalancingIdle
+        BalancingActive : stay <= 500ms
+
+        BalancingIdle --> BalancingActive : DeltaVThresholdExceededEvent / EnableBalanceShuntsAction
+        BalancingActive --> BalancingIdle : CellsBalancedEvent / DisableBalanceShuntsAction
+    }
+    --
+    state IsolationMonitoring {
+        [*] --> IsoHealthy
+        IsoHealthy : stay <= 200ms
+
+        IsoHealthy --> IsoWarning : LowIsolationResistanceEvent / AlertVehicleMasterAction
+        IsoWarning --> IsoHealthy : IsolationRestoredEvent / ClearVehicleAlertAction
+    }
+}
+
+state FaultShutdown {
+    FaultShutdown : entry / OpenMainContactorsAction
+}
+
+Operational --> FaultShutdown : ThermalRunawayFault / OpenMainContactorsAction
+Operational --> FaultShutdown : HvInterlockBreachedFault / OpenMainContactorsAction
+
+@enduml

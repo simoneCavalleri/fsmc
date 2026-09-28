@@ -232,11 +232,11 @@ void on_timer_tick(const SensorData& raw_sensors) {
 | `post_delayed(event, duration, cancel_if_state_changes=false)` | `void` | Schedules an event to fire after the specified `std::chrono::duration` delay. |
 | `post_state_timeout(event, duration)` | `void` | Schedules a state timeout that is **automatically invalidated and discarded** if the machine transitions before the deadline. |
 
-### Synchronous Sampled Control Loop (`step`)
-
+### Synchronous Sampled Control Loop & Timers
 | Method | Return Type | Description |
 | :--- | :--- | :--- |
 | `step([dt], in, out, srv)` | `step_result` | Thread-safe evaluation of continuous anonymous transitions under mutex lock. |
+| `tick(dt, [on_expired])` | `std::size_t` | Thread-safe advancement of deterministic timers and dwell permanence under mutex lock. |
 
 ### Thread-Safe Inspection & State Access
 
@@ -245,12 +245,17 @@ void on_timer_tick(const SensorData& raw_sensors) {
 | `current_state_name()` | `std::string_view` | Safely acquires lock and returns the active state name. |
 | `is_in_state<State>()` | `bool` | Checks active state under mutex synchronization. |
 | `is_in<State>()` | `bool` | Alias for `is_in_state<State>()`. |
+| `is_invariant_satisfied()` | `bool` | Thread-safe check of state permanence invariant satisfaction. |
+| `has_invariant_violation()` | `bool` | Thread-safe check if a temporal invariant violation has occurred. |
+| `last_invariant_violation()` | `std::optional<invariant_violation_info>` | Safely retrieves violation details (state, elapsed time, bound). |
+| `on_invariant_violation(handler)` | `void` | Registers invariant violation callback under mutex synchronization. |
+| `clear_invariant_violation()` | `void` | Resets invariant violation status under mutex synchronization. |
 | `snapshot_registers()` | `Registers` | Copies internal registers under `dispatch_mutex_` lock. |
 | `update_registers(Registers reg)` | `void` | Safely updates internal registers under `dispatch_mutex_` lock. |
 | `with_registers(Callable&& fn)` | `auto` | Executes callable `fn(registers)` inside an exclusive mutex lock guard. |
 
 > [!IMPORTANT]
-> **Safe-by-Design Concurrency Guarantee (v0.5.0+)**:  
+> **Safe-by-Design Concurrency Guarantee**:  
 > To eliminate concurrency bugs and torn-state reads in multi-threaded environments, `thread_safe_fsm` completely omits unsynchronized naked references (`registers()`).
 >
 > All datapath interactions are strictly guarded under `dispatch_mutex_`:
@@ -258,7 +263,7 @@ void on_timer_tick(const SensorData& raw_sensors) {
 > 2. **`update_registers(new_regs)`**: Atomically writes updated registers under mutex lock.
 > 3. **`snapshot_registers()`**: Atomically returns a consistent, isolated copy of the registers struct for safe telemetry, UI rendering, or diagnostics without holding locks.
 >
-> **Modern Policy Instantiation (v0.5.0+)**:
+> **Modern Policy Instantiation**:
 > ```cpp
 > using NetFSM = fsm::make_thread_safe_fsm<
 >     NetTable,

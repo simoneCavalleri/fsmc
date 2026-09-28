@@ -1,3 +1,8 @@
+/**
+ * @file test_hfsm.cpp
+ * @brief Unit test suite for hierarchical composite states and HFSM event dispatching.
+ */
+
 #include <gtest/gtest.h>
 
 #include <string>
@@ -7,20 +12,22 @@
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/middleend/analysis/fsm_validator.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::backend::cpp;
+using namespace fsm::backend;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend;
+using namespace fsm::middleend::analysis;
+using namespace fsm::middleend;
+using namespace fsm::ir;
 
 namespace {
 
 /**
- * @brief Test Intent: Verify hierarchical state machine (HFSM) parsing from PlantUML syntax.
- *
- * Scenario:
- * - Parse PlantUML with nested `state Active { [*] --> Idle ... }` block and top-level transitions.
- * - Verify parent-child relationships (Idle and Processing have parent Active).
- * - Verify composite state properties (is_composite == true, initial_sub_state == Idle).
- * - Verify validation passes with zero errors.
+ * @brief Verify PlantUML composite state parsing and runtime initialization.
+ * @scenario Parse PlantUML diagram declaring nested sub-states and initial sub-state.
+ * @expected Composite hierarchy formed and machine initializes in initial sub-state.
  */
-TEST(HfsmTest, PlantUmlCompositeStateParsing) {
+TEST(HfsmHierarchy, PlantUmlCompositeState_NestedHierarchy_ParsedCorrectly) {
     const std::string puml = R"(
     @startuml
     [*] --> Active
@@ -61,14 +68,11 @@ TEST(HfsmTest, PlantUmlCompositeStateParsing) {
 }
 
 /**
- * @brief Test Intent: Verify hierarchical composite state machine parsing from Mermaid syntax.
- *
- * Scenario:
- * - Parse Mermaid `stateDiagram-v2` with `state Session { [*] --> Connected ... }`.
- * - Verify parent-child navigation and initial sub-state assignment for Session.
- * - Validate integrity through FsmValidator.
+ * @brief Verify Mermaid composite state parsing and runtime initialization.
+ * @scenario Parse Mermaid diagram declaring nested sub-states.
+ * @expected Composite hierarchy formed and machine initializes in initial sub-state.
  */
-TEST(HfsmTest, MermaidCompositeStateParsing) {
+TEST(HfsmHierarchy, MermaidCompositeState_NestedHierarchy_ParsedCorrectly) {
     const std::string mmd = R"(
     stateDiagram-v2
         [*] --> Session

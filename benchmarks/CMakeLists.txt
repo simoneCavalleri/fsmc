@@ -18,7 +18,7 @@ FetchContent_MakeAvailable(googlebenchmark)
 # 1. Google Benchmark Suite & Zero-Overhead Verification Target
 add_executable(fsmc_bench benchmarks.cpp)
 add_executable(benchmark_dispatch ALIAS fsmc_bench)
-target_link_libraries(fsmc_bench PRIVATE fsmc_runtime benchmark::benchmark)
+target_link_libraries(fsmc_bench PRIVATE fsmc_compiler benchmark::benchmark)
 set_target_properties(fsmc_bench PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
 # Apply optimization flags

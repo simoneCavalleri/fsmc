@@ -1,11 +1,10 @@
+/**
+ * @file model_checker.hpp
+ * @brief Formal verification and explicit state model checking engine.
+ */
+
 #pragma once
 
-#include <algorithm>
-#include <map>
-#include <memory>
-#include <queue>
-#include <set>
-#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -16,49 +15,43 @@
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
 
-namespace fsm::codegen {
+namespace fsm::middleend::analysis {
 
+using namespace fsm::ir;
+using diagnostic::DiagnosticEngine;
+
+/**
+ * @struct CounterexampleStep
+ * @brief A single transition step in an execution trace violating a formal property.
+ */
 struct CounterexampleStep {
-    std::size_t step_index{0};
-    std::string state_name;
-    std::string event_name;
-    std::string guard_condition;
-    std::string description;
-};
-
-struct ModelCheckResult {
-    bool passed{true};
-    std::string property_name;
-    std::string property_formula;
-    PropertyKind kind{PropertyKind::Safety};
-    std::string violation_reason;
-    std::vector<CounterexampleStep> counterexample_trace;
-
-    [[nodiscard]] std::string format_counterexample() const {
-        if (passed || counterexample_trace.empty()) {
-            return "";
-        }
-        std::ostringstream ss;
-        ss << "Counterexample execution trace:\n";
-        for (const auto& step : counterexample_trace) {
-            ss << "    Step " << step.step_index << ": State '" << step.state_name << "'";
-            if (!step.event_name.empty()) {
-                ss << " --[" << step.event_name;
-                if (!step.guard_condition.empty()) {
-                    ss << " if " << step.guard_condition;
-                }
-                ss << "]-->";
-            }
-            if (!step.description.empty()) {
-                ss << " (" << step.description << ")";
-            }
-            ss << "\n";
-        }
-        return ss.str();
-    }
+    std::size_t step_index{0};    ///< Sequence number along the execution trace
+    std::string state_name;       ///< State visited during this step
+    std::string event_name;       ///< Trigger event executed
+    std::string guard_condition;  ///< Guard predicate evaluated
+    std::string description;      ///< Human-readable explanation of the step
 };
 
 /**
+ * @struct ModelCheckResult
+ * @brief Detailed outcome of formal property verification.
+ */
+struct ModelCheckResult {
+    bool passed{true};                                     ///< True if property holds globally
+    std::string property_name;                             ///< Identifier of verified property
+    std::string property_formula;                          ///< Formula specification string
+    PropertyKind kind{PropertyKind::Safety};               ///< Safety, Liveness, or Invariant
+    std::string violation_reason;                          ///< Explanation if verification failed
+    std::vector<CounterexampleStep> counterexample_trace;  ///< Diagnostic counterexample trace
+
+    /**
+     * @brief Formats the counterexample trace into a human-readable diagnostic report.
+     */
+    [[nodiscard]] std::string format_counterexample() const;
+};
+
+/**
+ * @class ModelChecker
  * @brief Formal Verification and Model Checking Engine.
  *
  * Explores the explicit state reachability graph (Kripke model) and evaluates
@@ -71,52 +64,22 @@ struct ModelCheckResult {
  */
 class ModelChecker {
   public:
-    explicit ModelChecker(const FsmIr& ir) : ir_(ir) { build_graph(); }
+    explicit ModelChecker(const FsmIr& ir);
 
-    ModelCheckResult verify_property(const FormalProperty& prop) {
-        if (!prop.ast.has_value()) {
-            return {true, prop.name, prop.raw_formula, prop.kind, "", {}};
-        }
+    /**
+     * @brief Verifies a single formal temporal property against the state machine.
+     */
+    ModelCheckResult verify_property(const FormalProperty& prop);
 
-        const auto& ast = *prop.ast;
+    /**
+     * @brief Verifies all formal properties declared in the FsmIr model.
+     */
+    std::vector<ModelCheckResult> verify_all();
 
-        // 1. Safety Invariant: G (P)
-        if (ast.op == TemporalOp::Globally) {
-            if (!ast.children.empty() && ast.children[0].op == TemporalOp::Implies) {
-                // Response pattern: G (P -> F Q)
-                const auto& impl = ast.children[0];
-                if (impl.children.size() >= 2 && impl.children[1].op == TemporalOp::Finally) {
-                    return check_response(
-                        prop, impl.children[0],
-                        impl.children[1].children.empty() ? impl.children[1] : impl.children[1].children[0]);
-                }
-            }
-            // General Invariant: G (P)
-            return check_invariant(prop, ast.children.empty() ? ast : ast.children[0]);
-        }
-
-        // 2. Reachability: F (P)
-        if (ast.op == TemporalOp::Finally) {
-            return check_reachability(prop, ast.children.empty() ? ast : ast.children[0]);
-        }
-
-        // 3. Simple Invariant / Safety
-        return check_invariant(prop, ast);
-    }
-
-    std::vector<ModelCheckResult> verify_all() {
-        std::vector<ModelCheckResult> results;
-        results.reserve(ir_.properties.size());
-        for (const auto& prop : ir_.properties) {
-            results.push_back(verify_property(prop));
-        }
-        return results;
-    }
-
-    std::vector<EFSMAnalysisFinding> verify_efsm_data_paths(DiagnosticEngine& diag) {
-        EFSMIntervalAnalyzer analyzer(ir_);
-        return analyzer.analyze(diag);
-    }
+    /**
+     * @brief Verifies data path bounds using abstract interval interpretation.
+     */
+    std::vector<EFSMAnalysisFinding> verify_efsm_data_paths(DiagnosticEngine& diag);
 
   private:
     struct GraphEdge {
@@ -131,218 +94,14 @@ class ModelChecker {
     std::unordered_set<std::string> reachable_states_;
     std::unordered_map<std::string, std::pair<std::string, GraphEdge>> predecessor_map_;
 
-    void build_graph() {
-        root_state_ = ir_.initial_state_id.empty() ? ir_.initial_state : ir_.initial_state_id;
-        if (root_state_.empty() && !ir_.states.empty()) {
-            root_state_ = ir_.states.front().name;
-        }
-
-        for (const auto& t : ir_.transitions) {
-            std::string src = t.source.empty() ? t.source_id : t.source;
-            std::string dst = t.target.empty() ? t.target_id : t.target;
-            if (!src.empty() && !dst.empty()) {
-                GraphEdge edge;
-                edge.target = dst;
-                edge.event = t.event.empty() ? t.get_trigger_name() : t.event;
-                edge.guard = t.guard.has_value() ? *t.guard : "";
-                adj_[src].push_back(edge);
-            }
-        }
-
-        // BFS Reachability and predecessor tree construction
-        if (!root_state_.empty()) {
-            std::queue<std::string> q;
-            q.push(root_state_);
-            reachable_states_.insert(root_state_);
-
-            while (!q.empty()) {
-                std::string curr = q.front();
-                q.pop();
-
-                // Composite child states
-                if (const auto* s = ir_.find_state(curr)) {
-                    if (s->is_composite) {
-                        for (const auto& sub : ir_.states) {
-                            if (sub.parent_state == curr && reachable_states_.count(sub.name) == 0) {
-                                reachable_states_.insert(sub.name);
-                                predecessor_map_[sub.name] = {curr, {sub.name, "enter_composite", ""}};
-                                q.push(sub.name);
-                            }
-                        }
-                    }
-                }
-
-                auto it = adj_.find(curr);
-                if (it != adj_.end()) {
-                    for (const auto& edge : it->second) {
-                        if (reachable_states_.count(edge.target) == 0) {
-                            reachable_states_.insert(edge.target);
-                            predecessor_map_[edge.target] = {curr, edge};
-                            q.push(edge.target);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
+    void build_graph();
     [[nodiscard]] std::vector<CounterexampleStep> reconstruct_trace(const std::string& target_state,
-                                                                    const std::string& violation_desc) const {
-        std::vector<CounterexampleStep> steps;
-        std::string curr = target_state;
-
-        std::vector<std::pair<std::string, GraphEdge>> path;
-        while (curr != root_state_ && predecessor_map_.count(curr) != 0) {
-            const auto& p = predecessor_map_.at(curr);
-            path.emplace_back(p.first, p.second);
-            curr = p.first;
-        }
-        std::reverse(path.begin(), path.end());
-
-        std::size_t idx = 0;
-        steps.push_back({idx++, root_state_, path.empty() ? "" : path[0].second.event,
-                         path.empty() ? "" : path[0].second.guard,
-                         root_state_ == target_state ? violation_desc : "Initial active state"});
-
-        for (std::size_t i = 0; i < path.size(); ++i) {
-            std::string state = path[i].second.target;
-            std::string next_evt = (i + 1 < path.size()) ? path[i + 1].second.event : "";
-            std::string next_grd = (i + 1 < path.size()) ? path[i + 1].second.guard : "";
-            std::string desc = (state == target_state) ? violation_desc : "Normal transition execution";
-            steps.push_back({idx++, state, next_evt, next_grd, desc});
-        }
-
-        return steps;
-    }
-
-    bool eval_predicate(const PropertyAstNode& node, const std::string& state) const {
-        if (node.op == TemporalOp::Atom) {
-            if (node.atom == state)
-                return true;
-            if (node.atom == "state == " + state)
-                return true;
-            if (node.atom == "!" + state)
-                return false;
-
-            // Check against state description or flags
-            const auto* s = ir_.find_state(state);
-            if (s != nullptr) {
-                if (s->fqn == node.atom || s->alias == node.atom)
-                    return true;
-                if (s->description.find(node.atom) != std::string::npos)
-                    return true;
-            }
-            return false;
-        }
-        if (node.op == TemporalOp::Not) {
-            if (!node.children.empty()) {
-                return !eval_predicate(node.children[0], state);
-            }
-            return node.atom != state;
-        }
-        if (node.op == TemporalOp::And) {
-            for (const auto& child : node.children) {
-                if (!eval_predicate(child, state))
-                    return false;
-            }
-            return true;
-        }
-        if (node.op == TemporalOp::Or) {
-            for (const auto& child : node.children) {
-                if (eval_predicate(child, state))
-                    return true;
-            }
-            return false;
-        }
-        if (node.op == TemporalOp::Implies) {
-            if (node.children.size() >= 2) {
-                bool left = eval_predicate(node.children[0], state);
-                bool right = eval_predicate(node.children[1], state);
-                return !left || right;
-            }
-        }
-        if (node.op == TemporalOp::Equivalent) {
-            if (node.children.size() >= 2) {
-                bool left = eval_predicate(node.children[0], state);
-                bool right = eval_predicate(node.children[1], state);
-                return left == right;
-            }
-        }
-        return false;
-    }
-
-    ModelCheckResult check_invariant(const FormalProperty& prop, const PropertyAstNode& predicate) {
-        for (const auto& s_name : reachable_states_) {
-            if (!eval_predicate(predicate, s_name)) {
-                // Invariant violated in s_name!
-                std::string desc = "Invariant '" + prop.raw_formula + "' evaluated to false in state '" + s_name + "'";
-                auto trace = reconstruct_trace(s_name, desc);
-                return {false, prop.name, prop.raw_formula, prop.kind, desc, std::move(trace)};
-            }
-        }
-        return {true, prop.name, prop.raw_formula, prop.kind, "", {}};
-    }
-
-    ModelCheckResult check_reachability(const FormalProperty& prop, const PropertyAstNode& target) {
-        for (const auto& s_name : reachable_states_) {
-            if (eval_predicate(target, s_name)) {
-                return {true, prop.name, prop.raw_formula, prop.kind, "", {}};
-            }
-        }
-        // Unreachable
-        std::string desc = "Target condition '" + prop.raw_formula + "' is unreachable from initial state '" +
-                           root_state_ + "' across all reachable states.";
-        return {false, prop.name, prop.raw_formula, prop.kind, desc, {}};
-    }
-
+                                                                    const std::string& violation_desc) const;
+    bool eval_predicate(const PropertyAstNode& node, const std::string& state) const;
+    ModelCheckResult check_invariant(const FormalProperty& prop, const PropertyAstNode& predicate);
+    ModelCheckResult check_reachability(const FormalProperty& prop, const PropertyAstNode& target);
     ModelCheckResult check_response(const FormalProperty& prop, const PropertyAstNode& trigger,
-                                    const PropertyAstNode& response_target) {
-        for (const auto& s_name : reachable_states_) {
-            if (eval_predicate(trigger, s_name)) {
-                // Check if response_target is reachable from s_name
-                std::unordered_set<std::string> local_visited;
-                std::queue<std::string> q;
-                q.push(s_name);
-                local_visited.insert(s_name);
-                bool found = false;
-
-                while (!q.empty()) {
-                    std::string c = q.front();
-                    q.pop();
-
-                    if (eval_predicate(response_target, c)) {
-                        found = true;
-                        break;
-                    }
-
-                    auto it = adj_.find(c);
-                    if (it != adj_.end()) {
-                        for (const auto& edge : it->second) {
-                            if (local_visited.count(edge.target) == 0) {
-                                local_visited.insert(edge.target);
-                                q.push(edge.target);
-                            }
-                        }
-                    }
-                }
-
-                if (!found) {
-                    std::string desc = "State '" + s_name + "' triggered condition '" + trigger.to_string() +
-                                       "', but response target '" + response_target.to_string() +
-                                       "' is unreachable from it.";
-                    auto trace = reconstruct_trace(s_name, desc);
-                    return {false, prop.name, prop.raw_formula, prop.kind, desc, std::move(trace)};
-                }
-            }
-        }
-        return {true, prop.name, prop.raw_formula, prop.kind, "", {}};
-    }
+                                    const PropertyAstNode& response_target);
 };
 
-}  // namespace fsm::codegen
-
-namespace fsm {
-using CounterexampleStep = ::fsm::codegen::CounterexampleStep;
-using ModelCheckResult = ::fsm::codegen::ModelCheckResult;
-using ModelChecker = ::fsm::codegen::ModelChecker;
-}  // namespace fsm
+}  // namespace fsm::middleend::analysis

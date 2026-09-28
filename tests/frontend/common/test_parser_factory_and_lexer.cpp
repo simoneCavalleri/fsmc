@@ -1,9 +1,14 @@
+/**
+ * @file test_parser_factory_and_lexer.cpp
+ * @brief Unit tests for ParserFactory dynamic parser resolution and LexerUtils lexical analysis routines.
+ */
+
 #include <gtest/gtest.h>
 
+#include "fsm/frontend/common/json_parser.hpp"
 #include "fsm/frontend/common/lexer_utils.hpp"
 #include "fsm/frontend/common/parser_factory.hpp"
 #include "fsm/frontend/diagram/dot_parser.hpp"
-#include "fsm/frontend/diagram/json_parser.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/frontend/formal/cameo_xmi_parser.hpp"
@@ -13,13 +18,22 @@
 
 namespace {
 
-using namespace fsm::codegen;
+using namespace fsm::frontend;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend::formal;
+using namespace fsm::ir;
 
 // ============================================================================
 // 1. Parser Factory Format and Extension Resolution Tests
 // ============================================================================
 
-TEST(ParserFactoryAndLexerTest, ParserFactoryFormatResolution) {
+/**
+ * @brief Verify ParserFactory instantiation by canonical format identifier string.
+ * @scenario Query ParserFactory::create_by_format with "sysml2", "plantuml", "mermaid", "cameo", "scxml", "smv",
+ * "json", "dot".
+ * @expected Distinct concrete parser instances returned for known formats; nullptr for unknown format.
+ */
+TEST(ParserFactory, CanonicalFormatNames_InstantiatesCorrespondingParser) {
     auto p_sysml = ParserFactory::create_by_format("sysml2");
     EXPECT_NE(dynamic_cast<Sysml2Parser*>(p_sysml.get()), nullptr);
 
@@ -39,7 +53,7 @@ TEST(ParserFactoryAndLexerTest, ParserFactoryFormatResolution) {
     EXPECT_NE(dynamic_cast<SmvParser*>(p_smv.get()), nullptr);
 
     auto p_json = ParserFactory::create_by_format("json");
-    EXPECT_NE(dynamic_cast<JsonStateParser*>(p_json.get()), nullptr);
+    EXPECT_NE(dynamic_cast<JsonParser*>(p_json.get()), nullptr);
 
     auto p_dot = ParserFactory::create_by_format("dot");
     EXPECT_NE(dynamic_cast<DotParser*>(p_dot.get()), nullptr);
@@ -48,7 +62,12 @@ TEST(ParserFactoryAndLexerTest, ParserFactoryFormatResolution) {
     EXPECT_EQ(p_invalid, nullptr);
 }
 
-TEST(ParserFactoryAndLexerTest, ParserFactoryExtensionResolution) {
+/**
+ * @brief Verify ParserFactory instantiation based on input file path extension.
+ * @scenario Query ParserFactory::create_by_extension with .sysml, .puml, .mmd, .smv, .xmi, .scxml, .json, .dot.
+ * @expected Factory returns concrete parser corresponding to recognized file extension.
+ */
+TEST(ParserFactory, FileExtensions_ResolvesMatchingParserImplementation) {
     auto p_sysml = ParserFactory::create_by_extension("models/system.sysml");
     EXPECT_NE(dynamic_cast<Sysml2Parser*>(p_sysml.get()), nullptr);
 
@@ -66,7 +85,6 @@ TEST(ParserFactoryAndLexerTest, ParserFactoryExtensionResolution) {
 
     auto p_smv = ParserFactory::create_by_extension("verify.smv");
     EXPECT_NE(dynamic_cast<SmvParser*>(p_smv.get()), nullptr);
-    EXPECT_NE(dynamic_cast<MermaidParser*>(p_mermaid.get()), nullptr);
 
     auto p_xmi = ParserFactory::create_by_extension("model.xmi");
     EXPECT_NE(dynamic_cast<CameoXmiParser*>(p_xmi.get()), nullptr);
@@ -78,7 +96,7 @@ TEST(ParserFactoryAndLexerTest, ParserFactoryExtensionResolution) {
     EXPECT_NE(dynamic_cast<ScxmlParser*>(p_scxml.get()), nullptr);
 
     auto p_json = ParserFactory::create_by_extension("machine.json");
-    EXPECT_NE(dynamic_cast<JsonStateParser*>(p_json.get()), nullptr);
+    EXPECT_NE(dynamic_cast<JsonParser*>(p_json.get()), nullptr);
 
     auto p_dot = ParserFactory::create_by_extension("graph.dot");
     EXPECT_NE(dynamic_cast<DotParser*>(p_dot.get()), nullptr);
@@ -87,7 +105,12 @@ TEST(ParserFactoryAndLexerTest, ParserFactoryExtensionResolution) {
     EXPECT_NE(dynamic_cast<DotParser*>(p_gv.get()), nullptr);
 }
 
-TEST(ParserFactoryAndLexerTest, ParserFactoryOverrideAndFallback) {
+/**
+ * @brief Verify ParserFactory explicit format override and fallback behaviour.
+ * @scenario Pass explicit format override ("mermaid" for .puml) or unknown extension ("unknown.txt").
+ * @expected Override format takes precedence; unknown extension falls back to default PlantUML parser.
+ */
+TEST(ParserFactory, ExplicitFormatOverride_OverridesFileExtensionConvention) {
     // Override .puml with format "mermaid"
     auto p_override = ParserFactory::create("file.puml", "mermaid");
     EXPECT_NE(dynamic_cast<MermaidParser*>(p_override.get()), nullptr);
@@ -104,7 +127,12 @@ TEST(ParserFactoryAndLexerTest, ParserFactoryOverrideAndFallback) {
 // 2. LexerUtils Parsing and Token Extraction Tests
 // ============================================================================
 
-TEST(ParserFactoryAndLexerTest, LexerUtilsBracketedExtraction) {
+/**
+ * @brief Verify bracket-delimited token extraction handling nested brackets and delimiters.
+ * @scenario Strings with square brackets, nested array indexes ('[arr[i] == 5]'), and curly braces.
+ * @expected LexerUtils extracts content inside corresponding balanced delimiters.
+ */
+TEST(LexerUtils, BracketDelimitedTokens_ExtractsInnermostAndNestedSubstrings) {
     auto b1 = LexerUtils::extract_bracketed("State [x > 10 && y < 20] / Action", '[', ']');
     ASSERT_TRUE(b1.has_value());
     EXPECT_EQ(*b1, "x > 10 && y < 20");
@@ -124,7 +152,12 @@ TEST(ParserFactoryAndLexerTest, LexerUtilsBracketedExtraction) {
     EXPECT_EQ(*b4, " do_something(); ");
 }
 
-TEST(ParserFactoryAndLexerTest, LexerUtilsQuotedExtraction) {
+/**
+ * @brief Verify single and double quote string extraction.
+ * @scenario Quoted tokens ("DoubleQuotedName", 'SingleQuotedName', and unquoted text).
+ * @expected Quoted tokens extracted without surrounding quote marks; unquoted string returns nullopt.
+ */
+TEST(LexerUtils, QuoteDelimitedTokens_ExtractsSingleAndDoubleQuotedStrings) {
     auto q1 = LexerUtils::extract_quoted("\"DoubleQuotedName\"");
     ASSERT_TRUE(q1.has_value());
     EXPECT_EQ(*q1, "DoubleQuotedName");
@@ -137,7 +170,12 @@ TEST(ParserFactoryAndLexerTest, LexerUtilsQuotedExtraction) {
     EXPECT_FALSE(q3.has_value());
 }
 
-TEST(ParserFactoryAndLexerTest, LexerUtilsParseTransitionLabel) {
+/**
+ * @brief Verify transition label parsing according to 'event [guard] / action' grammar.
+ * @scenario Full label, event/action only, event/guard only, and plain event label.
+ * @expected Label decomposed accurately into trigger, guard, and action components.
+ */
+TEST(LexerUtils, TransitionLabelGrammar_DecomposesTriggerGuardAndActionParts) {
     // 1. Full label: "event [guard] / action"
     auto [ev1, g1, a1] = LexerUtils::parse_transition_label("ConnectCmd [HasValidCredentials] / InitSocket");
     EXPECT_EQ(ev1, "ConnectCmd");
@@ -168,14 +206,11 @@ TEST(ParserFactoryAndLexerTest, LexerUtilsParseTransitionLabel) {
 }
 
 /**
- * @brief Test Intent: Verify C++ reserved keyword detection and escaping utilities.
- *
- * Scenario:
- * - Verify standard C++ keywords (class, default, switch, volatile, template) return true from is_cpp_keyword.
- * - Verify non-keywords return false.
- * - Verify escape_cpp_keyword appends trailing underscore to keywords and preserves user identifiers.
+ * @brief Verify C++ reserved keyword detection and identifier escaping utilities.
+ * @scenario Standard C++ keywords (class, default, switch, volatile, template) and user identifiers.
+ * @expected is_cpp_keyword detects reserved words and escape_cpp_keyword appends trailing underscore.
  */
-TEST(ParserFactoryAndLexerTest, CppKeywordEscaping) {
+TEST(LexerUtils, ReservedKeywords_EscapesCppKeywordsWithUnderscore) {
     EXPECT_TRUE(is_cpp_keyword("class"));
     EXPECT_TRUE(is_cpp_keyword("default"));
     EXPECT_TRUE(is_cpp_keyword("switch"));

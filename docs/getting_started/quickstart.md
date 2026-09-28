@@ -27,28 +27,27 @@ Choose your preferred modeling syntax to define the UAV state machine with typed
             out port waypointReached : Boolean;
             attribute cycleCounter : Integer = 0;
 
-            entry; then state SensorCalib;
+            entry; then SensorCalib;
 
             state SensorCalib {
-                transition on CalibrationOk to SystemReady;
+                accept CalibrationOk then SystemReady;
             }
             state SystemReady {
-                transition on TakeoffCmd if in.isGpsLocked to WaypointNav;
+                accept TakeoffCmd if in.isGpsLocked then WaypointNav;
             }
             state WaypointNav {
-                transition on AreaReached do out.waypointReached = true; to HoverPause;
-                transition on LowBatteryEvent if in.batteryLevel < 20.0 to ReturnToHome;
-                transition continuous_low_battery if in.batteryLevel < 20.0 to ReturnToHome;
+                accept AreaReached do MarkWaypointReached then HoverPause;
+                accept LowBatteryEvent if in.batteryLevel < 20.0 then ReturnToHome;
             }
             state HoverPause {
-                transition on ResumeMissionCmd to WaypointNav;
-                transition on LowBatteryEvent if in.batteryLevel < 20.0 to ReturnToHome;
+                accept ResumeMissionCmd then WaypointNav;
+                accept LowBatteryEvent if in.batteryLevel < 20.0 then ReturnToHome;
             }
             state ReturnToHome {
-                transition on TouchdownEvent to Landed;
+                accept TouchdownEvent then Landed;
             }
             state Landed {
-                transition on ShutdownCmd to FinalShutdown;
+                accept ShutdownCmd then FinalShutdown;
             }
             state FinalShutdown;
         }
@@ -86,12 +85,20 @@ fsmc -i uav_mission.sysml --verify
 
 Expected output:
 ```text
-[INFO] Running Pass: HierarchyCanonicalizationPass ... OK (0.02ms)
-[INFO] Running Pass: GuardSimplificationPass ... OK (0.01ms)
-[INFO] Running Pass: EFSMDataPathPass ... OK (0.04ms)
-[INFO] Running Pass: ModelSafetyVerifier ... OK (0.03ms)
 ============================================================================
- Verification Status: PASSED (Model Sound)
+ Formal Model Verification Report: UavMissionStatechart
+============================================================================
+ Input File:       uav_mission.sysml
+ States:           7
+ Total Events:     7
+ Transitions:      8
+ Choice Nodes:     0
+ Deferred Triggers:0
+----------------------------------------------------------------------------
+ Diagnostics:
+  (No warnings or errors detected. Model is formally sound!)
+----------------------------------------------------------------------------
+ Verification Status: PASSED (Model Sound & Properties Verified)
 ============================================================================
 ```
 
@@ -99,7 +106,7 @@ Expected output:
 
 ## Step 3: Generate the State Machine
 
-=== "C++ Target (Production v0.5.0)"
+=== "C++ Target (Production v0.6.0)"
     Compile the model into a standalone C++20 header with namespace `avionics` and class name `UavMissionFSM`:
     ```bash
     fsmc -i uav_mission.sysml -o uav_mission_fsm.hpp --target cpp --std 20 --standalone --namespace avionics --name UavMissionFSM
@@ -107,18 +114,18 @@ Expected output:
 
 === "Rust Target (Roadmap Preview)"
     > [!NOTE]
-    > **Upcoming Target Preview**: Rust code generation is currently in development under the multi-target roadmap. In `v0.5.0`, the C++ target is the active production runtime.
+    > **Upcoming Target Preview**: Rust code generation is currently in development under the multi-target roadmap for `v0.7.0`. In `v0.6.0`, the C++ target is the active production runtime.
 
     Compile the model into an idiomatic `#![no_std]` Rust module:
     ```bash
     fsmc -i uav_mission.sysml -o uav_mission_fsm.rs --target rust --namespace avionics
     ```
 
-=== "C Target (MISRA-C Roadmap)"
+=== "C Target (Embedded C Roadmap)"
     > [!NOTE]
-    > **Upcoming Target Preview**: ISO C99 / MISRA-C code generation is currently in development under the multi-target roadmap. In `v0.5.0`, the C++ target is the active production runtime.
+    > **Upcoming Target Preview**: ISO C99 embedded C code generation is currently in development under the multi-target roadmap for `v0.7.0`. In `v0.6.0`, the C++ target is the active production runtime.
 
-    Compile the model into MISRA-C:2012 compliant C headers and sources:
+    Compile the model into deterministic, zero-heap C headers and sources:
     ```bash
     fsmc -i uav_mission.sysml -o uav_mission_fsm.h --target c --prefix avionics_
     ```
@@ -127,7 +134,7 @@ Expected output:
 
 ## Step 4: Write the Application Code
 
-=== "C++ Target (Production v0.5.0)"
+=== "C++ Target (Production v0.6.0)"
     Create `main.cpp`:
     ```cpp
     #include "uav_mission_fsm.hpp"
@@ -163,10 +170,10 @@ Expected output:
             // Output: WaypointNav
         }
 
-        // 5. Simulate battery drop in InPorts and evaluate continuous sampled step
+        // 5. Simulate battery drop in InPorts and dispatch LowBatteryEvent
         in.batteryLevel = 14.2; // Critical level (< 20.0)
-        auto safe_res = fsm.step(in, out);
-        if (safe_res.has_transitioned()) {
+        auto safe_res = fsm.dispatch(LowBatteryEvent{}, in, out);
+        if (safe_res.is_success()) {
             std::cout << "Emergency fail-safe activated. Transitioned to: " 
                       << fsm.current_state_name() << "\n";
             // Output: ReturnToHome
@@ -201,18 +208,18 @@ Expected output:
             println!("Takeoff successful. Current State: {:?}", fsm.state());
         }
 
-        // 3. Continuous sampled step (battery drop)
+        // 3. Dispatch LowBatteryEvent (battery drop)
         in_ports.battery_level = 14.2;
-        let safe_res = fsm.step(&in_ports, &mut out_ports);
+        let safe_res = fsm.dispatch(&Event::LowBatteryEvent, &in_ports, &mut out_ports);
         if safe_res.is_transitioned() {
             println!("Emergency fail-safe activated. Transitioned to: {:?}", fsm.state());
         }
     }
     ```
 
-=== "C Target (MISRA-C Roadmap)"
+=== "C Target (Embedded C Roadmap)"
     > [!NOTE]
-    > **Upcoming Target Preview**: Preview of planned ISO C99 MISRA-C application integration.
+    > **Upcoming Target Preview**: Preview of planned ISO C99 embedded C application integration.
 
     Create `main.c`:
     ```c
@@ -239,9 +246,9 @@ Expected output:
             printf("Takeoff successful. Current State: %d\n", fsm.current_state);
         }
 
-        /* 3. Continuous sampled step (battery drop) */
+        /* 3. Dispatch LowBatteryEvent (battery drop) */
         in.battery_level = 14.2f;
-        avionics_uav_fsm_step(&fsm, &in, &out);
+        avionics_uav_fsm_dispatch(&fsm, AVIONICS_EV_LOW_BATTERY, &in, &out);
         printf("Emergency fail-safe activated. Transitioned to: %d\n", fsm.current_state);
 
         return 0;
@@ -252,7 +259,7 @@ Expected output:
 
 ## Step 5: Compile and Run
 
-=== "C++ Target (Production v0.5.0)"
+=== "C++ Target (Production v0.6.0)"
     ```bash
     g++ -std=c++20 main.cpp -o uav_app -Wall -Wextra -Werror -pedantic
     ./uav_app
@@ -274,7 +281,7 @@ Expected output:
     cargo run --release
     ```
 
-=== "C Target (MISRA-C Roadmap)"
+=== "C Target (Embedded C Roadmap)"
     > [!NOTE]
     > **Upcoming Target Preview**: Build command for future C target releases.
 

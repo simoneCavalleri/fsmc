@@ -80,6 +80,24 @@ struct has_any_duplicate_row<Head, Tail...> {
 template <>
 struct has_any_duplicate_row<std::tuple<>> {};
 
+template <typename EventList>
+struct count_timed_events;
+
+template <typename... Events>
+struct count_timed_events<type_list<Events...>> {
+    static constexpr std::size_t value = (0 + ... + (is_timed_event_v<Events> ? 1 : 0));
+};
+
+template <typename Table, typename = void>
+struct table_timed_events_count : std::integral_constant<std::size_t, 0> {};
+
+template <typename Table>
+struct table_timed_events_count<Table, std::void_t<typename Table::events>>
+    : count_timed_events<typename Table::events> {};
+
+template <typename Table>
+inline constexpr std::size_t table_timed_events_count_v = table_timed_events_count<Table>::value;
+
 }  // namespace detail
 
 // Compile-time transition table

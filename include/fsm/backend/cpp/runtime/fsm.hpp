@@ -1,5 +1,8 @@
 #pragma once
 
+#include <chrono>
+#include <functional>
+#include <optional>
 #include <string_view>
 #include <type_traits>
 #include <utility>
@@ -7,7 +10,10 @@
 #include "fsm/backend/cpp/runtime/config.hpp"
 #include "fsm/backend/cpp/runtime/detail/deferred_manager.hpp"
 #include "fsm/backend/cpp/runtime/detail/history_manager.hpp"
+#include "fsm/backend/cpp/runtime/detail/invariant_manager.hpp"
 #include "fsm/backend/cpp/runtime/detail/transition_executor.hpp"
+#include "fsm/backend/cpp/runtime/deterministic_timer.hpp"
+#include "fsm/backend/cpp/runtime/flight_recorder.hpp"
 #include "fsm/backend/cpp/runtime/static_vector.hpp"
 #include "fsm/backend/cpp/runtime/transition_table.hpp"
 
@@ -76,7 +82,11 @@ namespace fsm {
  */
 template <typename Table, typename InPorts = no_ports, typename OutPorts = no_ports, typename Registers = no_registers,
           typename Services = no_services, typename InitialState = typename Table::initial_state,
-          typename Observer = no_observer, std::size_t DeferredCapacity = 16>
+          typename Observer = no_observer, std::size_t DeferredCapacity = 16,
+          std::size_t TimerCapacity =
+              (detail::table_timed_events_count_v<Table> > 0
+                   ? (detail::table_timed_events_count_v<Table> > 4 ? detail::table_timed_events_count_v<Table> : 4)
+                   : 0)>
 class fsm {
   public:
     using table_type = Table;
@@ -91,6 +101,7 @@ class fsm {
     static constexpr bool has_history = any_state_has_history<typename Table::states>::value;
     static constexpr bool has_deferred = any_state_has_deferred<typename Table::states>::value;
     static constexpr bool has_observer = !std::is_same_v<observer_type, no_observer>;
+    static constexpr bool has_invariants = detail::table_has_time_invariants_v<Table>;
 
     using history_entry = ::fsm::history_entry;
 
@@ -166,7 +177,12 @@ class fsm {
     }
 
     template <typename DurationRep>
-    step_result step(DurationRep /*dt*/, const in_ports_type& in, out_ports_type& out, services_type& srv) {
+    step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out, services_type& srv) {
+        if constexpr (std::is_integral_v<DurationRep>) {
+            this->tick(static_cast<std::uint64_t>(dt));
+        } else {
+            this->tick(dt);
+        }
         return step(in, out, srv);
     }
 
@@ -334,6 +350,9 @@ class fsm {
         }
     }
 
+    [[nodiscard]] const observer_type& observer() const noexcept { return observer_; }
+    [[nodiscard]] observer_type& observer() noexcept { return observer_; }
+
     // History state management
     template <bool H = has_history>
     void record_history(std::string_view parent, std::string_view substate) {
@@ -382,11 +401,73 @@ class fsm {
     template <typename StateType>
     void set_current_state_variant(StateType&& new_state) {
         current_state_ = std::forward<StateType>(new_state);
+        invariant_mgr_.reset();
+        refresh_timers_for_current_state();
     }
 
     [[nodiscard]] std::string_view current_state_name() const {
         return std::visit([](const auto& state) -> std::string_view { return ::fsm::get_state_name(state); },
                           current_state_);
+    }
+
+    [[nodiscard]] constexpr deterministic_timer_manager<TimerCapacity>& timer_manager() noexcept { return timer_mgr_; }
+    [[nodiscard]] constexpr const deterministic_timer_manager<TimerCapacity>& timer_manager() const noexcept {
+        return timer_mgr_;
+    }
+
+    [[nodiscard]] std::uint64_t state_residence_time() const noexcept { return invariant_mgr_.state_residence_time(); }
+
+    [[nodiscard]] bool has_invariant_violation() const noexcept { return invariant_mgr_.has_invariant_violation(); }
+
+    [[nodiscard]] bool is_invariant_satisfied() const noexcept { return invariant_mgr_.is_invariant_satisfied(); }
+
+    [[nodiscard]] const std::optional<invariant_violation_info>& last_invariant_violation() const noexcept {
+        return invariant_mgr_.last_invariant_violation();
+    }
+
+    void clear_invariant_violation() noexcept { invariant_mgr_.clear_invariant_violation(); }
+
+    void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
+        invariant_mgr_.set_invariant_violation_handler(std::move(handler));
+    }
+
+    bool check_invariants() { return invariant_mgr_.check_invariants(current_state_); }
+
+    /**
+     * @brief Advances deterministic real-time clocks by delta_ms and invokes on_expired on expired timers.
+     * Also automatically advances observer tick timestamp if the observer supports advance_tick.
+     * Evaluates state time permanence invariants at the end of the tick.
+     * @param delta_ms Elapsed milliseconds in hard real-time cycle.
+     * @param on_expired Functor called for each expired timer.
+     * @return Number of timers that expired during this tick.
+     */
+    template <typename Callback>
+    std::size_t tick(std::uint64_t delta_ms, Callback on_expired) {
+        if constexpr (has_advance_tick_v<observer_type>) {
+            observer_.advance_tick(delta_ms);
+        }
+        invariant_mgr_.advance_time(delta_ms);
+        auto expired = timer_mgr_.tick(delta_ms, [this, &on_expired](std::uint32_t timer_id) {
+            dispatch_timed_timer(timer_id);
+            on_expired(timer_id);
+        });
+        invariant_mgr_.check_invariants(current_state_);
+        return expired;
+    }
+
+    std::size_t tick(std::uint64_t delta_ms) {
+        return tick(delta_ms, [](std::uint32_t /*timer_id*/) {});
+    }
+
+    template <typename Rep, typename Period, typename Callback>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired) {
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(dt).count();
+        return tick(static_cast<std::uint64_t>(ms > 0 ? ms : 1), on_expired);
+    }
+
+    template <typename Rep, typename Period>
+    std::size_t tick(std::chrono::duration<Rep, Period> dt) {
+        return tick(dt, [](std::uint32_t /*timer_id*/) {});
     }
 
   protected:
@@ -414,6 +495,57 @@ class fsm {
             out_ports_type dummy_out{};
             call_on_enter(*state, dummy_in, dummy_out, registers_, resolve_services());
         }
+        invariant_mgr_.reset();
+        refresh_timers_for_current_state();
+    }
+
+    template <typename State, std::size_t Index>
+    void arm_timer_for_row() {
+        using row_type = std::tuple_element_t<Index, decltype(Table::rows)>;
+        using event_type = typename row_type::event;
+        if constexpr (is_timed_event_v<event_type> && static_timed_event_traits<event_type>::supported &&
+                      (std::is_same_v<State, typename row_type::source> ||
+                       is_substate_of_v<State, typename row_type::source>)) {
+            timer_mgr_.start_timer(static_cast<std::uint32_t>(Index + 1),
+                                   static_timed_event_traits<event_type>::duration_ms,
+                                   static_timed_event_traits<event_type>::periodic);
+        }
+    }
+
+    template <typename State, std::size_t... Indices>
+    void arm_timers_for_state(std::index_sequence<Indices...>) {
+        (arm_timer_for_row<State, Indices>(), ...);
+    }
+
+    void refresh_timers_for_current_state() {
+        timer_mgr_.reset();
+        std::visit(
+            [this](const auto& state) {
+                using state_type = std::decay_t<decltype(state)>;
+                this->arm_timers_for_state<state_type>(
+                    std::make_index_sequence<std::tuple_size_v<decltype(Table::rows)>>{});
+            },
+            current_state_);
+    }
+
+    template <std::size_t Index>
+    void dispatch_timed_timer_at_index(std::uint32_t timer_id) {
+        using row_type = std::tuple_element_t<Index, decltype(Table::rows)>;
+        using event_type = typename row_type::event;
+        if constexpr (is_timed_event_v<event_type> && static_timed_event_traits<event_type>::supported) {
+            if (timer_id == static_cast<std::uint32_t>(Index + 1)) {
+                (void)dispatch(event_type{});
+            }
+        }
+    }
+
+    template <std::size_t... Indices>
+    void dispatch_timed_timer_impl(std::uint32_t timer_id, std::index_sequence<Indices...>) {
+        (dispatch_timed_timer_at_index<Indices>(timer_id), ...);
+    }
+
+    void dispatch_timed_timer(std::uint32_t timer_id) {
+        dispatch_timed_timer_impl(timer_id, std::make_index_sequence<std::tuple_size_v<decltype(Table::rows)>>{});
     }
 
     state_variant current_state_;
@@ -423,13 +555,23 @@ class fsm {
     FSMC_NO_UNIQUE_ADDRESS observer_type observer_{};
     FSMC_NO_UNIQUE_ADDRESS detail::history_manager<Table, has_history> history_mgr_{};
     FSMC_NO_UNIQUE_ADDRESS detail::deferred_manager<Table, DeferredCapacity, has_deferred> deferred_mgr_{};
+    FSMC_NO_UNIQUE_ADDRESS deterministic_timer_manager<TimerCapacity> timer_mgr_{};
+    FSMC_NO_UNIQUE_ADDRESS detail::invariant_manager<Table, has_invariants> invariant_mgr_{};
 };
 
 template <typename Table, typename InPorts = no_ports, typename OutPorts = no_ports, typename Registers = no_registers,
           typename Services = no_services, typename InitialState = typename Table::initial_state,
-          std::size_t DeferredCapacity = 16>
+          std::size_t DeferredCapacity = 16,
+          std::size_t TimerCapacity =
+              (detail::table_timed_events_count_v<Table> > 0
+                   ? (detail::table_timed_events_count_v<Table> > 4 ? detail::table_timed_events_count_v<Table> : 4)
+                   : 0)>
 using dynamic_fsm =
-    fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, dynamic_observer, DeferredCapacity>;
+    fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, dynamic_observer, DeferredCapacity, TimerCapacity>;
+
+template <typename Table, std::size_t MaxTimers = 8>
+using timed_fsm = fsm<Table, no_ports, no_ports, no_registers, no_services, typename Table::initial_state, no_observer,
+                      16, MaxTimers>;
 
 }  // namespace fsm
 

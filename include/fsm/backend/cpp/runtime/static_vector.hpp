@@ -16,7 +16,7 @@ namespace fsm {
  * - 0 dynamic memory allocations (malloc/new)
  * - 0 heap fragmentation
  * - Deterministic O(1) push_back, pop_back, and indexed access
- * - Safe for hard real-time, embedded systems, MISRA C++, and ISR contexts
+ * - Safe for hard real-time, embedded systems, safety-critical environments, and ISR contexts
  *
  * @tparam T The element type stored in the vector.
  * @tparam Capacity Maximum number of elements the inline storage can hold.

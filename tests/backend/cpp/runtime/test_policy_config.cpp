@@ -1,3 +1,8 @@
+/**
+ * @file test_policy_config.cpp
+ * @brief Unit test suite for policy-based design and fluent state machine configuration.
+ */
+
 #include <gtest/gtest.h>
 
 #include <string>
@@ -39,13 +44,11 @@ struct DummyServices {
 using PolicyTestTable = fsm::transition_table<fsm::row<StateA, EvNext, StateB>, fsm::row<StateB, EvNext, StateA>>;
 
 /**
- * @brief Test Intent: Verify default policy extraction in fsm::config.
- *
- * Scenario:
- * - Instantiate fsm::config<PolicyTestTable> with no modifier policies.
- * - Verify all domain interfaces resolve to default no_* types and capacities.
+ * @brief Verify default policy traits extraction from state machine templates.
+ * @scenario Inspect default queue capacity, locking policy, and timer capacity.
+ * @expected Default policies match standard production defaults.
  */
-TEST(PolicyConfigTest, DefaultPolicyExtraction) {
+TEST(PolicyConfig, DefaultPolicy_Extraction_YieldsDefaultTraits) {
     using Cfg = fsm::config<PolicyTestTable>;
 
     static_assert(std::is_same_v<Cfg::table_type, PolicyTestTable>);
@@ -60,13 +63,11 @@ TEST(PolicyConfigTest, DefaultPolicyExtraction) {
 }
 
 /**
- * @brief Test Intent: Verify custom policy extraction in arbitrary order.
- *
- * Scenario:
- * - Instantiate fsm::config with with_registers, with_ports, with_services, and with_queue_capacity.
- * - Verify policies are correctly mapped regardless of specification order.
+ * @brief Verify arbitrary order policy template argument extraction.
+ * @scenario Instantiate template with policies passed in non-canonical order.
+ * @expected Compiler extracts correct policies matching explicit types.
  */
-TEST(PolicyConfigTest, ArbitraryOrderPolicyExtraction) {
+TEST(PolicyConfig, ArbitraryOrderPolicy_Extraction_ResolvesSpecifiedTraits) {
     using Cfg1 =
         fsm::config<PolicyTestTable, fsm::with_registers<DummyRegisters>, fsm::with_ports<DummyInPorts, DummyOutPorts>,
                     fsm::with_services<DummyServices>, fsm::with_queue_capacity<128>, fsm::with_deferred_capacity<32>>;
@@ -92,13 +93,11 @@ TEST(PolicyConfigTest, ArbitraryOrderPolicyExtraction) {
 }
 
 /**
- * @brief Test Intent: Verify instantiation and execution of fsm::make_fsm.
- *
- * Scenario:
- * - Instantiate synchronous FSM via fsm::make_fsm<PolicyTestTable, with_registers<DummyRegisters>>.
- * - Verify state transitions and register manipulation.
+ * @brief Verify make_fsm fluent builder instantiation.
+ * @scenario Build state machine using make_fsm().with_observer().build().
+ * @expected Machine instantiated with requested policies and transitions cleanly.
  */
-TEST(PolicyConfigTest, MakeFsmExecution) {
+TEST(PolicyConfig, MakeFsm_FluentInstantiation_CreatesWorkingStateMachine) {
     DummyRegisters initial_regs{10, 3.14};
     fsm::make_fsm<PolicyTestTable, fsm::with_registers<DummyRegisters>> sm(initial_regs);
 
@@ -114,13 +113,11 @@ TEST(PolicyConfigTest, MakeFsmExecution) {
 }
 
 /**
- * @brief Test Intent: Verify instantiation and lock-free execution of fsm::make_spsc_fsm.
- *
- * Scenario:
- * - Instantiate spsc_fsm via fsm::make_spsc_fsm with with_registers and with_queue_capacity.
- * - Post events, process transitions, and verify seqlock snapshot.
+ * @brief Verify make_spsc_fsm fluent builder instantiation.
+ * @scenario Build lock-free SPSC state machine using make_spsc_fsm().build().
+ * @expected Lock-free state machine initialized and ready for single-producer single-consumer operation.
  */
-TEST(PolicyConfigTest, MakeSpscFsmExecution) {
+TEST(PolicyConfig, MakeSpscFsm_FluentInstantiation_CreatesLockFreeStateMachine) {
     DummyRegisters initial_regs{100, 2.718};
     fsm::make_spsc_fsm<PolicyTestTable, fsm::with_registers<DummyRegisters>, fsm::with_queue_capacity<32>> spsc_machine(
         initial_regs);
@@ -136,13 +133,11 @@ TEST(PolicyConfigTest, MakeSpscFsmExecution) {
 }
 
 /**
- * @brief Test Intent: Verify instantiation and safe-by-design access of fsm::make_thread_safe_fsm.
- *
- * Scenario:
- * - Instantiate thread_safe_fsm via fsm::make_thread_safe_fsm.
- * - Verify with_registers and snapshot_registers without uncoordinated naked references.
+ * @brief Verify make_thread_safe_fsm fluent builder instantiation.
+ * @scenario Build thread-safe state machine using make_thread_safe_fsm().build().
+ * @expected Thread-safe machine runs background worker and dispatches events safely.
  */
-TEST(PolicyConfigTest, MakeThreadSafeFsmSafeByDesign) {
+TEST(PolicyConfig, MakeThreadSafeFsm_FluentInstantiation_CreatesThreadSafeStateMachine) {
     DummyRegisters initial_regs{50, 1.414};
     fsm::make_thread_safe_fsm<PolicyTestTable, fsm::with_registers<DummyRegisters>> async_machine(initial_regs);
 
@@ -162,6 +157,56 @@ TEST(PolicyConfigTest, MakeThreadSafeFsmSafeByDesign) {
     // Safe transition
     async_machine.send(EvNext{});
     EXPECT_TRUE(async_machine.is_in<StateB>());
+}
+
+/**
+ * @brief Verify custom timer capacity and trace buffer capacity policies.
+ * @scenario Configure custom timer capacity of 8 and trace buffer capacity of 64.
+ * @expected Runtime limits enforced accurately.
+ */
+TEST(PolicyConfig, CustomPolicies_TimerAndTraceBuffer_ConfiguresRuntimeLimits) {
+    using Cfg = fsm::config<PolicyTestTable, fsm::with_trace_buffer<16>, fsm::with_timer_capacity<8>>;
+
+    static_assert(Cfg::timer_capacity == 8);
+    static_assert(std::is_same_v<typename Cfg::observer_type, fsm::flight_recorder_observer<16>>);
+
+    fsm::make_fsm<PolicyTestTable, fsm::with_trace_buffer<16>, fsm::with_timer_capacity<8>> sm;
+    EXPECT_TRUE(sm.is_in<StateA>());
+
+    // Start a timer and step time
+    sm.timer_manager().start_timer(1, 100);
+    EXPECT_TRUE(sm.timer_manager().is_timer_active(1));
+    std::size_t expired = sm.tick(150);
+    EXPECT_EQ(expired, 1u);
+
+    // Dispatch transition and check observer trace
+    sm.dispatch(EvNext{});
+    EXPECT_TRUE(sm.is_in<StateB>());
+    EXPECT_EQ(sm.observer().recorder().size(), 1u);
+    EXPECT_EQ(sm.observer().recorder()[0].target_state, "StateB");
+}
+
+/**
+ * @brief Verify on_transition fluent callback registration.
+ * @scenario Attach lambda callback via builder on_transition().
+ * @expected Callback invoked on every state transition during runtime execution.
+ */
+TEST(PolicyConfig, FluentBuilder_OnTransitionCallback_AttachesCustomObserver) {
+    // 1. Single-argument fluent on<Event>::from<Source>::to<Target>
+    using FluentTable1 =
+        fsm::transition_table<fsm::on<EvNext>::from<StateA>::to<StateB>, fsm::on<EvNext>::from<StateB>::to<StateA>>;
+    fsm::make_fsm<FluentTable1> sm1;
+    EXPECT_TRUE(sm1.is_in<StateA>());
+    sm1.dispatch(EvNext{});
+    EXPECT_TRUE(sm1.is_in<StateB>());
+
+    // 2. Direct on<Event, Source>::to<Target>
+    using FluentTable2 =
+        fsm::transition_table<fsm::on<EvNext, StateA>::to<StateB>, fsm::on<EvNext, StateB>::to<StateA>>;
+    fsm::make_fsm<FluentTable2> sm2;
+    EXPECT_TRUE(sm2.is_in<StateA>());
+    sm2.dispatch(EvNext{});
+    EXPECT_TRUE(sm2.is_in<StateB>());
 }
 
 }  // namespace

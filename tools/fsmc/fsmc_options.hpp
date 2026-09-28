@@ -19,8 +19,9 @@ struct FsmcOptions {
     std::string ns_name = "fsm_generated";
     std::string target_lang = "cpp";
     std::string format = "auto";
+    std::string sidecar_file;
     std::string submachine_dir;
-    fsm::codegen::CppStandard cpp_standard = fsm::codegen::CppStandard::Cpp17;
+    fsm::backend::cpp::CppStandard cpp_standard = fsm::backend::cpp::CppStandard::Cpp17;
     int opt_level = 1;                   // -O0, -O1, -O2
     bool prune_dead_states = false;      // --prune-dead-states
     bool simplify_guards = true;         // --no-guard-simplification
@@ -34,9 +35,13 @@ struct FsmcOptions {
     bool thread_safe = true;
     bool include_stubs = true;
     bool verify_mode = false;
-    std::string verify_engine = "auto";  // --engine=auto|nuxmv|internal
-    std::string ltl_spec;                // --ltl "<formula>"
-    std::string ctl_spec;                // --ctl "<formula>"
+    std::string verify_engine = "auto";     // --engine=auto|nuxmv|internal
+    std::string ltl_spec;                   // --ltl "<formula>"
+    std::string ctl_spec;                   // --ctl "<formula>"
+    std::string pipe_through_cmd;           // --pipe-through "<cmd>"
+    std::vector<std::string> pass_plugins;  // --load-pass-plugin "<path.so>"
+    std::string emit_test_harness;          // --emit-test-harness <file>
+    std::string emit_sidecar;               // --emit-sidecar <file>
     bool show_help = false;
     bool show_version = false;
     bool is_valid = true;
@@ -60,7 +65,9 @@ inline void print_help(const char* prog_name) {
         << "  -n, --name <name>           Generated FSM class name (default: inferred from filename or 'MyFSM')\n"
         << "  --namespace, --package <ns> Generated namespace/package/module name (default: 'fsm_generated')\n"
         << "  --format <fmt>              Override input format: 'sysml2', 'plantuml', 'mermaid', 'cameo', 'scxml', "
-           "'json', 'dot', 'auto'\n\n"
+           "'json', 'dot', 'auto'\n"
+        << "  --sidecar, -s <file>        Explicit companion manifest file (.fsm.yaml, .fsm.json)\n"
+        << "  --emit-sidecar <file>       Emit companion sidecar manifest (.fsm.yaml) when exporting diagrams\n\n"
         << "Optimization & Code Transformation Options:\n"
         << "  -O0, --no-opt               Disable middle-end optimization passes\n"
         << "  -O1, -O2, --optimize        Enable middle-end optimization passes (default: -O1)\n"
@@ -76,7 +83,8 @@ inline void print_help(const char* prog_name) {
            "regions\n"
         << "  --req-audit                 Print Requirement Traceability Matrix (@fsm:req) before code generation\n"
         << "  --rtm-output <file>         Export Requirement Traceability Matrix to file\n"
-        << "  --rtm-format <json|md>      Requirement Traceability Matrix format ('json' or 'markdown')\n\n"
+        << "  --rtm-format <json|md>      Requirement Traceability Matrix format ('json' or 'markdown')\n"
+        << "  --emit-test-harness <file>  Synthesize GoogleTest MC/DC test harness to file\n\n"
         << "C++ Backend Options (--target cpp):\n"
         << "  --std <17|20>               Target C++ standard: '17' or '20' (default: 17)\n"
         << "  --c++17                     Target C++17 standard\n"
@@ -100,11 +108,23 @@ inline void print_help(const char* prog_name) {
         << "  -v, --version               Show version information and exit\n\n";
 }
 
+/**
+ * @brief Parses command-line arguments for the fsmc compiler tool.
+ *
+ * Scans argc/argv sequentially, matching known option flags, capturing option
+ * parameters, validating argument values, and constructing an FsmcOptions instance.
+ *
+ * @param argc Number of command line arguments
+ * @param argv Array of command line argument strings
+ * @return Fully configured FsmcOptions object
+ */
 inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
     FsmcOptions opts;
 
     for (int idx = 1; idx < argc; ++idx) {
         const std::string arg = argv[idx];
+
+        // 1. General informational flags (-h, --help, -v, --version)
         if (arg == "-h" || arg == "--help") {
             opts.show_help = true;
             return opts;
@@ -113,11 +133,30 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             opts.show_version = true;
             return opts;
         }
-        if ((arg == "-i" || arg == "--input") && idx + 1 < argc) {
+
+        // 2. Input and Output path specifications (-i, -o)
+        if (arg == "-i" || arg == "--input") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
             opts.input_file = argv[++idx];
-        } else if ((arg == "-o" || arg == "--output") && idx + 1 < argc) {
+        } else if (arg == "-o" || arg == "--output") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
             opts.output_file = argv[++idx];
-        } else if ((arg == "-t" || arg == "--target" || arg == "--lang") && idx + 1 < argc) {
+
+            // 3. Target language selection (C++ code generator backend)
+        } else if (arg == "-t" || arg == "--target" || arg == "--lang") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
             opts.target_lang = argv[++idx];
             if (opts.target_lang != "cpp" && opts.target_lang != "c++") {
                 opts.is_valid = false;
@@ -125,18 +164,63 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                     "Unsupported target language: '" + opts.target_lang + "' (currently supported: 'cpp')";
                 return opts;
             }
-        } else if ((arg == "-n" || arg == "--name") && idx + 1 < argc) {
+
+            // 4. State machine name and namespace configuration
+        } else if (arg == "-n" || arg == "--name") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
             opts.fsm_name = argv[++idx];
-        } else if ((arg == "--namespace" || arg == "--package") && idx + 1 < argc) {
+        } else if (arg == "--namespace" || arg == "--package") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
             opts.ns_name = argv[++idx];
-        } else if (arg == "--format" && idx + 1 < argc) {
+
+            // 5. Frontend format override and sidecar manifest options
+        } else if (arg == "--format") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
             opts.format = argv[++idx];
-        } else if ((arg == "-e" || arg == "--export") && idx + 1 < argc) {
+        } else if (arg == "--sidecar" || arg == "-s") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
+            opts.sidecar_file = argv[++idx];
+
+            // 6. Diagram export and standalone runtime emission
+        } else if (arg == "-e" || arg == "--export") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
             opts.export_diagram_format = argv[++idx];
-        } else if (arg == "--export-runtime" && idx + 1 < argc) {
+        } else if (arg == "--export-runtime") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
             opts.export_runtime_dir = argv[++idx];
-        } else if (arg == "--submachine-dir" && idx + 1 < argc) {
+        } else if (arg == "--submachine-dir") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
             opts.submachine_dir = argv[++idx];
+
+            // 7. Middle-end optimization levels and pass configuration
         } else if (arg == "-O0" || arg == "--no-opt") {
             opts.opt_level = 0;
         } else if (arg == "-O1") {
@@ -157,45 +241,129 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             opts.werror = true;
         } else if (arg == "--req-audit") {
             opts.req_audit = true;
-        } else if (arg == "--rtm-output" && idx + 1 < argc) {
+
+            // 8. Requirement Traceability Matrix (RTM) export options
+        } else if (arg == "--rtm-output") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
             opts.rtm_output_file = argv[++idx];
-        } else if (arg == "--rtm-format" && idx + 1 < argc) {
+        } else if (arg == "--rtm-format") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
             opts.rtm_format = argv[++idx];
-        } else if (arg == "--std" && idx + 1 < argc) {
+
+            // 9. C++ language dialect configuration (--std, --c++17, --c++20)
+        } else if (arg == "--std") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
             const std::string std_val = argv[++idx];
             if (std_val == "17" || std_val == "c++17" || std_val == "C++17") {
-                opts.cpp_standard = fsm::codegen::CppStandard::Cpp17;
+                opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp17;
             } else if (std_val == "20" || std_val == "c++20" || std_val == "C++20") {
-                opts.cpp_standard = fsm::codegen::CppStandard::Cpp20;
+                opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
             } else {
                 opts.is_valid = false;
                 opts.error_message = "Unsupported C++ standard: " + std_val + " (expected 17 or 20)";
                 return opts;
             }
         } else if (arg == "--c++17" || arg == "-std=c++17") {
-            opts.cpp_standard = fsm::codegen::CppStandard::Cpp17;
+            opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp17;
         } else if (arg == "--c++20" || arg == "-std=c++20") {
-            opts.cpp_standard = fsm::codegen::CppStandard::Cpp20;
+            opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
+
+            // 10. Runtime packaging mode (standalone single-header vs modular)
         } else if (arg == "--standalone") {
             opts.standalone = true;
         } else if (arg == "--modular") {
             opts.standalone = false;
+
+            // 11. Formal verification options and temporal logic specifications (LTL/CTL)
         } else if (arg == "--verify" || arg == "--check" || arg == "verify") {
             opts.verify_mode = true;
-        } else if (arg == "--engine" && idx + 1 < argc) {
+        } else if (arg == "--engine") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
             opts.verify_engine = argv[++idx];
-        } else if (arg == "--ltl" && idx + 1 < argc) {
+        } else if (arg == "--ltl") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
             opts.ltl_spec = argv[++idx];
             opts.verify_mode = true;
-        } else if (arg == "--ctl" && idx + 1 < argc) {
+        } else if (arg == "--ctl") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
             opts.ctl_spec = argv[++idx];
             opts.verify_mode = true;
+
+            // 12. Code generation threading and stub generation switches
         } else if (arg == "--no-thread-safe") {
             opts.thread_safe = false;
         } else if (arg == "--no-stubs") {
             opts.include_stubs = false;
         } else if (arg == "--allow-diagram-codegen") {
             opts.allow_diagram_codegen = true;
+
+            // 13. External pipeline tools and dynamic pass plugin loading
+        } else if (arg == "--pipe-through") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
+            opts.pipe_through_cmd = argv[++idx];
+        } else if (arg.rfind("--pipe-through=", 0) == 0) {
+            opts.pipe_through_cmd = arg.substr(15);
+        } else if (arg == "--load-pass-plugin") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
+            opts.pass_plugins.push_back(argv[++idx]);
+        } else if (arg.rfind("--load-pass-plugin=", 0) == 0) {
+            opts.pass_plugins.push_back(arg.substr(19));
+
+            // 14. Test harness synthesis (MC/DC GoogleTest suite)
+        } else if (arg == "--emit-test-harness") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
+            opts.emit_test_harness = argv[++idx];
+        } else if (arg.rfind("--emit-test-harness=", 0) == 0) {
+            opts.emit_test_harness = arg.substr(20);
+
+            // 15. Standalone companion sidecar manifest export
+        } else if (arg == "--emit-sidecar") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
+            opts.emit_sidecar = argv[++idx];
+        } else if (arg.rfind("--emit-sidecar=", 0) == 0) {
+            opts.emit_sidecar = arg.substr(15);
+
+            // 16. Positional argument: input model file path
         } else if (!arg.empty() && arg[0] != '-') {
             if (opts.input_file.empty()) {
                 opts.input_file = arg;
@@ -204,6 +372,8 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 opts.error_message = "Unexpected positional argument: " + arg;
                 return opts;
             }
+
+            // 17. Unrecognized option flag
         } else {
             opts.is_valid = false;
             opts.error_message = "Unknown option: " + arg;

@@ -1,9 +1,14 @@
+/**
+ * @file test_parser_negative.cpp
+ * @brief Negative unit tests across front-end parsers verifying rejection of malformed, empty, or corrupt inputs.
+ */
+
 #include <gtest/gtest.h>
 
 #include <string>
 
+#include "fsm/frontend/common/json_parser.hpp"
 #include "fsm/frontend/diagram/dot_parser.hpp"
-#include "fsm/frontend/diagram/json_parser.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/frontend/formal/cameo_xmi_parser.hpp"
@@ -12,19 +17,21 @@
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/fsm_validator.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::frontend;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend::formal;
+using namespace fsm::middleend::analysis;
+using namespace fsm::middleend;
+using namespace fsm::ir;
 
 namespace {
 
 /**
- * @brief Test Intent: Verify PlantUmlParser rejects malformed, empty, and corrupted syntax with informative error
- * strings.
- *
- * Scenario:
- * - Pass empty string, header-only diagram, and corrupted tokens to PlantUmlParser.
- * - Verify parse() returns false and populates the error string.
+ * @brief Verify PlantUmlParser rejects malformed, empty, and corrupted syntax with informative error strings.
+ * @scenario Pass empty string, whitespace, header-only diagram, and corrupted tokens to PlantUmlParser.
+ * @expected parse() returns false and populates descriptive error string.
  */
-TEST(ParserNegativeTest, PlantUmlRejectsMalformedInputs) {
+TEST(PlantUmlParser, EmptyAndCorruptedInputStreams_RejectsWithInformativeDiagnostic) {
     PlantUmlParser parser;
     FsmIr model;
     std::string err;
@@ -45,13 +52,11 @@ TEST(ParserNegativeTest, PlantUmlRejectsMalformedInputs) {
 }
 
 /**
- * @brief Test Intent: Verify MermaidParser rejects empty inputs and malformed transition statements.
- *
- * Scenario:
- * - Test empty input, header-only diagram, and invalid transition arrows.
- * - Verify parse failure is reported cleanly.
+ * @brief Verify MermaidParser rejects empty inputs and malformed transition statements.
+ * @scenario Empty input string, header-only diagram, and invalid transition arrow sequences.
+ * @expected Parser returns false indicating syntactic rejection.
  */
-TEST(ParserNegativeTest, MermaidRejectsMalformedInputs) {
+TEST(MermaidParser, MissingStatesAndMalformedArrows_RejectsParseCleanly) {
     MermaidParser parser;
     FsmIr model;
     std::string err;
@@ -67,13 +72,11 @@ TEST(ParserNegativeTest, MermaidRejectsMalformedInputs) {
 }
 
 /**
- * @brief Test Intent: Verify XML parsers (Cameo XMI and W3C SCXML) reject malformed XML tags and non-XML text.
- *
- * Scenario:
- * - Feed unclosed XML tags and plain text to CameoXmiParser and ScxmlParser.
- * - Verify parsing fails without exceptions.
+ * @brief Verify XML parsers (Cameo XMI and W3C SCXML) reject malformed XML tags and non-XML text.
+ * @scenario Unclosed XML elements and arbitrary non-XML text fed to CameoXmiParser and ScxmlParser.
+ * @expected Parsing terminates cleanly returning false without throwing unhandled exceptions.
  */
-TEST(ParserNegativeTest, XmlParsersRejectCorruptInputs) {
+TEST(XmlFrontend, UnclosedTagsAndNonXmlStrings_FailsGracefullyWithoutThrowing) {
     FsmIr model;
     std::string err;
 
@@ -89,14 +92,12 @@ TEST(ParserNegativeTest, XmlParsersRejectCorruptInputs) {
 }
 
 /**
- * @brief Test Intent: Verify JsonStateParser rejects invalid JSON syntax, wrong root types, and empty objects.
- *
- * Scenario:
- * - Pass unquoted keys, JSON arrays, and state machines with 0 states.
- * - Verify rejection and non-empty error message.
+ * @brief Verify JsonParser rejects invalid JSON syntax, wrong root types, and empty objects.
+ * @scenario Unquoted keys, array root, string root, and JSON object with no state definitions.
+ * @expected Parser returns false and populates descriptive error message.
  */
-TEST(ParserNegativeTest, JsonParserRejectsInvalidInputs) {
-    JsonStateParser parser;
+TEST(JsonParser, MalformedSyntaxAndEmptyStateObjects_RejectsWithErrors) {
+    JsonParser parser;
     FsmIr model;
     std::string err;
 
@@ -113,13 +114,11 @@ TEST(ParserNegativeTest, JsonParserRejectsInvalidInputs) {
 }
 
 /**
- * @brief Test Intent: Verify Sysml2Parser rejects empty definitions and invalid token streams.
- *
- * Scenario:
- * - Pass empty text, empty state def blocks, and invalid tokens to Sysml2Parser.
- * - Verify parser returns false.
+ * @brief Verify Sysml2Parser rejects empty definitions and invalid token streams.
+ * @scenario Empty input text, empty state def block, and random token strings.
+ * @expected Parser returns false indicating invalid or empty SysML v2 state model.
  */
-TEST(ParserNegativeTest, Sysml2RejectsMalformedInputs) {
+TEST(Sysml2Parser, EmptyStateMachineDefinitions_RejectsGracefully) {
     Sysml2Parser parser;
     FsmIr model;
     std::string err;
@@ -130,13 +129,11 @@ TEST(ParserNegativeTest, Sysml2RejectsMalformedInputs) {
 }
 
 /**
- * @brief Test Intent: Verify FsmValidator semantic diagnostics (unreachable island states, trap/deadlock states).
- *
- * Scenario:
- * - Construct model with unreachable state "Island" and trap state "BlackHole" (no exit transitions).
- * - Verify FsmValidator emits semantic warnings for both design defects.
+ * @brief Verify FsmValidator semantic diagnostics (unreachable island states, trap/deadlock states).
+ * @scenario Defective model with unreachable state 'Island' and trap state 'BlackHole' (no egress).
+ * @expected FsmValidator flags model with multiple semantic warning diagnostics identifying design flaws.
  */
-TEST(ParserNegativeTest, ModelCheckerDetectsDefects) {
+TEST(FsmValidator, DisconnectedSubgraphsAndTrapStates_EmitsSemanticWarningDiagnostics) {
     // Build a deliberately defective model:
     // - Unreachable state "Island"
     // - Trap state "BlackHole" (incoming transition but no outgoing)

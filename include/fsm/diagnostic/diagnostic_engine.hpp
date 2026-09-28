@@ -1,42 +1,48 @@
+/**
+ * @file diagnostic_engine.hpp
+ * @brief Structured compiler diagnostics, source spans, and terminal rendering engine.
+ */
+
 #pragma once
 
 #include <cstdint>
-#include <iostream>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
-namespace fsm::codegen {
+namespace fsm::diagnostic {
 
 /**
+ * @enum DiagnosticSeverity
  * @brief Severity level for compiler and verification diagnostics.
  */
 enum class DiagnosticSeverity : std::uint8_t { Note, Info = Note, Warning, Error, Fatal, SafetyCritical = Fatal };
 
 /**
+ * @struct SourceSpan
  * @brief Precise source span locating a token or AST construct in an input file.
  */
 struct SourceSpan {
-    std::string file_path;
-    size_t line{1};
-    size_t column{1};
-    size_t length{1};
+    std::string file_path;  ///< Path to source document
+    size_t line{1};         ///< 1-indexed start line number
+    size_t column{1};       ///< 1-indexed start column number
+    size_t length{1};       ///< Span character length
 
     [[nodiscard]] bool is_valid() const noexcept { return !file_path.empty() && line > 0; }
 };
 
 /**
+ * @struct Diagnostic
  * @brief Diagnostic report containing severity, error code, location, and actionable suggestions.
  */
 struct Diagnostic {
-    DiagnosticSeverity severity{DiagnosticSeverity::Error};
-    std::string code;  ///< Canonical error/warning code (e.g., "E0101", "W0103")
-    std::string message;
-    SourceSpan span;
-    std::string help_suggestion;
-    std::vector<std::pair<SourceSpan, std::string>> secondary_labels;
+    DiagnosticSeverity severity{DiagnosticSeverity::Error};  ///< Diagnostic severity level
+    std::string code;                                        ///< Canonical error/warning code (e.g., "E0101", "W0103")
+    std::string message;                                     ///< Primary diagnostic text
+    SourceSpan span;                                         ///< Primary source location span
+    std::string help_suggestion;                             ///< Actionable fix advice
+    std::vector<std::pair<SourceSpan, std::string>> secondary_labels;  ///< Additional reference locations
 
     static Diagnostic error(std::string code, std::string message, SourceSpan span = {}) {
         return Diagnostic{DiagnosticSeverity::Error, std::move(code), std::move(message), std::move(span), "", {}};
@@ -60,114 +66,46 @@ struct Diagnostic {
 };
 
 /**
+ * @class DiagnosticEngine
  * @brief Rich Diagnostic Engine providing colored terminal output with Rust/Clang-style carets.
  */
 class DiagnosticEngine {
   public:
-    void report(Diagnostic diag) {
-        if (diag.severity == DiagnosticSeverity::Error || diag.severity == DiagnosticSeverity::Fatal) {
-            has_errors_ = true;
-        }
-        diagnostics_.push_back(std::move(diag));
-    }
+    /**
+     * @brief Records a diagnostic into the collection.
+     */
+    void report(Diagnostic diag);
 
-    [[nodiscard]] bool has_errors() const noexcept { return has_errors_; }
-    [[nodiscard]] bool has_warnings() const noexcept {
-        for (const auto& diag : diagnostics_) {
-            if (diag.severity == DiagnosticSeverity::Warning) {
-                return true;
-            }
-        }
-        return false;
-    }
-    [[nodiscard]] const std::vector<Diagnostic>& get_diagnostics() const noexcept { return diagnostics_; }
+    /**
+     * @brief Checks whether any Error or Fatal diagnostics have been reported.
+     */
+    [[nodiscard]] bool has_errors() const noexcept;
 
-    void clear() noexcept {
-        diagnostics_.clear();
-        has_errors_ = false;
-    }
+    /**
+     * @brief Checks whether any Warning diagnostics have been reported.
+     */
+    [[nodiscard]] bool has_warnings() const noexcept;
+
+    /**
+     * @brief Returns immutable reference to all collected diagnostics.
+     */
+    [[nodiscard]] const std::vector<Diagnostic>& get_diagnostics() const noexcept;
+
+    /**
+     * @brief Clears all reported diagnostics.
+     */
+    void clear() noexcept;
 
     /**
      * @brief Renders all collected diagnostics into formatted ANSI color strings with visual carets.
      */
-    [[nodiscard]] std::string render_to_string(std::string_view source_content = "") const {
-        std::ostringstream ss;
-        for (const auto& diag : diagnostics_) {
-            // Severity header
-            switch (diag.severity) {
-                case DiagnosticSeverity::Fatal:
-                case DiagnosticSeverity::Error:
-                    ss << "\033[1;31merror";
-                    if (!diag.code.empty())
-                        ss << "[" << diag.code << "]";
-                    ss << "\033[0m: " << diag.message << "\n";
-                    break;
-                case DiagnosticSeverity::Warning:
-                    ss << "\033[1;33mwarning";
-                    if (!diag.code.empty())
-                        ss << "[" << diag.code << "]";
-                    ss << "\033[0m: " << diag.message << "\n";
-                    break;
-                case DiagnosticSeverity::Note:
-                    ss << "\033[1;36mnote\033[0m: " << diag.message << "\n";
-                    break;
-            }
-
-            // Location arrow
-            if (diag.span.is_valid()) {
-                ss << "  \033[1;34m-->\033[0m " << diag.span.file_path << ":" << diag.span.line << ":"
-                   << diag.span.column << "\n";
-
-                // If source line is available, print context and caret
-                if (!source_content.empty()) {
-                    std::string line_text = extract_line(source_content, diag.span.line);
-                    if (!line_text.empty()) {
-                        ss << "   \033[1;34m|\033[0m\n";
-                        ss << " " << diag.span.line << " \033[1;34m|\033[0m " << line_text << "\n";
-                        ss << "   \033[1;34m|\033[0m ";
-                        size_t pad = (diag.span.column > 0) ? (diag.span.column - 1) : 0;
-                        for (size_t i = 0; i < pad; ++i)
-                            ss << " ";
-                        ss << "\033[1;31m^";
-                        for (size_t i = 1; i < diag.span.length; ++i)
-                            ss << "~";
-                        ss << "\033[0m\n";
-                    }
-                }
-            }
-
-            // Help suggestion
-            if (!diag.help_suggestion.empty()) {
-                ss << "   \033[1;34m=\033[0m \033[1mhelp\033[0m: " << diag.help_suggestion << "\n";
-            }
-            ss << "\n";
-        }
-        return ss.str();
-    }
+    [[nodiscard]] std::string render_to_string(std::string_view source_content = "") const;
 
   private:
-    static std::string extract_line(std::string_view text, size_t line_num) {
-        std::istringstream stream{std::string(text)};
-        std::string line;
-        size_t current_line = 1;
-        while (std::getline(stream, line)) {
-            if (current_line == line_num) {
-                return line;
-            }
-            ++current_line;
-        }
-        return "";
-    }
+    static std::string extract_line(std::string_view text, size_t line_num);
 
     std::vector<Diagnostic> diagnostics_;
     bool has_errors_{false};
 };
 
-}  // namespace fsm::codegen
-
-namespace fsm {
-using DiagnosticEngine = ::fsm::codegen::DiagnosticEngine;
-using Diagnostic = ::fsm::codegen::Diagnostic;
-using DiagnosticSeverity = ::fsm::codegen::DiagnosticSeverity;
-using SourceSpan = ::fsm::codegen::SourceSpan;
-}  // namespace fsm
+}  // namespace fsm::diagnostic

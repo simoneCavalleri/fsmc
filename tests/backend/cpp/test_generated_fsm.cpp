@@ -1,12 +1,10 @@
 /**
  * @file test_generated_fsm.cpp
  * @brief Standalone executable validating compilation and runtime dispatch of generated FSM code.
- *
- * Test Intent:
- * Prove that the generated C++ header from `connection_fsm.mmd` compiles cleanly without warnings,
- * correctly initializes in Disconnected state, performs synchronous state transitions across
- * Connecting, Connected, Suspended, and Disconnected, and processes asynchronous transitions
- * using the thread-safe worker queue.
+ * @scenario Instantiate generated ConnectionMermaidFSM state machine and dispatch synchronous and asynchronous
+ * transitions.
+ * @expected State machine initializes in Disconnected state, performs synchronous state transitions, and processes
+ * asynchronous transitions cleanly.
  */
 
 #include <cassert>

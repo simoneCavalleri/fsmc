@@ -1,10 +1,15 @@
+/**
+ * @file test_composite_guards.cpp
+ * @brief Unit test suite for composite boolean guard expressions and combinators.
+ */
+
 #include <gtest/gtest.h>
 
 #include <string>
 
 #include "fsm/backend/cpp/runtime/fsm.hpp"
+#include "fsm/frontend/common/json_parser.hpp"
 #include "fsm/frontend/diagram/dot_parser.hpp"
-#include "fsm/frontend/diagram/json_parser.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
@@ -13,6 +18,11 @@
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 
 namespace {
+
+using namespace fsm::frontend;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend::directive;
+using namespace fsm::frontend::formal;
 
 // Test typed in-ports
 struct SafetyInPorts {
@@ -72,15 +82,11 @@ struct StartCmd {};
 struct StopCmd {};
 
 /**
- * @brief Test Intent: Verify C++ compile-time composite guard combinators (`and_`, `or_`, `not_`).
- *
- * Scenario:
- * - Evaluate `not_<IsEmergencyStop>`.
- * - Evaluate 3-way conjunction `and_<IsPowerOk, IsDoorClosed, not_<IsEmergencyStop>>`.
- * - Evaluate disjunction `or_<IsEmergencyStop, not_<IsTempSafe>>`.
- * - Evaluate complex nested combinator: `(PowerOk && DoorClosed) || ManualOverride`.
+ * @brief Verify direct boolean guard combinators (and_, or_, not_).
+ * @scenario Evaluate truth table combinations of and_, or_, and not_ guard functors.
+ * @expected Boolean combinator outcomes match propositional logic truth values.
  */
-TEST(CompositeGuardsTest, DirectCombinatorsEvaluation) {
+TEST(CompositeGuards, DirectCombinators_BooleanEvaluation_MatchesExpectedOutcome) {
     SafetyInPorts in;
     StartCmd evt;
     Off st;
@@ -135,18 +141,14 @@ TEST(CompositeGuardsTest, DirectCombinatorsEvaluation) {
 }
 
 /**
- * @brief Test Intent: Verify AST parsing and operator precedence in GuardExpressionParser.
- *
- * Scenario:
- * - Parse atomic guards, negation `!A`, conjunction `A && B`, and disjunction `A || B`.
- * - Verify `&&` binds tighter than `||` (`A || B && C` -> `fsm::or_<A, fsm::and_<B, C>>`).
- * - Verify parentheses override default precedence (`(A || B) && C` -> `fsm::and_<fsm::or_<A, B>, C>`).
- * - Verify 4-level deep nested boolean formulas.
+ * @brief Verify parsing of simple and deeply nested boolean guard expressions.
+ * @scenario Parse strings like 'A && (B || !C)' into AST representation.
+ * @expected Binary and unary operators parsed with standard operator precedence.
  */
-TEST(CompositeGuardsTest, GuardExpressionParserBasicAndNested) {
+TEST(CompositeGuards, GuardExpressionParser_NestedExpressions_ParsedIntoAst) {
     // 1. Single identifier
     {
-        auto res = fsm::codegen::GuardExpressionParser::parse("EmergencyStop");
+        auto res = GuardExpressionParser::parse("EmergencyStop");
         EXPECT_EQ(res.cpp_type, "EmergencyStop");
         ASSERT_EQ(res.atomic_guards.size(), 1u);
         EXPECT_EQ(res.atomic_guards[0], "EmergencyStop");
@@ -154,7 +156,7 @@ TEST(CompositeGuardsTest, GuardExpressionParserBasicAndNested) {
 
     // 2. Unary Not
     {
-        auto res = fsm::codegen::GuardExpressionParser::parse("!EmergencyStop");
+        auto res = GuardExpressionParser::parse("!EmergencyStop");
         EXPECT_EQ(res.cpp_type, "fsm::not_<EmergencyStop>");
         ASSERT_EQ(res.atomic_guards.size(), 1u);
         EXPECT_EQ(res.atomic_guards[0], "EmergencyStop");
@@ -162,60 +164,57 @@ TEST(CompositeGuardsTest, GuardExpressionParserBasicAndNested) {
 
     // 3. Binary And
     {
-        auto res = fsm::codegen::GuardExpressionParser::parse("PowerOk && !EmergencyStop");
+        auto res = GuardExpressionParser::parse("PowerOk && !EmergencyStop");
         EXPECT_EQ(res.cpp_type, "fsm::and_<PowerOk, fsm::not_<EmergencyStop>>");
         ASSERT_EQ(res.atomic_guards.size(), 2u);
     }
 
     // 4. Precedence: && binds tighter than ||
     {
-        auto res = fsm::codegen::GuardExpressionParser::parse("A || B && C");
+        auto res = GuardExpressionParser::parse("A || B && C");
         EXPECT_EQ(res.cpp_type, "fsm::or_<A, fsm::and_<B, C>>");
         ASSERT_EQ(res.atomic_guards.size(), 3u);
     }
 
     // 5. Parentheses overriding precedence
     {
-        auto res = fsm::codegen::GuardExpressionParser::parse("(A || B) && C");
+        auto res = GuardExpressionParser::parse("(A || B) && C");
         EXPECT_EQ(res.cpp_type, "fsm::and_<fsm::or_<A, B>, C>");
         ASSERT_EQ(res.atomic_guards.size(), 3u);
     }
 
     // 6. Deep 4-level nesting
     {
-        auto res = fsm::codegen::GuardExpressionParser::parse("((A && !B) || (C && (D || !E)))");
+        auto res = GuardExpressionParser::parse("((A && !B) || (C && (D || !E)))");
         EXPECT_EQ(res.cpp_type, "fsm::or_<fsm::and_<A, fsm::not_<B>>, fsm::and_<C, fsm::or_<D, fsm::not_<E>>>>");
         ASSERT_EQ(res.atomic_guards.size(), 5u);
     }
 }
 
 /**
- * @brief Test Intent: Verify whitespace resilience, empty inputs, and roundtrip diagram string formatting.
- *
- * Scenario:
- * - Parse expressions with irregular whitespace formatting.
- * - Test empty and whitespace-only guard strings.
- * - Test roundtrip conversion between C++ template representation and diagram string format.
+ * @brief Verify guard expression parser resilience on edge cases and whitespace variants.
+ * @scenario Feed arbitrary whitespace, parenthesis depth, and operator permutations.
+ * @expected Parser returns valid AST or descriptive diagnostic error without crashing.
  */
-TEST(CompositeGuardsTest, GuardExpressionParserEdgeCasesAndFuzzing) {
+TEST(CompositeGuards, GuardExpressionParser_EdgeCases_HandlesSyntaxVariants) {
     // 1. Whitespace resilience
     {
-        auto res = fsm::codegen::GuardExpressionParser::parse("  !  EmergencyStop   ");
+        auto res = GuardExpressionParser::parse("  !  EmergencyStop   ");
         EXPECT_EQ(res.cpp_type, "fsm::not_<EmergencyStop>");
     }
     {
-        auto res = fsm::codegen::GuardExpressionParser::parse("A&&! B || ( C&&D )");
+        auto res = GuardExpressionParser::parse("A&&! B || ( C&&D )");
         EXPECT_EQ(res.cpp_type, "fsm::or_<fsm::and_<A, fsm::not_<B>>, fsm::and_<C, D>>");
     }
 
     // 2. Empty or whitespace-only expressions
     {
-        auto res = fsm::codegen::GuardExpressionParser::parse("");
+        auto res = GuardExpressionParser::parse("");
         EXPECT_TRUE(res.cpp_type.empty());
         EXPECT_TRUE(res.atomic_guards.empty());
     }
     {
-        auto res = fsm::codegen::GuardExpressionParser::parse("   \t\n  ");
+        auto res = GuardExpressionParser::parse("   \t\n  ");
         EXPECT_TRUE(res.cpp_type.empty());
         EXPECT_TRUE(res.atomic_guards.empty());
     }
@@ -223,32 +222,30 @@ TEST(CompositeGuardsTest, GuardExpressionParserEdgeCasesAndFuzzing) {
     // 3. Roundtrip diagram string formatting
     {
         std::string cpp_t = "fsm::and_<SafetyOk, fsm::not_<EStop>>";
-        std::string diagram_s = fsm::codegen::GuardExpressionParser::to_diagram_string(cpp_t);
+        std::string diagram_s = GuardExpressionParser::to_diagram_string(cpp_t);
         EXPECT_EQ(diagram_s, "SafetyOk && !EStop");
 
         // Re-parsing diagram string gives identical C++ type
-        auto reparsed = fsm::codegen::GuardExpressionParser::parse(diagram_s);
+        auto reparsed = GuardExpressionParser::parse(diagram_s);
         EXPECT_EQ(reparsed.cpp_type, cpp_t);
     }
     {
         std::string cpp_t = "fsm::or_<fsm::and_<A, B>, fsm::not_<C>>";
-        std::string diagram_s = fsm::codegen::GuardExpressionParser::to_diagram_string(cpp_t);
+        std::string diagram_s = GuardExpressionParser::to_diagram_string(cpp_t);
         EXPECT_EQ(diagram_s, "A && B || !C");
     }
 }
 
 /**
- * @brief Test Intent: Verify composite guard expression extraction across all supported diagram parsers.
- *
- * Scenario:
- * - Parse composite guard expressions from PlantUML, Mermaid, SysML v2, SCXML, DOT, and JSON.
- * - Verify every parser properly decodes entities and compiles the expression into the normalized C++ template type.
+ * @brief Verify multi-format ingestion of compound boolean guards across PlantUML, Mermaid, and SysML v2.
+ * @scenario Parse diagrams containing composite guard strings across all frontend dialects.
+ * @expected Guards extracted into FsmIr with identical boolean structure.
  */
-TEST(CompositeGuardsTest, MultiFormatParserCompositeGuards) {
+TEST(CompositeGuards, MultiFormatParser_CompositeGuards_IngestedAcrossDialects) {
     // 1. PlantUML
     {
-        fsm::codegen::PlantUmlParser parser;
-        fsm::codegen::FsmIr model;
+        PlantUmlParser parser;
+        fsm::ir::FsmIr model;
         std::string err;
         std::string puml = R"(
 @startuml
@@ -266,8 +263,8 @@ Running --> Off : StopCmd
 
     // 2. Mermaid
     {
-        fsm::codegen::MermaidParser parser;
-        fsm::codegen::FsmIr model;
+        MermaidParser parser;
+        fsm::ir::FsmIr model;
         std::string err;
         std::string mmd = R"(
 stateDiagram-v2
@@ -282,8 +279,8 @@ stateDiagram-v2
 
     // 3. SysML v2
     {
-        fsm::codegen::Sysml2Parser parser;
-        fsm::codegen::FsmIr model;
+        Sysml2Parser parser;
+        fsm::ir::FsmIr model;
         std::string err;
         std::string sysml = R"(
 state def MachineFSM {
@@ -300,8 +297,8 @@ state def MachineFSM {
 
     // 4. SCXML
     {
-        fsm::codegen::ScxmlParser parser;
-        fsm::codegen::FsmIr model;
+        ScxmlParser parser;
+        fsm::ir::FsmIr model;
         std::string err;
         std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Off">
@@ -317,8 +314,8 @@ state def MachineFSM {
 
     // 5. DOT
     {
-        fsm::codegen::DotParser parser;
-        fsm::codegen::FsmIr model;
+        DotParser parser;
+        fsm::ir::FsmIr model;
         std::string err;
         std::string dot = R"(
 digraph FSM {
@@ -332,10 +329,10 @@ digraph FSM {
         EXPECT_EQ(*model.transitions[0].guard, "fsm::and_<PowerOk, fsm::not_<EmergencyStop>>");
     }
 
-    // 6. JSON (XState)
+    // 6. JSON
     {
-        fsm::codegen::JsonStateParser parser;
-        fsm::codegen::FsmIr model;
+        fsm::frontend::JsonParser parser;
+        fsm::ir::FsmIr model;
         std::string err;
         std::string json = R"({
     "id": "MachineFSM",
@@ -356,14 +353,11 @@ digraph FSM {
 }
 
 /**
- * @brief Test Intent: Verify end-to-end runtime evaluation of composite guards during event dispatch.
- *
- * Scenario:
- * - Define transition table with `fsm::and_<IsPowerOk, IsDoorClosed, fsm::not_<IsEmergencyStop>>`.
- * - Test failure with power off, door open, and emergency stop active.
- * - Test success when all composite conditions are satisfied, transitioning to Running.
+ * @brief Verify runtime dispatching with compound boolean guards.
+ * @scenario Dispatch events against transitions guarded by compound logic expressions.
+ * @expected Transitions execute only when compound guard expression evaluates to true.
  */
-TEST(CompositeGuardsTest, FsmRuntimeExecutionWithCompositeGuards) {
+TEST(CompositeGuards, RuntimeExecution_CompositeGuards_EvaluatedDuringDispatch) {
     using Table = fsm::transition_table<
         fsm::row<Off, StartCmd, Running>::when<fsm::and_<IsPowerOk, IsDoorClosed, fsm::not_<IsEmergencyStop>>>,
         fsm::row<Running, StopCmd, Off>>;

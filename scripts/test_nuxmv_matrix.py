@@ -40,7 +40,7 @@ register_test(
 package SafetyValid {
     state def System {
         // Disjoint states: Disconnected and Running can never be active simultaneously
-        @fsm:property Disjoint = "G (!(Disconnected && Running))";
+        property Disjoint : G (!(Disconnected && Running));
 
         entry; then Disconnected;
         state Disconnected;
@@ -57,7 +57,7 @@ package SafetyValid {
     expected_results={
         "clean_syntax": True,
         "properties": [
-            {"formula_substr": "!(state = Disconnected & state = Running)", "expected": "true"}
+            {"formula_substr": "G !(state = Disconnected & state = Running)", "expected": "true"}
         ]
     }
 )
@@ -71,7 +71,7 @@ register_test(
 package SafetyViolated {
     state def HazardousSystem {
         // Claim: ForbiddenState is never reached
-        @fsm:property NeverHazard = "G (!(ForbiddenState))";
+        property NeverHazard : G (!(ForbiddenState));
 
         entry; then SafeState;
         state SafeState;
@@ -88,7 +88,7 @@ package SafetyViolated {
     expected_results={
         "clean_syntax": True,
         "properties": [
-            {"formula_substr": "!(state = ForbiddenState)", "expected": "false"}
+            {"formula_substr": "G !(state = ForbiddenState)", "expected": "false"}
         ]
     }
 )
@@ -102,7 +102,7 @@ register_test(
 package LivenessValid {
     state def ResilientSystem {
         // Response: Every Fault leads deterministically to Recovered
-        @fsm:property FaultRecovery = "G (EvFault -> F Recovered)";
+        property FaultRecovery : G (EvFault -> F Recovered);
 
         entry; then Operational;
         state Operational;
@@ -119,7 +119,7 @@ package LivenessValid {
     expected_results={
         "clean_syntax": True,
         "properties": [
-            {"formula_substr": "event = EvFault ->  F state = Recovered", "expected": "true"}
+            {"formula_substr": "G (event = EvFault -> F state = Recovered)", "expected": "true"}
         ]
     }
 )
@@ -133,7 +133,7 @@ register_test(
 package LivenessLivelock {
     state def StarvedSystem {
         // Claim: EvFault eventually leads to Recovered
-        @fsm:property FaultRecovery = "G (EvFault -> F Recovered)";
+        property FaultRecovery : G (EvFault -> F Recovered);
 
         entry; then Operational;
         state Operational;
@@ -150,7 +150,7 @@ package LivenessLivelock {
     expected_results={
         "clean_syntax": True,
         "properties": [
-            {"formula_substr": "event = EvFault ->  F state = Recovered", "expected": "false"}
+            {"formula_substr": "G (event = EvFault -> F state = Recovered)", "expected": "false"}
         ]
     }
 )
@@ -163,7 +163,7 @@ register_test(
     model_content="""
 package NextStep {
     state def InterlockSystem {
-        @fsm:property ImmediateStop = "G (EvEStop -> X EStopActive)";
+        property ImmediateStop : G (EvEStop -> X EStopActive);
 
         entry; then Running;
         state Running;
@@ -178,7 +178,7 @@ package NextStep {
     expected_results={
         "clean_syntax": True,
         "properties": [
-            {"formula_substr": "event = EvEStop ->  X state = EStopActive", "expected": "true"}
+            {"formula_substr": "G (event = EvEStop -> X state = EStopActive)", "expected": "true"}
         ]
     }
 )
@@ -191,7 +191,7 @@ register_test(
     model_content="""
 package UntilLogic {
     state def HoldingSystem {
-        @fsm:property HoldUntilReady = "Preheating U SystemReady";
+        property HoldUntilReady : Preheating U SystemReady;
 
         entry; then Preheating;
         state Preheating;
@@ -206,7 +206,7 @@ package UntilLogic {
     expected_results={
         "clean_syntax": True,
         "properties": [
-            {"formula_substr": "state = Preheating U state = SystemReady", "expected": "true"}
+            {"formula_substr": "(state = Preheating U state = SystemReady)", "expected": "true"}
         ]
     }
 )
@@ -230,7 +230,10 @@ package DataPathSystem {
 
         transition t_eco first Normal if in.battery_soc < 30.0 then EcoMode;
         transition t_crit first EcoMode if in.battery_soc < 10.0 then Critical;
-        transition t_recharge first Critical if in.battery_soc > 50.0 then Normal;
+        // EvCharged event breaks the zero-time cycle: the FSM must receive an
+        // explicit recharge signal before leaving Critical, preventing a Zeno
+        // livelock (instantaneous Critical -> Normal -> EcoMode -> Critical loop).
+        transition t_recharge first Critical accept EvCharged if in.battery_soc > 50.0 then Normal;
     }
 }
 """,
@@ -349,9 +352,9 @@ register_test(
     model_content="""
 package MultiProperties {
     state def FlightVehicle {
-        @fsm:property InvariantA = "G (!(Ground && InAir))";
-        @fsm:property LivenessB  = "G ((Ground && EvTakeoff) -> F InAir)";
-        @fsm:property ReachC     = "F (Ground)";
+        property InvariantA : G (!(Ground && InAir));
+        property LivenessB  : G ((Ground && EvTakeoff) -> F InAir);
+        property ReachC     : F (Ground);
 
         entry; then Ground;
         state Ground;
@@ -368,8 +371,8 @@ package MultiProperties {
     expected_results={
         "clean_syntax": True,
         "properties": [
-            {"formula_substr": "!(state = Ground & state = InAir)", "expected": "true"},
-            {"formula_substr": "(state = Ground & event = EvTakeoff) ->  F state = InAir", "expected": "true"},
+            {"formula_substr": "G !(state = Ground & state = InAir)", "expected": "true"},
+            {"formula_substr": "G ((state = Ground & event = EvTakeoff) -> F state = InAir)", "expected": "true"},
             {"formula_substr": "F state = Ground", "expected": "true"}
         ]
     }
@@ -445,16 +448,18 @@ def run_all_tests():
             prop_failed = False
             for prop in expectations.get("properties", []):
                 substr = prop["formula_substr"]
+                norm_substr = " ".join(substr.split())
                 expected = prop["expected"]
 
                 found_match = False
                 for line in nuxmv_out.splitlines():
-                    if substr in line or line.startswith("--"):
-                        if substr in line:
-                            if expected == "true" and "is true" in line:
-                                found_match = True
-                            elif expected == "false" and "is false" in line:
-                                found_match = True
+                    norm_line = " ".join(line.split())
+                    if norm_substr in norm_line:
+                        if expected == "true" and "is true" in norm_line:
+                            found_match = True
+                            break
+                        elif expected == "false" and "is false" in norm_line:
+                            found_match = True
                 if not found_match and expected in ("true", "false"):
                     print(f"FAILED (Property expectation mismatch for '{substr}', expected {expected})")
                     print("--- nuXmv Output ---")

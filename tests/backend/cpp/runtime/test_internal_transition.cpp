@@ -1,3 +1,8 @@
+/**
+ * @file test_internal_transition.cpp
+ * @brief Unit test suite for internal state transitions without entry/exit execution.
+ */
+
 #include <gtest/gtest.h>
 
 #include <string>
@@ -8,7 +13,13 @@
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/middleend/analysis/fsm_validator.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::backend::cpp;
+using namespace fsm::backend;
+using namespace fsm::frontend::diagram;
+using namespace fsm::frontend;
+using namespace fsm::middleend::analysis;
+using namespace fsm::middleend;
+using namespace fsm::ir;
 
 namespace {
 
@@ -38,14 +49,11 @@ struct ResetWatchdogAction {
 using InternalFsmTable = fsm::transition_table<fsm::internal_row<ActiveState, PingEvent>::then<ResetWatchdogAction>>;
 
 /**
- * @brief Test Intent: Verify internal transitions execute actions without triggering state entry or exit hooks.
- *
- * Scenario:
- * - Enter initial ActiveState (on_enter hook runs).
- * - Dispatch internal transition event (PingEvent).
- * - Verify only the action executes, while on_exit and on_enter hooks are completely bypassed.
+ * @brief Verify runtime execution of internal transition without invoking entry or exit hooks.
+ * @scenario Dispatch event mapped to internal transition on current active state.
+ * @expected Transition action executes, current state is preserved, and on_entry/on_exit are not called.
  */
-TEST(InternalTransitionTest, RuntimeInternalTransitionExecutesActionWithoutEntryExit) {
+TEST(InternalTransition, RuntimeExecution_InternalTransition_ExecutesActionWithoutEntryExit) {
     InternalTracker::clear();
 
     fsm::fsm<InternalFsmTable> machine;
@@ -65,14 +73,11 @@ TEST(InternalTransitionTest, RuntimeInternalTransitionExecutesActionWithoutEntry
 }
 
 /**
- * @brief Test Intent: Verify parser recognition of internal transitions and code generation to `fsm::internal_row`.
- *
- * Scenario:
- * - Parse PlantUML syntax `Idle : Ping / ResetWatchdog`.
- * - Verify transition is recorded with TransitionEdgeKind::Internal.
- * - Verify C++ generator outputs `fsm::internal_row<Idle, Ping>::then<ResetWatchdog>`.
+ * @brief Verify parser extraction and C++ code generation for internal transitions.
+ * @scenario Parse model with internal transitions across frontend dialects and generate C++.
+ * @expected Generated transition table identifies internal transitions with TransitionKind::Internal.
  */
-TEST(InternalTransitionTest, ParserInternalTransitionAndCodegen) {
+TEST(InternalTransition, ParserAndCodegen_InternalTransition_PreservesSemanticsInCode) {
     const std::string puml = R"(
     @startuml
     [*] --> Idle
@@ -93,7 +98,7 @@ TEST(InternalTransitionTest, ParserInternalTransitionAndCodegen) {
             found_internal = true;
             EXPECT_EQ(t.source, "Idle");
             EXPECT_EQ(t.event, "Ping");
-            EXPECT_EQ(t.action, "ResetWatchdog");
+            EXPECT_EQ(t.get_action(), "ResetWatchdog");
         }
     }
     EXPECT_TRUE(found_internal);

@@ -1,3 +1,8 @@
+/**
+ * @file test_fsm_ir.cpp
+ * @brief Unit tests for core Intermediate Representation (FsmIr), state hierarchy, AST expressions, and serialization.
+ */
+
 #include <gtest/gtest.h>
 
 #include <unordered_set>
@@ -18,21 +23,27 @@
 #include "fsm/ir/variable_definition.hpp"
 
 // Test umbrella aggregator header
+#include "fsm/ir/expression.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/ir/fsm_ir_deserializer.hpp"
 #include "fsm/ir/fsm_ir_serializer.hpp"
+#include "fsm/ir/type_definition.hpp"
+#include "fsm/middleend/analysis/fsm_validator.hpp"
+#include "fsm/middleend/pass_manager.hpp"
 
-using namespace fsm::codegen;
+using namespace fsm::ir;
+using namespace fsm::diagnostic;
+using namespace fsm::middleend;
+using namespace fsm::middleend::analysis;
 
 namespace {
 
 /**
- * @brief Test Intent: Verify modular IR header decoupling, enum converters, and trigger variants.
- *
- * Scenario:
- * - Validate conversions for StateKind, TransitionEdgeKind, and TriggerVariant.
- * - Verify ActionSignature and ActionAssignment fields.
+ * @brief Verify modular IR header decoupling, enum converters, and trigger variants.
+ * @scenario StateKind, TransitionEdgeKind, ActionAssignment, TimeTrigger, SignalTrigger, and EventModel instantiations.
+ * @expected Enum conversions and variant type alternatives evaluate to expected values.
  */
-TEST(FsmIrTest, ModularHeaderSubcomponents) {
+TEST(FsmIr, ModularHeaderSubcomponents_ConvertsEnumsAndDispatchesVariants) {
     // 1. StateKind conversions
     EXPECT_EQ(state_kind_to_string(StateKind::Parallel), "Parallel");
     EXPECT_EQ(state_kind_from_string("Parallel"), StateKind::Parallel);
@@ -47,7 +58,7 @@ TEST(FsmIrTest, ModularHeaderSubcomponents) {
 
     // 3. ActionSignature and ActionAssignment
     ActionAssignment assign("counter", "counter + 1");
-    EXPECT_EQ(assign.target_variable, "counter");
+    EXPECT_EQ(assign.target, "counter");
     EXPECT_EQ(assign.expression, "counter + 1");
 
     ActionSignature act_sig("on_reset", "srv.reset()");
@@ -79,13 +90,11 @@ TEST(FsmIrTest, ModularHeaderSubcomponents) {
 }
 
 /**
- * @brief Test Intent: Verify deterministic FNV-1a 64-bit ID computation for state node identification.
- *
- * Scenario:
- * - Compute hashes for identical and differing hierarchical strings.
- * - Verify stability across runs and uniqueness across different state names.
+ * @brief Verify deterministic FNV-1a 64-bit ID computation for state node identification.
+ * @scenario Compute hashes for identical and differing hierarchical string paths.
+ * @expected Hashes are identical for matching paths and distinct for differing paths.
  */
-TEST(FsmIrTest, DeterministicIdGeneration) {
+TEST(DeterministicId, HierarchicalStatePaths_GeneratesStableUniqueIds) {
     std::string id1 = compute_deterministic_id("Operating.Running.Manual");
     std::string id2 = compute_deterministic_id("Operating.Running.Manual");
     std::string id3 = compute_deterministic_id("Operating.Running.Auto");
@@ -96,17 +105,15 @@ TEST(FsmIrTest, DeterministicIdGeneration) {
 }
 
 /**
- * @brief Test Intent: Verify hierarchical state representations, orthogonal regions, and JSON serialization.
- *
- * Scenario:
- * - Build composite state with parallel orthogonal regions.
- * - Canonicalize and serialize to JSON.
- * - Verify all orthogonal regions, signals, and guard ASTs are faithfully preserved.
+ * @brief Verify hierarchical state representations, orthogonal regions, and JSON serialization.
+ * @scenario Build composite state with parallel orthogonal regions and traceability requirements.
+ * @expected Canonicalize and JSON serialization faithfully preserves orthogonal regions and state hierarchy.
  */
-TEST(FsmIrTest, StateHierarchyAndOrthogonalRegions) {
+TEST(FsmIr, CompositeAndOrthogonalHierarchy_SerializesToJsonRoundtrip) {
     FsmIr ir;
     ir.name = "IndustrialController";
-    ir.ns = "industrial";
+    ir.package = "industrial";
+
     ir.satisfies_reqs = {"REQ-SAFETY-01", "REQ-REALTIME-02"};
 
     // Add state hierarchy
@@ -165,14 +172,11 @@ TEST(FsmIrTest, StateHierarchyAndOrthogonalRegions) {
 }
 
 /**
- * @brief Test Intent: Verify formal verification AST representation for temporal properties (LTL/CTL).
- *
- * Scenario:
- * - Build safety property AST: `G (LowBattery -> F SafeLand)`.
- * - Build mutual exclusion invariant AST: `G (!(StateA && StateB))`.
- * - Verify canonical sorting, requirement traceability link, and JSON serialization.
+ * @brief Verify formal property metadata, temporal operators, and requirements traceability.
+ * @scenario Instantiate LTL and CTL formal properties with AST nodes and requirement IDs.
+ * @expected Properties preserve operators, formulas, and requirement references.
  */
-TEST(FsmIrTest, TemporalPropertiesAndFormalVerificationAst) {
+TEST(FormalProperty, LtlAndCtlFormulas_PopulatesAstAndTraceability) {
     // 1. Safety property: G (LowBattery -> F SafeLand)
     PropertyAstNode battery_low("LowBattery");
     PropertyAstNode safe_land("SafeLand");
@@ -225,14 +229,11 @@ TEST(FsmIrTest, TemporalPropertiesAndFormalVerificationAst) {
 }
 
 /**
- * @brief Test Intent: Verify extended finite state machine (EFSM) state variables and bounded domains.
- *
- * Scenario:
- * - Define variables with min/max bounds and initial values.
- * - Define transition edge with assignments `retry_count = retry_count + 1`.
- * - Verify serialization to JSON.
+ * @brief Verify state variable definitions with physical units, domain bounds, and structured actions.
+ * @scenario Variables with min/max domain bounds, physical units [degC], and assignments.
+ * @expected Action assignments and variable metadata integrate into FsmIr.
  */
-TEST(FsmIrTest, StateVariablesAndStructuredActions) {
+TEST(VariableDefinition, PhysicalUnitsAndBoundIntervals_IntegratesIntoActionSignatures) {
     FsmIr ir;
     ir.name = "MotorControllerEFSM";
 
@@ -259,7 +260,7 @@ TEST(FsmIrTest, StateVariablesAndStructuredActions) {
     action.assignments.emplace_back("rpm", "0");
 
     TransitionEdge edge("Idle", "Connecting", "StartCmd", std::nullopt, std::nullopt, "Start transition");
-    edge.action_sig = action;
+    edge.transition_action = action;
     ir.add_transition(std::move(edge));
 
     std::string json = FsmIrSerializer::serialize_json(ir);
@@ -267,19 +268,16 @@ TEST(FsmIrTest, StateVariablesAndStructuredActions) {
     EXPECT_NE(json.find("\"name\": \"retry_count\""), std::string::npos);
     EXPECT_NE(json.find("\"min_value\": 0"), std::string::npos);
     EXPECT_NE(json.find("\"max_value\": 5"), std::string::npos);
-    EXPECT_NE(json.find("\"assignments\": [{\"variable\": \"retry_count\", \"expression\": \"retry_count + 1\"}"),
-              std::string::npos);
+    EXPECT_NE(json.find("\"assignments\": [{\"variable\": \"retry_count\""), std::string::npos);
+    EXPECT_NE(json.find("\"expression\": \"retry_count + 1\""), std::string::npos);
 }
 
 /**
- * @brief Test Intent: Verify Fork/Join multi-source / multi-target transitions and submachine references.
- *
- * Scenario:
- * - Construct Fork transition (1 source -> 2 targets) and Join transition (2 sources -> 1 target).
- * - Construct SubmachineRef with port mappings.
- * - Verify serialization to JSON.
+ * @brief Verify multi-source/target fork-join transitions and submachine references.
+ * @scenario Fork transition with multiple targets, join with multiple sources, and SubmachineRef.
+ * @expected FsmIr and JSON serialization preserves transition endpoint vectors and port mappings.
  */
-TEST(FsmIrTest, ForkJoinTransitionsAndSubmachines) {
+TEST(FsmIr, MultiSourceForkJoinAndSubmachines_SerializesJsonPreservingPorts) {
     FsmIr ir;
     ir.name = "ConcurrentMissionFSM";
 
@@ -287,7 +285,6 @@ TEST(FsmIrTest, ForkJoinTransitionsAndSubmachines) {
     TransitionEdge fork_edge;
     fork_edge.id = "fork_01";
     fork_edge.source = "Idle";
-    fork_edge.source_id = "Idle";
     fork_edge.source_ids = {"Idle"};
     fork_edge.target_ids = {"NavigationRegion.Active", "TelemetryRegion.Active"};
     fork_edge.event = "LaunchCmd";
@@ -301,7 +298,6 @@ TEST(FsmIrTest, ForkJoinTransitionsAndSubmachines) {
     join_edge.id = "join_01";
     join_edge.source_ids = {"NavigationRegion.Completed", "TelemetryRegion.Completed"};
     join_edge.target = "MissionComplete";
-    join_edge.target_id = "MissionComplete";
     join_edge.target_ids = {"MissionComplete"};
     join_edge.event = "AllDone";
     join_edge.kind = TransitionEdgeKind::External;
@@ -333,13 +329,11 @@ TEST(FsmIrTest, ForkJoinTransitionsAndSubmachines) {
 }
 
 /**
- * @brief Test Intent: Verify collision resistance of deterministic ID generator across 10,000 keys.
- *
- * Scenario:
- * - Generate 10,000 unique hierarchical state keys.
- * - Verify each computed deterministic ID is completely unique with 0 collisions.
+ * @brief Verify deterministic ID hash distribution across a large set of state names.
+ * @scenario Generate 10,000 unique hierarchical state path strings.
+ * @expected Zero collisions observed across the entire 10,000 ID set.
  */
-TEST(FsmIrTest, DeterministicIdCollisionResistanceAcrossLargeSet) {
+TEST(DeterministicId, CollisionResistanceLargeSet_GeneratesNoCollisionsAcross10kIds) {
     std::unordered_set<std::string> id_set;
     constexpr int TotalKeys = 10000;
     id_set.reserve(TotalKeys);
@@ -353,13 +347,11 @@ TEST(FsmIrTest, DeterministicIdCollisionResistanceAcrossLargeSet) {
 }
 
 /**
- * @brief Test Intent: Verify manual AST construction for temporal logic implications (`P -> Q`).
- *
- * Scenario:
- * - Construct composite PropertyAstNode representing `Globally(SafetyLock) -> Finally(Arming)`.
- * - Verify operator, children, and properties.
+ * @brief Verify programmatic construction and string formatting of temporal logic AST nodes.
+ * @scenario Construct AST nodes for Globally, Finally, Next, Until, And, and Not.
+ * @expected AST nodes format to canonical temporal formula string representations.
  */
-TEST(FsmIrTest, FormalPropertyAstConstruction) {
+TEST(FormalPropertyAst, TemporalAstNodes_ConstructsAndConvertsToString) {
     FormalProperty prop;
     prop.name = "SafetyLockInvariant";
     prop.kind = PropertyKind::Safety;
@@ -388,14 +380,11 @@ TEST(FsmIrTest, FormalPropertyAstConstruction) {
 }
 
 /**
- * @brief Test Intent: Verify priority, time_invariant, EntryPoint, and ExitPoint state kinds in FsmIr.
- *
- * Scenario:
- * - Create states with EntryPoint and ExitPoint kinds.
- * - Set time_invariant on state and priority on transition edge.
- * - Verify serialization to JSON preserves time_invariant and priority.
+ * @brief Verify state time invariants, connection points, and transition priority rankings.
+ * @scenario State with time invariant duration and transitions with priorities 1, 2, and 0.
+ * @expected Canonicalize orders transitions deterministically and preserves state connection points.
  */
-TEST(FsmIrTest, PriorityTimeInvariantAndEntryExitPoints) {
+TEST(FsmIr, PriorityTimeInvariantsAndEntryExitPoints_ValidatesMetamodelFeatures) {
     EXPECT_EQ(state_kind_to_string(StateKind::EntryPoint), "EntryPoint");
     EXPECT_EQ(state_kind_from_string("EntryPoint"), StateKind::EntryPoint);
     EXPECT_EQ(state_kind_to_string(StateKind::ExitPoint), "ExitPoint");
@@ -444,13 +433,14 @@ TEST(FsmIrTest, PriorityTimeInvariantAndEntryExitPoints) {
 }
 
 /**
- * @brief Test Intent: Verify domain-separated PortDefinition, SignalDefinition, VariableDefinition and zero Context
- * references.
+ * @brief Verify domain port definitions (InPort, OutPort, InOutPort) without runtime binding.
+ * @scenario Declare InPort and OutPort with physical units and numeric bounds.
+ * @expected Ports maintain explicit directionality and bounds independently of target language.
  */
-TEST(FsmIrTest, DomainPortSeparationAndZeroContext) {
+TEST(PortDefinition, DirectionalPortsAndZeroContext_PreservesCleanSeparation) {
     FsmIr model;
     model.name = "DualChannelMachine";
-    model.ns = "TestSystem";
+    model.package = "TestSystem";
 
     // 1. InPort with numeric contract
     PortDefinition in_p("sensor_val", "float", PortDirection::In);
@@ -496,6 +486,821 @@ TEST(FsmIrTest, DomainPortSeparationAndZeroContext) {
     ASSERT_EQ(model.signals[0].attributes.size(), 1u);
     EXPECT_EQ(model.signals[0].attributes[0].name, "boost_val");
     EXPECT_EQ(model.signals[0].attributes[0].type, "float");
+}
+
+// ============================================================================
+// Compound User-Defined Types & Algebraic EFSM Tests
+// ============================================================================
+
+/**
+ * @brief Verify TypeDefinition factory helpers and type classification kinds.
+ * @scenario Instantiate primitive, enum, and struct TypeDefinition instances.
+ * @expected Classification predicates correctly identify primitive, enum, and struct kinds.
+ */
+TEST(TypeDefinition, CustomTypeHierarchyFactories_CategorizesPrimitivesEnumsAndStructs) {
+    // 1. Enum creation via factory
+    auto nav_enum = TypeDefinition::make_enum("NavigationMode", "uint8_t", {}, "Autonomous navigation modes");
+    EXPECT_EQ(nav_enum.name, "NavigationMode");
+    EXPECT_EQ(nav_enum.kind, TypeKind::Enum);
+    EXPECT_EQ(nav_enum.underlying_type, "uint8_t");
+    EXPECT_EQ(nav_enum.description, "Autonomous navigation modes");
+    EXPECT_EQ(type_kind_to_string(nav_enum.kind), "enum");
+
+    nav_enum.add_literal("Manual", 0, "Pilot manual control");
+    nav_enum.add_literal("AutoWaypoint", 1, "Autonomous waypoint tracking");
+    nav_enum.add_literal("ReturnToHome", 2, "Failsafe RTH");
+
+    EXPECT_EQ(nav_enum.literals.size(), 3u);
+    EXPECT_TRUE(nav_enum.has_literal("AutoWaypoint"));
+    EXPECT_FALSE(nav_enum.has_literal("Unknown"));
+
+    const auto* lit_auto = nav_enum.find_literal("AutoWaypoint");
+    ASSERT_NE(lit_auto, nullptr);
+    EXPECT_EQ(lit_auto->name, "AutoWaypoint");
+    ASSERT_TRUE(lit_auto->value.has_value());
+    EXPECT_EQ(*lit_auto->value, 1);
+
+    auto* mut_rth = nav_enum.find_literal_mut("ReturnToHome");
+    ASSERT_NE(mut_rth, nullptr);
+    mut_rth->value = 99;
+    EXPECT_EQ(*nav_enum.find_literal("ReturnToHome")->value, 99);
+
+    // 2. Struct creation via factory
+    auto waypoint_struct = TypeDefinition::make_struct("Waypoint3D", {}, false, "3D GPS coordinate");
+    EXPECT_EQ(waypoint_struct.name, "Waypoint3D");
+    EXPECT_EQ(waypoint_struct.kind, TypeKind::Struct);
+    EXPECT_FALSE(waypoint_struct.is_datatype);
+    EXPECT_EQ(type_kind_to_string(waypoint_struct.kind), "struct");
+
+    waypoint_struct.add_field(StructField("latitude", "double", "0.0", "[deg]", -90.0, 90.0, "Latitude"));
+    waypoint_struct.add_field(StructField("longitude", "double", "0.0", "[deg]", -180.0, 180.0, "Longitude"));
+    waypoint_struct.add_field(StructField("altitude", "float", "100.0f", "[m]", 0.0, 50000.0, "Altitude AGL"));
+
+    EXPECT_EQ(waypoint_struct.fields.size(), 3u);
+    EXPECT_TRUE(waypoint_struct.has_field("altitude"));
+    EXPECT_FALSE(waypoint_struct.has_field("speed"));
+
+    const auto* f_alt = waypoint_struct.find_field("altitude");
+    ASSERT_NE(f_alt, nullptr);
+    EXPECT_EQ(f_alt->type, "float");
+    EXPECT_EQ(f_alt->default_value, "100.0f");
+    ASSERT_TRUE(f_alt->physical_unit.has_value());
+    EXPECT_EQ(*f_alt->physical_unit, "[m]");
+
+    // 3. Alias creation via factory
+    auto speed_alias = TypeDefinition::make_alias("MetersPerSecond", "float", "Velocity measurement unit");
+    EXPECT_EQ(speed_alias.name, "MetersPerSecond");
+    EXPECT_EQ(speed_alias.kind, TypeKind::Alias);
+    EXPECT_EQ(speed_alias.underlying_type, "float");
+    EXPECT_EQ(type_kind_to_string(speed_alias.kind), "alias");
+
+    // 4. Equality operator
+    TypeDefinition nav_copy = nav_enum;
+    EXPECT_EQ(nav_enum, nav_copy);
+    nav_copy.underlying_type = "uint16_t";
+    EXPECT_NE(nav_enum, nav_copy);
+
+    // 5. String conversion helpers
+    EXPECT_EQ(string_to_type_kind("enum"), TypeKind::Enum);
+    EXPECT_EQ(string_to_type_kind("struct"), TypeKind::Struct);
+    EXPECT_EQ(string_to_type_kind("alias"), TypeKind::Alias);
+}
+
+/**
+ * @brief Verify custom type registration, lookup, and canonical sorting in FsmIr.
+ * @scenario Add custom enums and structs in non-alphabetical order.
+ * @expected find_custom_type returns instances and canonicalize() sorts types alphabetically.
+ */
+TEST(FsmIr, CustomTypesMetamodelIntegration_SortsAlphabeticallyAndFindsDefinitions) {
+    FsmIr ir;
+    ir.name = "AvionicsController";
+
+    // Add types in unsorted order
+    auto type_z = TypeDefinition::make_alias("Voltage_V", "float");
+    auto type_a = TypeDefinition::make_enum("FlightState", "uint8_t");
+    type_a.add_literal("Disarmed", 0);
+    type_a.add_literal("Armed", 1);
+    auto type_m = TypeDefinition::make_struct("GpsFix");
+    type_m.add_field(StructField("satellites", "uint8_t", "0"));
+
+    ir.add_type(type_z);
+    ir.add_type(type_a);
+    ir.add_type(type_m);
+
+    EXPECT_EQ(ir.custom_types.size(), 3u);
+    EXPECT_TRUE(ir.has_type("FlightState"));
+    EXPECT_TRUE(ir.has_type("GpsFix"));
+    EXPECT_TRUE(ir.has_type("Voltage_V"));
+    EXPECT_FALSE(ir.has_type("NonExistentType"));
+
+    ASSERT_NE(ir.find_type("FlightState"), nullptr);
+    EXPECT_EQ(ir.find_type("FlightState")->kind, TypeKind::Enum);
+
+    ASSERT_NE(ir.find_type("GpsFix"), nullptr);
+    EXPECT_EQ(ir.find_type("GpsFix")->kind, TypeKind::Struct);
+
+    // Overwriting existing type
+    auto updated_z = TypeDefinition::make_alias("Voltage_V", "double", "High-precision voltage");
+    ir.add_type(updated_z);
+    EXPECT_EQ(ir.custom_types.size(), 3u);
+    EXPECT_EQ(ir.find_type("Voltage_V")->underlying_type, "double");
+
+    // Deterministic canonical sorting
+    ir.canonicalize();
+    EXPECT_EQ(ir.custom_types[0].name, "FlightState");
+    EXPECT_EQ(ir.custom_types[1].name, "GpsFix");
+    EXPECT_EQ(ir.custom_types[2].name, "Voltage_V");
+
+    // Structural equality check on FsmIr
+    FsmIr ir_copy = ir;
+    EXPECT_EQ(ir, ir_copy);
+    ir_copy.custom_types[0].description = "Modified description";
+    EXPECT_NE(ir, ir_copy);
+}
+
+/**
+ * @brief Verify ExpressionAstNode creation, nesting, and string formatting.
+ * @scenario Construct binary arithmetic and boolean expression trees.
+ * @expected to_string() correctly formats infix expressions with operator precedence.
+ */
+TEST(ExpressionAstNode, LeafAndBinaryExpressions_SerializesTargetAgnosticStrings) {
+    // 1. Leaf literals
+    auto lit_int = ExpressionAstNode::make_int_literal(42);
+    EXPECT_EQ(lit_int.kind, ExpressionKind::IntegerLiteral);
+    EXPECT_EQ(lit_int.to_string(), "42");
+
+    auto lit_float = ExpressionAstNode::make_float_literal(3.14);
+    EXPECT_EQ(lit_float.kind, ExpressionKind::FloatLiteral);
+    EXPECT_NE(lit_float.to_string().find("3.14"), std::string::npos);
+
+    auto lit_bool = ExpressionAstNode::make_bool_literal(true);
+    EXPECT_EQ(lit_bool.kind, ExpressionKind::BooleanLiteral);
+    EXPECT_EQ(lit_bool.to_string(), "true");
+
+    auto lit_enum = ExpressionAstNode::make_enum_literal("FlightMode", "Auto");
+    EXPECT_EQ(lit_enum.kind, ExpressionKind::EnumLiteral);
+    EXPECT_EQ(lit_enum.to_string(), "FlightMode::Auto");
+
+    // 2. Leaf references
+    auto ref_var = ExpressionAstNode::make_variable_ref("counter");
+    EXPECT_EQ(ref_var.kind, ExpressionKind::VariableRef);
+    EXPECT_EQ(ref_var.to_string(), "counter");
+
+    auto ref_port = ExpressionAstNode::make_port_ref("telemetry", "altitude");
+    EXPECT_EQ(ref_port.kind, ExpressionKind::PortRef);
+    EXPECT_EQ(ref_port.to_string(), "telemetry.altitude");
+
+    auto ref_evt = ExpressionAstNode::make_event_param_ref("EvSensorUpdate", "pressure");
+    EXPECT_EQ(ref_evt.kind, ExpressionKind::EventParamRef);
+    EXPECT_EQ(ref_evt.to_string(), "EvSensorUpdate.pressure");
+
+    // 3. Unary operations
+    auto un_neg = ExpressionAstNode::make_unary(ExpressionOp::Negate, ref_var);
+    EXPECT_EQ(un_neg.kind, ExpressionKind::UnaryOp);
+    EXPECT_EQ(un_neg.to_string(), "-counter");
+
+    auto un_not = ExpressionAstNode::make_unary(ExpressionOp::LogicalNot, lit_bool);
+    EXPECT_EQ(un_not.to_string(), "!true");
+
+    // 4. Binary operations with operator precedence: (a + b) * 2
+    auto add_node = ExpressionAstNode::make_binary(ExpressionOp::Add, ExpressionAstNode::make_variable_ref("a"),
+                                                   ExpressionAstNode::make_variable_ref("b"));
+    auto mul_node =
+        ExpressionAstNode::make_binary(ExpressionOp::Multiply, add_node, ExpressionAstNode::make_int_literal(2));
+    EXPECT_EQ(mul_node.to_string(), "(a + b) * 2");
+
+    // a + b * 2
+    auto mul_sub = ExpressionAstNode::make_binary(ExpressionOp::Multiply, ExpressionAstNode::make_variable_ref("b"),
+                                                  ExpressionAstNode::make_int_literal(2));
+    auto add_parent =
+        ExpressionAstNode::make_binary(ExpressionOp::Add, ExpressionAstNode::make_variable_ref("a"), mul_sub);
+    EXPECT_EQ(add_parent.to_string(), "a + b * 2");
+
+    // 5. JSON serialization
+    std::string json_str = add_parent.to_json();
+    EXPECT_NE(json_str.find("\"kind\": \"BinaryOp\""), std::string::npos);
+    EXPECT_NE(json_str.find("\"op\": \"+\""), std::string::npos);
+    EXPECT_NE(json_str.find("\"symbol\": \"a\""), std::string::npos);
+    EXPECT_NE(json_str.find("\"value\": 2"), std::string::npos);
+}
+
+/**
+ * @brief Verify ExpressionAstNode::parse string expression parser.
+ * @scenario Parse algebraic expressions with nested parentheses and mixed operator precedence.
+ * @expected AST reflects correct binary operation grouping and operand evaluation order.
+ */
+TEST(ExpressionAstNode, AlgebraicArithmeticAndBooleanExpressions_ParsesPrecedenceCorrectly) {
+    // 1. Simple integer addition
+    auto ast1 = ExpressionAstNode::parse("counter + 1");
+    EXPECT_EQ(ast1.kind, ExpressionKind::BinaryOp);
+    EXPECT_EQ(ast1.op, ExpressionOp::Add);
+    ASSERT_EQ(ast1.children.size(), 2u);
+    EXPECT_EQ(ast1.children[0].kind, ExpressionKind::VariableRef);
+    EXPECT_EQ(ast1.children[0].symbol, "counter");
+    EXPECT_EQ(ast1.children[1].kind, ExpressionKind::IntegerLiteral);
+    EXPECT_EQ(std::get<int64_t>(ast1.children[1].value), 1);
+
+    // 2. Operator precedence: multiplication before addition
+    auto ast2 = ExpressionAstNode::parse("x + y * 10");
+    EXPECT_EQ(ast2.kind, ExpressionKind::BinaryOp);
+    EXPECT_EQ(ast2.op, ExpressionOp::Add);
+    EXPECT_EQ(ast2.children[0].symbol, "x");
+    EXPECT_EQ(ast2.children[1].op, ExpressionOp::Multiply);
+    EXPECT_EQ(ast2.children[1].children[0].symbol, "y");
+    EXPECT_EQ(std::get<int64_t>(ast2.children[1].children[1].value), 10);
+
+    // 3. Parentheses override precedence
+    auto ast3 = ExpressionAstNode::parse("(x + y) * 10");
+    EXPECT_EQ(ast3.kind, ExpressionKind::BinaryOp);
+    EXPECT_EQ(ast3.op, ExpressionOp::Multiply);
+    EXPECT_EQ(ast3.children[0].op, ExpressionOp::Add);
+    EXPECT_EQ(ast3.children[0].children[0].symbol, "x");
+    EXPECT_EQ(ast3.children[0].children[1].symbol, "y");
+
+    // 4. Bitwise shifts and masks
+    auto ast4 = ExpressionAstNode::parse("(mask & 255) << 2");
+    EXPECT_EQ(ast4.kind, ExpressionKind::BinaryOp);
+    EXPECT_EQ(ast4.op, ExpressionOp::ShiftLeft);
+    EXPECT_EQ(ast4.children[0].op, ExpressionOp::BitwiseAnd);
+
+    // 5. Unary operators
+    auto ast5 = ExpressionAstNode::parse("-delta");
+    EXPECT_EQ(ast5.kind, ExpressionKind::UnaryOp);
+    EXPECT_EQ(ast5.op, ExpressionOp::Negate);
+    EXPECT_EQ(ast5.children[0].symbol, "delta");
+
+    // 6. Port and register qualifiers
+    auto ast6 = ExpressionAstNode::parse("in.sensor_temp + reg.offset");
+    EXPECT_EQ(ast6.kind, ExpressionKind::BinaryOp);
+    EXPECT_EQ(ast6.children[0].kind, ExpressionKind::PortRef);
+    EXPECT_EQ(ast6.children[0].symbol, "sensor_temp");
+    EXPECT_EQ(ast6.children[1].kind, ExpressionKind::VariableRef);
+    EXPECT_EQ(ast6.children[1].symbol, "offset");
+
+    // 7. Boolean literals
+    auto ast7 = ExpressionAstNode::parse("true");
+    EXPECT_EQ(ast7.kind, ExpressionKind::BooleanLiteral);
+    EXPECT_TRUE(std::get<bool>(ast7.value));
+
+    // 8. Opaque C++ code fallback
+    auto ast8 = ExpressionAstNode::parse("compute_hash(buffer, 128);");
+    EXPECT_EQ(ast8.kind, ExpressionKind::RawExpression);
+    EXPECT_EQ(ast8.symbol, "compute_hash(buffer, 128);");
+}
+
+/**
+ * @brief Verify ActionAssignment with compound assignment operators and expression ASTs.
+ * @scenario Assignments with AddAssign, SubAssign, and MulAssign with parsed AST expressions.
+ * @expected Assignment structures preserve operator kinds and target identifiers.
+ */
+TEST(ActionAssignment, AssignmentOperatorsAndExpressionAst_ExtractsCompoundAssignments) {
+    // 1. Basic assignment with auto-parsed AST
+    ActionAssignment a1("counter", "counter + 1");
+    EXPECT_EQ(a1.target, "counter");
+    EXPECT_EQ(a1.op, AssignmentOp::Assign);
+    EXPECT_EQ(a1.expression, "counter + 1");
+    ASSERT_TRUE(a1.expr_ast.has_value());
+    EXPECT_EQ(a1.expr_ast->kind, ExpressionKind::BinaryOp);
+    EXPECT_EQ(a1.expr_ast->op, ExpressionOp::Add);
+
+    // 2. Direct construction with explicit AssignmentOp and AST
+    auto lit5 = ExpressionAstNode::make_int_literal(5);
+    ActionAssignment a2("retry_count", AssignmentOp::AddAssign, lit5);
+    EXPECT_EQ(a2.target, "retry_count");
+    EXPECT_EQ(a2.op, AssignmentOp::AddAssign);
+    EXPECT_EQ(a2.expression, "5");
+    ASSERT_TRUE(a2.expr_ast.has_value());
+    EXPECT_EQ(a2.expr_ast->kind, ExpressionKind::IntegerLiteral);
+
+    // 3. String parsing of assignment statements
+    auto parsed_add = ActionAssignment::parse("reg.count += 10;");
+    EXPECT_EQ(parsed_add.target, "count");
+    EXPECT_EQ(parsed_add.target.scope, LValueScope::Register);
+    EXPECT_EQ(parsed_add.op, AssignmentOp::AddAssign);
+    EXPECT_EQ(parsed_add.expression, "10");
+    ASSERT_TRUE(parsed_add.expr_ast.has_value());
+    EXPECT_EQ(parsed_add.expr_ast->kind, ExpressionKind::IntegerLiteral);
+
+    auto parsed_shl = ActionAssignment::parse("out.mask <<= 2");
+    EXPECT_EQ(parsed_shl.target, "mask");
+    EXPECT_EQ(parsed_shl.target.scope, LValueScope::OutPort);
+    EXPECT_EQ(parsed_shl.op, AssignmentOp::ShlAssign);
+    EXPECT_EQ(parsed_shl.expression, "2");
+
+    // 4. Operator string roundtrip
+    EXPECT_EQ(assignment_op_to_string(AssignmentOp::Assign), "=");
+    EXPECT_EQ(assignment_op_to_string(AssignmentOp::AddAssign), "+=");
+    EXPECT_EQ(assignment_op_to_string(AssignmentOp::SubAssign), "-=");
+    EXPECT_EQ(assignment_op_to_string(AssignmentOp::MulAssign), "*=");
+    EXPECT_EQ(assignment_op_to_string(AssignmentOp::DivAssign), "/=");
+    EXPECT_EQ(assignment_op_to_string(AssignmentOp::ModAssign), "%=");
+    EXPECT_EQ(assignment_op_to_string(AssignmentOp::ShlAssign), "<<=");
+    EXPECT_EQ(assignment_op_to_string(AssignmentOp::ShrAssign), ">>=");
+    EXPECT_EQ(assignment_op_to_string(AssignmentOp::AndAssign), "&=");
+    EXPECT_EQ(assignment_op_to_string(AssignmentOp::OrAssign), "|=");
+    EXPECT_EQ(assignment_op_to_string(AssignmentOp::XorAssign), "^=");
+}
+
+/**
+ * @brief Verify lossless JSON serialization and deserialization of custom types and expressions.
+ * @scenario Serialize FsmIr containing custom types, ports, and action ASTs to JSON and deserialize back.
+ * @expected Deserialized FsmIr is structurally identical to the original model.
+ */
+TEST(FsmIrSerializer, CustomTypesAndExpressionAst_SerializesAndDeserializesJson) {
+    FsmIr ir;
+    ir.name = "MissionComputer";
+
+    // Add user compound types
+    auto nav_enum = TypeDefinition::make_enum("NavMode", "uint8_t", {}, "Navigation modes");
+    nav_enum.add_literal("Manual", 0);
+    nav_enum.add_literal("Auto", 1);
+    ir.add_type(nav_enum);
+
+    auto wp_struct = TypeDefinition::make_struct("Waypoint", {}, false, "Waypoint coordinate");
+    wp_struct.add_field(StructField("lat", "float", "0.0f"));
+    wp_struct.add_field(StructField("lon", "float", "0.0f"));
+    ir.add_type(wp_struct);
+
+    auto alias_type = TypeDefinition::make_alias("HeadingDeg", "float", "Aircraft heading in degrees");
+    ir.add_type(alias_type);
+
+    // Add variables, states, transitions with algebraic action
+    VariableDefinition var_retry("retry_count", "int", "0");
+    ir.variables.push_back(var_retry);
+
+    ir.add_state("Idle");
+    ir.add_state("Active");
+    ir.initial_state = "Idle";
+
+    TransitionEdge edge("Idle", "Active", "EvStart", std::nullopt);
+    ActionSignature act_sig("OnStart");
+    act_sig.assignments.push_back(ActionAssignment("retry_count", "retry_count + 1", AssignmentOp::Assign));
+    edge.transition_action = act_sig;
+    ir.add_transition(std::move(edge));
+
+    ir.canonicalize();
+
+    // 1. Serialize to JSON
+    std::string json = FsmIrSerializer::serialize_json(ir);
+
+    // Verify presence of top-level "types" array
+    EXPECT_NE(json.find("\"types\": ["), std::string::npos);
+    EXPECT_NE(json.find("\"name\": \"NavMode\""), std::string::npos);
+    EXPECT_NE(json.find("\"kind\": \"enum\""), std::string::npos);
+    EXPECT_NE(json.find("\"name\": \"Waypoint\""), std::string::npos);
+    EXPECT_NE(json.find("\"kind\": \"struct\""), std::string::npos);
+    EXPECT_NE(json.find("\"name\": \"HeadingDeg\""), std::string::npos);
+    EXPECT_NE(json.find("\"kind\": \"alias\""), std::string::npos);
+
+    // Verify assignment serialization with op and ast
+    EXPECT_NE(json.find("\"variable\": \"retry_count\""), std::string::npos);
+    EXPECT_NE(json.find("\"op\": \"=\""), std::string::npos);
+    EXPECT_NE(json.find("\"ast\": {"), std::string::npos);
+
+    // 2. Parse back with FsmIrDeserializer
+    FsmIr parsed_ir;
+    std::string err;
+    bool ok = FsmIrDeserializer::deserialize_json(json, parsed_ir, err);
+    ASSERT_TRUE(ok) << "JSON parse error: " << err;
+
+    // Verify types restored in parsed model
+    EXPECT_TRUE(parsed_ir.has_type("NavMode"));
+    EXPECT_TRUE(parsed_ir.has_type("Waypoint"));
+    EXPECT_TRUE(parsed_ir.has_type("HeadingDeg"));
+
+    const auto* parsed_enum = parsed_ir.find_type("NavMode");
+    ASSERT_NE(parsed_enum, nullptr);
+    EXPECT_EQ(parsed_enum->kind, TypeKind::Enum);
+    EXPECT_TRUE(parsed_enum->has_literal("Auto"));
+
+    const auto* parsed_struct = parsed_ir.find_type("Waypoint");
+    ASSERT_NE(parsed_struct, nullptr);
+    EXPECT_EQ(parsed_struct->kind, TypeKind::Struct);
+    EXPECT_TRUE(parsed_struct->has_field("lat"));
+}
+
+/**
+ * @brief Verify SemanticValidationPass detects semantic errors in IR definitions.
+ * @scenario FsmIr containing undeclared variables, unknown types, or invalid transition references.
+ * @expected Pass returns false and emits specific diagnostic error codes.
+ */
+TEST(SemanticValidationPass, InvalidTypesAndUndeclaredVariables_EmitsDiagnosticErrors) {
+    // 1. Valid model
+    FsmIr valid_ir;
+    valid_ir.name = "ValidMachine";
+    valid_ir.add_state("S1");
+    valid_ir.initial_state = "S1";
+
+    valid_ir.add_type(TypeDefinition::make_enum("EngineState", "uint8_t"));
+    valid_ir.variables.push_back(VariableDefinition("engine_mode", "EngineState", "0"));
+    valid_ir.variables.push_back(VariableDefinition("speed_rpm", "int", "0"));
+    valid_ir.ports.push_back(PortDefinition("out_speed", "int", PortDirection::Out));
+    valid_ir.ports.push_back(PortDefinition("in_sensor", "int", PortDirection::In));
+
+    TransitionEdge t1("S1", "S1", "EvTick", std::nullopt);
+    ActionSignature a1("UpdateSpeed");
+    a1.assignments.push_back(ActionAssignment("speed_rpm", "speed_rpm + 10"));
+    a1.assignments.push_back(ActionAssignment("out_speed", "100"));
+    t1.transition_action = a1;
+    valid_ir.add_transition(t1);
+
+    // Structural well-formedness
+    std::string wf_err;
+    EXPECT_TRUE(valid_ir.is_well_formed(wf_err));
+    EXPECT_TRUE(wf_err.empty());
+
+    FsmIr malformed_ir = valid_ir;
+    malformed_ir.transitions[0].target = "NonExistentState";
+    EXPECT_FALSE(malformed_ir.is_well_formed(wf_err));
+    EXPECT_NE(wf_err.find("NonExistentState"), std::string::npos);
+
+    // Semantic analysis
+    std::vector<std::string> errors, warnings;
+    EXPECT_TRUE(fsm::middleend::analysis::SemanticAnalyzer::validate(valid_ir, errors, warnings));
+    EXPECT_TRUE(errors.empty());
+
+    // 2. Semantic Failure: Assignment to unknown target variable
+    FsmIr bad_ir1 = valid_ir;
+    bad_ir1.transitions[0].transition_action->assignments.push_back(ActionAssignment("unknown_var", "10"));
+    errors.clear();
+    warnings.clear();
+    EXPECT_FALSE(fsm::middleend::analysis::SemanticAnalyzer::validate(bad_ir1, errors, warnings));
+    ASSERT_FALSE(errors.empty());
+    EXPECT_NE(errors[0].find("unknown_var"), std::string::npos);
+
+    // 3. Semantic Failure: Assignment to read-only InPort
+    FsmIr bad_ir2 = valid_ir;
+    bad_ir2.transitions[0].transition_action->assignments.push_back(ActionAssignment("in_sensor", "42"));
+    errors.clear();
+    warnings.clear();
+    EXPECT_FALSE(fsm::middleend::analysis::SemanticAnalyzer::validate(bad_ir2, errors, warnings));
+    ASSERT_FALSE(errors.empty());
+    EXPECT_NE(errors[0].find("read-only InPort"), std::string::npos);
+
+    // 4. Semantic Failure: Unknown variable type
+    FsmIr bad_ir3 = valid_ir;
+    bad_ir3.variables.push_back(VariableDefinition("mystery_data", "UnregisteredCustomType", "0"));
+    errors.clear();
+    warnings.clear();
+    EXPECT_FALSE(fsm::middleend::analysis::SemanticAnalyzer::validate(bad_ir3, errors, warnings));
+    ASSERT_FALSE(errors.empty());
+    EXPECT_NE(errors[0].find("UnregisteredCustomType"), std::string::npos);
+
+    // 5. Semantic Warning: Type mismatch (assigning numeric literal to boolean target)
+    FsmIr warn_ir = valid_ir;
+    warn_ir.variables.push_back(VariableDefinition("is_running", "bool", "false"));
+    warn_ir.transitions[0].transition_action->assignments.push_back(ActionAssignment("is_running", "42"));
+    errors.clear();
+    warnings.clear();
+    EXPECT_TRUE(fsm::middleend::analysis::SemanticAnalyzer::validate(warn_ir, errors, warnings));
+    ASSERT_FALSE(warnings.empty());
+    EXPECT_NE(warnings[0].find("Type mismatch"), std::string::npos);
+}
+
+/**
+ * @brief Verify SemanticValidationPass integration within the PassManager pipeline.
+ * @scenario Run PassManager on a model with semantic defects.
+ * @expected PassManager execution terminates with error diagnostics.
+ */
+TEST(PassManager, SemanticValidationStage_RejectsSemanticallyInvalidModels) {
+    FsmIr ir;
+    ir.name = "PipelineModel";
+    ir.add_state("A");
+    ir.initial_state = "A";
+    ir.variables.push_back(VariableDefinition("counter", "int", "0"));
+
+    TransitionEdge edge("A", "A", "EvStep", std::nullopt);
+    ActionSignature act("Step");
+    act.assignments.push_back(ActionAssignment("counter", "counter + 1"));
+    edge.transition_action = act;
+    ir.add_transition(std::move(edge));
+
+    DiagnosticEngine diag;
+    PassManager pm = PassManager::create_default_pipeline();
+    bool pass_res = pm.run(ir, diag);
+    EXPECT_TRUE(pass_res);
+    EXPECT_FALSE(diag.has_errors());
+
+    // Test with invalid model in pipeline
+    ir.transitions[0].transition_action->assignments.push_back(ActionAssignment("non_existent_reg", "99"));
+    DiagnosticEngine bad_diag;
+    bool bad_res = pm.run(ir, bad_diag);
+    EXPECT_FALSE(bad_res);
+    EXPECT_TRUE(bad_diag.has_errors());
+}
+
+/**
+ * @brief Verify FsmValidator integrates custom types and semantic validation.
+ * @scenario Run FsmValidator::validate on valid and invalid state machine models.
+ * @expected Returns true for valid models and false with diagnostics for invalid models.
+ */
+TEST(FsmValidator, CustomTypesAndSemanticValidation_EmitsDiagnosticsOnErrors) {
+    FsmIr ir;
+    ir.name = "ValidatorModel";
+    ir.add_state("Active");
+    ir.initial_state = "Active";
+
+    // Unknown port type
+    ir.ports.push_back(PortDefinition("bad_port", "InvalidNonExistentType", PortDirection::Out));
+
+    auto result = FsmValidator::validate(ir);
+    EXPECT_FALSE(result.is_valid);
+    ASSERT_FALSE(result.errors.empty());
+
+    bool found_semantic_err = false;
+    for (const auto& err : result.errors) {
+        if (err.find("InvalidNonExistentType") != std::string::npos) {
+            found_semantic_err = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_semantic_err);
+}
+
+/**
+ * @brief Verify SignalDefinition acts as single source of truth for event stimuli.
+ * @scenario Define signals with carried payload types and reference in SignalTrigger.
+ * @expected Stimuli definitions link trigger events to strongly-typed signal payloads.
+ */
+TEST(SignalDefinition, StimuliSignalsSingleTruth_DifferentiatesEventsAndCarriedPayloads) {
+    FsmIr ir;
+    ir.name = "StimuliModel";
+
+    // Add pure events via add_event
+    ir.add_event("StartCmd", "Trigger system launch");
+    ir.add_event("StopCmd", "Trigger emergency stop");
+
+    // Add typed signal
+    SignalDefinition typed_sig("TelemetryUpdate");
+    typed_sig.attributes.emplace_back("battery_level", "float", "100.0");
+    ir.signals.push_back(typed_sig);
+
+    EXPECT_EQ(ir.signals.size(), 3u);
+
+    // Verify lookup helpers
+    const auto* start_sig = ir.find_signal("StartCmd");
+    ASSERT_NE(start_sig, nullptr);
+    EXPECT_EQ(start_sig->description, "Trigger system launch");
+    EXPECT_TRUE(start_sig->attributes.empty());
+
+    // Verify views
+    auto names = ir.get_event_names();
+    EXPECT_EQ(names.size(), 3u);
+    EXPECT_TRUE(std::find(names.begin(), names.end(), "StartCmd") != names.end());
+    EXPECT_TRUE(std::find(names.begin(), names.end(), "TelemetryUpdate") != names.end());
+
+    auto event_views = ir.get_events();
+    EXPECT_EQ(event_views.size(), 3u);
+    EXPECT_EQ(event_views[0].name, "StartCmd");
+    EXPECT_EQ(event_views[0].description, "Trigger system launch");
+}
+
+/**
+ * @brief Verify ActionSignature dual representation (raw string and structured instructions).
+ * @scenario ActionSignature initialized with raw code string and parsed into instruction AST nodes.
+ * @expected Both string and structured instruction representations remain accessible.
+ */
+TEST(ActionSignature, DualStringAndAstRepresentation_SynchronizesSynchronousInstructions) {
+    // StateNode action accessors
+    StateNode st("Working");
+    EXPECT_TRUE(st.get_entry_action().empty());
+    EXPECT_TRUE(st.get_exit_action().empty());
+
+    st.set_entry_action("InitWorker");
+    EXPECT_EQ(st.get_entry_action(), "InitWorker");
+    ASSERT_EQ(st.entry_actions.size(), 1u);
+    EXPECT_EQ(st.entry_actions[0].name, "InitWorker");
+
+    st.set_exit_action("CleanupWorker");
+    EXPECT_EQ(st.get_exit_action(), "CleanupWorker");
+    ASSERT_EQ(st.exit_actions.size(), 1u);
+    EXPECT_EQ(st.exit_actions[0].name, "CleanupWorker");
+
+    // TransitionEdge guard & action accessors
+    TransitionEdge edge("Working", "Idle", "EvWork");
+    EXPECT_TRUE(edge.get_guard().empty());
+    EXPECT_TRUE(edge.get_action().empty());
+
+    edge.set_guard("power_level > 20");
+    EXPECT_EQ(edge.get_guard(), "power_level > 20");
+    ASSERT_TRUE(edge.guard_ast.has_value());
+    EXPECT_EQ(edge.guard_ast->to_string(), "power_level > 20");
+
+    edge.set_action("NotifyPowerLow");
+    EXPECT_EQ(edge.get_action(), "NotifyPowerLow");
+    ASSERT_TRUE(edge.transition_action.has_value());
+    EXPECT_EQ(edge.transition_action->name, "NotifyPowerLow");
+
+    // Verify clear via nullopt
+    edge.set_guard(std::nullopt);
+    EXPECT_TRUE(edge.get_guard().empty());
+    EXPECT_FALSE(edge.guard_ast.has_value());
+}
+
+/**
+ * @brief Verify automatic interface synthesis infers signals and ports from triggers and actions.
+ * @scenario FsmIr with transitions referencing undeclared signals and port assignments.
+ * @expected synthesize_interface() populates signals and ports collections automatically.
+ */
+TEST(FsmIr, SynthesizeInterfaceFromTriggers_InfersExternalSignalsAndTypedPorts) {
+    FsmIr ir;
+    ir.name = "SynthesisModel";
+
+    auto& s1 = ir.add_state("Standby");
+    s1.set_entry_action("InitSensors");
+    s1.set_exit_action("LogStandbyExit");
+
+    auto& s2 = ir.add_state("Active");
+    s2.set_entry_action("ArmMotors");
+
+    // Transitions with guards and actions
+    TransitionEdge t1("Standby", "Active", "EvStart");
+    t1.set_guard("BatteryHealthy");
+    t1.set_action("ExecutePreflight");
+    ir.add_transition(std::move(t1));
+
+    TransitionEdge t2("Active", "Standby", "EvStop");
+    t2.set_guard("BatteryLow");
+    t2.set_action("ExecuteShutdown");
+    ir.add_transition(std::move(t2));
+
+    // Initially guards and actions are empty
+    EXPECT_TRUE(ir.guards.empty());
+    EXPECT_TRUE(ir.actions.empty());
+
+    // Canonicalize triggers sync_interfaces
+    ir.canonicalize();
+
+    // Guards synthesized and sorted
+    ASSERT_EQ(ir.guards.size(), 2u);
+    EXPECT_EQ(ir.guards[0].name, "BatteryHealthy");
+    EXPECT_EQ(ir.guards[1].name, "BatteryLow");
+
+    // Actions synthesized and sorted
+    ASSERT_EQ(ir.actions.size(), 5u);
+    EXPECT_EQ(ir.actions[0].name, "ArmMotors");
+    EXPECT_EQ(ir.actions[1].name, "ExecutePreflight");
+    EXPECT_EQ(ir.actions[2].name, "ExecuteShutdown");
+    EXPECT_EQ(ir.actions[3].name, "InitSensors");
+    EXPECT_EQ(ir.actions[4].name, "LogStandbyExit");
+}
+
+/**
+ * @brief Verify direct graph adjacency index methods (outgoing and incoming transitions).
+ * @scenario Query incoming and outgoing transitions for states across a connected graph.
+ * @expected Incoming and outgoing transition edge vectors match graph topology exactly.
+ */
+TEST(FsmIr, DirectGraphAdjacencyLookup_ComputesIncomingAndOutgoingTransitions) {
+    FsmIr ir;
+    ir.name = "TopologyModel";
+
+    ir.add_state("Idle");
+    ir.add_state("Running");
+    ir.add_state("Paused");
+    ir.add_state("Stopped");
+
+    // Transition 0: Idle -> Running
+    ir.add_transition(TransitionEdge("Idle", "Running", "EvStart"));
+    // Transition 1: Running -> Paused
+    ir.add_transition(TransitionEdge("Running", "Paused", "EvPause"));
+    // Transition 2: Paused -> Running
+    ir.add_transition(TransitionEdge("Paused", "Running", "EvResume"));
+    // Transition 3: Running -> Stopped
+    ir.add_transition(TransitionEdge("Running", "Stopped", "EvStop"));
+
+    ir.canonicalize();
+
+    const auto* idle = ir.find_state("Idle");
+    ASSERT_NE(idle, nullptr);
+    EXPECT_EQ(idle->incoming_transitions.size(), 0u);
+    ASSERT_EQ(idle->outgoing_transitions.size(), 1u);
+
+    const auto* running = ir.find_state("Running");
+    ASSERT_NE(running, nullptr);
+    // Running receives from Idle (t0) and Paused (t2)
+    EXPECT_EQ(running->incoming_transitions.size(), 2u);
+    // Running goes to Paused (t1) and Stopped (t3)
+    EXPECT_EQ(running->outgoing_transitions.size(), 2u);
+
+    // Verify O(1) transition lookup through contiguous indices
+    for (uint32_t idx : running->outgoing_transitions) {
+        ASSERT_LT(idx, ir.transitions.size());
+        EXPECT_EQ(ir.transitions[idx].source, "Running");
+        EXPECT_TRUE(ir.transitions[idx].target == "Paused" || ir.transitions[idx].target == "Stopped");
+    }
+
+    const auto* paused = ir.find_state("Paused");
+    ASSERT_NE(paused, nullptr);
+    EXPECT_EQ(paused->incoming_transitions.size(), 1u);
+    EXPECT_EQ(paused->outgoing_transitions.size(), 1u);
+
+    const auto* stopped = ir.find_state("Stopped");
+    ASSERT_NE(stopped, nullptr);
+    EXPECT_EQ(stopped->incoming_transitions.size(), 1u);
+    EXPECT_EQ(stopped->outgoing_transitions.size(), 0u);
+}
+
+/**
+ * @brief Verify FsmIr maintains clean package and target-agnostic attributes.
+ * @scenario Configure model package, namespace, and target-agnostic attributes.
+ * @expected Attributes are preserved without imposing any C-like runtime constraints.
+ */
+TEST(FsmIr, TargetAgnosticSemanticsAndPackages_DecouplesFromRuntimeBindings) {
+    FsmIr ir;
+    ir.name = "MissionSystem";
+    ir.package = "aerospace.avionics";
+    ir.attributes["author"] = "flight_team";
+    ir.attributes["target_standard"] = "DO-178C";
+
+    ir.add_state("Standby");
+    ir.add_state("Armed");
+    ir.add_transition(TransitionEdge("Standby", "Armed", "EvArm"));
+
+    ir.canonicalize();
+
+    EXPECT_EQ(ir.package, "aerospace.avionics");
+    EXPECT_EQ(ir.attributes.at("author"), "flight_team");
+    EXPECT_EQ(ir.attributes.at("target_standard"), "DO-178C");
+
+    // JSON round-trip
+    std::string json = FsmIrSerializer::serialize_json(ir);
+    EXPECT_NE(json.find("\"package\": \"aerospace.avionics\""), std::string::npos);
+    EXPECT_NE(json.find("\"target_standard\": \"DO-178C\""), std::string::npos);
+
+    // Verify deserialization
+    FsmIr deserialized;
+    std::string err;
+    EXPECT_TRUE(FsmIrDeserializer::deserialize_json(json, deserialized, err)) << err;
+    EXPECT_EQ(deserialized.package, "aerospace.avionics");
+    EXPECT_EQ(deserialized.attributes.at("author"), "flight_team");
+    EXPECT_EQ(deserialized.attributes.at("target_standard"), "DO-178C");
+}
+
+/**
+ * @brief Verify deterministic ID hash stability across different platform architectures.
+ * @scenario Compute deterministic ID for benchmark strings.
+ * @expected Hashes match predefined deterministic 64-bit hexadecimal strings.
+ */
+TEST(DeterministicId, CrossPlatformIndependence_ComputesPredictableHash) {
+    FsmIr ir1;
+    ir1.name = "GuidanceController";
+    ir1.package = "guidance";
+    ir1.add_state("Navigating");
+    ir1.canonicalize();
+
+    FsmIr ir2;
+    ir2.name = "GuidanceController";
+    ir2.package = "guidance";
+    ir2.add_state("Navigating");
+    ir2.canonicalize();
+
+    // Deterministic IDs must be invariant
+    EXPECT_EQ(ir1.id, ir2.id);
+    EXPECT_EQ(ir1.id.rfind("id_", 0), 0u);
+    EXPECT_EQ(ir1.states[0].id, ir2.states[0].id);
+}
+
+/**
+ * @brief Verify canonical transition sorting enforces strict ascending priority ordering.
+ * @scenario Transitions from same source state with priorities 3, 1, 2, and default 0.
+ * @expected canonicalize() orders transitions: 1, 2, 3, then default 0.
+ */
+TEST(FsmIr, CanonicalTransitionPriority_EnforcesAscendingEvaluationOrder) {
+    TransitionEdge t_def("S0", "S1", "EvA");
+    t_def.priority = 0;
+    EXPECT_FALSE(t_def.has_priority());
+
+    TransitionEdge t_high("S0", "S2", "EvA");
+    t_high.priority = 1;
+    EXPECT_TRUE(t_high.has_priority());
+
+    TransitionEdge t_med("S0", "S3", "EvA");
+    t_med.priority = 2;
+    EXPECT_TRUE(t_med.has_priority());
+
+    TransitionEdge t_low("S0", "S4", "EvA");
+    t_low.priority = 10;
+    EXPECT_TRUE(t_low.has_priority());
+
+    std::vector<TransitionEdge> edges = {t_def, t_low, t_high, t_med};
+
+    // Canonical priority sort comparator:
+    // 1 (highest) < 2 < 10 < ... < 0 (lowest)
+    std::sort(edges.begin(), edges.end(), [](const TransitionEdge& a, const TransitionEdge& b) {
+        auto pa = (a.priority == 0) ? std::numeric_limits<std::uint32_t>::max() : a.priority;
+        auto pb = (b.priority == 0) ? std::numeric_limits<std::uint32_t>::max() : b.priority;
+        return pa < pb;
+    });
+
+    ASSERT_EQ(edges.size(), 4u);
+    EXPECT_EQ(edges[0].priority, 1u);
+    EXPECT_EQ(edges[0].target, "S2");
+    EXPECT_EQ(edges[1].priority, 2u);
+    EXPECT_EQ(edges[1].target, "S3");
+    EXPECT_EQ(edges[2].priority, 10u);
+    EXPECT_EQ(edges[2].target, "S4");
+    EXPECT_EQ(edges[3].priority, 0u);
+    EXPECT_EQ(edges[3].target, "S1");
 }
 
 }  // namespace

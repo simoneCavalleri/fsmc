@@ -1,0 +1,47 @@
+@startuml SensorPipelineController
+skinparam monochrome true
+skinparam state {
+  BackgroundColor White
+  BorderColor Black
+  ArrowColor Black
+}
+
+' ============================================================================
+' PlantUML Model: Industrial Sensor Acquisition Pipeline
+' Demonstrating: External Unix Toolchain Integration & Dynamic Pass Plugins
+' ============================================================================
+
+' Typed MBSE I/O Ports with range bounds
+' @fsm:port name=raw_adc_microvolts type=float32 dir=in min=0.0 max=3300000.0
+' @fsm:port name=sample_rate_hz type=float32 dir=in min=1.0 max=50000.0
+' @fsm:port name=filtered_value type=float32 dir=out min=0.0 max=100.0
+' @fsm:port name=dsp_active type=bool dir=out
+
+[*] --> SensorSleep
+
+state SensorSleep {
+}
+
+state SensorActive {
+    [*] --> Sampling
+
+    state Sampling {
+        Sampling : stay <= 10ms
+    }
+
+    state Filtering {
+        Filtering : stay <= 5ms
+    }
+
+    state Publishing {
+    }
+
+    Sampling --> Filtering : AdcSampleReadyEvent / ProcessFirFilterAction
+    Filtering --> Publishing : FilterCompleteEvent / PublishMqttTelemetryAction
+    Publishing --> Sampling : PublishAckEvent
+}
+
+SensorSleep --> SensorActive : WakeupTimerEvent / PowerUpFrontendAction
+SensorActive --> SensorSleep : LowBatteryShutdownCmd / PowerDownFrontendAction
+
+@enduml

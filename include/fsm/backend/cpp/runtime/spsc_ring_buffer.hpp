@@ -117,9 +117,19 @@ class spsc_ring_buffer {
         return reinterpret_cast<T*>(raw_storage_.data() + (index & IndexMask) * sizeof(T));
     }
 
+    // C4324: MSVC warns when a struct is padded due to __declspec(align) / alignas.
+    // This padding is intentional: head_ and tail_ are placed on separate cache lines
+    // to eliminate false sharing between the producer and consumer threads.
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4324)
+#endif
     alignas(cache_line_size) std::atomic<std::size_t> head_{0};
     alignas(cache_line_size) std::atomic<std::size_t> tail_{0};
     alignas(alignof(T)) std::array<std::byte, sizeof(T) * Capacity> raw_storage_;
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 };
 
 }  // namespace fsm

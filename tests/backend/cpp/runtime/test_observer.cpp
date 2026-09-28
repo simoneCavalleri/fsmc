@@ -1,3 +1,8 @@
+/**
+ * @file test_observer.cpp
+ * @brief Unit test suite for observer pattern hooks and transition telemetry.
+ */
+
 #include <gtest/gtest.h>
 
 #include <chrono>
@@ -50,15 +55,11 @@ using ObserverTable =
                           fsm::row<Active, StopEvent, Idle>>;
 
 /**
- * @brief Test Intent: Verify synchronous observer callbacks receive comprehensive transition metadata.
- *
- * Scenario:
- * - Register observer callback receiving `fsm::transition_info`.
- * - Dispatch external transitions, internal transitions, and unhandled events.
- * - Verify observer receives correct source, target, event name, transition kind (external/internal),
- *   and outcome status (success/unhandled).
+ * @brief Verify synchronous FSM observer notifications on state transitions.
+ * @scenario Attach observer implementing on_transition() and dispatch events.
+ * @expected Observer receives notifications with correct source, event, target, and payload.
  */
-TEST(ObserverTest, SyncFsmObserverHooks) {
+TEST(ObserverPattern, SyncFsm_ObserverHooks_NotifiedOnStateTransitions) {
     fsm::dynamic_fsm<ObserverTable> machine;
 
     std::vector<fsm::transition_info> transitions;
@@ -130,14 +131,11 @@ TEST(ObserverTest, SyncFsmObserverHooks) {
 }
 
 /**
- * @brief Test Intent: Verify thread_safe_fsm observer firing asynchronously on background worker thread.
- *
- * Scenario:
- * - Register observer callback protected by mutex.
- * - Post 5 events into async queue.
- * - Wait for worker thread to process queue and verify all 5 transition events were recorded safely.
+ * @brief Verify thread-safe FSM observer notifications across threads.
+ * @scenario Attach observer to thread_safe_fsm and post events asynchronously.
+ * @expected Observer notified safely on worker thread without data race.
  */
-TEST(ObserverTest, ThreadSafeFsmObserverHooks) {
+TEST(ObserverPattern, ThreadSafeFsm_ObserverHooks_NotifiedAsynchronously) {
     fsm::thread_safe_fsm<ObserverTable> ts_machine;
 
     std::vector<fsm::transition_info> async_transitions;
@@ -189,13 +187,11 @@ TEST(ObserverTest, ThreadSafeFsmObserverHooks) {
 }
 
 /**
- * @brief Test Intent: Verify `post_async()` returning `std::future<dispatch_result>` and unhandled handlers.
- *
- * Scenario:
- * - Call `post_async()` and block on `future.get()` for both valid and unhandled events.
- * - Verify unhandled handler is invoked on invalid events.
+ * @brief Verify unhandled event callback on thread_safe_fsm.
+ * @scenario Dispatch event for which no valid transition exists in current state.
+ * @expected Unhandled event handler invoked with event details and machine state unchanged.
  */
-TEST(ObserverTest, ThreadSafeFsmPostAsyncAndUnhandledHandler) {
+TEST(ObserverPattern, UnhandledHandler_UnmatchedEvent_InvokesFallbackCallback) {
     fsm::thread_safe_fsm<ObserverTable> ts_machine;
 
     std::string last_unhandled_event;
@@ -235,13 +231,11 @@ TEST(ObserverTest, ThreadSafeFsmPostAsyncAndUnhandledHandler) {
 }
 
 /**
- * @brief Test Intent: Verify reentrant `send()` calls from inside observer callbacks are deadlock-free.
- *
- * Scenario:
- * - Register observer callback that immediately issues another `send()` event synchronously.
- * - Verify recursive/reentrant lock acquisition completes without deadlock.
+ * @brief Verify reentrant event posting from inside observer callback.
+ * @scenario From inside an observer hook, post a new event into the thread_safe_fsm queue.
+ * @expected Event is enqueued safely without deadlocking the active worker thread.
  */
-TEST(ObserverTest, ReentrantSendInsideObserverDeadlockFree) {
+TEST(ObserverPattern, ReentrantSend_InsideObserver_ExecutesWithoutDeadlock) {
     fsm::thread_safe_fsm<ObserverTable> ts_machine;
 
     bool reentrant_called = false;

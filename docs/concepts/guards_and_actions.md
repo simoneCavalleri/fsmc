@@ -117,7 +117,7 @@ During compilation and verification, `fsmc` runs an in-process abstract interpre
 
 ## 6. C++20 Concept Constraints (`fsm::Guard`, `fsm::Action`)
 
-In the modern C++20 runtime, transition definitions are constrained by compile-time concepts in [`fsm/backend/cpp/runtime/traits/concepts.hpp`](file:///home/simone/dev/github/fsmc/include/fsm/backend/cpp/runtime/traits/concepts.hpp):
+In the modern C++20 runtime, transition definitions are constrained by compile-time concepts in [`fsm/backend/cpp/runtime/traits/concepts.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/backend/cpp/runtime/traits/concepts.hpp):
 
 - **`fsm::Guard<G, Event, State, InPorts, Registers, Services>`**: Ensures $G$ is a callable functor returning a type convertible to `bool`, accepting any valid subset of domain parameters.
 - **`fsm::Action<A, Event, SrcState, DstState, InPorts, OutPorts, Registers, Services>`**: Ensures $A$ is a callable functor accepting any valid subset of lifecycle arguments.

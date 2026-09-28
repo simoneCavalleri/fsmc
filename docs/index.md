@@ -12,22 +12,24 @@ The architecture is centered around a strongly typed canonical Intermediate Repr
 flowchart LR
     subgraph Frontend["1. Frontend Ingestion"]
         SysML["OMG SysML v2"]
+        Stateflow["MathWorks Stateflow"]
         XMI["Cameo / MagicDraw XMI"]
         SCXML["W3C SCXML"]
         Diagrams["PlantUML / Mermaid / DOT / JSON"]
     end
 
     subgraph MiddleEnd["2. Canonical IR & Verification"]
-        IR["Canonical AST (FsmIr)<br/>Partitioned Memory Model"]
-        Passes["Optimization Passes"]
+        IR["Canonical AST (FsmIr)<br/>Native JSON Engine"]
+        Passes["30 Analysis & Optimization Passes<br/>(fsm-opt Optimizer)"]
         SMT["EFSM Interval & Guard Analysis"]
         MC["nuXmv Model Checking (LTL / CTL)"]
-        Interval["Contract Range Validation"]
+        Pipe["Unix Filter Pipeline (--pipe-through)<br/>Dynamic C++ Pass Plugins"]
     end
 
     subgraph Backend["3. Backend Targets & Emitters"]
         Transpile["Lossless Transpilation<br/>(SysML v2, SCXML, Diagrams)"]
         RTM["Traceability Matrix (RTM)"]
+        MCDC["MC/DC Test Harness Synthesis"]
         CppGen["C++17 / C++20 Runtime Target<br/>(Zero-Heap Reference Backend)"]
     end
 
@@ -35,23 +37,24 @@ flowchart LR
     IR --> Passes
     Passes --> SMT
     Passes --> MC
-    Passes --> Interval
+    Passes --> Pipe
     Passes --> Backend
 ```
 
 ### Compiler Subsystems
 
-1. **Frontend Ingestion**: Parses statechart models from OMG SysML v2, W3C SCXML, Cameo (XMI 2.1), PlantUML, Mermaid, Graphviz DOT, and XState JSON into the unified `FsmIr` AST.
+1. **Frontend Ingestion**: Parses statechart models from 9 formats (OMG SysML v2, W3C SCXML, MathWorks Stateflow XML, Cameo XMI 2.1, nuXmv SMV, PlantUML, Mermaid, Graphviz DOT, and Canonical JSON) into the unified `FsmIr` AST.
 2. **Middle-End Analysis & Formal Verification**:
-    - **Structural Passes**: Detects unreachable states, conflicting transitions, deadlocks, and incomplete choice paths.
+    - **Pass Optimization & Analysis Pipeline**: Supported by the standalone **`fsm-opt`** optimizer tool, orchestrating 30 transformation passes (28 standard passes across 7 pipeline stages, plus dynamic plugins and Unix pipe-through) including dead-state pruning, determinism enforcement, guard simplification, constant folding, Cartesian orthogonal product flattening, state minimization, WCET bound / Zeno-cycle detection, and submachine inlining.
+    - **Extensibility**: Unix filter pipeline (`--pipe-through <cmd>`) streaming JSON AST over stdin/stdout, and dynamic runtime C++ pass plugin loading (`--load-pass-plugin <path.so>`).
     - **EFSM Invariant & Guard Analysis**: Evaluates datapath contracts, range constraints, and guard satisfiability via static abstract interpretation over interval lattices.
     - **Symbolic Model Checking**: Proves temporal safety and liveness formulas specified in Linear Temporal Logic (LTL) and Computation Tree Logic (CTL) natively and exports to nuXmv / SMV.
-    - **Contract Validation**: Propagates value bounds over numeric variables and validates input/output port range contracts.
 3. **Backend Target Emission**:
-    - **Model Transpilation**: Converts models losslessly between supported representation formats (SysML v2, SCXML, PlantUML, Mermaid, DOT).
+    - **Model Transpilation**: Converts models losslessly between supported representation formats (SysML v2, SCXML, PlantUML, Mermaid, DOT, Stateflow).
     - **Formal Logic Emitters**: Generates symbolic transition systems for external model checkers (SMV / nuXmv).
+    - **Safety & Verification Synthesis**: Synthesizes standalone GoogleTest C++ harnesses verifying Modified Condition / Decision Coverage (MC/DC) for safety-critical certification (DO-178C / ISO 26262).
     - **Traceability Matrices**: Generates formal Requirement Traceability Matrices (RTM) in CSV, JSON, and Markdown formats linking `@fsm:req` annotations to model elements.
-    - **Target Code Generation**: Emits standalone, zero-heap C++17 or C++20 header files with strict 4-domain memory partitioning (`InPorts`, `OutPorts`, `Registers`, `Services`), designed with an open architecture to support additional target languages.
+    - **Target Code Generation**: Emits standalone, zero-heap C++17 or C++20 header files with strict 4-domain memory partitioning (`InPorts`, `OutPorts`, `Registers`, `Services`), deterministic real-time timer (`tick(dt)`), and flight recorder buffer.
 
 ---
 
@@ -59,11 +62,12 @@ flowchart LR
 
 | Capability | Description | Reference Documentation |
 | :--- | :--- | :--- |
-| **Universal Transpilation** | Ingest any supported format and export to any target format (e.g. SysML v2 to SCXML, Cameo to PlantUML). | [Modeling Languages](formal_languages/index.md) |
+| **Universal Transpilation** | Ingest any supported format across 9 MBSE, formal, and visual notations, and export to any target format. | [Modeling Languages](formal_languages/index.md) |
 | **Formal Verification** | Prove temporal safety properties (LTL/CTL) and datapath invariants at compile time before deployment. | [Verification & Safety](verification_and_safety/index.md) |
+| **Middle-End Passes & Optimizer (`fsm-opt`)** | 17 automated passes, dead-state pruning, Cartesian product flattening, WCET bounds, Unix filters (`--pipe-through`), and C++ plugins. | [Middle-End Passes](internals/middleend_passes.md) |
+| **Safety & Test Synthesis (MC/DC)** | Synthesize GoogleTest suites certifying Modified Condition / Decision Coverage for DO-178C / ISO 26262 compliance. | [MC/DC Synthesis](verification_and_safety/mcdc_synthesis.md) |
 | **Partitioned Memory Model** | Replaces unstructured context objects with 4 segregated domains: `InPorts`, `OutPorts`, `Registers`, and `Services`. | [Core Concepts](concepts/index.md) |
-| **Deterministic Execution** | C++ reference backend operates with 0 bytes heap allocation, 0 virtual tables, and $O(1)$ dispatch time. | [Memory & Real-Time](runtime_api/memory_and_realtime.md) |
-| **Interactive Web Playground** | Ingest, verify, transpile, and simulate statecharts directly in the browser via WebAssembly. | [Web Playground](playground/index.md) |
+| **Deterministic Execution** | C++ reference backend operates with 0 bytes heap allocation, 0 virtual tables, deterministic timer (`tick(dt)`), and $O(1)$ dispatch time. | [Memory & Real-Time](runtime_api/memory_and_realtime.md) |
 
 ---
 
@@ -152,15 +156,15 @@ The `fsmc` command-line interface provides unified access to all compiler pipeli
 === "Format Transpilation"
     ```bash
     # Transpile SysML v2 to W3C SCXML
-    fsmc -i mission.sysml --format scxml -o mission.scxml
+    fsmc -i mission.sysml -e scxml -o mission.scxml
 
     # Transpile Cameo XMI to PlantUML
-    fsmc -i cameo_model.xml --format puml -o model.puml
+    fsmc -i cameo_model.xml -e plantuml -o model.puml
     ```
 
 === "Requirement Traceability (RTM)"
     ```bash
-    # Export Requirement Traceability Matrix for DO-178C / ISO 26262 audit packages
+    # Export Requirement Traceability Matrix for verification audits
     fsmc -i mission.sysml --rtm-output rtm_matrix.md
     ```
 
@@ -172,7 +176,7 @@ The `fsmc` command-line interface provides unified access to all compiler pipeli
     # Generate Rust no_std module (In Development)
     fsmc -i mission.sysml -o uav_fsm.rs --target rust
 
-    # Generate ISO C99 MISRA-C compliant header & implementation (Planned)
+    # Generate ISO C99 header & implementation (Planned)
     fsmc -i mission.sysml -o uav_fsm.h --target c
     ```
 
@@ -182,7 +186,7 @@ The `fsmc` command-line interface provides unified access to all compiler pipeli
 
 Execute transitions using the segregated 4-domain memory model across target languages:
 
-=== "C++ Target (Production v0.5.0)"
+=== "C++ Target (Production)"
     ```cpp
     #include "uav_fsm.hpp"
     #include <iostream>
@@ -218,7 +222,7 @@ Execute transitions using the segregated 4-domain memory model across target lan
 
 === "Rust Target (Roadmap Preview)"
     > [!NOTE]
-    > **Roadmap Preview**: Rust `#![no_std]` code generation is an upcoming roadmap feature. C++ is the active production runtime in `v0.5.0`.
+    > **Roadmap Preview**: Rust `#![no_std]` code generation is an upcoming roadmap feature scheduled for `v0.7.0`. C++ is the active production runtime.
 
     ```rust
     // Generated Rust no_std State Machine
@@ -240,9 +244,9 @@ Execute transitions using the segregated 4-domain memory model across target lan
     }
     ```
 
-=== "C Target (MISRA-C Roadmap)"
+=== "C Target (Embedded C Roadmap)"
     > [!NOTE]
-    > **Roadmap Preview**: ISO C99 / MISRA-C code generation is an upcoming roadmap feature. C++ is the active production runtime in `v0.5.0`.
+    > **Roadmap Preview**: ISO C99 code generation is an upcoming roadmap feature scheduled for `v0.7.0`. C++ is the active production runtime.
 
     ```c
     #include "uav_fsm.h"
@@ -276,14 +280,13 @@ Execute transitions using the segregated 4-domain memory model across target lan
 - **[Getting Started](getting_started/index.md)**: System requirements, installation methods (CMake FetchContent, Conan, source builds), CLI reference, and build integration.
 - **[Step-by-Step Tutorials](tutorials/index.md)**: Progressive tutorials covering model design, datapath variables, hierarchical states (HFSM), formal verification, and code generation.
 - **[Architecture & Concepts](concepts/index.md)**: Semantics of the canonical IR, MBSE 4-domain memory architecture, and real-time execution guarantees.
-- **[Modeling Languages](formal_languages/index.md)**: Specifications and examples for SysML v2, Cameo XMI, SCXML, PlantUML, Mermaid, DOT, and JSON.
-- **[Verification & Safety](verification_and_safety/index.md)**: Formal verification using built-in model checking, EFSM interval analysis, nuXmv SMV export, and RTM generation.
+- **[Modeling Languages](formal_languages/index.md)**: Specifications and examples for SysML v2, Cameo XMI, MathWorks Stateflow XML, SCXML, PlantUML, Mermaid, DOT, and JSON.
+- **[Verification & Safety](verification_and_safety/index.md)**: Formal verification using built-in model checking, EFSM interval analysis, nuXmv SMV export, MC/DC test harness synthesis, and RTM generation.
 - **[Runtime C++ API](runtime_api/index.md)**: Synchronous Dual-Paradigm Core, Lock-Free SPSC, Thread-Safe MPSC, and Tracing API reference.
-- **[Compiler Internals](internals/architecture.md)**: Compiler pipeline internals, IR AST specification, pass manager, and contributor guide.
-- **[Interactive Playground](playground/index.md)**: In-browser compiler and simulation environment running via WebAssembly.
+- **[Compiler Internals](internals/architecture.md)**: Compiler pipeline internals, IR AST specification, pass manager (`fsm-opt`), and contributor guide.
 
 ---
 
 ## License
 
-`fsmc` is open-source software licensed under the [MIT License](file:///home/simone/dev/github/fsmc/LICENSE).
+`fsmc` is open-source software licensed under the [MIT License](https://github.com/simoneCavalleri/fsmc/blob/main/LICENSE).

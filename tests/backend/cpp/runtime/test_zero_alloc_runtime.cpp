@@ -1,3 +1,8 @@
+/**
+ * @file test_zero_alloc_runtime.cpp
+ * @brief Unit test suite for zero-allocation runtime, static ring buffers, and embedded static vectors.
+ */
+
 #include <gtest/gtest.h>
 
 #include <chrono>
@@ -20,15 +25,11 @@ struct AnonymousEvt {
 };
 
 /**
- * @brief Test Intent: Verify boundary conditions, peek inspection, and FIFO ordering for static_ring_buffer.
- *
- * Scenario:
- * - Push items up to capacity 4.
- * - Verify rejection on overflow.
- * - Inspect head item via peek() without removing.
- * - Pop items and verify exact FIFO order.
+ * @brief Verify static ring buffer push, pop, and capacity operations.
+ * @scenario Perform sequence of push and pop operations on fixed-capacity StaticRingBuffer.
+ * @expected Operations complete with FIFO ordering and zero dynamic memory allocations.
  */
-TEST(ZeroAllocRuntimeTest, StaticRingBufferBasicOps) {
+TEST(ZeroAllocRuntime, StaticRingBuffer_BasicOperations_ExecutesWithoutHeapAllocations) {
     fsm::static_ring_buffer<int, 4> buffer;
 
     EXPECT_TRUE(buffer.empty());
@@ -74,13 +75,11 @@ using MinimalTable = fsm::transition_table<fsm::transition<StateIdle, EvStart, S
                                            fsm::transition<StateStopped, EvReset, StateIdle>>;
 
 /**
- * @brief Test Intent: Verify true zero-allocation footprint (sizeof <= 32 bytes) for embedded runtimes.
- *
- * Scenario:
- * - Check compile-time machine size with no_observer policy (no heap vectors or std::function objects).
- * - Dispatch transitions synchronously and verify state progression.
+ * @brief Verify compile-time memory footprint of zero-allocation state machine.
+ * @scenario Measure sizeof() of state machine using zero-alloc policy.
+ * @expected Memory layout is completely flat with zero heap pointers.
  */
-TEST(ZeroAllocRuntimeTest, TrueCompileTimeZeroOverheadSize) {
+TEST(ZeroAllocRuntime, MemoryFootprint_CompileTimeSize_ZeroHeapOverhead) {
     using MinimalFSM = fsm::fsm<MinimalTable>;
 
     // Minimal FSM has NO history, NO deferred events, NO dynamic observer (no_observer policy)
@@ -105,14 +104,11 @@ TEST(ZeroAllocRuntimeTest, TrueCompileTimeZeroOverheadSize) {
 }
 
 /**
- * @brief Test Intent: Verify spsc_fsm operations with zero dynamic allocations and lock-free SPSC execution.
- *
- * Scenario:
- * - Enqueue events into fixed static queue.
- * - Process events one-by-one via process_one() and in batch via run_until_empty().
- * - Verify state inspection and queue queries.
+ * @brief Verify SPSC state machine operations under zero-allocation runtime.
+ * @scenario Dispatch events on SPSC machine using static buffers.
+ * @expected Transitions execute successfully without heap allocations.
  */
-TEST(ZeroAllocRuntimeTest, SpscFsmOperations) {
+TEST(ZeroAllocRuntime, SpscFsm_ZeroAllocTransitions_DispatchesCorrectly) {
     fsm::spsc_fsm<MinimalTable, fsm::no_ports, fsm::no_ports, fsm::no_registers, fsm::no_services, 8> spsc_machine;
 
     EXPECT_TRUE(spsc_machine.is_in_state<StateIdle>());
@@ -135,13 +131,11 @@ TEST(ZeroAllocRuntimeTest, SpscFsmOperations) {
 }
 
 /**
- * @brief Test Intent: Verify mutable peek inspection and buffer clearing for static_ring_buffer.
- *
- * Scenario:
- * - Modify head item in place via mutable peek() pointer.
- * - Call clear() and verify size becomes 0 and empty() returns true.
+ * @brief Verify peek and clear operations on static ring buffer.
+ * @scenario Inspect elements using peek() without popping, then call clear().
+ * @expected Elements inspected correctly and buffer cleared to empty state.
  */
-TEST(ZeroAllocRuntimeTest, StaticRingBufferPeekAndClear) {
+TEST(ZeroAllocRuntime, StaticRingBuffer_PeekAndClear_PreservesInternalIntegrity) {
     fsm::static_ring_buffer<int, 4> buf;
     EXPECT_EQ(buf.peek(), nullptr);
 
@@ -162,15 +156,11 @@ TEST(ZeroAllocRuntimeTest, StaticRingBufferPeekAndClear) {
 }
 
 /**
- * @brief Test Intent: Verify deterministic queue overflow rejection in spsc_fsm.
- *
- * Scenario:
- * - Instantiate static SPSC FSM with capacity 2.
- * - Enqueue 2 events until queue_full() is true.
- * - Attempt to post 3rd event and verify post() returns false without exceptions or heap allocation.
- * - Process one event and verify queue accepts subsequent posts.
+ * @brief Verify overflow handling on static ring buffer SPSC machine.
+ * @scenario Fill static queue to capacity and attempt additional push.
+ * @expected Overflow handled safely according to configured policy.
  */
-TEST(ZeroAllocRuntimeTest, SpscFsmQueueOverflowHandling) {
+TEST(ZeroAllocRuntime, SpscFsm_QueueOverflowHandling_DropsOrRejectsEvents) {
     // Capacity 2 static FSM
     fsm::spsc_fsm<MinimalTable, fsm::no_ports, fsm::no_ports, fsm::no_registers, fsm::no_services, 2> tiny_fsm;
     EXPECT_FALSE(tiny_fsm.queue_full());
@@ -189,9 +179,11 @@ TEST(ZeroAllocRuntimeTest, SpscFsmQueueOverflowHandling) {
 }
 
 /**
- * @brief Test Intent: Verify static_vector operations (push, pop, erase, copy, move, bounds).
+ * @brief Verify static vector operations (push_back, pop_back, indexing).
+ * @scenario Manipulate elements in fixed-capacity StaticVector.
+ * @expected Functions identically to std::vector within static capacity bounds.
  */
-TEST(ZeroAllocRuntimeTest, StaticVectorOperations) {
+TEST(ZeroAllocRuntime, StaticVector_BasicOperations_FunctionsAsZeroAllocVector) {
     fsm::static_vector<int, 5> vec;
     EXPECT_TRUE(vec.empty());
     EXPECT_FALSE(vec.full());
@@ -233,9 +225,11 @@ TEST(ZeroAllocRuntimeTest, StaticVectorOperations) {
 }
 
 /**
- * @brief Test Intent: Verify static_vector RAII resource reset on pop_back and erase.
+ * @brief Verify proper element destruction on erase and pop_back in static vector.
+ * @scenario Pop elements with custom destructors from StaticVector.
+ * @expected Destructors executed cleanly for each removed element.
  */
-TEST(ZeroAllocRuntimeTest, StaticVectorResourceResetOnEraseAndPopBack) {
+TEST(ZeroAllocRuntime, StaticVector_ResourceReset_DestructsElementsProperly) {
     auto sp1 = std::make_shared<int>(101);
     auto sp2 = std::make_shared<int>(102);
     auto sp3 = std::make_shared<int>(103);
@@ -302,9 +296,11 @@ using AdvancedTable =
                           fsm::row<OutsideState, EvResume, ChildA>, fsm::row<ChildB, EvReset, ChildA>>;
 
 /**
- * @brief Test Intent: Verify that FSM with History and Deferred Events operates with 100% Zero-Heap storage.
+ * @brief Verify complete zero-allocation execution including history states and deferred events.
+ * @scenario Execute complex state machine with history and deferred events under zero-alloc policy.
+ * @expected Full execution completes with zero calls to malloc/operator new.
  */
-TEST(ZeroAllocRuntimeTest, TrueZeroAllocWithHistoryAndDeferredEvents) {
+TEST(ZeroAllocRuntime, ZeroAllocRuntime_HistoryAndDeferred_ExecutesWithoutHeap) {
     using AdvancedFSM =
         fsm::fsm<AdvancedTable, fsm::no_ports, fsm::no_ports, fsm::no_registers, fsm::no_services, ChildA>;
 

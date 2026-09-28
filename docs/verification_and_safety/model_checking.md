@@ -108,9 +108,9 @@ You can compose complex multi-condition specifications using standard boolean op
 
 ---
 
-### Mission-Critical Safety Patterns (ISO 26262 / DO-178C / IEC 61508)
+### Mission-Critical Formal Safety Patterns
 
-For functional safety certification under automotive (ISO 26262 ASIL-D) or aerospace (DO-178C DAL-A) standards, statecharts must satisfy canonical formal verification patterns:
+In safety-critical and high-integrity statecharts, formal specifications typically express canonical verification patterns:
 
 | Safety Archetype | Informal Requirement | Canonical LTL Template | Concrete `fsmc` Example |
 | :--- | :--- | :--- | :--- |
@@ -320,7 +320,7 @@ fsmc verify <model_file> [options]
 
 | Option | Argument | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--engine` | `auto`, `nuxmv` | Specifies the underlying verification engine. `auto` uses the internal graph model checker. | `auto` |
+| `--engine` | `auto`, `nuxmv` | Specifies the verification engine. `auto` runs the internal graph model checker. For nuXmv symbolic verification, export with `-e smv`. | `auto` |
 | `--ltl` | `"<formula>"` | Injects an ad-hoc LTL formula for verification on the input model. | `""` |
 | `--ctl` | `"<formula>"` | Injects an ad-hoc CTL formula for verification on the input model. | `""` |
 

@@ -1,3 +1,8 @@
+/**
+ * @file test_timed_transitions.cpp
+ * @brief Unit test suite for timed transitions, timer cancellation, and discrete tick stepping.
+ */
+
 #include <gtest/gtest.h>
 
 #include <chrono>
@@ -7,6 +12,7 @@
 #include <vector>
 
 #include "fsm/backend/cpp/runtime/fsm.hpp"
+#include "fsm/backend/cpp/runtime/spsc_fsm.hpp"
 #include "fsm/backend/cpp/runtime/thread_safe_fsm.hpp"
 #include "fsm/backend/cpp/runtime/transition.hpp"
 
@@ -39,13 +45,11 @@ using ConnTable = fsm::transition_table<fsm::transition<Connecting, HandshakeOk,
                                         fsm::transition<Connecting, Timeout500ms, Disconnected, TimeoutAction>>;
 
 /**
- * @brief Test Intent: Verify synchronous dispatch of compile-time duration timed events (`fsm::after_ms<500>`).
- *
- * Scenario:
- * - Define transition table with `Timeout500ms`.
- * - Dispatch timed event directly and verify transition from Connecting to Disconnected.
+ * @brief Verify synchronous timed transition triggering after elapsed duration.
+ * @scenario Step discrete timer past transition timeout threshold.
+ * @expected Timed transition triggers and machine switches to destination state.
  */
-TEST(TimedTransitionsTest, SyncTimedEventDispatch) {
+TEST(TimedTransitions, SyncTimedEvent_Dispatch_TransitionsAfterDuration) {
     fsm::fsm<ConnTable> sm;
     EXPECT_TRUE(sm.is_in_state<Connecting>());
 
@@ -53,6 +57,24 @@ TEST(TimedTransitionsTest, SyncTimedEventDispatch) {
     auto handled = sm.dispatch(Timeout500ms{});
     EXPECT_TRUE(handled.is_success());
     EXPECT_TRUE(sm.is_in_state<Disconnected>());
+}
+
+/**
+ * @brief Verify timed table rows are armed automatically when a state is entered.
+ * @scenario Advance the deterministic clock past an after_ms transition without manually dispatching its event.
+ * @expected The timer expires and the generated timed event performs the transition.
+ */
+TEST(TimedTransitions, TimedTableRow_TickAutomaticallyDispatchesAfterEvent) {
+    fsm::fsm<ConnTable> sm;
+
+    EXPECT_TRUE(sm.is_in_state<Connecting>());
+    EXPECT_EQ(sm.timer_manager().active_count(), 1U);
+
+    auto result = sm.tick(500);
+
+    EXPECT_EQ(result, 1U);
+    EXPECT_TRUE(sm.is_in_state<Disconnected>());
+    EXPECT_EQ(sm.timer_manager().active_count(), 0U);
 }
 
 // ============================================================================
@@ -97,13 +119,11 @@ using OrderTable = fsm::transition_table<fsm::transition<StateA, Step1, StateB, 
                                          fsm::transition<StateC, Step3, StateD, ActionCtoD>>;
 
 /**
- * @brief Test Intent: Verify chronological priority deadline scheduling with `post_delayed()`.
- *
- * Scenario:
- * - Post Step3 (60ms delay), Step2 (30ms delay), and Step1 (5ms delay) in reverse order.
- * - Verify priority queue executes events in strict chronological order: Step1 -> Step2 -> Step3.
+ * @brief Verify asynchronous delayed events scheduled and fired in chronological order.
+ * @scenario Schedule timers with 10ms, 20ms, and 30ms timeouts.
+ * @expected Timers fire in strict chronological order based on deadlines.
  */
-TEST(TimedTransitionsTest, AsyncPostDelayedPriorityChronologicalOrder) {
+TEST(TimedTransitions, AsyncPostDelayed_MultipleTimers_FiredInChronologicalOrder) {
     OrderRegisters reg;
     fsm::thread_safe_fsm<OrderTable, fsm::no_ports, fsm::no_ports, OrderRegisters> async_sm(reg);
     async_sm.start_worker();
@@ -174,13 +194,11 @@ void ActionFinal::operator()(const Step2& /*evt*/, StateB& /*src*/, StateC& /*ds
 }
 
 /**
- * @brief Test Intent: Verify recursive lock safety when actions self-post events to the asynchronous queue.
- *
- * Scenario:
- * - ActionSelfPost is executed on Step1, queries active state, and self-posts Step2 back into the FSM.
- * - Verify no deadlocks or mutex violations occur, reaching StateC smoothly.
+ * @brief Verify reentrant self-posting of delayed timers from within transition actions.
+ * @scenario Transition action posts delayed timer event to reschedule itself.
+ * @expected Recurring timer fires periodically without deadlock.
  */
-TEST(TimedTransitionsTest, AsyncReentrantActionSelfPost) {
+TEST(TimedTransitions, ReentrantAction_SelfPostDelayed_SchedulesRecurringTimer) {
     ReentrantRegisters reg;
     ReentrantActionSm async_sm(reg);
     async_sm.with_registers([&](auto& r) { r.sm_ptr = &async_sm; });
@@ -219,9 +237,11 @@ using DiscreteTable = fsm::transition_table<
     fsm::transition<StateA, fsm::anonymous_event, StateB, TickIncrementAction, fsm::in_state_for<5>>>;
 
 /**
- * @brief Test Intent: Verify discrete sampled time model with in_state_for guard and step_result.
+ * @brief Verify state residence duration guard conditions (stay <= 100ms).
+ * @scenario Sample state residence time across discrete ticks.
+ * @expected Guard evaluates true while residence is under limit, and false when exceeded.
  */
-TEST(TimedTransitionsTest, SampledDiscreteInStateResidenceGuard) {
+TEST(TimedTransitions, ResidenceGuard_StayDuration_EvaluatedAccurately) {
     DiscreteRegs reg;
     fsm::fsm<DiscreteTable, fsm::no_ports, fsm::no_ports, DiscreteRegs> sm(reg);
     EXPECT_TRUE(sm.is_in_state<StateA>());
@@ -245,14 +265,11 @@ TEST(TimedTransitionsTest, SampledDiscreteInStateResidenceGuard) {
 }
 
 /**
- * @brief Test Intent: Verify delayed timed event cancellation upon mid-flight state transitions.
- *
- * Scenario:
- * - Post delayed state timeout for StateA -> StateB.
- * - Manually trigger an immediate external transition before the timer fires.
- * - Verify that when the timer expires, the obsolete callback is safely discarded without effect.
+ * @brief Verify automatic cancellation of pending timers upon state exit.
+ * @scenario Arm timer in StateA and transition immediately to StateB via separate event.
+ * @expected Timer associated with StateA is cancelled and does not trigger in StateB.
  */
-TEST(TimedTransitionsTest, StaleTimerCancellationOnStateChange) {
+TEST(TimedTransitions, StateChange_PendingTimer_CancelledAutomatically) {
     OrderRegisters reg;
     fsm::thread_safe_fsm<OrderTable, fsm::no_ports, fsm::no_ports, OrderRegisters> async_sm(reg);
     async_sm.start_worker();
@@ -274,6 +291,171 @@ TEST(TimedTransitionsTest, StaleTimerCancellationOnStateChange) {
     EXPECT_TRUE(async_sm.is_in_state<StateB>());
 
     async_sm.stop_worker();
+}
+
+/**
+ * @brief Verify unified step function advancing simulated time deterministically.
+ * @scenario Invoke step(delta_ms) on state machine with fixed time increments.
+ * @expected Active timers decrement by delta_ms and expired timers trigger transitions.
+ */
+TEST(TimedTransitions, DeterministicTick_UnifiedStep_AdvancesTimeByFixedDelta) {
+    fsm::fsm<ConnTable, fsm::no_ports, fsm::no_ports, fsm::no_registers, fsm::no_services, Connecting,
+             fsm::flight_recorder_observer<16>, 16, 4>
+        sm;
+
+    EXPECT_TRUE(sm.is_in_state<Connecting>());
+    EXPECT_TRUE(sm.timer_manager().cancel_timer(2));
+    EXPECT_TRUE(sm.timer_manager().start_timer(1, 100));
+    EXPECT_EQ(sm.timer_manager().active_count(), 1U);
+
+    // Step 1: 40ms -> timer not expired
+    auto res1 = sm.step(std::chrono::milliseconds(40));
+    EXPECT_TRUE(res1.is_steady());
+    EXPECT_EQ(sm.timer_manager().active_count(), 1U);
+
+    // Step 2: 70ms -> total 110ms >= 100ms -> timer expired
+    auto res2 = sm.step(std::chrono::milliseconds(70));
+    EXPECT_TRUE(res2.is_steady());
+    EXPECT_EQ(sm.timer_manager().active_count(), 0U);
+}
+
+/**
+ * @brief Verify callback notification when timer expires under thread-safe wrapper.
+ * @scenario Register timer expiration callback and advance timer to expiration.
+ * @expected Callback invoked safely and transition dispatched.
+ */
+TEST(TimedTransitions, TickExpiredCallback_ThreadSafeWrapper_NotifiedUponExpiration) {
+    fsm::fsm<ConnTable, fsm::no_ports, fsm::no_ports, fsm::no_registers, fsm::no_services, Connecting, fsm::no_observer,
+             16, 4>
+        sm;
+
+    EXPECT_TRUE(sm.timer_manager().start_timer(42, 50));
+    std::uint32_t expired_id = 0;
+    std::size_t expired_count = sm.tick(60, [&](std::uint32_t id) { expired_id = id; });
+    EXPECT_EQ(expired_count, 1U);
+    EXPECT_EQ(expired_id, 42U);
+
+    // Thread-safe wrapper
+    fsm::thread_safe_fsm<ConnTable> ts_sm;
+    EXPECT_TRUE(ts_sm.timer_manager().start_timer(7, 30));
+    std::size_t ts_exp = ts_sm.tick(std::chrono::milliseconds(40));
+    EXPECT_EQ(ts_exp, 1U);
+
+    // SPSC wrapper
+    fsm::spsc_fsm<ConnTable> spsc_sm;
+    EXPECT_TRUE(spsc_sm.timer_manager().start_timer(9, 20));
+    std::size_t spsc_exp = spsc_sm.tick(25);
+    EXPECT_EQ(spsc_exp, 1U);
+}
+
+// ============================================================================
+// State Time Invariant / Permanence Enforcement Tests (Section 3.2)
+// ============================================================================
+
+struct TimedBoundedState {
+    static constexpr std::string_view name = "TimedBoundedState";
+    static constexpr std::uint64_t max_stay_duration_ms = 100ULL;
+};
+
+struct EscapeState {
+    static constexpr std::string_view name = "EscapeState";
+};
+
+struct EvEscape {};
+
+using FastTimeout = fsm::after_ms<60>;
+using SlowTimeout = fsm::after_ms<150>;
+
+using InvariantSatisfiedTable = fsm::transition_table<fsm::transition<TimedBoundedState, FastTimeout, EscapeState>>;
+
+using InvariantViolationWithEnabledTransitionTable =
+    fsm::transition_table<fsm::transition<TimedBoundedState, EvEscape, EscapeState>,
+                          fsm::transition<TimedBoundedState, SlowTimeout, EscapeState>>;
+
+/**
+ * @brief Verify invariant is satisfied when an armed transition exits the state before max stay.
+ */
+TEST(TimedTransitions, TimeInvariant_Satisfied_WhenTransitionLeavesBeforeMaxStay) {
+    fsm::fsm<InvariantSatisfiedTable> sm;
+    EXPECT_TRUE(sm.is_in_state<TimedBoundedState>());
+    EXPECT_TRUE(sm.is_invariant_satisfied());
+    EXPECT_FALSE(sm.has_invariant_violation());
+
+    bool violation_reported = false;
+    sm.set_invariant_violation_handler(
+        [&](const fsm::invariant_violation_info& /*info*/) { violation_reported = true; });
+
+    // Advance 40ms: residence is 40 <= 100, no timeout yet
+    sm.tick(40);
+    EXPECT_EQ(sm.state_residence_time(), 40U);
+    EXPECT_TRUE(sm.is_in_state<TimedBoundedState>());
+    EXPECT_TRUE(sm.is_invariant_satisfied());
+    EXPECT_FALSE(violation_reported);
+
+    // Advance another 30ms (total 70ms >= 60ms): FastTimeout fires and transitions to EscapeState
+    sm.tick(30);
+    EXPECT_TRUE(sm.is_in_state<EscapeState>());
+    EXPECT_EQ(sm.state_residence_time(), 0U);
+    EXPECT_TRUE(sm.is_invariant_satisfied());
+    EXPECT_FALSE(violation_reported);
+}
+
+/**
+ * @brief Verify invariant violation is diagnosed when an enabled escape transition is not taken in time.
+ */
+TEST(TimedTransitions, TimeInvariant_Violation_WithEnabledTransitionExceedingBound) {
+    fsm::fsm<InvariantViolationWithEnabledTransitionTable> sm;
+    EXPECT_TRUE(sm.is_in_state<TimedBoundedState>());
+
+    std::optional<fsm::invariant_violation_info> reported_info;
+    sm.set_invariant_violation_handler([&](const fsm::invariant_violation_info& info) { reported_info = info; });
+
+    // Tick 120ms without EvEscape arriving: state residence time becomes 120 > 100 max_stay
+    sm.tick(120);
+    EXPECT_TRUE(sm.is_in_state<TimedBoundedState>());
+    EXPECT_FALSE(sm.is_invariant_satisfied());
+    EXPECT_TRUE(sm.has_invariant_violation());
+    ASSERT_TRUE(reported_info.has_value());
+    EXPECT_EQ(reported_info->state_name, "TimedBoundedState");
+    EXPECT_EQ(reported_info->residence_time_ms, 120U);
+    EXPECT_EQ(reported_info->max_stay_duration_ms, 100U);
+
+    // Now dispatch external EvEscape transition: state transitions to EscapeState and clears violation
+    auto handled = sm.dispatch(EvEscape{});
+    EXPECT_TRUE(handled.is_success());
+    EXPECT_TRUE(sm.is_in_state<EscapeState>());
+    EXPECT_TRUE(sm.is_invariant_satisfied());
+    EXPECT_FALSE(sm.has_invariant_violation());
+}
+
+/**
+ * @brief Verify invariant violation without an escape transition invokes callback and marks status.
+ */
+TEST(TimedTransitions, TimeInvariant_Violation_WithoutEscapeTransition_InvokesCallbackAndSetsStatus) {
+    using TimelockTable =
+        fsm::transition_table<fsm::transition<TimedBoundedState, fsm::anonymous_event, TimedBoundedState>>;
+    fsm::fsm<TimelockTable> sm;
+    EXPECT_TRUE(sm.is_in_state<TimedBoundedState>());
+
+    std::size_t callback_count = 0;
+    sm.set_invariant_violation_handler([&](const fsm::invariant_violation_info& info) {
+        ++callback_count;
+        EXPECT_EQ(info.state_name, "TimedBoundedState");
+        EXPECT_EQ(info.max_stay_duration_ms, 100U);
+    });
+
+    // Tick 80ms: within bound
+    sm.tick(80);
+    EXPECT_TRUE(sm.is_invariant_satisfied());
+    EXPECT_EQ(callback_count, 0U);
+
+    // Tick another 30ms (total 110ms > 100ms): permanence bound breached
+    sm.tick(30);
+    EXPECT_FALSE(sm.is_invariant_satisfied());
+    EXPECT_TRUE(sm.has_invariant_violation());
+    EXPECT_EQ(callback_count, 1U);
+    ASSERT_TRUE(sm.last_invariant_violation().has_value());
+    EXPECT_EQ(sm.last_invariant_violation()->residence_time_ms, 110U);
 }
 
 }  // namespace

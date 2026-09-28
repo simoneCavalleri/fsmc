@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 project(fsmc
-    VERSION 0.5.0
+    VERSION 0.6.0
     DESCRIPTION "A universal zero-overhead State Machine compiler for modern C++ (C++17/20)"
     HOMEPAGE_URL "https://github.com/simoneCavalleri/fsmc"
     LANGUAGES CXX
@@ -24,7 +24,11 @@ option(FSMC_ENABLE_EXAMPLES "Build example applications" ON)
 option(FSMC_ENABLE_BENCHMARKS "Build micro-benchmarks" ON)
 option(FSMC_ENABLE_SANITIZERS "Enable Address and Undefined sanitizers (Debug only)" OFF)
 option(FSMC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors (-Werror)" OFF)
-option(FSMC_BUILD_WASM "Build WebAssembly playground (Emscripten)" OFF)
+
+# Windows platform definitions
+if(WIN32)
+    add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN)
+endif()
 
 # Compiler warnings & quality flags
 if(MSVC)
@@ -51,8 +55,16 @@ endif()
 # Multithreading support
 find_package(Threads REQUIRED)
 
+# Fast compiler cache support (ccache)
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+    message(STATUS "Found ccache: ${CCACHE_PROGRAM}")
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK "${CCACHE_PROGRAM}")
+endif()
+
 # ==============================================================================
-# Modular Interface Library Targets (fsmc::ir, fsmc::runtime, fsmc::compiler)
+# Modular Interface Library Targets (fsmc::ir, fsmc::runtime)
 # ==============================================================================
 add_library(fsmc_runtime INTERFACE)
 add_library(fsmc::fsmc_runtime ALIAS fsmc_runtime)
@@ -61,7 +73,6 @@ add_library(fsmc::ir ALIAS fsmc_runtime)
 add_library(fsmc::middleend ALIAS fsmc_runtime)
 add_library(fsmc::frontend ALIAS fsmc_runtime)
 add_library(fsmc::backend ALIAS fsmc_runtime)
-add_library(fsmc::compiler ALIAS fsmc_runtime)
 
 target_include_directories(fsmc_runtime INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -71,30 +82,41 @@ target_include_directories(fsmc_runtime INTERFACE
 target_compile_features(fsmc_runtime INTERFACE cxx_std_17)
 target_link_libraries(fsmc_runtime INTERFACE Threads::Threads)
 
+# ==============================================================================
+# Compiled Compiler Engine Target (fsmc_compiler)
+# ==============================================================================
+file(GLOB_RECURSE FSMC_COMPILER_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+)
+
+add_library(fsmc_compiler STATIC ${FSMC_COMPILER_SOURCES})
+add_library(fsmc::compiler ALIAS fsmc_compiler)
+
+target_include_directories(fsmc_compiler PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+
+target_compile_features(fsmc_compiler PRIVATE cxx_std_20)
+target_compile_features(fsmc_compiler INTERFACE cxx_std_17)
+target_link_libraries(fsmc_compiler PUBLIC fsmc_runtime ${CMAKE_DL_LIBS})
+
+# Native Precompiled Headers (PCH) in CMake 3.16+
+target_precompile_headers(fsmc_compiler PRIVATE
+    <string>
+    <string_view>
+    <vector>
+    <map>
+    <unordered_map>
+    <memory>
+    <algorithm>
+    <utility>
+    <cstdint>
+)
+
 # Include CMake code generation helper functions
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FsmcTools.cmake)
 
-# WebAssembly Playground target (when building with Emscripten)
-if(FSMC_BUILD_WASM OR EMSCRIPTEN)
-    add_executable(fsmc_wasm playground/fsmc_wasm.cpp)
-    target_link_libraries(fsmc_wasm PRIVATE fsmc_runtime)
-    target_include_directories(fsmc_wasm PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-    set_target_properties(fsmc_wasm PROPERTIES
-        CXX_STANDARD 20
-        OUTPUT_NAME "fsmc"
-        SUFFIX ".js"
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/playground"
-    )
-    target_link_options(fsmc_wasm PRIVATE
-        "-lembind"
-        "-sEXPORT_ES6=0"
-        "-sMODULARIZE=1"
-        "-sEXPORT_NAME=createFsmcModule"
-        "-sALLOW_MEMORY_GROWTH=1"
-        "-sENVIRONMENT=web,worker,node"
-        "-sSINGLE_FILE=1"
-    )
-endif()
 
 # Core CLI compiler & IR toolchain targets
 add_subdirectory(tools)
@@ -166,8 +188,10 @@ configure_package_config_file(
     INSTALL_DESTINATION lib/cmake/fsmc
 )
 
-install(TARGETS fsmc_runtime
+install(TARGETS fsmc_runtime fsmc_compiler
     EXPORT fsmcTargets
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
     INCLUDES DESTINATION include
 )
 

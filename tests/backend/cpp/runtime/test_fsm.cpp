@@ -1,3 +1,8 @@
+/**
+ * @file test_fsm.cpp
+ * @brief Unit test suite for core synchronous and thread-safe FSM runtime execution.
+ */
+
 #include <gtest/gtest.h>
 
 #include <chrono>
@@ -27,15 +32,11 @@ using SimpleTable = fsm::transition_table<fsm::transition<StateIdle, StartEvent,
                                           fsm::transition<StateStopped, ResetEvent, StateIdle>>;
 
 /**
- * @brief Test Intent: Verify basic synchronous state transitions and compile-time introspection.
- *
- * Scenario:
- * - Define a 3-state machine (Idle -> Running -> Stopped -> Idle).
- * - Verify compile-time type introspection (state_count, transition_count, has_state, has_event).
- * - Dispatch valid events in sequence and verify immediate active state updates.
- * - Dispatch unhandled events and verify that the machine remains in the current state with an unhandled result.
+ * @brief Verify basic synchronous transitions and runtime state introspection.
+ * @scenario Dispatch event on state machine and inspect current_state_name() and is_in_state<T>().
+ * @expected State updates accurately and introspection returns matching boolean flags.
  */
-TEST(FsmCoreTest, BasicTransitionsAndIntrospection) {
+TEST(FsmCore, BasicTransitions_EventDispatch_UpdatesCurrentState) {
     fsm::fsm<SimpleTable> state_machine;
 
     static_assert(decltype(state_machine)::state_count == 3);
@@ -85,18 +86,26 @@ TEST(FsmCoreTest, BasicTransitionsAndIntrospection) {
 // Test 2: on_enter & on_exit hooks execution order and payloads
 // ============================================================================
 
-struct HookTracker {
-    static std::vector<std::string>& log() {
-        static std::vector<std::string> instance;
-        return instance;
-    }
-    static void clear() { log().clear(); }
-    static void add(const std::string& msg) { log().emplace_back(msg); }
+struct HookServices {
+    std::vector<std::string> log;
 };
 
+struct HookIn {
+    int value = 7;
+};
+
+struct HookOut {};
+
+struct HookRegisters {};
+
 struct StateA {
-    static void on_enter() { HookTracker::add("StateA::on_enter"); }
-    static void on_exit() { HookTracker::add("StateA::on_exit"); }
+    void on_enter(const HookIn&, HookOut&, HookRegisters&, HookServices& services) const {
+        services.log.emplace_back("StateA::on_enter");
+    }
+
+    void on_exit(const HookIn&, HookOut&, HookRegisters&, HookServices& services) const {
+        services.log.emplace_back("StateA::on_exit");
+    }
 };
 
 struct EventGotoB {
@@ -104,55 +113,128 @@ struct EventGotoB {
 };
 
 struct StateB {
-    static void on_enter(const EventGotoB& evt) { HookTracker::add("StateB::on_enter with payload: " + evt.message); }
-    static void on_exit(const EventGotoB& /*evt*/) { HookTracker::add("StateB::on_exit with EventGotoB"); }
-    static void on_exit() { HookTracker::add("StateB::on_exit void fallback"); }
-};
-
-struct EventGotoA {};
-
-struct CustomAction {
-    void operator()(const EventGotoB& evt, StateA& /*src*/, StateB& /*dst*/) const {
-        HookTracker::add("Action(EventGotoB: " + evt.message + ")");
+    void on_enter(const HookIn&, HookOut&, HookRegisters&, HookServices& services) const {
+        services.log.emplace_back("StateB::on_enter");
     }
 };
 
-using HookTable = fsm::transition_table<fsm::transition<StateA, EventGotoB, StateB, CustomAction>,
-                                        fsm::transition<StateB, EventGotoA, StateA>>;
+struct CustomAction {
+    void operator()(const EventGotoB& evt, StateA&, StateB&, const HookIn&, HookOut&, HookRegisters&,
+                    HookServices& services) const {
+        services.log.emplace_back("Action(EventGotoB: " + evt.message + ")");
+    }
+};
+
+using HookTable = fsm::transition_table<fsm::transition<StateA, EventGotoB, StateB, CustomAction>>;
 
 /**
- * @brief Test Intent: Verify strict lifecycle hook execution order and event payload forwarding.
- *
- * Scenario:
- * - When entering initial state StateA: StateA::on_enter() must be called.
- * - When transitioning StateA -> StateB with EventGotoB{"Hello FSM"}:
- *   1. StateA::on_exit() is invoked.
- *   2. CustomAction is executed with the payload.
- *   3. StateB::on_enter(evt) is invoked with payload parameter.
+ * @brief Verify lifecycle hook execution order (on_exit, transition action, on_entry).
+ * @scenario Dispatch transition carrying typed payload between states with lifecycle hooks.
+ * @expected Source on_exit executes first, followed by transition action, followed by target on_entry.
  */
-TEST(FsmCoreTest, HooksExecutionOrderAndPayloads) {
-    HookTracker::clear();
+TEST(FsmCore, LifecycleHooks_ExecutionOrder_ExecutesEntryActionExit) {
+    HookServices services;
 
     // Machine creation -> StateA on_enter should be called
-    fsm::fsm<HookTable> state_machine;
+    fsm::fsm<HookTable, HookIn, HookOut, HookRegisters, HookServices> state_machine(services);
 
-    EXPECT_TRUE(state_machine.is_in_state<StateA>());
-    ASSERT_EQ(HookTracker::log().size(), 1u);
-    EXPECT_EQ(HookTracker::log()[0], "StateA::on_enter");
+    EXPECT_TRUE(state_machine.is_in<StateA>());
+    ASSERT_EQ(services.log.size(), 1u);
+    EXPECT_EQ(services.log[0], "StateA::on_enter");
 
     // Transition to B with payload
-    HookTracker::clear();
-    state_machine.dispatch(EventGotoB{"Hello FSM"});
+    services.log.clear();
+    HookIn input;
+    HookOut output;
+    state_machine.dispatch(EventGotoB{"Hello FSM"}, input, output);
 
-    EXPECT_TRUE(state_machine.is_in_state<StateB>());
-    ASSERT_EQ(HookTracker::log().size(), 3u);
-    EXPECT_EQ(HookTracker::log()[0], "StateA::on_exit");
-    EXPECT_EQ(HookTracker::log()[1], "Action(EventGotoB: Hello FSM)");
-    EXPECT_EQ(HookTracker::log()[2], "StateB::on_enter with payload: Hello FSM");
+    EXPECT_TRUE(state_machine.is_in<StateB>());
+    ASSERT_EQ(services.log.size(), 3u);
+    EXPECT_EQ(services.log[0], "StateA::on_exit");
+    EXPECT_EQ(services.log[1], "Action(EventGotoB: Hello FSM)");
+    EXPECT_EQ(services.log[2], "StateB::on_enter");
 }
 
 // ============================================================================
-// Test 3: Guards validation
+// Test 3: Lifecycle hooks with ports, registers, and services
+// ============================================================================
+
+struct PortHookIn {
+    int value = 7;
+};
+
+struct PortHookOut {
+    int observed_input = 0;
+    int transition_count = 0;
+};
+
+struct PortHookRegisters {
+    int enter_count = 0;
+    int exit_count = 0;
+};
+
+struct PortHookServices {
+    int enter_calls = 0;
+    int exit_calls = 0;
+};
+
+struct PortHookStateA {
+    void on_enter(const PortHookIn&, PortHookOut&, PortHookRegisters& registers, PortHookServices& services) const {
+        ++registers.enter_count;
+        ++services.enter_calls;
+    }
+
+    void on_exit(const PortHookIn& input, PortHookOut& output, PortHookRegisters& registers,
+                 PortHookServices& services) const {
+        output.observed_input = input.value;
+        ++output.transition_count;
+        ++registers.exit_count;
+        ++services.exit_calls;
+    }
+};
+
+struct PortHookStateB {
+    void on_enter(const PortHookIn& input, PortHookOut& output, PortHookRegisters& registers,
+                  PortHookServices& services) const {
+        output.observed_input = input.value;
+        ++output.transition_count;
+        ++registers.enter_count;
+        ++services.enter_calls;
+    }
+};
+
+struct PortHookEvent {};
+
+using PortHookTable = fsm::transition_table<fsm::transition<PortHookStateA, PortHookEvent, PortHookStateB>>;
+
+/**
+ * @brief Verify lifecycle hooks receive the complete public runtime context.
+ * @scenario Enter the initial state and dispatch a transition with typed input/output ports.
+ * @expected Entry and exit hooks receive ports, registers, and services in the documented order.
+ */
+TEST(FsmCore, LifecycleHooks_WithPortsRegistersAndServices_ForwardsContext) {
+    PortHookServices services;
+    fsm::fsm<PortHookTable, PortHookIn, PortHookOut, PortHookRegisters, PortHookServices> state_machine(services);
+
+    EXPECT_EQ(state_machine.registers().enter_count, 1);
+    EXPECT_EQ(services.enter_calls, 1);
+
+    PortHookIn input{42};
+    PortHookOut output;
+    auto result = state_machine.dispatch(PortHookEvent{}, input, output);
+
+    ASSERT_TRUE(result.is_success());
+    EXPECT_TRUE(state_machine.is_in<PortHookStateB>());
+    EXPECT_EQ(output.observed_input, 42);
+    EXPECT_EQ(output.transition_count, 2);
+    EXPECT_EQ(state_machine.registers().enter_count, 2);
+    EXPECT_EQ(state_machine.registers().exit_count, 1);
+    EXPECT_EQ(services.enter_calls, 2);
+    EXPECT_EQ(services.exit_calls, 1);
+}
+
+// ============================================================================
+// Test 4: Guards validation
 // ============================================================================
 
 struct StateLocked {};
@@ -172,14 +254,11 @@ using GuardTable =
     fsm::transition_table<fsm::transition<StateLocked, UnlockEvent, StateUnlocked, fsm::no_action, IsValidKeyGuard>>;
 
 /**
- * @brief Test Intent: Verify guard predicate rejection, acceptance, and dispatch result statuses.
- *
- * Scenario:
- * - With key != 42: guard returns false, transition is rejected, state remains Locked, status is guard_rejected.
- * - With an unhandled event: status is unhandled, state remains Locked.
- * - With key == 42: guard returns true, transition succeeds, state becomes Unlocked, status is success.
+ * @brief Verify guard evaluation blocking transitions when predicate returns false.
+ * @scenario Dispatch event with failing guard and with passing guard.
+ * @expected Failing guard prevents transition, passing guard allows transition.
  */
-TEST(FsmCoreTest, GuardValidation) {
+TEST(FsmCore, GuardValidation_BooleanPredicates_BlocksDisallowedTransitions) {
     fsm::fsm<GuardTable> state_machine;
 
     // Wrong key -> guard rejects
@@ -207,7 +286,7 @@ TEST(FsmCoreTest, GuardValidation) {
 }
 
 // ============================================================================
-// Test 4: ThreadSafe wrapper & event queue
+// Test 5: ThreadSafe wrapper & event queue
 // ============================================================================
 
 struct CounterState {
@@ -238,14 +317,11 @@ using CounterTable = fsm::transition_table<fsm::transition<CounterState, Increme
                                            fsm::transition<CounterState, DecrementEvent, CounterState, DecAction>>;
 
 /**
- * @brief Test Intent: Verify thread_safe_fsm synchronous sending and manual batch processing.
- *
- * Scenario:
- * - Call send() synchronously to apply transition immediately under mutex.
- * - Call enqueue() to push events into thread-safe queue.
- * - Call process_all() to drain and execute queued events deterministically.
+ * @brief Verify thread_safe_fsm in manual processing mode.
+ * @scenario Post events to thread-safe queue and invoke process_event() explicitly.
+ * @expected Events are processed synchronously on calling thread without background worker.
  */
-TEST(FsmCoreTest, ThreadSafeQueueManualProcessing) {
+TEST(FsmCore, ThreadSafeQueue_ManualProcessing_DrainsEventsExplicitly) {
     fsm::thread_safe_fsm<CounterTable> ts_machine;
 
     // Synchronous send
@@ -265,15 +341,11 @@ TEST(FsmCoreTest, ThreadSafeQueueManualProcessing) {
 }
 
 /**
- * @brief Test Intent: Verify asynchronous background worker thread handling concurrent event posting.
- *
- * Scenario:
- * - Start worker thread with start_worker().
- * - Launch 10 concurrent producer threads, each posting 100 IncrementEvent events.
- * - Wait for worker thread to process all 1000 events.
- * - Verify final accumulated state count is exactly 1000 with zero race conditions.
+ * @brief Verify concurrent multi-threaded event submission to background worker.
+ * @scenario Spawn multiple producer threads dispatching events concurrently.
+ * @expected All events processed in serialized, thread-safe sequence with correct final state.
  */
-TEST(FsmCoreTest, ConcurrentMultithreadedWorker) {
+TEST(FsmCore, ConcurrentWorker_MultipleThreads_ProcessesEventsThreadSafely) {
     fsm::thread_safe_fsm<CounterTable> ts_machine;
     ts_machine.start_worker();
 
@@ -388,10 +460,11 @@ using DualChannelFSM =
     fsm::fsm<DualChannelTable, MachineInPorts, MachineOutPorts, MachineRegisters, MockMachineServices, IdleState>;
 
 /**
- * @brief Test Intent: Verify dual-mode execution (continuous sampled step + event-driven reactive dispatch) and
- * zero-heap non-polymorphism.
+ * @brief Verify dual-channel synchronous and asynchronous zero-heap state machine execution.
+ * @scenario Execute state machine with static buffer policies.
+ * @expected Zero dynamic memory allocations performed during initialization and dispatching.
  */
-TEST(FsmCoreTest, DualChannelMachineDualParadigmAndZeroHeap) {
+TEST(FsmCore, DualChannelMachine_ZeroHeap_ExecutesWithoutDynamicAllocation) {
     // 1. Zero-Heap & No-Virtual Static Assertions
     static_assert(!std::is_polymorphic_v<DualChannelFSM>, "FSM class must not contain virtual vtables");
     static_assert(!std::is_polymorphic_v<IdleState>, "State structs must not be polymorphic");
@@ -466,14 +539,11 @@ struct SrvEvent {
 using SrvTable = fsm::transition_table<fsm::transition<StateS1, SrvEvent, StateS2>>;
 
 /**
- * @brief Test Intent: Verify fsm supports non-default-constructible Services when bound in constructor.
- *
- * Scenario:
- * - Construct an fsm instance passing a non-default-constructible Services object by reference.
- * - Call step() and dispatch() overloads that omit the srv parameter.
- * - Verify the runtime dereferences the bound services without stack-allocating a dummy instance.
+ * @brief Verify support for non-default-constructible context services.
+ * @scenario Inject reference to non-default-constructible service into FSM context.
+ * @expected Actions successfully access and invoke methods on injected service.
  */
-TEST(FsmCoreTest, NonDefaultConstructibleServicesSupport) {
+TEST(FsmCore, ServicesSupport_NonDefaultConstructible_InjectedSuccessfully) {
     HardwareHandleServices srv(42);
     fsm::no_registers reg;
     fsm::fsm<SrvTable, fsm::no_ports, fsm::no_ports, fsm::no_registers, HardwareHandleServices> machine(reg, srv);

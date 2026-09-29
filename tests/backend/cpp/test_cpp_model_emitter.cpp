@@ -595,3 +595,47 @@ TEST(CppModelEmitter, DoxygenTraceabilityAnnotations_EmittedCorrectly) {
     EXPECT_NE(str.find("* @trace REQ-SYS-002"), std::string::npos);
     EXPECT_NE(str.find("* @satisfies REQ-SYS-002"), std::string::npos);
 }
+
+/**
+ * @brief Verify C++ emission of action assignment stubs reading from InPorts.
+ * @scenario An action with assignment `out.power = in.temp * 2.0f`.
+ * @expected Action operator overloads include uncommented `const InPorts& in` parameter.
+ */
+TEST(CppModelEmitter, ActionAssignments_ReadingFromInPorts_EmitsUncommentedInParam) {
+    FsmIr model;
+    model.name = "ThermostatControl";
+    model.initial_state = "Idle";
+
+    PortDefinition in_p("temp", "float", PortDirection::In);
+    model.ports.push_back(in_p);
+    PortDefinition out_p("power", "float", PortDirection::Out);
+    model.ports.push_back(out_p);
+
+    ActionModel act("ComputePower");
+    model.actions.push_back(act);
+
+    StateNode st_idle{"Idle"};
+    StateNode st_active{"Active"};
+    model.states.push_back(st_idle);
+    model.states.push_back(st_active);
+
+    TransitionEdge t;
+    t.source = "Idle";
+    t.target = "Active";
+    t.event = "Start";
+    ActionSignature act_sig("ComputePower");
+    act_sig.assignments.push_back(ActionAssignment{"power", "in.temp * 2.0f"});
+    t.transition_action = act_sig;
+    model.transitions.push_back(t);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = true;
+    CppModelEmitter::emit_model(out, model, opts);
+    std::string str = out.str();
+
+    // Verify operator overloads do not comment out `const InPorts& in`
+    EXPECT_NE(str.find("void operator()(const InPorts& in, OutPorts& out, Registers& /*reg*/)"), std::string::npos);
+    EXPECT_NE(str.find("out.power = in.temp * 2.0f;"), std::string::npos);
+}
+

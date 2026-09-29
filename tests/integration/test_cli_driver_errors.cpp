@@ -302,4 +302,75 @@ TEST(CliDriver, NuXmvMissingTool_FallsBackGracefully) {
     fs::remove_all(temp_dir);
 }
 
+/**
+ * @brief Test Intent: Verify CLI parsing for --pipeline option.
+ * Scenario: Provide valid ('7stage', 'standard') and invalid ('fast') pipeline arguments.
+ * Expected: Valid values update pipeline_mode; invalid values result in parsing errors.
+ */
+TEST(CliOptions, PipelineOptionParsing_ValidAndInvalidValues) {
+    // Valid: --pipeline 7stage
+    {
+        char p[] = "fsmc";
+        char i[] = "-i";
+        char f[] = "model.sysml";
+        char opt[] = "--pipeline";
+        char val[] = "7stage";
+        char* argv[] = {p, i, f, opt, val};
+        const auto opts = fsm::tools::parse_cli_args(5, argv);
+        EXPECT_TRUE(opts.is_valid);
+        EXPECT_EQ(opts.pipeline_mode, "7stage");
+    }
+
+    // Valid: --pipeline standard
+    {
+        char p[] = "fsmc";
+        char i[] = "-i";
+        char f[] = "model.sysml";
+        char opt[] = "--pipeline";
+        char val[] = "standard";
+        char* argv[] = {p, i, f, opt, val};
+        const auto opts = fsm::tools::parse_cli_args(5, argv);
+        EXPECT_TRUE(opts.is_valid);
+        EXPECT_EQ(opts.pipeline_mode, "standard");
+    }
+
+    // Invalid: --pipeline unknown
+    {
+        char p[] = "fsmc";
+        char i[] = "-i";
+        char f[] = "model.sysml";
+        char opt[] = "--pipeline";
+        char val[] = "unknown";
+        char* argv[] = {p, i, f, opt, val};
+        const auto opts = fsm::tools::parse_cli_args(5, argv);
+        EXPECT_FALSE(opts.is_valid);
+        EXPECT_NE(opts.error_message.find("Invalid value for --pipeline"), std::string::npos);
+    }
+}
+
+/**
+ * @brief Test Intent: Verify verification mode with --engine=auto falls back gracefully when nuXmv is absent.
+ * Scenario: Run formal verification on sound model with verify_engine set to 'auto'.
+ * Expected: Execution succeeds with return code 0 via internal ModelChecker.
+ */
+TEST(CliDriver, EngineAuto_FallsBackGracefully) {
+    fs::path temp_dir = fs::temp_directory_path() / "fsmc_cli_auto_engine_test";
+    fs::create_directories(temp_dir);
+    fs::path valid_file = temp_dir / "valid.sysml";
+    {
+        std::ofstream out(valid_file);
+        out << kValidSysml;
+    }
+
+    fsm::tools::FsmcOptions fsmc_opts;
+    fsmc_opts.input_file = valid_file.string();
+    fsmc_opts.verify_mode = true;
+    fsmc_opts.verify_engine = "auto";
+
+    int ret = fsm::tools::FsmcDriver::run(fsmc_opts);
+    EXPECT_EQ(ret, 0);
+
+    fs::remove_all(temp_dir);
+}
+
 }  // namespace

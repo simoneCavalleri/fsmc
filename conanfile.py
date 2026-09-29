@@ -29,6 +29,6 @@ class FsmcConan(ConanFile):
         cmake.install()
 
     def package_info(self):
-        self.cpp_info.libs = []
+        self.cpp_info.libs = ["fsmc_compiler"]
         self.cpp_info.bindirs = ["bin"]
         self.cpp_info.includedirs = ["include"]

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 77  
-**Total Documented Test Cases**: 411  
+**Total Documented Test Cases**: 414  
 
 ---
 
@@ -479,6 +479,9 @@
 
 #### `CppModelEmitter.DoxygenTraceabilityAnnotations_EmittedCorrectly`
 **Test Intent**: Verify C++ emission of Doxygen requirement traceability annotations (@satisfies).
+
+#### `CppModelEmitter.ActionAssignments_ReadingFromInPorts_EmitsUncommentedInParam`
+**Test Intent**: Verify C++ emission of action assignment stubs reading from InPorts.
 
 ### [`test_generated_fsm.cpp`](../tests/backend/cpp/test_generated_fsm.cpp) (`tests/backend/cpp/test_generated_fsm.cpp`)
 - *(Executable binary test verification)*
@@ -1442,6 +1445,18 @@
 
 **Scenario**:
   - Request formal verification with nuXmv engine on a sound model when nuXmv is absent.
+
+#### `CliOptions.PipelineOptionParsing_ValidAndInvalidValues`
+**Test Intent**: Verify CLI parsing for --pipeline option.
+
+**Scenario**:
+  - Provide valid ('7stage', 'standard') and invalid ('fast') pipeline arguments.
+
+#### `CliDriver.EngineAuto_FallsBackGracefully`
+**Test Intent**: Verify verification mode with --engine=auto falls back gracefully when nuXmv is absent.
+
+**Scenario**:
+  - Run formal verification on sound model with verify_engine set to 'auto'.
 
 ### [`test_cmake_integration.cpp`](../tests/integration/test_cmake_integration.cpp) (`tests/integration/test_cmake_integration.cpp`)
 - *(Executable binary test verification)*

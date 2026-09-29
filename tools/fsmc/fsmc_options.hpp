@@ -23,6 +23,7 @@ struct FsmcOptions {
     std::string submachine_dir;
     fsm::backend::cpp::CppStandard cpp_standard = fsm::backend::cpp::CppStandard::Cpp17;
     int opt_level = 1;                   // -O0, -O1, -O2
+    std::string pipeline_mode = "standard"; // --pipeline=7stage|standard
     bool prune_dead_states = false;      // --prune-dead-states
     bool simplify_guards = true;         // --no-guard-simplification
     bool inline_submachines = false;     // --inline-submachines
@@ -71,6 +72,7 @@ inline void print_help(const char* prog_name) {
         << "Optimization & Code Transformation Options:\n"
         << "  -O0, --no-opt               Disable middle-end optimization passes\n"
         << "  -O1, -O2, --optimize        Enable middle-end optimization passes (default: -O1)\n"
+        << "  --pipeline <7stage|standard> Middle-end pipeline architecture (default: 'standard')\n"
         << "  --prune-dead-states         Prune unreachable states and statically dead transitions before codegen\n"
         << "  --no-guard-simplification   Disable algebraic boolean simplification on guard expressions\n"
         << "  --inline-submachines        Inline modular submachines (SubmachineRef) into a single flat/composite FSM\n"
@@ -227,6 +229,27 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             opts.opt_level = 1;
         } else if (arg == "-O2" || arg == "--optimize") {
             opts.opt_level = 2;
+        } else if (arg == "--pipeline") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
+            std::string val = argv[++idx];
+            if (val != "standard" && val != "7stage") {
+                opts.is_valid = false;
+                opts.error_message = "Invalid value for --pipeline: '" + val + "' (expected 'standard' or '7stage')";
+                return opts;
+            }
+            opts.pipeline_mode = std::move(val);
+        } else if (arg.rfind("--pipeline=", 0) == 0) {
+            std::string val = arg.substr(11);
+            if (val != "standard" && val != "7stage") {
+                opts.is_valid = false;
+                opts.error_message = "Invalid value for --pipeline: '" + val + "' (expected 'standard' or '7stage')";
+                return opts;
+            }
+            opts.pipeline_mode = std::move(val);
         } else if (arg == "--prune-dead-states") {
             opts.prune_dead_states = true;
         } else if (arg == "--no-guard-simplification") {

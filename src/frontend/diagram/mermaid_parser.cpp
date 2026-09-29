@@ -55,7 +55,6 @@ bool MermaidParser::parse(std::string_view content, FsmIr& out_model, std::strin
                 // Check if state name is provided
                 auto n_pos = body.find("name=");
                 if (n_pos != std::string::npos) {
-                    std::string state_name = DirectiveParser::extract_directive_body(body);
                     auto eq_pos = body.find('=', n_pos);
                     auto sp_pos = body.find_first_of(" \t", eq_pos + 1);
                     std::string sname = body.substr(

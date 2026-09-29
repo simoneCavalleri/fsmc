@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -217,36 +218,47 @@ class FsmcDriver {
         // Execute Middle-End Optimization Passes
         if (opts.opt_level > 0) {
             PassManager pm;
-            pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
-            if (opts.simplify_guards) {
-                pm.add_pass(std::make_unique<GuardSimplificationPassWrapper>());
-            }
-            if (opts.strict_determinism) {
-                pm.add_pass(std::make_unique<DeterminismEnforcementPassWrapper>());
-            }
-            if (opts.check_races) {
-                pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
-            }
-            if (opts.inline_submachines) {
-                pm.add_pass(create_submachine_pass(opts));
-            }
-            if (opts.prune_dead_states || opts.opt_level >= 2) {
-                pm.add_pass(std::make_unique<DeadStatePruningPassWrapper>(true));
-                pm.add_pass(std::make_unique<ConstantFoldingPassWrapper>());
-            }
-            pm.add_pass(std::make_unique<ChoiceCompletenessPass>());
-            pm.add_pass(std::make_unique<ChoiceInliningPassWrapper>());
-            pm.add_pass(std::make_unique<TimedDeadlockPassWrapper>());
-            pm.add_pass(std::make_unique<EFSMDataPathPass>());
-            pm.add_pass(std::make_unique<GuardSatisfiabilityPassWrapper>());
-            pm.add_pass(std::make_unique<LivelockAnalysisPassWrapper>());
-            pm.add_pass(std::make_unique<PriorityConflictPassWrapper>());
-            pm.add_pass(std::make_unique<TimedInvariantsVerifierPassWrapper>());
-            pm.add_pass(std::make_unique<EventQueueBoundPassWrapper>());
-            pm.add_pass(std::make_unique<WcetAnalysisPassWrapper>());
-            if (opts.verify_mode || opts.export_diagram_format.empty()) {
-                pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
-                pm.add_pass(std::make_unique<ModelCheckingPass>());
+            if (opts.pipeline_mode == "7stage" && opts.export_diagram_format.empty() &&
+                !opts.strict_determinism && !opts.check_races && !opts.inline_submachines && opts.simplify_guards) {
+                pm = PassManager::create_verified_7stage_pipeline(opts.opt_level >= 2 || opts.prune_dead_states);
+            } else {
+                pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
+                if (opts.simplify_guards) {
+                    pm.add_pass(std::make_unique<GuardSimplificationPassWrapper>());
+                }
+                if (opts.strict_determinism) {
+                    pm.add_pass(std::make_unique<DeterminismEnforcementPassWrapper>());
+                }
+                if (opts.check_races) {
+                    pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
+                }
+                if (opts.inline_submachines) {
+                    pm.add_pass(create_submachine_pass(opts));
+                }
+                if (opts.prune_dead_states || opts.opt_level >= 2) {
+                    pm.add_pass(std::make_unique<ConstantFoldingPassWrapper>());
+                    pm.add_pass(std::make_unique<DeadStatePruningPassWrapper>(true));
+                    pm.add_pass(std::make_unique<DeadActionEliminationPassWrapper>());
+                    pm.add_pass(std::make_unique<CommonActionFactoringPassWrapper>());
+                    pm.add_pass(std::make_unique<TransitionFusionPassWrapper>());
+                }
+                pm.add_pass(std::make_unique<ChoiceCompletenessPass>());
+                pm.add_pass(std::make_unique<ChoiceInliningPassWrapper>());
+                pm.add_pass(std::make_unique<TimedDeadlockPassWrapper>());
+                pm.add_pass(std::make_unique<EFSMDataPathPass>());
+                if (opts.prune_dead_states || opts.opt_level >= 2) {
+                    pm.add_pass(std::make_unique<RegisterLivenessPassWrapper>());
+                }
+                pm.add_pass(std::make_unique<GuardSatisfiabilityPassWrapper>());
+                pm.add_pass(std::make_unique<LivelockAnalysisPassWrapper>());
+                pm.add_pass(std::make_unique<PriorityConflictPassWrapper>());
+                pm.add_pass(std::make_unique<TimedInvariantsVerifierPassWrapper>());
+                pm.add_pass(std::make_unique<EventQueueBoundPassWrapper>());
+                pm.add_pass(std::make_unique<WcetAnalysisPassWrapper>());
+                if (opts.verify_mode || opts.export_diagram_format.empty()) {
+                    pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
+                    pm.add_pass(std::make_unique<ModelCheckingPass>());
+                }
             }
             for (const auto& plugin_path : opts.pass_plugins) {
                 DiagnosticEngine plugin_diag;
@@ -286,7 +298,7 @@ class FsmcDriver {
         const auto validation = FsmValidator::validate(model);
 
         if (opts.verify_mode) {
-            if (opts.verify_engine == "nuxmv") {
+            if (opts.verify_engine == "nuxmv" || (opts.verify_engine == "auto" && is_nuxmv_available())) {
                 return run_nuxmv_verification(opts, model, validation);
             }
             return print_verification_report(opts, model, validation);
@@ -435,6 +447,47 @@ class FsmcDriver {
     }
 
   private:
+    static bool is_nuxmv_available() noexcept {
+        const char* path_env = std::getenv("PATH");
+        if (!path_env) {
+            return false;
+        }
+#if defined(_WIN32)
+        const char delimiter = ';';
+        const std::vector<std::string> candidates = {"nuXmv.exe", "nuXmv", "nuxmv.exe"};
+#else
+        const char delimiter = ':';
+        const std::vector<std::string> candidates = {"nuXmv", "nuxmv"};
+#endif
+        std::string path_str(path_env);
+        std::size_t start = 0;
+        while (start < path_str.size()) {
+            std::size_t end = path_str.find(delimiter, start);
+            if (end == std::string::npos) {
+                end = path_str.size();
+            }
+            std::string dir = path_str.substr(start, end - start);
+            if (!dir.empty()) {
+                std::error_code ec;
+                fs::path dir_path(dir);
+                for (const auto& cand : candidates) {
+                    fs::path full = dir_path / cand;
+                    if (fs::exists(full, ec) && fs::is_regular_file(full, ec)) {
+#if !defined(_WIN32)
+                        if (::access(full.c_str(), X_OK) == 0) {
+                            return true;
+                        }
+#else
+                        return true;
+#endif
+                    }
+                }
+            }
+            start = end + 1;
+        }
+        return false;
+    }
+
     static void perform_req_audit(const fsm::ir::FsmIr& model) {
         std::cout << "============================================================================\n"
                   << " Requirement Traceability Matrix (@fsm:req) : " << model.name << "\n"

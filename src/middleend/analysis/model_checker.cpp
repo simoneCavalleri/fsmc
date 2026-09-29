@@ -34,6 +34,8 @@ std::string ModelCheckResult::format_counterexample() const {
 
 ModelChecker::ModelChecker(const FsmIr& ir) : ir_(ir) {
     build_graph();
+    EFSMIntervalAnalyzer analyzer(ir_);
+    state_intervals_ = analyzer.compute_state_intervals();
 }
 
 ModelCheckResult ModelChecker::verify_property(const FormalProperty& prop) {
@@ -43,27 +45,64 @@ ModelCheckResult ModelChecker::verify_property(const FormalProperty& prop) {
 
     const auto& ast = *prop.ast;
 
-    // 1. Safety Invariant: G (P)
+    // 1. Until: P U Q
+    if (ast.op == TemporalOp::Until && ast.children.size() >= 2) {
+        return check_until(prop, ast.children[0], ast.children[1]);
+    }
+
+    // 2. Next: X P
+    if (ast.op == TemporalOp::Next && !ast.children.empty()) {
+        return check_next(prop, ast.children[0]);
+    }
+
+    // 3. Globally: G ( ... )
     if (ast.op == TemporalOp::Globally) {
-        if (!ast.children.empty() && ast.children[0].op == TemporalOp::Implies) {
-            // Response pattern: G (P -> F Q)
-            const auto& impl = ast.children[0];
-            if (impl.children.size() >= 2 && impl.children[1].op == TemporalOp::Finally) {
-                return check_response(
-                    prop, impl.children[0],
-                    impl.children[1].children.empty() ? impl.children[1] : impl.children[1].children[0]);
+        if (!ast.children.empty()) {
+            // G (P -> F Q) or G (P -> X Q)
+            if (ast.children[0].op == TemporalOp::Implies) {
+                const auto& impl = ast.children[0];
+                if (impl.children.size() >= 2) {
+                    if (impl.children[1].op == TemporalOp::Finally) {
+                        return check_response(
+                            prop, impl.children[0],
+                            impl.children[1].children.empty() ? impl.children[1] : impl.children[1].children[0]);
+                    }
+                    if (impl.children[1].op == TemporalOp::Next) {
+                        return check_next_response(
+                            prop, impl.children[0],
+                            impl.children[1].children.empty() ? impl.children[1] : impl.children[1].children[0]);
+                    }
+                }
+            }
+            // Recurrence: G (F P) (infinitely often)
+            if (ast.children[0].op == TemporalOp::Finally) {
+                return check_infinitely_often(
+                    prop, ast.children[0].children.empty() ? ast.children[0] : ast.children[0].children[0]);
+            }
+            // G (X P)
+            if (ast.children[0].op == TemporalOp::Next) {
+                const auto& nxt_child = ast.children[0].children.empty() ? ast.children[0] : ast.children[0].children[0];
+                return check_next_response(prop, PropertyAstNode("true"), nxt_child);
             }
         }
         // General Invariant: G (P)
         return check_invariant(prop, ast.children.empty() ? ast : ast.children[0]);
     }
 
-    // 2. Reachability: F (P)
+    // 4. Finally: F ( ... )
     if (ast.op == TemporalOp::Finally) {
+        if (!ast.children.empty()) {
+            // Persistence: F (G P) (eventually always)
+            if (ast.children[0].op == TemporalOp::Globally) {
+                return check_eventually_always(
+                    prop, ast.children[0].children.empty() ? ast.children[0] : ast.children[0].children[0]);
+            }
+        }
+        // General Reachability: F (P)
         return check_reachability(prop, ast.children.empty() ? ast : ast.children[0]);
     }
 
-    // 3. Simple Invariant / Safety
+    // 5. Simple Invariant / Safety
     return check_invariant(prop, ast);
 }
 
@@ -183,14 +222,16 @@ std::string trim_str(std::string_view s) {
     return std::string(s.substr(start, end - start + 1));
 }
 
-bool eval_atom_predicate(std::string_view raw_atom, const std::string& state, const FsmIr& ir) {
+bool eval_atom_predicate(
+    std::string_view raw_atom, const std::string& state, const FsmIr& ir,
+    const std::unordered_map<std::string, std::unordered_map<std::string, Interval>>& state_intervals) {
     std::string atom = trim_str(raw_atom);
     if (atom.empty())
         return true;
 
     // Negation prefix: !expr
     if (atom.front() == '!') {
-        return !eval_atom_predicate(atom.substr(1), state, ir);
+        return !eval_atom_predicate(atom.substr(1), state, ir, state_intervals);
     }
 
     if (atom == "true" || atom == "1")
@@ -234,7 +275,38 @@ bool eval_atom_predicate(std::string_view raw_atom, const std::string& state, co
                     return state != rhs_str;
             }
 
-            // Look up variable or port
+            // 1. Check computed state_intervals for this state first
+            auto it_state = state_intervals.find(state);
+            if (it_state != state_intervals.end()) {
+                auto it_var = it_state->second.find(lhs_str);
+                if (it_var != it_state->second.end() && !it_var->second.is_empty() &&
+                    (!std::isinf(it_var->second.lo) || !std::isinf(it_var->second.hi))) {
+                    double rhs_num = 0.0;
+                    bool rhs_is_num = false;
+                    try {
+                        rhs_num = std::stod(rhs_str);
+                        rhs_is_num = true;
+                    } catch (...) {
+                    }
+                    if (rhs_is_num) {
+                        const auto& iv = it_var->second;
+                        if (op == "<")
+                            return iv.hi < rhs_num;
+                        if (op == "<=")
+                            return iv.hi <= rhs_num;
+                        if (op == ">")
+                            return iv.lo > rhs_num;
+                        if (op == ">=")
+                            return iv.lo >= rhs_num;
+                        if (op == "==")
+                            return std::abs(iv.lo - rhs_num) < 1e-6 && std::abs(iv.hi - rhs_num) < 1e-6;
+                        if (op == "!=")
+                            return iv.lo > rhs_num || iv.hi < rhs_num;
+                    }
+                }
+            }
+
+            // 2. Look up variable or port definition fallback
             double lhs_val = 0.0;
             bool lhs_found = false;
 
@@ -335,13 +407,13 @@ bool eval_atom_predicate(std::string_view raw_atom, const std::string& state, co
 
 bool ModelChecker::eval_predicate(const PropertyAstNode& node, const std::string& state) const {
     if (node.op == TemporalOp::Atom) {
-        return eval_atom_predicate(node.atom, state, ir_);
+        return eval_atom_predicate(node.atom, state, ir_, state_intervals_);
     }
     if (node.op == TemporalOp::Not) {
         if (!node.children.empty()) {
             return !eval_predicate(node.children[0], state);
         }
-        return !eval_atom_predicate(node.atom, state, ir_);
+        return !eval_atom_predicate(node.atom, state, ir_, state_intervals_);
     }
     if (node.op == TemporalOp::And) {
         for (const auto& child : node.children) {
@@ -435,6 +507,288 @@ ModelCheckResult ModelChecker::check_response(const FormalProperty& prop, const 
             }
         }
     }
+    return {true, prop.name, prop.raw_formula, prop.kind, "", {}};
+}
+
+ModelCheckResult ModelChecker::check_until(const FormalProperty& prop, const PropertyAstNode& left,
+                                           const PropertyAstNode& right) {
+    // Strong Until (P U Q): on every path, Q eventually holds, and P holds at every state prior to Q.
+    std::unordered_set<std::string> good_states;
+
+    for (const auto& s : reachable_states_) {
+        if (eval_predicate(right, s)) {
+            good_states.insert(s);
+        }
+    }
+
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (const auto& s : reachable_states_) {
+            if (good_states.count(s) != 0)
+                continue;
+
+            if (eval_predicate(left, s)) {
+                auto it = adj_.find(s);
+                if (it != adj_.end() && !it->second.empty()) {
+                    bool all_successors_good = true;
+                    for (const auto& edge : it->second) {
+                        if (reachable_states_.count(edge.target) != 0 && good_states.count(edge.target) == 0) {
+                            all_successors_good = false;
+                            break;
+                        }
+                    }
+                    if (all_successors_good) {
+                        good_states.insert(s);
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+
+    if (good_states.count(root_state_) != 0) {
+        return {true, prop.name, prop.raw_formula, prop.kind, "", {}};
+    }
+
+    // Root state does not guarantee Until. Construct counterexample trace.
+    std::string curr = root_state_;
+    std::vector<std::string> ce_path = {curr};
+    std::unordered_set<std::string> visited_ce = {curr};
+    std::string violation_desc;
+
+    while (true) {
+        if (eval_predicate(right, curr)) {
+            break;
+        }
+        if (!eval_predicate(left, curr)) {
+            violation_desc = "State '" + curr + "' violates condition '" + left.to_string() +
+                             "' before '" + right.to_string() + "' is satisfied";
+            break;
+        }
+        auto it = adj_.find(curr);
+        if (it == adj_.end() || it->second.empty()) {
+            violation_desc = "Execution terminated in state '" + curr + "' without reaching '" +
+                             right.to_string() + "'";
+            break;
+        }
+        std::string next_step;
+        for (const auto& edge : it->second) {
+            if (reachable_states_.count(edge.target) != 0 && good_states.count(edge.target) == 0) {
+                next_step = edge.target;
+                break;
+            }
+        }
+        if (next_step.empty()) {
+            next_step = it->second.front().target;
+        }
+        if (visited_ce.count(next_step) != 0) {
+            violation_desc = "Execution caught in cycle without reaching '" + right.to_string() +
+                             "' (loops back to '" + next_step + "')";
+            ce_path.push_back(next_step);
+            break;
+        }
+        visited_ce.insert(next_step);
+        ce_path.push_back(next_step);
+        curr = next_step;
+    }
+
+    if (violation_desc.empty()) {
+        violation_desc = "Property '" + prop.raw_formula + "' not satisfied from initial state";
+    }
+
+    std::vector<CounterexampleStep> trace;
+    for (size_t i = 0; i < ce_path.size(); ++i) {
+        trace.push_back({i, ce_path[i], "", "",
+                         i == ce_path.size() - 1 ? violation_desc : "Step towards violation"});
+    }
+    return {false, prop.name, prop.raw_formula, prop.kind, violation_desc, std::move(trace)};
+}
+
+ModelCheckResult ModelChecker::check_next(const FormalProperty& prop, const PropertyAstNode& target) {
+    auto it = adj_.find(root_state_);
+    if (it == adj_.end() || it->second.empty()) {
+        std::string desc = "Initial state '" + root_state_ + "' has no successor transitions for Next operator X";
+        return {false, prop.name, prop.raw_formula, prop.kind, desc, reconstruct_trace(root_state_, desc)};
+    }
+    for (const auto& edge : it->second) {
+        if (!eval_predicate(target, edge.target)) {
+            std::string desc = "Successor state '" + edge.target + "' does not satisfy condition '" +
+                               target.to_string() + "'";
+            std::vector<CounterexampleStep> trace;
+            trace.push_back({0, root_state_, edge.event, edge.guard, "Initial active state"});
+            trace.push_back({1, edge.target, "", "", desc});
+            return {false, prop.name, prop.raw_formula, prop.kind, desc, std::move(trace)};
+        }
+    }
+    return {true, prop.name, prop.raw_formula, prop.kind, "", {}};
+}
+
+ModelCheckResult ModelChecker::check_next_response(const FormalProperty& prop, const PropertyAstNode& trigger,
+                                                   const PropertyAstNode& next_target) {
+    for (const auto& s_name : reachable_states_) {
+        if (eval_predicate(trigger, s_name)) {
+            auto it = adj_.find(s_name);
+            if (it == adj_.end() || it->second.empty()) {
+                std::string desc = "State '" + s_name + "' triggered condition '" + trigger.to_string() +
+                                   "', but has no successor states for Next operator";
+                auto trace = reconstruct_trace(s_name, desc);
+                return {false, prop.name, prop.raw_formula, prop.kind, desc, std::move(trace)};
+            }
+            for (const auto& edge : it->second) {
+                if (!eval_predicate(next_target, edge.target)) {
+                    std::string desc = "State '" + s_name + "' triggered condition '" + trigger.to_string() +
+                                       "', but successor '" + edge.target + "' does not satisfy '" +
+                                       next_target.to_string() + "'";
+                    auto trace = reconstruct_trace(s_name, "Trigger state");
+                    trace.push_back({trace.size(), edge.target, edge.event, edge.guard, desc});
+                    return {false, prop.name, prop.raw_formula, prop.kind, desc, std::move(trace)};
+                }
+            }
+        }
+    }
+    return {true, prop.name, prop.raw_formula, prop.kind, "", {}};
+}
+
+std::vector<ModelChecker::SccComponent> ModelChecker::find_sccs() const {
+    std::vector<SccComponent> sccs;
+    std::unordered_map<std::string, int> index_map;
+    std::unordered_map<std::string, int> lowlink_map;
+    std::unordered_set<std::string> on_stack;
+    std::vector<std::string> stack;
+    int index = 0;
+
+    auto strongconnect = [&](auto& self, const std::string& v) -> void {
+        index_map[v] = index;
+        lowlink_map[v] = index;
+        index++;
+        stack.push_back(v);
+        on_stack.insert(v);
+
+        auto it = adj_.find(v);
+        if (it != adj_.end()) {
+            for (const auto& edge : it->second) {
+                const std::string& w = edge.target;
+                if (reachable_states_.count(w) == 0)
+                    continue;
+
+                if (index_map.find(w) == index_map.end()) {
+                    self(self, w);
+                    lowlink_map[v] = (std::min)(lowlink_map[v], lowlink_map[w]);
+                } else if (on_stack.count(w) != 0) {
+                    lowlink_map[v] = (std::min)(lowlink_map[v], index_map[w]);
+                }
+            }
+        }
+
+        if (lowlink_map[v] == index_map[v]) {
+            SccComponent scc;
+            while (true) {
+                std::string w = stack.back();
+                stack.pop_back();
+                on_stack.erase(w);
+                scc.states.push_back(w);
+                if (w == v)
+                    break;
+            }
+            if (scc.states.size() > 1) {
+                scc.is_cyclic = true;
+            } else if (!scc.states.empty()) {
+                auto it_self = adj_.find(scc.states[0]);
+                if (it_self != adj_.end()) {
+                    for (const auto& edge : it_self->second) {
+                        if (edge.target == scc.states[0]) {
+                            scc.is_cyclic = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            sccs.push_back(std::move(scc));
+        }
+    };
+
+    for (const auto& s : reachable_states_) {
+        if (index_map.find(s) == index_map.end()) {
+            strongconnect(strongconnect, s);
+        }
+    }
+
+    return sccs;
+}
+
+ModelCheckResult ModelChecker::check_infinitely_often(const FormalProperty& prop, const PropertyAstNode& target) {
+    auto sccs = find_sccs();
+
+    // Check if any reachable cyclic SCC has NO state satisfying target
+    for (const auto& scc : sccs) {
+        if (!scc.is_cyclic)
+            continue;
+
+        bool has_target = false;
+        for (const auto& s : scc.states) {
+            if (eval_predicate(target, s)) {
+                has_target = true;
+                break;
+            }
+        }
+        if (!has_target) {
+            const std::string& rep = scc.states[0];
+            std::string desc = "Recurrence property '" + prop.raw_formula +
+                               "' violated: cycle containing state '" + rep +
+                               "' never visits target condition '" + target.to_string() + "'";
+            auto trace = reconstruct_trace(rep, desc);
+            return {false, prop.name, prop.raw_formula, prop.kind, desc, std::move(trace)};
+        }
+    }
+
+    // Check for reachable terminal states without target
+    for (const auto& s : reachable_states_) {
+        auto it = adj_.find(s);
+        if (it == adj_.end() || it->second.empty()) {
+            if (!eval_predicate(target, s)) {
+                std::string desc = "Terminal deadlock state '" + s + "' does not satisfy target condition '" +
+                                   target.to_string() + "' in recurrence property '" + prop.raw_formula + "'";
+                auto trace = reconstruct_trace(s, desc);
+                return {false, prop.name, prop.raw_formula, prop.kind, desc, std::move(trace)};
+            }
+        }
+    }
+
+    return {true, prop.name, prop.raw_formula, prop.kind, "", {}};
+}
+
+ModelCheckResult ModelChecker::check_eventually_always(const FormalProperty& prop, const PropertyAstNode& target) {
+    auto sccs = find_sccs();
+
+    // In FG P, once a persistent cycle is reached, all states in that cycle must satisfy target.
+    for (const auto& scc : sccs) {
+        if (!scc.is_cyclic)
+            continue;
+
+        for (const auto& s : scc.states) {
+            if (!eval_predicate(target, s)) {
+                std::string desc = "Persistence property '" + prop.raw_formula +
+                                   "' violated: recurrent state '" + s +
+                                   "' does not satisfy condition '" + target.to_string() + "'";
+                auto trace = reconstruct_trace(s, desc);
+                return {false, prop.name, prop.raw_formula, prop.kind, desc, std::move(trace)};
+            }
+        }
+    }
+
+    for (const auto& s : reachable_states_) {
+        auto it = adj_.find(s);
+        if (it == adj_.end() || it->second.empty()) {
+            if (!eval_predicate(target, s)) {
+                std::string desc = "Terminal state '" + s + "' violates condition '" +
+                                   target.to_string() + "' in persistence property '" + prop.raw_formula + "'";
+                auto trace = reconstruct_trace(s, desc);
+                return {false, prop.name, prop.raw_formula, prop.kind, desc, std::move(trace)};
+            }
+        }
+    }
+
     return {true, prop.name, prop.raw_formula, prop.kind, "", {}};
 }
 

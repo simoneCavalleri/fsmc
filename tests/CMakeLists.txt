@@ -144,6 +144,7 @@ add_fsm_unit_test(test_wcet_analysis DIR middleend/verification)
 add_fsm_unit_test(test_efsm_interval_analysis DIR middleend/verification)
 add_fsm_unit_test(test_model_checker_reachability DIR middleend/verification)
 add_fsm_unit_test(test_model_checker_temporal_logic DIR middleend/verification)
+add_fsm_unit_test(test_ltl_model_checker_extended DIR middleend/verification)
 add_fsm_unit_test(test_timed_automata_verification DIR middleend/verification)
 add_fsm_unit_test(test_guard_satisfiability DIR middleend/verification)
 

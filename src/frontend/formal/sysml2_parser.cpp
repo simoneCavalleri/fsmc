@@ -1163,18 +1163,26 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     TransitionEdge trans;
     trans.source = source;
     trans.target = target;
-    trans.source_id = compute_deterministic_id(source);
-    trans.target_id = compute_deterministic_id(target);
+    if (const auto* s = model.find_state_by_name(source)) {
+        trans.source_id = s->id;
+    }
+    if (const auto* t = model.find_state_by_name(target)) {
+        trans.target_id = t->id;
+    }
     if (!fork_targets.empty()) {
         trans.target_ids = fork_targets;
         for (const auto& t_name : fork_targets) {
-            trans.multi_target_ids.push_back(compute_deterministic_id(t_name));
+            if (const auto* t = model.find_state_by_name(t_name)) {
+                trans.multi_target_ids.push_back(t->id);
+            }
         }
     }
     if (!join_sources.empty()) {
         trans.source_ids = join_sources;
         for (const auto& s_name : join_sources) {
-            trans.multi_source_ids.push_back(compute_deterministic_id(s_name));
+            if (const auto* s = model.find_state_by_name(s_name)) {
+                trans.multi_source_ids.push_back(s->id);
+            }
         }
     }
     trans.event = event;

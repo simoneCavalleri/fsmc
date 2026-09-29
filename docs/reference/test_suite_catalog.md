@@ -4,8 +4,8 @@
 > To update this file, run: `cmake --build build --target generate_test_catalog` or `python3 scripts/generate_test_catalog.py`.
 
 **Total Documented Subsystems**: 12  
-**Total Test Suites & Binaries**: 77  
-**Total Documented Test Cases**: 414  
+**Total Test Suites & Binaries**: 82  
+**Total Documented Test Cases**: 419  
 
 ---
 
@@ -285,6 +285,9 @@
 
 #### `SpscRingBuffer.NonDefaultConstructible_Emplace_ConstructsInPlace`
 **Test Intent**: Verify in-place emplacement of non-default-constructible payloads.
+
+### [`test_state_serialization.cpp`](../tests/backend/cpp/runtime/test_state_serialization.cpp) (`tests/backend/cpp/runtime/test_state_serialization.cpp`)
+- *(Executable binary test verification)*
 
 ### [`test_thread_safe_stress.cpp`](../tests/backend/cpp/runtime/test_thread_safe_stress.cpp) (`tests/backend/cpp/runtime/test_thread_safe_stress.cpp`)
 #### `ThreadSafeStress.HighConcurrency_TwentyThreadsFiftyThousandEvents_AllEventsProcessed`
@@ -751,6 +754,9 @@
 #### `MermaidParser.PortDirectives_ParsedWithAttributesAndConstraints`
 **Test Intent**: Verify Mermaid parsing of @fsm:port directives into FsmIr.
 
+### [`test_multiline_actions.cpp`](../tests/frontend/diagram/test_multiline_actions.cpp) (`tests/frontend/diagram/test_multiline_actions.cpp`)
+- *(Executable binary test verification)*
+
 ### [`test_plantuml_parser.cpp`](../tests/frontend/diagram/test_plantuml_parser.cpp) (`tests/frontend/diagram/test_plantuml_parser.cpp`)
 #### `PlantUmlParser.BasicDiagram_ParsedIntoValidFsmIr`
 **Test Intent**: Unit test suite for the PlantUML state diagram parser and frontend dialect.
@@ -880,6 +886,26 @@
 
 #### `StateflowParser.NestedBracketsAndJunctions_ParsedCorrectly`
 **Test Intent**: Verify Stateflow connective junctions and nested condition brackets.
+
+### [`test_stateflow_slx_ingestion.cpp`](../tests/frontend/formal/test_stateflow_slx_ingestion.cpp) (`tests/frontend/formal/test_stateflow_slx_ingestion.cpp`)
+#### `StateflowSlxIngestion.IngestStoredSlxContainer_ParsesModelDirectly`
+**Test Intent**: Unit test suite for direct ingestion of MathWorks Stateflow .slx container archives.
+/
+
+#### `StateflowSlxIngestion.IngestDeflatedSlxContainer_ParsesModelDirectly`
+**Test Intent**: Verify direct ingestion of Deflate-compressed Stateflow .slx container.
+
+#### `StateflowSlxIngestion.IngestBlockdiagramXmlFallback_ParsesModelDirectly`
+**Test Intent**: Verify fallback ingestion from 'simulink/blockdiagram.xml' when stateflow.xml is absent.
+
+#### `StateflowSlxIngestion.ParserFactory_DetectsSlxAndInstantiatesStateflowParser`
+**Test Intent**: Verify ParserFactory deduction and content detection for .slx files.
+
+#### `StateflowSlxIngestion.CorruptedSlxContainer_FailsGracefully`
+**Test Intent**: Verify rejection of corrupted or empty ZIP containers.
+
+### [`test_sysml2_advanced_constructs.cpp`](../tests/frontend/formal/test_sysml2_advanced_constructs.cpp) (`tests/frontend/formal/test_sysml2_advanced_constructs.cpp`)
+- *(Executable binary test verification)*
 
 ### [`test_sysml2_flight_control.cpp`](../tests/frontend/formal/test_sysml2_flight_control.cpp) (`tests/frontend/formal/test_sysml2_flight_control.cpp`)
 #### `Sysml2FlightControl.FlightMissionController_ParsedIntoValidFsmIr`
@@ -1293,6 +1319,9 @@
 
 #### `GuardSatisfiability.QualifiedVariableDomainParsing_ExtractsExactIntervalBoundaries`
 **Test Intent**: Verify zero-allocation parse_guard_domain with qualifiers and numeric formats.
+
+### [`test_ltl_model_checker_extended.cpp`](../tests/middleend/verification/test_ltl_model_checker_extended.cpp) (`tests/middleend/verification/test_ltl_model_checker_extended.cpp`)
+- *(Executable binary test verification)*
 
 ### [`test_model_checker_reachability.cpp`](../tests/middleend/verification/test_model_checker_reachability.cpp) (`tests/middleend/verification/test_model_checker_reachability.cpp`)
 #### `FsmValidator.SoundStateHierarchy_PassesValidationWithoutErrors`

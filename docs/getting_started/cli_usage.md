@@ -23,7 +23,7 @@ fsmc --export-runtime <directory> [--std 17|20]
 #### Input and Output Options
 | Flag | Description | Default |
 | :--- | :--- | :--- |
-| `-i, --input <file>` | Path to input model file (`.sysml`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, `.dot`, `.sfx`, `.stateflow`, `.xml`). | Positional argument |
+| `-i, --input <file>` | Path to input model file (`.sysml`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, `.dot`, `.sfx`, `.stateflow`, `.xml`, `.slx`). | Positional argument |
 | `-o, --output <file>` | Path to output generated code or exported diagram file. | `stdout` |
 | `-t, --target <lang>` | Target code generator backend: `cpp` (default). | `cpp` |
 | `-n, --name <name>` | Generated state machine class/struct name. | Inferred from filename or `MyFSM` |
@@ -36,6 +36,7 @@ fsmc --export-runtime <directory> [--std 17|20]
 #### Optimization and Code Transformation
 | Flag | Description | Default |
 | :--- | :--- | :--- |
+| `--pipeline <mode>` | Compiler pipeline architecture: `standard` or `7stage` (explicit 7-stage pass manager). | `standard` |
 | `-O0, --no-opt` | Disable all middle-end optimization passes. | Enabled (`-O1`) |
 | `-O1` | Enable standard optimization passes (canonicalization, guard simplification). | Active |
 | `-O2, --optimize` | Enable aggressive optimizations including unreachable dead state and transition pruning. | Inactive |

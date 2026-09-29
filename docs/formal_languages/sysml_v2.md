@@ -85,7 +85,7 @@ state EmergencyHold;
 
 ---
 
-### C. Transition Syntax Varieties
+### C. Transition Syntax Varieties & Fork/Join Synchronization
 `fsmc` parses both full explicit transition statements and shorthand forms:
 
 | Transition Style | Syntax | Description |
@@ -95,13 +95,39 @@ state EmergencyHold;
 | **Temporal Trigger (after)** | `transition on after(500 ms) then TimeoutFault;` | Discrete-time dwell delay transition. |
 | **Temporal Trigger (at)** | `transition on at(12:00:00) then ScheduledSync;` | Absolute clock trigger transition. |
 | **Guarded Shorthand** | `transition if in.sensor_altitude <= 0.0 then Landed;` | Immediate guard-evaluated transition. |
+| **Fork Transition** | `transition fork (Region1, Region2);` | Direct multi-target fork transition activating concurrent orthogonal regions. |
+| **Join Transition** | `transition join (Region1, Region2) then Converged;` | Direct multi-source join transition synchronizing completion of orthogonal regions. |
 | **Fork Pseudostate** | `fork Fork1; transition first St1 then Fork1; transition first Fork1 then ParallelA;` | Spawns concurrent execution across orthogonal regions. |
 | **Join Pseudostate** | `join Join1; transition first ParallelA then Join1; transition first Join1 then St2;` | Synchronizes completion of orthogonal regions. |
 | **Connection Point** | `entry point En1; exit point Ex1;` | Structured entry and exit connection points across state boundaries. |
 
 ---
 
-### D. Choice Pseudostates & Branching
+### D. Nested Qualified Packages & Binding Connectors
+SysML v2 namespaces can be nested or qualified, with explicit port bindings and structural connectors:
+
+```sysml
+package Avionics::PowerSystem {
+    state def BatterySupervision {
+        in port raw_bus_voltage : Real;
+        out port filtered_voltage : Real;
+
+        // Port bindings and structural connectors
+        bind filtered_voltage = raw_bus_voltage;
+        connect telemetry_out to GroundStation::rx_bus;
+
+        // Nested package hierarchy
+        package ThermalSubsystem {
+            state def Cooler {
+                entry; then Passive;
+                state Passive;
+            }
+        }
+    }
+}
+```
+
+### E. Choice Pseudostates & Branching
 ```sysml
 choice ClearanceCheck;
 

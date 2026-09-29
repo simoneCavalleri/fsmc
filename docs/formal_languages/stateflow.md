@@ -86,15 +86,23 @@ To enrich Stateflow models with hardware I/O ports, range bounds, enums, structs
 ## 4. CLI Workflow & Roundtrip Serialization
 
 ### Ingesting Stateflow and Generating C++ Code
-`fsmc` automatically detects Stateflow XML files by extension (`.sfx`, `.stateflow`, `.xml`) or by inspecting the `<Stateflow>` root element:
+`fsmc` automatically detects Stateflow models by extension (`.slx`, `.sfx`, `.stateflow`, `.xml`) or by inspecting file contents:
 
 ```bash
-# Ingest Stateflow XML and emit zero-allocation C++17 header
+# Ingest native MathWorks Simulink .slx package directly
+fsmc -i Model.slx -o Model.hpp --target cpp
+
+# Ingest Stateflow XML and emit zero-allocation C++20 header
 fsmc -i FlightController.xml -o FlightController.hpp --target cpp
 
 # Generate C++ with active object asynchronous wrapper and MC/DC harness
 fsmc -i FlightController.xml -o FlightController.hpp --emit-test-harness FlightController_mcdc_test.cpp
 ```
+
+### Direct `.slx` OPC Container Ingestion
+Starting in `v0.7.0`, `fsmc` includes native OPC (Open Packaging Convention) / ZIP container extraction with built-in Deflate decompression. It reads `.slx` models directly from disk without requiring MATLAB, Simulink, or external decompression tools like `unzip`:
+- Automatically locates and inspects `simulink/stateflow.xml` and `simulink/blockdiagram.xml`.
+- Streams compressed block XML and extracts charts, states, junctions, and transitions into `FsmIr`.
 
 ### Exporting Any Model to Stateflow
 You can translate models from any supported format (SysML v2, SCXML, PlantUML, Mermaid, Cameo XMI) into Stateflow XML:

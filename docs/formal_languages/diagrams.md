@@ -296,3 +296,21 @@ When transpiling rich formal specifications (SysML v2, Cameo XMI, SCXML) to visu
 ```bash
 fsmc -i mission.sysml -e plantuml -o mission.puml --emit-sidecar mission.fsm.yaml
 ```
+
+---
+
+## 7. Multiline & Braced Composite Action Blocks
+Starting in `v0.7.0`, `fsmc` supports multiline and braced composite action blocks within PlantUML and Mermaid diagrams:
+
+```plantuml
+Idle --> Active : Start [hasLock] / { out.thrust_pct = 100.0; reg.cycle_counter += 1; sendTelemetry(); }
+```
+
+In addition to single action names, composite action blocks enclose multiple semicolon-separated statements:
+- Direct variable/register assignments (`reg.var = expr;`)
+- Output port updates (`out.port = val;`)
+- Shorthand increments and decrements (`reg.count++;`, `out.steps--;`)
+- Compound assignments (`+=`, `-=`, `*=`, `/=`)
+- Action method calls (`publishEvent();`)
+
+All action statements within a block are parsed into structured `ActionAssignment` instructions, preserving discrete datapath effects during code generation and model checking.

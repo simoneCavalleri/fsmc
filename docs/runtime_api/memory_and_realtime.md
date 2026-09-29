@@ -94,3 +94,41 @@ For embedded systems where discrete events are produced inside hardware Interrup
 1. The consumer increments `seq_` to an odd number before mutating registers, and to an even number after.
 2. The reader thread reads `seq_` before and after copying the registers.
 3. If `seq_` was even and unchanged across the copy, the snapshot is guaranteed free of torn-reads.
+
+---
+
+## 5. Zero-Heap Binary State Snapshot Serialization & Deserialization
+
+Starting in `v0.7.0`, `fsmc` provides built-in binary snapshot serialization and restoration designed for high-reliability embedded checkpoints, NVRAM retention across reboot cycles, and hot-standby dual-redundant synchronization.
+
+### Key Guarantees
+- **100% Zero-Heap**: Operates directly into caller-provided stack buffers, fixed arrays, or non-volatile memory slots using `std::span<std::uint8_t>` or raw buffer pointers.
+- **Full Statechart Capture**: Serializes active state variant index, history states, deterministic timers, residence duration (time invariants), and datapath registers.
+- **Defensive Integrity Validation**: Packed header with magic word (`0x46534D43`), schema revision, registers size check, and 32-bit FNV-1a checksum. Deserialization strictly rejects truncated, outdated, or corrupted snapshots.
+
+### Usage Example
+
+```cpp
+#include "fsm/backend/cpp/runtime/fsm.hpp"
+#include "fsm/backend/cpp/runtime/serialization.hpp"
+
+// Allocate fixed-size stack buffer
+std::array<std::uint8_t, 256> snapshot_buf{};
+std::size_t bytes_written = 0;
+
+// Serialize active state machine snapshot
+bool ok = fsm::serialize_state(controller, snapshot_buf, bytes_written);
+if (ok) {
+    // Write buffer to NVRAM, EEPROM, or network socket
+}
+
+// In a fresh instance or after reboot recovery:
+ControllerFSM restored_controller;
+std::size_t bytes_read = 0;
+bool restored = fsm::deserialize_state(restored_controller, 
+                                      std::span<const std::uint8_t>(snapshot_buf.data(), bytes_written), 
+                                      bytes_read);
+if (restored) {
+    // System resumes execution seamlessly from the exact checkpointed state
+}
+```

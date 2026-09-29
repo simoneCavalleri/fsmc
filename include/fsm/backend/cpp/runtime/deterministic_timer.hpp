@@ -140,6 +140,23 @@ class deterministic_timer_manager {
         return count;
     }
 
+    [[nodiscard]] constexpr const std::array<timer_entry, MaxTimers>& entries() const noexcept { return timers_; }
+
+    constexpr bool restore_timer(std::uint32_t timer_id, std::uint64_t interval_ms, std::uint64_t elapsed_ms,
+                                 bool periodic) noexcept {
+        for (auto& entry : timers_) {
+            if (!entry.active) {
+                entry.timer_id = timer_id;
+                entry.interval_ms = interval_ms;
+                entry.elapsed_ms = elapsed_ms;
+                entry.periodic = periodic;
+                entry.active = true;
+                return true;
+            }
+        }
+        return false;
+    }
+
   private:
     std::array<timer_entry, MaxTimers> timers_{};
 };
@@ -171,6 +188,16 @@ class deterministic_timer_manager<0> {
     }
 
     [[nodiscard]] constexpr std::size_t active_count() const noexcept { return 0; }
+
+    [[nodiscard]] const std::array<timer_entry, 0>& entries() const noexcept {
+        static const std::array<timer_entry, 0> dummy{};
+        return dummy;
+    }
+
+    constexpr bool restore_timer(std::uint32_t /*timer_id*/, std::uint64_t /*interval_ms*/,
+                                 std::uint64_t /*elapsed_ms*/, bool /*periodic*/) noexcept {
+        return false;
+    }
 };
 
 }  // namespace fsm

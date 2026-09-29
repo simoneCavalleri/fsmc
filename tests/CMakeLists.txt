@@ -168,6 +168,7 @@ add_fsm_unit_test(test_mcdc_harness DIR backend/verification)
 # ==============================================================================
 add_fsm_unit_test(test_cpp_model_emitter DIR backend/cpp)
 add_fsm_unit_test(test_cpp_e2e_compiler DIR backend/cpp STANDARD 20)
+add_fsm_unit_test(test_state_serialization DIR backend/cpp/runtime STANDARD 20)
 
 # Compiled Generated FSM (Modular C++20)
 add_fsm_unit_test(test_generated_fsm DIR backend/cpp)

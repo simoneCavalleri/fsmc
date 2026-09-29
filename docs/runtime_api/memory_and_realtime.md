@@ -99,7 +99,7 @@ For embedded systems where discrete events are produced inside hardware Interrup
 
 ## 5. Zero-Heap Binary State Snapshot Serialization & Deserialization
 
-Starting in `v0.7.0`, `fsmc` provides built-in binary snapshot serialization and restoration designed for high-reliability embedded checkpoints, NVRAM retention across reboot cycles, and hot-standby dual-redundant synchronization.
+`fsmc` provides built-in binary snapshot serialization and restoration designed for high-reliability embedded checkpoints, NVRAM retention across reboot cycles, and hot-standby dual-redundant synchronization.
 
 ### Key Guarantees
 - **100% Zero-Heap**: Operates directly into caller-provided stack buffers, fixed arrays, or non-volatile memory slots using `std::span<std::uint8_t>` or raw buffer pointers.

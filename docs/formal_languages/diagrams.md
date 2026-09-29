@@ -300,7 +300,7 @@ fsmc -i mission.sysml -e plantuml -o mission.puml --emit-sidecar mission.fsm.yam
 ---
 
 ## 7. Multiline & Braced Composite Action Blocks
-Starting in `v0.7.0`, `fsmc` supports multiline and braced composite action blocks within PlantUML and Mermaid diagrams:
+`fsmc` supports multiline and braced composite action blocks within PlantUML and Mermaid diagrams:
 
 ```plantuml
 Idle --> Active : Start [hasLock] / { out.thrust_pct = 100.0; reg.cycle_counter += 1; sendTelemetry(); }

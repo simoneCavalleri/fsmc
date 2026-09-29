@@ -3,7 +3,7 @@
 A single-page printable reference card covering the universal CLI commands, formal verification syntax, and target runtime APIs across supported languages.
 
 > [!NOTE]
-> **Active Target vs. Roadmap Previews**: The **C++ Backend** (`C++17/C++20`) is currently the sole active production runtime in `v0.6.0`. Rust and C tabs illustrate **preview specifications** currently in active development under the multi-target roadmap for `v0.7.0`.
+> **Active Target vs. Roadmap Previews**: The **C++ Backend** (`C++17/C++20`) is the active production runtime. Rust and C tabs illustrate **preview specifications** under the multi-target roadmap.
 
 ---
 
@@ -38,7 +38,7 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
 
 ## 2. Defining Transition Tables
 
-=== "C++ Target (Production v0.6.0)"
+=== "C++ Target (Production)"
     ```cpp
     // Method A: fsm::row Type Declarations
     using MyTable = fsm::transition_table<
@@ -87,7 +87,7 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
 
 ## 3. Runtime Engine Instantiation & Policy Configuration
 
-=== "C++ Target (Production v0.6.0)"
+=== "C++ Target (Production)"
     ```cpp
     #include <fsm/backend/cpp/runtime/fsm.hpp>
     #include <fsm/backend/cpp/runtime/spsc_fsm.hpp>
@@ -155,7 +155,7 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
 | **`Registers`** | Read-Only | Read-Write | Machine construction |
 | **`Services`** | Inaccessible | Injected Reference | Machine construction |
 
-=== "C++ Target (Production v0.6.0)"
+=== "C++ Target (Production)"
     ```cpp
     // Guard: Read-only access to InPorts, Registers, and Event payload
     struct TargetReachableGuard {
@@ -208,7 +208,7 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
 
 ## 5. Execution API Cheat Sheet
 
-=== "C++ Target (Production v0.6.0)"
+=== "C++ Target (Production)"
     ```cpp
     SyncFSM fsm(initial_regs, srv);
 
@@ -220,10 +220,10 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
     fsm::step_result step_res = fsm.step(in, out);
     if (step_res.has_transitioned()) { /* Sampled threshold fired */ }
 
-    // 3. Deterministic Real-Time Timer Tick (v0.6.0+)
+    // 3. Deterministic Real-Time Timer Tick
     std::size_t expired = fsm.tick(std::chrono::milliseconds(10));
 
-    // 4. Introspection & Blackbox Flight Recorder (v0.6.0+)
+    // 4. Introspection & Blackbox Flight Recorder
     assert(fsm.is_in<Running>());
     std::string_view current = fsm.current_state_name();
     uint32_t count = fsm.registers().ignition_count;

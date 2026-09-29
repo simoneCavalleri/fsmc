@@ -3108,6 +3108,9 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
 
         out << R"raw_fsm_runtime(
 // --- Begin: serialization.hpp ---
+#if __cplusplus >= 202002L || (defined(__cpp_lib_span) && __cpp_lib_span >= 202002L)
+#endif
+
 namespace fsm {
 
 /**
@@ -3182,6 +3185,35 @@ bool set_variant_index(Variant& var, std::size_t target_index) {
 }  // namespace detail
 
 /**
+ * @brief Standalone non-member serialization helper taking a raw memory buffer.
+ */
+template <typename FSM>
+bool serialize_state(const FSM& machine, std::uint8_t* dest, std::size_t capacity, std::size_t& bytes_written) noexcept {
+    return machine.serialize(dest, capacity, bytes_written);
+}
+
+template <typename FSM>
+bool serialize_state(const FSM& machine, std::uint8_t* dest, std::size_t capacity) noexcept {
+    std::size_t written = 0;
+    return machine.serialize(dest, capacity, written);
+}
+
+/**
+ * @brief Standalone non-member deserialization helper taking a raw memory buffer.
+ */
+template <typename FSM>
+bool deserialize_state(FSM& machine, const std::uint8_t* src, std::size_t size, std::size_t& bytes_read) noexcept {
+    return machine.deserialize(src, size, bytes_read);
+}
+
+template <typename FSM>
+bool deserialize_state(FSM& machine, const std::uint8_t* src, std::size_t size) noexcept {
+    std::size_t read = 0;
+    return machine.deserialize(src, size, read);
+}
+
+#if __cplusplus >= 202002L || (defined(__cpp_lib_span) && __cpp_lib_span >= 202002L)
+/**
  * @brief Standalone non-member serialization helper taking a destination span.
  */
 template <typename FSM>
@@ -3208,6 +3240,7 @@ bool deserialize_state(FSM& machine, std::span<const std::uint8_t> buffer) noexc
     std::size_t read = 0;
     return machine.deserialize(buffer, read);
 }
+#endif
 
 }  // namespace fsm
 

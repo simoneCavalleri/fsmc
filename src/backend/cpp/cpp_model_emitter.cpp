@@ -737,21 +737,6 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                     }
                 }
                 out << "    }\n";
-
-                // Backward-compatible 2-domain overload if in is not referenced in expressions
-                if (!uses_in) {
-                    out << "\n    template <typename OutPorts, typename Registers>\n";
-                    out << "    void operator()(" << out_param << ", " << reg_param << ") const {\n";
-                    for (const auto& assign : assignments) {
-                        const auto* p = model.find_port(assign.target.name);
-                        if (p != nullptr && p->is_out()) {
-                            out << "        out." << assign.target.full_path() << " = " << assign.expression << ";\n";
-                        } else {
-                            out << "        reg." << assign.target.full_path() << " = " << assign.expression << ";\n";
-                        }
-                    }
-                    out << "    }\n";
-                }
             } else {
                 // External service invocation
                 out << "    template <typename Services>\n";

@@ -62,13 +62,11 @@ struct MotorRegisters {
 static_assert(std::is_trivially_copyable_v<MotorRegisters>);
 
 // 4. Instantiate spsc_fsm with QueueCapacity = 64 (must be power of two)
-// Modern Policy Instantiation (v0.5.0+):
 using SafeMotorFSM = fsm::make_spsc_fsm<
     MotorTable,
     fsm::with_registers<MotorRegisters>,
     fsm::with_queue_capacity<64>
 >;
-// (Legacy syntax: fsm::spsc_fsm<MotorTable, fsm::no_ports, fsm::no_ports, MotorRegisters, fsm::no_services, 64>)
 
 SafeMotorFSM g_motor_fsm;
 

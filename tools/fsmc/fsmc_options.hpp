@@ -56,58 +56,53 @@ inline void print_help(const char* prog_name) {
         << "============================================================================\n\n"
         << "Usage: " << prog_name << " -i <model_file> [OPTIONS]\n"
         << "       " << prog_name << " [OPTIONS] <model_file>\n"
-        << "       " << prog_name << " -i <model_file> --export <format> -o <out_file>\n"
-        << "       " << prog_name << " -i <model_file> --verify\n"
+        << "       " << prog_name << " -i <model_file> -e <format> -o <out_file>\n"
+        << "       " << prog_name << " -i <model_file> -V / --verify\n"
         << "       " << prog_name << " --export-runtime <dir> [--std 17|20]\n\n"
         << "Input & Output Options:\n"
-        << "  -i, --input <file>          Input model file (.sysml, .puml, .mmd, .xmi, .scxml, .json, .dot)\n"
-        << "  -o, --output <file>         Output generated code or exported diagram file (default: stdout)\n"
-        << "  -t, --target <lang>         Target code generator backend: 'cpp' (default)\n"
-        << "  -n, --name <name>           Generated FSM class name (default: inferred from filename or 'MyFSM')\n"
-        << "  --namespace, --package <ns> Generated namespace/package/module name (default: 'fsm_generated')\n"
-        << "  --format <fmt>              Override input format: 'sysml2', 'plantuml', 'mermaid', 'cameo', 'scxml', "
-           "'json', 'dot', 'auto'\n"
-        << "  --sidecar, -s <file>        Explicit companion manifest file (.fsm.yaml, .fsm.json)\n"
-        << "  --emit-sidecar <file>       Emit companion sidecar manifest (.fsm.yaml) when exporting diagrams\n\n"
-        << "Optimization & Code Transformation Options:\n"
-        << "  -O0, --no-opt               Disable middle-end optimization passes\n"
-        << "  -O1, -O2, --optimize        Enable middle-end optimization passes (default: -O1)\n"
-        << "  --pipeline <7stage|standard> Middle-end pipeline architecture (default: 'standard')\n"
-        << "  --prune-dead-states         Prune unreachable states and statically dead transitions before codegen\n"
-        << "  --no-guard-simplification   Disable algebraic boolean simplification on guard expressions\n"
-        << "  --inline-submachines        Inline modular submachines (SubmachineRef) into a single flat/composite FSM\n"
-        << "  --submachine-dir <dir>      Search directory for external submachine diagram files\n\n"
+        << "  -i, --input <file>           Input model file (.sysml, .slx, .puml, .mmd, .xmi, .scxml, .json, .dot)\n"
+        << "  -o, --output <file>          Output generated code or exported diagram file (default: stdout)\n"
+        << "  -t, --target <lang>          Target code generator backend: 'cpp' (default)\n"
+        << "  -n, --name <name>            Generated FSM class name (default: inferred or 'MyFSM')\n"
+        << "  -N, --ns, --namespace <ns>   Generated namespace/package name (default: 'fsm_generated')\n"
+        << "  --format <fmt>               Override input format: 'sysml2', 'stateflow', 'plantuml', 'mermaid', 'cameo', 'scxml', 'json', 'dot', 'auto'\n"
+        << "  -s, --sidecar <file>         Explicit companion manifest file (.fsm.yaml, .fsm.json)\n"
+        << "  --emit-sidecar <file>        Emit companion sidecar manifest (.fsm.yaml) when exporting diagrams\n\n"
+        << "Optimization & Pipeline Options:\n"
+        << "  -O0, --no-opt                Disable middle-end optimization passes\n"
+        << "  -O1, -O2, --optimize         Enable middle-end optimization passes (default: -O1)\n"
+        << "  -p, --pipeline <mode>        Middle-end pipeline architecture: 'standard' or '7stage'\n"
+        << "  --7stage                     Shorthand for 7-stage optimization & formal verification pipeline\n"
+        << "  --prune                      Prune unreachable states and statically dead transitions\n"
+        << "  --no-simplify                Disable algebraic boolean simplification on guard expressions\n"
+        << "  --inline                     Inline modular submachines into a single flat/composite FSM\n"
+        << "  --submachine-dir <dir>       Search directory for external submachine diagram files\n\n"
         << "Safety & Static Analysis Verification Options:\n"
-        << "  -Werror                     Treat all middle-end compiler warnings as fatal errors\n"
-        << "  --strict-determinism        Fail compilation on non-deterministic branch collisions or unprioritized "
-           "transitions\n"
-        << "  --check-races               Perform static concurrency data-race analysis across parallel orthogonal "
-           "regions\n"
-        << "  --req-audit                 Print Requirement Traceability Matrix (@fsm:req) before code generation\n"
-        << "  --rtm-output <file>         Export Requirement Traceability Matrix to file\n"
-        << "  --rtm-format <json|md>      Requirement Traceability Matrix format ('json' or 'markdown')\n"
-        << "  --emit-test-harness <file>  Synthesize GoogleTest MC/DC test harness to file\n\n"
+        << "  -Werror                      Treat all middle-end compiler warnings as fatal errors\n"
+        << "  --strict                     Enforce strict determinism (fail on branch collisions or unprioritized transitions)\n"
+        << "  --races                      Perform static concurrency data-race analysis across parallel orthogonal regions\n"
+        << "  --req-audit                  Print Requirement Traceability Matrix (@fsm:req) before code generation\n"
+        << "  --rtm <file>                 Export Requirement Traceability Matrix to file\n"
+        << "  --rtm-format <json|md>       Requirement Traceability Matrix format ('json' or 'markdown')\n"
+        << "  --harness <file>             Synthesize GoogleTest MC/DC test harness to file\n\n"
         << "C++ Backend Options (--target cpp):\n"
-        << "  --std <17|20>               Target C++ standard: '17' or '20' (default: 17)\n"
-        << "  --c++17                     Target C++17 standard\n"
-        << "  --c++20                     Target C++20 standard\n"
-        << "  --standalone                Generate self-contained header with embedded zero-alloc runtime (default)\n"
-        << "  --modular                   Generate FSM header only, including external <fsm/fsm.hpp>\n"
-        << "  --export-runtime <dir>      Export the standalone FSM runtime library headers to directory\n"
-        << "  --no-thread-safe            Do not generate thread_safe_fsm asynchronous wrapper\n"
-        << "  --no-stubs                  Do not emit default stub functors for actions and guards\n"
-        << "  --allow-diagram-codegen     Allow C++ code generation from visual diagram formats (PlantUML, Mermaid, "
-           "etc.)\n\n"
+        << "  --std <17|20>                Target C++ standard: '17' or '20' (default: 17)\n"
+        << "  --c++17, --c++20             Target C++ standard shorthands\n"
+        << "  --standalone                 Generate self-contained header with embedded zero-alloc runtime (default)\n"
+        << "  --modular                    Generate FSM header only, including external <fsm/fsm.hpp>\n"
+        << "  --export-runtime <dir>       Export the standalone FSM runtime library headers to directory\n"
+        << "  --no-thread-safe             Do not generate thread_safe_fsm asynchronous wrapper\n"
+        << "  --no-stubs                   Do not emit default stub functors for actions and guards\n"
+        << "  --allow-diagram              Allow C++ code generation from visual diagram formats (PlantUML, Mermaid)\n\n"
         << "Model Analysis & Formal Verification:\n"
-        << "  -e, --export <fmt>          Export diagram or formal model to: 'mermaid', 'plantuml', 'sysml2', 'json', "
-           "'dot', 'scxml', 'cameo', 'smv'\n"
-        << "  --verify, verify            Run formal verification (deadlock, choice completeness, reachability)\n"
-        << "  --engine <auto|nuxmv>       Verification engine (default: 'auto')\n"
-        << "  --ltl <formula>             Verify custom Linear Temporal Logic specification\n"
-        << "  --ctl <formula>             Verify custom Computation Tree Logic specification\n\n"
+        << "  -e, --export <fmt>           Export model to: 'mermaid', 'plantuml', 'sysml2', 'stateflow', 'json', 'dot', 'scxml', 'cameo', 'smv'\n"
+        << "  -V, --verify                 Run formal verification (deadlock, choice completeness, reachability)\n"
+        << "  --engine <auto|nuxmv>        Verification engine (default: 'auto')\n"
+        << "  --ltl <formula>              Verify custom Linear Temporal Logic specification\n"
+        << "  --ctl <formula>              Verify custom Computation Tree Logic specification\n\n"
         << "General Options:\n"
-        << "  -h, --help                  Show this help message and exit\n"
-        << "  -v, --version               Show version information and exit\n\n";
+        << "  -h, --help                   Show this help message and exit\n"
+        << "  -v, --version                Show version information and exit\n\n";
 }
 
 /**
@@ -175,7 +170,7 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.fsm_name = argv[++idx];
-        } else if (arg == "--namespace" || arg == "--package") {
+        } else if (arg == "-N" || arg == "--ns" || arg == "--namespace" || arg == "--package") {
             if (idx + 1 >= argc) {
                 opts.is_valid = false;
                 opts.error_message = "Missing argument for option: " + arg;
@@ -229,7 +224,7 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             opts.opt_level = 1;
         } else if (arg == "-O2" || arg == "--optimize") {
             opts.opt_level = 2;
-        } else if (arg == "--pipeline") {
+        } else if (arg == "-p" || arg == "--pipeline") {
             if (idx + 1 >= argc) {
                 opts.is_valid = false;
                 opts.error_message = "Missing argument for option: " + arg;
@@ -250,15 +245,17 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.pipeline_mode = std::move(val);
-        } else if (arg == "--prune-dead-states") {
+        } else if (arg == "--7stage") {
+            opts.pipeline_mode = "7stage";
+        } else if (arg == "--prune" || arg == "--prune-dead-states") {
             opts.prune_dead_states = true;
-        } else if (arg == "--no-guard-simplification") {
+        } else if (arg == "--no-simplify" || arg == "--no-guard-simplification") {
             opts.simplify_guards = false;
-        } else if (arg == "--inline-submachines") {
+        } else if (arg == "--inline" || arg == "--inline-submachines") {
             opts.inline_submachines = true;
-        } else if (arg == "--strict-determinism") {
+        } else if (arg == "--strict" || arg == "--strict-determinism") {
             opts.strict_determinism = true;
-        } else if (arg == "--check-races") {
+        } else if (arg == "--races" || arg == "--check-races") {
             opts.check_races = true;
         } else if (arg == "-Werror") {
             opts.werror = true;
@@ -266,13 +263,15 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             opts.req_audit = true;
 
             // 8. Requirement Traceability Matrix (RTM) export options
-        } else if (arg == "--rtm-output") {
+        } else if (arg == "--rtm" || arg == "--rtm-output") {
             if (idx + 1 >= argc) {
                 opts.is_valid = false;
                 opts.error_message = "Missing argument for option: " + arg;
                 return opts;
             }
             opts.rtm_output_file = argv[++idx];
+        } else if (arg.rfind("--rtm=", 0) == 0) {
+            opts.rtm_output_file = arg.substr(6);
         } else if (arg == "--rtm-format") {
             if (idx + 1 >= argc) {
                 opts.is_valid = false;
@@ -310,7 +309,7 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             opts.standalone = false;
 
             // 11. Formal verification options and temporal logic specifications (LTL/CTL)
-        } else if (arg == "--verify" || arg == "--check" || arg == "verify") {
+        } else if (arg == "-V" || arg == "--verify" || arg == "--check" || arg == "verify") {
             opts.verify_mode = true;
         } else if (arg == "--engine") {
             if (idx + 1 >= argc) {
@@ -341,7 +340,7 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             opts.thread_safe = false;
         } else if (arg == "--no-stubs") {
             opts.include_stubs = false;
-        } else if (arg == "--allow-diagram-codegen") {
+        } else if (arg == "--allow-diagram" || arg == "--diagram-codegen" || arg == "--allow-diagram-codegen") {
             opts.allow_diagram_codegen = true;
 
             // 13. External pipeline tools and dynamic pass plugin loading
@@ -365,13 +364,15 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             opts.pass_plugins.push_back(arg.substr(19));
 
             // 14. Test harness synthesis (MC/DC GoogleTest suite)
-        } else if (arg == "--emit-test-harness") {
+        } else if (arg == "--harness" || arg == "--emit-test-harness") {
             if (idx + 1 >= argc) {
                 opts.is_valid = false;
                 opts.error_message = "Missing argument for option: " + arg;
                 return opts;
             }
             opts.emit_test_harness = argv[++idx];
+        } else if (arg.rfind("--harness=", 0) == 0) {
+            opts.emit_test_harness = arg.substr(10);
         } else if (arg.rfind("--emit-test-harness=", 0) == 0) {
             opts.emit_test_harness = arg.substr(20);
 

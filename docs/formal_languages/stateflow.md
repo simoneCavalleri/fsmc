@@ -100,7 +100,7 @@ fsmc -i FlightController.xml -o FlightController.hpp --emit-test-harness FlightC
 ```
 
 ### Direct `.slx` OPC Container Ingestion
-Starting in `v0.7.0`, `fsmc` includes native OPC (Open Packaging Convention) / ZIP container extraction with built-in Deflate decompression. It reads `.slx` models directly from disk without requiring MATLAB, Simulink, or external decompression tools like `unzip`:
+`fsmc` includes native OPC (Open Packaging Convention) / ZIP container extraction with built-in Deflate decompression. It reads `.slx` models directly from disk without requiring MATLAB, Simulink, or external decompression tools like `unzip`:
 - Automatically locates and inspects `simulink/stateflow.xml` and `simulink/blockdiagram.xml`.
 - Streams compressed block XML and extracts charts, states, junctions, and transitions into `FsmIr`.
 

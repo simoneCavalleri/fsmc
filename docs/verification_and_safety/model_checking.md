@@ -110,7 +110,7 @@ Use `F G` to prove stabilization and convergence:
 ---
 
 ### EFSM Data-Path Abstract Interpretation Integration
-Starting in `v0.7.0`, `ModelChecker` integrates data-path interval abstract interpretation directly into property evaluation:
+`ModelChecker` integrates data-path interval abstract interpretation directly into property evaluation:
 - Relational variable predicates ($x > 10$, $temp \le 100.0$) evaluate against the fixed-point numeric intervals computed for each reachable state.
 - If an upper bound $iv.hi \le 100$ holds in every reachable state, $G (temp \le 100)$ passes unconditionally without state explosion.
 - Counterexamples pinpoint the exact state and transition where the variable interval strays outside the property bound.
@@ -333,9 +333,9 @@ A liveness violation (`G (P -> F Q)`) occurs when the system can enter an infini
 
 ---
 
-## CLI Formal Verification with `fsmc verify` (v0.5.0+)
+## CLI Formal Verification with `fsmc verify`
 
-Starting in **`v0.5.0`**, `fsmc` provides first-class, standalone model checking directly via the command line through the `verify` sub-command:
+`fsmc` provides first-class, standalone model checking directly via the command line through the `verify` sub-command:
 
 ```bash
 fsmc verify <model_file> [options]

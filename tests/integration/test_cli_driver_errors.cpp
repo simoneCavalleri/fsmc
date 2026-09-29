@@ -349,6 +349,61 @@ TEST(CliOptions, PipelineOptionParsing_ValidAndInvalidValues) {
 }
 
 /**
+ * @brief Test Intent: Verify intuitive and slim CLI option aliases are correctly recognized.
+ * Validates: -N, -p, --7stage, --prune, --no-simplify, --inline, --strict, --races, --rtm, --harness, --allow-diagram, -V.
+ */
+TEST(CliOptions, SlimOptionAliases_ParseCorrectly) {
+    char p[] = "fsmc";
+    char i[] = "-i";
+    char f[] = "model.sysml";
+    char opt_ns[] = "-N";
+    char val_ns[] = "aerospace::nav";
+    char opt_stage[] = "--7stage";
+    char opt_prune[] = "--prune";
+    char opt_nosimp[] = "--no-simplify";
+    char opt_inline[] = "--inline";
+    char opt_strict[] = "--strict";
+    char opt_races[] = "--races";
+    char opt_rtm[] = "--rtm";
+    char val_rtm[] = "rtm.md";
+    char opt_harness[] = "--harness";
+    char val_harness[] = "mcdc_test.cpp";
+    char opt_diag[] = "--allow-diagram";
+    char opt_v[] = "-V";
+
+    char* argv[] = {
+        p, i, f,
+        opt_ns, val_ns,
+        opt_stage,
+        opt_prune,
+        opt_nosimp,
+        opt_inline,
+        opt_strict,
+        opt_races,
+        opt_rtm, val_rtm,
+        opt_harness, val_harness,
+        opt_diag,
+        opt_v
+    };
+
+    int argc = static_cast<int>(sizeof(argv) / sizeof(argv[0]));
+    const auto opts = fsm::tools::parse_cli_args(argc, argv);
+    EXPECT_TRUE(opts.is_valid) << opts.error_message;
+    EXPECT_EQ(opts.input_file, "model.sysml");
+    EXPECT_EQ(opts.ns_name, "aerospace::nav");
+    EXPECT_EQ(opts.pipeline_mode, "7stage");
+    EXPECT_TRUE(opts.prune_dead_states);
+    EXPECT_FALSE(opts.simplify_guards);
+    EXPECT_TRUE(opts.inline_submachines);
+    EXPECT_TRUE(opts.strict_determinism);
+    EXPECT_TRUE(opts.check_races);
+    EXPECT_EQ(opts.rtm_output_file, "rtm.md");
+    EXPECT_EQ(opts.emit_test_harness, "mcdc_test.cpp");
+    EXPECT_TRUE(opts.allow_diagram_codegen);
+    EXPECT_TRUE(opts.verify_mode);
+}
+
+/**
  * @brief Test Intent: Verify verification mode with --engine=auto falls back gracefully when nuXmv is absent.
  * Scenario: Run formal verification on sound model with verify_engine set to 'auto'.
  * Expected: Execution succeeds with return code 0 via internal ModelChecker.

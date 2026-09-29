@@ -69,52 +69,52 @@ std::string build_mock_slx(const std::string& xml_content, const std::string& en
     uint32_t local_header_offset = 0;
 
     // Local File Header (30 bytes)
-    write_u32_le(zip, 0x04034b50); // Local header signature
-    write_u16_le(zip, 20);         // Version needed
-    write_u16_le(zip, 0);          // Flags
-    write_u16_le(zip, method);     // Compression method
-    write_u16_le(zip, 0);          // Time
-    write_u16_le(zip, 0);          // Date
-    write_u32_le(zip, 0);          // CRC-32
+    write_u32_le(zip, 0x04034b50);  // Local header signature
+    write_u16_le(zip, 20);          // Version needed
+    write_u16_le(zip, 0);           // Flags
+    write_u16_le(zip, method);      // Compression method
+    write_u16_le(zip, 0);           // Time
+    write_u16_le(zip, 0);           // Date
+    write_u32_le(zip, 0);           // CRC-32
     write_u32_le(zip, comp_size);
     write_u32_le(zip, uncomp_size);
     write_u16_le(zip, static_cast<uint16_t>(entry_name.size()));
-    write_u16_le(zip, 0);          // Extra field length
+    write_u16_le(zip, 0);  // Extra field length
     zip += entry_name;
     zip += data;
 
     // Central Directory Header (46 bytes)
     uint32_t cd_offset = static_cast<uint32_t>(zip.size());
-    write_u32_le(zip, 0x02014b50); // Central directory signature
-    write_u16_le(zip, 20);         // Version made by
-    write_u16_le(zip, 20);         // Version needed
-    write_u16_le(zip, 0);          // Flags
-    write_u16_le(zip, method);     // Method
-    write_u16_le(zip, 0);          // Time
-    write_u16_le(zip, 0);          // Date
-    write_u32_le(zip, 0);          // CRC-32
+    write_u32_le(zip, 0x02014b50);  // Central directory signature
+    write_u16_le(zip, 20);          // Version made by
+    write_u16_le(zip, 20);          // Version needed
+    write_u16_le(zip, 0);           // Flags
+    write_u16_le(zip, method);      // Method
+    write_u16_le(zip, 0);           // Time
+    write_u16_le(zip, 0);           // Date
+    write_u32_le(zip, 0);           // CRC-32
     write_u32_le(zip, comp_size);
     write_u32_le(zip, uncomp_size);
     write_u16_le(zip, static_cast<uint16_t>(entry_name.size()));
-    write_u16_le(zip, 0);          // Extra field length
-    write_u16_le(zip, 0);          // Comment length
-    write_u16_le(zip, 0);          // Disk number start
-    write_u16_le(zip, 0);          // Internal attributes
-    write_u32_le(zip, 0);          // External attributes
+    write_u16_le(zip, 0);  // Extra field length
+    write_u16_le(zip, 0);  // Comment length
+    write_u16_le(zip, 0);  // Disk number start
+    write_u16_le(zip, 0);  // Internal attributes
+    write_u32_le(zip, 0);  // External attributes
     write_u32_le(zip, local_header_offset);
     zip += entry_name;
 
     uint32_t cd_size = static_cast<uint32_t>(zip.size()) - cd_offset;
 
     // End of Central Directory (EOCD - 22 bytes)
-    write_u32_le(zip, 0x06054b50); // EOCD signature
-    write_u16_le(zip, 0);          // Disk number
-    write_u16_le(zip, 0);          // CD disk
-    write_u16_le(zip, 1);          // Entries on disk
-    write_u16_le(zip, 1);          // Total entries
-    write_u32_le(zip, cd_size);    // CD size
-    write_u32_le(zip, cd_offset);  // CD offset
-    write_u16_le(zip, 0);          // Comment length
+    write_u32_le(zip, 0x06054b50);  // EOCD signature
+    write_u16_le(zip, 0);           // Disk number
+    write_u16_le(zip, 0);           // CD disk
+    write_u16_le(zip, 1);           // Entries on disk
+    write_u16_le(zip, 1);           // Total entries
+    write_u32_le(zip, cd_size);     // CD size
+    write_u32_le(zip, cd_offset);   // CD offset
+    write_u16_le(zip, 0);           // Comment length
 
     return zip;
 }
@@ -233,4 +233,4 @@ TEST(StateflowSlxIngestion, CorruptedSlxContainer_FailsGracefully) {
     EXPECT_NE(err.find("Stateflow Parser:"), std::string::npos);
 }
 
-} // namespace
+}  // namespace

@@ -638,4 +638,3 @@ TEST(CppModelEmitter, ActionAssignments_ReadingFromInPorts_EmitsUncommentedInPar
     EXPECT_NE(str.find("void operator()(const InPorts& in, OutPorts& out, Registers& /*reg*/)"), std::string::npos);
     EXPECT_NE(str.find("out.power = in.temp * 2.0f;"), std::string::npos);
 }
-

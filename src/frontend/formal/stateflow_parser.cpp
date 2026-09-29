@@ -26,14 +26,12 @@ uint16_t read_u16_le(const unsigned char* p) noexcept {
 }
 
 uint32_t read_u32_le(const unsigned char* p) noexcept {
-    return static_cast<uint32_t>(p[0]) |
-           (static_cast<uint32_t>(p[1]) << 8) |
-           (static_cast<uint32_t>(p[2]) << 16) |
+    return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) | (static_cast<uint32_t>(p[2]) << 16) |
            (static_cast<uint32_t>(p[3]) << 24);
 }
 
-bool decompress_entry(uint16_t method, const unsigned char* data_ptr, uint32_t comp_size,
-                      uint32_t uncomp_size, const std::string& filename, std::string& out, std::string& err) {
+bool decompress_entry(uint16_t method, const unsigned char* data_ptr, uint32_t comp_size, uint32_t uncomp_size,
+                      const std::string& filename, std::string& out, std::string& err) {
     if (method == 0) {
         // Stored (uncompressed)
         out.assign(reinterpret_cast<const char*>(data_ptr), uncomp_size);
@@ -64,7 +62,8 @@ bool decompress_entry(uint16_t method, const unsigned char* data_ptr, uint32_t c
         (void)comp_size;
         (void)uncomp_size;
         (void)data_ptr;
-        err = "Stateflow Parser: .slx entry '" + filename + "' is compressed with Deflate, but FSMC was compiled without ZLIB support.";
+        err = "Stateflow Parser: .slx entry '" + filename +
+              "' is compressed with Deflate, but FSMC was compiled without ZLIB support.";
         return false;
 #endif
     }
@@ -89,7 +88,8 @@ bool extract_stateflow_from_slx(std::string_view zip_content, std::string& extra
             eocd_pos = i;
             break;
         }
-        if (i == 0) break;
+        if (i == 0)
+            break;
     }
 
     std::string fallback_blockdiagram_xml;
@@ -119,9 +119,9 @@ bool extract_stateflow_from_slx(std::string_view zip_content, std::string& extra
 
             bool is_stateflow = (filename == "simulink/stateflow.xml" || filename == "stateflow.xml" ||
                                  filename.find("stateflow.xml") != std::string::npos);
-            bool is_blockdiagram = (!is_stateflow && (filename == "simulink/blockdiagram.xml" ||
-                                                      filename == "blockdiagram.xml" ||
-                                                      filename.find("blockdiagram.xml") != std::string::npos));
+            bool is_blockdiagram =
+                (!is_stateflow && (filename == "simulink/blockdiagram.xml" || filename == "blockdiagram.xml" ||
+                                   filename.find("blockdiagram.xml") != std::string::npos));
 
             if ((is_stateflow || is_blockdiagram) && local_hdr_offset + 30 <= total_size) {
                 uint16_t loc_fn_len = read_u16_le(bytes + local_hdr_offset + 26);
@@ -173,9 +173,9 @@ bool extract_stateflow_from_slx(std::string_view zip_content, std::string& extra
         std::string filename(reinterpret_cast<const char*>(bytes + offset + 30), fn_len);
         bool is_stateflow = (filename == "simulink/stateflow.xml" || filename == "stateflow.xml" ||
                              filename.find("stateflow.xml") != std::string::npos);
-        bool is_blockdiagram = (!is_stateflow && (filename == "simulink/blockdiagram.xml" ||
-                                                  filename == "blockdiagram.xml" ||
-                                                  filename.find("blockdiagram.xml") != std::string::npos));
+        bool is_blockdiagram =
+            (!is_stateflow && (filename == "simulink/blockdiagram.xml" || filename == "blockdiagram.xml" ||
+                               filename.find("blockdiagram.xml") != std::string::npos));
 
         if (is_stateflow || is_blockdiagram) {
             std::string decomp;
@@ -209,8 +209,7 @@ bool StateflowParser::parse(std::string_view content, FsmIr& model, std::string&
     std::string_view xml_view = content;
 
     // Direct .slx ZIP archive detection (PK\x03\x04)
-    if (content.size() >= 4 && content[0] == 'P' && content[1] == 'K' &&
-        content[2] == '\x03' && content[3] == '\x04') {
+    if (content.size() >= 4 && content[0] == 'P' && content[1] == 'K' && content[2] == '\x03' && content[3] == '\x04') {
         if (!extract_stateflow_from_slx(content, xml_storage, error_message)) {
             return false;
         }

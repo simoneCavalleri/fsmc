@@ -78,10 +78,9 @@ struct MotorRegisters {
 static_assert(std::is_trivially_copyable_v<MotorRegisters>);
 
 // Transition Table
-using SimpleTable = fsm::transition_table<fsm::transition<Idle, StartEvt, Running>,
-                                          fsm::transition<Running, PauseEvt, Paused>,
-                                          fsm::transition<Paused, ResumeEvt, Running>,
-                                          fsm::transition<Running, StopEvt, Idle>>;
+using SimpleTable =
+    fsm::transition_table<fsm::transition<Idle, StartEvt, Running>, fsm::transition<Running, PauseEvt, Paused>,
+                          fsm::transition<Paused, ResumeEvt, Running>, fsm::transition<Running, StopEvt, Idle>>;
 
 using MotorFSM = fsm::fsm<SimpleTable, fsm::no_ports, fsm::no_ports, MotorRegisters>;
 
@@ -189,7 +188,8 @@ TEST(StateSerialization, InvariantResidenceTime_PreservesResidenceDuration) {
     std::memcpy(&header, buffer.data(), sizeof(header));
     EXPECT_EQ(header.magic, fsm::SNAPSHOT_MAGIC);
     EXPECT_EQ(header.version, fsm::SNAPSHOT_VERSION);
-    EXPECT_EQ(header.residence_time_ms, 150u);
+    const std::uint64_t residence_time = header.residence_time_ms;
+    EXPECT_EQ(residence_time, 150u);
 
     // Deserialize into machine2
     TimedFSM machine2;
@@ -264,9 +264,9 @@ TEST(StateSerialization, InvalidStateIndex_RejectsOutOfBoundsState) {
     std::size_t written = 0;
     ASSERT_TRUE(machine1.serialize(buffer.data(), buffer.size(), written));
 
-    // Set state_index to 999 (offset 8 in header)
+    // Set state_index to 999 using offsetof
     std::uint32_t invalid_idx = 999;
-    std::memcpy(buffer.data() + 8, &invalid_idx, sizeof(invalid_idx));
+    std::memcpy(buffer.data() + offsetof(fsm::snapshot_header, state_index), &invalid_idx, sizeof(invalid_idx));
 
     // Recompute payload checksum so checksum check passes but state_index fails
     auto* header = reinterpret_cast<fsm::snapshot_header*>(buffer.data());

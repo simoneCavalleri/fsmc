@@ -135,8 +135,8 @@ FrontendKind ParserFactory::get_kind_for_format(std::string_view format_name) {
     for (auto& c : f) {
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     }
-    if (f == "sysml" || f == "sysml2" || f == "scxml" || f == "stateflow" || f == "slx" || f == "sfx" || f == "cameo" || f == "xmi" || f == "smv" ||
-        f == "nusmv" || f == "nuxmv" || f == "json") {
+    if (f == "sysml" || f == "sysml2" || f == "scxml" || f == "stateflow" || f == "slx" || f == "sfx" || f == "cameo" ||
+        f == "xmi" || f == "smv" || f == "nusmv" || f == "nuxmv" || f == "json") {
         return FrontendKind::Formal;
     }
     return FrontendKind::Diagram;

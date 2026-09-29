@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 82  
-**Total Documented Test Cases**: 419  
+**Total Documented Test Cases**: 420  
 
 ---
 
@@ -1483,9 +1483,6 @@
 
 #### `CliOptions.SlimOptionAliases_ParseCorrectly`
 **Test Intent**: Verify intuitive and slim CLI option aliases are correctly recognized.
-
-**Scenario**:
-  - Pass slim option flags (`-N`, `-p`, `--7stage`, `--prune`, `--no-simplify`, `--inline`, `--strict`, `--races`, `--rtm`, `--harness`, `--allow-diagram`, `-V`) and assert valid configuration.
 
 #### `CliDriver.EngineAuto_FallsBackGracefully`
 **Test Intent**: Verify verification mode with --engine=auto falls back gracefully when nuXmv is absent.

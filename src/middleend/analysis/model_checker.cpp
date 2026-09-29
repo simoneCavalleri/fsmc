@@ -81,7 +81,8 @@ ModelCheckResult ModelChecker::verify_property(const FormalProperty& prop) {
             }
             // G (X P)
             if (ast.children[0].op == TemporalOp::Next) {
-                const auto& nxt_child = ast.children[0].children.empty() ? ast.children[0] : ast.children[0].children[0];
+                const auto& nxt_child =
+                    ast.children[0].children.empty() ? ast.children[0] : ast.children[0].children[0];
                 return check_next_response(prop, PropertyAstNode("true"), nxt_child);
             }
         }
@@ -562,14 +563,14 @@ ModelCheckResult ModelChecker::check_until(const FormalProperty& prop, const Pro
             break;
         }
         if (!eval_predicate(left, curr)) {
-            violation_desc = "State '" + curr + "' violates condition '" + left.to_string() +
-                             "' before '" + right.to_string() + "' is satisfied";
+            violation_desc = "State '" + curr + "' violates condition '" + left.to_string() + "' before '" +
+                             right.to_string() + "' is satisfied";
             break;
         }
         auto it = adj_.find(curr);
         if (it == adj_.end() || it->second.empty()) {
-            violation_desc = "Execution terminated in state '" + curr + "' without reaching '" +
-                             right.to_string() + "'";
+            violation_desc =
+                "Execution terminated in state '" + curr + "' without reaching '" + right.to_string() + "'";
             break;
         }
         std::string next_step;
@@ -583,8 +584,8 @@ ModelCheckResult ModelChecker::check_until(const FormalProperty& prop, const Pro
             next_step = it->second.front().target;
         }
         if (visited_ce.count(next_step) != 0) {
-            violation_desc = "Execution caught in cycle without reaching '" + right.to_string() +
-                             "' (loops back to '" + next_step + "')";
+            violation_desc = "Execution caught in cycle without reaching '" + right.to_string() + "' (loops back to '" +
+                             next_step + "')";
             ce_path.push_back(next_step);
             break;
         }
@@ -599,8 +600,7 @@ ModelCheckResult ModelChecker::check_until(const FormalProperty& prop, const Pro
 
     std::vector<CounterexampleStep> trace;
     for (size_t i = 0; i < ce_path.size(); ++i) {
-        trace.push_back({i, ce_path[i], "", "",
-                         i == ce_path.size() - 1 ? violation_desc : "Step towards violation"});
+        trace.push_back({i, ce_path[i], "", "", i == ce_path.size() - 1 ? violation_desc : "Step towards violation"});
     }
     return {false, prop.name, prop.raw_formula, prop.kind, violation_desc, std::move(trace)};
 }
@@ -613,8 +613,8 @@ ModelCheckResult ModelChecker::check_next(const FormalProperty& prop, const Prop
     }
     for (const auto& edge : it->second) {
         if (!eval_predicate(target, edge.target)) {
-            std::string desc = "Successor state '" + edge.target + "' does not satisfy condition '" +
-                               target.to_string() + "'";
+            std::string desc =
+                "Successor state '" + edge.target + "' does not satisfy condition '" + target.to_string() + "'";
             std::vector<CounterexampleStep> trace;
             trace.push_back({0, root_state_, edge.event, edge.guard, "Initial active state"});
             trace.push_back({1, edge.target, "", "", desc});
@@ -734,9 +734,8 @@ ModelCheckResult ModelChecker::check_infinitely_often(const FormalProperty& prop
         }
         if (!has_target) {
             const std::string& rep = scc.states[0];
-            std::string desc = "Recurrence property '" + prop.raw_formula +
-                               "' violated: cycle containing state '" + rep +
-                               "' never visits target condition '" + target.to_string() + "'";
+            std::string desc = "Recurrence property '" + prop.raw_formula + "' violated: cycle containing state '" +
+                               rep + "' never visits target condition '" + target.to_string() + "'";
             auto trace = reconstruct_trace(rep, desc);
             return {false, prop.name, prop.raw_formula, prop.kind, desc, std::move(trace)};
         }
@@ -768,8 +767,7 @@ ModelCheckResult ModelChecker::check_eventually_always(const FormalProperty& pro
 
         for (const auto& s : scc.states) {
             if (!eval_predicate(target, s)) {
-                std::string desc = "Persistence property '" + prop.raw_formula +
-                                   "' violated: recurrent state '" + s +
+                std::string desc = "Persistence property '" + prop.raw_formula + "' violated: recurrent state '" + s +
                                    "' does not satisfy condition '" + target.to_string() + "'";
                 auto trace = reconstruct_trace(s, desc);
                 return {false, prop.name, prop.raw_formula, prop.kind, desc, std::move(trace)};
@@ -781,8 +779,8 @@ ModelCheckResult ModelChecker::check_eventually_always(const FormalProperty& pro
         auto it = adj_.find(s);
         if (it == adj_.end() || it->second.empty()) {
             if (!eval_predicate(target, s)) {
-                std::string desc = "Terminal state '" + s + "' violates condition '" +
-                                   target.to_string() + "' in persistence property '" + prop.raw_formula + "'";
+                std::string desc = "Terminal state '" + s + "' violates condition '" + target.to_string() +
+                                   "' in persistence property '" + prop.raw_formula + "'";
                 auto trace = reconstruct_trace(s, desc);
                 return {false, prop.name, prop.raw_formula, prop.kind, desc, std::move(trace)};
             }

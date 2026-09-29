@@ -113,8 +113,8 @@ ir::ActionSignature DiagramActionParser::parse_action_block(std::string_view raw
     static const std::regex assign_regex(
         R"(^(?:(?:out|in|reg|service|context)\.)?([A-Za-z_][A-Za-z0-9_.]*(?:\[\d+\])?)\s*(=|\+=|-=|\*=|/=|%=|<<=|>>=|&=|\|=|\^=)\s*(.+)$)",
         std::regex::optimize);
-    static const std::regex inc_regex(
-        R"(^(?:(?:out|in|reg|service|context)\.)?([A-Za-z_][A-Za-z0-9_.]*)\s*(\+\+|--)$)", std::regex::optimize);
+    static const std::regex inc_regex(R"(^(?:(?:out|in|reg|service|context)\.)?([A-Za-z_][A-Za-z0-9_.]*)\s*(\+\+|--)$)",
+                                      std::regex::optimize);
 
     std::vector<std::string> call_names;
 

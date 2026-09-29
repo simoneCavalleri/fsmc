@@ -94,11 +94,13 @@ TEST(Sysml2AdvancedConstructs, BindingConnectors_PopulatesBindingsAndPortBoundTo
 
     // Check bound_to property propagated to PortDefinition
     ASSERT_EQ(model.ports.size(), 2u);
-    auto it_in = std::find_if(model.ports.begin(), model.ports.end(), [](const auto& p) { return p.name == "raw_temp"; });
+    auto it_in =
+        std::find_if(model.ports.begin(), model.ports.end(), [](const auto& p) { return p.name == "raw_temp"; });
     ASSERT_NE(it_in, model.ports.end());
     EXPECT_EQ(it_in->bound_to, "adc.channel0");
 
-    auto it_out = std::find_if(model.ports.begin(), model.ports.end(), [](const auto& p) { return p.name == "filtered_temp"; });
+    auto it_out =
+        std::find_if(model.ports.begin(), model.ports.end(), [](const auto& p) { return p.name == "filtered_temp"; });
     ASSERT_NE(it_out, model.ports.end());
     EXPECT_EQ(it_out->bound_to, "bus.tx_temp");
 }
@@ -169,4 +171,4 @@ TEST(Sysml2AdvancedConstructs, JoinCompositeTransition_ParsesMultipleSources) {
     EXPECT_EQ(tx.source, "TaskA");
 }
 
-} // namespace
+}  // namespace

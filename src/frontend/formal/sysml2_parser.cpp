@@ -79,9 +79,9 @@ bool Sysml2Parser::parse(std::string_view content, FsmIr& model, std::string& er
         // Block open: entering a new composite state, package, item def, enum, or action block
         if (token.kind == SysmlTokenKind::BlockOpen) {
             SysmlBlockKind opened_kind = SysmlBlockKind::ActionBlock;
-            if (!process_statement(token.text, model, state_stack, package_stack, package_push_counts,
-                                   current_item_def, current_enum_def, current_struct_def, error_message,
-                                   token.line_number, true, opened_kind, symbol_resolver)) {
+            if (!process_statement(token.text, model, state_stack, package_stack, package_push_counts, current_item_def,
+                                   current_enum_def, current_struct_def, error_message, token.line_number, true,
+                                   opened_kind, symbol_resolver)) {
                 return false;
             }
             block_stack.push_back(opened_kind);
@@ -120,9 +120,9 @@ bool Sysml2Parser::parse(std::string_view content, FsmIr& model, std::string& er
         } else if (token.kind == SysmlTokenKind::Statement || token.kind == SysmlTokenKind::ActionBlock) {
             // Regular standalone statement (e.g., transition, entry action, attribute assignment)
             SysmlBlockKind unused_kind = SysmlBlockKind::ActionBlock;
-            if (!process_statement(token.text, model, state_stack, package_stack, package_push_counts,
-                                   current_item_def, current_enum_def, current_struct_def, error_message,
-                                   token.line_number, false, unused_kind, symbol_resolver)) {
+            if (!process_statement(token.text, model, state_stack, package_stack, package_push_counts, current_item_def,
+                                   current_enum_def, current_struct_def, error_message, token.line_number, false,
+                                   unused_kind, symbol_resolver)) {
                 return false;
             }
         }
@@ -304,11 +304,11 @@ std::string Sysml2Parser::to_pascal_case(const std::string& str) {
 }
 
 bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, std::vector<std::string>& state_stack,
-                                      std::vector<std::string>& package_stack,
-                                      std::vector<std::size_t>& package_push_counts, std::string& current_item_def,
-                                      std::string& current_enum_def, std::string& current_struct_def,
-                                      std::string& error_message, size_t line_number, bool is_block_open,
-                                      SysmlBlockKind& out_kind, Sysml2SymbolResolver& symbol_resolver) {
+                                     std::vector<std::string>& package_stack,
+                                     std::vector<std::size_t>& package_push_counts, std::string& current_item_def,
+                                     std::string& current_enum_def, std::string& current_struct_def,
+                                     std::string& error_message, size_t line_number, bool is_block_open,
+                                     SysmlBlockKind& out_kind, Sysml2SymbolResolver& symbol_resolver) {
     (void)error_message;
     (void)line_number;
     const std::string stmt = normalize_whitespace(raw_stmt);
@@ -347,8 +347,8 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
     }
 
     // 1. package <Name> (supporting Outer::Inner and nesting)
-    static const std::regex package_def_regex(
-        R"(^package\s+([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*))", std::regex::optimize);
+    static const std::regex package_def_regex(R"(^package\s+([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*))",
+                                              std::regex::optimize);
     if (std::regex_search(stmt, match, package_def_regex)) {
         std::string raw_pkg = match[1].str();
         size_t push_count = 0;
@@ -898,8 +898,8 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     if (std::regex_search(stmt, match, trans_name_regex)) {
         std::string name_candidate = sanitize_identifier(match[1].str());
         if (name_candidate != "from" && name_candidate != "first" && name_candidate != "accept" &&
-            name_candidate != "if" && name_candidate != "do" && name_candidate != "then" &&
-            name_candidate != "fork" && name_candidate != "join") {
+            name_candidate != "if" && name_candidate != "do" && name_candidate != "then" && name_candidate != "fork" &&
+            name_candidate != "join") {
             trans_name = name_candidate;
         }
     }

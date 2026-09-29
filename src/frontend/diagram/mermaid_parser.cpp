@@ -1,9 +1,9 @@
-#include "fsm/frontend/diagram/diagram_action_parser.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
 
 #include <regex>
 #include <sstream>
 
+#include "fsm/frontend/diagram/diagram_action_parser.hpp"
 #include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
 
@@ -52,9 +52,10 @@ bool MermaidParser::parse(std::string_view content, FsmIr& out_model, std::strin
         }
 
         std::string processed_line{trimmed_initial};
-        if (!parent_stack.empty() && (starts_with(trimmed_initial, "entry /") || starts_with(trimmed_initial, "entry/") ||
-                                      starts_with(trimmed_initial, "exit /") || starts_with(trimmed_initial, "exit/") ||
-                                      starts_with(trimmed_initial, "do /") || starts_with(trimmed_initial, "do/"))) {
+        if (!parent_stack.empty() &&
+            (starts_with(trimmed_initial, "entry /") || starts_with(trimmed_initial, "entry/") ||
+             starts_with(trimmed_initial, "exit /") || starts_with(trimmed_initial, "exit/") ||
+             starts_with(trimmed_initial, "do /") || starts_with(trimmed_initial, "do/"))) {
             processed_line = parent_stack.back() + " : " + std::string(trimmed_initial);
         }
         const std::string_view trimmed = trim(processed_line);

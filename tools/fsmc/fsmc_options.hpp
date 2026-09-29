@@ -22,16 +22,16 @@ struct FsmcOptions {
     std::string sidecar_file;
     std::string submachine_dir;
     fsm::backend::cpp::CppStandard cpp_standard = fsm::backend::cpp::CppStandard::Cpp17;
-    int opt_level = 1;                   // -O0, -O1, -O2
-    std::string pipeline_mode = "standard"; // --pipeline=7stage|standard
-    bool prune_dead_states = false;      // --prune-dead-states
-    bool simplify_guards = true;         // --no-guard-simplification
-    bool inline_submachines = false;     // --inline-submachines
-    bool strict_determinism = false;     // --strict-determinism
-    bool check_races = false;            // --check-races
-    bool werror = false;                 // -Werror
-    bool req_audit = false;              // --req-audit
-    bool allow_diagram_codegen = false;  // --allow-diagram-codegen
+    int opt_level = 1;                       // -O0, -O1, -O2
+    std::string pipeline_mode = "standard";  // --pipeline=7stage|standard
+    bool prune_dead_states = false;          // --prune-dead-states
+    bool simplify_guards = true;             // --no-guard-simplification
+    bool inline_submachines = false;         // --inline-submachines
+    bool strict_determinism = false;         // --strict-determinism
+    bool check_races = false;                // --check-races
+    bool werror = false;                     // -Werror
+    bool req_audit = false;                  // --req-audit
+    bool allow_diagram_codegen = false;      // --allow-diagram-codegen
     bool standalone = true;
     bool thread_safe = true;
     bool include_stubs = true;
@@ -65,7 +65,8 @@ inline void print_help(const char* prog_name) {
         << "  -t, --target <lang>          Target code generator backend: 'cpp' (default)\n"
         << "  -n, --name <name>            Generated FSM class name (default: inferred or 'MyFSM')\n"
         << "  -N, --ns, --namespace <ns>   Generated namespace/package name (default: 'fsm_generated')\n"
-        << "  --format <fmt>               Override input format: 'sysml2', 'stateflow', 'plantuml', 'mermaid', 'cameo', 'scxml', 'json', 'dot', 'auto'\n"
+        << "  --format <fmt>               Override input format: 'sysml2', 'stateflow', 'plantuml', 'mermaid', "
+           "'cameo', 'scxml', 'json', 'dot', 'auto'\n"
         << "  -s, --sidecar <file>         Explicit companion manifest file (.fsm.yaml, .fsm.json)\n"
         << "  --emit-sidecar <file>        Emit companion sidecar manifest (.fsm.yaml) when exporting diagrams\n\n"
         << "Optimization & Pipeline Options:\n"
@@ -79,8 +80,10 @@ inline void print_help(const char* prog_name) {
         << "  --submachine-dir <dir>       Search directory for external submachine diagram files\n\n"
         << "Safety & Static Analysis Verification Options:\n"
         << "  -Werror                      Treat all middle-end compiler warnings as fatal errors\n"
-        << "  --strict                     Enforce strict determinism (fail on branch collisions or unprioritized transitions)\n"
-        << "  --races                      Perform static concurrency data-race analysis across parallel orthogonal regions\n"
+        << "  --strict                     Enforce strict determinism (fail on branch collisions or unprioritized "
+           "transitions)\n"
+        << "  --races                      Perform static concurrency data-race analysis across parallel orthogonal "
+           "regions\n"
         << "  --req-audit                  Print Requirement Traceability Matrix (@fsm:req) before code generation\n"
         << "  --rtm <file>                 Export Requirement Traceability Matrix to file\n"
         << "  --rtm-format <json|md>       Requirement Traceability Matrix format ('json' or 'markdown')\n"
@@ -93,9 +96,11 @@ inline void print_help(const char* prog_name) {
         << "  --export-runtime <dir>       Export the standalone FSM runtime library headers to directory\n"
         << "  --no-thread-safe             Do not generate thread_safe_fsm asynchronous wrapper\n"
         << "  --no-stubs                   Do not emit default stub functors for actions and guards\n"
-        << "  --allow-diagram              Allow C++ code generation from visual diagram formats (PlantUML, Mermaid)\n\n"
+        << "  --allow-diagram              Allow C++ code generation from visual diagram formats (PlantUML, "
+           "Mermaid)\n\n"
         << "Model Analysis & Formal Verification:\n"
-        << "  -e, --export <fmt>           Export model to: 'mermaid', 'plantuml', 'sysml2', 'stateflow', 'json', 'dot', 'scxml', 'cameo', 'smv'\n"
+        << "  -e, --export <fmt>           Export model to: 'mermaid', 'plantuml', 'sysml2', 'stateflow', 'json', "
+           "'dot', 'scxml', 'cameo', 'smv'\n"
         << "  -V, --verify                 Run formal verification (deadlock, choice completeness, reachability)\n"
         << "  --engine <auto|nuxmv>        Verification engine (default: 'auto')\n"
         << "  --ltl <formula>              Verify custom Linear Temporal Logic specification\n"

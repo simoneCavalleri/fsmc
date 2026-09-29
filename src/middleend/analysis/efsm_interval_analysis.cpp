@@ -224,8 +224,8 @@ std::vector<EFSMAnalysisFinding> EFSMIntervalAnalyzer::analyze(DiagnosticEngine&
                         auto intersection = var_bound.intersect_with(assigned_interval);
                         if (intersection.is_empty()) {
                             std::string msg = "Register variable '" + var_def->name +
-                                              "' contract violation on transition '" + t.source + " -> " +
-                                              t.target + "': assigned range " + assigned_interval.to_string() +
+                                              "' contract violation on transition '" + t.source + " -> " + t.target +
+                                              "': assigned range " + assigned_interval.to_string() +
                                               " violates contract " + var_bound.to_string();
                             findings.push_back({var_def->name, t.id, t.source, t.target, msg, true});
                             diag.report(Diagnostic::warning("W_VARIABLE_RANGE_VIOLATION", msg));

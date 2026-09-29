@@ -218,8 +218,8 @@ class FsmcDriver {
         // Execute Middle-End Optimization Passes
         if (opts.opt_level > 0) {
             PassManager pm;
-            if (opts.pipeline_mode == "7stage" && opts.export_diagram_format.empty() &&
-                !opts.strict_determinism && !opts.check_races && !opts.inline_submachines && opts.simplify_guards) {
+            if (opts.pipeline_mode == "7stage" && opts.export_diagram_format.empty() && !opts.strict_determinism &&
+                !opts.check_races && !opts.inline_submachines && opts.simplify_guards) {
                 pm = PassManager::create_verified_7stage_pipeline(opts.opt_level >= 2 || opts.prune_dead_states);
             } else {
                 pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());

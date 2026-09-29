@@ -281,9 +281,7 @@ struct FsmIr {
     /**
      * @brief Adds a structural binding connector.
      */
-    void add_binding(BindingConnector binding) {
-        bindings.push_back(std::move(binding));
-    }
+    void add_binding(BindingConnector binding) { bindings.push_back(std::move(binding)); }
 
     /**
      * @brief Registers an event name and optional description.

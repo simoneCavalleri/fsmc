@@ -44,9 +44,8 @@ constexpr void invoke_action_fallback(Action& action, Tuple& t) {
     } else if constexpr (N >= 4 &&
                          requires { action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t)); }) {
         action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t));
-    } else if constexpr (N >= 6 && requires {
-                             action(tuple_get<0>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t));
-                         }) {
+    } else if constexpr (N >= 6 &&
+                         requires { action(tuple_get<0>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t)); }) {
         action(tuple_get<0>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t));
     } else if constexpr (N >= 6 && requires { action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t)); }) {
         action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t));

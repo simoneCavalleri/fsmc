@@ -103,7 +103,7 @@ struct PortDefinition {
         return direction == PortDirection::Out || direction == PortDirection::InOut;
     }
 
-    std::string bound_to;                        ///< Optional bound endpoint (from SysML v2 bind / connect)
+    std::string bound_to;  ///< Optional bound endpoint (from SysML v2 bind / connect)
 
     bool operator==(const PortDefinition& other) const noexcept {
         return name == other.name && type == other.type && direction == other.direction &&

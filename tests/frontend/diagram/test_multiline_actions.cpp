@@ -200,4 +200,4 @@ TEST(MultilineActions, Mermaid_StateDescriptionBracedAction) {
     EXPECT_EQ(st->entry_actions[0].assignments[1].target.name, "count");
 }
 
-} // namespace
+}  // namespace

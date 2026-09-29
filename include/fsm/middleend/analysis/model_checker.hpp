@@ -109,8 +109,7 @@ class ModelChecker {
     ModelCheckResult check_reachability(const FormalProperty& prop, const PropertyAstNode& target);
     ModelCheckResult check_response(const FormalProperty& prop, const PropertyAstNode& trigger,
                                     const PropertyAstNode& response_target);
-    ModelCheckResult check_until(const FormalProperty& prop, const PropertyAstNode& left,
-                                 const PropertyAstNode& right);
+    ModelCheckResult check_until(const FormalProperty& prop, const PropertyAstNode& left, const PropertyAstNode& right);
     ModelCheckResult check_next(const FormalProperty& prop, const PropertyAstNode& target);
     ModelCheckResult check_next_response(const FormalProperty& prop, const PropertyAstNode& trigger,
                                          const PropertyAstNode& next_target);

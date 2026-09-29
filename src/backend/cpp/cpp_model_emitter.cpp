@@ -711,8 +711,8 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
 
                 // Overload 2: (const Event& cmd, const InPorts& in, OutPorts& out, Registers& reg)
                 out << "    template <typename Event, typename InPorts, typename OutPorts, typename Registers>\n";
-                out << "    void operator()(" << cmd_param << ", " << in_param << ", " << out_param << ", "
-                    << reg_param << ") const {\n";
+                out << "    void operator()(" << cmd_param << ", " << in_param << ", " << out_param << ", " << reg_param
+                    << ") const {\n";
                 for (const auto& assign : assignments) {
                     const auto* p = model.find_port(assign.target.name);
                     if (p != nullptr && p->is_out()) {
@@ -723,11 +723,12 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                 }
                 out << "    }\n\n";
 
-                // Overload 3: Full 5-domain (const Event& cmd, const InPorts& in, OutPorts& out, Registers& reg, Services& srv)
+                // Overload 3: Full 5-domain (const Event& cmd, const InPorts& in, OutPorts& out, Registers& reg,
+                // Services& srv)
                 out << "    template <typename Event, typename InPorts, typename OutPorts, typename Registers, "
                        "typename Services>\n";
-                out << "    void operator()(" << cmd_param << ", " << in_param << ", " << out_param << ", "
-                    << reg_param << ", " << srv_param << ") const {\n";
+                out << "    void operator()(" << cmd_param << ", " << in_param << ", " << out_param << ", " << reg_param
+                    << ", " << srv_param << ") const {\n";
                 for (const auto& assign : assignments) {
                     const auto* p = model.find_port(assign.target.name);
                     if (p != nullptr && p->is_out()) {

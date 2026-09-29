@@ -350,7 +350,8 @@ TEST(CliOptions, PipelineOptionParsing_ValidAndInvalidValues) {
 
 /**
  * @brief Test Intent: Verify intuitive and slim CLI option aliases are correctly recognized.
- * Validates: -N, -p, --7stage, --prune, --no-simplify, --inline, --strict, --races, --rtm, --harness, --allow-diagram, -V.
+ * Validates: -N, -p, --7stage, --prune, --no-simplify, --inline, --strict, --races, --rtm, --harness, --allow-diagram,
+ * -V.
  */
 TEST(CliOptions, SlimOptionAliases_ParseCorrectly) {
     char p[] = "fsmc";
@@ -371,20 +372,9 @@ TEST(CliOptions, SlimOptionAliases_ParseCorrectly) {
     char opt_diag[] = "--allow-diagram";
     char opt_v[] = "-V";
 
-    char* argv[] = {
-        p, i, f,
-        opt_ns, val_ns,
-        opt_stage,
-        opt_prune,
-        opt_nosimp,
-        opt_inline,
-        opt_strict,
-        opt_races,
-        opt_rtm, val_rtm,
-        opt_harness, val_harness,
-        opt_diag,
-        opt_v
-    };
+    char* argv[] = {p,         i,           f,           opt_ns,     val_ns,    opt_stage,
+                    opt_prune, opt_nosimp,  opt_inline,  opt_strict, opt_races, opt_rtm,
+                    val_rtm,   opt_harness, val_harness, opt_diag,   opt_v};
 
     int argc = static_cast<int>(sizeof(argv) / sizeof(argv[0]));
     const auto opts = fsm::tools::parse_cli_args(argc, argv);

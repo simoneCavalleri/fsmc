@@ -800,9 +800,8 @@ constexpr void invoke_action_fallback(Action& action, Tuple& t) {
     } else if constexpr (N >= 4 &&
                          requires { action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t)); }) {
         action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t));
-    } else if constexpr (N >= 6 && requires {
-                             action(tuple_get<0>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t));
-                         }) {
+    } else if constexpr (N >= 6 &&
+                         requires { action(tuple_get<0>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t)); }) {
         action(tuple_get<0>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t));
     } else if constexpr (N >= 6 && requires { action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t)); }) {
         action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t));
@@ -3129,15 +3128,15 @@ inline constexpr std::uint16_t SNAPSHOT_VERSION = 1;
  * @brief Fixed-size header preceding every FSM serialized binary snapshot.
  */
 struct snapshot_header {
-    std::uint32_t magic{SNAPSHOT_MAGIC};     ///< Magic identification word (0x46534D43)
-    std::uint16_t version{SNAPSHOT_VERSION}; ///< Schema revision
-    std::uint16_t flags{0};                  ///< Reserved feature flags
-    std::uint32_t state_index{0};            ///< Active state index in std::variant
-    std::uint32_t history_count{0};          ///< Number of serialized history entries
-    std::uint32_t timer_count{0};            ///< Number of serialized active timers
-    std::uint64_t residence_time_ms{0};      ///< State residence duration in milliseconds
-    std::uint32_t registers_size{0};         ///< Size in bytes of trivially copyable registers payload
-    std::uint32_t payload_checksum{0};       ///< 32-bit FNV-1a checksum of the payload following this header
+    std::uint32_t magic{SNAPSHOT_MAGIC};      ///< Magic identification word (0x46534D43)
+    std::uint16_t version{SNAPSHOT_VERSION};  ///< Schema revision
+    std::uint16_t flags{0};                   ///< Reserved feature flags
+    std::uint64_t residence_time_ms{0};       ///< State residence duration in milliseconds
+    std::uint32_t state_index{0};             ///< Active state index in std::variant
+    std::uint32_t history_count{0};           ///< Number of serialized history entries
+    std::uint32_t timer_count{0};             ///< Number of serialized active timers
+    std::uint32_t registers_size{0};          ///< Size in bytes of trivially copyable registers payload
+    std::uint32_t payload_checksum{0};        ///< 32-bit FNV-1a checksum of the payload following this header
 };
 
 /**
@@ -3145,10 +3144,10 @@ struct snapshot_header {
  * @brief Packed layout of a serialized timer entry.
  */
 struct snapshot_timer_entry {
-    std::uint32_t timer_id{0};    ///< Deterministic timer identifier
-    std::uint64_t interval_ms{0}; ///< Timer period / timeout duration
-    std::uint64_t elapsed_ms{0};  ///< Elapsed time towards expiration
-    std::uint8_t periodic{0};     ///< 1 if auto-restarting, 0 if one-shot
+    std::uint32_t timer_id{0};     ///< Deterministic timer identifier
+    std::uint64_t interval_ms{0};  ///< Timer period / timeout duration
+    std::uint64_t elapsed_ms{0};   ///< Elapsed time towards expiration
+    std::uint8_t periodic{0};      ///< 1 if auto-restarting, 0 if one-shot
 };
 #pragma pack(pop)
 
@@ -3188,7 +3187,8 @@ bool set_variant_index(Variant& var, std::size_t target_index) {
  * @brief Standalone non-member serialization helper taking a raw memory buffer.
  */
 template <typename FSM>
-bool serialize_state(const FSM& machine, std::uint8_t* dest, std::size_t capacity, std::size_t& bytes_written) noexcept {
+bool serialize_state(const FSM& machine, std::uint8_t* dest, std::size_t capacity,
+                     std::size_t& bytes_written) noexcept {
     return machine.serialize(dest, capacity, bytes_written);
 }
 

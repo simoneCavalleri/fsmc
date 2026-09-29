@@ -24,7 +24,7 @@ std::unique_ptr<IParser> ParserFactory::create_by_format(std::string_view format
     if (format_name == "sysml" || format_name == "sysml2") {
         return std::make_unique<Sysml2Parser>();
     }
-    if (format_name == "stateflow" || format_name == "sfx" || format_name == "simulink") {
+    if (format_name == "stateflow" || format_name == "sfx" || format_name == "slx" || format_name == "simulink") {
         return std::make_unique<StateflowParser>();
     }
     if (format_name == "plantuml" || format_name == "puml") {
@@ -69,7 +69,7 @@ std::unique_ptr<IParser> ParserFactory::create_by_extension(std::string_view fil
     if (ext == ".scxml") {
         return std::make_unique<ScxmlParser>();
     }
-    if (ext == ".sfx" || ext == ".stateflow") {
+    if (ext == ".sfx" || ext == ".stateflow" || ext == ".slx") {
         return std::make_unique<StateflowParser>();
     }
     if (ext == ".smv") {
@@ -100,6 +100,8 @@ std::unique_ptr<IParser> ParserFactory::create(std::string_view file_path, std::
 }
 
 std::string ParserFactory::detect_format_from_content(std::string_view source) {
+    if (source.size() >= 4 && source[0] == 'P' && source[1] == 'K' && source[2] == '\x03' && source[3] == '\x04')
+        return "stateflow";
     if (source.find("@startuml") != std::string_view::npos || source.find("@enduml") != std::string_view::npos)
         return "plantuml";
     if (source.find("stateDiagram") != std::string_view::npos ||
@@ -133,7 +135,7 @@ FrontendKind ParserFactory::get_kind_for_format(std::string_view format_name) {
     for (auto& c : f) {
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     }
-    if (f == "sysml" || f == "sysml2" || f == "scxml" || f == "stateflow" || f == "cameo" || f == "xmi" || f == "smv" ||
+    if (f == "sysml" || f == "sysml2" || f == "scxml" || f == "stateflow" || f == "slx" || f == "sfx" || f == "cameo" || f == "xmi" || f == "smv" ||
         f == "nusmv" || f == "nuxmv" || f == "json") {
         return FrontendKind::Formal;
     }

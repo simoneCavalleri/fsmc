@@ -52,6 +52,7 @@ class Sysml2Parser : public IParser {
     static std::string to_pascal_case(const std::string& str);
 
     static bool process_statement(const std::string& raw_stmt, FsmIr& model, std::vector<std::string>& state_stack,
+                                  std::vector<std::string>& package_stack, std::vector<std::size_t>& package_push_counts,
                                   std::string& current_item_def, std::string& current_enum_def,
                                   std::string& current_struct_def, std::string& error_message, size_t line_number,
                                   bool is_block_open, SysmlBlockKind& out_kind, Sysml2SymbolResolver& symbol_resolver);

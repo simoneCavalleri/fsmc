@@ -101,6 +101,12 @@ target_compile_features(fsmc_compiler PRIVATE cxx_std_20)
 target_compile_features(fsmc_compiler INTERFACE cxx_std_17)
 target_link_libraries(fsmc_compiler PUBLIC fsmc_runtime ${CMAKE_DL_LIBS})
 
+find_package(ZLIB QUIET)
+if(ZLIB_FOUND)
+    target_link_libraries(fsmc_compiler PRIVATE ZLIB::ZLIB)
+    target_compile_definitions(fsmc_compiler PRIVATE FSMC_HAS_ZLIB=1)
+endif()
+
 # Native Precompiled Headers (PCH) in CMake 3.16+
 target_precompile_headers(fsmc_compiler PRIVATE
     <string>

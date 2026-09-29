@@ -37,8 +37,10 @@ bool Sysml2Parser::parse(std::string_view content, FsmIr& model, std::string& er
     // Step 1: Lexical analysis and block token scanning
     auto tokens = Sysml2BlockScanner::scan(content);
 
-    // Stacks to track nested hierarchical states and definition blocks
+    // Stacks to track nested hierarchical states, packages, and definition blocks
     std::vector<std::string> state_stack;
+    std::vector<std::string> package_stack;
+    std::vector<std::size_t> package_push_counts;
     std::vector<SysmlBlockKind> block_stack;
     std::string current_item_def;
     std::string current_enum_def;
@@ -77,19 +79,36 @@ bool Sysml2Parser::parse(std::string_view content, FsmIr& model, std::string& er
         // Block open: entering a new composite state, package, item def, enum, or action block
         if (token.kind == SysmlTokenKind::BlockOpen) {
             SysmlBlockKind opened_kind = SysmlBlockKind::ActionBlock;
-            if (!process_statement(token.text, model, state_stack, current_item_def, current_enum_def,
-                                   current_struct_def, error_message, token.line_number, true, opened_kind,
-                                   symbol_resolver)) {
+            if (!process_statement(token.text, model, state_stack, package_stack, package_push_counts,
+                                   current_item_def, current_enum_def, current_struct_def, error_message,
+                                   token.line_number, true, opened_kind, symbol_resolver)) {
                 return false;
             }
             block_stack.push_back(opened_kind);
         } else if (token.kind == SysmlTokenKind::BlockClose) {
-            // Block close: unwind block stack and pop current state/definition scope
+            // Block close: unwind block stack and pop current state/definition/package scope
             if (!block_stack.empty()) {
                 const auto popped_kind = block_stack.back();
                 block_stack.pop_back();
                 if (popped_kind == SysmlBlockKind::State && !state_stack.empty()) {
                     state_stack.pop_back();
+                } else if (popped_kind == SysmlBlockKind::Package) {
+                    if (!package_push_counts.empty()) {
+                        size_t cnt = package_push_counts.back();
+                        package_push_counts.pop_back();
+                        for (size_t k = 0; k < cnt && !package_stack.empty(); ++k) {
+                            package_stack.pop_back();
+                        }
+                        if (model.name.empty()) {
+                            std::string joined;
+                            for (size_t k = 0; k < package_stack.size(); ++k) {
+                                if (k > 0)
+                                    joined += "::";
+                                joined += package_stack[k];
+                            }
+                            model.package = joined;
+                        }
+                    }
                 } else if (popped_kind == SysmlBlockKind::ItemDef) {
                     current_item_def.clear();
                 } else if (popped_kind == SysmlBlockKind::EnumDef) {
@@ -101,9 +120,9 @@ bool Sysml2Parser::parse(std::string_view content, FsmIr& model, std::string& er
         } else if (token.kind == SysmlTokenKind::Statement || token.kind == SysmlTokenKind::ActionBlock) {
             // Regular standalone statement (e.g., transition, entry action, attribute assignment)
             SysmlBlockKind unused_kind = SysmlBlockKind::ActionBlock;
-            if (!process_statement(token.text, model, state_stack, current_item_def, current_enum_def,
-                                   current_struct_def, error_message, token.line_number, false, unused_kind,
-                                   symbol_resolver)) {
+            if (!process_statement(token.text, model, state_stack, package_stack, package_push_counts,
+                                   current_item_def, current_enum_def, current_struct_def, error_message,
+                                   token.line_number, false, unused_kind, symbol_resolver)) {
                 return false;
             }
         }
@@ -285,10 +304,11 @@ std::string Sysml2Parser::to_pascal_case(const std::string& str) {
 }
 
 bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, std::vector<std::string>& state_stack,
-                                     std::string& current_item_def, std::string& current_enum_def,
-                                     std::string& current_struct_def, std::string& error_message, size_t line_number,
-                                     bool is_block_open, SysmlBlockKind& out_kind,
-                                     Sysml2SymbolResolver& symbol_resolver) {
+                                      std::vector<std::string>& package_stack,
+                                      std::vector<std::size_t>& package_push_counts, std::string& current_item_def,
+                                      std::string& current_enum_def, std::string& current_struct_def,
+                                      std::string& error_message, size_t line_number, bool is_block_open,
+                                      SysmlBlockKind& out_kind, Sysml2SymbolResolver& symbol_resolver) {
     (void)error_message;
     (void)line_number;
     const std::string stmt = normalize_whitespace(raw_stmt);
@@ -297,7 +317,25 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    // Structural statement filtering (connect, bind, alloc, part usage)
+    // Binding connectors: bind <dst> = <src>; or bind <dst> to <src>; or connect <dst> to <src>;
+    static const std::regex bind_regex(
+        R"(^(?:bind\s+([A-Za-z_][A-Za-z0-9_.]*)\s*(?:=|to)\s*([A-Za-z_][A-Za-z0-9_.]*)|connect\s+([A-Za-z_][A-Za-z0-9_.]*)\s+to\s+([A-Za-z_][A-Za-z0-9_.]*)))",
+        std::regex::optimize);
+    std::smatch match;
+    if (std::regex_search(stmt, match, bind_regex)) {
+        std::string dst = match[1].matched ? match[1].str() : match[3].str();
+        std::string src = match[2].matched ? match[2].str() : match[4].str();
+        model.add_binding(BindingConnector{dst, src});
+        if (auto* p_dst = model.find_port_mut(dst)) {
+            p_dst->bound_to = src;
+        }
+        if (auto* p_src = model.find_port_mut(src)) {
+            p_src->bound_to = dst;
+        }
+        return true;
+    }
+
+    // Structural statement filtering (allocate, part usage, etc.)
     if (Sysml2BlockScanner::is_structural_statement(stmt)) {
         return true;
     }
@@ -308,14 +346,35 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    // 1. package <Name> / state def <Name>
-    static const std::regex package_def_regex(R"(^package\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
-    std::smatch match;
+    // 1. package <Name> (supporting Outer::Inner and nesting)
+    static const std::regex package_def_regex(
+        R"(^package\s+([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*))", std::regex::optimize);
     if (std::regex_search(stmt, match, package_def_regex)) {
-        model.package = sanitize_identifier(match[1].str());
+        std::string raw_pkg = match[1].str();
+        size_t push_count = 0;
+        size_t start = 0;
+        while (start < raw_pkg.size()) {
+            size_t end = raw_pkg.find("::", start);
+            if (end == std::string::npos)
+                end = raw_pkg.size();
+            std::string part = sanitize_identifier(raw_pkg.substr(start, end - start));
+            if (!part.empty()) {
+                package_stack.push_back(part);
+                push_count++;
+            }
+            start = end + 2;
+        }
+        std::string joined;
+        for (size_t k = 0; k < package_stack.size(); ++k) {
+            if (k > 0)
+                joined += "::";
+            joined += package_stack[k];
+        }
+        model.package = joined;
 
         if (is_block_open) {
             out_kind = SysmlBlockKind::Package;
+            package_push_counts.push_back(push_count);
         }
         return true;
     }
@@ -323,6 +382,15 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
     static const std::regex state_def_regex(R"(^state\s+def\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
     if (std::regex_search(stmt, match, state_def_regex)) {
         model.name = sanitize_identifier(match[1].str());
+        if (!package_stack.empty() && model.package.empty()) {
+            std::string joined;
+            for (size_t k = 0; k < package_stack.size(); ++k) {
+                if (k > 0)
+                    joined += "::";
+                joined += package_stack[k];
+            }
+            model.package = joined;
+        }
         if (is_block_open) {
             out_kind = SysmlBlockKind::StateDef;
         }
@@ -784,7 +852,8 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
     // 11. Transitions: transition [<Name>] [first <Src>] [accept <Evt>] [if <Guard>] [do <Act>] [then <Dst>]
     if (stmt.rfind("transition", 0) == 0 || stmt.find("accept") != std::string::npos ||
         stmt.find("then") != std::string::npos || stmt.find("first") != std::string::npos ||
-        stmt.find("after") != std::string::npos) {
+        stmt.find("after") != std::string::npos || stmt.find("fork") != std::string::npos ||
+        stmt.find("join") != std::string::npos) {
         return parse_transition_statement(stmt, model, state_stack);
     }
 
@@ -803,6 +872,7 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
  * - Guard conditions: `if <GuardExpr>` (composite boolean expressions or custom guards)
  * - Action effects: `do { <Assignments> }`, `do send <Signal> via <Port>`, or `do <Action>`
  * - Target states: `then <Target>` or `to <Target>`
+ * - Fork / Join composite transitions: `fork (A, B, C)` or `join (A, B) then S`
  * - History pseudostates: `then State[H]` (shallow) or `then State[H*]` (deep)
  * - Internal transitions: transitions without target or with identical source and target
  *
@@ -828,7 +898,8 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     if (std::regex_search(stmt, match, trans_name_regex)) {
         std::string name_candidate = sanitize_identifier(match[1].str());
         if (name_candidate != "from" && name_candidate != "first" && name_candidate != "accept" &&
-            name_candidate != "if" && name_candidate != "do" && name_candidate != "then") {
+            name_candidate != "if" && name_candidate != "do" && name_candidate != "then" &&
+            name_candidate != "fork" && name_candidate != "join") {
             trans_name = name_candidate;
         }
     }
@@ -1041,6 +1112,41 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
         }
     }
 
+    static const std::regex fork_regex(R"(\bfork\s*\(\s*([^)]+)\s*\))", std::regex::optimize);
+    static const std::regex join_regex(R"(\bjoin\s*\(\s*([^)]+)\s*\))", std::regex::optimize);
+    std::vector<std::string> fork_targets;
+    std::vector<std::string> join_sources;
+
+    if (std::regex_search(stmt, match, fork_regex)) {
+        std::string raw_list = match[1].str();
+        std::stringstream ss(raw_list);
+        std::string item;
+        while (std::getline(ss, item, ',')) {
+            std::string cleaned = sanitize_identifier(trim(item));
+            if (!cleaned.empty()) {
+                fork_targets.push_back(cleaned);
+            }
+        }
+        if (!fork_targets.empty()) {
+            target = fork_targets.front();
+        }
+    }
+
+    if (std::regex_search(stmt, match, join_regex)) {
+        std::string raw_list = match[1].str();
+        std::stringstream ss(raw_list);
+        std::string item;
+        while (std::getline(ss, item, ',')) {
+            std::string cleaned = sanitize_identifier(trim(item));
+            if (!cleaned.empty()) {
+                join_sources.push_back(cleaned);
+            }
+        }
+        if (!join_sources.empty()) {
+            source = join_sources.front();
+        }
+    }
+
     // Normalize implicit self-transitions and source/target defaults
     if (source.empty() && !target.empty()) {
         source = target;
@@ -1057,6 +1163,20 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     TransitionEdge trans;
     trans.source = source;
     trans.target = target;
+    trans.source_id = compute_deterministic_id(source);
+    trans.target_id = compute_deterministic_id(target);
+    if (!fork_targets.empty()) {
+        trans.target_ids = fork_targets;
+        for (const auto& t_name : fork_targets) {
+            trans.multi_target_ids.push_back(compute_deterministic_id(t_name));
+        }
+    }
+    if (!join_sources.empty()) {
+        trans.source_ids = join_sources;
+        for (const auto& s_name : join_sources) {
+            trans.multi_source_ids.push_back(compute_deterministic_id(s_name));
+        }
+    }
     trans.event = event;
     if (time_trigger.has_value()) {
         trans.trigger = *time_trigger;
@@ -1101,6 +1221,16 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
                     target_state->has_deep_history = true;
                 }
             }
+        }
+    }
+    for (const auto& t_name : fork_targets) {
+        if (!model.is_choice_node(t_name)) {
+            model.add_or_get_state(t_name, "");
+        }
+    }
+    for (const auto& s_name : join_sources) {
+        if (!model.is_choice_node(s_name)) {
+            model.add_or_get_state(s_name, "");
         }
     }
 

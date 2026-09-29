@@ -1,3 +1,4 @@
+#include "fsm/frontend/diagram/diagram_action_parser.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
 
 #include <regex>
@@ -17,14 +18,46 @@ bool MermaidParser::parse(std::string_view content, FsmIr& out_model, std::strin
     std::string line;
     size_t line_num = 0;
     std::vector<std::string> parent_stack;
+    std::string multiline_buffer;
+    int multiline_brace_imbalance = 0;
 
     while (std::getline(stream, line)) {
         ++line_num;
-        const std::string_view trimmed = trim(line);
 
-        if (trimmed.empty()) {
+        if (multiline_brace_imbalance > 0) {
+            multiline_buffer += "\n" + line;
+            multiline_brace_imbalance += DiagramActionParser::brace_imbalance(line);
+            if (multiline_brace_imbalance <= 0) {
+                multiline_brace_imbalance = 0;
+                line = multiline_buffer;
+                multiline_buffer.clear();
+            } else {
+                continue;
+            }
+        }
+
+        const std::string_view trimmed_initial = trim(line);
+        if (trimmed_initial.empty()) {
             continue;
         }
+
+        // If line contains an action with open unclosed braces, start multiline accumulation
+        if (!starts_with(trimmed_initial, "state ") && trimmed_initial.find('/') != std::string_view::npos) {
+            int imb = DiagramActionParser::brace_imbalance(trimmed_initial);
+            if (imb > 0) {
+                multiline_buffer = line;
+                multiline_brace_imbalance = imb;
+                continue;
+            }
+        }
+
+        std::string processed_line{trimmed_initial};
+        if (!parent_stack.empty() && (starts_with(trimmed_initial, "entry /") || starts_with(trimmed_initial, "entry/") ||
+                                      starts_with(trimmed_initial, "exit /") || starts_with(trimmed_initial, "exit/") ||
+                                      starts_with(trimmed_initial, "do /") || starts_with(trimmed_initial, "do/"))) {
+            processed_line = parent_stack.back() + " : " + std::string(trimmed_initial);
+        }
+        const std::string_view trimmed = trim(processed_line);
 
         // YAML frontmatter title / diagram title
         if (starts_with(trimmed, "---") || starts_with(trimmed, "title:")) {
@@ -282,21 +315,19 @@ void MermaidParser::parse_state_definition(std::string_view line, FsmIr& model,
                     continue;
                 if (item.find("entry /") != std::string::npos) {
                     size_t p = item.find("entry /");
-                    size_t end_p = item.find(')', p);
-                    std::string act = item.substr(p + 7, (end_p != std::string::npos ? end_p : item.size()) - (p + 7));
-                    act = sanitize_identifier(trim(act));
-                    if (!act.empty()) {
-                        model.add_action(act);
-                        state->entry_actions.push_back(ActionSignature{act});
+                    std::string act = item.substr(p + 7);
+                    auto act_sig = DiagramActionParser::parse_action_block(act, "entry_" + name);
+                    if (!act_sig.empty()) {
+                        model.add_action(act_sig.name);
+                        state->entry_actions.push_back(std::move(act_sig));
                     }
                 } else if (item.find("exit /") != std::string::npos) {
                     size_t p = item.find("exit /");
-                    size_t end_p = item.find(')', p);
-                    std::string act = item.substr(p + 6, (end_p != std::string::npos ? end_p : item.size()) - (p + 6));
-                    act = sanitize_identifier(trim(act));
-                    if (!act.empty()) {
-                        model.add_action(act);
-                        state->exit_actions.push_back(ActionSignature{act});
+                    std::string act = item.substr(p + 6);
+                    auto act_sig = DiagramActionParser::parse_action_block(act, "exit_" + name);
+                    if (!act_sig.empty()) {
+                        model.add_action(act_sig.name);
+                        state->exit_actions.push_back(std::move(act_sig));
                     }
                 } else if (item.find("do /") != std::string::npos) {
                     size_t p = item.find("do /");
@@ -375,12 +406,12 @@ void MermaidParser::parse_internal_transition(std::string_view line, FsmIr& mode
         return;
     }
 
-    std::optional<std::string> action_name;
+    std::optional<ActionSignature> parsed_action;
     const auto slash_pos = label.find('/');
     if (slash_pos != std::string::npos) {
         const std::string act = std::string(trim(label.substr(slash_pos + 1)));
         if (!act.empty()) {
-            action_name = sanitize_identifier(act);
+            parsed_action = DiagramActionParser::parse_action_block(act, "action_" + state_name);
         }
         label = label.substr(0, slash_pos);
     }
@@ -411,24 +442,24 @@ void MermaidParser::parse_internal_transition(std::string_view line, FsmIr& mode
     model.add_state(state_name, current_parent);
 
     // Native Mermaid lifecycle hooks: entry, exit
-    if (event_name == "entry" && action_name) {
-        model.add_action(*action_name);
+    if (event_name == "entry" && parsed_action) {
+        model.add_action(parsed_action->name);
         if (auto* st = model.find_state_mut(state_name)) {
-            st->entry_actions.push_back(ActionSignature{*action_name});
+            st->entry_actions.push_back(*parsed_action);
         }
         return;
     }
-    if (event_name == "exit" && action_name) {
-        model.add_action(*action_name);
+    if (event_name == "exit" && parsed_action) {
+        model.add_action(parsed_action->name);
         if (auto* st = model.find_state_mut(state_name)) {
-            st->exit_actions.push_back(ActionSignature{*action_name});
+            st->exit_actions.push_back(*parsed_action);
         }
         return;
     }
 
     model.add_event(event_name);
-    if (action_name) {
-        model.add_action(*action_name);
+    if (parsed_action) {
+        model.add_action(parsed_action->name);
     }
 
     TransitionEdge trans;
@@ -436,8 +467,8 @@ void MermaidParser::parse_internal_transition(std::string_view line, FsmIr& mode
     trans.target = state_name;
     trans.event = event_name;
     trans.guard = guard_name;
-    if (action_name.has_value() && !action_name->empty()) {
-        trans.transition_action = ActionSignature(*action_name);
+    if (parsed_action) {
+        trans.transition_action = *parsed_action;
     }
     trans.kind = TransitionEdgeKind::Internal;
     trans.parent_scope = current_parent;
@@ -518,7 +549,7 @@ bool MermaidParser::parse_transition_line(std::string_view line, FsmIr& model, s
     // Format: EventName (prio=1) [GuardName] / ActionName
     std::string event_name;
     std::optional<std::string> guard_name;
-    std::optional<std::string> action_name;
+    std::optional<ActionSignature> parsed_action;
     std::uint32_t priority = 0;
 
     if (!label_part.empty()) {
@@ -541,7 +572,7 @@ bool MermaidParser::parse_transition_line(std::string_view line, FsmIr& model, s
         if (slash_pos != std::string::npos) {
             const std::string act = std::string(trim(label.substr(slash_pos + 1)));
             if (!act.empty()) {
-                action_name = sanitize_identifier(act);
+                parsed_action = DiagramActionParser::parse_action_block(act, "action_" + src + "_" + dst);
             }
             label = label.substr(0, slash_pos);
         }
@@ -588,8 +619,8 @@ bool MermaidParser::parse_transition_line(std::string_view line, FsmIr& model, s
     if (!event_name.empty()) {
         model.add_event(event_name);
     }
-    if (action_name) {
-        model.add_action(*action_name);
+    if (parsed_action) {
+        model.add_action(parsed_action->name);
     }
 
     TransitionEdge trans;
@@ -597,8 +628,8 @@ bool MermaidParser::parse_transition_line(std::string_view line, FsmIr& model, s
     trans.target = dst;
     trans.event = event_name;
     trans.guard = guard_name;
-    if (action_name.has_value() && !action_name->empty()) {
-        trans.transition_action = ActionSignature(*action_name);
+    if (parsed_action) {
+        trans.transition_action = *parsed_action;
     }
     trans.kind = TransitionEdgeKind::External;
     trans.target_is_history = is_history;

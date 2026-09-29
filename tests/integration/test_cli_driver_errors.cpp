@@ -2,7 +2,7 @@
  * @file test_cli_driver_errors.cpp
  * @brief Comprehensive regression tests for controlled fsmc and fsm-opt driver failure contracts.
  *
- * Implements Phase 6.1 of roadmap/implementation plan:
+ * Validates driver failure handling and error diagnostics across:
  * - missing input;
  * - unknown option;
  * - missing option argument;

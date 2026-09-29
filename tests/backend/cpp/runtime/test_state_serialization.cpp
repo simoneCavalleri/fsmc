@@ -1,6 +1,6 @@
 /**
  * @file test_state_serialization.cpp
- * @brief Unit tests for C++ runtime state snapshot binary serialization and deserialization (EPIC-4).
+ * @brief Unit tests for C++ runtime state snapshot binary serialization and deserialization.
  *
  * Validates:
  * - Active state restoration from serialized binary snapshots.

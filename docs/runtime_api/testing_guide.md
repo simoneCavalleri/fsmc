@@ -185,7 +185,7 @@ TEST(DroneServiceTest, ActionCallsServiceDriver) {
 
 ---
 
-## 4. Testing Multi-Threaded State Machines (`v0.5.0+`)
+## 4. Testing Multi-Threaded State Machines
 
 When unit testing `fsm::thread_safe_fsm`, remember that direct access via `registers()` is prohibited. Always use `snapshot_registers()` to inspect outcomes deterministically:
 
@@ -193,7 +193,7 @@ When unit testing `fsm::thread_safe_fsm`, remember that direct access via `regis
 #include "fsm/backend/cpp/runtime/thread_safe_fsm.hpp"
 
 TEST(AsyncDroneTest, AsyncDispatchAndSnapshotInspection) {
-    // Arrange using modern policy instantiation:
+    // Arrange using policy instantiation:
     using AsyncDroneFSM = fsm::make_thread_safe_fsm<
         DroneTable,
         fsm::with_registers<DroneRegisters>
@@ -220,9 +220,9 @@ TEST(AsyncDroneTest, AsyncDispatchAndSnapshotInspection) {
 
 ---
 
-## 5. Testing with the Embedded Blackbox Flight Recorder (v0.6.0+)
+## 5. Testing with the Embedded Blackbox Flight Recorder
 
-Starting in `v0.6.0`, unit tests can assert transition sequences, historical states, and event execution order using `with_trace_buffer<N>`:
+Unit tests can assert transition sequences, historical states, and event execution order using `with_trace_buffer<N>`:
 
 ```cpp
 #include "fsm/backend/cpp/runtime/fsm.hpp"
@@ -260,7 +260,7 @@ TEST(FlightRecorderTest, VerifyExecutionTraceSequence) {
 
 ---
 
-## 6. Automated MC/DC Safety Test Synthesis (v0.6.0+)
+## 6. Automated MC/DC Safety Test Synthesis
 
 For DO-178C and ISO 26262 compliance testing, `fsmc` can automatically synthesize complete GoogleTest test harnesses verifying Modified Condition / Decision Coverage (MC/DC) for all transition guards:
 

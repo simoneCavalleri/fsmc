@@ -3,6 +3,7 @@
 #include <regex>
 #include <sstream>
 
+#include "fsm/frontend/diagram/diagram_action_parser.hpp"
 #include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
 
@@ -18,24 +19,57 @@ bool PlantUmlParser::parse(std::string_view content, FsmIr& out_model, std::stri
     size_t line_num = 0;
     bool in_block_comment = false;
     std::vector<std::string> parent_stack;
+    std::string multiline_buffer;
+    int multiline_brace_imbalance = 0;
 
     while (std::getline(stream, line)) {
         ++line_num;
-        const std::string_view trimmed = trim(line);
 
-        if (trimmed.empty()) {
+        if (multiline_brace_imbalance > 0) {
+            multiline_buffer += "\n" + line;
+            multiline_brace_imbalance += DiagramActionParser::brace_imbalance(line);
+            if (multiline_brace_imbalance <= 0) {
+                multiline_brace_imbalance = 0;
+                line = multiline_buffer;
+                multiline_buffer.clear();
+            } else {
+                continue;
+            }
+        }
+
+        const std::string_view trimmed_initial = trim(line);
+        if (trimmed_initial.empty()) {
             continue;
         }
 
-        if (starts_with(trimmed, "/'")) {
+        if (starts_with(trimmed_initial, "/'")) {
             in_block_comment = true;
         }
         if (in_block_comment) {
-            if (trimmed.find("'/") != std::string_view::npos) {
+            if (trimmed_initial.find("'/") != std::string_view::npos) {
                 in_block_comment = false;
             }
             continue;
         }
+
+        // If line contains an action with open unclosed braces, start multiline accumulation
+        if (!starts_with(trimmed_initial, "state ") && trimmed_initial.find('/') != std::string_view::npos) {
+            int imb = DiagramActionParser::brace_imbalance(trimmed_initial);
+            if (imb > 0) {
+                multiline_buffer = line;
+                multiline_brace_imbalance = imb;
+                continue;
+            }
+        }
+
+        std::string processed_line{trimmed_initial};
+        if (!parent_stack.empty() &&
+            (starts_with(trimmed_initial, "entry /") || starts_with(trimmed_initial, "entry/") ||
+             starts_with(trimmed_initial, "exit /") || starts_with(trimmed_initial, "exit/") ||
+             starts_with(trimmed_initial, "do /") || starts_with(trimmed_initial, "do/"))) {
+            processed_line = parent_stack.back() + " : " + std::string(trimmed_initial);
+        }
+        const std::string_view trimmed = trim(processed_line);
 
         if (DirectiveParser::is_directive(trimmed)) {
             std::string body = DirectiveParser::extract_directive_body(trimmed);
@@ -264,12 +298,12 @@ void PlantUmlParser::parse_internal_transition(std::string_view line, FsmIr& mod
         return;
     }
 
-    std::optional<std::string> action_name;
+    std::optional<ActionSignature> parsed_action;
     const auto slash_pos = label.find('/');
     if (slash_pos != std::string::npos) {
         const std::string act = std::string(trim(label.substr(slash_pos + 1)));
         if (!act.empty()) {
-            action_name = sanitize_identifier(act);
+            parsed_action = DiagramActionParser::parse_action_block(act, "action_" + state_name);
         }
         label = label.substr(0, slash_pos);
     }
@@ -299,30 +333,30 @@ void PlantUmlParser::parse_internal_transition(std::string_view line, FsmIr& mod
     model.add_state(state_name, parent_for_state);
 
     // Native PlantUML lifecycle hooks: entry, exit, do
-    if (event_name == "entry" && action_name) {
-        model.add_action(*action_name);
+    if (event_name == "entry" && parsed_action) {
+        model.add_action(parsed_action->name);
         if (auto* st = model.find_state_mut(state_name)) {
-            st->entry_actions.push_back(ActionSignature{*action_name});
+            st->entry_actions.push_back(*parsed_action);
         }
         return;
     }
-    if (event_name == "exit" && action_name) {
-        model.add_action(*action_name);
+    if (event_name == "exit" && parsed_action) {
+        model.add_action(parsed_action->name);
         if (auto* st = model.find_state_mut(state_name)) {
-            st->exit_actions.push_back(ActionSignature{*action_name});
+            st->exit_actions.push_back(*parsed_action);
         }
         return;
     }
-    if (event_name == "do" && action_name) {
+    if (event_name == "do" && parsed_action) {
         if (auto* st = model.find_state_mut(state_name)) {
-            st->do_activity = *action_name;
+            st->do_activity = parsed_action->name;
         }
         return;
     }
 
     model.add_event(event_name);
-    if (action_name) {
-        model.add_action(*action_name);
+    if (parsed_action) {
+        model.add_action(parsed_action->name);
     }
 
     TransitionEdge trans;
@@ -330,8 +364,8 @@ void PlantUmlParser::parse_internal_transition(std::string_view line, FsmIr& mod
     trans.target = state_name;
     trans.event = event_name;
     trans.guard = guard_name;
-    if (action_name && !action_name->empty()) {
-        trans.transition_action = ActionSignature(*action_name);
+    if (parsed_action) {
+        trans.transition_action = *parsed_action;
     }
     trans.kind = TransitionEdgeKind::Internal;
     trans.parent_scope = trans_scope;
@@ -417,7 +451,7 @@ bool PlantUmlParser::parse_transition_line(std::string_view line, FsmIr& model, 
     // Format: EventName (prio=1) [GuardName] / ActionName
     std::string event_name;
     std::optional<std::string> guard_name;
-    std::optional<std::string> action_name;
+    std::optional<ActionSignature> parsed_action;
     std::uint32_t priority = 0;
 
     if (!label_part.empty()) {
@@ -440,7 +474,7 @@ bool PlantUmlParser::parse_transition_line(std::string_view line, FsmIr& model, 
         if (slash_pos != std::string::npos) {
             const std::string act = std::string(trim(label.substr(slash_pos + 1)));
             if (!act.empty()) {
-                action_name = sanitize_identifier(act);
+                parsed_action = DiagramActionParser::parse_action_block(act, "action_" + src + "_" + dst);
             }
             label = label.substr(0, slash_pos);
         }
@@ -491,8 +525,8 @@ bool PlantUmlParser::parse_transition_line(std::string_view line, FsmIr& model, 
     if (!event_name.empty()) {
         model.add_event(event_name);
     }
-    if (action_name) {
-        model.add_action(*action_name);
+    if (parsed_action) {
+        model.add_action(parsed_action->name);
     }
 
     TransitionEdge trans;
@@ -500,8 +534,8 @@ bool PlantUmlParser::parse_transition_line(std::string_view line, FsmIr& model, 
     trans.target = dst;
     trans.event = event_name;
     trans.guard = guard_name;
-    if (action_name && !action_name->empty()) {
-        trans.transition_action = ActionSignature(*action_name);
+    if (parsed_action) {
+        trans.transition_action = *parsed_action;
     }
     trans.kind = TransitionEdgeKind::External;
     trans.target_is_history = is_history;

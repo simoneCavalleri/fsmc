@@ -3,7 +3,7 @@
 A single-page printable reference card covering the universal CLI commands, formal verification syntax, and target runtime APIs across supported languages.
 
 > [!NOTE]
-> **Active Target vs. Roadmap Previews**: The **C++ Backend** (`C++17/C++20`) is currently the sole active production runtime in `v0.6.0`. Rust and C tabs illustrate **preview specifications** currently in active development under the multi-target roadmap for `v0.7.0`.
+> **Active Target vs. Roadmap Previews**: The **C++ Backend** (`C++17/C++20`) is the active production runtime. Rust and C tabs illustrate **preview specifications** under the multi-target roadmap.
 
 ---
 
@@ -20,25 +20,26 @@ fsmc -i flight.sysml -o flight_fsm.rs --target rust
 fsmc -i flight.sysml -o flight_fsm.h  --target c
 
 # Formal Verification (Invariants, Deadlocks, Unreachable States)
-fsmc verify flight.sysml
+fsmc -i flight.sysml -V
 
 # Ad-hoc Temporal Logic Verification (LTL & CTL)
-fsmc verify flight.sysml --ltl "G (State == LowBattery -> F State == Landed)"
-fsmc verify flight.sysml --ctl "AG (EF State == Standby)"
+fsmc -i flight.sysml -V --ltl "G (State == LowBattery -> F State == Landed)"
+fsmc -i flight.sysml -V --ctl "AG (EF State == Standby)"
 
-# Model Transpilation (SysML v2 -> SCXML / Mermaid / PlantUML)
+# Model Transpilation (SysML v2 -> Stateflow / SCXML / Mermaid / PlantUML)
+fsmc -i flight.sysml -e stateflow -o flight_sf.xml
 fsmc -i flight.sysml -e scxml -o flight.scxml
 fsmc -i flight.sysml -e mermaid -o flight.mmd
 
-# Requirement Traceability Matrix (RTM) Audit Report
-fsmc -i flight.sysml --req-audit --rtm-output rtm.md
+# Requirement Traceability Matrix (RTM) Audit Report & MC/DC Test Harness
+fsmc -i flight.sysml --req-audit --rtm rtm.md --harness flight_test.cpp
 ```
 
 ---
 
 ## 2. Defining Transition Tables
 
-=== "C++ Target (Production v0.6.0)"
+=== "C++ Target (Production)"
     ```cpp
     // Method A: fsm::row Type Declarations
     using MyTable = fsm::transition_table<
@@ -87,7 +88,7 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
 
 ## 3. Runtime Engine Instantiation & Policy Configuration
 
-=== "C++ Target (Production v0.6.0)"
+=== "C++ Target (Production)"
     ```cpp
     #include <fsm/backend/cpp/runtime/fsm.hpp>
     #include <fsm/backend/cpp/runtime/spsc_fsm.hpp>
@@ -155,7 +156,7 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
 | **`Registers`** | Read-Only | Read-Write | Machine construction |
 | **`Services`** | Inaccessible | Injected Reference | Machine construction |
 
-=== "C++ Target (Production v0.6.0)"
+=== "C++ Target (Production)"
     ```cpp
     // Guard: Read-only access to InPorts, Registers, and Event payload
     struct TargetReachableGuard {
@@ -208,7 +209,7 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
 
 ## 5. Execution API Cheat Sheet
 
-=== "C++ Target (Production v0.6.0)"
+=== "C++ Target (Production)"
     ```cpp
     SyncFSM fsm(initial_regs, srv);
 
@@ -220,10 +221,10 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
     fsm::step_result step_res = fsm.step(in, out);
     if (step_res.has_transitioned()) { /* Sampled threshold fired */ }
 
-    // 3. Deterministic Real-Time Timer Tick (v0.6.0+)
+    // 3. Deterministic Real-Time Timer Tick
     std::size_t expired = fsm.tick(std::chrono::milliseconds(10));
 
-    // 4. Introspection & Blackbox Flight Recorder (v0.6.0+)
+    // 4. Introspection & Blackbox Flight Recorder
     assert(fsm.is_in<Running>());
     std::string_view current = fsm.current_state_name();
     uint32_t count = fsm.registers().ignition_count;
@@ -232,6 +233,12 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
     // 5. Lock-Free SPSC / Thread-Safe Engines
     spsc.post(SensorDataEvent{raw_adc});
     Registers snap = spsc.snapshot_registers(); // Seqlock atomic copy
+
+    // 6. Zero-Heap Binary Snapshot Serialization
+    std::array<std::uint8_t, 256> snapshot_buf{};
+    std::size_t written = 0;
+    fsm.serialize(snapshot_buf, written);
+    fsm.deserialize(snapshot_buf);
     ```
 
 === "Rust Target (Roadmap Preview)"

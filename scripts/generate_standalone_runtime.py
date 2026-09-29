@@ -37,6 +37,7 @@ CORE_FILES = [
     "detail/deferred_manager.hpp",
     "detail/invariant_manager.hpp",
     "detail/transition_executor.hpp",
+    "serialization.hpp",
     "fsm.hpp",
     "detail/fsm_policy_adapter.hpp",
 ]

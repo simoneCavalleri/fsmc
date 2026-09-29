@@ -89,7 +89,7 @@ fsm::make_fsm<SimpleTable> machine;
 FlightRegisters regs{100.0, 0.0};
 fsm::make_fsm<FlightTable, fsm::with_registers<FlightRegisters>> machine(regs);
 
-// Configured FSM with Blackbox Flight Recorder and Deterministic Timers (v0.6.0+)
+// Configured FSM with Blackbox Flight Recorder and Deterministic Timers
 using SafeFlightFsm = fsm::make_fsm<
     FlightTable,
     fsm::with_registers<FlightRegisters>,

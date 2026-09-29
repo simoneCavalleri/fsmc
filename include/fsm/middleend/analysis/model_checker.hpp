@@ -93,6 +93,13 @@ class ModelChecker {
     std::unordered_map<std::string, std::vector<GraphEdge>> adj_;
     std::unordered_set<std::string> reachable_states_;
     std::unordered_map<std::string, std::pair<std::string, GraphEdge>> predecessor_map_;
+    std::unordered_map<std::string, std::unordered_map<std::string, Interval>> state_intervals_;
+
+    struct SccComponent {
+        std::vector<std::string> states;
+        bool is_cyclic{false};
+    };
+    [[nodiscard]] std::vector<SccComponent> find_sccs() const;
 
     void build_graph();
     [[nodiscard]] std::vector<CounterexampleStep> reconstruct_trace(const std::string& target_state,
@@ -102,6 +109,12 @@ class ModelChecker {
     ModelCheckResult check_reachability(const FormalProperty& prop, const PropertyAstNode& target);
     ModelCheckResult check_response(const FormalProperty& prop, const PropertyAstNode& trigger,
                                     const PropertyAstNode& response_target);
+    ModelCheckResult check_until(const FormalProperty& prop, const PropertyAstNode& left, const PropertyAstNode& right);
+    ModelCheckResult check_next(const FormalProperty& prop, const PropertyAstNode& target);
+    ModelCheckResult check_next_response(const FormalProperty& prop, const PropertyAstNode& trigger,
+                                         const PropertyAstNode& next_target);
+    ModelCheckResult check_infinitely_often(const FormalProperty& prop, const PropertyAstNode& target);
+    ModelCheckResult check_eventually_always(const FormalProperty& prop, const PropertyAstNode& target);
 };
 
 }  // namespace fsm::middleend::analysis

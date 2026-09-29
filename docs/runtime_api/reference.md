@@ -83,6 +83,16 @@ class fsm;
 - `void clear_observer() noexcept`: Detaches active observer.
 - `[[nodiscard]] constexpr observer_type& observer() noexcept`: Returns reference to active observer (e.g. `flight_recorder_observer`).
 
+#### Binary State Snapshot Serialization & Deserialization
+- `bool serialize(std::uint8_t* dest, std::size_t capacity, std::size_t& bytes_written) const noexcept`: Serializes complete state machine state (active state variant, history, timers, residence duration, registers) into fixed binary buffer.
+- `bool serialize(std::uint8_t* dest, std::size_t capacity) const noexcept`: Convenience overload for serialization into raw buffer.
+- `bool serialize(std::span<std::uint8_t> buffer, std::size_t& bytes_written) const noexcept`: (C++20) Span-based serialization.
+- `bool serialize(std::span<std::uint8_t> buffer) const noexcept`: (C++20) Span-based serialization.
+- `bool deserialize(const std::uint8_t* src, std::size_t size, std::size_t& bytes_read) noexcept`: Restores state machine from binary snapshot, validating magic word (`0x46534D43`), schema version, and FNV-1a checksum.
+- `bool deserialize(const std::uint8_t* src, std::size_t size) noexcept`: Convenience overload for raw buffer deserialization.
+- `bool deserialize(std::span<const std::uint8_t> buffer, std::size_t& bytes_read) noexcept`: (C++20) Span-based deserialization.
+- `bool deserialize(std::span<const std::uint8_t> buffer) noexcept`: (C++20) Span-based deserialization.
+
 ---
 
 ## 2. Policy-Based Configuration: `fsm::config`
@@ -431,7 +441,34 @@ Matches any functor callable with any valid permutation of `(event, src_state, d
 
 ---
 
-## 11. Decomposed Runtime Detail Modules
+## 11. Zero-Heap Binary Snapshot Serialization
+
+```cpp
+#include "fsm/backend/cpp/runtime/serialization.hpp"
+```
+
+Provides high-reliability embedded checkpoints, NVRAM retention across reboot cycles, and hot-standby synchronization.
+
+### Structures & Constants
+- `fsm::SNAPSHOT_MAGIC`: `0x46534D43` ('F','S','M','C').
+- `fsm::SNAPSHOT_VERSION`: Schema revision (`1`).
+- `fsm::snapshot_header`: 36-byte packed header storing magic, version, flags, active state index, history count, timer count, residence time ms, registers size, and payload FNV-1a checksum.
+- `fsm::snapshot_timer_entry`: Packed 21-byte timer record (timer ID, interval ms, elapsed ms, periodic flag).
+- `fsm::compute_checksum(data, len)`: Deterministic 32-bit FNV-1a checksum over memory buffer.
+
+### Non-Member Helper Functions
+- `template <typename FSM> bool serialize_state(const FSM& machine, std::uint8_t* dest, std::size_t capacity, std::size_t& bytes_written) noexcept`: Serializes machine state into raw pointer buffer.
+- `template <typename FSM> bool serialize_state(const FSM& machine, std::uint8_t* dest, std::size_t capacity) noexcept`: Serializes machine state into raw pointer buffer.
+- `template <typename FSM> bool serialize_state(const FSM& machine, std::span<std::uint8_t> buffer, std::size_t& bytes_written) noexcept`: (C++20) Serializes machine state into destination span.
+- `template <typename FSM> bool serialize_state(const FSM& machine, std::span<std::uint8_t> buffer) noexcept`: (C++20) Serializes machine state into destination span.
+- `template <typename FSM> bool deserialize_state(FSM& machine, const std::uint8_t* src, std::size_t size, std::size_t& bytes_read) noexcept`: Deserializes machine state from raw buffer.
+- `template <typename FSM> bool deserialize_state(FSM& machine, const std::uint8_t* src, std::size_t size) noexcept`: Deserializes machine state from raw buffer.
+- `template <typename FSM> bool deserialize_state(FSM& machine, std::span<const std::uint8_t> buffer, std::size_t& bytes_read) noexcept`: (C++20) Deserializes machine state from source span.
+- `template <typename FSM> bool deserialize_state(FSM& machine, std::span<const std::uint8_t> buffer) noexcept`: (C++20) Deserializes machine state from source span.
+
+---
+
+## 12. Decomposed Runtime Detail Modules
 
 For clean separation of concerns and maximum maintainability, internal engine mechanics are decomposed into isolated headers in `fsm/backend/cpp/runtime/detail/`:
 

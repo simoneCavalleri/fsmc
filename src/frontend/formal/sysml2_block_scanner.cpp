@@ -28,8 +28,7 @@ bool Sysml2BlockScanner::ends_with_word(std::string_view text, std::string_view 
 
 bool Sysml2BlockScanner::is_structural_statement(std::string_view stmt) {
     std::string s = trim_str(stmt);
-    if (s.rfind("connect ", 0) == 0 || s.rfind("bind ", 0) == 0 || s.rfind("allocate ", 0) == 0 ||
-        s.rfind("allocation ", 0) == 0) {
+    if (s.rfind("allocate ", 0) == 0 || s.rfind("allocation ", 0) == 0) {
         return true;
     }
     if (s.rfind("part ", 0) == 0 && s.find(':') != std::string_view::npos) {
@@ -62,7 +61,8 @@ bool Sysml2BlockScanner::is_container_block_head(std::string_view head) {
 bool Sysml2BlockScanner::is_transition_like(std::string_view stmt) {
     std::string s = trim_str(stmt);
     return (s.rfind("transition", 0) == 0 || s.find(" then ") != std::string::npos ||
-            s.find(" to ") != std::string::npos || s.find(" first ") != std::string::npos);
+            s.find(" to ") != std::string::npos || s.find(" first ") != std::string::npos ||
+            s.find(" fork") != std::string::npos || s.find(" join") != std::string::npos);
 }
 
 std::vector<SysmlScannedToken> Sysml2BlockScanner::scan(std::string_view content) {

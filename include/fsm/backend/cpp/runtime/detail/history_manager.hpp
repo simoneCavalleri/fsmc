@@ -53,6 +53,10 @@ class history_manager<Table, true> {
         return "";
     }
 
+    [[nodiscard]] std::size_t size() const noexcept { return history_records_.size(); }
+    [[nodiscard]] const history_entry& operator[](std::size_t i) const noexcept { return history_records_[i]; }
+    [[nodiscard]] const history_entry* data() const noexcept { return history_records_.data(); }
+
     void clear_history() noexcept { history_records_.clear(); }
 
   private:
@@ -64,6 +68,10 @@ template <typename Table>
 class history_manager<Table, false> {
   public:
     static constexpr std::size_t max_history_capacity = 0;
+
+    [[nodiscard]] constexpr std::size_t size() const noexcept { return 0; }
+    [[nodiscard]] constexpr history_entry operator[](std::size_t /*i*/) const noexcept { return {}; }
+    [[nodiscard]] constexpr const history_entry* data() const noexcept { return nullptr; }
 
     void record_history(std::string_view /*parent*/, std::string_view /*substate*/) noexcept {}
     [[nodiscard]] std::string_view get_history(std::string_view /*parent*/) const noexcept { return ""; }

@@ -28,11 +28,13 @@ class Cpp20StandaloneRuntime {
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <iomanip>
 #include <iterator>
 #include <optional>
 #include <ostream>
+#include <span>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
@@ -799,6 +801,11 @@ constexpr void invoke_action_fallback(Action& action, Tuple& t) {
                          requires { action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t)); }) {
         action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t));
     } else if constexpr (N >= 6 &&
+                         requires { action(tuple_get<0>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t)); }) {
+        action(tuple_get<0>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t));
+    } else if constexpr (N >= 6 && requires { action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t)); }) {
+        action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t));
+    } else if constexpr (N >= 6 &&
                          requires { action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<5>(t)); }) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<5>(t));
     } else if constexpr (N >= 6 && requires { action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<5>(t)); }) {
@@ -880,6 +887,12 @@ constexpr void invoke_action_fallback(Action& action, Tuple& t) {
     } else if constexpr (N >= 4 && std::is_invocable_v<Action, decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t)),
                                                        decltype(tuple_get<5>(t)), decltype(tuple_get<6>(t))>) {
         action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t), tuple_get<6>(t));
+    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<3>(t)),
+                                                       decltype(tuple_get<4>(t)), decltype(tuple_get<5>(t))>) {
+        action(tuple_get<0>(t), tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t));
+    } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<3>(t)), decltype(tuple_get<4>(t)),
+                                                       decltype(tuple_get<5>(t))>) {
+        action(tuple_get<3>(t), tuple_get<4>(t), tuple_get<5>(t));
     } else if constexpr (N >= 6 && std::is_invocable_v<Action, decltype(tuple_get<0>(t)), decltype(tuple_get<1>(t)),
                                                        decltype(tuple_get<2>(t)), decltype(tuple_get<5>(t))>) {
         action(tuple_get<0>(t), tuple_get<1>(t), tuple_get<2>(t), tuple_get<5>(t));
@@ -1994,6 +2007,23 @@ class deterministic_timer_manager {
         return count;
     }
 
+    [[nodiscard]] constexpr const std::array<timer_entry, MaxTimers>& entries() const noexcept { return timers_; }
+
+    constexpr bool restore_timer(std::uint32_t timer_id, std::uint64_t interval_ms, std::uint64_t elapsed_ms,
+                                 bool periodic) noexcept {
+        for (auto& entry : timers_) {
+            if (!entry.active) {
+                entry.timer_id = timer_id;
+                entry.interval_ms = interval_ms;
+                entry.elapsed_ms = elapsed_ms;
+                entry.periodic = periodic;
+                entry.active = true;
+                return true;
+            }
+        }
+        return false;
+    }
+
   private:
     std::array<timer_entry, MaxTimers> timers_{};
 };
@@ -2025,6 +2055,16 @@ class deterministic_timer_manager<0> {
     }
 
     [[nodiscard]] constexpr std::size_t active_count() const noexcept { return 0; }
+
+    [[nodiscard]] const std::array<timer_entry, 0>& entries() const noexcept {
+        static const std::array<timer_entry, 0> dummy{};
+        return dummy;
+    }
+
+    constexpr bool restore_timer(std::uint32_t /*timer_id*/, std::uint64_t /*interval_ms*/,
+                                 std::uint64_t /*elapsed_ms*/, bool /*periodic*/) noexcept {
+        return false;
+    }
 };
 
 }  // namespace fsm
@@ -2706,6 +2746,10 @@ class history_manager<Table, true> {
         return "";
     }
 
+    [[nodiscard]] std::size_t size() const noexcept { return history_records_.size(); }
+    [[nodiscard]] const history_entry& operator[](std::size_t i) const noexcept { return history_records_[i]; }
+    [[nodiscard]] const history_entry* data() const noexcept { return history_records_.data(); }
+
     void clear_history() noexcept { history_records_.clear(); }
 
   private:
@@ -2717,6 +2761,10 @@ template <typename Table>
 class history_manager<Table, false> {
   public:
     static constexpr std::size_t max_history_capacity = 0;
+
+    [[nodiscard]] constexpr std::size_t size() const noexcept { return 0; }
+    [[nodiscard]] constexpr history_entry operator[](std::size_t /*i*/) const noexcept { return {}; }
+    [[nodiscard]] constexpr const history_entry* data() const noexcept { return nullptr; }
 
     void record_history(std::string_view /*parent*/, std::string_view /*substate*/) noexcept {}
     [[nodiscard]] std::string_view get_history(std::string_view /*parent*/) const noexcept { return ""; }
@@ -2839,6 +2887,8 @@ class invariant_manager<Table, true> {
 
     void advance_time(std::uint64_t delta_ms) noexcept { residence_time_ms_ += delta_ms; }
 
+    void set_residence_time(std::uint64_t ms) noexcept { residence_time_ms_ = ms; }
+
     [[nodiscard]] std::uint64_t state_residence_time() const noexcept { return residence_time_ms_; }
 
     [[nodiscard]] bool has_invariant_violation() const noexcept { return last_violation_.has_value(); }
@@ -2889,6 +2939,7 @@ class invariant_manager<Table, false> {
   public:
     constexpr void reset() noexcept {}
     constexpr void advance_time(std::uint64_t /*delta_ms*/) noexcept {}
+    constexpr void set_residence_time(std::uint64_t /*ms*/) noexcept {}
     [[nodiscard]] constexpr std::uint64_t state_residence_time() const noexcept { return 0; }
     [[nodiscard]] constexpr bool has_invariant_violation() const noexcept { return false; }
     [[nodiscard]] constexpr bool is_invariant_satisfied() const noexcept { return true; }
@@ -3052,6 +3103,148 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
 }  // namespace fsm::detail
 
 // --- End: detail/transition_executor.hpp ---
+)raw_fsm_runtime";
+
+        out << R"raw_fsm_runtime(
+// --- Begin: serialization.hpp ---
+#if __cplusplus >= 202002L || (defined(__cpp_lib_span) && __cpp_lib_span >= 202002L)
+#endif
+
+namespace fsm {
+
+/**
+ * @brief Binary Snapshot Magic Header ('F','S','M','C').
+ */
+inline constexpr std::uint32_t SNAPSHOT_MAGIC = 0x46534D43;
+
+/**
+ * @brief Current Binary Snapshot Schema Version.
+ */
+inline constexpr std::uint16_t SNAPSHOT_VERSION = 1;
+
+#pragma pack(push, 1)
+/**
+ * @struct snapshot_header
+ * @brief Fixed-size header preceding every FSM serialized binary snapshot.
+ */
+struct snapshot_header {
+    std::uint32_t magic{SNAPSHOT_MAGIC};      ///< Magic identification word (0x46534D43)
+    std::uint16_t version{SNAPSHOT_VERSION};  ///< Schema revision
+    std::uint16_t flags{0};                   ///< Reserved feature flags
+    std::uint64_t residence_time_ms{0};       ///< State residence duration in milliseconds
+    std::uint32_t state_index{0};             ///< Active state index in std::variant
+    std::uint32_t history_count{0};           ///< Number of serialized history entries
+    std::uint32_t timer_count{0};             ///< Number of serialized active timers
+    std::uint32_t registers_size{0};          ///< Size in bytes of trivially copyable registers payload
+    std::uint32_t payload_checksum{0};        ///< 32-bit FNV-1a checksum of the payload following this header
+};
+
+/**
+ * @struct snapshot_timer_entry
+ * @brief Packed layout of a serialized timer entry.
+ */
+struct snapshot_timer_entry {
+    std::uint32_t timer_id{0};     ///< Deterministic timer identifier
+    std::uint64_t interval_ms{0};  ///< Timer period / timeout duration
+    std::uint64_t elapsed_ms{0};   ///< Elapsed time towards expiration
+    std::uint8_t periodic{0};      ///< 1 if auto-restarting, 0 if one-shot
+};
+#pragma pack(pop)
+
+/**
+ * @brief Computes a deterministic 32-bit FNV-1a checksum over a contiguous memory buffer.
+ */
+inline constexpr std::uint32_t compute_checksum(const std::uint8_t* data, std::size_t len) noexcept {
+    std::uint32_t hash = 2166136261u;
+    for (std::size_t i = 0; i < len; ++i) {
+        hash ^= static_cast<std::uint32_t>(data[i]);
+        hash *= 16777619u;
+    }
+    return hash;
+}
+
+namespace detail {
+
+/**
+ * @brief Compile-time recursive setter for std::variant alternative by numerical index.
+ */
+template <typename Variant, std::size_t Index = 0>
+bool set_variant_index(Variant& var, std::size_t target_index) {
+    if constexpr (Index < std::variant_size_v<Variant>) {
+        if (Index == target_index) {
+            var.template emplace<Index>();
+            return true;
+        }
+        return set_variant_index<Variant, Index + 1>(var, target_index);
+    } else {
+        return false;
+    }
+}
+
+}  // namespace detail
+
+/**
+ * @brief Standalone non-member serialization helper taking a raw memory buffer.
+ */
+template <typename FSM>
+bool serialize_state(const FSM& machine, std::uint8_t* dest, std::size_t capacity,
+                     std::size_t& bytes_written) noexcept {
+    return machine.serialize(dest, capacity, bytes_written);
+}
+
+template <typename FSM>
+bool serialize_state(const FSM& machine, std::uint8_t* dest, std::size_t capacity) noexcept {
+    std::size_t written = 0;
+    return machine.serialize(dest, capacity, written);
+}
+
+/**
+ * @brief Standalone non-member deserialization helper taking a raw memory buffer.
+ */
+template <typename FSM>
+bool deserialize_state(FSM& machine, const std::uint8_t* src, std::size_t size, std::size_t& bytes_read) noexcept {
+    return machine.deserialize(src, size, bytes_read);
+}
+
+template <typename FSM>
+bool deserialize_state(FSM& machine, const std::uint8_t* src, std::size_t size) noexcept {
+    std::size_t read = 0;
+    return machine.deserialize(src, size, read);
+}
+
+#if __cplusplus >= 202002L || (defined(__cpp_lib_span) && __cpp_lib_span >= 202002L)
+/**
+ * @brief Standalone non-member serialization helper taking a destination span.
+ */
+template <typename FSM>
+bool serialize_state(const FSM& machine, std::span<std::uint8_t> buffer, std::size_t& bytes_written) noexcept {
+    return machine.serialize(buffer, bytes_written);
+}
+
+template <typename FSM>
+bool serialize_state(const FSM& machine, std::span<std::uint8_t> buffer) noexcept {
+    std::size_t written = 0;
+    return machine.serialize(buffer, written);
+}
+
+/**
+ * @brief Standalone non-member deserialization helper taking a source span.
+ */
+template <typename FSM>
+bool deserialize_state(FSM& machine, std::span<const std::uint8_t> buffer, std::size_t& bytes_read) noexcept {
+    return machine.deserialize(buffer, bytes_read);
+}
+
+template <typename FSM>
+bool deserialize_state(FSM& machine, std::span<const std::uint8_t> buffer) noexcept {
+    std::size_t read = 0;
+    return machine.deserialize(buffer, read);
+}
+#endif
+
+}  // namespace fsm
+
+// --- End: serialization.hpp ---
 )raw_fsm_runtime";
 
         out << R"raw_fsm_runtime(
@@ -3509,7 +3702,220 @@ class fsm {
         return tick(dt, [](std::uint32_t /*timer_id*/) {});
     }
 
-  protected:
+    // ========================================================================
+    // State Snapshot Serialization & Deserialization (Zero-Heap / RTOS-Safe)
+    // ========================================================================
+
+    [[nodiscard]] std::size_t serialized_size() const noexcept {
+        std::size_t sz = sizeof(snapshot_header);
+        for (std::size_t i = 0; i < history_mgr_.size(); ++i) {
+            const auto& h = history_mgr_[i];
+            sz += sizeof(std::uint16_t) + h.parent.size();
+            sz += sizeof(std::uint16_t) + h.substate.size();
+        }
+        sz += timer_mgr_.active_count() * sizeof(snapshot_timer_entry);
+        if constexpr (!std::is_same_v<registers_type, no_registers> && std::is_trivially_copyable_v<registers_type>) {
+            sz += sizeof(registers_type);
+        }
+        return sz;
+    }
+
+    bool serialize(std::uint8_t* dest, std::size_t capacity, std::size_t& bytes_written) const noexcept {
+        bytes_written = 0;
+        if (dest == nullptr) {
+            return false;
+        }
+        const std::size_t total_needed = serialized_size();
+        if (capacity < total_needed) {
+            return false;
+        }
+
+        snapshot_header header{};
+        header.magic = SNAPSHOT_MAGIC;
+        header.version = SNAPSHOT_VERSION;
+        header.flags = 0;
+        header.state_index = static_cast<std::uint32_t>(current_state_.index());
+        header.history_count = static_cast<std::uint32_t>(history_mgr_.size());
+        header.timer_count = static_cast<std::uint32_t>(timer_mgr_.active_count());
+        header.residence_time_ms = invariant_mgr_.state_residence_time();
+        if constexpr (!std::is_same_v<registers_type, no_registers> && std::is_trivially_copyable_v<registers_type>) {
+            header.registers_size = static_cast<std::uint32_t>(sizeof(registers_type));
+        } else {
+            header.registers_size = 0;
+        }
+
+        std::uint8_t* payload_start = dest + sizeof(snapshot_header);
+        std::uint8_t* curr = payload_start;
+
+        for (std::size_t i = 0; i < history_mgr_.size(); ++i) {
+            const auto& h = history_mgr_[i];
+            auto plen = static_cast<std::uint16_t>(h.parent.size());
+            std::memcpy(curr, &plen, sizeof(plen));
+            curr += sizeof(plen);
+            if (plen > 0) {
+                std::memcpy(curr, h.parent.data(), plen);
+                curr += plen;
+            }
+            auto slen = static_cast<std::uint16_t>(h.substate.size());
+            std::memcpy(curr, &slen, sizeof(slen));
+            curr += sizeof(slen);
+            if (slen > 0) {
+                std::memcpy(curr, h.substate.data(), slen);
+                curr += slen;
+            }
+        }
+
+        for (const auto& entry : timer_mgr_.entries()) {
+            if (entry.active) {
+                snapshot_timer_entry te{};
+                te.timer_id = entry.timer_id;
+                te.interval_ms = entry.interval_ms;
+                te.elapsed_ms = entry.elapsed_ms;
+                te.periodic = entry.periodic ? 1 : 0;
+                std::memcpy(curr, &te, sizeof(te));
+                curr += sizeof(te);
+            }
+        }
+
+        if constexpr (!std::is_same_v<registers_type, no_registers> && std::is_trivially_copyable_v<registers_type>) {
+            std::memcpy(curr, &registers_, sizeof(registers_type));
+            curr += sizeof(registers_type);
+        }
+
+        auto payload_len = static_cast<std::size_t>(curr - payload_start);
+        header.payload_checksum = compute_checksum(payload_start, payload_len);
+
+        std::memcpy(dest, &header, sizeof(snapshot_header));
+        bytes_written = total_needed;
+        return true;
+    }
+
+    bool deserialize(const std::uint8_t* src, std::size_t size, std::size_t& bytes_read) noexcept {
+        bytes_read = 0;
+        if (src == nullptr || size < sizeof(snapshot_header)) {
+            return false;
+        }
+
+        snapshot_header header{};
+        std::memcpy(&header, src, sizeof(snapshot_header));
+
+        if (header.magic != SNAPSHOT_MAGIC || header.version != SNAPSHOT_VERSION) {
+            return false;
+        }
+        if (header.state_index >= std::variant_size_v<state_variant>) {
+            return false;
+        }
+
+        constexpr std::uint32_t expected_reg_sz =
+            (!std::is_same_v<registers_type, no_registers> && std::is_trivially_copyable_v<registers_type>)
+                ? static_cast<std::uint32_t>(sizeof(registers_type))
+                : 0;
+        if (header.registers_size != expected_reg_sz) {
+            return false;
+        }
+
+        const std::uint8_t* payload_start = src + sizeof(snapshot_header);
+        const std::uint8_t* curr = payload_start;
+        const std::uint8_t* end = src + size;
+
+        std::size_t hist_count = header.history_count;
+        for (std::size_t i = 0; i < hist_count; ++i) {
+            if (curr + sizeof(std::uint16_t) > end) {
+                return false;
+            }
+            std::uint16_t plen = 0;
+            std::memcpy(&plen, curr, sizeof(plen));
+            curr += sizeof(plen);
+            if (curr + plen > end) {
+                return false;
+            }
+            curr += plen;
+
+            if (curr + sizeof(std::uint16_t) > end) {
+                return false;
+            }
+            std::uint16_t slen = 0;
+            std::memcpy(&slen, curr, sizeof(slen));
+            curr += sizeof(slen);
+            if (curr + slen > end) {
+                return false;
+            }
+            curr += slen;
+        }
+
+        std::size_t timer_bytes = header.timer_count * sizeof(snapshot_timer_entry);
+        if (curr + timer_bytes > end) {
+            return false;
+        }
+        curr += timer_bytes;
+
+        if (curr + header.registers_size > end) {
+            return false;
+        }
+        curr += header.registers_size;
+
+        auto payload_len = static_cast<std::size_t>(curr - payload_start);
+        if (compute_checksum(payload_start, payload_len) != header.payload_checksum) {
+            return false;
+        }
+
+        if (!detail::set_variant_index(current_state_, header.state_index)) {
+            return false;
+        }
+
+        history_mgr_.clear_history();
+        curr = payload_start;
+        for (std::size_t i = 0; i < hist_count; ++i) {
+            std::uint16_t plen = 0;
+            std::memcpy(&plen, curr, sizeof(plen));
+            curr += sizeof(plen);
+            std::string_view parent_sv(reinterpret_cast<const char*>(curr), plen);
+            curr += plen;
+
+            std::uint16_t slen = 0;
+            std::memcpy(&slen, curr, sizeof(slen));
+            curr += sizeof(slen);
+            std::string_view substate_sv(reinterpret_cast<const char*>(curr), slen);
+            curr += slen;
+
+            history_mgr_.record_history(parent_sv, substate_sv);
+        }
+
+        timer_mgr_.reset();
+        for (std::size_t i = 0; i < header.timer_count; ++i) {
+            snapshot_timer_entry te{};
+            std::memcpy(&te, curr, sizeof(te));
+            curr += sizeof(te);
+            timer_mgr_.restore_timer(te.timer_id, te.interval_ms, te.elapsed_ms, te.periodic != 0);
+        }
+
+        invariant_mgr_.set_residence_time(header.residence_time_ms);
+
+        if (header.registers_size > 0) {
+            std::memcpy(&registers_, curr, header.registers_size);
+            curr += header.registers_size;
+        }
+
+        bytes_read = static_cast<std::size_t>(curr - src);
+        return true;
+    }
+
+#if __cplusplus >= 202002L || (defined(__cpp_lib_span) && __cpp_lib_span >= 202002L)
+    bool serialize(std::span<std::uint8_t> buffer, std::size_t& bytes_written) const noexcept {
+        return serialize(buffer.data(), buffer.size(), bytes_written);
+    }
+    bool serialize(std::span<std::uint8_t> buffer) const noexcept {
+        std::size_t written = 0;
+        return serialize(buffer.data(), buffer.size(), written);
+    }
+    bool deserialize(std::span<const std::uint8_t> buffer, std::size_t& bytes_read) noexcept {
+        return deserialize(buffer.data(), buffer.size(), bytes_read);
+    }
+    bool deserialize(std::span<const std::uint8_t> buffer) noexcept {
+        std::size_t read = 0;
+        return deserialize(buffer.data(), buffer.size(), read);
+    }
+#endif
     template <typename Event, typename State>
     void on_unhandled_event(const Event& /*event*/, const State& /*src*/) {
         // Default: no-op

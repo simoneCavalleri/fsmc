@@ -34,15 +34,15 @@ std::string Interval::to_string() const {
     return oss.str();
 }
 
-std::vector<EFSMAnalysisFinding> EFSMIntervalAnalyzer::analyze(DiagnosticEngine& diag) {
-    std::vector<EFSMAnalysisFinding> findings;
+std::unordered_map<std::string, std::unordered_map<std::string, Interval>>
+EFSMIntervalAnalyzer::compute_state_intervals() {
+    std::unordered_map<std::string, std::unordered_map<std::string, Interval>> state_envs;
 
     if (ir_.variables.empty() && ir_.ports.empty()) {
-        return findings;
+        return state_envs;
     }
 
     // 1. Initialize environment for initial state
-    std::unordered_map<std::string, std::unordered_map<std::string, Interval>> state_envs;
     std::unordered_map<std::string, Interval> init_env;
 
     for (const auto& var : ir_.variables) {
@@ -59,21 +59,27 @@ std::vector<EFSMAnalysisFinding> EFSMIntervalAnalyzer::analyze(DiagnosticEngine&
     }
 
     for (const auto& port : ir_.ports) {
-        if (port.is_in()) {
-            if (port.min_value.has_value() || port.max_value.has_value()) {
-                double lo = port.min_value.value_or(-std::numeric_limits<double>::infinity());
-                double hi = port.max_value.value_or(std::numeric_limits<double>::infinity());
-                init_env[port.name] = Interval(lo, hi);
-            } else {
-                init_env[port.name] = Interval();
+        if (!port.default_value.empty()) {
+            try {
+                double val = std::stod(port.default_value);
+                init_env[port.name] = Interval(val, val);
+                continue;
+            } catch (...) {
             }
+        }
+        if (port.min_value.has_value() || port.max_value.has_value()) {
+            double lo = port.min_value.value_or(-std::numeric_limits<double>::infinity());
+            double hi = port.max_value.value_or(std::numeric_limits<double>::infinity());
+            init_env[port.name] = Interval(lo, hi);
+        } else {
+            init_env[port.name] = Interval();
         }
     }
 
     std::string root =
         ir_.initial_state.empty() ? (ir_.states.empty() ? "" : ir_.states.front().name) : ir_.initial_state;
     if (root.empty()) {
-        return findings;
+        return state_envs;
     }
 
     state_envs[root] = init_env;
@@ -100,32 +106,6 @@ std::vector<EFSMAnalysisFinding> EFSMIntervalAnalyzer::analyze(DiagnosticEngine&
                 continue;
             }
 
-            // Check guard satisfiability
-            if (t.guard.has_value() && !t.guard->empty() && *t.guard != "else" && *t.guard != "default") {
-                std::string g_str = *t.guard;
-                // Find if any guard references a model guard with raw/cpp expression
-                for (const auto& gm : ir_.guards) {
-                    if (gm.name == g_str && gm.raw_expression.has_value()) {
-                        g_str = *gm.raw_expression;
-                        break;
-                    }
-                }
-
-                for (const auto& [var_name, var_interval] : curr_env) {
-                    auto guard_interval = parse_guard_domain(g_str, var_name);
-                    if (guard_interval.has_value()) {
-                        auto intersection = var_interval.intersect_with(*guard_interval);
-                        if (intersection.is_empty()) {
-                            std::string msg = "Guard '" + g_str + "' on transition '" + t.source + " -> " + t.target +
-                                              "' is unsatisfiable given variable/port '" + var_name + "' range " +
-                                              var_interval.to_string();
-                            findings.push_back({var_name, t.id, t.source, t.target, msg, false});
-                            diag.report(Diagnostic::warning("W_EFSM_UNSATISFIABLE_GUARD", msg));
-                        }
-                    }
-                }
-            }
-
             // Propagate variable and port assignments across the transition
             auto next_env = curr_env;
             auto process_action_assignments = [&](const std::optional<ActionSignature>& act_opt) {
@@ -133,46 +113,6 @@ std::vector<EFSMAnalysisFinding> EFSMIntervalAnalyzer::analyze(DiagnosticEngine&
                     return;
                 for (const auto& assign : act_opt->assignments) {
                     apply_assignment(next_env, assign);
-
-                    // Check out-port domain contracts
-                    const auto* out_p = ir_.find_port(assign.target.name);
-                    if (out_p != nullptr && out_p->is_out()) {
-                        if (out_p->min_value.has_value() || out_p->max_value.has_value()) {
-                            double lo = out_p->min_value.value_or(-std::numeric_limits<double>::infinity());
-                            double hi = out_p->max_value.value_or(std::numeric_limits<double>::infinity());
-                            Interval port_bound(lo, hi);
-                            auto assigned_interval = next_env[assign.target.name];
-                            auto intersection = port_bound.intersect_with(assigned_interval);
-                            if (intersection.is_empty()) {
-                                std::string msg = "Out-port '" + out_p->name + "' contract violation on transition '" +
-                                                  t.source + " -> " + t.target + "': assigned range " +
-                                                  assigned_interval.to_string() + " violates contract " +
-                                                  port_bound.to_string();
-                                findings.push_back({out_p->name, t.id, t.source, t.target, msg, true});
-                                diag.report(Diagnostic::warning("W_PORT_RANGE_VIOLATION", msg));
-                            }
-                        }
-                    }
-
-                    // Check register variable domain contracts
-                    const auto* var_def = ir_.find_variable(assign.target.name);
-                    if (var_def != nullptr) {
-                        if (var_def->min_value.has_value() || var_def->max_value.has_value()) {
-                            double lo = var_def->min_value.value_or(-std::numeric_limits<double>::infinity());
-                            double hi = var_def->max_value.value_or(std::numeric_limits<double>::infinity());
-                            Interval var_bound(lo, hi);
-                            auto assigned_interval = next_env[assign.target.name];
-                            auto intersection = var_bound.intersect_with(assigned_interval);
-                            if (intersection.is_empty()) {
-                                std::string msg = "Register variable '" + var_def->name +
-                                                  "' contract violation on transition '" + t.source + " -> " +
-                                                  t.target + "': assigned range " + assigned_interval.to_string() +
-                                                  " violates contract " + var_bound.to_string();
-                                findings.push_back({var_def->name, t.id, t.source, t.target, msg, true});
-                                diag.report(Diagnostic::warning("W_VARIABLE_RANGE_VIOLATION", msg));
-                            }
-                        }
-                    }
                 }
             };
             process_action_assignments(t.condition_action);
@@ -201,6 +141,101 @@ std::vector<EFSMAnalysisFinding> EFSMIntervalAnalyzer::analyze(DiagnosticEngine&
                 in_worklist.insert(t.target);
             }
         }
+    }
+
+    return state_envs;
+}
+
+std::vector<EFSMAnalysisFinding> EFSMIntervalAnalyzer::analyze(DiagnosticEngine& diag) {
+    std::vector<EFSMAnalysisFinding> findings;
+
+    if (ir_.variables.empty() && ir_.ports.empty()) {
+        return findings;
+    }
+
+    auto state_envs = compute_state_intervals();
+
+    for (const auto& t : ir_.transitions) {
+        auto it_curr = state_envs.find(t.source);
+        if (it_curr == state_envs.end()) {
+            continue;
+        }
+        const auto& curr_env = it_curr->second;
+
+        // Check guard satisfiability
+        if (t.guard.has_value() && !t.guard->empty() && *t.guard != "else" && *t.guard != "default") {
+            std::string g_str = *t.guard;
+            for (const auto& gm : ir_.guards) {
+                if (gm.name == g_str && gm.raw_expression.has_value()) {
+                    g_str = *gm.raw_expression;
+                    break;
+                }
+            }
+
+            for (const auto& [var_name, var_interval] : curr_env) {
+                auto guard_interval = parse_guard_domain(g_str, var_name);
+                if (guard_interval.has_value()) {
+                    auto intersection = var_interval.intersect_with(*guard_interval);
+                    if (intersection.is_empty()) {
+                        std::string msg = "Guard '" + g_str + "' on transition '" + t.source + " -> " + t.target +
+                                          "' is unsatisfiable given variable/port '" + var_name + "' range " +
+                                          var_interval.to_string();
+                        findings.push_back({var_name, t.id, t.source, t.target, msg, false});
+                        diag.report(Diagnostic::warning("W_EFSM_UNSATISFIABLE_GUARD", msg));
+                    }
+                }
+            }
+        }
+
+        // Check assignments
+        auto next_env = curr_env;
+        auto check_actions = [&](const std::optional<ActionSignature>& act_opt) {
+            if (!act_opt.has_value())
+                return;
+            for (const auto& assign : act_opt->assignments) {
+                apply_assignment(next_env, assign);
+
+                const auto* out_p = ir_.find_port(assign.target.name);
+                if (out_p != nullptr && out_p->is_out()) {
+                    if (out_p->min_value.has_value() || out_p->max_value.has_value()) {
+                        double lo = out_p->min_value.value_or(-std::numeric_limits<double>::infinity());
+                        double hi = out_p->max_value.value_or(std::numeric_limits<double>::infinity());
+                        Interval port_bound(lo, hi);
+                        auto assigned_interval = next_env[assign.target.name];
+                        auto intersection = port_bound.intersect_with(assigned_interval);
+                        if (intersection.is_empty()) {
+                            std::string msg = "Out-port '" + out_p->name + "' contract violation on transition '" +
+                                              t.source + " -> " + t.target + "': assigned range " +
+                                              assigned_interval.to_string() + " violates contract " +
+                                              port_bound.to_string();
+                            findings.push_back({out_p->name, t.id, t.source, t.target, msg, true});
+                            diag.report(Diagnostic::warning("W_PORT_RANGE_VIOLATION", msg));
+                        }
+                    }
+                }
+
+                const auto* var_def = ir_.find_variable(assign.target.name);
+                if (var_def != nullptr) {
+                    if (var_def->min_value.has_value() || var_def->max_value.has_value()) {
+                        double lo = var_def->min_value.value_or(-std::numeric_limits<double>::infinity());
+                        double hi = var_def->max_value.value_or(std::numeric_limits<double>::infinity());
+                        Interval var_bound(lo, hi);
+                        auto assigned_interval = next_env[assign.target.name];
+                        auto intersection = var_bound.intersect_with(assigned_interval);
+                        if (intersection.is_empty()) {
+                            std::string msg = "Register variable '" + var_def->name +
+                                              "' contract violation on transition '" + t.source + " -> " + t.target +
+                                              "': assigned range " + assigned_interval.to_string() +
+                                              " violates contract " + var_bound.to_string();
+                            findings.push_back({var_def->name, t.id, t.source, t.target, msg, true});
+                            diag.report(Diagnostic::warning("W_VARIABLE_RANGE_VIOLATION", msg));
+                        }
+                    }
+                }
+            }
+        };
+        check_actions(t.condition_action);
+        check_actions(t.transition_action);
     }
 
     return findings;

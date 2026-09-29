@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
+#include "fsm/ir/action.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 namespace fsm::middleend::analysis {
@@ -94,6 +95,11 @@ class EFSMIntervalAnalyzer {
      * @brief Computes fixed-point variable intervals and identifies dead transitions or overflows.
      */
     std::vector<EFSMAnalysisFinding> analyze(DiagnosticEngine& diag);
+
+    /**
+     * @brief Computes fixed-point variable intervals for each reachable state in the EFSM.
+     */
+    std::unordered_map<std::string, std::unordered_map<std::string, Interval>> compute_state_intervals();
 
     static std::string strip_qualifier(const std::string& name);
     static std::string clean_number_literal(std::string s);

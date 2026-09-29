@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 project(fsmc
-    VERSION 0.6.0
+    VERSION 0.7.0
     DESCRIPTION "A universal zero-overhead State Machine compiler for modern C++ (C++17/20)"
     HOMEPAGE_URL "https://github.com/simoneCavalleri/fsmc"
     LANGUAGES CXX
@@ -100,6 +100,12 @@ target_include_directories(fsmc_compiler PUBLIC
 target_compile_features(fsmc_compiler PRIVATE cxx_std_20)
 target_compile_features(fsmc_compiler INTERFACE cxx_std_17)
 target_link_libraries(fsmc_compiler PUBLIC fsmc_runtime ${CMAKE_DL_LIBS})
+
+find_package(ZLIB QUIET)
+if(ZLIB_FOUND)
+    target_link_libraries(fsmc_compiler PRIVATE ZLIB::ZLIB)
+    target_compile_definitions(fsmc_compiler PRIVATE FSMC_HAS_ZLIB=1)
+endif()
 
 # Native Precompiled Headers (PCH) in CMake 3.16+
 target_precompile_headers(fsmc_compiler PRIVATE

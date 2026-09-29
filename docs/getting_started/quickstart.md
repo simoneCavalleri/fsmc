@@ -106,7 +106,7 @@ Expected output:
 
 ## Step 3: Generate the State Machine
 
-=== "C++ Target (Production v0.6.0)"
+=== "C++ Target (Production)"
     Compile the model into a standalone C++20 header with namespace `avionics` and class name `UavMissionFSM`:
     ```bash
     fsmc -i uav_mission.sysml -o uav_mission_fsm.hpp --target cpp --std 20 --standalone --namespace avionics --name UavMissionFSM
@@ -114,7 +114,7 @@ Expected output:
 
 === "Rust Target (Roadmap Preview)"
     > [!NOTE]
-    > **Upcoming Target Preview**: Rust code generation is currently in development under the multi-target roadmap for `v0.7.0`. In `v0.6.0`, the C++ target is the active production runtime.
+    > **Upcoming Target Preview**: Rust code generation is currently in development under the multi-target roadmap. C++ is the active production runtime.
 
     Compile the model into an idiomatic `#![no_std]` Rust module:
     ```bash
@@ -123,7 +123,7 @@ Expected output:
 
 === "C Target (Embedded C Roadmap)"
     > [!NOTE]
-    > **Upcoming Target Preview**: ISO C99 embedded C code generation is currently in development under the multi-target roadmap for `v0.7.0`. In `v0.6.0`, the C++ target is the active production runtime.
+    > **Upcoming Target Preview**: ISO C99 embedded C code generation is currently in development under the multi-target roadmap. C++ is the active production runtime.
 
     Compile the model into deterministic, zero-heap C headers and sources:
     ```bash
@@ -134,7 +134,7 @@ Expected output:
 
 ## Step 4: Write the Application Code
 
-=== "C++ Target (Production v0.6.0)"
+=== "C++ Target (Production)"
     Create `main.cpp`:
     ```cpp
     #include "uav_mission_fsm.hpp"
@@ -259,7 +259,7 @@ Expected output:
 
 ## Step 5: Compile and Run
 
-=== "C++ Target (Production v0.6.0)"
+=== "C++ Target (Production)"
     ```bash
     g++ -std=c++20 main.cpp -o uav_app -Wall -Wextra -Werror -pedantic
     ./uav_app

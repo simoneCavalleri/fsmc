@@ -68,6 +68,7 @@ struct FsmIr {
     std::vector<GuardModel> guards;             ///< Guard predicates with C++ / SMT expressions
     std::vector<ActionModel> actions;           ///< Action effects and assignment sequences
     std::vector<ChoiceNodeModel> choice_nodes;  ///< Choice pseudostates for middle-end inlining
+    std::vector<BindingConnector> bindings;     ///< Structural port/signal bindings (SysML v2 'bind' / 'connect')
 
     // ========================================================================
     // Lookups and Query Methods
@@ -276,6 +277,11 @@ struct FsmIr {
      * @brief Adds a formal verification property.
      */
     void add_property(FormalProperty prop);
+
+    /**
+     * @brief Adds a structural binding connector.
+     */
+    void add_binding(BindingConnector binding) { bindings.push_back(std::move(binding)); }
 
     /**
      * @brief Registers an event name and optional description.

@@ -47,6 +47,8 @@ class invariant_manager<Table, true> {
 
     void advance_time(std::uint64_t delta_ms) noexcept { residence_time_ms_ += delta_ms; }
 
+    void set_residence_time(std::uint64_t ms) noexcept { residence_time_ms_ = ms; }
+
     [[nodiscard]] std::uint64_t state_residence_time() const noexcept { return residence_time_ms_; }
 
     [[nodiscard]] bool has_invariant_violation() const noexcept { return last_violation_.has_value(); }
@@ -97,6 +99,7 @@ class invariant_manager<Table, false> {
   public:
     constexpr void reset() noexcept {}
     constexpr void advance_time(std::uint64_t /*delta_ms*/) noexcept {}
+    constexpr void set_residence_time(std::uint64_t /*ms*/) noexcept {}
     [[nodiscard]] constexpr std::uint64_t state_residence_time() const noexcept { return 0; }
     [[nodiscard]] constexpr bool has_invariant_violation() const noexcept { return false; }
     [[nodiscard]] constexpr bool is_invariant_satisfied() const noexcept { return true; }

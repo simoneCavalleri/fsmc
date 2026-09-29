@@ -103,12 +103,29 @@ struct PortDefinition {
         return direction == PortDirection::Out || direction == PortDirection::InOut;
     }
 
+    std::string bound_to;  ///< Optional bound endpoint (from SysML v2 bind / connect)
+
     bool operator==(const PortDefinition& other) const noexcept {
         return name == other.name && type == other.type && direction == other.direction &&
                min_value == other.min_value && max_value == other.max_value && constraint == other.constraint &&
                default_value == other.default_value && physical_unit == other.physical_unit &&
-               description == other.description;
+               description == other.description && bound_to == other.bound_to;
     }
+};
+
+/**
+ * @brief Structural binding connector between ports or hierarchical endpoints.
+ */
+struct BindingConnector {
+    std::string destination;  ///< Binding destination (e.g. "in_sensor")
+    std::string source;       ///< Binding source (e.g. "sub_state.sensor_input")
+    std::string description;  ///< Optional documentation comment
+
+    BindingConnector() = default;
+    BindingConnector(std::string dst, std::string src, std::string desc = "")
+        : destination(std::move(dst)), source(std::move(src)), description(std::move(desc)) {}
+
+    bool operator==(const BindingConnector& other) const noexcept = default;
 };
 
 }  // namespace fsm::ir

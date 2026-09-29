@@ -3,7 +3,7 @@ from conan.tools.cmake import CMake, CMakeToolchain, cmake_layout
 
 class FsmcConan(ConanFile):
     name = "fsmc"
-    version = "0.6.0"
+    version = "0.7.0"
     description = "Universal Finite State Machine Compiler, Optimization Infrastructure, Formal Verification & Zero-Overhead C++17/C++20 Engine"
 
     license = "MIT"
@@ -29,6 +29,6 @@ class FsmcConan(ConanFile):
         cmake.install()
 
     def package_info(self):
-        self.cpp_info.libs = []
+        self.cpp_info.libs = ["fsmc_compiler"]
         self.cpp_info.bindirs = ["bin"]
         self.cpp_info.includedirs = ["include"]

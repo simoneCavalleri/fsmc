@@ -222,7 +222,7 @@ Execute transitions using the segregated 4-domain memory model across target lan
 
 === "Rust Target (Roadmap Preview)"
     > [!NOTE]
-    > **Roadmap Preview**: Rust `#![no_std]` code generation is an upcoming roadmap feature scheduled for `v0.7.0`. C++ is the active production runtime.
+    > **Roadmap Preview**: Rust `#![no_std]` code generation is an upcoming roadmap feature. C++ is the active production runtime.
 
     ```rust
     // Generated Rust no_std State Machine
@@ -246,7 +246,7 @@ Execute transitions using the segregated 4-domain memory model across target lan
 
 === "C Target (Embedded C Roadmap)"
     > [!NOTE]
-    > **Roadmap Preview**: ISO C99 code generation is an upcoming roadmap feature scheduled for `v0.7.0`. C++ is the active production runtime.
+    > **Roadmap Preview**: ISO C99 code generation is an upcoming roadmap feature. C++ is the active production runtime.
 
     ```c
     #include "uav_fsm.h"

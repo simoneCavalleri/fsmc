@@ -23,25 +23,27 @@ fsmc --export-runtime <directory> [--std 17|20]
 #### Input and Output Options
 | Flag | Description | Default |
 | :--- | :--- | :--- |
-| `-i, --input <file>` | Path to input model file (`.sysml`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, `.dot`, `.sfx`, `.stateflow`, `.xml`). | Positional argument |
+| `-i, --input <file>` | Path to input model file (`.sysml`, `.slx`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, `.dot`). | Positional argument |
 | `-o, --output <file>` | Path to output generated code or exported diagram file. | `stdout` |
 | `-t, --target <lang>` | Target code generator backend: `cpp` (default). | `cpp` |
 | `-n, --name <name>` | Generated state machine class/struct name. | Inferred from filename or `MyFSM` |
-| `--namespace, --package <ns>` | Generated namespace / package / module enclosing the state machine types. | `fsm_generated` |
-| `--format <fmt>` | Override input parser format: `sysml2`, `plantuml`, `mermaid`, `cameo`, `scxml`, `json`, `dot`, `stateflow`, `auto`. | `auto` |
-| `-e, --export <fmt>` | Export diagram or formal model to: `mermaid`, `plantuml`, `sysml2`, `json`, `dot`, `scxml`, `cameo`, `stateflow`, `smv`. | None |
+| `-N, --ns, --namespace <ns>` | Generated namespace / package / module enclosing the state machine types. | `fsm_generated` |
+| `--format <fmt>` | Override input parser format: `sysml2`, `stateflow`, `plantuml`, `mermaid`, `cameo`, `scxml`, `json`, `dot`, `auto`. | `auto` |
+| `-e, --export <fmt>` | Export diagram or formal model to: `mermaid`, `plantuml`, `sysml2`, `stateflow`, `json`, `dot`, `scxml`, `cameo`, `smv`. | None |
 | `-s, --sidecar <file>` | Explicit companion manifest file (`.fsm.yaml`, `.fsm.json`) for diagram ingestion and external property attachment. | None |
 | `--submachine-dir <dir>` | Search directory for external submachine diagram files referenced in models. | Current directory |
 
 #### Optimization and Code Transformation
 | Flag | Description | Default |
 | :--- | :--- | :--- |
+| `-p, --pipeline <mode>` | Compiler pipeline architecture: `standard` or `7stage` (explicit 7-stage pass manager). | `standard` |
+| `--7stage` | Shorthand alias to run the full 7-stage optimization & formal verification pipeline. | Inactive |
 | `-O0, --no-opt` | Disable all middle-end optimization passes. | Enabled (`-O1`) |
 | `-O1` | Enable standard optimization passes (canonicalization, guard simplification). | Active |
 | `-O2, --optimize` | Enable aggressive optimizations including unreachable dead state and transition pruning. | Inactive |
-| `--prune-dead-states` | Prune unreachable states and statically dead transitions before codegen. | `false` (active in `-O2`) |
-| `--no-guard-simplification` | Disable algebraic boolean reductions on guard expressions. | `false` |
-| `--inline-submachines` | Inline modular submachines referenced via `SubmachineRef` into a single flat/composite FSM. | `false` |
+| `--prune, --prune-dead-states` | Prune unreachable states and statically dead transitions before codegen. | `false` (active in `-O2`) |
+| `--no-simplify` | Disable algebraic boolean reductions on guard expressions (`--no-guard-simplification`). | `false` |
+| `--inline, --inline-submachines` | Inline modular submachines referenced via `SubmachineRef` into a single flat/composite FSM. | `false` |
 | `--pipe-through <cmd>` | Stream canonical JSON IR through an external Unix filter/tool and re-read stdout. | None |
 | `--load-pass-plugin <path>` | Dynamically load a C++ shared library (`.so`) implementing custom `fsm::Pass` transformations. | None |
 
@@ -49,16 +51,16 @@ fsmc --export-runtime <directory> [--std 17|20]
 | Flag | Description | Default |
 | :--- | :--- | :--- |
 | `verify <file>` | Standalone sub-command to run formal verification, deadlocks, invariants, and LTL/CTL checks. | - |
-| `--verify, --check` | Run formal model checker (livelock, choice completeness, EFSM interval analysis, reachability) and exit. | `false` |
+| `-V, --verify, --check` | Run formal model checker (livelock, choice completeness, EFSM interval analysis, reachability) and exit. | `false` |
 | `--engine <auto\|nuxmv>` | Verification engine selector (runs internal `ModelChecker`; for nuXmv solver execution, export via `-e smv`). | `auto` |
 | `--ltl "<formula>"` | Injects an ad-hoc Linear Temporal Logic property for verification. | `""` |
 | `--ctl "<formula>"` | Injects an ad-hoc Computation Tree Logic property for verification. | `""` |
 | `-Werror` | Treat all compiler diagnostics and middle-end warnings as fatal errors. | `false` |
-| `--strict-determinism` | Fail compilation on non-deterministic branch collisions or unprioritized triggers. | `false` |
-| `--check-races` | Perform static data-race analysis across parallel orthogonal regions. | `false` |
-| `--emit-test-harness <file>` | Synthesize a standalone GoogleTest C++ harness verifying MC/DC condition coverage (C++ API: `McdcHarnessGenerator`). | None |
+| `--strict, --strict-determinism` | Fail compilation on non-deterministic branch collisions or unprioritized triggers. | `false` |
+| `--races, --check-races` | Perform static data-race analysis across parallel orthogonal regions. | `false` |
+| `--harness <file>` | Synthesize a standalone GoogleTest C++ harness verifying MC/DC condition coverage (`--emit-test-harness`). | None |
 | `--req-audit` | Print Requirement Traceability Matrix (`@fsm:req`) to terminal before code generation. | `false` |
-| `--rtm-output <file>` | Export Requirement Traceability Matrix report to a file. | None |
+| `--rtm <file>` | Export Requirement Traceability Matrix report to a file (`--rtm-output`). | None |
 | `--rtm-format <json\|md>` | Format for Requirement Traceability Matrix export (`markdown` or `json`). | Inferred from file extension |
 
 #### C++ Backend Options (`--target cpp`)
@@ -72,7 +74,7 @@ fsmc --export-runtime <directory> [--std 17|20]
 | `--export-runtime <dir>` | Export standalone runtime library headers (`fsm.hpp`, `spsc_fsm.hpp`, etc.) to the specified directory. | None |
 | `--no-thread-safe` | Disable generation of the `thread_safe_fsm` asynchronous wrapper. | `false` |
 | `--no-stubs` | Do not emit default stub functors for actions and guards. | `false` |
-| `--allow-diagram-codegen` | Explicitly allow C++ generation from informal visual diagram formats (PlantUML, Mermaid, DOT, JSON). | `false` |
+| `--allow-diagram` | Allow C++ generation from informal visual diagram formats (`--allow-diagram-codegen`). | `false` |
 
 #### General Options
 | Flag | Description |

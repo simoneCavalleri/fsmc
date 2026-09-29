@@ -83,12 +83,37 @@ Use `X` (Next) to verify the behavior of the single cycle immediately following 
   ```
 
 #### 5. `P U Q` — Holding Conditions (Until)
-Use `U` (Until) when a state machine must remain in a holding mode `P` up until a specific completion threshold `Q` is met.
+Use `U` (Until) when a state machine must remain in a holding mode `P` up until a specific completion threshold `Q` is met:
+- Solved via backward fixed-point computation: $P$ must hold along all prefixes leading to a reachable state satisfying $Q$.
+- Any non-terminating cycle avoiding $Q$ or violating $P$ produces an explicit counterexample trace.
 
-- **Pre-Flight Check**: System remains in `Preflight` until `CalibrationComplete` occurs:
-  ```sysml
-  @fsm:property HoldUntilCalibrated = "Preflight U CalibrationComplete";
-  ```
+```sysml
+@fsm:property HoldUntilCalibrated = "(state == Preflight) U (state == Ready)";
+```
+
+#### 6. `G F (P)` — Recurrence ("Infinitely Often")
+Use `G F` to prove liveness cycles and non-starvation:
+- Evaluated via Tarjan's Strongly Connected Components (SCCs) decomposition: every reachable terminal cycle must contain at least one state satisfying $P$.
+
+```sysml
+@fsm:property ServicedInfinitelyOften = "G F (state == ProcessTelemetry)";
+```
+
+#### 7. `F G (P)` — Persistence ("Eventually Always")
+Use `F G` to prove stabilization and convergence:
+- Evaluated via SCC analysis: the statechart eventually transitions into a terminal cycle where $P$ holds permanently in all states of the component.
+
+```sysml
+@fsm:property EventuallyStabilized = "F G (state == SteadyOrbit)";
+```
+
+---
+
+### EFSM Data-Path Abstract Interpretation Integration
+`ModelChecker` integrates data-path interval abstract interpretation directly into property evaluation:
+- Relational variable predicates ($x > 10$, $temp \le 100.0$) evaluate against the fixed-point numeric intervals computed for each reachable state.
+- If an upper bound $iv.hi \le 100$ holds in every reachable state, $G (temp \le 100)$ passes unconditionally without state explosion.
+- Counterexamples pinpoint the exact state and transition where the variable interval strays outside the property bound.
 
 ---
 
@@ -308,9 +333,9 @@ A liveness violation (`G (P -> F Q)`) occurs when the system can enter an infini
 
 ---
 
-## CLI Formal Verification with `fsmc verify` (v0.5.0+)
+## CLI Formal Verification with `fsmc verify`
 
-Starting in **`v0.5.0`**, `fsmc` provides first-class, standalone model checking directly via the command line through the `verify` sub-command:
+`fsmc` provides first-class, standalone model checking directly via the command line through the `verify` sub-command:
 
 ```bash
 fsmc verify <model_file> [options]

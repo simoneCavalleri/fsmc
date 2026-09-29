@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7.0] - 2026-09-29
+
+### Added
+- **MathWorks Simulink Stateflow `.slx` Native OPC Container Ingestion (`StateflowParser`)**:
+  - Implemented zero-dependency, native Open Packaging Convention (OPC) / ZIP archive decompression extracting `simulink/stateflow.xml` directly from `.slx` model archives without external tools or MATLAB dependencies.
+  - Full Stateflow chart roundtrip serialization and transpilation across SysML v2, SCXML, Cameo XMI, PlantUML, Mermaid, DOT, and Canonical JSON.
+- **OMG SysML v2 Full Grammar Ingestion (`Sysml2Parser`)**:
+  - Added recursive nested state hierarchy with fully qualified name resolution (`Parent::Child`).
+  - Added port binding and connector declarations (`bind c1.p1 = c2.p2`).
+  - Added orthogonal concurrency constructs: parallel state regions, `fork` splits, and `join` synchronizations.
+- **Diagram Composite Braced Action Blocks (`PlantUmlParser`, `MermaidParser`)**:
+  - Supported braced multiline action blocks (`/ { out.p = val; reg.v++; doWork(); }`) containing compound statements, assignments, and method invocations mapped into structured `ActionAssignment` instructions.
+- **Extended Symbolic LTL Model Checking (`ModelChecker`, `LtlParser`)**:
+  - Added Strong Until (`U`) temporal operator solved via backward fixed-point computation.
+  - Added Next (`X`) operator and Next-Response verification (`G (P -> X Q)`).
+  - Added Recurrence (`G F P`) and Persistence (`F G P`) liveness properties via Tarjan strongly connected component (SCC) reachability.
+  - Integrated EFSM data-path interval abstract interpretation directly into property evaluation.
+- **Zero-Heap Binary State Snapshot Serialization (`serialization.hpp`)**:
+  - Embedded binary snapshot serialization and restoration for RTOS checkpoints, NVRAM retention across reboots, and hot-standby redundancy.
+  - Captures active state index, history cache, active timers, residence time invariants, and datapath registers with defensive 32-bit FNV-1a checksum and magic word validation (`0x46534D43`).
+  - Dual API: raw pointer + capacity for C++17 and `std::span` overloads for C++20.
+- **Streamlined, Intuitive & Elegant CLI Ergonomics (`fsmc_options.hpp`, `fsmc_driver.hpp`)**:
+  - Added slim option aliases: `-N, --ns <ns>`, `-p, --pipeline <mode>`, `--7stage`, `--prune`, `--no-simplify`, `--inline`, `--strict`, `--races`, `--rtm <file>`, `--harness <file>`, `--allow-diagram`, `-V`.
+
+---
+
 ## [0.6.0] - 2026-09-11
 
 ### Breaking Changes

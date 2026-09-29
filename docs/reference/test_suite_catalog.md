@@ -1481,6 +1481,12 @@
 **Scenario**:
   - Provide valid ('7stage', 'standard') and invalid ('fast') pipeline arguments.
 
+#### `CliOptions.SlimOptionAliases_ParseCorrectly`
+**Test Intent**: Verify intuitive and slim CLI option aliases are correctly recognized.
+
+**Scenario**:
+  - Pass slim option flags (`-N`, `-p`, `--7stage`, `--prune`, `--no-simplify`, `--inline`, `--strict`, `--races`, `--rtm`, `--harness`, `--allow-diagram`, `-V`) and assert valid configuration.
+
 #### `CliDriver.EngineAuto_FallsBackGracefully`
 **Test Intent**: Verify verification mode with --engine=auto falls back gracefully when nuXmv is absent.
 

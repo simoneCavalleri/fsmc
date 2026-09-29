@@ -20,18 +20,19 @@ fsmc -i flight.sysml -o flight_fsm.rs --target rust
 fsmc -i flight.sysml -o flight_fsm.h  --target c
 
 # Formal Verification (Invariants, Deadlocks, Unreachable States)
-fsmc verify flight.sysml
+fsmc -i flight.sysml -V
 
 # Ad-hoc Temporal Logic Verification (LTL & CTL)
-fsmc verify flight.sysml --ltl "G (State == LowBattery -> F State == Landed)"
-fsmc verify flight.sysml --ctl "AG (EF State == Standby)"
+fsmc -i flight.sysml -V --ltl "G (State == LowBattery -> F State == Landed)"
+fsmc -i flight.sysml -V --ctl "AG (EF State == Standby)"
 
-# Model Transpilation (SysML v2 -> SCXML / Mermaid / PlantUML)
+# Model Transpilation (SysML v2 -> Stateflow / SCXML / Mermaid / PlantUML)
+fsmc -i flight.sysml -e stateflow -o flight_sf.xml
 fsmc -i flight.sysml -e scxml -o flight.scxml
 fsmc -i flight.sysml -e mermaid -o flight.mmd
 
-# Requirement Traceability Matrix (RTM) Audit Report
-fsmc -i flight.sysml --req-audit --rtm-output rtm.md
+# Requirement Traceability Matrix (RTM) Audit Report & MC/DC Test Harness
+fsmc -i flight.sysml --req-audit --rtm rtm.md --harness flight_test.cpp
 ```
 
 ---
@@ -232,6 +233,12 @@ fsmc -i flight.sysml --req-audit --rtm-output rtm.md
     // 5. Lock-Free SPSC / Thread-Safe Engines
     spsc.post(SensorDataEvent{raw_adc});
     Registers snap = spsc.snapshot_registers(); // Seqlock atomic copy
+
+    // 6. Zero-Heap Binary Snapshot Serialization
+    std::array<std::uint8_t, 256> snapshot_buf{};
+    std::size_t written = 0;
+    fsm.serialize(snapshot_buf, written);
+    fsm.deserialize(snapshot_buf);
     ```
 
 === "Rust Target (Roadmap Preview)"

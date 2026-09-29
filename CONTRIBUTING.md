@@ -19,7 +19,7 @@ cmake -B build -S . -DFSMC_ENABLE_TESTING=ON -DFSMC_ENABLE_EXAMPLES=ON
 # Build everything
 cmake --build build -j$(nproc)
 
-# Run the full test suite (84 CTest targets)
+# Run the full test suite (89 CTest targets)
 ctest --test-dir build --output-on-failure
 ```
 

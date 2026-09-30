@@ -343,6 +343,13 @@ class thread_safe_fsm {
     // Synchronous Dispatch
     // ========================================================================
 
+    /**
+     * @brief Synchronously dispatches an event under mutex protection.
+     *
+     * This is the canonical thread-safe synchronous dispatch method for `thread_safe_fsm`.
+     * If called reentrantly from an action or notification callback on the same thread,
+     * the event is queued safely and drained when the outermost dispatch completes.
+     */
     template <typename Event>
     dispatch_result send(const Event& event) {
         auto snap = execute_dispatch_under_lock(event);
@@ -353,6 +360,9 @@ class thread_safe_fsm {
         return snap.result;
     }
 
+    /**
+     * @brief Synchronously dispatches an event with partitioned I/O ports under mutex protection.
+     */
     template <typename Event>
     dispatch_result send(const Event& event, const in_ports_type& in, out_ports_type& out) {
         if (reentrancy_.is_reentrant_call()) {
@@ -375,6 +385,12 @@ class thread_safe_fsm {
         return snap.result;
     }
 
+    /**
+     * @brief Interface compatibility alias for `send()`.
+     *
+     * Enables generic or template code written against `fsm` to invoke `dispatch()` interchangeably
+     * on either `fsm` or `thread_safe_fsm`.
+     */
     template <typename Event, typename... Args>
     dispatch_result dispatch(const Event& event, Args&&... args) {
         return send(event, std::forward<Args>(args)...);

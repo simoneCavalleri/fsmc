@@ -277,13 +277,13 @@ TEST(DeepHistory, PureParentTypeHierarchy_SpscFsm_SupportsTypedHistory) {
     EXPECT_TRUE(spsc.is_in<PureLeaf>());
     EXPECT_TRUE(spsc.is_in<PureRoot>());
 
-    EXPECT_TRUE(spsc.push(EvPureExit{}));
+    EXPECT_TRUE(spsc.post(EvPureExit{}));
     EXPECT_TRUE(spsc.process_one());
     EXPECT_TRUE(spsc.is_in<PureIdle>());
 
     EXPECT_EQ(spsc.get_history<PureMid>(), "PureLeaf");
 
-    EXPECT_TRUE(spsc.push(EvPureRestore{}));
+    EXPECT_TRUE(spsc.post(EvPureRestore{}));
     EXPECT_TRUE(spsc.process_one());
     EXPECT_TRUE(spsc.is_in<PureLeaf>());
 

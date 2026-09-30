@@ -148,11 +148,6 @@ class spsc_fsm {
 
     [[nodiscard]] bool post(const event_variant& event) noexcept { return queue_.push(event); }
 
-    template <typename Event>
-    [[nodiscard]] bool push(Event&& event) noexcept {
-        return post(std::forward<Event>(event));
-    }
-
     // ========================================================================
     // Consumer API (Single Consumer / Dedicated Worker Thread)
     // ========================================================================
@@ -288,29 +283,6 @@ class spsc_fsm {
     // Read & Introspection API
     // ========================================================================
 
-    [[nodiscard]] std::size_t state_index() const noexcept { return state_index_.load(std::memory_order_acquire); }
-    [[nodiscard]] std::string_view state_name() const noexcept {
-        return detail::get_state_name_by_index<typename Table::state_variant>(state_index());
-    }
-
-    template <typename State>
-    [[nodiscard]] bool is_in() const noexcept {
-        return detail::is_substate_by_variant_index<typename Table::state_variant, State>(state_index());
-    }
-
-    [[nodiscard]] bool is_in(std::string_view target_name) const noexcept {
-        return detail::is_substate_by_name_variant_index<typename Table::state_variant>(state_index(), target_name);
-    }
-
-    template <typename State>
-    [[nodiscard]] bool is_in_state() const noexcept {
-        if constexpr (Table::template has_state<State>) {
-            return state_index() == type_list_index_of_v<State, typename Table::states>;
-        } else {
-            return false;
-        }
-    }
-
     void reset() {
         seq_.fetch_add(1, std::memory_order_release);
         queue_.clear();
@@ -348,14 +320,43 @@ class spsc_fsm {
         fsm_.clear_deferred_events();
     }
 
+    void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
+        fsm_.set_invariant_violation_handler(std::move(handler));
+    }
+
+    // ========================================================================
+    // Concurrent Telemetry & State Inspection API (Lock-Free / Seqlock)
+    // Safe to invoke from external monitoring, telemetry, or reader threads.
+    // ========================================================================
+
+    [[nodiscard]] std::size_t state_index() const noexcept { return state_index_.load(std::memory_order_acquire); }
+    [[nodiscard]] std::string_view state_name() const noexcept {
+        return detail::get_state_name_by_index<typename Table::state_variant>(state_index());
+    }
+
+    template <typename State>
+    [[nodiscard]] bool is_in() const noexcept {
+        return detail::is_substate_by_variant_index<typename Table::state_variant, State>(state_index());
+    }
+
+    [[nodiscard]] bool is_in(std::string_view target_name) const noexcept {
+        return detail::is_substate_by_name_variant_index<typename Table::state_variant>(state_index(), target_name);
+    }
+
+    template <typename State>
+    [[nodiscard]] bool is_in_state() const noexcept {
+        if constexpr (Table::template has_state<State>) {
+            return state_index() == type_list_index_of_v<State, typename Table::states>;
+        } else {
+            return false;
+        }
+    }
+
     [[nodiscard]] std::uint64_t state_residence_time() const noexcept { return fsm_.state_residence_time(); }
     [[nodiscard]] bool has_invariant_violation() const noexcept { return fsm_.has_invariant_violation(); }
     [[nodiscard]] bool is_invariant_satisfied() const noexcept { return fsm_.is_invariant_satisfied(); }
     [[nodiscard]] const std::optional<invariant_violation_info>& last_invariant_violation() const noexcept {
         return fsm_.last_invariant_violation();
-    }
-    void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
-        fsm_.set_invariant_violation_handler(std::move(handler));
     }
 
     /**

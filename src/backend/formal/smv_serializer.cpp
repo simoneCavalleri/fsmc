@@ -4,6 +4,7 @@
 #include <cctype>
 #include <limits>
 #include <map>
+#include <regex>
 #include <set>
 #include <sstream>
 
@@ -133,6 +134,11 @@ std::string to_smv_predicate(std::string_view expr) {
         s.replace(pos, 2, "=");
         pos += 1;
     }
+
+    static const std::regex true_kw(R"(\btrue\b)", std::regex::optimize);
+    static const std::regex false_kw(R"(\bfalse\b)", std::regex::optimize);
+    s = std::regex_replace(s, true_kw, "TRUE");
+    s = std::regex_replace(s, false_kw, "FALSE");
 
     return s;
 }

@@ -325,18 +325,45 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
     std::string event_name;
     std::string guard_expr;
 
-    std::stringstream ss(cond_part);
-    std::string clause;
+    std::vector<std::string> clauses;
+    int p_depth = 0;
+    size_t last_split = 0;
+    for (size_t i = 0; i < cond_part.size(); ++i) {
+        if (cond_part[i] == '(') {
+            p_depth++;
+        } else if (cond_part[i] == ')') {
+            if (p_depth > 0) p_depth--;
+        } else if (cond_part[i] == '&' && p_depth == 0) {
+            clauses.push_back(cond_part.substr(last_split, i - last_split));
+            last_split = i + 1;
+        }
+    }
+    clauses.push_back(cond_part.substr(last_split));
+
     std::vector<std::string> other_clauses;
-    while (std::getline(ss, clause, '&')) {
-        std::string c = trim(clause);
+    for (const auto& raw_clause : clauses) {
+        std::string c = trim(raw_clause);
         while (c.size() >= 2 && c.front() == '(' && c.back() == ')') {
             c = trim(c.substr(1, c.size() - 2));
         }
         if (c.empty())
             continue;
 
-        if (c.rfind("state =", 0) == 0 || c.rfind("state=", 0) == 0) {
+        if (c.rfind("state in", 0) == 0) {
+            size_t open_b = c.find('{');
+            size_t close_b = c.find('}');
+            if (open_b != std::string::npos && close_b != std::string::npos && close_b > open_b) {
+                std::string list_str = c.substr(open_b + 1, close_b - open_b - 1);
+                std::stringstream list_ss(list_str);
+                std::string item;
+                while (std::getline(list_ss, item, ',')) {
+                    std::string s = sanitize_identifier(trim(item));
+                    if (!s.empty()) {
+                        source_states.push_back(s);
+                    }
+                }
+            }
+        } else if (c.rfind("state =", 0) == 0 || c.rfind("state=", 0) == 0) {
             size_t eq = c.find('=');
             std::string s = sanitize_identifier(trim(c.substr(eq + 1)));
             if (!s.empty()) {
@@ -355,9 +382,10 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
 
     // If no explicit 'event = ...', check if any clause is a boolean trigger (e.g. cmd = TRUE or sig_start)
     for (const auto& c : other_clauses) {
-        if (event_name.empty() && (c.find("= TRUE") != std::string::npos || c.find("= true") != std::string::npos ||
-                                   (c.find('=') == std::string::npos && c.find('<') == std::string::npos &&
-                                    c.find('>') == std::string::npos))) {
+        if (event_name.empty() && c.find('&') == std::string::npos && c.find('|') == std::string::npos &&
+            (c.find("= TRUE") != std::string::npos || c.find("= true") != std::string::npos ||
+             (c.find('=') == std::string::npos && c.find('<') == std::string::npos &&
+              c.find('>') == std::string::npos))) {
             size_t eq = c.find('=');
             std::string cand = trim(eq != std::string::npos ? c.substr(0, eq) : c);
             std::string cand_id = sanitize_identifier(cand);
@@ -387,7 +415,7 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
                 "guard_" + sanitize_identifier(src) + "_to_" + sanitize_identifier(target_state) + "_" +
                 std::to_string(model.transitions.size() + 1);
             model.add_guard(guard_name, "", std::optional<std::string>{guard_expr},
-                            std::optional<std::string>{guard_expr});
+                            std::nullopt);
             trans.guard = guard_name;
         }
         if (!action_from_comment.empty()) {

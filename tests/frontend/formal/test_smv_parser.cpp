@@ -319,4 +319,81 @@ ASSIGN
     EXPECT_TRUE(found_battery_expr) << "Guard raw expression not found in model.guards";
 }
 
+/**
+ * @brief Verify SMV 'state in { S1, S2, ... }' multi-source transition syntax.
+ * @scenario Parse SMV module with set inclusion condition 'state in {Idle, Standby} & start_cmd : Active;'.
+ * @expected Separate transitions emitted for each source state in the set.
+ */
+TEST(SmvParser, StateInSetSyntax_ParsedAsMultipleSourceTransitions) {
+    const std::string smv_content = R"(MODULE MultiSourceSMV
+VAR
+  state : {Idle, Standby, Active};
+  event : {start_cmd, none};
+ASSIGN
+  init(state) := Idle;
+  next(state) := case
+    state in {Idle, Standby} & event = start_cmd : Active;
+    TRUE : state;
+  esac;
+)";
+
+    SmvParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+
+    ASSERT_EQ(model.transitions.size(), 2u);
+    EXPECT_EQ(model.transitions[0].source, "Idle");
+    EXPECT_EQ(model.transitions[0].target, "Active");
+    EXPECT_EQ(model.transitions[0].event, "start_cmd");
+
+    EXPECT_EQ(model.transitions[1].source, "Standby");
+    EXPECT_EQ(model.transitions[1].target, "Active");
+    EXPECT_EQ(model.transitions[1].event, "start_cmd");
+}
+
+/**
+ * @brief Verify SMV condition splitting preserves nested parentheses containing '&'.
+ * @scenario Condition 'state = Off & ((flag1 = TRUE) & (flag2 = FALSE)) : On;'.
+ * @expected Expression inside nested parentheses is not broken into invalid fragments.
+ */
+TEST(SmvParser, NestedParenthesesInCondition_NotSplitPrematurely) {
+    const std::string smv_content = R"(MODULE NestedParenSMV
+VAR
+  state : {Off, On};
+  flag1 : boolean;
+  flag2 : boolean;
+ASSIGN
+  init(state) := Off;
+  next(state) := case
+    state = Off & ((flag1 = TRUE) & (flag2 = FALSE)) : On;
+    TRUE : state;
+  esac;
+)";
+
+    SmvParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+
+    ASSERT_EQ(model.transitions.size(), 1u);
+    const auto& t = model.transitions[0];
+    EXPECT_EQ(t.source, "Off");
+    EXPECT_EQ(t.target, "On");
+
+    // Guard raw expression should contain both flag1 and flag2
+    ASSERT_FALSE(model.guards.empty());
+    bool found_flags = false;
+    for (const auto& gm : model.guards) {
+        if (gm.raw_expression.has_value() &&
+            gm.raw_expression->find("flag1") != std::string::npos &&
+            gm.raw_expression->find("flag2") != std::string::npos) {
+            found_flags = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_flags) << "Expected compound guard containing both flag1 and flag2";
+}
+
 }  // namespace
+

@@ -767,7 +767,8 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
 
                 for (const auto& assign : assignments) {
                     const auto* p = model.find_port(assign.target.name);
-                    if (p != nullptr && p->is_out()) {
+                    bool is_out = (assign.target.scope == LValueScope::OutPort) || (p != nullptr && p->is_out());
+                    if (is_out) {
                         uses_out = true;
                     } else {
                         uses_reg = true;
@@ -799,33 +800,31 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                 std::string cmd_param = uses_cmd ? "const Event& cmd" : "const Event& /*cmd*/";
                 std::string srv_param = uses_srv ? "Services& srv" : "Services& /*srv*/";
 
+                auto emit_assignment_lines = [&](std::string_view indent) {
+                    for (const auto& assign : assignments) {
+                        std::string expr = qualify_expression(assign.expression, model);
+                        const auto* p = model.find_port(assign.target.name);
+                        bool is_out = (assign.target.scope == LValueScope::OutPort) || (p != nullptr && p->is_out());
+                        std::string_view op_str = assignment_op_to_string(assign.op);
+                        if (is_out) {
+                            out << indent << "out." << assign.target.full_path() << " " << op_str << " " << expr << ";\n";
+                        } else {
+                            out << indent << "reg." << assign.target.full_path() << " " << op_str << " " << expr << ";\n";
+                        }
+                    }
+                };
+
                 // Overload 1: (const InPorts& in, OutPorts& out, Registers& reg)
                 out << "    template <typename InPorts, typename OutPorts, typename Registers>\n";
                 out << "    void operator()(" << in_param << ", " << out_param << ", " << reg_param << ") const {\n";
-                for (const auto& assign : assignments) {
-                    std::string expr = qualify_expression(assign.expression, model);
-                    const auto* p = model.find_port(assign.target.name);
-                    if (p != nullptr && p->is_out()) {
-                        out << "        out." << assign.target.full_path() << " = " << expr << ";\n";
-                    } else {
-                        out << "        reg." << assign.target.full_path() << " = " << expr << ";\n";
-                    }
-                }
+                emit_assignment_lines("        ");
                 out << "    }\n\n";
 
                 // Overload 2: (const Event& cmd, const InPorts& in, OutPorts& out, Registers& reg)
                 out << "    template <typename Event, typename InPorts, typename OutPorts, typename Registers>\n";
                 out << "    void operator()(" << cmd_param << ", " << in_param << ", " << out_param << ", " << reg_param
                     << ") const {\n";
-                for (const auto& assign : assignments) {
-                    std::string expr = qualify_expression(assign.expression, model);
-                    const auto* p = model.find_port(assign.target.name);
-                    if (p != nullptr && p->is_out()) {
-                        out << "        out." << assign.target.full_path() << " = " << expr << ";\n";
-                    } else {
-                        out << "        reg." << assign.target.full_path() << " = " << expr << ";\n";
-                    }
-                }
+                emit_assignment_lines("        ");
                 out << "    }\n\n";
 
                 // Overload 3: Full 5-domain (const Event& cmd, const InPorts& in, OutPorts& out, Registers& reg,
@@ -834,15 +833,7 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                        "typename Services>\n";
                 out << "    void operator()(" << cmd_param << ", " << in_param << ", " << out_param << ", " << reg_param
                     << ", " << srv_param << ") const {\n";
-                for (const auto& assign : assignments) {
-                    std::string expr = qualify_expression(assign.expression, model);
-                    const auto* p = model.find_port(assign.target.name);
-                    if (p != nullptr && p->is_out()) {
-                        out << "        out." << assign.target.full_path() << " = " << expr << ";\n";
-                    } else {
-                        out << "        reg." << assign.target.full_path() << " = " << expr << ";\n";
-                    }
-                }
+                emit_assignment_lines("        ");
                 out << "    }\n";
             } else {
                 // External service invocation

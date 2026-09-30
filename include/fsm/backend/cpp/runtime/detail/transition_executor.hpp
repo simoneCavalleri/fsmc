@@ -58,6 +58,51 @@ constexpr void call_hierarchical_on_enter(State& target_state, const Event& even
     call_on_enter(target_state, event, in, out, reg, srv);
 }
 
+template <typename Ancestor, typename Event, typename In, typename Out, typename Registers, typename Services>
+constexpr void call_initial_ancestor_on_enter(const Event& event, const In& in, Out& out, Registers& reg,
+                                              Services& srv) {
+    if constexpr (has_parent_type<Ancestor>::value) {
+        using SuperParent = typename Ancestor::parent_type;
+        call_initial_ancestor_on_enter<SuperParent>(event, in, out, reg, srv);
+    }
+    if constexpr (std::is_default_constructible_v<Ancestor>) {
+        Ancestor ancestor_inst{};
+        call_on_enter(ancestor_inst, event, in, out, reg, srv);
+    }
+}
+
+template <typename Target, typename Event, typename In, typename Out, typename Registers, typename Services>
+constexpr void call_initial_hierarchical_on_enter(Target& target_state, const Event& event, const In& in, Out& out,
+                                                  Registers& reg, Services& srv) {
+    if constexpr (has_parent_type<Target>::value) {
+        using Parent = typename Target::parent_type;
+        call_initial_ancestor_on_enter<Parent>(event, in, out, reg, srv);
+    }
+    call_on_enter(target_state, event, in, out, reg, srv);
+}
+
+template <typename Ancestor, typename In, typename Out, typename Registers, typename Services>
+constexpr void call_initial_ancestor_on_enter(const In& in, Out& out, Registers& reg, Services& srv) {
+    if constexpr (has_parent_type<Ancestor>::value) {
+        using SuperParent = typename Ancestor::parent_type;
+        call_initial_ancestor_on_enter<SuperParent>(in, out, reg, srv);
+    }
+    if constexpr (std::is_default_constructible_v<Ancestor>) {
+        Ancestor ancestor_inst{};
+        call_on_enter(ancestor_inst, anonymous_event{}, in, out, reg, srv);
+    }
+}
+
+template <typename Target, typename In, typename Out, typename Registers, typename Services>
+constexpr void call_initial_hierarchical_on_enter(Target& target_state, const In& in, Out& out,
+                                                  Registers& reg, Services& srv) {
+    if constexpr (has_parent_type<Target>::value) {
+        using Parent = typename Target::parent_type;
+        call_initial_ancestor_on_enter<Parent>(in, out, reg, srv);
+    }
+    call_on_enter(target_state, anonymous_event{}, in, out, reg, srv);
+}
+
 template <typename Table, typename CurrentSrc, typename Event, typename In, typename Out, typename Registers,
           typename Services, typename FsmInstance, typename ObserverCallback, typename RecordHistoryFn,
           std::size_t... Indices>

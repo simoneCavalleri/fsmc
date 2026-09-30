@@ -368,25 +368,92 @@ class fsm {
         return history_mgr_.get_history(parent);
     }
 
+    void clear_history() noexcept {
+        if constexpr (has_history) {
+            history_mgr_.clear_history();
+        }
+    }
+
+    void clear_deferred() noexcept {
+        if constexpr (has_deferred) {
+            deferred_mgr_.clear_deferred_events();
+        }
+    }
+
+    /**
+     * @brief Resets the state machine to its initial state, clearing active history,
+     * deferred queues, timers, and invariants, and invoking initial on_enter hooks.
+     */
+    void reset() {
+        if constexpr (has_history) {
+            history_mgr_.clear_history();
+        }
+        if constexpr (has_deferred) {
+            deferred_mgr_.clear_deferred_events();
+        }
+        if constexpr (std::is_default_constructible_v<registers_type>) {
+            registers_ = registers_type{};
+        }
+        current_state_ = initial_state_type{};
+        enter_initial_state();
+    }
+
+    void reset(registers_type initial_registers) {
+        if constexpr (has_history) {
+            history_mgr_.clear_history();
+        }
+        if constexpr (has_deferred) {
+            deferred_mgr_.clear_deferred_events();
+        }
+        registers_ = std::move(initial_registers);
+        current_state_ = initial_state_type{};
+        enter_initial_state();
+    }
+
     // State Inspection & Mutation
     template <typename State>
     [[nodiscard]] bool is_in_state() const noexcept {
-        return std::holds_alternative<State>(current_state_);
+        if constexpr (Table::template has_state<State>) {
+            return std::holds_alternative<State>(current_state_);
+        } else {
+            return false;
+        }
     }
 
     template <typename State>
     [[nodiscard]] bool is_in() const noexcept {
-        return is_in_state<State>();
+        return std::visit(
+            [](const auto& current) -> bool {
+                using current_t = std::decay_t<decltype(current)>;
+                return is_substate_of_v<current_t, State>;
+            },
+            current_state_);
+    }
+
+    [[nodiscard]] bool is_in(std::string_view target_name) const noexcept {
+        return std::visit(
+            [target_name](const auto& current) -> bool {
+                return ::fsm::state_is_or_descendant_of(current, target_name);
+            },
+            current_state_);
     }
 
     template <typename State>
     [[nodiscard]] const State* get_state() const noexcept {
-        return std::get_if<State>(&current_state_);
+        if constexpr (Table::template has_state<State>) {
+            return std::get_if<State>(&current_state_);
+        } else {
+            return nullptr;
+        }
     }
 
     template <typename State>
     [[nodiscard]] State* get_state() noexcept {
-        return std::get_if<State>(&current_state_);
+        if constexpr (Table::template has_state<State>) {
+            return std::get_if<State>(&current_state_);
+        } else {
+            return nullptr;
+        }
     }
 
     template <typename Callable>
@@ -719,11 +786,14 @@ class fsm {
     }
 
     void enter_initial_state() {
-        if (auto* state = std::get_if<initial_state_type>(&current_state_)) {
-            in_ports_type dummy_in{};
-            out_ports_type dummy_out{};
-            call_on_enter(*state, dummy_in, dummy_out, registers_, resolve_services());
-        }
+        in_ports_type dummy_in{};
+        out_ports_type dummy_out{};
+        std::visit(
+            [this, &dummy_in, &dummy_out](auto& state) {
+                detail::call_initial_hierarchical_on_enter(
+                    state, dummy_in, dummy_out, registers_, resolve_services());
+            },
+            current_state_);
         invariant_mgr_.reset();
         refresh_timers_for_current_state();
     }

@@ -544,6 +544,44 @@ constexpr std::string_view get_parent_name() noexcept {
     }
 }
 
+template <typename State>
+constexpr bool state_is_or_descendant_of_static(std::string_view target_name) noexcept {
+    if (get_state_name_static<State>() == target_name || get_type_name<State>() == target_name) {
+        return true;
+    }
+    if constexpr (detail::has_parent_type<State>::value) {
+        using Parent = typename State::parent_type;
+        return state_is_or_descendant_of_static<Parent>(target_name);
+    } else if constexpr (detail::has_parent_name<State>::value) {
+        if constexpr (!State::parent.empty()) {
+            return State::parent == target_name;
+        } else {
+            return false;
+        }
+    } else {
+        return false;
+    }
+}
+
+template <typename State>
+constexpr bool state_is_or_descendant_of(const State& state, std::string_view target_name) noexcept {
+    if (get_state_name(state) == target_name || get_type_name<State>() == target_name) {
+        return true;
+    }
+    if constexpr (detail::has_parent_type<State>::value) {
+        using Parent = typename State::parent_type;
+        return state_is_or_descendant_of_static<Parent>(target_name);
+    } else if constexpr (detail::has_parent_name<State>::value) {
+        if constexpr (!State::parent.empty()) {
+            return State::parent == target_name;
+        } else {
+            return false;
+        }
+    } else {
+        return false;
+    }
+}
+
 }  // namespace fsm
 
 // --- End: traits/reflection.hpp ---
@@ -1342,6 +1380,8 @@ struct is_substate_of_impl : std::false_type {};
 template <typename SubState, typename SuperState>
 struct is_substate_of_impl<SubState, SuperState, std::void_t<typename SubState::parent_type>> {
     static constexpr bool value = std::is_same_v<typename SubState::parent_type, SuperState> ||
+                                  (get_state_name_static<SuperState>() ==
+                                   get_state_name_static<typename SubState::parent_type>()) ||
                                   is_substate_of_impl<typename SubState::parent_type, SuperState>::value;
 };
 
@@ -1350,7 +1390,8 @@ struct is_substate_by_name : std::false_type {};
 
 template <typename SubState, typename SuperState>
 struct is_substate_by_name<SubState, SuperState, std::void_t<decltype(SubState::parent)>> {
-    static constexpr bool value = (get_type_name<SuperState>() == SubState::parent);
+    static constexpr bool value = (get_state_name_static<SuperState>() == SubState::parent) ||
+                                  (get_type_name<SuperState>() == SubState::parent);
 };
 }  // namespace detail
 
@@ -2830,7 +2871,7 @@ template <typename Table>
 class history_manager<Table, true> {
   public:
     static constexpr std::size_t raw_capacity = count_parent_states_v<typename Table::states>;
-    static constexpr std::size_t max_history_capacity = (raw_capacity > 0 ? (raw_capacity + 4) : 4);
+    static constexpr std::size_t max_history_capacity = (raw_capacity > 0 ? raw_capacity : 1);
 
     void record_history(std::string_view parent, std::string_view substate) {
         if (parent.empty() || substate.empty()) {
@@ -3115,6 +3156,51 @@ constexpr void call_hierarchical_on_enter(State& target_state, const Event& even
         }
     }
     call_on_enter(target_state, event, in, out, reg, srv);
+}
+
+template <typename Ancestor, typename Event, typename In, typename Out, typename Registers, typename Services>
+constexpr void call_initial_ancestor_on_enter(const Event& event, const In& in, Out& out, Registers& reg,
+                                              Services& srv) {
+    if constexpr (has_parent_type<Ancestor>::value) {
+        using SuperParent = typename Ancestor::parent_type;
+        call_initial_ancestor_on_enter<SuperParent>(event, in, out, reg, srv);
+    }
+    if constexpr (std::is_default_constructible_v<Ancestor>) {
+        Ancestor ancestor_inst{};
+        call_on_enter(ancestor_inst, event, in, out, reg, srv);
+    }
+}
+
+template <typename Target, typename Event, typename In, typename Out, typename Registers, typename Services>
+constexpr void call_initial_hierarchical_on_enter(Target& target_state, const Event& event, const In& in, Out& out,
+                                                  Registers& reg, Services& srv) {
+    if constexpr (has_parent_type<Target>::value) {
+        using Parent = typename Target::parent_type;
+        call_initial_ancestor_on_enter<Parent>(event, in, out, reg, srv);
+    }
+    call_on_enter(target_state, event, in, out, reg, srv);
+}
+
+template <typename Ancestor, typename In, typename Out, typename Registers, typename Services>
+constexpr void call_initial_ancestor_on_enter(const In& in, Out& out, Registers& reg, Services& srv) {
+    if constexpr (has_parent_type<Ancestor>::value) {
+        using SuperParent = typename Ancestor::parent_type;
+        call_initial_ancestor_on_enter<SuperParent>(in, out, reg, srv);
+    }
+    if constexpr (std::is_default_constructible_v<Ancestor>) {
+        Ancestor ancestor_inst{};
+        call_on_enter(ancestor_inst, anonymous_event{}, in, out, reg, srv);
+    }
+}
+
+template <typename Target, typename In, typename Out, typename Registers, typename Services>
+constexpr void call_initial_hierarchical_on_enter(Target& target_state, const In& in, Out& out,
+                                                  Registers& reg, Services& srv) {
+    if constexpr (has_parent_type<Target>::value) {
+        using Parent = typename Target::parent_type;
+        call_initial_ancestor_on_enter<Parent>(in, out, reg, srv);
+    }
+    call_on_enter(target_state, anonymous_event{}, in, out, reg, srv);
 }
 
 template <typename Table, typename CurrentSrc, typename Event, typename In, typename Out, typename Registers,
@@ -3936,25 +4022,92 @@ class fsm {
         return history_mgr_.get_history(parent);
     }
 
+    void clear_history() noexcept {
+        if constexpr (has_history) {
+            history_mgr_.clear_history();
+        }
+    }
+
+    void clear_deferred() noexcept {
+        if constexpr (has_deferred) {
+            deferred_mgr_.clear_deferred_events();
+        }
+    }
+
+    /**
+     * @brief Resets the state machine to its initial state, clearing active history,
+     * deferred queues, timers, and invariants, and invoking initial on_enter hooks.
+     */
+    void reset() {
+        if constexpr (has_history) {
+            history_mgr_.clear_history();
+        }
+        if constexpr (has_deferred) {
+            deferred_mgr_.clear_deferred_events();
+        }
+        if constexpr (std::is_default_constructible_v<registers_type>) {
+            registers_ = registers_type{};
+        }
+        current_state_ = initial_state_type{};
+        enter_initial_state();
+    }
+
+    void reset(registers_type initial_registers) {
+        if constexpr (has_history) {
+            history_mgr_.clear_history();
+        }
+        if constexpr (has_deferred) {
+            deferred_mgr_.clear_deferred_events();
+        }
+        registers_ = std::move(initial_registers);
+        current_state_ = initial_state_type{};
+        enter_initial_state();
+    }
+
     // State Inspection & Mutation
     template <typename State>
     [[nodiscard]] bool is_in_state() const noexcept {
-        return std::holds_alternative<State>(current_state_);
+        if constexpr (Table::template has_state<State>) {
+            return std::holds_alternative<State>(current_state_);
+        } else {
+            return false;
+        }
     }
 
     template <typename State>
     [[nodiscard]] bool is_in() const noexcept {
-        return is_in_state<State>();
+        return std::visit(
+            [](const auto& current) -> bool {
+                using current_t = std::decay_t<decltype(current)>;
+                return is_substate_of_v<current_t, State>;
+            },
+            current_state_);
+    }
+
+    [[nodiscard]] bool is_in(std::string_view target_name) const noexcept {
+        return std::visit(
+            [target_name](const auto& current) -> bool {
+                return ::fsm::state_is_or_descendant_of(current, target_name);
+            },
+            current_state_);
     }
 
     template <typename State>
     [[nodiscard]] const State* get_state() const noexcept {
-        return std::get_if<State>(&current_state_);
+        if constexpr (Table::template has_state<State>) {
+            return std::get_if<State>(&current_state_);
+        } else {
+            return nullptr;
+        }
     }
 
     template <typename State>
     [[nodiscard]] State* get_state() noexcept {
-        return std::get_if<State>(&current_state_);
+        if constexpr (Table::template has_state<State>) {
+            return std::get_if<State>(&current_state_);
+        } else {
+            return nullptr;
+        }
     }
 
     template <typename Callable>
@@ -4287,11 +4440,14 @@ class fsm {
     }
 
     void enter_initial_state() {
-        if (auto* state = std::get_if<initial_state_type>(&current_state_)) {
-            in_ports_type dummy_in{};
-            out_ports_type dummy_out{};
-            call_on_enter(*state, dummy_in, dummy_out, registers_, resolve_services());
-        }
+        in_ports_type dummy_in{};
+        out_ports_type dummy_out{};
+        std::visit(
+            [this, &dummy_in, &dummy_out](auto& state) {
+                detail::call_initial_hierarchical_on_enter(
+                    state, dummy_in, dummy_out, registers_, resolve_services());
+            },
+            current_state_);
         invariant_mgr_.reset();
         refresh_timers_for_current_state();
     }

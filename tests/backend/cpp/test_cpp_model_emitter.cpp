@@ -783,3 +783,47 @@ TEST(CppModelEmitter, RelationalGuardExpressions_QualifiedWithDatapathAndPorts) 
     EXPECT_NE(str.find("return in.batteryLevel > 11.5;"), std::string::npos);
 }
 
+/**
+ * @brief Verify that compound assignment operators (+=, -=) and OutPort scope are preserved.
+ */
+TEST(CppModelEmitter, CompoundAssignmentAndOutPortScope_EmittedCorrectly) {
+    FsmIr model;
+    model.name = "AssignFsm";
+    model.initial_state = "S1";
+
+    PortDefinition out_p("speedOut", "float", PortDirection::Out);
+    model.ports.push_back(out_p);
+
+    model.variables.emplace_back("counter", "uint32_t", "0");
+
+    StateNode s1{"S1"};
+    StateNode s2{"S2"};
+    model.states.push_back(s1);
+    model.states.push_back(s2);
+
+    ActionModel act("do_increment");
+    model.actions.push_back(act);
+
+    TransitionEdge t;
+    t.source = "S1";
+    t.target = "S2";
+    t.event = "EvStep";
+    ActionSignature act_sig("do_increment");
+    act_sig.assignments.push_back(
+        ActionAssignment{LValueTarget{"counter", LValueScope::Register}, "5", AssignmentOp::AddAssign});
+    act_sig.assignments.push_back(
+        ActionAssignment{LValueTarget{"speedOut", LValueScope::OutPort}, "100", AssignmentOp::Assign});
+    t.transition_action = act_sig;
+    model.transitions.push_back(t);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = true;
+    CppModelEmitter::emit_model(out, model, opts);
+    std::string str = out.str();
+
+    EXPECT_NE(str.find("reg.counter += 5;"), std::string::npos);
+    EXPECT_NE(str.find("out.speedOut = 100;"), std::string::npos);
+}
+
+

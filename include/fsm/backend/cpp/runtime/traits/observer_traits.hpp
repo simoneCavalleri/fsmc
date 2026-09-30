@@ -74,6 +74,8 @@ struct is_substate_of_impl : std::false_type {};
 template <typename SubState, typename SuperState>
 struct is_substate_of_impl<SubState, SuperState, std::void_t<typename SubState::parent_type>> {
     static constexpr bool value = std::is_same_v<typename SubState::parent_type, SuperState> ||
+                                  (get_state_name_static<SuperState>() ==
+                                   get_state_name_static<typename SubState::parent_type>()) ||
                                   is_substate_of_impl<typename SubState::parent_type, SuperState>::value;
 };
 
@@ -82,7 +84,8 @@ struct is_substate_by_name : std::false_type {};
 
 template <typename SubState, typename SuperState>
 struct is_substate_by_name<SubState, SuperState, std::void_t<decltype(SubState::parent)>> {
-    static constexpr bool value = (get_type_name<SuperState>() == SubState::parent);
+    static constexpr bool value = (get_state_name_static<SuperState>() == SubState::parent) ||
+                                  (get_type_name<SuperState>() == SubState::parent);
 };
 }  // namespace detail
 

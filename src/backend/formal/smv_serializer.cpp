@@ -140,6 +140,11 @@ std::string to_smv_predicate(std::string_view expr) {
     s = std::regex_replace(s, true_kw, "TRUE");
     s = std::regex_replace(s, false_kw, "FALSE");
 
+    // Normalize floating-point literals to integer constants for nuXmv finite domain
+    // (nuXmv discrete models forbid mixed-type comparisons like integer variable vs Real literal 30.0)
+    static const std::regex float_lit(R"(\b(\d+)\.\d+\b)", std::regex::optimize);
+    s = std::regex_replace(s, float_lit, "$1");
+
     return s;
 }
 

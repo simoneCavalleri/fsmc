@@ -236,8 +236,14 @@ void FsmValidator::validate_livelock_cycles(const FsmIr& model, ValidationResult
     // Build eventless adjacency list
     std::map<std::string, std::vector<std::string>> eventless_adj;
     for (const auto& transition_item : model.transitions) {
-        if (transition_item.event.empty() || transition_item.event == "AnonymousEvent" ||
-            transition_item.event == "anonymous") {
+        bool is_eventless = (transition_item.event.empty() || transition_item.event == "anonymous_event" ||
+                             transition_item.event == "completion_event" ||
+                             transition_item.event == "AnonymousEvent" ||
+                             transition_item.event == "anonymous") &&
+                            !std::holds_alternative<ir::SignalTrigger>(transition_item.trigger) &&
+                            !std::holds_alternative<ir::TimeTrigger>(transition_item.trigger) &&
+                            !std::holds_alternative<ir::ChangeTrigger>(transition_item.trigger);
+        if (is_eventless) {
             eventless_adj[transition_item.source].push_back(transition_item.target);
         }
     }

@@ -60,11 +60,19 @@ class fsm;
 - `template <typename Rep, typename Period> std::size_t tick(std::chrono::duration<Rep, Period> dt)`: Advances deterministic timer manager by `dt`. Returns number of expired timers.
 - `template <typename Rep, typename Period, typename Callback> std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired)`: Advances deterministic timers and invokes `on_expired(timer_id)` for each expired timer.
 
-#### State Inspection
-- `template <typename State> [[nodiscard]] constexpr bool is_in() const noexcept`: Returns `true` if active state matches `State`.
+#### State Inspection & Introspection
+- `template <typename State> [[nodiscard]] constexpr bool is_in() const noexcept`: Returns `true` if active leaf state matches `State`, or if the active leaf state is a descendant substate of composite `State` (recursive hierarchical state query in $O(1)$ constexpr time).
 - `template <typename State> [[nodiscard]] constexpr bool is_in_state() const noexcept`: Alias for `is_in<State>()`.
 - `[[nodiscard]] constexpr std::size_t state_index() const noexcept`: Returns 0-based variant index of active state.
 - `[[nodiscard]] constexpr std::string_view current_state_name() const noexcept`: Returns human-readable name of active state.
+- `void reset()`: Resets the state machine back to its initial state, re-invoking initial state `on_enter` actions, restoring default data registers, and clearing active timers, invariants, history cache, and deferred event queues.
+
+#### History & Deferred Event Queries
+- `template <typename ParentState> [[nodiscard]] std::string_view get_history() const noexcept`: Returns the recorded history state name for composite `ParentState`.
+- `[[nodiscard]] std::string_view get_history(std::string_view parent) const noexcept`: Dynamic string query for recorded history of `parent`.
+- `void clear_history() noexcept`: Clears all recorded shallow and deep history state memories.
+- `void clear_deferred() noexcept`: Clears all pending deferred event FIFO queues.
+- `void clear_deferred_events() noexcept`: Alias for `clear_deferred()`.
 
 #### State Residence Time Invariants
 - `[[nodiscard]] constexpr bool is_invariant_satisfied() const noexcept`: Returns `true` if current state residence time does not violate any `max_stay_duration_ms` constraint.
@@ -154,6 +162,20 @@ using MyTable = fsm::transition_table<
 #include <fsm/backend/cpp/runtime/transition.hpp>
 
 using CombinedGuard = fsm::and_<GuardA, fsm::or_<GuardB, fsm::not_<GuardC>>>;
+```
+
+### State, History & Sampled Trigger Guard Predicates
+```cpp
+#include <fsm/backend/cpp/runtime/transition.hpp>
+
+// Guard checking if active state matches TargetState (or a descendant substate)
+using InActiveMode = fsm::in_state<ActiveMode>;
+
+// Guard checking if recorded history of ParentState matches SubState
+using ResumedFromNominal = fsm::history_is<Operational, Nominal>;
+
+// Sampled change trigger: evaluates predicate on a port and fires on value change across cycles
+using AltitudeJump = fsm::change_<PortAccessor, Predicate>;
 ```
 
 ### Action Combinators: `fsm::seq_`
@@ -304,11 +326,13 @@ class spsc_fsm;
 - `template <typename DurationRep> step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out)`: Evaluates continuous step with $\Delta t$.
 - `template <typename Rep, typename Period> std::size_t tick(std::chrono::duration<Rep, Period> dt)`: Advances deterministic timer manager by `dt`.
 - `template <typename Rep, typename Period, typename Callback> std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired)`: Advances timers and invokes `on_expired(timer_id)`.
+- `void reset() noexcept`: Resets internal state machine back to its initial state, restores default registers, and drains pending queues.
 
 #### Reader Context & Invariant Inspection (Lock-Free)
 - `Registers snapshot_registers() const noexcept`: Captures consistent register snapshot using atomic sequence lock without blocking worker.
 - `std::string_view state_name() const noexcept`: Atomic load of active state name.
-- `template <typename State> bool is_in_state() const noexcept`: Atomic state type query.
+- `template <typename State> bool is_in_state() const noexcept`: Atomic state type query (supports leaf states and composite ancestor states).
+- `template <typename State> bool is_in() const noexcept`: Alias for `is_in_state<State>()`.
 - `bool is_invariant_satisfied() const noexcept`: Checks if current state residence satisfies permanence invariant.
 - `bool has_invariant_violation() const noexcept`: Checks if an invariant violation has occurred.
 - `std::optional<invariant_violation_info> last_invariant_violation() const noexcept`: Returns last invariant violation info.
@@ -372,8 +396,9 @@ class thread_safe_fsm;
 - `template <typename DurationRep> step_result step(DurationRep dt, const InPorts& in, OutPorts& out)`: Step with $\Delta t$ and constructor-bound services.
 - `template <typename Rep, typename Period> std::size_t tick(std::chrono::duration<Rep, Period> dt)`: Thread-safe timer tick under mutex.
 - `template <typename Rep, typename Period, typename Callback> std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired)`: Thread-safe timer tick with expiration callback.
+- `void reset()`: Safely acquires lock, resets state machine to initial state, restores default registers, and clears active timers and pending events.
 - `std::string_view current_state_name() const`: Returns active state name under mutex lock.
-- `template <typename State> bool is_in_state() const`: Checks state type under mutex lock.
+- `template <typename State> bool is_in_state() const`: Checks state type under mutex lock (supports leaf states and composite ancestor states).
 - `template <typename State> bool is_in() const`: Alias for `is_in_state<State>()`.
 - `bool is_invariant_satisfied() const`: Thread-safe permanence invariant check.
 - `bool has_invariant_violation() const`: Thread-safe invariant violation check.

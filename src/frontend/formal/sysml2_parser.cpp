@@ -446,9 +446,10 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    // 2b. Port declaration: (in|out|inout) port <name> : <Type> [ { assert constraint { <expr> } } ]
-    static const std::regex port_regex(R"(^(in|out|inout)\s+port\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_:]+))",
-                                       std::regex::optimize);
+    // 2b. Port declaration: (in|out|inout) (port|attribute) <name> : <Type> [ { assert constraint { <expr> } } ]
+    static const std::regex port_regex(
+        R"(^(in|out|inout)\s+(?:port|attribute)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_:]+))",
+        std::regex::optimize);
     if (std::regex_search(stmt, match, port_regex)) {
         std::string dir_str = match[1].str();
         std::string port_name = sanitize_identifier(match[2].str());
@@ -923,8 +924,9 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
                                      std::regex::optimize);
     static const std::regex accept_regex(
         R"(\b(?:accept|when)\s+(?:([A-Za-z_][A-Za-z0-9_]*)\s*:\s*)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
-    static const std::regex if_regex(R"(\bif\s+([^;]+?)(?=\s+(?:do|then|to|;|$)))", std::regex::optimize);
-    static const std::regex do_block_regex(R"(\bdo\s*(?:action\s*)?\{([^}]+)\})", std::regex::optimize);
+    static const std::regex if_regex(R"(\bif\s+([^;]+?)(?=\s+(?:do\b|then\b|to\b|;|$)))", std::regex::optimize);
+    static const std::regex do_block_regex(
+        R"(\bdo\s*(?:action\s+)?(?:([A-Za-z_][A-Za-z0-9_]*)\s*)?\{([^}]+)\})", std::regex::optimize);
     static const std::regex do_regex(R"(\bdo\s+(?:action\s+)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
     static const std::regex then_regex(R"(\b(?:then|to)\s+([A-Za-z_][A-Za-z0-9_\[\]\*]*))", std::regex::optimize);
 
@@ -976,6 +978,9 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
         auto parsed = directive::GuardExpressionParser::parse(raw_guard_expr);
         if (!parsed.cpp_type.empty()) {
             guard = parsed.cpp_type;
+            for (const auto& detail : parsed.atomic_guard_details) {
+                model.add_guard(detail.name, "", detail.expression, detail.expression);
+            }
             for (const auto& atomic : parsed.atomic_guards) {
                 model.add_guard(atomic);
             }
@@ -996,7 +1001,8 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
         std::regex::optimize);
     if (std::regex_search(stmt, match, do_block_regex)) {
         // Parse semicolon-separated action statements within the block
-        std::string block_content = trim(match[1].str());
+        std::string explicit_action_name = match[1].matched ? sanitize_identifier(match[1].str()) : "";
+        std::string block_content = trim(match[2].str());
         std::stringstream ss(block_content);
         std::string statement;
         while (std::getline(ss, statement, ';')) {
@@ -1047,7 +1053,9 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
 
         // Materialize synthesized action signatures from variable assignments
         if (!assignments.empty()) {
-            if (assignments.size() == 1) {
+            if (!explicit_action_name.empty()) {
+                action = explicit_action_name;
+            } else if (assignments.size() == 1) {
                 const auto& a = assignments[0];
                 if (a.expression == a.target.name + " + 1" || a.expression == a.target.name + " + 1.0") {
                     action = "increment_" + a.target.name;

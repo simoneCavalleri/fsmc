@@ -290,4 +290,19 @@ TEST(FsmIrSerializer, CustomEnumsAndStructsDiagramExport_EmitsJsonSchemaSections
     EXPECT_NE(json.find("\"name\": \"rpm\""), std::string::npos);
 }
 
+/**
+ * @brief Verify DataType::from_string preserves complex C++ templated types and std:: namespaces
+ *        without erroneously stripping characters before '::'.
+ */
+TEST(DataType, ComplexTemplatedAndNamespacedTypes_PreservedAccurately) {
+    auto dt1 = DataType::from_string("std::unique_ptr<std::vector<uint8_t>>");
+    EXPECT_EQ(dt1.to_cpp_type(), "std::unique_ptr<std::vector<uint8_t>>");
+
+    auto dt2 = DataType::from_string("std::shared_ptr<MyCustomPayload>");
+    EXPECT_EQ(dt2.to_cpp_type(), "std::shared_ptr<MyCustomPayload>");
+
+    auto dt3 = DataType::from_string("custom::sub::Type");
+    EXPECT_EQ(dt3.to_cpp_type(), "custom::sub::Type");
+}
+
 }  // namespace

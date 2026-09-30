@@ -9,6 +9,7 @@
 #include "fsm/backend/cpp/cpp_model_emitter.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/middleend/passes/choice_inlining_pass.hpp"
+#include "fsm/middleend/passes/connective_junction_chaining_pass.hpp"
 #include "fsm/middleend/passes/fork_join_lowering_pass.hpp"
 #include "fsm/middleend/passes/orthogonal_product_pass.hpp"
 
@@ -16,6 +17,19 @@ namespace fsm::backend::cpp {
 
 std::string CppGenerator::generate_header(const FsmIr& model, const GeneratorOptions& options) {
     FsmIr processed_model = model;
+
+    bool has_junctions = false;
+    for (const auto& state : processed_model.states) {
+        if (state.kind == ir::StateKind::Junction) {
+            has_junctions = true;
+            break;
+        }
+    }
+    if (has_junctions) {
+        diagnostic::DiagnosticEngine diag;
+        middleend::passes::ConnectiveJunctionChainingPass junction_pass;
+        junction_pass.run(processed_model, diag);
+    }
 
     bool has_choice_structure = !processed_model.choice_nodes.empty();
     for (const auto& state : processed_model.states) {
@@ -56,6 +70,8 @@ std::string CppGenerator::generate_header(const FsmIr& model, const GeneratorOpt
             throw std::invalid_argument(diag.render_to_string());
         }
     }
+
+    processed_model.canonicalize();
 
     diagnostic::DiagnosticEngine backend_diagnostics;
     if (!CppBackendValidator::validate_model(processed_model, backend_diagnostics)) {

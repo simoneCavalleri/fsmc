@@ -45,4 +45,37 @@ TEST(DiagnosticEngine, WarningWithSourceSpan_RenderedWithCaretUnderlineAndHelp) 
     EXPECT_NE(rendered.find("add an unconditional fallback transition"), std::string::npos);
 }
 
+/**
+ * @brief Verify GitHub Actions and JSON diagnostic format output.
+ */
+TEST(DiagnosticEngine, FormatOutput_GitHubAndJson) {
+    DiagnosticEngine diag;
+    SourceSpan span;
+    span.file_path = "fms.sysml";
+    span.line = 10;
+    span.column = 5;
+    span.length = 12;
+
+    Diagnostic err = Diagnostic::error("E0101", "Deadlock trap state detected", span);
+    err.help_suggestion = "Provide at least one outgoing transition";
+    diag.report(err);
+
+    Diagnostic warn = Diagnostic::warning("W0202", "Unprioritized branch collision");
+    diag.report(warn);
+
+    // GitHub Actions format
+    std::string gh_out = diag.render_to_format(DiagnosticFormat::GitHub);
+    EXPECT_NE(gh_out.find("::error file=fms.sysml,line=10,col=5,title=E0101::Deadlock trap state detected | Help: Provide at least one outgoing transition"), std::string::npos);
+    EXPECT_NE(gh_out.find("::warning title=W0202::Unprioritized branch collision"), std::string::npos);
+
+    // JSON format
+    std::string json_out = diag.render_to_format(DiagnosticFormat::Json);
+    EXPECT_NE(json_out.find("\"severity\": \"error\""), std::string::npos);
+    EXPECT_NE(json_out.find("\"code\": \"E0101\""), std::string::npos);
+    EXPECT_NE(json_out.find("\"file\": \"fms.sysml\""), std::string::npos);
+    EXPECT_NE(json_out.find("\"line\": 10"), std::string::npos);
+    EXPECT_NE(json_out.find("\"severity\": \"warning\""), std::string::npos);
+    EXPECT_NE(json_out.find("\"code\": \"W0202\""), std::string::npos);
+}
+
 }  // namespace

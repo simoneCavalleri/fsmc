@@ -15,6 +15,26 @@ namespace fsm::backend::cpp {
 
 using namespace fsm::ir;
 
+namespace {
+
+std::string qualify_expression(std::string expr, const FsmIr& model) {
+    for (const auto& var : model.variables) {
+        std::regex re(R"((^|[^A-Za-z0-9_\.])()" + var.name + R"()([^A-Za-z0-9_]|$))");
+        expr = std::regex_replace(expr, re, "$1reg.$2$3");
+    }
+    for (const auto& port : model.ports) {
+        if (port.is_in()) {
+            std::regex re(R"((^|[^A-Za-z0-9_\.])()" + port.name + R"()([^A-Za-z0-9_]|$))");
+            expr = std::regex_replace(expr, re, "$1in.$2$3");
+        }
+    }
+    std::regex ev_re(R"((^|[^A-Za-z0-9_\.])(?:f|cmd|event|sig|ev)\.([A-Za-z_][A-Za-z0-9_]*))");
+    expr = std::regex_replace(expr, ev_re, "$1cmd.$2");
+    return expr;
+}
+
+}  // namespace
+
 void CppModelEmitter::emit_enums(std::ostream& out, const FsmIr& model) {
     const auto enums = model.get_enums();
     if (enums.empty()) {
@@ -306,8 +326,31 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
     }
 
     // 4. Services Interface
+    std::vector<ActionModel> effective_actions = model.actions;
+    auto has_action = [&](const std::string& name) {
+        for (const auto& a : effective_actions) {
+            if (a.name == name) return true;
+        }
+        return false;
+    };
+    for (const auto& st : model.states) {
+        if (st.do_activity.has_value() && !st.do_activity->empty() && !has_action(*st.do_activity)) {
+            effective_actions.push_back(ActionModel(*st.do_activity, "Activity for state " + st.name));
+        }
+        for (const auto& a : st.entry_actions) {
+            if (!a.name.empty() && !has_action(a.name)) {
+                effective_actions.push_back(ActionModel(a.name, "Entry action"));
+            }
+        }
+        for (const auto& a : st.exit_actions) {
+            if (!a.name.empty() && !has_action(a.name)) {
+                effective_actions.push_back(ActionModel(a.name, "Exit action"));
+            }
+        }
+    }
+
     std::vector<std::string> external_actions;
-    for (const auto& act : model.actions) {
+    for (const auto& act : effective_actions) {
         bool has_assign = false;
         for (const auto& t : model.transitions) {
             if ((t.condition_action.has_value() && t.condition_action->name == act.name &&
@@ -396,7 +439,7 @@ void CppModelEmitter::emit_events(std::ostream& out, const FsmIr& model) {
                 for (std::size_t i = 0; i < sig.attributes.size(); ++i) {
                     if (i > 0)
                         out << ", ";
-                    out << sig.attributes[i].name << "(" << sig.attributes[i].name << "_)";
+                    out << sig.attributes[i].name << "(std::move(" << sig.attributes[i].name << "_))";
                 }
                 out << " {}\n";
             }
@@ -521,6 +564,16 @@ void CppModelEmitter::emit_states(std::ostream& out, const FsmIr& model) {
             out << "    }\n";
         }
 
+        // Continuous do_activity hook
+        if (state_item.do_activity.has_value() && !state_item.do_activity->empty()) {
+            out << "\n    /** @brief State continuous do_activity hook */\n";
+            out << "    template <typename InPorts, typename OutPorts, typename Registers, typename Services>\n";
+            out << "    void do_activity(const InPorts& in, OutPorts& out, Registers& reg, Services& srv) const {\n";
+            out << "        auto activity = " << *state_item.do_activity << "{};\n";
+            out << "        ::fsm::call_action(activity, in, out, reg, srv);\n";
+            out << "    }\n";
+        }
+
         if (state_item.kind == StateKind::EntryPoint) {
             out << "    static constexpr bool is_entry_point = true;\n";
         } else if (state_item.kind == StateKind::ExitPoint) {
@@ -552,18 +605,36 @@ void CppModelEmitter::emit_guards(std::ostream& out, const FsmIr& model, const G
         out << "// ============================================================================\n\n";
 
         for (const auto& guard_item : model.guards) {
-            if (guard_item.name.find("::") != std::string::npos || guard_item.name.find('<') != std::string::npos ||
+            if (guard_item.name == "else" || guard_item.name == "default" ||
+                guard_item.name.find("::") != std::string::npos || guard_item.name.find('<') != std::string::npos ||
                 guard_item.name.find('>') != std::string::npos || guard_item.name.find(' ') != std::string::npos ||
                 guard_item.name.find('&') != std::string::npos || guard_item.name.find('|') != std::string::npos ||
                 guard_item.name.find('!') != std::string::npos) {
                 continue;
             }
             const bool has_expr =
-                guard_item.normalized_expression.has_value() && !guard_item.normalized_expression->empty();
-            std::string expr = has_expr ? *guard_item.normalized_expression : "true";
+                guard_item.normalized_expression.has_value() && !guard_item.normalized_expression->empty() &&
+                *guard_item.normalized_expression != guard_item.name &&
+                (guard_item.name != (*guard_item.normalized_expression + "Guard"));
+            std::string expr;
+            if (has_expr) {
+                expr = qualify_expression(*guard_item.normalized_expression, model);
+            } else {
+                const auto* p = model.find_port(guard_item.name);
+                const auto* v = model.find_variable(guard_item.name);
+                if (p != nullptr && p->is_in()) {
+                    expr = "in." + guard_item.name;
+                } else if (v != nullptr) {
+                    expr = "reg." + guard_item.name;
+                } else {
+                    expr = "true";
+                }
+            }
             bool references_event = expr.find("cmd") != std::string::npos || expr.find("event") != std::string::npos ||
                                     expr.find("payload") != std::string::npos;
+            bool references_reg = expr.find("reg.") != std::string::npos;
             std::string non_event_expr = references_event ? "true" : expr;
+            std::string in_only_expr = (references_event || references_reg) ? "true" : expr;
 
             out << "/**\n";
             out << " * @struct " << guard_item.name << "\n";
@@ -592,7 +663,7 @@ void CppModelEmitter::emit_guards(std::ostream& out, const FsmIr& model, const G
             out << "    template <typename InPorts>\n";
             out << "    [[nodiscard]] constexpr bool operator()(const InPorts& in) const noexcept {\n";
             out << "        (void)in;\n";
-            out << "        return " << non_event_expr << ";\n";
+            out << "        return " << in_only_expr << ";\n";
             out << "    }\n\n";
 
             out << "    template <typename Event, typename SrcState, typename InPorts, typename Registers, "
@@ -613,7 +684,8 @@ void CppModelEmitter::emit_guards(std::ostream& out, const FsmIr& model, const G
             for (std::sregex_iterator it(guard_item.name.begin(), guard_item.name.end(), ident_re), end; it != end;
                  ++it) {
                 std::string id = it->str();
-                if (id != "fsm" && id != "and_" && id != "or_" && id != "not_" && id != "xor_" && id != "no_guard") {
+                if (id != "fsm" && id != "and_" && id != "or_" && id != "not_" && id != "xor_" && id != "no_guard" &&
+                    id != "else" && id != "default") {
                     declared_guards.insert(id);
                 }
             }
@@ -626,7 +698,38 @@ void CppModelEmitter::emit_guards(std::ostream& out, const FsmIr& model, const G
 }
 
 void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const GeneratorOptions& options) {
-    if (model.actions.empty()) {
+    std::vector<ActionModel> effective_actions = model.actions;
+    auto has_action = [&](const std::string& name) {
+        for (const auto& a : effective_actions) {
+            if (a.name == name) return true;
+        }
+        return false;
+    };
+    for (const auto& st : model.states) {
+        if (st.do_activity.has_value() && !st.do_activity->empty() && !has_action(*st.do_activity)) {
+            effective_actions.push_back(ActionModel(*st.do_activity, "Activity for state " + st.name));
+        }
+        for (const auto& a : st.entry_actions) {
+            if (!a.name.empty() && !has_action(a.name)) {
+                effective_actions.push_back(ActionModel(a.name, "Entry action"));
+            }
+        }
+        for (const auto& a : st.exit_actions) {
+            if (!a.name.empty() && !has_action(a.name)) {
+                effective_actions.push_back(ActionModel(a.name, "Exit action"));
+            }
+        }
+    }
+    for (const auto& t : model.transitions) {
+        if (t.condition_action.has_value() && !t.condition_action->name.empty() && !has_action(t.condition_action->name)) {
+            effective_actions.push_back(ActionModel(t.condition_action->name, "Condition action"));
+        }
+        if (t.transition_action.has_value() && !t.transition_action->name.empty() && !has_action(t.transition_action->name)) {
+            effective_actions.push_back(ActionModel(t.transition_action->name, "Transition action"));
+        }
+    }
+
+    if (effective_actions.empty()) {
         return;
     }
 
@@ -635,7 +738,7 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
     out << "// ============================================================================\n\n";
 
     if (options.include_stubs) {
-        for (const auto& action_item : model.actions) {
+        for (const auto& action_item : effective_actions) {
             out << "/**\n";
             out << " * @struct " << action_item.name << "\n";
             out << " * @brief Transition action effect for '" << action_item.name << "'.\n";
@@ -700,11 +803,12 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                 out << "    template <typename InPorts, typename OutPorts, typename Registers>\n";
                 out << "    void operator()(" << in_param << ", " << out_param << ", " << reg_param << ") const {\n";
                 for (const auto& assign : assignments) {
+                    std::string expr = qualify_expression(assign.expression, model);
                     const auto* p = model.find_port(assign.target.name);
                     if (p != nullptr && p->is_out()) {
-                        out << "        out." << assign.target.full_path() << " = " << assign.expression << ";\n";
+                        out << "        out." << assign.target.full_path() << " = " << expr << ";\n";
                     } else {
-                        out << "        reg." << assign.target.full_path() << " = " << assign.expression << ";\n";
+                        out << "        reg." << assign.target.full_path() << " = " << expr << ";\n";
                     }
                 }
                 out << "    }\n\n";
@@ -714,11 +818,12 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                 out << "    void operator()(" << cmd_param << ", " << in_param << ", " << out_param << ", " << reg_param
                     << ") const {\n";
                 for (const auto& assign : assignments) {
+                    std::string expr = qualify_expression(assign.expression, model);
                     const auto* p = model.find_port(assign.target.name);
                     if (p != nullptr && p->is_out()) {
-                        out << "        out." << assign.target.full_path() << " = " << assign.expression << ";\n";
+                        out << "        out." << assign.target.full_path() << " = " << expr << ";\n";
                     } else {
-                        out << "        reg." << assign.target.full_path() << " = " << assign.expression << ";\n";
+                        out << "        reg." << assign.target.full_path() << " = " << expr << ";\n";
                     }
                 }
                 out << "    }\n\n";
@@ -730,11 +835,12 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                 out << "    void operator()(" << cmd_param << ", " << in_param << ", " << out_param << ", " << reg_param
                     << ", " << srv_param << ") const {\n";
                 for (const auto& assign : assignments) {
+                    std::string expr = qualify_expression(assign.expression, model);
                     const auto* p = model.find_port(assign.target.name);
                     if (p != nullptr && p->is_out()) {
-                        out << "        out." << assign.target.full_path() << " = " << assign.expression << ";\n";
+                        out << "        out." << assign.target.full_path() << " = " << expr << ";\n";
                     } else {
-                        out << "        reg." << assign.target.full_path() << " = " << assign.expression << ";\n";
+                        out << "        reg." << assign.target.full_path() << " = " << expr << ";\n";
                     }
                 }
                 out << "    }\n";
@@ -872,20 +978,32 @@ void CppModelEmitter::emit_transition_table(std::ostream& out, const FsmIr& mode
         if (std::holds_alternative<TimeTrigger>(t.trigger)) {
             const auto& time_trigger = std::get<TimeTrigger>(t.trigger);
             const auto duration_ms = time_trigger.duration_in_ms();
-            event_type = time_trigger.kind == TimeTriggerKind::Every
-                             ? "::fsm::every_ms<" + std::to_string(duration_ms) + ">"
-                             : "::fsm::after_ms<" + std::to_string(duration_ms) + ">";
+            if (duration_ms > 0) {
+                event_type = time_trigger.kind == TimeTriggerKind::Every
+                                 ? "::fsm::every_ms<" + std::to_string(duration_ms) + ">"
+                                 : "::fsm::after_ms<" + std::to_string(duration_ms) + ">";
+            } else if (!time_trigger.dynamic_expression.empty()) {
+                event_type = "::fsm::after_ms<1000>";
+            } else {
+                event_type = "::fsm::after_ms<0>";
+            }
         } else if (event_type.empty()) {
             event_type = "::fsm::anonymous_event";
         }
 
-        std::string action_type = t.get_action();
-        if (action_type.empty()) {
-            action_type = "::fsm::no_action";
+        std::string action_type;
+        if (t.condition_action.has_value() && !t.condition_action->name.empty() &&
+            t.transition_action.has_value() && !t.transition_action->name.empty()) {
+            action_type = "::fsm::seq_<" + t.condition_action->name + ", " + t.transition_action->name + ">";
+        } else {
+            action_type = t.get_action();
+            if (action_type.empty()) {
+                action_type = "::fsm::no_action";
+            }
         }
 
         std::string guard_type = t.guard.value_or("::fsm::no_guard");
-        if (guard_type.empty()) {
+        if (guard_type.empty() || guard_type == "else" || guard_type == "default") {
             guard_type = "::fsm::no_guard";
         }
 

@@ -39,13 +39,6 @@ bool CppBackendValidator::validate_model(const ir::FsmIr& model, diagnostic::Dia
             diagnostics.report(diagnostic::Diagnostic::error(code, std::move(message)));
             valid = false;
         }
-
-        if (state.do_activity.has_value()) {
-            diagnostics.report(diagnostic::Diagnostic::error(
-                "ECPP006",
-                "state '" + state.name + "' declares do_activity, which is not supported by the C++ runtime"));
-            valid = false;
-        }
     }
 
     for (const auto& transition : model.transitions) {
@@ -71,10 +64,10 @@ bool CppBackendValidator::validate_model(const ir::FsmIr& model, diagnostic::Dia
         }
         if (std::holds_alternative<ir::TimeTrigger>(transition.trigger)) {
             const auto& time_trigger = std::get<ir::TimeTrigger>(transition.trigger);
-            if (time_trigger.kind == ir::TimeTriggerKind::At || !time_trigger.dynamic_expression.empty()) {
+            if (time_trigger.kind == ir::TimeTriggerKind::At) {
                 diagnostics.report(diagnostic::Diagnostic::error(
                     "ECPP008", "time trigger on transition '" + transition.id +
-                                   "' requires unsupported absolute or dynamic timer lowering before C++ emission"));
+                                   "' requires unsupported absolute wall-clock timer lowering before C++ emission"));
                 valid = false;
             }
         }

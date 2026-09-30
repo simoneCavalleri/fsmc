@@ -19,6 +19,7 @@ enum class TokenType : std::uint8_t { Ident, And, Or, Not, LParen, RParen, End }
 struct Token {
     TokenType type;
     std::string value;
+    std::string raw_expr;
 };
 
 class GuardTokenizerAndParser {
@@ -28,12 +29,13 @@ class GuardTokenizerAndParser {
     ParsedGuardResult parse_expression() {
         token_idx_ = 0;
         std::vector<std::string> atomic_guards;
-        std::string cpp_type = parse_or(atomic_guards);
+        std::vector<AtomicGuardInfo> atomic_details;
+        std::string cpp_type = parse_or(atomic_guards, atomic_details);
         if (cpp_type.empty()) {
             std::string fallback = sanitize_identifier(src_);
-            return {fallback, {fallback}};
+            return {fallback, {fallback}, {{fallback, std::string(src_)}}};
         }
-        return {cpp_type, atomic_guards};
+        return {cpp_type, atomic_guards, atomic_details};
     }
 
   private:
@@ -46,64 +48,76 @@ class GuardTokenizerAndParser {
             }
             if (c == '&') {
                 if (pos_ + 1 < src_.size() && src_[pos_ + 1] == '&') {
-                    tokens_.push_back({TokenType::And, "&&"});
+                    tokens_.push_back({TokenType::And, "&&", "&&"});
                     pos_ += 2;
                 } else {
-                    tokens_.push_back({TokenType::And, "&"});
+                    tokens_.push_back({TokenType::And, "&", "&"});
                     pos_ += 1;
                 }
                 continue;
             }
             if (c == '|') {
                 if (pos_ + 1 < src_.size() && src_[pos_ + 1] == '|') {
-                    tokens_.push_back({TokenType::Or, "||"});
+                    tokens_.push_back({TokenType::Or, "||", "||"});
                     pos_ += 2;
                 } else {
-                    tokens_.push_back({TokenType::Or, "|"});
+                    tokens_.push_back({TokenType::Or, "|", "|"});
                     pos_ += 1;
                 }
                 continue;
             }
             if (c == '!') {
-                tokens_.push_back({TokenType::Not, "!"});
+                tokens_.push_back({TokenType::Not, "!", "!"});
                 ++pos_;
                 continue;
             }
             if (c == '(') {
-                tokens_.push_back({TokenType::LParen, "("});
+                tokens_.push_back({TokenType::LParen, "(", "("});
                 ++pos_;
                 continue;
             }
             if (c == ')') {
-                tokens_.push_back({TokenType::RParen, ")"});
+                tokens_.push_back({TokenType::RParen, ")", ")"});
                 ++pos_;
                 continue;
             }
 
-            // Identifier
+            // Identifier or comparison expression (consumes until logical delimiter or unnested paren)
             size_t start = pos_;
+            int paren_depth = 0;
             while (pos_ < src_.size()) {
                 char ch = src_[pos_];
-                if ((std::isspace(static_cast<unsigned char>(ch)) != 0) || ch == '&' || ch == '|' || ch == '!' ||
-                    ch == '(' || ch == ')') {
-                    break;
+                if (ch == '(') {
+                    if (pos_ == start) {
+                        break;
+                    }
+                    paren_depth++;
+                } else if (ch == ')') {
+                    if (paren_depth == 0) {
+                        break;
+                    }
+                    paren_depth--;
+                } else if (paren_depth == 0) {
+                    if (ch == '&' || ch == '|') {
+                        break;
+                    }
                 }
                 ++pos_;
             }
-            std::string raw_ident(src_.substr(start, pos_ - start));
+            std::string raw_ident = std::string(trim(src_.substr(start, pos_ - start)));
             std::string ident = sanitize_identifier(raw_ident);
             if (!ident.empty()) {
-                tokens_.push_back({TokenType::Ident, ident});
+                tokens_.push_back({TokenType::Ident, ident, raw_ident});
             }
         }
-        tokens_.push_back({TokenType::End, ""});
+        tokens_.push_back({TokenType::End, "", ""});
     }
 
-    std::string parse_or(std::vector<std::string>& atomic) {
-        std::string left = parse_and(atomic);
+    std::string parse_or(std::vector<std::string>& atomic, std::vector<AtomicGuardInfo>& atomic_details) {
+        std::string left = parse_and(atomic, atomic_details);
         while (current().type == TokenType::Or) {
             advance();
-            std::string right = parse_and(atomic);
+            std::string right = parse_and(atomic, atomic_details);
             std::string temp = "fsm::or_<";
             temp.append(left).append(", ").append(right).append(">");
             left = std::move(temp);
@@ -111,11 +125,11 @@ class GuardTokenizerAndParser {
         return left;
     }
 
-    std::string parse_and(std::vector<std::string>& atomic) {
-        std::string left = parse_unary(atomic);
+    std::string parse_and(std::vector<std::string>& atomic, std::vector<AtomicGuardInfo>& atomic_details) {
+        std::string left = parse_unary(atomic, atomic_details);
         while (current().type == TokenType::And) {
             advance();
-            std::string right = parse_unary(atomic);
+            std::string right = parse_unary(atomic, atomic_details);
             std::string temp = "fsm::and_<";
             temp.append(left).append(", ").append(right).append(">");
             left = std::move(temp);
@@ -123,19 +137,19 @@ class GuardTokenizerAndParser {
         return left;
     }
 
-    std::string parse_unary(std::vector<std::string>& atomic) {
+    std::string parse_unary(std::vector<std::string>& atomic, std::vector<AtomicGuardInfo>& atomic_details) {
         if (current().type == TokenType::Not) {
             advance();
-            std::string sub = parse_unary(atomic);
+            std::string sub = parse_unary(atomic, atomic_details);
             return "fsm::not_<" + sub + ">";
         }
-        return parse_primary(atomic);
+        return parse_primary(atomic, atomic_details);
     }
 
-    std::string parse_primary(std::vector<std::string>& atomic) {
+    std::string parse_primary(std::vector<std::string>& atomic, std::vector<AtomicGuardInfo>& atomic_details) {
         if (current().type == TokenType::LParen) {
             advance();
-            std::string inner = parse_or(atomic);
+            std::string inner = parse_or(atomic, atomic_details);
             if (current().type == TokenType::RParen) {
                 advance();
             }
@@ -143,8 +157,10 @@ class GuardTokenizerAndParser {
         }
         if (current().type == TokenType::Ident) {
             std::string ident = current().value;
+            std::string raw = current().raw_expr;
             advance();
             atomic.push_back(ident);
+            atomic_details.push_back({ident, raw});
             return ident;
         }
         return "";
@@ -154,7 +170,7 @@ class GuardTokenizerAndParser {
         if (token_idx_ < tokens_.size()) {
             return tokens_[token_idx_];
         }
-        static const Token end_tok{TokenType::End, ""};
+        static const Token end_tok{TokenType::End, "", ""};
         return end_tok;
     }
 
@@ -188,7 +204,11 @@ std::string GuardExpressionParser::to_diagram_string(std::string_view raw_expr) 
         std::string_view inner = expr;
         inner.remove_prefix(10);
         inner.remove_suffix(1);
-        return "!" + to_diagram_string(inner);
+        std::string inner_str = to_diagram_string(inner);
+        if (starts_with(trim(inner), "fsm::and_<") || starts_with(trim(inner), "fsm::or_<")) {
+            return "!(" + inner_str + ")";
+        }
+        return "!" + inner_str;
     }
 
     // fsm::and_<A, B>
@@ -209,8 +229,16 @@ std::string GuardExpressionParser::to_diagram_string(std::string_view raw_expr) 
             }
         }
         if (comma_pos != std::string_view::npos) {
-            std::string left = to_diagram_string(inner.substr(0, comma_pos));
-            std::string right = to_diagram_string(inner.substr(comma_pos + 1));
+            std::string_view left_raw = inner.substr(0, comma_pos);
+            std::string_view right_raw = inner.substr(comma_pos + 1);
+            std::string left = to_diagram_string(left_raw);
+            std::string right = to_diagram_string(right_raw);
+            if (starts_with(trim(left_raw), "fsm::or_<")) {
+                left = "(" + left + ")";
+            }
+            if (starts_with(trim(right_raw), "fsm::or_<")) {
+                right = "(" + right + ")";
+            }
             return left + " && " + right;
         }
     }
@@ -245,7 +273,7 @@ std::string GuardExpressionParser::to_diagram_string(std::string_view raw_expr) 
 ParsedGuardResult GuardExpressionParser::parse(std::string_view raw_expr) {
     std::string expr = to_diagram_string(raw_expr);
     if (expr.empty()) {
-        return {"", {}};
+        return {"", {}, {}};
     }
 
     // Normalize textual boolean keywords
@@ -262,9 +290,9 @@ ParsedGuardResult GuardExpressionParser::parse(std::string_view raw_expr) {
         expr.find(')') == std::string_view::npos) {
         std::string ident = sanitize_identifier(expr);
         if (ident.empty()) {
-            return {"", {}};
+            return {"", {}, {}};
         }
-        return {ident, {ident}};
+        return {ident, {ident}, {{ident, expr}}};
     }
 
     // Full boolean expression parser

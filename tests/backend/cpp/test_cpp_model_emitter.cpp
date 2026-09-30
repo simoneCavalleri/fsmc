@@ -199,13 +199,25 @@ TEST(CppBackendValidator, UnloweredStructuralFeatures_AreRejectedBeforeEmission)
     model.initial_state = "ParallelRoot";
     model.add_state("ParallelRoot", "", StateKind::Parallel);
     model.add_state(StateNode{"Worker", "", "ParallelRoot", StateKind::Atomic});
-    model.find_state_mut("ParallelRoot")->do_activity = "background_worker";
+    model.add_state("TermState", "", StateKind::Terminate);
 
     fsm::diagnostic::DiagnosticEngine diagnostics;
     EXPECT_FALSE(CppBackendValidator::validate_model(model, diagnostics));
     ASSERT_EQ(diagnostics.get_diagnostics().size(), 2u);
     EXPECT_EQ(diagnostics.get_diagnostics()[0].code, "ECPP001");
-    EXPECT_EQ(diagnostics.get_diagnostics()[1].code, "ECPP006");
+    EXPECT_EQ(diagnostics.get_diagnostics()[1].code, "ECPP005");
+}
+
+TEST(CppBackendValidator, DoActivity_IsAcceptedByCxxBackend) {
+    FsmIr model;
+    model.name = "ActivityModel";
+    model.initial_state = "Active";
+    model.add_state("Active");
+    model.find_state_mut("Active")->do_activity = "background_worker";
+
+    fsm::diagnostic::DiagnosticEngine diagnostics;
+    EXPECT_TRUE(CppBackendValidator::validate_model(model, diagnostics));
+    EXPECT_TRUE(diagnostics.get_diagnostics().empty());
 }
 
 /**
@@ -345,7 +357,46 @@ TEST(CppGenerator, ChoiceInStateList_IsInlinedAutomaticallyBeforeValidation) {
         EXPECT_FALSE(code.empty());
         EXPECT_NE(code.find("TargetA"), std::string::npos);
         EXPECT_NE(code.find("TargetB"), std::string::npos);
+        EXPECT_EQ(code.find("struct else"), std::string::npos);
+        EXPECT_EQ(code.find("struct default"), std::string::npos);
     });
+}
+
+/**
+ * @brief Verify that choice branches with [else] or [default] do not emit 'struct else' or 'struct default'.
+ */
+TEST(CppModelEmitter, ElseAndDefaultGuards_DoNotEmitReservedKeywordGuardStructs) {
+    FsmIr model;
+    model.name = "ElseGuardMachine";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("BranchA");
+    model.add_state("BranchB");
+    model.add_state("BranchC");
+
+    TransitionEdge t1("Idle", "BranchA", "EvBranch");
+    t1.guard = "ConditionX";
+    model.add_transition(t1);
+
+    TransitionEdge t2("Idle", "BranchB", "EvBranch");
+    t2.guard = "else";
+    model.add_transition(t2);
+
+    TransitionEdge t3("Idle", "BranchC", "EvBranch");
+    t3.guard = "default";
+    model.add_transition(t3);
+
+    model.guards.emplace_back("ConditionX");
+
+    GeneratorOptions opts;
+    opts.standalone = false;
+    std::string code = CppGenerator::generate_header(model, opts);
+
+    EXPECT_EQ(code.find("struct else"), std::string::npos);
+    EXPECT_EQ(code.find("struct default"), std::string::npos);
+    EXPECT_NE(code.find("::fsm::row<Idle, EvBranch, BranchB>"), std::string::npos);
+    EXPECT_NE(code.find("::fsm::row<Idle, EvBranch, BranchC>"), std::string::npos);
+    EXPECT_NE(code.find("::fsm::row<Idle, EvBranch, BranchA>::when<ConditionX>"), std::string::npos);
 }
 
 /**
@@ -638,3 +689,97 @@ TEST(CppModelEmitter, ActionAssignments_ReadingFromInPorts_EmitsUncommentedInPar
     EXPECT_NE(str.find("void operator()(const InPorts& in, OutPorts& out, Registers& /*reg*/)"), std::string::npos);
     EXPECT_NE(str.find("out.power = in.temp * 2.0f;"), std::string::npos);
 }
+
+/**
+ * @brief Verify emission of seq_ combinator for transitions with both condition and transition actions.
+ */
+TEST(CppModelEmitter, DualActionExecution_EmitsSeqCombinator) {
+    FsmIr model;
+    model.name = "DualActionMachine";
+    model.initial_state = "Idle";
+
+    StateNode st_idle{"Idle"};
+    StateNode st_active{"Active"};
+    model.states.push_back(st_idle);
+    model.states.push_back(st_active);
+
+    TransitionEdge t;
+    t.source = "Idle";
+    t.target = "Active";
+    t.event = "Trigger";
+    t.condition_action = ActionSignature("LogCondition");
+    t.transition_action = ActionSignature("ExecuteTransition");
+    model.transitions.push_back(t);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = true;
+    CppModelEmitter::emit_model(out, model, opts);
+    std::string str = out.str();
+
+    EXPECT_NE(str.find("::fsm::seq_<LogCondition, ExecuteTransition>"), std::string::npos);
+}
+
+/**
+ * @brief Verify emission of do_activity lifecycle hook inside state struct.
+ */
+TEST(CppModelEmitter, DoActivityHook_EmittedInStateDefinition) {
+    FsmIr model;
+    model.name = "ActivityFsm";
+    model.initial_state = "Running";
+
+    StateNode running{"Running"};
+    running.do_activity = "PollSensors";
+    model.states.push_back(running);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = true;
+    CppModelEmitter::emit_model(out, model, opts);
+    std::string str = out.str();
+
+    EXPECT_NE(str.find("void do_activity(const InPorts& in, OutPorts& out, Registers& reg, Services& srv) const"),
+              std::string::npos);
+    EXPECT_NE(str.find("PollSensors"), std::string::npos);
+}
+
+/**
+ * @brief Verify that relational guard expressions qualify variables with reg. and ports with in.
+ */
+TEST(CppModelEmitter, RelationalGuardExpressions_QualifiedWithDatapathAndPorts) {
+    FsmIr model;
+    model.name = "GuardFsm";
+    model.initial_state = "S1";
+
+    PortDefinition in_p("batteryLevel", "float", PortDirection::In);
+    model.ports.push_back(in_p);
+
+    model.variables.emplace_back("faultCount", "uint32_t", "0");
+
+    StateNode s1{"S1"};
+    StateNode s2{"S2"};
+    model.states.push_back(s1);
+    model.states.push_back(s2);
+
+    TransitionEdge t;
+    t.source = "S1";
+    t.target = "S2";
+    t.event = "EvTrigger";
+    t.guard = "faultCount_lt_3";
+    model.transitions.push_back(t);
+
+    model.add_guard("faultCount_lt_3", "", "faultCount < 3", "faultCount < 3");
+    model.add_guard("batteryCheck", "", "batteryLevel > 11.5", "batteryLevel > 11.5");
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = true;
+    CppModelEmitter::emit_model(out, model, opts);
+    std::string str = out.str();
+
+    EXPECT_NE(str.find("struct faultCount_lt_3"), std::string::npos);
+    EXPECT_NE(str.find("return reg.faultCount < 3;"), std::string::npos);
+    EXPECT_NE(str.find("struct batteryCheck"), std::string::npos);
+    EXPECT_NE(str.find("return in.batteryLevel > 11.5;"), std::string::npos);
+}
+

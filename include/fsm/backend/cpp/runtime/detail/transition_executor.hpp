@@ -98,8 +98,8 @@ constexpr void call_initial_ancestor_on_enter(const In& in, Out& out, Registers&
 }
 
 template <typename Target, typename In, typename Out, typename Registers, typename Services>
-constexpr void call_initial_hierarchical_on_enter(Target& target_state, const In& in, Out& out,
-                                                  Registers& reg, Services& srv) {
+constexpr void call_initial_hierarchical_on_enter(Target& target_state, const In& in, Out& out, Registers& reg,
+                                                  Services& srv) {
     if constexpr (has_parent_type<Target>::value) {
         using Parent = typename Target::parent_type;
         call_initial_ancestor_on_enter<Parent>(in, out, reg, srv);

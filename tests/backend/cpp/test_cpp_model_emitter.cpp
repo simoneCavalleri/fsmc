@@ -851,6 +851,3 @@ TEST(CppModelEmitter, SignalWithAttributes_EmitsDefaultAndParameterizedConstruct
     EXPECT_NE(str.find("constexpr explicit CmdThrottle(float level_) : level(std::move(level_)) {}"),
               std::string::npos);
 }
-
-
-

@@ -232,9 +232,8 @@ TEST(ScxmlParser, RawBooleanConditions_PreservedInGuardsAndSerialized) {
     // Check that atomic guard details were registered in model.guards
     bool found_expr = false;
     for (const auto& gm : model.guards) {
-        if (gm.raw_expression.has_value() &&
-            (gm.raw_expression->find("voltage > 12.5") != std::string::npos ||
-             gm.raw_expression->find("current < 2.0") != std::string::npos)) {
+        if (gm.raw_expression.has_value() && (gm.raw_expression->find("voltage > 12.5") != std::string::npos ||
+                                              gm.raw_expression->find("current < 2.0") != std::string::npos)) {
             found_expr = true;
             break;
         }
@@ -248,4 +247,3 @@ TEST(ScxmlParser, RawBooleanConditions_PreservedInGuardsAndSerialized) {
 }
 
 }  // namespace
-

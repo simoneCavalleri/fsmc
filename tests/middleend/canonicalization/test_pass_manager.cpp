@@ -110,4 +110,3 @@ TEST(PassManager, SampledChangeTriggerAndSubmachineWrappers_ExecuteCleanly) {
 }
 
 }  // namespace
-

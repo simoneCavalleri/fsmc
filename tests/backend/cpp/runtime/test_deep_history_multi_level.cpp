@@ -174,11 +174,11 @@ struct OutsideState {
 struct EvInterrupt {};
 struct EvResume {};
 
-using AncestorHistoryTable = fsm::transition_table<
-    fsm::transition<AncestorLeaf, EvInterrupt, OutsideState>,
-    fsm::transition<OutsideState, EvResume, AncestorLeaf, fsm::no_action, fsm::history_is<AncestorGrandParent, AncestorParent>>,
-    fsm::transition<AncestorParent, EvInterrupt, OutsideState>
->;
+using AncestorHistoryTable =
+    fsm::transition_table<fsm::transition<AncestorLeaf, EvInterrupt, OutsideState>,
+                          fsm::transition<OutsideState, EvResume, AncestorLeaf, fsm::no_action,
+                                          fsm::history_is<AncestorGrandParent, AncestorParent>>,
+                          fsm::transition<AncestorParent, EvInterrupt, OutsideState>>;
 
 /**
  * @brief Verify that exiting AncestorLeaf records history for both AncestorParent and AncestorGrandParent.
@@ -226,8 +226,7 @@ struct EvPureRestore {};
 
 using PureTypeHistoryTable = fsm::transition_table<
     fsm::transition<PureLeaf, EvPureExit, PureIdle>,
-    fsm::transition<PureIdle, EvPureRestore, PureLeaf, fsm::no_action, fsm::history_is<PureRoot, PureMid>>
->;
+    fsm::transition<PureIdle, EvPureRestore, PureLeaf, fsm::no_action, fsm::history_is<PureRoot, PureMid>>>;
 
 TEST(DeepHistory, PureParentTypeHierarchy_NoParentStringFallback_RecordsAllAncestorsAndRestores) {
     fsm::fsm<PureTypeHistoryTable> sm;
@@ -292,4 +291,3 @@ TEST(DeepHistory, PureParentTypeHierarchy_SpscFsm_SupportsTypedHistory) {
 }
 
 }  // namespace
-

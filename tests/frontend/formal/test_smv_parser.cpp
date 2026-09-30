@@ -300,16 +300,13 @@ ASSIGN
     EXPECT_NE(t1.guard->find("guard_"), std::string::npos)
         << "Guard name should be a synthetic identifier, not a mangled expression";
     // Operator characters from the original boolean expression must NOT appear in the guard name.
-    EXPECT_EQ(t1.guard->find(">"), std::string::npos)
-        << "Operator '>' must not appear in guard name";
-    EXPECT_EQ(t1.guard->find("!"), std::string::npos)
-        << "Operator '!' must not appear in guard name";
+    EXPECT_EQ(t1.guard->find(">"), std::string::npos) << "Operator '>' must not appear in guard name";
+    EXPECT_EQ(t1.guard->find("!"), std::string::npos) << "Operator '!' must not appear in guard name";
 
     // The raw boolean expression must be preserved intact in model.guards.
     bool found_battery_expr = false;
     for (const auto& gm : model.guards) {
-        if (gm.raw_expression.has_value() &&
-            gm.raw_expression->find("battery_mv") != std::string::npos) {
+        if (gm.raw_expression.has_value() && gm.raw_expression->find("battery_mv") != std::string::npos) {
             found_battery_expr = true;
             EXPECT_NE(gm.raw_expression->find("3200"), std::string::npos)
                 << "Guard raw_expression must preserve the original numeric literal";
@@ -385,8 +382,7 @@ ASSIGN
     ASSERT_FALSE(model.guards.empty());
     bool found_flags = false;
     for (const auto& gm : model.guards) {
-        if (gm.raw_expression.has_value() &&
-            gm.raw_expression->find("flag1") != std::string::npos &&
+        if (gm.raw_expression.has_value() && gm.raw_expression->find("flag1") != std::string::npos &&
             gm.raw_expression->find("flag2") != std::string::npos) {
             found_flags = true;
             break;
@@ -396,4 +392,3 @@ ASSIGN
 }
 
 }  // namespace
-

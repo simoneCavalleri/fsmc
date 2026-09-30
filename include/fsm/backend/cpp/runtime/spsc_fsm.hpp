@@ -71,8 +71,8 @@ constexpr bool is_substate_by_name_variant_index_impl(std::size_t idx, std::stri
 
 template <typename Variant>
 constexpr bool is_substate_by_name_variant_index(std::size_t idx, std::string_view name) noexcept {
-    return is_substate_by_name_variant_index_impl<Variant>(
-        idx, name, std::make_index_sequence<std::variant_size_v<Variant>>{});
+    return is_substate_by_name_variant_index_impl<Variant>(idx, name,
+                                                           std::make_index_sequence<std::variant_size_v<Variant>>{});
 }
 }  // namespace detail
 
@@ -299,9 +299,7 @@ class spsc_fsm {
         seq_.fetch_add(1, std::memory_order_release);
     }
 
-    void clear_history() noexcept {
-        fsm_.clear_history();
-    }
+    void clear_history() noexcept { fsm_.clear_history(); }
 
     [[nodiscard]] std::string_view get_history(std::string_view parent) const noexcept {
         return fsm_.get_history(parent);
@@ -312,13 +310,9 @@ class spsc_fsm {
         return fsm_.template get_history<ParentState>();
     }
 
-    void clear_deferred() noexcept {
-        fsm_.clear_deferred();
-    }
+    void clear_deferred() noexcept { fsm_.clear_deferred(); }
 
-    void clear_deferred_events() noexcept {
-        fsm_.clear_deferred_events();
-    }
+    void clear_deferred_events() noexcept { fsm_.clear_deferred_events(); }
 
     void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
         fsm_.set_invariant_violation_handler(std::move(handler));

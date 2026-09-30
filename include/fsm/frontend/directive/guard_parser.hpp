@@ -29,9 +29,9 @@ struct AtomicGuardInfo {
  * @brief Analysis payload for a parsed transition guard condition.
  */
 struct ParsedGuardResult {
-    std::string cpp_type;                                ///< Target C++ boolean/predicate type signature
-    std::vector<std::string> atomic_guards;              ///< Decomposed atomic condition identifiers
-    std::vector<AtomicGuardInfo> atomic_guard_details;   ///< Decomposed atomic guards with expressions
+    std::string cpp_type;                               ///< Target C++ boolean/predicate type signature
+    std::vector<std::string> atomic_guards;             ///< Decomposed atomic condition identifiers
+    std::vector<AtomicGuardInfo> atomic_guard_details;  ///< Decomposed atomic guards with expressions
 };
 
 /**

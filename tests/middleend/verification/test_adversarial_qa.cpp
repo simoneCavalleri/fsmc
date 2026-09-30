@@ -64,7 +64,8 @@ TEST(AdversarialQA, HierarchicalOrphanSubState_DetectedAsUnreachable) {
             break;
         }
     }
-    EXPECT_TRUE(found_orphan_warning) << "Validator failed to flag isolated sub-state SubOrphan inside composite state!";
+    EXPECT_TRUE(found_orphan_warning)
+        << "Validator failed to flag isolated sub-state SubOrphan inside composite state!";
 }
 
 // ============================================================================
@@ -94,7 +95,8 @@ TEST(AdversarialQA, TrapStateNamedPending_DetectedAsDeadlock) {
             break;
         }
     }
-    EXPECT_TRUE(found_deadlock_warning) << "Validator suppressed deadlock warning for 'Pending' due to 'end' substring match!";
+    EXPECT_TRUE(found_deadlock_warning)
+        << "Validator suppressed deadlock warning for 'Pending' due to 'end' substring match!";
 }
 
 TEST(AdversarialQA, StateKindFinalNamedSuccess_NotReportedAsDeadlock) {
@@ -104,7 +106,7 @@ TEST(AdversarialQA, StateKindFinalNamedSuccess_NotReportedAsDeadlock) {
 
     StateNode init("Init", "Init");
     StateNode success("Success", "Success");
-    success.kind = StateKind::Final; // Explicitly marked as Final
+    success.kind = StateKind::Final;  // Explicitly marked as Final
 
     ir.states.push_back(init);
     ir.states.push_back(success);
@@ -120,7 +122,8 @@ TEST(AdversarialQA, StateKindFinalNamedSuccess_NotReportedAsDeadlock) {
             break;
         }
     }
-    EXPECT_FALSE(has_deadlock_on_success) << "Validator produced false positive deadlock warning on explicit StateKind::Final 'Success'!";
+    EXPECT_FALSE(has_deadlock_on_success)
+        << "Validator produced false positive deadlock warning on explicit StateKind::Final 'Success'!";
 }
 
 // ============================================================================
@@ -178,7 +181,8 @@ TEST(AdversarialQA, NonDeterministicConflict_DetectedWithTriggerVariant) {
             break;
         }
     }
-    EXPECT_TRUE(found_determinism_conflict) << "Validator failed to detect determinism conflict on TriggerVariant transitions!";
+    EXPECT_TRUE(found_determinism_conflict)
+        << "Validator failed to detect determinism conflict on TriggerVariant transitions!";
 }
 
 // ============================================================================
@@ -200,7 +204,7 @@ TEST(AdversarialQA, ChoicePseudostate_SingleGuardedBranchWithoutElse_EmitsSafety
     ir.choice_nodes.push_back(c1);
 
     ir.transitions.emplace_back("Init", "C1", "Step");
-    
+
     // Only 1 outgoing branch from choice, and it is guarded!
     TransitionEdge t_choice("C1", "Target", "");
     t_choice.guard = "velocity > 100";
@@ -262,11 +266,11 @@ TEST(AdversarialQA, CircularAncestry_DetectedByValidatorAndPassDoesNotHang) {
 
     StateNode a("StateA", "StateA");
     a.is_composite = true;
-    a.parent_state = "StateB"; // A child of B
+    a.parent_state = "StateB";  // A child of B
 
     StateNode b("StateB", "StateB");
     b.is_composite = true;
-    b.parent_state = "StateA"; // B child of A (Cycle!)
+    b.parent_state = "StateA";  // B child of A (Cycle!)
 
     ir.states.push_back(a);
     ir.states.push_back(b);
@@ -368,4 +372,3 @@ TEST(AdversarialQA, BoundarySingularity_FlaggedByGuardSatisfiabilityPass) {
     EXPECT_TRUE(found_overlap_warning)
         << "GuardSatisfiabilityPass failed to flag ambiguous boundary overlap on pressure == 10.0!";
 }
-

@@ -547,4 +547,3 @@ TEST(EFSMDataPathPass, UnsatisfiableGuard_PrunesDeadTransitionWhenOptimizationEn
 }
 
 }  // namespace
-

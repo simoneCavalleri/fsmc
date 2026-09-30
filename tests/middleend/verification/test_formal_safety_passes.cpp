@@ -99,7 +99,8 @@ TEST(LivelockAnalysis, ZeroTimeAutonomousCycles_EmitsLivelockDiagnostic) {
 }
 
 /**
- * @brief Verify LivelockAnalysisPass and FsmValidator catch cycles with explicit "anonymous_event" / "completion_event".
+ * @brief Verify LivelockAnalysisPass and FsmValidator catch cycles with explicit "anonymous_event" /
+ * "completion_event".
  * @scenario Cycle s1 -> s2 -> s1 where edges use string names "anonymous_event" and "completion_event".
  * @expected Both LivelockAnalysisPass and FsmValidator report livelock diagnostics.
  */

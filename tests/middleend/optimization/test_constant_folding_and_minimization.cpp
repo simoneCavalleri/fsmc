@@ -249,4 +249,3 @@ TEST(StateMinimization, ActivityAndInvariantDifferences_PreventMerger) {
 }
 
 }  // namespace
-

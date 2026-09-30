@@ -73,10 +73,10 @@ struct is_substate_of_impl : std::false_type {};
 
 template <typename SubState, typename SuperState>
 struct is_substate_of_impl<SubState, SuperState, std::void_t<typename SubState::parent_type>> {
-    static constexpr bool value = std::is_same_v<typename SubState::parent_type, SuperState> ||
-                                  (get_state_name_static<SuperState>() ==
-                                   get_state_name_static<typename SubState::parent_type>()) ||
-                                  is_substate_of_impl<typename SubState::parent_type, SuperState>::value;
+    static constexpr bool value =
+        std::is_same_v<typename SubState::parent_type, SuperState> ||
+        (get_state_name_static<SuperState>() == get_state_name_static<typename SubState::parent_type>()) ||
+        is_substate_of_impl<typename SubState::parent_type, SuperState>::value;
 };
 
 template <typename SubState, typename SuperState, typename = void>
@@ -84,8 +84,8 @@ struct is_substate_by_name : std::false_type {};
 
 template <typename SubState, typename SuperState>
 struct is_substate_by_name<SubState, SuperState, std::void_t<decltype(SubState::parent)>> {
-    static constexpr bool value = (get_state_name_static<SuperState>() == SubState::parent) ||
-                                  (get_type_name<SuperState>() == SubState::parent);
+    static constexpr bool value =
+        (get_state_name_static<SuperState>() == SubState::parent) || (get_type_name<SuperState>() == SubState::parent);
 };
 }  // namespace detail
 
@@ -145,9 +145,8 @@ struct ancestor_depth<State, std::void_t<typename State::parent_type>>
 
 template <typename State>
 struct state_parent_capacity
-    : std::integral_constant<std::size_t,
-                             (has_parent_type<State>::value ? ancestor_depth<State>::value
-                                                            : (has_parent_name<State>::value ? 1 : 0))> {};
+    : std::integral_constant<std::size_t, (has_parent_type<State>::value ? ancestor_depth<State>::value
+                                                                         : (has_parent_name<State>::value ? 1 : 0))> {};
 }  // namespace detail
 
 // Introspection for History & Deferred events across unique state list
@@ -176,8 +175,8 @@ struct state_or_ancestor_has_deferred : has_deferred_events<State> {};
 
 template <typename State>
 struct state_or_ancestor_has_deferred<State, std::void_t<typename State::parent_type>> {
-    static constexpr bool value = has_deferred_events<State>::value ||
-                                  state_or_ancestor_has_deferred<typename State::parent_type>::value;
+    static constexpr bool value =
+        has_deferred_events<State>::value || state_or_ancestor_has_deferred<typename State::parent_type>::value;
 };
 }  // namespace detail
 

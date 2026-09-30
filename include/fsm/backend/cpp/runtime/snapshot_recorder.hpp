@@ -29,7 +29,8 @@ struct snapshot_entry {
     std::uint32_t checksum{0};
 
     [[nodiscard]] constexpr bool is_valid() const noexcept {
-        if (size == 0 || size > MaxSnapshotSize) return false;
+        if (size == 0 || size > MaxSnapshotSize)
+            return false;
         return compute_checksum(data.data(), size) == checksum;
     }
 };
@@ -139,7 +140,8 @@ class snapshot_recorder {
      * @brief Returns the most recently recorded snapshot entry, if any.
      */
     [[nodiscard]] const entry_type* latest() const noexcept {
-        if (count_ == 0) return nullptr;
+        if (count_ == 0)
+            return nullptr;
         std::size_t idx = (head_ + Capacity - 1) % Capacity;
         return &buffer_[idx];
     }

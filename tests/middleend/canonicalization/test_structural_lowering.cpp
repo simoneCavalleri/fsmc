@@ -666,7 +666,7 @@ TEST(ConnectiveJunctionChaining, CyclicJunctions_ReportsDiagnosticError) {
 
     ir.transitions.push_back(TransitionEdge("StateA", "J1", "Ev"));
     ir.transitions.push_back(TransitionEdge("J1", "J2", ""));
-    ir.transitions.push_back(TransitionEdge("J2", "J1", "")); // Cycle!
+    ir.transitions.push_back(TransitionEdge("J2", "J1", ""));  // Cycle!
     ir.transitions.push_back(TransitionEdge("J2", "StateB", ""));
 
     bool res = ConnectiveJunctionChainingPass::run(ir, diag);
@@ -704,6 +704,3 @@ TEST(ConnectiveJunctionChaining, SelfTransitionThroughJunction_PreservesExternal
     EXPECT_EQ(comp.guard.value_or(""), "flag == true");
     EXPECT_EQ(comp.kind, TransitionEdgeKind::External);
 }
-
-
-

@@ -405,11 +405,9 @@ struct OnHierAction {
     void operator()(HierRegisters& reg) const { reg.hier_event_handled = true; }
 };
 
-using HierDeferredTable = ::fsm::transition_table<
-    ::fsm::row<NestedSub1, AdvanceStep, NestedSub2>,
-    ::fsm::row<NestedSub2, FinishProcessing, FinalState>,
-    ::fsm::row<FinalState, HierEvent, FinalState>::then<OnHierAction>
->;
+using HierDeferredTable = ::fsm::transition_table<::fsm::row<NestedSub1, AdvanceStep, NestedSub2>,
+                                                  ::fsm::row<NestedSub2, FinishProcessing, FinalState>,
+                                                  ::fsm::row<FinalState, HierEvent, FinalState>::then<OnHierAction>>;
 
 /**
  * @brief Verify that substates inherit deferred events declared on their parent / ancestor composite states.

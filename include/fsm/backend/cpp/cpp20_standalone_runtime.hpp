@@ -1383,10 +1383,10 @@ struct is_substate_of_impl : std::false_type {};
 
 template <typename SubState, typename SuperState>
 struct is_substate_of_impl<SubState, SuperState, std::void_t<typename SubState::parent_type>> {
-    static constexpr bool value = std::is_same_v<typename SubState::parent_type, SuperState> ||
-                                  (get_state_name_static<SuperState>() ==
-                                   get_state_name_static<typename SubState::parent_type>()) ||
-                                  is_substate_of_impl<typename SubState::parent_type, SuperState>::value;
+    static constexpr bool value =
+        std::is_same_v<typename SubState::parent_type, SuperState> ||
+        (get_state_name_static<SuperState>() == get_state_name_static<typename SubState::parent_type>()) ||
+        is_substate_of_impl<typename SubState::parent_type, SuperState>::value;
 };
 
 template <typename SubState, typename SuperState, typename = void>
@@ -1394,8 +1394,8 @@ struct is_substate_by_name : std::false_type {};
 
 template <typename SubState, typename SuperState>
 struct is_substate_by_name<SubState, SuperState, std::void_t<decltype(SubState::parent)>> {
-    static constexpr bool value = (get_state_name_static<SuperState>() == SubState::parent) ||
-                                  (get_type_name<SuperState>() == SubState::parent);
+    static constexpr bool value =
+        (get_state_name_static<SuperState>() == SubState::parent) || (get_type_name<SuperState>() == SubState::parent);
 };
 }  // namespace detail
 
@@ -1455,9 +1455,8 @@ struct ancestor_depth<State, std::void_t<typename State::parent_type>>
 
 template <typename State>
 struct state_parent_capacity
-    : std::integral_constant<std::size_t,
-                             (has_parent_type<State>::value ? ancestor_depth<State>::value
-                                                            : (has_parent_name<State>::value ? 1 : 0))> {};
+    : std::integral_constant<std::size_t, (has_parent_type<State>::value ? ancestor_depth<State>::value
+                                                                         : (has_parent_name<State>::value ? 1 : 0))> {};
 }  // namespace detail
 
 // Introspection for History & Deferred events across unique state list
@@ -1486,8 +1485,8 @@ struct state_or_ancestor_has_deferred : has_deferred_events<State> {};
 
 template <typename State>
 struct state_or_ancestor_has_deferred<State, std::void_t<typename State::parent_type>> {
-    static constexpr bool value = has_deferred_events<State>::value ||
-                                  state_or_ancestor_has_deferred<typename State::parent_type>::value;
+    static constexpr bool value =
+        has_deferred_events<State>::value || state_or_ancestor_has_deferred<typename State::parent_type>::value;
 };
 }  // namespace detail
 
@@ -3253,8 +3252,8 @@ constexpr void call_initial_ancestor_on_enter(const In& in, Out& out, Registers&
 }
 
 template <typename Target, typename In, typename Out, typename Registers, typename Services>
-constexpr void call_initial_hierarchical_on_enter(Target& target_state, const In& in, Out& out,
-                                                  Registers& reg, Services& srv) {
+constexpr void call_initial_hierarchical_on_enter(Target& target_state, const In& in, Out& out, Registers& reg,
+                                                  Services& srv) {
     if constexpr (has_parent_type<Target>::value) {
         using Parent = typename Target::parent_type;
         call_initial_ancestor_on_enter<Parent>(in, out, reg, srv);
@@ -3569,7 +3568,8 @@ struct snapshot_entry {
     std::uint32_t checksum{0};
 
     [[nodiscard]] constexpr bool is_valid() const noexcept {
-        if (size == 0 || size > MaxSnapshotSize) return false;
+        if (size == 0 || size > MaxSnapshotSize)
+            return false;
         return compute_checksum(data.data(), size) == checksum;
     }
 };
@@ -3679,7 +3679,8 @@ class snapshot_recorder {
      * @brief Returns the most recently recorded snapshot entry, if any.
      */
     [[nodiscard]] const entry_type* latest() const noexcept {
-        if (count_ == 0) return nullptr;
+        if (count_ == 0)
+            return nullptr;
         std::size_t idx = (head_ + Capacity - 1) % Capacity;
         return &buffer_[idx];
     }
@@ -3878,9 +3879,8 @@ class fsm {
     // ========================================================================
 
     step_result step(const in_ports_type& in, out_ports_type& out, services_type& srv) {
-        std::visit([this, &in, &out, &srv](auto& st) {
-            call_do_activity(st, in, out, this->registers_, srv);
-        }, current_state_);
+        std::visit([this, &in, &out, &srv](auto& st) { call_do_activity(st, in, out, this->registers_, srv); },
+                   current_state_);
         auto res = dispatch_direct_ports(anonymous_event{}, in, out, srv);
         if constexpr (has_deferred) {
             if (res.is_success()) {
@@ -4098,9 +4098,7 @@ class fsm {
         }
     }
 
-    void clear_deferred_events() noexcept {
-        clear_deferred();
-    }
+    void clear_deferred_events() noexcept { clear_deferred(); }
 
     /**
      * @brief Resets the state machine to its initial state, clearing active history,
@@ -4240,11 +4238,13 @@ class fsm {
             observer_.advance_tick(delta_ms);
         }
         invariant_mgr_.advance_time(delta_ms);
-        std::visit([this](auto& st) {
-            in_ports_type dummy_in{};
-            out_ports_type dummy_out{};
-            call_do_activity(st, dummy_in, dummy_out, this->registers_, this->resolve_services());
-        }, current_state_);
+        std::visit(
+            [this](auto& st) {
+                in_ports_type dummy_in{};
+                out_ports_type dummy_out{};
+                call_do_activity(st, dummy_in, dummy_out, this->registers_, this->resolve_services());
+            },
+            current_state_);
         auto expired = timer_mgr_.tick(delta_ms, [this, &on_expired](std::uint32_t timer_id) {
             dispatch_timed_timer(timer_id);
             on_expired(timer_id);
@@ -4512,8 +4512,7 @@ class fsm {
         out_ports_type dummy_out{};
         std::visit(
             [this, &dummy_in, &dummy_out](auto& state) {
-                detail::call_initial_hierarchical_on_enter(
-                    state, dummy_in, dummy_out, registers_, resolve_services());
+                detail::call_initial_hierarchical_on_enter(state, dummy_in, dummy_out, registers_, resolve_services());
             },
             current_state_);
         invariant_mgr_.reset();
@@ -6053,8 +6052,8 @@ constexpr bool is_substate_by_name_variant_index_impl(std::size_t idx, std::stri
 
 template <typename Variant>
 constexpr bool is_substate_by_name_variant_index(std::size_t idx, std::string_view name) noexcept {
-    return is_substate_by_name_variant_index_impl<Variant>(
-        idx, name, std::make_index_sequence<std::variant_size_v<Variant>>{});
+    return is_substate_by_name_variant_index_impl<Variant>(idx, name,
+                                                           std::make_index_sequence<std::variant_size_v<Variant>>{});
 }
 }  // namespace detail
 
@@ -6281,9 +6280,7 @@ class spsc_fsm {
         seq_.fetch_add(1, std::memory_order_release);
     }
 
-    void clear_history() noexcept {
-        fsm_.clear_history();
-    }
+    void clear_history() noexcept { fsm_.clear_history(); }
 
     [[nodiscard]] std::string_view get_history(std::string_view parent) const noexcept {
         return fsm_.get_history(parent);
@@ -6294,13 +6291,9 @@ class spsc_fsm {
         return fsm_.template get_history<ParentState>();
     }
 
-    void clear_deferred() noexcept {
-        fsm_.clear_deferred();
-    }
+    void clear_deferred() noexcept { fsm_.clear_deferred(); }
 
-    void clear_deferred_events() noexcept {
-        fsm_.clear_deferred_events();
-    }
+    void clear_deferred_events() noexcept { fsm_.clear_deferred_events(); }
 
     void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
         fsm_.set_invariant_violation_handler(std::move(handler));

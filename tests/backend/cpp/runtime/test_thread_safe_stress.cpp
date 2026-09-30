@@ -226,4 +226,3 @@ TEST(ThreadSafeFsm, HierarchicalIsIn_AndReset) {
 }
 
 }  // namespace
-

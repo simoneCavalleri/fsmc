@@ -601,12 +601,10 @@ TEST(Sysml2Parser, FractionalAfterDuration_ConvertedWithoutTruncation) {
 
     ASSERT_EQ(model.transitions.size(), 1u);
     const auto& tr = model.transitions[0];
-    EXPECT_EQ(tr.event, "after_1500ms")
-        << "Fractional 1.5 s must produce 1500 ms, not 1 ms";
+    EXPECT_EQ(tr.event, "after_1500ms") << "Fractional 1.5 s must produce 1500 ms, not 1 ms";
     ASSERT_TRUE(std::holds_alternative<TimeTrigger>(tr.trigger));
     const auto& tt = std::get<TimeTrigger>(tr.trigger);
-    EXPECT_EQ(tt.duration_ms, 1500u)
-        << "TimeTrigger duration must be 1500 ms for `after 1.5 s`";
+    EXPECT_EQ(tt.duration_ms, 1500u) << "TimeTrigger duration must be 1500 ms for `after 1.5 s`";
 }
 
 /**
@@ -632,8 +630,7 @@ TEST(Sysml2Parser, FractionalMillisAfterDuration_RoundedToNearest) {
 
     ASSERT_EQ(model.transitions.size(), 1u);
     const auto& tr = model.transitions[0];
-    EXPECT_EQ(tr.event, "after_501ms")
-        << "500.5 ms must round to 501 ms, not truncate to 500 ms";
+    EXPECT_EQ(tr.event, "after_501ms") << "500.5 ms must round to 501 ms, not truncate to 500 ms";
     ASSERT_TRUE(std::holds_alternative<TimeTrigger>(tr.trigger));
     const auto& tt = std::get<TimeTrigger>(tr.trigger);
     EXPECT_EQ(tt.duration_ms, 501u);

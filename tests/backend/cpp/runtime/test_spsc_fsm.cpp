@@ -245,4 +245,3 @@ TEST(SpscFsm, HierarchicalIsIn_AndReset) {
 }
 
 }  // namespace
-

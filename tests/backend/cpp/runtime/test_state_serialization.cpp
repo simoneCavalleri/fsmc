@@ -333,11 +333,11 @@ TEST(SnapshotRecorder, RewindToCheckpoint_RecoversSavedTag) {
     MotorFSM machine;
     fsm::snapshot_recorder<8, 256> recorder;
 
-    EXPECT_TRUE(recorder.record(machine, 100)); // Checkpoint 100 in Idle
+    EXPECT_TRUE(recorder.record(machine, 100));  // Checkpoint 100 in Idle
 
     machine.dispatch(StartEvt{});
     machine.registers().speed_rpm = 3000;
-    EXPECT_TRUE(recorder.record(machine, 200)); // Checkpoint 200 in Running
+    EXPECT_TRUE(recorder.record(machine, 200));  // Checkpoint 200 in Running
 
     machine.dispatch(PauseEvt{});
     EXPECT_TRUE(machine.is_in_state<Paused>());

@@ -146,7 +146,6 @@ class ConnectiveJunctionChainingPassWrapper : public IPass {
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };
 
-
 class ModelSafetyVerifierPass : public IPass {
   public:
     [[nodiscard]] std::string name() const override;

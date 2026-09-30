@@ -65,7 +65,9 @@ TEST(DiagnosticEngine, FormatOutput_GitHubAndJson) {
 
     // GitHub Actions format
     std::string gh_out = diag.render_to_format(DiagnosticFormat::GitHub);
-    EXPECT_NE(gh_out.find("::error file=fms.sysml,line=10,col=5,title=E0101::Deadlock trap state detected | Help: Provide at least one outgoing transition"), std::string::npos);
+    EXPECT_NE(gh_out.find("::error file=fms.sysml,line=10,col=5,title=E0101::Deadlock trap state detected | Help: "
+                          "Provide at least one outgoing transition"),
+              std::string::npos);
     EXPECT_NE(gh_out.find("::warning title=W0202::Unprioritized branch collision"), std::string::npos);
 
     // JSON format

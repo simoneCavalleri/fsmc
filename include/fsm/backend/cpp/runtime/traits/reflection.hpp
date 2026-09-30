@@ -216,4 +216,3 @@ constexpr bool state_is_or_descendant_of(const State& state, std::string_view ta
 }
 
 }  // namespace fsm
-

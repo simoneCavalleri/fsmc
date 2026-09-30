@@ -390,11 +390,9 @@ TEST(StateflowParser, FractionalDurationsAndGuardRawExpressions_Preserved) {
 
     // Verify guard preservation in model.guards
     ASSERT_FALSE(model.guards.empty());
-    auto it = std::find_if(model.guards.begin(), model.guards.end(),
-                           [](const GuardModel& gm) {
-                               return gm.raw_expression.has_value() &&
-                                      gm.raw_expression->find("temp >= 180.5") != std::string::npos;
-                           });
+    auto it = std::find_if(model.guards.begin(), model.guards.end(), [](const GuardModel& gm) {
+        return gm.raw_expression.has_value() && gm.raw_expression->find("temp >= 180.5") != std::string::npos;
+    });
     EXPECT_NE(it, model.guards.end());
 
     // Verify StateflowSerializer roundtrip preserves the predicate
@@ -405,4 +403,3 @@ TEST(StateflowParser, FractionalDurationsAndGuardRawExpressions_Preserved) {
 }
 
 }  // namespace
-

@@ -165,9 +165,8 @@ class fsm {
     // ========================================================================
 
     step_result step(const in_ports_type& in, out_ports_type& out, services_type& srv) {
-        std::visit([this, &in, &out, &srv](auto& st) {
-            call_do_activity(st, in, out, this->registers_, srv);
-        }, current_state_);
+        std::visit([this, &in, &out, &srv](auto& st) { call_do_activity(st, in, out, this->registers_, srv); },
+                   current_state_);
         auto res = dispatch_direct_ports(anonymous_event{}, in, out, srv);
         if constexpr (has_deferred) {
             if (res.is_success()) {
@@ -385,9 +384,7 @@ class fsm {
         }
     }
 
-    void clear_deferred_events() noexcept {
-        clear_deferred();
-    }
+    void clear_deferred_events() noexcept { clear_deferred(); }
 
     /**
      * @brief Resets the state machine to its initial state, clearing active history,
@@ -527,11 +524,13 @@ class fsm {
             observer_.advance_tick(delta_ms);
         }
         invariant_mgr_.advance_time(delta_ms);
-        std::visit([this](auto& st) {
-            in_ports_type dummy_in{};
-            out_ports_type dummy_out{};
-            call_do_activity(st, dummy_in, dummy_out, this->registers_, this->resolve_services());
-        }, current_state_);
+        std::visit(
+            [this](auto& st) {
+                in_ports_type dummy_in{};
+                out_ports_type dummy_out{};
+                call_do_activity(st, dummy_in, dummy_out, this->registers_, this->resolve_services());
+            },
+            current_state_);
         auto expired = timer_mgr_.tick(delta_ms, [this, &on_expired](std::uint32_t timer_id) {
             dispatch_timed_timer(timer_id);
             on_expired(timer_id);
@@ -799,8 +798,7 @@ class fsm {
         out_ports_type dummy_out{};
         std::visit(
             [this, &dummy_in, &dummy_out](auto& state) {
-                detail::call_initial_hierarchical_on_enter(
-                    state, dummy_in, dummy_out, registers_, resolve_services());
+                detail::call_initial_hierarchical_on_enter(state, dummy_in, dummy_out, registers_, resolve_services());
             },
             current_state_);
         invariant_mgr_.reset();

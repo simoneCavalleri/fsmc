@@ -481,13 +481,11 @@ using TimerCascadeB1 = fsm::after_ms<200>;
 using TimerCascadeB2 = fsm::after_ms<300>;
 using TimerCascadeB3 = fsm::after_ms<50>;
 
-using CascadeTable = fsm::transition_table<
-    fsm::transition<CascadeStateA, SlowCascadeA, CascadeStateC>,
-    fsm::transition<CascadeStateA, FastCascadeA, CascadeStateB>,
-    fsm::transition<CascadeStateB, TimerCascadeB1, CascadeStateC>,
-    fsm::transition<CascadeStateB, TimerCascadeB2, CascadeStateC>,
-    fsm::transition<CascadeStateB, TimerCascadeB3, CascadeStateD>
->;
+using CascadeTable = fsm::transition_table<fsm::transition<CascadeStateA, SlowCascadeA, CascadeStateC>,
+                                           fsm::transition<CascadeStateA, FastCascadeA, CascadeStateB>,
+                                           fsm::transition<CascadeStateB, TimerCascadeB1, CascadeStateC>,
+                                           fsm::transition<CascadeStateB, TimerCascadeB2, CascadeStateC>,
+                                           fsm::transition<CascadeStateB, TimerCascadeB3, CascadeStateD>>;
 
 /**
  * @brief Verify that expiring a timer in StateA and transitioning to StateB does not falsely advance
@@ -518,9 +516,7 @@ TEST(TimedTransitions, PeriodicTimer_ZeroInterval_DoesNotCrashWithSIGFPE) {
     fsm::deterministic_timer_manager<4> mgr;
     EXPECT_TRUE(mgr.start_timer(1, 0, /*periodic=*/true));
     std::size_t expired = 0;
-    EXPECT_NO_THROW({
-        expired = mgr.tick(10, [](std::uint32_t) {});
-    });
+    EXPECT_NO_THROW({ expired = mgr.tick(10, [](std::uint32_t) {}); });
     EXPECT_EQ(expired, 1U);
 }
 
@@ -540,11 +536,9 @@ struct EvSeqNext {
 using TimeoutSeqInit = fsm::after_ms<500>;
 using TimeoutSeqSecond = fsm::after_ms<300>;
 
-using SeqTable = fsm::transition_table<
-    fsm::transition<SeqInit, EvSeqNext, SeqSecond>,
-    fsm::transition<SeqInit, TimeoutSeqInit, SeqSecond>,
-    fsm::transition<SeqSecond, TimeoutSeqSecond, SeqFinal>
->;
+using SeqTable = fsm::transition_table<fsm::transition<SeqInit, EvSeqNext, SeqSecond>,
+                                       fsm::transition<SeqInit, TimeoutSeqInit, SeqSecond>,
+                                       fsm::transition<SeqSecond, TimeoutSeqSecond, SeqFinal>>;
 
 /**
  * @brief Verify sequential state transitions cancel old timers and cleanly arm target state timers.

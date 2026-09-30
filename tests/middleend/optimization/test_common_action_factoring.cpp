@@ -183,4 +183,3 @@ TEST(CommonActionFactoring, Pseudostates_NeverFactored) {
         EXPECT_EQ(t.transition_action->instructions.size(), 1u);
     }
 }
-

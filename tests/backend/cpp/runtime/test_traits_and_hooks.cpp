@@ -679,9 +679,7 @@ struct LcaLeafB1 {
 
 struct EvLcaCross {};
 
-using LcaCrossTable = fsm::transition_table<
-    fsm::transition<LcaLeafA1, EvLcaCross, LcaLeafB1>
->;
+using LcaCrossTable = fsm::transition_table<fsm::transition<LcaLeafA1, EvLcaCross, LcaLeafB1>>;
 
 /**
  * @brief Verify that transitioning across LCA boundaries executes parent on_exit and on_enter hooks.

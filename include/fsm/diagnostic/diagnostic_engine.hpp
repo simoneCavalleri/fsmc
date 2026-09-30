@@ -26,8 +26,10 @@ enum class DiagnosticSeverity : std::uint8_t { Note, Info = Note, Warning, Error
 enum class DiagnosticFormat : std::uint8_t { Text, Json, GitHub };
 
 [[nodiscard]] inline DiagnosticFormat parse_diagnostic_format(std::string_view fmt) {
-    if (fmt == "json") return DiagnosticFormat::Json;
-    if (fmt == "github" || fmt == "gh" || fmt == "actions") return DiagnosticFormat::GitHub;
+    if (fmt == "json")
+        return DiagnosticFormat::Json;
+    if (fmt == "github" || fmt == "gh" || fmt == "actions")
+        return DiagnosticFormat::GitHub;
     return DiagnosticFormat::Text;
 }
 

@@ -36,14 +36,14 @@ struct FsmcOptions {
     bool thread_safe = true;
     bool include_stubs = true;
     bool verify_mode = false;
-    std::string verify_engine = "auto";     // --engine=auto|nuxmv|internal
-    std::string ltl_spec;                   // --ltl "<formula>"
-    std::string ctl_spec;                   // --ctl "<formula>"
-    std::string pipe_through_cmd;           // --pipe-through "<cmd>"
-    std::vector<std::string> pass_plugins;  // --load-pass-plugin "<path.so>"
-    std::string emit_test_harness;          // --emit-test-harness <file>
-    std::string emit_sidecar;               // --emit-sidecar <file>
-    std::string diagnostic_format = "text"; // --diagnostic-format <text|json|github>
+    std::string verify_engine = "auto";      // --engine=auto|nuxmv|internal
+    std::string ltl_spec;                    // --ltl "<formula>"
+    std::string ctl_spec;                    // --ctl "<formula>"
+    std::string pipe_through_cmd;            // --pipe-through "<cmd>"
+    std::vector<std::string> pass_plugins;   // --load-pass-plugin "<path.so>"
+    std::string emit_test_harness;           // --emit-test-harness <file>
+    std::string emit_sidecar;                // --emit-sidecar <file>
+    std::string diagnostic_format = "text";  // --diagnostic-format <text|json|github>
     bool show_help = false;
     bool show_version = false;
     bool is_valid = true;

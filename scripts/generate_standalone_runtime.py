@@ -38,6 +38,7 @@ CORE_FILES = [
     "detail/invariant_manager.hpp",
     "detail/transition_executor.hpp",
     "serialization.hpp",
+    "snapshot_recorder.hpp",
     "fsm.hpp",
     "detail/fsm_policy_adapter.hpp",
 ]

@@ -459,7 +459,26 @@ struct has_parent_name : std::false_type {};
 template <typename State>
 struct has_parent_name<State, std::void_t<decltype(State::parent)>> : std::true_type {};
 
+template <typename State, typename = void>
+struct has_parent_type : std::false_type {};
+
+template <typename State>
+struct has_parent_type<State, std::void_t<typename State::parent_type>> : std::true_type {};
+
 }  // namespace detail
+
+template <typename State, typename Fn>
+constexpr void record_ancestor_history(std::string_view state_name, Fn&& fn) {
+    if constexpr (detail::has_parent_type<State>::value) {
+        using Parent = typename State::parent_type;
+        fn(Parent::name, state_name);
+        record_ancestor_history<Parent>(Parent::name, std::forward<Fn>(fn));
+    } else if constexpr (detail::has_parent_name<State>::value) {
+        if constexpr (!State::parent.empty()) {
+            fn(State::parent, state_name);
+        }
+    }
+}
 
 template <typename State>
 constexpr std::string_view get_state_name(const State& state) {
@@ -1075,6 +1094,24 @@ struct has_on_exit_void : std::false_type {};
 template <typename State>
 struct has_on_exit_void<State, std::void_t<decltype(std::declval<State&>().on_exit())>> : std::true_type {};
 
+// do_activity(in, out, reg, srv)
+template <typename State, typename InPorts, typename OutPorts, typename Registers, typename Services, typename = void>
+struct has_do_activity_ports : std::false_type {};
+
+template <typename State, typename InPorts, typename OutPorts, typename Registers, typename Services>
+struct has_do_activity_ports<
+    State, InPorts, OutPorts, Registers, Services,
+    std::void_t<decltype(std::declval<State&>().do_activity(std::declval<const InPorts&>(), std::declval<OutPorts&>(),
+                                                            std::declval<Registers&>(), std::declval<Services&>()))>>
+    : std::true_type {};
+
+// do_activity()
+template <typename State, typename = void>
+struct has_do_activity_void : std::false_type {};
+
+template <typename State>
+struct has_do_activity_void<State, std::void_t<decltype(std::declval<State&>().do_activity())>> : std::true_type {};
+
 }  // namespace detail
 
 // ----------------------------------------------------------------------------
@@ -1149,6 +1186,25 @@ template <typename State>
 constexpr void call_on_exit(State& state) {
     if constexpr (detail::has_on_exit_void<State>::value) {
         state.on_exit();
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Safe invocation of do_activity hook
+// ----------------------------------------------------------------------------
+template <typename State, typename InPorts, typename OutPorts, typename Registers, typename Services>
+constexpr void call_do_activity(State& state, const InPorts& in, OutPorts& out, Registers& reg, Services& srv) {
+    if constexpr (detail::has_do_activity_ports<State, InPorts, OutPorts, Registers, Services>::value) {
+        state.do_activity(in, out, reg, srv);
+    } else if constexpr (detail::has_do_activity_void<State>::value) {
+        state.do_activity();
+    }
+}
+
+template <typename State>
+constexpr void call_do_activity(State& state) {
+    if constexpr (detail::has_do_activity_void<State>::value) {
+        state.do_activity();
     }
 }
 
@@ -1933,6 +1989,19 @@ class deterministic_timer_manager {
     }
 
     /**
+     * @brief Dynamically updates the interval duration of an active timer.
+     */
+    constexpr bool set_timer_duration(std::uint32_t timer_id, std::uint64_t duration_ms) noexcept {
+        for (auto& entry : timers_) {
+            if (entry.active && entry.timer_id == timer_id) {
+                entry.interval_ms = duration_ms;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * @brief Cancels an active timer by ID.
      */
     constexpr bool cancel_timer(std::uint32_t timer_id) noexcept {
@@ -1949,6 +2018,7 @@ class deterministic_timer_manager {
      * @brief Resets all timers.
      */
     constexpr void reset() noexcept {
+        ++generation_;
         for (auto& entry : timers_) {
             entry.active = false;
             entry.elapsed_ms = 0;
@@ -1976,24 +2046,36 @@ class deterministic_timer_manager {
      */
     template <typename Callback>
     std::size_t tick(std::uint64_t delta_ms, Callback on_expired) {
+        std::array<std::uint32_t, MaxTimers> expired_ids{};
         std::size_t expired_count = 0;
+        const auto start_gen = generation_;
+
         for (auto& entry : timers_) {
             if (!entry.active) {
                 continue;
             }
             entry.elapsed_ms += delta_ms;
             if (entry.elapsed_ms >= entry.interval_ms) {
-                ++expired_count;
-                std::uint32_t id = entry.timer_id;
+                expired_ids[expired_count++] = entry.timer_id;
                 if (entry.periodic) {
-                    entry.elapsed_ms = entry.elapsed_ms % entry.interval_ms;
+                    entry.elapsed_ms = (entry.interval_ms > 0) ? (entry.elapsed_ms % entry.interval_ms) : 0;
                 } else {
                     entry.active = false;
                 }
-                on_expired(id);
             }
         }
-        return expired_count;
+
+        std::size_t dispatched = 0;
+        for (std::size_t i = 0; i < expired_count; ++i) {
+            if (generation_ != start_gen) {
+                // The timer manager was reset/re-armed (e.g. state transition occurred).
+                // Remaining expired timers from the previous state are obsolete.
+                break;
+            }
+            on_expired(expired_ids[i]);
+            ++dispatched;
+        }
+        return dispatched;
     }
 
     [[nodiscard]] constexpr std::size_t active_count() const noexcept {
@@ -2025,6 +2107,7 @@ class deterministic_timer_manager {
 
   private:
     std::array<timer_entry, MaxTimers> timers_{};
+    std::uint32_t generation_{0};
 };
 
 /**
@@ -2413,6 +2496,25 @@ struct or_ {
 };
 
 /**
+ * @brief Variadic Sequential action combinator: `Action1; Action2; ...; Rest;`.
+ * Executes actions sequentially in FIFO order.
+ */
+template <typename Action1, typename Action2, typename... Rest>
+struct seq_ {
+    constexpr seq_() = default;
+
+    template <typename... Args>
+    constexpr void operator()(Args&&... args) const {
+        call_action(Action1{}, args...);
+        if constexpr (sizeof...(Rest) == 0) {
+            call_action(Action2{}, args...);
+        } else {
+            seq_<Action2, Rest...>{}(std::forward<Args>(args)...);
+        }
+    }
+};
+
+/**
  * @brief History state predicate guard for UML 2.5 Shallow and Deep History transitions.
  * @tparam ParentState The composite parent state maintaining the history tracker.
  * @tparam SubState The recorded active substate to compare against.
@@ -2427,7 +2529,14 @@ struct history_is {
     template <typename Event, typename State, typename InPorts, typename Registers, typename Services, typename Fsm>
     constexpr bool operator()(const Event&, const State&, const InPorts&, const Registers&, Services&,
                               const Fsm& fsm) const noexcept {
-        return fsm.get_history(ParentState::name) == SubState::name;
+        std::string_view curr = fsm.get_history(ParentState::name);
+        while (!curr.empty()) {
+            if (curr == SubState::name) {
+                return true;
+            }
+            curr = fsm.get_history(curr);
+        }
+        return false;
     }
 };
 
@@ -2721,7 +2830,7 @@ template <typename Table>
 class history_manager<Table, true> {
   public:
     static constexpr std::size_t raw_capacity = count_parent_states_v<typename Table::states>;
-    static constexpr std::size_t max_history_capacity = (raw_capacity > 0 ? raw_capacity : 1);
+    static constexpr std::size_t max_history_capacity = (raw_capacity > 0 ? (raw_capacity + 4) : 4);
 
     void record_history(std::string_view parent, std::string_view substate) {
         if (parent.empty() || substate.empty()) {
@@ -2965,6 +3074,49 @@ class invariant_manager<Table, false> {
 // --- Begin: detail/transition_executor.hpp ---
 namespace fsm::detail {
 
+template <typename Current, typename Target, typename State, typename Event, typename In, typename Out,
+          typename Registers, typename Services>
+constexpr void call_hierarchical_on_exit(State& current_state, const Event& event, const In& in, Out& out,
+                                         Registers& reg, Services& srv) {
+    call_on_exit(current_state, event, in, out, reg, srv);
+    if constexpr (has_parent_type<State>::value) {
+        using Parent = typename State::parent_type;
+        if constexpr (!is_substate_of_v<Target, Parent>) {
+            Parent parent_inst{};
+            call_hierarchical_on_exit<Current, Target, Parent>(parent_inst, event, in, out, reg, srv);
+        }
+    }
+}
+
+template <typename Current, typename Target, typename Ancestor, typename Event, typename In, typename Out,
+          typename Registers, typename Services>
+constexpr void call_ancestor_on_enter_helper(const Event& event, const In& in, Out& out, Registers& reg,
+                                             Services& srv) {
+    if constexpr (has_parent_type<Ancestor>::value) {
+        using SuperParent = typename Ancestor::parent_type;
+        if constexpr (!is_substate_of_v<Current, SuperParent>) {
+            call_ancestor_on_enter_helper<Current, Target, SuperParent>(event, in, out, reg, srv);
+        }
+    }
+    if constexpr (!std::is_same_v<Ancestor, Target>) {
+        Ancestor ancestor_inst{};
+        call_on_enter(ancestor_inst, event, in, out, reg, srv);
+    }
+}
+
+template <typename Current, typename Target, typename State, typename Event, typename In, typename Out,
+          typename Registers, typename Services>
+constexpr void call_hierarchical_on_enter(State& target_state, const Event& event, const In& in, Out& out,
+                                          Registers& reg, Services& srv) {
+    if constexpr (has_parent_type<Target>::value) {
+        using Parent = typename Target::parent_type;
+        if constexpr (!is_substate_of_v<Current, Parent>) {
+            call_ancestor_on_enter_helper<Current, Target, Parent>(event, in, out, reg, srv);
+        }
+    }
+    call_on_enter(target_state, event, in, out, reg, srv);
+}
+
 template <typename Table, typename CurrentSrc, typename Event, typename In, typename Out, typename Registers,
           typename Services, typename FsmInstance, typename ObserverCallback, typename RecordHistoryFn,
           std::size_t... Indices>
@@ -3053,7 +3205,7 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
             } else {
                 constexpr std::string_view src_parent = get_parent_name<CurrentSrc>();
                 if constexpr (!src_parent.empty()) {
-                    record_history_fn(src_parent, src_name);
+                    record_ancestor_history<CurrentSrc>(src_name, record_history_fn);
                 }
 
                 // 4-Phase Transition Lifecycle:
@@ -3062,13 +3214,13 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
                 // 3. state reassignment
                 // 4. on_enter(dst_state)
                 TransDst dst_state{};
-                call_on_exit(src_state, event, in, out, registers_, srv);
+                call_hierarchical_on_exit<CurrentSrc, TransDst>(src_state, event, in, out, registers_, srv);
                 Action act{};
                 call_action(act, event, src_state, dst_state, in, out, registers_, srv);
 
                 fsm_inst.set_current_state_variant(std::move(dst_state));
-                call_on_enter(std::get<TransDst>(fsm_inst.get_current_state_variant()), event, in, out, registers_,
-                              srv);
+                call_hierarchical_on_enter<CurrentSrc, TransDst>(
+                    std::get<TransDst>(fsm_inst.get_current_state_variant()), event, in, out, registers_, srv);
 
                 const auto dst_name = get_state_name(std::get<TransDst>(fsm_inst.get_current_state_variant()));
                 executed_trace = transition_trace{src_name,
@@ -3247,6 +3399,192 @@ bool deserialize_state(FSM& machine, std::span<const std::uint8_t> buffer) noexc
 )raw_fsm_runtime";
 
         out << R"raw_fsm_runtime(
+// --- Begin: snapshot_recorder.hpp ---
+/**
+ * @file snapshot_recorder.hpp
+ * @brief Zero-heap circular snapshot recorder and time-travel rollback manager for C++ FSMs.
+ */
+
+
+
+
+namespace fsm {
+
+/**
+ * @struct snapshot_entry
+ * @brief Fixed-size zero-heap snapshot entry stored in snapshot_recorder.
+ */
+template <std::size_t MaxSnapshotSize = 256>
+struct snapshot_entry {
+    std::array<std::uint8_t, MaxSnapshotSize> data{};
+    std::size_t size{0};
+    std::uint32_t tag{0};
+    std::uint64_t timestamp_us{0};
+    std::uint64_t step_count{0};
+    std::uint32_t checksum{0};
+
+    [[nodiscard]] constexpr bool is_valid() const noexcept {
+        if (size == 0 || size > MaxSnapshotSize) return false;
+        return compute_checksum(data.data(), size) == checksum;
+    }
+};
+
+/**
+ * @class snapshot_recorder
+ * @brief Zero-heap circular ring buffer for runtime snapshot execution trace recording and rollback.
+ *
+ * Designed for real-time safety-critical digital twin monitoring, hardware-in-the-loop (HIL)
+ * diagnostics, time-travel debugging, and automatic rollback on fault detection.
+ *
+ * @tparam Capacity Maximum number of snapshots preserved in the circular ring buffer.
+ * @tparam MaxSnapshotSize Maximum buffer capacity in bytes per snapshot (default 256).
+ */
+template <std::size_t Capacity, std::size_t MaxSnapshotSize = 256>
+class snapshot_recorder {
+    static_assert(Capacity > 0, "snapshot_recorder Capacity must be strictly positive");
+    static_assert(MaxSnapshotSize >= sizeof(snapshot_header), "MaxSnapshotSize must accommodate snapshot_header");
+
+  public:
+    using entry_type = snapshot_entry<MaxSnapshotSize>;
+
+    constexpr snapshot_recorder() noexcept = default;
+
+    /**
+     * @brief Records a snapshot of the current state of the given FSM machine into the ring buffer.
+     * @tparam FSM State machine type providing serialize() method.
+     * @param machine FSM instance to capture.
+     * @param tag User-defined checkpoint tag/id.
+     * @param timestamp_us Optional timestamp in microseconds.
+     * @return True if serialized and recorded successfully, false otherwise.
+     */
+    template <typename FSM>
+    bool record(const FSM& machine, std::uint32_t tag = 0, std::uint64_t timestamp_us = 0) noexcept {
+        std::size_t slot = head_ % Capacity;
+        entry_type& entry = buffer_[slot];
+
+        std::size_t written = 0;
+        if (!machine.serialize(entry.data.data(), MaxSnapshotSize, written)) {
+            return false;
+        }
+
+        entry.size = written;
+        entry.tag = tag;
+        entry.timestamp_us = timestamp_us;
+        entry.step_count = total_recorded_;
+        entry.checksum = compute_checksum(entry.data.data(), written);
+
+        head_ = (head_ + 1) % Capacity;
+        if (count_ < Capacity) {
+            ++count_;
+        }
+        ++total_recorded_;
+        return true;
+    }
+
+    /**
+     * @brief Rolls back the state machine by the specified number of steps (default 1 step).
+     * @tparam FSM State machine type providing deserialize() method.
+     * @param machine FSM instance to restore.
+     * @param steps Number of steps to unwind backwards (must be <= size()).
+     * @return True if successfully restored, false otherwise.
+     */
+    template <typename FSM>
+    bool rollback(FSM& machine, std::size_t steps = 1) noexcept {
+        if (steps == 0 || steps > count_) {
+            return false;
+        }
+
+        // Calculate target slot
+        std::size_t target_idx = (head_ + Capacity - steps) % Capacity;
+        const entry_type& entry = buffer_[target_idx];
+
+        if (!entry.is_valid()) {
+            return false;
+        }
+
+        std::size_t read = 0;
+        if (!machine.deserialize(entry.data.data(), entry.size, read)) {
+            return false;
+        }
+
+        head_ = target_idx;
+        count_ -= steps;
+        return true;
+    }
+
+    /**
+     * @brief Rewinds to the most recently recorded checkpoint matching the given tag.
+     * @tparam FSM State machine type providing deserialize() method.
+     * @param machine FSM instance to restore.
+     * @param tag Checkpoint tag identifier to search for.
+     * @return True if checkpoint was found and restored, false otherwise.
+     */
+    template <typename FSM>
+    bool rewind_to_checkpoint(FSM& machine, std::uint32_t tag) noexcept {
+        for (std::size_t step = 1; step <= count_; ++step) {
+            std::size_t idx = (head_ + Capacity - step) % Capacity;
+            if (buffer_[idx].tag == tag && buffer_[idx].is_valid()) {
+                return rollback(machine, step);
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @brief Returns the most recently recorded snapshot entry, if any.
+     */
+    [[nodiscard]] const entry_type* latest() const noexcept {
+        if (count_ == 0) return nullptr;
+        std::size_t idx = (head_ + Capacity - 1) % Capacity;
+        return &buffer_[idx];
+    }
+
+    /**
+     * @brief Returns the number of snapshots currently stored in the ring buffer.
+     */
+    [[nodiscard]] constexpr std::size_t size() const noexcept { return count_; }
+
+    /**
+     * @brief Returns the maximum capacity of the ring buffer.
+     */
+    [[nodiscard]] constexpr std::size_t capacity() const noexcept { return Capacity; }
+
+    /**
+     * @brief Checks if the buffer is empty.
+     */
+    [[nodiscard]] constexpr bool empty() const noexcept { return count_ == 0; }
+
+    /**
+     * @brief Checks if the buffer is full.
+     */
+    [[nodiscard]] constexpr bool full() const noexcept { return count_ == Capacity; }
+
+    /**
+     * @brief Returns total number of record invocations since initialization.
+     */
+    [[nodiscard]] constexpr std::uint64_t total_recorded() const noexcept { return total_recorded_; }
+
+    /**
+     * @brief Clears all snapshots in the recorder.
+     */
+    void clear() noexcept {
+        head_ = 0;
+        count_ = 0;
+    }
+
+  private:
+    std::array<entry_type, Capacity> buffer_{};
+    std::size_t head_{0};
+    std::size_t count_{0};
+    std::uint64_t total_recorded_{0};
+};
+
+}  // namespace fsm
+
+// --- End: snapshot_recorder.hpp ---
+)raw_fsm_runtime";
+
+        out << R"raw_fsm_runtime(
 // --- Begin: fsm.hpp ---
 namespace fsm {
 
@@ -3395,6 +3733,9 @@ class fsm {
     // ========================================================================
 
     step_result step(const in_ports_type& in, out_ports_type& out, services_type& srv) {
+        std::visit([this, &in, &out, &srv](auto& st) {
+            call_do_activity(st, in, out, this->registers_, srv);
+        }, current_state_);
         auto res = dispatch_direct_ports(anonymous_event{}, in, out, srv);
         if constexpr (has_deferred) {
             if (res.is_success()) {
@@ -3678,6 +4019,11 @@ class fsm {
             observer_.advance_tick(delta_ms);
         }
         invariant_mgr_.advance_time(delta_ms);
+        std::visit([this](auto& st) {
+            in_ports_type dummy_in{};
+            out_ports_type dummy_out{};
+            call_do_activity(st, dummy_in, dummy_out, this->registers_, this->resolve_services());
+        }, current_state_);
         auto expired = timer_mgr_.tick(delta_ms, [this, &on_expired](std::uint32_t timer_id) {
             dispatch_timed_timer(timer_id);
             on_expired(timer_id);
@@ -3699,6 +4045,13 @@ class fsm {
     template <typename Rep, typename Period>
     std::size_t tick(std::chrono::duration<Rep, Period> dt) {
         return tick(dt, [](std::uint32_t /*timer_id*/) {});
+    }
+
+    /**
+     * @brief Dynamically updates the interval duration of an active timer.
+     */
+    bool set_timer_duration(std::uint32_t timer_id, std::uint64_t duration_ms) noexcept {
+        return timer_mgr_.set_timer_duration(timer_id, duration_ms);
     }
 
     // ========================================================================

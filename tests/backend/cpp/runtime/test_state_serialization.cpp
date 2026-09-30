@@ -21,6 +21,7 @@
 
 #include "fsm/backend/cpp/runtime/fsm.hpp"
 #include "fsm/backend/cpp/runtime/serialization.hpp"
+#include "fsm/backend/cpp/runtime/snapshot_recorder.hpp"
 #include "fsm/backend/cpp/runtime/transition_table.hpp"
 
 namespace {
@@ -288,6 +289,85 @@ TEST(StateSerialization, TruncatedBuffer_ReturnsFalse) {
     std::size_t read = 0;
     // Passing smaller size than required
     EXPECT_FALSE(machine2.deserialize(buffer.data(), sizeof(fsm::snapshot_header) - 1, read));
+}
+
+TEST(SnapshotRecorder, RecordAndRollback_RestoresPreviousStateAndRegisters) {
+    MotorFSM machine;
+    EXPECT_TRUE(machine.is_in_state<Idle>());
+    EXPECT_EQ(machine.registers().speed_rpm, 0);
+
+    fsm::snapshot_recorder<8, 256> recorder;
+    EXPECT_TRUE(recorder.empty());
+    EXPECT_EQ(recorder.size(), 0u);
+
+    // Snapshot 0: Idle
+    EXPECT_TRUE(recorder.record(machine, 10));
+    EXPECT_EQ(recorder.size(), 1u);
+    EXPECT_EQ(recorder.total_recorded(), 1u);
+
+    // Transition to Running
+    machine.dispatch(StartEvt{});
+    EXPECT_TRUE(machine.is_in_state<Running>());
+    machine.registers().speed_rpm = 1500;
+
+    // Snapshot 1: Running (tag 20)
+    EXPECT_TRUE(recorder.record(machine, 20));
+    EXPECT_EQ(recorder.size(), 2u);
+
+    // Transition to Paused
+    machine.dispatch(PauseEvt{});
+    EXPECT_TRUE(machine.is_in_state<Paused>());
+
+    // Rollback 1 step: Should restore Running with 1500 rpm
+    EXPECT_TRUE(recorder.rollback(machine, 1));
+    EXPECT_TRUE(machine.is_in_state<Running>());
+    EXPECT_EQ(machine.registers().speed_rpm, 1500);
+
+    // Rollback 1 step: Should restore Idle with 0 rpm
+    EXPECT_TRUE(recorder.rollback(machine, 1));
+    EXPECT_TRUE(machine.is_in_state<Idle>());
+    EXPECT_EQ(machine.registers().speed_rpm, 0);
+}
+
+TEST(SnapshotRecorder, RewindToCheckpoint_RecoversSavedTag) {
+    MotorFSM machine;
+    fsm::snapshot_recorder<8, 256> recorder;
+
+    EXPECT_TRUE(recorder.record(machine, 100)); // Checkpoint 100 in Idle
+
+    machine.dispatch(StartEvt{});
+    machine.registers().speed_rpm = 3000;
+    EXPECT_TRUE(recorder.record(machine, 200)); // Checkpoint 200 in Running
+
+    machine.dispatch(PauseEvt{});
+    EXPECT_TRUE(machine.is_in_state<Paused>());
+
+    // Rewind directly to Checkpoint 200
+    EXPECT_TRUE(recorder.rewind_to_checkpoint(machine, 200));
+    EXPECT_TRUE(machine.is_in_state<Running>());
+    EXPECT_EQ(machine.registers().speed_rpm, 3000);
+
+    // Rewind to non-existent checkpoint returns false
+    EXPECT_FALSE(recorder.rewind_to_checkpoint(machine, 999));
+}
+
+TEST(SnapshotRecorder, CircularBufferWraparound_PreservesCapacity) {
+    MotorFSM machine;
+    fsm::snapshot_recorder<4, 256> recorder;
+
+    for (std::uint32_t i = 1; i <= 10; ++i) {
+        machine.registers().speed_rpm = static_cast<std::int32_t>(i * 100);
+        EXPECT_TRUE(recorder.record(machine, i));
+    }
+
+    EXPECT_EQ(recorder.capacity(), 4u);
+    EXPECT_EQ(recorder.size(), 4u);
+    EXPECT_EQ(recorder.total_recorded(), 10u);
+    EXPECT_TRUE(recorder.full());
+
+    const auto* latest = recorder.latest();
+    ASSERT_NE(latest, nullptr);
+    EXPECT_EQ(latest->tag, 10u);
 }
 
 }  // namespace

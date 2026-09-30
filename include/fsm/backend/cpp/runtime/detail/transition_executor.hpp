@@ -15,6 +15,49 @@
 
 namespace fsm::detail {
 
+template <typename Current, typename Target, typename State, typename Event, typename In, typename Out,
+          typename Registers, typename Services>
+constexpr void call_hierarchical_on_exit(State& current_state, const Event& event, const In& in, Out& out,
+                                         Registers& reg, Services& srv) {
+    call_on_exit(current_state, event, in, out, reg, srv);
+    if constexpr (has_parent_type<State>::value) {
+        using Parent = typename State::parent_type;
+        if constexpr (!is_substate_of_v<Target, Parent>) {
+            Parent parent_inst{};
+            call_hierarchical_on_exit<Current, Target, Parent>(parent_inst, event, in, out, reg, srv);
+        }
+    }
+}
+
+template <typename Current, typename Target, typename Ancestor, typename Event, typename In, typename Out,
+          typename Registers, typename Services>
+constexpr void call_ancestor_on_enter_helper(const Event& event, const In& in, Out& out, Registers& reg,
+                                             Services& srv) {
+    if constexpr (has_parent_type<Ancestor>::value) {
+        using SuperParent = typename Ancestor::parent_type;
+        if constexpr (!is_substate_of_v<Current, SuperParent>) {
+            call_ancestor_on_enter_helper<Current, Target, SuperParent>(event, in, out, reg, srv);
+        }
+    }
+    if constexpr (!std::is_same_v<Ancestor, Target>) {
+        Ancestor ancestor_inst{};
+        call_on_enter(ancestor_inst, event, in, out, reg, srv);
+    }
+}
+
+template <typename Current, typename Target, typename State, typename Event, typename In, typename Out,
+          typename Registers, typename Services>
+constexpr void call_hierarchical_on_enter(State& target_state, const Event& event, const In& in, Out& out,
+                                          Registers& reg, Services& srv) {
+    if constexpr (has_parent_type<Target>::value) {
+        using Parent = typename Target::parent_type;
+        if constexpr (!is_substate_of_v<Current, Parent>) {
+            call_ancestor_on_enter_helper<Current, Target, Parent>(event, in, out, reg, srv);
+        }
+    }
+    call_on_enter(target_state, event, in, out, reg, srv);
+}
+
 template <typename Table, typename CurrentSrc, typename Event, typename In, typename Out, typename Registers,
           typename Services, typename FsmInstance, typename ObserverCallback, typename RecordHistoryFn,
           std::size_t... Indices>
@@ -103,7 +146,7 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
             } else {
                 constexpr std::string_view src_parent = get_parent_name<CurrentSrc>();
                 if constexpr (!src_parent.empty()) {
-                    record_history_fn(src_parent, src_name);
+                    record_ancestor_history<CurrentSrc>(src_name, record_history_fn);
                 }
 
                 // 4-Phase Transition Lifecycle:
@@ -112,13 +155,13 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
                 // 3. state reassignment
                 // 4. on_enter(dst_state)
                 TransDst dst_state{};
-                call_on_exit(src_state, event, in, out, registers_, srv);
+                call_hierarchical_on_exit<CurrentSrc, TransDst>(src_state, event, in, out, registers_, srv);
                 Action act{};
                 call_action(act, event, src_state, dst_state, in, out, registers_, srv);
 
                 fsm_inst.set_current_state_variant(std::move(dst_state));
-                call_on_enter(std::get<TransDst>(fsm_inst.get_current_state_variant()), event, in, out, registers_,
-                              srv);
+                call_hierarchical_on_enter<CurrentSrc, TransDst>(
+                    std::get<TransDst>(fsm_inst.get_current_state_variant()), event, in, out, registers_, srv);
 
                 const auto dst_name = get_state_name(std::get<TransDst>(fsm_inst.get_current_state_variant()));
                 executed_trace = transition_trace{src_name,

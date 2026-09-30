@@ -89,7 +89,26 @@ struct has_parent_name : std::false_type {};
 template <typename State>
 struct has_parent_name<State, std::void_t<decltype(State::parent)>> : std::true_type {};
 
+template <typename State, typename = void>
+struct has_parent_type : std::false_type {};
+
+template <typename State>
+struct has_parent_type<State, std::void_t<typename State::parent_type>> : std::true_type {};
+
 }  // namespace detail
+
+template <typename State, typename Fn>
+constexpr void record_ancestor_history(std::string_view state_name, Fn&& fn) {
+    if constexpr (detail::has_parent_type<State>::value) {
+        using Parent = typename State::parent_type;
+        fn(Parent::name, state_name);
+        record_ancestor_history<Parent>(Parent::name, std::forward<Fn>(fn));
+    } else if constexpr (detail::has_parent_name<State>::value) {
+        if constexpr (!State::parent.empty()) {
+            fn(State::parent, state_name);
+        }
+    }
+}
 
 template <typename State>
 constexpr std::string_view get_state_name(const State& state) {

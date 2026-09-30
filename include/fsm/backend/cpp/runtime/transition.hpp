@@ -3,6 +3,8 @@
 #include <chrono>
 #include <cstdint>
 
+#include "fsm/backend/cpp/runtime/traits/action_traits.hpp"
+#include "fsm/backend/cpp/runtime/traits/guard_traits.hpp"
 #include "fsm/backend/cpp/runtime/type_traits.hpp"
 
 namespace fsm {
@@ -198,6 +200,25 @@ struct or_ {
 };
 
 /**
+ * @brief Variadic Sequential action combinator: `Action1; Action2; ...; Rest;`.
+ * Executes actions sequentially in FIFO order.
+ */
+template <typename Action1, typename Action2, typename... Rest>
+struct seq_ {
+    constexpr seq_() = default;
+
+    template <typename... Args>
+    constexpr void operator()(Args&&... args) const {
+        call_action(Action1{}, args...);
+        if constexpr (sizeof...(Rest) == 0) {
+            call_action(Action2{}, args...);
+        } else {
+            seq_<Action2, Rest...>{}(std::forward<Args>(args)...);
+        }
+    }
+};
+
+/**
  * @brief History state predicate guard for UML 2.5 Shallow and Deep History transitions.
  * @tparam ParentState The composite parent state maintaining the history tracker.
  * @tparam SubState The recorded active substate to compare against.
@@ -212,7 +233,14 @@ struct history_is {
     template <typename Event, typename State, typename InPorts, typename Registers, typename Services, typename Fsm>
     constexpr bool operator()(const Event&, const State&, const InPorts&, const Registers&, Services&,
                               const Fsm& fsm) const noexcept {
-        return fsm.get_history(ParentState::name) == SubState::name;
+        std::string_view curr = fsm.get_history(ParentState::name);
+        while (!curr.empty()) {
+            if (curr == SubState::name) {
+                return true;
+            }
+            curr = fsm.get_history(curr);
+        }
+        return false;
     }
 };
 

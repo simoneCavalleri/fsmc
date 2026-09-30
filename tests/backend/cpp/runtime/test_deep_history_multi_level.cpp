@@ -151,4 +151,52 @@ TEST(DeepHistory, InitialEntry_NoPriorHistory_FallsBackToDefaultSubstate) {
     EXPECT_TRUE(sm.is_in_state<Level4Active>());
 }
 
+// 3-Level True Hierarchy with parent_type
+struct AncestorGrandParent {
+    static constexpr std::string_view name = "AncestorGrandParent";
+};
+struct AncestorParent {
+    using parent_type = AncestorGrandParent;
+    static constexpr std::string_view name = "AncestorParent";
+    static constexpr std::string_view parent = "AncestorGrandParent";
+};
+struct AncestorLeaf {
+    using parent_type = AncestorParent;
+    static constexpr std::string_view name = "AncestorLeaf";
+    static constexpr std::string_view parent = "AncestorParent";
+};
+struct OutsideState {
+    static constexpr std::string_view name = "OutsideState";
+};
+
+struct EvInterrupt {};
+struct EvResume {};
+
+using AncestorHistoryTable = fsm::transition_table<
+    fsm::transition<AncestorLeaf, EvInterrupt, OutsideState>,
+    fsm::transition<OutsideState, EvResume, AncestorLeaf, fsm::no_action, fsm::history_is<AncestorGrandParent, AncestorParent>>,
+    fsm::transition<AncestorParent, EvInterrupt, OutsideState>
+>;
+
+/**
+ * @brief Verify that exiting AncestorLeaf records history for both AncestorParent and AncestorGrandParent.
+ */
+TEST(DeepHistory, AncestorHistoryRecording_ThreeLevelHierarchy_RecordsAllAncestors) {
+    fsm::fsm<AncestorHistoryTable> sm;
+    EXPECT_TRUE(sm.is_in_state<AncestorLeaf>());
+
+    // Exit to OutsideState
+    EXPECT_TRUE(sm.dispatch(EvInterrupt{}));
+    EXPECT_TRUE(sm.is_in_state<OutsideState>());
+
+    // Immediate parent history recorded
+    EXPECT_EQ(sm.get_history("AncestorParent"), "AncestorLeaf");
+    // Grandparent history ALSO recorded!
+    EXPECT_EQ(sm.get_history("AncestorGrandParent"), "AncestorParent");
+
+    // History guard on grandparent matches and restores AncestorLeaf
+    EXPECT_TRUE(sm.dispatch(EvResume{}));
+    EXPECT_TRUE(sm.is_in_state<AncestorLeaf>());
+}
+
 }  // namespace

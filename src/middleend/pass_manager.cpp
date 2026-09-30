@@ -426,8 +426,7 @@ bool TimedDeadlockPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
 // ============================================================================
 // Pass: EFSMDataPathPass
 // ============================================================================
-EFSMDataPathPass::EFSMDataPathPass(bool prune_dead_transitions)
-    : prune_dead_transitions_(prune_dead_transitions) {}
+EFSMDataPathPass::EFSMDataPathPass(bool prune_dead_transitions) : prune_dead_transitions_(prune_dead_transitions) {}
 
 std::string EFSMDataPathPass::name() const {
     return "EFSMDataPath";
@@ -462,8 +461,7 @@ bool EFSMDataPathPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         if (removed_count > 0) {
             diag.report(Diagnostic::info(
                 "I_EFSM_PRUNED_TRANSITIONS",
-                "Pruned " + std::to_string(removed_count) +
-                    " dead transition(s) with unsatisfiable guard intervals."));
+                "Pruned " + std::to_string(removed_count) + " dead transition(s) with unsatisfiable guard intervals."));
         }
     }
 

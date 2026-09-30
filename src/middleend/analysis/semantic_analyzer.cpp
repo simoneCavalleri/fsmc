@@ -165,8 +165,8 @@ bool SemanticAnalyzer::validate(const FsmIr& ir, std::vector<std::string>& error
             if (mut_op.empty()) {
                 for (size_t i = 0; i < g_str.size(); ++i) {
                     if (g_str[i] == '=') {
-                        bool prev_op = (i > 0 && (g_str[i - 1] == '=' || g_str[i - 1] == '<' ||
-                                                  g_str[i - 1] == '>' || g_str[i - 1] == '!'));
+                        bool prev_op = (i > 0 && (g_str[i - 1] == '=' || g_str[i - 1] == '<' || g_str[i - 1] == '>' ||
+                                                  g_str[i - 1] == '!'));
                         bool next_op = (i + 1 < g_str.size() && g_str[i + 1] == '=');
                         if (!prev_op && !next_op) {
                             mut_op = "=";

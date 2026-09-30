@@ -24,8 +24,10 @@ bool is_else_guard(const std::optional<std::string>& g) {
 }
 
 std::string combine_two_guards(const std::string& g1, const std::string& g2) {
-    if (g1.empty()) return g2;
-    if (g2.empty()) return g1;
+    if (g1.empty())
+        return g2;
+    if (g2.empty())
+        return g1;
     return "fsm::and_<" + g1 + ", " + g2 + ">";
 }
 
@@ -71,7 +73,8 @@ bool ConnectiveJunctionChainingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 }
                 if (visit_state[v] == 0) {
                     check_cycle(v);
-                    if (has_cycle) return;
+                    if (has_cycle)
+                        return;
                 }
             }
         }
@@ -97,141 +100,142 @@ bool ConnectiveJunctionChainingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     std::vector<TransitionEdge> synthesized_transitions;
 
     // DFS helper
-    std::function<void(std::vector<TransitionEdge>&)> explore_paths =
-        [&](std::vector<TransitionEdge>& current_path) {
-            const auto& last_edge = current_path.back();
-            const std::string& current_dest = last_edge.target;
+    std::function<void(std::vector<TransitionEdge>&)> explore_paths = [&](std::vector<TransitionEdge>& current_path) {
+        const auto& last_edge = current_path.back();
+        const std::string& current_dest = last_edge.target;
 
-            if (junction_names.count(current_dest) == 0) {
-                // Reached a non-junction destination state: synthesize compound transition!
-                const auto& first_edge = current_path.front();
+        if (junction_names.count(current_dest) == 0) {
+            // Reached a non-junction destination state: synthesize compound transition!
+            const auto& first_edge = current_path.front();
 
-                TransitionEdge composite;
-                composite.source = first_edge.source;
-                composite.source_id = first_edge.source_id;
-                composite.source_ids = first_edge.source_ids;
-                composite.target = last_edge.target;
-                composite.target_id = last_edge.target_id;
-                composite.target_ids = last_edge.target_ids;
-                composite.target_is_history = last_edge.target_is_history;
-                composite.target_is_deep_history = last_edge.target_is_deep_history;
-                composite.kind = TransitionEdgeKind::External;
-                composite.priority = (last_edge.priority > 0) ? last_edge.priority : first_edge.priority;
+            TransitionEdge composite;
+            composite.source = first_edge.source;
+            composite.source_id = first_edge.source_id;
+            composite.source_ids = first_edge.source_ids;
+            composite.target = last_edge.target;
+            composite.target_id = last_edge.target_id;
+            composite.target_ids = last_edge.target_ids;
+            composite.target_is_history = last_edge.target_is_history;
+            composite.target_is_deep_history = last_edge.target_is_deep_history;
+            composite.kind = TransitionEdgeKind::External;
+            composite.priority = (last_edge.priority > 0) ? last_edge.priority : first_edge.priority;
 
-                // Event & Trigger: inherit from the first segment that defines them
-                for (const auto& edge : current_path) {
-                    if (!edge.event.empty()) {
-                        composite.event = edge.event;
-                        composite.trigger = edge.trigger;
-                        break;
-                    }
+            // Event & Trigger: inherit from the first segment that defines them
+            for (const auto& edge : current_path) {
+                if (!edge.event.empty()) {
+                    composite.event = edge.event;
+                    composite.trigger = edge.trigger;
+                    break;
                 }
-
-                // Combine Guards
-                std::string combined_guard;
-                for (const auto& edge : current_path) {
-                    if (!is_else_guard(edge.guard)) {
-                        combined_guard = combine_two_guards(combined_guard, *edge.guard);
-                    }
-                }
-                if (!combined_guard.empty()) {
-                    composite.guard = combined_guard;
-                    composite.guard_ast = GuardAstNode(combined_guard);
-                }
-
-                // Combine Condition Actions
-                std::vector<std::string> cond_action_names;
-                std::vector<ActionAssignment> cond_assignments;
-                for (const auto& edge : current_path) {
-                    if (edge.condition_action.has_value()) {
-                        if (!edge.condition_action->name.empty()) {
-                            cond_action_names.push_back(edge.condition_action->name);
-                        }
-                        for (const auto& assign : edge.condition_action->assignments) {
-                            cond_assignments.push_back(assign);
-                        }
-                    }
-                }
-                if (!cond_action_names.empty() || !cond_assignments.empty()) {
-                    std::string combined_cond_name;
-                    for (size_t i = 0; i < cond_action_names.size(); ++i) {
-                        if (i > 0) combined_cond_name += "_";
-                        combined_cond_name += cond_action_names[i];
-                    }
-                    if (combined_cond_name.empty()) {
-                        combined_cond_name = "ChainedCondAction";
-                    }
-                    ActionSignature sig(combined_cond_name);
-                    sig.assignments = std::move(cond_assignments);
-                    composite.condition_action = std::move(sig);
-                }
-
-                // Combine Transition Actions
-                std::vector<std::string> trans_action_names;
-                std::vector<ActionAssignment> trans_assignments;
-                for (const auto& edge : current_path) {
-                    if (edge.transition_action.has_value()) {
-                        if (!edge.transition_action->name.empty()) {
-                            trans_action_names.push_back(edge.transition_action->name);
-                        }
-                        for (const auto& assign : edge.transition_action->assignments) {
-                            trans_assignments.push_back(assign);
-                        }
-                    }
-                }
-                if (!trans_action_names.empty() || !trans_assignments.empty()) {
-                    std::string combined_trans_name;
-                    for (size_t i = 0; i < trans_action_names.size(); ++i) {
-                        if (i > 0) combined_trans_name += "_";
-                        combined_trans_name += trans_action_names[i];
-                    }
-                    if (combined_trans_name.empty()) {
-                        combined_trans_name = "ChainedTransAction";
-                    }
-                    ActionSignature sig(combined_trans_name);
-                    sig.assignments = std::move(trans_assignments);
-                    composite.transition_action = std::move(sig);
-                }
-
-                // Combine clock resets
-                std::unordered_set<std::string> seen_resets;
-                for (const auto& edge : current_path) {
-                    for (const auto& cr : edge.clock_resets) {
-                        if (seen_resets.insert(cr).second) {
-                            composite.clock_resets.push_back(cr);
-                        }
-                    }
-                }
-
-                // Traceability requirements
-                std::unordered_set<std::string> seen_reqs;
-                for (const auto& edge : current_path) {
-                    for (const auto& req : edge.traceability_reqs) {
-                        if (seen_reqs.insert(req).second) {
-                            composite.traceability_reqs.push_back(req);
-                        }
-                    }
-                }
-
-                composite.id = compute_deterministic_id(composite.source + "->" + composite.target + ":" +
-                                                        composite.event + "[" + composite.guard.value_or("") + "]");
-                synthesized_transitions.push_back(std::move(composite));
-                return;
             }
 
-            // Current destination is a junction: continue expanding outgoing transitions
-            auto out_it = outgoing_map.find(current_dest);
-            if (out_it == outgoing_map.end()) {
-                // Dead end at junction: no valid outgoing transition
-                return;
+            // Combine Guards
+            std::string combined_guard;
+            for (const auto& edge : current_path) {
+                if (!is_else_guard(edge.guard)) {
+                    combined_guard = combine_two_guards(combined_guard, *edge.guard);
+                }
+            }
+            if (!combined_guard.empty()) {
+                composite.guard = combined_guard;
+                composite.guard_ast = GuardAstNode(combined_guard);
             }
 
-            for (const auto& next_edge : out_it->second) {
-                current_path.push_back(next_edge);
-                explore_paths(current_path);
-                current_path.pop_back();
+            // Combine Condition Actions
+            std::vector<std::string> cond_action_names;
+            std::vector<ActionAssignment> cond_assignments;
+            for (const auto& edge : current_path) {
+                if (edge.condition_action.has_value()) {
+                    if (!edge.condition_action->name.empty()) {
+                        cond_action_names.push_back(edge.condition_action->name);
+                    }
+                    for (const auto& assign : edge.condition_action->assignments) {
+                        cond_assignments.push_back(assign);
+                    }
+                }
             }
-        };
+            if (!cond_action_names.empty() || !cond_assignments.empty()) {
+                std::string combined_cond_name;
+                for (size_t i = 0; i < cond_action_names.size(); ++i) {
+                    if (i > 0)
+                        combined_cond_name += "_";
+                    combined_cond_name += cond_action_names[i];
+                }
+                if (combined_cond_name.empty()) {
+                    combined_cond_name = "ChainedCondAction";
+                }
+                ActionSignature sig(combined_cond_name);
+                sig.assignments = std::move(cond_assignments);
+                composite.condition_action = std::move(sig);
+            }
+
+            // Combine Transition Actions
+            std::vector<std::string> trans_action_names;
+            std::vector<ActionAssignment> trans_assignments;
+            for (const auto& edge : current_path) {
+                if (edge.transition_action.has_value()) {
+                    if (!edge.transition_action->name.empty()) {
+                        trans_action_names.push_back(edge.transition_action->name);
+                    }
+                    for (const auto& assign : edge.transition_action->assignments) {
+                        trans_assignments.push_back(assign);
+                    }
+                }
+            }
+            if (!trans_action_names.empty() || !trans_assignments.empty()) {
+                std::string combined_trans_name;
+                for (size_t i = 0; i < trans_action_names.size(); ++i) {
+                    if (i > 0)
+                        combined_trans_name += "_";
+                    combined_trans_name += trans_action_names[i];
+                }
+                if (combined_trans_name.empty()) {
+                    combined_trans_name = "ChainedTransAction";
+                }
+                ActionSignature sig(combined_trans_name);
+                sig.assignments = std::move(trans_assignments);
+                composite.transition_action = std::move(sig);
+            }
+
+            // Combine clock resets
+            std::unordered_set<std::string> seen_resets;
+            for (const auto& edge : current_path) {
+                for (const auto& cr : edge.clock_resets) {
+                    if (seen_resets.insert(cr).second) {
+                        composite.clock_resets.push_back(cr);
+                    }
+                }
+            }
+
+            // Traceability requirements
+            std::unordered_set<std::string> seen_reqs;
+            for (const auto& edge : current_path) {
+                for (const auto& req : edge.traceability_reqs) {
+                    if (seen_reqs.insert(req).second) {
+                        composite.traceability_reqs.push_back(req);
+                    }
+                }
+            }
+
+            composite.id = compute_deterministic_id(composite.source + "->" + composite.target + ":" + composite.event +
+                                                    "[" + composite.guard.value_or("") + "]");
+            synthesized_transitions.push_back(std::move(composite));
+            return;
+        }
+
+        // Current destination is a junction: continue expanding outgoing transitions
+        auto out_it = outgoing_map.find(current_dest);
+        if (out_it == outgoing_map.end()) {
+            // Dead end at junction: no valid outgoing transition
+            return;
+        }
+
+        for (const auto& next_edge : out_it->second) {
+            current_path.push_back(next_edge);
+            explore_paths(current_path);
+            current_path.pop_back();
+        }
+    };
 
     // Find all transitions originating from non-junction states that enter a junction
     for (const auto& t : ir.transitions) {
@@ -243,12 +247,12 @@ bool ConnectiveJunctionChainingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     }
 
     // 5. Remove all intermediate transitions touching junction nodes
-    ir.transitions.erase(
-        std::remove_if(ir.transitions.begin(), ir.transitions.end(),
-                       [&](const TransitionEdge& t) {
-                           return junction_names.count(t.source) > 0 || junction_names.count(t.target) > 0;
-                       }),
-        ir.transitions.end());
+    ir.transitions.erase(std::remove_if(ir.transitions.begin(), ir.transitions.end(),
+                                        [&](const TransitionEdge& t) {
+                                            return junction_names.count(t.source) > 0 ||
+                                                   junction_names.count(t.target) > 0;
+                                        }),
+                         ir.transitions.end());
 
     // 6. Insert all synthesized composite transitions
     for (auto& st : synthesized_transitions) {

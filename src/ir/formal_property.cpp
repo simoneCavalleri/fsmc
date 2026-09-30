@@ -57,14 +57,14 @@ std::string PropertyAstNode::to_string() const {
         }
         return "!" + atom;
     }
-    if (op == TemporalOp::Globally || op == TemporalOp::Finally || op == TemporalOp::Next ||
-        op == TemporalOp::EX || op == TemporalOp::AX || op == TemporalOp::EF ||
-        op == TemporalOp::AF || op == TemporalOp::EG || op == TemporalOp::AG) {
-        std::string op_str = (op == TemporalOp::Globally)
-                                 ? "G "
-                                 : ((op == TemporalOp::Finally)
-                                        ? "F "
-                                        : ((op == TemporalOp::Next) ? "X " : (temporal_op_to_string(op) + " ")));
+    if (op == TemporalOp::Globally || op == TemporalOp::Finally || op == TemporalOp::Next || op == TemporalOp::EX ||
+        op == TemporalOp::AX || op == TemporalOp::EF || op == TemporalOp::AF || op == TemporalOp::EG ||
+        op == TemporalOp::AG) {
+        std::string op_str =
+            (op == TemporalOp::Globally)
+                ? "G "
+                : ((op == TemporalOp::Finally) ? "F "
+                                               : ((op == TemporalOp::Next) ? "X " : (temporal_op_to_string(op) + " ")));
         if (!children.empty()) {
             return op_str + "(" + children[0].to_string() + ")";
         }

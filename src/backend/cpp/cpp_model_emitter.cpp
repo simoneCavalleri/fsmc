@@ -329,7 +329,8 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
     std::vector<ActionModel> effective_actions = model.actions;
     auto has_action = [&](const std::string& name) {
         for (const auto& a : effective_actions) {
-            if (a.name == name) return true;
+            if (a.name == name)
+                return true;
         }
         return false;
     };
@@ -613,10 +614,10 @@ void CppModelEmitter::emit_guards(std::ostream& out, const FsmIr& model, const G
                 guard_item.name.find('!') != std::string::npos) {
                 continue;
             }
-            const bool has_expr =
-                guard_item.normalized_expression.has_value() && !guard_item.normalized_expression->empty() &&
-                *guard_item.normalized_expression != guard_item.name &&
-                (guard_item.name != (*guard_item.normalized_expression + "Guard"));
+            const bool has_expr = guard_item.normalized_expression.has_value() &&
+                                  !guard_item.normalized_expression->empty() &&
+                                  *guard_item.normalized_expression != guard_item.name &&
+                                  (guard_item.name != (*guard_item.normalized_expression + "Guard"));
             std::string expr;
             if (has_expr) {
                 expr = qualify_expression(*guard_item.normalized_expression, model);
@@ -702,7 +703,8 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
     std::vector<ActionModel> effective_actions = model.actions;
     auto has_action = [&](const std::string& name) {
         for (const auto& a : effective_actions) {
-            if (a.name == name) return true;
+            if (a.name == name)
+                return true;
         }
         return false;
     };
@@ -722,10 +724,12 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
         }
     }
     for (const auto& t : model.transitions) {
-        if (t.condition_action.has_value() && !t.condition_action->name.empty() && !has_action(t.condition_action->name)) {
+        if (t.condition_action.has_value() && !t.condition_action->name.empty() &&
+            !has_action(t.condition_action->name)) {
             effective_actions.push_back(ActionModel(t.condition_action->name, "Condition action"));
         }
-        if (t.transition_action.has_value() && !t.transition_action->name.empty() && !has_action(t.transition_action->name)) {
+        if (t.transition_action.has_value() && !t.transition_action->name.empty() &&
+            !has_action(t.transition_action->name)) {
             effective_actions.push_back(ActionModel(t.transition_action->name, "Transition action"));
         }
     }
@@ -808,9 +812,11 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                         bool is_out = (assign.target.scope == LValueScope::OutPort) || (p != nullptr && p->is_out());
                         std::string_view op_str = assignment_op_to_string(assign.op);
                         if (is_out) {
-                            out << indent << "out." << assign.target.full_path() << " " << op_str << " " << expr << ";\n";
+                            out << indent << "out." << assign.target.full_path() << " " << op_str << " " << expr
+                                << ";\n";
                         } else {
-                            out << indent << "reg." << assign.target.full_path() << " " << op_str << " " << expr << ";\n";
+                            out << indent << "reg." << assign.target.full_path() << " " << op_str << " " << expr
+                                << ";\n";
                         }
                     }
                 };
@@ -984,8 +990,8 @@ void CppModelEmitter::emit_transition_table(std::ostream& out, const FsmIr& mode
         }
 
         std::string action_type;
-        if (t.condition_action.has_value() && !t.condition_action->name.empty() &&
-            t.transition_action.has_value() && !t.transition_action->name.empty()) {
+        if (t.condition_action.has_value() && !t.condition_action->name.empty() && t.transition_action.has_value() &&
+            !t.transition_action->name.empty()) {
             action_type = "::fsm::seq_<" + t.condition_action->name + ", " + t.transition_action->name + ">";
         } else {
             action_type = t.get_action();

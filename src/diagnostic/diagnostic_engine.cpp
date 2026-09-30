@@ -138,7 +138,8 @@ std::string DiagnosticEngine::render_github_actions() const {
                       ",col=" + std::to_string(diag.span.column);
         }
         if (!diag.code.empty()) {
-            if (!params.empty()) params += ",";
+            if (!params.empty())
+                params += ",";
             params += "title=" + diag.code;
         }
         if (!params.empty()) {
@@ -160,13 +161,27 @@ std::string escape_json_str(std::string_view str) {
     out.reserve(str.size() + 16);
     for (char c : str) {
         switch (c) {
-            case '"': out += "\\\""; break;
-            case '\\': out += "\\\\"; break;
-            case '\b': out += "\\b"; break;
-            case '\f': out += "\\f"; break;
-            case '\n': out += "\\n"; break;
-            case '\r': out += "\\r"; break;
-            case '\t': out += "\\t"; break;
+            case '"':
+                out += "\\\"";
+                break;
+            case '\\':
+                out += "\\\\";
+                break;
+            case '\b':
+                out += "\\b";
+                break;
+            case '\f':
+                out += "\\f";
+                break;
+            case '\n':
+                out += "\\n";
+                break;
+            case '\r':
+                out += "\\r";
+                break;
+            case '\t':
+                out += "\\t";
+                break;
             default:
                 if (static_cast<unsigned char>(c) < 0x20) {
                     char buf[8];
@@ -190,10 +205,18 @@ std::string DiagnosticEngine::render_json() const {
         const auto& diag = diagnostics_[i];
         std::string sev_str;
         switch (diag.severity) {
-            case DiagnosticSeverity::Fatal: sev_str = "fatal"; break;
-            case DiagnosticSeverity::Error: sev_str = "error"; break;
-            case DiagnosticSeverity::Warning: sev_str = "warning"; break;
-            case DiagnosticSeverity::Note: sev_str = "note"; break;
+            case DiagnosticSeverity::Fatal:
+                sev_str = "fatal";
+                break;
+            case DiagnosticSeverity::Error:
+                sev_str = "error";
+                break;
+            case DiagnosticSeverity::Warning:
+                sev_str = "warning";
+                break;
+            case DiagnosticSeverity::Note:
+                sev_str = "note";
+                break;
         }
 
         ss << "  {\n";
@@ -218,4 +241,3 @@ std::string DiagnosticEngine::render_json() const {
 }
 
 }  // namespace fsm::diagnostic
-

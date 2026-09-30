@@ -156,8 +156,7 @@ void FsmValidator::validate_state_hierarchy(const FsmIr& model, ValidationResult
             visited.insert(curr);
             const auto* p = model.find_state(curr);
             if (p == nullptr) {
-                result.add_error("Hierarchy",
-                                 "State '" + s.name + "' references unknown parent state '" + curr + "'.");
+                result.add_error("Hierarchy", "State '" + s.name + "' references unknown parent state '" + curr + "'.");
                 break;
             }
             curr = p->parent_state;
@@ -237,8 +236,7 @@ void FsmValidator::validate_livelock_cycles(const FsmIr& model, ValidationResult
     std::map<std::string, std::vector<std::string>> eventless_adj;
     for (const auto& transition_item : model.transitions) {
         bool is_eventless = (transition_item.event.empty() || transition_item.event == "anonymous_event" ||
-                             transition_item.event == "completion_event" ||
-                             transition_item.event == "AnonymousEvent" ||
+                             transition_item.event == "completion_event" || transition_item.event == "AnonymousEvent" ||
                              transition_item.event == "anonymous") &&
                             !std::holds_alternative<ir::SignalTrigger>(transition_item.trigger) &&
                             !std::holds_alternative<ir::TimeTrigger>(transition_item.trigger) &&

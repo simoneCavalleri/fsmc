@@ -373,11 +373,9 @@ void CameoXmiGraphResolver::process_transition(const std::shared_ptr<XmlNode>& t
         } else {
             // Generate a stable synthetic guard name instead of sanitizing the raw boolean
             // expression (which would corrupt operator characters like >, &&, ! etc.).
-            std::string guard_name = "guard_" + sanitize_identifier(src_name) + "_to_" +
-                                     sanitize_identifier(dst_name) + "_" +
-                                     std::to_string(model.transitions.size() + 1);
-            model.add_guard(guard_name, "", std::optional<std::string>{guard_expr},
-                            std::nullopt);
+            std::string guard_name = "guard_" + sanitize_identifier(src_name) + "_to_" + sanitize_identifier(dst_name) +
+                                     "_" + std::to_string(model.transitions.size() + 1);
+            model.add_guard(guard_name, "", std::optional<std::string>{guard_expr}, std::nullopt);
             trans.guard = guard_name;
         }
     }

@@ -131,8 +131,8 @@ EFSMIntervalAnalyzer::compute_state_intervals() {
                     target_env[var_name] = interval;
                     changed = true;
                 } else {
-                    auto merged = apply_widening ? it_tgt->second.widen_with(interval)
-                                                 : it_tgt->second.join_with(interval);
+                    auto merged =
+                        apply_widening ? it_tgt->second.widen_with(interval) : it_tgt->second.join_with(interval);
                     if (merged != it_tgt->second) {
                         it_tgt->second = merged;
                         changed = true;

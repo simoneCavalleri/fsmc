@@ -332,7 +332,8 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
         if (cond_part[i] == '(') {
             p_depth++;
         } else if (cond_part[i] == ')') {
-            if (p_depth > 0) p_depth--;
+            if (p_depth > 0)
+                p_depth--;
         } else if (cond_part[i] == '&' && p_depth == 0) {
             clauses.push_back(cond_part.substr(last_split, i - last_split));
             last_split = i + 1;
@@ -411,11 +412,9 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
             // Generate a stable guard name from the transition endpoints and index,
             // instead of sanitizing the raw boolean expression which would mangle
             // operator characters (e.g. "x > 0 && !y" → "x__0____y").
-            std::string guard_name =
-                "guard_" + sanitize_identifier(src) + "_to_" + sanitize_identifier(target_state) + "_" +
-                std::to_string(model.transitions.size() + 1);
-            model.add_guard(guard_name, "", std::optional<std::string>{guard_expr},
-                            std::nullopt);
+            std::string guard_name = "guard_" + sanitize_identifier(src) + "_to_" + sanitize_identifier(target_state) +
+                                     "_" + std::to_string(model.transitions.size() + 1);
+            model.add_guard(guard_name, "", std::optional<std::string>{guard_expr}, std::nullopt);
             trans.guard = guard_name;
         }
         if (!action_from_comment.empty()) {

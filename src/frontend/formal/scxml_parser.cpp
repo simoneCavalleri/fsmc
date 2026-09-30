@@ -518,11 +518,9 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
                 model.add_guard(atomic);
             }
         } else {
-            std::string guard_name = "guard_" + sanitize_identifier(src) + "_to_" +
-                                     sanitize_identifier(dst) + "_" +
+            std::string guard_name = "guard_" + sanitize_identifier(src) + "_to_" + sanitize_identifier(dst) + "_" +
                                      std::to_string(model.transitions.size() + 1);
-            model.add_guard(guard_name, "", std::optional<std::string>{cond},
-                            std::nullopt);
+            model.add_guard(guard_name, "", std::optional<std::string>{cond}, std::nullopt);
             trans.guard = guard_name;
         }
     }

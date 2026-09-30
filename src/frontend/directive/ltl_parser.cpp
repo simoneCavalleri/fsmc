@@ -291,9 +291,12 @@ class LtlTokenizerAndParser {
             advance();
             PropertyAstNode right = parse_unary();
             TemporalOp op = TemporalOp::Until;
-            if (t == TokenType::Release) op = TemporalOp::Release;
-            else if (t == TokenType::EU) op = TemporalOp::EU;
-            else if (t == TokenType::AU) op = TemporalOp::AU;
+            if (t == TokenType::Release)
+                op = TemporalOp::Release;
+            else if (t == TokenType::EU)
+                op = TemporalOp::EU;
+            else if (t == TokenType::AU)
+                op = TemporalOp::AU;
             left = PropertyAstNode(op, {std::move(left), std::move(right)});
         }
         return left;

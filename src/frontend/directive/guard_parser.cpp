@@ -202,9 +202,9 @@ std::string GuardExpressionParser::to_diagram_string(std::string_view raw_expr,
     }
 
     auto resolve_leaf = [&](const std::string& name) -> std::string {
-        if (guards.empty()) return name;
-        auto it = std::find_if(guards.begin(), guards.end(),
-                               [&](const ir::GuardModel& gm) { return gm.name == name; });
+        if (guards.empty())
+            return name;
+        auto it = std::find_if(guards.begin(), guards.end(), [&](const ir::GuardModel& gm) { return gm.name == name; });
         if (it != guards.end() && it->raw_expression.has_value() && !it->raw_expression->empty()) {
             return *it->raw_expression;
         }

@@ -122,32 +122,38 @@ std::string sanitize_identifier(std::string_view str) {
         char character = str[i];
         if (character == '<') {
             if (i + 1 < str.size() && str[i + 1] == '=') {
-                if (!result.empty() && result.back() != '_') result.push_back('_');
+                if (!result.empty() && result.back() != '_')
+                    result.push_back('_');
                 result.append("lte_");
                 ++i;
             } else {
-                if (!result.empty() && result.back() != '_') result.push_back('_');
+                if (!result.empty() && result.back() != '_')
+                    result.push_back('_');
                 result.append("lt_");
             }
         } else if (character == '>') {
             if (i + 1 < str.size() && str[i + 1] == '=') {
-                if (!result.empty() && result.back() != '_') result.push_back('_');
+                if (!result.empty() && result.back() != '_')
+                    result.push_back('_');
                 result.append("gte_");
                 ++i;
             } else {
-                if (!result.empty() && result.back() != '_') result.push_back('_');
+                if (!result.empty() && result.back() != '_')
+                    result.push_back('_');
                 result.append("gt_");
             }
         } else if (character == '=' && i + 1 < str.size() && str[i + 1] == '=') {
-            if (!result.empty() && result.back() != '_') result.push_back('_');
+            if (!result.empty() && result.back() != '_')
+                result.push_back('_');
             result.append("eq_");
             ++i;
         } else if (character == '!' && i + 1 < str.size() && str[i + 1] == '=') {
-            if (!result.empty() && result.back() != '_') result.push_back('_');
+            if (!result.empty() && result.back() != '_')
+                result.push_back('_');
             result.append("neq_");
             ++i;
         } else if ((character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
-            (character >= '0' && character <= '9') || character == '_') {
+                   (character >= '0' && character <= '9') || character == '_') {
             result.push_back(character);
         } else if (character == ' ' || character == '-' || character == '.') {
             if (result.empty() || result.back() != '_') {

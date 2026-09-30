@@ -46,10 +46,8 @@ ModelCheckResult ModelChecker::verify_property(const FormalProperty& prop) {
     const auto& ast = *prop.ast;
 
     // 0. Computation Tree Logic (CTL) Operators
-    if (ast.op == TemporalOp::EX || ast.op == TemporalOp::AX ||
-        ast.op == TemporalOp::EF || ast.op == TemporalOp::AF ||
-        ast.op == TemporalOp::EG || ast.op == TemporalOp::AG ||
-        ast.op == TemporalOp::EU || ast.op == TemporalOp::AU) {
+    if (ast.op == TemporalOp::EX || ast.op == TemporalOp::AX || ast.op == TemporalOp::EF || ast.op == TemporalOp::AF ||
+        ast.op == TemporalOp::EG || ast.op == TemporalOp::AG || ast.op == TemporalOp::EU || ast.op == TemporalOp::AU) {
         return check_ctl(prop, ast);
     }
 
@@ -1050,8 +1048,8 @@ ModelCheckResult ModelChecker::check_ctl(const FormalProperty& prop, const Prope
     }
 
     // Property is violated at root_state_
-    std::string violation = "CTL specification '" + prop.raw_formula + "' does not hold at initial state '" +
-                            root_state_ + "'.";
+    std::string violation =
+        "CTL specification '" + prop.raw_formula + "' does not hold at initial state '" + root_state_ + "'.";
     std::vector<CounterexampleStep> trace;
 
     // For AG(p), reconstruct path to state not in sat(p)
@@ -1059,7 +1057,8 @@ ModelCheckResult ModelChecker::check_ctl(const FormalProperty& prop, const Prope
         auto p_sat = compute_sat(node.children[0]);
         for (const auto& s : reachable_states_) {
             if (p_sat.count(s) == 0) {
-                trace = reconstruct_trace(s, "State '" + s + "' violates invariant '" + node.children[0].to_string() + "'");
+                trace =
+                    reconstruct_trace(s, "State '" + s + "' violates invariant '" + node.children[0].to_string() + "'");
                 break;
             }
         }
@@ -1070,8 +1069,8 @@ ModelCheckResult ModelChecker::check_ctl(const FormalProperty& prop, const Prope
             for (const auto& edge : it->second) {
                 if (p_sat.count(edge.target) == 0) {
                     trace.push_back({0, root_state_, edge.event, edge.guard, "Initial state"});
-                    trace.push_back({1, edge.target, "", "",
-                                    "Successor state violates '" + node.children[0].to_string() + "'"});
+                    trace.push_back(
+                        {1, edge.target, "", "", "Successor state violates '" + node.children[0].to_string() + "'"});
                     break;
                 }
             }

@@ -325,20 +325,27 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
 
             // Parse entry, during, exit attributes
             std::string entry_act = child->get_attr("entry");
-            if (entry_act.empty()) entry_act = child->get_attr("en");
-            if (entry_act.empty()) entry_act = child->get_attr("on_entry");
+            if (entry_act.empty())
+                entry_act = child->get_attr("en");
+            if (entry_act.empty())
+                entry_act = child->get_attr("on_entry");
 
             std::string during_act = child->get_attr("during");
-            if (during_act.empty()) during_act = child->get_attr("du");
-            if (during_act.empty()) during_act = child->get_attr("do_activity");
+            if (during_act.empty())
+                during_act = child->get_attr("du");
+            if (during_act.empty())
+                during_act = child->get_attr("do_activity");
 
             std::string exit_act = child->get_attr("exit");
-            if (exit_act.empty()) exit_act = child->get_attr("ex");
-            if (exit_act.empty()) exit_act = child->get_attr("on_exit");
+            if (exit_act.empty())
+                exit_act = child->get_attr("ex");
+            if (exit_act.empty())
+                exit_act = child->get_attr("on_exit");
 
             // Parse state labelString (e.g. StateName\nentry: ...\nduring: ...\nexit: ...)
             std::string state_label = child->get_attr("labelString");
-            if (state_label.empty()) state_label = child->get_attr("label");
+            if (state_label.empty())
+                state_label = child->get_attr("label");
             if (!state_label.empty()) {
                 std::istringstream stream(state_label);
                 std::string line;
@@ -346,7 +353,8 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
                 Section cur_sec = Section::None;
                 while (std::getline(stream, line)) {
                     std::string t_line = std::string(trim(line));
-                    if (t_line.empty()) continue;
+                    if (t_line.empty())
+                        continue;
                     if (t_line.rfind("entry:", 0) == 0 || t_line.rfind("en:", 0) == 0) {
                         cur_sec = Section::Entry;
                         size_t colon = t_line.find(':');
@@ -360,15 +368,19 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
                         size_t colon = t_line.find(':');
                         t_line = std::string(trim(t_line.substr(colon + 1)));
                     }
-                    if (t_line.empty()) continue;
+                    if (t_line.empty())
+                        continue;
                     if (cur_sec == Section::Entry) {
-                        if (!entry_act.empty()) entry_act += "; ";
+                        if (!entry_act.empty())
+                            entry_act += "; ";
                         entry_act += t_line;
                     } else if (cur_sec == Section::During) {
-                        if (!during_act.empty()) during_act += "; ";
+                        if (!during_act.empty())
+                            during_act += "; ";
                         during_act += t_line;
                     } else if (cur_sec == Section::Exit) {
-                        if (!exit_act.empty()) exit_act += "; ";
+                        if (!exit_act.empty())
+                            exit_act += "; ";
                         exit_act += t_line;
                     }
                 }
@@ -458,7 +470,8 @@ StateflowParser::StateflowLabelComponents StateflowParser::parse_stateflow_label
             dur_ms_f = val * 1000.0;
         }
         uint64_t dur_ms = static_cast<uint64_t>(dur_ms_f + 0.5);  // round to nearest ms
-        if (dur_ms == 0) dur_ms = 1;
+        if (dur_ms == 0)
+            dur_ms = 1;
         res.time_trigger = TimeTrigger(TimeTriggerKind::After, dur_ms, TimeUnit::Milliseconds);
         res.event = "after_" + std::to_string(dur_ms) + "ms";
     } else if (std::regex_search(label, match, every_re)) {
@@ -469,7 +482,8 @@ StateflowParser::StateflowLabelComponents StateflowParser::parse_stateflow_label
             dur_ms_f = val * 1000.0;
         }
         uint64_t dur_ms = static_cast<uint64_t>(dur_ms_f + 0.5);
-        if (dur_ms == 0) dur_ms = 1;
+        if (dur_ms == 0)
+            dur_ms = 1;
         res.time_trigger = TimeTrigger(TimeTriggerKind::Every, dur_ms, TimeUnit::Milliseconds);
         res.event = "every_" + std::to_string(dur_ms) + "ms";
     } else if (std::regex_search(label, match, at_re)) {
@@ -480,7 +494,8 @@ StateflowParser::StateflowLabelComponents StateflowParser::parse_stateflow_label
             dur_ms_f = val * 1000.0;
         }
         uint64_t dur_ms = static_cast<uint64_t>(dur_ms_f + 0.5);
-        if (dur_ms == 0) dur_ms = 1;
+        if (dur_ms == 0)
+            dur_ms = 1;
         res.time_trigger = TimeTrigger(TimeTriggerKind::At, dur_ms, TimeUnit::Milliseconds);
         res.event = "at_" + std::to_string(dur_ms) + "ms";
     }
@@ -624,11 +639,9 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
         } else {
             // Generate a stable synthetic guard name instead of sanitizing the raw
             // boolean expression (which would corrupt operator characters like >, &&, ! etc.).
-            std::string guard_name = "guard_" + sanitize_identifier(src_name) + "_to_" +
-                                     sanitize_identifier(dst_name) + "_" +
-                                     std::to_string(model.transitions.size() + 1);
-            model.add_guard(guard_name, "", std::optional<std::string>{comps.guard},
-                            std::nullopt);
+            std::string guard_name = "guard_" + sanitize_identifier(src_name) + "_to_" + sanitize_identifier(dst_name) +
+                                     "_" + std::to_string(model.transitions.size() + 1);
+            model.add_guard(guard_name, "", std::optional<std::string>{comps.guard}, std::nullopt);
             trans.guard = guard_name;
         }
     }

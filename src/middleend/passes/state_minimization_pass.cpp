@@ -57,11 +57,9 @@ bool StateMinimizationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         bool is_init = (s.name == init_st || s.id == init_st);
         std::string key = std::to_string(static_cast<int>(s.kind)) + "|" + (is_init ? "INIT" : "NORM") + "|" +
                           s.parent_state + "|" + get_actions_sig(s.entry_actions) + "|" +
-                          get_actions_sig(s.exit_actions) + "|" +
-                          s.do_activity.value_or("") + "|" +
+                          get_actions_sig(s.exit_actions) + "|" + s.do_activity.value_or("") + "|" +
                           (s.time_invariant.has_value() ? s.time_invariant->to_string() : "") + "|" +
-                          (s.has_history ? "H" : "") + "|" +
-                          (s.has_deep_history ? "DH" : "") + "|" +
+                          (s.has_history ? "H" : "") + "|" + (s.has_deep_history ? "DH" : "") + "|" +
                           get_deferred_sig(s.deferred_events);
 
         initial_blocks[key].push_back(s.name);
@@ -108,8 +106,8 @@ bool StateMinimizationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                             std::size_t b_idx = (it != state_to_block.end()) ? it->second : 999999;
                             std::string cond_act = t.condition_action.has_value() ? t.condition_action->name : "";
                             std::string trans_act = t.transition_action.has_value() ? t.transition_action->name : "";
-                            std::string desc = std::to_string(b_idx) + ":" + t.guard.value_or("") + ":" +
-                                               cond_act + "/" + trans_act;
+                            std::string desc =
+                                std::to_string(b_idx) + ":" + t.guard.value_or("") + ":" + cond_act + "/" + trans_act;
                             t_descs.push_back(std::move(desc));
                         }
                     }

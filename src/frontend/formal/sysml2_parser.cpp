@@ -708,8 +708,7 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    static const std::regex do_block_act_regex(R"(^do(?:\s*\/)?(?:\s+action)?\s*\{([\s\S]*)\})",
-                                               std::regex::optimize);
+    static const std::regex do_block_act_regex(R"(^do(?:\s*\/)?(?:\s+action)?\s*\{([\s\S]*)\})", std::regex::optimize);
     if (std::regex_search(stmt, match, do_block_act_regex)) {
         std::string act_name = !state_stack.empty() ? (state_stack.back() + "_do") : "do_activity";
         model.add_action(act_name);
@@ -929,8 +928,8 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     static const std::regex accept_regex(
         R"(\b(?:accept|when)\s+(?:([A-Za-z_][A-Za-z0-9_]*)\s*:\s*)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
     static const std::regex if_regex(R"(\bif\s+([^;]+?)(?=\s+(?:do\b|then\b|to\b|;|$)))", std::regex::optimize);
-    static const std::regex do_block_regex(
-        R"(\bdo\s*(?:action\s+)?(?:([A-Za-z_][A-Za-z0-9_]*)\s*)?\{([^}]+)\})", std::regex::optimize);
+    static const std::regex do_block_regex(R"(\bdo\s*(?:action\s+)?(?:([A-Za-z_][A-Za-z0-9_]*)\s*)?\{([^}]+)\})",
+                                           std::regex::optimize);
     static const std::regex do_regex(R"(\bdo\s+(?:action\s+)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
     static const std::regex then_regex(R"(\b(?:then|to)\s+([A-Za-z_][A-Za-z0-9_\[\]\*]*))", std::regex::optimize);
 

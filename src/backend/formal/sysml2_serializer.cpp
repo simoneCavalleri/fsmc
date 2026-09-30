@@ -35,12 +35,14 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
         }
     }
 
+    std::string state_kw = (state.kind == StateKind::Parallel) ? "parallel state " : "state ";
+
     if (!has_body && !has_children) {
-        out << pad << "state " << state.name << ";\n";
+        out << pad << state_kw << state.name << ";\n";
         return;
     }
 
-    out << pad << "state " << state.name << " {\n";
+    out << pad << state_kw << state.name << " {\n";
 
     // Invariant (stay duration)
     if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
@@ -72,8 +74,8 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
         out << pad << "    defer " << d_evt << ";\n";
     }
 
-    // Initial substate
-    if (!state.initial_sub_state.empty()) {
+    // Initial substate (only for exclusive/OR states, not parallel orthogonal states)
+    if (!state.initial_sub_state.empty() && state.kind != StateKind::Parallel) {
         out << pad << "    entry; then " << state.initial_sub_state << ";\n";
     }
 

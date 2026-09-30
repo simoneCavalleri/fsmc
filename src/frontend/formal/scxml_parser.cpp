@@ -1,6 +1,7 @@
 #include "fsm/frontend/formal/scxml_parser.hpp"
 
 #include <cctype>
+#include <functional>
 #include <map>
 #include <regex>
 #include <utility>

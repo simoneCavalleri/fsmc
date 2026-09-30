@@ -1433,7 +1433,12 @@ inline constexpr bool has_deferred_events_v = detail::has_deferred_events<State>
 template <typename State, typename Event>
 inline constexpr bool is_deferred_event_v = []() constexpr {
     if constexpr (has_deferred_events_v<State>) {
-        return detail::type_list_contains_event<std::decay_t<Event>, typename State::deferred_events>::value;
+        if constexpr (detail::type_list_contains_event<std::decay_t<Event>, typename State::deferred_events>::value) {
+            return true;
+        }
+    }
+    if constexpr (detail::has_parent_type<State>::value) {
+        return is_deferred_event_v<typename State::parent_type, Event>;
     } else {
         return false;
     }
@@ -1474,11 +1479,23 @@ struct count_parent_states<type_list<States...>>
 template <typename StateList>
 inline constexpr std::size_t count_parent_states_v = count_parent_states<StateList>::value;
 
+namespace detail {
+template <typename State, typename = void>
+struct state_or_ancestor_has_deferred : has_deferred_events<State> {};
+
+template <typename State>
+struct state_or_ancestor_has_deferred<State, std::void_t<typename State::parent_type>> {
+    static constexpr bool value = has_deferred_events<State>::value ||
+                                  state_or_ancestor_has_deferred<typename State::parent_type>::value;
+};
+}  // namespace detail
+
 template <typename StateList>
 struct any_state_has_deferred : std::false_type {};
 
 template <typename... States>
-struct any_state_has_deferred<type_list<States...>> : std::disjunction<detail::has_deferred_events<States>...> {};
+struct any_state_has_deferred<type_list<States...>>
+    : std::bool_constant<(detail::state_or_ancestor_has_deferred<States>::value || ...)> {};
 
 }  // namespace fsm
 

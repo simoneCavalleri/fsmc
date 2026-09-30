@@ -323,11 +323,24 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
         out << " -- port (" << port_direction_to_string(port.direction) << ")\n";
     }
 
-    // Collect and declare free boolean guard variables
+    // Collect and declare free boolean guard variables.
+    // When trans.guard holds a synthetic name (guard_A_to_B_N), we resolve the raw
+    // boolean expression from model.guards[n].raw_expression for correct SMV emission.
+    auto resolve_guard_expr = [&](const std::string& guard_val) -> std::string {
+        // Check if this guard name has a raw expression registered in model.guards
+        auto it = std::find_if(model.guards.begin(), model.guards.end(),
+                               [&guard_val](const GuardModel& gm) { return gm.name == guard_val; });
+        if (it != model.guards.end() && it->raw_expression.has_value() && !it->raw_expression->empty()) {
+            return *it->raw_expression;
+        }
+        return guard_val;  // Fallback: use as-is (may be a named guard type or inline expr)
+    };
+
     std::set<std::string> free_guard_vars;
     for (const auto& t : model.transitions) {
         if (t.guard.has_value() && !t.guard->empty()) {
-            std::string smv_guard = to_smv_predicate(*t.guard);
+            std::string resolved = resolve_guard_expr(*t.guard);
+            std::string smv_guard = to_smv_predicate(resolved);
             extract_smv_identifiers(smv_guard, known_idents, free_guard_vars);
         }
     }
@@ -414,7 +427,7 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
             out << " & event = " << sanitize_smv_ident(evt);
         }
         if (t.guard.has_value() && !t.guard->empty()) {
-            std::string guard_str = to_smv_predicate(*t.guard);
+            std::string guard_str = to_smv_predicate(resolve_guard_expr(*t.guard));
             out << " & (" << guard_str << ")";
         }
         out << " : " << sanitize_smv_ident(dst) << ";";

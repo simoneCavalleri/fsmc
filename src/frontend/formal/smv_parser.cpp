@@ -380,8 +380,15 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
         trans.target = target_state;
         trans.event = event_name;
         if (!guard_expr.empty()) {
-            trans.guard = guard_expr;
-            model.add_guard(sanitize_identifier(guard_expr));
+            // Generate a stable guard name from the transition endpoints and index,
+            // instead of sanitizing the raw boolean expression which would mangle
+            // operator characters (e.g. "x > 0 && !y" → "x__0____y").
+            std::string guard_name =
+                "guard_" + sanitize_identifier(src) + "_to_" + sanitize_identifier(target_state) + "_" +
+                std::to_string(model.transitions.size() + 1);
+            model.add_guard(guard_name, "", std::optional<std::string>{guard_expr},
+                            std::optional<std::string>{guard_expr});
+            trans.guard = guard_name;
         }
         if (!action_from_comment.empty()) {
             trans.transition_action = ActionSignature(action_from_comment);

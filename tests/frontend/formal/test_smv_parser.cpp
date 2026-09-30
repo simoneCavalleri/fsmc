@@ -235,13 +235,88 @@ ASSIGN
     EXPECT_EQ(t1.source, "Standby");
     EXPECT_EQ(t1.target, "Transmitting");
     EXPECT_EQ(t1.event, "cmd_send");
+    // After the guard-name fix, trans.guard holds a synthetic guard name like
+    // "guard_Standby_to_Transmitting_1", while the raw boolean expression is
+    // stored in model.guards[n].raw_expression for proper semantic analysis.
     ASSERT_TRUE(t1.guard.has_value());
-    EXPECT_NE(t1.guard->find("retry_count"), std::string::npos);
+    // The guard name must be a stable identifier, not a mangled boolean expression.
+    EXPECT_NE(t1.guard->find("guard_"), std::string::npos);
+    // The actual expression (retry_count < 5) must appear in the guard model.
+    bool found_expr_in_guards = false;
+    for (const auto& gm : model.guards) {
+        if (gm.raw_expression.has_value() && gm.raw_expression->find("retry_count") != std::string::npos) {
+            found_expr_in_guards = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_expr_in_guards) << "Guard raw expression not found in model.guards";
 
     const auto& t2 = model.transitions[1];
     EXPECT_EQ(t2.source, "Transmitting");
     EXPECT_EQ(t2.target, "ErrorState");
     EXPECT_EQ(t2.event, "err_detected");
+}
+
+/**
+ * @brief Regression: SMV boolean guard expressions must not be corrupted by sanitize_identifier.
+ * @scenario Parse SMV transitions with compound boolean guards (`battery_mv > 3200 && !fault_active`).
+ *           Before the fix, sanitize_identifier() was called on the raw expression, replacing
+ *           >, &&, ! with underscores and producing a meaningless guard name that was
+ *           inconsistent with the raw expression stored in model.guards.
+ * @expected trans.guard holds a stable synthetic name ("guard_..."); model.guards contains
+ *           a GuardModel whose raw_expression matches the original boolean expression.
+ */
+TEST(SmvParser, CompoundBooleanGuard_StoredWithoutExpressionCorruption) {
+    const std::string smv_content = R"(MODULE BatteryFSM
+VAR
+  state : {Nominal, LowBattery, Critical};
+  battery_mv : 0..5000;
+  fault_active : boolean;
+
+ASSIGN
+  init(state) := Nominal;
+
+  next(state) := case
+    state = Nominal & (battery_mv > 3200) & !(fault_active) : LowBattery;
+    state = LowBattery & (battery_mv < 2800) : Critical;
+    TRUE : state;
+  esac;
+)";
+
+    SmvParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+
+    ASSERT_EQ(model.transitions.size(), 2u);
+
+    // Transition 1: Nominal -> LowBattery with compound guard
+    const auto& t1 = model.transitions[0];
+    EXPECT_EQ(t1.source, "Nominal");
+    EXPECT_EQ(t1.target, "LowBattery");
+
+    // The guard must be a stable identifier (no operator characters), not a mangled expression.
+    ASSERT_TRUE(t1.guard.has_value());
+    EXPECT_NE(t1.guard->find("guard_"), std::string::npos)
+        << "Guard name should be a synthetic identifier, not a mangled expression";
+    // Operator characters from the original boolean expression must NOT appear in the guard name.
+    EXPECT_EQ(t1.guard->find(">"), std::string::npos)
+        << "Operator '>' must not appear in guard name";
+    EXPECT_EQ(t1.guard->find("!"), std::string::npos)
+        << "Operator '!' must not appear in guard name";
+
+    // The raw boolean expression must be preserved intact in model.guards.
+    bool found_battery_expr = false;
+    for (const auto& gm : model.guards) {
+        if (gm.raw_expression.has_value() &&
+            gm.raw_expression->find("battery_mv") != std::string::npos) {
+            found_battery_expr = true;
+            EXPECT_NE(gm.raw_expression->find("3200"), std::string::npos)
+                << "Guard raw_expression must preserve the original numeric literal";
+            break;
+        }
+    }
+    EXPECT_TRUE(found_battery_expr) << "Guard raw expression not found in model.guards";
 }
 
 }  // namespace

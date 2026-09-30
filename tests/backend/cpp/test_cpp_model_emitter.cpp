@@ -826,4 +826,31 @@ TEST(CppModelEmitter, CompoundAssignmentAndOutPortScope_EmittedCorrectly) {
     EXPECT_NE(str.find("out.speedOut = 100;"), std::string::npos);
 }
 
+/**
+ * @brief Verify that signals with attributes emit default constructor alongside parameterized constructor.
+ */
+TEST(CppModelEmitter, SignalWithAttributes_EmitsDefaultAndParameterizedConstructors) {
+    FsmIr model;
+    model.name = "SignalModel";
+    model.initial_state = "Idle";
+
+    StateNode idle{"Idle"};
+    model.states.push_back(idle);
+
+    SignalDefinition sig("CmdThrottle");
+    sig.attributes.emplace_back("level", DataType{"float"}, "0.0f");
+    model.signals.push_back(sig);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    CppModelEmitter::emit_model(out, model, opts);
+    std::string str = out.str();
+
+    EXPECT_NE(str.find("struct CmdThrottle {"), std::string::npos);
+    EXPECT_NE(str.find("constexpr CmdThrottle() = default;"), std::string::npos);
+    EXPECT_NE(str.find("constexpr explicit CmdThrottle(float level_) : level(std::move(level_)) {}"),
+              std::string::npos);
+}
+
+
 

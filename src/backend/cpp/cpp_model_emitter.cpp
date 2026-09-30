@@ -429,6 +429,7 @@ void CppModelEmitter::emit_events(std::ostream& out, const FsmIr& model) {
                 }
             }
             if (!sig.attributes.empty()) {
+                out << "\n    constexpr " << sig.name << "() = default;\n";
                 out << "\n    constexpr explicit " << sig.name << "(";
                 for (std::size_t i = 0; i < sig.attributes.size(); ++i) {
                     if (i > 0)

@@ -91,6 +91,24 @@ struct has_on_exit_void : std::false_type {};
 template <typename State>
 struct has_on_exit_void<State, std::void_t<decltype(std::declval<State&>().on_exit())>> : std::true_type {};
 
+// do_activity(in, out, reg, srv)
+template <typename State, typename InPorts, typename OutPorts, typename Registers, typename Services, typename = void>
+struct has_do_activity_ports : std::false_type {};
+
+template <typename State, typename InPorts, typename OutPorts, typename Registers, typename Services>
+struct has_do_activity_ports<
+    State, InPorts, OutPorts, Registers, Services,
+    std::void_t<decltype(std::declval<State&>().do_activity(std::declval<const InPorts&>(), std::declval<OutPorts&>(),
+                                                            std::declval<Registers&>(), std::declval<Services&>()))>>
+    : std::true_type {};
+
+// do_activity()
+template <typename State, typename = void>
+struct has_do_activity_void : std::false_type {};
+
+template <typename State>
+struct has_do_activity_void<State, std::void_t<decltype(std::declval<State&>().do_activity())>> : std::true_type {};
+
 }  // namespace detail
 
 // ----------------------------------------------------------------------------
@@ -165,6 +183,25 @@ template <typename State>
 constexpr void call_on_exit(State& state) {
     if constexpr (detail::has_on_exit_void<State>::value) {
         state.on_exit();
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Safe invocation of do_activity hook
+// ----------------------------------------------------------------------------
+template <typename State, typename InPorts, typename OutPorts, typename Registers, typename Services>
+constexpr void call_do_activity(State& state, const InPorts& in, OutPorts& out, Registers& reg, Services& srv) {
+    if constexpr (detail::has_do_activity_ports<State, InPorts, OutPorts, Registers, Services>::value) {
+        state.do_activity(in, out, reg, srv);
+    } else if constexpr (detail::has_do_activity_void<State>::value) {
+        state.do_activity();
+    }
+}
+
+template <typename State>
+constexpr void call_do_activity(State& state) {
+    if constexpr (detail::has_do_activity_void<State>::value) {
+        state.do_activity();
     }
 }
 

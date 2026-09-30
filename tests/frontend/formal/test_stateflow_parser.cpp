@@ -289,4 +289,117 @@ TEST(StateflowParser, NestedBracketsAndJunctions_ParsedCorrectly) {
     EXPECT_NE(t1.guard->find("sensor_buf"), std::string::npos);
 }
 
+/**
+ * @brief Verify Stateflow state actions (en, du, ex) and periodic/at temporal logic.
+ * @scenario Parse Stateflow chart containing state actions in labelString, attributes, and every() trigger.
+ * @expected Entry/exit actions and do_activity extracted into StateNode, every() parsed as TimeTrigger,
+ *           and stateflow serialization preserves entry, during, exit, and every() syntax.
+ */
+TEST(StateflowParser, StateActionsAndPeriodicTimers_ParsedAndSerialized) {
+    const std::string sf_xml = R"(
+        <Stateflow>
+            <chart id="1" name="TemporalActionsChart">
+                <state id="10" name="Active" labelString="Active&#10;en: initHardware();&#10;du: monitorSensors();&#10;ex: cleanupHardware();"/>
+                <state id="20" name="Standby" entry="enterSleep();" exit="wakeUp();"/>
+                <transition src="Active" dst="Standby" labelString="every(50, ms) [batteryLow] / { sendTelemetry(); }"/>
+            </chart>
+        </Stateflow>
+    )";
+
+    StateflowParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err;
+
+    // Verify Active state actions from labelString
+    const auto* active_st = model.find_state("Active");
+    ASSERT_NE(active_st, nullptr);
+    ASSERT_FALSE(active_st->entry_actions.empty());
+    EXPECT_EQ(active_st->entry_actions[0].name, "initHardware");
+    ASSERT_TRUE(active_st->do_activity.has_value());
+    EXPECT_EQ(*active_st->do_activity, "monitorSensors");
+    ASSERT_FALSE(active_st->exit_actions.empty());
+    EXPECT_EQ(active_st->exit_actions[0].name, "cleanupHardware");
+
+    // Verify Standby state actions from attributes
+    const auto* standby_st = model.find_state("Standby");
+    ASSERT_NE(standby_st, nullptr);
+    ASSERT_FALSE(standby_st->entry_actions.empty());
+    EXPECT_EQ(standby_st->entry_actions[0].name, "enterSleep");
+    ASSERT_FALSE(standby_st->exit_actions.empty());
+    EXPECT_EQ(standby_st->exit_actions[0].name, "wakeUp");
+
+    // Verify transition with every() trigger
+    ASSERT_EQ(model.transitions.size(), 1u);
+    const auto& tr = model.transitions[0];
+    EXPECT_EQ(tr.source, "Active");
+    EXPECT_EQ(tr.target, "Standby");
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(tr.trigger));
+    const auto& tt = std::get<TimeTrigger>(tr.trigger);
+    EXPECT_EQ(tt.kind, TimeTriggerKind::Every);
+    EXPECT_EQ(tt.duration_ms, 50u);
+
+    // Roundtrip serialize to Stateflow XML
+    std::string exported_xml = StateflowSerializer::serialize(model);
+
+    EXPECT_NE(exported_xml.find("entry=\"initHardware\""), std::string::npos);
+    EXPECT_NE(exported_xml.find("during=\"monitorSensors\""), std::string::npos);
+    EXPECT_NE(exported_xml.find("exit=\"cleanupHardware\""), std::string::npos);
+    EXPECT_NE(exported_xml.find("entry=\"enterSleep\""), std::string::npos);
+    EXPECT_NE(exported_xml.find("exit=\"wakeUp\""), std::string::npos);
+    EXPECT_NE(exported_xml.find("every(50, msec)"), std::string::npos);
+}
+
+/**
+ * @brief Verify Stateflow fractional time duration parsing and guard expression preservation.
+ * @scenario Parse after(1.5, sec) and complex comparison guard in Stateflow XML.
+ * @expected Duration converted to 1500 ms (not truncated to 1 ms) and guard raw expression preserved in model.guards.
+ */
+TEST(StateflowParser, FractionalDurationsAndGuardRawExpressions_Preserved) {
+    const std::string sf_xml = R"(
+        <Stateflow>
+            <chart id="1" name="FractionalTimerChart">
+                <state id="10" name="Preheat"/>
+                <state id="20" name="Cook"/>
+                <transition src="Preheat" dst="Cook" labelString="after(1.5, sec) [temp &gt;= 180.5] / { startBaking(); }"/>
+                <transition src="Cook" dst="Preheat" labelString="every(2.5, s) [timer_expired == 1]"/>
+            </chart>
+        </Stateflow>
+    )";
+
+    StateflowParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err;
+
+    ASSERT_EQ(model.transitions.size(), 2u);
+
+    // Verify 1.5 sec -> 1500 ms
+    const auto& t1 = model.transitions[0];
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(t1.trigger));
+    const auto& tt1 = std::get<TimeTrigger>(t1.trigger);
+    EXPECT_EQ(tt1.kind, TimeTriggerKind::After);
+    EXPECT_EQ(tt1.duration_ms, 1500u);
+
+    // Verify 2.5 s -> 2500 ms
+    const auto& t2 = model.transitions[1];
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(t2.trigger));
+    const auto& tt2 = std::get<TimeTrigger>(t2.trigger);
+    EXPECT_EQ(tt2.kind, TimeTriggerKind::Every);
+    EXPECT_EQ(tt2.duration_ms, 2500u);
+
+    // Verify guard preservation in model.guards
+    ASSERT_FALSE(model.guards.empty());
+    auto it = std::find_if(model.guards.begin(), model.guards.end(), [](const GuardModel& gm) {
+        return gm.raw_expression.has_value() && gm.raw_expression->find("temp >= 180.5") != std::string::npos;
+    });
+    EXPECT_NE(it, model.guards.end());
+
+    // Verify StateflowSerializer roundtrip preserves the predicate
+    std::string xml = StateflowSerializer::serialize(model);
+    EXPECT_NE(xml.find("after(1500, msec)"), std::string::npos);
+    EXPECT_NE(xml.find("every(2500, msec)"), std::string::npos);
+    EXPECT_NE(xml.find("temp &gt;= 180.5"), std::string::npos);
+}
+
 }  // namespace

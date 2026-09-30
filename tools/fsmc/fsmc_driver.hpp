@@ -69,7 +69,7 @@ class FsmcDriver {
         }
 
         if (opts.show_version) {
-            std::cout << "fsmc version 0.7.0 (Universal State Machine Compiler & Optimization Infrastructure)\n";
+            std::cout << "fsmc version 0.8.0 (Universal State Machine Compiler & Optimization Infrastructure)\n";
             return 0;
         }
 
@@ -242,8 +242,10 @@ class FsmcDriver {
                     pm.add_pass(std::make_unique<CommonActionFactoringPassWrapper>());
                     pm.add_pass(std::make_unique<TransitionFusionPassWrapper>());
                 }
+                pm.add_pass(std::make_unique<ConnectiveJunctionChainingPassWrapper>());
                 pm.add_pass(std::make_unique<ChoiceCompletenessPass>());
                 pm.add_pass(std::make_unique<ChoiceInliningPassWrapper>());
+                pm.add_pass(std::make_unique<SampledChangeTriggerPassWrapper>());
                 pm.add_pass(std::make_unique<TimedDeadlockPassWrapper>());
                 pm.add_pass(std::make_unique<EFSMDataPathPass>());
                 if (opts.prune_dead_states || opts.opt_level >= 2) {
@@ -260,10 +262,12 @@ class FsmcDriver {
                     pm.add_pass(std::make_unique<ModelCheckingPass>());
                 }
             }
+            DiagnosticFormat diag_fmt = parse_diagnostic_format(opts.diagnostic_format);
+
             for (const auto& plugin_path : opts.pass_plugins) {
                 DiagnosticEngine plugin_diag;
                 if (!pm.load_plugin(plugin_path, plugin_diag)) {
-                    std::cerr << plugin_diag.render_to_string(content);
+                    std::cerr << plugin_diag.render_to_format(diag_fmt, content);
                     return 1;
                 }
             }
@@ -273,7 +277,7 @@ class FsmcDriver {
 
             DiagnosticEngine diag;
             if (!pm.run(model, diag)) {
-                std::cerr << diag.render_to_string(content);
+                std::cerr << diag.render_to_format(diag_fmt, content);
                 return 1;
             }
 
@@ -288,7 +292,7 @@ class FsmcDriver {
                 }
                 if (has_warnings) {
                     std::cerr << "\n[ERROR] -Werror enabled: compilation failed due to middle-end warnings/errors:\n";
-                    std::cerr << diag.render_to_string(content);
+                    std::cerr << diag.render_to_format(diag_fmt, content);
                     return 1;
                 }
             }

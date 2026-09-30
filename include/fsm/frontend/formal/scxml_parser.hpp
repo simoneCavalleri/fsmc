@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 #include "fsm/frontend/common/parser_interface.hpp"
 #include "fsm/frontend/common/xml_parser.hpp"
@@ -37,10 +38,16 @@ class ScxmlParser : public IParser {
     bool parse(std::string_view content, FsmIr& model, std::string& error_message) override;
 
   private:
+    struct HistoryPseudostate {
+        std::string parent_state;
+        bool is_deep{false};
+    };
+    std::unordered_map<std::string, HistoryPseudostate> history_pseudostates_;
+
     void parse_scxml_children(const std::shared_ptr<XmlNode>& parent_node, FsmIr& model,
                               const std::string& current_parent_state);
-    static void parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_node, FsmIr& model,
-                                       const std::string& current_state);
+    void parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_node, FsmIr& model,
+                                const std::string& current_state);
 };
 
 }  // namespace fsm::frontend::formal

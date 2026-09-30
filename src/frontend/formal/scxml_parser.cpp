@@ -1,6 +1,7 @@
 #include "fsm/frontend/formal/scxml_parser.hpp"
 
 #include <cctype>
+#include <functional>
 #include <map>
 #include <regex>
 #include <utility>
@@ -67,7 +68,68 @@ bool ScxmlParser::parse(std::string_view content, FsmIr& model, std::string& err
         }
     }
 
+    history_pseudostates_.clear();
+
+    std::function<void(const std::shared_ptr<XmlNode>&, const std::string&)> collect_histories =
+        [&](const std::shared_ptr<XmlNode>& node, const std::string& parent_state) {
+            for (const auto& child : node->children) {
+                const std::string tag = child->tag;
+                if (tag == "history" || ends_with(tag, ":history")) {
+                    std::string hist_type = child->get_attr("type");
+                    std::string hist_id = child->get_attr("id");
+                    bool is_deep = (hist_type == "deep");
+                    std::string target = parent_state;
+                    if (target.empty() && !hist_id.empty()) {
+                        target = sanitize_identifier(hist_id);
+                    }
+                    if (!hist_id.empty()) {
+                        history_pseudostates_[sanitize_identifier(hist_id)] = {target, is_deep};
+                    }
+                    if (!target.empty()) {
+                        history_pseudostates_[target + "_hist"] = {target, is_deep};
+                        history_pseudostates_[target + "_history"] = {target, is_deep};
+                    }
+                } else if (tag == "state" || ends_with(tag, ":state") || tag == "parallel" ||
+                           ends_with(tag, ":parallel")) {
+                    std::string s_id = child->get_attr("id");
+                    std::string s_name = s_id.empty() ? parent_state : sanitize_identifier(s_id);
+                    collect_histories(child, s_name);
+                }
+            }
+        };
+    collect_histories(scxml_node, "");
+
     parse_scxml_children(scxml_node, model, "");
+
+    // Resolve transitions targeting history pseudostates
+    for (auto& trans : model.transitions) {
+        auto it = history_pseudostates_.find(trans.target);
+        if (it != history_pseudostates_.end()) {
+            trans.target = it->second.parent_state;
+            trans.target_is_history = true;
+            trans.target_is_deep_history = it->second.is_deep;
+        } else if (ends_with(trans.target, "_hist")) {
+            std::string base = trans.target.substr(0, trans.target.size() - 5);
+            if (model.find_state(base) != nullptr) {
+                trans.target = base;
+                trans.target_is_history = true;
+            }
+        } else if (ends_with(trans.target, "_history")) {
+            std::string base = trans.target.substr(0, trans.target.size() - 8);
+            if (model.find_state(base) != nullptr) {
+                trans.target = base;
+                trans.target_is_history = true;
+            }
+        }
+        if (trans.target_is_history || trans.target_is_deep_history) {
+            if (auto* target_st = model.find_state_mut(trans.target)) {
+                target_st->has_history = true;
+                if (trans.target_is_deep_history) {
+                    target_st->has_deep_history = true;
+                }
+            }
+        }
+    }
 
     if (model.states.empty()) {
         error_message = "SCXML Parser: No states found in <scxml> document.";
@@ -318,6 +380,7 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
         } else if (tag == "history" || ends_with(tag, ":history")) {
             std::string hist_type = child->get_attr("type");
             std::string hist_id = child->get_attr("id");
+            bool is_deep = (hist_type == "deep");
             std::string target_state = current_parent_state;
             if (target_state.empty() && !hist_id.empty()) {
                 target_state = sanitize_identifier(hist_id);
@@ -325,9 +388,17 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
             auto* curr_state = model.find_state_mut(target_state);
             if (curr_state != nullptr) {
                 curr_state->has_history = true;
-                if (hist_type == "deep") {
+                if (is_deep) {
                     curr_state->has_deep_history = true;
                 }
+            }
+            if (!hist_id.empty()) {
+                std::string s_id = sanitize_identifier(hist_id);
+                history_pseudostates_[s_id] = {target_state, is_deep};
+            }
+            if (!target_state.empty()) {
+                history_pseudostates_[target_state + "_hist"] = {target_state, is_deep};
+                history_pseudostates_[target_state + "_history"] = {target_state, is_deep};
             }
 
             // 6. Deferred events (<defer event="..."/>)
@@ -404,19 +475,54 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
     std::string src = current_state;
     std::string dst = target.empty() ? src : target;
 
+    bool is_history = false;
+    bool is_deep_history = false;
+    auto hit = history_pseudostates_.find(dst);
+    if (hit != history_pseudostates_.end()) {
+        dst = hit->second.parent_state;
+        is_history = true;
+        is_deep_history = hit->second.is_deep;
+    } else if (ends_with(dst, "_hist")) {
+        std::string base = dst.substr(0, dst.size() - 5);
+        dst = base;
+        is_history = true;
+    } else if (ends_with(dst, "_history")) {
+        std::string base = dst.substr(0, dst.size() - 8);
+        dst = base;
+        is_history = true;
+    }
+
     bool is_internal = target.empty() || trans_node->get_attr("type") == "internal";
 
     TransitionEdge trans;
     trans.source = sanitize_identifier(src);
     trans.target = sanitize_identifier(dst);
+    trans.target_is_history = is_history;
+    trans.target_is_deep_history = is_deep_history;
+    if (is_history) {
+        if (auto* target_st = model.find_state_mut(trans.target)) {
+            target_st->has_history = true;
+            if (is_deep_history) {
+                target_st->has_deep_history = true;
+            }
+        }
+    }
     trans.event = sanitize_identifier(event);
     if (!cond.empty()) {
         auto parsed = directive::GuardExpressionParser::parse(cond);
         if (!parsed.cpp_type.empty()) {
             trans.guard = parsed.cpp_type;
+            for (const auto& detail : parsed.atomic_guard_details) {
+                model.add_guard(detail.name, "", detail.expression, std::nullopt);
+            }
             for (const auto& atomic : parsed.atomic_guards) {
                 model.add_guard(atomic);
             }
+        } else {
+            std::string guard_name = "guard_" + sanitize_identifier(src) + "_to_" + sanitize_identifier(dst) + "_" +
+                                     std::to_string(model.transitions.size() + 1);
+            model.add_guard(guard_name, "", std::optional<std::string>{cond}, std::nullopt);
+            trans.guard = guard_name;
         }
     }
     if (!action.empty() || !assignments.empty()) {

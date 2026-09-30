@@ -201,4 +201,58 @@ requirements:
     EXPECT_EQ(model.satisfies_reqs[0], "REQ-NET-010");
 }
 
+/**
+ * @brief Verify companion manifest with custom_types registers TypeDefinition in model.
+ */
+TEST(DiagramSidecar, CompanionManifest_WithCustomTypes_PopulatesModelCustomTypes) {
+    const std::string puml = R"(
+    @startuml
+    [*] --> Idle
+    Idle --> Processing : ProcessData
+    @enduml
+    )";
+
+    const std::string yaml = R"yaml(
+fsm:
+  name: CustomTypeFSM
+
+types:
+  - name: SensorPacket
+    kind: struct
+    fields:
+      - name: id
+        type: uint32_t
+      - name: payload
+        type: float
+
+signals:
+  - name: ProcessData
+    attributes:
+      - name: packet
+        type: SensorPacket
+    )yaml";
+
+    PlantUmlParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << err;
+
+    CompanionManifest manifest;
+    ASSERT_TRUE(CompanionManifestParser::parse(yaml, manifest, err)) << err;
+    ASSERT_EQ(manifest.types.size(), 1u);
+    EXPECT_EQ(manifest.types[0].name, "SensorPacket");
+    EXPECT_EQ(manifest.types[0].kind, "struct");
+    ASSERT_EQ(manifest.types[0].fields.size(), 2u);
+    EXPECT_EQ(manifest.types[0].fields[0].name, "id");
+
+    std::string combine_err;
+    ASSERT_TRUE(DiagramContractCombiner::combine(model, manifest, combine_err)) << combine_err;
+    ASSERT_EQ(model.custom_types.size(), 1u);
+    EXPECT_EQ(model.custom_types[0].name, "SensorPacket");
+    EXPECT_EQ(model.custom_types[0].kind, TypeKind::Struct);
+    ASSERT_EQ(model.custom_types[0].fields.size(), 2u);
+    EXPECT_EQ(model.custom_types[0].fields[0].name, "id");
+    EXPECT_EQ(model.custom_types[0].fields[1].name, "payload");
+}
+
 }  // namespace

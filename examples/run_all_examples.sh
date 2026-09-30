@@ -158,10 +158,23 @@ echo -e "${YELLOW}Executing built target: sensor_pipeline_example...${NC}"
 "$(find_binary sensor_pipeline_example)" > /dev/null
 success "sensor_pipeline_example executed with 100% assertions passed"
 
-print_header "ALL 6 ENGINEERING SHOWCASES SUCCESSFULLY VALIDATED (100% OK)"
+# ------------------------------------------------------------------------------
+# Module 06: Stateflow Digital Twin ECU & Zero-Heap Snapshot Recorder
+# ------------------------------------------------------------------------------
+print_header "[MODULE 06] Automotive Stateflow ECU & Snapshot Rollback"
+echo -e "${YELLOW}Running fsm-opt connective junction chaining pass on ecu.sfx...${NC}"
+"${FSM_OPT}" "${SCRIPT_DIR}/06_stateflow_digital_twin_ecu/ecu.sfx" \
+    --passes=connective-junction-chaining --emit-ir > /dev/null
+success "ecu.sfx connective junction chaining passes OK"
+
+echo -e "${YELLOW}Executing built target: stateflow_digital_twin_ecu_example...${NC}"
+"$(find_binary stateflow_digital_twin_ecu_example)" > /dev/null
+success "stateflow_digital_twin_ecu_example executed with 100% assertions passed"
+
+print_header "ALL 7 ENGINEERING SHOWCASES SUCCESSFULLY VALIDATED (100% OK)"
 
 # ------------------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------------------
-print_header "ALL 6 FSMC EXAMPLES VERIFIED SUCCESSFULLY (100% PASS RATE)"
+print_header "ALL 7 FSMC EXAMPLES VERIFIED SUCCESSFULLY (100% PASS RATE)"
 echo -e "${GREEN}All models, formal properties, optimization passes, and executable harnesses are valid.${NC}\n"

@@ -20,6 +20,20 @@ bool DiagramContractCombiner::combine(ir::FsmIr& model, const CompanionManifest&
         model.initial_state = manifest.initial_state;
     }
 
+    // 1b. Custom Domain Types
+    for (const auto& t : manifest.types) {
+        ir::TypeDefinition td;
+        td.name = t.name;
+        td.kind = (t.kind == "enum") ? ir::TypeKind::Enum : ir::TypeKind::Struct;
+        for (const auto& f : t.fields) {
+            td.fields.emplace_back(f.name, ir::DataType::from_string(f.type));
+        }
+        for (const auto& lit : t.enum_literals) {
+            td.literals.emplace_back(lit);
+        }
+        model.custom_types.push_back(std::move(td));
+    }
+
     // 2. I/O Ports
     for (const auto& p : manifest.ports) {
         ir::PortDirection dir = ir::string_to_port_direction(p.direction);
@@ -36,8 +50,8 @@ bool DiagramContractCombiner::combine(ir::FsmIr& model, const CompanionManifest&
         if (!v.unit.empty()) {
             var.physical_unit = v.unit;
         }
-        var.min_value = v.min_value;
-        var.max_value = v.max_value;
+        var.min_value = v.min_value ? std::optional<int64_t>(static_cast<int64_t>(*v.min_value)) : std::nullopt;
+        var.max_value = v.max_value ? std::optional<int64_t>(static_cast<int64_t>(*v.max_value)) : std::nullopt;
         model.add_variable(std::move(var));
     }
 

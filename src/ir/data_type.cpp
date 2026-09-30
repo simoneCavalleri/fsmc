@@ -18,9 +18,21 @@ std::string DataType::trim(std::string_view sv) {
 
 DataType DataType::from_string(std::string_view raw_type) {
     std::string t = trim(raw_type);
-    auto colon_pos = t.rfind("::");
-    if (colon_pos != std::string::npos) {
-        t = t.substr(colon_pos + 2);
+
+    if (t == "std::string") {
+        return DataType::string();
+    }
+
+    if (t.find('<') == std::string::npos) {
+        if (t.rfind("ScalarValues::", 0) == 0) {
+            t = t.substr(14);
+        } else if (t.rfind("ISQ::", 0) == 0) {
+            t = t.substr(5);
+        } else if (t.rfind("KerML::", 0) == 0) {
+            t = t.substr(7);
+        } else if (t.rfind("SysML::", 0) == 0) {
+            t = t.substr(7);
+        }
     }
 
     // Boolean

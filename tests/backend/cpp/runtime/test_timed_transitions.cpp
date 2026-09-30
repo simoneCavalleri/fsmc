@@ -458,4 +458,107 @@ TEST(TimedTransitions, TimeInvariant_Violation_WithoutEscapeTransition_InvokesCa
     EXPECT_EQ(sm.last_invariant_violation()->residence_time_ms, 110U);
 }
 
+// ============================================================================
+// Timer Re-Entrancy, Cascade Protection, and Zero Modulo Safety
+// ============================================================================
+
+struct CascadeStateA {
+    static constexpr std::string_view name = "CascadeStateA";
+};
+struct CascadeStateB {
+    static constexpr std::string_view name = "CascadeStateB";
+};
+struct CascadeStateC {
+    static constexpr std::string_view name = "CascadeStateC";
+};
+struct CascadeStateD {
+    static constexpr std::string_view name = "CascadeStateD";
+};
+
+using SlowCascadeA = fsm::after_ms<500>;
+using FastCascadeA = fsm::after_ms<100>;
+using TimerCascadeB1 = fsm::after_ms<200>;
+using TimerCascadeB2 = fsm::after_ms<300>;
+using TimerCascadeB3 = fsm::after_ms<50>;
+
+using CascadeTable = fsm::transition_table<fsm::transition<CascadeStateA, SlowCascadeA, CascadeStateC>,
+                                           fsm::transition<CascadeStateA, FastCascadeA, CascadeStateB>,
+                                           fsm::transition<CascadeStateB, TimerCascadeB1, CascadeStateC>,
+                                           fsm::transition<CascadeStateB, TimerCascadeB2, CascadeStateC>,
+                                           fsm::transition<CascadeStateB, TimerCascadeB3, CascadeStateD>>;
+
+/**
+ * @brief Verify that expiring a timer in StateA and transitioning to StateB does not falsely advance
+ *        or prematurely expire newly-armed timers in StateB within the exact same tick call.
+ */
+TEST(TimedTransitions, TimerCascadeReentrancy_DoesNotPrematurelyExpireTargetStateTimer) {
+    fsm::fsm<CascadeTable> sm;
+    EXPECT_TRUE(sm.is_in_state<CascadeStateA>());
+
+    // StateA has SlowCascadeA (slot 0: 500ms) and FastCascadeA (slot 1: 100ms).
+    // Ticking 100ms should expire FastCascadeA, transition to StateB, and arm StateB's timers.
+    // It MUST NOT advance StateB's TimerCascadeB3 (50ms) in slot 2 during this same tick.
+    auto expired = sm.tick(100);
+    EXPECT_EQ(expired, 1U);
+    EXPECT_TRUE(sm.is_in_state<CascadeStateB>());
+    EXPECT_FALSE(sm.is_in_state<CascadeStateD>());
+
+    // Now tick another 50ms in StateB -> TimerCascadeB3 should now expire and reach StateD.
+    auto expired2 = sm.tick(50);
+    EXPECT_EQ(expired2, 1U);
+    EXPECT_TRUE(sm.is_in_state<CascadeStateD>());
+}
+
+/**
+ * @brief Verify periodic timer manager does not crash with SIGFPE when interval_ms is 0.
+ */
+TEST(TimedTransitions, PeriodicTimer_ZeroInterval_DoesNotCrashWithSIGFPE) {
+    fsm::deterministic_timer_manager<4> mgr;
+    EXPECT_TRUE(mgr.start_timer(1, 0, /*periodic=*/true));
+    std::size_t expired = 0;
+    EXPECT_NO_THROW({ expired = mgr.tick(10, [](std::uint32_t) {}); });
+    EXPECT_EQ(expired, 1U);
+}
+
+struct SeqInit {
+    static constexpr std::string_view name = "SeqInit";
+};
+struct SeqSecond {
+    static constexpr std::string_view name = "SeqSecond";
+};
+struct SeqFinal {
+    static constexpr std::string_view name = "SeqFinal";
+};
+struct EvSeqNext {
+    static constexpr std::string_view name = "EvSeqNext";
+};
+
+using TimeoutSeqInit = fsm::after_ms<500>;
+using TimeoutSeqSecond = fsm::after_ms<300>;
+
+using SeqTable = fsm::transition_table<fsm::transition<SeqInit, EvSeqNext, SeqSecond>,
+                                       fsm::transition<SeqInit, TimeoutSeqInit, SeqSecond>,
+                                       fsm::transition<SeqSecond, TimeoutSeqSecond, SeqFinal>>;
+
+/**
+ * @brief Verify sequential state transitions cancel old timers and cleanly arm target state timers.
+ */
+TEST(TimedTransitions, SequentialStates_TransitionEarly_ArmsTargetStateTimerAndCancelsOld) {
+    fsm::fsm<SeqTable> sm;
+    EXPECT_TRUE(sm.is_in_state<SeqInit>());
+    EXPECT_EQ(sm.timer_manager().active_count(), 1U);
+
+    // Transition early via event before 500ms timeout
+    auto res = sm.dispatch(EvSeqNext{});
+    EXPECT_TRUE(res.is_success());
+    EXPECT_TRUE(sm.is_in_state<SeqSecond>());
+    EXPECT_EQ(sm.timer_manager().active_count(), 1U);
+
+    // Ticking 300ms should trigger SeqSecond's timer to SeqFinal
+    auto exp = sm.tick(300);
+    EXPECT_EQ(exp, 1U);
+    EXPECT_TRUE(sm.is_in_state<SeqFinal>());
+    EXPECT_EQ(sm.timer_manager().active_count(), 0U);
+}
+
 }  // namespace

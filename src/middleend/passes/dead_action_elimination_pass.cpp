@@ -74,6 +74,41 @@ bool action_reads_var(const ir::ActionAstNode& node, std::string_view var) {
     return false;
 }
 
+bool assignment_reads_var(const ir::ActionAssignment& assign, std::string_view var) {
+    if (assign.op != ir::AssignmentOp::Assign && assign.target.name == var) {
+        return true;
+    }
+    return text_contains_var(assign.expression, var);
+}
+
+bool store_overwrites_target(const ir::LValueTarget& later, const ir::LValueTarget& earlier) {
+    if (later.name != earlier.name) {
+        return false;
+    }
+    if (later == earlier) {
+        return true;
+    }
+    // Overwriting the entire object overwrites all members and indices
+    if (later.member_path.empty() && !later.constant_index.has_value()) {
+        return true;
+    }
+    // Overwriting a parent prefix overwrites nested members
+    if (!later.constant_index.has_value() && !earlier.member_path.empty() &&
+        later.member_path.size() < earlier.member_path.size()) {
+        bool prefix_match = true;
+        for (std::size_t k = 0; k < later.member_path.size(); ++k) {
+            if (later.member_path[k] != earlier.member_path[k]) {
+                prefix_match = false;
+                break;
+            }
+        }
+        if (prefix_match) {
+            return true;
+        }
+    }
+    return false;
+}
+
 }  // namespace
 
 bool DeadActionEliminationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
@@ -153,21 +188,82 @@ bool DeadActionEliminationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     std::size_t eliminated_count = 0;
 
     auto optimize_action = [&](ir::ActionSignature& act) {
-        if (act.instructions.empty())
-            return;
+        // Optimize instructions
+        if (!act.instructions.empty()) {
+            std::vector<ir::ActionAstNode> live_insts;
+            live_insts.reserve(act.instructions.size());
 
-        std::vector<ir::ActionAstNode> live_insts;
-        live_insts.reserve(act.instructions.size());
+            for (std::size_t i = 0; i < act.instructions.size(); ++i) {
+                const auto& inst = act.instructions[i];
 
-        for (std::size_t i = 0; i < act.instructions.size(); ++i) {
-            const auto& inst = act.instructions[i];
+                if (std::holds_alternative<ir::StoreOp>(inst.op)) {
+                    const auto& store = std::get<ir::StoreOp>(inst.op);
+                    const std::string& var_name = store.target.name;
+                    std::string full_path = store.target.full_path();
 
-            if (std::holds_alternative<ir::StoreOp>(inst.op)) {
-                const auto& store = std::get<ir::StoreOp>(inst.op);
-                const std::string& var_name = store.target.name;
+                    // Case A: Identity assignment (e.g. x = x or battery.soc = battery.soc)
+                    if (store.op == ir::AssignmentOp::Assign &&
+                        (store.expression == var_name || store.expression == full_path)) {
+                        ++eliminated_count;
+                        continue;
+                    }
 
-                // Case A: Identity assignment (e.g. x = x)
-                if (store.op == ir::AssignmentOp::Assign && store.expression == var_name) {
+                    // Case B: Variable is never read anywhere in the entire model
+                    if (known_vars.count(var_name) && read_vars.find(var_name) == read_vars.end()) {
+                        ++eliminated_count;
+                        continue;
+                    }
+
+                    // Case C: Overwritten before being read within the same action block
+                    if (store.op == ir::AssignmentOp::Assign) {
+                        bool overwritten_before_read = false;
+                        for (std::size_t j = i + 1; j < act.instructions.size(); ++j) {
+                            if (action_reads_var(act.instructions[j], var_name)) {
+                                break;  // Read detected, so current store is alive!
+                            }
+                            if (std::holds_alternative<ir::StoreOp>(act.instructions[j].op)) {
+                                const auto& later_store = std::get<ir::StoreOp>(act.instructions[j].op);
+                                if (later_store.op == ir::AssignmentOp::Assign &&
+                                    store_overwrites_target(later_store.target, store.target)) {
+                                    overwritten_before_read = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (overwritten_before_read) {
+                            for (const auto& asgn : act.assignments) {
+                                if (assignment_reads_var(asgn, var_name)) {
+                                    overwritten_before_read = false;
+                                    break;
+                                }
+                            }
+                        }
+                        if (overwritten_before_read) {
+                            ++eliminated_count;
+                            continue;
+                        }
+                    }
+                }
+
+                live_insts.push_back(inst);
+            }
+
+            act.instructions = std::move(live_insts);
+        }
+
+        // Optimize assignments
+        if (!act.assignments.empty()) {
+            std::vector<ir::ActionAssignment> live_assigns;
+            live_assigns.reserve(act.assignments.size());
+
+            for (std::size_t i = 0; i < act.assignments.size(); ++i) {
+                const auto& assign = act.assignments[i];
+                const std::string& var_name = assign.target.name;
+                std::string full_path = assign.target.full_path();
+
+                // Case A: Identity assignment (e.g. x = x or battery.soc = battery.soc)
+                if (assign.op == ir::AssignmentOp::Assign &&
+                    (assign.expression == var_name || assign.expression == full_path)) {
                     ++eliminated_count;
                     continue;
                 }
@@ -178,17 +274,23 @@ bool DeadActionEliminationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                     continue;
                 }
 
-                // Case C: Overwritten before being read within the same action block
-                if (store.op == ir::AssignmentOp::Assign) {
+                // Case C: Overwritten before being read within the same assignment sequence
+                if (assign.op == ir::AssignmentOp::Assign) {
                     bool overwritten_before_read = false;
-                    for (std::size_t j = i + 1; j < act.instructions.size(); ++j) {
-                        if (action_reads_var(act.instructions[j], var_name)) {
-                            break;  // Read detected, so current store is alive!
+                    for (std::size_t j = i + 1; j < act.assignments.size(); ++j) {
+                        if (assignment_reads_var(act.assignments[j], var_name)) {
+                            break;  // Read detected
                         }
-                        if (std::holds_alternative<ir::StoreOp>(act.instructions[j].op)) {
-                            const auto& later_store = std::get<ir::StoreOp>(act.instructions[j].op);
-                            if (later_store.target.name == var_name && later_store.op == ir::AssignmentOp::Assign) {
-                                overwritten_before_read = true;
+                        if (act.assignments[j].op == ir::AssignmentOp::Assign &&
+                            store_overwrites_target(act.assignments[j].target, assign.target)) {
+                            overwritten_before_read = true;
+                            break;
+                        }
+                    }
+                    if (overwritten_before_read) {
+                        for (const auto& inst : act.instructions) {
+                            if (action_reads_var(inst, var_name)) {
+                                overwritten_before_read = false;
                                 break;
                             }
                         }
@@ -198,12 +300,12 @@ bool DeadActionEliminationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                         continue;
                     }
                 }
+
+                live_assigns.push_back(assign);
             }
 
-            live_insts.push_back(inst);
+            act.assignments = std::move(live_assigns);
         }
-
-        act.instructions = std::move(live_insts);
     };
 
     for (auto& state : ir.states) {

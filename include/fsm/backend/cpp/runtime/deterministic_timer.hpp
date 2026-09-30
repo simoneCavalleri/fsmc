@@ -67,6 +67,19 @@ class deterministic_timer_manager {
     }
 
     /**
+     * @brief Dynamically updates the interval duration of an active timer.
+     */
+    constexpr bool set_timer_duration(std::uint32_t timer_id, std::uint64_t duration_ms) noexcept {
+        for (auto& entry : timers_) {
+            if (entry.active && entry.timer_id == timer_id) {
+                entry.interval_ms = duration_ms;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * @brief Cancels an active timer by ID.
      */
     constexpr bool cancel_timer(std::uint32_t timer_id) noexcept {
@@ -83,6 +96,7 @@ class deterministic_timer_manager {
      * @brief Resets all timers.
      */
     constexpr void reset() noexcept {
+        ++generation_;
         for (auto& entry : timers_) {
             entry.active = false;
             entry.elapsed_ms = 0;
@@ -110,24 +124,36 @@ class deterministic_timer_manager {
      */
     template <typename Callback>
     std::size_t tick(std::uint64_t delta_ms, Callback on_expired) {
+        std::array<std::uint32_t, MaxTimers> expired_ids{};
         std::size_t expired_count = 0;
+        const auto start_gen = generation_;
+
         for (auto& entry : timers_) {
             if (!entry.active) {
                 continue;
             }
             entry.elapsed_ms += delta_ms;
             if (entry.elapsed_ms >= entry.interval_ms) {
-                ++expired_count;
-                std::uint32_t id = entry.timer_id;
+                expired_ids[expired_count++] = entry.timer_id;
                 if (entry.periodic) {
-                    entry.elapsed_ms = entry.elapsed_ms % entry.interval_ms;
+                    entry.elapsed_ms = (entry.interval_ms > 0) ? (entry.elapsed_ms % entry.interval_ms) : 0;
                 } else {
                     entry.active = false;
                 }
-                on_expired(id);
             }
         }
-        return expired_count;
+
+        std::size_t dispatched = 0;
+        for (std::size_t i = 0; i < expired_count; ++i) {
+            if (generation_ != start_gen) {
+                // The timer manager was reset/re-armed (e.g. state transition occurred).
+                // Remaining expired timers from the previous state are obsolete.
+                break;
+            }
+            on_expired(expired_ids[i]);
+            ++dispatched;
+        }
+        return dispatched;
     }
 
     [[nodiscard]] constexpr std::size_t active_count() const noexcept {
@@ -159,6 +185,7 @@ class deterministic_timer_manager {
 
   private:
     std::array<timer_entry, MaxTimers> timers_{};
+    std::uint32_t generation_{0};
 };
 
 /**

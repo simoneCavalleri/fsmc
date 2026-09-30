@@ -17,6 +17,7 @@
 #include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 #include "fsm/middleend/passes/choice_inlining_pass.hpp"
+#include "fsm/middleend/passes/connective_junction_chaining_pass.hpp"
 #include "fsm/middleend/passes/dead_state_pruning_pass.hpp"
 #include "fsm/middleend/passes/determinism_enforcement_pass.hpp"
 #include "fsm/middleend/passes/guard_simplification_pass.hpp"
@@ -42,7 +43,7 @@ class OptDriver {
         }
 
         if (opts.show_version) {
-            std::cout << "fsm-opt v0.7.0 (Formal FSM Intermediate Representation Optimizer & Linter)\n";
+            std::cout << "fsm-opt v0.8.0 (Formal FSM Intermediate Representation Optimizer & Linter)\n";
             return 0;
         }
 
@@ -159,6 +160,12 @@ class OptDriver {
                     pm.add_pass(std::make_unique<TimedInvariantsVerifierPassWrapper>());
                 } else if (p_name == "event-queue-bound") {
                     pm.add_pass(std::make_unique<EventQueueBoundPassWrapper>());
+                } else if (p_name == "inline-submachines") {
+                    pm.add_pass(std::make_unique<SubmachineInliningPassWrapper>());
+                } else if (p_name == "sampled-change-trigger") {
+                    pm.add_pass(std::make_unique<SampledChangeTriggerPassWrapper>());
+                } else if (p_name == "connective-junction-chaining") {
+                    pm.add_pass(std::make_unique<ConnectiveJunctionChainingPassWrapper>());
                 } else if (p_name == "pipe-through") {
                     pm.add_pass(std::make_unique<PipeThroughPassWrapper>(opts.pipe_through_cmd));
                 } else {
@@ -169,10 +176,12 @@ class OptDriver {
             pm = PassManager::create_optimizing_pipeline(opts.prune_dead);
         }
 
+        DiagnosticFormat diag_fmt = parse_diagnostic_format(opts.diagnostic_format);
+
         for (const auto& plugin_path : opts.pass_plugins) {
             DiagnosticEngine plugin_diag;
             if (!pm.load_plugin(plugin_path, plugin_diag)) {
-                std::cerr << plugin_diag.render_to_string(content);
+                std::cerr << plugin_diag.render_to_format(diag_fmt, content);
                 return 1;
             }
         }
@@ -182,12 +191,12 @@ class OptDriver {
 
         DiagnosticEngine diag;
         if (!pm.run(ir, diag)) {
-            std::cerr << diag.render_to_string(content);
+            std::cerr << diag.render_to_format(diag_fmt, content);
             return 1;
         }
 
         if (!diag.get_diagnostics().empty()) {
-            std::cerr << diag.render_to_string(content);
+            std::cerr << diag.render_to_format(diag_fmt, content);
             if (opts.werror) {
                 std::cerr << "\n[ERROR] -Werror enabled: compilation failed due to middle-end warnings.\n";
                 return 1;

@@ -9,6 +9,8 @@
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/backend/cpp/runtime/fsm.hpp"
+#include "fsm/backend/cpp/runtime/spsc_fsm.hpp"
+#include "fsm/backend/cpp/runtime/thread_safe_fsm.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
@@ -149,6 +151,143 @@ TEST(DeepHistory, InitialEntry_NoPriorHistory_FallsBackToDefaultSubstate) {
 
     EXPECT_TRUE(sm.dispatch(ResumeDeepCmd{}));
     EXPECT_TRUE(sm.is_in_state<Level4Active>());
+}
+
+// 3-Level True Hierarchy with parent_type
+struct AncestorGrandParent {
+    static constexpr std::string_view name = "AncestorGrandParent";
+};
+struct AncestorParent {
+    using parent_type = AncestorGrandParent;
+    static constexpr std::string_view name = "AncestorParent";
+    static constexpr std::string_view parent = "AncestorGrandParent";
+};
+struct AncestorLeaf {
+    using parent_type = AncestorParent;
+    static constexpr std::string_view name = "AncestorLeaf";
+    static constexpr std::string_view parent = "AncestorParent";
+};
+struct OutsideState {
+    static constexpr std::string_view name = "OutsideState";
+};
+
+struct EvInterrupt {};
+struct EvResume {};
+
+using AncestorHistoryTable =
+    fsm::transition_table<fsm::transition<AncestorLeaf, EvInterrupt, OutsideState>,
+                          fsm::transition<OutsideState, EvResume, AncestorLeaf, fsm::no_action,
+                                          fsm::history_is<AncestorGrandParent, AncestorParent>>,
+                          fsm::transition<AncestorParent, EvInterrupt, OutsideState>>;
+
+/**
+ * @brief Verify that exiting AncestorLeaf records history for both AncestorParent and AncestorGrandParent.
+ */
+TEST(DeepHistory, AncestorHistoryRecording_ThreeLevelHierarchy_RecordsAllAncestors) {
+    fsm::fsm<AncestorHistoryTable> sm;
+    EXPECT_TRUE(sm.is_in_state<AncestorLeaf>());
+
+    // Exit to OutsideState
+    EXPECT_TRUE(sm.dispatch(EvInterrupt{}));
+    EXPECT_TRUE(sm.is_in_state<OutsideState>());
+
+    // Immediate parent history recorded
+    EXPECT_EQ(sm.get_history("AncestorParent"), "AncestorLeaf");
+    // Grandparent history ALSO recorded!
+    EXPECT_EQ(sm.get_history("AncestorGrandParent"), "AncestorParent");
+
+    // History guard on grandparent matches and restores AncestorLeaf
+    EXPECT_TRUE(sm.dispatch(EvResume{}));
+    EXPECT_TRUE(sm.is_in_state<AncestorLeaf>());
+}
+
+// ----------------------------------------------------------------------------
+// Pure parent_type Hierarchy without any static string parent fallback
+// ----------------------------------------------------------------------------
+struct PureRoot {
+    static constexpr std::string_view name = "PureRoot";
+};
+struct PureMid {
+    using parent_type = PureRoot;
+    // Note: PureMid has NO static 'name' member and NO 'parent' string member.
+    // It relies on get_type_name reflection!
+};
+struct PureLeaf {
+    using parent_type = PureMid;
+    static constexpr std::string_view name = "PureLeaf";
+    // PureLeaf has parent_type but NO static 'parent' string member.
+};
+struct PureIdle {
+    static constexpr std::string_view name = "PureIdle";
+};
+
+struct EvPureExit {};
+struct EvPureRestore {};
+
+using PureTypeHistoryTable = fsm::transition_table<
+    fsm::transition<PureLeaf, EvPureExit, PureIdle>,
+    fsm::transition<PureIdle, EvPureRestore, PureLeaf, fsm::no_action, fsm::history_is<PureRoot, PureMid>>>;
+
+TEST(DeepHistory, PureParentTypeHierarchy_NoParentStringFallback_RecordsAllAncestorsAndRestores) {
+    fsm::fsm<PureTypeHistoryTable> sm;
+    EXPECT_TRUE(sm.is_in_state<PureLeaf>());
+    EXPECT_TRUE(sm.is_in<PureLeaf>());
+    EXPECT_TRUE(sm.is_in<PureMid>());
+    EXPECT_TRUE(sm.is_in<PureRoot>());
+
+    // Exit from leaf to idle
+    EXPECT_TRUE(sm.dispatch(EvPureExit{}));
+    EXPECT_TRUE(sm.is_in_state<PureIdle>());
+    EXPECT_FALSE(sm.is_in<PureRoot>());
+
+    // Verify typed get_history<ParentState>()
+    EXPECT_EQ(sm.get_history<PureMid>(), "PureLeaf");
+    EXPECT_FALSE(sm.get_history<PureRoot>().empty());
+
+    // Restore via history_is guard on PureRoot -> PureMid
+    EXPECT_TRUE(sm.dispatch(EvPureRestore{}));
+    EXPECT_TRUE(sm.is_in_state<PureLeaf>());
+    EXPECT_TRUE(sm.is_in<PureRoot>());
+
+    // Clear history and verify
+    sm.clear_history();
+    EXPECT_EQ(sm.get_history<PureMid>(), "");
+    EXPECT_EQ(sm.get_history<PureRoot>(), "");
+}
+
+TEST(DeepHistory, PureParentTypeHierarchy_ThreadSafeFsm_SupportsTypedHistoryAndReset) {
+    fsm::thread_safe_fsm<PureTypeHistoryTable> ts;
+    EXPECT_TRUE(ts.is_in<PureLeaf>());
+    EXPECT_TRUE(ts.is_in<PureRoot>());
+
+    EXPECT_TRUE(ts.dispatch(EvPureExit{}));
+    EXPECT_TRUE(ts.is_in<PureIdle>());
+    EXPECT_EQ(ts.get_history<PureMid>(), "PureLeaf");
+
+    EXPECT_TRUE(ts.dispatch(EvPureRestore{}));
+    EXPECT_TRUE(ts.is_in<PureLeaf>());
+
+    ts.reset();
+    EXPECT_TRUE(ts.is_in<PureLeaf>());
+}
+
+TEST(DeepHistory, PureParentTypeHierarchy_SpscFsm_SupportsTypedHistory) {
+    fsm::spsc_fsm<PureTypeHistoryTable> spsc;
+    EXPECT_TRUE(spsc.is_in<PureLeaf>());
+    EXPECT_TRUE(spsc.is_in<PureRoot>());
+
+    EXPECT_TRUE(spsc.post(EvPureExit{}));
+    EXPECT_TRUE(spsc.process_one());
+    EXPECT_TRUE(spsc.is_in<PureIdle>());
+
+    EXPECT_EQ(spsc.get_history<PureMid>(), "PureLeaf");
+
+    EXPECT_TRUE(spsc.post(EvPureRestore{}));
+    EXPECT_TRUE(spsc.process_one());
+    EXPECT_TRUE(spsc.is_in<PureLeaf>());
+
+    spsc.clear_history();
+    EXPECT_EQ(spsc.get_history<PureMid>(), "");
 }
 
 }  // namespace

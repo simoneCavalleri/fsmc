@@ -16,7 +16,9 @@ namespace fsm::middleend::analysis {
 namespace {
 
 bool is_zero_time_transition(const ir::TransitionEdge& edge) {
-    if (!edge.event.empty()) {
+    bool is_eventless = edge.event.empty() || edge.event == "anonymous_event" || edge.event == "completion_event" ||
+                        edge.event == "AnonymousEvent" || edge.event == "anonymous";
+    if (!is_eventless) {
         return false;
     }
     if (std::holds_alternative<ir::SignalTrigger>(edge.trigger)) {

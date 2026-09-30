@@ -42,7 +42,8 @@ bool MermaidParser::parse(std::string_view content, FsmIr& out_model, std::strin
         }
 
         // If line contains an action with open unclosed braces, start multiline accumulation
-        if (!starts_with(trimmed_initial, "state ") && trimmed_initial.find('/') != std::string_view::npos) {
+        if (!starts_with(trimmed_initial, "state ") &&
+            DiagramActionParser::find_action_slash(trimmed_initial) != std::string_view::npos) {
             int imb = DiagramActionParser::brace_imbalance(trimmed_initial);
             if (imb > 0) {
                 multiline_buffer = line;
@@ -408,7 +409,7 @@ void MermaidParser::parse_internal_transition(std::string_view line, FsmIr& mode
     }
 
     std::optional<ActionSignature> parsed_action;
-    const auto slash_pos = label.find('/');
+    const auto slash_pos = DiagramActionParser::find_action_slash(label);
     if (slash_pos != std::string::npos) {
         const std::string act = std::string(trim(label.substr(slash_pos + 1)));
         if (!act.empty()) {
@@ -569,7 +570,7 @@ bool MermaidParser::parse_transition_line(std::string_view line, FsmIr& model, s
         }
 
         // Check for Action: / ActionName
-        const auto slash_pos = label.find('/');
+        const auto slash_pos = DiagramActionParser::find_action_slash(label);
         if (slash_pos != std::string::npos) {
             const std::string act = std::string(trim(label.substr(slash_pos + 1)));
             if (!act.empty()) {

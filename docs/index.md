@@ -20,14 +20,14 @@ flowchart LR
 
     subgraph MiddleEnd["2. Canonical IR & Verification"]
         IR["Canonical AST (FsmIr)<br/>Native JSON Engine"]
-        Passes["30 Analysis & Optimization Passes<br/>(fsm-opt Optimizer)"]
-        SMT["EFSM Interval & Guard Analysis"]
-        MC["nuXmv Model Checking (LTL / CTL)"]
+        Passes["32 Analysis & Optimization Passes<br/>(fsm-opt Optimizer)"]
+        SMT["EFSM Interval & Guard Analysis (∇ Widening)"]
+        MC["Native & nuXmv Model Checking (LTL / CTL)"]
         Pipe["Unix Filter Pipeline (--pipe-through)<br/>Dynamic C++ Pass Plugins"]
     end
 
     subgraph Backend["3. Backend Targets & Emitters"]
-        Transpile["Lossless Transpilation<br/>(SysML v2, SCXML, Diagrams)"]
+        Transpile["Lossless Transpilation<br/>(SysML v2, SCXML, Diagrams, Stateflow)"]
         RTM["Traceability Matrix (RTM)"]
         MCDC["MC/DC Test Harness Synthesis"]
         CppGen["C++17 / C++20 Runtime Target<br/>(Zero-Heap Reference Backend)"]
@@ -43,18 +43,18 @@ flowchart LR
 
 ### Compiler Subsystems
 
-1. **Frontend Ingestion**: Parses statechart models from 9 formats (OMG SysML v2, W3C SCXML, MathWorks Stateflow XML, Cameo XMI 2.1, nuXmv SMV, PlantUML, Mermaid, Graphviz DOT, and Canonical JSON) into the unified `FsmIr` AST.
+1. **Frontend Ingestion**: Parses statechart models from 9 formats (OMG SysML v2, W3C SCXML, MathWorks Stateflow XML / SLX, Cameo XMI 2.1, nuXmv SMV, PlantUML, Mermaid, Graphviz DOT, and Canonical JSON) into the unified `FsmIr` AST.
 2. **Middle-End Analysis & Formal Verification**:
-    - **Pass Optimization & Analysis Pipeline**: Supported by the standalone **`fsm-opt`** optimizer tool, orchestrating 30 transformation passes (28 standard passes across 7 pipeline stages, plus dynamic plugins and Unix pipe-through) including dead-state pruning, determinism enforcement, guard simplification, constant folding, Cartesian orthogonal product flattening, state minimization, WCET bound / Zeno-cycle detection, and submachine inlining.
+    - **Pass Optimization & Analysis Pipeline**: Supported by the standalone **`fsm-opt`** optimizer tool, orchestrating 32 transformation passes (30 standard passes across 7 pipeline stages, plus dynamic plugins and Unix pipe-through) including dead-state pruning, determinism enforcement, guard simplification, constant folding, Cartesian orthogonal product flattening, state minimization, WCET bound / Zeno-cycle detection, submachine inlining, sampled change triggers, and connective junction chaining.
     - **Extensibility**: Unix filter pipeline (`--pipe-through <cmd>`) streaming JSON AST over stdin/stdout, and dynamic runtime C++ pass plugin loading (`--load-pass-plugin <path.so>`).
-    - **EFSM Invariant & Guard Analysis**: Evaluates datapath contracts, range constraints, and guard satisfiability via static abstract interpretation over interval lattices.
-    - **Symbolic Model Checking**: Proves temporal safety and liveness formulas specified in Linear Temporal Logic (LTL) and Computation Tree Logic (CTL) natively and exports to nuXmv / SMV.
+    - **EFSM Invariant & Guard Analysis**: Evaluates datapath contracts, range constraints, and guard satisfiability via static abstract interpretation over interval lattices with formal Widening ($\nabla$) and dead transition pruning.
+    - **Symbolic Model Checking**: Proves temporal safety and liveness formulas specified in Linear Temporal Logic (LTL) and Computation Tree Logic (CTL) natively via recursive fixed-point evaluation and exports to nuXmv / SMV.
 3. **Backend Target Emission**:
     - **Model Transpilation**: Converts models losslessly between supported representation formats (SysML v2, SCXML, PlantUML, Mermaid, DOT, Stateflow).
     - **Formal Logic Emitters**: Generates symbolic transition systems for external model checkers (SMV / nuXmv).
     - **Safety & Verification Synthesis**: Synthesizes standalone GoogleTest C++ harnesses verifying Modified Condition / Decision Coverage (MC/DC) for safety-critical certification (DO-178C / ISO 26262).
     - **Traceability Matrices**: Generates formal Requirement Traceability Matrices (RTM) in CSV, JSON, and Markdown formats linking `@fsm:req` annotations to model elements.
-    - **Target Code Generation**: Emits standalone, zero-heap C++17 or C++20 header files with strict 4-domain memory partitioning (`InPorts`, `OutPorts`, `Registers`, `Services`), deterministic real-time timer (`tick(dt)`), and flight recorder buffer.
+    - **Target Code Generation**: Emits standalone, zero-heap C++17 or C++20 header files with strict 4-domain memory partitioning (`InPorts`, `OutPorts`, `Registers`, `Services`), deterministic real-time timer (`tick(dt)`), continuous `do_activity`, dual actions (`fsm::seq_`), circular flight recorder buffer, and `fsm::snapshot_recorder` for zero-heap time-travel state rollbacks.
 
 ---
 
@@ -62,12 +62,13 @@ flowchart LR
 
 | Capability | Description | Reference Documentation |
 | :--- | :--- | :--- |
-| **Universal Transpilation** | Ingest any supported format across 9 MBSE, formal, and visual notations, and export to any target format. | [Modeling Languages](formal_languages/index.md) |
-| **Formal Verification** | Prove temporal safety properties (LTL/CTL) and datapath invariants at compile time before deployment. | [Verification & Safety](verification_and_safety/index.md) |
-| **Middle-End Passes & Optimizer (`fsm-opt`)** | 17 automated passes, dead-state pruning, Cartesian product flattening, WCET bounds, Unix filters (`--pipe-through`), and C++ plugins. | [Middle-End Passes](internals/middleend_passes.md) |
+| **Universal Transpilation** | Ingest any supported format across 9 MBSE, formal, and visual notations, and export to any target format (including Stateflow XML). | [Modeling Languages](formal_languages/index.md) |
+| **Formal Model Checking (LTL & CTL)** | Prove temporal safety properties (LTL/CTL) natively via fixed-point evaluation and abstract interpretation without external dependencies. | [Verification & Safety](verification_and_safety/index.md) |
+| **Middle-End Passes & Optimizer (`fsm-opt`)** | 32 automated passes across 7 stages, connective junction chaining, dead-state pruning, Cartesian product flattening, WCET bounds, Unix filters (`--pipe-through`), and C++ plugins. | [Middle-End Passes](internals/middleend_passes.md) |
 | **Safety & Test Synthesis (MC/DC)** | Synthesize GoogleTest suites certifying Modified Condition / Decision Coverage for DO-178C / ISO 26262 compliance. | [MC/DC Synthesis](verification_and_safety/mcdc_synthesis.md) |
 | **Partitioned Memory Model** | Replaces unstructured context objects with 4 segregated domains: `InPorts`, `OutPorts`, `Registers`, and `Services`. | [Core Concepts](concepts/index.md) |
-| **Deterministic Execution** | C++ reference backend operates with 0 bytes heap allocation, 0 virtual tables, deterministic timer (`tick(dt)`), and $O(1)$ dispatch time. | [Memory & Real-Time](runtime_api/memory_and_realtime.md) |
+| **Deterministic Execution** | C++ reference backend operates with 0 bytes heap allocation, 0 virtual tables, deterministic timer (`tick(dt)`), continuous `do_activity`, and $O(1)$ dispatch time. | [Memory & Real-Time](runtime_api/memory_and_realtime.md) |
+| **Zero-Heap Time-Travel Rollback** | Integrated `fsm::snapshot_recorder<Capacity, MaxSize>` circular buffer for state checkpointing, HIL fault injection recovery, and time-travel replay. | [Introspection & Trace](runtime_api/introspection_trace.md) |
 
 ---
 

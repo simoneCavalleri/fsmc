@@ -13,26 +13,48 @@
 | **Chart Root** | `<Stateflow><machine><chart name="...">` | Root `FsmIr` model and state machine class |
 | **Exclusive State (OR)** | `<state name="..." decomposition="EXCLUSIVE_OR">` | Standard atomic or composite state |
 | **Parallel State (AND)** | `<state name="..." decomposition="PARALLEL_AND">` | Orthogonal parallel execution region |
+| **Connective Junction** | `<junction type="CONNECTIVE">` | Multi-hop flowchart junction lowered via `ConnectiveJunctionChainingPass` |
 | **History Junction** | `<junction type="HISTORY">` | Deep history pseudostate (`DeepHistory`) |
 | **Transitions** | `<transition><src id="..."><dst id="...">` | Directed `TransitionEdge` |
-| **Transition Label** | `<labelString>Event [Guard] / { Action }</labelString>` | Trigger, guard condition, and action effect |
+| **Transition Label** | `<labelString>Event [Guard] { CondAction } / { TransAction }</labelString>` | Trigger, guard condition, condition action, and transition action |
 | **Temporal Logic** | `after(N, sec)`, `after(N, msec)` | Deterministic timed transition (`TimeTrigger`) |
-| **State Actions** | `en: entryAction(); du: during(); ex: exit();` | State entry, continuous step, and exit actions |
+| **State Actions** | `en: entryAction(); du: during(); ex: exit();` | State entry, continuous step (`do_activity`), and exit actions |
 
 ---
 
-## 2. Transition Label Syntax & Temporal Logic
+## 2. Transition Label Syntax & Execution Semantics
 
-Stateflow utilizes a compact, expressive label format for transitions:
+Stateflow utilizes a compact, expressive label format supporting both **Condition Actions** and **Transition Actions**:
 
 ```text
-trigger [guard] / { action }
+trigger [guard] { condition_action } / { transition_action }
 ```
 
-`fsmc` automatically decomposes this label format:
+`fsmc` automatically decomposes and compiles this label format:
 * **Trigger**: Event name (e.g., `EvArmed`, `StepTick`).
 * **Guard**: Boolean expression enclosed in square brackets (e.g., `[in.sensor_altitude > 1000.0]`).
-* **Action Effect**: C-like assignment or routine call enclosed in curly braces (e.g., `/{ reg.mode = 1; }`).
+* **Condition Action**: Action enclosed in curly braces *before* the slash (e.g., `{ checkSensors(); }`). Executed immediately when the guard evaluates to true, even before subsequent junction evaluation.
+* **Transition Action**: Action enclosed in curly braces *after* the slash (e.g., `/ { setDriveRpm(); }`). Executed when the destination state is taken.
+* **Dual Action Execution**: When both actions are specified, `fsmc` synthesizes a deterministic sequence `::fsm::seq_<ConditionAction, TransitionAction>` preserving Stateflow simulation semantics.
+
+### Connective Junction Chaining (`ConnectiveJunctionChainingPass`)
+
+Stateflow models frequently organize complex branching logic through networks of connective junctions:
+
+```mermaid
+flowchart LR
+    Standby["Standby"] -->|EvStart / checkSensors()| J1(("Junction 1"))
+    J1 -->|"[sensors_ok == 1]"| J2(("Junction 2"))
+    J1 -->|"[sensors_ok == 0] / faultAlert()"| Emergency["EmergencyShutdown"]
+    J2 -->|"[eco_requested == 0] / setDriveRpm()"| Drive["Drive"]
+    J2 -->|"[eco_requested == 1] / setEcoRpm()"| Eco["EcoMode"]
+```
+
+`fsmc`'s `ConnectiveJunctionChainingPass` (Stage 2) recursively expands all acyclic paths through connective junctions:
+1. Intermediate micro-states (`J1`, `J2`) are pruned.
+2. Guards along the path are conjoined: `fsm::and_<sensors_ok__1, eco_requested__0>`.
+3. Actions along the path are fused: `checkSensors_setDriveRpm`.
+4. Emitted C++ transition tables execute direct atomic jumps (`Standby -> Drive`), yielding zero state allocation and minimal cycle latency.
 
 ### Temporal Logic Triggers
 Simulink Stateflow's temporal operators are natively recognized and translated into deterministic timer triggers:

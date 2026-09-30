@@ -89,4 +89,24 @@ TEST(PassManager, CustomPassRegistration_ModifiesIrAndRecordsExecutionStats) {
     EXPECT_EQ(pm.get_stats()[0].pass_name, "CustomInstrumentation");
 }
 
+TEST(PassManager, SampledChangeTriggerAndSubmachineWrappers_ExecuteCleanly) {
+    FsmIr ir;
+    ir.add_state("Idle");
+    ir.add_state("Working");
+    TransitionEdge t("Idle", "Working", "");
+    t.trigger = ChangeTrigger("flag == true", true);
+    ir.transitions.push_back(t);
+
+    PassManager pm;
+    pm.add_pass(std::make_unique<SampledChangeTriggerPassWrapper>());
+    pm.add_pass(std::make_unique<SubmachineInliningPassWrapper>());
+
+    DiagnosticEngine diag;
+    EXPECT_TRUE(pm.run(ir, diag));
+    EXPECT_EQ(pm.get_stats().size(), 2u);
+    EXPECT_EQ(pm.get_stats()[0].pass_name, "SampledChangeTrigger");
+    EXPECT_EQ(pm.get_stats()[1].pass_name, "SubmachineInlining");
+    EXPECT_TRUE(std::holds_alternative<AnonymousTrigger>(ir.transitions[0].trigger));
+}
+
 }  // namespace

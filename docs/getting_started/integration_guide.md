@@ -100,10 +100,10 @@ fsmc_target_sources(my_app
 ## 4. C/C++ Package Managers
 
 === "Conan 2.0"
-    After exporting `fsmc` to your local Conan cache (`conan create . --version 0.7.0`), reference it in `conanfile.txt`:
+    After exporting `fsmc` to your local Conan cache (`conan create . --version 0.8.0`), reference it in `conanfile.txt`:
     ```ini
     [requires]
-    fsmc/0.7.0
+    fsmc/0.8.0
 
     [generators]
     CMakeDeps

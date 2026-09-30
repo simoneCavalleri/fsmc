@@ -577,4 +577,63 @@ TEST(Sysml2Parser, SendSignalViaPort_ParsedIntoActionIr) {
     ASSERT_FALSE(model.transitions[0].transition_action->instructions.empty());
 }
 
+/**
+ * @brief Regression: fractional `after` durations must not be truncated before unit multiplication.
+ * @scenario Parse `after 1.5 s` — before the fix this yielded 1 ms (raw_val=1.5 cast to uint64=1
+ *           before the *1000 multiplier ran). Expected: 1500 ms.
+ * @expected TimeTrigger duration == 1500 ms; event name "after_1500ms".
+ */
+TEST(Sysml2Parser, FractionalAfterDuration_ConvertedWithoutTruncation) {
+    const std::string sysml_text = R"(
+    state def WatchdogFSM {
+        entry; then Active;
+        state Active;
+        state Timeout;
+
+        transition from Active after 1.5 s then Timeout;
+    }
+    )";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+
+    ASSERT_EQ(model.transitions.size(), 1u);
+    const auto& tr = model.transitions[0];
+    EXPECT_EQ(tr.event, "after_1500ms") << "Fractional 1.5 s must produce 1500 ms, not 1 ms";
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(tr.trigger));
+    const auto& tt = std::get<TimeTrigger>(tr.trigger);
+    EXPECT_EQ(tt.duration_ms, 1500u) << "TimeTrigger duration must be 1500 ms for `after 1.5 s`";
+}
+
+/**
+ * @brief Regression: `after 500.5 ms` must round to 501 ms, not truncate to 500 ms.
+ * @scenario Sub-millisecond precision boundary: 500.5 ms should round to nearest integer.
+ * @expected TimeTrigger duration == 501 ms.
+ */
+TEST(Sysml2Parser, FractionalMillisAfterDuration_RoundedToNearest) {
+    const std::string sysml_text = R"(
+    state def TimerFSM {
+        entry; then Counting;
+        state Counting;
+        state Expired;
+
+        transition from Counting after 500.5 ms then Expired;
+    }
+    )";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+
+    ASSERT_EQ(model.transitions.size(), 1u);
+    const auto& tr = model.transitions[0];
+    EXPECT_EQ(tr.event, "after_501ms") << "500.5 ms must round to 501 ms, not truncate to 500 ms";
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(tr.trigger));
+    const auto& tt = std::get<TimeTrigger>(tr.trigger);
+    EXPECT_EQ(tt.duration_ms, 501u);
+}
+
 }  // namespace

@@ -24,6 +24,9 @@ bool SemanticAnalyzer::validate(const FsmIr& ir, std::vector<std::string>& error
         if (name.empty()) {
             return true;
         }
+        if (name.rfind("std::", 0) == 0 || name.find('<') != std::string::npos) {
+            return true;
+        }
         return ir.has_type(name);
     };
 
@@ -126,6 +129,67 @@ bool SemanticAnalyzer::validate(const FsmIr& ir, std::vector<std::string>& error
             for (const auto& assign : tr.transition_action->assignments) {
                 check_assignment(assign, "transition '" + tr.source + " -> " + tr.target + "'");
             }
+        }
+    }
+
+    for (const auto& st : ir.states) {
+        for (const auto& act : st.entry_actions) {
+            for (const auto& assign : act.assignments) {
+                check_assignment(assign, "state '" + st.name + "' entry action");
+            }
+        }
+        for (const auto& act : st.exit_actions) {
+            for (const auto& assign : act.assignments) {
+                check_assignment(assign, "state '" + st.name + "' exit action");
+            }
+        }
+    }
+
+    // 6. Verify Guard Purity (Prohibit mutating operators ++, --, assignments in guards)
+    auto check_guard_purity = [&](std::string_view g_str, const std::string& ctx) {
+        if (g_str.empty())
+            return;
+        std::string mut_op;
+        if (g_str.find("++") != std::string_view::npos) {
+            mut_op = "++";
+        } else if (g_str.find("--") != std::string_view::npos) {
+            mut_op = "--";
+        } else {
+            static const std::string compound_ops[] = {"+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>="};
+            for (const auto& op : compound_ops) {
+                if (g_str.find(op) != std::string_view::npos) {
+                    mut_op = op;
+                    break;
+                }
+            }
+            if (mut_op.empty()) {
+                for (size_t i = 0; i < g_str.size(); ++i) {
+                    if (g_str[i] == '=') {
+                        bool prev_op = (i > 0 && (g_str[i - 1] == '=' || g_str[i - 1] == '<' || g_str[i - 1] == '>' ||
+                                                  g_str[i - 1] == '!'));
+                        bool next_op = (i + 1 < g_str.size() && g_str[i + 1] == '=');
+                        if (!prev_op && !next_op) {
+                            mut_op = "=";
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if (!mut_op.empty()) {
+            errors.push_back("Guard expression in " + ctx + " contains side-effect mutating operator '" + mut_op + "'");
+            valid = false;
+        }
+    };
+
+    for (const auto& tr : ir.transitions) {
+        if (tr.guard.has_value()) {
+            check_guard_purity(*tr.guard, "transition '" + tr.source + " -> " + tr.target + "'");
+        }
+    }
+    for (const auto& gm : ir.guards) {
+        if (gm.raw_expression.has_value()) {
+            check_guard_purity(*gm.raw_expression, "guard '" + gm.name + "'");
         }
     }
 

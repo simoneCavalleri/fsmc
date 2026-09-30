@@ -560,4 +560,129 @@ TEST(FsmCore, ServicesSupport_NonDefaultConstructible_InjectedSuccessfully) {
     EXPECT_TRUE(machine.is_in<StateS2>());
 }
 
+// ============================================================================
+// Test: Hierarchical is_in, Ancestor Initial on_enter, and fsm::reset
+// ============================================================================
+
+struct AncestorLogServices {
+    std::vector<std::string> log;
+};
+
+struct RootSuperState {
+    static constexpr std::string_view name = "RootSuperState";
+    void on_enter(const fsm::anonymous_event&, const fsm::no_ports&, fsm::no_ports&, fsm::no_registers&,
+                  AncestorLogServices& srv) {
+        srv.log.push_back("RootSuperState::on_enter");
+    }
+};
+
+struct OperationalSuperState {
+    using parent_type = RootSuperState;
+    static constexpr std::string_view name = "OperationalSuperState";
+    void on_enter(const fsm::anonymous_event&, const fsm::no_ports&, fsm::no_ports&, fsm::no_registers&,
+                  AncestorLogServices& srv) {
+        srv.log.push_back("OperationalSuperState::on_enter");
+    }
+};
+
+struct StandbyLeafState {
+    using parent_type = OperationalSuperState;
+    static constexpr std::string_view name = "StandbyLeafState";
+    void on_enter(const fsm::anonymous_event&, const fsm::no_ports&, fsm::no_ports&, fsm::no_registers&,
+                  AncestorLogServices& srv) {
+        srv.log.push_back("StandbyLeafState::on_enter");
+    }
+};
+
+struct ActiveLeafState {
+    using parent_type = OperationalSuperState;
+    static constexpr std::string_view name = "ActiveLeafState";
+    void on_enter(const fsm::anonymous_event&, const fsm::no_ports&, fsm::no_ports&, fsm::no_registers&,
+                  AncestorLogServices& srv) {
+        srv.log.push_back("ActiveLeafState::on_enter");
+    }
+};
+
+struct MaintenanceState {
+    static constexpr std::string_view name = "MaintenanceState";
+    void on_enter(const fsm::anonymous_event&, const fsm::no_ports&, fsm::no_ports&, fsm::no_registers&,
+                  AncestorLogServices& srv) {
+        srv.log.push_back("MaintenanceState::on_enter");
+    }
+};
+
+struct EvActivate {};
+struct EvMaintain {};
+
+using HfsmTable = fsm::transition_table<fsm::transition<StandbyLeafState, EvActivate, ActiveLeafState>,
+                                        fsm::transition<ActiveLeafState, EvMaintain, MaintenanceState>>;
+
+TEST(FsmCore, HierarchicalIsIn_AndInitialAncestorOnEnter_AndReset) {
+    AncestorLogServices srv;
+    fsm::no_registers reg;
+    fsm::fsm<HfsmTable, fsm::no_ports, fsm::no_ports, fsm::no_registers, AncestorLogServices> machine(reg, srv);
+
+    // Verify initial ancestor chain executed top-down on startup
+    ASSERT_EQ(srv.log.size(), 3u);
+    EXPECT_EQ(srv.log[0], "RootSuperState::on_enter");
+    EXPECT_EQ(srv.log[1], "OperationalSuperState::on_enter");
+    EXPECT_EQ(srv.log[2], "StandbyLeafState::on_enter");
+
+    // Verify is_in<T>() queries active leaf and all composite ancestors
+    EXPECT_TRUE(machine.is_in<StandbyLeafState>());
+    EXPECT_TRUE(machine.is_in<OperationalSuperState>());
+    EXPECT_TRUE(machine.is_in<RootSuperState>());
+    EXPECT_FALSE(machine.is_in<ActiveLeafState>());
+    EXPECT_FALSE(machine.is_in<MaintenanceState>());
+
+    // Verify is_in(string_view) name queries
+    EXPECT_TRUE(machine.is_in("StandbyLeafState"));
+    EXPECT_TRUE(machine.is_in("OperationalSuperState"));
+    EXPECT_TRUE(machine.is_in("RootSuperState"));
+    EXPECT_FALSE(machine.is_in("ActiveLeafState"));
+    EXPECT_FALSE(machine.is_in("MaintenanceState"));
+
+    // Exact state inspection: is_in_state<T>() only matches leaf
+    EXPECT_TRUE(machine.is_in_state<StandbyLeafState>());
+    EXPECT_FALSE(machine.is_in_state<OperationalSuperState>());
+
+    // Transition to ActiveLeafState
+    auto r1 = machine.dispatch(EvActivate{});
+    EXPECT_TRUE(r1.is_success());
+    EXPECT_TRUE(machine.is_in<ActiveLeafState>());
+    EXPECT_TRUE(machine.is_in<OperationalSuperState>());
+    EXPECT_TRUE(machine.is_in<RootSuperState>());
+    EXPECT_FALSE(machine.is_in<StandbyLeafState>());
+
+    // Transition to MaintenanceState (exiting Operational hierarchy)
+    auto r2 = machine.dispatch(EvMaintain{});
+    EXPECT_TRUE(r2.is_success());
+    EXPECT_TRUE(machine.is_in<MaintenanceState>());
+    EXPECT_FALSE(machine.is_in<OperationalSuperState>());
+    EXPECT_FALSE(machine.is_in<RootSuperState>());
+
+    // Reset machine: should return to initial state and re-execute ancestor on_enter chain
+    srv.log.clear();
+    machine.reset();
+    EXPECT_TRUE(machine.is_in<StandbyLeafState>());
+    EXPECT_TRUE(machine.is_in<OperationalSuperState>());
+    EXPECT_TRUE(machine.is_in<RootSuperState>());
+    ASSERT_EQ(srv.log.size(), 3u);
+    EXPECT_EQ(srv.log[0], "RootSuperState::on_enter");
+    EXPECT_EQ(srv.log[1], "OperationalSuperState::on_enter");
+    EXPECT_EQ(srv.log[2], "StandbyLeafState::on_enter");
+
+    // Test explicit initial state constructor
+    srv.log.clear();
+    fsm::fsm<HfsmTable, fsm::no_ports, fsm::no_ports, fsm::no_registers, AncestorLogServices> explicit_machine(
+        ActiveLeafState{}, srv);
+    EXPECT_TRUE(explicit_machine.is_in<ActiveLeafState>());
+    EXPECT_TRUE(explicit_machine.is_in<OperationalSuperState>());
+    EXPECT_TRUE(explicit_machine.is_in<RootSuperState>());
+    ASSERT_EQ(srv.log.size(), 3u);
+    EXPECT_EQ(srv.log[0], "RootSuperState::on_enter");
+    EXPECT_EQ(srv.log[1], "OperationalSuperState::on_enter");
+    EXPECT_EQ(srv.log[2], "ActiveLeafState::on_enter");
+}
+
 }  // namespace

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Stateflow>
+    <machine name="DigitalTwinECU">
+        <chart id="1" name="EcuEngineController">
+            <state id="10" name="Standby"/>
+            <junction id="20" SSID="Precheck" type="CONNECTIVE"/>
+            <junction id="21" SSID="Mode" type="CONNECTIVE"/>
+            <state id="30" name="Drive"/>
+            <state id="31" name="EcoMode"/>
+            <state id="40" name="LimpHome"/>
+            <state id="50" name="EmergencyShutdown"/>
+
+            <!-- Connective Junction Chaining Path:
+                 Standby -> [EvStart] / { checkSensors(); } -> Junction_Precheck
+                 Junction_Precheck -> [sensors_ok == 1] -> Junction_Mode
+                 Junction_Precheck -> [sensors_ok == 0] / { faultAlert(); } -> EmergencyShutdown
+                 Junction_Mode -> [eco_requested == 0] / { setDriveRpm(); } -> Drive
+                 Junction_Mode -> [eco_requested == 1] / { setEcoRpm(); } -> EcoMode
+            -->
+            <transition src="Standby" dst="Junction_Precheck" labelString="EvStart / { checkSensors(); }"/>
+            <transition src="Junction_Precheck" dst="Junction_Mode" labelString="[sensors_ok == 1]"/>
+            <transition src="Junction_Precheck" dst="EmergencyShutdown" labelString="[sensors_ok == 0] / { faultAlert(); }"/>
+            <transition src="Junction_Mode" dst="Drive" labelString="[eco_requested == 0] / { setDriveRpm(); }"/>
+            <transition src="Junction_Mode" dst="EcoMode" labelString="[eco_requested == 1] / { setEcoRpm(); }"/>
+
+            <!-- Operational Transitions -->
+            <transition src="Drive" dst="LimpHome" labelString="EvOverheat [engine_temp &gt; 105] / { activateCooling(); }"/>
+            <transition src="Drive" dst="Standby" labelString="EvStop / { shutdownEngine(); }"/>
+            <transition src="EcoMode" dst="Standby" labelString="EvStop / { shutdownEngine(); }"/>
+            <transition src="LimpHome" dst="EmergencyShutdown" labelString="EvCriticalFault / { emergencyKill(); }"/>
+            <transition src="LimpHome" dst="Drive" labelString="EvCooledDown [engine_temp &lt; 90] / { restorePower(); }"/>
+        </chart>
+    </machine>
+</Stateflow>

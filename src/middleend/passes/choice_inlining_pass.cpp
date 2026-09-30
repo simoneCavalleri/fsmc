@@ -9,14 +9,18 @@ using namespace fsm::ir;
 using namespace fsm::diagnostic;
 
 bool ChoiceInliningPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
-    // Collect all choice/junction state names
-    std::unordered_set<std::string> choice_names;
+    // Collect all choice/junction state names deterministically
+    std::vector<std::string> choice_names;
     for (const auto& c : ir.choice_nodes) {
-        choice_names.insert(c.name);
+        if (std::find(choice_names.begin(), choice_names.end(), c.name) == choice_names.end()) {
+            choice_names.push_back(c.name);
+        }
     }
     for (const auto& s : ir.states) {
         if (s.kind == StateKind::Choice || s.kind == StateKind::Junction) {
-            choice_names.insert(s.name);
+            if (std::find(choice_names.begin(), choice_names.end(), s.name) == choice_names.end()) {
+                choice_names.push_back(s.name);
+            }
         }
     }
 
@@ -56,8 +60,7 @@ bool ChoiceInliningPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
                 composite.trigger = in.trigger;
                 composite.target_is_history = out.target_is_history;
                 composite.target_is_deep_history = out.target_is_deep_history;
-                composite.kind =
-                    (in.source == out.target) ? TransitionEdgeKind::Internal : TransitionEdgeKind::External;
+                composite.kind = TransitionEdgeKind::External;
                 composite.priority = (out.priority > 0) ? out.priority : in.priority;
 
                 // Combine Guards

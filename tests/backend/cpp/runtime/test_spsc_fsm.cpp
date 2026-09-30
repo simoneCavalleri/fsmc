@@ -187,4 +187,61 @@ TEST(SpscFsm, EventConstraints_TriviallyCopyable_EnforcedAtCompileTime) {
     EXPECT_FALSE(fsm.is_in<StateActive>());
 }
 
+struct SpscSuperState {
+    static constexpr std::string_view name = "SpscSuperState";
+};
+
+struct SpscSubStateA {
+    using parent_type = SpscSuperState;
+    static constexpr std::string_view name = "SpscSubStateA";
+};
+
+struct SpscSubStateB {
+    using parent_type = SpscSuperState;
+    static constexpr std::string_view name = "SpscSubStateB";
+};
+
+struct SpscStandaloneState {
+    static constexpr std::string_view name = "SpscStandaloneState";
+};
+
+struct EvSwitch {};
+struct EvOut {};
+
+using SpscHierarchicalTable = fsm::transition_table<fsm::transition<SpscSubStateA, EvSwitch, SpscSubStateB>,
+                                                    fsm::transition<SpscSubStateB, EvOut, SpscStandaloneState>>;
+
+/**
+ * @brief Verify hierarchical is_in and reset functionality in SPSC FSM.
+ */
+TEST(SpscFsm, HierarchicalIsIn_AndReset) {
+    fsm::spsc_fsm<SpscHierarchicalTable, fsm::no_ports, fsm::no_ports, SampleRegisters, fsm::no_services, 16> machine;
+
+    EXPECT_TRUE(machine.is_in<SpscSubStateA>());
+    EXPECT_TRUE(machine.is_in<SpscSuperState>());
+    EXPECT_FALSE(machine.is_in<SpscSubStateB>());
+    EXPECT_FALSE(machine.is_in<SpscStandaloneState>());
+
+    EXPECT_TRUE(machine.is_in("SpscSubStateA"));
+    EXPECT_TRUE(machine.is_in("SpscSuperState"));
+    EXPECT_FALSE(machine.is_in("SpscSubStateB"));
+
+    EXPECT_TRUE(machine.post(EvSwitch{}));
+    EXPECT_TRUE(machine.process_one());
+
+    EXPECT_TRUE(machine.is_in<SpscSubStateB>());
+    EXPECT_TRUE(machine.is_in<SpscSuperState>());
+    EXPECT_FALSE(machine.is_in<SpscSubStateA>());
+
+    EXPECT_TRUE(machine.post(EvOut{}));
+    EXPECT_TRUE(machine.process_one());
+
+    EXPECT_TRUE(machine.is_in<SpscStandaloneState>());
+    EXPECT_FALSE(machine.is_in<SpscSuperState>());
+
+    machine.reset();
+    EXPECT_TRUE(machine.is_in<SpscSubStateA>());
+    EXPECT_TRUE(machine.is_in<SpscSuperState>());
+}
+
 }  // namespace

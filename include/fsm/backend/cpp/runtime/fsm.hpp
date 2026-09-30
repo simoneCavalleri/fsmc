@@ -165,6 +165,8 @@ class fsm {
     // ========================================================================
 
     step_result step(const in_ports_type& in, out_ports_type& out, services_type& srv) {
+        std::visit([this, &in, &out, &srv](auto& st) { call_do_activity(st, in, out, this->registers_, srv); },
+                   current_state_);
         auto res = dispatch_direct_ports(anonymous_event{}, in, out, srv);
         if constexpr (has_deferred) {
             if (res.is_success()) {
@@ -365,25 +367,99 @@ class fsm {
         return history_mgr_.get_history(parent);
     }
 
+    template <typename ParentState, bool H = has_history>
+    [[nodiscard]] std::string_view get_history() const noexcept {
+        return get_history<H>(get_state_name_static<ParentState>());
+    }
+
+    void clear_history() noexcept {
+        if constexpr (has_history) {
+            history_mgr_.clear_history();
+        }
+    }
+
+    void clear_deferred() noexcept {
+        if constexpr (has_deferred) {
+            deferred_mgr_.clear_deferred_events();
+        }
+    }
+
+    void clear_deferred_events() noexcept { clear_deferred(); }
+
+    /**
+     * @brief Resets the state machine to its initial state, clearing active history,
+     * deferred queues, timers, and invariants, and invoking initial on_enter hooks.
+     */
+    void reset() {
+        if constexpr (has_history) {
+            history_mgr_.clear_history();
+        }
+        if constexpr (has_deferred) {
+            deferred_mgr_.clear_deferred_events();
+        }
+        if constexpr (std::is_default_constructible_v<registers_type>) {
+            registers_ = registers_type{};
+        }
+        current_state_ = initial_state_type{};
+        enter_initial_state();
+    }
+
+    void reset(registers_type initial_registers) {
+        if constexpr (has_history) {
+            history_mgr_.clear_history();
+        }
+        if constexpr (has_deferred) {
+            deferred_mgr_.clear_deferred_events();
+        }
+        registers_ = std::move(initial_registers);
+        current_state_ = initial_state_type{};
+        enter_initial_state();
+    }
+
     // State Inspection & Mutation
     template <typename State>
     [[nodiscard]] bool is_in_state() const noexcept {
-        return std::holds_alternative<State>(current_state_);
+        if constexpr (Table::template has_state<State>) {
+            return std::holds_alternative<State>(current_state_);
+        } else {
+            return false;
+        }
     }
 
     template <typename State>
     [[nodiscard]] bool is_in() const noexcept {
-        return is_in_state<State>();
+        return std::visit(
+            [](const auto& current) -> bool {
+                using current_t = std::decay_t<decltype(current)>;
+                return is_substate_of_v<current_t, State>;
+            },
+            current_state_);
+    }
+
+    [[nodiscard]] bool is_in(std::string_view target_name) const noexcept {
+        return std::visit(
+            [target_name](const auto& current) -> bool {
+                return ::fsm::state_is_or_descendant_of(current, target_name);
+            },
+            current_state_);
     }
 
     template <typename State>
     [[nodiscard]] const State* get_state() const noexcept {
-        return std::get_if<State>(&current_state_);
+        if constexpr (Table::template has_state<State>) {
+            return std::get_if<State>(&current_state_);
+        } else {
+            return nullptr;
+        }
     }
 
     template <typename State>
     [[nodiscard]] State* get_state() noexcept {
-        return std::get_if<State>(&current_state_);
+        if constexpr (Table::template has_state<State>) {
+            return std::get_if<State>(&current_state_);
+        } else {
+            return nullptr;
+        }
     }
 
     template <typename Callable>
@@ -448,6 +524,13 @@ class fsm {
             observer_.advance_tick(delta_ms);
         }
         invariant_mgr_.advance_time(delta_ms);
+        std::visit(
+            [this](auto& st) {
+                in_ports_type dummy_in{};
+                out_ports_type dummy_out{};
+                call_do_activity(st, dummy_in, dummy_out, this->registers_, this->resolve_services());
+            },
+            current_state_);
         auto expired = timer_mgr_.tick(delta_ms, [this, &on_expired](std::uint32_t timer_id) {
             dispatch_timed_timer(timer_id);
             on_expired(timer_id);
@@ -469,6 +552,13 @@ class fsm {
     template <typename Rep, typename Period>
     std::size_t tick(std::chrono::duration<Rep, Period> dt) {
         return tick(dt, [](std::uint32_t /*timer_id*/) {});
+    }
+
+    /**
+     * @brief Dynamically updates the interval duration of an active timer.
+     */
+    bool set_timer_duration(std::uint32_t timer_id, std::uint64_t duration_ms) noexcept {
+        return timer_mgr_.set_timer_duration(timer_id, duration_ms);
     }
 
     // ========================================================================
@@ -704,11 +794,13 @@ class fsm {
     }
 
     void enter_initial_state() {
-        if (auto* state = std::get_if<initial_state_type>(&current_state_)) {
-            in_ports_type dummy_in{};
-            out_ports_type dummy_out{};
-            call_on_enter(*state, dummy_in, dummy_out, registers_, resolve_services());
-        }
+        in_ports_type dummy_in{};
+        out_ports_type dummy_out{};
+        std::visit(
+            [this, &dummy_in, &dummy_out](auto& state) {
+                detail::call_initial_hierarchical_on_enter(state, dummy_in, dummy_out, registers_, resolve_services());
+            },
+            current_state_);
         invariant_mgr_.reset();
         refresh_timers_for_current_state();
     }

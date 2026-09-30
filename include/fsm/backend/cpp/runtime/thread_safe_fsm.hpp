@@ -230,7 +230,59 @@ class thread_safe_fsm {
 
     template <typename State>
     [[nodiscard]] bool is_in() const noexcept {
-        return is_in_state<State>();
+        if (reentrancy_.is_reentrant_call()) {
+            return fsm_.template is_in<State>();
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.template is_in<State>();
+    }
+
+    [[nodiscard]] bool is_in(std::string_view target_name) const noexcept {
+        if (reentrancy_.is_reentrant_call()) {
+            return fsm_.is_in(target_name);
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.is_in(target_name);
+    }
+
+    void reset() {
+        if (reentrancy_.is_reentrant_call()) {
+            fsm_.reset();
+            return;
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        fsm_.reset();
+    }
+
+    void reset(registers_type reg) {
+        if (reentrancy_.is_reentrant_call()) {
+            fsm_.reset(std::move(reg));
+            return;
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        fsm_.reset(std::move(reg));
+    }
+
+    void clear_history() noexcept {
+        if (reentrancy_.is_reentrant_call()) {
+            fsm_.clear_history();
+            return;
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        fsm_.clear_history();
+    }
+
+    [[nodiscard]] std::string_view get_history(std::string_view parent) const {
+        if (reentrancy_.is_reentrant_call()) {
+            return fsm_.get_history(parent);
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.get_history(parent);
+    }
+
+    template <typename ParentState>
+    [[nodiscard]] std::string_view get_history() const {
+        return get_history(get_state_name_static<ParentState>());
     }
 
     [[nodiscard]] std::string_view current_state_name() const {
@@ -291,6 +343,13 @@ class thread_safe_fsm {
     // Synchronous Dispatch
     // ========================================================================
 
+    /**
+     * @brief Synchronously dispatches an event under mutex protection.
+     *
+     * This is the canonical thread-safe synchronous dispatch method for `thread_safe_fsm`.
+     * If called reentrantly from an action or notification callback on the same thread,
+     * the event is queued safely and drained when the outermost dispatch completes.
+     */
     template <typename Event>
     dispatch_result send(const Event& event) {
         auto snap = execute_dispatch_under_lock(event);
@@ -301,6 +360,9 @@ class thread_safe_fsm {
         return snap.result;
     }
 
+    /**
+     * @brief Synchronously dispatches an event with partitioned I/O ports under mutex protection.
+     */
     template <typename Event>
     dispatch_result send(const Event& event, const in_ports_type& in, out_ports_type& out) {
         if (reentrancy_.is_reentrant_call()) {
@@ -321,6 +383,17 @@ class thread_safe_fsm {
         diagnostics_.set_last_exception(last_ex);
         drain_reentrant_queue_if_outermost();
         return snap.result;
+    }
+
+    /**
+     * @brief Interface compatibility alias for `send()`.
+     *
+     * Enables generic or template code written against `fsm` to invoke `dispatch()` interchangeably
+     * on either `fsm` or `thread_safe_fsm`.
+     */
+    template <typename Event, typename... Args>
+    dispatch_result dispatch(const Event& event, Args&&... args) {
+        return send(event, std::forward<Args>(args)...);
     }
 
     // ========================================================================

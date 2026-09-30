@@ -54,7 +54,57 @@ struct Interval {
 
     [[nodiscard]] constexpr Interval add(double k) const noexcept { return Interval(lo + k, hi + k); }
 
+    [[nodiscard]] constexpr Interval add(const Interval& other) const noexcept {
+        if (is_empty() || other.is_empty())
+            return Interval(1, 0);
+        return Interval(lo + other.lo, hi + other.hi);
+    }
+
     [[nodiscard]] constexpr Interval sub(double k) const noexcept { return Interval(lo - k, hi - k); }
+
+    [[nodiscard]] constexpr Interval sub(const Interval& other) const noexcept {
+        if (is_empty() || other.is_empty())
+            return Interval(1, 0);
+        return Interval(lo - other.hi, hi - other.lo);
+    }
+
+    [[nodiscard]] constexpr Interval mul(double k) const noexcept {
+        if (is_empty())
+            return *this;
+        if (k >= 0)
+            return Interval(lo * k, hi * k);
+        return Interval(hi * k, lo * k);
+    }
+
+    [[nodiscard]] constexpr Interval mul(const Interval& other) const noexcept {
+        if (is_empty() || other.is_empty())
+            return Interval(1, 0);
+        double p1 = lo * other.lo;
+        double p2 = lo * other.hi;
+        double p3 = hi * other.lo;
+        double p4 = hi * other.hi;
+        double min_p = (std::min)({p1, p2, p3, p4});
+        double max_p = (std::max)({p1, p2, p3, p4});
+        return Interval(min_p, max_p);
+    }
+
+    [[nodiscard]] constexpr Interval div(double k) const noexcept {
+        if (is_empty() || k == 0.0)
+            return Interval();
+        if (k > 0)
+            return Interval(lo / k, hi / k);
+        return Interval(hi / k, lo / k);
+    }
+
+    [[nodiscard]] constexpr Interval widen_with(const Interval& other) const noexcept {
+        if (is_empty())
+            return other;
+        if (other.is_empty())
+            return *this;
+        double new_lo = (other.lo < lo) ? -std::numeric_limits<double>::infinity() : lo;
+        double new_hi = (other.hi > hi) ? std::numeric_limits<double>::infinity() : hi;
+        return Interval(new_lo, new_hi);
+    }
 
     [[nodiscard]] std::string to_string() const;
 

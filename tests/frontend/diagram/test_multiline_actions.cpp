@@ -8,6 +8,7 @@
 
 #include <string>
 
+#include "fsm/frontend/diagram/diagram_action_parser.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
@@ -198,6 +199,59 @@ TEST(MultilineActions, Mermaid_StateDescriptionBracedAction) {
     EXPECT_EQ(st->entry_actions[0].assignments.size(), 2u);
     EXPECT_EQ(st->entry_actions[0].assignments[0].target.name, "alarm");
     EXPECT_EQ(st->entry_actions[0].assignments[1].target.name, "count");
+}
+
+TEST(MultilineActions, FunctionCallWithArguments_ParsedAccurately) {
+    const std::string raw = R"({ notify_user("alert", 42); log_info(); })";
+    auto sig = DiagramActionParser::parse_action_block(raw);
+
+    EXPECT_EQ(sig.name, "notify_user");
+    ASSERT_EQ(sig.instructions.size(), 2u);
+
+    const auto* call1 = std::get_if<ActionCallOp>(&sig.instructions[0].op);
+    ASSERT_NE(call1, nullptr);
+    EXPECT_EQ(call1->function_name, "notify_user");
+    ASSERT_EQ(call1->arguments.size(), 2u);
+    EXPECT_EQ(call1->arguments[0], "\"alert\"");
+    EXPECT_EQ(call1->arguments[1], "42");
+
+    const auto* call2 = std::get_if<ActionCallOp>(&sig.instructions[1].op);
+    ASSERT_NE(call2, nullptr);
+    EXPECT_EQ(call2->function_name, "log_info");
+    EXPECT_TRUE(call2->arguments.empty());
+}
+
+TEST(MultilineActions, Mermaid_GuardWithDivisionOperator_PreservedAndNotTreatedAsAction) {
+    const std::string mermaid_diagram = R"(
+    stateDiagram-v2
+    [*] --> Standby
+    Standby --> Running : Start [speed / 2 > 10] / do_work
+    Running --> Standby : Stop [count / 5 == 0]
+    )";
+
+    MermaidParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(mermaid_diagram, model, err)) << "Error: " << err;
+
+    ASSERT_EQ(model.transitions.size(), 2u);
+
+    const auto& t1 = model.transitions[0];
+    EXPECT_EQ(t1.source, "Standby");
+    EXPECT_EQ(t1.target, "Running");
+    EXPECT_EQ(t1.event, "Start");
+    ASSERT_TRUE(t1.guard.has_value());
+    EXPECT_NE(t1.guard->find("speed"), std::string::npos);
+    ASSERT_TRUE(t1.transition_action.has_value());
+    EXPECT_EQ(t1.transition_action->name, "do_work");
+
+    const auto& t2 = model.transitions[1];
+    EXPECT_EQ(t2.source, "Running");
+    EXPECT_EQ(t2.target, "Standby");
+    EXPECT_EQ(t2.event, "Stop");
+    ASSERT_TRUE(t2.guard.has_value());
+    EXPECT_NE(t2.guard->find("count"), std::string::npos);
+    EXPECT_FALSE(t2.transition_action.has_value());
 }
 
 }  // namespace

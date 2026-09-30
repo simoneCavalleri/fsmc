@@ -232,6 +232,126 @@ void parse_variables_section(const std::vector<LineInfo>& lines, size_t& idx, st
     }
 }
 
+void parse_types_section(const std::vector<LineInfo>& lines, size_t& idx, std::vector<CompanionCustomType>& types) {
+    CompanionCustomType current;
+    bool has_current = false;
+    bool in_fields = false;
+    CompanionTypeField current_field;
+    bool has_current_field = false;
+
+    while (idx < lines.size() && lines[idx].indent > 0) {
+        const auto& line = lines[idx];
+        std::string text = line.text;
+
+        if (text == "]" || text == "],") {
+            if (in_fields) {
+                if (has_current_field) {
+                    current.fields.push_back(std::move(current_field));
+                    current_field = CompanionTypeField{};
+                    has_current_field = false;
+                }
+                in_fields = false;
+                idx++;
+                continue;
+            }
+        }
+
+        if (text == "}" || text == "},") {
+            if (has_current_field) {
+                current.fields.push_back(std::move(current_field));
+                current_field = CompanionTypeField{};
+                has_current_field = false;
+                idx++;
+                continue;
+            }
+            if (has_current) {
+                types.push_back(std::move(current));
+                current = CompanionCustomType{};
+                has_current = false;
+                idx++;
+                continue;
+            }
+        }
+
+        if (text.rfind("- ", 0) == 0 && line.indent <= 4) {
+            if (has_current_field) {
+                current.fields.push_back(std::move(current_field));
+                current_field = CompanionTypeField{};
+                has_current_field = false;
+            }
+            if (has_current) {
+                types.push_back(std::move(current));
+                current = CompanionCustomType{};
+            }
+            has_current = true;
+            in_fields = false;
+            text = trim(text.substr(2));
+        } else if (text == "{" && !in_fields) {
+            if (has_current) {
+                types.push_back(std::move(current));
+                current = CompanionCustomType{};
+            }
+            has_current = true;
+            idx++;
+            continue;
+        }
+
+        auto [k, v] = split_key_value(text);
+        k = unquote(k);
+        if (k == "fields" || k == "members") {
+            in_fields = true;
+            idx++;
+            continue;
+        }
+
+        if (in_fields) {
+            if (text.rfind("- ", 0) == 0) {
+                if (has_current_field) {
+                    current.fields.push_back(std::move(current_field));
+                    current_field = CompanionTypeField{};
+                }
+                has_current_field = true;
+                text = trim(text.substr(2));
+                auto [fk, fv] = split_key_value(text);
+                fk = unquote(fk);
+                if (fk == "name") {
+                    current_field.name = unquote(fv);
+                } else if (fk == "type") {
+                    current_field.type = unquote(fv);
+                }
+                idx++;
+                continue;
+            } else if (text == "{" || text == "},") {
+                idx++;
+                continue;
+            }
+            if (k == "name") {
+                current_field.name = unquote(v);
+                has_current_field = true;
+            } else if (k == "type") {
+                current_field.type = unquote(v);
+                has_current_field = true;
+            }
+            idx++;
+            continue;
+        }
+
+        if (k == "name") {
+            current.name = unquote(v);
+        } else if (k == "kind") {
+            current.kind = unquote(v);
+        }
+        idx++;
+    }
+
+    if (has_current_field) {
+        current.fields.push_back(std::move(current_field));
+    }
+    if (has_current) {
+        types.push_back(std::move(current));
+    }
+}
+
 void parse_signals_section(const std::vector<LineInfo>& lines, size_t& idx, std::vector<CompanionSignal>& signals) {
     CompanionSignal current;
     bool has_current = false;
@@ -515,6 +635,9 @@ bool CompanionManifestParser::parse(std::string_view content, CompanionManifest&
         if (key == "fsm" || key == "machine" || key == "contract") {
             idx++;
             parse_fsm_section(lines, idx, manifest);
+        } else if (key == "types" || key == "custom_types" || key == "structs") {
+            idx++;
+            parse_types_section(lines, idx, manifest.types);
         } else if (key == "ports") {
             idx++;
             parse_ports_section(lines, idx, manifest.ports);

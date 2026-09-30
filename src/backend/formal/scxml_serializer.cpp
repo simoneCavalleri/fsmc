@@ -83,9 +83,21 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
     }
 
     // History
-    if (state.has_history) {
+    bool state_has_history = state.has_history;
+    bool state_has_deep_history = state.has_deep_history;
+    if (!state_has_history) {
+        for (const auto& t : model.transitions) {
+            if (t.target == state.name && (t.target_is_history || t.target_is_deep_history)) {
+                state_has_history = true;
+                if (t.target_is_deep_history) {
+                    state_has_deep_history = true;
+                }
+            }
+        }
+    }
+    if (state_has_history) {
         out << pad << "  <history id=\"" << escape_xml(state.name) << "_hist\" type=\""
-            << (state.has_deep_history ? "deep" : "shallow") << "\"/>\n";
+            << (state_has_deep_history ? "deep" : "shallow") << "\"/>\n";
     }
 
     // Deferred events
@@ -112,11 +124,15 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
             }
             if (trans.guard && !trans.guard->empty()) {
                 std::string readable_guard =
-                    frontend::directive::GuardExpressionParser::to_diagram_string(*trans.guard);
+                    frontend::directive::GuardExpressionParser::to_diagram_string(*trans.guard, model.guards);
                 out << " cond=\"" << escape_xml(readable_guard) << "\"";
             }
             if (!trans.target.empty() && trans.kind != TransitionEdgeKind::Internal) {
-                out << " target=\"" << escape_xml(trans.target) << "\"";
+                if (trans.target_is_history || trans.target_is_deep_history) {
+                    out << " target=\"" << escape_xml(trans.target) << "_hist\"";
+                } else {
+                    out << " target=\"" << escape_xml(trans.target) << "\"";
+                }
             }
 
             bool has_assignments =

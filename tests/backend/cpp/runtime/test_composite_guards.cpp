@@ -234,6 +234,36 @@ TEST(CompositeGuards, GuardExpressionParser_EdgeCases_HandlesSyntaxVariants) {
         std::string diagram_s = GuardExpressionParser::to_diagram_string(cpp_t);
         EXPECT_EQ(diagram_s, "A && B || !C");
     }
+    {
+        // AND containing OR must wrap OR in parentheses to preserve precedence
+        std::string cpp_t = "fsm::and_<A, fsm::or_<B, C>>";
+        std::string diagram_s = GuardExpressionParser::to_diagram_string(cpp_t);
+        EXPECT_EQ(diagram_s, "A && (B || C)");
+        auto reparsed = GuardExpressionParser::parse(diagram_s);
+        EXPECT_EQ(reparsed.cpp_type, cpp_t);
+    }
+    {
+        std::string cpp_t = "fsm::and_<fsm::or_<A, B>, C>";
+        std::string diagram_s = GuardExpressionParser::to_diagram_string(cpp_t);
+        EXPECT_EQ(diagram_s, "(A || B) && C");
+        auto reparsed = GuardExpressionParser::parse(diagram_s);
+        EXPECT_EQ(reparsed.cpp_type, cpp_t);
+    }
+    {
+        // NOT containing composite expression must wrap in parentheses
+        std::string cpp_t = "fsm::not_<fsm::and_<A, B>>";
+        std::string diagram_s = GuardExpressionParser::to_diagram_string(cpp_t);
+        EXPECT_EQ(diagram_s, "!(A && B)");
+        auto reparsed = GuardExpressionParser::parse(diagram_s);
+        EXPECT_EQ(reparsed.cpp_type, cpp_t);
+    }
+    {
+        std::string cpp_t = "fsm::not_<fsm::or_<A, B>>";
+        std::string diagram_s = GuardExpressionParser::to_diagram_string(cpp_t);
+        EXPECT_EQ(diagram_s, "!(A || B)");
+        auto reparsed = GuardExpressionParser::parse(diagram_s);
+        EXPECT_EQ(reparsed.cpp_type, cpp_t);
+    }
 }
 
 /**

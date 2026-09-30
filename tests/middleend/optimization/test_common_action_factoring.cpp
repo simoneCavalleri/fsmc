@@ -135,3 +135,51 @@ TEST(CommonActionFactoring, DivergentTransitionsIdenticalAction_FactoredIntoSour
         EXPECT_FALSE(t.transition_action.has_value());
     }
 }
+
+/**
+ * @brief Verify that CommonActionFactoringPass does NOT factor actions into pseudostates.
+ */
+TEST(CommonActionFactoring, Pseudostates_NeverFactored) {
+    FsmIr ir;
+    ir.name = "ChoicePseudostateTest";
+    ir.initial_state_id = "s1";
+
+    StateNode s1("s1", "s1");
+    StateNode s2("s2", "s2");
+    ir.states.push_back(s1);
+    ir.states.push_back(s2);
+
+    // Add choice node
+    ir.add_choice_node("choice1");
+
+    ActionSignature common_act;
+    StoreOp store_op;
+    store_op.target = LValueTarget("status");
+    store_op.expression = "READY";
+    common_act.instructions.emplace_back(store_op);
+
+    // Two transitions converging on choice1 with identical action
+    TransitionEdge t1;
+    t1.source_id = "s1";
+    t1.target_id = "choice1";
+    t1.trigger = SignalTrigger("EV1");
+    t1.transition_action = common_act;
+    ir.add_transition(t1);
+
+    TransitionEdge t2;
+    t2.source_id = "s2";
+    t2.target_id = "choice1";
+    t2.trigger = SignalTrigger("EV2");
+    t2.transition_action = common_act;
+    ir.add_transition(t2);
+
+    DiagnosticEngine diag;
+    CommonActionFactoringPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+
+    // Transitions must retain their actions; choice node must NOT have entry actions
+    for (const auto& t : ir.transitions) {
+        ASSERT_TRUE(t.transition_action.has_value());
+        EXPECT_EQ(t.transition_action->instructions.size(), 1u);
+    }
+}

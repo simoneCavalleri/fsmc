@@ -22,6 +22,8 @@ examples/
 │   └── flight_control_modes/           (Formal LTL/CTL model checking, RTM traceability, nuXmv export)
 ├── 05_custom_toolchain/            --> Industrial sensor acquisition & DSP pipeline
 │   └── plugin_and_pipeline/            (External Unix filter via stdin/stdout, dynamic C++ pass plugin)
+├── 06_stateflow_digital_twin_ecu/      --> Automotive ECU Digital Twin (MathWorks Stateflow)
+│   └── main.cpp                        (Connective junction chaining, zero-heap snapshot recorder rollback)
 ├── CMakeLists.txt                 --> Master build integration for all example targets
 └── run_all_examples.sh            --> Automated end-to-end CI/CLI test runner
 ```
@@ -38,6 +40,7 @@ examples/
 | [`03_concurrency_and_timing/automotive_bms`](03_concurrency_and_timing/automotive_bms/) | **Automotive (ISO 26262 ASIL-D)**<br>High-Voltage EV Battery Pack | 3 parallel orthogonal regions (`ThermalSupervision` \|\| `CellBalancing` \|\| `IsolationMonitoring`), clock state duration invariants (`stay <= 100ms`), priority preemption, and high-frequency lock-free event pipeline via `fsm::spsc_fsm`. | `orthogonal-interference`<br>`determinism-enforcement`<br>`clock-lowering`<br>`fsm::spsc_fsm` | `fsmc bms.sysml --check-races --strict-determinism`<br>`automotive_bms_example` |
 | [`04_formal_verification/flight_control_modes`](04_formal_verification/flight_control_modes/) | **Aerospace (DO-178C Level A)**<br>Fly-By-Wire Flight Computer | Formal LTL/CTL temporal logic specifications (`@fsm:property`), DO-178C requirement traceability audit (`--req-audit`), automated RTM matrix export, nuXmv SMV model checking. | `model-checking-engine`<br>`rtm-traceability-audit`<br>`guard-simplification` | `fsmc fms.sysml --verify --req-audit --rtm-output rtm.json`<br>`flight_control_modes_example` |
 | [`05_custom_toolchain/plugin_and_pipeline`](05_custom_toolchain/plugin_and_pipeline/) | **Embedded DSP Sensing**<br>Sensor Acquisition Pipeline | External Unix filter pipelines (`--pipe-through`), dynamic runtime C++ middle-end pass plugins (`--load-pass-plugin`), typed MBSE contracts. | `pipe-through`<br>`naming-audit` (Plugin)<br>`timed-invariants-verifier` | `fsm-opt sensor_pipeline.sysml --load-pass-plugin=... --pipe-through=...`<br>`sensor_pipeline_example` |
+| [`06_stateflow_digital_twin_ecu`](06_stateflow_digital_twin_ecu/) | **Automotive ECU & Digital Twin**<br>Stateflow Engine Control | Simulink Stateflow XML (`.sfx`) chart ingestion, multi-hop connective flow junctions, zero-heap time-travel snapshot recorder (`fsm::snapshot_recorder<16, 512>`), microsecond telemetry and rollback. | `connective-junction-chaining`<br>`fsm::snapshot_recorder`<br>`fsm::seq_` dual action | `fsm-opt ecu.sfx --passes=connective-junction-chaining --emit-ir`<br>`stateflow_digital_twin_ecu_example` |
 
 ---
 
@@ -69,5 +72,6 @@ To validate every example model across `fsmc` code generation, `fsm-opt` optimiz
 Every example model is authored using industry-standard formal formats:
 - **OMG SysML v2** (`.sysml`): Next-generation systems modeling language with native port contracts, state definitions, and requirement satisfaction semantics.
 - **PlantUML** (`.puml`): Visual statechart diagrams annotated with `@fsm:*` formal directives.
+- **MathWorks Stateflow XML** (`.sfx`): Simulink Stateflow charts with connective flow junctions and dual `{cond_action}/{trans_action}` execution.
 - **Mermaid** (`.mmd`): Declarative web-native diagrams with embedded contracts.
 - **nuXmv / SMV** (`.smv`): Symbolic formal verification specifications generated automatically from the Intermediate Representation.

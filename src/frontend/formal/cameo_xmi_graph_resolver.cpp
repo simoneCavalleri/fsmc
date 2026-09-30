@@ -364,6 +364,9 @@ void CameoXmiGraphResolver::process_transition(const std::shared_ptr<XmlNode>& t
         auto parsed = GuardExpressionParser::parse(guard_expr);
         if (!parsed.cpp_type.empty()) {
             trans.guard = parsed.cpp_type;
+            for (const auto& detail : parsed.atomic_guard_details) {
+                model.add_guard(detail.name, "", detail.expression, std::nullopt);
+            }
             for (const auto& a : parsed.atomic_guards) {
                 model.add_guard(a);
             }
@@ -374,7 +377,7 @@ void CameoXmiGraphResolver::process_transition(const std::shared_ptr<XmlNode>& t
                                      sanitize_identifier(dst_name) + "_" +
                                      std::to_string(model.transitions.size() + 1);
             model.add_guard(guard_name, "", std::optional<std::string>{guard_expr},
-                            std::optional<std::string>{guard_expr});
+                            std::nullopt);
             trans.guard = guard_name;
         }
     }

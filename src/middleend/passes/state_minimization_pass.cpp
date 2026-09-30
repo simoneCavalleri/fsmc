@@ -38,6 +38,14 @@ bool StateMinimizationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         return s;
     };
 
+    auto get_deferred_sig = [](const std::vector<std::string>& evs) -> std::string {
+        std::string s;
+        for (const auto& e : evs) {
+            s += e + ";";
+        }
+        return s;
+    };
+
     std::map<std::string, std::vector<std::string>> initial_blocks;
     for (const auto& s : ir.states) {
         if (ir.is_choice_node(s.name) || s.is_composite) {
@@ -49,7 +57,12 @@ bool StateMinimizationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         bool is_init = (s.name == init_st || s.id == init_st);
         std::string key = std::to_string(static_cast<int>(s.kind)) + "|" + (is_init ? "INIT" : "NORM") + "|" +
                           s.parent_state + "|" + get_actions_sig(s.entry_actions) + "|" +
-                          get_actions_sig(s.exit_actions);
+                          get_actions_sig(s.exit_actions) + "|" +
+                          s.do_activity.value_or("") + "|" +
+                          (s.time_invariant.has_value() ? s.time_invariant->to_string() : "") + "|" +
+                          (s.has_history ? "H" : "") + "|" +
+                          (s.has_deep_history ? "DH" : "") + "|" +
+                          get_deferred_sig(s.deferred_events);
 
         initial_blocks[key].push_back(s.name);
     }
@@ -88,13 +101,28 @@ bool StateMinimizationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             for (const auto& s : block) {
                 std::string sig;
                 for (const auto& ev : alphabet) {
-                    std::string target_desc = "NONE";
+                    std::vector<std::string> t_descs;
                     for (const auto& t : ir.transitions) {
                         if (t.source == s && t.event == ev) {
                             auto it = state_to_block.find(t.target);
                             std::size_t b_idx = (it != state_to_block.end()) ? it->second : 999999;
-                            target_desc = std::to_string(b_idx) + ":" + t.guard.value_or("") + ":" + t.get_action();
-                            break;
+                            std::string cond_act = t.condition_action.has_value() ? t.condition_action->name : "";
+                            std::string trans_act = t.transition_action.has_value() ? t.transition_action->name : "";
+                            std::string desc = std::to_string(b_idx) + ":" + t.guard.value_or("") + ":" +
+                                               cond_act + "/" + trans_act;
+                            t_descs.push_back(std::move(desc));
+                        }
+                    }
+                    std::sort(t_descs.begin(), t_descs.end());
+                    std::string target_desc;
+                    if (t_descs.empty()) {
+                        target_desc = "NONE";
+                    } else {
+                        for (std::size_t i = 0; i < t_descs.size(); ++i) {
+                            if (i > 0) {
+                                target_desc += ",";
+                            }
+                            target_desc += t_descs[i];
                         }
                     }
                     sig += ev + "->" + target_desc + "|";

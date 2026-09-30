@@ -109,4 +109,144 @@ TEST(StateMinimization, BehaviorallyEquivalentStates_MergedIntoCanonicalRepresen
     EXPECT_EQ(model.states.size(), 3u);
 }
 
+/**
+ * @brief Verify states with different numbers of guarded transitions for the same event are not merged.
+ */
+TEST(StateMinimization, MultipleGuardedTransitionsForSameEvent_NotMergedWhenDifferent) {
+    FsmIr model;
+    model.name = "GuardedTransitionsModel";
+    model.add_state("Init");
+    model.initial_state = "Init";
+    auto& target1 = model.add_state("Target1");
+    target1.entry_actions.push_back(ActionSignature{"on_target1"});
+    auto& target2 = model.add_state("Target2");
+    target2.entry_actions.push_back(ActionSignature{"on_target2"});
+    model.add_state("BranchingState");
+    model.add_state("SingleState");
+
+    // BranchingState has two guarded transitions on Ev
+    TransitionEdge t1;
+    t1.source = "BranchingState";
+    t1.target = "Target1";
+    t1.event = "Ev";
+    t1.guard = "x > 0";
+    model.add_transition(t1);
+
+    TransitionEdge t2;
+    t2.source = "BranchingState";
+    t2.target = "Target2";
+    t2.event = "Ev";
+    t2.guard = "x <= 0";
+    model.add_transition(t2);
+
+    // SingleState only has one guarded transition on Ev
+    TransitionEdge t3;
+    t3.source = "SingleState";
+    t3.target = "Target1";
+    t3.event = "Ev";
+    t3.guard = "x > 0";
+    model.add_transition(t3);
+
+    StateMinimizationPass pass;
+    DiagnosticEngine diag;
+    bool ok = pass.run(model, diag);
+
+    // BranchingState and SingleState must NOT be merged
+    EXPECT_FALSE(ok);
+    EXPECT_EQ(model.states.size(), 5u);
+    EXPECT_NE(model.find_state("BranchingState"), nullptr);
+    EXPECT_NE(model.find_state("SingleState"), nullptr);
+}
+
+/**
+ * @brief Verify states with identical guarded transitions in different insertion orders are correctly merged.
+ */
+TEST(StateMinimization, MultipleGuardedTransitionsForSameEvent_MergedWhenIdenticalRegardlessOfOrder) {
+    FsmIr model;
+    model.name = "OrderIndependentModel";
+    model.add_state("Init");
+    model.initial_state = "Init";
+    auto& target1 = model.add_state("Target1");
+    target1.entry_actions.push_back(ActionSignature{"on_target1"});
+    auto& target2 = model.add_state("Target2");
+    target2.entry_actions.push_back(ActionSignature{"on_target2"});
+    model.add_state("StateA");
+    model.add_state("StateB");
+
+    // StateA transitions: Target1 then Target2
+    TransitionEdge t1;
+    t1.source = "StateA";
+    t1.target = "Target1";
+    t1.event = "Ev";
+    t1.guard = "x > 0";
+    model.add_transition(t1);
+
+    TransitionEdge t2;
+    t2.source = "StateA";
+    t2.target = "Target2";
+    t2.event = "Ev";
+    t2.guard = "x <= 0";
+    model.add_transition(t2);
+
+    // StateB transitions in reverse order: Target2 then Target1
+    TransitionEdge t3;
+    t3.source = "StateB";
+    t3.target = "Target2";
+    t3.event = "Ev";
+    t3.guard = "x <= 0";
+    model.add_transition(t3);
+
+    TransitionEdge t4;
+    t4.source = "StateB";
+    t4.target = "Target1";
+    t4.event = "Ev";
+    t4.guard = "x > 0";
+    model.add_transition(t4);
+
+    StateMinimizationPass pass;
+    DiagnosticEngine diag;
+    bool ok = pass.run(model, diag);
+
+    // StateA and StateB should be merged
+    EXPECT_TRUE(ok);
+    EXPECT_EQ(model.states.size(), 4u);
+    EXPECT_NE(model.find_state("StateA"), nullptr);
+    EXPECT_EQ(model.find_state("StateB"), nullptr);
+}
+
+/**
+ * @brief Verify states with different do_activity or time invariants are kept separate.
+ */
+TEST(StateMinimization, ActivityAndInvariantDifferences_PreventMerger) {
+    FsmIr model;
+    model.name = "ActivityInvariantModel";
+    model.add_state("Init");
+    model.initial_state = "Init";
+    model.add_state("Target");
+
+    auto& s1 = model.add_state("StateWithActivity");
+    s1.do_activity = "blink_led()";
+
+    model.add_state("StateWithoutActivity");
+
+    auto& s3 = model.add_state("StateWithInvariant");
+    s3.time_invariant = StateTimeInvariant("stay_duration <= 500ms");
+
+    for (const auto& s_name : {"StateWithActivity", "StateWithoutActivity", "StateWithInvariant"}) {
+        TransitionEdge t;
+        t.source = s_name;
+        t.target = "Target";
+        t.event = "Step";
+        model.add_transition(t);
+    }
+
+    StateMinimizationPass pass;
+    DiagnosticEngine diag;
+    bool ok = pass.run(model, diag);
+
+    EXPECT_FALSE(ok);
+    EXPECT_EQ(model.states.size(), 5u);
+}
+
 }  // namespace
+

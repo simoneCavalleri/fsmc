@@ -46,7 +46,8 @@ fsmc_target_sources(
 | `NAMESPACE` | String | C++ namespace to enclose generated types. Default: `fsm_generated`. |
 | `OUTPUT_DIR` | Path | Output directory for generated headers (default: `${CMAKE_CURRENT_BINARY_DIR}/generated_<target>`). |
 | `STANDALONE` | Flag | Generate self-contained header with embedded zero-alloc runtime. |
-| `MODULAR` | Flag | Generate header that includes `<fsm/backend/cpp/runtime/fsm.hpp>`. |
+| `MODULAR` | Flag | Generate header that includes external runtime header (default: `"fsm.hpp"`, matching `--export-runtime`). |
+| `RUNTIME_HEADER` | String | Custom runtime header path included in modular mode (e.g. `"fsm.hpp"`, `"<fsm/fsm.hpp>"`). |
 | `NO_THREAD_SAFE` | Flag | Disable generation of the `thread_safe_fsm` asynchronous wrapper. |
 | `NO_STUBS` | Flag | Disable generation of default stubs for custom actions and guards. |
 | `FORMAT` | String | Override input model format parser (`sysml2`, `plantuml`, `mermaid`, etc.). |

@@ -36,11 +36,18 @@ my_project/
 
 === "C++ Target (Production)"
     ```bash
-    # Generate a self-contained C++20 header with zero external dependencies
+    # Option A: Generate a standalone self-contained C++20 header with embedded zero-alloc runtime
     fsmc -i connection.sysml -o connection_fsm.hpp --target cpp --std 20 --standalone
 
-    # Generate a C++17 header
-    fsmc -i connection.sysml -o connection_fsm.hpp --target cpp --std 17 --standalone
+    # Option B: Export the runtime once and generate modular lightweight headers (ideal for multi-FSM projects)
+    # 1. Export standalone runtime library into your project include path (creates fsm.hpp):
+    fsmc --export-runtime ./include/ --std 20
+
+    # 2. Generate lightweight FSM definition including external "fsm.hpp":
+    fsmc -i connection.sysml -o connection_fsm.hpp --target cpp --std 20 --modular
+
+    # Option C: Use custom runtime header include path
+    fsmc -i connection.sysml -o connection_fsm.hpp --modular="<fsm/fsm.hpp>"
     ```
 
 === "Rust Target (Roadmap Preview)"

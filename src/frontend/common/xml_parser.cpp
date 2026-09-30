@@ -63,6 +63,32 @@ std::string SimpleXmlParser::unescape_xml(std::string str) {
     replace_all(str, "&gt;", ">");
     replace_all(str, "&quot;", "\"");
     replace_all(str, "&apos;", "'");
+
+    // Decode decimal and hexadecimal numeric character references: &#NN; and &#xHH;
+    size_t p = 0;
+    while ((p = str.find("&#", p)) != std::string::npos) {
+        size_t semi = str.find(';', p + 2);
+        if (semi != std::string::npos && semi - p <= 8) {
+            std::string code_str = str.substr(p + 2, semi - (p + 2));
+            int code = -1;
+            try {
+                if (!code_str.empty() && (code_str[0] == 'x' || code_str[0] == 'X')) {
+                    code = std::stoi(code_str.substr(1), nullptr, 16);
+                } else if (!code_str.empty() && std::isdigit(static_cast<unsigned char>(code_str[0]))) {
+                    code = std::stoi(code_str, nullptr, 10);
+                }
+            } catch (...) {
+            }
+            if (code >= 0 && code <= 255) {
+                char ch = static_cast<char>(code);
+                str.replace(p, semi - p + 1, 1, ch);
+                p += 1;
+                continue;
+            }
+        }
+        p += 2;
+    }
+
     return str;
 }
 

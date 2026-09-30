@@ -289,4 +289,65 @@ TEST(StateflowParser, NestedBracketsAndJunctions_ParsedCorrectly) {
     EXPECT_NE(t1.guard->find("sensor_buf"), std::string::npos);
 }
 
+/**
+ * @brief Verify Stateflow state actions (en, du, ex) and periodic/at temporal logic.
+ * @scenario Parse Stateflow chart containing state actions in labelString, attributes, and every() trigger.
+ * @expected Entry/exit actions and do_activity extracted into StateNode, every() parsed as TimeTrigger,
+ *           and stateflow serialization preserves entry, during, exit, and every() syntax.
+ */
+TEST(StateflowParser, StateActionsAndPeriodicTimers_ParsedAndSerialized) {
+    const std::string sf_xml = R"(
+        <Stateflow>
+            <chart id="1" name="TemporalActionsChart">
+                <state id="10" name="Active" labelString="Active&#10;en: initHardware();&#10;du: monitorSensors();&#10;ex: cleanupHardware();"/>
+                <state id="20" name="Standby" entry="enterSleep();" exit="wakeUp();"/>
+                <transition src="Active" dst="Standby" labelString="every(50, ms) [batteryLow] / { sendTelemetry(); }"/>
+            </chart>
+        </Stateflow>
+    )";
+
+    StateflowParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err;
+
+    // Verify Active state actions from labelString
+    const auto* active_st = model.find_state("Active");
+    ASSERT_NE(active_st, nullptr);
+    ASSERT_FALSE(active_st->entry_actions.empty());
+    EXPECT_EQ(active_st->entry_actions[0].name, "initHardware");
+    ASSERT_TRUE(active_st->do_activity.has_value());
+    EXPECT_EQ(*active_st->do_activity, "monitorSensors");
+    ASSERT_FALSE(active_st->exit_actions.empty());
+    EXPECT_EQ(active_st->exit_actions[0].name, "cleanupHardware");
+
+    // Verify Standby state actions from attributes
+    const auto* standby_st = model.find_state("Standby");
+    ASSERT_NE(standby_st, nullptr);
+    ASSERT_FALSE(standby_st->entry_actions.empty());
+    EXPECT_EQ(standby_st->entry_actions[0].name, "enterSleep");
+    ASSERT_FALSE(standby_st->exit_actions.empty());
+    EXPECT_EQ(standby_st->exit_actions[0].name, "wakeUp");
+
+    // Verify transition with every() trigger
+    ASSERT_EQ(model.transitions.size(), 1u);
+    const auto& tr = model.transitions[0];
+    EXPECT_EQ(tr.source, "Active");
+    EXPECT_EQ(tr.target, "Standby");
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(tr.trigger));
+    const auto& tt = std::get<TimeTrigger>(tr.trigger);
+    EXPECT_EQ(tt.kind, TimeTriggerKind::Every);
+    EXPECT_EQ(tt.duration_ms, 50u);
+
+    // Roundtrip serialize to Stateflow XML
+    std::string exported_xml = StateflowSerializer::serialize(model);
+
+    EXPECT_NE(exported_xml.find("entry=\"initHardware\""), std::string::npos);
+    EXPECT_NE(exported_xml.find("during=\"monitorSensors\""), std::string::npos);
+    EXPECT_NE(exported_xml.find("exit=\"cleanupHardware\""), std::string::npos);
+    EXPECT_NE(exported_xml.find("entry=\"enterSleep\""), std::string::npos);
+    EXPECT_NE(exported_xml.find("exit=\"wakeUp\""), std::string::npos);
+    EXPECT_NE(exported_xml.find("every(50, msec)"), std::string::npos);
+}
+
 }  // namespace

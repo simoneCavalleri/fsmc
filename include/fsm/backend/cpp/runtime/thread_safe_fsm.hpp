@@ -272,6 +272,19 @@ class thread_safe_fsm {
         fsm_.clear_history();
     }
 
+    [[nodiscard]] std::string_view get_history(std::string_view parent) const {
+        if (reentrancy_.is_reentrant_call()) {
+            return fsm_.get_history(parent);
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.get_history(parent);
+    }
+
+    template <typename ParentState>
+    [[nodiscard]] std::string_view get_history() const {
+        return get_history(get_state_name_static<ParentState>());
+    }
+
     [[nodiscard]] std::string_view current_state_name() const {
         if (reentrancy_.is_reentrant_call()) {
             return fsm_.current_state_name();
@@ -360,6 +373,11 @@ class thread_safe_fsm {
         diagnostics_.set_last_exception(last_ex);
         drain_reentrant_queue_if_outermost();
         return snap.result;
+    }
+
+    template <typename Event, typename... Args>
+    dispatch_result dispatch(const Event& event, Args&&... args) {
+        return send(event, std::forward<Args>(args)...);
     }
 
     // ========================================================================

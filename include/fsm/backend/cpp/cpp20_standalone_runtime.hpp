@@ -468,12 +468,29 @@ struct has_parent_type<State, std::void_t<typename State::parent_type>> : std::t
 
 }  // namespace detail
 
+// Instance-free variant of get_state_name, used where no state
+// instance is available (e.g. resolving a target state's display name for
+// a guard-rejected trace).
+template <typename State>
+constexpr std::string_view get_state_name_static() noexcept {
+    if constexpr (detail::has_custom_name_static<State>::value) {
+        if constexpr (std::is_invocable_v<decltype(State::name)>) {
+            return State::name();
+        } else {
+            return State::name;
+        }
+    } else {
+        return get_type_name<State>();
+    }
+}
+
 template <typename State, typename Fn>
 constexpr void record_ancestor_history(std::string_view state_name, Fn&& fn) {
     if constexpr (detail::has_parent_type<State>::value) {
         using Parent = typename State::parent_type;
-        fn(Parent::name, state_name);
-        record_ancestor_history<Parent>(Parent::name, std::forward<Fn>(fn));
+        constexpr std::string_view parent_name = get_state_name_static<Parent>();
+        fn(parent_name, state_name);
+        record_ancestor_history<Parent>(parent_name, std::forward<Fn>(fn));
     } else if constexpr (detail::has_parent_name<State>::value) {
         if constexpr (!State::parent.empty()) {
             fn(State::parent, state_name);
@@ -486,22 +503,6 @@ constexpr std::string_view get_state_name(const State& state) {
     if constexpr (detail::has_custom_name_method<State>::value) {
         return state.name();
     } else if constexpr (detail::has_custom_name_static<State>::value) {
-        if constexpr (std::is_invocable_v<decltype(State::name)>) {
-            return State::name();
-        } else {
-            return State::name;
-        }
-    } else {
-        return get_type_name<State>();
-    }
-}
-
-// Instance-free variant of get_state_name, used where no state
-// instance is available (e.g. resolving a target state's display name for
-// a guard-rejected trace).
-template <typename State>
-constexpr std::string_view get_state_name_static() noexcept {
-    if constexpr (detail::has_custom_name_static<State>::value) {
         if constexpr (std::is_invocable_v<decltype(State::name)>) {
             return State::name();
         } else {
@@ -538,7 +539,9 @@ constexpr std::string_view event_name() noexcept {
 
 template <typename State>
 constexpr std::string_view get_parent_name() noexcept {
-    if constexpr (detail::has_parent_name<State>::value) {
+    if constexpr (detail::has_parent_type<State>::value) {
+        return get_state_name_static<typename State::parent_type>();
+    } else if constexpr (detail::has_parent_name<State>::value) {
         return State::parent;
     } else {
         return "";
@@ -1437,19 +1440,37 @@ inline constexpr bool is_deferred_event_v = []() constexpr {
     }
 }();
 
+namespace detail {
+template <typename State, typename = void>
+struct ancestor_depth : std::integral_constant<std::size_t, 0> {};
+
+template <typename State>
+struct ancestor_depth<State, std::void_t<typename State::parent_type>>
+    : std::integral_constant<std::size_t, 1 + ancestor_depth<typename State::parent_type>::value> {};
+
+template <typename State>
+struct state_parent_capacity
+    : std::integral_constant<std::size_t,
+                             (has_parent_type<State>::value ? ancestor_depth<State>::value
+                                                            : (has_parent_name<State>::value ? 1 : 0))> {};
+}  // namespace detail
+
 // Introspection for History & Deferred events across unique state list
+template <typename State>
+struct state_has_parent : std::disjunction<detail::has_parent_name<State>, detail::has_parent_type<State>> {};
+
 template <typename StateList>
 struct any_state_has_history : std::false_type {};
 
 template <typename... States>
-struct any_state_has_history<type_list<States...>> : std::disjunction<detail::has_parent_name<States>...> {};
+struct any_state_has_history<type_list<States...>> : std::disjunction<state_has_parent<States>...> {};
 
 template <typename StateList>
 struct count_parent_states : std::integral_constant<std::size_t, 0> {};
 
 template <typename... States>
 struct count_parent_states<type_list<States...>>
-    : std::integral_constant<std::size_t, (0 + ... + (detail::has_parent_name<States>::value ? 1 : 0))> {};
+    : std::integral_constant<std::size_t, (0 + ... + detail::state_parent_capacity<States>::value)> {};
 
 template <typename StateList>
 inline constexpr std::size_t count_parent_states_v = count_parent_states<StateList>::value;
@@ -2571,9 +2592,25 @@ struct history_is {
     template <typename Event, typename State, typename InPorts, typename Registers, typename Services, typename Fsm>
     constexpr bool operator()(const Event&, const State&, const InPorts&, const Registers&, Services&,
                               const Fsm& fsm) const noexcept {
-        std::string_view curr = fsm.get_history(ParentState::name);
+        constexpr std::string_view parent_name = get_state_name_static<ParentState>();
+        constexpr std::string_view sub_name = get_state_name_static<SubState>();
+        std::string_view curr = fsm.get_history(parent_name);
         while (!curr.empty()) {
-            if (curr == SubState::name) {
+            if (curr == sub_name) {
+                return true;
+            }
+            curr = fsm.get_history(curr);
+        }
+        return false;
+    }
+
+    template <typename Fsm>
+    constexpr bool operator()(const Fsm& fsm) const noexcept {
+        constexpr std::string_view parent_name = get_state_name_static<ParentState>();
+        constexpr std::string_view sub_name = get_state_name_static<SubState>();
+        std::string_view curr = fsm.get_history(parent_name);
+        while (!curr.empty()) {
+            if (curr == sub_name) {
                 return true;
             }
             curr = fsm.get_history(curr);
@@ -3124,8 +3161,10 @@ constexpr void call_hierarchical_on_exit(State& current_state, const Event& even
     if constexpr (has_parent_type<State>::value) {
         using Parent = typename State::parent_type;
         if constexpr (!is_substate_of_v<Target, Parent>) {
-            Parent parent_inst{};
-            call_hierarchical_on_exit<Current, Target, Parent>(parent_inst, event, in, out, reg, srv);
+            if constexpr (std::is_default_constructible_v<Parent>) {
+                Parent parent_inst{};
+                call_hierarchical_on_exit<Current, Target, Parent>(parent_inst, event, in, out, reg, srv);
+            }
         }
     }
 }
@@ -3141,8 +3180,10 @@ constexpr void call_ancestor_on_enter_helper(const Event& event, const In& in, O
         }
     }
     if constexpr (!std::is_same_v<Ancestor, Target>) {
-        Ancestor ancestor_inst{};
-        call_on_enter(ancestor_inst, event, in, out, reg, srv);
+        if constexpr (std::is_default_constructible_v<Ancestor>) {
+            Ancestor ancestor_inst{};
+            call_on_enter(ancestor_inst, event, in, out, reg, srv);
+        }
     }
 }
 
@@ -3291,7 +3332,7 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
                 return true;
             } else {
                 constexpr std::string_view src_parent = get_parent_name<CurrentSrc>();
-                if constexpr (!src_parent.empty()) {
+                if constexpr (!src_parent.empty() || detail::has_parent_type<CurrentSrc>::value) {
                     record_ancestor_history<CurrentSrc>(src_name, record_history_fn);
                 }
 
@@ -4021,6 +4062,11 @@ class fsm {
     template <bool H = has_history>
     [[nodiscard]] std::string_view get_history(std::string_view parent) const noexcept {
         return history_mgr_.get_history(parent);
+    }
+
+    template <typename ParentState, bool H = has_history>
+    [[nodiscard]] std::string_view get_history() const noexcept {
+        return get_history<H>(get_state_name_static<ParentState>());
     }
 
     void clear_history() noexcept {
@@ -5538,6 +5584,19 @@ class thread_safe_fsm {
         fsm_.clear_history();
     }
 
+    [[nodiscard]] std::string_view get_history(std::string_view parent) const {
+        if (reentrancy_.is_reentrant_call()) {
+            return fsm_.get_history(parent);
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.get_history(parent);
+    }
+
+    template <typename ParentState>
+    [[nodiscard]] std::string_view get_history() const {
+        return get_history(get_state_name_static<ParentState>());
+    }
+
     [[nodiscard]] std::string_view current_state_name() const {
         if (reentrancy_.is_reentrant_call()) {
             return fsm_.current_state_name();
@@ -5626,6 +5685,11 @@ class thread_safe_fsm {
         diagnostics_.set_last_exception(last_ex);
         drain_reentrant_queue_if_outermost();
         return snap.result;
+    }
+
+    template <typename Event, typename... Args>
+    dispatch_result dispatch(const Event& event, Args&&... args) {
+        return send(event, std::forward<Args>(args)...);
     }
 
     // ========================================================================
@@ -6033,6 +6097,11 @@ class spsc_fsm {
 
     [[nodiscard]] bool post(const event_variant& event) noexcept { return queue_.push(event); }
 
+    template <typename Event>
+    [[nodiscard]] bool push(Event&& event) noexcept {
+        return post(std::forward<Event>(event));
+    }
+
     // ========================================================================
     // Consumer API (Single Consumer / Dedicated Worker Thread)
     // ========================================================================
@@ -6205,6 +6274,27 @@ class spsc_fsm {
         fsm_.reset(std::move(initial_registers));
         state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
         seq_.fetch_add(1, std::memory_order_release);
+    }
+
+    void clear_history() noexcept {
+        fsm_.clear_history();
+    }
+
+    [[nodiscard]] std::string_view get_history(std::string_view parent) const noexcept {
+        return fsm_.get_history(parent);
+    }
+
+    template <typename ParentState>
+    [[nodiscard]] std::string_view get_history() const noexcept {
+        return fsm_.template get_history<ParentState>();
+    }
+
+    void clear_deferred() noexcept {
+        fsm_.clear_deferred();
+    }
+
+    void clear_deferred_events() noexcept {
+        fsm_.clear_deferred_events();
     }
 
     [[nodiscard]] std::uint64_t state_residence_time() const noexcept { return fsm_.state_residence_time(); }

@@ -148,6 +148,11 @@ class spsc_fsm {
 
     [[nodiscard]] bool post(const event_variant& event) noexcept { return queue_.push(event); }
 
+    template <typename Event>
+    [[nodiscard]] bool push(Event&& event) noexcept {
+        return post(std::forward<Event>(event));
+    }
+
     // ========================================================================
     // Consumer API (Single Consumer / Dedicated Worker Thread)
     // ========================================================================
@@ -320,6 +325,27 @@ class spsc_fsm {
         fsm_.reset(std::move(initial_registers));
         state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
         seq_.fetch_add(1, std::memory_order_release);
+    }
+
+    void clear_history() noexcept {
+        fsm_.clear_history();
+    }
+
+    [[nodiscard]] std::string_view get_history(std::string_view parent) const noexcept {
+        return fsm_.get_history(parent);
+    }
+
+    template <typename ParentState>
+    [[nodiscard]] std::string_view get_history() const noexcept {
+        return fsm_.template get_history<ParentState>();
+    }
+
+    void clear_deferred() noexcept {
+        fsm_.clear_deferred();
+    }
+
+    void clear_deferred_events() noexcept {
+        fsm_.clear_deferred_events();
     }
 
     [[nodiscard]] std::uint64_t state_residence_time() const noexcept { return fsm_.state_residence_time(); }

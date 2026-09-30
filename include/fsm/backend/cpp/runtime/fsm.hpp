@@ -368,6 +368,11 @@ class fsm {
         return history_mgr_.get_history(parent);
     }
 
+    template <typename ParentState, bool H = has_history>
+    [[nodiscard]] std::string_view get_history() const noexcept {
+        return get_history<H>(get_state_name_static<ParentState>());
+    }
+
     void clear_history() noexcept {
         if constexpr (has_history) {
             history_mgr_.clear_history();

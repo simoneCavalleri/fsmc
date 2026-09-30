@@ -130,19 +130,37 @@ inline constexpr bool is_deferred_event_v = []() constexpr {
     }
 }();
 
+namespace detail {
+template <typename State, typename = void>
+struct ancestor_depth : std::integral_constant<std::size_t, 0> {};
+
+template <typename State>
+struct ancestor_depth<State, std::void_t<typename State::parent_type>>
+    : std::integral_constant<std::size_t, 1 + ancestor_depth<typename State::parent_type>::value> {};
+
+template <typename State>
+struct state_parent_capacity
+    : std::integral_constant<std::size_t,
+                             (has_parent_type<State>::value ? ancestor_depth<State>::value
+                                                            : (has_parent_name<State>::value ? 1 : 0))> {};
+}  // namespace detail
+
 // Introspection for History & Deferred events across unique state list
+template <typename State>
+struct state_has_parent : std::disjunction<detail::has_parent_name<State>, detail::has_parent_type<State>> {};
+
 template <typename StateList>
 struct any_state_has_history : std::false_type {};
 
 template <typename... States>
-struct any_state_has_history<type_list<States...>> : std::disjunction<detail::has_parent_name<States>...> {};
+struct any_state_has_history<type_list<States...>> : std::disjunction<state_has_parent<States>...> {};
 
 template <typename StateList>
 struct count_parent_states : std::integral_constant<std::size_t, 0> {};
 
 template <typename... States>
 struct count_parent_states<type_list<States...>>
-    : std::integral_constant<std::size_t, (0 + ... + (detail::has_parent_name<States>::value ? 1 : 0))> {};
+    : std::integral_constant<std::size_t, (0 + ... + detail::state_parent_capacity<States>::value)> {};
 
 template <typename StateList>
 inline constexpr std::size_t count_parent_states_v = count_parent_states<StateList>::value;

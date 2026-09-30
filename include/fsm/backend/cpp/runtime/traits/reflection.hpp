@@ -97,12 +97,29 @@ struct has_parent_type<State, std::void_t<typename State::parent_type>> : std::t
 
 }  // namespace detail
 
+// Instance-free variant of get_state_name, used where no state
+// instance is available (e.g. resolving a target state's display name for
+// a guard-rejected trace).
+template <typename State>
+constexpr std::string_view get_state_name_static() noexcept {
+    if constexpr (detail::has_custom_name_static<State>::value) {
+        if constexpr (std::is_invocable_v<decltype(State::name)>) {
+            return State::name();
+        } else {
+            return State::name;
+        }
+    } else {
+        return get_type_name<State>();
+    }
+}
+
 template <typename State, typename Fn>
 constexpr void record_ancestor_history(std::string_view state_name, Fn&& fn) {
     if constexpr (detail::has_parent_type<State>::value) {
         using Parent = typename State::parent_type;
-        fn(Parent::name, state_name);
-        record_ancestor_history<Parent>(Parent::name, std::forward<Fn>(fn));
+        constexpr std::string_view parent_name = get_state_name_static<Parent>();
+        fn(parent_name, state_name);
+        record_ancestor_history<Parent>(parent_name, std::forward<Fn>(fn));
     } else if constexpr (detail::has_parent_name<State>::value) {
         if constexpr (!State::parent.empty()) {
             fn(State::parent, state_name);
@@ -115,22 +132,6 @@ constexpr std::string_view get_state_name(const State& state) {
     if constexpr (detail::has_custom_name_method<State>::value) {
         return state.name();
     } else if constexpr (detail::has_custom_name_static<State>::value) {
-        if constexpr (std::is_invocable_v<decltype(State::name)>) {
-            return State::name();
-        } else {
-            return State::name;
-        }
-    } else {
-        return get_type_name<State>();
-    }
-}
-
-// Instance-free variant of get_state_name, used where no state
-// instance is available (e.g. resolving a target state's display name for
-// a guard-rejected trace).
-template <typename State>
-constexpr std::string_view get_state_name_static() noexcept {
-    if constexpr (detail::has_custom_name_static<State>::value) {
         if constexpr (std::is_invocable_v<decltype(State::name)>) {
             return State::name();
         } else {
@@ -167,7 +168,9 @@ constexpr std::string_view event_name() noexcept {
 
 template <typename State>
 constexpr std::string_view get_parent_name() noexcept {
-    if constexpr (detail::has_parent_name<State>::value) {
+    if constexpr (detail::has_parent_type<State>::value) {
+        return get_state_name_static<typename State::parent_type>();
+    } else if constexpr (detail::has_parent_name<State>::value) {
         return State::parent;
     } else {
         return "";

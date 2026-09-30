@@ -233,9 +233,25 @@ struct history_is {
     template <typename Event, typename State, typename InPorts, typename Registers, typename Services, typename Fsm>
     constexpr bool operator()(const Event&, const State&, const InPorts&, const Registers&, Services&,
                               const Fsm& fsm) const noexcept {
-        std::string_view curr = fsm.get_history(ParentState::name);
+        constexpr std::string_view parent_name = get_state_name_static<ParentState>();
+        constexpr std::string_view sub_name = get_state_name_static<SubState>();
+        std::string_view curr = fsm.get_history(parent_name);
         while (!curr.empty()) {
-            if (curr == SubState::name) {
+            if (curr == sub_name) {
+                return true;
+            }
+            curr = fsm.get_history(curr);
+        }
+        return false;
+    }
+
+    template <typename Fsm>
+    constexpr bool operator()(const Fsm& fsm) const noexcept {
+        constexpr std::string_view parent_name = get_state_name_static<ParentState>();
+        constexpr std::string_view sub_name = get_state_name_static<SubState>();
+        std::string_view curr = fsm.get_history(parent_name);
+        while (!curr.empty()) {
+            if (curr == sub_name) {
                 return true;
             }
             curr = fsm.get_history(curr);

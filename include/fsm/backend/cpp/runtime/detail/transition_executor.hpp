@@ -23,8 +23,10 @@ constexpr void call_hierarchical_on_exit(State& current_state, const Event& even
     if constexpr (has_parent_type<State>::value) {
         using Parent = typename State::parent_type;
         if constexpr (!is_substate_of_v<Target, Parent>) {
-            Parent parent_inst{};
-            call_hierarchical_on_exit<Current, Target, Parent>(parent_inst, event, in, out, reg, srv);
+            if constexpr (std::is_default_constructible_v<Parent>) {
+                Parent parent_inst{};
+                call_hierarchical_on_exit<Current, Target, Parent>(parent_inst, event, in, out, reg, srv);
+            }
         }
     }
 }
@@ -40,8 +42,10 @@ constexpr void call_ancestor_on_enter_helper(const Event& event, const In& in, O
         }
     }
     if constexpr (!std::is_same_v<Ancestor, Target>) {
-        Ancestor ancestor_inst{};
-        call_on_enter(ancestor_inst, event, in, out, reg, srv);
+        if constexpr (std::is_default_constructible_v<Ancestor>) {
+            Ancestor ancestor_inst{};
+            call_on_enter(ancestor_inst, event, in, out, reg, srv);
+        }
     }
 }
 
@@ -190,7 +194,7 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
                 return true;
             } else {
                 constexpr std::string_view src_parent = get_parent_name<CurrentSrc>();
-                if constexpr (!src_parent.empty()) {
+                if constexpr (!src_parent.empty() || detail::has_parent_type<CurrentSrc>::value) {
                     record_ancestor_history<CurrentSrc>(src_name, record_history_fn);
                 }
 

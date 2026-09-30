@@ -350,4 +350,59 @@ TEST(StateflowParser, StateActionsAndPeriodicTimers_ParsedAndSerialized) {
     EXPECT_NE(exported_xml.find("every(50, msec)"), std::string::npos);
 }
 
+/**
+ * @brief Verify Stateflow fractional time duration parsing and guard expression preservation.
+ * @scenario Parse after(1.5, sec) and complex comparison guard in Stateflow XML.
+ * @expected Duration converted to 1500 ms (not truncated to 1 ms) and guard raw expression preserved in model.guards.
+ */
+TEST(StateflowParser, FractionalDurationsAndGuardRawExpressions_Preserved) {
+    const std::string sf_xml = R"(
+        <Stateflow>
+            <chart id="1" name="FractionalTimerChart">
+                <state id="10" name="Preheat"/>
+                <state id="20" name="Cook"/>
+                <transition src="Preheat" dst="Cook" labelString="after(1.5, sec) [temp &gt;= 180.5] / { startBaking(); }"/>
+                <transition src="Cook" dst="Preheat" labelString="every(2.5, s) [timer_expired == 1]"/>
+            </chart>
+        </Stateflow>
+    )";
+
+    StateflowParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err;
+
+    ASSERT_EQ(model.transitions.size(), 2u);
+
+    // Verify 1.5 sec -> 1500 ms
+    const auto& t1 = model.transitions[0];
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(t1.trigger));
+    const auto& tt1 = std::get<TimeTrigger>(t1.trigger);
+    EXPECT_EQ(tt1.kind, TimeTriggerKind::After);
+    EXPECT_EQ(tt1.duration_ms, 1500u);
+
+    // Verify 2.5 s -> 2500 ms
+    const auto& t2 = model.transitions[1];
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(t2.trigger));
+    const auto& tt2 = std::get<TimeTrigger>(t2.trigger);
+    EXPECT_EQ(tt2.kind, TimeTriggerKind::Every);
+    EXPECT_EQ(tt2.duration_ms, 2500u);
+
+    // Verify guard preservation in model.guards
+    ASSERT_FALSE(model.guards.empty());
+    auto it = std::find_if(model.guards.begin(), model.guards.end(),
+                           [](const GuardModel& gm) {
+                               return gm.raw_expression.has_value() &&
+                                      gm.raw_expression->find("temp >= 180.5") != std::string::npos;
+                           });
+    EXPECT_NE(it, model.guards.end());
+
+    // Verify StateflowSerializer roundtrip preserves the predicate
+    std::string xml = StateflowSerializer::serialize(model);
+    EXPECT_NE(xml.find("after(1500, msec)"), std::string::npos);
+    EXPECT_NE(xml.find("every(2500, msec)"), std::string::npos);
+    EXPECT_NE(xml.find("temp &gt;= 180.5"), std::string::npos);
+}
+
 }  // namespace
+

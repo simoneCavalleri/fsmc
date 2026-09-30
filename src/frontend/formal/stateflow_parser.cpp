@@ -451,28 +451,36 @@ StateflowParser::StateflowLabelComponents StateflowParser::parse_stateflow_label
     if (std::regex_search(label, match, after_re)) {
         double val = std::stod(match[1].str());
         std::string unit = match[2].str();
-        uint64_t dur_ms = static_cast<uint64_t>(val);
+        // Apply unit multiplier BEFORE casting to uint64_t to avoid fractional truncation.
+        // after(1.5, s) must give 1500 ms, not 1 ms.
+        double dur_ms_f = val;
         if (unit == "sec" || unit == "s" || unit == "seconds") {
-            dur_ms = static_cast<uint64_t>(val * 1000.0);
+            dur_ms_f = val * 1000.0;
         }
+        uint64_t dur_ms = static_cast<uint64_t>(dur_ms_f + 0.5);  // round to nearest ms
+        if (dur_ms == 0) dur_ms = 1;
         res.time_trigger = TimeTrigger(TimeTriggerKind::After, dur_ms, TimeUnit::Milliseconds);
         res.event = "after_" + std::to_string(dur_ms) + "ms";
     } else if (std::regex_search(label, match, every_re)) {
         double val = std::stod(match[1].str());
         std::string unit = match[2].str();
-        uint64_t dur_ms = static_cast<uint64_t>(val);
+        double dur_ms_f = val;
         if (unit == "sec" || unit == "s" || unit == "seconds") {
-            dur_ms = static_cast<uint64_t>(val * 1000.0);
+            dur_ms_f = val * 1000.0;
         }
+        uint64_t dur_ms = static_cast<uint64_t>(dur_ms_f + 0.5);
+        if (dur_ms == 0) dur_ms = 1;
         res.time_trigger = TimeTrigger(TimeTriggerKind::Every, dur_ms, TimeUnit::Milliseconds);
         res.event = "every_" + std::to_string(dur_ms) + "ms";
     } else if (std::regex_search(label, match, at_re)) {
         double val = std::stod(match[1].str());
         std::string unit = match[2].str();
-        uint64_t dur_ms = static_cast<uint64_t>(val);
+        double dur_ms_f = val;
         if (unit == "sec" || unit == "s" || unit == "seconds") {
-            dur_ms = static_cast<uint64_t>(val * 1000.0);
+            dur_ms_f = val * 1000.0;
         }
+        uint64_t dur_ms = static_cast<uint64_t>(dur_ms_f + 0.5);
+        if (dur_ms == 0) dur_ms = 1;
         res.time_trigger = TimeTrigger(TimeTriggerKind::At, dur_ms, TimeUnit::Milliseconds);
         res.event = "at_" + std::to_string(dur_ms) + "ms";
     }
@@ -607,12 +615,21 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
         auto parsed = directive::GuardExpressionParser::parse(comps.guard);
         if (!parsed.cpp_type.empty()) {
             trans.guard = parsed.cpp_type;
+            for (const auto& detail : parsed.atomic_guard_details) {
+                model.add_guard(detail.name, "", detail.expression, std::nullopt);
+            }
             for (const auto& a : parsed.atomic_guards) {
                 model.add_guard(a);
             }
         } else {
-            trans.guard = sanitize_identifier(comps.guard);
-            model.add_guard(trans.guard.value());
+            // Generate a stable synthetic guard name instead of sanitizing the raw
+            // boolean expression (which would corrupt operator characters like >, &&, ! etc.).
+            std::string guard_name = "guard_" + sanitize_identifier(src_name) + "_to_" +
+                                     sanitize_identifier(dst_name) + "_" +
+                                     std::to_string(model.transitions.size() + 1);
+            model.add_guard(guard_name, "", std::optional<std::string>{comps.guard},
+                            std::nullopt);
+            trans.guard = guard_name;
         }
     }
     if (!comps.condition_action.empty()) {

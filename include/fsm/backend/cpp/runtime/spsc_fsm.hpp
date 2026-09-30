@@ -43,6 +43,37 @@ template <typename Variant>
 constexpr std::string_view get_state_name_by_index(std::size_t idx) noexcept {
     return get_state_name_by_index_impl<Variant>(idx, std::make_index_sequence<std::variant_size_v<Variant>>{});
 }
+
+template <typename Variant, typename TargetState, std::size_t... Is>
+constexpr bool is_substate_by_variant_index_impl(std::size_t idx, std::index_sequence<Is...>) noexcept {
+    constexpr bool matches[] = {is_substate_of_v<std::variant_alternative_t<Is, Variant>, TargetState>...};
+    if (idx < sizeof...(Is)) {
+        return matches[idx];
+    }
+    return false;
+}
+
+template <typename Variant, typename TargetState>
+constexpr bool is_substate_by_variant_index(std::size_t idx) noexcept {
+    return is_substate_by_variant_index_impl<Variant, TargetState>(
+        idx, std::make_index_sequence<std::variant_size_v<Variant>>{});
+}
+
+template <typename Variant, std::size_t... Is>
+constexpr bool is_substate_by_name_variant_index_impl(std::size_t idx, std::string_view name,
+                                                      std::index_sequence<Is...>) noexcept {
+    bool matches[] = {state_is_or_descendant_of_static<std::variant_alternative_t<Is, Variant>>(name)...};
+    if (idx < sizeof...(Is)) {
+        return matches[idx];
+    }
+    return false;
+}
+
+template <typename Variant>
+constexpr bool is_substate_by_name_variant_index(std::size_t idx, std::string_view name) noexcept {
+    return is_substate_by_name_variant_index_impl<Variant>(
+        idx, name, std::make_index_sequence<std::variant_size_v<Variant>>{});
+}
 }  // namespace detail
 
 template <typename Table, typename InPorts = no_ports, typename OutPorts = no_ports, typename Registers = no_registers,
@@ -259,6 +290,15 @@ class spsc_fsm {
 
     template <typename State>
     [[nodiscard]] bool is_in() const noexcept {
+        return detail::is_substate_by_variant_index<typename Table::state_variant, State>(state_index());
+    }
+
+    [[nodiscard]] bool is_in(std::string_view target_name) const noexcept {
+        return detail::is_substate_by_name_variant_index<typename Table::state_variant>(state_index(), target_name);
+    }
+
+    template <typename State>
+    [[nodiscard]] bool is_in_state() const noexcept {
         if constexpr (Table::template has_state<State>) {
             return state_index() == type_list_index_of_v<State, typename Table::states>;
         } else {
@@ -266,9 +306,20 @@ class spsc_fsm {
         }
     }
 
-    template <typename State>
-    [[nodiscard]] bool is_in_state() const noexcept {
-        return is_in<State>();
+    void reset() {
+        seq_.fetch_add(1, std::memory_order_release);
+        queue_.clear();
+        fsm_.reset();
+        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
+        seq_.fetch_add(1, std::memory_order_release);
+    }
+
+    void reset(registers_type initial_registers) {
+        seq_.fetch_add(1, std::memory_order_release);
+        queue_.clear();
+        fsm_.reset(std::move(initial_registers));
+        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
+        seq_.fetch_add(1, std::memory_order_release);
     }
 
     [[nodiscard]] std::uint64_t state_residence_time() const noexcept { return fsm_.state_residence_time(); }

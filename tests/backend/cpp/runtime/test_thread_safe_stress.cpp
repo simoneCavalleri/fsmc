@@ -172,4 +172,58 @@ TEST(ThreadSafeStress, MixedEvents_ConcurrentImmediateAndTimed_ProcessedDetermin
     EXPECT_GT(ctx.total_pings, 0u);
 }
 
+struct TsSuperState {
+    static constexpr std::string_view name = "TsSuperState";
+};
+
+struct TsSubState1 {
+    using parent_type = TsSuperState;
+    static constexpr std::string_view name = "TsSubState1";
+};
+
+struct TsSubState2 {
+    using parent_type = TsSuperState;
+    static constexpr std::string_view name = "TsSubState2";
+};
+
+struct TsExternalState {
+    static constexpr std::string_view name = "TsExternalState";
+};
+
+struct TsEv1 {};
+struct TsEv2 {};
+
+using TsHierarchicalTable = fsm::transition_table<fsm::transition<TsSubState1, TsEv1, TsSubState2>,
+                                                  fsm::transition<TsSubState2, TsEv2, TsExternalState>>;
+
+/**
+ * @brief Verify hierarchical is_in and reset functionality in thread_safe_fsm.
+ */
+TEST(ThreadSafeFsm, HierarchicalIsIn_AndReset) {
+    fsm::thread_safe_fsm<TsHierarchicalTable> machine;
+
+    EXPECT_TRUE(machine.is_in<TsSubState1>());
+    EXPECT_TRUE(machine.is_in<TsSuperState>());
+    EXPECT_FALSE(machine.is_in<TsSubState2>());
+    EXPECT_FALSE(machine.is_in<TsExternalState>());
+
+    EXPECT_TRUE(machine.is_in("TsSubState1"));
+    EXPECT_TRUE(machine.is_in("TsSuperState"));
+    EXPECT_FALSE(machine.is_in("TsSubState2"));
+
+    machine.send(TsEv1{});
+    EXPECT_TRUE(machine.is_in<TsSubState2>());
+    EXPECT_TRUE(machine.is_in<TsSuperState>());
+    EXPECT_FALSE(machine.is_in<TsSubState1>());
+
+    machine.send(TsEv2{});
+    EXPECT_TRUE(machine.is_in<TsExternalState>());
+    EXPECT_FALSE(machine.is_in<TsSuperState>());
+
+    machine.reset();
+    EXPECT_TRUE(machine.is_in<TsSubState1>());
+    EXPECT_TRUE(machine.is_in<TsSuperState>());
+}
+
 }  // namespace
+

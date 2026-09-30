@@ -230,7 +230,46 @@ class thread_safe_fsm {
 
     template <typename State>
     [[nodiscard]] bool is_in() const noexcept {
-        return is_in_state<State>();
+        if (reentrancy_.is_reentrant_call()) {
+            return fsm_.template is_in<State>();
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.template is_in<State>();
+    }
+
+    [[nodiscard]] bool is_in(std::string_view target_name) const noexcept {
+        if (reentrancy_.is_reentrant_call()) {
+            return fsm_.is_in(target_name);
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.is_in(target_name);
+    }
+
+    void reset() {
+        if (reentrancy_.is_reentrant_call()) {
+            fsm_.reset();
+            return;
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        fsm_.reset();
+    }
+
+    void reset(registers_type reg) {
+        if (reentrancy_.is_reentrant_call()) {
+            fsm_.reset(std::move(reg));
+            return;
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        fsm_.reset(std::move(reg));
+    }
+
+    void clear_history() noexcept {
+        if (reentrancy_.is_reentrant_call()) {
+            fsm_.clear_history();
+            return;
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        fsm_.clear_history();
     }
 
     [[nodiscard]] std::string_view current_state_name() const {

@@ -380,6 +380,10 @@ class fsm {
         }
     }
 
+    void clear_deferred_events() noexcept {
+        clear_deferred();
+    }
+
     /**
      * @brief Resets the state machine to its initial state, clearing active history,
      * deferred queues, timers, and invariants, and invoking initial on_enter hooks.

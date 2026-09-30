@@ -88,6 +88,10 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
 
     std::set<size_t> emitted_transitions;
 
+    auto resolve_guard_str = [&](const std::string& guard_val) -> std::string {
+        return GuardExpressionParser::to_diagram_string(guard_val, model.guards);
+    };
+
     // Recursive state emission
     std::function<void(const StateNode&, size_t)> emit_state_node = [&](const StateNode& state, size_t indent) {
         std::string pad(indent * 2, ' ');
@@ -167,7 +171,7 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
                         out << " trigger=\"" << escape_xml(trans.event) << "\"";
                     }
                     if (trans.guard && !trans.guard->empty()) {
-                        std::string readable_guard = GuardExpressionParser::to_diagram_string(*trans.guard);
+                        std::string readable_guard = resolve_guard_str(*trans.guard);
                         out << " guard=\"" << escape_xml(readable_guard) << "\"";
                     }
                     std::string act = trans.get_action();
@@ -213,7 +217,7 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
             out << " trigger=\"" << escape_xml(trans.event) << "\"";
         }
         if (trans.guard && !trans.guard->empty()) {
-            std::string readable_guard = GuardExpressionParser::to_diagram_string(*trans.guard);
+            std::string readable_guard = resolve_guard_str(*trans.guard);
             out << " guard=\"" << escape_xml(readable_guard) << "\"";
         }
         std::string act = trans.get_action();

@@ -124,7 +124,7 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
             }
             if (trans.guard && !trans.guard->empty()) {
                 std::string readable_guard =
-                    frontend::directive::GuardExpressionParser::to_diagram_string(*trans.guard);
+                    frontend::directive::GuardExpressionParser::to_diagram_string(*trans.guard, model.guards);
                 out << " cond=\"" << escape_xml(readable_guard) << "\"";
             }
             if (!trans.target.empty() && trans.kind != TransitionEdgeKind::Internal) {

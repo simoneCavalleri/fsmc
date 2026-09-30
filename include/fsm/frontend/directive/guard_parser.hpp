@@ -9,6 +9,10 @@
 #include <string_view>
 #include <vector>
 
+namespace fsm::ir {
+struct GuardModel;
+}
+
 namespace fsm::frontend::directive {
 
 /**
@@ -40,6 +44,12 @@ class GuardExpressionParser {
      * @brief Converts a raw guard expression into standardized diagram notation.
      */
     static std::string to_diagram_string(std::string_view raw_expr);
+
+    /**
+     * @brief Converts a guard expression into standardized notation, resolving atomic leaf
+     * identifiers against registered GuardModel raw expressions.
+     */
+    static std::string to_diagram_string(std::string_view raw_expr, const std::vector<ir::GuardModel>& guards);
 
     /**
      * @brief Decomposes a raw boolean guard expression into its atomic constituents.

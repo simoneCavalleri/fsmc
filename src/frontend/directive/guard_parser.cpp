@@ -1,5 +1,6 @@
 #include "fsm/frontend/directive/guard_parser.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <regex>
@@ -9,6 +10,7 @@
 #include <vector>
 
 #include "fsm/frontend/common/parser_interface.hpp"
+#include "fsm/ir/guard.hpp"
 
 namespace fsm::frontend::directive {
 
@@ -189,14 +191,29 @@ class GuardTokenizerAndParser {
 }  // namespace
 
 std::string GuardExpressionParser::to_diagram_string(std::string_view raw_expr) {
+    return to_diagram_string(raw_expr, {});
+}
+
+std::string GuardExpressionParser::to_diagram_string(std::string_view raw_expr,
+                                                     const std::vector<ir::GuardModel>& guards) {
     std::string expr = std::string(trim(raw_expr));
     if (expr.empty()) {
         return "";
     }
 
-    // Fast check: if no fsm:: prefix, return as is
+    auto resolve_leaf = [&](const std::string& name) -> std::string {
+        if (guards.empty()) return name;
+        auto it = std::find_if(guards.begin(), guards.end(),
+                               [&](const ir::GuardModel& gm) { return gm.name == name; });
+        if (it != guards.end() && it->raw_expression.has_value() && !it->raw_expression->empty()) {
+            return *it->raw_expression;
+        }
+        return name;
+    };
+
+    // Fast check: if no fsm:: prefix, resolve if it's an atomic guard identifier, otherwise return as is
     if (expr.find("fsm::") == std::string::npos) {
-        return expr;
+        return resolve_leaf(expr);
     }
 
     // fsm::not_<...>
@@ -204,7 +221,7 @@ std::string GuardExpressionParser::to_diagram_string(std::string_view raw_expr) 
         std::string_view inner = expr;
         inner.remove_prefix(10);
         inner.remove_suffix(1);
-        std::string inner_str = to_diagram_string(inner);
+        std::string inner_str = to_diagram_string(inner, guards);
         if (starts_with(trim(inner), "fsm::and_<") || starts_with(trim(inner), "fsm::or_<")) {
             return "!(" + inner_str + ")";
         }
@@ -231,8 +248,8 @@ std::string GuardExpressionParser::to_diagram_string(std::string_view raw_expr) 
         if (comma_pos != std::string_view::npos) {
             std::string_view left_raw = inner.substr(0, comma_pos);
             std::string_view right_raw = inner.substr(comma_pos + 1);
-            std::string left = to_diagram_string(left_raw);
-            std::string right = to_diagram_string(right_raw);
+            std::string left = to_diagram_string(left_raw, guards);
+            std::string right = to_diagram_string(right_raw, guards);
             if (starts_with(trim(left_raw), "fsm::or_<")) {
                 left = "(" + left + ")";
             }
@@ -261,13 +278,13 @@ std::string GuardExpressionParser::to_diagram_string(std::string_view raw_expr) 
             }
         }
         if (comma_pos != std::string_view::npos) {
-            std::string left = to_diagram_string(inner.substr(0, comma_pos));
-            std::string right = to_diagram_string(inner.substr(comma_pos + 1));
+            std::string left = to_diagram_string(inner.substr(0, comma_pos), guards);
+            std::string right = to_diagram_string(inner.substr(comma_pos + 1), guards);
             return left + " || " + right;
         }
     }
 
-    return expr;
+    return resolve_leaf(expr);
 }
 
 ParsedGuardResult GuardExpressionParser::parse(std::string_view raw_expr) {

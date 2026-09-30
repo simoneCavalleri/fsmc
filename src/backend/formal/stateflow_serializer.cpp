@@ -99,7 +99,7 @@ static void emit_state(std::ostream& out, const StateNode& state, const FsmIr& m
     out << pad << "</state>\n";
 }
 
-static std::string format_transition_label(const TransitionEdge& trans) {
+static std::string format_transition_label(const TransitionEdge& trans, const FsmIr& model) {
     std::string label;
     if (std::holds_alternative<TimeTrigger>(trans.trigger)) {
         const auto& tt = std::get<TimeTrigger>(trans.trigger);
@@ -115,7 +115,7 @@ static std::string format_transition_label(const TransitionEdge& trans) {
     }
 
     if (trans.guard && !trans.guard->empty()) {
-        std::string readable_guard = GuardExpressionParser::to_diagram_string(*trans.guard);
+        std::string readable_guard = GuardExpressionParser::to_diagram_string(*trans.guard, model.guards);
         if (!label.empty()) {
             label += " ";
         }
@@ -251,7 +251,7 @@ std::string StateflowSerializer::serialize(const FsmIr& model) {
     for (const auto& trans : model.transitions) {
         out << "      <transition id=\"" << (trans_id++) << "\" src=\"" << escape_xml(trans.source) << "\" dst=\""
             << escape_xml(trans.target) << "\"";
-        std::string label = format_transition_label(trans);
+        std::string label = format_transition_label(trans, model);
         if (!label.empty()) {
             out << " labelString=\"" << escape_xml(label) << "\"";
         }

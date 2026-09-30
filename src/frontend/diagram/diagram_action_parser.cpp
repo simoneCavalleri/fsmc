@@ -55,6 +55,39 @@ int DiagramActionParser::brace_imbalance(std::string_view line) {
     return imbalance;
 }
 
+std::size_t DiagramActionParser::find_action_slash(std::string_view text) {
+    int bracket_depth = 0;
+    int paren_depth = 0;
+    int brace_depth = 0;
+    bool in_quote = false;
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        char c = text[i];
+        if (c == '"' && (i == 0 || text[i - 1] != '\\')) {
+            in_quote = !in_quote;
+        } else if (!in_quote) {
+            if (c == '[') {
+                bracket_depth++;
+            } else if (c == ']') {
+                if (bracket_depth > 0)
+                    bracket_depth--;
+            } else if (c == '(') {
+                paren_depth++;
+            } else if (c == ')') {
+                if (paren_depth > 0)
+                    paren_depth--;
+            } else if (c == '{') {
+                brace_depth++;
+            } else if (c == '}') {
+                if (brace_depth > 0)
+                    brace_depth--;
+            } else if (c == '/' && bracket_depth == 0 && paren_depth == 0 && brace_depth == 0) {
+                return i;
+            }
+        }
+    }
+    return std::string_view::npos;
+}
+
 ir::ActionSignature DiagramActionParser::parse_action_block(std::string_view raw_act,
                                                             const std::string& fallback_name) {
     ir::ActionSignature sig;
@@ -130,12 +163,45 @@ ir::ActionSignature DiagramActionParser::parse_action_block(std::string_view raw
             ir::ActionAssignment asgn = ir::ActionAssignment::parse(desugared);
             sig.assignments.push_back(std::move(asgn));
         } else {
-            std::string call = sanitize_id(stmt);
-            if (!call.empty()) {
-                call_names.push_back(call);
-                ir::ActionCallOp call_op;
-                call_op.function_name = call;
-                sig.instructions.emplace_back(std::move(call_op), stmt);
+            std::string trimmed_stmt = trim_str(stmt);
+            auto paren_open = trimmed_stmt.find('(');
+            auto paren_close = trimmed_stmt.rfind(')');
+            if (paren_open != std::string::npos && paren_close != std::string::npos && paren_close > paren_open) {
+                std::string fn_name = sanitize_id(trimmed_stmt.substr(0, paren_open));
+                std::string args_str = trim_str(trimmed_stmt.substr(paren_open + 1, paren_close - paren_open - 1));
+                if (!fn_name.empty()) {
+                    call_names.push_back(fn_name);
+                    ir::ActionCallOp call_op;
+                    call_op.function_name = fn_name;
+                    if (!args_str.empty()) {
+                        std::string curr_arg;
+                        bool in_q = false;
+                        for (char c : args_str) {
+                            if (c == '"')
+                                in_q = !in_q;
+                            if (c == ',' && !in_q) {
+                                std::string a = trim_str(curr_arg);
+                                if (!a.empty())
+                                    call_op.arguments.push_back(std::move(a));
+                                curr_arg.clear();
+                            } else {
+                                curr_arg += c;
+                            }
+                        }
+                        std::string last_arg = trim_str(curr_arg);
+                        if (!last_arg.empty())
+                            call_op.arguments.push_back(std::move(last_arg));
+                    }
+                    sig.instructions.emplace_back(std::move(call_op), stmt);
+                }
+            } else {
+                std::string call = sanitize_id(trimmed_stmt);
+                if (!call.empty()) {
+                    call_names.push_back(call);
+                    ir::ActionCallOp call_op;
+                    call_op.function_name = call;
+                    sig.instructions.emplace_back(std::move(call_op), stmt);
+                }
             }
         }
     }

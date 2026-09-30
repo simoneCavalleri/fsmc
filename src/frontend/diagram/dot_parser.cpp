@@ -6,6 +6,7 @@
 #include <regex>
 #include <sstream>
 
+#include "fsm/frontend/diagram/diagram_action_parser.hpp"
 #include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
 
@@ -38,7 +39,7 @@ void DotParser::parse_label(const std::string& label, std::string& out_event, st
 
     std::string work = label;
     // Check Action / ActionName
-    size_t slash_pos = work.find('/');
+    size_t slash_pos = DiagramActionParser::find_action_slash(work);
     if (slash_pos != std::string::npos) {
         out_action = trim_line(work.substr(slash_pos + 1));
         work = work.substr(0, slash_pos);

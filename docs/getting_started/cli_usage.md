@@ -77,10 +77,11 @@ fsmc --export-runtime <directory> [--std 17|20]
 | `--allow-diagram` | Allow C++ generation from informal visual diagram formats (`--allow-diagram-codegen`). | `false` |
 
 #### General Options
-| Flag | Description |
-| :--- | :--- |
-| `-h, --help` | Show command-line help message and exit. |
-| `-v, --version` | Show version information and exit. |
+| Flag | Description | Default |
+| :--- | :--- | :--- |
+| `--diagnostic-format <fmt>` | Set diagnostic renderer output format: `text` (standard compiler style), `json` (machine readable), `github` (GitHub Actions `::warning` / `::error` annotations). | `text` |
+| `-h, --help` | Show command-line help message and exit. | - |
+| `-v, --version` | Show version information and exit. | - |
 
 ---
 
@@ -113,6 +114,7 @@ fsm-opt [OPTIONS] <input_model>
 | `--load-pass-plugin <path>` | Dynamically load a C++ shared library (`.so`) implementing custom `fsm::Pass` transformations. | None |
 | `--print-before-all` | Dump IR state in JSON format before executing pass pipeline. | `false` |
 | `--print-after-all` | Dump IR state in JSON format after executing pass pipeline. | `false` |
+| `--diagnostic-format <fmt>` | Set diagnostic output format (`text`, `json`, `github`). | `text` |
 | `-Werror` | Treat all diagnostic warnings as fatal errors. | `false` |
 
 #### IR Serialization and Formal Emission
@@ -146,7 +148,7 @@ fsm-opt [OPTIONS] <input_model>
 
 ## 3. Middle-End Optimization Passes Catalogue
 
-The `fsmc` middle-end provides 30 modular passes (28 standard passes across 7 pipeline stages, plus dynamic plugins and the pipe-through filter) executable via `fsm-opt --passes=...` or automatically configured by compiler optimization levels (`-O0`, `-O1`, `-O2`):
+The `fsmc` middle-end provides 32 modular passes (30 standard passes across 7 pipeline stages, plus dynamic plugins and the pipe-through filter) executable via `fsm-opt --passes=...` or automatically configured by compiler optimization levels (`-O0`, `-O1`, `-O2`):
 
 1. **`canonicalize`**: Normalizes state hierarchy, fully qualified names (`FQN`), and sorts nodes and transitions into deterministic order.
 2. **`guard-simplification`**: Bottom-up boolean algebra reduction (`not(not A) => A`, `A and true => A`, `A and false => false`).
@@ -155,26 +157,28 @@ The `fsmc` middle-end provides 30 modular passes (28 standard passes across 7 pi
 5. **`inline-submachines`**: Splicing and inlining of modular `SubmachineRef` statecharts into a single composite hierarchy.
 6. **`dead-state-pruning`**: Elimination of unreachable states and dead transition branches.
 7. **`choice-completeness`**: Verifies choice pseudostate branch exhaustiveness and presence of unconditional fallback branches.
-8. **`choice-inlining`**: Collapses choice and junction pseudostates into direct composite transitions.
-9. **`timed-deadlock`**: Detects zero-duration timeouts and racing timer invariant conflicts.
-10. **`efsm-data-path`**: Abstract interpretation for unreachable variable intervals and dead guard constraints.
-11. **`safety-verifier`**: Graph reachability, deadlock traps, and livelock cycle validation.
-12. **`model-checking`**: Formal symbolic verification of temporal LTL and CTL formulas against Kripke state transition graphs.
-13. **`orthogonal-product`**: Cartesian product expansion and flattening of parallel orthogonal regions ($S_A \times S_B$).
-14. **`wcet-analysis`**: Static Worst-Case Execution Time estimation, micro-step cascade bounds, and Zeno-cycle detection.
-15. **`constant-folding`**: Register value propagation, boolean algebra simplification, and tautology/contradiction dead branch pruning.
-16. **`state-minimization`**: Hopcroft/Moore state minimization collapsing bisimilar/equivalent states into minimal representations.
-17. **`guard-satisfiability`**: SMT-based or domain-based guard unsatisfiability analysis.
-18. **`fork-join-lowering`**: Lowers fork splits and join rendezvous barriers into product-state transitions.
-19. **`history-lowering`**: Lowers shallow and deep history into shadow state registers.
-20. **`deferred-event-lowering`**: Lowers deferred events into bounded FIFO buffers.
-21. **`boundary-action-fusion`**: Flattens LCA boundary cascades into linear action sequences (exit $\to$ transition action $\to$ entry).
-22. **`dead-action-elimination`**: Dead store elimination (DSE) across datapath variables and unused assignments.
-23. **`register-liveness`**: Liveness analysis and variable interference graph construction.
-24. **`transition-fusion`**: Fuses deterministic zero-time microsteps into macro-transitions.
-25. **`common-action-factoring`**: Factors identical actions across convergent/divergent transition edges.
-26. **`livelock-analysis`**: Detects non-progressive internal cycles.
-27. **`priority-conflict-check`**: Verifies hierarchical preemption determinism and priority uniqueness.
-28. **`timed-invariants-verifier`**: Formally verifies clock invariants against outgoing transition deadlines.
-29. **`event-queue-bound`**: Computes static upper bound on event queue depth.
-30. **`pipe-through`**: Filters and transforms IR via external Unix command.
+8. **`connective-junction-chaining`**: Collapses multi-hop connective junction paths into direct atomic transitions, fusing condition and transition actions into compound signatures.
+9. **`choice-inlining`**: Collapses choice and junction pseudostates into direct composite transitions.
+10. **`sampled-change-triggers`**: Lowers continuous stream change triggers (`when (pred)`) into discrete edge-triggered guards with unit-delay shadow registers ($z^{-1}$).
+11. **`timed-deadlock`**: Detects zero-duration timeouts and racing timer invariant conflicts.
+12. **`efsm-data-path`**: Abstract interpretation over numerical intervals with formal Widening ($\nabla$) and dead transition pruning.
+13. **`safety-verifier`**: Graph reachability, deadlock traps, and livelock cycle validation.
+14. **`model-checking`**: Formal symbolic verification of temporal LTL and CTL formulas against Kripke state transition graphs.
+15. **`orthogonal-product`**: Cartesian product expansion and flattening of parallel orthogonal regions ($S_A \times S_B$).
+16. **`wcet-analysis`**: Static Worst-Case Execution Time estimation, micro-step cascade bounds, and Zeno-cycle detection.
+17. **`constant-folding`**: Register value propagation, boolean algebra simplification, and tautology/contradiction dead branch pruning.
+18. **`state-minimization`**: Hopcroft/Moore state minimization collapsing bisimilar/equivalent states into minimal representations.
+19. **`guard-satisfiability`**: SMT-based or domain-based guard unsatisfiability analysis.
+20. **`fork-join-lowering`**: Lowers fork splits and join rendezvous barriers into product-state transitions.
+21. **`history-lowering`**: Lowers shallow and deep history into shadow state registers.
+22. **`deferred-event-lowering`**: Lowers deferred events into bounded FIFO buffers.
+23. **`boundary-action-fusion`**: Flattens LCA boundary cascades into linear action sequences (exit $\to$ transition action $\to$ entry).
+24. **`dead-action-elimination`**: Dead store elimination (DSE) across datapath variables and unused assignments.
+25. **`register-liveness`**: Liveness analysis and variable interference graph construction.
+26. **`transition-fusion`**: Fuses deterministic zero-time microsteps into macro-transitions.
+27. **`common-action-factoring`**: Factors identical actions across convergent/divergent transition edges.
+28. **`livelock-analysis`**: Detects non-progressive internal cycles.
+29. **`priority-conflict-check`**: Verifies hierarchical preemption determinism and priority uniqueness.
+30. **`timed-invariants-verifier`**: Formally verifies clock invariants against outgoing transition deadlines.
+31. **`event-queue-bound`**: Computes static upper bound on event queue depth.
+32. **`pipe-through`**: Filters and transforms IR via external Unix command.

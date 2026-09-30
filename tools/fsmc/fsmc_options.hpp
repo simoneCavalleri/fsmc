@@ -43,6 +43,7 @@ struct FsmcOptions {
     std::vector<std::string> pass_plugins;  // --load-pass-plugin "<path.so>"
     std::string emit_test_harness;          // --emit-test-harness <file>
     std::string emit_sidecar;               // --emit-sidecar <file>
+    std::string diagnostic_format = "text"; // --diagnostic-format <text|json|github>
     bool show_help = false;
     bool show_version = false;
     bool is_valid = true;
@@ -104,7 +105,8 @@ inline void print_help(const char* prog_name) {
         << "  -V, --verify                 Run formal verification (deadlock, choice completeness, reachability)\n"
         << "  --engine <auto|nuxmv>        Verification engine (default: 'auto')\n"
         << "  --ltl <formula>              Verify custom Linear Temporal Logic specification\n"
-        << "  --ctl <formula>              Verify custom Computation Tree Logic specification\n\n"
+        << "  --ctl <formula>              Verify custom Computation Tree Logic specification\n"
+        << "  --diagnostic-format <fmt>    Diagnostic output format: 'text', 'json', or 'github'\n\n"
         << "General Options:\n"
         << "  -h, --help                   Show this help message and exit\n"
         << "  -v, --version                Show version information and exit\n\n";
@@ -339,6 +341,15 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             }
             opts.ctl_spec = argv[++idx];
             opts.verify_mode = true;
+        } else if (arg == "--diagnostic-format") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
+            opts.diagnostic_format = argv[++idx];
+        } else if (arg.starts_with("--diagnostic-format=")) {
+            opts.diagnostic_format = arg.substr(20);
 
             // 12. Code generation threading and stub generation switches
         } else if (arg == "--no-thread-safe") {

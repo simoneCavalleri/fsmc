@@ -126,13 +126,29 @@ Primitive scalar types (e.g., passing `int` instead of a functor) and mismatched
 
 ---
 
-## 7. Four-Phase Transition Lifecycle
+## 7. Transition Lifecycle & Execution Semantics
 
-When a valid transition fires, the runtime executes actions in strict four-phase sequence:
+When transitions fire and during ongoing state residence, the runtime executes lifecycle hooks in strict deterministic sequence:
 
+### Four-Phase Transition Execution
 1. **Guard Evaluation**: Pure predicate check. If `false`, aborts without state mutation.
-2. **Source Exit**: `on_exit(src_state, event, in, out, reg, srv)`
-3. **Transition Action**: `action(event, src_state, dst_state, in, out, reg, srv)`
-4. **State Transition & Target Entry**: Assigns active variant and executes `on_enter(dst_state, event, in, out, reg, srv)`.
+2. **Condition Action (Stateflow/UML)**: If the guard passes, condition actions execute immediately *before* state exit.
+3. **Source Exit**: `on_exit(src_state, event, in, out, reg, srv)`
+4. **Transition Action**: `action(event, src_state, dst_state, in, out, reg, srv)`
+5. **State Transition & Target Entry**: Assigns active variant and executes `on_enter(dst_state, event, in, out, reg, srv)`.
+
+### Dual Action Execution (`::fsm::seq_`)
+When a transition specifies both a Condition Action and a Transition Action (e.g., `[guard] { cond_act } / { trans_act }`), `fsmc` compiles them into a compound sequence `::fsm::seq_<CondAction, TransAction>`. Both actions are called deterministically in FIFO order with zero heap allocations.
+
+### Continuous In-State Execution (`do_activity`)
+States defining a continuous or during activity (`do_activity` in SysML v2 / UML or `du:` in Stateflow) have their action invoked synchronously on every tick:
+- Periodic control steps: `sm.tick(dt)` or `sm.step()` automatically dispatch the active state's `do_activity(in, out, reg, srv)`.
+- Trait-driven: detected via `fsm::traits::has_do_activity_v<State>` at compile time; states without an activity incur zero runtime overhead.
+
+### Discrete Sampled Change Triggers (`when (pred)`)
+Continuous signal predicates (`when (in.pressure > 10.0)`) are lowered via `SampledChangeTriggerPass`:
+1. Synthesizes a discrete delay register: `reg.__prev_pred` ($z^{-1}$).
+2. Evaluates an edge-triggered guard: `(!reg.__prev_pred && (in.pressure > 10.0))`.
+3. Samples and latches continuous changes deterministically on every clock cycle.
 
 For complete C++ runtime API details, see the dedicated **[Runtime C++ API](../runtime_api/index.md)** chapter.

@@ -139,6 +139,7 @@ nav:
           - 4. Formal Verification: tutorials/04_formal_verification.md
           - 5. Codegen & Integration: tutorials/05_code_generation_and_integration.md
           - 6. UAV Flight Controller: tutorials/06_real_world_case_study.md
+          - 7. Stateflow Digital Twin ECU: tutorials/07_stateflow_digital_twin_ecu.md
       - Practical Guides:
           - Unit Testing Guide: runtime_api/testing_guide.md
           - Troubleshooting & FAQ: runtime_api/faq_and_troubleshooting.md

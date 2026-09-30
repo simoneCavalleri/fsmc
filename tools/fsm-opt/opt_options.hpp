@@ -12,6 +12,7 @@ struct OptOptions {
     std::string format_override;
     std::string custom_passes;
     std::string emit_format = "ir";
+    std::string diagnostic_format = "text";
     bool profile = false;
     bool verify_only = false;
     bool show_metrics = false;
@@ -36,15 +37,16 @@ inline void print_opt_help(const char* prog_name) {
         << "Usage: " << prog_name << " -i <model_file> [OPTIONS]\n"
         << "       " << prog_name << " [OPTIONS] <model_file>\n\n"
         << "Input & Output Options:\n"
-        << "  -i, --input <file>        Input model or IR file (.sysml, .puml, .mmd, .xmi, .scxml, .json, .dot)\n"
+        << "  -i, --input <file>        Input model or IR file (.sysml, .puml, .mmd, .xmi, .scxml, .json, .dot, .xml)\n"
         << "  -o, --output <file>       Output file path (default: stdout)\n"
-        << "  --format <fmt>            Override parser format (sysml2, plantuml, mermaid, cameo, scxml, json, dot)\n\n"
+        << "  --format <fmt>            Override parser format (sysml2, plantuml, mermaid, cameo, scxml, json, dot, stateflow)\n\n"
         << "IR Optimization & Pass Pipeline:\n"
         << "  --passes=<p1,p2,...>      Execute customized comma-separated pass pipeline\n"
         << "  --list-passes             List all available Middle-End passes and exit\n"
         << "  --prune-dead              Enable dead state and dead transition pruning pass\n"
         << "  --print-before-all        Print IR JSON before running passes\n"
         << "  --print-after-all         Print IR JSON after running passes\n"
+        << "  --diagnostic-format <fmt> Diagnostic output format: 'text', 'json', or 'github'\n"
         << "  -Werror                   Treat all diagnostic warnings as fatal errors\n\n"
         << "IR Serialization & Formal Emission:\n"
         << "  --emit-ir                 Emit optimized canonical JSON Intermediate Representation (default)\n"
@@ -55,7 +57,8 @@ inline void print_opt_help(const char* prog_name) {
         << "  --emit-dot                Emit canonical Graphviz DOT diagram\n"
         << "  --emit-scxml              Emit canonical W3C SCXML statechart\n"
         << "  --emit-cameo              Emit canonical Cameo / MagicDraw OMG XMI 2.1\n"
-        << "  --emit-smv                Emit canonical nuXmv / SMV formal verification specification\n\n"
+        << "  --emit-smv                Emit canonical nuXmv / SMV formal verification specification\n"
+        << "  --emit-stateflow          Emit canonical MathWorks Simulink Stateflow XML\n\n"
         << "Analysis, Model Checking & Metrics:\n"
         << "  --metrics, --stats        Display formal graph complexity, states, and transition metrics\n"
         << "  --profile                 Print PassManager execution times and optimization stats\n"
@@ -104,6 +107,8 @@ inline void print_available_passes() {
               << " 28. timed-invariants-verifier - Formally verifies clock invariants vs outgoing deadlines\n"
               << " 29. event-queue-bound    - Computes static upper bound on event queue depth\n"
               << " 30. pipe-through         - Filters and transforms IR via external Unix command\n"
+              << " 31. sampled-change-trigger - Desugars sampled change triggers into shadow registers\n"
+              << " 32. connective-junction-chaining - Chains multi-hop connective junction paths into atomic transitions\n"
               << "============================================================================\n";
 }
 
@@ -175,6 +180,17 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
             opts.emit_format = "cameo";
         } else if (arg == "--emit-smv" || arg == "--emit-nuxmv") {
             opts.emit_format = "smv";
+        } else if (arg == "--emit-stateflow" || arg == "--emit-sfx" || arg == "--emit-simulink") {
+            opts.emit_format = "stateflow";
+        } else if (arg == "--diagnostic-format") {
+            if (i + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + std::string(arg);
+                return opts;
+            }
+            opts.diagnostic_format = argv[++i];
+        } else if (arg.starts_with("--diagnostic-format=")) {
+            opts.diagnostic_format = arg.substr(20);
         } else if (arg == "--profile") {
             opts.profile = true;
         } else if (arg == "--verify" || arg == "--check") {

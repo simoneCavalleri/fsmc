@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.8.0] - 2026-09-29
+
+### Added
+- **Extended Runtime Semantics & Concurrency (`do_activity`, Sampled Change Triggers, Dual Action Execution)**:
+  - Added periodic in-state continuous behavior execution via `do_activity` with deterministic tick rate in `fsm::deterministic_timer` and lifecycle trait dispatch.
+  - Added discrete sampled change triggers (`SampledChangeTriggerPass`, `fsm::change_<Port, Predicate>`) synthesizing change detector registers ($z^{-1}$) and edge-trigger guards for continuous stream signals.
+  - Added dual action execution semantics support for Stateflow/UML condition actions and transition actions via `fsm::seq_<Action1, Action2>` sequentially executed during transition traversal.
+- **Formal Verification & Middle-End Semantic Analysis**:
+  - Implemented Native Polynomial CTL Model Checking (`ModelChecker`, `LtlParser` extended to CTL grammar with `EX`, `EF`, `EG`, `AX`, `AF`, `AG`, `E[P U Q]`, `A[P U Q]`) via recursive symbolic fixed-point evaluation.
+  - Implemented EFSM Abstract Interpretation Widening $\nabla$ (`EfsmIntervalAnalysis`) computing post-fixed-point bounds on integer/float registers across loop iterations and pruning statically unsatisfiable dead transitions.
+- **Connective Junction Chaining & Optimization Pass**:
+  - Implemented `ConnectiveJunctionChainingPass` and integrated into Stage 2 (Structural Lowering Suite) of the 7-stage verified compiler pipeline as well as standard pipeline and `fsm-opt`.
+  - Atomically chains multi-hop connective junction paths into composite transitions, collapsing intermediate micro-states and fusing condition/transition actions into deterministic compound actions.
+  - Added `--emit-stateflow` export option in `fsm-opt` and `--diagnostic-format=text|json|github` in both `fsmc` and `fsm-opt` with GitHub Actions workflow annotation formatting (`::warning`, `::error`).
+- **Zero-Heap Time-Travel Snapshot Recorder**:
+  - Implemented `fsm::snapshot_recorder<Capacity, MaxSize>` circular flight recorder with $O(1)$ ring buffer storage for deterministic state machine state checkpoints, rollback, and time-travel replay.
+- **Industrial Showcase 06: Stateflow Digital Twin ECU**:
+  - Created end-to-end industrial digital twin demonstration (`examples/06_stateflow_digital_twin_ecu`) modeling an automotive powertrain engine ECU with multi-hop chained connective junctions, overheat anomaly detection, and supervisor-initiated time-travel state rollback.
+
+### Fixed
+- Fixed strict weak ordering violation in `FsmGraphOps::sort_transitions_by_priority` ensuring deterministic canonical ordering across all targets and preserving source state initial layout.
+- Fixed signal synchronization in `FsmGraphOps::sync_interfaces` to register event types defined directly on transition edges into the IR signal catalog.
+- Fixed pass ordering in `fsmc_driver.hpp` and choice node collection in `ChoiceInliningPass` to guarantee deterministic junction handling.
+
 ## [0.7.0] - 2026-09-29
 
 ### Added

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 82  
-**Total Documented Test Cases**: 420  
+**Total Documented Test Cases**: 428  
 
 ---
 
@@ -486,6 +486,12 @@
 #### `CppModelEmitter.ActionAssignments_ReadingFromInPorts_EmitsUncommentedInParam`
 **Test Intent**: Verify C++ emission of action assignment stubs reading from InPorts.
 
+#### `CppModelEmitter.DualActionExecution_EmitsSeqCombinator`
+**Test Intent**: Verify emission of seq_ combinator for transitions with both condition and transition actions.
+
+#### `CppModelEmitter.DoActivityHook_EmittedInStateDefinition`
+**Test Intent**: Verify emission of do_activity lifecycle hook inside state struct.
+
 ### [`test_generated_fsm.cpp`](../tests/backend/cpp/test_generated_fsm.cpp) (`tests/backend/cpp/test_generated_fsm.cpp`)
 - *(Executable binary test verification)*
 
@@ -631,6 +637,9 @@
 #### `DiagnosticEngine.WarningWithSourceSpan_RenderedWithCaretUnderlineAndHelp`
 **Test Intent**: Unit test suite for the compiler diagnostic engine and source caret rendering.
 /
+
+#### `DiagnosticEngine.FormatOutput_GitHubAndJson`
+**Test Intent**: Verify GitHub Actions and JSON diagnostic format output.
 
 ---
 
@@ -1205,6 +1214,9 @@
 #### `ForkJoinLowering.ForkAndJoinPseudostates_LowersToMultiSourceMultiTargetTransitions`
 **Test Intent**: Verify fork and join pseudostates lowering into multi-target and multi-source transition edges.
 
+#### `SampledChangeTrigger.RisingEdgeTrigger_LowersToShadowRegisterAndEdgeGuard`
+**Test Intent**: Verify continuous ChangeTrigger lowering into sampled edge detector.
+
 ### [`test_common_action_factoring.cpp`](../tests/middleend/optimization/test_common_action_factoring.cpp) (`tests/middleend/optimization/test_common_action_factoring.cpp`)
 #### `CommonActionFactoring.ConvergentTransitionsIdenticalAction_FactoredIntoTargetEntry`
 **Test Intent**: Unit tests for CommonActionFactoringPass redundant action hoist and sink optimizations.
@@ -1380,6 +1392,18 @@
 
 #### `ModelChecker.RelationalDatapathPredicates_EvaluatesTruthAndCounterexamples`
 **Test Intent**: Verify ModelChecker evaluates relational comparisons (<, <=, >, >=, ==, !=) on datapath variables.
+
+#### `LtlPropertyParser.CtlFormulas_ParsesOperatorsAndStructure`
+**Test Intent**: Verify CTL formula parsing across all branching operators (EX, AX, EF, AF, EG, AG, E[U], A[U]).
+
+#### `ModelChecker.CtlModelChecking_EvaluatesBranchingTimeLogic`
+**Test Intent**: Verify native ModelChecker CTL fixed-point model checking over branching transition graphs.
+
+#### `IntervalArithmetic.MulDivAndWidening_ComputesSoundBounds`
+**Test Intent**: Verify extended interval arithmetic: multiplication, division, and widening operator.
+
+#### `EFSMDataPathPass.UnsatisfiableGuard_PrunesDeadTransitionWhenOptimizationEnabled`
+**Test Intent**: Verify EFSMDataPathPass dead transition pruning based on unsatisfiable guard intervals.
 
 ### [`test_timed_automata_verification.cpp`](../tests/middleend/verification/test_timed_automata_verification.cpp) (`tests/middleend/verification/test_timed_automata_verification.cpp`)
 #### `TimedDeadlockPass.RacingTimeoutAndEventSamePriority_EmitsAmbiguityWarning`

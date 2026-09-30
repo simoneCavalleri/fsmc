@@ -9,6 +9,7 @@
 #include "fsm/backend/cpp/cpp_model_emitter.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/middleend/passes/choice_inlining_pass.hpp"
+#include "fsm/middleend/passes/connective_junction_chaining_pass.hpp"
 #include "fsm/middleend/passes/fork_join_lowering_pass.hpp"
 #include "fsm/middleend/passes/orthogonal_product_pass.hpp"
 
@@ -16,6 +17,19 @@ namespace fsm::backend::cpp {
 
 std::string CppGenerator::generate_header(const FsmIr& model, const GeneratorOptions& options) {
     FsmIr processed_model = model;
+
+    bool has_junctions = false;
+    for (const auto& state : processed_model.states) {
+        if (state.kind == ir::StateKind::Junction) {
+            has_junctions = true;
+            break;
+        }
+    }
+    if (has_junctions) {
+        diagnostic::DiagnosticEngine diag;
+        middleend::passes::ConnectiveJunctionChainingPass junction_pass;
+        junction_pass.run(processed_model, diag);
+    }
 
     bool has_choice_structure = !processed_model.choice_nodes.empty();
     for (const auto& state : processed_model.states) {
@@ -57,6 +71,8 @@ std::string CppGenerator::generate_header(const FsmIr& model, const GeneratorOpt
         }
     }
 
+    processed_model.canonicalize();
+
     diagnostic::DiagnosticEngine backend_diagnostics;
     if (!CppBackendValidator::validate_model(processed_model, backend_diagnostics)) {
         throw std::invalid_argument(backend_diagnostics.render_to_string());
@@ -84,10 +100,14 @@ std::string CppGenerator::generate_header(const FsmIr& model, const GeneratorOpt
             Cpp17StandaloneRuntime::emit(out, options);
         }
     } else {
-        out << "#include \"fsm/backend/cpp/runtime/fsm.hpp\"\n";
-        if (options.thread_safe) {
-            out << "#include \"fsm/backend/cpp/runtime/thread_safe_fsm.hpp\"\n";
-            out << "#include \"fsm/backend/cpp/runtime/spsc_fsm.hpp\"\n";
+        std::string header_include = options.runtime_header;
+        if (header_include.empty()) {
+            header_include = "fsm.hpp";
+        }
+        if (header_include.front() == '<' || header_include.front() == '"') {
+            out << "#include " << header_include << "\n";
+        } else {
+            out << "#include \"" << header_include << "\"\n";
         }
         out << "#include <string_view>\n";
         out << "#include <iostream>\n\n";

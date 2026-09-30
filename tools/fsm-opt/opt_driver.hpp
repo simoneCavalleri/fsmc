@@ -17,6 +17,7 @@
 #include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 #include "fsm/middleend/passes/choice_inlining_pass.hpp"
+#include "fsm/middleend/passes/connective_junction_chaining_pass.hpp"
 #include "fsm/middleend/passes/dead_state_pruning_pass.hpp"
 #include "fsm/middleend/passes/determinism_enforcement_pass.hpp"
 #include "fsm/middleend/passes/guard_simplification_pass.hpp"
@@ -42,7 +43,7 @@ class OptDriver {
         }
 
         if (opts.show_version) {
-            std::cout << "fsm-opt v0.7.0 (Formal FSM Intermediate Representation Optimizer & Linter)\n";
+            std::cout << "fsm-opt v0.8.0 (Formal FSM Intermediate Representation Optimizer & Linter)\n";
             return 0;
         }
 
@@ -57,11 +58,11 @@ class OptDriver {
             return 1;
         }
 
-        if (!opts.input_path.empty() && !is_valid_path_string(opts.input_path)) {
+        if (!opts.input_path.empty() && !is_stdin_path(opts.input_path) && !is_valid_path_string(opts.input_path)) {
             std::cerr << "Error: Illegal character in input path: " << opts.input_path << "\n";
             return 1;
         }
-        if (!opts.output_path.empty() && !is_valid_path_string(opts.output_path)) {
+        if (!opts.output_path.empty() && !is_stdout_path(opts.output_path) && !is_valid_path_string(opts.output_path)) {
             std::cerr << "Error: Illegal character in output path: " << opts.output_path << "\n";
             return 1;
         }
@@ -79,7 +80,15 @@ class OptDriver {
             return 1;
         }
 
-        auto parser = ParserFactory::create(opts.input_path, opts.format_override);
+        std::string resolved_format = opts.format_override;
+        if (is_stdin_path(opts.input_path) && (resolved_format.empty() || resolved_format == "auto")) {
+            std::string detected = ParserFactory::detect_format_from_content(content);
+            if (!detected.empty()) {
+                resolved_format = detected;
+            }
+        }
+
+        auto parser = ParserFactory::create(opts.input_path, resolved_format);
         if (!parser) {
             std::cerr << "Error: Cannot find suitable parser for: " << opts.input_path << "\n";
             return 1;
@@ -98,7 +107,8 @@ class OptDriver {
                       << "==========================\n";
         }
 
-        // Build Pass Pipeline
+        // Build Pass Pipeline and Diagnostic Engine
+        DiagnosticEngine diag;
         PassManager pm;
         if (!opts.custom_passes.empty()) {
             auto pass_names = split_string(opts.custom_passes, ',');
@@ -159,20 +169,29 @@ class OptDriver {
                     pm.add_pass(std::make_unique<TimedInvariantsVerifierPassWrapper>());
                 } else if (p_name == "event-queue-bound") {
                     pm.add_pass(std::make_unique<EventQueueBoundPassWrapper>());
+                } else if (p_name == "inline-submachines") {
+                    pm.add_pass(std::make_unique<SubmachineInliningPassWrapper>());
+                } else if (p_name == "sampled-change-trigger") {
+                    pm.add_pass(std::make_unique<SampledChangeTriggerPassWrapper>());
+                } else if (p_name == "connective-junction-chaining") {
+                    pm.add_pass(std::make_unique<ConnectiveJunctionChainingPassWrapper>());
                 } else if (p_name == "pipe-through") {
                     pm.add_pass(std::make_unique<PipeThroughPassWrapper>(opts.pipe_through_cmd));
                 } else {
-                    std::cerr << "[WARNING] Unrecognized pass name: '" << p_name << "'. Skipping.\n";
+                    diag.report(Diagnostic::warning("W0201", "Unrecognized pass name: '" + p_name + "'. Skipping.",
+                                                    SourceSpan{opts.input_path, 1, 1, 1}));
                 }
             }
         } else {
             pm = PassManager::create_optimizing_pipeline(opts.prune_dead);
         }
 
+        DiagnosticFormat diag_fmt = parse_diagnostic_format(opts.diagnostic_format);
+
         for (const auto& plugin_path : opts.pass_plugins) {
             DiagnosticEngine plugin_diag;
             if (!pm.load_plugin(plugin_path, plugin_diag)) {
-                std::cerr << plugin_diag.render_to_string(content);
+                std::cerr << plugin_diag.render_to_format(diag_fmt, content);
                 return 1;
             }
         }
@@ -180,17 +199,26 @@ class OptDriver {
             pm.add_pass(std::make_unique<PipeThroughPassWrapper>(opts.pipe_through_cmd));
         }
 
-        DiagnosticEngine diag;
         if (!pm.run(ir, diag)) {
-            std::cerr << diag.render_to_string(content);
+            std::cerr << diag.render_to_format(diag_fmt, content);
             return 1;
         }
 
         if (!diag.get_diagnostics().empty()) {
-            std::cerr << diag.render_to_string(content);
+            std::cerr << diag.render_to_format(diag_fmt, content);
             if (opts.werror) {
-                std::cerr << "\n[ERROR] -Werror enabled: compilation failed due to middle-end warnings.\n";
-                return 1;
+                bool has_warnings = false;
+                for (const auto& d : diag.get_diagnostics()) {
+                    if (d.severity == DiagnosticSeverity::Warning || d.severity == DiagnosticSeverity::Fatal ||
+                        d.severity == DiagnosticSeverity::Error || d.severity == DiagnosticSeverity::SafetyCritical) {
+                        has_warnings = true;
+                        break;
+                    }
+                }
+                if (has_warnings) {
+                    std::cerr << "\n[ERROR] -Werror enabled: compilation failed due to middle-end warnings.\n";
+                    return 1;
+                }
             }
         }
 
@@ -228,7 +256,7 @@ class OptDriver {
             }
         }
 
-        if (!opts.output_path.empty()) {
+        if (!opts.output_path.empty() && !is_stdout_path(opts.output_path)) {
             std::string write_err;
             if (!write_file_content(opts.output_path, output_str, write_err)) {
                 std::cerr << "Error: " << write_err << "\n";

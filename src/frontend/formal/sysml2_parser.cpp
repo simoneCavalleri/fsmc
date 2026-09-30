@@ -446,9 +446,10 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    // 2b. Port declaration: (in|out|inout) port <name> : <Type> [ { assert constraint { <expr> } } ]
-    static const std::regex port_regex(R"(^(in|out|inout)\s+port\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_:]+))",
-                                       std::regex::optimize);
+    // 2b. Port declaration: (in|out|inout) (port|attribute) <name> : <Type> [ { assert constraint { <expr> } } ]
+    static const std::regex port_regex(
+        R"(^(in|out|inout)\s+(?:port|attribute)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_:]+))",
+        std::regex::optimize);
     if (std::regex_search(stmt, match, port_regex)) {
         std::string dir_str = match[1].str();
         std::string port_name = sanitize_identifier(match[2].str());
@@ -679,7 +680,7 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
     }
 
     // 7b. State Lifecycle Actions: entry action <Act>; / exit action <Act>;
-    static const std::regex entry_block_regex(R"(^entry(?:\s+do)?(?:\s+action)?\s*\{([\s\S]*)\})",
+    static const std::regex entry_block_regex(R"(^entry(?:\s*\/)?(?:\s+do)?(?:\s+action)?\s*\{([\s\S]*)\})",
                                               std::regex::optimize);
     if (std::regex_search(stmt, match, entry_block_regex)) {
         std::string act_name = !state_stack.empty() ? (state_stack.back() + "_entry") : "entry_action";
@@ -693,7 +694,8 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    static const std::regex exit_block_regex(R"(^exit(?:\s+do)?(?:\s+action)?\s*\{([\s\S]*)\})", std::regex::optimize);
+    static const std::regex exit_block_regex(R"(^exit(?:\s*\/)?(?:\s+do)?(?:\s+action)?\s*\{([\s\S]*)\})",
+                                             std::regex::optimize);
     if (std::regex_search(stmt, match, exit_block_regex)) {
         std::string act_name = !state_stack.empty() ? (state_stack.back() + "_exit") : "exit_action";
         model.add_action(act_name);
@@ -706,7 +708,7 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    static const std::regex do_block_act_regex(R"(^do(?:\s+action)?\s*\{([\s\S]*)\})", std::regex::optimize);
+    static const std::regex do_block_act_regex(R"(^do(?:\s*\/)?(?:\s+action)?\s*\{([\s\S]*)\})", std::regex::optimize);
     if (std::regex_search(stmt, match, do_block_act_regex)) {
         std::string act_name = !state_stack.empty() ? (state_stack.back() + "_do") : "do_activity";
         model.add_action(act_name);
@@ -720,7 +722,8 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
     }
 
     static const std::regex entry_act_regex(
-        R"(^entry\s+(?:action\s+|do\s+)?(?!point\b)([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?)", std::regex::optimize);
+        R"(^entry\s*(?:/\s*|(?:action|do)\s+)?(?!point\b)([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?)",
+        std::regex::optimize);
     if (std::regex_search(stmt, match, entry_act_regex)) {
         const std::string act_name = sanitize_identifier(match[1].str());
         model.add_action(act_name);
@@ -734,7 +737,8 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
     }
 
     static const std::regex exit_act_regex(
-        R"(^exit\s+(?:action\s+|do\s+)?(?!point\b)([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?)", std::regex::optimize);
+        R"(^exit\s*(?:/\s*|(?:action|do)\s+)?(?!point\b)([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?)",
+        std::regex::optimize);
     if (std::regex_search(stmt, match, exit_act_regex)) {
         const std::string act_name = sanitize_identifier(match[1].str());
         model.add_action(act_name);
@@ -748,7 +752,7 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
     }
 
     // 8. State Do Activity: do action <Activity>; or do <Activity>;
-    static const std::regex do_act_regex(R"(^do\s+(?:action\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?$)",
+    static const std::regex do_act_regex(R"(^do\s*(?:/\s*|action\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?$)",
                                          std::regex::optimize);
     if (std::regex_search(stmt, match, do_act_regex)) {
         const std::string act_name = sanitize_identifier(match[1].str());
@@ -923,8 +927,9 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
                                      std::regex::optimize);
     static const std::regex accept_regex(
         R"(\b(?:accept|when)\s+(?:([A-Za-z_][A-Za-z0-9_]*)\s*:\s*)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
-    static const std::regex if_regex(R"(\bif\s+([^;]+?)(?=\s+(?:do|then|to|;|$)))", std::regex::optimize);
-    static const std::regex do_block_regex(R"(\bdo\s*(?:action\s*)?\{([^}]+)\})", std::regex::optimize);
+    static const std::regex if_regex(R"(\bif\s+([^;]+?)(?=\s+(?:do\b|then\b|to\b|;|$)))", std::regex::optimize);
+    static const std::regex do_block_regex(R"(\bdo\s*(?:action\s+)?(?:([A-Za-z_][A-Za-z0-9_]*)\s*)?\{([^}]+)\})",
+                                           std::regex::optimize);
     static const std::regex do_regex(R"(\bdo\s+(?:action\s+)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
     static const std::regex then_regex(R"(\b(?:then|to)\s+([A-Za-z_][A-Za-z0-9_\[\]\*]*))", std::regex::optimize);
 
@@ -949,14 +954,18 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
         } catch (const std::exception&) {
             raw_val = 1.0;
         }
-        uint64_t duration_ms = static_cast<uint64_t>(raw_val);
+        // Apply unit multiplier to raw_val BEFORE converting to integer milliseconds.
+        // Without this, fractional values like `after 1.5 s` would be truncated to
+        // raw_val=1.5 -> 1 ms instead of the correct 1500 ms.
+        double duration_ms_f = raw_val;  // default: already in milliseconds
         if (unit_str == "s" || unit_str == "sec" || unit_str == "seconds") {
-            duration_ms = static_cast<uint64_t>(raw_val * 1000.0);
+            duration_ms_f = raw_val * 1000.0;
         } else if (unit_str == "min") {
-            duration_ms = static_cast<uint64_t>(raw_val * 60000.0);
+            duration_ms_f = raw_val * 60000.0;
         } else if (unit_str == "h") {
-            duration_ms = static_cast<uint64_t>(raw_val * 3600000.0);
+            duration_ms_f = raw_val * 3600000.0;
         }
+        uint64_t duration_ms = static_cast<uint64_t>(duration_ms_f + 0.5);  // round to nearest ms
         if (duration_ms == 0)
             duration_ms = 1;
         time_trigger = TimeTrigger(TimeTriggerKind::After, duration_ms, TimeUnit::Milliseconds);
@@ -976,6 +985,9 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
         auto parsed = directive::GuardExpressionParser::parse(raw_guard_expr);
         if (!parsed.cpp_type.empty()) {
             guard = parsed.cpp_type;
+            for (const auto& detail : parsed.atomic_guard_details) {
+                model.add_guard(detail.name, "", detail.expression, detail.expression);
+            }
             for (const auto& atomic : parsed.atomic_guards) {
                 model.add_guard(atomic);
             }
@@ -996,7 +1008,8 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
         std::regex::optimize);
     if (std::regex_search(stmt, match, do_block_regex)) {
         // Parse semicolon-separated action statements within the block
-        std::string block_content = trim(match[1].str());
+        std::string explicit_action_name = match[1].matched ? sanitize_identifier(match[1].str()) : "";
+        std::string block_content = trim(match[2].str());
         std::stringstream ss(block_content);
         std::string statement;
         while (std::getline(ss, statement, ';')) {
@@ -1047,7 +1060,9 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
 
         // Materialize synthesized action signatures from variable assignments
         if (!assignments.empty()) {
-            if (assignments.size() == 1) {
+            if (!explicit_action_name.empty()) {
+                action = explicit_action_name;
+            } else if (assignments.size() == 1) {
                 const auto& a = assignments[0];
                 if (a.expression == a.target.name + " + 1" || a.expression == a.target.name + " + 1.0") {
                     action = "increment_" + a.target.name;

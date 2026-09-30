@@ -25,18 +25,71 @@ flowchart LR
 
 ## Supported Temporal Logic Operators
 
-The verification engine evaluates **Linear Temporal Logic (LTL)** and **Computation Tree Logic (CTL)** formulas over the state machine's transition graph.
+The verification engine evaluates **Linear Temporal Logic (LTL)** and **Computation Tree Logic (CTL)** formulas natively over the state machine's transition graph without requiring external solvers.
 
 ### Summary Reference Table
 
-| Operator | Formula Syntax | Description | Example Pattern |
-| :--- | :--- | :--- | :--- |
-| **Globally (Always)** | `G (P)` | Property `P` must hold in **every** reachable state. | `G !(Armed && Charging)` |
-| **Finally (Eventually)** | `F (P)` | Property `P` is guaranteed to become true **at least once** in future execution. | `F (SystemReady)` |
-| **Response (Leadsto)** | `G (P -> F Q)` | Whenever stimulus `P` occurs, response `Q` is **guaranteed** to eventually follow. | `G (FaultDetected -> F SafeHold)` |
-| **Next State** | `X (P)` | Property `P` must hold in the **immediate next** cycle step. | `G (DisarmCmd -> X Disarmed)` |
-| **Until** | `P U Q` | Condition `P` remains true **continuously** until `Q` becomes true. | `Preheating U TargetTempReached` |
-| **Mutual Exclusion** | `G (!(A && B))` | States or conditions `A` and `B` can **never** be active simultaneously. | `G (!(EStop && MotorsActive))` |
+| Logic | Operator | Formula Syntax | Semantics & Description | Example Pattern |
+| :--- | :--- | :--- | :--- | :--- |
+| **LTL** | **Globally (Always)** | `G (P)` | Property `P` must hold in **every** reachable state. | `G !(Armed && Charging)` |
+| **LTL** | **Finally (Eventually)** | `F (P)` | Property `P` is guaranteed to become true **at least once** in future execution. | `F (SystemReady)` |
+| **LTL** | **Response (Leadsto)** | `G (P -> F Q)` | Whenever stimulus `P` occurs, response `Q` is **guaranteed** to eventually follow. | `G (FaultDetected -> F SafeHold)` |
+| **LTL** | **Next State** | `X (P)` | Property `P` must hold in the **immediate next** cycle step. | `G (DisarmCmd -> X Disarmed)` |
+| **LTL** | **Until** | `P U Q` | Condition `P` remains true **continuously** until `Q` becomes true. | `Preheating U TargetTempReached` |
+| **LTL** | **Recurrence** | `G F (P)` | Property `P` holds **infinitely often** across all cycles. | `G F (HeartbeatAck)` |
+| **LTL** | **Persistence** | `F G (P)` | Eventually, property `P` holds **permanently** from some point onward. | `F G (InOrbit)` |
+| **CTL** | **Exists Next** | `EX (P)` | There exists **at least one immediate successor** state satisfying `P`. | `EX (Calibrating)` |
+| **CTL** | **All Next** | `AX (P)` | **All immediate successor** states satisfy `P`. | `AX (Preflight)` |
+| **CTL** | **Exists Finally (Reachability)** | `EF (P)` | There exists **at least one reachable path** leading to a state satisfying `P`. | `EF (EmergencyStop)` |
+| **CTL** | **All Finally (Inevitability)** | `AF (P)` | On **all possible execution paths**, `P` is inevitably reached. | `AF (Standby)` |
+| **CTL** | **Exists Globally** | `EG (P)` | There exists an **infinite execution path** where `P` holds permanently. | `EG (NominalOperation)` |
+| **CTL** | **All Globally (Universal Invariant)** | `AG (P)` | In **all reachable states across all paths**, `P` holds unconditionally. | `AG (!(Overheat && HighPower))` |
+| **CTL** | **Exists Until** | `E[P U Q]` | There exists **at least one path** where `P` holds until `Q` is reached. | `E[Charging U Full]` |
+| **CTL** | **All Until** | `A[P U Q]` | On **all possible branching paths**, `P` holds until `Q` is reached. | `A[Precheck U Drive]` |
+
+---
+
+### Computation Tree Logic (CTL) Engine & Branching Semantics
+
+While Linear Temporal Logic (LTL) reasons about single infinite linear execution traces, Computation Tree Logic (CTL) explicitly quantifies over the **branching tree of non-deterministic execution paths**:
+
+```mermaid
+graph TD
+    S0["S0: Standby"] --> S1["S1: Precheck"]
+    S0 --> S2["S2: Abort"]
+    S1 --> S3["S3: Drive"]
+    S1 --> S4["S4: EmergencyShutdown"]
+    S3 --> S3
+    S4 --> S4
+
+    classDef nominal fill:#1b4d3e,stroke:#2ecc71,stroke-width:2px,color:#fff;
+    classDef fault fill:#4d1b1b,stroke:#e74c3c,stroke-width:2px,color:#fff;
+    class S0,S1,S3 nominal;
+    class S2,S4 fault;
+```
+
+#### Path Quantifiers vs State Operators
+Every temporal operator in CTL is paired with an explicit path quantifier:
+- **`E` (Existential Path Quantifier)**: *"There exists at least one execution path starting from this state where..."*
+  - Example: `EF (Standby)` verifies that from any point, it is **possible** to return to Standby (Reversibility).
+- **`A` (Universal Path Quantifier)**: *"On every possible execution path starting from this state..."*
+  - Example: `AG (Fault -> AF Recovery)` verifies that if a fault occurs, recovery is **unconditionally inevitable** on all branches.
+
+#### Native Polynomial Fixed-Point Evaluation
+`fsmc` computes CTL satisfaction sets $Sat(\Phi) \subseteq S$ natively via direct fixed-point iteration on the explicit Kripke structure:
+
+$$\begin{aligned}
+Sat(EX(\Phi)) &= \{ s \in S \mid \exists s' \in Succ(s) : s' \in Sat(\Phi) \} \\
+Sat(AX(\Phi)) &= \{ s \in S \mid \forall s' \in Succ(s) : s' \in Sat(\Phi) \} \\
+Sat(EF(\Phi)) &= \mu Z . (Sat(\Phi) \cup Sat(EX(Z))) \quad \text{(Backward BFS Least Fixed-Point)} \\
+Sat(AF(\Phi)) &= \mu Z . (Sat(\Phi) \cup Sat(AX(Z))) \quad \text{(All-Path Inevitability)} \\
+Sat(EG(\Phi)) &= \nu Z . (Sat(\Phi) \cap Sat(EX(Z))) \quad \text{(Greatest Fixed-Point via Tarjan SCCs)} \\
+Sat(AG(\Phi)) &= S \setminus Sat(EF(\neg \Phi)) \quad \text{(Universal Dual Safety)} \\
+Sat(E[\Phi_1 \mathbin{U} \Phi_2]) &= \mu Z . (Sat(\Phi_2) \cup (Sat(\Phi_1) \cap Sat(EX(Z)))) \\
+Sat(A[\Phi_1 \mathbin{U} \Phi_2]) &= \mu Z . (Sat(\Phi_2) \cup (Sat(\Phi_1) \cap Sat(AX(Z))))
+\end{aligned}$$
+
+Because the Kripke state space is finite, all fixed-point computations terminate in at most $|S|$ iterations ($O(|S| + |T|)$ polynomial complexity), guaranteeing instant compile-time verification without external solver binaries.
 
 ---
 

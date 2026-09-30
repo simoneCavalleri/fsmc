@@ -363,4 +363,187 @@ TEST(ModelChecker, RelationalDatapathPredicates_EvaluatesTruthAndCounterexamples
     EXPECT_FALSE(res_fail.counterexample_trace.empty());
 }
 
+/**
+ * @brief Verify CTL formula parsing across all branching operators (EX, AX, EF, AF, EG, AG, E[U], A[U]).
+ */
+TEST(LtlPropertyParser, CtlFormulas_ParsesOperatorsAndStructure) {
+    auto ex_node = LtlPropertyParser::parse("EX InFlight");
+    ASSERT_TRUE(ex_node.has_value());
+    EXPECT_EQ(ex_node->op, TemporalOp::EX);
+    EXPECT_EQ(ex_node->to_string(), "EX (InFlight)");
+
+    auto ax_node = LtlPropertyParser::parse("AX Armed");
+    ASSERT_TRUE(ax_node.has_value());
+    EXPECT_EQ(ax_node->op, TemporalOp::AX);
+    EXPECT_EQ(ax_node->to_string(), "AX (Armed)");
+
+    auto ef_node = LtlPropertyParser::parse("EF Connected");
+    ASSERT_TRUE(ef_node.has_value());
+    EXPECT_EQ(ef_node->op, TemporalOp::EF);
+    EXPECT_EQ(ef_node->to_string(), "EF (Connected)");
+
+    auto af_node = LtlPropertyParser::parse("AF Safe");
+    ASSERT_TRUE(af_node.has_value());
+    EXPECT_EQ(af_node->op, TemporalOp::AF);
+    EXPECT_EQ(af_node->to_string(), "AF (Safe)");
+
+    auto eg_node = LtlPropertyParser::parse("EG Loop");
+    ASSERT_TRUE(eg_node.has_value());
+    EXPECT_EQ(eg_node->op, TemporalOp::EG);
+    EXPECT_EQ(eg_node->to_string(), "EG (Loop)");
+
+    auto ag_node = LtlPropertyParser::parse("AG Operational");
+    ASSERT_TRUE(ag_node.has_value());
+    EXPECT_EQ(ag_node->op, TemporalOp::AG);
+    EXPECT_EQ(ag_node->to_string(), "AG (Operational)");
+
+    auto eu_node = LtlPropertyParser::parse("E [Idle U Active]");
+    ASSERT_TRUE(eu_node.has_value());
+    EXPECT_EQ(eu_node->op, TemporalOp::EU);
+    EXPECT_EQ(eu_node->to_string(), "E [Idle U Active]");
+
+    auto au_node = LtlPropertyParser::parse("A [Startup U Running]");
+    ASSERT_TRUE(au_node.has_value());
+    EXPECT_EQ(au_node->op, TemporalOp::AU);
+    EXPECT_EQ(au_node->to_string(), "A [Startup U Running]");
+}
+
+/**
+ * @brief Verify native ModelChecker CTL fixed-point model checking over branching transition graphs.
+ */
+TEST(ModelChecker, CtlModelChecking_EvaluatesBranchingTimeLogic) {
+    FsmIr ir;
+    ir.name = "BranchingFSM";
+    ir.initial_state = "Init";
+    ir.add_state("Init");
+    ir.add_state("BranchA");
+    ir.add_state("BranchB");
+    ir.add_state("TargetA");
+    ir.add_state("FaultState");
+
+    // Init branches to BranchA or BranchB
+    ir.add_transition("Init", "BranchA", SignalTrigger{"SelectA", ""});
+    ir.add_transition("Init", "BranchB", SignalTrigger{"SelectB", ""});
+
+    // BranchA leads to TargetA
+    ir.add_transition("BranchA", "TargetA", SignalTrigger{"Advance", ""});
+
+    // BranchB leads to FaultState
+    ir.add_transition("BranchB", "FaultState", SignalTrigger{"Fail", ""});
+
+    ModelChecker checker(ir);
+
+    // 1. EF TargetA holds: there exists a path reaching TargetA
+    FormalProperty prop_ef("ExistsTargetA", PropertyKind::Reachability, "EF TargetA");
+    prop_ef.ast = LtlPropertyParser::parse("EF TargetA");
+    auto res_ef = checker.verify_property(prop_ef);
+    EXPECT_TRUE(res_ef.passed);
+
+    // 2. EX BranchA holds: there exists a direct successor BranchA
+    FormalProperty prop_ex("ExistsNextBranchA", PropertyKind::Safety, "EX BranchA");
+    prop_ex.ast = LtlPropertyParser::parse("EX BranchA");
+    auto res_ex = checker.verify_property(prop_ex);
+    EXPECT_TRUE(res_ex.passed);
+
+    // 3. AX BranchA fails: not all direct successors are BranchA (BranchB is also a successor)
+    FormalProperty prop_ax("AllNextBranchA", PropertyKind::Safety, "AX BranchA");
+    prop_ax.ast = LtlPropertyParser::parse("AX BranchA");
+    auto res_ax = checker.verify_property(prop_ax);
+    EXPECT_FALSE(res_ax.passed);
+
+    // 4. AG (!FaultState) fails: FaultState is reachable via BranchB
+    FormalProperty prop_ag("NeverFault", PropertyKind::Safety, "AG (!FaultState)");
+    prop_ag.ast = LtlPropertyParser::parse("AG (!FaultState)");
+    auto res_ag = checker.verify_property(prop_ag);
+    EXPECT_FALSE(res_ag.passed);
+    EXPECT_FALSE(res_ag.counterexample_trace.empty());
+
+    // 5. E [Init U TargetA] holds: there exists a path staying in Init until TargetA is reached
+    FormalProperty prop_eu("ExistsPathToTarget", PropertyKind::Reachability, "E [Init U TargetA]");
+    prop_eu.ast = LtlPropertyParser::parse("E [Init U TargetA]");
+    // Note: Init -> BranchA -> TargetA: in BranchA, Init is false, so it's not staying in Init.
+    // Let's test E [(Init || BranchA) U TargetA]
+    FormalProperty prop_eu_path("ExistsPathToTarget", PropertyKind::Reachability, "E [(Init || BranchA) U TargetA]");
+    prop_eu_path.ast = LtlPropertyParser::parse("E [(Init || BranchA) U TargetA]");
+    auto res_eu = checker.verify_property(prop_eu_path);
+    EXPECT_TRUE(res_eu.passed);
+
+    // 6. A [(Init || BranchA) U TargetA] fails because BranchB does not satisfy the condition
+    FormalProperty prop_au("AllPathsToTarget", PropertyKind::Reachability, "A [(Init || BranchA) U TargetA]");
+    prop_au.ast = LtlPropertyParser::parse("A [(Init || BranchA) U TargetA]");
+    auto res_au = checker.verify_property(prop_au);
+    EXPECT_FALSE(res_au.passed);
+}
+
+/**
+ * @brief Verify extended interval arithmetic: multiplication, division, and widening operator.
+ */
+TEST(IntervalArithmetic, MulDivAndWidening_ComputesSoundBounds) {
+    Interval iv1(2.0, 5.0);
+    auto m_pos = iv1.mul(3.0);
+    EXPECT_DOUBLE_EQ(m_pos.lo, 6.0);
+    EXPECT_DOUBLE_EQ(m_pos.hi, 15.0);
+
+    auto m_neg = iv1.mul(-2.0);
+    EXPECT_DOUBLE_EQ(m_neg.lo, -10.0);
+    EXPECT_DOUBLE_EQ(m_neg.hi, -4.0);
+
+    Interval iv2(-2.0, 3.0);
+    Interval iv3(4.0, 5.0);
+    auto m_cross = iv2.mul(iv3);
+    EXPECT_DOUBLE_EQ(m_cross.lo, -10.0);
+    EXPECT_DOUBLE_EQ(m_cross.hi, 15.0);
+
+    Interval iv4(10.0, 20.0);
+    auto d_pos = iv4.div(2.0);
+    EXPECT_DOUBLE_EQ(d_pos.lo, 5.0);
+    EXPECT_DOUBLE_EQ(d_pos.hi, 10.0);
+
+    // Widening: upper bound grows -> +inf
+    Interval w_up = Interval(0.0, 10.0).widen_with(Interval(0.0, 20.0));
+    EXPECT_DOUBLE_EQ(w_up.lo, 0.0);
+    EXPECT_TRUE(std::isinf(w_up.hi) && w_up.hi > 0);
+
+    // Widening: lower bound shrinks -> -inf
+    Interval w_lo = Interval(5.0, 10.0).widen_with(Interval(2.0, 10.0));
+    EXPECT_TRUE(std::isinf(w_lo.lo) && w_lo.lo < 0);
+    EXPECT_DOUBLE_EQ(w_lo.hi, 10.0);
+}
+
+/**
+ * @brief Verify EFSMDataPathPass dead transition pruning based on unsatisfiable guard intervals.
+ */
+TEST(EFSMDataPathPass, UnsatisfiableGuard_PrunesDeadTransitionWhenOptimizationEnabled) {
+    FsmIr ir;
+    ir.name = "DataPathPruningFsm";
+    ir.initial_state = "Start";
+    ir.add_state("Start");
+    ir.add_state("UnreachableTarget");
+    ir.add_state("NormalTarget");
+
+    VariableDefinition var_val("counter", "int", "5", 0, 10, "Counter variable");
+    ir.add_variable(var_val);
+
+    // Transition 1: counter > 100 (infeasible since counter is 5)
+    TransitionEdge t_dead("Start", "UnreachableTarget", "EvTick");
+    t_dead.id = "T_Dead";
+    t_dead.set_guard("counter > 100");
+    ir.transitions.push_back(t_dead);
+
+    // Transition 2: counter < 10 (feasible)
+    TransitionEdge t_live("Start", "NormalTarget", "EvTick");
+    t_live.id = "T_Live";
+    t_live.set_guard("counter < 10");
+    ir.transitions.push_back(t_live);
+
+    DiagnosticEngine diag;
+    EFSMDataPathPass pass(true);  // prune_dead_transitions = true
+    EXPECT_TRUE(pass.run(ir, diag));
+
+    // Dead transition must have been pruned
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    EXPECT_EQ(ir.transitions[0].id, "T_Live");
+    EXPECT_EQ(ir.transitions[0].target, "NormalTarget");
+}
+
 }  // namespace

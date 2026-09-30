@@ -72,12 +72,31 @@ struct CompanionProperty {
 };
 
 /**
+ * @brief Custom type field attribute in a companion manifest.
+ */
+struct CompanionTypeField {
+    std::string name;
+    std::string type = "uint32_t";
+};
+
+/**
+ * @brief Custom struct or enum type declared in a companion manifest.
+ */
+struct CompanionCustomType {
+    std::string name;
+    std::string kind = "struct";
+    std::vector<CompanionTypeField> fields;
+    std::vector<std::string> enum_literals;
+};
+
+/**
  * @brief Unified companion manifest specification enriching visual diagrams.
  */
 struct CompanionManifest {
     std::string package_name;                                 ///< Package / module namespace
     std::string fsm_name;                                     ///< State machine class name
     std::string initial_state;                                ///< Default initial state
+    std::vector<CompanionCustomType> types;                   ///< Custom domain types (structs, enums)
     std::vector<CompanionPort> ports;                         ///< I/O interface ports
     std::vector<CompanionVariable> variables;                 ///< Internal datapath variables
     std::vector<CompanionSignal> signals;                     ///< Typed signal models

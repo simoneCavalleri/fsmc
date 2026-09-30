@@ -459,13 +459,20 @@ struct has_parent_name : std::false_type {};
 template <typename State>
 struct has_parent_name<State, std::void_t<decltype(State::parent)>> : std::true_type {};
 
-}  // namespace detail
+template <typename State, typename = void>
+struct has_parent_type : std::false_type {};
 
 template <typename State>
-constexpr std::string_view get_state_name(const State& state) {
-    if constexpr (detail::has_custom_name_method<State>::value) {
-        return state.name();
-    } else if constexpr (detail::has_custom_name_static<State>::value) {
+struct has_parent_type<State, std::void_t<typename State::parent_type>> : std::true_type {};
+
+}  // namespace detail
+
+// Instance-free variant of get_state_name, used where no state
+// instance is available (e.g. resolving a target state's display name for
+// a guard-rejected trace).
+template <typename State>
+constexpr std::string_view get_state_name_static() noexcept {
+    if constexpr (detail::has_custom_name_static<State>::value) {
         if constexpr (std::is_invocable_v<decltype(State::name)>) {
             return State::name();
         } else {
@@ -476,12 +483,25 @@ constexpr std::string_view get_state_name(const State& state) {
     }
 }
 
-// Instance-free variant of get_state_name, used where no state
-// instance is available (e.g. resolving a target state's display name for
-// a guard-rejected trace).
+template <typename State, typename Fn>
+constexpr void record_ancestor_history(std::string_view state_name, Fn&& fn) {
+    if constexpr (detail::has_parent_type<State>::value) {
+        using Parent = typename State::parent_type;
+        constexpr std::string_view parent_name = get_state_name_static<Parent>();
+        fn(parent_name, state_name);
+        record_ancestor_history<Parent>(parent_name, std::forward<Fn>(fn));
+    } else if constexpr (detail::has_parent_name<State>::value) {
+        if constexpr (!State::parent.empty()) {
+            fn(State::parent, state_name);
+        }
+    }
+}
+
 template <typename State>
-constexpr std::string_view get_state_name_static() noexcept {
-    if constexpr (detail::has_custom_name_static<State>::value) {
+constexpr std::string_view get_state_name(const State& state) {
+    if constexpr (detail::has_custom_name_method<State>::value) {
+        return state.name();
+    } else if constexpr (detail::has_custom_name_static<State>::value) {
         if constexpr (std::is_invocable_v<decltype(State::name)>) {
             return State::name();
         } else {
@@ -518,10 +538,50 @@ constexpr std::string_view event_name() noexcept {
 
 template <typename State>
 constexpr std::string_view get_parent_name() noexcept {
-    if constexpr (detail::has_parent_name<State>::value) {
+    if constexpr (detail::has_parent_type<State>::value) {
+        return get_state_name_static<typename State::parent_type>();
+    } else if constexpr (detail::has_parent_name<State>::value) {
         return State::parent;
     } else {
         return "";
+    }
+}
+
+template <typename State>
+constexpr bool state_is_or_descendant_of_static(std::string_view target_name) noexcept {
+    if (get_state_name_static<State>() == target_name || get_type_name<State>() == target_name) {
+        return true;
+    }
+    if constexpr (detail::has_parent_type<State>::value) {
+        using Parent = typename State::parent_type;
+        return state_is_or_descendant_of_static<Parent>(target_name);
+    } else if constexpr (detail::has_parent_name<State>::value) {
+        if constexpr (!State::parent.empty()) {
+            return State::parent == target_name;
+        } else {
+            return false;
+        }
+    } else {
+        return false;
+    }
+}
+
+template <typename State>
+constexpr bool state_is_or_descendant_of(const State& state, std::string_view target_name) noexcept {
+    if (get_state_name(state) == target_name || get_type_name<State>() == target_name) {
+        return true;
+    }
+    if constexpr (detail::has_parent_type<State>::value) {
+        using Parent = typename State::parent_type;
+        return state_is_or_descendant_of_static<Parent>(target_name);
+    } else if constexpr (detail::has_parent_name<State>::value) {
+        if constexpr (!State::parent.empty()) {
+            return State::parent == target_name;
+        } else {
+            return false;
+        }
+    } else {
+        return false;
     }
 }
 
@@ -1075,6 +1135,24 @@ struct has_on_exit_void : std::false_type {};
 template <typename State>
 struct has_on_exit_void<State, std::void_t<decltype(std::declval<State&>().on_exit())>> : std::true_type {};
 
+// do_activity(in, out, reg, srv)
+template <typename State, typename InPorts, typename OutPorts, typename Registers, typename Services, typename = void>
+struct has_do_activity_ports : std::false_type {};
+
+template <typename State, typename InPorts, typename OutPorts, typename Registers, typename Services>
+struct has_do_activity_ports<
+    State, InPorts, OutPorts, Registers, Services,
+    std::void_t<decltype(std::declval<State&>().do_activity(std::declval<const InPorts&>(), std::declval<OutPorts&>(),
+                                                            std::declval<Registers&>(), std::declval<Services&>()))>>
+    : std::true_type {};
+
+// do_activity()
+template <typename State, typename = void>
+struct has_do_activity_void : std::false_type {};
+
+template <typename State>
+struct has_do_activity_void<State, std::void_t<decltype(std::declval<State&>().do_activity())>> : std::true_type {};
+
 }  // namespace detail
 
 // ----------------------------------------------------------------------------
@@ -1149,6 +1227,25 @@ template <typename State>
 constexpr void call_on_exit(State& state) {
     if constexpr (detail::has_on_exit_void<State>::value) {
         state.on_exit();
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Safe invocation of do_activity hook
+// ----------------------------------------------------------------------------
+template <typename State, typename InPorts, typename OutPorts, typename Registers, typename Services>
+constexpr void call_do_activity(State& state, const InPorts& in, OutPorts& out, Registers& reg, Services& srv) {
+    if constexpr (detail::has_do_activity_ports<State, InPorts, OutPorts, Registers, Services>::value) {
+        state.do_activity(in, out, reg, srv);
+    } else if constexpr (detail::has_do_activity_void<State>::value) {
+        state.do_activity();
+    }
+}
+
+template <typename State>
+constexpr void call_do_activity(State& state) {
+    if constexpr (detail::has_do_activity_void<State>::value) {
+        state.do_activity();
     }
 }
 
@@ -1285,8 +1382,10 @@ struct is_substate_of_impl : std::false_type {};
 
 template <typename SubState, typename SuperState>
 struct is_substate_of_impl<SubState, SuperState, std::void_t<typename SubState::parent_type>> {
-    static constexpr bool value = std::is_same_v<typename SubState::parent_type, SuperState> ||
-                                  is_substate_of_impl<typename SubState::parent_type, SuperState>::value;
+    static constexpr bool value =
+        std::is_same_v<typename SubState::parent_type, SuperState> ||
+        (get_state_name_static<SuperState>() == get_state_name_static<typename SubState::parent_type>()) ||
+        is_substate_of_impl<typename SubState::parent_type, SuperState>::value;
 };
 
 template <typename SubState, typename SuperState, typename = void>
@@ -1294,7 +1393,8 @@ struct is_substate_by_name : std::false_type {};
 
 template <typename SubState, typename SuperState>
 struct is_substate_by_name<SubState, SuperState, std::void_t<decltype(SubState::parent)>> {
-    static constexpr bool value = (get_type_name<SuperState>() == SubState::parent);
+    static constexpr bool value =
+        (get_state_name_static<SuperState>() == SubState::parent) || (get_type_name<SuperState>() == SubState::parent);
 };
 }  // namespace detail
 
@@ -1333,34 +1433,68 @@ inline constexpr bool has_deferred_events_v = detail::has_deferred_events<State>
 template <typename State, typename Event>
 inline constexpr bool is_deferred_event_v = []() constexpr {
     if constexpr (has_deferred_events_v<State>) {
-        return detail::type_list_contains_event<std::decay_t<Event>, typename State::deferred_events>::value;
+        if constexpr (detail::type_list_contains_event<std::decay_t<Event>, typename State::deferred_events>::value) {
+            return true;
+        }
+    }
+    if constexpr (detail::has_parent_type<State>::value) {
+        return is_deferred_event_v<typename State::parent_type, Event>;
     } else {
         return false;
     }
 }();
 
+namespace detail {
+template <typename State, typename = void>
+struct ancestor_depth : std::integral_constant<std::size_t, 0> {};
+
+template <typename State>
+struct ancestor_depth<State, std::void_t<typename State::parent_type>>
+    : std::integral_constant<std::size_t, 1 + ancestor_depth<typename State::parent_type>::value> {};
+
+template <typename State>
+struct state_parent_capacity
+    : std::integral_constant<std::size_t, (has_parent_type<State>::value ? ancestor_depth<State>::value
+                                                                         : (has_parent_name<State>::value ? 1 : 0))> {};
+}  // namespace detail
+
 // Introspection for History & Deferred events across unique state list
+template <typename State>
+struct state_has_parent : std::disjunction<detail::has_parent_name<State>, detail::has_parent_type<State>> {};
+
 template <typename StateList>
 struct any_state_has_history : std::false_type {};
 
 template <typename... States>
-struct any_state_has_history<type_list<States...>> : std::disjunction<detail::has_parent_name<States>...> {};
+struct any_state_has_history<type_list<States...>> : std::disjunction<state_has_parent<States>...> {};
 
 template <typename StateList>
 struct count_parent_states : std::integral_constant<std::size_t, 0> {};
 
 template <typename... States>
 struct count_parent_states<type_list<States...>>
-    : std::integral_constant<std::size_t, (0 + ... + (detail::has_parent_name<States>::value ? 1 : 0))> {};
+    : std::integral_constant<std::size_t, (0 + ... + detail::state_parent_capacity<States>::value)> {};
 
 template <typename StateList>
 inline constexpr std::size_t count_parent_states_v = count_parent_states<StateList>::value;
+
+namespace detail {
+template <typename State, typename = void>
+struct state_or_ancestor_has_deferred : has_deferred_events<State> {};
+
+template <typename State>
+struct state_or_ancestor_has_deferred<State, std::void_t<typename State::parent_type>> {
+    static constexpr bool value =
+        has_deferred_events<State>::value || state_or_ancestor_has_deferred<typename State::parent_type>::value;
+};
+}  // namespace detail
 
 template <typename StateList>
 struct any_state_has_deferred : std::false_type {};
 
 template <typename... States>
-struct any_state_has_deferred<type_list<States...>> : std::disjunction<detail::has_deferred_events<States>...> {};
+struct any_state_has_deferred<type_list<States...>>
+    : std::bool_constant<(detail::state_or_ancestor_has_deferred<States>::value || ...)> {};
 
 }  // namespace fsm
 
@@ -1933,6 +2067,19 @@ class deterministic_timer_manager {
     }
 
     /**
+     * @brief Dynamically updates the interval duration of an active timer.
+     */
+    constexpr bool set_timer_duration(std::uint32_t timer_id, std::uint64_t duration_ms) noexcept {
+        for (auto& entry : timers_) {
+            if (entry.active && entry.timer_id == timer_id) {
+                entry.interval_ms = duration_ms;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * @brief Cancels an active timer by ID.
      */
     constexpr bool cancel_timer(std::uint32_t timer_id) noexcept {
@@ -1949,6 +2096,7 @@ class deterministic_timer_manager {
      * @brief Resets all timers.
      */
     constexpr void reset() noexcept {
+        ++generation_;
         for (auto& entry : timers_) {
             entry.active = false;
             entry.elapsed_ms = 0;
@@ -1976,24 +2124,36 @@ class deterministic_timer_manager {
      */
     template <typename Callback>
     std::size_t tick(std::uint64_t delta_ms, Callback on_expired) {
+        std::array<std::uint32_t, MaxTimers> expired_ids{};
         std::size_t expired_count = 0;
+        const auto start_gen = generation_;
+
         for (auto& entry : timers_) {
             if (!entry.active) {
                 continue;
             }
             entry.elapsed_ms += delta_ms;
             if (entry.elapsed_ms >= entry.interval_ms) {
-                ++expired_count;
-                std::uint32_t id = entry.timer_id;
+                expired_ids[expired_count++] = entry.timer_id;
                 if (entry.periodic) {
-                    entry.elapsed_ms = entry.elapsed_ms % entry.interval_ms;
+                    entry.elapsed_ms = (entry.interval_ms > 0) ? (entry.elapsed_ms % entry.interval_ms) : 0;
                 } else {
                     entry.active = false;
                 }
-                on_expired(id);
             }
         }
-        return expired_count;
+
+        std::size_t dispatched = 0;
+        for (std::size_t i = 0; i < expired_count; ++i) {
+            if (generation_ != start_gen) {
+                // The timer manager was reset/re-armed (e.g. state transition occurred).
+                // Remaining expired timers from the previous state are obsolete.
+                break;
+            }
+            on_expired(expired_ids[i]);
+            ++dispatched;
+        }
+        return dispatched;
     }
 
     [[nodiscard]] constexpr std::size_t active_count() const noexcept {
@@ -2025,6 +2185,7 @@ class deterministic_timer_manager {
 
   private:
     std::array<timer_entry, MaxTimers> timers_{};
+    std::uint32_t generation_{0};
 };
 
 /**
@@ -2413,6 +2574,25 @@ struct or_ {
 };
 
 /**
+ * @brief Variadic Sequential action combinator: `Action1; Action2; ...; Rest;`.
+ * Executes actions sequentially in FIFO order.
+ */
+template <typename Action1, typename Action2, typename... Rest>
+struct seq_ {
+    constexpr seq_() = default;
+
+    template <typename... Args>
+    constexpr void operator()(Args&&... args) const {
+        call_action(Action1{}, args...);
+        if constexpr (sizeof...(Rest) == 0) {
+            call_action(Action2{}, args...);
+        } else {
+            seq_<Action2, Rest...>{}(std::forward<Args>(args)...);
+        }
+    }
+};
+
+/**
  * @brief History state predicate guard for UML 2.5 Shallow and Deep History transitions.
  * @tparam ParentState The composite parent state maintaining the history tracker.
  * @tparam SubState The recorded active substate to compare against.
@@ -2427,7 +2607,30 @@ struct history_is {
     template <typename Event, typename State, typename InPorts, typename Registers, typename Services, typename Fsm>
     constexpr bool operator()(const Event&, const State&, const InPorts&, const Registers&, Services&,
                               const Fsm& fsm) const noexcept {
-        return fsm.get_history(ParentState::name) == SubState::name;
+        constexpr std::string_view parent_name = get_state_name_static<ParentState>();
+        constexpr std::string_view sub_name = get_state_name_static<SubState>();
+        std::string_view curr = fsm.get_history(parent_name);
+        while (!curr.empty()) {
+            if (curr == sub_name) {
+                return true;
+            }
+            curr = fsm.get_history(curr);
+        }
+        return false;
+    }
+
+    template <typename Fsm>
+    constexpr bool operator()(const Fsm& fsm) const noexcept {
+        constexpr std::string_view parent_name = get_state_name_static<ParentState>();
+        constexpr std::string_view sub_name = get_state_name_static<SubState>();
+        std::string_view curr = fsm.get_history(parent_name);
+        while (!curr.empty()) {
+            if (curr == sub_name) {
+                return true;
+            }
+            curr = fsm.get_history(curr);
+        }
+        return false;
     }
 };
 
@@ -2965,6 +3168,98 @@ class invariant_manager<Table, false> {
 // --- Begin: detail/transition_executor.hpp ---
 namespace fsm::detail {
 
+template <typename Current, typename Target, typename State, typename Event, typename In, typename Out,
+          typename Registers, typename Services>
+constexpr void call_hierarchical_on_exit(State& current_state, const Event& event, const In& in, Out& out,
+                                         Registers& reg, Services& srv) {
+    call_on_exit(current_state, event, in, out, reg, srv);
+    if constexpr (has_parent_type<State>::value) {
+        using Parent = typename State::parent_type;
+        if constexpr (!is_substate_of_v<Target, Parent>) {
+            if constexpr (std::is_default_constructible_v<Parent>) {
+                Parent parent_inst{};
+                call_hierarchical_on_exit<Current, Target, Parent>(parent_inst, event, in, out, reg, srv);
+            }
+        }
+    }
+}
+
+template <typename Current, typename Target, typename Ancestor, typename Event, typename In, typename Out,
+          typename Registers, typename Services>
+constexpr void call_ancestor_on_enter_helper(const Event& event, const In& in, Out& out, Registers& reg,
+                                             Services& srv) {
+    if constexpr (has_parent_type<Ancestor>::value) {
+        using SuperParent = typename Ancestor::parent_type;
+        if constexpr (!is_substate_of_v<Current, SuperParent>) {
+            call_ancestor_on_enter_helper<Current, Target, SuperParent>(event, in, out, reg, srv);
+        }
+    }
+    if constexpr (!std::is_same_v<Ancestor, Target>) {
+        if constexpr (std::is_default_constructible_v<Ancestor>) {
+            Ancestor ancestor_inst{};
+            call_on_enter(ancestor_inst, event, in, out, reg, srv);
+        }
+    }
+}
+
+template <typename Current, typename Target, typename State, typename Event, typename In, typename Out,
+          typename Registers, typename Services>
+constexpr void call_hierarchical_on_enter(State& target_state, const Event& event, const In& in, Out& out,
+                                          Registers& reg, Services& srv) {
+    if constexpr (has_parent_type<Target>::value) {
+        using Parent = typename Target::parent_type;
+        if constexpr (!is_substate_of_v<Current, Parent>) {
+            call_ancestor_on_enter_helper<Current, Target, Parent>(event, in, out, reg, srv);
+        }
+    }
+    call_on_enter(target_state, event, in, out, reg, srv);
+}
+
+template <typename Ancestor, typename Event, typename In, typename Out, typename Registers, typename Services>
+constexpr void call_initial_ancestor_on_enter(const Event& event, const In& in, Out& out, Registers& reg,
+                                              Services& srv) {
+    if constexpr (has_parent_type<Ancestor>::value) {
+        using SuperParent = typename Ancestor::parent_type;
+        call_initial_ancestor_on_enter<SuperParent>(event, in, out, reg, srv);
+    }
+    if constexpr (std::is_default_constructible_v<Ancestor>) {
+        Ancestor ancestor_inst{};
+        call_on_enter(ancestor_inst, event, in, out, reg, srv);
+    }
+}
+
+template <typename Target, typename Event, typename In, typename Out, typename Registers, typename Services>
+constexpr void call_initial_hierarchical_on_enter(Target& target_state, const Event& event, const In& in, Out& out,
+                                                  Registers& reg, Services& srv) {
+    if constexpr (has_parent_type<Target>::value) {
+        using Parent = typename Target::parent_type;
+        call_initial_ancestor_on_enter<Parent>(event, in, out, reg, srv);
+    }
+    call_on_enter(target_state, event, in, out, reg, srv);
+}
+
+template <typename Ancestor, typename In, typename Out, typename Registers, typename Services>
+constexpr void call_initial_ancestor_on_enter(const In& in, Out& out, Registers& reg, Services& srv) {
+    if constexpr (has_parent_type<Ancestor>::value) {
+        using SuperParent = typename Ancestor::parent_type;
+        call_initial_ancestor_on_enter<SuperParent>(in, out, reg, srv);
+    }
+    if constexpr (std::is_default_constructible_v<Ancestor>) {
+        Ancestor ancestor_inst{};
+        call_on_enter(ancestor_inst, anonymous_event{}, in, out, reg, srv);
+    }
+}
+
+template <typename Target, typename In, typename Out, typename Registers, typename Services>
+constexpr void call_initial_hierarchical_on_enter(Target& target_state, const In& in, Out& out, Registers& reg,
+                                                  Services& srv) {
+    if constexpr (has_parent_type<Target>::value) {
+        using Parent = typename Target::parent_type;
+        call_initial_ancestor_on_enter<Parent>(in, out, reg, srv);
+    }
+    call_on_enter(target_state, anonymous_event{}, in, out, reg, srv);
+}
+
 template <typename Table, typename CurrentSrc, typename Event, typename In, typename Out, typename Registers,
           typename Services, typename FsmInstance, typename ObserverCallback, typename RecordHistoryFn,
           std::size_t... Indices>
@@ -3052,8 +3347,8 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
                 return true;
             } else {
                 constexpr std::string_view src_parent = get_parent_name<CurrentSrc>();
-                if constexpr (!src_parent.empty()) {
-                    record_history_fn(src_parent, src_name);
+                if constexpr (!src_parent.empty() || detail::has_parent_type<CurrentSrc>::value) {
+                    record_ancestor_history<CurrentSrc>(src_name, record_history_fn);
                 }
 
                 // 4-Phase Transition Lifecycle:
@@ -3062,13 +3357,13 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
                 // 3. state reassignment
                 // 4. on_enter(dst_state)
                 TransDst dst_state{};
-                call_on_exit(src_state, event, in, out, registers_, srv);
+                call_hierarchical_on_exit<CurrentSrc, TransDst>(src_state, event, in, out, registers_, srv);
                 Action act{};
                 call_action(act, event, src_state, dst_state, in, out, registers_, srv);
 
                 fsm_inst.set_current_state_variant(std::move(dst_state));
-                call_on_enter(std::get<TransDst>(fsm_inst.get_current_state_variant()), event, in, out, registers_,
-                              srv);
+                call_hierarchical_on_enter<CurrentSrc, TransDst>(
+                    std::get<TransDst>(fsm_inst.get_current_state_variant()), event, in, out, registers_, srv);
 
                 const auto dst_name = get_state_name(std::get<TransDst>(fsm_inst.get_current_state_variant()));
                 executed_trace = transition_trace{src_name,
@@ -3247,6 +3542,194 @@ bool deserialize_state(FSM& machine, std::span<const std::uint8_t> buffer) noexc
 )raw_fsm_runtime";
 
         out << R"raw_fsm_runtime(
+// --- Begin: snapshot_recorder.hpp ---
+/**
+ * @file snapshot_recorder.hpp
+ * @brief Zero-heap circular snapshot recorder and time-travel rollback manager for C++ FSMs.
+ */
+
+
+
+
+namespace fsm {
+
+/**
+ * @struct snapshot_entry
+ * @brief Fixed-size zero-heap snapshot entry stored in snapshot_recorder.
+ */
+template <std::size_t MaxSnapshotSize = 256>
+struct snapshot_entry {
+    std::array<std::uint8_t, MaxSnapshotSize> data{};
+    std::size_t size{0};
+    std::uint32_t tag{0};
+    std::uint64_t timestamp_us{0};
+    std::uint64_t step_count{0};
+    std::uint32_t checksum{0};
+
+    [[nodiscard]] constexpr bool is_valid() const noexcept {
+        if (size == 0 || size > MaxSnapshotSize)
+            return false;
+        return compute_checksum(data.data(), size) == checksum;
+    }
+};
+
+/**
+ * @class snapshot_recorder
+ * @brief Zero-heap circular ring buffer for runtime snapshot execution trace recording and rollback.
+ *
+ * Designed for real-time safety-critical digital twin monitoring, hardware-in-the-loop (HIL)
+ * diagnostics, time-travel debugging, and automatic rollback on fault detection.
+ *
+ * @tparam Capacity Maximum number of snapshots preserved in the circular ring buffer.
+ * @tparam MaxSnapshotSize Maximum buffer capacity in bytes per snapshot (default 256).
+ */
+template <std::size_t Capacity, std::size_t MaxSnapshotSize = 256>
+class snapshot_recorder {
+    static_assert(Capacity > 0, "snapshot_recorder Capacity must be strictly positive");
+    static_assert(MaxSnapshotSize >= sizeof(snapshot_header), "MaxSnapshotSize must accommodate snapshot_header");
+
+  public:
+    using entry_type = snapshot_entry<MaxSnapshotSize>;
+
+    constexpr snapshot_recorder() noexcept = default;
+
+    /**
+     * @brief Records a snapshot of the current state of the given FSM machine into the ring buffer.
+     * @tparam FSM State machine type providing serialize() method.
+     * @param machine FSM instance to capture.
+     * @param tag User-defined checkpoint tag/id.
+     * @param timestamp_us Optional timestamp in microseconds.
+     * @return True if serialized and recorded successfully, false otherwise.
+     */
+    template <typename FSM>
+    bool record(const FSM& machine, std::uint32_t tag = 0, std::uint64_t timestamp_us = 0) noexcept {
+        std::size_t slot = head_ % Capacity;
+        entry_type& entry = buffer_[slot];
+
+        std::size_t written = 0;
+        if (!machine.serialize(entry.data.data(), MaxSnapshotSize, written)) {
+            return false;
+        }
+
+        entry.size = written;
+        entry.tag = tag;
+        entry.timestamp_us = timestamp_us;
+        entry.step_count = total_recorded_;
+        entry.checksum = compute_checksum(entry.data.data(), written);
+
+        head_ = (head_ + 1) % Capacity;
+        if (count_ < Capacity) {
+            ++count_;
+        }
+        ++total_recorded_;
+        return true;
+    }
+
+    /**
+     * @brief Rolls back the state machine by the specified number of steps (default 1 step).
+     * @tparam FSM State machine type providing deserialize() method.
+     * @param machine FSM instance to restore.
+     * @param steps Number of steps to unwind backwards (must be <= size()).
+     * @return True if successfully restored, false otherwise.
+     */
+    template <typename FSM>
+    bool rollback(FSM& machine, std::size_t steps = 1) noexcept {
+        if (steps == 0 || steps > count_) {
+            return false;
+        }
+
+        // Calculate target slot
+        std::size_t target_idx = (head_ + Capacity - steps) % Capacity;
+        const entry_type& entry = buffer_[target_idx];
+
+        if (!entry.is_valid()) {
+            return false;
+        }
+
+        std::size_t read = 0;
+        if (!machine.deserialize(entry.data.data(), entry.size, read)) {
+            return false;
+        }
+
+        head_ = target_idx;
+        count_ -= steps;
+        return true;
+    }
+
+    /**
+     * @brief Rewinds to the most recently recorded checkpoint matching the given tag.
+     * @tparam FSM State machine type providing deserialize() method.
+     * @param machine FSM instance to restore.
+     * @param tag Checkpoint tag identifier to search for.
+     * @return True if checkpoint was found and restored, false otherwise.
+     */
+    template <typename FSM>
+    bool rewind_to_checkpoint(FSM& machine, std::uint32_t tag) noexcept {
+        for (std::size_t step = 1; step <= count_; ++step) {
+            std::size_t idx = (head_ + Capacity - step) % Capacity;
+            if (buffer_[idx].tag == tag && buffer_[idx].is_valid()) {
+                return rollback(machine, step);
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @brief Returns the most recently recorded snapshot entry, if any.
+     */
+    [[nodiscard]] const entry_type* latest() const noexcept {
+        if (count_ == 0)
+            return nullptr;
+        std::size_t idx = (head_ + Capacity - 1) % Capacity;
+        return &buffer_[idx];
+    }
+
+    /**
+     * @brief Returns the number of snapshots currently stored in the ring buffer.
+     */
+    [[nodiscard]] constexpr std::size_t size() const noexcept { return count_; }
+
+    /**
+     * @brief Returns the maximum capacity of the ring buffer.
+     */
+    [[nodiscard]] constexpr std::size_t capacity() const noexcept { return Capacity; }
+
+    /**
+     * @brief Checks if the buffer is empty.
+     */
+    [[nodiscard]] constexpr bool empty() const noexcept { return count_ == 0; }
+
+    /**
+     * @brief Checks if the buffer is full.
+     */
+    [[nodiscard]] constexpr bool full() const noexcept { return count_ == Capacity; }
+
+    /**
+     * @brief Returns total number of record invocations since initialization.
+     */
+    [[nodiscard]] constexpr std::uint64_t total_recorded() const noexcept { return total_recorded_; }
+
+    /**
+     * @brief Clears all snapshots in the recorder.
+     */
+    void clear() noexcept {
+        head_ = 0;
+        count_ = 0;
+    }
+
+  private:
+    std::array<entry_type, Capacity> buffer_{};
+    std::size_t head_{0};
+    std::size_t count_{0};
+    std::uint64_t total_recorded_{0};
+};
+
+}  // namespace fsm
+
+// --- End: snapshot_recorder.hpp ---
+)raw_fsm_runtime";
+
+        out << R"raw_fsm_runtime(
 // --- Begin: fsm.hpp ---
 namespace fsm {
 
@@ -3395,6 +3878,8 @@ class fsm {
     // ========================================================================
 
     step_result step(const in_ports_type& in, out_ports_type& out, services_type& srv) {
+        std::visit([this, &in, &out, &srv](auto& st) { call_do_activity(st, in, out, this->registers_, srv); },
+                   current_state_);
         auto res = dispatch_direct_ports(anonymous_event{}, in, out, srv);
         if constexpr (has_deferred) {
             if (res.is_success()) {
@@ -3595,25 +4080,99 @@ class fsm {
         return history_mgr_.get_history(parent);
     }
 
+    template <typename ParentState, bool H = has_history>
+    [[nodiscard]] std::string_view get_history() const noexcept {
+        return get_history<H>(get_state_name_static<ParentState>());
+    }
+
+    void clear_history() noexcept {
+        if constexpr (has_history) {
+            history_mgr_.clear_history();
+        }
+    }
+
+    void clear_deferred() noexcept {
+        if constexpr (has_deferred) {
+            deferred_mgr_.clear_deferred_events();
+        }
+    }
+
+    void clear_deferred_events() noexcept { clear_deferred(); }
+
+    /**
+     * @brief Resets the state machine to its initial state, clearing active history,
+     * deferred queues, timers, and invariants, and invoking initial on_enter hooks.
+     */
+    void reset() {
+        if constexpr (has_history) {
+            history_mgr_.clear_history();
+        }
+        if constexpr (has_deferred) {
+            deferred_mgr_.clear_deferred_events();
+        }
+        if constexpr (std::is_default_constructible_v<registers_type>) {
+            registers_ = registers_type{};
+        }
+        current_state_ = initial_state_type{};
+        enter_initial_state();
+    }
+
+    void reset(registers_type initial_registers) {
+        if constexpr (has_history) {
+            history_mgr_.clear_history();
+        }
+        if constexpr (has_deferred) {
+            deferred_mgr_.clear_deferred_events();
+        }
+        registers_ = std::move(initial_registers);
+        current_state_ = initial_state_type{};
+        enter_initial_state();
+    }
+
     // State Inspection & Mutation
     template <typename State>
     [[nodiscard]] bool is_in_state() const noexcept {
-        return std::holds_alternative<State>(current_state_);
+        if constexpr (Table::template has_state<State>) {
+            return std::holds_alternative<State>(current_state_);
+        } else {
+            return false;
+        }
     }
 
     template <typename State>
     [[nodiscard]] bool is_in() const noexcept {
-        return is_in_state<State>();
+        return std::visit(
+            [](const auto& current) -> bool {
+                using current_t = std::decay_t<decltype(current)>;
+                return is_substate_of_v<current_t, State>;
+            },
+            current_state_);
+    }
+
+    [[nodiscard]] bool is_in(std::string_view target_name) const noexcept {
+        return std::visit(
+            [target_name](const auto& current) -> bool {
+                return ::fsm::state_is_or_descendant_of(current, target_name);
+            },
+            current_state_);
     }
 
     template <typename State>
     [[nodiscard]] const State* get_state() const noexcept {
-        return std::get_if<State>(&current_state_);
+        if constexpr (Table::template has_state<State>) {
+            return std::get_if<State>(&current_state_);
+        } else {
+            return nullptr;
+        }
     }
 
     template <typename State>
     [[nodiscard]] State* get_state() noexcept {
-        return std::get_if<State>(&current_state_);
+        if constexpr (Table::template has_state<State>) {
+            return std::get_if<State>(&current_state_);
+        } else {
+            return nullptr;
+        }
     }
 
     template <typename Callable>
@@ -3678,6 +4237,13 @@ class fsm {
             observer_.advance_tick(delta_ms);
         }
         invariant_mgr_.advance_time(delta_ms);
+        std::visit(
+            [this](auto& st) {
+                in_ports_type dummy_in{};
+                out_ports_type dummy_out{};
+                call_do_activity(st, dummy_in, dummy_out, this->registers_, this->resolve_services());
+            },
+            current_state_);
         auto expired = timer_mgr_.tick(delta_ms, [this, &on_expired](std::uint32_t timer_id) {
             dispatch_timed_timer(timer_id);
             on_expired(timer_id);
@@ -3699,6 +4265,13 @@ class fsm {
     template <typename Rep, typename Period>
     std::size_t tick(std::chrono::duration<Rep, Period> dt) {
         return tick(dt, [](std::uint32_t /*timer_id*/) {});
+    }
+
+    /**
+     * @brief Dynamically updates the interval duration of an active timer.
+     */
+    bool set_timer_duration(std::uint32_t timer_id, std::uint64_t duration_ms) noexcept {
+        return timer_mgr_.set_timer_duration(timer_id, duration_ms);
     }
 
     // ========================================================================
@@ -3934,11 +4507,13 @@ class fsm {
     }
 
     void enter_initial_state() {
-        if (auto* state = std::get_if<initial_state_type>(&current_state_)) {
-            in_ports_type dummy_in{};
-            out_ports_type dummy_out{};
-            call_on_enter(*state, dummy_in, dummy_out, registers_, resolve_services());
-        }
+        in_ports_type dummy_in{};
+        out_ports_type dummy_out{};
+        std::visit(
+            [this, &dummy_in, &dummy_out](auto& state) {
+                detail::call_initial_hierarchical_on_enter(state, dummy_in, dummy_out, registers_, resolve_services());
+            },
+            current_state_);
         invariant_mgr_.reset();
         refresh_timers_for_current_state();
     }
@@ -4166,6 +4741,16 @@ class spsc_ring_buffer {
         slot->~T();
         tail_.store(tail + 1, std::memory_order_release);
         return res;
+    }
+
+    void clear() noexcept {
+        const std::size_t head = head_.load(std::memory_order_relaxed);
+        std::size_t tail = tail_.load(std::memory_order_relaxed);
+        while (tail != head) {
+            get_slot(tail)->~T();
+            ++tail;
+        }
+        tail_.store(head, std::memory_order_release);
     }
 
     [[nodiscard]] bool empty() const noexcept {
@@ -4972,7 +5557,59 @@ class thread_safe_fsm {
 
     template <typename State>
     [[nodiscard]] bool is_in() const noexcept {
-        return is_in_state<State>();
+        if (reentrancy_.is_reentrant_call()) {
+            return fsm_.template is_in<State>();
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.template is_in<State>();
+    }
+
+    [[nodiscard]] bool is_in(std::string_view target_name) const noexcept {
+        if (reentrancy_.is_reentrant_call()) {
+            return fsm_.is_in(target_name);
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.is_in(target_name);
+    }
+
+    void reset() {
+        if (reentrancy_.is_reentrant_call()) {
+            fsm_.reset();
+            return;
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        fsm_.reset();
+    }
+
+    void reset(registers_type reg) {
+        if (reentrancy_.is_reentrant_call()) {
+            fsm_.reset(std::move(reg));
+            return;
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        fsm_.reset(std::move(reg));
+    }
+
+    void clear_history() noexcept {
+        if (reentrancy_.is_reentrant_call()) {
+            fsm_.clear_history();
+            return;
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        fsm_.clear_history();
+    }
+
+    [[nodiscard]] std::string_view get_history(std::string_view parent) const {
+        if (reentrancy_.is_reentrant_call()) {
+            return fsm_.get_history(parent);
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        return fsm_.get_history(parent);
+    }
+
+    template <typename ParentState>
+    [[nodiscard]] std::string_view get_history() const {
+        return get_history(get_state_name_static<ParentState>());
     }
 
     [[nodiscard]] std::string_view current_state_name() const {
@@ -5033,6 +5670,13 @@ class thread_safe_fsm {
     // Synchronous Dispatch
     // ========================================================================
 
+    /**
+     * @brief Synchronously dispatches an event under mutex protection.
+     *
+     * This is the canonical thread-safe synchronous dispatch method for `thread_safe_fsm`.
+     * If called reentrantly from an action or notification callback on the same thread,
+     * the event is queued safely and drained when the outermost dispatch completes.
+     */
     template <typename Event>
     dispatch_result send(const Event& event) {
         auto snap = execute_dispatch_under_lock(event);
@@ -5043,6 +5687,9 @@ class thread_safe_fsm {
         return snap.result;
     }
 
+    /**
+     * @brief Synchronously dispatches an event with partitioned I/O ports under mutex protection.
+     */
     template <typename Event>
     dispatch_result send(const Event& event, const in_ports_type& in, out_ports_type& out) {
         if (reentrancy_.is_reentrant_call()) {
@@ -5063,6 +5710,17 @@ class thread_safe_fsm {
         diagnostics_.set_last_exception(last_ex);
         drain_reentrant_queue_if_outermost();
         return snap.result;
+    }
+
+    /**
+     * @brief Interface compatibility alias for `send()`.
+     *
+     * Enables generic or template code written against `fsm` to invoke `dispatch()` interchangeably
+     * on either `fsm` or `thread_safe_fsm`.
+     */
+    template <typename Event, typename... Args>
+    dispatch_result dispatch(const Event& event, Args&&... args) {
+        return send(event, std::forward<Args>(args)...);
     }
 
     // ========================================================================
@@ -5365,6 +6023,37 @@ template <typename Variant>
 constexpr std::string_view get_state_name_by_index(std::size_t idx) noexcept {
     return get_state_name_by_index_impl<Variant>(idx, std::make_index_sequence<std::variant_size_v<Variant>>{});
 }
+
+template <typename Variant, typename TargetState, std::size_t... Is>
+constexpr bool is_substate_by_variant_index_impl(std::size_t idx, std::index_sequence<Is...>) noexcept {
+    constexpr bool matches[] = {is_substate_of_v<std::variant_alternative_t<Is, Variant>, TargetState>...};
+    if (idx < sizeof...(Is)) {
+        return matches[idx];
+    }
+    return false;
+}
+
+template <typename Variant, typename TargetState>
+constexpr bool is_substate_by_variant_index(std::size_t idx) noexcept {
+    return is_substate_by_variant_index_impl<Variant, TargetState>(
+        idx, std::make_index_sequence<std::variant_size_v<Variant>>{});
+}
+
+template <typename Variant, std::size_t... Is>
+constexpr bool is_substate_by_name_variant_index_impl(std::size_t idx, std::string_view name,
+                                                      std::index_sequence<Is...>) noexcept {
+    bool matches[] = {state_is_or_descendant_of_static<std::variant_alternative_t<Is, Variant>>(name)...};
+    if (idx < sizeof...(Is)) {
+        return matches[idx];
+    }
+    return false;
+}
+
+template <typename Variant>
+constexpr bool is_substate_by_name_variant_index(std::size_t idx, std::string_view name) noexcept {
+    return is_substate_by_name_variant_index_impl<Variant>(idx, name,
+                                                           std::make_index_sequence<std::variant_size_v<Variant>>{});
+}
 }  // namespace detail
 
 template <typename Table, typename InPorts = no_ports, typename OutPorts = no_ports, typename Registers = no_registers,
@@ -5574,6 +6263,46 @@ class spsc_fsm {
     // Read & Introspection API
     // ========================================================================
 
+    void reset() {
+        seq_.fetch_add(1, std::memory_order_release);
+        queue_.clear();
+        fsm_.reset();
+        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
+        seq_.fetch_add(1, std::memory_order_release);
+    }
+
+    void reset(registers_type initial_registers) {
+        seq_.fetch_add(1, std::memory_order_release);
+        queue_.clear();
+        fsm_.reset(std::move(initial_registers));
+        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
+        seq_.fetch_add(1, std::memory_order_release);
+    }
+
+    void clear_history() noexcept { fsm_.clear_history(); }
+
+    [[nodiscard]] std::string_view get_history(std::string_view parent) const noexcept {
+        return fsm_.get_history(parent);
+    }
+
+    template <typename ParentState>
+    [[nodiscard]] std::string_view get_history() const noexcept {
+        return fsm_.template get_history<ParentState>();
+    }
+
+    void clear_deferred() noexcept { fsm_.clear_deferred(); }
+
+    void clear_deferred_events() noexcept { fsm_.clear_deferred_events(); }
+
+    void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
+        fsm_.set_invariant_violation_handler(std::move(handler));
+    }
+
+    // ========================================================================
+    // Concurrent Telemetry & State Inspection API (Lock-Free / Seqlock)
+    // Safe to invoke from external monitoring, telemetry, or reader threads.
+    // ========================================================================
+
     [[nodiscard]] std::size_t state_index() const noexcept { return state_index_.load(std::memory_order_acquire); }
     [[nodiscard]] std::string_view state_name() const noexcept {
         return detail::get_state_name_by_index<typename Table::state_variant>(state_index());
@@ -5581,6 +6310,15 @@ class spsc_fsm {
 
     template <typename State>
     [[nodiscard]] bool is_in() const noexcept {
+        return detail::is_substate_by_variant_index<typename Table::state_variant, State>(state_index());
+    }
+
+    [[nodiscard]] bool is_in(std::string_view target_name) const noexcept {
+        return detail::is_substate_by_name_variant_index<typename Table::state_variant>(state_index(), target_name);
+    }
+
+    template <typename State>
+    [[nodiscard]] bool is_in_state() const noexcept {
         if constexpr (Table::template has_state<State>) {
             return state_index() == type_list_index_of_v<State, typename Table::states>;
         } else {
@@ -5588,19 +6326,11 @@ class spsc_fsm {
         }
     }
 
-    template <typename State>
-    [[nodiscard]] bool is_in_state() const noexcept {
-        return is_in<State>();
-    }
-
     [[nodiscard]] std::uint64_t state_residence_time() const noexcept { return fsm_.state_residence_time(); }
     [[nodiscard]] bool has_invariant_violation() const noexcept { return fsm_.has_invariant_violation(); }
     [[nodiscard]] bool is_invariant_satisfied() const noexcept { return fsm_.is_invariant_satisfied(); }
     [[nodiscard]] const std::optional<invariant_violation_info>& last_invariant_violation() const noexcept {
         return fsm_.last_invariant_violation();
-    }
-    void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
-        fsm_.set_invariant_violation_handler(std::move(handler));
     }
 
     /**

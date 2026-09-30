@@ -36,16 +36,16 @@ fsm-opt -i model.sysml --passes=canonicalize,constant-folding,dead-state-pruning
 
 ### 2. Comprehensive Pass Reference: The 7-Stage Pipeline
 
-`fsmc` provides 28 built-in middle-end passes organized across a verified 7-stage compilation pipeline (`PassManager::create_verified_7stage_pipeline`):
+`fsmc` provides 30 built-in middle-end passes organized across a verified 7-stage compilation pipeline (`PassManager::create_verified_7stage_pipeline`):
 
 ```mermaid
 flowchart TD
     S1["<b>Stage 1: Canonicalization & Desugaring</b><br/>HierarchyCanonicalization • SemanticValidation • GuardSimplification"]
-    S2["<b>Stage 2: Structural Lowering Suite</b><br/>ForkJoinLowering • HistoryLowering • DeferredEventLowering<br/>BoundaryActionFusion • ChoiceInlining • OrthogonalProduct • SubmachineInlining"]
-    S3["<b>Stage 3: Formal Safety & Invariants</b><br/>LivelockAnalysis • PriorityConflict • TimedInvariantsVerifier<br/>EventQueueBound • GuardSatisfiability • ChoiceCompleteness • RaceCheck"]
+    S2["<b>Stage 2: Structural Lowering Suite</b><br/>ForkJoinLowering • HistoryLowering • DeferredEventLowering<br/>BoundaryActionFusion • ConnectiveJunctionChaining • ChoiceInlining<br/>OrthogonalProduct • SubmachineInlining"]
+    S3["<b>Stage 3: Formal Safety & Invariants</b><br/>SampledChangeTriggers • LivelockAnalysis • PriorityConflict<br/>TimedInvariantsVerifier • EventQueueBound • GuardSatisfiability<br/>ChoiceCompleteness • RaceCheck"]
     S4["<b>Stage 4: Symbolic Model Checking</b><br/>TimedDeadlock • ModelSafetyVerifier • ModelChecking (LTL/CTL)"]
     S5["<b>Stage 5: Optimization & Minimization</b><br/>ConstantFolding • DeadStatePruning • DeadActionElimination<br/>CommonActionFactoring • TransitionFusion • StateMinimization"]
-    S6["<b>Stage 6: Data-Path Optimization & Registers</b><br/>EFSMDataPath (Interval Analysis) • RegisterLiveness"]
+    S6["<b>Stage 6: Data-Path Optimization & Registers</b><br/>EFSMDataPath (Interval Analysis & ∇ Widening) • RegisterLiveness"]
     S7["<b>Stage 7: Backend Preparation & Handoff</b><br/>DeterminismEnforcement • WcetAnalysis"]
 
     S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7
@@ -81,91 +81,100 @@ flowchart TD
 #### 7. `boundary-action-fusion` (`BoundaryActionFusionPass`)
 * **What it does**: Flattens hierarchical transition boundaries into Lowest Common Ancestor (LCA) sequences: source exit path $\to$ transition action $\to$ target entry path. Clears lowered state hooks to eliminate duplicate action executions.
 
-#### 8. `choice-inlining` (`ChoiceInliningPass`)
-* **What it does**: Collapses dynamic choice (`Choice`) and junction (`Junction`) pseudostates into direct composite guarded transitions.
+#### 8. `connective-junction-chaining` (`ConnectiveJunctionChainingPass`)
+* **What it does**: Collapses multi-hop connective junction paths (`StateA -> J1 [g1] -> J2 [g2] -> StateB`) into direct atomic transitions guarded by compound conjuncts $(g_1 \land g_2)$ and fusing condition actions and transition actions into compound actions (`Action1_Action2`). Removes intermediate micro-states.
 
-#### 9. `inline-submachines` (`SubmachineInliningPass`)
+#### 9. `choice-inlining` (`ChoiceInliningPass`)
+* **What it does**: Collapses dynamic choice (`Choice`) pseudostates into direct composite guarded transitions.
+
+#### 10. `inline-submachines` (`SubmachineInliningPass`)
 * **What it does**: Inlines external reusable statecharts referenced via `SubmachineRef` directly into the parent statechart hierarchy.
 
-#### 10. `orthogonal-product` (`OrthogonalProductPass`)
+#### 11. `orthogonal-product` (`OrthogonalProductPass`)
 * **What it does**: Expands parallel orthogonal regions into their flattened **Cartesian product state graph** ($S_A \times S_B$) with intra-region transition isolation, action deduplication, and protection against combinatorial explosion (`EORTHO003`, default bound: 1024 states).
 
 ---
 
 ### Stage 3: Formal Safety & Invariant Verification
 
-#### 11. `livelock-analysis` (`LivelockAnalysisPass`)
+#### 12. `sampled-change-triggers` (`SampledChangeTriggerPass`)
+* **What it does**: Lowers continuous stream change triggers (`when (pred)`) into discrete edge-triggered guards with unit-delay shadow registers ($z^{-1}$, `!prev_pred && pred`) sampled synchronously at each control step.
+
+#### 13. `livelock-analysis` (`LivelockAnalysisPass`)
 * **What it does**: Detects non-progressive internal transition cycles that starve external event ingestion.
 
-#### 12. `priority-conflict-check` (`PriorityConflictPass`)
+#### 14. `priority-conflict-check` (`PriorityConflictPass`)
 * **What it does**: Verifies hierarchical preemption determinism and unambiguous priority resolution across nested states.
 
-#### 13. `timed-invariants-verifier` (`TimedInvariantsVerifierPass`)
+#### 15. `timed-invariants-verifier` (`TimedInvariantsVerifierPass`)
 * **What it does**: Statically verifies clock invariants and maximum state residence times against outgoing deadlines.
 
-#### 14. `event-queue-bound` (`EventQueueBoundPass`)
+#### 16. `event-queue-bound` (`EventQueueBoundPass`)
 * **What it does**: Computes static upper bounds on required asynchronous event queue depths to prevent runtime buffer overflow.
 
-#### 15. `guard-satisfiability` (`GuardSatisfiabilityPass`)
+#### 17. `guard-satisfiability` (`GuardSatisfiabilityPass`)
 * **What it does**: Analyzes guard predicates for logical contradictions (e.g. `[x > 10 and x < 5]`) using SMT and domain solvers.
 
-#### 16. `choice-completeness` (`ChoiceCompletenessPass`)
+#### 18. `choice-completeness` (`ChoiceCompletenessPass`)
 * **What it does**: Verifies that outgoing choice branches form an exhaustive cover (e.g. via an `[else]` branch), preventing unhandled execution stalls.
 
-#### 17. `race-check` (`OrthogonalInterferencePass`)
+#### 19. `race-check` (`OrthogonalInterferencePass`)
 * **What it does**: Performs static data-race analysis across concurrent orthogonal regions, detecting conflicting variable assignments and uncoordinated port writes.
 
 ---
 
 ### Stage 4: Symbolic Model Checking
 
-#### 18. `timed-deadlock` (`TimedDeadlockPass`)
+#### 20. `timed-deadlock` (`TimedDeadlockPass`)
 * **What it does**: Detects temporal deadlock traps, 0ms timeout cycles, and racing timer deadlines.
 
-#### 19. `safety-verifier` (`ModelSafetyVerifierPass`)
+#### 21. `safety-verifier` (`ModelSafetyVerifierPass`)
 * **What it does**: Validates basic topological graph invariants (root reachability, absence of trap states, and termination consistency).
 
-#### 20. `model-checking` (`ModelCheckingPass`)
-* **What it does**: Evaluates formal temporal logic formulas (LTL and CTL properties declared via `@fsm:property` or CLI) against the finite Kripke transition graph.
+#### 22. `model-checking` (`ModelCheckingPass`)
+* **What it does**: Evaluates formal temporal logic formulas (LTL and CTL properties declared via `@fsm:property` or CLI) natively against the finite Kripke transition graph via polynomial fixed-point computation.
 
 ---
 
 ### Stage 5: Optimization & Dead Code Pruning
 
-#### 21. `constant-folding` (`ConstantFoldingPass`)
+#### 23. `constant-folding` (`ConstantFoldingPass`)
 * **What it does**: Folds constant boolean/arithmetic expressions, propagates register values, and prunes dead transitions.
 
-#### 22. `dead-state-pruning` (`DeadStatePruningPass`)
-* **What it does**: Eliminates unreachable states and statically dead transitions from the model graph.
+#### 24. `dead-state-pruning` (`DeadStatePruningPass`)
+* **What it does**: Eliminates unreachable states and statically dead transitions (including transitions proved dead by interval analysis) from the model graph.
 
-#### 23. `dead-action-elimination` (`DeadActionEliminationPass`)
+#### 25. `dead-action-elimination` (`DeadActionEliminationPass`)
 * **What it does**: Performs dead store elimination (DSE) across datapath registers and local variables.
 
-#### 24. `common-action-factoring` (`CommonActionFactoringPass`)
+#### 26. `common-action-factoring` (`CommonActionFactoringPass`)
 * **What it does**: Factors identical action sequences across convergent or divergent transition edges to minimize generated code footprint.
 
-#### 25. `transition-fusion` (`TransitionFusionPass`)
+#### 27. `transition-fusion` (`TransitionFusionPass`)
 * **What it does**: Fuses deterministic zero-time micro-steps into atomic macro-transitions.
 
-#### 26. `state-minimization` (`StateMinimizationPass`)
+#### 28. `state-minimization` (`StateMinimizationPass`)
 * **What it does**: Partitions bisimilar states via Hopcroft/Moore equivalence partitioning to minimize ROM/Flash footprint.
 
 ---
 
 ### Stage 6: Data-Path Optimization & Register Allocation
 
-#### 27. `efsm-data-path` (`EFSMDataPathPass`)
-* **What it does**: Evaluates extended finite state variables using abstract interpretation over numerical intervals to prove guard reachability and contract satisfaction.
+#### 29. `efsm-data-path` (`EFSMDataPathPass`)
+* **What it does**: Evaluates extended finite state variables using abstract interpretation over numerical intervals with formal Widening ($\nabla$) to prove guard reachability and contract satisfaction.
 
-#### 28. `register-liveness` (`RegisterLivenessPass`)
+#### 30. `register-liveness` (`RegisterLivenessPass`)
 * **What it does**: Analyzes variable liveness intervals and builds interference graphs for optimal register reuse.
 
 ---
 
 ### Stage 7: Backend Preparation & Code Emitter Handoff
 
-* **`determinism` (`DeterminismEnforcementPass`)**: Enforces deterministic event dispatch and total preemption ordering.
-* **`wcet-analysis` (`WcetAnalysisPass`)**: Evaluates micro-step cascade bounds and proves absence of zero-time Zeno cycles.
+#### 31. `determinism` (`DeterminismEnforcementPass`)
+* **What it does**: Enforces deterministic event dispatch and total preemption ordering.
+
+#### 32. `wcet-analysis` (`WcetAnalysisPass`)
+* **What it does**: Evaluates micro-step cascade bounds and proves absence of zero-time Zeno cycles.
 
 ---
 

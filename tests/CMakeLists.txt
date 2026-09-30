@@ -147,6 +147,7 @@ add_fsm_unit_test(test_model_checker_temporal_logic DIR middleend/verification)
 add_fsm_unit_test(test_ltl_model_checker_extended DIR middleend/verification)
 add_fsm_unit_test(test_timed_automata_verification DIR middleend/verification)
 add_fsm_unit_test(test_guard_satisfiability DIR middleend/verification)
+add_fsm_unit_test(test_adversarial_qa DIR middleend/verification)
 
 # ==============================================================================
 # Diagnostic Tests (tests/diagnostic/)
@@ -207,6 +208,12 @@ add_fsm_unit_test(test_full_7stage_pipeline DIR integration/pipeline)
 add_fsm_unit_test(test_pipeline_extensibility DIR integration/pipeline EXTRA_LIBS ${CMAKE_DL_LIBS})
 add_fsm_unit_test(test_cli_driver_errors DIR integration)
 target_include_directories(test_cli_driver_errors PRIVATE ${PROJECT_SOURCE_DIR})
+
+add_fsm_unit_test(test_fsmc_cli_options DIR integration)
+target_include_directories(test_fsmc_cli_options PRIVATE ${PROJECT_SOURCE_DIR})
+
+add_fsm_unit_test(test_fsm_opt_cli_options DIR integration)
+target_include_directories(test_fsm_opt_cli_options PRIVATE ${PROJECT_SOURCE_DIR})
 
 add_fsm_unit_test(test_cmake_integration DIR integration STANDARD 20)
 fsmc_target_sources(test_cmake_integration

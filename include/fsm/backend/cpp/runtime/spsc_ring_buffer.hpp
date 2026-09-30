@@ -93,6 +93,16 @@ class spsc_ring_buffer {
         return res;
     }
 
+    void clear() noexcept {
+        const std::size_t head = head_.load(std::memory_order_relaxed);
+        std::size_t tail = tail_.load(std::memory_order_relaxed);
+        while (tail != head) {
+            get_slot(tail)->~T();
+            ++tail;
+        }
+        tail_.store(head, std::memory_order_release);
+    }
+
     [[nodiscard]] bool empty() const noexcept {
         return head_.load(std::memory_order_relaxed) == tail_.load(std::memory_order_relaxed);
     }

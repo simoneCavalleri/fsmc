@@ -8,10 +8,14 @@
 
 #include <string>
 
+#include "fsm/backend/formal/sysml2_serializer.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/analysis/fsm_validator.hpp"
 
+using namespace fsm::backend::formal;
 using namespace fsm::frontend::formal;
+using namespace fsm::middleend::analysis;
 using namespace fsm::ir;
 
 namespace {
@@ -169,6 +173,93 @@ TEST(Sysml2AdvancedConstructs, JoinCompositeTransition_ParsesMultipleSources) {
     EXPECT_EQ(tx.source_ids, expected_sources);
     ASSERT_EQ(tx.multi_source_ids.size(), 2u);
     EXPECT_EQ(tx.source, "TaskA");
+}
+
+/**
+ * @brief Verify SysML v2 parallel states and lifecycle slash action syntax (entry / act; exit / act;)
+ *        are parsed accurately and serialized losslessly without reachability anomalies.
+ */
+TEST(Sysml2AdvancedConstructs, ParallelStateAndSlashActions_RoundtrippedLosslessly) {
+    const std::string sysml_text = R"(
+    state def ConcurrentSystem {
+        entry; then Standby;
+
+        state Standby;
+
+        state Shutdown {
+            entry / OpenContactorsAction;
+            exit / ResetRelaysAction;
+        }
+
+        parallel state Operational {
+            state ThermalRegion {
+                entry; then CoolingOff;
+                state CoolingOff;
+                state CoolingOn;
+                transition from CoolingOff accept TempHigh then CoolingOn;
+            }
+            state PressureRegion {
+                entry; then PressureNominal;
+                state PressureNominal;
+                state PressureVent;
+                transition from PressureNominal accept Overpressure then PressureVent;
+            }
+        }
+
+        transition from Standby accept StartCmd then Operational;
+        transition from Operational accept EStopCmd then Shutdown;
+    }
+    )";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+
+    // Verify Shutdown actions
+    const auto* shutdown_st = model.find_state("Shutdown");
+    ASSERT_NE(shutdown_st, nullptr);
+    ASSERT_FALSE(shutdown_st->entry_actions.empty());
+    EXPECT_EQ(shutdown_st->entry_actions[0].name, "OpenContactorsAction");
+    ASSERT_FALSE(shutdown_st->exit_actions.empty());
+    EXPECT_EQ(shutdown_st->exit_actions[0].name, "ResetRelaysAction");
+
+    // Verify Operational parallel state
+    const auto* op_st = model.find_state("Operational");
+    ASSERT_NE(op_st, nullptr);
+    EXPECT_EQ(op_st->kind, StateKind::Parallel);
+
+    // Initial validation must pass
+    auto val1 = FsmValidator::validate(model);
+    EXPECT_TRUE(val1.is_valid);
+    EXPECT_TRUE(val1.errors.empty());
+
+    // Roundtrip serialize to SysML v2
+    std::string exported_sysml = Sysml2Serializer::serialize(model);
+    EXPECT_NE(exported_sysml.find("parallel state Operational"), std::string::npos);
+    EXPECT_NE(exported_sysml.find("entry action OpenContactorsAction;"), std::string::npos);
+    EXPECT_NE(exported_sysml.find("exit action ResetRelaysAction;"), std::string::npos);
+
+    // Parse exported model back
+    FsmIr roundtrip_model;
+    ASSERT_TRUE(parser.parse(exported_sysml, roundtrip_model, err)) << "Parse back error: " << err;
+
+    const auto* rt_op = roundtrip_model.find_state("Operational");
+    ASSERT_NE(rt_op, nullptr);
+    EXPECT_EQ(rt_op->kind, StateKind::Parallel);
+
+    // Validating the roundtripped model must NOT produce reachability warnings on parallel regions!
+    auto val2 = FsmValidator::validate(roundtrip_model);
+    EXPECT_TRUE(val2.is_valid);
+    EXPECT_TRUE(val2.errors.empty());
+
+    bool has_reachability_warning = false;
+    for (const auto& w : val2.warnings) {
+        if (w.find("unreachable") != std::string::npos) {
+            has_reachability_warning = true;
+        }
+    }
+    EXPECT_FALSE(has_reachability_warning);
 }
 
 }  // namespace

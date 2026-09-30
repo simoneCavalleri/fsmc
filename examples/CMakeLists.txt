@@ -113,3 +113,20 @@ fsmc_target_sources(sensor_pipeline_example
     NAMESPACE sensing
 )
 add_test(NAME sensor_pipeline_example COMMAND sensor_pipeline_example)
+
+# ------------------------------------------------------------------------------
+# Module 06: Stateflow Digital Twin ECU & Zero-Heap Snapshot Recorder
+# ------------------------------------------------------------------------------
+add_executable(stateflow_digital_twin_ecu_example 06_stateflow_digital_twin_ecu/main.cpp)
+target_link_libraries(stateflow_digital_twin_ecu_example PRIVATE fsmc_runtime)
+set_target_properties(stateflow_digital_twin_ecu_example PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+
+fsmc_target_sources(stateflow_digital_twin_ecu_example
+    DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/06_stateflow_digital_twin_ecu/ecu.sfx
+    NAME EcuEngineFSM
+    STANDARD 20
+    STANDALONE
+    NAMESPACE automotive::ecu
+)
+add_test(NAME stateflow_digital_twin_ecu_example COMMAND stateflow_digital_twin_ecu_example)
+

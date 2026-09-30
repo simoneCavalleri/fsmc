@@ -8,11 +8,13 @@
 #include <string>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
+#include "fsm/backend/formal/scxml_serializer.hpp"
 #include "fsm/frontend/formal/scxml_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 using namespace fsm::frontend::formal;
 using namespace fsm::frontend;
+using namespace fsm::backend::formal;
 using namespace fsm::backend::cpp;
 using namespace fsm::backend;
 using namespace fsm::ir;
@@ -203,6 +205,45 @@ TEST(ScxmlParser, NativeDatamodelAndLifecycleHooks_CapturedInIr) {
     ASSERT_TRUE(model.transitions[0].transition_action.has_value());
     ASSERT_EQ(model.transitions[0].transition_action->assignments.size(), 1u);
     EXPECT_EQ(model.transitions[0].transition_action->assignments[0].target, "retry_count");
+}
+
+/**
+ * @brief Verify SCXML raw boolean condition preservation and roundtrip serialization.
+ * @scenario Parse SCXML transition with condition `cond="voltage > 12.5 &amp;&amp; current &lt; 2.0"`.
+ * @expected Condition expression preserved in model.guards and emitted accurately by ScxmlSerializer.
+ */
+TEST(ScxmlParser, RawBooleanConditions_PreservedInGuardsAndSerialized) {
+    const std::string scxml_content = R"(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Charging">
+  <state id="Charging">
+    <transition event="Tick" target="Float" cond="voltage > 12.5 &amp;&amp; current &lt; 2.0"/>
+  </state>
+  <state id="Float"/>
+</scxml>)";
+
+    ScxmlParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(scxml_content, model, err)) << "Error: " << err;
+
+    ASSERT_EQ(model.transitions.size(), 1u);
+    ASSERT_TRUE(model.transitions[0].guard.has_value());
+
+    // Check that atomic guard details were registered in model.guards
+    bool found_expr = false;
+    for (const auto& gm : model.guards) {
+        if (gm.raw_expression.has_value() && (gm.raw_expression->find("voltage > 12.5") != std::string::npos ||
+                                              gm.raw_expression->find("current < 2.0") != std::string::npos)) {
+            found_expr = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_expr) << "Atomic guard expression not found in model.guards";
+
+    // Roundtrip through ScxmlSerializer
+    std::string xml = ScxmlSerializer::serialize(model);
+    EXPECT_NE(xml.find("voltage &gt; 12.5"), std::string::npos);
+    EXPECT_NE(xml.find("current &lt; 2.0"), std::string::npos);
 }
 
 }  // namespace

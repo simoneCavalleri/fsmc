@@ -189,4 +189,43 @@ TEST(PlantUmlParser, PortDirectives_ParsedWithAttributesAndConstraints) {
     EXPECT_DOUBLE_EQ(out_p->max_value.value_or(0.0), 100.0);
 }
 
+/**
+ * @brief Verify that division operators '/' inside guards are not mistaken for action delimiters.
+ */
+TEST(PlantUmlParser, GuardWithDivisionOperator_PreservedAndNotTreatedAsAction) {
+    const std::string puml = R"(
+    @startuml
+    [*] --> Standby
+    Standby --> Running : Start [speed / 2 > 10] / do_work
+    Running --> Standby : Stop [count / 5 == 0]
+    @enduml
+    )";
+
+    PlantUmlParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << err;
+
+    ASSERT_EQ(model.transitions.size(), 2u);
+
+    // Transition 1: Start [speed / 2 > 10] / do_work
+    const auto& t1 = model.transitions[0];
+    EXPECT_EQ(t1.source, "Standby");
+    EXPECT_EQ(t1.target, "Running");
+    EXPECT_EQ(t1.event, "Start");
+    ASSERT_TRUE(t1.guard.has_value());
+    EXPECT_NE(t1.guard->find("speed"), std::string::npos);
+    ASSERT_TRUE(t1.transition_action.has_value());
+    EXPECT_EQ(t1.transition_action->name, "do_work");
+
+    // Transition 2: Stop [count / 5 == 0] (no action)
+    const auto& t2 = model.transitions[1];
+    EXPECT_EQ(t2.source, "Running");
+    EXPECT_EQ(t2.target, "Standby");
+    EXPECT_EQ(t2.event, "Stop");
+    ASSERT_TRUE(t2.guard.has_value());
+    EXPECT_NE(t2.guard->find("count"), std::string::npos);
+    EXPECT_FALSE(t2.transition_action.has_value());
+}
+
 }  // namespace

@@ -637,4 +637,68 @@ TEST(TraitsAndHooks, TypeListIndexOf_CompileTimeLookup_CalculatesCorrectIndices)
     EXPECT_EQ((fsm::type_list_index_of_v<float, MyList>), static_cast<std::size_t>(-1));
 }
 
+// ============================================================================
+// Hierarchical LCA Lifecycle Hooks Traversal
+// ============================================================================
+
+struct LcaTracker {
+    static std::vector<std::string>& log() {
+        static std::vector<std::string> l;
+        return l;
+    }
+    static void clear() { log().clear(); }
+};
+
+struct LcaSuperA {
+    static constexpr std::string_view name = "LcaSuperA";
+    static void on_enter() { LcaTracker::log().push_back("LcaSuperA::on_enter"); }
+    static void on_exit() { LcaTracker::log().push_back("LcaSuperA::on_exit"); }
+};
+
+struct LcaLeafA1 {
+    using parent_type = LcaSuperA;
+    static constexpr std::string_view name = "LcaLeafA1";
+    static constexpr std::string_view parent = "LcaSuperA";
+    static void on_enter() { LcaTracker::log().push_back("LcaLeafA1::on_enter"); }
+    static void on_exit() { LcaTracker::log().push_back("LcaLeafA1::on_exit"); }
+};
+
+struct LcaSuperB {
+    static constexpr std::string_view name = "LcaSuperB";
+    static void on_enter() { LcaTracker::log().push_back("LcaSuperB::on_enter"); }
+    static void on_exit() { LcaTracker::log().push_back("LcaSuperB::on_exit"); }
+};
+
+struct LcaLeafB1 {
+    using parent_type = LcaSuperB;
+    static constexpr std::string_view name = "LcaLeafB1";
+    static constexpr std::string_view parent = "LcaSuperB";
+    static void on_enter() { LcaTracker::log().push_back("LcaLeafB1::on_enter"); }
+    static void on_exit() { LcaTracker::log().push_back("LcaLeafB1::on_exit"); }
+};
+
+struct EvLcaCross {};
+
+using LcaCrossTable = fsm::transition_table<fsm::transition<LcaLeafA1, EvLcaCross, LcaLeafB1>>;
+
+/**
+ * @brief Verify that transitioning across LCA boundaries executes parent on_exit and on_enter hooks.
+ */
+TEST(TraitsAndHooks, HierarchicalLifecycleHooks_LcaTraversal_ExecutesCompositeParentHooks) {
+    LcaTracker::clear();
+    fsm::fsm<LcaCrossTable> sm;
+    LcaTracker::clear();
+
+    auto res = sm.dispatch(EvLcaCross{});
+    EXPECT_TRUE(res.is_success());
+    EXPECT_TRUE(sm.is_in_state<LcaLeafB1>());
+
+    const auto& log = LcaTracker::log();
+    ASSERT_EQ(log.size(), 4u);
+    EXPECT_EQ(log[0], "LcaLeafA1::on_exit");
+    EXPECT_EQ(log[1], "LcaSuperA::on_exit");
+    EXPECT_EQ(log[2], "LcaSuperB::on_enter");
+    EXPECT_EQ(log[3], "LcaLeafB1::on_enter");
+}
+
 }  // namespace

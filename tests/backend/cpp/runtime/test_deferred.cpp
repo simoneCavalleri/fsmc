@@ -371,4 +371,77 @@ TEST(DeferredEvents, BoundedCapacity_DeferredQueue_EnforcesConfiguredSize) {
     EXPECT_TRUE(m4.is_in_state<Initializing>());
 }
 
+// ----------------------------------------------------------------------------
+// Hierarchical Deferred Event Inheritance Tests
+// ----------------------------------------------------------------------------
+struct HierEvent {};
+struct AdvanceStep {};
+struct FinishProcessing {};
+
+struct HierRegisters {
+    bool hier_event_handled = false;
+};
+
+struct AncestorComposite {
+    static constexpr std::string_view name = "AncestorComposite";
+    using deferred_events = ::fsm::type_list<HierEvent>;
+};
+
+struct NestedSub1 {
+    static constexpr std::string_view name = "NestedSub1";
+    using parent_type = AncestorComposite;
+};
+
+struct NestedSub2 {
+    static constexpr std::string_view name = "NestedSub2";
+    using parent_type = AncestorComposite;
+};
+
+struct FinalState {
+    static constexpr std::string_view name = "FinalState";
+};
+
+struct OnHierAction {
+    void operator()(HierRegisters& reg) const { reg.hier_event_handled = true; }
+};
+
+using HierDeferredTable = ::fsm::transition_table<::fsm::row<NestedSub1, AdvanceStep, NestedSub2>,
+                                                  ::fsm::row<NestedSub2, FinishProcessing, FinalState>,
+                                                  ::fsm::row<FinalState, HierEvent, FinalState>::then<OnHierAction>>;
+
+/**
+ * @brief Verify that substates inherit deferred events declared on their parent / ancestor composite states.
+ * @scenario Machine starts in NestedSub1 (child of AncestorComposite). HierEvent is dispatched, deferred,
+ *           persists through NestedSub2, and is finally consumed when transitioning to FinalState.
+ * @expected HierEvent is deferred in substates and executed upon entering FinalState.
+ */
+TEST(DeferredEvents, HierarchicalInheritance_SubstatesInheritAncestorDeferredEvents) {
+    HierRegisters reg;
+    ::fsm::fsm<HierDeferredTable, ::fsm::no_ports, ::fsm::no_ports, HierRegisters> sm(reg);
+    EXPECT_TRUE(sm.is_in_state<NestedSub1>());
+    EXPECT_TRUE(sm.is_in<AncestorComposite>());
+
+    // 1. Dispatch HierEvent while in NestedSub1 -> must be deferred via AncestorComposite!
+    auto res1 = sm.dispatch(HierEvent{});
+    EXPECT_EQ(res1.status, ::fsm::dispatch_status::deferred);
+    EXPECT_EQ(sm.deferred_count(), 1U);
+    EXPECT_FALSE(sm.registers().hier_event_handled);
+
+    // 2. Advance to NestedSub2 -> still inside AncestorComposite, HierEvent remains deferred
+    auto res2 = sm.dispatch(AdvanceStep{});
+    EXPECT_TRUE(res2.is_success());
+    EXPECT_TRUE(sm.is_in_state<NestedSub2>());
+    EXPECT_EQ(sm.deferred_count(), 1U);
+    EXPECT_FALSE(sm.registers().hier_event_handled);
+
+    // 3. FinishProcessing -> enters FinalState, which handles HierEvent!
+    auto res3 = sm.dispatch(FinishProcessing{});
+    EXPECT_TRUE(res3.is_success());
+    EXPECT_TRUE(sm.is_in_state<FinalState>());
+
+    // Deferred queue was automatically replayed and handled!
+    EXPECT_EQ(sm.deferred_count(), 0U);
+    EXPECT_TRUE(sm.registers().hier_event_handled);
+}
+
 }  // namespace

@@ -33,16 +33,22 @@ struct FsmcOptions {
     bool req_audit = false;                  // --req-audit
     bool allow_diagram_codegen = false;      // --allow-diagram-codegen
     bool standalone = true;
+    bool standalone_specified = false;
+    bool modular_specified = false;
+    bool cpp17_specified = false;
+    bool cpp20_specified = false;
     bool thread_safe = true;
     bool include_stubs = true;
+    std::string runtime_header = "fsm.hpp";  // --modular=<hdr> or --runtime-header <hdr>
     bool verify_mode = false;
-    std::string verify_engine = "auto";     // --engine=auto|nuxmv|internal
-    std::string ltl_spec;                   // --ltl "<formula>"
-    std::string ctl_spec;                   // --ctl "<formula>"
-    std::string pipe_through_cmd;           // --pipe-through "<cmd>"
-    std::vector<std::string> pass_plugins;  // --load-pass-plugin "<path.so>"
-    std::string emit_test_harness;          // --emit-test-harness <file>
-    std::string emit_sidecar;               // --emit-sidecar <file>
+    std::string verify_engine = "auto";      // --engine=auto|nuxmv|internal
+    std::string ltl_spec;                    // --ltl "<formula>"
+    std::string ctl_spec;                    // --ctl "<formula>"
+    std::string pipe_through_cmd;            // --pipe-through "<cmd>"
+    std::vector<std::string> pass_plugins;   // --load-pass-plugin "<path.so>"
+    std::string emit_test_harness;           // --emit-test-harness <file>
+    std::string emit_sidecar;                // --emit-sidecar <file>
+    std::string diagnostic_format = "text";  // --diagnostic-format <text|json|github>
     bool show_help = false;
     bool show_version = false;
     bool is_valid = true;
@@ -92,7 +98,10 @@ inline void print_help(const char* prog_name) {
         << "  --std <17|20>                Target C++ standard: '17' or '20' (default: 17)\n"
         << "  --c++17, --c++20             Target C++ standard shorthands\n"
         << "  --standalone                 Generate self-contained header with embedded zero-alloc runtime (default)\n"
-        << "  --modular                    Generate FSM header only, including external <fsm/fsm.hpp>\n"
+        << "  --modular[=<hdr>]            Generate FSM header only, including external runtime header (default: "
+           "\"fsm.hpp\")\n"
+        << "  --runtime-header <hdr>       Custom runtime header path included when --modular is active (default: "
+           "\"fsm.hpp\")\n"
         << "  --export-runtime <dir>       Export the standalone FSM runtime library headers to directory\n"
         << "  --no-thread-safe             Do not generate thread_safe_fsm asynchronous wrapper\n"
         << "  --no-stubs                   Do not emit default stub functors for actions and guards\n"
@@ -104,7 +113,8 @@ inline void print_help(const char* prog_name) {
         << "  -V, --verify                 Run formal verification (deadlock, choice completeness, reachability)\n"
         << "  --engine <auto|nuxmv>        Verification engine (default: 'auto')\n"
         << "  --ltl <formula>              Verify custom Linear Temporal Logic specification\n"
-        << "  --ctl <formula>              Verify custom Computation Tree Logic specification\n\n"
+        << "  --ctl <formula>              Verify custom Computation Tree Logic specification\n"
+        << "  --diagnostic-format <fmt>    Diagnostic output format: 'text', 'json', or 'github'\n\n"
         << "General Options:\n"
         << "  -h, --help                   Show this help message and exit\n"
         << "  -v, --version                Show version information and exit\n\n";
@@ -144,6 +154,8 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.input_file = argv[++idx];
+        } else if (arg.rfind("--input=", 0) == 0) {
+            opts.input_file = arg.substr(8);
         } else if (arg == "-o" || arg == "--output") {
             if (idx + 1 >= argc) {
                 opts.is_valid = false;
@@ -151,6 +163,8 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.output_file = argv[++idx];
+        } else if (arg.rfind("--output=", 0) == 0) {
+            opts.output_file = arg.substr(9);
 
             // 3. Target language selection (C++ code generator backend)
         } else if (arg == "-t" || arg == "--target" || arg == "--lang") {
@@ -166,6 +180,22 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                     "Unsupported target language: '" + opts.target_lang + "' (currently supported: 'cpp')";
                 return opts;
             }
+        } else if (arg.rfind("--target=", 0) == 0) {
+            opts.target_lang = arg.substr(9);
+            if (opts.target_lang != "cpp" && opts.target_lang != "c++") {
+                opts.is_valid = false;
+                opts.error_message =
+                    "Unsupported target language: '" + opts.target_lang + "' (currently supported: 'cpp')";
+                return opts;
+            }
+        } else if (arg.rfind("--lang=", 0) == 0) {
+            opts.target_lang = arg.substr(7);
+            if (opts.target_lang != "cpp" && opts.target_lang != "c++") {
+                opts.is_valid = false;
+                opts.error_message =
+                    "Unsupported target language: '" + opts.target_lang + "' (currently supported: 'cpp')";
+                return opts;
+            }
 
             // 4. State machine name and namespace configuration
         } else if (arg == "-n" || arg == "--name") {
@@ -175,6 +205,8 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.fsm_name = argv[++idx];
+        } else if (arg.rfind("--name=", 0) == 0) {
+            opts.fsm_name = arg.substr(7);
         } else if (arg == "-N" || arg == "--ns" || arg == "--namespace" || arg == "--package") {
             if (idx + 1 >= argc) {
                 opts.is_valid = false;
@@ -182,6 +214,12 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.ns_name = argv[++idx];
+        } else if (arg.rfind("--namespace=", 0) == 0) {
+            opts.ns_name = arg.substr(12);
+        } else if (arg.rfind("--ns=", 0) == 0) {
+            opts.ns_name = arg.substr(5);
+        } else if (arg.rfind("--package=", 0) == 0) {
+            opts.ns_name = arg.substr(10);
 
             // 5. Frontend format override and sidecar manifest options
         } else if (arg == "--format") {
@@ -191,6 +229,8 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.format = argv[++idx];
+        } else if (arg.rfind("--format=", 0) == 0) {
+            opts.format = arg.substr(9);
         } else if (arg == "--sidecar" || arg == "-s") {
             if (idx + 1 >= argc) {
                 opts.is_valid = false;
@@ -198,6 +238,8 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.sidecar_file = argv[++idx];
+        } else if (arg.rfind("--sidecar=", 0) == 0) {
+            opts.sidecar_file = arg.substr(10);
 
             // 6. Diagram export and standalone runtime emission
         } else if (arg == "-e" || arg == "--export") {
@@ -207,6 +249,10 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.export_diagram_format = argv[++idx];
+        } else if (arg.rfind("--export=", 0) == 0) {
+            opts.export_diagram_format = arg.substr(9);
+        } else if (arg.rfind("-e=", 0) == 0) {
+            opts.export_diagram_format = arg.substr(3);
         } else if (arg == "--export-runtime") {
             if (idx + 1 >= argc) {
                 opts.is_valid = false;
@@ -214,6 +260,8 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.export_runtime_dir = argv[++idx];
+        } else if (arg.rfind("--export-runtime=", 0) == 0) {
+            opts.export_runtime_dir = arg.substr(17);
         } else if (arg == "--submachine-dir") {
             if (idx + 1 >= argc) {
                 opts.is_valid = false;
@@ -221,6 +269,8 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.submachine_dir = argv[++idx];
+        } else if (arg.rfind("--submachine-dir=", 0) == 0) {
+            opts.submachine_dir = arg.substr(17);
 
             // 7. Middle-end optimization levels and pass configuration
         } else if (arg == "-O0" || arg == "--no-opt") {
@@ -284,6 +334,8 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.rtm_format = argv[++idx];
+        } else if (arg.rfind("--rtm-format=", 0) == 0) {
+            opts.rtm_format = arg.substr(13);
 
             // 9. C++ language dialect configuration (--std, --c++17, --c++20)
         } else if (arg == "--std") {
@@ -294,8 +346,23 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             }
             const std::string std_val = argv[++idx];
             if (std_val == "17" || std_val == "c++17" || std_val == "C++17") {
+                opts.cpp17_specified = true;
                 opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp17;
             } else if (std_val == "20" || std_val == "c++20" || std_val == "C++20") {
+                opts.cpp20_specified = true;
+                opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
+            } else {
+                opts.is_valid = false;
+                opts.error_message = "Unsupported C++ standard: " + std_val + " (expected 17 or 20)";
+                return opts;
+            }
+        } else if (arg.rfind("--std=", 0) == 0) {
+            const std::string std_val = arg.substr(6);
+            if (std_val == "17" || std_val == "c++17" || std_val == "C++17") {
+                opts.cpp17_specified = true;
+                opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp17;
+            } else if (std_val == "20" || std_val == "c++20" || std_val == "C++20") {
+                opts.cpp20_specified = true;
                 opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
             } else {
                 opts.is_valid = false;
@@ -303,15 +370,36 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
         } else if (arg == "--c++17" || arg == "-std=c++17") {
+            opts.cpp17_specified = true;
             opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp17;
         } else if (arg == "--c++20" || arg == "-std=c++20") {
+            opts.cpp20_specified = true;
             opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
 
             // 10. Runtime packaging mode (standalone single-header vs modular)
         } else if (arg == "--standalone") {
+            opts.standalone_specified = true;
             opts.standalone = true;
         } else if (arg == "--modular") {
+            opts.modular_specified = true;
             opts.standalone = false;
+        } else if (arg.rfind("--modular=", 0) == 0) {
+            opts.modular_specified = true;
+            opts.standalone = false;
+            opts.runtime_header = arg.substr(10);
+        } else if (arg == "--runtime-header") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
+            opts.runtime_header = argv[++idx];
+            opts.standalone = false;
+            opts.modular_specified = true;
+        } else if (arg.rfind("--runtime-header=", 0) == 0) {
+            opts.runtime_header = arg.substr(17);
+            opts.standalone = false;
+            opts.modular_specified = true;
 
             // 11. Formal verification options and temporal logic specifications (LTL/CTL)
         } else if (arg == "-V" || arg == "--verify" || arg == "--check" || arg == "verify") {
@@ -323,6 +411,8 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.verify_engine = argv[++idx];
+        } else if (arg.rfind("--engine=", 0) == 0) {
+            opts.verify_engine = arg.substr(9);
         } else if (arg == "--ltl") {
             if (idx + 1 >= argc) {
                 opts.is_valid = false;
@@ -330,6 +420,9 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.ltl_spec = argv[++idx];
+            opts.verify_mode = true;
+        } else if (arg.rfind("--ltl=", 0) == 0) {
+            opts.ltl_spec = arg.substr(6);
             opts.verify_mode = true;
         } else if (arg == "--ctl") {
             if (idx + 1 >= argc) {
@@ -339,6 +432,30 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             }
             opts.ctl_spec = argv[++idx];
             opts.verify_mode = true;
+        } else if (arg.rfind("--ctl=", 0) == 0) {
+            opts.ctl_spec = arg.substr(6);
+            opts.verify_mode = true;
+        } else if (arg == "--diagnostic-format") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
+            opts.diagnostic_format = argv[++idx];
+            if (!is_valid_diagnostic_format(opts.diagnostic_format)) {
+                opts.is_valid = false;
+                opts.error_message = "Invalid diagnostic format '" + opts.diagnostic_format +
+                                     "'. Supported formats: text, json, github.";
+                return opts;
+            }
+        } else if (arg.starts_with("--diagnostic-format=")) {
+            opts.diagnostic_format = arg.substr(20);
+            if (!is_valid_diagnostic_format(opts.diagnostic_format)) {
+                opts.is_valid = false;
+                opts.error_message = "Invalid diagnostic format '" + opts.diagnostic_format +
+                                     "'. Supported formats: text, json, github.";
+                return opts;
+            }
 
             // 12. Code generation threading and stub generation switches
         } else if (arg == "--no-thread-safe") {
@@ -393,7 +510,7 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             opts.emit_sidecar = arg.substr(15);
 
             // 16. Positional argument: input model file path
-        } else if (!arg.empty() && arg[0] != '-') {
+        } else if (!arg.empty() && (arg[0] != '-' || arg == "-")) {
             if (opts.input_file.empty()) {
                 opts.input_file = arg;
             } else {

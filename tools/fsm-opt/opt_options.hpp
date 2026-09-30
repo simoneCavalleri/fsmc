@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "tools/common/file_utils.hpp"
+
 namespace fsm::tools {
 
 struct OptOptions {
@@ -12,6 +14,7 @@ struct OptOptions {
     std::string format_override;
     std::string custom_passes;
     std::string emit_format = "ir";
+    std::string diagnostic_format = "text";
     bool profile = false;
     bool verify_only = false;
     bool show_metrics = false;
@@ -36,15 +39,17 @@ inline void print_opt_help(const char* prog_name) {
         << "Usage: " << prog_name << " -i <model_file> [OPTIONS]\n"
         << "       " << prog_name << " [OPTIONS] <model_file>\n\n"
         << "Input & Output Options:\n"
-        << "  -i, --input <file>        Input model or IR file (.sysml, .puml, .mmd, .xmi, .scxml, .json, .dot)\n"
+        << "  -i, --input <file>        Input model or IR file (.sysml, .puml, .mmd, .xmi, .scxml, .json, .dot, .xml)\n"
         << "  -o, --output <file>       Output file path (default: stdout)\n"
-        << "  --format <fmt>            Override parser format (sysml2, plantuml, mermaid, cameo, scxml, json, dot)\n\n"
+        << "  --format <fmt>            Override parser format (sysml2, plantuml, mermaid, cameo, scxml, json, dot, "
+           "stateflow)\n\n"
         << "IR Optimization & Pass Pipeline:\n"
         << "  --passes=<p1,p2,...>      Execute customized comma-separated pass pipeline\n"
         << "  --list-passes             List all available Middle-End passes and exit\n"
         << "  --prune-dead              Enable dead state and dead transition pruning pass\n"
         << "  --print-before-all        Print IR JSON before running passes\n"
         << "  --print-after-all         Print IR JSON after running passes\n"
+        << "  --diagnostic-format <fmt> Diagnostic output format: 'text', 'json', or 'github'\n"
         << "  -Werror                   Treat all diagnostic warnings as fatal errors\n\n"
         << "IR Serialization & Formal Emission:\n"
         << "  --emit-ir                 Emit optimized canonical JSON Intermediate Representation (default)\n"
@@ -55,7 +60,8 @@ inline void print_opt_help(const char* prog_name) {
         << "  --emit-dot                Emit canonical Graphviz DOT diagram\n"
         << "  --emit-scxml              Emit canonical W3C SCXML statechart\n"
         << "  --emit-cameo              Emit canonical Cameo / MagicDraw OMG XMI 2.1\n"
-        << "  --emit-smv                Emit canonical nuXmv / SMV formal verification specification\n\n"
+        << "  --emit-smv                Emit canonical nuXmv / SMV formal verification specification\n"
+        << "  --emit-stateflow          Emit canonical MathWorks Simulink Stateflow XML\n\n"
         << "Analysis, Model Checking & Metrics:\n"
         << "  --metrics, --stats        Display formal graph complexity, states, and transition metrics\n"
         << "  --profile                 Print PassManager execution times and optimization stats\n"
@@ -71,40 +77,43 @@ inline void print_opt_help(const char* prog_name) {
 }
 
 inline void print_available_passes() {
-    std::cout << "============================================================================\n"
-              << " Registered Target-Agnostic Middle-End Passes in fsmc\n"
-              << "============================================================================\n"
-              << " 1. canonicalize          - Normalizes state hierarchy, FQNs, and sorts canonically\n"
-              << " 2. guard-simplification  - Bottom-up boolean algebra reduction (!(!A)->A, A&&true->A)\n"
-              << " 3. determinism           - Enforces deterministic event dispatch and priority ordering\n"
-              << " 4. race-check            - Static data-race analysis on parallel orthogonal variables\n"
-              << " 5. inline-submachines    - Splicing and inlining of modular SubmachineRef statecharts\n"
-              << " 6. dead-state-pruning    - Physical elimination of unreachable states and dead branches\n"
-              << " 7. choice-completeness   - Verifies choice pseudostate branch exhaustiveness\n"
-              << " 8. choice-inlining       - Collapses choice/junction nodes into composite transitions\n"
-              << " 9. timed-deadlock        - Detects temporal deadlock traps and timer invariant conflicts\n"
-              << " 10. efsm-data-path       - Abstract interpretation for unreachable data paths/dead guards\n"
-              << " 11. safety-verifier      - Graph reachability, deadlock traps, and livelock cycle check\n"
-              << " 12. model-checking       - Formal verification of temporal LTL/CTL formulas\n"
-              << " 13. orthogonal-product   - Cartesian product expansion of parallel orthogonal regions\n"
-              << " 14. wcet-analysis        - Analyzes micro-step execution chains and detects Zeno-cycles\n"
-              << " 15. constant-folding     - Folds constant guard conditions and prunes dead transitions\n"
-              << " 16. state-minimization   - DFA state minimization via Hopcroft/Moore partitioning\n"
-              << " 17. guard-satisfiability - SMT-based or domain-based guard unsatisfiability analysis\n"
-              << " 18. fork-join-lowering   - Lowers fork splits and join rendezvous barriers\n"
-              << " 19. history-lowering     - Lowers shallow and deep history to shadow registers\n"
-              << " 20. deferred-event-lowering - Lowers deferred events into bounded FIFO buffers\n"
-              << " 21. boundary-action-fusion - Flattens LCA boundary cascades into linear action sequences\n"
-              << " 22. dead-action-elimination - Dead store elimination (DSE) across datapath variables\n"
-              << " 23. register-liveness    - Liveness analysis and variable interference graph\n"
-              << " 24. transition-fusion    - Fuses deterministic zero-time microsteps into macro-transitions\n"
-              << " 25. common-action-factoring - Factors identical actions across convergent/divergent edges\n"
-              << " 26. livelock-analysis    - Detects non-progressive internal cycles\n"
-              << " 27. priority-conflict-check - Verifies hierarchical preemption determinism\n"
-              << " 28. timed-invariants-verifier - Formally verifies clock invariants vs outgoing deadlines\n"
-              << " 29. event-queue-bound    - Computes static upper bound on event queue depth\n"
-              << " 30. pipe-through         - Filters and transforms IR via external Unix command\n"
-              << "============================================================================\n";
+    std::cout
+        << "============================================================================\n"
+        << " Registered Target-Agnostic Middle-End Passes in fsmc\n"
+        << "============================================================================\n"
+        << " 1. canonicalize          - Normalizes state hierarchy, FQNs, and sorts canonically\n"
+        << " 2. guard-simplification  - Bottom-up boolean algebra reduction (!(!A)->A, A&&true->A)\n"
+        << " 3. determinism           - Enforces deterministic event dispatch and priority ordering\n"
+        << " 4. race-check            - Static data-race analysis on parallel orthogonal variables\n"
+        << " 5. inline-submachines    - Splicing and inlining of modular SubmachineRef statecharts\n"
+        << " 6. dead-state-pruning    - Physical elimination of unreachable states and dead branches\n"
+        << " 7. choice-completeness   - Verifies choice pseudostate branch exhaustiveness\n"
+        << " 8. choice-inlining       - Collapses choice/junction nodes into composite transitions\n"
+        << " 9. timed-deadlock        - Detects temporal deadlock traps and timer invariant conflicts\n"
+        << " 10. efsm-data-path       - Abstract interpretation for unreachable data paths/dead guards\n"
+        << " 11. safety-verifier      - Graph reachability, deadlock traps, and livelock cycle check\n"
+        << " 12. model-checking       - Formal verification of temporal LTL/CTL formulas\n"
+        << " 13. orthogonal-product   - Cartesian product expansion of parallel orthogonal regions\n"
+        << " 14. wcet-analysis        - Analyzes micro-step execution chains and detects Zeno-cycles\n"
+        << " 15. constant-folding     - Folds constant guard conditions and prunes dead transitions\n"
+        << " 16. state-minimization   - DFA state minimization via Hopcroft/Moore partitioning\n"
+        << " 17. guard-satisfiability - SMT-based or domain-based guard unsatisfiability analysis\n"
+        << " 18. fork-join-lowering   - Lowers fork splits and join rendezvous barriers\n"
+        << " 19. history-lowering     - Lowers shallow and deep history to shadow registers\n"
+        << " 20. deferred-event-lowering - Lowers deferred events into bounded FIFO buffers\n"
+        << " 21. boundary-action-fusion - Flattens LCA boundary cascades into linear action sequences\n"
+        << " 22. dead-action-elimination - Dead store elimination (DSE) across datapath variables\n"
+        << " 23. register-liveness    - Liveness analysis and variable interference graph\n"
+        << " 24. transition-fusion    - Fuses deterministic zero-time microsteps into macro-transitions\n"
+        << " 25. common-action-factoring - Factors identical actions across convergent/divergent edges\n"
+        << " 26. livelock-analysis    - Detects non-progressive internal cycles\n"
+        << " 27. priority-conflict-check - Verifies hierarchical preemption determinism\n"
+        << " 28. timed-invariants-verifier - Formally verifies clock invariants vs outgoing deadlines\n"
+        << " 29. event-queue-bound    - Computes static upper bound on event queue depth\n"
+        << " 30. pipe-through         - Filters and transforms IR via external Unix command\n"
+        << " 31. sampled-change-trigger - Desugars sampled change triggers into shadow registers\n"
+        << " 32. connective-junction-chaining - Chains multi-hop connective junction paths into atomic transitions\n"
+        << "============================================================================\n";
 }
 
 inline OptOptions parse_opt_args(int argc, char* argv[]) {
@@ -131,6 +140,8 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.input_path = argv[++i];
+        } else if (arg.starts_with("--input=")) {
+            opts.input_path = std::string(arg.substr(8));
         } else if (arg == "-o" || arg == "--output") {
             if (i + 1 >= argc) {
                 opts.is_valid = false;
@@ -138,6 +149,8 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.output_path = argv[++i];
+        } else if (arg.starts_with("--output=")) {
+            opts.output_path = std::string(arg.substr(9));
         } else if (arg == "--format") {
             if (i + 1 >= argc) {
                 opts.is_valid = false;
@@ -145,6 +158,8 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.format_override = argv[++i];
+        } else if (arg.starts_with("--format=")) {
+            opts.format_override = std::string(arg.substr(9));
         } else if (arg.starts_with("--passes=")) {
             opts.custom_passes = arg.substr(9);
         } else if (arg == "--prune-dead") {
@@ -175,6 +190,29 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
             opts.emit_format = "cameo";
         } else if (arg == "--emit-smv" || arg == "--emit-nuxmv") {
             opts.emit_format = "smv";
+        } else if (arg == "--emit-stateflow" || arg == "--emit-sfx" || arg == "--emit-simulink") {
+            opts.emit_format = "stateflow";
+        } else if (arg == "--diagnostic-format") {
+            if (i + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + std::string(arg);
+                return opts;
+            }
+            opts.diagnostic_format = argv[++i];
+            if (!is_valid_diagnostic_format(opts.diagnostic_format)) {
+                opts.is_valid = false;
+                opts.error_message = "Invalid diagnostic format '" + opts.diagnostic_format +
+                                     "'. Supported formats: text, json, github.";
+                return opts;
+            }
+        } else if (arg.starts_with("--diagnostic-format=")) {
+            opts.diagnostic_format = arg.substr(20);
+            if (!is_valid_diagnostic_format(opts.diagnostic_format)) {
+                opts.is_valid = false;
+                opts.error_message = "Invalid diagnostic format '" + opts.diagnostic_format +
+                                     "'. Supported formats: text, json, github.";
+                return opts;
+            }
         } else if (arg == "--profile") {
             opts.profile = true;
         } else if (arg == "--verify" || arg == "--check") {
@@ -197,7 +235,7 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
             opts.pass_plugins.push_back(argv[++i]);
         } else if (arg.rfind("--load-pass-plugin=", 0) == 0) {
             opts.pass_plugins.push_back(std::string(arg.substr(19)));
-        } else if (!arg.starts_with("-")) {
+        } else if (!arg.starts_with("-") || arg == "-") {
             if (opts.input_path.empty()) {
                 opts.input_path = arg;
             } else {

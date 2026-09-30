@@ -101,4 +101,143 @@ std::string DiagnosticEngine::render_to_string(std::string_view source_content) 
     return ss.str();
 }
 
+std::string DiagnosticEngine::render_to_format(DiagnosticFormat format, std::string_view source_content) const {
+    switch (format) {
+        case DiagnosticFormat::Json:
+            return render_json();
+        case DiagnosticFormat::GitHub:
+            return render_github_actions();
+        case DiagnosticFormat::Text:
+        default:
+            return render_to_string(source_content);
+    }
+}
+
+std::string DiagnosticEngine::render_github_actions() const {
+    std::ostringstream ss;
+    for (const auto& diag : diagnostics_) {
+        std::string cmd;
+        switch (diag.severity) {
+            case DiagnosticSeverity::Fatal:
+            case DiagnosticSeverity::Error:
+                cmd = "error";
+                break;
+            case DiagnosticSeverity::Warning:
+                cmd = "warning";
+                break;
+            case DiagnosticSeverity::Note:
+            default:
+                cmd = "notice";
+                break;
+        }
+
+        ss << "::" << cmd;
+        std::string params;
+        if (diag.span.is_valid()) {
+            params += "file=" + diag.span.file_path + ",line=" + std::to_string(diag.span.line) +
+                      ",col=" + std::to_string(diag.span.column);
+        }
+        if (!diag.code.empty()) {
+            if (!params.empty())
+                params += ",";
+            params += "title=" + diag.code;
+        }
+        if (!params.empty()) {
+            ss << " " << params;
+        }
+        ss << "::" << diag.message;
+        if (!diag.help_suggestion.empty()) {
+            ss << " | Help: " << diag.help_suggestion;
+        }
+        ss << "\n";
+    }
+    return ss.str();
+}
+
+namespace {
+
+std::string escape_json_str(std::string_view str) {
+    std::string out;
+    out.reserve(str.size() + 16);
+    for (char c : str) {
+        switch (c) {
+            case '"':
+                out += "\\\"";
+                break;
+            case '\\':
+                out += "\\\\";
+                break;
+            case '\b':
+                out += "\\b";
+                break;
+            case '\f':
+                out += "\\f";
+                break;
+            case '\n':
+                out += "\\n";
+                break;
+            case '\r':
+                out += "\\r";
+                break;
+            case '\t':
+                out += "\\t";
+                break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned int>(c));
+                    out += buf;
+                } else {
+                    out += c;
+                }
+                break;
+        }
+    }
+    return out;
+}
+
+}  // namespace
+
+std::string DiagnosticEngine::render_json() const {
+    std::ostringstream ss;
+    ss << "[\n";
+    for (size_t i = 0; i < diagnostics_.size(); ++i) {
+        const auto& diag = diagnostics_[i];
+        std::string sev_str;
+        switch (diag.severity) {
+            case DiagnosticSeverity::Fatal:
+                sev_str = "fatal";
+                break;
+            case DiagnosticSeverity::Error:
+                sev_str = "error";
+                break;
+            case DiagnosticSeverity::Warning:
+                sev_str = "warning";
+                break;
+            case DiagnosticSeverity::Note:
+                sev_str = "note";
+                break;
+        }
+
+        ss << "  {\n";
+        ss << "    \"severity\": \"" << sev_str << "\",\n";
+        ss << "    \"code\": \"" << escape_json_str(diag.code) << "\",\n";
+        ss << "    \"message\": \"" << escape_json_str(diag.message) << "\",\n";
+        if (diag.span.is_valid()) {
+            ss << "    \"file\": \"" << escape_json_str(diag.span.file_path) << "\",\n";
+            ss << "    \"line\": " << diag.span.line << ",\n";
+            ss << "    \"column\": " << diag.span.column << ",\n";
+            ss << "    \"length\": " << diag.span.length << ",\n";
+        }
+        ss << "    \"help\": \"" << escape_json_str(diag.help_suggestion) << "\"\n";
+        ss << "  }";
+        if (i + 1 < diagnostics_.size()) {
+            ss << ",";
+        }
+        ss << "\n";
+    }
+    ss << "]\n";
+    return ss.str();
+}
+
 }  // namespace fsm::diagnostic

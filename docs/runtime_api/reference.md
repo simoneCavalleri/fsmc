@@ -50,21 +50,29 @@ class fsm;
 > - **Dynamic / Call-Site Injection (Production & Testing)**: If services were not bound at construction (e.g. multi-channel dispatch, hardware failover, or unit testing with mocks), pass `srv` explicitly: `fsm.dispatch(ev, in, out, srv)`.
 
 #### Lifecycle & Execution
-- `step_result step(const in_ports_type& in, out_ports_type& out, services_type& srv)`: Evaluates continuous condition transitions.
-- `template <typename DurationRep> step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out, services_type& srv)`: Evaluates continuous transitions with explicit $\Delta t$.
+- `step_result step(const in_ports_type& in, out_ports_type& out, services_type& srv)`: Evaluates continuous condition transitions. Automatically invokes active state `do_activity(...)` during steady-state residence.
+- `template <typename DurationRep> step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out, services_type& srv)`: Evaluates continuous transitions with explicit $\Delta t$. Automatically invokes active state `do_activity(...)`.
 - `step_result step(const in_ports_type& in, out_ports_type& out)`: Step overload omitting `Services` (uses constructor-bound services or default).
 - `step_result step()`: Step overload for stateless state machines.
-- `template <typename Event> dispatch_result dispatch(const Event& ev, const in_ports_type& in, out_ports_type& out, services_type& srv)`: Synchronously evaluates transitions matching `Event`.
+- `template <typename Event> dispatch_result dispatch(const Event& ev, const in_ports_type& in, out_ports_type& out, services_type& srv)`: Synchronously evaluates transitions matching `Event`. Automatically invokes active state `do_activity(...)` if no transition fired.
 - `template <typename Event> dispatch_result dispatch(const Event& ev, const in_ports_type& in, out_ports_type& out)`: Dispatch overload omitting `Services` (uses constructor-bound services or default).
 - `template <typename Event> dispatch_result dispatch(const Event& ev)`: Dispatch overload for stateless state machines.
 - `template <typename Rep, typename Period> std::size_t tick(std::chrono::duration<Rep, Period> dt)`: Advances deterministic timer manager by `dt`. Returns number of expired timers.
 - `template <typename Rep, typename Period, typename Callback> std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired)`: Advances deterministic timers and invokes `on_expired(timer_id)` for each expired timer.
 
-#### State Inspection
-- `template <typename State> [[nodiscard]] constexpr bool is_in() const noexcept`: Returns `true` if active state matches `State`.
+#### State Inspection & Introspection
+- `template <typename State> [[nodiscard]] constexpr bool is_in() const noexcept`: Returns `true` if active leaf state matches `State`, or if the active leaf state is a descendant substate of composite `State` (recursive hierarchical state query in $O(1)$ constexpr time).
 - `template <typename State> [[nodiscard]] constexpr bool is_in_state() const noexcept`: Alias for `is_in<State>()`.
 - `[[nodiscard]] constexpr std::size_t state_index() const noexcept`: Returns 0-based variant index of active state.
 - `[[nodiscard]] constexpr std::string_view current_state_name() const noexcept`: Returns human-readable name of active state.
+- `void reset()`: Resets the state machine back to its initial state, re-invoking initial state `on_enter` actions, restoring default data registers, and clearing active timers, invariants, history cache, and deferred event queues.
+
+#### History & Deferred Event Queries
+- `template <typename ParentState> [[nodiscard]] std::string_view get_history() const noexcept`: Returns the recorded history state name for composite `ParentState`.
+- `[[nodiscard]] std::string_view get_history(std::string_view parent) const noexcept`: Dynamic string query for recorded history of `parent`.
+- `void clear_history() noexcept`: Clears all recorded shallow and deep history state memories.
+- `void clear_deferred() noexcept`: Clears all pending deferred event FIFO queues.
+- `void clear_deferred_events() noexcept`: Alias for `clear_deferred()`.
 
 #### State Residence Time Invariants
 - `[[nodiscard]] constexpr bool is_invariant_satisfied() const noexcept`: Returns `true` if current state residence time does not violate any `max_stay_duration_ms` constraint.
@@ -156,6 +164,30 @@ using MyTable = fsm::transition_table<
 using CombinedGuard = fsm::and_<GuardA, fsm::or_<GuardB, fsm::not_<GuardC>>>;
 ```
 
+### State, History & Sampled Trigger Guard Predicates
+```cpp
+#include <fsm/backend/cpp/runtime/transition.hpp>
+
+// Guard checking if active state matches TargetState (or a descendant substate)
+using InActiveMode = fsm::in_state<ActiveMode>;
+
+// Guard checking if recorded history of ParentState matches SubState
+using ResumedFromNominal = fsm::history_is<Operational, Nominal>;
+
+// Sampled change trigger: evaluates predicate on a port and fires on value change across cycles
+using AltitudeJump = fsm::change_<PortAccessor, Predicate>;
+```
+
+### Action Combinators: `fsm::seq_`
+```cpp
+#include <fsm/backend/cpp/runtime/transition.hpp>
+
+// Sequential composition: executes Action1, then Action2, ..., then ActionN
+using ChainedAction = fsm::seq_<ConditionAction, TransitionAction>;
+```
+
+Sequential action combinator that executes actions sequentially in FIFO order. Ideal for dual action execution (`{ condition_action } / { transition_action }`) and multi-action pipelines.
+
 ---
 
 ## 4. Execution Status: `fsm::dispatch_result` & `fsm::step_result`
@@ -226,7 +258,7 @@ struct step_result {
 
 ---
 
-## 4. Zero-Heap Storage: `fsm::static_vector<T, Capacity>`
+## 5. Zero-Heap Storage: `fsm::static_vector<T, Capacity>`
 
 ```cpp
 #include "fsm/backend/cpp/runtime/static_vector.hpp"
@@ -260,7 +292,7 @@ public:
 
 ---
 
-## 5. Lock-Free SPSC Engine: `fsm::spsc_fsm`
+## 6. Lock-Free SPSC Engine: `fsm::spsc_fsm`
 
 ```cpp
 #include "fsm/backend/cpp/runtime/spsc_fsm.hpp"
@@ -294,11 +326,13 @@ class spsc_fsm;
 - `template <typename DurationRep> step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out)`: Evaluates continuous step with $\Delta t$.
 - `template <typename Rep, typename Period> std::size_t tick(std::chrono::duration<Rep, Period> dt)`: Advances deterministic timer manager by `dt`.
 - `template <typename Rep, typename Period, typename Callback> std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired)`: Advances timers and invokes `on_expired(timer_id)`.
+- `void reset() noexcept`: Resets internal state machine back to its initial state, restores default registers, and drains pending queues.
 
 #### Reader Context & Invariant Inspection (Lock-Free)
 - `Registers snapshot_registers() const noexcept`: Captures consistent register snapshot using atomic sequence lock without blocking worker.
 - `std::string_view state_name() const noexcept`: Atomic load of active state name.
-- `template <typename State> bool is_in_state() const noexcept`: Atomic state type query.
+- `template <typename State> bool is_in_state() const noexcept`: Atomic state type query (supports leaf states and composite ancestor states).
+- `template <typename State> bool is_in() const noexcept`: Alias for `is_in_state<State>()`.
 - `bool is_invariant_satisfied() const noexcept`: Checks if current state residence satisfies permanence invariant.
 - `bool has_invariant_violation() const noexcept`: Checks if an invariant violation has occurred.
 - `std::optional<invariant_violation_info> last_invariant_violation() const noexcept`: Returns last invariant violation info.
@@ -307,7 +341,7 @@ class spsc_fsm;
 
 ---
 
-## 6. SPSC Policy-Based Alias: `fsm::make_spsc_fsm`
+## 7. SPSC Policy-Based Alias: `fsm::make_spsc_fsm`
 
 ```cpp
 template <typename Table, typename... Policies>
@@ -326,7 +360,7 @@ fsm::make_spsc_fsm<SensorTable,
 
 ---
 
-## 7. Thread-Safe MPSC Engine: `fsm::thread_safe_fsm`
+## 8. Thread-Safe MPSC Engine: `fsm::thread_safe_fsm`
 
 ```cpp
 #include "fsm/backend/cpp/runtime/thread_safe_fsm.hpp"
@@ -362,8 +396,9 @@ class thread_safe_fsm;
 - `template <typename DurationRep> step_result step(DurationRep dt, const InPorts& in, OutPorts& out)`: Step with $\Delta t$ and constructor-bound services.
 - `template <typename Rep, typename Period> std::size_t tick(std::chrono::duration<Rep, Period> dt)`: Thread-safe timer tick under mutex.
 - `template <typename Rep, typename Period, typename Callback> std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired)`: Thread-safe timer tick with expiration callback.
+- `void reset()`: Safely acquires lock, resets state machine to initial state, restores default registers, and clears active timers and pending events.
 - `std::string_view current_state_name() const`: Returns active state name under mutex lock.
-- `template <typename State> bool is_in_state() const`: Checks state type under mutex lock.
+- `template <typename State> bool is_in_state() const`: Checks state type under mutex lock (supports leaf states and composite ancestor states).
 - `template <typename State> bool is_in() const`: Alias for `is_in_state<State>()`.
 - `bool is_invariant_satisfied() const`: Thread-safe permanence invariant check.
 - `bool has_invariant_violation() const`: Thread-safe invariant violation check.
@@ -381,7 +416,7 @@ class thread_safe_fsm;
 
 ---
 
-## 8. Action and Hook Channel Indexes: `fsm::channel_index`
+## 9. Action and Hook Channel Indexes: `fsm::channel_index`
 
 ```cpp
 #include "fsm/backend/cpp/runtime/traits/hook_traits.hpp"
@@ -406,7 +441,7 @@ inline constexpr std::size_t channel_index_fsm_inst   = 7;
 
 ---
 
-## 9. C++20 Concepts: `fsm::Guard` and `fsm::Action`
+## 10. C++20 Concepts: `fsm::Guard` and `fsm::Action`
 
 ```cpp
 #include "fsm/backend/cpp/runtime/traits/concepts.hpp"
@@ -428,7 +463,7 @@ Matches any functor callable with any valid permutation of `(event, src_state, d
 
 ---
 
-## 10. Compile-Time Metaprogramming Traits
+## 11. Compile-Time Metaprogramming Traits
 
 ```cpp
 #include "fsm/backend/cpp/runtime/traits/observer_traits.hpp"
@@ -441,7 +476,7 @@ Matches any functor callable with any valid permutation of `(event, src_state, d
 
 ---
 
-## 11. Zero-Heap Binary Snapshot Serialization
+## 12. Zero-Heap Binary Snapshot Serialization
 
 ```cpp
 #include "fsm/backend/cpp/runtime/serialization.hpp"
@@ -468,7 +503,58 @@ Provides high-reliability embedded checkpoints, NVRAM retention across reboot cy
 
 ---
 
-## 12. Decomposed Runtime Detail Modules
+## 13. Zero-Heap Time-Travel Snapshot Recorder: `fsm::snapshot_recorder`
+
+```cpp
+#include "fsm/backend/cpp/runtime/snapshot_recorder.hpp"
+```
+
+A deterministic, static circular ring buffer designed for real-time safety monitoring, hardware-in-the-loop (HIL) diagnostics, black-box flight recording, and time-travel rollback upon invariant or safety fault detection.
+
+### Class Template
+
+```cpp
+template <std::size_t Capacity, std::size_t MaxSnapshotSize = 256>
+class snapshot_recorder;
+```
+
+- `Capacity`: Maximum number of snapshots preserved in the circular ring buffer (must be > 0).
+- `MaxSnapshotSize`: Maximum buffer size in bytes per snapshot (default `256`, must accommodate `sizeof(snapshot_header)`).
+
+### Structures: `fsm::snapshot_entry<MaxSnapshotSize>`
+
+```cpp
+template <std::size_t MaxSnapshotSize = 256>
+struct snapshot_entry {
+    std::array<std::uint8_t, MaxSnapshotSize> data{};
+    std::size_t size{0};
+    std::uint32_t tag{0};
+    std::uint64_t timestamp_us{0};
+    std::uint64_t step_count{0};
+    std::uint32_t checksum{0};
+
+    [[nodiscard]] constexpr bool is_valid() const noexcept;
+};
+```
+
+### Member Functions
+
+| Method | Signature | Description |
+| :--- | :--- | :--- |
+| `record` | `template <typename FSM> bool record(const FSM& machine, std::uint32_t tag = 0, std::uint64_t timestamp_us = 0) noexcept` | Captures and serializes the FSM state into the next circular slot with FNV-1a checksum. |
+| `rollback` | `template <typename FSM> bool rollback(FSM& machine, std::size_t steps = 1) noexcept` | Unwinds the state machine backwards by `steps` steps, verifying payload integrity and deserializing. |
+| `rewind_to_checkpoint` | `template <typename FSM> bool rewind_to_checkpoint(FSM& machine, std::uint32_t tag) noexcept` | Rewinds backwards to the most recent snapshot matching user tag `tag`. |
+| `latest` | `[[nodiscard]] const entry_type* latest() const noexcept` | Returns pointer to the most recently recorded entry, or `nullptr` if empty. |
+| `size` | `[[nodiscard]] constexpr std::size_t size() const noexcept` | Returns current number of valid stored snapshots in the ring buffer. |
+| `capacity` | `[[nodiscard]] static constexpr std::size_t capacity() noexcept` | Returns static ring buffer capacity (`Capacity`). |
+| `empty` | `[[nodiscard]] constexpr bool empty() const noexcept` | Returns `true` if recorder contains no snapshots. |
+| `full` | `[[nodiscard]] constexpr bool full() const noexcept` | Returns `true` if recorder has reached `Capacity`. |
+| `total_recorded` | `[[nodiscard]] constexpr std::uint64_t total_recorded() const noexcept` | Returns lifetime count of `record()` invocations since initialization. |
+| `clear` | `void clear() noexcept` | Resets head pointer and stored count to 0. |
+
+---
+
+## 14. Decomposed Runtime Detail Modules
 
 For clean separation of concerns and maximum maintainability, internal engine mechanics are decomposed into isolated headers in `fsm/backend/cpp/runtime/detail/`:
 

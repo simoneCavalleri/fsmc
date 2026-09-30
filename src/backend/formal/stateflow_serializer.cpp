@@ -47,8 +47,26 @@ static void emit_state(std::ostream& out, const StateNode& state, const FsmIr& m
     if (state.kind == StateKind::Parallel) {
         out << " decomposition=\"PARALLEL_AND\"";
     }
+    if (!state.entry_actions.empty()) {
+        std::string entry_str;
+        for (const auto& act : state.entry_actions) {
+            if (!entry_str.empty())
+                entry_str += "; ";
+            entry_str += act.name;
+        }
+        out << " entry=\"" << escape_xml(entry_str) << "\"";
+    }
     if (state.do_activity.has_value() && !state.do_activity->empty()) {
         out << " during=\"" << escape_xml(*state.do_activity) << "\"";
+    }
+    if (!state.exit_actions.empty()) {
+        std::string exit_str;
+        for (const auto& act : state.exit_actions) {
+            if (!exit_str.empty())
+                exit_str += "; ";
+            exit_str += act.name;
+        }
+        out << " exit=\"" << escape_xml(exit_str) << "\"";
     }
 
     std::vector<const StateNode*> children;
@@ -81,19 +99,23 @@ static void emit_state(std::ostream& out, const StateNode& state, const FsmIr& m
     out << pad << "</state>\n";
 }
 
-static std::string format_transition_label(const TransitionEdge& trans) {
+static std::string format_transition_label(const TransitionEdge& trans, const FsmIr& model) {
     std::string label;
     if (std::holds_alternative<TimeTrigger>(trans.trigger)) {
         const auto& tt = std::get<TimeTrigger>(trans.trigger);
         if (tt.kind == TimeTriggerKind::After) {
             label = "after(" + std::to_string(tt.duration_ms) + ", msec)";
+        } else if (tt.kind == TimeTriggerKind::Every) {
+            label = "every(" + std::to_string(tt.duration_ms) + ", msec)";
+        } else if (tt.kind == TimeTriggerKind::At) {
+            label = "at(" + std::to_string(tt.duration_ms) + ", msec)";
         }
     } else if (!trans.event.empty() && trans.event != "Anonymous") {
         label = trans.event;
     }
 
     if (trans.guard && !trans.guard->empty()) {
-        std::string readable_guard = GuardExpressionParser::to_diagram_string(*trans.guard);
+        std::string readable_guard = GuardExpressionParser::to_diagram_string(*trans.guard, model.guards);
         if (!label.empty()) {
             label += " ";
         }
@@ -229,7 +251,7 @@ std::string StateflowSerializer::serialize(const FsmIr& model) {
     for (const auto& trans : model.transitions) {
         out << "      <transition id=\"" << (trans_id++) << "\" src=\"" << escape_xml(trans.source) << "\" dst=\""
             << escape_xml(trans.target) << "\"";
-        std::string label = format_transition_label(trans);
+        std::string label = format_transition_label(trans, model);
         if (!label.empty()) {
             out << " labelString=\"" << escape_xml(label) << "\"";
         }

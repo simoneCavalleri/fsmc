@@ -184,6 +184,7 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, StateNode& parent, 
     // 3. Create product state nodes
     std::vector<StateNode> new_product_states;
     std::unordered_map<std::string, std::string> state_to_first_product;
+    std::unordered_map<std::string, std::vector<std::string>> state_to_all_products;
 
     for (const auto& tup : product_tuples) {
         std::string s_name = tuple_to_name(tup);
@@ -216,6 +217,7 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, StateNode& parent, 
         new_product_states.push_back(std::move(node));
 
         for (const auto& member : tup) {
+            state_to_all_products[member].push_back(s_name);
             if (state_to_first_product.find(member) == state_to_first_product.end()) {
                 state_to_first_product[member] = s_name;
             }
@@ -342,10 +344,17 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, StateNode& parent, 
         } else if (t.target == parent_name) {
             t.target = initial_product_state_name;
         } else if (all_sub_state_names.count(t.target) > 0) {
-            auto it = state_to_first_product.find(t.target);
-            if (it != state_to_first_product.end()) {
-                t.target = it->second;
+            std::vector<std::string> resolved_tup(regions.size());
+            for (std::size_t r = 0; r < regions.size(); ++r) {
+                resolved_tup[r] = regions[r].initial_state;
+                for (const auto& st : regions[r].states) {
+                    if (st == t.target) {
+                        resolved_tup[r] = st;
+                        break;
+                    }
+                }
             }
+            t.target = tuple_to_name(resolved_tup);
         }
     }
 
@@ -381,9 +390,14 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, StateNode& parent, 
                 t.multi_source_ids.clear();
             }
         } else if (all_sub_state_names.count(t.source) > 0) {
-            auto it = state_to_first_product.find(t.source);
-            if (it != state_to_first_product.end()) {
-                t.source = it->second;
+            auto it = state_to_all_products.find(t.source);
+            if (it != state_to_all_products.end() && !it->second.empty()) {
+                t.source = it->second[0];
+                for (std::size_t i = 1; i < it->second.size(); ++i) {
+                    TransitionEdge clone = t;
+                    clone.source = it->second[i];
+                    new_product_transitions.push_back(std::move(clone));
+                }
             }
         }
     }

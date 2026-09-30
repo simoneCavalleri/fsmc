@@ -16,8 +16,9 @@ namespace {
 
 std::vector<std::string> get_ancestor_chain(const FsmIr& ir, const std::string& state_name) {
     std::vector<std::string> chain;
+    std::unordered_set<std::string> visited;
     std::string curr = state_name;
-    while (!curr.empty()) {
+    while (!curr.empty() && visited.insert(curr).second) {
         chain.push_back(curr);
         const auto* st = ir.find_state(curr);
         curr = (st != nullptr) ? st->parent_state : "";
@@ -47,6 +48,8 @@ std::string compute_lca(const FsmIr& ir, const std::string& src, const std::stri
 
 bool BoundaryActionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     bool modified = false;
+    std::unordered_set<std::string> states_cleared_exit;
+    std::unordered_set<std::string> states_cleared_entry;
 
     for (auto& t : ir.transitions) {
         if (t.source.empty() || t.target.empty() || t.kind == TransitionEdgeKind::Internal) {
@@ -154,22 +157,28 @@ bool BoundaryActionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 
         t.transition_action = std::move(fused_act);
 
-        // 4. Clear lowered hooks to prevent double execution in the generated C++ runtime.
-        //    After fusion, the StateNode lifecycle hooks (on_exit / on_enter) would be emitted
-        //    *again* by the code generator unless cleared here.  This is safe because the pass
-        //    is a one-way lowering step: every action that was on the node is now on the edge.
         for (const auto& name : exit_path_names) {
-            if (auto* mutable_s = ir.find_state_mut(name)) {
-                mutable_s->exit_actions.clear();
-            }
+            states_cleared_exit.insert(name);
         }
         for (const auto& name : entry_path_names) {
-            if (auto* mutable_s = ir.find_state_mut(name)) {
-                mutable_s->entry_actions.clear();
-            }
+            states_cleared_entry.insert(name);
         }
 
         modified = true;
+    }
+
+    // 4. Clear lowered hooks to prevent double execution in the generated C++ runtime.
+    //    After fusion across all transitions, StateNode lifecycle hooks (on_exit / on_enter)
+    //    are cleared so they are not emitted again by the code generator.
+    for (const auto& name : states_cleared_exit) {
+        if (auto* mutable_s = ir.find_state_mut(name)) {
+            mutable_s->exit_actions.clear();
+        }
+    }
+    for (const auto& name : states_cleared_entry) {
+        if (auto* mutable_s = ir.find_state_mut(name)) {
+            mutable_s->entry_actions.clear();
+        }
     }
 
     if (modified) {

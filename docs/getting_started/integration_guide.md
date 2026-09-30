@@ -91,7 +91,8 @@ fsmc_target_sources(my_app
 | `NAMESPACE` | `string` | C++ namespace wrapping states, events, and FSM aliases (default: `fsm_generated`). |
 | `OUTPUT_DIR` | `path` | Output directory for generated headers (default: `${CMAKE_CURRENT_BINARY_DIR}/generated_fsm`). |
 | `STANDALONE` | `flag` | Embeds the zero-overhead engine directly into the generated header (zero dependencies). |
-| `MODULAR` | `flag` | Generates a header that includes external `<fsm/backend/cpp/runtime/fsm.hpp>`. |
+| `MODULAR` | `flag` | Generates a header that includes external runtime header (default: `"fsm.hpp"`, matching `--export-runtime`). |
+| `RUNTIME_HEADER` | `string` | Custom runtime header path included in modular mode (e.g. `"fsm.hpp"`, `"<fsm/fsm.hpp>"`). |
 | `NO_THREAD_SAFE` | `flag` | Disables generation of the `thread_safe_fsm` wrapper alias. |
 | `NO_STUBS` | `flag` | Emits forward declarations for custom user-defined guard and action structs. |
 
@@ -100,10 +101,10 @@ fsmc_target_sources(my_app
 ## 4. C/C++ Package Managers
 
 === "Conan 2.0"
-    After exporting `fsmc` to your local Conan cache (`conan create . --version 0.7.0`), reference it in `conanfile.txt`:
+    After exporting `fsmc` to your local Conan cache (`conan create . --version 0.8.0`), reference it in `conanfile.txt`:
     ```ini
     [requires]
-    fsmc/0.7.0
+    fsmc/0.8.0
 
     [generators]
     CMakeDeps

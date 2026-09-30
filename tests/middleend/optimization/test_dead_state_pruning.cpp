@@ -56,4 +56,46 @@ TEST(DeadStatePruning, UnreachableSubgraphsAndContradictoryGuards_EliminatedFrom
     EXPECT_EQ(ir.transitions[0].event, "Start");
 }
 
+/**
+ * @brief Verify DeadStatePruningPass does not prune enclosing parent states or global transitions
+ *        when the initial state is configured to be a nested leaf state.
+ */
+TEST(DeadStatePruning, LeafInitialState_PreservesActiveParentAndGlobalTransitions) {
+    FsmIr model;
+    model.name = "HierarchicalPruningModel";
+    model.initial_state = "LeafA";
+
+    model.add_state("Operational");
+    model.add_state("LeafA", "Operational");
+    model.add_state("LeafB", "Operational");
+    model.add_state("ErrorState");
+
+    // Global abort transition from composite parent to ErrorState
+    TransitionEdge t_err;
+    t_err.source = "Operational";
+    t_err.target = "ErrorState";
+    t_err.event = "EvFault";
+    model.add_transition(t_err);
+
+    // Transition between leaves
+    TransitionEdge t_step;
+    t_step.source = "LeafA";
+    t_step.target = "LeafB";
+    t_step.event = "EvStep";
+    model.add_transition(t_step);
+
+    DiagnosticEngine diag;
+    DeadStatePruningPass pass(true);
+    pass.run(model, diag);
+
+    // Operational and its targets must not be pruned
+    EXPECT_NE(model.find_state("Operational"), nullptr);
+    EXPECT_NE(model.find_state("ErrorState"), nullptr);
+    EXPECT_NE(model.find_state("LeafA"), nullptr);
+    EXPECT_NE(model.find_state("LeafB"), nullptr);
+
+    // Both transitions must be preserved
+    EXPECT_EQ(model.transitions.size(), 2u);
+}
+
 }  // namespace

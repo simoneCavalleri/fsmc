@@ -26,9 +26,10 @@ enum class CppStandard : std::uint8_t {
 struct GeneratorOptions {
     CppStandard cpp_standard = CppStandard::Cpp17;  ///< Target language dialect
     bool standalone = true;                         ///< Generate self-contained header embedding minimal runtime
-    bool include_stubs = true;          ///< Generate default functor stub implementations for guards and actions
-    bool thread_safe = true;            ///< Generate thread_safe_fsm synchronized wrapper
-    std::string target_namespace = "";  ///< Explicit enclosing namespace override
+    bool include_stubs = true;               ///< Generate default functor stub implementations for guards and actions
+    bool thread_safe = true;                 ///< Generate thread_safe_fsm synchronized wrapper
+    std::string target_namespace = "";       ///< Explicit enclosing namespace override
+    std::string runtime_header = "fsm.hpp";  ///< External runtime header included when standalone is false
 };
 
 }  // namespace fsm::backend::cpp

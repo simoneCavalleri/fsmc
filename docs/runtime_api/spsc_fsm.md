@@ -174,6 +174,7 @@ void rtos_periodic_control_task(void* param) {
 | `std::size_t run_until_empty([in, out])` | Processes all currently queued events in a loop until the queue is completely drained. |
 | `step_result step([dt], [in, out])` | Evaluates continuous condition transitions and dwell timers (`in_state_for`) on the current state. |
 | `std::size_t tick(dt, [on_expired])` | Advances deterministic timer manager by duration `dt` and executes callbacks for expired timers. |
+| `void reset()` | Resets the internal state machine back to its initial state, restores default registers, and drains pending queues. |
 | `std::size_t queue_size()` | Returns the current count of queued pending events. |
 
 ---
@@ -185,7 +186,7 @@ void rtos_periodic_control_task(void* param) {
 | `Registers snapshot_registers()` | Captures a consistent copy of `Registers` using an atomic sequence lock without mutexes or blocking the worker task. |
 | `with_registers(Callable&& fn)` | Executes `fn(Registers copy)` over a safe seqlock snapshot. |
 | `std::string_view state_name()` | Returns the name string of the current active state via atomic acquire-load and compile-time table lookup. |
-| `bool is_in<State>()` | Checks active state in $O(1)$ lock-free time via atomic index comparison (`type_list_index_of_v`). |
+| `bool is_in<State>()` | Checks active state or whether active state is a descendant of composite `State` in $O(1)$ lock-free time via atomic index comparison. |
 | `bool is_in_state<State>()` | Alias for `is_in<State>()`. |
 | `bool is_invariant_satisfied()` | Lock-free check if current state residence satisfies permanence invariant. |
 | `bool has_invariant_violation()` | Lock-free check if an invariant violation has occurred. |

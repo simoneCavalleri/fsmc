@@ -73,8 +73,10 @@ struct is_substate_of_impl : std::false_type {};
 
 template <typename SubState, typename SuperState>
 struct is_substate_of_impl<SubState, SuperState, std::void_t<typename SubState::parent_type>> {
-    static constexpr bool value = std::is_same_v<typename SubState::parent_type, SuperState> ||
-                                  is_substate_of_impl<typename SubState::parent_type, SuperState>::value;
+    static constexpr bool value =
+        std::is_same_v<typename SubState::parent_type, SuperState> ||
+        (get_state_name_static<SuperState>() == get_state_name_static<typename SubState::parent_type>()) ||
+        is_substate_of_impl<typename SubState::parent_type, SuperState>::value;
 };
 
 template <typename SubState, typename SuperState, typename = void>
@@ -82,7 +84,8 @@ struct is_substate_by_name : std::false_type {};
 
 template <typename SubState, typename SuperState>
 struct is_substate_by_name<SubState, SuperState, std::void_t<decltype(SubState::parent)>> {
-    static constexpr bool value = (get_type_name<SuperState>() == SubState::parent);
+    static constexpr bool value =
+        (get_state_name_static<SuperState>() == SubState::parent) || (get_type_name<SuperState>() == SubState::parent);
 };
 }  // namespace detail
 
@@ -121,33 +124,67 @@ inline constexpr bool has_deferred_events_v = detail::has_deferred_events<State>
 template <typename State, typename Event>
 inline constexpr bool is_deferred_event_v = []() constexpr {
     if constexpr (has_deferred_events_v<State>) {
-        return detail::type_list_contains_event<std::decay_t<Event>, typename State::deferred_events>::value;
+        if constexpr (detail::type_list_contains_event<std::decay_t<Event>, typename State::deferred_events>::value) {
+            return true;
+        }
+    }
+    if constexpr (detail::has_parent_type<State>::value) {
+        return is_deferred_event_v<typename State::parent_type, Event>;
     } else {
         return false;
     }
 }();
 
+namespace detail {
+template <typename State, typename = void>
+struct ancestor_depth : std::integral_constant<std::size_t, 0> {};
+
+template <typename State>
+struct ancestor_depth<State, std::void_t<typename State::parent_type>>
+    : std::integral_constant<std::size_t, 1 + ancestor_depth<typename State::parent_type>::value> {};
+
+template <typename State>
+struct state_parent_capacity
+    : std::integral_constant<std::size_t, (has_parent_type<State>::value ? ancestor_depth<State>::value
+                                                                         : (has_parent_name<State>::value ? 1 : 0))> {};
+}  // namespace detail
+
 // Introspection for History & Deferred events across unique state list
+template <typename State>
+struct state_has_parent : std::disjunction<detail::has_parent_name<State>, detail::has_parent_type<State>> {};
+
 template <typename StateList>
 struct any_state_has_history : std::false_type {};
 
 template <typename... States>
-struct any_state_has_history<type_list<States...>> : std::disjunction<detail::has_parent_name<States>...> {};
+struct any_state_has_history<type_list<States...>> : std::disjunction<state_has_parent<States>...> {};
 
 template <typename StateList>
 struct count_parent_states : std::integral_constant<std::size_t, 0> {};
 
 template <typename... States>
 struct count_parent_states<type_list<States...>>
-    : std::integral_constant<std::size_t, (0 + ... + (detail::has_parent_name<States>::value ? 1 : 0))> {};
+    : std::integral_constant<std::size_t, (0 + ... + detail::state_parent_capacity<States>::value)> {};
 
 template <typename StateList>
 inline constexpr std::size_t count_parent_states_v = count_parent_states<StateList>::value;
+
+namespace detail {
+template <typename State, typename = void>
+struct state_or_ancestor_has_deferred : has_deferred_events<State> {};
+
+template <typename State>
+struct state_or_ancestor_has_deferred<State, std::void_t<typename State::parent_type>> {
+    static constexpr bool value =
+        has_deferred_events<State>::value || state_or_ancestor_has_deferred<typename State::parent_type>::value;
+};
+}  // namespace detail
 
 template <typename StateList>
 struct any_state_has_deferred : std::false_type {};
 
 template <typename... States>
-struct any_state_has_deferred<type_list<States...>> : std::disjunction<detail::has_deferred_events<States>...> {};
+struct any_state_has_deferred<type_list<States...>>
+    : std::bool_constant<(detail::state_or_ancestor_has_deferred<States>::value || ...)> {};
 
 }  // namespace fsm

@@ -20,6 +20,20 @@ namespace fsm::diagnostic {
 enum class DiagnosticSeverity : std::uint8_t { Note, Info = Note, Warning, Error, Fatal, SafetyCritical = Fatal };
 
 /**
+ * @enum DiagnosticFormat
+ * @brief Output formatting mode for diagnostics.
+ */
+enum class DiagnosticFormat : std::uint8_t { Text, Json, GitHub };
+
+[[nodiscard]] inline DiagnosticFormat parse_diagnostic_format(std::string_view fmt) {
+    if (fmt == "json")
+        return DiagnosticFormat::Json;
+    if (fmt == "github" || fmt == "gh" || fmt == "actions")
+        return DiagnosticFormat::GitHub;
+    return DiagnosticFormat::Text;
+}
+
+/**
  * @struct SourceSpan
  * @brief Precise source span locating a token or AST construct in an input file.
  */
@@ -100,6 +114,21 @@ class DiagnosticEngine {
      * @brief Renders all collected diagnostics into formatted ANSI color strings with visual carets.
      */
     [[nodiscard]] std::string render_to_string(std::string_view source_content = "") const;
+
+    /**
+     * @brief Renders all collected diagnostics according to the specified DiagnosticFormat.
+     */
+    [[nodiscard]] std::string render_to_format(DiagnosticFormat format, std::string_view source_content = "") const;
+
+    /**
+     * @brief Renders diagnostics as GitHub Actions workflow commands (::error/::warning/::notice).
+     */
+    [[nodiscard]] std::string render_github_actions() const;
+
+    /**
+     * @brief Renders diagnostics as a JSON array.
+     */
+    [[nodiscard]] std::string render_json() const;
 
   private:
     static std::string extract_line(std::string_view text, size_t line_num);

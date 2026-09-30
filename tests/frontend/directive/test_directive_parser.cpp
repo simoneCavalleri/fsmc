@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include "fsm/frontend/directive/directive_parser.hpp"
+#include "fsm/frontend/directive/guard_parser.hpp"
 
 using namespace fsm::frontend::directive;
 using namespace fsm::frontend;
@@ -193,6 +194,25 @@ TEST(DirectiveParser, StructDirective_RoundtripsFieldDefinitionsFidelity) {
     auto st2 = DirectiveParser::parse_struct_directive(formatted);
     ASSERT_TRUE(st2.has_value());
     EXPECT_EQ(*st, *st2);
+}
+
+/**
+ * @brief Verify GuardExpressionParser extracts atomic relational guard expressions and builds valid C++ expressions.
+ */
+TEST(GuardParser, RelationalExpressions_TokenizedAndForwarded) {
+    auto res = GuardExpressionParser::parse("(canBusHealthy and faultCount < 3)");
+    ASSERT_EQ(res.atomic_guard_details.size(), 2u);
+    EXPECT_EQ(res.atomic_guard_details[0].name, "canBusHealthy");
+    EXPECT_EQ(res.atomic_guard_details[0].expression, "canBusHealthy");
+    EXPECT_EQ(res.atomic_guard_details[1].name, "faultCount_lt_3");
+    EXPECT_EQ(res.atomic_guard_details[1].expression, "faultCount < 3");
+    EXPECT_NE(res.cpp_type.find("fsm::and_<canBusHealthy, faultCount_lt_3>"), std::string::npos);
+
+    auto res2 = GuardExpressionParser::parse("(keyInserted and batteryLevel > 11.5)");
+    ASSERT_EQ(res2.atomic_guard_details.size(), 2u);
+    EXPECT_EQ(res2.atomic_guard_details[0].name, "keyInserted");
+    EXPECT_EQ(res2.atomic_guard_details[1].name, "batteryLevel_gt_11_5");
+    EXPECT_EQ(res2.atomic_guard_details[1].expression, "batteryLevel > 11.5");
 }
 
 }  // namespace

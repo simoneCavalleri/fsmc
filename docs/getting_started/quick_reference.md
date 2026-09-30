@@ -90,9 +90,7 @@ fsmc -i flight.sysml --req-audit --rtm rtm.md --harness flight_test.cpp
 
 === "C++ Target (Production)"
     ```cpp
-    #include <fsm/backend/cpp/runtime/fsm.hpp>
-    #include <fsm/backend/cpp/runtime/spsc_fsm.hpp>
-    #include <fsm/backend/cpp/runtime/thread_safe_fsm.hpp>
+    #include <fsm/fsm.hpp> // Unified runtime umbrella (or "fsm.hpp" when using exported runtime)
 
     // 1. Synchronous Control Loop (Zero-Heap, O(1) WCET, Flight Recorder & Timers)
     using SyncFSM = fsm::make_fsm<

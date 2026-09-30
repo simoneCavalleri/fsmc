@@ -9,6 +9,7 @@
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/event_queue_bound_pass.hpp"
+#include "fsm/middleend/analysis/fsm_validator.hpp"
 #include "fsm/middleend/analysis/livelock_analysis_pass.hpp"
 #include "fsm/middleend/analysis/priority_conflict_pass.hpp"
 #include "fsm/middleend/analysis/timed_invariants_verifier_pass.hpp"
@@ -95,6 +96,62 @@ TEST(LivelockAnalysis, ZeroTimeAutonomousCycles_EmitsLivelockDiagnostic) {
             found_e0401 = true;
     }
     EXPECT_TRUE(found_e0401);
+}
+
+/**
+ * @brief Verify LivelockAnalysisPass and FsmValidator catch cycles with explicit "anonymous_event" /
+ * "completion_event".
+ * @scenario Cycle s1 -> s2 -> s1 where edges use string names "anonymous_event" and "completion_event".
+ * @expected Both LivelockAnalysisPass and FsmValidator report livelock diagnostics.
+ */
+TEST(LivelockAnalysis, ExplicitAnonymousEventStringTransitions_DetectedAsLivelock) {
+    FsmIr ir;
+    ir.name = "ExplicitAnonLivelock";
+    ir.initial_state = "s1";
+    ir.initial_state_id = "s1";
+
+    StateNode s1("s1", "s1");
+    StateNode s2("s2", "s2");
+    ir.states.push_back(s1);
+    ir.states.push_back(s2);
+
+    TransitionEdge t1;
+    t1.source = "s1";
+    t1.source_id = "s1";
+    t1.target = "s2";
+    t1.target_id = "s2";
+    t1.event = "anonymous_event";
+    ir.add_transition(t1);
+
+    TransitionEdge t2;
+    t2.source = "s2";
+    t2.source_id = "s2";
+    t2.target = "s1";
+    t2.target_id = "s1";
+    t2.event = "completion_event";
+    ir.add_transition(t2);
+
+    DiagnosticEngine diag;
+    LivelockAnalysisPass pass;
+    EXPECT_FALSE(pass.run(ir, diag));
+    EXPECT_TRUE(diag.has_errors());
+
+    bool found_e0401 = false;
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "E0401")
+            found_e0401 = true;
+    }
+    EXPECT_TRUE(found_e0401);
+
+    const auto validation = FsmValidator::validate(ir);
+    bool found_validator_livelock = false;
+    for (const auto& d : validation.diagnostics) {
+        if (d.category == "Livelock" && d.severity == DiagnosticSeverity::SafetyCritical) {
+            found_validator_livelock = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_validator_livelock);
 }
 
 // ============================================================================

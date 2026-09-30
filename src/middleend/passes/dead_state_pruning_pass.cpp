@@ -36,6 +36,18 @@ bool DeadStatePruningPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             }
         }
 
+        // Include parent/ancestor states and initial sub-state
+        if (const auto* curr_node = ir.find_state(curr)) {
+            if (!curr_node->parent_state.empty() && reachable.count(curr_node->parent_state) == 0) {
+                reachable.insert(curr_node->parent_state);
+                q.push(curr_node->parent_state);
+            }
+            if (!curr_node->initial_sub_state.empty() && reachable.count(curr_node->initial_sub_state) == 0) {
+                reachable.insert(curr_node->initial_sub_state);
+                q.push(curr_node->initial_sub_state);
+            }
+        }
+
         for (const auto& t : ir.transitions) {
             if (t.source == curr) {
                 // Statically dead transition

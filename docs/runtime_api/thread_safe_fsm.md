@@ -237,13 +237,14 @@ void on_timer_tick(const SensorData& raw_sensors) {
 | :--- | :--- | :--- |
 | `step([dt], in, out, srv)` | `step_result` | Thread-safe evaluation of continuous anonymous transitions under mutex lock. |
 | `tick(dt, [on_expired])` | `std::size_t` | Thread-safe advancement of deterministic timers and dwell permanence under mutex lock. |
+| `reset()` | `void` | Safely acquires lock, resets state machine to initial state, restores default registers, and clears active timers and pending events. |
 
 ### Thread-Safe Inspection & State Access
 
 | Method | Return Type | Description |
 | :--- | :--- | :--- |
 | `current_state_name()` | `std::string_view` | Safely acquires lock and returns the active state name. |
-| `is_in_state<State>()` | `bool` | Checks active state under mutex synchronization. |
+| `is_in_state<State>()` | `bool` | Checks active state or whether active state is a descendant of composite `State` under mutex synchronization. |
 | `is_in<State>()` | `bool` | Alias for `is_in_state<State>()`. |
 | `is_invariant_satisfied()` | `bool` | Thread-safe check of state permanence invariant satisfaction. |
 | `has_invariant_violation()` | `bool` | Thread-safe check if a temporal invariant violation has occurred. |

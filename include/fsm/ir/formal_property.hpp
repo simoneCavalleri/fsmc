@@ -30,7 +30,15 @@ enum class TemporalOp : std::uint8_t {
     Equivalent,  ///< <-> (Equivalence)
     And,         ///< && (Conjunction)
     Or,          ///< || (Disjunction)
-    Not          ///< ! (Negation)
+    Not,         ///< ! (Negation)
+    EX,          ///< CTL EX (Exists Next)
+    AX,          ///< CTL AX (All Next)
+    EF,          ///< CTL EF (Exists Finally / Reachability)
+    AF,          ///< CTL AF (All Finally / Inevitability)
+    EG,          ///< CTL EG (Exists Globally)
+    AG,          ///< CTL AG (All Globally / Invariant)
+    EU,          ///< CTL E [p U q] (Exists Until)
+    AU           ///< CTL A [p U q] (All Until)
 };
 
 /**

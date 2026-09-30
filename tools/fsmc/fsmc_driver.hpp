@@ -35,6 +35,7 @@
 #include "fsm/frontend/common/parser_factory.hpp"
 #include "fsm/frontend/common/parser_interface.hpp"
 #include "fsm/frontend/diagram/diagram_contract_combiner.hpp"
+#include "fsm/frontend/directive/ltl_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/fsm_validator.hpp"
 #include "fsm/middleend/analysis/model_checker.hpp"
@@ -69,7 +70,7 @@ class FsmcDriver {
         }
 
         if (opts.show_version) {
-            std::cout << "fsmc version 0.7.0 (Universal State Machine Compiler & Optimization Infrastructure)\n";
+            std::cout << "fsmc version 0.8.0 (Universal State Machine Compiler & Optimization Infrastructure)\n";
             return 0;
         }
 
@@ -81,6 +82,9 @@ class FsmcDriver {
 
         // Validate all CLI path arguments to reject null bytes or illegal characters
         auto validate_arg_path = [](const std::string& path_str, const std::string& arg_name) -> bool {
+            if (is_stdin_path(path_str) || is_stdout_path(path_str)) {
+                return true;
+            }
             if (!path_str.empty() && !is_valid_path_string(path_str)) {
                 std::cerr << "Error: Illegal character in " << arg_name << " path: " << path_str << "\n";
                 return false;
@@ -92,8 +96,26 @@ class FsmcDriver {
             !validate_arg_path(opts.sidecar_file, "--sidecar") || !validate_arg_path(opts.rtm_output_file, "--rtm") ||
             !validate_arg_path(opts.emit_sidecar, "--emit-sidecar") ||
             !validate_arg_path(opts.emit_test_harness, "--emit-test-harness") ||
-            !validate_arg_path(opts.export_runtime_dir, "--export-runtime")) {
+            !validate_arg_path(opts.export_runtime_dir, "--export-runtime") ||
+            !validate_arg_path(opts.submachine_dir, "--submachine-dir")) {
             return 1;
+        }
+
+        // Check for conflicting CLI options
+        if (opts.standalone_specified && opts.modular_specified) {
+            std::cerr
+                << "warning[W0102]: Conflicting options '--standalone' and '--modular' specified; prioritizing '--"
+                << (opts.standalone ? "standalone" : "modular") << "'.\n";
+            if (opts.werror) {
+                return 1;
+            }
+        }
+        if (opts.cpp17_specified && opts.cpp20_specified) {
+            std::cerr << "warning[W0103]: Conflicting C++ standard options specified; prioritizing C++"
+                      << (opts.cpp_standard == fsm::backend::cpp::CppStandard::Cpp20 ? "20" : "17") << ".\n";
+            if (opts.werror) {
+                return 1;
+            }
         }
 
         // Export standalone runtime if requested
@@ -119,8 +141,17 @@ class FsmcDriver {
             return 1;
         }
 
+        // Auto-detect format from content if reading from stdin without explicit format
+        std::string resolved_format = opts.format;
+        if (is_stdin_path(opts.input_file) && (resolved_format.empty() || resolved_format == "auto")) {
+            std::string detected = ParserFactory::detect_format_from_content(content);
+            if (!detected.empty()) {
+                resolved_format = detected;
+            }
+        }
+
         // Parse input model
-        auto parser = ParserFactory::create(opts.input_file, opts.format);
+        auto parser = ParserFactory::create(opts.input_file, resolved_format);
         if (!parser) {
             std::cerr << "Error: Could not instantiate parser for input: " << opts.input_file << "\n";
             return 1;
@@ -202,12 +233,28 @@ class FsmcDriver {
 
         // Inject custom CLI verification properties if specified
         if (!opts.ltl_spec.empty()) {
-            model.add_property(fsm::ir::FormalProperty("cli_ltl_property", fsm::ir::PropertyKind::Safety, opts.ltl_spec,
-                                                       "CLI specified LTL specification"));
+            fsm::ir::FormalProperty prop("cli_ltl_property", fsm::ir::PropertyKind::Safety, opts.ltl_spec,
+                                         "CLI specified LTL specification");
+            auto parsed_ast = fsm::frontend::directive::LtlPropertyParser::parse(opts.ltl_spec);
+            if (parsed_ast) {
+                prop.ast = std::move(parsed_ast);
+            } else {
+                std::cerr << "Error: Syntax error in LTL formula: " << opts.ltl_spec << "\n";
+                return 1;
+            }
+            model.add_property(std::move(prop));
         }
         if (!opts.ctl_spec.empty()) {
-            model.add_property(fsm::ir::FormalProperty("cli_ctl_property", fsm::ir::PropertyKind::Safety, opts.ctl_spec,
-                                                       "CLI specified CTL specification"));
+            fsm::ir::FormalProperty prop("cli_ctl_property", fsm::ir::PropertyKind::Safety, opts.ctl_spec,
+                                         "CLI specified CTL specification");
+            auto parsed_ast = fsm::frontend::directive::LtlPropertyParser::parse(opts.ctl_spec);
+            if (parsed_ast) {
+                prop.ast = std::move(parsed_ast);
+            } else {
+                std::cerr << "Error: Syntax error in CTL formula: " << opts.ctl_spec << "\n";
+                return 1;
+            }
+            model.add_property(std::move(prop));
         }
 
         // Requirement audit
@@ -242,8 +289,10 @@ class FsmcDriver {
                     pm.add_pass(std::make_unique<CommonActionFactoringPassWrapper>());
                     pm.add_pass(std::make_unique<TransitionFusionPassWrapper>());
                 }
+                pm.add_pass(std::make_unique<ConnectiveJunctionChainingPassWrapper>());
                 pm.add_pass(std::make_unique<ChoiceCompletenessPass>());
                 pm.add_pass(std::make_unique<ChoiceInliningPassWrapper>());
+                pm.add_pass(std::make_unique<SampledChangeTriggerPassWrapper>());
                 pm.add_pass(std::make_unique<TimedDeadlockPassWrapper>());
                 pm.add_pass(std::make_unique<EFSMDataPathPass>());
                 if (opts.prune_dead_states || opts.opt_level >= 2) {
@@ -260,10 +309,12 @@ class FsmcDriver {
                     pm.add_pass(std::make_unique<ModelCheckingPass>());
                 }
             }
+            DiagnosticFormat diag_fmt = parse_diagnostic_format(opts.diagnostic_format);
+
             for (const auto& plugin_path : opts.pass_plugins) {
                 DiagnosticEngine plugin_diag;
                 if (!pm.load_plugin(plugin_path, plugin_diag)) {
-                    std::cerr << plugin_diag.render_to_string(content);
+                    std::cerr << plugin_diag.render_to_format(diag_fmt, content);
                     return 1;
                 }
             }
@@ -273,7 +324,7 @@ class FsmcDriver {
 
             DiagnosticEngine diag;
             if (!pm.run(model, diag)) {
-                std::cerr << diag.render_to_string(content);
+                std::cerr << diag.render_to_format(diag_fmt, content);
                 return 1;
             }
 
@@ -288,7 +339,7 @@ class FsmcDriver {
                 }
                 if (has_warnings) {
                     std::cerr << "\n[ERROR] -Werror enabled: compilation failed due to middle-end warnings/errors:\n";
-                    std::cerr << diag.render_to_string(content);
+                    std::cerr << diag.render_to_format(diag_fmt, content);
                     return 1;
                 }
             }
@@ -306,6 +357,11 @@ class FsmcDriver {
 
         for (const auto& warn_msg : validation.warnings) {
             std::cerr << "[WARNING] " << warn_msg << "\n";
+        }
+
+        if (opts.werror && !validation.warnings.empty()) {
+            std::cerr << "\n[ERROR] -Werror enabled: compilation failed due to semantic validation warnings.\n";
+            return 1;
         }
 
         if (!validation.is_valid) {
@@ -416,6 +472,7 @@ class FsmcDriver {
         gen_opts.include_stubs = opts.include_stubs;
         gen_opts.thread_safe = opts.thread_safe;
         gen_opts.target_namespace = opts.ns_name;
+        gen_opts.runtime_header = opts.runtime_header;
 
         std::string generated_code;
         try {
@@ -425,7 +482,7 @@ class FsmcDriver {
             return 1;
         }
 
-        if (!opts.output_file.empty()) {
+        if (!opts.output_file.empty() && !is_stdout_path(opts.output_file)) {
             std::string write_err;
             if (!write_file_content(opts.output_file, generated_code, write_err)) {
                 std::cerr << "Error: " << write_err << "\n";

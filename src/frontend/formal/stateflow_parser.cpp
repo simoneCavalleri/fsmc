@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <optional>
 #include <regex>
+#include <sstream>
 #include <utility>
 
 #if defined(FSMC_HAS_ZLIB) && FSMC_HAS_ZLIB
@@ -320,13 +321,98 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
                 }
             }
 
+            auto* s = model.find_state_mut(st_name);
+
+            // Parse entry, during, exit attributes
+            std::string entry_act = child->get_attr("entry");
+            if (entry_act.empty())
+                entry_act = child->get_attr("en");
+            if (entry_act.empty())
+                entry_act = child->get_attr("on_entry");
+
             std::string during_act = child->get_attr("during");
-            if (during_act.empty()) {
+            if (during_act.empty())
+                during_act = child->get_attr("du");
+            if (during_act.empty())
                 during_act = child->get_attr("do_activity");
+
+            std::string exit_act = child->get_attr("exit");
+            if (exit_act.empty())
+                exit_act = child->get_attr("ex");
+            if (exit_act.empty())
+                exit_act = child->get_attr("on_exit");
+
+            // Parse state labelString (e.g. StateName\nentry: ...\nduring: ...\nexit: ...)
+            std::string state_label = child->get_attr("labelString");
+            if (state_label.empty())
+                state_label = child->get_attr("label");
+            if (!state_label.empty()) {
+                std::istringstream stream(state_label);
+                std::string line;
+                enum class Section { None, Entry, During, Exit };
+                Section cur_sec = Section::None;
+                while (std::getline(stream, line)) {
+                    std::string t_line = std::string(trim(line));
+                    if (t_line.empty())
+                        continue;
+                    if (t_line.rfind("entry:", 0) == 0 || t_line.rfind("en:", 0) == 0) {
+                        cur_sec = Section::Entry;
+                        size_t colon = t_line.find(':');
+                        t_line = std::string(trim(t_line.substr(colon + 1)));
+                    } else if (t_line.rfind("during:", 0) == 0 || t_line.rfind("du:", 0) == 0) {
+                        cur_sec = Section::During;
+                        size_t colon = t_line.find(':');
+                        t_line = std::string(trim(t_line.substr(colon + 1)));
+                    } else if (t_line.rfind("exit:", 0) == 0 || t_line.rfind("ex:", 0) == 0) {
+                        cur_sec = Section::Exit;
+                        size_t colon = t_line.find(':');
+                        t_line = std::string(trim(t_line.substr(colon + 1)));
+                    }
+                    if (t_line.empty())
+                        continue;
+                    if (cur_sec == Section::Entry) {
+                        if (!entry_act.empty())
+                            entry_act += "; ";
+                        entry_act += t_line;
+                    } else if (cur_sec == Section::During) {
+                        if (!during_act.empty())
+                            during_act += "; ";
+                        during_act += t_line;
+                    } else if (cur_sec == Section::Exit) {
+                        if (!exit_act.empty())
+                            exit_act += "; ";
+                        exit_act += t_line;
+                    }
+                }
             }
-            if (!during_act.empty()) {
-                if (auto* s = model.find_state_mut(st_name)) {
+
+            if (s != nullptr) {
+                if (!entry_act.empty()) {
+                    std::istringstream iss(entry_act);
+                    std::string part;
+                    while (std::getline(iss, part, ';')) {
+                        std::string a = std::string(trim(part));
+                        if (!a.empty()) {
+                            std::string aname = sanitize_identifier(a);
+                            model.add_action(aname);
+                            s->entry_actions.emplace_back(aname);
+                        }
+                    }
+                }
+                if (!during_act.empty()) {
                     s->do_activity = sanitize_identifier(during_act);
+                }
+                if (!exit_act.empty()) {
+                    std::istringstream iss(exit_act);
+                    std::string part;
+                    while (std::getline(iss, part, ';')) {
+                        std::string a = std::string(trim(part));
+                        if (!a.empty()) {
+                            std::string aname = sanitize_identifier(a);
+                            model.add_action(aname);
+                            s->exit_actions.emplace_back(aname);
+                        }
+                    }
                 }
             }
 
@@ -366,19 +452,52 @@ StateflowParser::StateflowLabelComponents StateflowParser::parse_stateflow_label
         return res;
     }
 
-    // Check for temporal logic after(N, sec / msec)
+    // Check for temporal logic after/every/at(N, sec / msec)
     static const std::regex after_re(R"(after\s*\(\s*(\d+(?:\.\d+)?)\s*,\s*(sec|msec|seconds|milliseconds|s|ms)\s*\))",
                                      std::regex::optimize);
+    static const std::regex every_re(R"(every\s*\(\s*(\d+(?:\.\d+)?)\s*,\s*(sec|msec|seconds|milliseconds|s|ms)\s*\))",
+                                     std::regex::optimize);
+    static const std::regex at_re(R"(at\s*\(\s*(\d+(?:\.\d+)?)\s*,\s*(sec|msec|seconds|milliseconds|s|ms)\s*\))",
+                                  std::regex::optimize);
     std::smatch match;
     if (std::regex_search(label, match, after_re)) {
         double val = std::stod(match[1].str());
         std::string unit = match[2].str();
-        uint64_t dur_ms = static_cast<uint64_t>(val);
+        // Apply unit multiplier BEFORE casting to uint64_t to avoid fractional truncation.
+        // after(1.5, s) must give 1500 ms, not 1 ms.
+        double dur_ms_f = val;
         if (unit == "sec" || unit == "s" || unit == "seconds") {
-            dur_ms = static_cast<uint64_t>(val * 1000.0);
+            dur_ms_f = val * 1000.0;
         }
+        uint64_t dur_ms = static_cast<uint64_t>(dur_ms_f + 0.5);  // round to nearest ms
+        if (dur_ms == 0)
+            dur_ms = 1;
         res.time_trigger = TimeTrigger(TimeTriggerKind::After, dur_ms, TimeUnit::Milliseconds);
         res.event = "after_" + std::to_string(dur_ms) + "ms";
+    } else if (std::regex_search(label, match, every_re)) {
+        double val = std::stod(match[1].str());
+        std::string unit = match[2].str();
+        double dur_ms_f = val;
+        if (unit == "sec" || unit == "s" || unit == "seconds") {
+            dur_ms_f = val * 1000.0;
+        }
+        uint64_t dur_ms = static_cast<uint64_t>(dur_ms_f + 0.5);
+        if (dur_ms == 0)
+            dur_ms = 1;
+        res.time_trigger = TimeTrigger(TimeTriggerKind::Every, dur_ms, TimeUnit::Milliseconds);
+        res.event = "every_" + std::to_string(dur_ms) + "ms";
+    } else if (std::regex_search(label, match, at_re)) {
+        double val = std::stod(match[1].str());
+        std::string unit = match[2].str();
+        double dur_ms_f = val;
+        if (unit == "sec" || unit == "s" || unit == "seconds") {
+            dur_ms_f = val * 1000.0;
+        }
+        uint64_t dur_ms = static_cast<uint64_t>(dur_ms_f + 0.5);
+        if (dur_ms == 0)
+            dur_ms = 1;
+        res.time_trigger = TimeTrigger(TimeTriggerKind::At, dur_ms, TimeUnit::Milliseconds);
+        res.event = "at_" + std::to_string(dur_ms) + "ms";
     }
 
     size_t idx = 0;
@@ -511,12 +630,19 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
         auto parsed = directive::GuardExpressionParser::parse(comps.guard);
         if (!parsed.cpp_type.empty()) {
             trans.guard = parsed.cpp_type;
+            for (const auto& detail : parsed.atomic_guard_details) {
+                model.add_guard(detail.name, "", detail.expression, std::nullopt);
+            }
             for (const auto& a : parsed.atomic_guards) {
                 model.add_guard(a);
             }
         } else {
-            trans.guard = sanitize_identifier(comps.guard);
-            model.add_guard(trans.guard.value());
+            // Generate a stable synthetic guard name instead of sanitizing the raw
+            // boolean expression (which would corrupt operator characters like >, &&, ! etc.).
+            std::string guard_name = "guard_" + sanitize_identifier(src_name) + "_to_" + sanitize_identifier(dst_name) +
+                                     "_" + std::to_string(model.transitions.size() + 1);
+            model.add_guard(guard_name, "", std::optional<std::string>{comps.guard}, std::nullopt);
+            trans.guard = guard_name;
         }
     }
     if (!comps.condition_action.empty()) {

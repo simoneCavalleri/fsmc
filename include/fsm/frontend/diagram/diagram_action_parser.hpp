@@ -34,6 +34,14 @@ class DiagramActionParser {
      * @return Positive value if more '{' than '}', negative if more '}' than '{', or 0.
      */
     static int brace_imbalance(std::string_view line);
+
+    /**
+     * @brief Finds the action delimiter '/' in a transition label, ignoring slashes inside brackets, parens, braces, or
+     * quotes.
+     * @param text The transition label to inspect.
+     * @return Position of the delimiter slash, or std::string_view::npos if not found.
+     */
+    static std::size_t find_action_slash(std::string_view text);
 };
 
 }  // namespace fsm::frontend::diagram

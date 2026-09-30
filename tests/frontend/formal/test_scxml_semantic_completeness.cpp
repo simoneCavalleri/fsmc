@@ -5,11 +5,15 @@
 
 #include <gtest/gtest.h>
 
+#include "fsm/backend/formal/scxml_serializer.hpp"
 #include "fsm/frontend/formal/scxml_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/analysis/fsm_validator.hpp"
 
 using namespace fsm::frontend::formal;
 using namespace fsm::frontend;
+using namespace fsm::backend::formal;
+using namespace fsm::middleend::analysis;
 using namespace fsm::ir;
 
 namespace {
@@ -179,6 +183,68 @@ TEST(ScxmlSemanticCompleteness, XmlEntities_DecodedInGuardsAndAssignments) {
     ASSERT_FALSE(tr.transition_action->assignments.empty());
     EXPECT_EQ(tr.transition_action->assignments[0].target, "counter");
     EXPECT_EQ(tr.transition_action->assignments[0].expression, "counter + 1");
+}
+
+/**
+ * @brief Verify SCXML <history> pseudostates resolution and roundtrip serialization.
+ * @scenario Parse SCXML containing <history id="On_hist"> and a transition targeting "On_hist".
+ * @expected Transition target resolved to parent state with target_is_history=true,
+ *           FsmValidator passes without unreachable/deadlock warnings,
+ *           and re-serializing to SCXML emits target="On_hist".
+ */
+TEST(ScxmlSemanticCompleteness, HistoryPseudostates_ResolvedAndRoundtripSerialized) {
+    const std::string scxml_src = R"(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Off" name="HistoryTest">
+  <state id="Off">
+    <transition event="PowerOn" target="On_hist"/>
+  </state>
+  <state id="On" initial="Mode1">
+    <history id="On_hist" type="shallow"/>
+    <state id="Mode1">
+      <transition event="Next" target="Mode2"/>
+    </state>
+    <state id="Mode2">
+      <transition event="Prev" target="Mode1"/>
+    </state>
+    <transition event="PowerOff" target="Off"/>
+  </state>
+</scxml>
+)";
+
+    ScxmlParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(scxml_src, model, err)) << "SCXML parse error: " << err;
+
+    // Verify states: Off, On, Mode1, Mode2 (On_hist must NOT be a state)
+    EXPECT_EQ(model.states.size(), 4u);
+    const auto* on_state = model.find_state("On");
+    ASSERT_NE(on_state, nullptr);
+    EXPECT_TRUE(on_state->has_history);
+    EXPECT_FALSE(on_state->has_deep_history);
+
+    // Verify transition: Off -> On with target_is_history = true
+    bool found_hist_trans = false;
+    for (const auto& t : model.transitions) {
+        if (t.source == "Off" && t.event == "PowerOn") {
+            EXPECT_EQ(t.target, "On");
+            EXPECT_TRUE(t.target_is_history);
+            found_hist_trans = true;
+        }
+    }
+    EXPECT_TRUE(found_hist_trans);
+
+    // Validation must pass with 0 errors and 0 warnings
+    const auto validation = FsmValidator::validate(model);
+    EXPECT_TRUE(validation.is_valid);
+    EXPECT_TRUE(validation.errors.empty());
+    EXPECT_TRUE(validation.warnings.empty());
+
+    // Roundtrip serialization back to SCXML
+    std::string exported_xml = ScxmlSerializer::serialize(model);
+
+    EXPECT_NE(exported_xml.find("<history id=\"On_hist\" type=\"shallow\"/>"), std::string::npos);
+    EXPECT_NE(exported_xml.find("target=\"On_hist\""), std::string::npos);
 }
 
 }  // namespace

@@ -31,11 +31,26 @@ flowchart TD
 - **InPorts Contracts**: Initialized directly from port range annotations (`min_value`, `max_value`, e.g. `sensor_temp : [-50.0, 150.0]`).
 - **Registers**: Initialized from their default initial value (e.g. `cycle_count = 0` $\implies [0, 0]$).
 - **Assignments mutate intervals**:
-  - `v += 5.0` $\implies [\text{lo} + 5, \text{hi} + 5]$
-  - `v = 0` $\implies [0, 0]$
-  - `v = in.sensor_temp` $\implies \text{Domain}(in.sensor_temp)$
+  - Addition / Subtraction: $[a, b] \pm [c, d] \implies [a \pm c, b \pm d]$
+  - Multiplication: $[a, b] \times [c, d] \implies [\min(ac, ad, bc, bd), \max(ac, ad, bc, bd)]$
+  - Division: $[a, b] / [c, d]$ (safely bounding finite ranges when $0 \notin [c, d]$)
+  - Variable reset / assignment: `v = in.sensor_temp` $\implies \text{Domain}(in.sensor_temp)$
 - **State joins compute the least upper bound (convex hull)** across converging transition paths:
   - $[10, 20] \sqcup [30, 40] = [10, 40]$
+
+### Formal Widening Operator ($\nabla$) for Cyclic Loops
+
+In state machines containing cyclic transitions that mutate variables (e.g. `reg.count++`, accumulator feedback loops), naive fixed-point iteration may take an unbounded number of steps or fail to terminate.
+
+`fsmc` implements Cousot & Cousot's **formal Widening operator** ($\nabla$):
+
+$$[a_1, b_1] \mathbin{\nabla} [a_2, b_2] = \left[ 
+\begin{cases} a_1 & \text{if } a_1 \le a_2 \\ -\infty & \text{if } a_2 < a_1 \end{cases}, \quad
+\begin{cases} b_1 & \text{if } b_2 \le b_1 \\ +\infty & \text{if } b_2 > b_1 \end{cases}
+\right]$$
+
+- **Guaranteed Termination**: When interval bounds strictly increase or decrease across loop iterations, the widening operator immediately projects the diverging bound to $\pm \infty$.
+- **Precision Recovery**: After computing the post-fixed-point via widening, a subsequent bounded narrowing iteration sharpens the intervals against explicit guard constraints and port assertions.
 
 ---
 
@@ -86,7 +101,9 @@ Because the intersection is empty, the guard can never evaluate to `true` at run
             transition boost first Cruising if in.battery_soc > 80.0 then TurboMode;
         }
     }
-    ```
+> [!TIP]
+> **Automated Dead Transition Pruning**:
+> In optimization modes (`-O2` or `--prune-dead-states`), transitions identified as having empty guard intersections ($\text{Domain} \cap \text{Guard} = \emptyset$) are automatically pruned from the emitted state machine table by `DeadStatePruningPass`, eliminating dead bytecode/branches completely.
 
 ---
 

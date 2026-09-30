@@ -81,6 +81,8 @@ class FsmValidator {
 
     static void validate_choice_pseudostates(const FsmIr& model, ValidationResult& result);
 
+    static void validate_state_hierarchy(const FsmIr& model, ValidationResult& result);
+
     static void validate_reachability(const FsmIr& model, ValidationResult& result);
 
     static void validate_livelock_cycles(const FsmIr& model, ValidationResult& result);

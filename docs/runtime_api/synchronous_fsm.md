@@ -470,7 +470,39 @@ if (fsm.has_invariant_violation()) {
 
 ---
 
-## 10. Next Steps
+## 10. Hierarchical State Introspection & Explicit Reset
+
+### Hierarchical State Queries (`is_in<State>()`)
+In hierarchical state machines (HFSM), `is_in<State>()` evaluates both leaf states and composite ancestor states in $O(1)$ constexpr time via compile-time reflection:
+
+```cpp
+// If active leaf state is 'Operational_Nominal' whose parent is 'Operational':
+assert(fsm.is_in<Operational_Nominal>()); // true (exact leaf match)
+assert(fsm.is_in<Operational>());         // true (ancestor composite match)
+```
+
+### Typed Deep History Queries
+For composite states with shallow or deep history, retrieve the last recorded active substate without manual string comparisons:
+
+```cpp
+// Query recorded substate history for composite state 'Operational'
+std::string_view last_substate = fsm.get_history<Operational>();
+std::cout << "Resuming Operational into: " << last_substate << "\n";
+```
+
+### Explicit Reset (`fsm.reset()`)
+Restores the state machine back to its initial state without destroying and reconstructing the object:
+
+```cpp
+// Re-executes initial state on_enter actions, restores default data registers,
+// and resets timers, invariants, history memory, and deferred event queues.
+fsm.reset();
+assert(fsm.is_in_state<InitialState>());
+```
+
+---
+
+## 11. Next Steps
 - For asynchronous, lock-free ISR event ingestion, see **[Lock-Free SPSC Engine (`fsm::spsc_fsm`)](spsc_fsm.md)**.
 - For multi-threaded active object queues and timers, see **[Thread-Safe MPSC Engine (`fsm::thread_safe_fsm`)](thread_safe_fsm.md)**.
 - For complete method signatures and traits, see the **[Full Runtime API Reference](reference.md)**.

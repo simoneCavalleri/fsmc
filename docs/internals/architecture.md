@@ -27,7 +27,7 @@ fsmc/
 │   ├── fsmc/        # Primary Multi-Format Compiler Driver CLI
 │   └── fsm-opt/     # Standalone Formal IR Optimizer, Linter & Roundtrip Formatter CLI
 ├── examples/        # Aerospace, Automotive ECU, and Resilient IoT Showcases
-├── tests/           # Modular GoogleTest Suites (89 test targets, 100% pass)
+├── tests/           # Modular GoogleTest Suites (93 test targets, 100% pass)
 │   ├── backend/     # Codegen, roundtrip lossless export, and backend/cpp/runtime tests
 │   ├── frontend/    # Frontend tests partitioned into formal/ and diagram/
 │   ├── ir/          # Serialization and AST integrity
@@ -75,10 +75,11 @@ fsmc/
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 3. Middle-End Optimizer & Verifier (28 Passes, 7 Stages)    │
+│ 3. Middle-End Optimizer & Verifier (32 Passes, 7 Stages)    │
 │  • Stage 1: Canonicalization & Semantic Validation          │
 │  • Stage 2: Structural Lowering (LCA Action Fusion, Choice, │
 │             Fork/Join, Orthogonal Product, History, Deferred│
+│             Connective Junction Chaining)                   │
 │  • Stage 3: Formal Safety & Invariant Verification (Livelock│
 │             Priority Conflict, Timed Invariants, Event Queue│
 │  • Stage 4: Symbolic Model Checking (Deadlocks, LTL/CTL)    │

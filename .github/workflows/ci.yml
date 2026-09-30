@@ -25,7 +25,7 @@ jobs:
 
       - name: Check Formatting with clang-format
         run: |
-          find include tools tests examples benchmarks -name '*.cpp' -o -name '*.hpp' | xargs clang-format --dry-run --Werror
+          find src include tools tests examples benchmarks -name '*.cpp' -o -name '*.hpp' | xargs clang-format --dry-run --Werror
 
       - name: Configure CMake for Clang-Tidy & SSOT Checks
         run: |

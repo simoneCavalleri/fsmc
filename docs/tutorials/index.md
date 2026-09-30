@@ -13,6 +13,7 @@ flowchart LR
     Step3 --> Step4["4. Formal Verification<br/>(LTL/CTL & RTM)"]
     Step4 --> Step5["5. Codegen & Build<br/>(CMake Integration)"]
     Step5 --> Step6["6. Real-World Project<br/>(UAV Flight Controller)"]
+    Step6 --> Step7["7. Digital Twin ECU<br/>(Stateflow & Rollback)"]
 ```
 
 ---
@@ -27,6 +28,7 @@ flowchart LR
 | **[Step 4: Formal Verification & Safety](04_formal_verification.md)** | Mathematical safety validation | EFSM interval analysis, temporal model checking (LTL/CTL), nuXmv export, and RTM export. |
 | **[Step 5: Code Generation & Build Integration](05_code_generation_and_integration.md)** | Build system integration | Modern CMake integration (`fsmc_target_sources`) and the Generation Gap pattern. |
 | **[Step 6: Complete Real-World Case Study](06_real_world_case_study.md)** | End-to-end mission controller | Complete autonomous drone flight controller from SysML v2 to C++20 real-time loop. |
+| **[Step 7: Stateflow Digital Twin ECU](07_stateflow_digital_twin_ecu.md)** | Automotive ECU & Time-Travel | MathWorks Stateflow XML (`.sfx`), connective junction chaining, and `fsm::snapshot_recorder` zero-heap rollback. |
 
 ---
 

@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.8.0] - 2026-09-30
+
+### Added
+- **Dedicated CLI Integration Test Suites & Option Normalization (`fsmc`, `fsm-opt`)**:
+  - Implemented end-to-end option coverage tests in `test_fsmc_cli_options` (19 test scenarios) and `test_fsm_opt_cli_options` (10 test scenarios), expanding the automated test suite to 93 CTest targets and 496 documented test scenarios in the test catalog.
+  - Added support across all options in `fsmc` and `fsm-opt` for `--option=value` assignment style alongside standard space-separated syntax (`--input=`, `--output=`, `--target=`, `--lang=`, `--name=`, `--namespace=`, `--ns=`, `--package=`, `--format=`, `--sidecar=`, `--export=`, `-e=`, `--export-runtime=`, `--submachine-dir=`, `--rtm-format=`, `--std=`, `--engine=`, `--ltl=`, `--ctl=`).
+  - Added full Unix Standard Input (`-` or `/dev/stdin`) and Standard Output (`-` or `/dev/stdout`) support for piping statechart specifications into `fsmc` and `fsm-opt`, with automatic content-based format detection (`ParserFactory::detect_format_from_content`).
+- **Extended Runtime Semantics & Concurrency (`do_activity`, Sampled Change Triggers, Dual Action Execution)**:
+  - Added periodic in-state continuous behavior execution via `do_activity` with deterministic tick rate in `fsm::deterministic_timer` and lifecycle trait dispatch.
+  - Added discrete sampled change triggers (`SampledChangeTriggerPass`, `fsm::change_<Port, Predicate>`) synthesizing change detector registers ($z^{-1}$) and edge-trigger guards for continuous stream signals.
+  - Added dual action execution semantics support for Stateflow/UML condition actions and transition actions via `fsm::seq_<Action1, Action2>` sequentially executed during transition traversal.
+- **Formal Verification & Middle-End Semantic Analysis**:
+  - Implemented Native Polynomial CTL Model Checking (`ModelChecker`, `LtlParser` extended to CTL grammar with `EX`, `EF`, `EG`, `AX`, `AF`, `AG`, `E[P U Q]`, `A[P U Q]`) via recursive symbolic fixed-point evaluation.
+  - Implemented EFSM Abstract Interpretation Widening $\nabla$ (`EfsmIntervalAnalysis`) computing post-fixed-point bounds on integer/float registers across loop iterations and pruning statically unsatisfiable dead transitions.
+- **Connective Junction Chaining & Optimization Pass**:
+  - Implemented `ConnectiveJunctionChainingPass` and integrated into Stage 2 (Structural Lowering Suite) of the 7-stage verified compiler pipeline as well as standard pipeline and `fsm-opt`.
+  - Atomically chains multi-hop connective junction paths into composite transitions, collapsing intermediate micro-states and fusing condition/transition actions into deterministic compound actions.
+  - Added `--emit-stateflow` export option in `fsm-opt` and `--diagnostic-format=text|json|github` in both `fsmc` and `fsm-opt` with GitHub Actions workflow annotation formatting (`::warning`, `::error`).
+- **Zero-Heap Time-Travel Snapshot Recorder**:
+  - Implemented `fsm::snapshot_recorder<Capacity, MaxSize>` circular flight recorder with $O(1)$ ring buffer storage for deterministic state machine state checkpoints, rollback, and time-travel replay.
+- **Hierarchical State Introspection & Explicit State Machine Reset**:
+  - Enhanced `is_in<State>()` / `is_in_state<State>()` across `fsm`, `spsc_fsm`, and `thread_safe_fsm` to recursively check leaf and composite ancestor states in $O(1)$ constexpr time via compile-time reflection traits.
+  - Implemented explicit, thread-safe `reset()` capability restoring initial state, default data registers, and active timer tables across all runtime engines.
+  - Added multi-level typed deep history queries `get_history<ParentState>()` and introspection predicates `history_is<ParentState, TargetLeaf>()`.
+- **Stateflow & Diagram Sidecar Parser Enhancements**:
+  - Supported Stateflow state actions (`en:`, `du:`, `ex:`), temporal logic triggers (`every(N, sec)`), and XML numeric entity decoding (`&#...;`).
+  - Implemented `GuardModel`-aware recursive boolean expression reconstruction in `to_diagram_string`.
+- **Industrial Showcase 06: Stateflow Digital Twin ECU**:
+  - Created end-to-end industrial digital twin demonstration (`examples/06_stateflow_digital_twin_ecu`) modeling an automotive powertrain engine ECU with multi-hop chained connective junctions, overheat anomaly detection, and supervisor-initiated time-travel state rollback.
+
+### Fixed
+- **Modular Code Generation Parity with `--export-runtime` (`--modular`, `--runtime-header`)**:
+  - Aligned `--modular` code generation to emit `#include "fsm.hpp"` by default, matching the standalone runtime exported by `--export-runtime <dir|file>`.
+  - Removed internal and non-existent include directives (`#include "fsm/backend/cpp/runtime/fsm.hpp"`, `thread_safe_fsm.hpp`, `spsc_fsm.hpp`) which failed compilation against exported runtimes where all runtime engines are unified in `fsm.hpp`.
+  - Added support for `--modular=<hdr>` and `--runtime-header <hdr>` (e.g. `--modular=<fsm/fsm.hpp>`, `--runtime-header="custom/fsm.hpp"`) for explicit include paths.
+  - Added unified umbrella header `include/fsm/fsm.hpp` to the repository.
+- **Runtime Exporter (`--export-runtime`)**:
+  - Fixed directory handling: automatically appends `fsm.hpp` when given an existing directory or target path without file extension.
+  - Fixed generated header pollution: eliminated invalid dummy namespace and empty `using  = ::fsm::make_fsm<...>` declarations in exported standalone runtimes, directly emitting clean `Cpp17StandaloneRuntime` or `Cpp20StandaloneRuntime` headers.
+- **Formal Verification CLI Argument Ingestion (`--ltl`, `--ctl`) in `fsmc`**:
+  - Integrated `LtlPropertyParser::parse` on CLI-injected `--ltl` and `--ctl` formulas to construct valid AST expression trees instead of raw atomic proposition strings, resolving verification engine failures on temporal formulas.
+- **Diagnostic Rigor & `-Werror` Precision in `fsm-opt`**:
+  - Fixed false-positive `-Werror` failures on sound models: informational diagnostic `Note` messages (e.g., WCET calculations or queue bound metrics) no longer trigger compilation aborts. `-Werror` now strictly triggers exclusively on `Warning`, `Fatal`, `Error`, or `SafetyCritical` diagnostics.
+  - Integrated unknown pass detection in `--passes=` with `DiagnosticEngine`: unrecognized passes are now formatted diagnostics that strictly cause compilation failure under `-Werror`.
+  - Added strict validation for `--diagnostic-format`, rejecting unsupported formats with an actionable error.
+- **Conflicting CLI Options Detection**:
+  - Added warning diagnostic (`W0102`, `W0103`) when mutually conflicting flags are supplied (e.g. `--standalone` vs `--modular`, `--c++17` vs `--c++20`), failing compilation under `-Werror`.
+- **Hierarchical Deferred Event Inheritance**: Inherit deferred events from parent and ancestor composite states down to active leaf substates (`is_deferred_event_v`, `any_state_has_deferred`).
+- **Deep History in Static `parent_type` Hierarchies**: Fixed deep history tracking, recording, and typed retrieval (`record_ancestor_history`, `history_is`, `get_history<Parent>()`) to resolve static ancestor hierarchies via `parent_type` and `get_state_name_static`.
+- **Orthogonal Region Boundary Transitions**:
+  - Fixed substate external exit transitions to replicate across all active Cartesian product states containing the substate (`OrthogonalProductPass`).
+  - Fixed external entry transitions targeting a substate to automatically activate the initial substate in all companion orthogonal regions.
+- **C++ Code Generation**:
+  - Emitted default constructor for generated signal types containing struct/variant attributes to enable uninitialized variant construction.
+  - Supported compound assignment code emission (`+=`, `-=`, `*=`, `/=`) in generated actions.
+- **Category B Data-Path Optimizations & State Minimization**:
+  - Preserved individual struct member writes in Dead Action Elimination (`DeadActionEliminationPass`), preventing false-positive dead store removal.
+  - Prevented illegal action hoisting and sinking into pseudostates in `CommonActionFactoringPass`.
+  - Prevented incorrect state mergers in `StateMinimizationPass` when states have multiple guarded transitions for the same event or unmodeled state activities (`do_activity`, time invariants).
+- **Formal Frontends & MBSE Ingestion**:
+  - Preserved atomic raw expressions and boolean operator precedence in SCXML, SMV, Stateflow, and Cameo resolvers.
+  - Fixed fractional duration unit truncation (e.g., `1.5s` $\to$ `1500ms`) in SysML v2 and Stateflow parsers before unit conversion.
+  - Supported nested parenthesis conditions, set membership (`state in { ... }`), and boolean literal normalization in SMV parser.
+  - Disambiguated action delimiter slash (`/`) from guard division operators in diagram parsers.
+  - Preserved SCXML history pseudostate targets across roundtrip serialization.
+- **Verification, Diagnostics & Lowering**:
+  - Detected livelock cycles on explicit `"anonymous_event"` and `"completion_event"` transitions in `LivelockAnalysisPass` and `FsmValidator`.
+  - Resolved boundary action fusion premature clearing and preserved `TransitionKind::External` on self-transitions through junctions and choice nodes.
+  - Prevented deterministic timer reentrancy cascades and modulo-by-zero errors.
+  - Fixed strict weak ordering violation in `FsmGraphOps::sort_transitions_by_priority`.
+- **Runtime API Ergonomics**:
+  - Cleaned up `spsc_fsm` producer API by removing the redundant `push` alias in favor of the canonical `post`, and formally documented concurrency thread domains (Producer, Consumer, Concurrent Reader).
+
 ## [0.7.0] - 2026-09-29
 
 ### Added

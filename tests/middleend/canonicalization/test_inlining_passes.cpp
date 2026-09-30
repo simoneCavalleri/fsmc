@@ -141,4 +141,46 @@ TEST(ChoiceInlining, DecisionBranches_FlattenedIntoCompositeTransitions) {
     EXPECT_EQ(it_deg->get_action(), "InitSubsystem_LogError");
 }
 
+/**
+ * @brief Verify that a transition through a choice node returning to the source state
+ *        is preserved as an External self-transition (not downgraded to Internal).
+ */
+TEST(ChoiceInlining, SelfTransitionThroughChoice_PreservesExternalKind) {
+    FsmIr ir;
+    ir.name = "ChoiceSelfTransitionFSM";
+    ir.initial_state = "Processing";
+
+    ir.add_state("Processing");
+    ir.add_choice_node("Decision");
+
+    StateNode choice_st;
+    choice_st.name = "Decision";
+    choice_st.kind = StateKind::Choice;
+    ir.states.push_back(choice_st);
+
+    TransitionEdge in_t;
+    in_t.source = "Processing";
+    in_t.target = "Decision";
+    in_t.event = "EvCheck";
+    in_t.kind = TransitionEdgeKind::External;
+    ir.add_transition(in_t);
+
+    TransitionEdge out_t;
+    out_t.source = "Decision";
+    out_t.target = "Processing";
+    out_t.guard = "RetryNeeded";
+    out_t.kind = TransitionEdgeKind::External;
+    ir.add_transition(out_t);
+
+    ChoiceInliningPass pass;
+    DiagnosticEngine diag;
+    pass.run(ir, diag);
+
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    const auto& inlined = ir.transitions[0];
+    EXPECT_EQ(inlined.source, "Processing");
+    EXPECT_EQ(inlined.target, "Processing");
+    EXPECT_EQ(inlined.kind, TransitionEdgeKind::External);
+}
+
 }  // namespace

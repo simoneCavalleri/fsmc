@@ -454,4 +454,110 @@ TEST(OrthogonalProduct, ProductExplosion_ExceedingLimit_ReportsDiagnosticAndAbor
     EXPECT_TRUE(found_eortho003);
 }
 
+/**
+ * @brief Outgoing transition from a sub-state must be replicated across all product states containing that sub-state.
+ * @scenario Sub-state 'X' in Region 1 has an external transition to 'SafeMode' on 'EvFault'.
+ * @expected Both 'P_X_A' and 'P_X_B' have transitions to 'SafeMode' on 'EvFault'.
+ */
+TEST(OrthogonalProduct, ExternalExitFromSubState_ReplicatedAcrossAllMatchingProductStates) {
+    FsmIr model;
+    model.name = "ExternalExitModel";
+    model.add_state("SafeMode");
+
+    auto& par = model.add_state("P", "", StateKind::Parallel);
+    OrthogonalRegion r1;
+    r1.id = "R1";
+    r1.name = "R1";
+    r1.initial_state_id = "X";
+    r1.state_ids = {"X", "Y"};
+
+    OrthogonalRegion r2;
+    r2.id = "R2";
+    r2.name = "R2";
+    r2.initial_state_id = "A";
+    r2.state_ids = {"A", "B"};
+
+    par.orthogonal_regions = {r1, r2};
+    model.add_state("X", "R1");
+    model.add_state("Y", "R1");
+    model.add_state("A", "R2");
+    model.add_state("B", "R2");
+
+    TransitionEdge exit_trans;
+    exit_trans.source = "X";
+    exit_trans.target = "SafeMode";
+    exit_trans.event = "EvFault";
+    model.add_transition(exit_trans);
+
+    OrthogonalProductPass pass;
+    DiagnosticEngine diag;
+    ASSERT_TRUE(pass.run(model, diag));
+
+    bool found_p_x_a = false;
+    bool found_p_x_b = false;
+    for (const auto& t : model.transitions) {
+        if (t.event == "EvFault" && t.target == "SafeMode") {
+            if (t.source == "P_X_A") {
+                found_p_x_a = true;
+            } else if (t.source == "P_X_B") {
+                found_p_x_b = true;
+            } else {
+                FAIL() << "Unexpected source for EvFault: " << t.source;
+            }
+        }
+    }
+    EXPECT_TRUE(found_p_x_a) << "Missing transition from P_X_A to SafeMode on EvFault";
+    EXPECT_TRUE(found_p_x_b) << "Missing transition from P_X_B to SafeMode on EvFault";
+}
+
+/**
+ * @brief External transition entering a sub-state must activate initial states in all other regions.
+ * @scenario External transition 'Idle --EnterY--> Y'. Region 2 has states A and B, where B is initial_state.
+ * @expected The transition is remapped to target 'P_Y_B', not 'P_Y_A'.
+ */
+TEST(OrthogonalProduct, ExternalEntryIntoSubState_ActivatesInitialStatesInOtherRegions) {
+    FsmIr model;
+    model.name = "ExternalEntryModel";
+    model.add_state("Idle");
+
+    auto& par = model.add_state("P", "", StateKind::Parallel);
+    OrthogonalRegion r1;
+    r1.id = "R1";
+    r1.name = "R1";
+    r1.initial_state_id = "X";
+    r1.state_ids = {"X", "Y"};
+
+    OrthogonalRegion r2;
+    r2.id = "R2";
+    r2.name = "R2";
+    // Crucial: B is initial state even though A is listed first in state_ids!
+    r2.initial_state_id = "B";
+    r2.state_ids = {"A", "B"};
+
+    par.orthogonal_regions = {r1, r2};
+    model.add_state("X", "R1");
+    model.add_state("Y", "R1");
+    model.add_state("A", "R2");
+    model.add_state("B", "R2");
+
+    TransitionEdge enter_trans;
+    enter_trans.source = "Idle";
+    enter_trans.target = "Y";
+    enter_trans.event = "EnterY";
+    model.add_transition(enter_trans);
+
+    OrthogonalProductPass pass;
+    DiagnosticEngine diag;
+    ASSERT_TRUE(pass.run(model, diag));
+
+    bool found = false;
+    for (const auto& t : model.transitions) {
+        if (t.source == "Idle" && t.event == "EnterY") {
+            EXPECT_EQ(t.target, "P_Y_B") << "Target should have activated initial state B of region 2";
+            found = true;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
 }  // namespace

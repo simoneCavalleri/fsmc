@@ -73,7 +73,8 @@ fsmc --export-runtime <directory_or_file> [--std 17|20]
 | `--c++17, -std=c++17` | Shortcut alias to target C++17 standard. | `17` |
 | `--c++20, -std=c++20` | Shortcut alias to target C++20 standard. | `17` |
 | `--standalone` | Emit self-contained header with embedded zero-alloc runtime (0 external dependencies). | `true` |
-| `--modular` | Emit lightweight header that includes external `<fsm/backend/cpp/runtime/fsm.hpp>`. | `false` |
+| `--modular[=<hdr>]` | Emit lightweight header that includes external runtime header (default: `"fsm.hpp"`, matching `--export-runtime`). | `false` |
+| `--runtime-header <hdr>` | Explicit runtime header path included when `--modular` is active (e.g. `<fsm/fsm.hpp>` or `"custom/fsm.hpp"`). | `"fsm.hpp"` |
 | `--export-runtime <dir\|file>` | Export standalone runtime library headers (`fsm.hpp`) to the specified directory or explicit file path. Directly outputs clean C++17/C++20 runtime without empty model boilerplate. | None |
 | `--no-thread-safe` | Disable generation of the `thread_safe_fsm` asynchronous wrapper. | `false` |
 | `--no-stubs` | Do not emit default stub functors for actions and guards. | `false` |

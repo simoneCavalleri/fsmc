@@ -39,6 +39,7 @@ struct FsmcOptions {
     bool cpp20_specified = false;
     bool thread_safe = true;
     bool include_stubs = true;
+    std::string runtime_header = "fsm.hpp";  // --modular=<hdr> or --runtime-header <hdr>
     bool verify_mode = false;
     std::string verify_engine = "auto";      // --engine=auto|nuxmv|internal
     std::string ltl_spec;                    // --ltl "<formula>"
@@ -97,7 +98,10 @@ inline void print_help(const char* prog_name) {
         << "  --std <17|20>                Target C++ standard: '17' or '20' (default: 17)\n"
         << "  --c++17, --c++20             Target C++ standard shorthands\n"
         << "  --standalone                 Generate self-contained header with embedded zero-alloc runtime (default)\n"
-        << "  --modular                    Generate FSM header only, including external <fsm/fsm.hpp>\n"
+        << "  --modular[=<hdr>]            Generate FSM header only, including external runtime header (default: "
+           "\"fsm.hpp\")\n"
+        << "  --runtime-header <hdr>       Custom runtime header path included when --modular is active (default: "
+           "\"fsm.hpp\")\n"
         << "  --export-runtime <dir>       Export the standalone FSM runtime library headers to directory\n"
         << "  --no-thread-safe             Do not generate thread_safe_fsm asynchronous wrapper\n"
         << "  --no-stubs                   Do not emit default stub functors for actions and guards\n"
@@ -379,6 +383,23 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
         } else if (arg == "--modular") {
             opts.modular_specified = true;
             opts.standalone = false;
+        } else if (arg.rfind("--modular=", 0) == 0) {
+            opts.modular_specified = true;
+            opts.standalone = false;
+            opts.runtime_header = arg.substr(10);
+        } else if (arg == "--runtime-header") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
+            opts.runtime_header = argv[++idx];
+            opts.standalone = false;
+            opts.modular_specified = true;
+        } else if (arg.rfind("--runtime-header=", 0) == 0) {
+            opts.runtime_header = arg.substr(17);
+            opts.standalone = false;
+            opts.modular_specified = true;
 
             // 11. Formal verification options and temporal logic specifications (LTL/CTL)
         } else if (arg == "-V" || arg == "--verify" || arg == "--check" || arg == "verify") {

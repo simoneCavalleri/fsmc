@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 494  
+**Total Documented Test Cases**: 496  
 
 ---
 
@@ -1755,6 +1755,18 @@
 
 **Scenario**:
   - Compile model with modular runtime inclusion and disabled thread-safe wrappers, verify
+
+#### `FsmcOptionsTest.ModularPackaging_CustomRuntimeHeader`
+**Test Intent**: Verify --modular=<hdr> and --runtime-header options emit custom runtime header includes.
+
+**Scenario**:
+  - Compile model specifying custom angle-bracketed (<fsm/fsm.hpp>) and quoted ("custom/rt.hpp") headers.
+
+#### `FsmcOptionsTest.ModularPackaging_ExportRuntimeAlignment`
+**Test Intent**: Verify seamless end-to-end integration between --export-runtime and --modular code generation.
+
+**Scenario**:
+  - Export runtime to directory (creating fsm.hpp), generate modular FSM header, and verify matching header
 
 #### `FsmcOptionsTest.PipelineAndOptimizations_ExecuteSuccessfully`
 **Test Intent**: Verify compiler optimization levels (-O0, -O2), --7stage pipeline mode, --prune, and

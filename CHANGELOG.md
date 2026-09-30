@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Dedicated CLI Integration Test Suites & Option Normalization (`fsmc`, `fsm-opt`)**:
-  - Implemented end-to-end option coverage tests in `test_fsmc_cli_options` (17 test scenarios) and `test_fsm_opt_cli_options` (10 test scenarios), expanding the automated test suite to 93 CTest targets and 494 documented test scenarios in the test catalog.
+  - Implemented end-to-end option coverage tests in `test_fsmc_cli_options` (19 test scenarios) and `test_fsm_opt_cli_options` (10 test scenarios), expanding the automated test suite to 93 CTest targets and 496 documented test scenarios in the test catalog.
   - Added support across all options in `fsmc` and `fsm-opt` for `--option=value` assignment style alongside standard space-separated syntax (`--input=`, `--output=`, `--target=`, `--lang=`, `--name=`, `--namespace=`, `--ns=`, `--package=`, `--format=`, `--sidecar=`, `--export=`, `-e=`, `--export-runtime=`, `--submachine-dir=`, `--rtm-format=`, `--std=`, `--engine=`, `--ltl=`, `--ctl=`).
   - Added full Unix Standard Input (`-` or `/dev/stdin`) and Standard Output (`-` or `/dev/stdout`) support for piping statechart specifications into `fsmc` and `fsm-opt`, with automatic content-based format detection (`ParserFactory::detect_format_from_content`).
 - **Extended Runtime Semantics & Concurrency (`do_activity`, Sampled Change Triggers, Dual Action Execution)**:
@@ -38,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Created end-to-end industrial digital twin demonstration (`examples/06_stateflow_digital_twin_ecu`) modeling an automotive powertrain engine ECU with multi-hop chained connective junctions, overheat anomaly detection, and supervisor-initiated time-travel state rollback.
 
 ### Fixed
+- **Modular Code Generation Parity with `--export-runtime` (`--modular`, `--runtime-header`)**:
+  - Aligned `--modular` code generation to emit `#include "fsm.hpp"` by default, matching the standalone runtime exported by `--export-runtime <dir|file>`.
+  - Removed internal and non-existent include directives (`#include "fsm/backend/cpp/runtime/fsm.hpp"`, `thread_safe_fsm.hpp`, `spsc_fsm.hpp`) which failed compilation against exported runtimes where all runtime engines are unified in `fsm.hpp`.
+  - Added support for `--modular=<hdr>` and `--runtime-header <hdr>` (e.g. `--modular=<fsm/fsm.hpp>`, `--runtime-header="custom/fsm.hpp"`) for explicit include paths.
+  - Added unified umbrella header `include/fsm/fsm.hpp` to the repository.
 - **Runtime Exporter (`--export-runtime`)**:
   - Fixed directory handling: automatically appends `fsm.hpp` when given an existing directory or target path without file extension.
   - Fixed generated header pollution: eliminated invalid dummy namespace and empty `using  = ::fsm::make_fsm<...>` declarations in exported standalone runtimes, directly emitting clean `Cpp17StandaloneRuntime` or `Cpp20StandaloneRuntime` headers.

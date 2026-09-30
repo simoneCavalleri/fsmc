@@ -100,10 +100,14 @@ std::string CppGenerator::generate_header(const FsmIr& model, const GeneratorOpt
             Cpp17StandaloneRuntime::emit(out, options);
         }
     } else {
-        out << "#include \"fsm/backend/cpp/runtime/fsm.hpp\"\n";
-        if (options.thread_safe) {
-            out << "#include \"fsm/backend/cpp/runtime/thread_safe_fsm.hpp\"\n";
-            out << "#include \"fsm/backend/cpp/runtime/spsc_fsm.hpp\"\n";
+        std::string header_include = options.runtime_header;
+        if (header_include.empty()) {
+            header_include = "fsm.hpp";
+        }
+        if (header_include.front() == '<' || header_include.front() == '"') {
+            out << "#include " << header_include << "\n";
+        } else {
+            out << "#include \"" << header_include << "\"\n";
         }
         out << "#include <string_view>\n";
         out << "#include <iostream>\n\n";

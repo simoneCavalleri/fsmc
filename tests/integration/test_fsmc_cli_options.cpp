@@ -358,8 +358,107 @@ TEST_F(FsmcOptionsTest, ModularPackaging_IncludesExternalHeader) {
 
     std::ifstream ifs(out_file);
     std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
-    EXPECT_NE(content.find("#include \"fsm/backend/cpp/runtime/fsm.hpp\""), std::string::npos);
+    EXPECT_NE(content.find("#include \"fsm.hpp\""), std::string::npos);
+    EXPECT_EQ(content.find("fsm/backend/cpp/runtime"), std::string::npos);
+    EXPECT_EQ(content.find("thread_safe_fsm.hpp"), std::string::npos);
+    EXPECT_EQ(content.find("spsc_fsm.hpp"), std::string::npos);
     EXPECT_EQ(content.find("make_thread_safe_fsm"), std::string::npos);
+}
+
+/**
+ * @brief Test Intent: Verify --modular=<hdr> and --runtime-header options emit custom runtime header includes.
+ * Scenario: Compile model specifying custom angle-bracketed (<fsm/fsm.hpp>) and quoted ("custom/rt.hpp") headers.
+ */
+TEST_F(FsmcOptionsTest, ModularPackaging_CustomRuntimeHeader) {
+    // 1. Angle bracketed include via --modular=<hdr>
+    {
+        fs::path out_file = test_dir_ / "modular_custom_angle.hpp";
+        char p[] = "fsmc";
+        char i[] = "-i";
+        std::string in_str = model_file_;
+        char o[] = "-o";
+        std::string out_str = out_file.string();
+        char mod[] = "--modular=<fsm/fsm.hpp>";
+
+        char* argv[] = {p, i, in_str.data(), o, out_str.data(), mod};
+        const auto opts = fsm::tools::parse_cli_args(6, argv);
+        EXPECT_FALSE(opts.standalone);
+        EXPECT_EQ(opts.runtime_header, "<fsm/fsm.hpp>");
+        EXPECT_EQ(fsm::tools::FsmcDriver::run(opts), 0);
+
+        std::ifstream ifs(out_file);
+        std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+        EXPECT_NE(content.find("#include <fsm/fsm.hpp>"), std::string::npos);
+        EXPECT_EQ(content.find("fsm/backend/cpp/runtime"), std::string::npos);
+    }
+
+    // 2. Quoted include via --runtime-header
+    {
+        fs::path out_file = test_dir_ / "modular_custom_quoted.hpp";
+        char p[] = "fsmc";
+        char i[] = "-i";
+        std::string in_str = model_file_;
+        char o[] = "-o";
+        std::string out_str = out_file.string();
+        char mod[] = "--modular";
+        char rh[] = "--runtime-header=my_runtime/fsm_engine.hpp";
+
+        char* argv[] = {p, i, in_str.data(), o, out_str.data(), mod, rh};
+        const auto opts = fsm::tools::parse_cli_args(7, argv);
+        EXPECT_FALSE(opts.standalone);
+        EXPECT_EQ(opts.runtime_header, "my_runtime/fsm_engine.hpp");
+        EXPECT_EQ(fsm::tools::FsmcDriver::run(opts), 0);
+
+        std::ifstream ifs(out_file);
+        std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+        EXPECT_NE(content.find("#include \"my_runtime/fsm_engine.hpp\""), std::string::npos);
+        EXPECT_EQ(content.find("fsm/backend/cpp/runtime"), std::string::npos);
+    }
+}
+
+/**
+ * @brief Test Intent: Verify seamless end-to-end integration between --export-runtime and --modular code generation.
+ * Scenario: Export runtime to directory (creating fsm.hpp), generate modular FSM header, and verify matching header
+ * include.
+ */
+TEST_F(FsmcOptionsTest, ModularPackaging_ExportRuntimeAlignment) {
+    fs::path export_dir = test_dir_ / "exported_rt";
+    fs::path out_file = export_dir / "protocol_fsm.hpp";
+
+    // Step 1: Export runtime
+    {
+        char p[] = "fsmc";
+        char exp[] = "--export-runtime";
+        std::string dir_str = export_dir.string();
+        char std20[] = "--std=20";
+        char* argv[] = {p, exp, dir_str.data(), std20};
+
+        const auto opts = fsm::tools::parse_cli_args(4, argv);
+        EXPECT_EQ(fsm::tools::FsmcDriver::run(opts), 0);
+        EXPECT_TRUE(fs::exists(export_dir / "fsm.hpp"));
+    }
+
+    // Step 2: Generate modular FSM into same directory
+    {
+        char p[] = "fsmc";
+        char i[] = "-i";
+        std::string in_str = model_file_;
+        char o[] = "-o";
+        std::string out_str = out_file.string();
+        char mod[] = "--modular";
+        char c20[] = "--c++20";
+        char* argv[] = {p, i, in_str.data(), o, out_str.data(), mod, c20};
+
+        const auto opts = fsm::tools::parse_cli_args(7, argv);
+        EXPECT_EQ(fsm::tools::FsmcDriver::run(opts), 0);
+        EXPECT_TRUE(fs::exists(out_file));
+    }
+
+    // Step 3: Verify the modular file includes "fsm.hpp" exactly matching the exported runtime
+    std::ifstream ifs(out_file);
+    std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+    EXPECT_NE(content.find("#include \"fsm.hpp\""), std::string::npos);
+    EXPECT_EQ(content.find("fsm/backend/cpp/runtime"), std::string::npos);
 }
 
 // ============================================================================

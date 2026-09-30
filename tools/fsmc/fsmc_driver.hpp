@@ -472,6 +472,7 @@ class FsmcDriver {
         gen_opts.include_stubs = opts.include_stubs;
         gen_opts.thread_safe = opts.thread_safe;
         gen_opts.target_namespace = opts.ns_name;
+        gen_opts.runtime_header = opts.runtime_header;
 
         std::string generated_code;
         try {

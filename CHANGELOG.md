@@ -11,8 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Dedicated CLI Integration Test Suites & Option Normalization (`fsmc`, `fsm-opt`)**:
-  - Implemented end-to-end option coverage tests in `test_fsmc_cli_options` (14 test scenarios) and `test_fsm_opt_cli_options` (7 test scenarios), expanding the automated test suite to 93 CTest targets and 488 documented test scenarios in the test catalog.
+  - Implemented end-to-end option coverage tests in `test_fsmc_cli_options` (17 test scenarios) and `test_fsm_opt_cli_options` (10 test scenarios), expanding the automated test suite to 93 CTest targets and 494 documented test scenarios in the test catalog.
   - Added support across all options in `fsmc` and `fsm-opt` for `--option=value` assignment style alongside standard space-separated syntax (`--input=`, `--output=`, `--target=`, `--lang=`, `--name=`, `--namespace=`, `--ns=`, `--package=`, `--format=`, `--sidecar=`, `--export=`, `-e=`, `--export-runtime=`, `--submachine-dir=`, `--rtm-format=`, `--std=`, `--engine=`, `--ltl=`, `--ctl=`).
+  - Added full Unix Standard Input (`-` or `/dev/stdin`) and Standard Output (`-` or `/dev/stdout`) support for piping statechart specifications into `fsmc` and `fsm-opt`, with automatic content-based format detection (`ParserFactory::detect_format_from_content`).
 - **Extended Runtime Semantics & Concurrency (`do_activity`, Sampled Change Triggers, Dual Action Execution)**:
   - Added periodic in-state continuous behavior execution via `do_activity` with deterministic tick rate in `fsm::deterministic_timer` and lifecycle trait dispatch.
   - Added discrete sampled change triggers (`SampledChangeTriggerPass`, `fsm::change_<Port, Predicate>`) synthesizing change detector registers ($z^{-1}$) and edge-trigger guards for continuous stream signals.
@@ -44,6 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Integrated `LtlPropertyParser::parse` on CLI-injected `--ltl` and `--ctl` formulas to construct valid AST expression trees instead of raw atomic proposition strings, resolving verification engine failures on temporal formulas.
 - **Diagnostic Rigor & `-Werror` Precision in `fsm-opt`**:
   - Fixed false-positive `-Werror` failures on sound models: informational diagnostic `Note` messages (e.g., WCET calculations or queue bound metrics) no longer trigger compilation aborts. `-Werror` now strictly triggers exclusively on `Warning`, `Fatal`, `Error`, or `SafetyCritical` diagnostics.
+  - Integrated unknown pass detection in `--passes=` with `DiagnosticEngine`: unrecognized passes are now formatted diagnostics that strictly cause compilation failure under `-Werror`.
+  - Added strict validation for `--diagnostic-format`, rejecting unsupported formats with an actionable error.
+- **Conflicting CLI Options Detection**:
+  - Added warning diagnostic (`W0102`, `W0103`) when mutually conflicting flags are supplied (e.g. `--standalone` vs `--modular`, `--c++17` vs `--c++20`), failing compilation under `-Werror`.
 - **Hierarchical Deferred Event Inheritance**: Inherit deferred events from parent and ancestor composite states down to active leaf substates (`is_deferred_event_v`, `any_state_has_deferred`).
 - **Deep History in Static `parent_type` Hierarchies**: Fixed deep history tracking, recording, and typed retrieval (`record_ancestor_history`, `history_is`, `get_history<Parent>()`) to resolve static ancestor hierarchies via `parent_type` and `get_state_name_static`.
 - **Orthogonal Region Boundary Transitions**:

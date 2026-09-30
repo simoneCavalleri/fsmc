@@ -33,6 +33,10 @@ struct FsmcOptions {
     bool req_audit = false;                  // --req-audit
     bool allow_diagram_codegen = false;      // --allow-diagram-codegen
     bool standalone = true;
+    bool standalone_specified = false;
+    bool modular_specified = false;
+    bool cpp17_specified = false;
+    bool cpp20_specified = false;
     bool thread_safe = true;
     bool include_stubs = true;
     bool verify_mode = false;
@@ -338,8 +342,10 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             }
             const std::string std_val = argv[++idx];
             if (std_val == "17" || std_val == "c++17" || std_val == "C++17") {
+                opts.cpp17_specified = true;
                 opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp17;
             } else if (std_val == "20" || std_val == "c++20" || std_val == "C++20") {
+                opts.cpp20_specified = true;
                 opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
             } else {
                 opts.is_valid = false;
@@ -349,8 +355,10 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
         } else if (arg.rfind("--std=", 0) == 0) {
             const std::string std_val = arg.substr(6);
             if (std_val == "17" || std_val == "c++17" || std_val == "C++17") {
+                opts.cpp17_specified = true;
                 opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp17;
             } else if (std_val == "20" || std_val == "c++20" || std_val == "C++20") {
+                opts.cpp20_specified = true;
                 opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
             } else {
                 opts.is_valid = false;
@@ -358,14 +366,18 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
         } else if (arg == "--c++17" || arg == "-std=c++17") {
+            opts.cpp17_specified = true;
             opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp17;
         } else if (arg == "--c++20" || arg == "-std=c++20") {
+            opts.cpp20_specified = true;
             opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
 
             // 10. Runtime packaging mode (standalone single-header vs modular)
         } else if (arg == "--standalone") {
+            opts.standalone_specified = true;
             opts.standalone = true;
         } else if (arg == "--modular") {
+            opts.modular_specified = true;
             opts.standalone = false;
 
             // 11. Formal verification options and temporal logic specifications (LTL/CTL)
@@ -409,8 +421,20 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.diagnostic_format = argv[++idx];
+            if (!is_valid_diagnostic_format(opts.diagnostic_format)) {
+                opts.is_valid = false;
+                opts.error_message = "Invalid diagnostic format '" + opts.diagnostic_format +
+                                     "'. Supported formats: text, json, github.";
+                return opts;
+            }
         } else if (arg.starts_with("--diagnostic-format=")) {
             opts.diagnostic_format = arg.substr(20);
+            if (!is_valid_diagnostic_format(opts.diagnostic_format)) {
+                opts.is_valid = false;
+                opts.error_message = "Invalid diagnostic format '" + opts.diagnostic_format +
+                                     "'. Supported formats: text, json, github.";
+                return opts;
+            }
 
             // 12. Code generation threading and stub generation switches
         } else if (arg == "--no-thread-safe") {
@@ -465,7 +489,7 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             opts.emit_sidecar = arg.substr(15);
 
             // 16. Positional argument: input model file path
-        } else if (!arg.empty() && arg[0] != '-') {
+        } else if (!arg.empty() && (arg[0] != '-' || arg == "-")) {
             if (opts.input_file.empty()) {
                 opts.input_file = arg;
             } else {

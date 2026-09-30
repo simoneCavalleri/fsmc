@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -9,6 +10,18 @@
 namespace fsm::tools {
 
 namespace fs = std::filesystem;
+
+inline bool is_stdin_path(std::string_view path) noexcept {
+    return path == "-" || path == "/dev/stdin";
+}
+
+inline bool is_stdout_path(std::string_view path) noexcept {
+    return path == "-" || path == "/dev/stdout";
+}
+
+inline bool is_valid_diagnostic_format(std::string_view fmt) noexcept {
+    return fmt == "text" || fmt == "json" || fmt == "github" || fmt == "gh" || fmt == "actions";
+}
 
 inline bool ends_with(std::string_view str, std::string_view suffix) noexcept {
     return str.size() >= suffix.size() && str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
@@ -34,6 +47,10 @@ inline bool is_valid_path_string(std::string_view path) noexcept {
  *        and normalizing/canonicalizing to eliminate directory traversal sequences.
  */
 inline bool resolve_safe_read_path(const std::string& path, fs::path& safe_path, std::string& error_msg) {
+    if (is_stdin_path(path)) {
+        safe_path = path;
+        return true;
+    }
     if (!is_valid_path_string(path)) {
         error_msg = "Invalid file path: path is empty or contains illegal characters";
         return false;
@@ -65,6 +82,10 @@ inline bool resolve_safe_read_path(const std::string& path, fs::path& safe_path,
  *        and normalizing to eliminate directory traversal sequences.
  */
 inline bool resolve_safe_write_path(const std::string& path, fs::path& safe_path, std::string& error_msg) {
+    if (is_stdout_path(path)) {
+        safe_path = path;
+        return true;
+    }
     if (!is_valid_path_string(path)) {
         error_msg = "Invalid destination path: path is empty or contains illegal characters";
         return false;
@@ -101,6 +122,12 @@ inline bool resolve_safe_write_path(const std::string& path, fs::path& safe_path
  * @brief Reads the complete text content of a file after validating the path against traversal.
  */
 inline std::string read_file_content(const std::string& path, std::string& error_msg) {
+    if (is_stdin_path(path)) {
+        std::stringstream buffer;
+        buffer << std::cin.rdbuf();
+        return buffer.str();
+    }
+
     fs::path safe_path;
     if (!resolve_safe_read_path(path, safe_path, error_msg)) {
         return "";
@@ -120,6 +147,11 @@ inline std::string read_file_content(const std::string& path, std::string& error
  * @brief Writes text content to a destination file after validating and sanitizing the destination path.
  */
 inline bool write_file_content(const std::string& path, std::string_view content, std::string& error_msg) {
+    if (is_stdout_path(path)) {
+        std::cout << content;
+        return true;
+    }
+
     fs::path safe_path;
     if (!resolve_safe_write_path(path, safe_path, error_msg)) {
         return false;
@@ -135,6 +167,9 @@ inline bool write_file_content(const std::string& path, std::string_view content
 }
 
 inline std::string infer_fsm_name_from_file(const std::string& path) {
+    if (is_stdin_path(path)) {
+        return "StdinFSM";
+    }
     fs::path p(path);
     std::string stem = p.stem().string();
     if (stem.empty()) {

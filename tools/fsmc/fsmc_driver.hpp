@@ -82,6 +82,9 @@ class FsmcDriver {
 
         // Validate all CLI path arguments to reject null bytes or illegal characters
         auto validate_arg_path = [](const std::string& path_str, const std::string& arg_name) -> bool {
+            if (is_stdin_path(path_str) || is_stdout_path(path_str)) {
+                return true;
+            }
             if (!path_str.empty() && !is_valid_path_string(path_str)) {
                 std::cerr << "Error: Illegal character in " << arg_name << " path: " << path_str << "\n";
                 return false;
@@ -96,6 +99,23 @@ class FsmcDriver {
             !validate_arg_path(opts.export_runtime_dir, "--export-runtime") ||
             !validate_arg_path(opts.submachine_dir, "--submachine-dir")) {
             return 1;
+        }
+
+        // Check for conflicting CLI options
+        if (opts.standalone_specified && opts.modular_specified) {
+            std::cerr
+                << "warning[W0102]: Conflicting options '--standalone' and '--modular' specified; prioritizing '--"
+                << (opts.standalone ? "standalone" : "modular") << "'.\n";
+            if (opts.werror) {
+                return 1;
+            }
+        }
+        if (opts.cpp17_specified && opts.cpp20_specified) {
+            std::cerr << "warning[W0103]: Conflicting C++ standard options specified; prioritizing C++"
+                      << (opts.cpp_standard == fsm::backend::cpp::CppStandard::Cpp20 ? "20" : "17") << ".\n";
+            if (opts.werror) {
+                return 1;
+            }
         }
 
         // Export standalone runtime if requested
@@ -121,8 +141,17 @@ class FsmcDriver {
             return 1;
         }
 
+        // Auto-detect format from content if reading from stdin without explicit format
+        std::string resolved_format = opts.format;
+        if (is_stdin_path(opts.input_file) && (resolved_format.empty() || resolved_format == "auto")) {
+            std::string detected = ParserFactory::detect_format_from_content(content);
+            if (!detected.empty()) {
+                resolved_format = detected;
+            }
+        }
+
         // Parse input model
-        auto parser = ParserFactory::create(opts.input_file, opts.format);
+        auto parser = ParserFactory::create(opts.input_file, resolved_format);
         if (!parser) {
             std::cerr << "Error: Could not instantiate parser for input: " << opts.input_file << "\n";
             return 1;
@@ -452,7 +481,7 @@ class FsmcDriver {
             return 1;
         }
 
-        if (!opts.output_file.empty()) {
+        if (!opts.output_file.empty() && !is_stdout_path(opts.output_file)) {
             std::string write_err;
             if (!write_file_content(opts.output_file, generated_code, write_err)) {
                 std::cerr << "Error: " << write_err << "\n";

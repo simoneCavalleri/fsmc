@@ -533,4 +533,70 @@ TEST_F(FsmcOptionsTest, FormalVerification_LtlAndCtlSpecs) {
     }
 }
 
+// ============================================================================
+// 11. Conflicting Options, Invalid Diagnostic Formats & Stdin Support
+// ============================================================================
+
+/**
+ * @brief Test Intent: Verify conflicting options (--standalone and --modular) warn and fail when -Werror is set.
+ * Scenario: Run fsmc with both --standalone and --modular; verify success without -Werror and failure with -Werror.
+ */
+TEST_F(FsmcOptionsTest, ConflictingOptions_StandaloneAndModular_WarnsAndFailsWithWerror) {
+    fs::path out_file = test_dir_ / "conflict_out.hpp";
+    char p[] = "fsmc";
+    char i[] = "-i";
+    std::string in_str = model_file_;
+    char stand[] = "--standalone";
+    char mod[] = "--modular";
+    char o[] = "-o";
+    std::string out_str = out_file.string();
+
+    // Without -Werror: succeeds with warning
+    {
+        char* argv[] = {p, i, in_str.data(), stand, mod, o, out_str.data()};
+        const auto opts = fsm::tools::parse_cli_args(7, argv);
+        EXPECT_TRUE(opts.standalone_specified);
+        EXPECT_TRUE(opts.modular_specified);
+        EXPECT_EQ(fsm::tools::FsmcDriver::run(opts), 0);
+    }
+
+    // With -Werror: fails due to conflicting options
+    {
+        char werr[] = "-Werror";
+        char* argv[] = {p, i, in_str.data(), stand, mod, werr, o, out_str.data()};
+        const auto opts = fsm::tools::parse_cli_args(8, argv);
+        EXPECT_EQ(fsm::tools::FsmcDriver::run(opts), 1);
+    }
+}
+
+/**
+ * @brief Test Intent: Verify invalid --diagnostic-format values are rejected before execution.
+ * Scenario: Pass invalid diagnostic format string and verify parser marks options as invalid.
+ */
+TEST_F(FsmcOptionsTest, DiagnosticFormat_InvalidFormat_Rejected) {
+    char p[] = "fsmc";
+    char i[] = "-i";
+    std::string in_str = model_file_;
+    char fmt[] = "--diagnostic-format=invalid_fmt";
+    char* argv[] = {p, i, in_str.data(), fmt};
+
+    const auto opts = fsm::tools::parse_cli_args(4, argv);
+    EXPECT_FALSE(opts.is_valid);
+    EXPECT_NE(opts.error_message.find("Invalid diagnostic format"), std::string::npos);
+}
+
+/**
+ * @brief Test Intent: Verify standard input positional dash (-) is parsed as valid input path.
+ * Scenario: Pass '-' as positional input and verify parsed input_file is '-'.
+ */
+TEST_F(FsmcOptionsTest, StandardInput_PositionalDash_Recognized) {
+    char p[] = "fsmc";
+    char dash[] = "-";
+    char* argv[] = {p, dash};
+
+    const auto opts = fsm::tools::parse_cli_args(2, argv);
+    EXPECT_TRUE(opts.is_valid);
+    EXPECT_EQ(opts.input_file, "-");
+}
+
 }  // namespace

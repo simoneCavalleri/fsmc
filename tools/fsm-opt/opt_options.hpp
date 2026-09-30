@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "tools/common/file_utils.hpp"
+
 namespace fsm::tools {
 
 struct OptOptions {
@@ -197,8 +199,20 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.diagnostic_format = argv[++i];
+            if (!is_valid_diagnostic_format(opts.diagnostic_format)) {
+                opts.is_valid = false;
+                opts.error_message = "Invalid diagnostic format '" + opts.diagnostic_format +
+                                     "'. Supported formats: text, json, github.";
+                return opts;
+            }
         } else if (arg.starts_with("--diagnostic-format=")) {
             opts.diagnostic_format = arg.substr(20);
+            if (!is_valid_diagnostic_format(opts.diagnostic_format)) {
+                opts.is_valid = false;
+                opts.error_message = "Invalid diagnostic format '" + opts.diagnostic_format +
+                                     "'. Supported formats: text, json, github.";
+                return opts;
+            }
         } else if (arg == "--profile") {
             opts.profile = true;
         } else if (arg == "--verify" || arg == "--check") {
@@ -221,7 +235,7 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
             opts.pass_plugins.push_back(argv[++i]);
         } else if (arg.rfind("--load-pass-plugin=", 0) == 0) {
             opts.pass_plugins.push_back(std::string(arg.substr(19)));
-        } else if (!arg.starts_with("-")) {
+        } else if (!arg.starts_with("-") || arg == "-") {
             if (opts.input_path.empty()) {
                 opts.input_path = arg;
             } else {

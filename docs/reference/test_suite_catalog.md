@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 488  
+**Total Documented Test Cases**: 494  
 
 ---
 
@@ -1681,6 +1681,24 @@
 **Scenario**:
   - Pass model through external Unix utility (cat) via --pipe-through and verify transformed model emission.
 
+#### `FsmOptOptionsTest.UnknownPassName_WarnsAndFailsWithWerror`
+**Test Intent**: Verify unrecognized pass name triggers a warning and fails under -Werror.
+
+**Scenario**:
+  - Run fsm-opt with unknown pass name; succeeds without -Werror, fails with -Werror.
+
+#### `FsmOptOptionsTest.DiagnosticFormat_InvalidFormat_Rejected`
+**Test Intent**: Verify invalid --diagnostic-format values are rejected by fsm-opt.
+
+**Scenario**:
+  - Pass invalid diagnostic format string to fsm-opt and verify option validation failure.
+
+#### `FsmOptOptionsTest.StandardInput_PositionalDash_Recognized`
+**Test Intent**: Verify standard input positional dash (-) is parsed as valid input in fsm-opt.
+
+**Scenario**:
+  - Pass '-' as positional input and verify parsed input_path is '-'.
+
 ### [`test_fsmc_cli_options.cpp`](../tests/integration/test_fsmc_cli_options.cpp) (`tests/integration/test_fsmc_cli_options.cpp`)
 #### `FsmcOptionsTest.ExportRuntime_ToExistingDirectory_CreatesHeader`
 **Test Intent**: Comprehensive verification suite for all fsmc command-line options.
@@ -1768,6 +1786,24 @@
 
 **Scenario**:
   - Run model checker with valid LTL invariant (G !(P && Q)) and CTL formula (EF P) parsed from CLI.
+
+#### `FsmcOptionsTest.ConflictingOptions_StandaloneAndModular_WarnsAndFailsWithWerror`
+**Test Intent**: Verify conflicting options (--standalone and --modular) warn and fail when -Werror is set.
+
+**Scenario**:
+  - Run fsmc with both --standalone and --modular; verify success without -Werror and failure with -Werror.
+
+#### `FsmcOptionsTest.DiagnosticFormat_InvalidFormat_Rejected`
+**Test Intent**: Verify invalid --diagnostic-format values are rejected before execution.
+
+**Scenario**:
+  - Pass invalid diagnostic format string and verify parser marks options as invalid.
+
+#### `FsmcOptionsTest.StandardInput_PositionalDash_Recognized`
+**Test Intent**: Verify standard input positional dash (-) is parsed as valid input path.
+
+**Scenario**:
+  - Pass '-' as positional input and verify parsed input_file is '-'.
 
 ### [`test_multiformat_presets_roundtrip.cpp`](../tests/integration/test_multiformat_presets_roundtrip.cpp) (`tests/integration/test_multiformat_presets_roundtrip.cpp`)
 #### `MultiformatPresets.Sysml2UavMission_PassesRoundtripAndStrictCompilation`

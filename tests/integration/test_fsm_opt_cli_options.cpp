@@ -319,4 +319,64 @@ TEST_F(FsmOptOptionsTest, PipeThroughAndPluginLoading) {
     EXPECT_TRUE(fs::exists(out_file));
 }
 
+// ============================================================================
+// 7. Unknown Passes, Invalid Diagnostic Formats & Stdin Support
+// ============================================================================
+
+/**
+ * @brief Test Intent: Verify unrecognized pass name triggers a warning and fails under -Werror.
+ * Scenario: Run fsm-opt with unknown pass name; succeeds without -Werror, fails with -Werror.
+ */
+TEST_F(FsmOptOptionsTest, UnknownPassName_WarnsAndFailsWithWerror) {
+    char p[] = "fsm-opt";
+    char i[] = "-i";
+    std::string in_str = model_file_;
+    char pass_arg[] = "--passes=invalid-pass-name";
+
+    // Without -Werror: succeeds with warning
+    {
+        char* argv[] = {p, i, in_str.data(), pass_arg};
+        const auto opts = fsm::tools::parse_opt_args(4, argv);
+        EXPECT_EQ(fsm::tools::OptDriver::run(opts), 0);
+    }
+
+    // With -Werror: fails due to unknown pass warning
+    {
+        char werr[] = "-Werror";
+        char* argv[] = {p, i, in_str.data(), pass_arg, werr};
+        const auto opts = fsm::tools::parse_opt_args(5, argv);
+        EXPECT_EQ(fsm::tools::OptDriver::run(opts), 1);
+    }
+}
+
+/**
+ * @brief Test Intent: Verify invalid --diagnostic-format values are rejected by fsm-opt.
+ * Scenario: Pass invalid diagnostic format string to fsm-opt and verify option validation failure.
+ */
+TEST_F(FsmOptOptionsTest, DiagnosticFormat_InvalidFormat_Rejected) {
+    char p[] = "fsm-opt";
+    char i[] = "-i";
+    std::string in_str = model_file_;
+    char fmt[] = "--diagnostic-format=yaml_unsupported";
+    char* argv[] = {p, i, in_str.data(), fmt};
+
+    const auto opts = fsm::tools::parse_opt_args(4, argv);
+    EXPECT_FALSE(opts.is_valid);
+    EXPECT_NE(opts.error_message.find("Invalid diagnostic format"), std::string::npos);
+}
+
+/**
+ * @brief Test Intent: Verify standard input positional dash (-) is parsed as valid input in fsm-opt.
+ * Scenario: Pass '-' as positional input and verify parsed input_path is '-'.
+ */
+TEST_F(FsmOptOptionsTest, StandardInput_PositionalDash_Recognized) {
+    char p[] = "fsm-opt";
+    char dash[] = "-";
+    char* argv[] = {p, dash};
+
+    const auto opts = fsm::tools::parse_opt_args(2, argv);
+    EXPECT_TRUE(opts.is_valid);
+    EXPECT_EQ(opts.input_path, "-");
+}
+
 }  // namespace

@@ -26,8 +26,8 @@ fsmc --export-runtime <directory_or_file> [--std 17|20]
 #### Input and Output Options
 | Flag | Description | Default |
 | :--- | :--- | :--- |
-| `-i, --input <file>` | Path to input model file (`.sysml`, `.slx`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, `.dot`). | Positional argument |
-| `-o, --output <file>` | Path to output generated code or exported diagram file. | `stdout` |
+| `-i, --input <file>` | Path to input model file (`.sysml`, `.slx`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, `.dot`), or `-` / `/dev/stdin` for standard input. | Positional argument |
+| `-o, --output <file>` | Path to output generated code or exported diagram file, or `-` / `/dev/stdout` for standard output. | `stdout` |
 | `-t, --target <lang>` | Target code generator backend: `cpp` (default). | `cpp` |
 | `-n, --name <name>` | Generated state machine class/struct name. | Inferred from filename or `MyFSM` |
 | `-N, --ns, --namespace <ns>` | Generated namespace / package / module enclosing the state machine types. | `fsm_generated` |

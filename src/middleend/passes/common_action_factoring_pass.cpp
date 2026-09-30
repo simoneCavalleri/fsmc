@@ -26,10 +26,38 @@ bool CommonActionFactoringPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
         return false;
     };
 
+    auto is_pseudostate = [&](const StateNode& st) {
+        if (ir.is_choice_node(st.name) || ir.is_choice_node(st.id)) {
+            return true;
+        }
+        switch (st.kind) {
+            case StateKind::Initial:
+            case StateKind::Choice:
+            case StateKind::Junction:
+            case StateKind::Fork:
+            case StateKind::Join:
+            case StateKind::ShallowHistory:
+            case StateKind::DeepHistory:
+            case StateKind::EntryPoint:
+            case StateKind::ExitPoint:
+            case StateKind::Terminate:
+                return true;
+            case StateKind::Atomic:
+            case StateKind::Composite:
+            case StateKind::Parallel:
+            case StateKind::Final:
+                return false;
+        }
+        return false;
+    };
+
     // 1. Convergent Transition Factoring:
     // When multiple transitions enter the same target state and all share the identical
     // transition action, factor the action into the target state's entry actions.
     for (auto& state : ir.states) {
+        if (is_pseudostate(state)) {
+            continue;
+        }
         // Semantics safeguard: Do not factor into initial state entry actions to prevent
         // spurious execution during power-on initialization without transition firing.
         bool is_initial =
@@ -86,6 +114,9 @@ bool CommonActionFactoringPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
     // When all outgoing transitions from a source state share the identical transition action,
     // factor the action into the source state's exit actions.
     for (auto& state : ir.states) {
+        if (is_pseudostate(state)) {
+            continue;
+        }
         std::vector<std::size_t> outgoing_indices;
         for (std::size_t i = 0; i < ir.transitions.size(); ++i) {
             const auto& t = ir.transitions[i];

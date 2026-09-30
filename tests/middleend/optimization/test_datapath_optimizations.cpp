@@ -147,6 +147,101 @@ TEST(DeadActionElimination, OverwrittenAndIdentityStores_PrunedFromActionSequenc
     EXPECT_EQ(std::get<StoreOp>(remaining.op).expression, "20");
 }
 
+/**
+ * @brief Verify DeadActionEliminationPass preserves writes to different struct members.
+ */
+TEST(DeadActionElimination, StructMemberStores_NotIncorrectlyPrunedAsOverwritten) {
+    FsmIr ir;
+    ir.name = "StructMachine";
+    ir.initial_state_id = "s1";
+
+    ir.variables.emplace_back("battery", DataType::int32(), "0");
+
+    StateNode s1("s1", "s1");
+    ir.states.push_back(s1);
+
+    TransitionEdge edge;
+    edge.source_id = "s1";
+    edge.target_id = "s1";
+    edge.trigger = SignalTrigger("EV");
+
+    ActionSignature act;
+    StoreOp op_soc;
+    op_soc.target = LValueTarget("battery.soc");
+    op_soc.expression = "80";
+    act.instructions.emplace_back(op_soc);
+
+    StoreOp op_temp;
+    op_temp.target = LValueTarget("battery.temperature");
+    op_temp.expression = "25";
+    act.instructions.emplace_back(op_temp);
+
+    edge.transition_action = act;
+    ir.add_transition(edge);
+
+    TransitionEdge edge2;
+    edge2.source_id = "s1";
+    edge2.target_id = "s1";
+    edge2.trigger = SignalTrigger("CHECK");
+    edge2.guard = "battery.soc > 50 && battery.temperature < 30";
+    edge2.guard_ast = GuardAstNode("battery.soc > 50 && battery.temperature < 30");
+    ir.add_transition(edge2);
+
+    DiagnosticEngine diag;
+    DeadActionEliminationPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+
+    // Both member assignments must be preserved!
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    ASSERT_EQ(ir.transitions[0].transition_action->instructions.size(), 2);
+}
+
+/**
+ * @brief Verify DeadActionEliminationPass eliminates dead stores from act.assignments.
+ */
+TEST(DeadActionElimination, ActionAssignments_DeadStoresEliminated) {
+    FsmIr ir;
+    ir.name = "AssignMachine";
+    ir.initial_state_id = "s1";
+
+    ir.variables.emplace_back("used", DataType::int32(), "0");
+    ir.variables.emplace_back("dead", DataType::int32(), "0");
+
+    StateNode s1("s1", "s1");
+    ir.states.push_back(s1);
+
+    TransitionEdge edge;
+    edge.source_id = "s1";
+    edge.target_id = "s1";
+    edge.trigger = SignalTrigger("EV");
+
+    ActionSignature act;
+    act.assignments.emplace_back(LValueTarget("dead"), "99");
+    act.assignments.emplace_back(LValueTarget("used"), "10");
+    act.assignments.emplace_back(LValueTarget("used"), "20");
+
+    edge.transition_action = act;
+    ir.add_transition(edge);
+
+    TransitionEdge edge2;
+    edge2.source_id = "s1";
+    edge2.target_id = "s1";
+    edge2.trigger = SignalTrigger("CHECK");
+    edge2.guard = "used == 20";
+    edge2.guard_ast = GuardAstNode("used == 20");
+    ir.add_transition(edge2);
+
+    DiagnosticEngine diag;
+    DeadActionEliminationPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+
+    // 'dead' store and 'used = 10' overwritten store must be pruned, leaving 'used = 20'
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    ASSERT_EQ(ir.transitions[0].transition_action->assignments.size(), 1);
+    EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].target.name, "used");
+    EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].expression, "20");
+}
+
 // ============================================================================
 // RegisterLivenessPass Tests
 // ============================================================================

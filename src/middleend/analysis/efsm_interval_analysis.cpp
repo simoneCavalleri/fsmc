@@ -87,6 +87,7 @@ EFSMIntervalAnalyzer::compute_state_intervals() {
     // 2. Fixed-point iteration with worklist
     std::queue<std::string> worklist;
     std::unordered_set<std::string> in_worklist;
+    std::unordered_map<std::string, std::size_t> state_visits;
     worklist.push(root);
     in_worklist.insert(root);
 
@@ -97,6 +98,7 @@ EFSMIntervalAnalyzer::compute_state_intervals() {
         std::string curr_state = worklist.front();
         worklist.pop();
         in_worklist.erase(curr_state);
+        state_visits[curr_state]++;
 
         const auto curr_env = state_envs[curr_state];
 
@@ -121,6 +123,7 @@ EFSMIntervalAnalyzer::compute_state_intervals() {
             // Merge into target state environment
             auto& target_env = state_envs[t.target];
             bool changed = false;
+            bool apply_widening = (state_visits[t.target] >= 3);
 
             for (const auto& [var_name, interval] : next_env) {
                 auto it_tgt = target_env.find(var_name);
@@ -128,7 +131,8 @@ EFSMIntervalAnalyzer::compute_state_intervals() {
                     target_env[var_name] = interval;
                     changed = true;
                 } else {
-                    auto merged = it_tgt->second.join_with(interval);
+                    auto merged = apply_widening ? it_tgt->second.widen_with(interval)
+                                                 : it_tgt->second.join_with(interval);
                     if (merged != it_tgt->second) {
                         it_tgt->second = merged;
                         changed = true;
@@ -413,6 +417,49 @@ void EFSMIntervalAnalyzer::apply_assignment(std::unordered_map<std::string, Inte
         double k = std::stod(clean_number_literal(match[1].str()));
         env[var] = env[var].sub(k);
         return;
+    }
+
+    static const std::regex mul_re(
+        R"((?:(?:in|reg|out)\.)?([a-zA-Z0-9_]+)\s*\*\s*([+-]?\d+(?:\.\d+)?[fFuUlL]*)|([+-]?\d+(?:\.\d+)?[fFuUlL]*)\s*\*\s*(?:(?:in|reg|out)\.)?([a-zA-Z0-9_]+))");
+    if (std::regex_search(expr, match, mul_re)) {
+        std::string matched_var = match[1].matched ? match[1].str() : match[4].str();
+        std::string num_str = match[1].matched ? match[2].str() : match[3].str();
+        double k = std::stod(clean_number_literal(num_str));
+        auto it = env.find(matched_var);
+        if (it != env.end()) {
+            env[var] = it->second.mul(k);
+            return;
+        }
+    }
+
+    std::regex div_re(R"((?:(?:in|reg|out)\.)?([a-zA-Z0-9_]+)\s*/\s*([+-]?\d+(?:\.\d+)?[fFuUlL]*))");
+    if (std::regex_search(expr, match, div_re)) {
+        std::string matched_var = match[1].str();
+        double k = std::stod(clean_number_literal(match[2].str()));
+        auto it = env.find(matched_var);
+        if (it != env.end()) {
+            env[var] = it->second.div(k);
+            return;
+        }
+    }
+
+    static const std::regex bin_var_re(
+        R"((?:(?:in|reg|out)\.)?([a-zA-Z0-9_]+)\s*([\+\-\*])\s*(?:(?:in|reg|out)\.)?([a-zA-Z0-9_]+))");
+    if (std::regex_search(expr, match, bin_var_re)) {
+        std::string v1 = match[1].str();
+        std::string op = match[2].str();
+        std::string v2 = match[3].str();
+        auto it1 = env.find(v1);
+        auto it2 = env.find(v2);
+        if (it1 != env.end() && it2 != env.end()) {
+            if (op == "+")
+                env[var] = it1->second.add(it2->second);
+            else if (op == "-")
+                env[var] = it1->second.sub(it2->second);
+            else if (op == "*")
+                env[var] = it1->second.mul(it2->second);
+            return;
+        }
     }
 
     env[var] = Interval();

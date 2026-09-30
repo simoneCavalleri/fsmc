@@ -26,6 +26,22 @@ std::string temporal_op_to_string(TemporalOp op) {
             return "||";
         case TemporalOp::Not:
             return "!";
+        case TemporalOp::EX:
+            return "EX";
+        case TemporalOp::AX:
+            return "AX";
+        case TemporalOp::EF:
+            return "EF";
+        case TemporalOp::AF:
+            return "AF";
+        case TemporalOp::EG:
+            return "EG";
+        case TemporalOp::AG:
+            return "AG";
+        case TemporalOp::EU:
+            return "EU";
+        case TemporalOp::AU:
+            return "AU";
     }
     return "Atom";
 }
@@ -41,12 +57,25 @@ std::string PropertyAstNode::to_string() const {
         }
         return "!" + atom;
     }
-    if (op == TemporalOp::Globally || op == TemporalOp::Finally || op == TemporalOp::Next) {
-        std::string op_str = (op == TemporalOp::Globally) ? "G " : ((op == TemporalOp::Finally) ? "F " : "X ");
+    if (op == TemporalOp::Globally || op == TemporalOp::Finally || op == TemporalOp::Next ||
+        op == TemporalOp::EX || op == TemporalOp::AX || op == TemporalOp::EF ||
+        op == TemporalOp::AF || op == TemporalOp::EG || op == TemporalOp::AG) {
+        std::string op_str = (op == TemporalOp::Globally)
+                                 ? "G "
+                                 : ((op == TemporalOp::Finally)
+                                        ? "F "
+                                        : ((op == TemporalOp::Next) ? "X " : (temporal_op_to_string(op) + " ")));
         if (!children.empty()) {
             return op_str + "(" + children[0].to_string() + ")";
         }
         return op_str + "(" + atom + ")";
+    }
+    if (op == TemporalOp::EU || op == TemporalOp::AU) {
+        std::string prefix = (op == TemporalOp::EU) ? "E [" : "A [";
+        if (children.size() >= 2) {
+            return prefix + children[0].to_string() + " U " + children[1].to_string() + "]";
+        }
+        return prefix + atom + "]";
     }
     if (op == TemporalOp::Until || op == TemporalOp::Release || op == TemporalOp::Implies ||
         op == TemporalOp::Equivalent || op == TemporalOp::And || op == TemporalOp::Or) {

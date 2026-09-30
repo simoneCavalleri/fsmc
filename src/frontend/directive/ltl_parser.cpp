@@ -27,6 +27,16 @@ enum class TokenType : std::uint8_t {
     And,         // && or & or AND
     Or,          // || or | or OR
     Not,         // ! or NOT
+    EX,          // EX
+    AX,          // AX
+    EF,          // EF
+    AF,          // AF
+    EG,          // EG
+    AG,          // AG
+    EU,          // EU
+    AU,          // AU
+    LBracket,    // [
+    RBracket,    // ]
     LParen,      // (
     RParen,      // )
     End
@@ -49,8 +59,8 @@ class LtlTokenizerAndParser {
 
   private:
     static bool is_delim(char c) {
-        return (std::isspace(static_cast<unsigned char>(c)) != 0) || c == '(' || c == ')' || c == '!' || c == '&' ||
-               c == '|' || c == '-' || c == '=' || c == '<' || c == '>';
+        return (std::isspace(static_cast<unsigned char>(c)) != 0) || c == '(' || c == ')' || c == '[' || c == ']' ||
+               c == '!' || c == '&' || c == '|' || c == '-' || c == '=' || c == '<' || c == '>';
     }
 
     void tokenize() {
@@ -65,6 +75,16 @@ class LtlTokenizerAndParser {
             if (c == '[' && pos_ + 1 < src_.size() && src_[pos_ + 1] == ']') {
                 tokens_.push_back({TokenType::Globally, "G"});
                 pos_ += 2;
+                continue;
+            }
+            if (c == '[') {
+                tokens_.push_back({TokenType::LBracket, "["});
+                ++pos_;
+                continue;
+            }
+            if (c == ']') {
+                tokens_.push_back({TokenType::RBracket, "]"});
+                ++pos_;
                 continue;
             }
             if (c == 'G' && (pos_ + 1 >= src_.size() || is_delim(src_[pos_ + 1]))) {
@@ -170,7 +190,8 @@ class LtlTokenizerAndParser {
             while (pos_ < src_.size()) {
                 char ch = src_[pos_];
                 if (pos_ > start) {
-                    if (std::isspace(static_cast<unsigned char>(ch)) != 0 || ch == '(' || ch == ')') {
+                    if (std::isspace(static_cast<unsigned char>(ch)) != 0 || ch == '(' || ch == ')' || ch == '[' ||
+                        ch == ']') {
                         break;
                     }
                     if (ch == '&' || ch == '|' || ch == '!') {
@@ -199,6 +220,22 @@ class LtlTokenizerAndParser {
                 tokens_.push_back({TokenType::Or, "||"});
             } else if (word == "NOT" || word == "not") {
                 tokens_.push_back({TokenType::Not, "!"});
+            } else if (word == "EX") {
+                tokens_.push_back({TokenType::EX, "EX"});
+            } else if (word == "AX") {
+                tokens_.push_back({TokenType::AX, "AX"});
+            } else if (word == "EF") {
+                tokens_.push_back({TokenType::EF, "EF"});
+            } else if (word == "AF") {
+                tokens_.push_back({TokenType::AF, "AF"});
+            } else if (word == "EG") {
+                tokens_.push_back({TokenType::EG, "EG"});
+            } else if (word == "AG") {
+                tokens_.push_back({TokenType::AG, "AG"});
+            } else if (word == "EU") {
+                tokens_.push_back({TokenType::EU, "EU"});
+            } else if (word == "AU") {
+                tokens_.push_back({TokenType::AU, "AU"});
             } else if (!word.empty()) {
                 tokens_.push_back({TokenType::Atom, word});
             }
@@ -248,11 +285,15 @@ class LtlTokenizerAndParser {
 
     PropertyAstNode parse_until_release() {
         PropertyAstNode left = parse_unary();
-        while (current().type == TokenType::Until || current().type == TokenType::Release) {
+        while (current().type == TokenType::Until || current().type == TokenType::Release ||
+               current().type == TokenType::EU || current().type == TokenType::AU) {
             TokenType t = current().type;
             advance();
             PropertyAstNode right = parse_unary();
-            TemporalOp op = (t == TokenType::Until) ? TemporalOp::Until : TemporalOp::Release;
+            TemporalOp op = TemporalOp::Until;
+            if (t == TokenType::Release) op = TemporalOp::Release;
+            else if (t == TokenType::EU) op = TemporalOp::EU;
+            else if (t == TokenType::AU) op = TemporalOp::AU;
             left = PropertyAstNode(op, {std::move(left), std::move(right)});
         }
         return left;
@@ -278,6 +319,52 @@ class LtlTokenizerAndParser {
             advance();
             PropertyAstNode sub = parse_unary();
             return PropertyAstNode(TemporalOp::Not, {std::move(sub)});
+        }
+        if (current().type == TokenType::EX) {
+            advance();
+            PropertyAstNode sub = parse_unary();
+            return PropertyAstNode(TemporalOp::EX, {std::move(sub)});
+        }
+        if (current().type == TokenType::AX) {
+            advance();
+            PropertyAstNode sub = parse_unary();
+            return PropertyAstNode(TemporalOp::AX, {std::move(sub)});
+        }
+        if (current().type == TokenType::EF) {
+            advance();
+            PropertyAstNode sub = parse_unary();
+            return PropertyAstNode(TemporalOp::EF, {std::move(sub)});
+        }
+        if (current().type == TokenType::AF) {
+            advance();
+            PropertyAstNode sub = parse_unary();
+            return PropertyAstNode(TemporalOp::AF, {std::move(sub)});
+        }
+        if (current().type == TokenType::EG) {
+            advance();
+            PropertyAstNode sub = parse_unary();
+            return PropertyAstNode(TemporalOp::EG, {std::move(sub)});
+        }
+        if (current().type == TokenType::AG) {
+            advance();
+            PropertyAstNode sub = parse_unary();
+            return PropertyAstNode(TemporalOp::AG, {std::move(sub)});
+        }
+        if (current().type == TokenType::Atom && (current().value == "E" || current().value == "A")) {
+            bool is_e = (current().value == "E");
+            if (token_idx_ + 1 < tokens_.size() && tokens_[token_idx_ + 1].type == TokenType::LBracket) {
+                advance();  // consume E or A
+                advance();  // consume [
+                PropertyAstNode inner = parse_equivalence();
+                if (current().type == TokenType::RBracket) {
+                    advance();  // consume ]
+                }
+                if (inner.op == TemporalOp::Until && inner.children.size() >= 2) {
+                    return PropertyAstNode(is_e ? TemporalOp::EU : TemporalOp::AU,
+                                           {std::move(inner.children[0]), std::move(inner.children[1])});
+                }
+                return PropertyAstNode(is_e ? TemporalOp::EU : TemporalOp::AU, {std::move(inner)});
+            }
         }
         return parse_primary();
     }

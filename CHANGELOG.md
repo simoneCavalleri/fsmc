@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.8.0] - 2026-09-29
+## [0.8.0] - 2026-09-30
 
 ### Added
 - **Extended Runtime Semantics & Concurrency (`do_activity`, Sampled Change Triggers, Dual Action Execution)**:
@@ -23,13 +23,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `--emit-stateflow` export option in `fsm-opt` and `--diagnostic-format=text|json|github` in both `fsmc` and `fsm-opt` with GitHub Actions workflow annotation formatting (`::warning`, `::error`).
 - **Zero-Heap Time-Travel Snapshot Recorder**:
   - Implemented `fsm::snapshot_recorder<Capacity, MaxSize>` circular flight recorder with $O(1)$ ring buffer storage for deterministic state machine state checkpoints, rollback, and time-travel replay.
+- **Hierarchical State Introspection & Explicit State Machine Reset**:
+  - Enhanced `is_in<State>()` / `is_in_state<State>()` across `fsm`, `spsc_fsm`, and `thread_safe_fsm` to recursively check leaf and composite ancestor states in $O(1)$ constexpr time via compile-time reflection traits.
+  - Implemented explicit, thread-safe `reset()` capability restoring initial state, default data registers, and active timer tables across all runtime engines.
+  - Added multi-level typed deep history queries `get_history<ParentState>()` and introspection predicates `history_is<ParentState, TargetLeaf>()`.
+- **Stateflow & Diagram Sidecar Parser Enhancements**:
+  - Supported Stateflow state actions (`en:`, `du:`, `ex:`), temporal logic triggers (`every(N, sec)`), and XML numeric entity decoding (`&#...;`).
+  - Implemented `GuardModel`-aware recursive boolean expression reconstruction in `to_diagram_string`.
 - **Industrial Showcase 06: Stateflow Digital Twin ECU**:
   - Created end-to-end industrial digital twin demonstration (`examples/06_stateflow_digital_twin_ecu`) modeling an automotive powertrain engine ECU with multi-hop chained connective junctions, overheat anomaly detection, and supervisor-initiated time-travel state rollback.
 
 ### Fixed
-- Fixed strict weak ordering violation in `FsmGraphOps::sort_transitions_by_priority` ensuring deterministic canonical ordering across all targets and preserving source state initial layout.
-- Fixed signal synchronization in `FsmGraphOps::sync_interfaces` to register event types defined directly on transition edges into the IR signal catalog.
-- Fixed pass ordering in `fsmc_driver.hpp` and choice node collection in `ChoiceInliningPass` to guarantee deterministic junction handling.
+- **Hierarchical Deferred Event Inheritance**: Inherit deferred events from parent and ancestor composite states down to active leaf substates (`is_deferred_event_v`, `any_state_has_deferred`).
+- **Deep History in Static `parent_type` Hierarchies**: Fixed deep history tracking, recording, and typed retrieval (`record_ancestor_history`, `history_is`, `get_history<Parent>()`) to resolve static ancestor hierarchies via `parent_type` and `get_state_name_static`.
+- **Orthogonal Region Boundary Transitions**:
+  - Fixed substate external exit transitions to replicate across all active Cartesian product states containing the substate (`OrthogonalProductPass`).
+  - Fixed external entry transitions targeting a substate to automatically activate the initial substate in all companion orthogonal regions.
+- **C++ Code Generation**:
+  - Emitted default constructor for generated signal types containing struct/variant attributes to enable uninitialized variant construction.
+  - Supported compound assignment code emission (`+=`, `-=`, `*=`, `/=`) in generated actions.
+- **Category B Data-Path Optimizations & State Minimization**:
+  - Preserved individual struct member writes in Dead Action Elimination (`DeadActionEliminationPass`), preventing false-positive dead store removal.
+  - Prevented illegal action hoisting and sinking into pseudostates in `CommonActionFactoringPass`.
+  - Prevented incorrect state mergers in `StateMinimizationPass` when states have multiple guarded transitions for the same event or unmodeled state activities (`do_activity`, time invariants).
+- **Formal Frontends & MBSE Ingestion**:
+  - Preserved atomic raw expressions and boolean operator precedence in SCXML, SMV, Stateflow, and Cameo resolvers.
+  - Fixed fractional duration unit truncation (e.g., `1.5s` $\to$ `1500ms`) in SysML v2 and Stateflow parsers before unit conversion.
+  - Supported nested parenthesis conditions, set membership (`state in { ... }`), and boolean literal normalization in SMV parser.
+  - Disambiguated action delimiter slash (`/`) from guard division operators in diagram parsers.
+  - Preserved SCXML history pseudostate targets across roundtrip serialization.
+- **Verification, Diagnostics & Lowering**:
+  - Detected livelock cycles on explicit `"anonymous_event"` and `"completion_event"` transitions in `LivelockAnalysisPass` and `FsmValidator`.
+  - Resolved boundary action fusion premature clearing and preserved `TransitionKind::External` on self-transitions through junctions and choice nodes.
+  - Prevented deterministic timer reentrancy cascades and modulo-by-zero errors.
+  - Fixed strict weak ordering violation in `FsmGraphOps::sort_transitions_by_priority`.
+- **Runtime API Ergonomics**:
+  - Cleaned up `spsc_fsm` producer API by removing the redundant `push` alias in favor of the canonical `post`, and formally documented concurrency thread domains (Producer, Consumer, Concurrent Reader).
 
 ## [0.7.0] - 2026-09-29
 

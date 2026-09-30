@@ -19,13 +19,13 @@ cmake -B build -S . -DFSMC_ENABLE_TESTING=ON -DFSMC_ENABLE_EXAMPLES=ON
 # Build everything
 cmake --build build -j$(nproc)
 
-# Run the full test suite (91 CTest targets)
+# Run the full test suite (93 CTest targets)
 ctest --test-dir build --output-on-failure
 ```
 
 ### Formatting Code
 ```bash
-find tools include tests examples benchmarks -name '*.cpp' -o -name '*.hpp' | xargs clang-format -i
+find src tools include tests examples benchmarks -name '*.cpp' -o -name '*.hpp' | xargs clang-format -i
 ```
 
 ---

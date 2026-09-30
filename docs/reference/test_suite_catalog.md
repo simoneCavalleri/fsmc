@@ -4,8 +4,8 @@
 > To update this file, run: `cmake --build build --target generate_test_catalog` or `python3 scripts/generate_test_catalog.py`.
 
 **Total Documented Subsystems**: 12  
-**Total Test Suites & Binaries**: 83  
-**Total Documented Test Cases**: 467  
+**Total Test Suites & Binaries**: 85  
+**Total Documented Test Cases**: 488  
 
 ---
 
@@ -1635,6 +1635,139 @@
 
 ### [`test_cmake_integration.cpp`](../tests/integration/test_cmake_integration.cpp) (`tests/integration/test_cmake_integration.cpp`)
 - *(Executable binary test verification)*
+
+### [`test_fsm_opt_cli_options.cpp`](../tests/integration/test_fsm_opt_cli_options.cpp) (`tests/integration/test_fsm_opt_cli_options.cpp`)
+#### `FsmOptOptionsTest.GeneralOptions_HelpVersionAndListPasses_ReturnZero`
+**Test Intent**: Comprehensive verification suite for all fsm-opt command-line options.
+
+**Scenario**:
+  - Invoke fsm-opt with each informational option individually and verify successful exit code 0.
+
+#### `FsmOptOptionsTest.InputOutputOptions_StandardAndEqualSyntax`
+**Test Intent**: Verify -i, -o, positional input, and --option=value syntax work seamlessly in fsm-opt.
+
+**Scenario**:
+  - Run fsm-opt with standard flags and --input= / --output= / --format= syntax, verifying output JSON
+
+#### `FsmOptOptionsTest.EmitFormats_ProduceNonEmptyOutputs`
+**Test Intent**: Verify all ten formal emission flags produce valid non-empty outputs.
+
+**Scenario**:
+  - Run fsm-opt with --emit-ir, --emit-puml, --emit-mmd, --emit-sysml, --emit-dot, --emit-json, --emit-scxml,
+  --emit-cameo, --emit-smv, --emit-stateflow.
+
+#### `FsmOptOptionsTest.CustomPassPipelineAndProfiling`
+**Test Intent**: Verify custom pass pipeline execution, dead-state pruning, IR dumping, profiling, and metrics
+
+**Scenario**:
+  - Run fsm-opt with --passes=..., --prune-dead, --print-before-all, --print-after-all, --profile,
+  --metrics, --verify.
+
+#### `FsmOptOptionsTest.Werror_SucceedsOnSoundModelAndFailsOnWarnings`
+**Test Intent**: Verify -Werror succeeds on sound models with informational notes and strictly fails when
+
+**Scenario**:
+  - Run fsm-opt with -Werror on a sound model (notes only) and then on a model
+
+#### `FsmOptOptionsTest.DiagnosticFormats_TextJsonGithub`
+**Test Intent**: Verify diagnostic formatting options (--diagnostic-format=text|json|github).
+
+**Scenario**:
+  - Run fsm-opt specifying each diagnostic format on a model that produces diagnostic messages.
+
+#### `FsmOptOptionsTest.PipeThroughAndPluginLoading`
+**Test Intent**: Verify external Unix filter pipeline (--pipe-through).
+
+**Scenario**:
+  - Pass model through external Unix utility (cat) via --pipe-through and verify transformed model emission.
+
+### [`test_fsmc_cli_options.cpp`](../tests/integration/test_fsmc_cli_options.cpp) (`tests/integration/test_fsmc_cli_options.cpp`)
+#### `FsmcOptionsTest.ExportRuntime_ToExistingDirectory_CreatesHeader`
+**Test Intent**: Comprehensive verification suite for all fsmc command-line options.
+
+**Scenario**:
+  - Pass existing directory to --export-runtime and verify fsm.hpp is created
+
+#### `FsmcOptionsTest.ExportRuntime_ToNonexistentDirectory_CreatesDirectoryAndHeader`
+**Test Intent**: Verify --export-runtime creates a new destination directory and writes standalone runtime header.
+
+**Scenario**:
+  - Pass nonexistent directory path to --export-runtime and verify directory creation and valid fsm.hpp.
+
+#### `FsmcOptionsTest.ExportRuntime_WithCpp20Dialect_GeneratesCpp20Runtime`
+**Test Intent**: Verify --export-runtime with --std=20 generates C++20 standalone runtime header.
+
+**Scenario**:
+  - Specify --std=20 together with --export-runtime and verify successful generation.
+
+#### `FsmcOptionsTest.ExportRuntime_WithExplicitFilePath_CreatesExactFile`
+**Test Intent**: Verify --export-runtime allows specifying an explicit file path (.hpp).
+
+**Scenario**:
+  - Pass a full header file path to --export-runtime and verify exact file emission.
+
+#### `FsmcOptionsTest.GeneralOptions_HelpAndVersion_ReturnZero`
+**Test Intent**: Verify general informational flags (-h, --help, -v, --version) output help/version and exit
+
+**Scenario**:
+  - Invoke CLI options parser with each flag individually and verify driver returns 0.
+
+#### `FsmcOptionsTest.InputOutputOptions_ProduceValidCPlusPlus`
+**Test Intent**: Verify -i, -o, -t cpp, -n, and -N options generate valid C++ code with specified name and
+
+**Scenario**:
+  - Compile SysML model specifying custom FSM name and nested namespace, verify file exists and
+
+#### `FsmcOptionsTest.PositionalInput_WithOptEqualSyntax_Works`
+**Test Intent**: Verify positional input file combined with --option=value syntax parses correctly and compiles.
+
+**Scenario**:
+  - Invoke fsmc with positional model file and --output=..., --name=..., --namespace=..., --target=cpp.
+
+#### `FsmcOptionsTest.DiagramInput_BlockedWithoutAllowDiagram_SucceedsWithAllowDiagram`
+**Test Intent**: Verify informal diagram input (PlantUML) is rejected without --allow-diagram and accepted with
+--allow-diagram.
+
+**Scenario**:
+  - Run fsmc on .puml model without --allow-diagram (expect failure), then with
+  --allow-diagram (expect success).
+
+#### `FsmcOptionsTest.ModularPackaging_IncludesExternalHeader`
+**Test Intent**: Verify --modular, --c++20, --no-thread-safe, and --no-stubs options emit lightweight modular
+
+**Scenario**:
+  - Compile model with modular runtime inclusion and disabled thread-safe wrappers, verify
+
+#### `FsmcOptionsTest.PipelineAndOptimizations_ExecuteSuccessfully`
+**Test Intent**: Verify compiler optimization levels (-O0, -O2), --7stage pipeline mode, --prune, and
+--no-simplify flags.
+
+**Scenario**:
+  - Compile model with -O0 (no optimization) and -O2 with 7-stage pipeline and dead-state
+
+#### `FsmcOptionsTest.WerrorOption_FailsOnSemanticOrMiddleEndWarnings`
+**Test Intent**: Verify -Werror causes compilation to fail with exit code 1 when semantic/middle-end warnings are
+
+**Scenario**:
+  - Compile model containing trap/deadlock state warning with -Werror flag, verify driver fails.
+
+#### `FsmcOptionsTest.RtmAndHarnessAndSidecar_ExportSuccessfully`
+**Test Intent**: Verify --rtm, --rtm-format, --harness, and --emit-sidecar options successfully export metadata
+
+**Scenario**:
+  - Compile model with RTM json export, MC/DC test harness generation, and sidecar manifest
+
+#### `FsmcOptionsTest.DiagramExports_AllSupportedFormats`
+**Test Intent**: Verify diagram export option (-e) across all supported diagram and formal formats (mermaid,
+
+**Scenario**:
+  - Export SysML model to each format and verify exported files are created.
+
+#### `FsmcOptionsTest.FormalVerification_LtlAndCtlSpecs`
+**Test Intent**: Verify formal verification mode (-V) with temporal logic specifications (--ltl and --ctl).
+
+**Scenario**:
+  - Run model checker with valid LTL invariant (G !(P && Q)) and CTL formula (EF P) parsed from CLI.
 
 ### [`test_multiformat_presets_roundtrip.cpp`](../tests/integration/test_multiformat_presets_roundtrip.cpp) (`tests/integration/test_multiformat_presets_roundtrip.cpp`)
 #### `MultiformatPresets.Sysml2UavMission_PassesRoundtripAndStrictCompilation`

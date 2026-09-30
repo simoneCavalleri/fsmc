@@ -15,8 +15,11 @@ fsmc -i <input_model> [OPTIONS]
 fsmc [OPTIONS] <input_model>
 fsmc -i <input_model> --export <format> -o <output_diagram>
 fsmc -i <input_model> --verify
-fsmc --export-runtime <directory> [--std 17|20]
+fsmc --export-runtime <directory_or_file> [--std 17|20]
 ```
+
+> **Note on Syntax**: All long options taking values support both space-separated (`--option value`) and assignment-style (`--option=value`) syntax (e.g. `--output=model.hpp`, `--export-runtime=./runtime/`).
+
 
 ### Options Reference
 
@@ -71,7 +74,7 @@ fsmc --export-runtime <directory> [--std 17|20]
 | `--c++20, -std=c++20` | Shortcut alias to target C++20 standard. | `17` |
 | `--standalone` | Emit self-contained header with embedded zero-alloc runtime (0 external dependencies). | `true` |
 | `--modular` | Emit lightweight header that includes external `<fsm/backend/cpp/runtime/fsm.hpp>`. | `false` |
-| `--export-runtime <dir>` | Export standalone runtime library headers (`fsm.hpp`, `spsc_fsm.hpp`, etc.) to the specified directory. | None |
+| `--export-runtime <dir\|file>` | Export standalone runtime library headers (`fsm.hpp`) to the specified directory or explicit file path. Directly outputs clean C++17/C++20 runtime without empty model boilerplate. | None |
 | `--no-thread-safe` | Disable generation of the `thread_safe_fsm` asynchronous wrapper. | `false` |
 | `--no-stubs` | Do not emit default stub functors for actions and guards. | `false` |
 | `--allow-diagram` | Allow C++ generation from informal visual diagram formats (`--allow-diagram-codegen`). | `false` |
@@ -95,6 +98,8 @@ fsm-opt -i <input_model> [OPTIONS]
 fsm-opt [OPTIONS] <input_model>
 ```
 
+> **Note on Syntax**: All options taking arguments support both space-separated (`--option value`) and assignment-style (`--option=value`) syntax (e.g. `--input=model.sysml`, `--output=out.json`, `--format=sysml2`, `--passes=...`).
+
 ### Options Reference
 
 #### Input and Output Options
@@ -115,7 +120,7 @@ fsm-opt [OPTIONS] <input_model>
 | `--print-before-all` | Dump IR state in JSON format before executing pass pipeline. | `false` |
 | `--print-after-all` | Dump IR state in JSON format after executing pass pipeline. | `false` |
 | `--diagnostic-format <fmt>` | Set diagnostic output format (`text`, `json`, `github`). | `text` |
-| `-Werror` | Treat all diagnostic warnings as fatal errors. | `false` |
+| `-Werror` | Treat all diagnostic warnings and errors as fatal (informational notes are preserved). | `false` |
 
 #### IR Serialization and Formal Emission
 | Flag | Description | Default |

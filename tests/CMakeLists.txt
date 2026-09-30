@@ -209,6 +209,12 @@ add_fsm_unit_test(test_pipeline_extensibility DIR integration/pipeline EXTRA_LIB
 add_fsm_unit_test(test_cli_driver_errors DIR integration)
 target_include_directories(test_cli_driver_errors PRIVATE ${PROJECT_SOURCE_DIR})
 
+add_fsm_unit_test(test_fsmc_cli_options DIR integration)
+target_include_directories(test_fsmc_cli_options PRIVATE ${PROJECT_SOURCE_DIR})
+
+add_fsm_unit_test(test_fsm_opt_cli_options DIR integration)
+target_include_directories(test_fsm_opt_cli_options PRIVATE ${PROJECT_SOURCE_DIR})
+
 add_fsm_unit_test(test_cmake_integration DIR integration STANDARD 20)
 fsmc_target_sources(test_cmake_integration
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/../examples/01_basic_patterns/network_protocol/connection.mmd

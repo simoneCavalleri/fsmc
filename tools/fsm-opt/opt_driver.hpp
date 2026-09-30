@@ -198,8 +198,18 @@ class OptDriver {
         if (!diag.get_diagnostics().empty()) {
             std::cerr << diag.render_to_format(diag_fmt, content);
             if (opts.werror) {
-                std::cerr << "\n[ERROR] -Werror enabled: compilation failed due to middle-end warnings.\n";
-                return 1;
+                bool has_warnings = false;
+                for (const auto& d : diag.get_diagnostics()) {
+                    if (d.severity == DiagnosticSeverity::Warning || d.severity == DiagnosticSeverity::Fatal ||
+                        d.severity == DiagnosticSeverity::Error || d.severity == DiagnosticSeverity::SafetyCritical) {
+                        has_warnings = true;
+                        break;
+                    }
+                }
+                if (has_warnings) {
+                    std::cerr << "\n[ERROR] -Werror enabled: compilation failed due to middle-end warnings.\n";
+                    return 1;
+                }
             }
         }
 

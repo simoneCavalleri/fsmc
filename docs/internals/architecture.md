@@ -27,7 +27,7 @@ fsmc/
 │   ├── fsmc/        # Primary Multi-Format Compiler Driver CLI
 │   └── fsm-opt/     # Standalone Formal IR Optimizer, Linter & Roundtrip Formatter CLI
 ├── examples/        # Aerospace, Automotive ECU, and Resilient IoT Showcases
-├── tests/           # Modular GoogleTest Suites (91 test targets, 100% pass)
+├── tests/           # Modular GoogleTest Suites (93 test targets, 100% pass)
 │   ├── backend/     # Codegen, roundtrip lossless export, and backend/cpp/runtime tests
 │   ├── frontend/    # Frontend tests partitioned into formal/ and diagram/
 │   ├── ir/          # Serialization and AST integrity

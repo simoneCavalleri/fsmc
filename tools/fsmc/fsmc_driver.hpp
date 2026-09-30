@@ -35,6 +35,7 @@
 #include "fsm/frontend/common/parser_factory.hpp"
 #include "fsm/frontend/common/parser_interface.hpp"
 #include "fsm/frontend/diagram/diagram_contract_combiner.hpp"
+#include "fsm/frontend/directive/ltl_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/fsm_validator.hpp"
 #include "fsm/middleend/analysis/model_checker.hpp"
@@ -92,7 +93,8 @@ class FsmcDriver {
             !validate_arg_path(opts.sidecar_file, "--sidecar") || !validate_arg_path(opts.rtm_output_file, "--rtm") ||
             !validate_arg_path(opts.emit_sidecar, "--emit-sidecar") ||
             !validate_arg_path(opts.emit_test_harness, "--emit-test-harness") ||
-            !validate_arg_path(opts.export_runtime_dir, "--export-runtime")) {
+            !validate_arg_path(opts.export_runtime_dir, "--export-runtime") ||
+            !validate_arg_path(opts.submachine_dir, "--submachine-dir")) {
             return 1;
         }
 
@@ -202,12 +204,28 @@ class FsmcDriver {
 
         // Inject custom CLI verification properties if specified
         if (!opts.ltl_spec.empty()) {
-            model.add_property(fsm::ir::FormalProperty("cli_ltl_property", fsm::ir::PropertyKind::Safety, opts.ltl_spec,
-                                                       "CLI specified LTL specification"));
+            fsm::ir::FormalProperty prop("cli_ltl_property", fsm::ir::PropertyKind::Safety, opts.ltl_spec,
+                                         "CLI specified LTL specification");
+            auto parsed_ast = fsm::frontend::directive::LtlPropertyParser::parse(opts.ltl_spec);
+            if (parsed_ast) {
+                prop.ast = std::move(parsed_ast);
+            } else {
+                std::cerr << "Error: Syntax error in LTL formula: " << opts.ltl_spec << "\n";
+                return 1;
+            }
+            model.add_property(std::move(prop));
         }
         if (!opts.ctl_spec.empty()) {
-            model.add_property(fsm::ir::FormalProperty("cli_ctl_property", fsm::ir::PropertyKind::Safety, opts.ctl_spec,
-                                                       "CLI specified CTL specification"));
+            fsm::ir::FormalProperty prop("cli_ctl_property", fsm::ir::PropertyKind::Safety, opts.ctl_spec,
+                                         "CLI specified CTL specification");
+            auto parsed_ast = fsm::frontend::directive::LtlPropertyParser::parse(opts.ctl_spec);
+            if (parsed_ast) {
+                prop.ast = std::move(parsed_ast);
+            } else {
+                std::cerr << "Error: Syntax error in CTL formula: " << opts.ctl_spec << "\n";
+                return 1;
+            }
+            model.add_property(std::move(prop));
         }
 
         // Requirement audit
@@ -310,6 +328,11 @@ class FsmcDriver {
 
         for (const auto& warn_msg : validation.warnings) {
             std::cerr << "[WARNING] " << warn_msg << "\n";
+        }
+
+        if (opts.werror && !validation.warnings.empty()) {
+            std::cerr << "\n[ERROR] -Werror enabled: compilation failed due to semantic validation warnings.\n";
+            return 1;
         }
 
         if (!validation.is_valid) {

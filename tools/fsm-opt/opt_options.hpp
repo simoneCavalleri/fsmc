@@ -138,6 +138,8 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.input_path = argv[++i];
+        } else if (arg.starts_with("--input=")) {
+            opts.input_path = std::string(arg.substr(8));
         } else if (arg == "-o" || arg == "--output") {
             if (i + 1 >= argc) {
                 opts.is_valid = false;
@@ -145,6 +147,8 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.output_path = argv[++i];
+        } else if (arg.starts_with("--output=")) {
+            opts.output_path = std::string(arg.substr(9));
         } else if (arg == "--format") {
             if (i + 1 >= argc) {
                 opts.is_valid = false;
@@ -152,6 +156,8 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.format_override = argv[++i];
+        } else if (arg.starts_with("--format=")) {
+            opts.format_override = std::string(arg.substr(9));
         } else if (arg.starts_with("--passes=")) {
             opts.custom_passes = arg.substr(9);
         } else if (arg == "--prune-dead") {

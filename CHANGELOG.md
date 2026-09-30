@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.8.0] - 2026-09-30
 
 ### Added
+- **Dedicated CLI Integration Test Suites & Option Normalization (`fsmc`, `fsm-opt`)**:
+  - Implemented end-to-end option coverage tests in `test_fsmc_cli_options` (14 test scenarios) and `test_fsm_opt_cli_options` (7 test scenarios), expanding the automated test suite to 93 CTest targets and 488 documented test scenarios in the test catalog.
+  - Added support across all options in `fsmc` and `fsm-opt` for `--option=value` assignment style alongside standard space-separated syntax (`--input=`, `--output=`, `--target=`, `--lang=`, `--name=`, `--namespace=`, `--ns=`, `--package=`, `--format=`, `--sidecar=`, `--export=`, `-e=`, `--export-runtime=`, `--submachine-dir=`, `--rtm-format=`, `--std=`, `--engine=`, `--ltl=`, `--ctl=`).
 - **Extended Runtime Semantics & Concurrency (`do_activity`, Sampled Change Triggers, Dual Action Execution)**:
   - Added periodic in-state continuous behavior execution via `do_activity` with deterministic tick rate in `fsm::deterministic_timer` and lifecycle trait dispatch.
   - Added discrete sampled change triggers (`SampledChangeTriggerPass`, `fsm::change_<Port, Predicate>`) synthesizing change detector registers ($z^{-1}$) and edge-trigger guards for continuous stream signals.
@@ -34,6 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Created end-to-end industrial digital twin demonstration (`examples/06_stateflow_digital_twin_ecu`) modeling an automotive powertrain engine ECU with multi-hop chained connective junctions, overheat anomaly detection, and supervisor-initiated time-travel state rollback.
 
 ### Fixed
+- **Runtime Exporter (`--export-runtime`)**:
+  - Fixed directory handling: automatically appends `fsm.hpp` when given an existing directory or target path without file extension.
+  - Fixed generated header pollution: eliminated invalid dummy namespace and empty `using  = ::fsm::make_fsm<...>` declarations in exported standalone runtimes, directly emitting clean `Cpp17StandaloneRuntime` or `Cpp20StandaloneRuntime` headers.
+- **Formal Verification CLI Argument Ingestion (`--ltl`, `--ctl`) in `fsmc`**:
+  - Integrated `LtlPropertyParser::parse` on CLI-injected `--ltl` and `--ctl` formulas to construct valid AST expression trees instead of raw atomic proposition strings, resolving verification engine failures on temporal formulas.
+- **Diagnostic Rigor & `-Werror` Precision in `fsm-opt`**:
+  - Fixed false-positive `-Werror` failures on sound models: informational diagnostic `Note` messages (e.g., WCET calculations or queue bound metrics) no longer trigger compilation aborts. `-Werror` now strictly triggers exclusively on `Warning`, `Fatal`, `Error`, or `SafetyCritical` diagnostics.
 - **Hierarchical Deferred Event Inheritance**: Inherit deferred events from parent and ancestor composite states down to active leaf substates (`is_deferred_event_v`, `any_state_has_deferred`).
 - **Deep History in Static `parent_type` Hierarchies**: Fixed deep history tracking, recording, and typed retrieval (`record_ancestor_history`, `history_is`, `get_history<Parent>()`) to resolve static ancestor hierarchies via `parent_type` and `get_state_name_static`.
 - **Orthogonal Region Boundary Transitions**:

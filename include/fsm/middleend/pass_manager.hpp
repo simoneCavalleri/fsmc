@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -138,6 +139,14 @@ class ChoiceInliningPassWrapper : public IPass {
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };
 
+class ConnectiveJunctionChainingPassWrapper : public IPass {
+  public:
+    [[nodiscard]] std::string name() const override;
+    [[nodiscard]] std::string description() const override;
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
+};
+
+
 class ModelSafetyVerifierPass : public IPass {
   public:
     [[nodiscard]] std::string name() const override;
@@ -176,9 +185,13 @@ class TimedDeadlockPassWrapper : public IPass {
 
 class EFSMDataPathPass : public IPass {
   public:
+    explicit EFSMDataPathPass(bool prune_dead_transitions = false);
     [[nodiscard]] std::string name() const override;
     [[nodiscard]] std::string description() const override;
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
+
+  private:
+    bool prune_dead_transitions_{false};
 };
 
 class OrthogonalProductPassWrapper : public IPass {
@@ -260,6 +273,26 @@ class BoundaryActionFusionPassWrapper : public IPass {
     [[nodiscard]] std::string name() const override;
     [[nodiscard]] std::string description() const override;
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
+};
+
+class SampledChangeTriggerPassWrapper : public IPass {
+  public:
+    [[nodiscard]] std::string name() const override;
+    [[nodiscard]] std::string description() const override;
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
+};
+
+class SubmachineInliningPassWrapper : public IPass {
+  public:
+    using SubmachineResolver = std::function<const FsmIr*(const std::string&)>;
+
+    explicit SubmachineInliningPassWrapper(SubmachineResolver resolver = nullptr);
+    [[nodiscard]] std::string name() const override;
+    [[nodiscard]] std::string description() const override;
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
+
+  private:
+    SubmachineResolver resolver_;
 };
 
 // --- Data-Path Optimization Wrappers ---

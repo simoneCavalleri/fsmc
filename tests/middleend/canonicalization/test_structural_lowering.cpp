@@ -9,9 +9,11 @@
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/passes/boundary_action_fusion_pass.hpp"
+#include "fsm/middleend/passes/connective_junction_chaining_pass.hpp"
 #include "fsm/middleend/passes/deferred_event_lowering_pass.hpp"
 #include "fsm/middleend/passes/fork_join_lowering_pass.hpp"
 #include "fsm/middleend/passes/history_lowering_pass.hpp"
+#include "fsm/middleend/passes/sampled_change_trigger_pass.hpp"
 
 using namespace fsm::ir;
 using namespace fsm::diagnostic;
@@ -348,6 +350,69 @@ TEST(BoundaryActionFusion, InternalTransition_NotModifiedByPass) {
         << "State A exit_actions must not be cleared when only an internal transition exists";
 }
 
+/**
+ * @brief Verify that multiple outgoing transitions from the same state both fuse boundary actions.
+ * @scenario Composite state CompositeA has exit actions and substate SubA has exit actions.
+ *           Two distinct outgoing transitions leave SubA to SubB1 and SubB2.
+ * @expected Both transitions fuse the exit actions without premature clearing on the first transition.
+ */
+TEST(BoundaryActionFusion, MultipleOutgoingTransitions_BothFuseBoundaryActionsWithoutPrematureClearing) {
+    FsmIr ir;
+    DiagnosticEngine diag;
+
+    StateNode root("Root");
+    root.is_composite = true;
+
+    StateNode compA("CompositeA", "", "Root");
+    compA.is_composite = true;
+    ActionSignature compA_exit("exit_CompositeA");
+    StoreOp op_a;
+    op_a.expression = "exit_A";
+    compA_exit.instructions.emplace_back(op_a);
+    compA.exit_actions.push_back(compA_exit);
+
+    StateNode subA("SubA", "", "CompositeA");
+    ActionSignature subA_exit("exit_SubA");
+    StoreOp op_suba;
+    op_suba.expression = "exit_SubA";
+    subA_exit.instructions.emplace_back(op_suba);
+    subA.exit_actions.push_back(subA_exit);
+
+    StateNode compB("CompositeB", "", "Root");
+    compB.is_composite = true;
+
+    StateNode subB1("SubB1", "", "CompositeB");
+    StateNode subB2("SubB2", "", "CompositeB");
+
+    ir.states.push_back(root);
+    ir.states.push_back(compA);
+    ir.states.push_back(subA);
+    ir.states.push_back(compB);
+    ir.states.push_back(subB1);
+    ir.states.push_back(subB2);
+
+    TransitionEdge t1("SubA", "SubB1", "EvJump1");
+    TransitionEdge t2("SubA", "SubB2", "EvJump2");
+    ir.transitions.push_back(t1);
+    ir.transitions.push_back(t2);
+
+    bool res = BoundaryActionFusionPass::run(ir, diag);
+    EXPECT_TRUE(res);
+
+    ASSERT_EQ(ir.transitions.size(), 2U);
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    ASSERT_TRUE(ir.transitions[1].transition_action.has_value());
+
+    EXPECT_EQ(ir.transitions[0].transition_action->instructions.size(), 2U);
+    EXPECT_EQ(ir.transitions[1].transition_action->instructions.size(), 2U);
+
+    EXPECT_EQ(std::get<StoreOp>(ir.transitions[0].transition_action->instructions[0].op).expression, "exit_SubA");
+    EXPECT_EQ(std::get<StoreOp>(ir.transitions[0].transition_action->instructions[1].op).expression, "exit_A");
+
+    EXPECT_EQ(std::get<StoreOp>(ir.transitions[1].transition_action->instructions[0].op).expression, "exit_SubA");
+    EXPECT_EQ(std::get<StoreOp>(ir.transitions[1].transition_action->instructions[1].op).expression, "exit_A");
+}
+
 // ============================================================================
 // 4. ForkJoinLoweringPass Tests
 // ============================================================================
@@ -415,3 +480,230 @@ TEST(ForkJoinLowering, ForkAndJoinPseudostates_LowersToMultiSourceMultiTargetTra
     EXPECT_EQ(join_out->source_ids.size(), 2U);
     EXPECT_EQ(join_out->multi_source_ids.size(), 2U);
 }
+
+// ============================================================================
+// 5. SampledChangeTriggerPass Tests
+// ============================================================================
+
+/**
+ * @brief Verify continuous ChangeTrigger lowering into sampled edge detector.
+ * @scenario State 'Monitoring' with transition 'Monitoring -> Alarm' on 'when(temp > 100)'.
+ * @expected Shadow register '__change_Monitoring_0_prev' allocated, entry action added to Monitoring,
+ *           guard synthesized to '(!__change_Monitoring_0_prev && (temp > 100))', update action added,
+ *           trigger lowered to AnonymousTrigger.
+ */
+TEST(SampledChangeTrigger, RisingEdgeTrigger_LowersToShadowRegisterAndEdgeGuard) {
+    FsmIr ir;
+    DiagnosticEngine diag;
+
+    ir.add_state("Monitoring");
+    ir.add_state("Alarm");
+
+    TransitionEdge t("Monitoring", "Alarm", "");
+    t.trigger = ChangeTrigger("temp > 100", true);
+    ir.transitions.push_back(t);
+
+    SampledChangeTriggerPass pass;
+    bool res = pass.run(ir, diag);
+    EXPECT_TRUE(res);
+
+    // 1. Trigger lowered to AnonymousTrigger
+    ASSERT_EQ(ir.transitions.size(), 1U);
+    EXPECT_TRUE(std::holds_alternative<AnonymousTrigger>(ir.transitions[0].trigger));
+
+    // 2. Guard contains edge detection
+    ASSERT_TRUE(ir.transitions[0].guard.has_value());
+    EXPECT_NE(ir.transitions[0].guard->find("(!__change_Monitoring_0_prev && (temp > 100))"), std::string::npos);
+
+    // 3. Shadow register allocated in variables
+    const auto* shadow = ir.find_variable("__change_Monitoring_0_prev");
+    ASSERT_NE(shadow, nullptr);
+    EXPECT_EQ(shadow->initial_value, "false");
+
+    // 4. Source state entry actions capture predicate state
+    const auto* src = ir.find_state("Monitoring");
+    ASSERT_NE(src, nullptr);
+    ASSERT_FALSE(src->entry_actions.empty());
+    EXPECT_EQ(src->entry_actions[0].assignments[0].target.full_path(), "__change_Monitoring_0_prev");
+    EXPECT_EQ(src->entry_actions[0].assignments[0].expression, "temp > 100");
+
+    // 5. Transition action updates shadow register
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].target.full_path(), "__change_Monitoring_0_prev");
+}
+
+TEST(SampledChangeTrigger, FallingEdgeTrigger_SynthesizesHighToLowDetector) {
+    FsmIr ir;
+    DiagnosticEngine diag;
+
+    ir.add_state("Running");
+    ir.add_state("Stopped");
+
+    TransitionEdge t("Running", "Stopped", "");
+    t.trigger = ChangeTrigger("is_active", false);  // active_on_true = false
+    ir.transitions.push_back(t);
+
+    SampledChangeTriggerPass pass;
+    bool res = pass.run(ir, diag);
+    EXPECT_TRUE(res);
+
+    ASSERT_TRUE(ir.transitions[0].guard.has_value());
+    EXPECT_NE(ir.transitions[0].guard->find("(__change_Running_0_prev && !(is_active))"), std::string::npos);
+}
+
+TEST(SampledChangeTrigger, NoChangeTriggers_ReturnsFalse) {
+    FsmIr ir;
+    DiagnosticEngine diag;
+
+    ir.add_state("S1");
+    ir.add_state("S2");
+    ir.transitions.push_back(TransitionEdge("S1", "S2", "EvStep"));
+
+    SampledChangeTriggerPass pass;
+    bool res = pass.run(ir, diag);
+    EXPECT_FALSE(res);
+}
+
+// ============================================================================
+// 6. ConnectiveJunctionChainingPass Tests
+// ============================================================================
+
+TEST(ConnectiveJunctionChaining, MultiHopChain_FusesIntoCompoundTransition) {
+    FsmIr ir;
+    DiagnosticEngine diag;
+
+    ir.add_state("StateA");
+    ir.add_state("J1", "", StateKind::Junction);
+    ir.add_state("J2", "", StateKind::Junction);
+    ir.add_state("StateB");
+
+    // Segment 1: StateA -> J1 on EvTick
+    TransitionEdge t1("StateA", "J1", "EvTick");
+    t1.condition_action = ActionSignature("ca1");
+    ir.transitions.push_back(t1);
+
+    // Segment 2: J1 -> J2 [x > 0]
+    TransitionEdge t2("J1", "J2", "", "x > 0");
+    t2.condition_action = ActionSignature("ca2");
+    ir.transitions.push_back(t2);
+
+    // Segment 3: J2 -> StateB [y > 0] / { ta1 }
+    TransitionEdge t3("J2", "StateB", "", "y > 0", ActionSignature("ta1"));
+    ir.transitions.push_back(t3);
+
+    bool res = ConnectiveJunctionChainingPass::run(ir, diag);
+    EXPECT_TRUE(res);
+    EXPECT_FALSE(diag.has_errors());
+
+    // Junctions J1 and J2 removed
+    EXPECT_EQ(ir.find_state("J1"), nullptr);
+    EXPECT_EQ(ir.find_state("J2"), nullptr);
+    EXPECT_EQ(ir.states.size(), 2u);
+
+    // Intermediate transitions removed, single compound transition created
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    const auto& comp = ir.transitions[0];
+    EXPECT_EQ(comp.source, "StateA");
+    EXPECT_EQ(comp.target, "StateB");
+    EXPECT_EQ(comp.event, "EvTick");
+    ASSERT_TRUE(comp.guard.has_value());
+    EXPECT_EQ(*comp.guard, "fsm::and_<x > 0, y > 0>");
+    ASSERT_TRUE(comp.condition_action.has_value());
+    EXPECT_EQ(comp.condition_action->name, "ca1_ca2");
+    ASSERT_TRUE(comp.transition_action.has_value());
+    EXPECT_EQ(comp.transition_action->name, "ta1");
+}
+
+TEST(ConnectiveJunctionChaining, BranchingJunctions_CreatesMultipleCompositeTransitions) {
+    FsmIr ir;
+    DiagnosticEngine diag;
+
+    ir.add_state("Start");
+    ir.add_state("JuncBranch", "", StateKind::Junction);
+    ir.add_state("BranchSuccess");
+    ir.add_state("BranchFail");
+
+    TransitionEdge t_in("Start", "JuncBranch", "EvCheck");
+    TransitionEdge t_ok("JuncBranch", "BranchSuccess", "", "status == 0");
+    TransitionEdge t_err("JuncBranch", "BranchFail", "", "status != 0");
+
+    ir.transitions.push_back(t_in);
+    ir.transitions.push_back(t_ok);
+    ir.transitions.push_back(t_err);
+
+    bool res = ConnectiveJunctionChainingPass::run(ir, diag);
+    EXPECT_TRUE(res);
+    EXPECT_FALSE(diag.has_errors());
+
+    EXPECT_EQ(ir.find_state("JuncBranch"), nullptr);
+    ASSERT_EQ(ir.transitions.size(), 2u);
+
+    bool found_ok = false;
+    bool found_err = false;
+    for (const auto& t : ir.transitions) {
+        EXPECT_EQ(t.source, "Start");
+        EXPECT_EQ(t.event, "EvCheck");
+        if (t.target == "BranchSuccess") {
+            found_ok = true;
+            EXPECT_EQ(t.guard.value_or(""), "status == 0");
+        } else if (t.target == "BranchFail") {
+            found_err = true;
+            EXPECT_EQ(t.guard.value_or(""), "status != 0");
+        }
+    }
+    EXPECT_TRUE(found_ok);
+    EXPECT_TRUE(found_err);
+}
+
+TEST(ConnectiveJunctionChaining, CyclicJunctions_ReportsDiagnosticError) {
+    FsmIr ir;
+    DiagnosticEngine diag;
+
+    ir.add_state("StateA");
+    ir.add_state("J1", "", StateKind::Junction);
+    ir.add_state("J2", "", StateKind::Junction);
+    ir.add_state("StateB");
+
+    ir.transitions.push_back(TransitionEdge("StateA", "J1", "Ev"));
+    ir.transitions.push_back(TransitionEdge("J1", "J2", ""));
+    ir.transitions.push_back(TransitionEdge("J2", "J1", "")); // Cycle!
+    ir.transitions.push_back(TransitionEdge("J2", "StateB", ""));
+
+    bool res = ConnectiveJunctionChainingPass::run(ir, diag);
+    EXPECT_FALSE(res);
+    EXPECT_TRUE(diag.has_errors());
+    EXPECT_EQ(diag.get_diagnostics()[0].code, "EJUNC001");
+}
+
+/**
+ * @brief Verify that a self-transition chained through a junction preserves External kind.
+ * @scenario StateA transitions to Junc, which transitions back to StateA on [flag == true].
+ * @expected Chained transition StateA -> StateA has TransitionEdgeKind::External so lifecycle hooks fire.
+ */
+TEST(ConnectiveJunctionChaining, SelfTransitionThroughJunction_PreservesExternalKind) {
+    FsmIr ir;
+    DiagnosticEngine diag;
+
+    ir.add_state("StateA");
+    ir.add_state("JuncSelf", "", StateKind::Junction);
+
+    TransitionEdge t_in("StateA", "JuncSelf", "EvLoop");
+    TransitionEdge t_out("JuncSelf", "StateA", "", "flag == true");
+    ir.transitions.push_back(t_in);
+    ir.transitions.push_back(t_out);
+
+    bool res = ConnectiveJunctionChainingPass::run(ir, diag);
+    EXPECT_TRUE(res);
+    EXPECT_FALSE(diag.has_errors());
+
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    const auto& comp = ir.transitions[0];
+    EXPECT_EQ(comp.source, "StateA");
+    EXPECT_EQ(comp.target, "StateA");
+    EXPECT_EQ(comp.event, "EvLoop");
+    EXPECT_EQ(comp.guard.value_or(""), "flag == true");
+    EXPECT_EQ(comp.kind, TransitionEdgeKind::External);
+}
+
+
+

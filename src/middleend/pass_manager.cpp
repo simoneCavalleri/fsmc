@@ -17,6 +17,7 @@
 #include "fsm/middleend/passes/boundary_action_fusion_pass.hpp"
 #include "fsm/middleend/passes/choice_inlining_pass.hpp"
 #include "fsm/middleend/passes/common_action_factoring_pass.hpp"
+#include "fsm/middleend/passes/connective_junction_chaining_pass.hpp"
 #include "fsm/middleend/passes/constant_folding_pass.hpp"
 #include "fsm/middleend/passes/dead_action_elimination_pass.hpp"
 #include "fsm/middleend/passes/dead_state_pruning_pass.hpp"
@@ -29,6 +30,7 @@
 #include "fsm/middleend/passes/orthogonal_product_pass.hpp"
 #include "fsm/middleend/passes/pipe_through_pass.hpp"
 #include "fsm/middleend/passes/register_liveness_pass.hpp"
+#include "fsm/middleend/passes/sampled_change_trigger_pass.hpp"
 #include "fsm/middleend/passes/state_minimization_pass.hpp"
 #include "fsm/middleend/passes/submachine_inlining_pass.hpp"
 #include "fsm/middleend/passes/timed_deadlock_pass.hpp"
@@ -201,6 +203,22 @@ std::string ChoiceInliningPassWrapper::description() const {
 
 bool ChoiceInliningPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     ChoiceInliningPass pass;
+    return pass.run(ir, diag);
+}
+
+// ============================================================================
+// Pass: ConnectiveJunctionChainingPassWrapper
+// ============================================================================
+std::string ConnectiveJunctionChainingPassWrapper::name() const {
+    return ConnectiveJunctionChainingPass::name();
+}
+
+std::string ConnectiveJunctionChainingPassWrapper::description() const {
+    return ConnectiveJunctionChainingPass::description();
+}
+
+bool ConnectiveJunctionChainingPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
+    ConnectiveJunctionChainingPass pass;
     return pass.run(ir, diag);
 }
 
@@ -408,8 +426,11 @@ bool TimedDeadlockPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
 // ============================================================================
 // Pass: EFSMDataPathPass
 // ============================================================================
+EFSMDataPathPass::EFSMDataPathPass(bool prune_dead_transitions)
+    : prune_dead_transitions_(prune_dead_transitions) {}
+
 std::string EFSMDataPathPass::name() const {
-    return "EFSMDataPathPass";
+    return "EFSMDataPath";
 }
 
 std::string EFSMDataPathPass::description() const {
@@ -423,7 +444,29 @@ bool EFSMDataPathPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     }
 
     EFSMIntervalAnalyzer analyzer(ir);
-    analyzer.analyze(diag);
+    auto findings = analyzer.analyze(diag);
+
+    if (prune_dead_transitions_) {
+        std::size_t removed_count = 0;
+        for (const auto& f : findings) {
+            auto it = std::find_if(ir.transitions.begin(), ir.transitions.end(), [&](const TransitionEdge& t) {
+                if (!f.transition_id.empty() && t.id == f.transition_id)
+                    return true;
+                return t.source == f.source_state && t.target == f.target_state;
+            });
+            if (it != ir.transitions.end()) {
+                ir.transitions.erase(it);
+                removed_count++;
+            }
+        }
+        if (removed_count > 0) {
+            diag.report(Diagnostic::info(
+                "I_EFSM_PRUNED_TRANSITIONS",
+                "Pruned " + std::to_string(removed_count) +
+                    " dead transition(s) with unsatisfiable guard intervals."));
+        }
+    }
+
     return !diag.has_errors();
 }
 
@@ -563,6 +606,31 @@ bool BoundaryActionFusionPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     return pass.run(ir, diag);
 }
 
+std::string SampledChangeTriggerPassWrapper::name() const {
+    return SampledChangeTriggerPass::name();
+}
+std::string SampledChangeTriggerPassWrapper::description() const {
+    return SampledChangeTriggerPass::description();
+}
+bool SampledChangeTriggerPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
+    SampledChangeTriggerPass pass;
+    return pass.run(ir, diag);
+}
+
+SubmachineInliningPassWrapper::SubmachineInliningPassWrapper(SubmachineResolver resolver)
+    : resolver_(std::move(resolver)) {}
+
+std::string SubmachineInliningPassWrapper::name() const {
+    return SubmachineInliningPass::name();
+}
+std::string SubmachineInliningPassWrapper::description() const {
+    return SubmachineInliningPass::description();
+}
+bool SubmachineInliningPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
+    SubmachineInliningPass pass(resolver_);
+    return pass.run(ir, diag);
+}
+
 // ============================================================================
 // Data-Path Optimization Wrappers
 // ============================================================================
@@ -677,7 +745,9 @@ PassManager PassManager::create_default_pipeline() {
     pm.add_pass(std::make_unique<DeterminismEnforcementPassWrapper>());
     pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
     pm.add_pass(std::make_unique<ChoiceCompletenessPass>());
+    pm.add_pass(std::make_unique<ConnectiveJunctionChainingPassWrapper>());
     pm.add_pass(std::make_unique<ChoiceInliningPassWrapper>());
+    pm.add_pass(std::make_unique<SampledChangeTriggerPassWrapper>());
     pm.add_pass(std::make_unique<TimedDeadlockPassWrapper>());
     pm.add_pass(std::make_unique<EFSMDataPathPass>());
     pm.add_pass(std::make_unique<GuardSatisfiabilityPassWrapper>());
@@ -701,10 +771,12 @@ PassManager PassManager::create_optimizing_pipeline(bool prune_dead_states, bool
         pm.add_pass(std::make_unique<StateMinimizationPassWrapper>());
     }
     pm.add_pass(std::make_unique<ChoiceCompletenessPass>());
+    pm.add_pass(std::make_unique<ConnectiveJunctionChainingPassWrapper>());
     pm.add_pass(std::make_unique<ChoiceInliningPassWrapper>());
+    pm.add_pass(std::make_unique<SampledChangeTriggerPassWrapper>());
     pm.add_pass(std::make_unique<TimedDeadlockPassWrapper>());
     pm.add_pass(std::make_unique<WcetAnalysisPassWrapper>());
-    pm.add_pass(std::make_unique<EFSMDataPathPass>());
+    pm.add_pass(std::make_unique<EFSMDataPathPass>(true));
     pm.add_pass(std::make_unique<GuardSatisfiabilityPassWrapper>());
     pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
     pm.add_pass(std::make_unique<ModelCheckingPass>());
@@ -722,7 +794,11 @@ PassManager PassManager::create_verified_7stage_pipeline(bool optimize) {
     pm.add_pass(std::make_unique<ForkJoinLoweringPassWrapper>());
     pm.add_pass(std::make_unique<HistoryLoweringPassWrapper>());
     pm.add_pass(std::make_unique<DeferredEventLoweringPassWrapper>());
+    pm.add_pass(std::make_unique<OrthogonalProductPassWrapper>());
     pm.add_pass(std::make_unique<BoundaryActionFusionPassWrapper>());
+    pm.add_pass(std::make_unique<ConnectiveJunctionChainingPassWrapper>());
+    pm.add_pass(std::make_unique<ChoiceInliningPassWrapper>());
+    pm.add_pass(std::make_unique<SampledChangeTriggerPassWrapper>());
 
     // Stage 3: Formal Invariant & Safety Verification
     pm.add_pass(std::make_unique<LivelockAnalysisPassWrapper>());
@@ -746,7 +822,7 @@ PassManager PassManager::create_verified_7stage_pipeline(bool optimize) {
     }
 
     // Stage 6: Data-Path Optimization & Register Allocation
-    pm.add_pass(std::make_unique<EFSMDataPathPass>());
+    pm.add_pass(std::make_unique<EFSMDataPathPass>(optimize));
     if (optimize) {
         pm.add_pass(std::make_unique<RegisterLivenessPassWrapper>());
     }

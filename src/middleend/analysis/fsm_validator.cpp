@@ -39,6 +39,9 @@ ValidationResult FsmValidator::validate(const FsmIr& model) {
     // 3. Check Choice Pseudostates Completeness & Conflict
     validate_choice_pseudostates(model, result);
 
+    // 3b. Check Hierarchy Acyclicity & Unknown Parents
+    validate_state_hierarchy(model, result);
+
     // 4. Check Reachability from Initial State
     if (result.is_valid && !model.initial_state.empty()) {
         validate_reachability(model, result);
@@ -131,10 +134,33 @@ void FsmValidator::validate_choice_pseudostates(const FsmIr& model, ValidationRe
             }
         }
 
-        if (!has_else_branch && outgoing.size() > 1) {
+        if (!has_else_branch) {
             result.add_safety_critical("Choice",
                                        "Choice pseudostate '" + choice_item.name +
                                            "' lacks an unconditional else/default fallback branch (potential stall).");
+        }
+    }
+}
+
+void FsmValidator::validate_state_hierarchy(const FsmIr& model, ValidationResult& result) {
+    for (const auto& s : model.states) {
+        std::set<std::string> visited;
+        visited.insert(s.name);
+        std::string curr = s.parent_state;
+        while (!curr.empty()) {
+            if (visited.count(curr) != 0) {
+                result.add_error("Hierarchy",
+                                 "Cyclic parent-child state hierarchy detected involving state '" + curr + "'.");
+                return;
+            }
+            visited.insert(curr);
+            const auto* p = model.find_state(curr);
+            if (p == nullptr) {
+                result.add_error("Hierarchy",
+                                 "State '" + s.name + "' references unknown parent state '" + curr + "'.");
+                break;
+            }
+            curr = p->parent_state;
         }
     }
 }
@@ -178,10 +204,12 @@ void FsmValidator::validate_reachability(const FsmIr& model, ValidationResult& r
             if (!st_node->parent_state.empty()) {
                 mark_reachable(st_node->parent_state);
             }
-            // Include all child sub-states for composite/parallel states
-            for (const auto& child : model.states) {
-                if (child.parent_state == current) {
-                    mark_reachable(child.name);
+            // Include all child sub-states for parallel states
+            if (st_node->kind == StateKind::Parallel) {
+                for (const auto& child : model.states) {
+                    if (child.parent_state == current) {
+                        mark_reachable(child.name);
+                    }
                 }
             }
         }
@@ -277,8 +305,12 @@ void FsmValidator::validate_deadlock_states(const FsmIr& model, ValidationResult
     }
 
     auto has_ancestor_outgoing = [&](const StateNode& s) -> bool {
+        std::set<std::string> visited;
         std::string curr = s.parent_state;
         while (!curr.empty()) {
+            if (visited.count(curr) != 0)
+                break;
+            visited.insert(curr);
             if (out_degree[curr] > 0)
                 return true;
             const auto* p = model.find_state(curr);
@@ -290,13 +322,16 @@ void FsmValidator::validate_deadlock_states(const FsmIr& model, ValidationResult
     };
 
     auto has_descendant_outgoing = [&](const StateNode& s) -> bool {
+        std::set<std::string> visited;
         std::queue<std::string> q;
         q.push(s.name);
+        visited.insert(s.name);
         while (!q.empty()) {
             std::string curr = q.front();
             q.pop();
             for (const auto& child : model.states) {
-                if (child.parent_state == curr) {
+                if (child.parent_state == curr && visited.count(child.name) == 0) {
+                    visited.insert(child.name);
                     if (out_degree[child.name] > 0)
                         return true;
                     q.push(child.name);
@@ -311,15 +346,19 @@ void FsmValidator::validate_deadlock_states(const FsmIr& model, ValidationResult
             if (has_ancestor_outgoing(state_item) || has_descendant_outgoing(state_item)) {
                 continue;  // Inherits outgoing transition from ancestor or child sub-state
             }
+            if (state_item.kind == StateKind::Final) {
+                continue;  // Explicitly marked as a final/terminating state
+            }
             std::string lower_name = state_item.name;
             std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(),
                            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
             const bool is_intended_final =
-                (lower_name.find("final") != std::string::npos || lower_name.find("end") != std::string::npos ||
-                 lower_name.find("terminal") != std::string::npos ||
-                 lower_name.find("terminate") != std::string::npos || lower_name.find("stop") != std::string::npos ||
-                 lower_name.find("landed") != std::string::npos || lower_name == "completed" || lower_name == "done");
+                (lower_name == "end" || lower_name == "final" || lower_name == "stop" || lower_name == "terminate" ||
+                 lower_name == "completed" || lower_name == "done" || lower_name == "landed" ||
+                 lower_name.rfind("final", 0) == 0 || lower_name.rfind("end_", 0) == 0 ||
+                 (lower_name.size() >= 4 && lower_name.rfind("_end") == lower_name.size() - 4) ||
+                 lower_name.find("terminal") != std::string::npos);
 
             if (!is_intended_final) {
                 result.add_warning("Deadlock", "Potential trap / deadlock state: '" + state_item.name +

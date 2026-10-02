@@ -119,9 +119,136 @@ Save your model as `connection.sysml` (or `connection.mmd` / `connection.puml`).
 
 ---
 
-## 3. Inspecting the Canonical AST (`FsmIr`)
+## 3. Compile and Run in C++ (Your 60-Second Win)
 
-When `fsmc` ingests a model, it does not bind directly to any programming language. Instead, it constructs a target-agnostic **Intermediate Representation (`FsmIr`)** containing the canonical state graph, transition matrix, and symbols.
+Now that you have authored the model, let's compile it into production C++ and run it.
+
+### Step A: Generate the Standalone C++ Header
+
+Run `fsmc` to generate a self-contained C++20 header with zero external runtime dependencies:
+
+```bash
+fsmc -i connection.sysml -o connection_fsm.hpp --target cpp --std 20 --standalone --namespace conn --name ConnectionManagerFSM
+```
+
+`fsmc` analyzes the transition topology and generates:
+- **State Tags**: `conn::Disconnected`, `conn::Connecting`, `conn::Connected`, `conn::Reconnecting`.
+- **Event Tags**: `conn::ConnectCmd`, `conn::HandshakeOk`, `conn::HandshakeFailed`, `conn::ConnectionLost`, etc.
+- **State Machine Alias**: `conn::ConnectionManagerFSM` (a zero-heap `fsm::make_fsm` instantiation).
+
+---
+
+### Step B: Write the Application (`main.cpp`)
+
+Create `main.cpp` to instantiate the state machine and dispatch events:
+
+```cpp
+#include <iostream>
+#include <cassert>
+#include "connection_fsm.hpp"
+
+int main() {
+    using namespace conn;
+
+    // 1. Stack-allocated state machine (zero heap allocation, O(1) dispatch)
+    ConnectionManagerFSM fsm;
+
+    std::cout << "Initial state: " << fsm.current_state_name() << "\n";
+    assert(fsm.is_in<Disconnected>());
+
+    // 2. Dispatch ConnectCmd event
+    fsm::dispatch_result res = fsm.dispatch(ConnectCmd{});
+    assert(res.is_success());
+    std::cout << "State after ConnectCmd: " << fsm.current_state_name() << "\n";
+    assert(fsm.is_in<Connecting>());
+
+    // 3. Complete the handshake
+    fsm.dispatch(HandshakeOk{});
+    std::cout << "State after HandshakeOk: " << fsm.current_state_name() << "\n";
+    assert(fsm.is_in<Connected>());
+
+    // 4. Simulate network interruption
+    fsm.dispatch(ConnectionLost{});
+    std::cout << "State after ConnectionLost: " << fsm.current_state_name() << "\n";
+    assert(fsm.is_in<Reconnecting>());
+
+    std::cout << "\n[SUCCESS] State machine dispatched events with 0 heap allocations!\n";
+    return 0;
+}
+```
+
+---
+
+### Step C: Build and Run
+
+Compile with any standard C++20 compiler (`g++`, `clang++`, or MSVC):
+
+```bash
+g++ -std=c++20 main.cpp -o connection_app
+./connection_app
+```
+
+**Console Output:**
+```text
+Initial state: Disconnected
+State after ConnectCmd: Connecting
+State after HandshakeOk: Connected
+State after ConnectionLost: Reconnecting
+
+[SUCCESS] State machine dispatched events with 0 heap allocations!
+```
+
+---
+
+### Alternative: The Pure C++ Header-Only Track (No CLI Needed!)
+
+What if you prefer writing code directly in C++ without invoking any external CLI compiler?
+
+The `fsmc` runtime library can be consumed directly as a **pure header-only C++20 DSL**. Here is the exact same Connection Manager written in standard C++:
+
+```cpp
+#include <fsm/fsm.hpp>
+#include <iostream>
+
+// 1. Declare state and event types
+struct Disconnected {};
+struct Connecting {};
+struct Connected {};
+struct Reconnecting {};
+
+struct ConnectCmd {};
+struct HandshakeOk {};
+struct ConnectionLost {};
+
+// 2. Declare transition table at compile time
+using ConnectionTable = fsm::transition_table<
+    fsm::row<Disconnected, ConnectCmd,     Connecting>,
+    fsm::row<Connecting,   HandshakeOk,    Connected>,
+    fsm::row<Connected,    ConnectionLost, Reconnecting>
+>;
+
+// 3. Instantiate zero-allocation engine
+using ConnectionFSM = fsm::make_fsm<
+    ConnectionTable, 
+    fsm::with_initial_state<Disconnected>
+>;
+
+int main() {
+    ConnectionFSM fsm;
+    fsm.dispatch(ConnectCmd{});
+    std::cout << "State: " << fsm.current_state_name() << "\n"; // Connecting
+    return 0;
+}
+```
+
+> [!TIP]
+> Both workflows use the **exact same zero-overhead runtime engine** (`fsm::fsm`). The `fsmc` compiler simply automates authoring, validation, and multi-format conversion from visual and MBSE models.
+
+---
+
+## 4. Under the Hood: Inspecting the Canonical IR (`FsmIr`)
+
+When `fsmc` ingests a model, it does not bind directly to any programming language. Instead, it constructs a target-agnostic **Intermediate Representation (`FsmIr`)** containing the canonical state graph, transition matrix, and symbol table.
 
 You can inspect the generated IR JSON using `fsm-opt`:
 
@@ -157,7 +284,7 @@ fsm-opt -i connection.sysml --emit-ir
 
 ---
 
-## 4. Converting Across Formats (Lossless Transpilation)
+## 5. Converting Across Formats (Lossless Transpilation)
 
 Because `fsmc` maintains this neutral Intermediate Representation, you can convert models seamlessly between any supported format:
 
@@ -176,6 +303,7 @@ fsmc -i connection.sysml -e dot -o connection.dot
 
 ## Next Steps
 
-Now that you have built a basic state machine, let's learn how to add **Partitioned I/O Ports, Internal Registers, Conditional Guards**, and **Lifecycle Actions** in **[Tutorial 2: Extended State Machines (EFSM), Guards & Datapath](02_guards_and_actions.md)**.
+Now that you have built and executed your first state machine, let's learn how to add **Partitioned I/O Ports, Internal Registers, Conditional Guards**, and **Lifecycle Actions** in **[Tutorial 2: Extended State Machines (EFSM), Guards & Datapath](02_guards_and_actions.md)**.
+
 
 

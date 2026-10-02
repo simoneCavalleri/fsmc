@@ -43,10 +43,9 @@ void* operator new(std::size_t size) {
     return ptr;
 }
 
-#if defined(__GNUC__) || defined(__clang__)
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmismatched-new-delete"
-#pragma GCC diagnostic ignored "-Wsized-deallocation"
 #endif
 
 void operator delete(void* ptr) noexcept {
@@ -57,7 +56,7 @@ void operator delete(void* ptr, std::size_t /*unused*/) noexcept {
     std::free(ptr);
 }
 
-#if defined(__GNUC__) || defined(__clang__)
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic pop
 #endif
 

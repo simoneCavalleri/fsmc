@@ -112,12 +112,12 @@ struct InternalAction {
 // --- Transition Tables ---
 
 // Canonical 3-State FSM Table with ping-pong and cyclic paths
-using BenchTable = fsm::transition_table<
-    fsm::transition<StateA, Event1, StateB, DummyAction, DummyGuard>,
-    fsm::transition<StateB, Event1, StateA, DummyAction, DummyGuard>,  // Fast ping-pong path
-    fsm::transition<StateB, Event2, StateC, DummyAction, CompositeGuard>,
-    fsm::transition<StateC, Event3, StateA, DummyAction, DummyGuard>,
-    fsm::internal_transition<StateA, InternalPing, InternalAction, DummyGuard>>;
+using BenchTable =
+    fsm::transition_table<fsm::transition<StateA, Event1, StateB, DummyAction, DummyGuard>,
+                          fsm::transition<StateB, Event1, StateA, DummyAction, DummyGuard>,  // Fast ping-pong path
+                          fsm::transition<StateB, Event2, StateC, DummyAction, CompositeGuard>,
+                          fsm::transition<StateC, Event3, StateA, DummyAction, DummyGuard>,
+                          fsm::internal_transition<StateA, InternalPing, InternalAction, DummyGuard>>;
 
 using BenchFSM = fsm::fsm<BenchTable, fsm::no_ports, fsm::no_ports, BenchRegisters>;
 using BenchThreadSafeFSM = fsm::thread_safe_fsm<BenchTable, fsm::no_ports, fsm::no_ports, BenchRegisters>;
@@ -139,11 +139,10 @@ struct EvPrev {};
 struct EvExit {};
 struct EvResume {};
 
-using HfsmTable = fsm::transition_table<
-    fsm::transition<SubState1, EvNext, SubState2, DummyAction>,
-    fsm::transition<SubState2, EvPrev, SubState1, DummyAction>,
-    fsm::transition<SubState2, EvExit, OtherState, DummyAction>,
-    fsm::transition<OtherState, EvResume, SubState1, DummyAction>>;
+using HfsmTable = fsm::transition_table<fsm::transition<SubState1, EvNext, SubState2, DummyAction>,
+                                        fsm::transition<SubState2, EvPrev, SubState1, DummyAction>,
+                                        fsm::transition<SubState2, EvExit, OtherState, DummyAction>,
+                                        fsm::transition<OtherState, EvResume, SubState1, DummyAction>>;
 
 using HfsmFSM = fsm::fsm<HfsmTable, fsm::no_ports, fsm::no_ports, BenchRegisters>;
 

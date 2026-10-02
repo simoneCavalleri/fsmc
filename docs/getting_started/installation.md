@@ -19,7 +19,7 @@ This document describes how to obtain, build, install, and integrate `fsmc` into
 
 ### Method 1: Native Build & System Installation (`cmake --install`)
 
-To build and install the `fsmc` CLI compiler, `fsm-opt` optimizer, runtime headers, CMake package modules, and shell completions directly onto your system:
+To build and install the `fsmc` CLI compiler, `fsm-opt` optimizer, runtime headers, and CMake package modules directly onto your system:
 
 ```bash
 # 1. Clone repository
@@ -46,7 +46,6 @@ cmake --install build --prefix ~/.local
 - **CLI Binaries**: `fsmc` and `fsm-opt` into `bin/` (e.g. `/usr/local/bin/fsmc`).
 - **C++ Headers & Runtimes**: `include/fsm/` into `include/` (e.g. `/usr/local/include/fsm/`).
 - **CMake Package Config**: `fsmcConfig.cmake` and `FsmcTools.cmake` into `lib/cmake/fsmc/`.
-- **Shell Completions**: Automated Bash completion in `share/bash-completion/` and Zsh completion in `share/zsh/site-functions/`.
 
 After installation, downstream CMake projects can consume `fsmc` directly:
 

@@ -131,8 +131,88 @@ stateDiagram-v2
 
 ---
 
+## 4. Compile and Run the HFSM in C++
+
+Save the drone flight model as `flight_controller.sysml` and compile it with `fsmc`:
+
+```bash
+fsmc -i flight_controller.sysml -o flight_controller_fsm.hpp --target cpp --std 20 --standalone --namespace drone --name FlightControllerFSM
+```
+
+### Complete Verification Harness (`main.cpp`)
+
+```cpp
+#include <iostream>
+#include <cassert>
+#include "flight_controller_fsm.hpp"
+
+int main() {
+    using namespace drone;
+
+    // 1. Stack-allocated hierarchical state machine
+    FlightControllerFSM fsm;
+
+    // Initial state is SelfTest (default child of Ground)
+    std::cout << "Initial state: " << fsm.current_state_name() << "\n";
+    assert(fsm.is_in<SelfTest>());
+
+    // 2. Pre-flight diagnostics
+    fsm.dispatch(DiagnosticsPassed{});
+    std::cout << "State after DiagnosticsPassed: " << fsm.current_state_name() << "\n";
+    assert(fsm.is_in<IdleReady>());
+
+    // 3. LaunchCmd: Enters Flight superstate (targeting initial substate Takeoff)
+    fsm.dispatch(LaunchCmd{});
+    std::cout << "State after LaunchCmd: " << fsm.current_state_name() << "\n";
+    assert(fsm.is_in<Takeoff>());
+
+    // 4. Reach cruising altitude
+    fsm.dispatch(TargetAltitudeReached{});
+    std::cout << "State after TargetAltitudeReached: " << fsm.current_state_name() << "\n";
+    assert(fsm.is_in<Cruising>());
+
+    // 5. Enter holding pattern
+    fsm.dispatch(HoldCmd{});
+    std::cout << "State after HoldCmd: " << fsm.current_state_name() << "\n";
+    assert(fsm.is_in<HoldingPattern>());
+
+    // 6. Transition Inheritance Test:
+    // FaultDetected is defined on the Flight superstate.
+    // While in HoldingPattern, receiving FaultDetected triggers the superstate transition!
+    fsm.dispatch(FaultDetected{});
+    std::cout << "State after FaultDetected (inherited from Flight): " 
+              << fsm.current_state_name() << "\n";
+    assert(fsm.is_in<Emergency>());
+
+    std::cout << "\n[SUCCESS] Hierarchical state machine and transition inheritance verified!\n";
+    return 0;
+}
+```
+
+### Build & Run
+
+```bash
+g++ -std=c++20 main.cpp -o hfsm_app
+./hfsm_app
+```
+
+**Output:**
+```text
+Initial state: SelfTest
+State after DiagnosticsPassed: IdleReady
+State after LaunchCmd: Takeoff
+State after TargetAltitudeReached: Cruising
+State after HoldCmd: HoldingPattern
+State after FaultDetected (inherited from Flight): Emergency
+
+[SUCCESS] Hierarchical state machine and transition inheritance verified!
+```
+
+---
+
 ## Next Steps
 
-Now that you can design expressive, hierarchical statecharts, let's explore how to **mathematically prove their safety** before generating code in **[Tutorial 4: Formal Verification & Model Checking](04_formal_verification.md)**.
+Now that you can design expressive, hierarchical statecharts and execute them in C++, let's explore how to **mathematically prove their safety** before deploying to production in **[Tutorial 4: Formal Verification & Model Checking](04_formal_verification.md)**.
+
 
 

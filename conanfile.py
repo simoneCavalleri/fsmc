@@ -10,7 +10,7 @@ class FsmcConan(ConanFile):
     url = "https://github.com/simoneCavalleri/fsmc"
     settings = "os", "compiler", "build_type", "arch"
     generators = "CMakeDeps"
-    exports_sources = "CMakeLists.txt", "include/*", "src/*", "cmake/*", "examples/*", "tests/*"
+    exports_sources = "CMakeLists.txt", "include/*", "src/*", "cmake/*", "examples/*", "tests/*", "tools/*"
 
     def layout(self):
         cmake_layout(self)

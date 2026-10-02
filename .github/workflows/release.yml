@@ -24,13 +24,10 @@ jobs:
         include:
           - os: ubuntu-latest
             platform_id: linux-x86_64
-            archive_ext: tar.gz
           - os: macos-latest
             platform_id: macos-arm64
-            archive_ext: tar.gz
           - os: windows-latest
             platform_id: windows-x64
-            archive_ext: zip
 
     timeout-minutes: 30
 
@@ -70,18 +67,19 @@ jobs:
         run: |
           cmake --install build --config Release --prefix pkg_dist
 
-      - name: Create Distribution Archive
+      - name: Collect Release Tools
         shell: bash
         run: |
-          ARCHIVE_NAME="fsmc-${{ env.RELEASE_TAG }}-${{ matrix.platform_id }}.${{ matrix.archive_ext }}"
           mkdir -p dist
-          if [ "${{ matrix.archive_ext }}" = "zip" ]; then
-            7z a "dist/${ARCHIVE_NAME}" ./pkg_dist/*
+          if [ "${{ matrix.platform_id }}" = "windows-x64" ]; then
+            EXT=".exe"
           else
-            tar -czf "dist/${ARCHIVE_NAME}" -C pkg_dist .
+            EXT=""
           fi
+          cp "pkg_dist/bin/fsmc${EXT}" "dist/fsmc-${RELEASE_TAG}-${{ matrix.platform_id }}${EXT}"
+          cp "pkg_dist/bin/fsm-opt${EXT}" "dist/fsm-opt-${RELEASE_TAG}-${{ matrix.platform_id }}${EXT}"
 
-      - name: Upload Build Artifact
+      - name: Upload Release Tools
         uses: actions/upload-artifact@v4
         with:
           name: fsmc-${{ matrix.platform_id }}
@@ -103,21 +101,11 @@ jobs:
           path: staging_dist
           merge-multiple: true
 
-      - name: Prepare Standalone Headers & Checksums
+      - name: Prepare Release Tools
         shell: bash
         run: |
           mkdir -p release_assets
-          cp staging_dist/* release_assets/ 2>/dev/null || true
-
-          # Copy standalone zero-dependency runtime single headers
-          cp include/fsm/backend/cpp/cpp17_standalone_runtime.hpp release_assets/fsmc-cpp17-standalone.hpp
-          cp include/fsm/backend/cpp/cpp20_standalone_runtime.hpp release_assets/fsmc-cpp20-standalone.hpp
-
-          # Generate SHA256 checksums
-          cd release_assets
-          sha256sum * > SHA256SUMS.txt
-          cat SHA256SUMS.txt
-          cd ..
+          cp staging_dist/* release_assets/
 
       - name: Extract Release Notes from CHANGELOG.md
         id: extract_notes

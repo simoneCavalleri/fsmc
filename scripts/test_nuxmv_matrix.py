@@ -12,18 +12,26 @@ Tests fsmc --export smv across diverse formal models and verifies:
 import os
 import subprocess
 import sys
+import shutil
 import tempfile
 from pathlib import Path
 
 FSMC_BIN = Path("./build/bin/fsmc").resolve()
-NUXMV_BIN = Path("/tmp/nuxmv/nuXmv-2.0.0-Linux/bin/nuXmv").resolve()
+
+nuxmv_env = os.environ.get("NUXMV_BIN")
+if nuxmv_env:
+    NUXMV_BIN = Path(nuxmv_env).resolve()
+elif shutil.which("nuXmv"):
+    NUXMV_BIN = Path(shutil.which("nuXmv")).resolve()
+else:
+    NUXMV_BIN = Path("/tmp/nuxmv/nuXmv-2.0.0-Linux/bin/nuXmv").resolve()
 
 if not FSMC_BIN.exists():
     print(f"Error: {FSMC_BIN} not found. Please build the project first.")
     sys.exit(1)
 
 if not NUXMV_BIN.exists():
-    print(f"Error: {NUXMV_BIN} not found.")
+    print(f"Error: {NUXMV_BIN} not found. Set NUXMV_BIN or install nuXmv.")
     sys.exit(1)
 
 TESTS = []

@@ -6,6 +6,24 @@ The examples in this directory demonstrate the capabilities of the compiler acro
 
 ---
 
+## 💡 Choosing Your Workflow: 3 Ways to Use `fsmc`
+
+Depending on your project's architecture, `fsmc` supports three distinct usage paradigms:
+
+1. **Pure C++ Header-Only Engine (No Generators)**:  
+   Write type-safe, zero-heap finite state machines directly in modern C++20 without external tools.  
+   👉 *Start with:* [`00_standalone_iot_controller`](00_standalone_iot_controller/)
+
+2. **Automated CMake Transpilation (`fsmc_target_sources`)**:  
+   Author your statecharts in standard SysML v2, PlantUML, or MathWorks Stateflow. CMake automatically invokes `fsmc` at build time to generate optimized C++ headers whenever diagrams change.  
+   👉 *Start with:* [`01_basic_patterns/network_protocol`](01_basic_patterns/network_protocol/)
+
+3. **Formal Verification, Optimization & Linter CLI (`fsm-opt`)**:  
+   Use `fsmc` and `fsm-opt` as command-line tools to audit requirement traceability (RTM DO-178C), verify temporal invariants (LTL/CTL model checking), or run custom compiler passes.  
+   👉 *Start with:* [`04_formal_verification/flight_control_modes`](04_formal_verification/flight_control_modes/)
+
+---
+
 ## Progressive Architecture & Curriculum
 
 ```text

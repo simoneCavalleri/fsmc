@@ -214,8 +214,3 @@ install(FILES
 )
 
 install(DIRECTORY include/ DESTINATION include)
-install(DIRECTORY modules/ DESTINATION include/fsm/modules)
-
-# Install shell completion scripts
-install(FILES completions/fsmc.bash DESTINATION share/bash-completion/completions RENAME fsmc)
-install(FILES completions/fsmc.zsh DESTINATION share/zsh/site-functions RENAME _fsmc)

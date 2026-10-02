@@ -7,13 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.8.0] - 2026-09-30
+## [0.8.0] - 2026-10-02
 
 ### Added
 - **Dedicated CLI Integration Test Suites & Option Normalization (`fsmc`, `fsm-opt`)**:
   - Implemented end-to-end option coverage tests in `test_fsmc_cli_options` (19 test scenarios) and `test_fsm_opt_cli_options` (10 test scenarios), expanding the automated test suite to 93 CTest targets and 496 documented test scenarios in the test catalog.
   - Added support across all options in `fsmc` and `fsm-opt` for `--option=value` assignment style alongside standard space-separated syntax (`--input=`, `--output=`, `--target=`, `--lang=`, `--name=`, `--namespace=`, `--ns=`, `--package=`, `--format=`, `--sidecar=`, `--export=`, `-e=`, `--export-runtime=`, `--submachine-dir=`, `--rtm-format=`, `--std=`, `--engine=`, `--ltl=`, `--ctl=`).
   - Added full Unix Standard Input (`-` or `/dev/stdin`) and Standard Output (`-` or `/dev/stdout`) support for piping statechart specifications into `fsmc` and `fsm-opt`, with automatic content-based format detection (`ParserFactory::detect_format_from_content`).
+- **Comprehensive Benchmark Suite & Concurrency Measurements (`benchmarks/benchmarks.cpp`)**:
+  - Implemented true inter-thread lock-free SPSC handoff benchmarks (`BM_SPSC_ThreadHandshake_LockFree`, 316M ops/sec across 2 threads).
+  - Added single-transition ping-pong (`BM_Dispatch_SingleTransition_PingPong`) and hierarchical substate transition benchmarks (`BM_Dispatch_HFSM_SubStatePingPong`).
+  - Added fast zero-allocation CTest quality gate `test_zero_alloc_benchmark_gate` executing in CI pipelines.
+- **Tutorial Curriculum & Developer Onboarding Overhaul (`docs/tutorials/`, `examples/`)**:
+  - Restructured tutorial curriculum around immediate executable C++ workflows starting from Step 1 ("60-Second Quick Win" in Tutorial 1).
+  - Added "3 Ways to Use `fsmc`" (Pure C++ DSL, Automated CMake Pipeline, Standalone Transpilation) to tutorial index and example catalog.
+  - Added "The Binding Contract (Rosetta Stone)" mapping SysML v2 / Stateflow constructs to generated C++ structs, port contracts, and service interfaces.
+  - Added runnable, zero-allocation C++20 verification harnesses to Tutorials 1, 2, and 3 demonstrating event dispatch, EFSM datapath contracts, and hierarchical transition inheritance.
 - **Extended Runtime Semantics & Concurrency (`do_activity`, Sampled Change Triggers, Dual Action Execution)**:
   - Added periodic in-state continuous behavior execution via `do_activity` with deterministic tick rate in `fsm::deterministic_timer` and lifecycle trait dispatch.
   - Added discrete sampled change triggers (`SampledChangeTriggerPass`, `fsm::change_<Port, Predicate>`) synthesizing change detector registers ($z^{-1}$) and edge-trigger guards for continuous stream signals.
@@ -38,6 +47,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Created end-to-end industrial digital twin demonstration (`examples/06_stateflow_digital_twin_ecu`) modeling an automotive powertrain engine ECU with multi-hop chained connective junctions, overheat anomaly detection, and supervisor-initiated time-travel state rollback.
 
 ### Fixed
+- **Compiler Compatibility & Clean Build Flags**:
+  - Restricted `-Wmismatched-new-delete` and `-Wsized-deallocation` diagnostic pragmas to GCC to resolve Clang `-Werror` build failures in benchmark suites.
+  - Fixed portable `NUXMV_BIN` path resolution across CI validation scripts (`test_nuxmv_matrix.py`, `verify_diagram_renderings.py`).
+  - Pruned obsolete prototype directories (`modules/`) and shell completions from repository and CMake install targets.
+  - Relocated MkDocs theme overrides to `docs/overrides/` and aligned Conan source exports.
 - **Modular Code Generation Parity with `--export-runtime` (`--modular`, `--runtime-header`)**:
   - Aligned `--modular` code generation to emit `#include "fsm.hpp"` by default, matching the standalone runtime exported by `--export-runtime <dir|file>`.
   - Removed internal and non-existent include directives (`#include "fsm/backend/cpp/runtime/fsm.hpp"`, `thread_safe_fsm.hpp`, `spsc_fsm.hpp`) which failed compilation against exported runtimes where all runtime engines are unified in `fsm.hpp`.

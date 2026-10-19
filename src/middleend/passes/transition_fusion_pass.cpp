@@ -91,9 +91,24 @@ bool TransitionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         for (auto state_it = ir.states.begin(); state_it != ir.states.end(); ++state_it) {
             const auto& state = *state_it;
 
-            // Cannot fuse initial state, terminate state, or state with children
-            if (state.id == ir.initial_state_id || state.name == ir.initial_state_id || !state.children_ids.empty() ||
-                state.kind == ir::StateKind::Terminate || !state.invariants.empty()) {
+            // Cannot fuse initial state, composite initial sub-state, terminate state, state with children,
+            // or states with do_activity/deferred_events
+            bool is_initial =
+                (!ir.initial_state.empty() && (state.name == ir.initial_state || state.id == ir.initial_state)) ||
+                (!ir.initial_state_id.empty() && (state.name == ir.initial_state_id || state.id == ir.initial_state_id));
+
+            bool is_composite_initial = false;
+            for (const auto& other_st : ir.states) {
+                if (!other_st.initial_sub_state.empty() &&
+                    (other_st.initial_sub_state == state.name || other_st.initial_sub_state == state.id)) {
+                    is_composite_initial = true;
+                    break;
+                }
+            }
+
+            if (is_initial || is_composite_initial || !state.children_ids.empty() ||
+                state.kind == ir::StateKind::Terminate || !state.invariants.empty() ||
+                (state.do_activity.has_value() && !state.do_activity->empty()) || !state.deferred_events.empty()) {
                 continue;
             }
 
@@ -182,6 +197,21 @@ bool TransitionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             // Insert new fused transitions
             for (auto& fe : new_fused_edges) {
                 ir.add_transition(std::move(fe));
+            }
+
+            // Remove mid state from its parent's children_ids if it has a parent
+            std::string parent_p = state.parent_state;
+            std::optional<std::string> parent_pid = state.parent_id;
+            for (auto& p_st : ir.states) {
+                if ((!parent_p.empty() && (p_st.name == parent_p || p_st.id == parent_p)) ||
+                    (parent_pid.has_value() && (p_st.id == *parent_pid || p_st.name == *parent_pid))) {
+                    p_st.children_ids.erase(
+                        std::remove(p_st.children_ids.begin(), p_st.children_ids.end(), state.id),
+                        p_st.children_ids.end());
+                    p_st.children_ids.erase(
+                        std::remove(p_st.children_ids.begin(), p_st.children_ids.end(), state.name),
+                        p_st.children_ids.end());
+                }
             }
 
             // Remove mid state

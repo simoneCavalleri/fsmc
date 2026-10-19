@@ -247,6 +247,11 @@ std::string StateflowSerializer::serialize(const FsmIr& model) {
         }
     }
 
+    // Emit choice pseudostates as junctions
+    for (const auto& choice : model.choice_nodes) {
+        out << "      <junction id=\"" << (state_id++) << "\" name=\"" << escape_xml(choice.name) << "\"/>\n";
+    }
+
     // Emit transitions
     for (const auto& trans : model.transitions) {
         out << "      <transition id=\"" << (trans_id++) << "\" src=\"" << escape_xml(trans.source) << "\" dst=\""

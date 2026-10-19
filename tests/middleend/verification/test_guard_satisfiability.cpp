@@ -216,4 +216,41 @@ TEST(GuardSatisfiability, QualifiedVariableDomainParsing_ExtractsExactIntervalBo
     EXPECT_DOUBLE_EQ(ival3->hi, 42.0);
 }
 
+/**
+ * @brief Verify that distinct triggers (e.g. SignalTrigger vs TimeTrigger) with empty event string do not conflict.
+ */
+TEST(GuardSatisfiability, DistinctTriggersWithEmptyEventString_DoNotConflict) {
+    FsmIr ir;
+    ir.states.push_back(StateNode{"Idle"});
+    ir.states.push_back(StateNode{"A"});
+    ir.states.push_back(StateNode{"B"});
+
+    // Transition 1 on SignalTrigger "SigA", empty event string
+    TransitionEdge t1;
+    t1.source = "Idle";
+    t1.target = "A";
+    t1.event = "";
+    t1.trigger = SignalTrigger{"SigA", ""};
+    t1.guard = "x > 10";
+    t1.priority = 1;
+
+    // Transition 2 on SignalTrigger "SigB", empty event string
+    TransitionEdge t2;
+    t2.source = "Idle";
+    t2.target = "B";
+    t2.event = "";
+    t2.trigger = SignalTrigger{"SigB", ""};
+    t2.guard = "x > 10";
+    t2.priority = 1;
+
+    ir.transitions.push_back(t1);
+    ir.transitions.push_back(t2);
+
+    DiagnosticEngine diag;
+    GuardSatisfiabilityPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+    // Since triggers are different, no W0301 warning should be emitted
+    EXPECT_FALSE(diag.has_warnings());
+}
+
 }  // namespace

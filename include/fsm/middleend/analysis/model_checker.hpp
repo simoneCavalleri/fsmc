@@ -120,6 +120,7 @@ class ModelChecker {
     [[nodiscard]] std::unordered_set<std::string> pre_all(const std::unordered_set<std::string>& targets) const;
     [[nodiscard]] std::unordered_set<std::string> compute_sat(const PropertyAstNode& node) const;
     ModelCheckResult check_ctl(const FormalProperty& prop, const PropertyAstNode& node);
+    [[nodiscard]] std::unordered_set<std::string> compute_af(const PropertyAstNode& target) const;
 };
 
 }  // namespace fsm::middleend::analysis

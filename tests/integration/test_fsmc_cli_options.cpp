@@ -414,6 +414,29 @@ TEST_F(FsmcOptionsTest, ModularPackaging_CustomRuntimeHeader) {
         EXPECT_NE(content.find("#include \"my_runtime/fsm_engine.hpp\""), std::string::npos);
         EXPECT_EQ(content.find("fsm/backend/cpp/runtime"), std::string::npos);
     }
+
+    // 3. Space-separated header via --modular <hdr>
+    {
+        fs::path out_file = test_dir_ / "modular_space_hdr.hpp";
+        char p[] = "fsmc";
+        char i[] = "-i";
+        std::string in_str = model_file_;
+        char o[] = "-o";
+        std::string out_str = out_file.string();
+        char mod[] = "--modular";
+        char hdr[] = "custom_runtime.hpp";
+
+        char* argv[] = {p, i, in_str.data(), o, out_str.data(), mod, hdr};
+        const auto opts = fsm::tools::parse_cli_args(7, argv);
+        EXPECT_TRUE(opts.is_valid);
+        EXPECT_FALSE(opts.standalone);
+        EXPECT_EQ(opts.runtime_header, "custom_runtime.hpp");
+        EXPECT_EQ(fsm::tools::FsmcDriver::run(opts), 0);
+
+        std::ifstream ifs(out_file);
+        std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+        EXPECT_NE(content.find("#include \"custom_runtime.hpp\""), std::string::npos);
+    }
 }
 
 /**

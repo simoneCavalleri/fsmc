@@ -154,6 +154,51 @@ TEST(LivelockAnalysis, ExplicitAnonymousEventStringTransitions_DetectedAsLiveloc
     EXPECT_TRUE(found_validator_livelock);
 }
 
+/**
+ * @brief Verify LivelockAnalysisPass detects cycles confined to Choice pseudostates in choice_nodes.
+ */
+TEST(LivelockAnalysis, ChoicePseudostatesZeroTimeLoop_DetectedAsLivelock) {
+    FsmIr ir;
+    ir.name = "ChoiceLivelockModel";
+    ir.initial_state = "Idle";
+
+    ir.add_state("Idle");
+    ir.add_choice_node("ChoiceA");
+    ir.add_choice_node("ChoiceB");
+
+    // External event enters ChoiceA
+    TransitionEdge t_enter;
+    t_enter.source = "Idle";
+    t_enter.target = "ChoiceA";
+    t_enter.event = "EvTrigger";
+    ir.add_transition(t_enter);
+
+    // Zero-time instantaneous loop between ChoiceA and ChoiceB
+    TransitionEdge t1;
+    t1.source = "ChoiceA";
+    t1.target = "ChoiceB";
+    t1.trigger = AnonymousTrigger{};
+    ir.add_transition(t1);
+
+    TransitionEdge t2;
+    t2.source = "ChoiceB";
+    t2.target = "ChoiceA";
+    t2.trigger = AnonymousTrigger{};
+    ir.add_transition(t2);
+
+    DiagnosticEngine diag;
+    LivelockAnalysisPass pass;
+    EXPECT_FALSE(pass.run(ir, diag));
+    EXPECT_TRUE(diag.has_errors());
+
+    bool found_e0401 = false;
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "E0401")
+            found_e0401 = true;
+    }
+    EXPECT_TRUE(found_e0401);
+}
+
 // ============================================================================
 // PriorityConflictPass Tests
 // ============================================================================
@@ -211,6 +256,98 @@ TEST(PriorityConflict, InvertedChildPrecedenceUnderOuterFirst_EmitsPriorityConfl
     }
     EXPECT_TRUE(found_e0402);
 }
+
+/**
+ * @brief Verify PriorityConflictPass detects hierarchical preemption violations when hierarchy is defined via parent_state name.
+ */
+TEST(PriorityConflict, ParentStateHierarchyStringName_DetectsHierarchicalPreemptionConflict) {
+    FsmIr ir;
+    ir.name = "ParentStateNameConflictModel";
+    ir.initial_state = "parent";
+    ir.execution_semantics.preemption_priority = HierarchicalPriority::OuterFirst;
+
+    StateNode parent("parent", "parent");
+    StateNode child("child", "child", "parent");  // sets parent_state = "parent", parent_id is empty
+    StateNode dest("dest", "dest");
+
+    ir.states.push_back(parent);
+    ir.states.push_back(child);
+    ir.states.push_back(dest);
+
+    // Parent transition with priority 2
+    TransitionEdge tp;
+    tp.source = "parent";
+    tp.target = "dest";
+    tp.trigger = SignalTrigger("RESET");
+    tp.priority = 2;
+    ir.add_transition(tp);
+
+    // Child transition with priority 1 (higher precedence than parent, violating OuterFirst!)
+    TransitionEdge tc;
+    tc.source = "child";
+    tc.target = "dest";
+    tc.trigger = SignalTrigger("RESET");
+    tc.priority = 1;
+    ir.add_transition(tc);
+
+    DiagnosticEngine diag;
+    PriorityConflictPass pass;
+    EXPECT_FALSE(pass.run(ir, diag));
+    EXPECT_TRUE(diag.has_errors());
+
+    bool found_e0402 = false;
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "E0402")
+            found_e0402 = true;
+    }
+    EXPECT_TRUE(found_e0402);
+}
+
+/**
+ * @brief Verify FsmValidator correctly accepts initial_state_id without const_cast mutation or false warnings.
+ */
+TEST(FsmValidator, InitialStateSpecifiedViaId_ValidatesCleanlyWithoutConstCastMutation) {
+    FsmIr ir;
+    ir.name = "IdBasedInitModel";
+
+    StateNode s1("Idle", "Idle state");
+    s1.id = "idle_unique_id";
+
+    StateNode s2("Running", "Running state");
+    s2.id = "running_unique_id";
+
+    ir.states.push_back(s1);
+    ir.states.push_back(s2);
+
+    // Initial state specified ONLY via ID (initial_state is empty)
+    ir.initial_state = "";
+    ir.initial_state_id = "running_unique_id";
+
+    TransitionEdge t;
+    t.source_id = "running_unique_id";
+    t.source = "Running";
+    t.target_id = "idle_unique_id";
+    t.target = "Idle";
+    t.event = "Stop";
+    ir.add_transition(t);
+
+    auto result = FsmValidator::validate(ir);
+    EXPECT_TRUE(result.is_valid);
+    EXPECT_TRUE(result.errors.empty());
+
+    // Must NOT have warning about defaulting to first state
+    bool defaulted_warning = false;
+    for (const auto& d : result.diagnostics) {
+        if (d.category == "InitialState") {
+            defaulted_warning = true;
+        }
+    }
+    EXPECT_FALSE(defaulted_warning);
+
+    // model.initial_state must NOT have been mutated by const_cast
+    EXPECT_EQ(ir.initial_state, "");
+}
+
 
 // ============================================================================
 // TimedInvariantsVerifierPass Tests

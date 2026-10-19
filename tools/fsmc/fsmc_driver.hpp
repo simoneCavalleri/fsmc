@@ -211,7 +211,7 @@ class FsmcDriver {
                 std::cerr << "warning[W0301]: Untyped or inferred symbol in diagram source: '" << opts.input_file
                           << "'\n";
                 if (!opts.allow_diagram_codegen && !opts.verify_mode && opts.export_diagram_format.empty() &&
-                    opts.rtm_output_file.empty()) {
+                    opts.rtm_output_file.empty() && opts.emit_sidecar.empty() && opts.emit_test_harness.empty()) {
                     std::cerr << "\n[ERROR] Direct code generation blocked: '" << opts.input_file
                               << "' is a visual diagram format (" << parser->format_name()
                               << ").\nPass '--sidecar <manifest.yaml>' or '--allow-diagram-codegen' to allow code "
@@ -263,6 +263,9 @@ class FsmcDriver {
         }
 
         // Execute Middle-End Optimization Passes
+        DiagnosticEngine middleend_diag;
+        DiagnosticFormat diag_fmt = parse_diagnostic_format(opts.diagnostic_format);
+
         if (opts.opt_level > 0) {
             PassManager pm;
             if (opts.pipeline_mode == "7stage" && opts.export_diagram_format.empty() && !opts.strict_determinism &&
@@ -309,7 +312,6 @@ class FsmcDriver {
                     pm.add_pass(std::make_unique<ModelCheckingPass>());
                 }
             }
-            DiagnosticFormat diag_fmt = parse_diagnostic_format(opts.diagnostic_format);
 
             for (const auto& plugin_path : opts.pass_plugins) {
                 DiagnosticEngine plugin_diag;
@@ -322,15 +324,14 @@ class FsmcDriver {
                 pm.add_pass(std::make_unique<PipeThroughPassWrapper>(opts.pipe_through_cmd));
             }
 
-            DiagnosticEngine diag;
-            if (!pm.run(model, diag)) {
-                std::cerr << diag.render_to_format(diag_fmt, content);
+            if (!pm.run(model, middleend_diag)) {
+                std::cerr << middleend_diag.render_to_format(diag_fmt, content);
                 return 1;
             }
 
-            if (opts.werror && !diag.get_diagnostics().empty()) {
+            if (opts.werror && !middleend_diag.get_diagnostics().empty()) {
                 bool has_warnings = false;
-                for (const auto& d : diag.get_diagnostics()) {
+                for (const auto& d : middleend_diag.get_diagnostics()) {
                     if (d.severity == DiagnosticSeverity::Warning || d.severity == DiagnosticSeverity::Fatal ||
                         d.severity == DiagnosticSeverity::Error) {
                         has_warnings = true;
@@ -339,14 +340,24 @@ class FsmcDriver {
                 }
                 if (has_warnings) {
                     std::cerr << "\n[ERROR] -Werror enabled: compilation failed due to middle-end warnings/errors:\n";
-                    std::cerr << diag.render_to_format(diag_fmt, content);
+                    std::cerr << middleend_diag.render_to_format(diag_fmt, content);
                     return 1;
                 }
+            } else if (!middleend_diag.get_diagnostics().empty() && !opts.verify_mode) {
+                std::cerr << middleend_diag.render_to_format(diag_fmt, content);
             }
         }
 
         // Semantic validation
-        const auto validation = FsmValidator::validate(model);
+        auto validation = FsmValidator::validate(model);
+        for (const auto& d : middleend_diag.get_diagnostics()) {
+            if (d.severity == DiagnosticSeverity::Warning) {
+                validation.warnings.push_back("[" + d.code + "] " + d.message);
+            } else if (d.severity == DiagnosticSeverity::Error || d.severity == DiagnosticSeverity::Fatal) {
+                validation.errors.push_back("[" + d.code + "] " + d.message);
+                validation.is_valid = false;
+            }
+        }
 
         if (opts.verify_mode) {
             if (opts.verify_engine == "nuxmv" || (opts.verify_engine == "auto" && is_nuxmv_available())) {
@@ -843,6 +854,11 @@ class FsmcDriver {
         }
 
         bool all_valid = validation.is_valid;
+        for (const auto& diag : validation.diagnostics) {
+            if (diag.severity == DiagnosticSeverity::SafetyCritical || diag.severity == DiagnosticSeverity::Error) {
+                all_valid = false;
+            }
+        }
 
         if (!model.properties.empty()) {
             std::cout << "----------------------------------------------------------------------------\n"

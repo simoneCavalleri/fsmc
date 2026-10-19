@@ -53,7 +53,14 @@ class LtlTokenizerAndParser {
 
     std::optional<PropertyAstNode> parse_formula() {
         token_idx_ = 0;
+        error_ = false;
         auto node = parse_equivalence();
+        if (current().type != TokenType::End) {
+            error_ = true;  // trailing tokens (e.g. unmatched ')' or ']')
+        }
+        if (error_) {
+            return std::nullopt;
+        }
         return node;
     }
 
@@ -361,6 +368,8 @@ class LtlTokenizerAndParser {
                 PropertyAstNode inner = parse_equivalence();
                 if (current().type == TokenType::RBracket) {
                     advance();  // consume ]
+                } else {
+                    error_ = true;
                 }
                 if (inner.op == TemporalOp::Until && inner.children.size() >= 2) {
                     return PropertyAstNode(is_e ? TemporalOp::EU : TemporalOp::AU,
@@ -378,6 +387,8 @@ class LtlTokenizerAndParser {
             PropertyAstNode inner = parse_equivalence();
             if (current().type == TokenType::RParen) {
                 advance();
+            } else {
+                error_ = true;
             }
             return inner;
         }
@@ -390,6 +401,7 @@ class LtlTokenizerAndParser {
             }
             return PropertyAstNode(atom);
         }
+        error_ = true;  // missing operand
         return PropertyAstNode("");
     }
 
@@ -411,6 +423,7 @@ class LtlTokenizerAndParser {
     size_t pos_{0};
     std::vector<Token> tokens_;
     size_t token_idx_{0};
+    bool error_{false};
 };
 
 }  // namespace

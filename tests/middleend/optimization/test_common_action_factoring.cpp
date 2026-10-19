@@ -183,3 +183,61 @@ TEST(CommonActionFactoring, Pseudostates_NeverFactored) {
         EXPECT_EQ(t.transition_action->instructions.size(), 1u);
     }
 }
+
+/**
+ * @brief Verify that convergent transitions into a composite state's initial substate are not factored into entry.
+ */
+TEST(CommonActionFactoring, CompositeInitialSubstate_PreservedWithoutFactoringIntoEntry) {
+    FsmIr ir;
+    ir.name = "CompositeInitialFactoringTest";
+    ir.initial_state_id = "start";
+
+    StateNode start("start", "start");
+    StateNode parent("Parent", "Parent composite");
+    parent.is_composite = true;
+    parent.initial_sub_state = "sub_init";
+
+    StateNode sub_init("sub_init", "Initial substate", "Parent");
+    StateNode s1("s1", "s1");
+    StateNode s2("s2", "s2");
+
+    ir.states.push_back(start);
+    ir.states.push_back(parent);
+    ir.states.push_back(sub_init);
+    ir.states.push_back(s1);
+    ir.states.push_back(s2);
+
+    ActionSignature common_act;
+    StoreOp store_op;
+    store_op.target = LValueTarget("counter");
+    store_op.expression = "counter + 1";
+    common_act.instructions.emplace_back(store_op);
+
+    TransitionEdge t1;
+    t1.source_id = "s1";
+    t1.target_id = "sub_init";
+    t1.trigger = SignalTrigger("EV1");
+    t1.transition_action = common_act;
+    ir.add_transition(t1);
+
+    TransitionEdge t2;
+    t2.source_id = "s2";
+    t2.target_id = "sub_init";
+    t2.trigger = SignalTrigger("EV2");
+    t2.transition_action = common_act;
+    ir.add_transition(t2);
+
+    DiagnosticEngine diag;
+    CommonActionFactoringPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+
+    // sub_init must NOT gain entry_actions (would fire spuriously on composite entry)
+    const auto* sub_init_after = ir.find_state("sub_init");
+    ASSERT_NE(sub_init_after, nullptr);
+    EXPECT_TRUE(sub_init_after->entry_actions.empty());
+
+    // Both transitions must retain their transition actions
+    EXPECT_TRUE(ir.transitions[0].transition_action.has_value());
+    EXPECT_TRUE(ir.transitions[1].transition_action.has_value());
+}
+

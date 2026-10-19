@@ -398,6 +398,11 @@ void CameoXmiParser::parse_transition_element(const std::shared_ptr<XmlNode>& tr
         model.add_event(trans.event);
     }
 
+    const auto* src_st = model.find_state(trans.source);
+    if (src_st != nullptr && !src_st->parent_state.empty()) {
+        trans.parent_scope = src_st->parent_state;
+    }
+
     model.add_transition(std::move(trans));
 }
 

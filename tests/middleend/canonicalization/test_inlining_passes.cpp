@@ -60,7 +60,72 @@ TEST(SubmachineInlining, SubmachineReference_SplicedIntoHostCompositeState) {
 
     ASSERT_NE(host_ir.find_state("CommsHandler_Connecting"), nullptr);
     ASSERT_NE(host_ir.find_state("CommsHandler_Connected"), nullptr);
+
+    // Verify source_id and target_id synchronization
+    ASSERT_FALSE(host_ir.transitions.empty());
+    const auto* connecting_st = host_ir.find_state("CommsHandler_Connecting");
+    const auto* connected_st = host_ir.find_state("CommsHandler_Connected");
+    EXPECT_EQ(host_ir.transitions[0].source_id, connecting_st->id);
+    EXPECT_EQ(host_ir.transitions[0].target_id, connected_st->id);
 }
+
+/**
+ * @brief Verify SubmachineInliningPass clones Choice nodes and machine-scoped variables with proper prefixes.
+ */
+TEST(SubmachineInlining, ChoiceNodesAndVariables_InlinedWithSynchronizedIds) {
+    FsmIr sub_ir;
+    sub_ir.name = "SubModule";
+    sub_ir.add_state("S1");
+    sub_ir.add_state("S2");
+
+    ChoiceNodeModel cn;
+    cn.name = "DecideNext";
+    sub_ir.choice_nodes.push_back(cn);
+
+    VariableDefinition vdef;
+    vdef.name = "internal_var";
+    vdef.type = "uint32_t";
+    vdef.initial_value = "10";
+    sub_ir.variables.push_back(vdef);
+
+    sub_ir.add_transition("S1", "S2", SignalTrigger{"Tick", ""});
+
+    FsmIr host_ir;
+    host_ir.name = "TopHost";
+    host_ir.initial_state = "Idle";
+    host_ir.add_state("Idle");
+
+    auto& comp_st = host_ir.add_or_get_state("Worker", "", StateKind::Composite);
+    SubmachineRef ref("SubModule", "sub.sysml");
+    comp_st.submachine = ref;
+
+    SubmachineInliningPass pass([&](const std::string& name) -> const FsmIr* {
+        if (name == "SubModule")
+            return &sub_ir;
+        return nullptr;
+    });
+
+    DiagnosticEngine diag;
+    EXPECT_TRUE(pass.run(host_ir, diag));
+
+    // Choice node inlined and prefixed
+    EXPECT_TRUE(host_ir.is_choice_node("Worker_DecideNext"));
+
+    // Variable inlined and prefixed
+    const auto* imported_var = host_ir.find_variable("Worker_internal_var");
+    ASSERT_NE(imported_var, nullptr);
+    EXPECT_EQ(imported_var->initial_value, "10");
+
+    // Transition ID synchronization
+    ASSERT_FALSE(host_ir.transitions.empty());
+    const auto* s1_st = host_ir.find_state("Worker_S1");
+    const auto* s2_st = host_ir.find_state("Worker_S2");
+    ASSERT_NE(s1_st, nullptr);
+    ASSERT_NE(s2_st, nullptr);
+    EXPECT_EQ(host_ir.transitions[0].source_id, s1_st->id);
+    EXPECT_EQ(host_ir.transitions[0].target_id, s2_st->id);
+}
+
 
 /**
  * @brief Verify ChoiceInliningPass flattens choice pseudostates into direct composite transitions.

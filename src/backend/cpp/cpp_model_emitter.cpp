@@ -1001,7 +1001,7 @@ void CppModelEmitter::emit_transition_table(std::ostream& out, const FsmIr& mode
         }
 
         std::string guard_type = t.guard.value_or("::fsm::no_guard");
-        if (guard_type.empty() || guard_type == "else" || guard_type == "default") {
+        if (guard_type.empty() || guard_type == "else" || guard_type == "otherwise" || guard_type == "default") {
             guard_type = "::fsm::no_guard";
         }
 

@@ -24,10 +24,17 @@ ValidationResult FsmValidator::validate(const FsmIr& model) {
 
     std::set<std::string> node_names;
     for (const auto& state_item : model.states) {
-        node_names.insert(state_item.name);
+        if (!state_item.name.empty()) {
+            node_names.insert(state_item.name);
+        }
+        if (!state_item.id.empty()) {
+            node_names.insert(state_item.id);
+        }
     }
     for (const auto& choice_item : model.choice_nodes) {
-        node_names.insert(choice_item.name);
+        if (!choice_item.name.empty()) {
+            node_names.insert(choice_item.name);
+        }
     }
 
     // 1. Check Initial State
@@ -43,8 +50,21 @@ ValidationResult FsmValidator::validate(const FsmIr& model) {
     validate_state_hierarchy(model, result);
 
     // 4. Check Reachability from Initial State
-    if (result.is_valid && !model.initial_state.empty()) {
-        validate_reachability(model, result);
+    if (result.is_valid) {
+        std::string init_st = model.initial_state;
+        if (init_st.empty() && !model.initial_state_id.empty()) {
+            if (const auto* s = model.find_state_by_id(model.initial_state_id)) {
+                init_st = s->name;
+            } else {
+                init_st = model.initial_state_id;
+            }
+        }
+        if (init_st.empty() && !model.states.empty()) {
+            init_st = model.states[0].name;
+        }
+        if (!init_st.empty()) {
+            validate_reachability(model, result);
+        }
     }
 
     // 5. Formal Verification: Livelock (Eventless Transition Cycles)
@@ -76,25 +96,45 @@ ValidationResult FsmValidator::validate(const FsmIr& model) {
 
 void FsmValidator::validate_initial_state(const FsmIr& model, const std::set<std::string>& node_names,
                                           ValidationResult& result) {
-    if (model.initial_state.empty()) {
+    std::string init_st = model.initial_state;
+    if (init_st.empty() && !model.initial_state_id.empty()) {
+        if (const auto* s = model.find_state_by_id(model.initial_state_id)) {
+            init_st = s->name;
+        } else {
+            init_st = model.initial_state_id;
+        }
+    }
+
+    if (init_st.empty()) {
         if (!model.states.empty()) {
             result.add_warning("InitialState", "No initial state '[*]' specified. Defaulting to first state: '" +
                                                    model.states[0].name + "'.");
         }
-    } else if (node_names.count(model.initial_state) == 0) {
+    } else if (node_names.count(init_st) == 0 && model.find_state(init_st) == nullptr &&
+               model.find_state_by_id(init_st) == nullptr) {
         result.add_error("InitialState",
-                         "Initial state '" + model.initial_state + "' is not defined in the state list.");
+                         "Initial state '" + init_st + "' is not defined in the state list.");
     }
 }
 
 void FsmValidator::validate_transition_endpoints(const FsmIr& model, const std::set<std::string>& node_names,
-                                                 ValidationResult& result) {
+                                                  ValidationResult& result) {
     for (const auto& transition_item : model.transitions) {
-        if (node_names.count(transition_item.source) == 0) {
+        bool src_found = node_names.count(transition_item.source) != 0 ||
+                         (!transition_item.source_id.empty() && node_names.count(transition_item.source_id) != 0) ||
+                         model.find_state(transition_item.source) != nullptr ||
+                         model.find_state_by_id(transition_item.source) != nullptr;
+        if (!src_found) {
             result.add_error("Transition",
                              "Unknown source state/node in transition: '" + transition_item.source + "'.");
         }
-        if (node_names.count(transition_item.target) == 0) {
+        bool tgt_found = node_names.count(transition_item.target) != 0 ||
+                         (!transition_item.target_id.empty() && node_names.count(transition_item.target_id) != 0) ||
+                         model.find_state(transition_item.target) != nullptr ||
+                         model.find_state_by_id(transition_item.target) != nullptr ||
+                         transition_item.target_is_history || transition_item.target == "[H]" ||
+                         transition_item.target == "[H*]";
+        if (!tgt_found) {
             result.add_error("Transition",
                              "Unknown target state/node in transition: '" + transition_item.target + "'.");
         }
@@ -106,6 +146,13 @@ void FsmValidator::validate_transition_endpoints(const FsmIr& model, const std::
 }
 
 void FsmValidator::validate_choice_pseudostates(const FsmIr& model, ValidationResult& result) {
+    auto is_fallback_guard = [](const std::optional<std::string>& g) {
+        if (!g.has_value() || g->empty()) {
+            return true;
+        }
+        return *g == "else" || *g == "otherwise" || *g == "default";
+    };
+
     for (const auto& choice_item : model.choice_nodes) {
         std::vector<const TransitionEdge*> outgoing;
         for (const auto& transition_item : model.transitions) {
@@ -119,11 +166,11 @@ void FsmValidator::validate_choice_pseudostates(const FsmIr& model, ValidationRe
             continue;
         }
 
-        bool has_else_branch = false;
+        int fallback_count = 0;
         std::set<std::string> seen_guards;
         for (const auto* out_trans : outgoing) {
-            if (!out_trans->guard.has_value() || out_trans->guard->empty()) {
-                has_else_branch = true;
+            if (is_fallback_guard(out_trans->guard)) {
+                fallback_count++;
             } else {
                 if (seen_guards.count(*out_trans->guard) != 0) {
                     result.add_warning("Choice", "Choice pseudostate '" + choice_item.name +
@@ -134,10 +181,14 @@ void FsmValidator::validate_choice_pseudostates(const FsmIr& model, ValidationRe
             }
         }
 
-        if (!has_else_branch) {
+        if (fallback_count == 0) {
             result.add_safety_critical("Choice",
                                        "Choice pseudostate '" + choice_item.name +
                                            "' lacks an unconditional else/default fallback branch (potential stall).");
+        } else if (fallback_count > 1) {
+            result.add_safety_critical("Choice",
+                                       "Choice pseudostate '" + choice_item.name +
+                                           "' has multiple unconditional else/default fallback branches (non-deterministic).");
         }
     }
 }
@@ -189,13 +240,28 @@ void FsmValidator::validate_reachability(const FsmIr& model, ValidationResult& r
         }
     };
 
-    mark_reachable(model.initial_state);
+    std::string init_st = model.initial_state;
+    if (init_st.empty() && !model.initial_state_id.empty()) {
+        if (const auto* s = model.find_state_by_id(model.initial_state_id)) {
+            init_st = s->name;
+        } else {
+            init_st = model.initial_state_id;
+        }
+    }
+    if (init_st.empty() && !model.states.empty()) {
+        init_st = model.states[0].name;
+    }
+    mark_reachable(init_st);
 
     while (!bfs_queue.empty()) {
         const std::string current = bfs_queue.front();
         bfs_queue.pop();
 
         const auto* st_node = model.find_state(current);
+        if (st_node == nullptr) {
+            st_node = model.find_state_by_id(current);
+        }
+
         if (st_node != nullptr) {
             if (!st_node->initial_sub_state.empty()) {
                 mark_reachable(st_node->initial_sub_state);
@@ -206,7 +272,7 @@ void FsmValidator::validate_reachability(const FsmIr& model, ValidationResult& r
             // Include all child sub-states for parallel states
             if (st_node->kind == StateKind::Parallel) {
                 for (const auto& child : model.states) {
-                    if (child.parent_state == current) {
+                    if (child.parent_state == current || child.parent_state == st_node->name) {
                         mark_reachable(child.name);
                     }
                 }
@@ -214,8 +280,22 @@ void FsmValidator::validate_reachability(const FsmIr& model, ValidationResult& r
         }
 
         for (const auto& transition_item : model.transitions) {
-            if (transition_item.source == current) {
+            bool src_matches = (transition_item.source == current) ||
+                               (!transition_item.source_id.empty() && transition_item.source_id == current);
+            if (st_node != nullptr && !transition_item.source_id.empty() && transition_item.source_id == st_node->id) {
+                src_matches = true;
+            }
+            if (st_node != nullptr && transition_item.source == st_node->name) {
+                src_matches = true;
+            }
+
+            if (src_matches) {
                 mark_reachable(transition_item.target);
+                if (!transition_item.target_id.empty()) {
+                    if (const auto* tgt_node = model.find_state_by_id(transition_item.target_id)) {
+                        mark_reachable(tgt_node->name);
+                    }
+                }
             }
             if (st_node != nullptr && !st_node->parent_state.empty() &&
                 transition_item.source == st_node->parent_state) {
@@ -302,10 +382,15 @@ void FsmValidator::validate_deadlock_states(const FsmIr& model, ValidationResult
         in_degree[state_item.name] = 0;
         out_degree[state_item.name] = 0;
     }
+    std::map<std::string, int> self_loops;
 
     for (const auto& transition_item : model.transitions) {
-        out_degree[transition_item.source]++;
-        in_degree[transition_item.target]++;
+        if (transition_item.source == transition_item.target) {
+            self_loops[transition_item.source]++;
+        } else {
+            out_degree[transition_item.source]++;
+            in_degree[transition_item.target]++;
+        }
     }
 
     auto has_ancestor_outgoing = [&](const StateNode& s) -> bool {
@@ -346,7 +431,7 @@ void FsmValidator::validate_deadlock_states(const FsmIr& model, ValidationResult
     };
 
     for (const auto& state_item : model.states) {
-        if (out_degree[state_item.name] == 0 && in_degree[state_item.name] > 0) {
+        if (out_degree[state_item.name] == 0 && (in_degree[state_item.name] > 0 || self_loops[state_item.name] > 0)) {
             if (has_ancestor_outgoing(state_item) || has_descendant_outgoing(state_item)) {
                 continue;  // Inherits outgoing transition from ancestor or child sub-state
             }
@@ -365,8 +450,13 @@ void FsmValidator::validate_deadlock_states(const FsmIr& model, ValidationResult
                  lower_name.find("terminal") != std::string::npos);
 
             if (!is_intended_final) {
-                result.add_warning("Deadlock", "Potential trap / deadlock state: '" + state_item.name +
-                                                   "' has incoming transitions but no outgoing transitions.");
+                if (self_loops[state_item.name] > 0 && in_degree[state_item.name] > 0) {
+                    result.add_warning("Deadlock", "Potential trap / deadlock state: '" + state_item.name +
+                                                       "' has incoming transitions and self-loops, but no outgoing transitions to other states.");
+                } else if (out_degree[state_item.name] == 0 && in_degree[state_item.name] > 0) {
+                    result.add_warning("Deadlock", "Potential trap / deadlock state: '" + state_item.name +
+                                                       "' has incoming transitions but no outgoing transitions.");
+                }
             }
         }
     }
@@ -396,6 +486,58 @@ void FsmValidator::validate_transition_determinism(const FsmIr& model, Validatio
                 result.add_safety_critical("Determinism", "Non-deterministic conflict in state '" + src_evt.first +
                                                               "': multiple unconditional transitions on event '" +
                                                               src_evt.second + "'.");
+            }
+
+            // Check for identical duplicate transitions
+            for (size_t i = 0; i < trans_list.size(); ++i) {
+                for (size_t j = i + 1; j < trans_list.size(); ++j) {
+                    const auto* t1 = trans_list[i];
+                    const auto* t2 = trans_list[j];
+                    if (t1->target == t2->target && t1->guard == t2->guard &&
+                        t1->get_action() == t2->get_action() && t1->priority == t2->priority) {
+                        result.add_warning("Redundancy", "Duplicate transition detected from state '" + src_evt.first +
+                                                             "' to '" + t1->target + "' on event '" + src_evt.second + "'.");
+                    }
+                }
+            }
+
+            // Check for shadowed transitions (unconditional transition evaluated before or with higher priority than a guarded transition)
+            auto is_uncond = [](const TransitionEdge* t) {
+                return !t->guard.has_value() || t->guard->empty() || *t->guard == "else" ||
+                       *t->guard == "otherwise" || *t->guard == "default";
+            };
+            if (unconditional_count >= 1) {
+                for (size_t i = 0; i < trans_list.size(); ++i) {
+                    const auto* t_unc = trans_list[i];
+                    if (!is_uncond(t_unc)) {
+                        continue;
+                    }
+                    for (size_t j = 0; j < trans_list.size(); ++j) {
+                        if (i == j) {
+                            continue;
+                        }
+                        const auto* t_grd = trans_list[j];
+                        if (is_uncond(t_grd)) {
+                            continue;
+                        }
+
+                        // t_unc shadows t_grd only if t_unc has higher priority (lower numeric > 0)
+                        // or same priority but evaluated earlier in sequence (i < j)
+                        bool unc_has_precedence = false;
+                        if (t_unc->priority > 0 && (t_grd->priority == 0 || t_unc->priority < t_grd->priority)) {
+                            unc_has_precedence = true;
+                        } else if (t_unc->priority == t_grd->priority && i < j) {
+                            unc_has_precedence = true;
+                        }
+
+                        if (unc_has_precedence) {
+                            result.add_warning("Determinism", "Guarded transition from '" + src_evt.first +
+                                                                  "' on event '" + src_evt.second + "' with guard '" +
+                                                                  *t_grd->guard +
+                                                                  "' is shadowed by unconditional transition on same event.");
+                        }
+                    }
+                }
             }
         }
     }

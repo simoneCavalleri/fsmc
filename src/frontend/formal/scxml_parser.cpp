@@ -544,6 +544,11 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
         }
     }
 
+    const auto* src_st = model.find_state(trans.source);
+    if (src_st != nullptr && !src_st->parent_state.empty()) {
+        trans.parent_scope = src_st->parent_state;
+    }
+
     if (!model.is_choice_node(trans.source)) {
         model.add_state(trans.source);
     }

@@ -227,6 +227,13 @@ std::string ScxmlSerializer::serialize(const FsmIr& model) {
         }
     }
 
+    // Emit choice pseudostates
+    for (const auto& choice : model.choice_nodes) {
+        StateNode dummy_choice(choice.name);
+        dummy_choice.kind = StateKind::Choice;
+        emit_state(out, dummy_choice, model, 2);
+    }
+
     out << "</scxml>\n";
     return out.str();
 }

@@ -375,6 +375,15 @@ void FsmIr::add_choice_node(const std::string& choice_name) {
 }
 
 void FsmIr::add_transition(TransitionEdge edge) {
+    auto is_anon = [](const std::string& ev) {
+        return ev.empty() || ev == "anonymous_event" || ev == "completion_event" ||
+               ev == "AnonymousEvent" || ev == "anonymous" || ev == "none";
+    };
+    if (!edge.event.empty() && !is_anon(edge.event) && std::holds_alternative<AnonymousTrigger>(edge.trigger)) {
+        edge.trigger = SignalTrigger{edge.event, "payload"};
+    } else if (edge.event.empty() && std::holds_alternative<SignalTrigger>(edge.trigger)) {
+        edge.event = std::get<SignalTrigger>(edge.trigger).signal_name;
+    }
     transitions.push_back(std::move(edge));
 }
 
@@ -393,6 +402,9 @@ TransitionEdge& FsmIr::add_transition(const std::string& src_id, const std::stri
     std::string edge_id = compute_deterministic_id(canonical_sig);
 
     TransitionEdge edge(edge_id, src_id, dst_id, std::move(trigger));
+    if (std::holds_alternative<SignalTrigger>(edge.trigger)) {
+        edge.event = std::get<SignalTrigger>(edge.trigger).signal_name;
+    }
     if (guard.has_value()) {
         edge.guard = guard->to_string();
         edge.guard_ast = std::move(guard);

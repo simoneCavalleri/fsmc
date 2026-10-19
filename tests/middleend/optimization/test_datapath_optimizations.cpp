@@ -468,6 +468,71 @@ TEST(TransitionFusion, StatesWithExternalTriggersOrInitial_PreservedWithoutFusio
     EXPECT_EQ(ir.transitions.size(), 2);
 }
 
+/**
+ * @brief Verify TransitionFusionPass preserves composite initial substates and states with do_activity.
+ */
+TEST(TransitionFusion, CompositeInitialSubstateOrDoActivity_PreservedWithoutFusion) {
+    FsmIr ir;
+    ir.name = "HierarchicalWithActivities";
+    ir.initial_state = "Parent";
+
+    StateNode parent("Parent", "Parent composite");
+    parent.is_composite = true;
+    parent.initial_sub_state = "SubInit";
+    parent.children_ids = {"subinit_id", "subother_id"};
+
+    StateNode sub_init("SubInit", "Initial substate");
+    sub_init.id = "subinit_id";
+    sub_init.parent_state = "Parent";
+
+    StateNode sub_other("SubOther", "Target substate");
+    sub_other.id = "subother_id";
+    sub_other.parent_state = "Parent";
+
+    StateNode active_do("ActiveDo", "State with do activity");
+    active_do.do_activity = "LongComputation";
+
+    ir.states.push_back(parent);
+    ir.states.push_back(sub_init);
+    ir.states.push_back(sub_other);
+    ir.states.push_back(active_do);
+
+    // Incoming and immediate outgoing from SubInit: must NOT be fused because it is initial_sub_state
+    TransitionEdge t1;
+    t1.source = "Parent";
+    t1.target = "SubInit";
+    t1.trigger = SignalTrigger("EvEnter");
+    ir.add_transition(t1);
+
+    TransitionEdge t2;
+    t2.source = "SubInit";
+    t2.target = "SubOther";
+    t2.trigger = AnonymousTrigger{};
+    ir.add_transition(t2);
+
+    // Incoming and immediate outgoing from ActiveDo: must NOT be fused because of do_activity
+    TransitionEdge t3;
+    t3.source = "SubOther";
+    t3.target = "ActiveDo";
+    t3.trigger = SignalTrigger("EvCompute");
+    ir.add_transition(t3);
+
+    TransitionEdge t4;
+    t4.source = "ActiveDo";
+    t4.target = "SubOther";
+    t4.trigger = AnonymousTrigger{};
+    ir.add_transition(t4);
+
+    DiagnosticEngine diag;
+    TransitionFusionPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+
+    // Both SubInit and ActiveDo must remain preserved in ir.states
+    EXPECT_NE(ir.find_state("SubInit"), nullptr);
+    EXPECT_NE(ir.find_state("ActiveDo"), nullptr);
+}
+
+
 // ============================================================================
 // CommonActionFactoringPass Tests
 // ============================================================================

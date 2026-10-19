@@ -98,4 +98,79 @@ TEST(DeadStatePruning, LeafInitialState_PreservesActiveParentAndGlobalTransition
     EXPECT_EQ(model.transitions.size(), 2u);
 }
 
+/**
+ * @brief Verify that DeadStatePruningPass prunes unreachable choice nodes cleanly without leaving zombie choices.
+ */
+TEST(DeadStatePruning, UnreachableChoicePseudostate_PrunedCleanly) {
+    FsmIr model;
+    model.name = "UnreachChoiceModel";
+    model.initial_state = "Idle";
+
+    model.add_state("Idle");
+    model.add_state("Active");
+    model.add_choice_node("DeadChoice");
+
+    // Reachable transition
+    model.add_transition("Idle", "Active", SignalTrigger{"Go", ""});
+
+    // Outgoing transitions from unreachable choice
+    TransitionEdge t_choice1;
+    t_choice1.source = "DeadChoice";
+    t_choice1.target = "Active";
+    t_choice1.guard = "x > 0";
+    model.add_transition(t_choice1);
+
+    TransitionEdge t_choice2;
+    t_choice2.source = "DeadChoice";
+    t_choice2.target = "Idle";
+    t_choice2.guard = "else";
+    model.add_transition(t_choice2);
+
+    DiagnosticEngine diag;
+    DeadStatePruningPass pass(true);
+    pass.run(model, diag);
+
+    // DeadChoice must be completely pruned from choice_nodes and states
+    EXPECT_TRUE(model.choice_nodes.empty());
+    EXPECT_EQ(model.find_state("DeadChoice"), nullptr);
+    EXPECT_EQ(model.states.size(), 2u);
+    EXPECT_EQ(model.transitions.size(), 1u);
+    EXPECT_EQ(model.transitions[0].event, "Go");
+}
+
+/**
+ * @brief Verify reachability when initial_state_id is distinct from initial_state name.
+ */
+TEST(DeadStatePruning, InitialStateIdDifferentFromName_PreservesReachableStates) {
+    FsmIr model;
+    model.name = "IdMismatchModel";
+    model.initial_state = "Idle";
+    model.initial_state_id = "_node_idle_guid_1";
+
+    StateNode idle("Idle");
+    idle.id = "_node_idle_guid_1";
+    StateNode active("Active");
+    active.id = "_node_active_guid_2";
+    model.states.push_back(idle);
+    model.states.push_back(active);
+
+    TransitionEdge t;
+    t.source = "Idle";
+    t.target = "Active";
+    t.source_id = "_node_idle_guid_1";
+    t.target_id = "_node_active_guid_2";
+    t.event = "EvStart";
+    model.add_transition(t);
+
+    DiagnosticEngine diag;
+    DeadStatePruningPass pass(true);
+    pass.run(model, diag);
+
+    // Both states and transition must be preserved
+    EXPECT_EQ(model.states.size(), 2u);
+    EXPECT_NE(model.find_state("Idle"), nullptr);
+    EXPECT_NE(model.find_state("Active"), nullptr);
+    EXPECT_EQ(model.transitions.size(), 1u);
+}
+
 }  // namespace

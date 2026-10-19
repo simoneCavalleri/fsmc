@@ -17,7 +17,14 @@ bool StateMinimizationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         return false;
     }
 
-    std::string init_st = ir.initial_state_id.empty() ? ir.initial_state : ir.initial_state_id;
+    std::string init_st = ir.initial_state;
+    if (init_st.empty()) {
+        if (const auto* s = ir.find_state_by_id(ir.initial_state_id)) {
+            init_st = s->name;
+        } else {
+            init_st = ir.initial_state_id;
+        }
+    }
     if (init_st.empty() && !ir.states.empty()) {
         init_st = ir.states.front().name;
     }

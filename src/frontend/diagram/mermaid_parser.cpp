@@ -641,10 +641,6 @@ bool MermaidParser::parse_transition_line(std::string_view line, FsmIr& model, s
 
     model.add_transition(std::move(trans));
 
-    if (model.initial_state.empty() && !model.is_choice_node(src)) {
-        model.initial_state = src;
-    }
-
     return true;
 }
 

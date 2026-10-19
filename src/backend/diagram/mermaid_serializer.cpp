@@ -306,8 +306,16 @@ std::string MermaidSerializer::serialize(const FsmIr& model) {
     std::set<size_t> emitted_transitions;
 
     // Initial transition
-    if (!model.initial_state.empty()) {
-        out << "    [*] --> " << model.initial_state << "\n";
+    std::string init_st_name = model.initial_state;
+    if (init_st_name.empty() && !model.initial_state_id.empty()) {
+        if (const auto* s = model.find_state_by_id(model.initial_state_id)) {
+            init_st_name = s->name;
+        } else {
+            init_st_name = model.initial_state_id;
+        }
+    }
+    if (!init_st_name.empty()) {
+        out << "    [*] --> " << init_st_name << "\n";
     }
 
     // Emit top-level states in declaration order
@@ -319,6 +327,11 @@ std::string MermaidSerializer::serialize(const FsmIr& model) {
                 emit_leaf_state(out, state, "    ");
             }
         }
+    }
+
+    // Emit choice pseudostates
+    for (const auto& choice : model.choice_nodes) {
+        out << "    state " << choice.name << " <<choice>>\n";
     }
 
     // Emit remaining outer / cross-boundary transitions in stable source-state order

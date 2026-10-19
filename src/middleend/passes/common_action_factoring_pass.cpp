@@ -59,11 +59,21 @@ bool CommonActionFactoringPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
             continue;
         }
         // Semantics safeguard: Do not factor into initial state entry actions to prevent
-        // spurious execution during power-on initialization without transition firing.
+        // spurious execution during power-on initialization or default composite entry without transition firing.
         bool is_initial =
             (!ir.initial_state.empty() && (state.name == ir.initial_state || state.id == ir.initial_state)) ||
             (!ir.initial_state_id.empty() && (state.name == ir.initial_state_id || state.id == ir.initial_state_id));
-        if (is_initial) {
+
+        bool is_composite_initial = false;
+        for (const auto& other_st : ir.states) {
+            if (!other_st.initial_sub_state.empty() &&
+                (other_st.initial_sub_state == state.name || other_st.initial_sub_state == state.id)) {
+                is_composite_initial = true;
+                break;
+            }
+        }
+
+        if (is_initial || is_composite_initial) {
             continue;
         }
 

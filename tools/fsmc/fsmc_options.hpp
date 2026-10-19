@@ -383,6 +383,14 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
         } else if (arg == "--modular") {
             opts.modular_specified = true;
             opts.standalone = false;
+            if (idx + 1 < argc && argv[idx + 1][0] != '-') {
+                std::string_view next_token = argv[idx + 1];
+                bool is_hdr = next_token.ends_with(".h") || next_token.ends_with(".hpp") ||
+                              next_token.ends_with(".hxx") || next_token.ends_with(".hh");
+                if (!opts.input_file.empty() || is_hdr) {
+                    opts.runtime_header = argv[++idx];
+                }
+            }
         } else if (arg.rfind("--modular=", 0) == 0) {
             opts.modular_specified = true;
             opts.standalone = false;

@@ -109,7 +109,8 @@ def generate_catalog(root_dir: Path) -> str:
         lines.append(f"## {subsystem_name}")
         lines.append("")
         for rel_path, tests in files:
-            lines.append(f"### [`{rel_path.name}`](../../{rel_path}) (`{rel_path}`)")
+            posix_path = rel_path.as_posix()
+            lines.append(f"### [`{rel_path.name}`](../../{posix_path}) (`{posix_path}`)")
             if not tests:
                 lines.append("- *(Executable binary test verification)*")
                 lines.append("")
@@ -155,8 +156,9 @@ def main():
         if not out_file.exists():
             print(f"Error: {out_file} does not exist. Run generator to create it.", file=sys.stderr)
             sys.exit(1)
-        existing_content = out_file.read_text(encoding="utf-8")
-        if existing_content.strip() != generated_content.strip():
+        existing_content = out_file.read_text(encoding="utf-8").replace("\r\n", "\n")
+        gen_clean = generated_content.replace("\r\n", "\n")
+        if existing_content.strip() != gen_clean.strip():
             print("Error: docs/reference/test_suite_catalog.md is out of date with in-code test comments!", file=sys.stderr)
             print("Run 'python3 scripts/generate_test_catalog.py' to synchronize.", file=sys.stderr)
             sys.exit(1)
@@ -164,7 +166,8 @@ def main():
         sys.exit(0)
 
     out_file.parent.mkdir(parents=True, exist_ok=True)
-    out_file.write_text(generated_content, encoding="utf-8")
+    with open(out_file, "w", encoding="utf-8", newline="\n") as f:
+        f.write(generated_content)
     print(f"Successfully generated {out_file} from in-code test comments.")
 
 

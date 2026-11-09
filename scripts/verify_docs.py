@@ -160,7 +160,7 @@ def check_markdown_links(docs_dir: Path) -> tuple:
                 # Workspace link check
                 target_path = Path(raw_url.replace("file://", ""))
                 if not target_path.exists():
-                    errors.append(f"{md_file.relative_to(docs_dir)}: Broken absolute workspace link '{raw_url}'")
+                    errors.append(f"{md_file.relative_to(docs_dir).as_posix()}: Broken absolute workspace link '{raw_url}'")
                 total_links += 1
                 continue
 
@@ -180,7 +180,7 @@ def check_markdown_links(docs_dir: Path) -> tuple:
 
             if not target_file.exists():
                 errors.append(
-                    f"{md_file.relative_to(docs_dir)}: Broken relative link '{raw_url}' -> file '{target_file}' not found"
+                    f"{md_file.relative_to(docs_dir).as_posix()}: Broken relative link '{raw_url}' -> file '{target_file}' not found"
                 )
                 continue
 
@@ -191,7 +191,7 @@ def check_markdown_links(docs_dir: Path) -> tuple:
                 clean_anchor = anchor.lower().strip()
                 if clean_anchor not in headings:
                     errors.append(
-                        f"{md_file.relative_to(docs_dir)}: Broken anchor '#{anchor}' in link '{raw_url}'"
+                        f"{md_file.relative_to(docs_dir).as_posix()}: Broken anchor '#{anchor}' in link '{raw_url}'"
                     )
 
     return total_links, errors
@@ -304,7 +304,7 @@ def check_orphaned_docs(repo_root: Path, docs_dir: Path) -> list:
     errors = []
     md_files = list(docs_dir.rglob("*.md"))
     for f in md_files:
-        rel = str(f.relative_to(docs_dir))
+        rel = f.relative_to(docs_dir).as_posix()
         # Ignore special files or overrides if any
         if rel.startswith("overrides/") or rel.startswith("stylesheets/"):
             continue

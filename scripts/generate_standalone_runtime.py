@@ -261,12 +261,12 @@ def main():
                 is_out_of_date = True
             else:
                 with open(path, "r", encoding="utf-8") as f:
-                    existing = f.read()
-                if existing != content:
+                    existing = f.read().replace("\r\n", "\n")
+                if existing != content.replace("\r\n", "\n"):
                     print(f"[OUT OF DATE] Content differs in {path}", file=sys.stderr)
                     is_out_of_date = True
         else:
-            with open(path, "w", encoding="utf-8") as f:
+            with open(path, "w", encoding="utf-8", newline="\n") as f:
                 f.write(content)
             print(f"[GENERATED] Successfully updated {path}")
 

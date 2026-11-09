@@ -418,4 +418,32 @@ TEST(CliDriver, EngineAuto_FallsBackGracefully) {
     fs::remove_all(temp_dir);
 }
 
+/**
+ * @brief Test Intent: Verify invalid --engine and --rtm-format values are rejected by CLI option parser.
+ * Scenario: Pass unsupported values '--engine=z3' and '--rtm-format=xml' to parse_cli_args.
+ * Expected: Both invocations mark options as invalid with descriptive error messages.
+ */
+TEST(CliOptions, InvalidEngineAndRtmFormat_AreRejected) {
+    {
+        char p[] = "fsmc";
+        char i[] = "-i";
+        char f[] = "model.sysml";
+        char eng[] = "--engine=z3";
+        char* argv[] = {p, i, f, eng};
+        const auto opts = fsm::tools::parse_cli_args(4, argv);
+        EXPECT_FALSE(opts.is_valid);
+        EXPECT_NE(opts.error_message.find("Invalid value for --engine"), std::string::npos);
+    }
+    {
+        char p[] = "fsmc";
+        char i[] = "-i";
+        char f[] = "model.sysml";
+        char fmt[] = "--rtm-format=xml";
+        char* argv[] = {p, i, f, fmt};
+        const auto opts = fsm::tools::parse_cli_args(4, argv);
+        EXPECT_FALSE(opts.is_valid);
+        EXPECT_NE(opts.error_message.find("Invalid value for --rtm-format"), std::string::npos);
+    }
+}
+
 }  // namespace

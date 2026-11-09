@@ -121,7 +121,8 @@ std::string ExpressionAstNode::to_string() const {
             std::string child_str = children[0].to_string();
             if (children[0].kind == ExpressionKind::BinaryOp ||
                 (children[0].kind == ExpressionKind::UnaryOp && op == ExpressionOp::Negate &&
-                 children[0].op == ExpressionOp::Negate)) {
+                 children[0].op == ExpressionOp::Negate) ||
+                (op == ExpressionOp::Negate && !child_str.empty() && child_str.front() == '-')) {
                 child_str = "(" + child_str + ")";
             }
             return std::string(expression_op_to_string(op)) + child_str;

@@ -8,8 +8,9 @@
 #else
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <thread>
 #include <unistd.h>
+
+#include <thread>
 #endif
 
 #include <array>

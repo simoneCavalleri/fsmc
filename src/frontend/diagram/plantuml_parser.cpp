@@ -129,15 +129,15 @@ bool PlantUmlParser::parse(std::string_view content, FsmIr& out_model, std::stri
         }
 
         if (starts_with(trimmed, "note ") || starts_with(trimmed, "note\t") || trimmed == "note") {
-            const bool is_inline_note = (trimmed.find(':') != std::string_view::npos) ||
-                                        (starts_with(trimmed, "note \"") &&
-                                         trimmed.find(" as ") != std::string_view::npos);
+            const bool is_inline_note =
+                (trimmed.find(':') != std::string_view::npos) ||
+                (starts_with(trimmed, "note \"") && trimmed.find(" as ") != std::string_view::npos);
             if (!is_inline_note) {
                 while (std::getline(stream, line)) {
                     ++line_num;
                     std::string_view note_line = trim(line);
-                    if (note_line == "end note" || note_line == "endnote" ||
-                        starts_with(note_line, "end note ") || starts_with(note_line, "endnote ")) {
+                    if (note_line == "end note" || note_line == "endnote" || starts_with(note_line, "end note ") ||
+                        starts_with(note_line, "endnote ")) {
                         break;
                     }
                 }

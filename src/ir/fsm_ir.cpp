@@ -257,8 +257,8 @@ void FsmIr::add_type(TypeDefinition type) {
 StateNode& FsmIr::add_or_get_state(const std::string& state_name, const std::string& parent_fqn, StateKind kind) {
     const std::string actual_parent = (parent_fqn == state_name) ? "" : parent_fqn;
     for (auto& s : states) {
-        if (s.name == state_name &&
-            (actual_parent.empty() || s.parent_state.empty() || s.parent_state == actual_parent || s.fqn == actual_parent + "." + state_name)) {
+        if (s.name == state_name && (actual_parent.empty() || s.parent_state.empty() ||
+                                     s.parent_state == actual_parent || s.fqn == actual_parent + "." + state_name)) {
             if (!actual_parent.empty() && s.parent_state.empty()) {
                 s.parent_state = actual_parent;
                 auto* parent = find_state_by_fqn(actual_parent);
@@ -284,9 +284,9 @@ StateNode& FsmIr::add_or_get_state(const std::string& state_name, const std::str
     if (existing_parent == nullptr && !actual_parent.empty()) {
         existing_parent = find_state_by_name(actual_parent);
     }
-    std::string full_fqn =
-        existing_parent != nullptr ? (existing_parent->fqn + "." + state_name)
-                                   : (actual_parent.empty() ? state_name : (actual_parent + "." + state_name));
+    std::string full_fqn = existing_parent != nullptr
+                               ? (existing_parent->fqn + "." + state_name)
+                               : (actual_parent.empty() ? state_name : (actual_parent + "." + state_name));
     std::string s_id = compute_deterministic_id(full_fqn);
     StateNode node(s_id, state_name, full_fqn, kind);
     node.parent_state = actual_parent;
@@ -430,8 +430,8 @@ void FsmIr::add_choice_node(const std::string& choice_name) {
 
 void FsmIr::add_transition(TransitionEdge edge) {
     auto is_anon = [](const std::string& ev) {
-        return ev.empty() || ev == "anonymous_event" || ev == "completion_event" ||
-               ev == "AnonymousEvent" || ev == "anonymous" || ev == "none";
+        return ev.empty() || ev == "anonymous_event" || ev == "completion_event" || ev == "AnonymousEvent" ||
+               ev == "anonymous" || ev == "none";
     };
     if (!edge.event.empty() && !is_anon(edge.event) && std::holds_alternative<AnonymousTrigger>(edge.trigger)) {
         edge.trigger = SignalTrigger{edge.event, "payload"};

@@ -274,15 +274,16 @@ bool ModelSafetyVerifierPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         }
 
         // 1. Include sub-states: for sequential Composite states with an explicit initial_sub_state,
-        // only automatically mark initial_sub_state as reachable; for Parallel or empty initial_sub_state, mark all children.
-        bool mark_all_children =
-            (curr_st == nullptr) || (curr_st->kind == StateKind::Parallel) ||
-            !curr_st->orthogonal_regions.empty() || curr_st->initial_sub_state.empty();
+        // only automatically mark initial_sub_state as reachable; for Parallel or empty initial_sub_state, mark all
+        // children.
+        bool mark_all_children = (curr_st == nullptr) || (curr_st->kind == StateKind::Parallel) ||
+                                 !curr_st->orthogonal_regions.empty() || curr_st->initial_sub_state.empty();
         if (mark_all_children) {
             for (const auto& s : ir.states) {
-                bool matches_parent = (!s.parent_state.empty() && s.parent_state == curr) ||
-                                      (s.parent_id.has_value() && *s.parent_id == curr) ||
-                                      (curr_st != nullptr && !s.parent_state.empty() && s.parent_state == curr_st->name);
+                bool matches_parent =
+                    (!s.parent_state.empty() && s.parent_state == curr) ||
+                    (s.parent_id.has_value() && *s.parent_id == curr) ||
+                    (curr_st != nullptr && !s.parent_state.empty() && s.parent_state == curr_st->name);
                 if (matches_parent && reachable.count(s.name) == 0) {
                     reachable.insert(s.name);
                     if (!s.id.empty()) {

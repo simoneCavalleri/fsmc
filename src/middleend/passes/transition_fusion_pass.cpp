@@ -107,7 +107,8 @@ bool TransitionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             // or states with do_activity/deferred_events
             bool is_initial =
                 (!ir.initial_state.empty() && (state.name == ir.initial_state || state.id == ir.initial_state)) ||
-                (!ir.initial_state_id.empty() && (state.name == ir.initial_state_id || state.id == ir.initial_state_id));
+                (!ir.initial_state_id.empty() &&
+                 (state.name == ir.initial_state_id || state.id == ir.initial_state_id));
 
             bool is_composite_initial = false;
             for (const auto& other_st : ir.states) {
@@ -155,7 +156,8 @@ bool TransitionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 continue;
             }
 
-            // Do not fuse in_edge (A -> B) with a guarded out_edge (B -> C [g2]) if in_edge or B entry has side effects/actions
+            // Do not fuse in_edge (A -> B) with a guarded out_edge (B -> C [g2]) if in_edge or B entry has side
+            // effects/actions
             bool out_is_guarded =
                 (out_edge.guard.has_value() && !out_edge.guard->empty() && *out_edge.guard != "true") ||
                 (out_edge.guard_ast.has_value() && out_edge.guard_ast->to_string() != "true");
@@ -243,12 +245,10 @@ bool TransitionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             for (auto& p_st : ir.states) {
                 if ((!parent_p.empty() && (p_st.name == parent_p || p_st.id == parent_p)) ||
                     (parent_pid.has_value() && (p_st.id == *parent_pid || p_st.name == *parent_pid))) {
-                    p_st.children_ids.erase(
-                        std::remove(p_st.children_ids.begin(), p_st.children_ids.end(), state.id),
-                        p_st.children_ids.end());
-                    p_st.children_ids.erase(
-                        std::remove(p_st.children_ids.begin(), p_st.children_ids.end(), state.name),
-                        p_st.children_ids.end());
+                    p_st.children_ids.erase(std::remove(p_st.children_ids.begin(), p_st.children_ids.end(), state.id),
+                                            p_st.children_ids.end());
+                    p_st.children_ids.erase(std::remove(p_st.children_ids.begin(), p_st.children_ids.end(), state.name),
+                                            p_st.children_ids.end());
                 }
             }
 

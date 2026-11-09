@@ -546,4 +546,3 @@ TEST(DiagramExport, PlantUml_DeepHistoryPseudostate_EmittedCorrectly) {
 }
 
 }  // namespace
-

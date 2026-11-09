@@ -126,7 +126,6 @@ TEST(SubmachineInlining, ChoiceNodesAndVariables_InlinedWithSynchronizedIds) {
     EXPECT_EQ(host_ir.transitions[0].target_id, s2_st->id);
 }
 
-
 /**
  * @brief Verify ChoiceInliningPass flattens choice pseudostates into direct composite transitions.
  * @scenario FSM has state Idle, Choice node 'evaluate_health', and targets Nominal and Degraded.

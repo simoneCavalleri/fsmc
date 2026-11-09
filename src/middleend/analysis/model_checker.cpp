@@ -769,8 +769,8 @@ ModelCheckResult ModelChecker::check_infinitely_often(const FormalProperty& prop
     const auto good = compute_af(target);
     for (const auto& s : reachable_states_) {
         if (good.count(s) == 0) {
-            std::string desc = "Recurrence property '" + prop.raw_formula + "' violated: an execution from state '" + s +
-                               "' can loop forever or terminate without ever visiting '" + target.to_string() + "'";
+            std::string desc = "Recurrence property '" + prop.raw_formula + "' violated: an execution from state '" +
+                               s + "' can loop forever or terminate without ever visiting '" + target.to_string() + "'";
             auto trace = reconstruct_trace(s, desc);
             return {false, prop.name, prop.raw_formula, prop.kind, desc, std::move(trace)};
         }

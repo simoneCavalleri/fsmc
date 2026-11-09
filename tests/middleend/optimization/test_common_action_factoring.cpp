@@ -240,4 +240,3 @@ TEST(CommonActionFactoring, CompositeInitialSubstate_PreservedWithoutFactoringIn
     EXPECT_TRUE(ir.transitions[0].transition_action.has_value());
     EXPECT_TRUE(ir.transitions[1].transition_action.has_value());
 }
-

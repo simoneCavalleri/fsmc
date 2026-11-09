@@ -706,7 +706,8 @@ TEST(ConnectiveJunctionChaining, SelfTransitionThroughJunction_PreservesExternal
 }
 
 /**
- * @brief Verify that ConnectiveJunctionChainingPass preserves ActionAstNode instructions, accepts_event, and invocations.
+ * @brief Verify that ConnectiveJunctionChainingPass preserves ActionAstNode instructions, accepts_event, and
+ * invocations.
  */
 TEST(ConnectiveJunctionChaining, ActionInstructionsAndInvocations_PreservedAcrossChainedPath) {
     FsmIr ir;
@@ -810,4 +811,3 @@ TEST(ForkJoinLowering, BranchActionsAndClockResets_PreservedInLoweredTransitions
     EXPECT_EQ(lowered.clock_resets[0], "clk_a");
     EXPECT_EQ(lowered.clock_resets[1], "clk_b");
 }
-

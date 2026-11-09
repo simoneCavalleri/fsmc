@@ -104,9 +104,9 @@ class OptDriver {
             ir.name = infer_fsm_name_from_file(opts.input_path);
         }
 
-        const bool emitting_to_stdout =
-            !opts.verify_only && (opts.output_path.empty() || is_stdout_path(opts.output_path)) &&
-            (opts.emit_explicit || (!opts.show_metrics && !opts.profile));
+        const bool emitting_to_stdout = !opts.verify_only &&
+                                        (opts.output_path.empty() || is_stdout_path(opts.output_path)) &&
+                                        (opts.emit_explicit || (!opts.show_metrics && !opts.profile));
         std::ostream& dump_stream = emitting_to_stdout ? std::cerr : std::cout;
 
         if (opts.print_before_all) {

@@ -80,8 +80,7 @@ std::string qualify_expression(std::string expr, const FsmIr& model) {
             bool followed_by_dot = (next < n && expr[next] == '.');
 
             if (!preceded_by_member_or_scope && !followed_by_scope) {
-                if (followed_by_dot &&
-                    (tok == "f" || tok == "cmd" || tok == "event" || tok == "sig" || tok == "ev")) {
+                if (followed_by_dot && (tok == "f" || tok == "cmd" || tok == "event" || tok == "sig" || tok == "ev")) {
                     out += "cmd";
                     continue;
                 }
@@ -132,10 +131,9 @@ bool has_member_access_prefix(const std::string& expr, std::initializer_list<std
                 ++i;
             }
             std::string_view tok(expr.data() + start, i - start);
-            bool preceded_by_dot_or_arrow =
-                (start > 0 && expr[start - 1] == '.') ||
-                (start >= 2 && expr[start - 2] == '-' && expr[start - 1] == '>') ||
-                (start >= 2 && expr[start - 2] == ':' && expr[start - 1] == ':');
+            bool preceded_by_dot_or_arrow = (start > 0 && expr[start - 1] == '.') ||
+                                            (start >= 2 && expr[start - 2] == '-' && expr[start - 1] == '>') ||
+                                            (start >= 2 && expr[start - 2] == ':' && expr[start - 1] == ':');
             if (!preceded_by_dot_or_arrow) {
                 bool followed_by_member =
                     (i < n && expr[i] == '.') || (i + 1 < n && expr[i] == '-' && expr[i + 1] == '>');
@@ -313,8 +311,8 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
                 std::string pname = escape_cpp_keyword(port.name);
                 if (port.min_value.has_value() && port.max_value.has_value()) {
                     std::ostringstream v;
-                    v << "(" << pname << " >= " << *port.min_value << " && " << pname
-                      << " <= " << *port.max_value << ")";
+                    v << "(" << pname << " >= " << *port.min_value << " && " << pname << " <= " << *port.max_value
+                      << ")";
                     in_validations.push_back(v.str());
                 } else if (port.min_value.has_value()) {
                     std::ostringstream v;
@@ -392,8 +390,8 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
                 std::string pname = escape_cpp_keyword(port.name);
                 if (port.min_value.has_value() && port.max_value.has_value()) {
                     std::ostringstream v;
-                    v << "(" << pname << " >= " << *port.min_value << " && " << pname
-                      << " <= " << *port.max_value << ")";
+                    v << "(" << pname << " >= " << *port.min_value << " && " << pname << " <= " << *port.max_value
+                      << ")";
                     out_validations.push_back(v.str());
                 } else if (port.min_value.has_value()) {
                     std::ostringstream v;
@@ -808,15 +806,15 @@ void CppModelEmitter::emit_guards(std::ostream& out, const FsmIr& model, const G
             std::string non_event_expr = references_event ? "true" : expr;
             std::string in_only_expr = (references_event || references_reg) ? "true" : expr;
 
-        std::string guard_struct_name = escape_cpp_keyword(guard_item.name);
-        out << "/**\n";
-        out << " * @struct " << guard_struct_name << "\n";
-        out << " * @brief Transition guard predicate for '" << guard_item.name << "'.\n";
-        if (has_expr) {
-            out << " * @note Evaluates: `" << expr << "`\n";
-        }
-        out << " */\n";
-        out << "struct " << guard_struct_name << " {\n";
+            std::string guard_struct_name = escape_cpp_keyword(guard_item.name);
+            out << "/**\n";
+            out << " * @struct " << guard_struct_name << "\n";
+            out << " * @brief Transition guard predicate for '" << guard_item.name << "'.\n";
+            if (has_expr) {
+                out << " * @note Evaluates: `" << expr << "`\n";
+            }
+            out << " */\n";
+            out << "struct " << guard_struct_name << " {\n";
 
             out << "    // Domain guard evaluation (InPorts, Registers, Event payload)\n";
             out << "    template <typename InPorts, typename Registers>\n";
@@ -1030,8 +1028,8 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
 
                 // Overload 4: (const InPorts& in, OutPorts& out, Registers& reg, Services& srv) for lifecycle hooks
                 out << "    template <typename InPorts, typename OutPorts, typename Registers, typename Services>\n";
-                out << "    void operator()(" << in_param << ", " << out_param << ", " << reg_param << ", "
-                    << srv_param << ") const {\n";
+                out << "    void operator()(" << in_param << ", " << out_param << ", " << reg_param << ", " << srv_param
+                    << ") const {\n";
                 emit_assignment_lines("        ");
                 out << "    }\n";
             } else {

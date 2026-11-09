@@ -113,9 +113,8 @@ ActionAssignment ActionAssignment::parse(std::string_view statement) {
     for (const auto& [op_str, op_kind] : ops) {
         size_t pos = statement.find(op_str);
         while (pos != std::string_view::npos && op_str == "=") {
-            bool prev_is_rel =
-                (pos > 0) && (statement[pos - 1] == '<' || statement[pos - 1] == '>' || statement[pos - 1] == '!' ||
-                              statement[pos - 1] == '=');
+            bool prev_is_rel = (pos > 0) && (statement[pos - 1] == '<' || statement[pos - 1] == '>' ||
+                                             statement[pos - 1] == '!' || statement[pos - 1] == '=');
             bool next_is_eq = (pos + 1 < statement.size()) && (statement[pos + 1] == '=');
             if (!prev_is_rel && !next_is_eq) {
                 break;

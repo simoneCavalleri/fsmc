@@ -112,13 +112,12 @@ void FsmValidator::validate_initial_state(const FsmIr& model, const std::set<std
         }
     } else if (node_names.count(init_st) == 0 && model.find_state(init_st) == nullptr &&
                model.find_state_by_id(init_st) == nullptr) {
-        result.add_error("InitialState",
-                         "Initial state '" + init_st + "' is not defined in the state list.");
+        result.add_error("InitialState", "Initial state '" + init_st + "' is not defined in the state list.");
     }
 }
 
 void FsmValidator::validate_transition_endpoints(const FsmIr& model, const std::set<std::string>& node_names,
-                                                  ValidationResult& result) {
+                                                 ValidationResult& result) {
     for (const auto& transition_item : model.transitions) {
         bool src_found = node_names.count(transition_item.source) != 0 ||
                          (!transition_item.source_id.empty() && node_names.count(transition_item.source_id) != 0) ||
@@ -186,9 +185,9 @@ void FsmValidator::validate_choice_pseudostates(const FsmIr& model, ValidationRe
                                        "Choice pseudostate '" + choice_item.name +
                                            "' lacks an unconditional else/default fallback branch (potential stall).");
         } else if (fallback_count > 1) {
-            result.add_safety_critical("Choice",
-                                       "Choice pseudostate '" + choice_item.name +
-                                           "' has multiple unconditional else/default fallback branches (non-deterministic).");
+            result.add_safety_critical(
+                "Choice", "Choice pseudostate '" + choice_item.name +
+                              "' has multiple unconditional else/default fallback branches (non-deterministic).");
         }
     }
 }
@@ -451,8 +450,10 @@ void FsmValidator::validate_deadlock_states(const FsmIr& model, ValidationResult
 
             if (!is_intended_final) {
                 if (self_loops[state_item.name] > 0 && in_degree[state_item.name] > 0) {
-                    result.add_warning("Deadlock", "Potential trap / deadlock state: '" + state_item.name +
-                                                       "' has incoming transitions and self-loops, but no outgoing transitions to other states.");
+                    result.add_warning(
+                        "Deadlock",
+                        "Potential trap / deadlock state: '" + state_item.name +
+                            "' has incoming transitions and self-loops, but no outgoing transitions to other states.");
                 } else if (out_degree[state_item.name] == 0 && in_degree[state_item.name] > 0) {
                     result.add_warning("Deadlock", "Potential trap / deadlock state: '" + state_item.name +
                                                        "' has incoming transitions but no outgoing transitions.");
@@ -493,18 +494,20 @@ void FsmValidator::validate_transition_determinism(const FsmIr& model, Validatio
                 for (size_t j = i + 1; j < trans_list.size(); ++j) {
                     const auto* t1 = trans_list[i];
                     const auto* t2 = trans_list[j];
-                    if (t1->target == t2->target && t1->guard == t2->guard &&
-                        t1->get_action() == t2->get_action() && t1->priority == t2->priority) {
+                    if (t1->target == t2->target && t1->guard == t2->guard && t1->get_action() == t2->get_action() &&
+                        t1->priority == t2->priority) {
                         result.add_warning("Redundancy", "Duplicate transition detected from state '" + src_evt.first +
-                                                             "' to '" + t1->target + "' on event '" + src_evt.second + "'.");
+                                                             "' to '" + t1->target + "' on event '" + src_evt.second +
+                                                             "'.");
                     }
                 }
             }
 
-            // Check for shadowed transitions (unconditional transition evaluated before or with higher priority than a guarded transition)
+            // Check for shadowed transitions (unconditional transition evaluated before or with higher priority than a
+            // guarded transition)
             auto is_uncond = [](const TransitionEdge* t) {
-                return !t->guard.has_value() || t->guard->empty() || *t->guard == "else" ||
-                       *t->guard == "otherwise" || *t->guard == "default";
+                return !t->guard.has_value() || t->guard->empty() || *t->guard == "else" || *t->guard == "otherwise" ||
+                       *t->guard == "default";
             };
             if (unconditional_count >= 1) {
                 for (size_t i = 0; i < trans_list.size(); ++i) {
@@ -531,10 +534,10 @@ void FsmValidator::validate_transition_determinism(const FsmIr& model, Validatio
                         }
 
                         if (unc_has_precedence) {
-                            result.add_warning("Determinism", "Guarded transition from '" + src_evt.first +
-                                                                  "' on event '" + src_evt.second + "' with guard '" +
-                                                                  *t_grd->guard +
-                                                                  "' is shadowed by unconditional transition on same event.");
+                            result.add_warning("Determinism",
+                                               "Guarded transition from '" + src_evt.first + "' on event '" +
+                                                   src_evt.second + "' with guard '" + *t_grd->guard +
+                                                   "' is shadowed by unconditional transition on same event.");
                         }
                     }
                 }

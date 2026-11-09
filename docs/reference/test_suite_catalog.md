@@ -1277,7 +1277,7 @@
 **Test Intent**: Verify that a self-transition chained through a junction preserves External kind.
 
 #### `ConnectiveJunctionChaining.ActionInstructionsAndInvocations_PreservedAcrossChainedPath`
-**Test Intent**: Verify that ConnectiveJunctionChainingPass preserves ActionAstNode instructions, accepts_event, and invocations.
+**Test Intent**: Verify that ConnectiveJunctionChainingPass preserves ActionAstNode instructions, accepts_event, and
 
 #### `ForkJoinLowering.BranchActionsAndClockResets_PreservedInLoweredTransitions`
 **Test Intent**: Verify that ForkJoinLoweringPass preserves branch actions and clock resets when lowering Fork and Join.
@@ -1406,7 +1406,7 @@
 **Test Intent**: Verify PriorityConflictPass detects hierarchical policy preemption violations.
 
 #### `PriorityConflict.ParentStateHierarchyStringName_DetectsHierarchicalPreemptionConflict`
-**Test Intent**: Verify PriorityConflictPass detects hierarchical preemption violations when hierarchy is defined via parent_state name.
+**Test Intent**: Verify PriorityConflictPass detects hierarchical preemption violations when hierarchy is defined via
 
 #### `FsmValidator.InitialStateSpecifiedViaId_ValidatesCleanlyWithoutConstCastMutation`
 **Test Intent**: Verify FsmValidator correctly accepts initial_state_id without const_cast mutation or false warnings.
@@ -1830,7 +1830,7 @@
 **Test Intent**: Verify --rtm without -o exits cleanly without dumping C++ to stdout, and diagram codegen check
 
 **Scenario**:
-  - Run --rtm alone (verify empty stdout) and run --rtm with -o on an untyped PlantUML diagram (verify blocked).
+  - Run --rtm alone (verify empty stdout) and run --rtm with -o on an untyped PlantUML diagram (verify
 
 #### `FsmcOptionsTest.ModularPositionalOrderingAndIdentifierSanitization`
 **Test Intent**: Verify --modular before positional input file does not consume the input file as a header, and

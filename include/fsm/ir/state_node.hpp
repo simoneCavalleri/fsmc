@@ -180,11 +180,10 @@ struct StateNode {
                parent_id == other.parent_id && parent_state == other.parent_state &&
                is_composite == other.is_composite && initial_sub_state == other.initial_sub_state &&
                has_history == other.has_history && has_deep_history == other.has_deep_history &&
-               children_ids == other.children_ids &&
-               orthogonal_regions == other.orthogonal_regions && submachine == other.submachine &&
-               entry_actions == other.entry_actions && exit_actions == other.exit_actions &&
-               do_activity == other.do_activity && time_invariant == other.time_invariant &&
-               invariants == other.invariants &&
+               children_ids == other.children_ids && orthogonal_regions == other.orthogonal_regions &&
+               submachine == other.submachine && entry_actions == other.entry_actions &&
+               exit_actions == other.exit_actions && do_activity == other.do_activity &&
+               time_invariant == other.time_invariant && invariants == other.invariants &&
                deferred_events == other.deferred_events && traceability_reqs == other.traceability_reqs &&
                description == other.description && outgoing_transitions == other.outgoing_transitions &&
                incoming_transitions == other.incoming_transitions;

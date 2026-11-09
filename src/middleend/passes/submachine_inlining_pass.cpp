@@ -162,11 +162,10 @@ bool SubmachineInliningPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             continue;
         }
 
-        if (!ir.name.empty() && ir.name != "Fsm" && ir.name != "MyStateMachine" &&
-            st.submachine->fsm_name == ir.name) {
-            diag.report(Diagnostic::error("E_SUBMACHINE_RECURSIVE",
-                                          "Recursive self-inlining of submachine '" + st.submachine->fsm_name +
-                                              "' in state '" + st.name + "' is not allowed."));
+        if (!ir.name.empty() && ir.name != "Fsm" && ir.name != "MyStateMachine" && st.submachine->fsm_name == ir.name) {
+            diag.report(Diagnostic::error("E_SUBMACHINE_RECURSIVE", "Recursive self-inlining of submachine '" +
+                                                                        st.submachine->fsm_name + "' in state '" +
+                                                                        st.name + "' is not allowed."));
             continue;
         }
 
@@ -178,12 +177,11 @@ bool SubmachineInliningPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             continue;
         }
 
-        if (sub_model == &ir ||
-            (!ir.name.empty() && ir.name != "Fsm" && ir.name != "MyStateMachine" &&
-             (sub_model->name == ir.name || st.submachine->fsm_name == ir.name))) {
-            diag.report(Diagnostic::error("E_SUBMACHINE_RECURSIVE",
-                                          "Recursive self-inlining of submachine '" + st.submachine->fsm_name +
-                                              "' in state '" + st.name + "' is not allowed."));
+        if (sub_model == &ir || (!ir.name.empty() && ir.name != "Fsm" && ir.name != "MyStateMachine" &&
+                                 (sub_model->name == ir.name || st.submachine->fsm_name == ir.name))) {
+            diag.report(Diagnostic::error("E_SUBMACHINE_RECURSIVE", "Recursive self-inlining of submachine '" +
+                                                                        st.submachine->fsm_name + "' in state '" +
+                                                                        st.name + "' is not allowed."));
             continue;
         }
 

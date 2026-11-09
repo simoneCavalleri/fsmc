@@ -258,7 +258,8 @@ TEST(PriorityConflict, InvertedChildPrecedenceUnderOuterFirst_EmitsPriorityConfl
 }
 
 /**
- * @brief Verify PriorityConflictPass detects hierarchical preemption violations when hierarchy is defined via parent_state name.
+ * @brief Verify PriorityConflictPass detects hierarchical preemption violations when hierarchy is defined via
+ * parent_state name.
  */
 TEST(PriorityConflict, ParentStateHierarchyStringName_DetectsHierarchicalPreemptionConflict) {
     FsmIr ir;
@@ -347,7 +348,6 @@ TEST(FsmValidator, InitialStateSpecifiedViaId_ValidatesCleanlyWithoutConstCastMu
     // model.initial_state must NOT have been mutated by const_cast
     EXPECT_EQ(ir.initial_state, "");
 }
-
 
 // ============================================================================
 // TimedInvariantsVerifierPass Tests

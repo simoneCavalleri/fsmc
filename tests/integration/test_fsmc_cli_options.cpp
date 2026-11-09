@@ -765,7 +765,8 @@ TEST_F(FsmcOptionsTest, VerifyMode_PrintsCounterexampleAndHonorsWerror) {
 /**
  * @brief Test Intent: Verify --rtm without -o exits cleanly without dumping C++ to stdout, and diagram codegen check
  * still blocks -o on untyped diagrams when --rtm is also passed.
- * Scenario: Run --rtm alone (verify empty stdout) and run --rtm with -o on an untyped PlantUML diagram (verify blocked).
+ * Scenario: Run --rtm alone (verify empty stdout) and run --rtm with -o on an untyped PlantUML diagram (verify
+ * blocked).
  */
 TEST_F(FsmcOptionsTest, RtmEarlyExitAndDiagramCodegenBlocker) {
     fs::path rtm_file = test_dir_ / "only_rtm.md";

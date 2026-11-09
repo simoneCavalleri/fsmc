@@ -897,8 +897,9 @@ TEST(CppModelEmitter, LifecycleActionWithAssignments_EmittedAsAssignmentStructNo
     EXPECT_NE(str.find("using LifecycleModelServices = ::fsm::no_services;"), std::string::npos);
 
     // 3. Overload taking (InPorts, OutPorts, Registers, Services) must be present
-    EXPECT_NE(str.find("void operator()(const InPorts& /*in*/, OutPorts& /*out*/, Registers& reg, Services& /*srv*/) const"),
-              std::string::npos);
+    EXPECT_NE(
+        str.find("void operator()(const InPorts& /*in*/, OutPorts& /*out*/, Registers& reg, Services& /*srv*/) const"),
+        std::string::npos);
 }
 
 /**

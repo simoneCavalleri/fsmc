@@ -199,7 +199,8 @@ bool BoundaryActionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         }
         if (auto* mutable_s = ir.find_state_mut(name)) {
             const bool is_machine_initial =
-                (!ir.initial_state.empty() && (mutable_s->name == ir.initial_state || mutable_s->id == ir.initial_state)) ||
+                (!ir.initial_state.empty() &&
+                 (mutable_s->name == ir.initial_state || mutable_s->id == ir.initial_state)) ||
                 (!ir.initial_state_id.empty() &&
                  (mutable_s->name == ir.initial_state_id || mutable_s->id == ir.initial_state_id));
             bool is_composite_initial = false;

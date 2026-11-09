@@ -159,8 +159,8 @@ void FsmGraphOps::sync_interfaces(FsmIr& ir) {
 
     // 4. Synchronize signals and events from transitions, and sync trigger with event
     auto is_anon = [](const std::string& ev) {
-        return ev.empty() || ev == "anonymous_event" || ev == "completion_event" ||
-               ev == "AnonymousEvent" || ev == "anonymous" || ev == "none";
+        return ev.empty() || ev == "anonymous_event" || ev == "completion_event" || ev == "AnonymousEvent" ||
+               ev == "anonymous" || ev == "none";
     };
     for (auto& tr : ir.transitions) {
         if (!tr.event.empty() && !is_anon(tr.event) && std::holds_alternative<AnonymousTrigger>(tr.trigger)) {

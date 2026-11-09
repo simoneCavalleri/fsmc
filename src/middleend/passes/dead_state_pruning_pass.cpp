@@ -50,15 +50,16 @@ bool DeadStatePruningPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             curr_node = ir.find_state_by_id(curr);
         }
 
-        // Only automatically mark all children as reachable if curr_node is Parallel or has no explicit initial_sub_state
-        bool mark_all_children =
-            (curr_node == nullptr) || (curr_node->kind == StateKind::Parallel) ||
-            !curr_node->orthogonal_regions.empty() || curr_node->initial_sub_state.empty();
+        // Only automatically mark all children as reachable if curr_node is Parallel or has no explicit
+        // initial_sub_state
+        bool mark_all_children = (curr_node == nullptr) || (curr_node->kind == StateKind::Parallel) ||
+                                 !curr_node->orthogonal_regions.empty() || curr_node->initial_sub_state.empty();
         if (mark_all_children) {
             for (const auto& s : ir.states) {
-                bool matches_parent = (!s.parent_state.empty() && s.parent_state == curr) ||
-                                      (s.parent_id.has_value() && *s.parent_id == curr) ||
-                                      (curr_node != nullptr && !s.parent_state.empty() && s.parent_state == curr_node->name);
+                bool matches_parent =
+                    (!s.parent_state.empty() && s.parent_state == curr) ||
+                    (s.parent_id.has_value() && *s.parent_id == curr) ||
+                    (curr_node != nullptr && !s.parent_state.empty() && s.parent_state == curr_node->name);
                 if (matches_parent && reachable.count(s.name) == 0) {
                     reachable.insert(s.name);
                     if (!s.id.empty()) {
@@ -129,17 +130,14 @@ bool DeadStatePruningPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 
     // 3. Prune unreachable states (including unreachable Choice pseudostates)
     std::size_t initial_state_count = ir.states.size();
-    ir.states.erase(std::remove_if(ir.states.begin(), ir.states.end(),
-                                   [&](const StateNode& s) {
-                                       return reachable.count(s.name) == 0 && reachable.count(s.id) == 0;
-                                   }),
-                    ir.states.end());
+    ir.states.erase(
+        std::remove_if(ir.states.begin(), ir.states.end(),
+                       [&](const StateNode& s) { return reachable.count(s.name) == 0 && reachable.count(s.id) == 0; }),
+        ir.states.end());
 
     // Prune unreachable choice nodes from ir.choice_nodes
     ir.choice_nodes.erase(std::remove_if(ir.choice_nodes.begin(), ir.choice_nodes.end(),
-                                        [&](const ChoiceNodeModel& c) {
-                                            return reachable.count(c.name) == 0;
-                                        }),
+                                         [&](const ChoiceNodeModel& c) { return reachable.count(c.name) == 0; }),
                           ir.choice_nodes.end());
 
     std::size_t pruned_states = initial_state_count - ir.states.size();
@@ -150,8 +148,9 @@ bool DeadStatePruningPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                                         [&](const TransitionEdge& t) {
                                             if (t.guard.has_value() && *t.guard == "false")
                                                 return true;
-                                            bool src_reachable = reachable.count(t.source) > 0 ||
-                                                                 (!t.source_id.empty() && reachable.count(t.source_id) > 0);
+                                            bool src_reachable =
+                                                reachable.count(t.source) > 0 ||
+                                                (!t.source_id.empty() && reachable.count(t.source_id) > 0);
                                             return !src_reachable && (!t.source.empty() || !t.source_id.empty());
                                         }),
                          ir.transitions.end());

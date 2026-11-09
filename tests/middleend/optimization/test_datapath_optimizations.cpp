@@ -532,7 +532,6 @@ TEST(TransitionFusion, CompositeInitialSubstateOrDoActivity_PreservedWithoutFusi
     EXPECT_NE(ir.find_state("ActiveDo"), nullptr);
 }
 
-
 // ============================================================================
 // CommonActionFactoringPass Tests
 // ============================================================================

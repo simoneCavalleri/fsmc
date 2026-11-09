@@ -139,8 +139,7 @@ bool extract_stateflow_from_slx(std::string_view zip_content, std::string& extra
             if ((is_stateflow || is_blockdiagram) && static_cast<std::size_t>(local_hdr_offset) + 30 <= total_size) {
                 uint16_t loc_fn_len = read_u16_le(bytes + local_hdr_offset + 26);
                 uint16_t loc_extra_len = read_u16_le(bytes + local_hdr_offset + 28);
-                std::size_t data_offset =
-                    static_cast<std::size_t>(local_hdr_offset) + 30 + loc_fn_len + loc_extra_len;
+                std::size_t data_offset = static_cast<std::size_t>(local_hdr_offset) + 30 + loc_fn_len + loc_extra_len;
 
                 bool bounds_ok = (data_offset <= total_size && comp_size <= total_size - data_offset);
                 if (bounds_ok && method == 0) {

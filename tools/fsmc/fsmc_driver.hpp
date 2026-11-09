@@ -370,9 +370,9 @@ class FsmcDriver {
         const auto validator_only_warnings = validation.warnings;
         for (const auto& d : middleend_diag.get_diagnostics()) {
             const std::string formatted = d.code.empty() ? d.message : ("[" + d.code + "] " + d.message);
-            const bool already_in_diag = std::any_of(
-                validation.diagnostics.begin(), validation.diagnostics.end(),
-                [&](const DiagnosticMessage& existing) { return existing.message == d.message; });
+            const bool already_in_diag =
+                std::any_of(validation.diagnostics.begin(), validation.diagnostics.end(),
+                            [&](const DiagnosticMessage& existing) { return existing.message == d.message; });
             if (d.severity == DiagnosticSeverity::Warning) {
                 validation.warnings.push_back(formatted);
                 if (!already_in_diag) {
@@ -405,9 +405,9 @@ class FsmcDriver {
         }
 
         for (const auto& warn_msg : validator_only_warnings) {
-            const bool already_printed_by_middleend = std::any_of(
-                middleend_diag.get_diagnostics().begin(), middleend_diag.get_diagnostics().end(),
-                [&](const Diagnostic& d) { return warn_msg.find(d.message) != std::string::npos; });
+            const bool already_printed_by_middleend =
+                std::any_of(middleend_diag.get_diagnostics().begin(), middleend_diag.get_diagnostics().end(),
+                            [&](const Diagnostic& d) { return warn_msg.find(d.message) != std::string::npos; });
             if (!already_printed_by_middleend) {
                 std::cerr << "[WARNING] " << warn_msg << "\n";
             }

@@ -38,7 +38,8 @@ bool StateMinimizationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     auto get_single_action_sig = [](const ActionSignature& a) -> std::string {
         std::string s = a.name + ":" + a.invocation + ":" + (a.accepts_event ? "1" : "0") + "{";
         for (const auto& asgn : a.assignments) {
-            s += asgn.target.full_path() + "=" + std::to_string(static_cast<int>(asgn.op)) + ":" + asgn.expression + ",";
+            s +=
+                asgn.target.full_path() + "=" + std::to_string(static_cast<int>(asgn.op)) + ":" + asgn.expression + ",";
         }
         for (const auto& inst : a.instructions) {
             if (const auto* st = std::get_if<StoreOp>(&inst.op)) {
@@ -156,9 +157,8 @@ bool StateMinimizationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                             for (const auto& cr : t.clock_resets) {
                                 resets += cr + ",";
                             }
-                            std::string desc = std::to_string(b_idx) + ":" +
-                                               std::to_string(static_cast<int>(t.kind)) + ":" +
-                                               std::to_string(t.priority) + ":" + resets + ":" +
+                            std::string desc = std::to_string(b_idx) + ":" + std::to_string(static_cast<int>(t.kind)) +
+                                               ":" + std::to_string(t.priority) + ":" + resets + ":" +
                                                t.guard.value_or("") + ":" + cond_act + "/" + trans_act;
                             t_descs.push_back(std::move(desc));
                         }
@@ -218,7 +218,8 @@ bool StateMinimizationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     for (const auto& [old_name, new_name] : remapping) {
         const auto* old_st = ir.find_state(old_name);
         const auto* new_st = ir.find_state(new_name);
-        std::string new_id = (new_st != nullptr && !new_st->id.empty()) ? new_st->id : compute_deterministic_id(new_name);
+        std::string new_id =
+            (new_st != nullptr && !new_st->id.empty()) ? new_st->id : compute_deterministic_id(new_name);
         if (old_st != nullptr && !old_st->id.empty()) {
             id_remapping[old_st->id] = new_id;
         }

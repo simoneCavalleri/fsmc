@@ -88,13 +88,11 @@ bool ChoiceInliningPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
                 for (const auto& out : outgoing) {
                     TransitionEdge composite;
                     composite.source = in.source;
-                    composite.source_id =
-                        in.source_id.empty() ? compute_deterministic_id(in.source) : in.source_id;
+                    composite.source_id = in.source_id.empty() ? compute_deterministic_id(in.source) : in.source_id;
                     composite.source_ids = in.source_ids;
                     composite.multi_source_ids = in.multi_source_ids;
                     composite.target = out.target;
-                    composite.target_id =
-                        out.target_id.empty() ? compute_deterministic_id(out.target) : out.target_id;
+                    composite.target_id = out.target_id.empty() ? compute_deterministic_id(out.target) : out.target_id;
                     composite.target_ids = out.target_ids;
                     composite.multi_target_ids = out.multi_target_ids;
                     composite.event = in.event.empty() ? out.event : in.event;

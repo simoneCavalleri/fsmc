@@ -183,11 +183,10 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 
     // 6. Prune obsolete History state nodes and their outgoing default transitions
     if (!all_pruned_history_names.empty()) {
-        ir.transitions.erase(std::remove_if(ir.transitions.begin(), ir.transitions.end(),
-                                            [&](const TransitionEdge& t) {
-                                                return all_pruned_history_names.count(t.source) > 0;
-                                            }),
-                             ir.transitions.end());
+        ir.transitions.erase(
+            std::remove_if(ir.transitions.begin(), ir.transitions.end(),
+                           [&](const TransitionEdge& t) { return all_pruned_history_names.count(t.source) > 0; }),
+            ir.transitions.end());
     }
     ir.states.erase(std::remove_if(ir.states.begin(), ir.states.end(),
                                    [](const StateNode& s) {

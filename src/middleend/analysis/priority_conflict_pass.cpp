@@ -62,7 +62,8 @@ bool is_ancestor_of(const ir::FsmIr& ir, const std::string& parent_id, const std
         std::string p_name = curr->parent_state;
 
         if ((!p_id.empty() && (p_id == canonical_parent_id || p_id == parent_id)) ||
-            (!p_name.empty() && (p_name == canonical_parent_name || p_name == parent_id || p_name == canonical_parent_id))) {
+            (!p_name.empty() &&
+             (p_name == canonical_parent_name || p_name == parent_id || p_name == canonical_parent_id))) {
             return true;
         }
 

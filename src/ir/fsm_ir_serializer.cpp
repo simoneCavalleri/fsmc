@@ -67,9 +67,8 @@ void emit_assignments_array(std::ostream& out, const std::vector<ActionAssignmen
         out << "{\"variable\": \"" << escape_json(assign.target.name) << "\", \"target\": \""
             << escape_json(assign.target.full_path()) << "\", \"scoped_target\": \""
             << escape_json(assign.target.scoped_path()) << "\", \"scope\": \""
-            << lvalue_scope_to_string(assign.target.scope) << "\", \"op\": \""
-            << assignment_op_to_string(assign.op) << "\", \"expression\": \""
-            << escape_json(assign.expression) << "\"";
+            << lvalue_scope_to_string(assign.target.scope) << "\", \"op\": \"" << assignment_op_to_string(assign.op)
+            << "\", \"expression\": \"" << escape_json(assign.expression) << "\"";
         if (assign.expr_ast.has_value()) {
             out << ", \"ast\": " << assign.expr_ast->to_json();
         }
@@ -105,9 +104,7 @@ void emit_transition_metadata(std::ostream& out, const TransitionEdge& t, const 
     }
     if (t.guard && !t.guard->empty()) {
         std::string diag_guard = frontend::directive::GuardExpressionParser::to_diagram_string(*t.guard);
-        out << ",\n"
-            << field_pad << "\"guard\": \""
-            << escape_json(diag_guard) << "\"";
+        out << ",\n" << field_pad << "\"guard\": \"" << escape_json(diag_guard) << "\"";
         if (*t.guard != diag_guard && t.guard->find("fsm::") == std::string::npos) {
             out << ",\n" << field_pad << "\"raw_guard\": \"" << escape_json(*t.guard) << "\"";
         }

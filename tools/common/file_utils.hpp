@@ -241,9 +241,9 @@ inline std::function<const fsm::ir::FsmIr*(const std::string&)> create_filesyste
             search_dir = fs::current_path(ec);
         }
 
-        static constexpr const char* kExtensions[] = {".sysml",   ".puml",    ".plantuml", ".mmd",      ".mermaid",
-                                                      ".xmi",     ".scxml",   ".json",     ".dot",      ".gv",
-                                                      ".sfx",     ".stateflow", ".slx",    ".smv"};
+        static constexpr const char* kExtensions[] = {".sysml", ".puml",      ".plantuml", ".mmd", ".mermaid",
+                                                      ".xmi",   ".scxml",     ".json",     ".dot", ".gv",
+                                                      ".sfx",   ".stateflow", ".slx",      ".smv"};
 
         for (const char* ext : kExtensions) {
             fs::path candidate = search_dir / (sub_name + ext);

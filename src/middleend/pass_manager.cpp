@@ -512,7 +512,7 @@ bool EFSMDataPathPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     if (prune_dead_transitions_) {
         std::size_t removed_count = 0;
         for (const auto& f : findings) {
-            if (f.is_error) {
+            if (f.kind != analysis::EFSMFindingKind::UnsatisfiableGuard) {
                 continue;
             }
             auto it = std::find_if(ir.transitions.begin(), ir.transitions.end(), [&](const TransitionEdge& t) {

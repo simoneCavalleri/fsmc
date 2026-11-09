@@ -184,7 +184,8 @@ std::vector<EFSMAnalysisFinding> EFSMIntervalAnalyzer::analyze(DiagnosticEngine&
                         std::string msg = "Guard '" + g_str + "' on transition '" + t.source + " -> " + t.target +
                                           "' is unsatisfiable given variable/port '" + var_name + "' range " +
                                           var_interval.to_string();
-                        findings.push_back({var_name, t.id, t.source, t.target, msg, false});
+                        findings.push_back(
+                            {var_name, t.id, t.source, t.target, msg, false, EFSMFindingKind::UnsatisfiableGuard});
                         diag.report(Diagnostic::warning("W_EFSM_UNSATISFIABLE_GUARD", msg));
                     }
                 }
@@ -212,7 +213,8 @@ std::vector<EFSMAnalysisFinding> EFSMIntervalAnalyzer::analyze(DiagnosticEngine&
                                               t.source + " -> " + t.target + "': assigned range " +
                                               assigned_interval.to_string() + " violates contract " +
                                               port_bound.to_string();
-                            findings.push_back({out_p->name, t.id, t.source, t.target, msg, true});
+                            findings.push_back({out_p->name, t.id, t.source, t.target, msg, true,
+                                                EFSMFindingKind::PortRangeViolation});
                             diag.report(Diagnostic::warning("W_PORT_RANGE_VIOLATION", msg));
                         }
                     }
@@ -231,7 +233,8 @@ std::vector<EFSMAnalysisFinding> EFSMIntervalAnalyzer::analyze(DiagnosticEngine&
                                               "' contract violation on transition '" + t.source + " -> " + t.target +
                                               "': assigned range " + assigned_interval.to_string() +
                                               " violates contract " + var_bound.to_string();
-                            findings.push_back({var_def->name, t.id, t.source, t.target, msg, true});
+                            findings.push_back({var_def->name, t.id, t.source, t.target, msg, true,
+                                                EFSMFindingKind::VariableRangeViolation});
                             diag.report(Diagnostic::warning("W_VARIABLE_RANGE_VIOLATION", msg));
                         }
                     }
@@ -262,14 +265,55 @@ std::string EFSMIntervalAnalyzer::clean_number_literal(std::string s) {
 }
 
 std::optional<Interval> EFSMIntervalAnalyzer::parse_guard_domain(std::string_view expr, std::string_view var_name) {
+    if (expr.empty() || var_name.empty()) {
+        return std::nullopt;
+    }
+
+    // 1. Check for top-level disjunctions ('||')
+    int paren_depth = 0;
+    std::vector<std::string_view> or_branches;
+    size_t branch_start = 0;
+    for (size_t i = 0; i < expr.size(); ++i) {
+        if (expr[i] == '(') {
+            paren_depth++;
+        } else if (expr[i] == ')') {
+            if (paren_depth > 0)
+                paren_depth--;
+        } else if (paren_depth == 0 && i + 1 < expr.size() && expr[i] == '|' && expr[i + 1] == '|') {
+            or_branches.push_back(expr.substr(branch_start, i - branch_start));
+            i++;  // skip second '|'
+            branch_start = i + 1;
+        }
+    }
+    if (!or_branches.empty()) {
+        or_branches.push_back(expr.substr(branch_start));
+        std::optional<Interval> combined_hull;
+        for (const auto& branch : or_branches) {
+            auto b_iv = parse_guard_domain(branch, var_name);
+            if (!b_iv.has_value()) {
+                // If any disjunctive branch does not restrict var_name, var_name is unrestricted
+                return std::nullopt;
+            }
+            if (!combined_hull.has_value()) {
+                combined_hull = *b_iv;
+            } else {
+                combined_hull = combined_hull->join_with(*b_iv);
+            }
+        }
+        return combined_hull;
+    }
+
+    // 2. Conjunctions / multiple atomic constraints on var_name
+    std::optional<Interval> combined_iv;
     size_t pos = 0;
     while (pos < expr.size()) {
         size_t found = expr.find(var_name, pos);
         if (found == std::string_view::npos) {
-            return std::nullopt;
+            break;
         }
 
         bool prefix_ok = false;
+        bool is_negated = false;
         if (found == 0) {
             prefix_ok = true;
         } else {
@@ -285,6 +329,20 @@ std::optional<Interval> EFSMIntervalAnalyzer::parse_guard_domain(std::string_vie
                 }
             } else if (!std::isalnum(static_cast<unsigned char>(before)) && before != '_') {
                 prefix_ok = true;
+            }
+
+            // Check if preceded by '!' outside prefix
+            if (prefix_ok) {
+                size_t p_scan = found;
+                while (p_scan > 0 &&
+                       (expr[p_scan - 1] == ' ' || expr[p_scan - 1] == '\t' || expr[p_scan - 1] == '(' ||
+                        expr[p_scan - 1] == '.' || std::isalpha(static_cast<unsigned char>(expr[p_scan - 1])))) {
+                    if (expr[p_scan - 1] == '!') {
+                        is_negated = true;
+                        break;
+                    }
+                    p_scan--;
+                }
             }
         }
 
@@ -305,7 +363,7 @@ std::optional<Interval> EFSMIntervalAnalyzer::parse_guard_domain(std::string_vie
                 rem.remove_prefix(1);
             }
 
-            enum class Op { Gte, Gt, Lte, Lt, Eq, Unknown };
+            enum class Op { Gte, Gt, Lte, Lt, Eq, Ne, Unknown };
             Op op = Op::Unknown;
             if (rem.size() >= 2 && rem[0] == '>' && rem[1] == '=') {
                 op = Op::Gte;
@@ -322,6 +380,24 @@ std::optional<Interval> EFSMIntervalAnalyzer::parse_guard_domain(std::string_vie
             } else if (rem.size() >= 2 && rem[0] == '=' && rem[1] == '=') {
                 op = Op::Eq;
                 rem.remove_prefix(2);
+            } else if (rem.size() >= 2 && rem[0] == '!' && rem[1] == '=') {
+                op = Op::Ne;
+                rem.remove_prefix(2);
+            }
+
+            if (is_negated && op != Op::Unknown) {
+                if (op == Op::Gte)
+                    op = Op::Lt;
+                else if (op == Op::Gt)
+                    op = Op::Lte;
+                else if (op == Op::Lte)
+                    op = Op::Gt;
+                else if (op == Op::Lt)
+                    op = Op::Gte;
+                else if (op == Op::Eq)
+                    op = Op::Ne;
+                else if (op == Op::Ne)
+                    op = Op::Eq;
             }
 
             if (op != Op::Unknown) {
@@ -344,22 +420,36 @@ std::optional<Interval> EFSMIntervalAnalyzer::parse_guard_domain(std::string_vie
                     std::string num_str(rem.substr(0, num_len));
                     try {
                         double c = std::stod(num_str);
+                        Interval clause_iv;
+                        bool valid_clause = true;
                         switch (op) {
                             case Op::Gte:
-                                return Interval(c, std::numeric_limits<double>::infinity());
+                                clause_iv = Interval(c, std::numeric_limits<double>::infinity());
+                                break;
                             case Op::Gt:
-                                return Interval(c + 1e-6, std::numeric_limits<double>::infinity());
+                                clause_iv = Interval(c + 1e-6, std::numeric_limits<double>::infinity());
+                                break;
                             case Op::Lte:
-                                return Interval(-std::numeric_limits<double>::infinity(), c);
+                                clause_iv = Interval(-std::numeric_limits<double>::infinity(), c);
+                                break;
                             case Op::Lt:
-                                return Interval(-std::numeric_limits<double>::infinity(), c - 1e-6);
+                                clause_iv = Interval(-std::numeric_limits<double>::infinity(), c - 1e-6);
+                                break;
                             case Op::Eq:
-                                return Interval(c, c);
+                                clause_iv = Interval(c, c);
+                                break;
                             default:
+                                valid_clause = false;
                                 break;
                         }
+                        if (valid_clause) {
+                            if (!combined_iv.has_value()) {
+                                combined_iv = clause_iv;
+                            } else {
+                                combined_iv = combined_iv->intersect_with(clause_iv);
+                            }
+                        }
                     } catch (...) {
-                        return std::nullopt;
                     }
                 }
             }
@@ -368,7 +458,7 @@ std::optional<Interval> EFSMIntervalAnalyzer::parse_guard_domain(std::string_vie
         pos = found + 1;
     }
 
-    return std::nullopt;
+    return combined_iv;
 }
 
 void EFSMIntervalAnalyzer::apply_assignment(std::unordered_map<std::string, Interval>& env,
@@ -376,26 +466,54 @@ void EFSMIntervalAnalyzer::apply_assignment(std::unordered_map<std::string, Inte
     const std::string var = strip_qualifier(assign.target.name);
     std::string expr = assign.expression;
 
+    auto update_target = [&](const Interval& rhs_iv) {
+        if (assign.op == AssignmentOp::Assign) {
+            env[var] = rhs_iv;
+        } else if (assign.op == AssignmentOp::AddAssign) {
+            env[var] = env[var].add(rhs_iv);
+        } else if (assign.op == AssignmentOp::SubAssign) {
+            env[var] = env[var].sub(rhs_iv);
+        } else if (assign.op == AssignmentOp::MulAssign) {
+            env[var] = env[var].mul(rhs_iv);
+        } else if (assign.op == AssignmentOp::DivAssign) {
+            if (!rhs_iv.is_empty() && std::abs(rhs_iv.lo - rhs_iv.hi) < 1e-6 && rhs_iv.lo != 0.0) {
+                env[var] = env[var].div(rhs_iv.lo);
+            } else {
+                env[var] = Interval();
+            }
+        }
+    };
+
     if (expr == "true" || expr == "true;") {
-        env[var] = Interval(1.0, 1.0);
+        update_target(Interval(1.0, 1.0));
         return;
     }
     if (expr == "false" || expr == "false;") {
-        env[var] = Interval(0.0, 0.0);
+        update_target(Interval(0.0, 0.0));
         return;
     }
 
+    // Pure numeric literal check (must consume the entire string)
     try {
-        double c = std::stod(clean_number_literal(expr));
-        env[var] = Interval(c, c);
-        return;
+        size_t idx = 0;
+        std::string cleaned = clean_number_literal(expr);
+        if (!cleaned.empty()) {
+            double c = std::stod(cleaned, &idx);
+            while (idx < cleaned.size() && (cleaned[idx] == ' ' || cleaned[idx] == '\t' || cleaned[idx] == ';')) {
+                idx++;
+            }
+            if (idx == cleaned.size()) {
+                update_target(Interval(c, c));
+                return;
+            }
+        }
     } catch (...) {
     }
 
     std::string clean_expr = strip_qualifier(expr);
     auto it_direct = env.find(clean_expr);
     if (it_direct != env.end()) {
-        env[var] = it_direct->second;
+        update_target(it_direct->second);
         return;
     }
 
@@ -404,19 +522,24 @@ void EFSMIntervalAnalyzer::apply_assignment(std::unordered_map<std::string, Inte
     std::smatch match;
     if (std::regex_search(expr, match, add_re)) {
         std::string matched_var = match[1].matched ? match[1].str() : match[4].str();
-        if (matched_var == var) {
-            std::string num_str = match[1].matched ? match[2].str() : match[3].str();
-            double k = std::stod(clean_number_literal(num_str));
-            env[var] = env[var].add(k);
+        std::string num_str = match[1].matched ? match[2].str() : match[3].str();
+        double k = std::stod(clean_number_literal(num_str));
+        auto it = env.find(matched_var);
+        if (it != env.end()) {
+            update_target(it->second.add(k));
             return;
         }
     }
 
-    std::regex sub_re(R"((?:(?:in|reg|out)\.)?)" + var + R"(\s*-\s*([+-]?\d+(?:\.\d+)?[fFuUlL]*))");
+    std::regex sub_re(R"((?:(?:in|reg|out)\.)?([a-zA-Z0-9_]+)\s*-\s*([+-]?\d+(?:\.\d+)?[fFuUlL]*))");
     if (std::regex_search(expr, match, sub_re)) {
-        double k = std::stod(clean_number_literal(match[1].str()));
-        env[var] = env[var].sub(k);
-        return;
+        std::string matched_var = match[1].str();
+        double k = std::stod(clean_number_literal(match[2].str()));
+        auto it = env.find(matched_var);
+        if (it != env.end()) {
+            update_target(it->second.sub(k));
+            return;
+        }
     }
 
     static const std::regex mul_re(
@@ -427,7 +550,7 @@ void EFSMIntervalAnalyzer::apply_assignment(std::unordered_map<std::string, Inte
         double k = std::stod(clean_number_literal(num_str));
         auto it = env.find(matched_var);
         if (it != env.end()) {
-            env[var] = it->second.mul(k);
+            update_target(it->second.mul(k));
             return;
         }
     }
@@ -438,7 +561,7 @@ void EFSMIntervalAnalyzer::apply_assignment(std::unordered_map<std::string, Inte
         double k = std::stod(clean_number_literal(match[2].str()));
         auto it = env.find(matched_var);
         if (it != env.end()) {
-            env[var] = it->second.div(k);
+            update_target(it->second.div(k));
             return;
         }
     }
@@ -453,16 +576,16 @@ void EFSMIntervalAnalyzer::apply_assignment(std::unordered_map<std::string, Inte
         auto it2 = env.find(v2);
         if (it1 != env.end() && it2 != env.end()) {
             if (op == "+")
-                env[var] = it1->second.add(it2->second);
+                update_target(it1->second.add(it2->second));
             else if (op == "-")
-                env[var] = it1->second.sub(it2->second);
+                update_target(it1->second.sub(it2->second));
             else if (op == "*")
-                env[var] = it1->second.mul(it2->second);
+                update_target(it1->second.mul(it2->second));
             return;
         }
     }
 
-    env[var] = Interval();
+    update_target(Interval());
 }
 
 }  // namespace fsm::middleend::analysis

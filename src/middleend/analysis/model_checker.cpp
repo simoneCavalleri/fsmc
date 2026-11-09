@@ -258,7 +258,39 @@ bool eval_atom_predicate(
 
     // Negation prefix: !expr
     if (atom.front() == '!') {
-        return !eval_atom_predicate(atom.substr(1), state, ir, state_intervals);
+        std::string inner = trim_str(atom.substr(1));
+        if (inner.size() >= 2 && inner.front() == '(' && inner.back() == ')') {
+            inner = trim_str(inner.substr(1, inner.size() - 2));
+        }
+        auto find_rel_op = [](const std::string& s) -> std::pair<size_t, std::string> {
+            for (const auto& op : {"<=", ">=", "!=", "==", "<", ">"}) {
+                size_t p = s.find(op);
+                if (p != std::string::npos) {
+                    return {p, op};
+                }
+            }
+            return {std::string::npos, ""};
+        };
+        auto [pos, op] = find_rel_op(inner);
+        if (pos != std::string::npos) {
+            std::string lhs = inner.substr(0, pos);
+            std::string rhs = inner.substr(pos + op.size());
+            std::string inv_op;
+            if (op == "==")
+                inv_op = "!=";
+            else if (op == "!=")
+                inv_op = "==";
+            else if (op == "<")
+                inv_op = ">=";
+            else if (op == "<=")
+                inv_op = ">";
+            else if (op == ">")
+                inv_op = "<=";
+            else if (op == ">=")
+                inv_op = "<";
+            return eval_atom_predicate(lhs + inv_op + rhs, state, ir, state_intervals);
+        }
+        return !eval_atom_predicate(inner, state, ir, state_intervals);
     }
 
     if (atom == "true" || atom == "1")
@@ -306,8 +338,7 @@ bool eval_atom_predicate(
             auto it_state = state_intervals.find(state);
             if (it_state != state_intervals.end()) {
                 auto it_var = it_state->second.find(lhs_str);
-                if (it_var != it_state->second.end() && !it_var->second.is_empty() &&
-                    (!std::isinf(it_var->second.lo) || !std::isinf(it_var->second.hi))) {
+                if (it_var != it_state->second.end()) {
                     double rhs_num = 0.0;
                     bool rhs_is_num = false;
                     try {
@@ -317,19 +348,25 @@ bool eval_atom_predicate(
                     }
                     if (rhs_is_num) {
                         const auto& iv = it_var->second;
+                        if (iv.is_empty()) {
+                            return false;
+                        }
                         if (op == "<")
-                            return iv.hi < rhs_num;
+                            return !std::isinf(iv.hi) && iv.hi < rhs_num;
                         if (op == "<=")
-                            return iv.hi <= rhs_num;
+                            return !std::isinf(iv.hi) && iv.hi <= rhs_num;
                         if (op == ">")
-                            return iv.lo > rhs_num;
+                            return !std::isinf(iv.lo) && iv.lo > rhs_num;
                         if (op == ">=")
-                            return iv.lo >= rhs_num;
+                            return !std::isinf(iv.lo) && iv.lo >= rhs_num;
                         if (op == "==")
-                            return std::abs(iv.lo - rhs_num) < 1e-6 && std::abs(iv.hi - rhs_num) < 1e-6;
+                            return !std::isinf(iv.lo) && !std::isinf(iv.hi) && std::abs(iv.lo - rhs_num) < 1e-6 &&
+                                   std::abs(iv.hi - rhs_num) < 1e-6;
                         if (op == "!=")
-                            return iv.lo > rhs_num || iv.hi < rhs_num;
+                            return (rhs_num < iv.lo || rhs_num > iv.hi);
                     }
+                    // Soundness: variable was tracked by interval analysis, do NOT fallback to initial value!
+                    return false;
                 }
             }
 
@@ -983,13 +1020,21 @@ std::unordered_set<std::string> ModelChecker::compute_sat(const PropertyAstNode&
         case TemporalOp::AG: {
             if (node.children.empty())
                 return all_states;
-            PropertyAstNode not_p(TemporalOp::Not, {node.children[0]});
-            PropertyAstNode ef_not_p(TemporalOp::EF, {std::move(not_p)});
-            auto ef_sat = compute_sat(ef_not_p);
-            std::unordered_set<std::string> sat;
-            for (const auto& s : all_states) {
-                if (ef_sat.count(s) == 0) {
-                    sat.insert(s);
+            auto p_sat = compute_sat(node.children[0]);
+            auto sat = p_sat;
+            bool changed = true;
+            while (changed) {
+                changed = false;
+                auto pre = pre_all(sat);
+                std::unordered_set<std::string> next_sat;
+                for (const auto& s : sat) {
+                    if (pre.count(s) > 0) {
+                        next_sat.insert(s);
+                    }
+                }
+                if (next_sat != sat) {
+                    sat = std::move(next_sat);
+                    changed = true;
                 }
             }
             return sat;

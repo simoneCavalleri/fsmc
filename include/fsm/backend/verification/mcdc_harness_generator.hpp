@@ -69,7 +69,18 @@ class VarExpr : public BoolExpr {
     }
     [[nodiscard]] std::string to_cpp_expr(const std::map<std::string, std::string>& var_map) const override {
         auto it = var_map.find(name_);
-        return (it != var_map.end()) ? it->second : name_;
+        if (it != var_map.end()) {
+            return it->second;
+        }
+        std::string safe_name;
+        for (char c : name_) {
+            if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') {
+                safe_name.push_back(c);
+            } else {
+                safe_name.push_back('_');
+            }
+        }
+        return safe_name.empty() ? "cond" : safe_name;
     }
     [[nodiscard]] const std::string& name() const noexcept { return name_; }
 

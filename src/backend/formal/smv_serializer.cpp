@@ -54,8 +54,17 @@ std::string to_smv_predicate(std::string_view expr) {
     // Strip domain prefixes (in., out., reg.)
     for (const char* prefix : {"in.", "out.", "reg."}) {
         size_t pos = 0;
+        size_t plen = std::string_view(prefix).length();
         while ((pos = s.find(prefix, pos)) != std::string::npos) {
-            s.erase(pos, std::string_view(prefix).length());
+            bool prefix_boundary =
+                (pos == 0) || (!std::isalnum(static_cast<unsigned char>(s[pos - 1])) && s[pos - 1] != '_');
+            bool suffix_ident = (pos + plen < s.size()) &&
+                                (std::isalpha(static_cast<unsigned char>(s[pos + plen])) || s[pos + plen] == '_');
+            if (prefix_boundary && suffix_ident) {
+                s.erase(pos, plen);
+            } else {
+                pos += plen;
+            }
         }
     }
 
@@ -447,6 +456,13 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
     // Initial variables
     for (const auto& var : model.variables) {
         std::string val = var.initial_value.empty() ? "0" : var.initial_value;
+        if (var.type.is_boolean()) {
+            if (val == "1" || val == "true" || val == "TRUE") {
+                val = "TRUE";
+            } else {
+                val = "FALSE";
+            }
+        }
         out << "  init(" << sanitize_smv_ident(var.name) << ") := " << val << ";\n";
     }
 

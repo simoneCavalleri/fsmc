@@ -178,7 +178,11 @@ std::string McdcHarnessGenerator::generate_gtest_harness(const FsmIr& ir) {
             continue;
         }
 
-        std::vector<std::string> conditions = parsed_guard.atomic_guards;
+        std::vector<std::string> conditions;
+        expr_ast->collect_variables(conditions);
+        if (conditions.empty()) {
+            conditions = parsed_guard.atomic_guards;
+        }
         auto pairs = compute_mcdc_pairs(*expr_ast, conditions);
         if (pairs.empty()) {
             continue;

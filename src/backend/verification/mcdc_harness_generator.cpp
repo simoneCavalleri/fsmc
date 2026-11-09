@@ -60,17 +60,32 @@ std::unique_ptr<BoolExpr> McdcHarnessGenerator::parse_simple_expr(const std::str
         }
     }
 
-    // Check for NOT ('!')
+    // Check for enclosing parentheses that match each other
+    if (expr_str.size() >= 2 && expr_str.front() == '(' && expr_str.back() == ')') {
+        int depth = 0;
+        bool outer_matches = true;
+        for (std::size_t i = 0; i + 1 < expr_str.size(); ++i) {
+            if (expr_str[i] == '(') {
+                ++depth;
+            } else if (expr_str[i] == ')') {
+                --depth;
+                if (depth == 0) {
+                    outer_matches = false;
+                    break;
+                }
+            }
+        }
+        if (outer_matches && depth == 1) {
+            return parse_simple_expr(trim(expr_str.substr(1, expr_str.size() - 2)), atomic_conditions);
+        }
+    }
+
+    // Check for NOT ('!') when it applies to the entire expression (e.g. !(A && B) or !A)
     if (!expr_str.empty() && expr_str.front() == '!') {
         auto sub = parse_simple_expr(trim(expr_str.substr(1)), atomic_conditions);
         if (sub) {
             return std::make_unique<NotExpr>(std::move(sub));
         }
-    }
-
-    // Check for enclosing parentheses
-    if (expr_str.size() >= 2 && expr_str.front() == '(' && expr_str.back() == ')') {
-        return parse_simple_expr(trim(expr_str.substr(1, expr_str.size() - 2)), atomic_conditions);
     }
 
     return std::make_unique<VarExpr>(expr_str);
@@ -79,7 +94,7 @@ std::unique_ptr<BoolExpr> McdcHarnessGenerator::parse_simple_expr(const std::str
 std::vector<McdcIndependencePair> McdcHarnessGenerator::compute_mcdc_pairs(const BoolExpr& expr,
                                                                            const std::vector<std::string>& conditions) {
     std::vector<McdcIndependencePair> result;
-    std::size_t n = conditions.size();
+    std::size_t n = std::min<std::size_t>(conditions.size(), 16);
     std::size_t total_combinations = 1ULL << n;
 
     // Build truth table
@@ -169,8 +184,22 @@ std::string McdcHarnessGenerator::generate_gtest_harness(const FsmIr& ir) {
             continue;
         }
 
+        auto sanitize_ident = [](std::string_view s) {
+            std::string res;
+            res.reserve(s.size());
+            for (char c : s) {
+                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+                    res.push_back(c);
+                } else {
+                    res.push_back('_');
+                }
+            }
+            return res.empty() ? std::string("State") : res;
+        };
+
         ++test_idx;
-        std::string test_name = "McdcCoverage_Trans_" + std::to_string(test_idx) + "_" + t.source + "_to_" + t.target;
+        std::string test_name = "McdcCoverage_Trans_" + std::to_string(test_idx) + "_" + sanitize_ident(t.source) +
+                                "_to_" + sanitize_ident(t.target);
         out << "/**\n";
         out << " * @brief MC/DC Test Suite for Transition: " << t.source << " -> " << t.target << "\n";
         out << " * Guard: [" << diag_guard << "]\n";
@@ -183,14 +212,17 @@ std::string McdcHarnessGenerator::generate_gtest_harness(const FsmIr& ir) {
         out << "\n */\n";
         out << "TEST(McdcSafetyHarness, " << test_name << ") {\n";
         out << "    // Decision evaluation lambda\n";
-        out << "    auto evaluate_decision = [](bool ";
+        std::map<std::string, std::string> param_map;
+        out << "    auto evaluate_decision = [](";
         for (size_t i = 0; i < conditions.size(); ++i) {
             if (i > 0)
-                out << ", bool ";
-            out << conditions[i];
+                out << ", ";
+            std::string pname = "c" + std::to_string(i);
+            param_map[conditions[i]] = pname;
+            out << "bool " << pname;
         }
         out << ") -> bool {\n";
-        out << "        return (" << diag_guard << ");\n";
+        out << "        return " << expr_ast->to_cpp_expr(param_map) << ";\n";
         out << "    };\n\n";
 
         for (const auto& pair : pairs) {

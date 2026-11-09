@@ -22,6 +22,9 @@ class Cpp17StandaloneRuntime {
     static void emit(std::ostream& out, const GeneratorOptions& opts) {
         out << R"raw_fsm_runtime(
 // Core System Includes
+#ifndef FSMC_CPP17_RUNTIME
+#define FSMC_CPP17_RUNTIME 1
+#endif
 #include <array>
 #include <cassert>
 #include <chrono>
@@ -33,7 +36,6 @@ class Cpp17StandaloneRuntime {
 #include <iterator>
 #include <optional>
 #include <ostream>
-#include <span>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
@@ -552,15 +554,16 @@ constexpr bool state_is_or_descendant_of_static(std::string_view target_name) no
     if (get_state_name_static<State>() == target_name || get_type_name<State>() == target_name) {
         return true;
     }
+    if constexpr (detail::has_parent_name<State>::value) {
+        if constexpr (!State::parent.empty()) {
+            if (State::parent == target_name) {
+                return true;
+            }
+        }
+    }
     if constexpr (detail::has_parent_type<State>::value) {
         using Parent = typename State::parent_type;
         return state_is_or_descendant_of_static<Parent>(target_name);
-    } else if constexpr (detail::has_parent_name<State>::value) {
-        if constexpr (!State::parent.empty()) {
-            return State::parent == target_name;
-        } else {
-            return false;
-        }
     } else {
         return false;
     }
@@ -571,18 +574,7 @@ constexpr bool state_is_or_descendant_of(const State& state, std::string_view ta
     if (get_state_name(state) == target_name || get_type_name<State>() == target_name) {
         return true;
     }
-    if constexpr (detail::has_parent_type<State>::value) {
-        using Parent = typename State::parent_type;
-        return state_is_or_descendant_of_static<Parent>(target_name);
-    } else if constexpr (detail::has_parent_name<State>::value) {
-        if constexpr (!State::parent.empty()) {
-            return State::parent == target_name;
-        } else {
-            return false;
-        }
-    } else {
-        return false;
-    }
+    return state_is_or_descendant_of_static<State>(target_name);
 }
 
 }  // namespace fsm
@@ -836,7 +828,7 @@ namespace detail {
 
 // Action channel tuple layout: (0: evt, 1: src, 2: dst, 3: in, 4: out, 5: reg, 6: srv)
 template <typename Action, typename Tuple>
-constexpr void invoke_action_fallback(Action& action, Tuple& t) {
+constexpr void invoke_action_fallback(Action&& action, Tuple& t) {
     constexpr std::size_t N = std::tuple_size_v<std::remove_reference_t<Tuple>>;
 
 #if defined(__cpp_concepts) && __cpp_concepts >= 201907L && __cplusplus >= 202002L
@@ -1034,12 +1026,12 @@ constexpr void invoke_action_fallback(Action& action, Tuple& t) {
 // Safe invocation of action
 // ----------------------------------------------------------------------------
 template <typename Action, typename... Args>
-constexpr void call_action(Action& action, Args&&... args) {
+constexpr void call_action(Action&& action, Args&&... args) {
     if constexpr (std::is_invocable_v<Action, Args...>) {
         action(std::forward<Args>(args)...);
     } else {
         auto t = std::forward_as_tuple(args...);
-        detail::invoke_action_fallback(action, t);
+        detail::invoke_action_fallback(std::forward<Action>(action), t);
     }
 }
 
@@ -1378,23 +1370,24 @@ struct empty_storage {};
 
 namespace detail {
 template <typename SubState, typename SuperState, typename = void>
-struct is_substate_of_impl : std::false_type {};
-
-template <typename SubState, typename SuperState>
-struct is_substate_of_impl<SubState, SuperState, std::void_t<typename SubState::parent_type>> {
-    static constexpr bool value =
-        std::is_same_v<typename SubState::parent_type, SuperState> ||
-        (get_state_name_static<SuperState>() == get_state_name_static<typename SubState::parent_type>()) ||
-        is_substate_of_impl<typename SubState::parent_type, SuperState>::value;
-};
-
-template <typename SubState, typename SuperState, typename = void>
 struct is_substate_by_name : std::false_type {};
 
 template <typename SubState, typename SuperState>
 struct is_substate_by_name<SubState, SuperState, std::void_t<decltype(SubState::parent)>> {
     static constexpr bool value =
         (get_state_name_static<SuperState>() == SubState::parent) || (get_type_name<SuperState>() == SubState::parent);
+};
+
+template <typename SubState, typename SuperState, typename = void>
+struct is_substate_of_impl : is_substate_by_name<SubState, SuperState> {};
+
+template <typename SubState, typename SuperState>
+struct is_substate_of_impl<SubState, SuperState, std::void_t<typename SubState::parent_type>> {
+    static constexpr bool value =
+        std::is_same_v<typename SubState::parent_type, SuperState> ||
+        (get_state_name_static<SuperState>() == get_state_name_static<typename SubState::parent_type>()) ||
+        is_substate_by_name<SubState, SuperState>::value ||
+        is_substate_of_impl<typename SubState::parent_type, SuperState>::value;
 };
 }  // namespace detail
 
@@ -1446,16 +1439,14 @@ inline constexpr bool is_deferred_event_v = []() constexpr {
 
 namespace detail {
 template <typename State, typename = void>
-struct ancestor_depth : std::integral_constant<std::size_t, 0> {};
+struct ancestor_depth : std::integral_constant<std::size_t, has_parent_name<State>::value ? 1 : 0> {};
 
 template <typename State>
 struct ancestor_depth<State, std::void_t<typename State::parent_type>>
     : std::integral_constant<std::size_t, 1 + ancestor_depth<typename State::parent_type>::value> {};
 
 template <typename State>
-struct state_parent_capacity
-    : std::integral_constant<std::size_t, (has_parent_type<State>::value ? ancestor_depth<State>::value
-                                                                         : (has_parent_name<State>::value ? 1 : 0))> {};
+struct state_parent_capacity : ancestor_depth<State> {};
 }  // namespace detail
 
 // Introspection for History & Deferred events across unique state list
@@ -1876,6 +1867,9 @@ class static_vector {
             for (std::size_t i = 0; i < other.size_; ++i) {
                 data_[i] = other.data_[i];
             }
+            for (std::size_t i = other.size_; i < size_; ++i) {
+                data_[i] = T{};
+            }
             size_ = other.size_;
         }
         return *this;
@@ -1884,6 +1878,7 @@ class static_vector {
     constexpr static_vector(static_vector&& other) noexcept(std::is_nothrow_move_constructible_v<T>) {
         for (std::size_t i = 0; i < other.size_; ++i) {
             data_[i] = std::move(other.data_[i]);
+            other.data_[i] = T{};
         }
         size_ = other.size_;
         other.size_ = 0;
@@ -1893,6 +1888,10 @@ class static_vector {
         if (this != &other) {
             for (std::size_t i = 0; i < other.size_; ++i) {
                 data_[i] = std::move(other.data_[i]);
+                other.data_[i] = T{};
+            }
+            for (std::size_t i = other.size_; i < size_; ++i) {
+                data_[i] = T{};
             }
             size_ = other.size_;
             other.size_ = 0;
@@ -1906,7 +1905,12 @@ class static_vector {
     [[nodiscard]] constexpr size_type max_size() const noexcept { return Capacity; }
     [[nodiscard]] constexpr size_type capacity() const noexcept { return Capacity; }
 
-    constexpr void clear() noexcept { size_ = 0; }
+    constexpr void clear() noexcept {
+        for (size_type i = 0; i < size_; ++i) {
+            data_[i] = T{};
+        }
+        size_ = 0;
+    }
 
     constexpr bool push_back(const T& value) noexcept {
         if (full()) {
@@ -2200,6 +2204,10 @@ class deterministic_timer_manager<0> {
 
     constexpr bool start_timer(std::uint32_t /*timer_id*/, std::uint64_t /*duration_ms*/,
                                bool /*periodic*/ = false) noexcept {
+        return false;
+    }
+
+    constexpr bool set_timer_duration(std::uint32_t /*timer_id*/, std::uint64_t /*duration_ms*/) noexcept {
         return false;
     }
 
@@ -2583,9 +2591,11 @@ struct seq_ {
 
     template <typename... Args>
     constexpr void operator()(Args&&... args) const {
-        call_action(Action1{}, args...);
+        Action1 a1{};
+        call_action(a1, args...);
         if constexpr (sizeof...(Rest) == 0) {
-            call_action(Action2{}, args...);
+            Action2 a2{};
+            call_action(a2, args...);
         } else {
             seq_<Action2, Rest...>{}(std::forward<Args>(args)...);
         }
@@ -2748,8 +2758,8 @@ struct on<EventType, void> {
 // Helper for fluent creation
 template <typename SourceState, typename EventType, typename TargetState, typename ActionType = no_action,
           typename GuardType = no_guard>
-constexpr auto make_transition(ActionType action = {}, GuardType guard = {}) {
-    return transition<SourceState, EventType, TargetState, ActionType, GuardType>{std::move(action), std::move(guard)};
+constexpr auto make_transition(ActionType /*action*/ = {}, GuardType /*guard*/ = {}) {
+    return transition<SourceState, EventType, TargetState, ActionType, GuardType>{};
 }
 
 }  // namespace fsm
@@ -2994,8 +3004,8 @@ class deferred_manager<Table, DeferredCapacity, true> {
     using event_variant = typename Table::event_variant;
 
     template <typename Event>
-    void defer_event(const Event& event) {
-        deferred_queue_.push_back(event_variant{event});
+    bool defer_event(const Event& event) {
+        return deferred_queue_.push_back(event_variant{event});
     }
 
     [[nodiscard]] std::size_t deferred_count() const noexcept { return deferred_queue_.size(); }
@@ -3039,7 +3049,9 @@ class deferred_manager<Table, DeferredCapacity, false> {
     static constexpr std::size_t max_deferred_capacity = 0;
 
     template <typename Event>
-    void defer_event(const Event& /*event*/) noexcept {}
+    bool defer_event(const Event& /*event*/) noexcept {
+        return false;
+    }
     [[nodiscard]] std::size_t deferred_count() const noexcept { return 0; }
     void clear_deferred_events() noexcept {}
 
@@ -3168,30 +3180,40 @@ class invariant_manager<Table, false> {
 // --- Begin: detail/transition_executor.hpp ---
 namespace fsm::detail {
 
-template <typename Current, typename Target, typename State, typename Event, typename In, typename Out,
-          typename Registers, typename Services>
+template <typename SubState, typename SuperState>
+inline constexpr bool is_strict_substate_of_v =
+    !std::is_same_v<SubState, SuperState> &&
+    (get_state_name_static<SubState>() != get_state_name_static<SuperState>()) &&
+    is_substate_of_v<SubState, SuperState>;
+
+template <typename Ancestor, typename TransSrc, typename Target>
+inline constexpr bool is_lca_or_above_v =
+    is_strict_substate_of_v<TransSrc, Ancestor> && is_strict_substate_of_v<Target, Ancestor>;
+
+template <typename Current, typename Target, typename TransSrc = Current, typename State, typename Event, typename In,
+          typename Out, typename Registers, typename Services>
 constexpr void call_hierarchical_on_exit(State& current_state, const Event& event, const In& in, Out& out,
                                          Registers& reg, Services& srv) {
     call_on_exit(current_state, event, in, out, reg, srv);
     if constexpr (has_parent_type<State>::value) {
         using Parent = typename State::parent_type;
-        if constexpr (!is_substate_of_v<Target, Parent>) {
+        if constexpr (!is_lca_or_above_v<Parent, TransSrc, Target>) {
             if constexpr (std::is_default_constructible_v<Parent>) {
                 Parent parent_inst{};
-                call_hierarchical_on_exit<Current, Target, Parent>(parent_inst, event, in, out, reg, srv);
+                call_hierarchical_on_exit<Current, Target, TransSrc, Parent>(parent_inst, event, in, out, reg, srv);
             }
         }
     }
 }
 
-template <typename Current, typename Target, typename Ancestor, typename Event, typename In, typename Out,
-          typename Registers, typename Services>
+template <typename Current, typename Target, typename TransSrc, typename Ancestor, typename Event, typename In,
+          typename Out, typename Registers, typename Services>
 constexpr void call_ancestor_on_enter_helper(const Event& event, const In& in, Out& out, Registers& reg,
                                              Services& srv) {
     if constexpr (has_parent_type<Ancestor>::value) {
         using SuperParent = typename Ancestor::parent_type;
-        if constexpr (!is_substate_of_v<Current, SuperParent>) {
-            call_ancestor_on_enter_helper<Current, Target, SuperParent>(event, in, out, reg, srv);
+        if constexpr (!is_lca_or_above_v<SuperParent, TransSrc, Target>) {
+            call_ancestor_on_enter_helper<Current, Target, TransSrc, SuperParent>(event, in, out, reg, srv);
         }
     }
     if constexpr (!std::is_same_v<Ancestor, Target>) {
@@ -3202,14 +3224,14 @@ constexpr void call_ancestor_on_enter_helper(const Event& event, const In& in, O
     }
 }
 
-template <typename Current, typename Target, typename State, typename Event, typename In, typename Out,
-          typename Registers, typename Services>
+template <typename Current, typename Target, typename TransSrc = Current, typename State, typename Event, typename In,
+          typename Out, typename Registers, typename Services>
 constexpr void call_hierarchical_on_enter(State& target_state, const Event& event, const In& in, Out& out,
                                           Registers& reg, Services& srv) {
     if constexpr (has_parent_type<Target>::value) {
         using Parent = typename Target::parent_type;
-        if constexpr (!is_substate_of_v<Current, Parent>) {
-            call_ancestor_on_enter_helper<Current, Target, Parent>(event, in, out, reg, srv);
+        if constexpr (!is_lca_or_above_v<Parent, TransSrc, Target>) {
+            call_ancestor_on_enter_helper<Current, Target, TransSrc, Parent>(event, in, out, reg, srv);
         }
     }
     call_on_enter(target_state, event, in, out, reg, srv);
@@ -3269,18 +3291,7 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
                                               std::index_sequence<Indices...> /*indices*/) {
     constexpr bool has_observer = !std::is_same_v<std::decay_t<ObserverCallback>, no_observer>;
 
-    auto resolve_srv = [&]() -> Services& {
-        if (services_ != nullptr) {
-            return *services_;
-        }
-        if constexpr (std::is_default_constructible_v<Services>) {
-            static Services dummy{};
-            return dummy;
-        } else {
-            std::terminate();
-        }
-    };
-    Services& srv = resolve_srv();
+    Services& srv = (services_ != nullptr) ? *services_ : fsm_inst.resolve_services();
 
     bool any_guard_rejected = false;
     std::optional<transition_trace> executed_trace = std::nullopt;
@@ -3357,12 +3368,12 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
                 // 3. state reassignment
                 // 4. on_enter(dst_state)
                 TransDst dst_state{};
-                call_hierarchical_on_exit<CurrentSrc, TransDst>(src_state, event, in, out, registers_, srv);
+                call_hierarchical_on_exit<CurrentSrc, TransDst, TransSrc>(src_state, event, in, out, registers_, srv);
                 Action act{};
                 call_action(act, event, src_state, dst_state, in, out, registers_, srv);
 
                 fsm_inst.set_current_state_variant(std::move(dst_state));
-                call_hierarchical_on_enter<CurrentSrc, TransDst>(
+                call_hierarchical_on_enter<CurrentSrc, TransDst, TransSrc>(
                     std::get<TransDst>(fsm_inst.get_current_state_variant()), event, in, out, registers_, srv);
 
                 const auto dst_name = get_state_name(std::get<TransDst>(fsm_inst.get_current_state_variant()));
@@ -3401,7 +3412,7 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
 
         out << R"raw_fsm_runtime(
 // --- Begin: serialization.hpp ---
-#if __cplusplus >= 202002L || (defined(__cpp_lib_span) && __cpp_lib_span >= 202002L)
+#if !defined(FSMC_CPP17_RUNTIME) && (__cplusplus >= 202002L || (defined(__cpp_lib_span) && __cpp_lib_span >= 202002L))
 #endif
 
 namespace fsm {
@@ -3506,7 +3517,7 @@ bool deserialize_state(FSM& machine, const std::uint8_t* src, std::size_t size) 
     return machine.deserialize(src, size, read);
 }
 
-#if __cplusplus >= 202002L || (defined(__cpp_lib_span) && __cpp_lib_span >= 202002L)
+#if !defined(FSMC_CPP17_RUNTIME) && (__cplusplus >= 202002L || (defined(__cpp_lib_span) && __cpp_lib_span >= 202002L))
 /**
  * @brief Standalone non-member serialization helper taking a destination span.
  */
@@ -3894,12 +3905,39 @@ class fsm {
 
     template <typename DurationRep>
     step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out, services_type& srv) {
+        std::uint64_t delta_ms = 0;
         if constexpr (std::is_integral_v<DurationRep>) {
-            this->tick(static_cast<std::uint64_t>(dt));
+            delta_ms = static_cast<std::uint64_t>(dt);
         } else {
-            this->tick(dt);
+            delta_ms = duration_to_ms(dt);
         }
-        return step(in, out, srv);
+        if constexpr (has_advance_tick_v<observer_type>) {
+            observer_.advance_tick(delta_ms);
+        }
+        invariant_mgr_.advance_time(delta_ms);
+        std::visit([this, &in, &out, &srv](auto& st) { call_do_activity(st, in, out, this->registers_, srv); },
+                   current_state_);
+        std::optional<dispatch_result> timed_res = std::nullopt;
+        timer_mgr_.tick(delta_ms, [this, &in, &out, &srv, &timed_res](std::uint32_t timer_id) {
+            auto r = dispatch_timed_timer(timer_id, in, out, srv);
+            if (r.has_value() && (r->is_success() || !timed_res.has_value())) {
+                timed_res = r;
+            }
+        });
+        invariant_mgr_.check_invariants(current_state_);
+        auto res = dispatch_direct_ports(anonymous_event{}, in, out, srv);
+        if constexpr (has_deferred) {
+            if (res.is_success()) {
+                process_deferred_queue_ports(in, out, srv);
+            }
+        }
+        if (res.is_success()) {
+            return step_result{step_status::transitioned, res.trace};
+        }
+        if (timed_res.has_value() && timed_res->is_success()) {
+            return step_result{step_status::transitioned, timed_res->trace};
+        }
+        return step_result{step_status::steady, res.trace};
     }
 
     step_result step(const in_ports_type& in, out_ports_type& out) { return step(in, out, resolve_services()); }
@@ -3932,8 +3970,7 @@ class fsm {
                     [this, &event](const auto& st) -> bool {
                         using StateType = std::decay_t<decltype(st)>;
                         if constexpr (is_deferred_event_v<StateType, Event>) {
-                            this->defer_event(event);
-                            return true;
+                            return this->defer_event(event);
                         }
                         return false;
                     },
@@ -4008,8 +4045,8 @@ class fsm {
 
     // Deferred events management
     template <typename Event>
-    void defer_event(const Event& event) {
-        deferred_mgr_.defer_event(event);
+    bool defer_event(const Event& event) {
+        return deferred_mgr_.defer_event(event);
     }
 
     template <bool D = has_deferred>
@@ -4258,8 +4295,7 @@ class fsm {
 
     template <typename Rep, typename Period, typename Callback>
     std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired) {
-        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(dt).count();
-        return tick(static_cast<std::uint64_t>(ms > 0 ? ms : 1), on_expired);
+        return tick(duration_to_ms(dt), on_expired);
     }
 
     template <typename Rep, typename Period>
@@ -4377,6 +4413,12 @@ class fsm {
         if (header.state_index >= std::variant_size_v<state_variant>) {
             return false;
         }
+        if (header.history_count > max_history_capacity) {
+            return false;
+        }
+        if (header.timer_count > TimerCapacity) {
+            return false;
+        }
 
         constexpr std::uint32_t expected_reg_sz =
             (!std::is_same_v<registers_type, no_registers> && std::is_trivially_copyable_v<registers_type>)
@@ -4392,36 +4434,44 @@ class fsm {
 
         std::size_t hist_count = header.history_count;
         for (std::size_t i = 0; i < hist_count; ++i) {
-            if (curr + sizeof(std::uint16_t) > end) {
+            if (static_cast<std::size_t>(end - curr) < sizeof(std::uint16_t)) {
                 return false;
             }
             std::uint16_t plen = 0;
             std::memcpy(&plen, curr, sizeof(plen));
             curr += sizeof(plen);
-            if (curr + plen > end) {
+            if (static_cast<std::size_t>(end - curr) < plen) {
+                return false;
+            }
+            std::string_view parent_sv(reinterpret_cast<const char*>(curr), plen);
+            if (!resolve_static_state_name(parent_sv).has_value()) {
                 return false;
             }
             curr += plen;
 
-            if (curr + sizeof(std::uint16_t) > end) {
+            if (static_cast<std::size_t>(end - curr) < sizeof(std::uint16_t)) {
                 return false;
             }
             std::uint16_t slen = 0;
             std::memcpy(&slen, curr, sizeof(slen));
             curr += sizeof(slen);
-            if (curr + slen > end) {
+            if (static_cast<std::size_t>(end - curr) < slen) {
+                return false;
+            }
+            std::string_view substate_sv(reinterpret_cast<const char*>(curr), slen);
+            if (!resolve_static_state_name(substate_sv).has_value()) {
                 return false;
             }
             curr += slen;
         }
 
-        std::size_t timer_bytes = header.timer_count * sizeof(snapshot_timer_entry);
-        if (curr + timer_bytes > end) {
+        if (header.timer_count > static_cast<std::size_t>(end - curr) / sizeof(snapshot_timer_entry)) {
             return false;
         }
+        std::size_t timer_bytes = static_cast<std::size_t>(header.timer_count) * sizeof(snapshot_timer_entry);
         curr += timer_bytes;
 
-        if (curr + header.registers_size > end) {
+        if (static_cast<std::size_t>(end - curr) < header.registers_size) {
             return false;
         }
         curr += header.registers_size;
@@ -4450,7 +4500,11 @@ class fsm {
             std::string_view substate_sv(reinterpret_cast<const char*>(curr), slen);
             curr += slen;
 
-            history_mgr_.record_history(parent_sv, substate_sv);
+            auto static_parent = resolve_static_state_name(parent_sv);
+            auto static_substate = resolve_static_state_name(substate_sv);
+            if (static_parent.has_value() && static_substate.has_value()) {
+                history_mgr_.record_history(*static_parent, *static_substate);
+            }
         }
 
         timer_mgr_.reset();
@@ -4472,7 +4526,7 @@ class fsm {
         return true;
     }
 
-#if __cplusplus >= 202002L || (defined(__cpp_lib_span) && __cpp_lib_span >= 202002L)
+#if !defined(FSMC_CPP17_RUNTIME) && (__cplusplus >= 202002L || (defined(__cpp_lib_span) && __cpp_lib_span >= 202002L))
     bool serialize(std::span<std::uint8_t> buffer, std::size_t& bytes_written) const noexcept {
         return serialize(buffer.data(), buffer.size(), bytes_written);
     }
@@ -4493,17 +4547,57 @@ class fsm {
         // Default: no-op
     }
 
-  private:
     [[nodiscard]] services_type& resolve_services() const {
         if (services_ != nullptr) {
             return *services_;
         }
         if constexpr (std::is_default_constructible_v<services_type>) {
-            static services_type dummy{};
-            return dummy;
+            return default_services_;
         } else {
             std::terminate();
         }
+    }
+
+  private:
+    template <typename Rep, typename Period>
+    static constexpr std::uint64_t duration_to_ms(std::chrono::duration<Rep, Period> dt) noexcept {
+        using Duration = std::chrono::duration<Rep, Period>;
+        if (dt <= Duration::zero()) {
+            return 0;
+        }
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(dt).count();
+        return static_cast<std::uint64_t>(ms > 0 ? ms : 1);
+    }
+
+    template <typename State>
+    static constexpr std::optional<std::string_view> match_state_or_ancestor_name(std::string_view sv) noexcept {
+        constexpr std::string_view sname = get_state_name_static<State>();
+        if (sv == sname) {
+            return sname;
+        }
+        if constexpr (detail::has_parent_name<State>::value) {
+            if constexpr (!State::parent.empty()) {
+                if (sv == State::parent) {
+                    return State::parent;
+                }
+            }
+        }
+        if constexpr (detail::has_parent_type<State>::value) {
+            return match_state_or_ancestor_name<typename State::parent_type>(sv);
+        }
+        return std::nullopt;
+    }
+
+    template <typename... States>
+    static constexpr std::optional<std::string_view> resolve_static_state_name_from_list(
+        std::string_view sv, type_list<States...>) noexcept {
+        std::optional<std::string_view> result = std::nullopt;
+        ((result.has_value() ? false : (result = match_state_or_ancestor_name<States>(sv)).has_value()) || ...);
+        return result;
+    }
+
+    static constexpr std::optional<std::string_view> resolve_static_state_name(std::string_view sv) noexcept {
+        return resolve_static_state_name_from_list(sv, typename Table::states{});
     }
 
     void enter_initial_state() {
@@ -4548,29 +4642,48 @@ class fsm {
     }
 
     template <std::size_t Index>
-    void dispatch_timed_timer_at_index(std::uint32_t timer_id) {
+    void dispatch_timed_timer_at_index(std::uint32_t timer_id, const in_ports_type& in, out_ports_type& out,
+                                       services_type& srv, std::optional<dispatch_result>& last_timed_res) {
         using row_type = std::tuple_element_t<Index, decltype(Table::rows)>;
         using event_type = typename row_type::event;
         if constexpr (is_timed_event_v<event_type> && static_timed_event_traits<event_type>::supported) {
             if (timer_id == static_cast<std::uint32_t>(Index + 1)) {
-                (void)dispatch(event_type{});
+                auto r = dispatch(event_type{}, in, out, srv);
+                if (r.is_success() || !last_timed_res.has_value()) {
+                    last_timed_res = r;
+                }
             }
         }
     }
 
     template <std::size_t... Indices>
-    void dispatch_timed_timer_impl(std::uint32_t timer_id, std::index_sequence<Indices...>) {
-        (dispatch_timed_timer_at_index<Indices>(timer_id), ...);
+    std::optional<dispatch_result> dispatch_timed_timer_impl(std::uint32_t timer_id, const in_ports_type& in,
+                                                             out_ports_type& out, services_type& srv,
+                                                             std::index_sequence<Indices...>) {
+        std::optional<dispatch_result> last_timed_res = std::nullopt;
+        (dispatch_timed_timer_at_index<Indices>(timer_id, in, out, srv, last_timed_res), ...);
+        return last_timed_res;
+    }
+
+    std::optional<dispatch_result> dispatch_timed_timer(std::uint32_t timer_id, const in_ports_type& in,
+                                                        out_ports_type& out, services_type& srv) {
+        return dispatch_timed_timer_impl(timer_id, in, out, srv,
+                                         std::make_index_sequence<std::tuple_size_v<decltype(Table::rows)>>{});
     }
 
     void dispatch_timed_timer(std::uint32_t timer_id) {
-        dispatch_timed_timer_impl(timer_id, std::make_index_sequence<std::tuple_size_v<decltype(Table::rows)>>{});
+        in_ports_type dummy_in{};
+        out_ports_type dummy_out{};
+        (void)dispatch_timed_timer(timer_id, dummy_in, dummy_out, resolve_services());
     }
 
     state_variant current_state_;
     FSMC_NO_UNIQUE_ADDRESS Table table_{};
     FSMC_NO_UNIQUE_ADDRESS registers_type registers_{};
     services_type* services_{nullptr};
+    FSMC_NO_UNIQUE_ADDRESS mutable std::conditional_t<std::is_default_constructible_v<services_type>, services_type,
+                                                      empty_storage>
+        default_services_{};
     FSMC_NO_UNIQUE_ADDRESS observer_type observer_{};
     FSMC_NO_UNIQUE_ADDRESS detail::history_manager<Table, has_history> history_mgr_{};
     FSMC_NO_UNIQUE_ADDRESS detail::deferred_manager<Table, DeferredCapacity, has_deferred> deferred_mgr_{};
@@ -4681,7 +4794,7 @@ class spsc_ring_buffer {
     spsc_ring_buffer() = default;
 
     ~spsc_ring_buffer() {
-        const std::size_t head = head_.load(std::memory_order_relaxed);
+        const std::size_t head = head_.load(std::memory_order_acquire);
         std::size_t tail = tail_.load(std::memory_order_relaxed);
         while (tail != head) {
             get_slot(tail)->~T();
@@ -4744,7 +4857,7 @@ class spsc_ring_buffer {
     }
 
     void clear() noexcept {
-        const std::size_t head = head_.load(std::memory_order_relaxed);
+        const std::size_t head = head_.load(std::memory_order_acquire);
         std::size_t tail = tail_.load(std::memory_order_relaxed);
         while (tail != head) {
             get_slot(tail)->~T();
@@ -4774,7 +4887,7 @@ class spsc_ring_buffer {
 
     // Aligned byte storage for placement-new.
     T* get_slot(std::size_t index) noexcept {
-        return reinterpret_cast<T*>(raw_storage_.data() + (index & IndexMask) * sizeof(T));
+        return std::launder(reinterpret_cast<T*>(raw_storage_.data() + (index & IndexMask) * sizeof(T)));
     }
 
     // C4324: MSVC warns when a struct is padded due to __declspec(align) / alignas.
@@ -4873,6 +4986,7 @@ class static_ring_buffer {
             return std::nullopt;
         }
         T item = std::move(buffer_[head_]);
+        buffer_[head_] = T{};
         head_ = (head_ + 1) % Capacity;
         --size_;
         return item;
@@ -4893,6 +5007,11 @@ class static_ring_buffer {
     }
 
     constexpr void clear() noexcept {
+        while (!empty()) {
+            buffer_[head_] = T{};
+            head_ = (head_ + 1) % Capacity;
+            --size_;
+        }
         head_ = 0;
         tail_ = 0;
         size_ = 0;
@@ -4974,11 +5093,14 @@ class async_event_queue {
     }
 
     void clear() {
-        std::scoped_lock lock(mutex_);
-        std::queue<HandlerType> empty_q;
-        std::swap(event_queue_, empty_q);
-        std::priority_queue<timed_event_type, std::vector<timed_event_type>, std::greater<>> empty_timed;
-        std::swap(timed_queue_, empty_timed);
+        {
+            std::scoped_lock lock(mutex_);
+            std::queue<HandlerType> empty_q;
+            std::swap(event_queue_, empty_q);
+            std::priority_queue<timed_event_type, std::vector<timed_event_type>, std::greater<>> empty_timed;
+            std::swap(timed_queue_, empty_timed);
+        }
+        idle_cv_.notify_all();
     }
 
     // Single-event pop for manual polling or worker loop
@@ -4988,11 +5110,13 @@ class async_event_queue {
         if (!timed_queue_.empty() && now >= timed_queue_.top().deadline) {
             out_task = std::move(const_cast<timed_event_type&>(timed_queue_.top()).task);
             timed_queue_.pop();
+            ++in_flight_;
             return true;
         }
         if (!event_queue_.empty()) {
             out_task = std::move(event_queue_.front());
             event_queue_.pop();
+            ++in_flight_;
             return true;
         }
         return false;
@@ -5021,11 +5145,13 @@ class async_event_queue {
             if (!timed_queue_.empty() && now >= timed_queue_.top().deadline) {
                 out_task = std::move(const_cast<timed_event_type&>(timed_queue_.top()).task);
                 timed_queue_.pop();
+                ++in_flight_;
                 return true;
             }
             if (!event_queue_.empty()) {
                 out_task = std::move(event_queue_.front());
                 event_queue_.pop();
+                ++in_flight_;
                 return true;
             }
             if (!running_) {
@@ -5038,6 +5164,25 @@ class async_event_queue {
                 cv_.wait(lock);
             }
         }
+    }
+
+    void finish_task() {
+        {
+            std::scoped_lock lock(mutex_);
+            if (in_flight_ > 0) {
+                --in_flight_;
+            }
+        }
+        idle_cv_.notify_all();
+    }
+
+    void wait_until_idle() {
+        std::unique_lock lock(mutex_);
+        idle_cv_.wait(lock, [this]() {
+            const auto now = std::chrono::steady_clock::now();
+            const bool has_ready_timed = !timed_queue_.empty() && now >= timed_queue_.top().deadline;
+            return event_queue_.empty() && !has_ready_timed && in_flight_ == 0;
+        });
     }
 
     void start() {
@@ -5053,6 +5198,7 @@ class async_event_queue {
             running_ = false;
         }
         cv_.notify_all();
+        idle_cv_.notify_all();
     }
 
     std::mutex& mutex() noexcept { return mutex_; }
@@ -5065,8 +5211,10 @@ class async_event_queue {
   private:
     mutable std::mutex mutex_;
     std::condition_variable cv_;
+    std::condition_variable idle_cv_;
     std::queue<HandlerType> event_queue_;
     std::priority_queue<timed_event_type, std::vector<timed_event_type>, std::greater<>> timed_queue_;
+    std::size_t in_flight_{0};
     bool running_{true};
 };
 
@@ -5084,29 +5232,31 @@ class reentrancy_tracker {
     reentrancy_tracker() = default;
 
     [[nodiscard]] bool is_reentrant_call() const noexcept {
-        return dispatching_thread_.load(std::memory_order_relaxed) == std::this_thread::get_id();
+        return dispatching_thread_.load(std::memory_order_acquire) == std::this_thread::get_id();
     }
 
-    [[nodiscard]] int depth() const noexcept { return dispatch_depth_; }
+    [[nodiscard]] int depth() const noexcept {
+        return is_reentrant_call() ? dispatch_depth_.load(std::memory_order_acquire) : 0;
+    }
 
     struct depth_guard {
         reentrancy_tracker& tracker;
 
         explicit depth_guard(reentrancy_tracker& t) : tracker(t) {
-            tracker.dispatching_thread_.store(std::this_thread::get_id(), std::memory_order_relaxed);
-            ++tracker.dispatch_depth_;
+            tracker.dispatching_thread_.store(std::this_thread::get_id(), std::memory_order_release);
+            tracker.dispatch_depth_.fetch_add(1, std::memory_order_acq_rel);
         }
 
         ~depth_guard() {
-            if (--tracker.dispatch_depth_ == 0) {
-                tracker.dispatching_thread_.store(std::thread::id{}, std::memory_order_relaxed);
+            if (tracker.dispatch_depth_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+                tracker.dispatching_thread_.store(std::thread::id{}, std::memory_order_release);
             }
         }
     };
 
   private:
     std::atomic<std::thread::id> dispatching_thread_{};
-    int dispatch_depth_{0};
+    std::atomic<int> dispatch_depth_{0};
 };
 
 }  // namespace fsm::detail
@@ -5212,6 +5362,7 @@ class diagnostic_handler_manager {
     [[nodiscard]] exception_handler get_exception_handler_copy() const { return exception_handler_; }
 
     [[nodiscard]] std::exception_ptr last_exception() const noexcept { return last_exception_; }
+    [[nodiscard]] std::exception_ptr& last_exception_ref() noexcept { return last_exception_; }
     void set_last_exception(std::exception_ptr ep) noexcept { last_exception_ = ep; }
     void clear_last_exception() noexcept { last_exception_ = nullptr; }
 
@@ -5263,31 +5414,40 @@ class worker_thread_controller {
     worker_thread_controller& operator=(worker_thread_controller&&) = delete;
 
     void start_worker(FsmRef& fsm) {
-        bool expected = false;
-        if (worker_running_.compare_exchange_strong(expected, true)) {
+        std::scoped_lock lock(lifecycle_mutex_);
+        if (!worker_running_.load(std::memory_order_acquire)) {
+            if (worker_thread_.joinable()) {
+                worker_thread_.join();
+            }
             queue_.start();
-            worker_thread_ = std::thread([this, &fsm]() { worker_loop(fsm); });
+            worker_running_.store(true, std::memory_order_release);
+            worker_thread_ = std::thread([this, &fsm]() {
+                worker_thread_id_.store(std::this_thread::get_id(), std::memory_order_release);
+                worker_loop(fsm);
+            });
+            worker_thread_id_.store(worker_thread_.get_id(), std::memory_order_release);
         }
     }
 
     void stop_worker() {
-        bool expected = true;
-        if (worker_running_.compare_exchange_strong(expected, false)) {
+        std::unique_lock lock(lifecycle_mutex_);
+        if (worker_running_.exchange(false, std::memory_order_acq_rel)) {
             queue_.stop();
             if (worker_thread_.joinable()) {
-                if (std::this_thread::get_id() != worker_thread_.get_id()) {
+                if (std::this_thread::get_id() != worker_thread_id_.load(std::memory_order_acquire)) {
                     worker_thread_.join();
                 } else {
                     worker_thread_.detach();
                 }
             }
+            worker_thread_id_.store(std::thread::id{}, std::memory_order_release);
         }
     }
 
-    [[nodiscard]] bool is_worker_running() const noexcept { return worker_running_.load(std::memory_order_relaxed); }
+    [[nodiscard]] bool is_worker_running() const noexcept { return worker_running_.load(std::memory_order_acquire); }
 
     [[nodiscard]] bool is_calling_from_worker_thread() const noexcept {
-        return worker_thread_.get_id() == std::this_thread::get_id();
+        return worker_thread_id_.load(std::memory_order_acquire) == std::this_thread::get_id();
     }
 
     void clear_queue() { queue_.clear(); }
@@ -5307,6 +5467,7 @@ class worker_thread_controller {
     bool process_one(FsmRef& fsm) {
         Task task;
         if (queue_.try_pop(task)) {
+            task_finish_guard finish_guard{queue_};
             task(fsm);
             return true;
         }
@@ -5321,24 +5482,28 @@ class worker_thread_controller {
         return processed;
     }
 
-    void wait_until_idle() {
-        while (!is_queue_empty()) {
-            std::this_thread::yield();
-        }
-    }
+    void wait_until_idle() { queue_.wait_until_idle(); }
 
   private:
+    struct task_finish_guard {
+        async_event_queue<Task>& queue;
+        ~task_finish_guard() { queue.finish_task(); }
+    };
+
     void worker_loop(FsmRef& fsm) {
-        while (worker_running_.load(std::memory_order_relaxed)) {
+        while (worker_running_.load(std::memory_order_acquire)) {
             Task task;
             if (queue_.pop_wait(task)) {
+                task_finish_guard finish_guard{queue_};
                 task(fsm);
             }
         }
     }
 
+    mutable std::mutex lifecycle_mutex_{};
     async_event_queue<Task> queue_{};
     std::atomic<bool> worker_running_{false};
+    std::atomic<std::thread::id> worker_thread_id_{};
     std::thread worker_thread_{};
 };
 
@@ -5427,37 +5592,65 @@ class thread_safe_fsm {
 
     // Diagnostic Callbacks
     void set_unhandled_handler(unhandled_handler handler) {
+        if (reentrancy_.is_reentrant_call()) {
+            diagnostics_.set_unhandled_handler(std::move(handler));
+            return;
+        }
         std::scoped_lock lock(dispatch_mutex_);
         diagnostics_.set_unhandled_handler(std::move(handler));
     }
 
     void set_guard_rejected_handler(guard_rejected_handler handler) {
+        if (reentrancy_.is_reentrant_call()) {
+            diagnostics_.set_guard_rejected_handler(std::move(handler));
+            return;
+        }
         std::scoped_lock lock(dispatch_mutex_);
         diagnostics_.set_guard_rejected_handler(std::move(handler));
     }
 
     void set_deferred_handler(deferred_handler handler) {
+        if (reentrancy_.is_reentrant_call()) {
+            diagnostics_.set_deferred_handler(std::move(handler));
+            return;
+        }
         std::scoped_lock lock(dispatch_mutex_);
         diagnostics_.set_deferred_handler(std::move(handler));
     }
 
     void set_dispatch_failure_handler(dispatch_failure_handler handler) {
+        if (reentrancy_.is_reentrant_call()) {
+            diagnostics_.set_dispatch_failure_handler(std::move(handler));
+            return;
+        }
         std::scoped_lock lock(dispatch_mutex_);
         diagnostics_.set_dispatch_failure_handler(std::move(handler));
     }
 
     void set_exception_handler(exception_handler handler) {
+        if (reentrancy_.is_reentrant_call()) {
+            diagnostics_.set_exception_handler(std::move(handler));
+            return;
+        }
         std::scoped_lock lock(dispatch_mutex_);
         diagnostics_.set_exception_handler(std::move(handler));
     }
 
     template <typename Callback>
     void set_observer(Callback&& observer) {
+        if (reentrancy_.is_reentrant_call()) {
+            diagnostics_.set_user_observer(std::forward<Callback>(observer));
+            return;
+        }
         std::scoped_lock lock(dispatch_mutex_);
         diagnostics_.set_user_observer(std::forward<Callback>(observer));
     }
 
     void clear_observer() {
+        if (reentrancy_.is_reentrant_call()) {
+            diagnostics_.clear_user_observer();
+            return;
+        }
         std::scoped_lock lock(dispatch_mutex_);
         diagnostics_.clear_user_observer();
     }
@@ -5506,6 +5699,10 @@ class thread_safe_fsm {
     }
 
     void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
+        if (reentrancy_.is_reentrant_call()) {
+            fsm_.set_invariant_violation_handler(std::move(handler));
+            return;
+        }
         std::scoped_lock lock(dispatch_mutex_);
         fsm_.set_invariant_violation_handler(std::move(handler));
     }
@@ -5679,10 +5876,11 @@ class thread_safe_fsm {
      */
     template <typename Event>
     dispatch_result send(const Event& event) {
+        if (reentrancy_.is_reentrant_call()) {
+            return queue_reentrant_event(event);
+        }
         auto snap = execute_dispatch_under_lock(event);
-        auto last_ex = diagnostics_.last_exception();
-        detail::invoke_notifications_outside_lock(event, snap, last_ex, dispatch_mutex_);
-        diagnostics_.set_last_exception(last_ex);
+        detail::invoke_notifications_outside_lock(event, snap, diagnostics_.last_exception_ref(), dispatch_mutex_);
         drain_reentrant_queue_if_outermost();
         return snap.result;
     }
@@ -5705,9 +5903,7 @@ class thread_safe_fsm {
             snap.notifications = std::move(diagnostics_.notification_buffer());
             diagnostics_.populate_snapshot_handlers(snap);
         }
-        auto last_ex = diagnostics_.last_exception();
-        detail::invoke_notifications_outside_lock(event, snap, last_ex, dispatch_mutex_);
-        diagnostics_.set_last_exception(last_ex);
+        detail::invoke_notifications_outside_lock(event, snap, diagnostics_.last_exception_ref(), dispatch_mutex_);
         drain_reentrant_queue_if_outermost();
         return snap.result;
     }
@@ -5728,59 +5924,50 @@ class thread_safe_fsm {
     // ========================================================================
 
     step_result step(const in_ports_type& in, out_ports_type& out, services_type& srv) {
-        std::scoped_lock lock(dispatch_mutex_);
-        return fsm_.step(in, out, srv);
+        return execute_synchronized_mutation([this, &in, &out, &srv]() { return fsm_.step(in, out, srv); });
     }
 
     template <typename DurationRep>
     step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out, services_type& srv) {
-        std::scoped_lock lock(dispatch_mutex_);
-        return fsm_.step(dt, in, out, srv);
+        return execute_synchronized_mutation([this, dt, &in, &out, &srv]() { return fsm_.step(dt, in, out, srv); });
     }
 
     step_result step(const in_ports_type& in, out_ports_type& out) {
-        std::scoped_lock lock(dispatch_mutex_);
-        return fsm_.step(in, out);
+        return execute_synchronized_mutation([this, &in, &out]() { return fsm_.step(in, out); });
     }
 
     template <typename DurationRep>
     step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out) {
-        std::scoped_lock lock(dispatch_mutex_);
-        return fsm_.step(dt, in, out);
+        return execute_synchronized_mutation([this, dt, &in, &out]() { return fsm_.step(dt, in, out); });
     }
 
     step_result step() {
-        std::scoped_lock lock(dispatch_mutex_);
-        return fsm_.step();
+        return execute_synchronized_mutation([this]() { return fsm_.step(); });
     }
 
     template <typename DurationRep>
     step_result step(DurationRep dt) {
-        std::scoped_lock lock(dispatch_mutex_);
-        return fsm_.step(dt);
+        return execute_synchronized_mutation([this, dt]() { return fsm_.step(dt); });
     }
 
     std::size_t tick(std::uint64_t delta_ms) {
-        std::scoped_lock lock(dispatch_mutex_);
-        return fsm_.tick(delta_ms);
+        return execute_synchronized_mutation([this, delta_ms]() { return fsm_.tick(delta_ms); });
     }
 
     template <typename Callback>
     std::size_t tick(std::uint64_t delta_ms, Callback on_expired) {
-        std::scoped_lock lock(dispatch_mutex_);
-        return fsm_.tick(delta_ms, on_expired);
+        return execute_synchronized_mutation(
+            [this, delta_ms, &on_expired]() { return fsm_.tick(delta_ms, on_expired); });
     }
 
     template <typename Rep, typename Period>
     std::size_t tick(std::chrono::duration<Rep, Period> dt) {
-        std::scoped_lock lock(dispatch_mutex_);
-        return fsm_.tick(dt);
+        return execute_synchronized_mutation([this, dt]() { return fsm_.tick(dt); });
     }
 
     template <typename Rep, typename Period, typename Callback>
     std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired) {
-        std::scoped_lock lock(dispatch_mutex_);
-        return fsm_.tick(dt, on_expired);
+        return execute_synchronized_mutation([this, dt, &on_expired]() { return fsm_.tick(dt, on_expired); });
     }
 
     // ========================================================================
@@ -5800,15 +5987,12 @@ class thread_safe_fsm {
         auto task = [this, evt = std::move(event), cb = std::forward<Callback>(callback)](fsm_type&) mutable {
             try {
                 auto snap = execute_dispatch_under_lock(evt);
-                auto last_ex = diagnostics_.last_exception();
-                detail::invoke_notifications_outside_lock(evt, snap, last_ex, dispatch_mutex_);
-                diagnostics_.set_last_exception(last_ex);
+                detail::invoke_notifications_outside_lock(evt, snap, diagnostics_.last_exception_ref(),
+                                                          dispatch_mutex_);
                 cb(snap.result);
             } catch (...) {
-                auto last_ex = diagnostics_.last_exception();
-                detail::handle_exception_outside_lock(
-                    std::current_exception(), diagnostics_.get_exception_handler_copy(), last_ex, dispatch_mutex_);
-                diagnostics_.set_last_exception(last_ex);
+                detail::handle_exception_outside_lock(std::current_exception(), get_exception_handler_safe(),
+                                                      diagnostics_.last_exception_ref(), dispatch_mutex_);
             }
         };
         worker_.push(std::move(task));
@@ -5824,16 +6008,13 @@ class thread_safe_fsm {
         auto task = [this, evt = std::move(event), p = promise](fsm_type&) mutable {
             try {
                 auto snap = execute_dispatch_under_lock(evt);
-                auto last_ex = diagnostics_.last_exception();
-                detail::invoke_notifications_outside_lock(evt, snap, last_ex, dispatch_mutex_);
-                diagnostics_.set_last_exception(last_ex);
+                detail::invoke_notifications_outside_lock(evt, snap, diagnostics_.last_exception_ref(),
+                                                          dispatch_mutex_);
                 p->set_value(snap.result);
             } catch (...) {
                 p->set_exception(std::current_exception());
-                auto last_ex = diagnostics_.last_exception();
-                detail::handle_exception_outside_lock(
-                    std::current_exception(), diagnostics_.get_exception_handler_copy(), last_ex, dispatch_mutex_);
-                diagnostics_.set_last_exception(last_ex);
+                detail::handle_exception_outside_lock(std::current_exception(), get_exception_handler_safe(),
+                                                      diagnostics_.last_exception_ref(), dispatch_mutex_);
             }
         };
         worker_.push(std::move(task));
@@ -5853,14 +6034,11 @@ class thread_safe_fsm {
                     return;  // Invalidate stale timeout
                 }
                 auto snap = execute_dispatch_under_lock(evt);
-                auto last_ex = diagnostics_.last_exception();
-                detail::invoke_notifications_outside_lock(evt, snap, last_ex, dispatch_mutex_);
-                diagnostics_.set_last_exception(last_ex);
+                detail::invoke_notifications_outside_lock(evt, snap, diagnostics_.last_exception_ref(),
+                                                          dispatch_mutex_);
             } catch (...) {
-                auto last_ex = diagnostics_.last_exception();
-                detail::handle_exception_outside_lock(
-                    std::current_exception(), diagnostics_.get_exception_handler_copy(), last_ex, dispatch_mutex_);
-                diagnostics_.set_last_exception(last_ex);
+                detail::handle_exception_outside_lock(std::current_exception(), get_exception_handler_safe(),
+                                                      diagnostics_.last_exception_ref(), dispatch_mutex_);
             }
         };
         worker_.push_timed(deadline, std::move(task));
@@ -5876,14 +6054,11 @@ class thread_safe_fsm {
         auto task = [this, evt = std::move(event)](fsm_type&) {
             try {
                 auto snap = execute_dispatch_under_lock(evt);
-                auto last_ex = diagnostics_.last_exception();
-                detail::invoke_notifications_outside_lock(evt, snap, last_ex, dispatch_mutex_);
-                diagnostics_.set_last_exception(last_ex);
+                detail::invoke_notifications_outside_lock(evt, snap, diagnostics_.last_exception_ref(),
+                                                          dispatch_mutex_);
             } catch (...) {
-                auto last_ex = diagnostics_.last_exception();
-                detail::handle_exception_outside_lock(
-                    std::current_exception(), diagnostics_.get_exception_handler_copy(), last_ex, dispatch_mutex_);
-                diagnostics_.set_last_exception(last_ex);
+                detail::handle_exception_outside_lock(std::current_exception(), get_exception_handler_safe(),
+                                                      diagnostics_.last_exception_ref(), dispatch_mutex_);
             }
         };
         worker_.push(std::move(task));
@@ -5913,6 +6088,31 @@ class thread_safe_fsm {
     void wait_until_idle() { worker_.wait_until_idle(); }
 
   private:
+    [[nodiscard]] exception_handler get_exception_handler_safe() const {
+        if (reentrancy_.is_reentrant_call()) {
+            return diagnostics_.get_exception_handler_copy();
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        return diagnostics_.get_exception_handler_copy();
+    }
+
+    template <typename Fn>
+    auto execute_synchronized_mutation(Fn&& fn) {
+        if (reentrancy_.is_reentrant_call()) {
+            detail::reentrancy_tracker::depth_guard depth_guard(reentrancy_);
+            return fn();
+        }
+        using Result = decltype(fn());
+        Result res{};
+        {
+            std::scoped_lock lock(dispatch_mutex_);
+            detail::reentrancy_tracker::depth_guard depth_guard(reentrancy_);
+            res = fn();
+        }
+        drain_reentrant_queue_if_outermost();
+        return res;
+    }
+
     template <typename Event>
     dispatch_result queue_reentrant_event(const Event& event) {
         enqueue(event);
@@ -6138,10 +6338,8 @@ class spsc_fsm {
             return false;
         }
 
-        seq_.fetch_add(1, std::memory_order_release);
-        std::visit([this](const auto& evt) { (void)this->fsm_.dispatch_direct(evt); }, *item);
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
-        seq_.fetch_add(1, std::memory_order_release);
+        mutation_guard guard(*this);
+        std::visit([this](const auto& evt) { (void)this->fsm_.dispatch(evt); }, *item);
         return true;
     }
 
@@ -6151,24 +6349,8 @@ class spsc_fsm {
             return false;
         }
 
-        seq_.fetch_add(1, std::memory_order_release);
-        auto resolve_srv = [&]() -> services_type& {
-            if (fsm_.get_services() != nullptr) {
-                return *fsm_.get_services();
-            }
-            if constexpr (std::is_default_constructible_v<services_type>) {
-                static services_type dummy{};
-                return dummy;
-            } else {
-                std::terminate();
-            }
-        };
-        services_type& srv = resolve_srv();
-        std::visit(
-            [this, &in, &out, &srv](const auto& evt) { (void)this->fsm_.dispatch_direct_ports(evt, in, out, srv); },
-            *item);
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
-        seq_.fetch_add(1, std::memory_order_release);
+        mutation_guard guard(*this);
+        std::visit([this, &in, &out](const auto& evt) { (void)this->fsm_.dispatch(evt, in, out); }, *item);
         return true;
     }
 
@@ -6189,70 +6371,58 @@ class spsc_fsm {
     }
 
     step_result step(const in_ports_type& in, out_ports_type& out, services_type& srv) {
-        seq_.fetch_add(1, std::memory_order_release);
-        step_result res = fsm_.step(in, out, srv);
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
-        seq_.fetch_add(1, std::memory_order_release);
-        return res;
+        mutation_guard guard(*this);
+        return fsm_.step(in, out, srv);
     }
 
     template <typename DurationRep>
     step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out, services_type& srv) {
-        seq_.fetch_add(1, std::memory_order_release);
-        step_result res = fsm_.step(dt, in, out, srv);
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
-        seq_.fetch_add(1, std::memory_order_release);
-        return res;
+        mutation_guard guard(*this);
+        return fsm_.step(dt, in, out, srv);
     }
 
     step_result step(const in_ports_type& in, out_ports_type& out) {
-        seq_.fetch_add(1, std::memory_order_release);
-        step_result res = fsm_.step(in, out);
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
-        seq_.fetch_add(1, std::memory_order_release);
-        return res;
+        mutation_guard guard(*this);
+        return fsm_.step(in, out);
     }
 
     template <typename DurationRep>
     step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out) {
-        seq_.fetch_add(1, std::memory_order_release);
-        step_result res = fsm_.step(dt, in, out);
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
-        seq_.fetch_add(1, std::memory_order_release);
-        return res;
+        mutation_guard guard(*this);
+        return fsm_.step(dt, in, out);
     }
 
     step_result step() {
-        seq_.fetch_add(1, std::memory_order_release);
-        step_result res = fsm_.step();
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
-        seq_.fetch_add(1, std::memory_order_release);
-        return res;
+        mutation_guard guard(*this);
+        return fsm_.step();
     }
 
     template <typename DurationRep>
     step_result step(DurationRep dt) {
-        seq_.fetch_add(1, std::memory_order_release);
-        step_result res = fsm_.step(dt);
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
-        seq_.fetch_add(1, std::memory_order_release);
-        return res;
+        mutation_guard guard(*this);
+        return fsm_.step(dt);
     }
 
-    std::size_t tick(std::uint64_t delta_ms) { return fsm_.tick(delta_ms); }
+    std::size_t tick(std::uint64_t delta_ms) {
+        mutation_guard guard(*this);
+        return fsm_.tick(delta_ms);
+    }
 
     template <typename Callback>
     std::size_t tick(std::uint64_t delta_ms, Callback on_expired) {
+        mutation_guard guard(*this);
         return fsm_.tick(delta_ms, on_expired);
     }
 
     template <typename Rep, typename Period>
     std::size_t tick(std::chrono::duration<Rep, Period> dt) {
+        mutation_guard guard(*this);
         return fsm_.tick(dt);
     }
 
     template <typename Rep, typename Period, typename Callback>
     std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired) {
+        mutation_guard guard(*this);
         return fsm_.tick(dt, on_expired);
     }
 
@@ -6264,37 +6434,45 @@ class spsc_fsm {
     // ========================================================================
 
     void reset() {
-        seq_.fetch_add(1, std::memory_order_release);
-        queue_.clear();
+        while (queue_.pop().has_value()) {
+        }
+        mutation_guard guard(*this);
         fsm_.reset();
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
-        seq_.fetch_add(1, std::memory_order_release);
     }
 
     void reset(registers_type initial_registers) {
-        seq_.fetch_add(1, std::memory_order_release);
-        queue_.clear();
+        while (queue_.pop().has_value()) {
+        }
+        mutation_guard guard(*this);
         fsm_.reset(std::move(initial_registers));
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
-        seq_.fetch_add(1, std::memory_order_release);
     }
 
-    void clear_history() noexcept { fsm_.clear_history(); }
+    void clear_history() noexcept {
+        mutation_guard guard(*this);
+        fsm_.clear_history();
+    }
 
     [[nodiscard]] std::string_view get_history(std::string_view parent) const noexcept {
-        return fsm_.get_history(parent);
+        return seqlock_read([this, parent]() { return fsm_.get_history(parent); });
     }
 
     template <typename ParentState>
     [[nodiscard]] std::string_view get_history() const noexcept {
-        return fsm_.template get_history<ParentState>();
+        return seqlock_read([this]() { return fsm_.template get_history<ParentState>(); });
     }
 
-    void clear_deferred() noexcept { fsm_.clear_deferred(); }
+    void clear_deferred() noexcept {
+        mutation_guard guard(*this);
+        fsm_.clear_deferred();
+    }
 
-    void clear_deferred_events() noexcept { fsm_.clear_deferred_events(); }
+    void clear_deferred_events() noexcept {
+        mutation_guard guard(*this);
+        fsm_.clear_deferred_events();
+    }
 
     void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
+        mutation_guard guard(*this);
         fsm_.set_invariant_violation_handler(std::move(handler));
     }
 
@@ -6326,11 +6504,17 @@ class spsc_fsm {
         }
     }
 
-    [[nodiscard]] std::uint64_t state_residence_time() const noexcept { return fsm_.state_residence_time(); }
-    [[nodiscard]] bool has_invariant_violation() const noexcept { return fsm_.has_invariant_violation(); }
-    [[nodiscard]] bool is_invariant_satisfied() const noexcept { return fsm_.is_invariant_satisfied(); }
-    [[nodiscard]] const std::optional<invariant_violation_info>& last_invariant_violation() const noexcept {
-        return fsm_.last_invariant_violation();
+    [[nodiscard]] std::uint64_t state_residence_time() const noexcept {
+        return seqlock_read([this]() { return fsm_.state_residence_time(); });
+    }
+    [[nodiscard]] bool has_invariant_violation() const noexcept {
+        return seqlock_read([this]() { return fsm_.has_invariant_violation(); });
+    }
+    [[nodiscard]] bool is_invariant_satisfied() const noexcept {
+        return seqlock_read([this]() { return fsm_.is_invariant_satisfied(); });
+    }
+    [[nodiscard]] std::optional<invariant_violation_info> last_invariant_violation() const noexcept {
+        return seqlock_read([this]() { return fsm_.last_invariant_violation(); });
     }
 
     /**
@@ -6347,18 +6531,7 @@ class spsc_fsm {
         if constexpr (std::is_same_v<Registers, no_registers>) {
             return no_registers{};
         } else {
-            Registers result;
-            std::uint32_t s0 = 0;
-            do {
-                s0 = seq_.load(std::memory_order_acquire);
-                while (s0 & 1U) {
-                    std::this_thread::yield();
-                    s0 = seq_.load(std::memory_order_acquire);
-                }
-                result = fsm_.registers();
-                std::atomic_thread_fence(std::memory_order_acquire);
-            } while (seq_.load(std::memory_order_acquire) != s0);
-            return result;
+            return seqlock_read([this]() { return fsm_.registers(); });
         }
     }
 
@@ -6373,6 +6546,38 @@ class spsc_fsm {
     [[nodiscard]] bool queue_full() const noexcept { return queue_.full(); }
 
   private:
+    struct mutation_guard {
+        explicit mutation_guard(spsc_fsm& owner) noexcept : owner_(owner) {
+            owner_.seq_.fetch_add(1, std::memory_order_acq_rel);
+        }
+        ~mutation_guard() noexcept {
+            owner_.state_index_.store(owner_.fsm_.get_current_state_variant().index(), std::memory_order_release);
+            owner_.seq_.fetch_add(1, std::memory_order_release);
+        }
+        mutation_guard(const mutation_guard&) = delete;
+        mutation_guard& operator=(const mutation_guard&) = delete;
+
+      private:
+        spsc_fsm& owner_;
+    };
+
+    template <typename Fn>
+    auto seqlock_read(Fn&& fn) const noexcept {
+        using Result = std::decay_t<decltype(fn())>;
+        Result result{};
+        std::uint32_t s0 = 0;
+        do {
+            s0 = seq_.load(std::memory_order_acquire);
+            while (s0 & 1U) {
+                std::this_thread::yield();
+                s0 = seq_.load(std::memory_order_acquire);
+            }
+            result = fn();
+            std::atomic_thread_fence(std::memory_order_acquire);
+        } while (seq_.load(std::memory_order_acquire) != s0);
+        return result;
+    }
+
     fsm_type fsm_;
     spsc_ring_buffer<event_variant, QueueCapacity> queue_;
     std::atomic<std::size_t> state_index_{0};

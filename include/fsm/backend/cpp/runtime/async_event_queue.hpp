@@ -45,11 +45,14 @@ class async_event_queue {
     }
 
     void clear() {
-        std::scoped_lock lock(mutex_);
-        std::queue<HandlerType> empty_q;
-        std::swap(event_queue_, empty_q);
-        std::priority_queue<timed_event_type, std::vector<timed_event_type>, std::greater<>> empty_timed;
-        std::swap(timed_queue_, empty_timed);
+        {
+            std::scoped_lock lock(mutex_);
+            std::queue<HandlerType> empty_q;
+            std::swap(event_queue_, empty_q);
+            std::priority_queue<timed_event_type, std::vector<timed_event_type>, std::greater<>> empty_timed;
+            std::swap(timed_queue_, empty_timed);
+        }
+        idle_cv_.notify_all();
     }
 
     // Single-event pop for manual polling or worker loop
@@ -59,11 +62,13 @@ class async_event_queue {
         if (!timed_queue_.empty() && now >= timed_queue_.top().deadline) {
             out_task = std::move(const_cast<timed_event_type&>(timed_queue_.top()).task);
             timed_queue_.pop();
+            ++in_flight_;
             return true;
         }
         if (!event_queue_.empty()) {
             out_task = std::move(event_queue_.front());
             event_queue_.pop();
+            ++in_flight_;
             return true;
         }
         return false;
@@ -92,11 +97,13 @@ class async_event_queue {
             if (!timed_queue_.empty() && now >= timed_queue_.top().deadline) {
                 out_task = std::move(const_cast<timed_event_type&>(timed_queue_.top()).task);
                 timed_queue_.pop();
+                ++in_flight_;
                 return true;
             }
             if (!event_queue_.empty()) {
                 out_task = std::move(event_queue_.front());
                 event_queue_.pop();
+                ++in_flight_;
                 return true;
             }
             if (!running_) {
@@ -109,6 +116,25 @@ class async_event_queue {
                 cv_.wait(lock);
             }
         }
+    }
+
+    void finish_task() {
+        {
+            std::scoped_lock lock(mutex_);
+            if (in_flight_ > 0) {
+                --in_flight_;
+            }
+        }
+        idle_cv_.notify_all();
+    }
+
+    void wait_until_idle() {
+        std::unique_lock lock(mutex_);
+        idle_cv_.wait(lock, [this]() {
+            const auto now = std::chrono::steady_clock::now();
+            const bool has_ready_timed = !timed_queue_.empty() && now >= timed_queue_.top().deadline;
+            return event_queue_.empty() && !has_ready_timed && in_flight_ == 0;
+        });
     }
 
     void start() {
@@ -124,6 +150,7 @@ class async_event_queue {
             running_ = false;
         }
         cv_.notify_all();
+        idle_cv_.notify_all();
     }
 
     std::mutex& mutex() noexcept { return mutex_; }
@@ -136,8 +163,10 @@ class async_event_queue {
   private:
     mutable std::mutex mutex_;
     std::condition_variable cv_;
+    std::condition_variable idle_cv_;
     std::queue<HandlerType> event_queue_;
     std::priority_queue<timed_event_type, std::vector<timed_event_type>, std::greater<>> timed_queue_;
+    std::size_t in_flight_{0};
     bool running_{true};
 };
 

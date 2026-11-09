@@ -181,12 +181,39 @@ class fsm {
 
     template <typename DurationRep>
     step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out, services_type& srv) {
+        std::uint64_t delta_ms = 0;
         if constexpr (std::is_integral_v<DurationRep>) {
-            this->tick(static_cast<std::uint64_t>(dt));
+            delta_ms = static_cast<std::uint64_t>(dt);
         } else {
-            this->tick(dt);
+            delta_ms = duration_to_ms(dt);
         }
-        return step(in, out, srv);
+        if constexpr (has_advance_tick_v<observer_type>) {
+            observer_.advance_tick(delta_ms);
+        }
+        invariant_mgr_.advance_time(delta_ms);
+        std::visit([this, &in, &out, &srv](auto& st) { call_do_activity(st, in, out, this->registers_, srv); },
+                   current_state_);
+        std::optional<dispatch_result> timed_res = std::nullopt;
+        timer_mgr_.tick(delta_ms, [this, &in, &out, &srv, &timed_res](std::uint32_t timer_id) {
+            auto r = dispatch_timed_timer(timer_id, in, out, srv);
+            if (r.has_value() && (r->is_success() || !timed_res.has_value())) {
+                timed_res = r;
+            }
+        });
+        invariant_mgr_.check_invariants(current_state_);
+        auto res = dispatch_direct_ports(anonymous_event{}, in, out, srv);
+        if constexpr (has_deferred) {
+            if (res.is_success()) {
+                process_deferred_queue_ports(in, out, srv);
+            }
+        }
+        if (res.is_success()) {
+            return step_result{step_status::transitioned, res.trace};
+        }
+        if (timed_res.has_value() && timed_res->is_success()) {
+            return step_result{step_status::transitioned, timed_res->trace};
+        }
+        return step_result{step_status::steady, res.trace};
     }
 
     step_result step(const in_ports_type& in, out_ports_type& out) { return step(in, out, resolve_services()); }
@@ -219,8 +246,7 @@ class fsm {
                     [this, &event](const auto& st) -> bool {
                         using StateType = std::decay_t<decltype(st)>;
                         if constexpr (is_deferred_event_v<StateType, Event>) {
-                            this->defer_event(event);
-                            return true;
+                            return this->defer_event(event);
                         }
                         return false;
                     },
@@ -295,8 +321,8 @@ class fsm {
 
     // Deferred events management
     template <typename Event>
-    void defer_event(const Event& event) {
-        deferred_mgr_.defer_event(event);
+    bool defer_event(const Event& event) {
+        return deferred_mgr_.defer_event(event);
     }
 
     template <bool D = has_deferred>
@@ -545,8 +571,7 @@ class fsm {
 
     template <typename Rep, typename Period, typename Callback>
     std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired) {
-        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(dt).count();
-        return tick(static_cast<std::uint64_t>(ms > 0 ? ms : 1), on_expired);
+        return tick(duration_to_ms(dt), on_expired);
     }
 
     template <typename Rep, typename Period>
@@ -664,6 +689,12 @@ class fsm {
         if (header.state_index >= std::variant_size_v<state_variant>) {
             return false;
         }
+        if (header.history_count > max_history_capacity) {
+            return false;
+        }
+        if (header.timer_count > TimerCapacity) {
+            return false;
+        }
 
         constexpr std::uint32_t expected_reg_sz =
             (!std::is_same_v<registers_type, no_registers> && std::is_trivially_copyable_v<registers_type>)
@@ -679,36 +710,44 @@ class fsm {
 
         std::size_t hist_count = header.history_count;
         for (std::size_t i = 0; i < hist_count; ++i) {
-            if (curr + sizeof(std::uint16_t) > end) {
+            if (static_cast<std::size_t>(end - curr) < sizeof(std::uint16_t)) {
                 return false;
             }
             std::uint16_t plen = 0;
             std::memcpy(&plen, curr, sizeof(plen));
             curr += sizeof(plen);
-            if (curr + plen > end) {
+            if (static_cast<std::size_t>(end - curr) < plen) {
+                return false;
+            }
+            std::string_view parent_sv(reinterpret_cast<const char*>(curr), plen);
+            if (!resolve_static_state_name(parent_sv).has_value()) {
                 return false;
             }
             curr += plen;
 
-            if (curr + sizeof(std::uint16_t) > end) {
+            if (static_cast<std::size_t>(end - curr) < sizeof(std::uint16_t)) {
                 return false;
             }
             std::uint16_t slen = 0;
             std::memcpy(&slen, curr, sizeof(slen));
             curr += sizeof(slen);
-            if (curr + slen > end) {
+            if (static_cast<std::size_t>(end - curr) < slen) {
+                return false;
+            }
+            std::string_view substate_sv(reinterpret_cast<const char*>(curr), slen);
+            if (!resolve_static_state_name(substate_sv).has_value()) {
                 return false;
             }
             curr += slen;
         }
 
-        std::size_t timer_bytes = header.timer_count * sizeof(snapshot_timer_entry);
-        if (curr + timer_bytes > end) {
+        if (header.timer_count > static_cast<std::size_t>(end - curr) / sizeof(snapshot_timer_entry)) {
             return false;
         }
+        std::size_t timer_bytes = static_cast<std::size_t>(header.timer_count) * sizeof(snapshot_timer_entry);
         curr += timer_bytes;
 
-        if (curr + header.registers_size > end) {
+        if (static_cast<std::size_t>(end - curr) < header.registers_size) {
             return false;
         }
         curr += header.registers_size;
@@ -737,7 +776,11 @@ class fsm {
             std::string_view substate_sv(reinterpret_cast<const char*>(curr), slen);
             curr += slen;
 
-            history_mgr_.record_history(parent_sv, substate_sv);
+            auto static_parent = resolve_static_state_name(parent_sv);
+            auto static_substate = resolve_static_state_name(substate_sv);
+            if (static_parent.has_value() && static_substate.has_value()) {
+                history_mgr_.record_history(*static_parent, *static_substate);
+            }
         }
 
         timer_mgr_.reset();
@@ -759,7 +802,7 @@ class fsm {
         return true;
     }
 
-#if __cplusplus >= 202002L || (defined(__cpp_lib_span) && __cpp_lib_span >= 202002L)
+#if !defined(FSMC_CPP17_RUNTIME) && (__cplusplus >= 202002L || (defined(__cpp_lib_span) && __cpp_lib_span >= 202002L))
     bool serialize(std::span<std::uint8_t> buffer, std::size_t& bytes_written) const noexcept {
         return serialize(buffer.data(), buffer.size(), bytes_written);
     }
@@ -780,17 +823,57 @@ class fsm {
         // Default: no-op
     }
 
-  private:
     [[nodiscard]] services_type& resolve_services() const {
         if (services_ != nullptr) {
             return *services_;
         }
         if constexpr (std::is_default_constructible_v<services_type>) {
-            static services_type dummy{};
-            return dummy;
+            return default_services_;
         } else {
             std::terminate();
         }
+    }
+
+  private:
+    template <typename Rep, typename Period>
+    static constexpr std::uint64_t duration_to_ms(std::chrono::duration<Rep, Period> dt) noexcept {
+        using Duration = std::chrono::duration<Rep, Period>;
+        if (dt <= Duration::zero()) {
+            return 0;
+        }
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(dt).count();
+        return static_cast<std::uint64_t>(ms > 0 ? ms : 1);
+    }
+
+    template <typename State>
+    static constexpr std::optional<std::string_view> match_state_or_ancestor_name(std::string_view sv) noexcept {
+        constexpr std::string_view sname = get_state_name_static<State>();
+        if (sv == sname) {
+            return sname;
+        }
+        if constexpr (detail::has_parent_name<State>::value) {
+            if constexpr (!State::parent.empty()) {
+                if (sv == State::parent) {
+                    return State::parent;
+                }
+            }
+        }
+        if constexpr (detail::has_parent_type<State>::value) {
+            return match_state_or_ancestor_name<typename State::parent_type>(sv);
+        }
+        return std::nullopt;
+    }
+
+    template <typename... States>
+    static constexpr std::optional<std::string_view> resolve_static_state_name_from_list(
+        std::string_view sv, type_list<States...>) noexcept {
+        std::optional<std::string_view> result = std::nullopt;
+        ((result.has_value() ? false : (result = match_state_or_ancestor_name<States>(sv)).has_value()) || ...);
+        return result;
+    }
+
+    static constexpr std::optional<std::string_view> resolve_static_state_name(std::string_view sv) noexcept {
+        return resolve_static_state_name_from_list(sv, typename Table::states{});
     }
 
     void enter_initial_state() {
@@ -835,29 +918,48 @@ class fsm {
     }
 
     template <std::size_t Index>
-    void dispatch_timed_timer_at_index(std::uint32_t timer_id) {
+    void dispatch_timed_timer_at_index(std::uint32_t timer_id, const in_ports_type& in, out_ports_type& out,
+                                       services_type& srv, std::optional<dispatch_result>& last_timed_res) {
         using row_type = std::tuple_element_t<Index, decltype(Table::rows)>;
         using event_type = typename row_type::event;
         if constexpr (is_timed_event_v<event_type> && static_timed_event_traits<event_type>::supported) {
             if (timer_id == static_cast<std::uint32_t>(Index + 1)) {
-                (void)dispatch(event_type{});
+                auto r = dispatch(event_type{}, in, out, srv);
+                if (r.is_success() || !last_timed_res.has_value()) {
+                    last_timed_res = r;
+                }
             }
         }
     }
 
     template <std::size_t... Indices>
-    void dispatch_timed_timer_impl(std::uint32_t timer_id, std::index_sequence<Indices...>) {
-        (dispatch_timed_timer_at_index<Indices>(timer_id), ...);
+    std::optional<dispatch_result> dispatch_timed_timer_impl(std::uint32_t timer_id, const in_ports_type& in,
+                                                             out_ports_type& out, services_type& srv,
+                                                             std::index_sequence<Indices...>) {
+        std::optional<dispatch_result> last_timed_res = std::nullopt;
+        (dispatch_timed_timer_at_index<Indices>(timer_id, in, out, srv, last_timed_res), ...);
+        return last_timed_res;
+    }
+
+    std::optional<dispatch_result> dispatch_timed_timer(std::uint32_t timer_id, const in_ports_type& in,
+                                                        out_ports_type& out, services_type& srv) {
+        return dispatch_timed_timer_impl(timer_id, in, out, srv,
+                                         std::make_index_sequence<std::tuple_size_v<decltype(Table::rows)>>{});
     }
 
     void dispatch_timed_timer(std::uint32_t timer_id) {
-        dispatch_timed_timer_impl(timer_id, std::make_index_sequence<std::tuple_size_v<decltype(Table::rows)>>{});
+        in_ports_type dummy_in{};
+        out_ports_type dummy_out{};
+        (void)dispatch_timed_timer(timer_id, dummy_in, dummy_out, resolve_services());
     }
 
     state_variant current_state_;
     FSMC_NO_UNIQUE_ADDRESS Table table_{};
     FSMC_NO_UNIQUE_ADDRESS registers_type registers_{};
     services_type* services_{nullptr};
+    FSMC_NO_UNIQUE_ADDRESS mutable std::conditional_t<std::is_default_constructible_v<services_type>, services_type,
+                                                      empty_storage>
+        default_services_{};
     FSMC_NO_UNIQUE_ADDRESS observer_type observer_{};
     FSMC_NO_UNIQUE_ADDRESS detail::history_manager<Table, has_history> history_mgr_{};
     FSMC_NO_UNIQUE_ADDRESS detail::deferred_manager<Table, DeferredCapacity, has_deferred> deferred_mgr_{};

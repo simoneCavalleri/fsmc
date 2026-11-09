@@ -20,8 +20,8 @@ class deferred_manager<Table, DeferredCapacity, true> {
     using event_variant = typename Table::event_variant;
 
     template <typename Event>
-    void defer_event(const Event& event) {
-        deferred_queue_.push_back(event_variant{event});
+    bool defer_event(const Event& event) {
+        return deferred_queue_.push_back(event_variant{event});
     }
 
     [[nodiscard]] std::size_t deferred_count() const noexcept { return deferred_queue_.size(); }
@@ -65,7 +65,9 @@ class deferred_manager<Table, DeferredCapacity, false> {
     static constexpr std::size_t max_deferred_capacity = 0;
 
     template <typename Event>
-    void defer_event(const Event& /*event*/) noexcept {}
+    bool defer_event(const Event& /*event*/) noexcept {
+        return false;
+    }
     [[nodiscard]] std::size_t deferred_count() const noexcept { return 0; }
     void clear_deferred_events() noexcept {}
 

@@ -81,6 +81,7 @@ class static_ring_buffer {
             return std::nullopt;
         }
         T item = std::move(buffer_[head_]);
+        buffer_[head_] = T{};
         head_ = (head_ + 1) % Capacity;
         --size_;
         return item;
@@ -101,6 +102,11 @@ class static_ring_buffer {
     }
 
     constexpr void clear() noexcept {
+        while (!empty()) {
+            buffer_[head_] = T{};
+            head_ = (head_ + 1) % Capacity;
+            --size_;
+        }
         head_ = 0;
         tail_ = 0;
         size_ = 0;

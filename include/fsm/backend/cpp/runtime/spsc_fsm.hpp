@@ -158,10 +158,8 @@ class spsc_fsm {
             return false;
         }
 
-        seq_.fetch_add(1, std::memory_order_release);
-        std::visit([this](const auto& evt) { (void)this->fsm_.dispatch_direct(evt); }, *item);
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
-        seq_.fetch_add(1, std::memory_order_release);
+        mutation_guard guard(*this);
+        std::visit([this](const auto& evt) { (void)this->fsm_.dispatch(evt); }, *item);
         return true;
     }
 
@@ -171,24 +169,8 @@ class spsc_fsm {
             return false;
         }
 
-        seq_.fetch_add(1, std::memory_order_release);
-        auto resolve_srv = [&]() -> services_type& {
-            if (fsm_.get_services() != nullptr) {
-                return *fsm_.get_services();
-            }
-            if constexpr (std::is_default_constructible_v<services_type>) {
-                static services_type dummy{};
-                return dummy;
-            } else {
-                std::terminate();
-            }
-        };
-        services_type& srv = resolve_srv();
-        std::visit(
-            [this, &in, &out, &srv](const auto& evt) { (void)this->fsm_.dispatch_direct_ports(evt, in, out, srv); },
-            *item);
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
-        seq_.fetch_add(1, std::memory_order_release);
+        mutation_guard guard(*this);
+        std::visit([this, &in, &out](const auto& evt) { (void)this->fsm_.dispatch(evt, in, out); }, *item);
         return true;
     }
 
@@ -209,70 +191,58 @@ class spsc_fsm {
     }
 
     step_result step(const in_ports_type& in, out_ports_type& out, services_type& srv) {
-        seq_.fetch_add(1, std::memory_order_release);
-        step_result res = fsm_.step(in, out, srv);
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
-        seq_.fetch_add(1, std::memory_order_release);
-        return res;
+        mutation_guard guard(*this);
+        return fsm_.step(in, out, srv);
     }
 
     template <typename DurationRep>
     step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out, services_type& srv) {
-        seq_.fetch_add(1, std::memory_order_release);
-        step_result res = fsm_.step(dt, in, out, srv);
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
-        seq_.fetch_add(1, std::memory_order_release);
-        return res;
+        mutation_guard guard(*this);
+        return fsm_.step(dt, in, out, srv);
     }
 
     step_result step(const in_ports_type& in, out_ports_type& out) {
-        seq_.fetch_add(1, std::memory_order_release);
-        step_result res = fsm_.step(in, out);
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
-        seq_.fetch_add(1, std::memory_order_release);
-        return res;
+        mutation_guard guard(*this);
+        return fsm_.step(in, out);
     }
 
     template <typename DurationRep>
     step_result step(DurationRep dt, const in_ports_type& in, out_ports_type& out) {
-        seq_.fetch_add(1, std::memory_order_release);
-        step_result res = fsm_.step(dt, in, out);
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
-        seq_.fetch_add(1, std::memory_order_release);
-        return res;
+        mutation_guard guard(*this);
+        return fsm_.step(dt, in, out);
     }
 
     step_result step() {
-        seq_.fetch_add(1, std::memory_order_release);
-        step_result res = fsm_.step();
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
-        seq_.fetch_add(1, std::memory_order_release);
-        return res;
+        mutation_guard guard(*this);
+        return fsm_.step();
     }
 
     template <typename DurationRep>
     step_result step(DurationRep dt) {
-        seq_.fetch_add(1, std::memory_order_release);
-        step_result res = fsm_.step(dt);
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
-        seq_.fetch_add(1, std::memory_order_release);
-        return res;
+        mutation_guard guard(*this);
+        return fsm_.step(dt);
     }
 
-    std::size_t tick(std::uint64_t delta_ms) { return fsm_.tick(delta_ms); }
+    std::size_t tick(std::uint64_t delta_ms) {
+        mutation_guard guard(*this);
+        return fsm_.tick(delta_ms);
+    }
 
     template <typename Callback>
     std::size_t tick(std::uint64_t delta_ms, Callback on_expired) {
+        mutation_guard guard(*this);
         return fsm_.tick(delta_ms, on_expired);
     }
 
     template <typename Rep, typename Period>
     std::size_t tick(std::chrono::duration<Rep, Period> dt) {
+        mutation_guard guard(*this);
         return fsm_.tick(dt);
     }
 
     template <typename Rep, typename Period, typename Callback>
     std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired) {
+        mutation_guard guard(*this);
         return fsm_.tick(dt, on_expired);
     }
 
@@ -284,37 +254,45 @@ class spsc_fsm {
     // ========================================================================
 
     void reset() {
-        seq_.fetch_add(1, std::memory_order_release);
-        queue_.clear();
+        while (queue_.pop().has_value()) {
+        }
+        mutation_guard guard(*this);
         fsm_.reset();
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
-        seq_.fetch_add(1, std::memory_order_release);
     }
 
     void reset(registers_type initial_registers) {
-        seq_.fetch_add(1, std::memory_order_release);
-        queue_.clear();
+        while (queue_.pop().has_value()) {
+        }
+        mutation_guard guard(*this);
         fsm_.reset(std::move(initial_registers));
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
-        seq_.fetch_add(1, std::memory_order_release);
     }
 
-    void clear_history() noexcept { fsm_.clear_history(); }
+    void clear_history() noexcept {
+        mutation_guard guard(*this);
+        fsm_.clear_history();
+    }
 
     [[nodiscard]] std::string_view get_history(std::string_view parent) const noexcept {
-        return fsm_.get_history(parent);
+        return seqlock_read([this, parent]() { return fsm_.get_history(parent); });
     }
 
     template <typename ParentState>
     [[nodiscard]] std::string_view get_history() const noexcept {
-        return fsm_.template get_history<ParentState>();
+        return seqlock_read([this]() { return fsm_.template get_history<ParentState>(); });
     }
 
-    void clear_deferred() noexcept { fsm_.clear_deferred(); }
+    void clear_deferred() noexcept {
+        mutation_guard guard(*this);
+        fsm_.clear_deferred();
+    }
 
-    void clear_deferred_events() noexcept { fsm_.clear_deferred_events(); }
+    void clear_deferred_events() noexcept {
+        mutation_guard guard(*this);
+        fsm_.clear_deferred_events();
+    }
 
     void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
+        mutation_guard guard(*this);
         fsm_.set_invariant_violation_handler(std::move(handler));
     }
 
@@ -346,11 +324,17 @@ class spsc_fsm {
         }
     }
 
-    [[nodiscard]] std::uint64_t state_residence_time() const noexcept { return fsm_.state_residence_time(); }
-    [[nodiscard]] bool has_invariant_violation() const noexcept { return fsm_.has_invariant_violation(); }
-    [[nodiscard]] bool is_invariant_satisfied() const noexcept { return fsm_.is_invariant_satisfied(); }
-    [[nodiscard]] const std::optional<invariant_violation_info>& last_invariant_violation() const noexcept {
-        return fsm_.last_invariant_violation();
+    [[nodiscard]] std::uint64_t state_residence_time() const noexcept {
+        return seqlock_read([this]() { return fsm_.state_residence_time(); });
+    }
+    [[nodiscard]] bool has_invariant_violation() const noexcept {
+        return seqlock_read([this]() { return fsm_.has_invariant_violation(); });
+    }
+    [[nodiscard]] bool is_invariant_satisfied() const noexcept {
+        return seqlock_read([this]() { return fsm_.is_invariant_satisfied(); });
+    }
+    [[nodiscard]] std::optional<invariant_violation_info> last_invariant_violation() const noexcept {
+        return seqlock_read([this]() { return fsm_.last_invariant_violation(); });
     }
 
     /**
@@ -367,18 +351,7 @@ class spsc_fsm {
         if constexpr (std::is_same_v<Registers, no_registers>) {
             return no_registers{};
         } else {
-            Registers result;
-            std::uint32_t s0 = 0;
-            do {
-                s0 = seq_.load(std::memory_order_acquire);
-                while (s0 & 1U) {
-                    std::this_thread::yield();
-                    s0 = seq_.load(std::memory_order_acquire);
-                }
-                result = fsm_.registers();
-                std::atomic_thread_fence(std::memory_order_acquire);
-            } while (seq_.load(std::memory_order_acquire) != s0);
-            return result;
+            return seqlock_read([this]() { return fsm_.registers(); });
         }
     }
 
@@ -393,6 +366,38 @@ class spsc_fsm {
     [[nodiscard]] bool queue_full() const noexcept { return queue_.full(); }
 
   private:
+    struct mutation_guard {
+        explicit mutation_guard(spsc_fsm& owner) noexcept : owner_(owner) {
+            owner_.seq_.fetch_add(1, std::memory_order_acq_rel);
+        }
+        ~mutation_guard() noexcept {
+            owner_.state_index_.store(owner_.fsm_.get_current_state_variant().index(), std::memory_order_release);
+            owner_.seq_.fetch_add(1, std::memory_order_release);
+        }
+        mutation_guard(const mutation_guard&) = delete;
+        mutation_guard& operator=(const mutation_guard&) = delete;
+
+      private:
+        spsc_fsm& owner_;
+    };
+
+    template <typename Fn>
+    auto seqlock_read(Fn&& fn) const noexcept {
+        using Result = std::decay_t<decltype(fn())>;
+        Result result{};
+        std::uint32_t s0 = 0;
+        do {
+            s0 = seq_.load(std::memory_order_acquire);
+            while (s0 & 1U) {
+                std::this_thread::yield();
+                s0 = seq_.load(std::memory_order_acquire);
+            }
+            result = fn();
+            std::atomic_thread_fence(std::memory_order_acquire);
+        } while (seq_.load(std::memory_order_acquire) != s0);
+        return result;
+    }
+
     fsm_type fsm_;
     spsc_ring_buffer<event_variant, QueueCapacity> queue_;
     std::atomic<std::size_t> state_index_{0};

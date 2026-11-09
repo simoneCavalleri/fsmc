@@ -69,23 +69,24 @@ struct empty_storage {};
 
 namespace detail {
 template <typename SubState, typename SuperState, typename = void>
-struct is_substate_of_impl : std::false_type {};
-
-template <typename SubState, typename SuperState>
-struct is_substate_of_impl<SubState, SuperState, std::void_t<typename SubState::parent_type>> {
-    static constexpr bool value =
-        std::is_same_v<typename SubState::parent_type, SuperState> ||
-        (get_state_name_static<SuperState>() == get_state_name_static<typename SubState::parent_type>()) ||
-        is_substate_of_impl<typename SubState::parent_type, SuperState>::value;
-};
-
-template <typename SubState, typename SuperState, typename = void>
 struct is_substate_by_name : std::false_type {};
 
 template <typename SubState, typename SuperState>
 struct is_substate_by_name<SubState, SuperState, std::void_t<decltype(SubState::parent)>> {
     static constexpr bool value =
         (get_state_name_static<SuperState>() == SubState::parent) || (get_type_name<SuperState>() == SubState::parent);
+};
+
+template <typename SubState, typename SuperState, typename = void>
+struct is_substate_of_impl : is_substate_by_name<SubState, SuperState> {};
+
+template <typename SubState, typename SuperState>
+struct is_substate_of_impl<SubState, SuperState, std::void_t<typename SubState::parent_type>> {
+    static constexpr bool value =
+        std::is_same_v<typename SubState::parent_type, SuperState> ||
+        (get_state_name_static<SuperState>() == get_state_name_static<typename SubState::parent_type>()) ||
+        is_substate_by_name<SubState, SuperState>::value ||
+        is_substate_of_impl<typename SubState::parent_type, SuperState>::value;
 };
 }  // namespace detail
 
@@ -137,16 +138,14 @@ inline constexpr bool is_deferred_event_v = []() constexpr {
 
 namespace detail {
 template <typename State, typename = void>
-struct ancestor_depth : std::integral_constant<std::size_t, 0> {};
+struct ancestor_depth : std::integral_constant<std::size_t, has_parent_name<State>::value ? 1 : 0> {};
 
 template <typename State>
 struct ancestor_depth<State, std::void_t<typename State::parent_type>>
     : std::integral_constant<std::size_t, 1 + ancestor_depth<typename State::parent_type>::value> {};
 
 template <typename State>
-struct state_parent_capacity
-    : std::integral_constant<std::size_t, (has_parent_type<State>::value ? ancestor_depth<State>::value
-                                                                         : (has_parent_name<State>::value ? 1 : 0))> {};
+struct state_parent_capacity : ancestor_depth<State> {};
 }  // namespace detail
 
 // Introspection for History & Deferred events across unique state list

@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <optional>
-#if __cplusplus >= 202002L || (defined(__cpp_lib_span) && __cpp_lib_span >= 202002L)
+#if !defined(FSMC_CPP17_RUNTIME) && (__cplusplus >= 202002L || (defined(__cpp_lib_span) && __cpp_lib_span >= 202002L))
 #include <span>
 #endif
 #include <string_view>
@@ -113,7 +113,7 @@ bool deserialize_state(FSM& machine, const std::uint8_t* src, std::size_t size) 
     return machine.deserialize(src, size, read);
 }
 
-#if __cplusplus >= 202002L || (defined(__cpp_lib_span) && __cpp_lib_span >= 202002L)
+#if !defined(FSMC_CPP17_RUNTIME) && (__cplusplus >= 202002L || (defined(__cpp_lib_span) && __cpp_lib_span >= 202002L))
 /**
  * @brief Standalone non-member serialization helper taking a destination span.
  */

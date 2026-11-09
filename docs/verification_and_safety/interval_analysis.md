@@ -34,7 +34,12 @@ flowchart TD
   - Addition / Subtraction: $[a, b] \pm [c, d] \implies [a \pm c, b \pm d]$
   - Multiplication: $[a, b] \times [c, d] \implies [\min(ac, ad, bc, bd), \max(ac, ad, bc, bd)]$
   - Division: $[a, b] / [c, d]$ (safely bounding finite ranges when $0 \notin [c, d]$)
+  - Compound assignment operators (`+=`, `-=`, `*=`, `/=`) are supported natively across integer and floating-point registers.
   - Variable reset / assignment: `v = in.sensor_temp` $\implies \text{Domain}(in.sensor_temp)$
+- **Guard domain constraints**:
+  - Conjunctions (`x >= 10 && x <= 50`) intersect interval domains: $[10, +\infty) \cap (-\infty, 50] = [10, 50]$.
+  - Disjunctions (`x < 5 || x > 20`) compute the convex hull join across branches.
+  - Negations (`!(x < 10)`) invert the relational operator ($x \ge 10$) to preserve three-valued soundness.
 - **State joins compute the least upper bound (convex hull)** across converging transition paths:
   - $[10, 20] \sqcup [30, 40] = [10, 40]$
 
@@ -103,7 +108,7 @@ Because the intersection is empty, the guard can never evaluate to `true` at run
     }
 > [!TIP]
 > **Automated Dead Transition Pruning**:
-> In optimization modes (`-O2` or `--prune-dead-states`), transitions identified as having empty guard intersections ($\text{Domain} \cap \text{Guard} = \emptyset$) are automatically pruned from the emitted state machine table by `DeadStatePruningPass`, eliminating dead bytecode/branches completely.
+> In optimization modes (`-O2` or `--prune`), transitions identified as having empty guard intersections ($\text{Domain} \cap \text{Guard} = \emptyset$, classified strictly as `EFSMFindingKind::UnsatisfiableGuard`) are automatically pruned from the emitted state machine table by `DeadStatePruningPass` and `EFSMDataPathPass`, eliminating dead branches completely. Note that out-of-range port or variable contract warnings are reported as diagnostics and do not trigger transition deletion.
 
 ---
 

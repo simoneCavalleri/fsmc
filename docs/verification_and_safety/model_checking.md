@@ -84,12 +84,16 @@ Sat(AX(\Phi)) &= \{ s \in S \mid \forall s' \in Succ(s) : s' \in Sat(\Phi) \} \\
 Sat(EF(\Phi)) &= \mu Z . (Sat(\Phi) \cup Sat(EX(Z))) \quad \text{(Backward BFS Least Fixed-Point)} \\
 Sat(AF(\Phi)) &= \mu Z . (Sat(\Phi) \cup Sat(AX(Z))) \quad \text{(All-Path Inevitability)} \\
 Sat(EG(\Phi)) &= \nu Z . (Sat(\Phi) \cap Sat(EX(Z))) \quad \text{(Greatest Fixed-Point via Tarjan SCCs)} \\
-Sat(AG(\Phi)) &= S \setminus Sat(EF(\neg \Phi)) \quad \text{(Universal Dual Safety)} \\
+Sat(AG(\Phi)) &= \nu Z . (Sat(\Phi) \cap Sat(AX(Z))) \quad \text{(Direct Greatest Fixed-Point Universal Safety)} \\
 Sat(E[\Phi_1 \mathbin{U} \Phi_2]) &= \mu Z . (Sat(\Phi_2) \cup (Sat(\Phi_1) \cap Sat(EX(Z)))) \\
 Sat(A[\Phi_1 \mathbin{U} \Phi_2]) &= \mu Z . (Sat(\Phi_2) \cup (Sat(\Phi_1) \cap Sat(AX(Z))))
 \end{aligned}$$
 
 Because the Kripke state space is finite, all fixed-point computations terminate in at most $|S|$ iterations ($O(|S| + |T|)$ polynomial complexity), guaranteeing instant compile-time verification without external solver binaries.
+
+> [!NOTE]
+> **Sound Interval Evaluation & Formula Negation**:
+> In EFSM models with numeric datapath variables, atomic relational predicates under negation (such as `!(x == 5)` or `!(altitude < 1000)`) are evaluated via relational operator inversion ($x \neq 5$ and $\text{altitude} \ge 1000$) rather than boolean set complement. This preserves sound three-valued logic (True, False, Unknown) over interval lattices, preventing false certifications on unconstrained or unbounded interval states.
 
 ---
 

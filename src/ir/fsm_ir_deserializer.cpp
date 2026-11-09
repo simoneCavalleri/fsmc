@@ -11,23 +11,16 @@
 #include <utility>
 #include <vector>
 
+#include "fsm/frontend/common/parser_interface.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
+#include "fsm/frontend/directive/ltl_parser.hpp"
 
 namespace fsm::ir {
 
 namespace {
 
 std::string sanitize_identifier(std::string_view raw) {
-    std::string out;
-    out.reserve(raw.size());
-    for (char c : raw) {
-        if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') {
-            out.push_back(c);
-        } else if (c == ' ' || c == '-') {
-            out.push_back('_');
-        }
-    }
-    return out;
+    return fsm::frontend::sanitize_identifier(raw);
 }
 
 enum class JsonType : std::uint8_t { Null, Bool, Number, String, Array, Object };
@@ -235,8 +228,52 @@ class SimpleJsonParser {
                             err = "Incomplete unicode escape";
                             return false;
                         }
+                        auto parse_hex4 = [&](size_t pos, uint32_t& out_cp) -> bool {
+                            out_cp = 0;
+                            for (size_t i = 0; i < 4; ++i) {
+                                char hc = text[pos + i];
+                                out_cp <<= 4u;
+                                if (hc >= '0' && hc <= '9') {
+                                    out_cp |= static_cast<uint32_t>(hc - '0');
+                                } else if (hc >= 'a' && hc <= 'f') {
+                                    out_cp |= static_cast<uint32_t>(hc - 'a' + 10);
+                                } else if (hc >= 'A' && hc <= 'F') {
+                                    out_cp |= static_cast<uint32_t>(hc - 'A' + 10);
+                                } else {
+                                    return false;
+                                }
+                            }
+                            return true;
+                        };
+                        uint32_t cp = 0;
+                        if (!parse_hex4(idx, cp)) {
+                            err = "Invalid hex digits in unicode escape";
+                            return false;
+                        }
                         idx += 4;
-                        out_val.str_val += '?';
+                        if (cp >= 0xD800u && cp <= 0xDBFFu && idx + 6 <= text.size() && text[idx] == '\\' &&
+                            text[idx + 1] == 'u') {
+                            uint32_t low = 0;
+                            if (parse_hex4(idx + 2, low) && low >= 0xDC00u && low <= 0xDFFFu) {
+                                cp = 0x10000u + (((cp - 0xD800u) << 10u) | (low - 0xDC00u));
+                                idx += 6;
+                            }
+                        }
+                        if (cp <= 0x7Fu) {
+                            out_val.str_val += static_cast<char>(cp);
+                        } else if (cp <= 0x7FFu) {
+                            out_val.str_val += static_cast<char>(0xC0u | ((cp >> 6u) & 0x1Fu));
+                            out_val.str_val += static_cast<char>(0x80u | (cp & 0x3Fu));
+                        } else if (cp <= 0xFFFFu) {
+                            out_val.str_val += static_cast<char>(0xE0u | ((cp >> 12u) & 0x0Fu));
+                            out_val.str_val += static_cast<char>(0x80u | ((cp >> 6u) & 0x3Fu));
+                            out_val.str_val += static_cast<char>(0x80u | (cp & 0x3Fu));
+                        } else if (cp <= 0x10FFFFu) {
+                            out_val.str_val += static_cast<char>(0xF0u | ((cp >> 18u) & 0x07u));
+                            out_val.str_val += static_cast<char>(0x80u | ((cp >> 12u) & 0x3Fu));
+                            out_val.str_val += static_cast<char>(0x80u | ((cp >> 6u) & 0x3Fu));
+                            out_val.str_val += static_cast<char>(0x80u | (cp & 0x3Fu));
+                        }
                         break;
                     }
                     default:
@@ -308,6 +345,44 @@ class SimpleJsonParser {
     }
 };
 
+ActionAssignment parse_assignment_object(const JsonValue& a_val) {
+    std::string scoped_tgt = a_val.get_string("scoped_target");
+    std::string tgt_str = !scoped_tgt.empty() ? scoped_tgt : a_val.get_string("target", a_val.get_string("variable"));
+    LValueTarget tgt(tgt_str);
+    std::string scope_str = a_val.get_string("scope");
+    if (scope_str == "Register") {
+        tgt.scope = LValueScope::Register;
+    } else if (scope_str == "OutPort") {
+        tgt.scope = LValueScope::OutPort;
+    } else if (scope_str == "Local") {
+        tgt.scope = LValueScope::Local;
+    }
+    std::string op_str = a_val.get_string("op", "=");
+    std::string expr = a_val.get_string("expression");
+    return ActionAssignment(std::move(tgt), std::move(expr), string_to_assignment_op(op_str));
+}
+
+ActionSignature parse_action_signature_object(const JsonValue& act_val) {
+    ActionSignature sig;
+    sig.name = sanitize_identifier(act_val.get_string("name"));
+    sig.invocation = act_val.get_string("invocation", sig.name);
+    if (const auto* ae = act_val.get_child("accepts_event")) {
+        if (ae->type == JsonType::Bool) {
+            sig.accepts_event = ae->bool_val;
+        }
+    }
+    if (const auto* assigns_val = act_val.get_child("assignments")) {
+        if (assigns_val->is_array()) {
+            for (const auto& a_val : assigns_val->arr_val) {
+                if (a_val.is_object()) {
+                    sig.assignments.push_back(parse_assignment_object(a_val));
+                }
+            }
+        }
+    }
+    return sig;
+}
+
 void parse_single_transition_object(const JsonValue& trans_obj, const std::string& source_state,
                                     const std::string& event_name, FsmIr& model) {
     std::string target_raw = trans_obj.get_string("target");
@@ -327,12 +402,29 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
         is_deep = false;
         clean_target.erase(clean_target.size() - 3);
     }
+    if (const auto* th = trans_obj.get_child("target_is_history")) {
+        if (th->type == JsonType::Bool) {
+            is_history = th->bool_val;
+        }
+    }
+    if (const auto* tdh = trans_obj.get_child("target_is_deep_history")) {
+        if (tdh->type == JsonType::Bool) {
+            is_deep = tdh->bool_val;
+        }
+    }
 
     TransitionEdge trans;
+    trans.id = trans_obj.get_string("id");
     trans.source = source_state;
     trans.target = sanitize_identifier(clean_target);
     trans.target_is_history = is_history;
     trans.target_is_deep_history = is_deep;
+    trans.description = trans_obj.get_string("description");
+
+    std::string kind_str = trans_obj.get_string("kind");
+    if (!kind_str.empty()) {
+        trans.kind = transition_edge_kind_from_string(kind_str);
+    }
 
     if (event_name == "always" || event_name.empty() || event_name == "Anonymous" || event_name == "AnonymousEvent" ||
         event_name == "anonymous") {
@@ -354,6 +446,9 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
         auto parsed = frontend::directive::GuardExpressionParser::parse(guard_str);
         if (!parsed.cpp_type.empty()) {
             trans.guard = parsed.cpp_type;
+            for (const auto& detail : parsed.atomic_guard_details) {
+                model.add_guard(detail.name, "", detail.expression, detail.expression);
+            }
             for (const auto& atomic : parsed.atomic_guards) {
                 model.add_guard(atomic);
             }
@@ -362,35 +457,69 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
             model.add_guard(guard_str);
         }
     }
+    std::string raw_guard = trans_obj.get_string("raw_guard");
+    if (!raw_guard.empty()) {
+        trans.guard = raw_guard;
+    }
+    std::string guard_ast_str = trans_obj.get_string("guard_ast");
+    if (!guard_ast_str.empty()) {
+        trans.guard_ast = GuardAstNode(guard_ast_str);
+    } else if (trans.guard.has_value() && !trans.guard->empty()) {
+        trans.guard_ast = GuardAstNode(*trans.guard);
+    }
 
-    std::string act_str = trans_obj.get_string("action");
-    if (act_str.empty()) {
-        act_str = trans_obj.get_string("actions");
-    }
-    if (act_str.empty()) {
-        act_str = trans_obj.get_string("transition_action");
-    }
-    if (act_str.empty()) {
-        act_str = trans_obj.get_string("action_sig");
-    }
-    if (act_str.empty()) {
-        const auto* act_val = trans_obj.get_child("actions");
-        if (act_val != nullptr) {
-            if (act_val->is_string()) {
-                act_str = act_val->str_val;
-            } else if (act_val->is_array() && !act_val->arr_val.empty() && act_val->arr_val.front().is_string()) {
-                act_str = act_val->arr_val.front().str_val;
+    if (const auto* tao = trans_obj.get_child("transition_action_obj")) {
+        if (tao->is_object()) {
+            ActionSignature sig = parse_action_signature_object(*tao);
+            if (!sig.name.empty()) {
+                model.add_action(sig.name);
+            }
+            trans.transition_action = std::move(sig);
+        }
+    } else {
+        std::string act_str = trans_obj.get_string("action");
+        if (act_str.empty()) {
+            act_str = trans_obj.get_string("actions");
+        }
+        if (act_str.empty()) {
+            act_str = trans_obj.get_string("transition_action");
+        }
+        if (act_str.empty()) {
+            act_str = trans_obj.get_string("action_sig");
+        }
+        if (act_str.empty()) {
+            const auto* act_val = trans_obj.get_child("actions");
+            if (act_val != nullptr) {
+                if (act_val->is_string()) {
+                    act_str = act_val->str_val;
+                } else if (act_val->is_array() && !act_val->arr_val.empty() && act_val->arr_val.front().is_string()) {
+                    act_str = act_val->arr_val.front().str_val;
+                }
             }
         }
+        if (!act_str.empty()) {
+            std::string act_san = sanitize_identifier(act_str);
+            model.add_action(act_san);
+            trans.transition_action = ActionSignature{act_san};
+        }
     }
-    if (!act_str.empty()) {
-        std::string act_san = sanitize_identifier(act_str);
-        model.add_action(act_san);
-        trans.transition_action = ActionSignature{act_san};
+
+    if (const auto* cao = trans_obj.get_child("condition_action")) {
+        if (cao->is_object()) {
+            ActionSignature sig = parse_action_signature_object(*cao);
+            if (!sig.name.empty()) {
+                model.add_action(sig.name);
+            }
+            trans.condition_action = std::move(sig);
+        } else if (cao->is_string() && !cao->str_val.empty()) {
+            std::string c_act = sanitize_identifier(cao->str_val);
+            model.add_action(c_act);
+            trans.condition_action = ActionSignature{c_act};
+        }
     }
 
     if (trans_obj.get_child("priority") != nullptr) {
-        trans.priority = static_cast<int>(trans_obj.get_number("priority", 0.0));
+        trans.priority = static_cast<std::uint32_t>(trans_obj.get_number("priority", 0.0));
     }
 
     if (const auto* s_arr = trans_obj.get_child("source_ids")) {
@@ -409,36 +538,100 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
             }
         }
     }
+    if (const auto* cr_arr = trans_obj.get_child("clock_resets")) {
+        if (cr_arr->is_array()) {
+            for (const auto& elem : cr_arr->arr_val) {
+                if (elem.is_string())
+                    trans.clock_resets.push_back(elem.str_val);
+            }
+        }
+    }
+    if (const auto* tr_arr = trans_obj.get_child("traceability_reqs")) {
+        if (tr_arr->is_array()) {
+            for (const auto& elem : tr_arr->arr_val) {
+                if (elem.is_string())
+                    trans.traceability_reqs.push_back(elem.str_val);
+            }
+        }
+    }
 
-    // Time trigger
+    // Structured triggers (time_trigger, change_trigger, signal_trigger, anonymous_trigger)
     if (const auto* tt_val = trans_obj.get_child("time_trigger")) {
         if (tt_val->is_object()) {
             TimeTrigger tt;
             std::string k = tt_val->get_string("kind", "after");
-            tt.kind = (k == "every") ? TimeTriggerKind::Every : TimeTriggerKind::After;
+            tt.kind = time_trigger_kind_from_string(k);
             tt.duration_value =
                 static_cast<uint64_t>(tt_val->get_number("duration_value", tt_val->get_number("duration_ms", 0.0)));
             std::string u = tt_val->get_string("unit", "ms");
-            tt.unit = (u == "s") ? TimeUnit::Seconds : ((u == "us") ? TimeUnit::Microseconds : TimeUnit::Milliseconds);
+            tt.unit = time_unit_from_string(u);
             tt.dynamic_expression = tt_val->get_string("dynamic_expression");
+            if (tt_val->get_child("duration_ms") != nullptr) {
+                tt.duration_ms = static_cast<uint64_t>(tt_val->get_number("duration_ms", 0.0));
+            } else {
+                tt.duration_ms = tt.duration_in_ms();
+            }
+            if (const auto* p_val = tt_val->get_child("periodic")) {
+                if (p_val->type == JsonType::Bool) {
+                    tt.periodic = p_val->bool_val;
+                } else {
+                    tt.periodic = (tt.kind == TimeTriggerKind::Every);
+                }
+            } else {
+                tt.periodic = (tt.kind == TimeTriggerKind::Every);
+            }
             trans.trigger = tt;
+        }
+    } else if (const auto* ct_val = trans_obj.get_child("change_trigger")) {
+        if (ct_val->is_object()) {
+            std::string raw_expr = ct_val->get_string("raw_expression");
+            bool on_true = true;
+            if (const auto* aot = ct_val->get_child("active_on_true")) {
+                if (aot->type == JsonType::Bool) {
+                    on_true = aot->bool_val;
+                }
+            }
+            trans.trigger = ChangeTrigger(raw_expr, on_true);
+        }
+    } else if (const auto* st_val = trans_obj.get_child("signal_trigger")) {
+        if (st_val->is_object()) {
+            SignalTrigger st;
+            st.signal_name = st_val->get_string("signal_name", trans.event);
+            st.payload_binding = st_val->get_string("payload_binding", "payload");
+            st.payload_type = st_val->get_string("payload_type");
+            if (const auto* pp_arr = st_val->get_child("payload_parameters")) {
+                if (pp_arr->is_array()) {
+                    for (const auto& pp : pp_arr->arr_val) {
+                        if (pp.is_object()) {
+                            st.payload_parameters.emplace_back(pp.get_string("name"), pp.get_string("type"));
+                        }
+                    }
+                }
+            }
+            trans.trigger = st;
+        }
+    } else if (const auto* at_val = trans_obj.get_child("anonymous_trigger")) {
+        if (at_val->is_object()) {
+            AnonymousTrigger at;
+            if (const auto* ic = at_val->get_child("is_completion")) {
+                if (ic->type == JsonType::Bool) {
+                    at.is_completion = ic->bool_val;
+                }
+            }
+            at.description = at_val->get_string("description", "completion");
+            trans.trigger = at;
         }
     }
 
-    // Parse assignments
+    // Parse assignments if transition_action_obj did not already populate them
     if (const auto* assigns_val = trans_obj.get_child("assignments")) {
-        if (assigns_val->is_array()) {
+        if (assigns_val->is_array() &&
+            (!trans.transition_action.has_value() || trans.transition_action->assignments.empty())) {
             std::string act_name = trans.get_action().empty() ? "trans_action" : trans.get_action();
-            ActionSignature act_sig(act_name);
+            ActionSignature act_sig = trans.transition_action.value_or(ActionSignature(act_name));
             for (const auto& a_val : assigns_val->arr_val) {
                 if (a_val.is_object()) {
-                    ActionAssignment assign;
-                    assign.target.name = a_val.get_string("variable");
-                    assign.target.scope = LValueScope::Local;
-                    std::string op_str = a_val.get_string("op", "=");
-                    assign.op = string_to_assignment_op(op_str);
-                    assign.expression = a_val.get_string("expression");
-                    act_sig.assignments.push_back(std::move(assign));
+                    act_sig.assignments.push_back(parse_assignment_object(a_val));
                 }
             }
             if (!act_sig.assignments.empty()) {
@@ -449,15 +642,39 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
 
     const auto* src_node = model.find_state(source_state);
     trans.parent_scope = (src_node != nullptr) ? src_node->parent_state : "";
-    if (trans.target.empty()) {
+    if (trans.target.empty() && trans.target_ids.empty()) {
         trans.target = source_state;
-        trans.kind = TransitionEdgeKind::Internal;
+        if (kind_str.empty()) {
+            trans.kind = TransitionEdgeKind::Internal;
+        }
     }
-    if (!model.is_choice_node(trans.target)) {
+    if (!trans.target.empty() && !model.is_choice_node(trans.target)) {
         model.add_state(trans.target);
     }
     if (!trans.event.empty()) {
         model.add_event(trans.event);
+    }
+    if (trans.id.empty() && !trans.source.empty() && !trans.target.empty()) {
+        trans.id = compute_deterministic_id(trans.source + "->" + trans.target + ":" + trans.event + "[" +
+                                            (trans.guard ? *trans.guard : "") + "]");
+    }
+    if (!trans.source.empty() && trans.source_id.empty()) {
+        trans.source_id = compute_deterministic_id(trans.source);
+        if (trans.source_ids.empty()) {
+            trans.source_ids.push_back(trans.source);
+        }
+        if (trans.multi_source_ids.empty()) {
+            trans.multi_source_ids.push_back(trans.source_id);
+        }
+    }
+    if (!trans.target.empty() && trans.target_id.empty()) {
+        trans.target_id = compute_deterministic_id(trans.target);
+        if (trans.target_ids.empty()) {
+            trans.target_ids.push_back(trans.target);
+        }
+        if (trans.multi_target_ids.empty()) {
+            trans.multi_target_ids.push_back(trans.target_id);
+        }
     }
     model.add_transition(std::move(trans));
 }
@@ -507,55 +724,132 @@ void parse_states_object(const JsonValue& states_obj, FsmIr& model, const std::s
         }
 
         auto* curr = model.find_state_mut(state_name);
+        if (curr != nullptr) {
+            std::string st_id = state_data.get_string("id");
+            if (!st_id.empty()) {
+                curr->id = st_id;
+            }
+            std::string st_alias = state_data.get_string("alias");
+            if (!st_alias.empty()) {
+                curr->alias = st_alias;
+            }
+            std::string st_desc = state_data.get_string("description");
+            if (!st_desc.empty()) {
+                curr->description = st_desc;
+            }
+            if (const auto* pp = state_data.get_child("pinned_parent")) {
+                if (pp->type == JsonType::Bool) {
+                    curr->pinned_parent = pp->bool_val;
+                }
+            }
+        }
 
         // Parse entry actions
-        const auto* entry_val = state_data.get_child("entry");
-        if (entry_val != nullptr && curr != nullptr) {
-            if (entry_val->is_string()) {
-                std::string act = sanitize_identifier(entry_val->str_val);
-                model.add_action(act);
-                curr->entry_actions.push_back(ActionSignature{act});
-            } else if (entry_val->is_array()) {
-                for (const auto& item : entry_val->arr_val) {
-                    if (item.is_string()) {
-                        std::string act = sanitize_identifier(item.str_val);
-                        model.add_action(act);
-                        curr->entry_actions.push_back(ActionSignature{act});
+        if (const auto* entry_acts_val = state_data.get_child("entry_actions");
+            entry_acts_val != nullptr && entry_acts_val->is_array() && curr != nullptr) {
+            for (const auto& item : entry_acts_val->arr_val) {
+                if (item.is_object()) {
+                    ActionSignature sig = parse_action_signature_object(item);
+                    if (!sig.name.empty()) {
+                        model.add_action(sig.name);
+                    }
+                    curr->entry_actions.push_back(std::move(sig));
+                } else if (item.is_string()) {
+                    std::string act = sanitize_identifier(item.str_val);
+                    model.add_action(act);
+                    curr->entry_actions.push_back(ActionSignature{act});
+                }
+            }
+        } else {
+            const auto* entry_val = state_data.get_child("entry");
+            if (entry_val != nullptr && curr != nullptr) {
+                if (entry_val->is_string()) {
+                    std::string act = sanitize_identifier(entry_val->str_val);
+                    model.add_action(act);
+                    curr->entry_actions.push_back(ActionSignature{act});
+                } else if (entry_val->is_array()) {
+                    for (const auto& item : entry_val->arr_val) {
+                        if (item.is_string()) {
+                            std::string act = sanitize_identifier(item.str_val);
+                            model.add_action(act);
+                            curr->entry_actions.push_back(ActionSignature{act});
+                        } else if (item.is_object()) {
+                            ActionSignature sig = parse_action_signature_object(item);
+                            if (!sig.name.empty()) {
+                                model.add_action(sig.name);
+                            }
+                            curr->entry_actions.push_back(std::move(sig));
+                        }
                     }
                 }
             }
         }
 
         // Parse exit actions
-        const auto* exit_val = state_data.get_child("exit");
-        if (exit_val != nullptr && curr != nullptr) {
-            if (exit_val->is_string()) {
-                std::string act = sanitize_identifier(exit_val->str_val);
-                model.add_action(act);
-                curr->exit_actions.push_back(ActionSignature{act});
-            } else if (exit_val->is_array()) {
-                for (const auto& item : exit_val->arr_val) {
-                    if (item.is_string()) {
-                        std::string act = sanitize_identifier(item.str_val);
-                        model.add_action(act);
-                        curr->exit_actions.push_back(ActionSignature{act});
+        if (const auto* exit_acts_val = state_data.get_child("exit_actions");
+            exit_acts_val != nullptr && exit_acts_val->is_array() && curr != nullptr) {
+            for (const auto& item : exit_acts_val->arr_val) {
+                if (item.is_object()) {
+                    ActionSignature sig = parse_action_signature_object(item);
+                    if (!sig.name.empty()) {
+                        model.add_action(sig.name);
+                    }
+                    curr->exit_actions.push_back(std::move(sig));
+                } else if (item.is_string()) {
+                    std::string act = sanitize_identifier(item.str_val);
+                    model.add_action(act);
+                    curr->exit_actions.push_back(ActionSignature{act});
+                }
+            }
+        } else {
+            const auto* exit_val = state_data.get_child("exit");
+            if (exit_val != nullptr && curr != nullptr) {
+                if (exit_val->is_string()) {
+                    std::string act = sanitize_identifier(exit_val->str_val);
+                    model.add_action(act);
+                    curr->exit_actions.push_back(ActionSignature{act});
+                } else if (exit_val->is_array()) {
+                    for (const auto& item : exit_val->arr_val) {
+                        if (item.is_string()) {
+                            std::string act = sanitize_identifier(item.str_val);
+                            model.add_action(act);
+                            curr->exit_actions.push_back(ActionSignature{act});
+                        } else if (item.is_object()) {
+                            ActionSignature sig = parse_action_signature_object(item);
+                            if (!sig.name.empty()) {
+                                model.add_action(sig.name);
+                            }
+                            curr->exit_actions.push_back(std::move(sig));
+                        }
                     }
                 }
             }
         }
 
-        // Parse type / history
+        // Parse type / history / composite / initial
         std::string s_type = state_data.get_string("type");
         if (s_type == "history" && curr != nullptr) {
             curr->has_history = true;
             std::string h_mode = state_data.get_string("history", "shallow");
             curr->has_deep_history = (h_mode == "deep");
-        } else if (s_type == "compound" && curr != nullptr) {
-            curr->is_composite = true;
-            std::string sub_init = state_data.get_string("initial");
-            if (!sub_init.empty()) {
-                curr->initial_sub_state = sanitize_identifier(sub_init);
+        }
+        if (const auto* h_val = state_data.get_child("history")) {
+            if (h_val->is_string() && curr != nullptr) {
+                curr->has_history = true;
+                curr->has_deep_history = (h_val->str_val == "deep");
             }
+        }
+        if (s_type == "compound" && curr != nullptr) {
+            curr->is_composite = true;
+        }
+        if (const auto* ic_val = state_data.get_child("is_composite")) {
+            if (ic_val->type == JsonType::Bool && curr != nullptr) {
+                curr->is_composite = ic_val->bool_val;
+            }
+        }
+        std::string sub_init = state_data.get_string("initial");
+        if (!sub_init.empty() && curr != nullptr) {
+            curr->initial_sub_state = sanitize_identifier(sub_init);
         }
 
         std::string s_kind = state_data.get_string("kind");
@@ -565,6 +859,52 @@ void parse_states_object(const JsonValue& states_obj, FsmIr& model, const std::s
         std::string s_ti = state_data.get_string("time_invariant");
         if (!s_ti.empty() && curr != nullptr) {
             curr->time_invariant = StateTimeInvariant(s_ti);
+        }
+        if (const auto* inv_val = state_data.get_child("invariants")) {
+            if (inv_val->is_array() && curr != nullptr) {
+                for (const auto& item : inv_val->arr_val) {
+                    if (item.is_string() && !item.str_val.empty()) {
+                        curr->invariants.emplace_back(item.str_val);
+                    }
+                }
+            }
+        }
+        if (const auto* reg_val = state_data.get_child("orthogonal_regions")) {
+            if (reg_val->is_array() && curr != nullptr) {
+                for (const auto& r_item : reg_val->arr_val) {
+                    if (r_item.is_object()) {
+                        OrthogonalRegion reg;
+                        reg.id = r_item.get_string("id");
+                        reg.name = r_item.get_string("name");
+                        reg.initial_state_id = r_item.get_string("initial_state_id");
+                        if (const auto* sids = r_item.get_child("state_ids")) {
+                            if (sids->is_array()) {
+                                for (const auto& sid : sids->arr_val) {
+                                    if (sid.is_string()) {
+                                        reg.state_ids.push_back(sid.str_val);
+                                    }
+                                }
+                            }
+                        }
+                        curr->orthogonal_regions.push_back(std::move(reg));
+                    }
+                }
+            }
+        }
+        if (const auto* sub_val = state_data.get_child("submachine")) {
+            if (sub_val->is_object() && curr != nullptr) {
+                SubmachineRef sub(sub_val->get_string("fsm_name"), sub_val->get_string("source_uri"));
+                if (const auto* pms = sub_val->get_child("port_mappings")) {
+                    if (pms->is_array()) {
+                        for (const auto& pm : pms->arr_val) {
+                            if (pm.is_object()) {
+                                sub.port_mappings.emplace_back(pm.get_string("entry"), pm.get_string("exit"));
+                            }
+                        }
+                    }
+                }
+                curr->submachine = std::move(sub);
+            }
         }
 
         // Parse do activity
@@ -643,6 +983,8 @@ void parse_states_object(const JsonValue& states_obj, FsmIr& model, const std::s
                 tt.kind = TimeTriggerKind::After;
                 tt.duration_value = static_cast<uint64_t>(std::strtoull(delay_str.c_str(), nullptr, 10));
                 tt.unit = TimeUnit::Milliseconds;
+                tt.duration_ms = tt.duration_in_ms();
+                tt.periodic = false;
                 t.trigger = tt;
                 model.add_transition(std::move(t));
             }
@@ -693,6 +1035,12 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
     }
 
     std::string fsm_id = root.get_string("id");
+    std::string explicit_fsm_id = root.get_string("fsm_id");
+    if (!explicit_fsm_id.empty()) {
+        out_ir.id = explicit_fsm_id;
+    } else if (!fsm_id.empty()) {
+        out_ir.id = fsm_id;
+    }
     if (!fsm_id.empty()) {
         out_ir.name = sanitize_identifier(fsm_id);
     }
@@ -705,10 +1053,26 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
     if (!init_state.empty()) {
         out_ir.initial_state = sanitize_identifier(init_state);
     }
+    std::string init_state_id = root.get_string("initial_state_id");
+    if (!init_state_id.empty()) {
+        out_ir.initial_state_id = init_state_id;
+    }
 
     std::string pkg = root.get_string("package");
     if (!pkg.empty()) {
         out_ir.package = pkg;
+    }
+
+    const auto* sat_arr = root.get_child("satisfies_reqs");
+    if (sat_arr == nullptr) {
+        sat_arr = root.get_child("satisfies");
+    }
+    if (sat_arr != nullptr && sat_arr->is_array()) {
+        for (const auto& r_item : sat_arr->arr_val) {
+            if (r_item.is_string()) {
+                out_ir.satisfies_reqs.push_back(r_item.str_val);
+            }
+        }
     }
 
     const auto* attrs_obj = root.get_child("attributes");
@@ -720,6 +1084,23 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
         }
     }
 
+    // Concurrency
+    const auto* conc_obj = root.get_child("concurrency");
+    if (conc_obj != nullptr && conc_obj->is_object()) {
+        std::string disp = conc_obj->get_string("dispatch");
+        if (!disp.empty()) {
+            out_ir.concurrency.dispatch = string_to_event_dispatch_semantics(disp);
+        }
+        std::string oc = conc_obj->get_string("orthogonal_conflict");
+        if (!oc.empty()) {
+            out_ir.concurrency.orthogonal_conflict = string_to_orthogonal_conflict_resolution(oc);
+        }
+        std::string di = conc_obj->get_string("datapath_isolation");
+        if (!di.empty()) {
+            out_ir.concurrency.datapath_isolation = string_to_datapath_isolation(di);
+        }
+    }
+
     // Variables
     const auto* vars_arr = root.get_child("variables");
     if (vars_arr != nullptr && vars_arr->is_array()) {
@@ -728,8 +1109,35 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
                 VariableDefinition var;
                 var.name = sanitize_identifier(v_val.get_string("name"));
                 var.type = v_val.get_string("type", "uint32_t");
-                var.initial_value = v_val.get_string("init");
-                var.description = v_val.get_string("description");
+                var.initial_value = v_val.get_string("init", v_val.get_string("initial_value", "0"));
+                std::string v_unit = v_val.get_string("physical_unit", v_val.get_string("unit"));
+                if (!v_unit.empty()) {
+                    var.physical_unit = v_unit;
+                }
+                if (const auto* min_c = v_val.get_child("min_value")) {
+                    if (min_c->type == JsonType::Number) {
+                        var.min_value = static_cast<int64_t>(min_c->num_val);
+                    }
+                } else if (const auto* min_c2 = v_val.get_child("min")) {
+                    if (min_c2->type == JsonType::Number) {
+                        var.min_value = static_cast<int64_t>(min_c2->num_val);
+                    }
+                }
+                if (const auto* max_c = v_val.get_child("max_value")) {
+                    if (max_c->type == JsonType::Number) {
+                        var.max_value = static_cast<int64_t>(max_c->num_val);
+                    }
+                } else if (const auto* max_c2 = v_val.get_child("max")) {
+                    if (max_c2->type == JsonType::Number) {
+                        var.max_value = static_cast<int64_t>(max_c2->num_val);
+                    }
+                }
+                if (const auto* reg_c = v_val.get_child("register_index")) {
+                    if (reg_c->type == JsonType::Number) {
+                        var.register_index = static_cast<std::size_t>(reg_c->num_val);
+                    }
+                }
+                var.description = v_val.get_string("description", v_val.get_string("desc"));
                 if (!var.name.empty()) {
                     out_ir.add_variable(std::move(var));
                 }
@@ -750,12 +1158,25 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
                 if (const auto* min_c = p_val.get_child("min")) {
                     if (min_c->type == JsonType::Number)
                         port.min_value = min_c->num_val;
+                } else if (const auto* min_c2 = p_val.get_child("min_value")) {
+                    if (min_c2->type == JsonType::Number)
+                        port.min_value = min_c2->num_val;
                 }
                 if (const auto* max_c = p_val.get_child("max")) {
                     if (max_c->type == JsonType::Number)
                         port.max_value = max_c->num_val;
+                } else if (const auto* max_c2 = p_val.get_child("max_value")) {
+                    if (max_c2->type == JsonType::Number)
+                        port.max_value = max_c2->num_val;
                 }
                 port.constraint = p_val.get_string("constraint");
+                port.default_value = p_val.get_string("default_value", p_val.get_string("default"));
+                std::string p_unit = p_val.get_string("physical_unit", p_val.get_string("unit"));
+                if (!p_unit.empty()) {
+                    port.physical_unit = p_unit;
+                }
+                port.description = p_val.get_string("description", p_val.get_string("desc"));
+                port.bound_to = p_val.get_string("bound_to");
                 if (!port.name.empty()) {
                     out_ir.ports.push_back(std::move(port));
                 }
@@ -770,6 +1191,7 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
             if (s_val.is_object()) {
                 SignalDefinition sig;
                 sig.name = sanitize_identifier(s_val.get_string("name"));
+                sig.description = s_val.get_string("description", s_val.get_string("desc"));
                 const auto* attrs_arr = s_val.get_child("attributes");
                 if (attrs_arr != nullptr && attrs_arr->is_array()) {
                     for (const auto& a_val : attrs_arr->arr_val) {
@@ -777,8 +1199,17 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
                             SignalAttribute attr;
                             attr.name = sanitize_identifier(a_val.get_string("name"));
                             attr.type = a_val.get_string("type", "uint32_t");
-                            attr.default_value = a_val.get_string("default");
+                            attr.default_value = a_val.get_string("default", a_val.get_string("default_value"));
                             sig.attributes.push_back(std::move(attr));
+                        }
+                    }
+                }
+                if (const auto* val_arr = s_val.get_child("validators")) {
+                    if (val_arr->is_array()) {
+                        for (const auto& v_item : val_arr->arr_val) {
+                            if (v_item.is_string()) {
+                                sig.validators.push_back(v_item.str_val);
+                            }
                         }
                     }
                 }
@@ -912,10 +1343,28 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
                             std::string f_name = sanitize_identifier(f_val.get_string("name"));
                             std::string f_type = f_val.get_string("type", "string");
                             std::string f_def = f_val.get_string("default_value", f_val.get_string("default"));
+                            std::string f_unit_str = f_val.get_string("physical_unit", f_val.get_string("unit"));
+                            std::optional<std::string> f_unit =
+                                f_unit_str.empty() ? std::nullopt : std::make_optional(f_unit_str);
+                            std::optional<double> f_min;
+                            if (const auto* m_val = f_val.get_child("min_value")) {
+                                if (m_val->type == JsonType::Number)
+                                    f_min = m_val->num_val;
+                            } else if (const auto* m_val2 = f_val.get_child("min")) {
+                                if (m_val2->type == JsonType::Number)
+                                    f_min = m_val2->num_val;
+                            }
+                            std::optional<double> f_max;
+                            if (const auto* m_val = f_val.get_child("max_value")) {
+                                if (m_val->type == JsonType::Number)
+                                    f_max = m_val->num_val;
+                            } else if (const auto* m_val2 = f_val.get_child("max")) {
+                                if (m_val2->type == JsonType::Number)
+                                    f_max = m_val2->num_val;
+                            }
                             std::string f_desc = f_val.get_string("description");
                             if (!f_name.empty()) {
-                                td.add_field(StructField(f_name, f_type, f_def, std::nullopt, std::nullopt,
-                                                         std::nullopt, f_desc));
+                                td.add_field(StructField(f_name, f_type, f_def, f_unit, f_min, f_max, f_desc));
                             }
                         }
                     }
@@ -932,19 +1381,21 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
     if (props_arr != nullptr && props_arr->is_array()) {
         for (const auto& p_val : props_arr->arr_val) {
             if (p_val.is_object()) {
+                std::string p_id = p_val.get_string("id");
                 std::string p_name = p_val.get_string("name");
-                std::string formula = p_val.get_string("ltl", p_val.get_string("formula"));
+                std::string formula =
+                    p_val.get_string("raw_formula", p_val.get_string("ltl", p_val.get_string("formula")));
                 std::string kind_str = p_val.get_string("kind", "Safety");
-                PropertyKind p_kind = PropertyKind::Safety;
-                if (kind_str == "Invariant")
-                    p_kind = PropertyKind::Invariant;
-                else if (kind_str == "Reachability")
-                    p_kind = PropertyKind::Reachability;
-                else if (kind_str == "Liveness")
-                    p_kind = PropertyKind::Liveness;
+                PropertyKind p_kind = property_kind_from_string(kind_str);
                 std::string req = p_val.get_string("req", p_val.get_string("traceability_req"));
                 std::string desc = p_val.get_string("desc", p_val.get_string("description"));
                 FormalProperty prop(p_name, p_kind, formula, desc, req);
+                if (!p_id.empty()) {
+                    prop.id = p_id;
+                }
+                if (!formula.empty()) {
+                    prop.ast = frontend::directive::LtlPropertyParser::parse(formula);
+                }
                 out_ir.properties.push_back(std::move(prop));
             }
         }
@@ -969,19 +1420,22 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
         return false;
     }
 
-    // Top-level Transitions list if present (only if transitions were not already parsed from states.on)
-    if (out_ir.transitions.empty()) {
-        const auto* trans_arr = root.get_child("transitions");
-        if (trans_arr != nullptr && trans_arr->is_array()) {
-            for (const auto& t_val : trans_arr->arr_val) {
-                if (t_val.is_object()) {
-                    std::string src = sanitize_identifier(t_val.get_string("source"));
-                    std::string evt = t_val.get_string("event");
-                    if (evt.empty()) {
-                        evt = t_val.get_string("trigger");
-                    }
-                    parse_single_transition_object(t_val, src, evt, out_ir);
+    // Top-level Transitions list if present (only if transitions were not already parsed from states.on,
+    // or for join transitions with empty source that do not appear in states.on)
+    const bool had_on_transitions = !out_ir.transitions.empty();
+    const auto* trans_arr = root.get_child("transitions");
+    if (trans_arr != nullptr && trans_arr->is_array()) {
+        for (const auto& t_val : trans_arr->arr_val) {
+            if (t_val.is_object()) {
+                std::string src = sanitize_identifier(t_val.get_string("source"));
+                if (had_on_transitions && !src.empty()) {
+                    continue;
                 }
+                std::string evt = t_val.get_string("event");
+                if (evt.empty()) {
+                    evt = t_val.get_string("trigger");
+                }
+                parse_single_transition_object(t_val, src, evt, out_ir);
             }
         }
     }

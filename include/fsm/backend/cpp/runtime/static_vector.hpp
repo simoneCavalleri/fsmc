@@ -50,6 +50,9 @@ class static_vector {
             for (std::size_t i = 0; i < other.size_; ++i) {
                 data_[i] = other.data_[i];
             }
+            for (std::size_t i = other.size_; i < size_; ++i) {
+                data_[i] = T{};
+            }
             size_ = other.size_;
         }
         return *this;
@@ -58,6 +61,7 @@ class static_vector {
     constexpr static_vector(static_vector&& other) noexcept(std::is_nothrow_move_constructible_v<T>) {
         for (std::size_t i = 0; i < other.size_; ++i) {
             data_[i] = std::move(other.data_[i]);
+            other.data_[i] = T{};
         }
         size_ = other.size_;
         other.size_ = 0;
@@ -67,6 +71,10 @@ class static_vector {
         if (this != &other) {
             for (std::size_t i = 0; i < other.size_; ++i) {
                 data_[i] = std::move(other.data_[i]);
+                other.data_[i] = T{};
+            }
+            for (std::size_t i = other.size_; i < size_; ++i) {
+                data_[i] = T{};
             }
             size_ = other.size_;
             other.size_ = 0;
@@ -80,7 +88,12 @@ class static_vector {
     [[nodiscard]] constexpr size_type max_size() const noexcept { return Capacity; }
     [[nodiscard]] constexpr size_type capacity() const noexcept { return Capacity; }
 
-    constexpr void clear() noexcept { size_ = 0; }
+    constexpr void clear() noexcept {
+        for (size_type i = 0; i < size_; ++i) {
+            data_[i] = T{};
+        }
+        size_ = 0;
+    }
 
     constexpr bool push_back(const T& value) noexcept {
         if (full()) {

@@ -851,3 +851,103 @@ TEST(CppModelEmitter, SignalWithAttributes_EmitsDefaultAndParameterizedConstruct
     EXPECT_NE(str.find("constexpr explicit CmdThrottle(float level_) : level(std::move(level_)) {}"),
               std::string::npos);
 }
+
+/**
+ * @brief Regression BUG-01: Lifecycle entry/exit actions with assignments must be emitted as
+ * concrete assignment functors and not misclassified as external services.
+ */
+TEST(CppModelEmitter, LifecycleActionWithAssignments_EmittedAsAssignmentStructNotExternalService) {
+    FsmIr model;
+    model.name = "LifecycleModel";
+    model.initial_state = "Active";
+
+    VariableDefinition var;
+    var.name = "counter";
+    var.type = DataType{PrimitiveTypeKind::UInt32};
+    var.initial_value = "0";
+    model.add_variable(std::move(var));
+
+    StateNode active_st("Active");
+    ActionSignature entry_act("Active_entry");
+    entry_act.assignments.push_back(ActionAssignment{"counter", "0"});
+    active_st.entry_actions.push_back(std::move(entry_act));
+
+    ActionSignature exit_act("Active_exit");
+    exit_act.assignments.push_back(ActionAssignment{"counter", "counter + 1"});
+    active_st.exit_actions.push_back(std::move(exit_act));
+
+    model.add_state(active_st);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = true;
+    CppModelEmitter::emit_model(out, model, opts);
+    std::string str = out.str();
+
+    // 1. Concrete assignment structs must be generated
+    EXPECT_NE(str.find("struct Active_entry {"), std::string::npos);
+    EXPECT_NE(str.find("reg.counter = 0;"), std::string::npos);
+
+    EXPECT_NE(str.find("struct Active_exit {"), std::string::npos);
+    EXPECT_NE(str.find("reg.counter = reg.counter + 1;"), std::string::npos);
+
+    // 2. Must NOT be misclassified as external service methods
+    EXPECT_EQ(str.find("virtual void Active_entry()"), std::string::npos);
+    EXPECT_EQ(str.find("virtual void Active_exit()"), std::string::npos);
+    EXPECT_NE(str.find("using LifecycleModelServices = ::fsm::no_services;"), std::string::npos);
+
+    // 3. Overload taking (InPorts, OutPorts, Registers, Services) must be present
+    EXPECT_NE(
+        str.find("void operator()(const InPorts& /*in*/, OutPorts& /*out*/, Registers& reg, Services& /*srv*/) const"),
+        std::string::npos);
+}
+
+/**
+ * @brief Regression BUG-02: C++ reserved keywords used as state, event, or action names
+ * must be escaped cleanly without emitting invalid syntax.
+ */
+TEST(CppModelEmitter, ReservedCppKeywords_EscapedInEmittedTypesAndTransitionTable) {
+    FsmIr model;
+    model.name = "KeywordModel";
+    model.initial_state = "switch";
+
+    StateNode st_switch("switch");
+    StateNode st_template("template");
+    model.add_state(st_switch);
+    model.add_state(st_template);
+
+    SignalDefinition sig_default("default");
+    model.signals.push_back(sig_default);
+
+    TransitionEdge trans;
+    trans.source = "switch";
+    trans.target = "template";
+    trans.event = "default";
+    trans.transition_action = ActionSignature("class");
+    model.transitions.push_back(trans);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = true;
+    CppModelEmitter::emit_model(out, model, opts);
+    std::string str = out.str();
+
+    // Check states forward declaration and struct definition
+    EXPECT_NE(str.find("struct switch_;"), std::string::npos);
+    EXPECT_NE(str.find("struct template_;"), std::string::npos);
+    EXPECT_NE(str.find("struct switch_ {"), std::string::npos);
+    EXPECT_NE(str.find("struct template_ {"), std::string::npos);
+
+    // Check event definition
+    EXPECT_NE(str.find("struct default_ {"), std::string::npos);
+
+    // Check action definition
+    EXPECT_NE(str.find("struct class_ {"), std::string::npos);
+
+    // Check transition table row
+    EXPECT_NE(str.find("::fsm::row<switch_, default_, template_>"), std::string::npos);
+    EXPECT_NE(str.find("::then<class_>"), std::string::npos);
+
+    // Check initial state alias
+    EXPECT_NE(str.find("::fsm::with_initial_state<switch_>"), std::string::npos);
+}

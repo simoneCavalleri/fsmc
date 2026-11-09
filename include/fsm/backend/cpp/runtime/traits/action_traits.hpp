@@ -21,7 +21,7 @@ namespace detail {
 
 // Action channel tuple layout: (0: evt, 1: src, 2: dst, 3: in, 4: out, 5: reg, 6: srv)
 template <typename Action, typename Tuple>
-constexpr void invoke_action_fallback(Action& action, Tuple& t) {
+constexpr void invoke_action_fallback(Action&& action, Tuple& t) {
     constexpr std::size_t N = std::tuple_size_v<std::remove_reference_t<Tuple>>;
 
 #if defined(__cpp_concepts) && __cpp_concepts >= 201907L && __cplusplus >= 202002L
@@ -219,12 +219,12 @@ constexpr void invoke_action_fallback(Action& action, Tuple& t) {
 // Safe invocation of action
 // ----------------------------------------------------------------------------
 template <typename Action, typename... Args>
-constexpr void call_action(Action& action, Args&&... args) {
+constexpr void call_action(Action&& action, Args&&... args) {
     if constexpr (std::is_invocable_v<Action, Args...>) {
         action(std::forward<Args>(args)...);
     } else {
         auto t = std::forward_as_tuple(args...);
-        detail::invoke_action_fallback(action, t);
+        detail::invoke_action_fallback(std::forward<Action>(action), t);
     }
 }
 

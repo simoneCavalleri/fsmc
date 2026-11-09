@@ -327,6 +327,8 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             opts.rtm_output_file = argv[++idx];
         } else if (arg.rfind("--rtm=", 0) == 0) {
             opts.rtm_output_file = arg.substr(6);
+        } else if (arg.rfind("--rtm-output=", 0) == 0) {
+            opts.rtm_output_file = arg.substr(13);
         } else if (arg == "--rtm-format") {
             if (idx + 1 >= argc) {
                 opts.is_valid = false;
@@ -334,8 +336,22 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.rtm_format = argv[++idx];
+            if (opts.rtm_format != "json" && opts.rtm_format != "JSON" && opts.rtm_format != "md" &&
+                opts.rtm_format != "MD" && opts.rtm_format != "markdown" && opts.rtm_format != "MARKDOWN") {
+                opts.is_valid = false;
+                opts.error_message =
+                    "Invalid value for --rtm-format: '" + opts.rtm_format + "' (expected 'json', 'md', or 'markdown')";
+                return opts;
+            }
         } else if (arg.rfind("--rtm-format=", 0) == 0) {
             opts.rtm_format = arg.substr(13);
+            if (opts.rtm_format != "json" && opts.rtm_format != "JSON" && opts.rtm_format != "md" &&
+                opts.rtm_format != "MD" && opts.rtm_format != "markdown" && opts.rtm_format != "MARKDOWN") {
+                opts.is_valid = false;
+                opts.error_message =
+                    "Invalid value for --rtm-format: '" + opts.rtm_format + "' (expected 'json', 'md', or 'markdown')";
+                return opts;
+            }
 
             // 9. C++ language dialect configuration (--std, --c++17, --c++20)
         } else if (arg == "--std") {
@@ -383,6 +399,15 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
         } else if (arg == "--modular") {
             opts.modular_specified = true;
             opts.standalone = false;
+            if (idx + 1 < argc && argv[idx + 1][0] != '-') {
+                std::string_view next_token = argv[idx + 1];
+                bool is_hdr = next_token.ends_with(".h") || next_token.ends_with(".hpp") ||
+                              next_token.ends_with(".hxx") || next_token.ends_with(".hh") ||
+                              (next_token.size() >= 3 && next_token.front() == '<' && next_token.back() == '>');
+                if (is_hdr) {
+                    opts.runtime_header = argv[++idx];
+                }
+            }
         } else if (arg.rfind("--modular=", 0) == 0) {
             opts.modular_specified = true;
             opts.standalone = false;
@@ -411,8 +436,20 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.verify_engine = argv[++idx];
+            if (opts.verify_engine != "auto" && opts.verify_engine != "internal" && opts.verify_engine != "nuxmv") {
+                opts.is_valid = false;
+                opts.error_message = "Invalid value for --engine: '" + opts.verify_engine +
+                                     "' (expected 'auto', 'internal', or 'nuxmv')";
+                return opts;
+            }
         } else if (arg.rfind("--engine=", 0) == 0) {
             opts.verify_engine = arg.substr(9);
+            if (opts.verify_engine != "auto" && opts.verify_engine != "internal" && opts.verify_engine != "nuxmv") {
+                opts.is_valid = false;
+                opts.error_message = "Invalid value for --engine: '" + opts.verify_engine +
+                                     "' (expected 'auto', 'internal', or 'nuxmv')";
+                return opts;
+            }
         } else if (arg == "--ltl") {
             if (idx + 1 >= argc) {
                 opts.is_valid = false;

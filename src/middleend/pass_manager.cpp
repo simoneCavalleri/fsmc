@@ -234,7 +234,14 @@ std::string ModelSafetyVerifierPass::description() const {
 }
 
 bool ModelSafetyVerifierPass::run(FsmIr& ir, DiagnosticEngine& diag) {
-    std::string root = ir.initial_state_id.empty() ? ir.initial_state : ir.initial_state_id;
+    std::string root = ir.initial_state;
+    if (root.empty()) {
+        if (const auto* s = ir.find_state_by_id(ir.initial_state_id)) {
+            root = s->name;
+        } else {
+            root = ir.initial_state_id;
+        }
+    }
     if (root.empty() && !ir.states.empty()) {
         root = ir.states.front().name;
     }
@@ -248,34 +255,91 @@ bool ModelSafetyVerifierPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     std::queue<std::string> queue;
     queue.push(root);
     reachable.insert(root);
+    if (const auto* root_node = ir.find_state_by_name(root)) {
+        if (!root_node->id.empty()) {
+            reachable.insert(root_node->id);
+        }
+    } else if (const auto* root_by_id = ir.find_state_by_id(root)) {
+        reachable.insert(root_by_id->name);
+        reachable.insert(root_by_id->id);
+    }
 
     while (!queue.empty()) {
         std::string curr = queue.front();
         queue.pop();
 
-        // 1. Include sub-states if composite or parallel
-        for (const auto& s : ir.states) {
-            if (s.parent_state == curr && reachable.count(s.name) == 0) {
-                reachable.insert(s.name);
-                queue.push(s.name);
+        const auto* curr_st = ir.find_state_by_name(curr);
+        if (!curr_st) {
+            curr_st = ir.find_state_by_id(curr);
+        }
+
+        // 1. Include sub-states: for sequential Composite states with an explicit initial_sub_state,
+        // only automatically mark initial_sub_state as reachable; for Parallel or empty initial_sub_state, mark all
+        // children.
+        bool mark_all_children = (curr_st == nullptr) || (curr_st->kind == StateKind::Parallel) ||
+                                 !curr_st->orthogonal_regions.empty() || curr_st->initial_sub_state.empty();
+        if (mark_all_children) {
+            for (const auto& s : ir.states) {
+                bool matches_parent =
+                    (!s.parent_state.empty() && s.parent_state == curr) ||
+                    (s.parent_id.has_value() && *s.parent_id == curr) ||
+                    (curr_st != nullptr && !s.parent_state.empty() && s.parent_state == curr_st->name);
+                if (matches_parent && reachable.count(s.name) == 0) {
+                    reachable.insert(s.name);
+                    if (!s.id.empty()) {
+                        reachable.insert(s.id);
+                    }
+                    queue.push(s.name);
+                }
             }
+        } else if (!curr_st->initial_sub_state.empty() && reachable.count(curr_st->initial_sub_state) == 0) {
+            reachable.insert(curr_st->initial_sub_state);
+            if (const auto* sub_node = ir.find_state_by_name(curr_st->initial_sub_state)) {
+                if (!sub_node->id.empty()) {
+                    reachable.insert(sub_node->id);
+                }
+            }
+            queue.push(curr_st->initial_sub_state);
         }
 
         // 2. Include parent state if sub-state is reached
-        const auto* curr_st = ir.find_state(curr);
         if (curr_st != nullptr && !curr_st->parent_state.empty()) {
             if (reachable.count(curr_st->parent_state) == 0) {
                 reachable.insert(curr_st->parent_state);
+                if (curr_st->parent_id.has_value() && !curr_st->parent_id->empty()) {
+                    reachable.insert(*curr_st->parent_id);
+                }
                 queue.push(curr_st->parent_state);
             }
         }
 
         // 3. Outgoing transitions
         for (const auto& t : ir.transitions) {
-            if (t.source == curr) {
-                if (reachable.count(t.target) == 0 && !t.target.empty()) {
+            bool matches_source = (t.source == curr || (!t.source_id.empty() && t.source_id == curr));
+            if (matches_source) {
+                std::string target_to_push;
+                if (!t.target.empty() && reachable.count(t.target) == 0) {
                     reachable.insert(t.target);
-                    queue.push(t.target);
+                    if (!t.target_id.empty()) {
+                        reachable.insert(t.target_id);
+                    }
+                    if (const auto* tn = ir.find_state_by_name(t.target)) {
+                        if (!tn->id.empty()) {
+                            reachable.insert(tn->id);
+                        }
+                    }
+                    target_to_push = t.target;
+                } else if (!t.target_id.empty() && reachable.count(t.target_id) == 0) {
+                    reachable.insert(t.target_id);
+                    if (const auto* tn = ir.find_state_by_id(t.target_id)) {
+                        reachable.insert(tn->name);
+                        target_to_push = tn->name;
+                    } else {
+                        target_to_push = t.target_id;
+                    }
+                }
+                if (!target_to_push.empty()) {
+                    queue.push(target_to_push);
                 }
             }
         }
@@ -284,7 +348,7 @@ bool ModelSafetyVerifierPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     for (const auto& s : ir.states) {
         if (s.kind == StateKind::Final || ir.is_choice_node(s.name))
             continue;
-        if (reachable.count(s.name) == 0) {
+        if (reachable.count(s.name) == 0 && reachable.count(s.id) == 0) {
             diag.report(Diagnostic::warning("W0201", "State unreachable from initial state: '" + s.name + "'."));
         }
     }
@@ -448,6 +512,9 @@ bool EFSMDataPathPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     if (prune_dead_transitions_) {
         std::size_t removed_count = 0;
         for (const auto& f : findings) {
+            if (f.kind != analysis::EFSMFindingKind::UnsatisfiableGuard) {
+                continue;
+            }
             auto it = std::find_if(ir.transitions.begin(), ir.transitions.end(), [&](const TransitionEdge& t) {
                 if (!f.transition_id.empty() && t.id == f.transition_id)
                     return true;
@@ -791,6 +858,7 @@ PassManager PassManager::create_verified_7stage_pipeline(bool optimize) {
     // Stage 2: Structural Lowering Suite
     pm.add_pass(std::make_unique<ForkJoinLoweringPassWrapper>());
     pm.add_pass(std::make_unique<HistoryLoweringPassWrapper>());
+    pm.add_pass(std::make_unique<EventQueueBoundPassWrapper>());
     pm.add_pass(std::make_unique<DeferredEventLoweringPassWrapper>());
     pm.add_pass(std::make_unique<OrthogonalProductPassWrapper>());
     pm.add_pass(std::make_unique<BoundaryActionFusionPassWrapper>());
@@ -802,7 +870,6 @@ PassManager PassManager::create_verified_7stage_pipeline(bool optimize) {
     pm.add_pass(std::make_unique<LivelockAnalysisPassWrapper>());
     pm.add_pass(std::make_unique<PriorityConflictPassWrapper>());
     pm.add_pass(std::make_unique<TimedInvariantsVerifierPassWrapper>());
-    pm.add_pass(std::make_unique<EventQueueBoundPassWrapper>());
     pm.add_pass(std::make_unique<GuardSatisfiabilityPassWrapper>());
 
     // Stage 4: Symbolic Model Checking

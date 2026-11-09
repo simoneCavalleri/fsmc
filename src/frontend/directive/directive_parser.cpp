@@ -60,7 +60,7 @@ std::vector<std::string> extract_array_items(const std::string& str, std::size_t
     std::string token;
     while (std::getline(iss, token, ',')) {
         std::string t = trim(token);
-        if (t.front() == '"' && t.back() == '"' && t.size() >= 2) {
+        if (t.size() >= 2 && t.front() == '"' && t.back() == '"') {
             t = t.substr(1, t.size() - 2);
         }
         if (!t.empty()) {
@@ -120,6 +120,10 @@ bool DirectiveParser::parse_state_directive(std::string_view body, StateNode& st
     if (act_pos != std::string::npos) {
         state.do_activity = extract_quoted_or_word(str, act_pos + 12);
     }
+    auto sub_pos = str.find("submachine=");
+    if (sub_pos != std::string::npos) {
+        state.submachine = SubmachineRef(extract_quoted_or_word(str, sub_pos + 11));
+    }
     auto req_pos = str.find("satisfies=");
     if (req_pos != std::string::npos) {
         auto list = extract_array_items(str, req_pos + 10);
@@ -171,6 +175,33 @@ bool DirectiveParser::parse_defer_directive(std::string_view body, StateNode& st
             state.deferred_events.push_back(std::move(ev));
         }
     }
+    return true;
+}
+
+bool DirectiveParser::parse_submachine_directive(std::string_view body, StateNode& state) {
+    std::string str(body);
+    if (str.rfind("submachine", 0) == 0) {
+        str = trim(str.substr(10));
+    }
+    if (str.empty()) {
+        return false;
+    }
+    std::string target_name;
+    std::string uri;
+    auto n_pos = str.find("name=");
+    if (n_pos != std::string::npos) {
+        target_name = extract_quoted_or_word(str, n_pos + 5);
+    } else {
+        target_name = extract_quoted_or_word(str, 0);
+    }
+    auto u_pos = str.find("uri=");
+    if (u_pos != std::string::npos) {
+        uri = extract_quoted_or_word(str, u_pos + 4);
+    }
+    if (target_name.empty()) {
+        return false;
+    }
+    state.submachine = SubmachineRef(target_name, uri);
     return true;
 }
 
@@ -438,7 +469,10 @@ std::optional<VariableDefinition> DirectiveParser::parse_variable_directive(std:
     if (min_pos != std::string::npos) {
         std::string m_str = extract_quoted_or_word(str, min_pos + 4);
         if (!m_str.empty()) {
-            var.min_value = std::stoll(m_str);
+            try {
+                var.min_value = std::stoll(m_str);
+            } catch (...) {
+            }
         }
     }
 
@@ -446,7 +480,10 @@ std::optional<VariableDefinition> DirectiveParser::parse_variable_directive(std:
     if (max_pos != std::string::npos) {
         std::string m_str = extract_quoted_or_word(str, max_pos + 4);
         if (!m_str.empty()) {
-            var.max_value = std::stoll(m_str);
+            try {
+                var.max_value = std::stoll(m_str);
+            } catch (...) {
+            }
         }
     }
 
@@ -758,7 +795,10 @@ bool DirectiveParser::parse_trans_directive(std::string_view body, TransitionEdg
     if (p_pos != std::string::npos) {
         std::string p_str = extract_quoted_or_word(str, p_pos);
         if (!p_str.empty()) {
-            trans.priority = static_cast<std::uint32_t>(std::stoul(p_str));
+            try {
+                trans.priority = static_cast<std::uint32_t>(std::stoul(p_str));
+            } catch (...) {
+            }
         }
     }
     return true;

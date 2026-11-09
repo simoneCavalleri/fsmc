@@ -182,15 +182,16 @@ constexpr bool state_is_or_descendant_of_static(std::string_view target_name) no
     if (get_state_name_static<State>() == target_name || get_type_name<State>() == target_name) {
         return true;
     }
+    if constexpr (detail::has_parent_name<State>::value) {
+        if constexpr (!State::parent.empty()) {
+            if (State::parent == target_name) {
+                return true;
+            }
+        }
+    }
     if constexpr (detail::has_parent_type<State>::value) {
         using Parent = typename State::parent_type;
         return state_is_or_descendant_of_static<Parent>(target_name);
-    } else if constexpr (detail::has_parent_name<State>::value) {
-        if constexpr (!State::parent.empty()) {
-            return State::parent == target_name;
-        } else {
-            return false;
-        }
     } else {
         return false;
     }
@@ -201,18 +202,7 @@ constexpr bool state_is_or_descendant_of(const State& state, std::string_view ta
     if (get_state_name(state) == target_name || get_type_name<State>() == target_name) {
         return true;
     }
-    if constexpr (detail::has_parent_type<State>::value) {
-        using Parent = typename State::parent_type;
-        return state_is_or_descendant_of_static<Parent>(target_name);
-    } else if constexpr (detail::has_parent_name<State>::value) {
-        if constexpr (!State::parent.empty()) {
-            return State::parent == target_name;
-        } else {
-            return false;
-        }
-    } else {
-        return false;
-    }
+    return state_is_or_descendant_of_static<State>(target_name);
 }
 
 }  // namespace fsm

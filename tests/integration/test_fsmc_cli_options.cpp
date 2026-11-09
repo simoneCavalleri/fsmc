@@ -414,6 +414,29 @@ TEST_F(FsmcOptionsTest, ModularPackaging_CustomRuntimeHeader) {
         EXPECT_NE(content.find("#include \"my_runtime/fsm_engine.hpp\""), std::string::npos);
         EXPECT_EQ(content.find("fsm/backend/cpp/runtime"), std::string::npos);
     }
+
+    // 3. Space-separated header via --modular <hdr>
+    {
+        fs::path out_file = test_dir_ / "modular_space_hdr.hpp";
+        char p[] = "fsmc";
+        char i[] = "-i";
+        std::string in_str = model_file_;
+        char o[] = "-o";
+        std::string out_str = out_file.string();
+        char mod[] = "--modular";
+        char hdr[] = "custom_runtime.hpp";
+
+        char* argv[] = {p, i, in_str.data(), o, out_str.data(), mod, hdr};
+        const auto opts = fsm::tools::parse_cli_args(7, argv);
+        EXPECT_TRUE(opts.is_valid);
+        EXPECT_FALSE(opts.standalone);
+        EXPECT_EQ(opts.runtime_header, "custom_runtime.hpp");
+        EXPECT_EQ(fsm::tools::FsmcDriver::run(opts), 0);
+
+        std::ifstream ifs(out_file);
+        std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+        EXPECT_NE(content.find("#include \"custom_runtime.hpp\""), std::string::npos);
+    }
 }
 
 /**
@@ -696,6 +719,122 @@ TEST_F(FsmcOptionsTest, StandardInput_PositionalDash_Recognized) {
     const auto opts = fsm::tools::parse_cli_args(2, argv);
     EXPECT_TRUE(opts.is_valid);
     EXPECT_EQ(opts.input_file, "-");
+}
+
+/**
+ * @brief Test Intent: Verify --verify mode prints full verification report with counterexamples and honors -Werror.
+ * Scenario: Run --verify on a model with a violated LTL property and on a model with warnings under -Werror.
+ */
+TEST_F(FsmcOptionsTest, VerifyMode_PrintsCounterexampleAndHonorsWerror) {
+    // 1. Violated LTL property prints full report & counterexample rather than short-circuiting early
+    {
+        testing::internal::CaptureStdout();
+        char p[] = "fsmc";
+        char i[] = "-i";
+        std::string in_str = model_file_;
+        char v[] = "--verify";
+        char eng[] = "--engine=internal";
+        char ltl[] = "--ltl=G !Connected";
+        char* argv[] = {p, i, in_str.data(), v, eng, ltl};
+
+        const auto opts = fsm::tools::parse_cli_args(6, argv);
+        EXPECT_TRUE(opts.is_valid);
+        int rc = fsm::tools::FsmcDriver::run(opts);
+        std::string out = testing::internal::GetCapturedStdout();
+        EXPECT_EQ(rc, 1);
+        EXPECT_NE(out.find("Formal Model Verification Report"), std::string::npos);
+        EXPECT_NE(out.find("[VIOLATION]"), std::string::npos);
+    }
+
+    // 2. Warning model with --verify and -Werror fails with exit code 1
+    {
+        char p[] = "fsmc";
+        char i[] = "-i";
+        std::string in_str = warning_model_file_;
+        char v[] = "--verify";
+        char eng[] = "--engine=internal";
+        char werr[] = "-Werror";
+        char* argv[] = {p, i, in_str.data(), v, eng, werr};
+
+        const auto opts = fsm::tools::parse_cli_args(6, argv);
+        EXPECT_TRUE(opts.is_valid);
+        EXPECT_EQ(fsm::tools::FsmcDriver::run(opts), 1);
+    }
+}
+
+/**
+ * @brief Test Intent: Verify --rtm without -o exits cleanly without dumping C++ to stdout, and diagram codegen check
+ * still blocks -o on untyped diagrams when --rtm is also passed.
+ * Scenario: Run --rtm alone (verify empty stdout) and run --rtm with -o on an untyped PlantUML diagram (verify
+ * blocked).
+ */
+TEST_F(FsmcOptionsTest, RtmEarlyExitAndDiagramCodegenBlocker) {
+    fs::path rtm_file = test_dir_ / "only_rtm.md";
+    {
+        testing::internal::CaptureStdout();
+        char p[] = "fsmc";
+        char i[] = "-i";
+        std::string in_str = model_file_;
+        char rtm_opt[] = "--rtm";
+        std::string rtm_str = rtm_file.string();
+        char* argv[] = {p, i, in_str.data(), rtm_opt, rtm_str.data()};
+
+        const auto opts = fsm::tools::parse_cli_args(5, argv);
+        int rc = fsm::tools::FsmcDriver::run(opts);
+        std::string out = testing::internal::GetCapturedStdout();
+        EXPECT_EQ(rc, 0);
+        EXPECT_TRUE(fs::exists(rtm_file));
+        EXPECT_EQ(out.find("#pragma once"), std::string::npos);
+    }
+
+    // Untyped diagram with both --rtm and -o must still block C++ code generation
+    {
+        fs::path out_hpp = test_dir_ / "blocked_diag.hpp";
+        char p[] = "fsmc";
+        char i[] = "-i";
+        std::string in_str = puml_file_;
+        char rtm_opt[] = "--rtm";
+        std::string rtm_str = rtm_file.string();
+        char o_opt[] = "-o";
+        std::string out_str = out_hpp.string();
+        char* argv[] = {p, i, in_str.data(), rtm_opt, rtm_str.data(), o_opt, out_str.data()};
+
+        const auto opts = fsm::tools::parse_cli_args(7, argv);
+        EXPECT_EQ(fsm::tools::FsmcDriver::run(opts), 1);
+        EXPECT_FALSE(fs::exists(out_hpp));
+    }
+}
+
+/**
+ * @brief Test Intent: Verify --modular before positional input file does not consume the input file as a header, and
+ * infer_fsm_name_from_file sanitizes leading digits and punctuation.
+ * Scenario: Parse '--modular model.sysml' and '--modular <fsm/fsm.hpp> model.sysml', and test infer_fsm_name_from_file.
+ */
+TEST_F(FsmcOptionsTest, ModularPositionalOrderingAndIdentifierSanitization) {
+    {
+        char p[] = "fsmc";
+        char mod[] = "--modular";
+        std::string in_str = model_file_;
+        char* argv[] = {p, mod, in_str.data()};
+        const auto opts = fsm::tools::parse_cli_args(3, argv);
+        EXPECT_TRUE(opts.is_valid);
+        EXPECT_FALSE(opts.standalone);
+        EXPECT_EQ(opts.runtime_header, "fsm.hpp");
+        EXPECT_EQ(opts.input_file, model_file_);
+    }
+    {
+        char p[] = "fsmc";
+        char mod[] = "--modular";
+        char hdr[] = "<fsm/fsm.hpp>";
+        std::string in_str = model_file_;
+        char* argv[] = {p, mod, hdr, in_str.data()};
+        const auto opts = fsm::tools::parse_cli_args(4, argv);
+        EXPECT_TRUE(opts.is_valid);
+        EXPECT_FALSE(opts.standalone);
+        EXPECT_EQ(opts.runtime_header, "<fsm/fsm.hpp>");
+        EXPECT_EQ(opts.input_file, model_file_);
+    }
+    EXPECT_EQ(fsm::tools::infer_fsm_name_from_file("01_my@state+machine.sysml"), "Fsm_01MyStateMachine");
 }
 
 }  // namespace

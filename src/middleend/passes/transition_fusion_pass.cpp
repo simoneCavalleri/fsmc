@@ -53,18 +53,30 @@ ir::ActionSignature compose_actions(const std::optional<ir::ActionSignature>& a1
     if (a1) {
         res.instructions.insert(res.instructions.end(), a1->instructions.begin(), a1->instructions.end());
         res.assignments.insert(res.assignments.end(), a1->assignments.begin(), a1->assignments.end());
+        res.accepts_event = res.accepts_event || a1->accepts_event;
         if (!a1->name.empty()) {
             res.name = a1->name;
+        }
+        if (!a1->invocation.empty()) {
+            res.invocation = a1->invocation;
         }
     }
     if (a2) {
         res.instructions.insert(res.instructions.end(), a2->instructions.begin(), a2->instructions.end());
         res.assignments.insert(res.assignments.end(), a2->assignments.begin(), a2->assignments.end());
+        res.accepts_event = res.accepts_event || a2->accepts_event;
         if (!a2->name.empty()) {
             if (res.name.empty()) {
                 res.name = a2->name;
             } else {
                 res.name += "_" + a2->name;
+            }
+        }
+        if (!a2->invocation.empty()) {
+            if (res.invocation.empty()) {
+                res.invocation = a2->invocation;
+            } else if (a2->invocation != a2->name) {
+                res.invocation += "; " + a2->invocation;
             }
         }
     }
@@ -91,9 +103,26 @@ bool TransitionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         for (auto state_it = ir.states.begin(); state_it != ir.states.end(); ++state_it) {
             const auto& state = *state_it;
 
-            // Cannot fuse initial state, terminate state, or state with children
-            if (state.id == ir.initial_state_id || state.name == ir.initial_state_id || !state.children_ids.empty() ||
-                state.kind == ir::StateKind::Terminate || !state.invariants.empty()) {
+            // Cannot fuse initial state, composite initial sub-state, terminate state, state with children,
+            // or states with do_activity/deferred_events
+            bool is_initial =
+                (!ir.initial_state.empty() && (state.name == ir.initial_state || state.id == ir.initial_state)) ||
+                (!ir.initial_state_id.empty() &&
+                 (state.name == ir.initial_state_id || state.id == ir.initial_state_id));
+
+            bool is_composite_initial = false;
+            for (const auto& other_st : ir.states) {
+                if (!other_st.initial_sub_state.empty() &&
+                    (other_st.initial_sub_state == state.name || other_st.initial_sub_state == state.id)) {
+                    is_composite_initial = true;
+                    break;
+                }
+            }
+
+            if (is_initial || is_composite_initial || !state.children_ids.empty() ||
+                state.kind == ir::StateKind::Terminate || !state.invariants.empty() ||
+                (state.time_invariant.has_value() && !state.time_invariant->empty()) ||
+                (state.do_activity.has_value() && !state.do_activity->empty()) || !state.deferred_events.empty()) {
                 continue;
             }
 
@@ -127,6 +156,26 @@ bool TransitionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 continue;
             }
 
+            // Do not fuse in_edge (A -> B) with a guarded out_edge (B -> C [g2]) if in_edge or B entry has side
+            // effects/actions
+            bool out_is_guarded =
+                (out_edge.guard.has_value() && !out_edge.guard->empty() && *out_edge.guard != "true") ||
+                (out_edge.guard_ast.has_value() && out_edge.guard_ast->to_string() != "true");
+            if (out_is_guarded) {
+                bool has_pre_guard_actions = !state.entry_actions.empty();
+                for (std::size_t in_idx : incoming_indices) {
+                    const auto& in_edge = ir.transitions[in_idx];
+                    if ((in_edge.transition_action.has_value() && !in_edge.transition_action->empty()) ||
+                        (in_edge.condition_action.has_value() && !in_edge.condition_action->empty())) {
+                        has_pre_guard_actions = true;
+                        break;
+                    }
+                }
+                if (has_pre_guard_actions) {
+                    continue;
+                }
+            }
+
             std::string mid_state_id = state.id;
             auto mid_entry = flatten_actions(state.entry_actions);
             auto mid_exit = flatten_actions(state.exit_actions);
@@ -147,6 +196,12 @@ bool TransitionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 fused.event = in_edge.event;
                 fused.guard = compose_guard_strings(in_edge.guard, out_edge.guard);
                 fused.guard_ast = compose_guard_asts(in_edge.guard_ast, out_edge.guard_ast);
+
+                // Preserve and chain condition_action
+                auto fused_cond = compose_actions(in_edge.condition_action, out_edge.condition_action);
+                if (!fused_cond.empty()) {
+                    fused.condition_action = std::move(fused_cond);
+                }
 
                 // Chain actions: in_action + mid_entry + mid_exit + out_action
                 auto act1 = compose_actions(in_edge.transition_action,
@@ -182,6 +237,19 @@ bool TransitionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             // Insert new fused transitions
             for (auto& fe : new_fused_edges) {
                 ir.add_transition(std::move(fe));
+            }
+
+            // Remove mid state from its parent's children_ids if it has a parent
+            std::string parent_p = state.parent_state;
+            std::optional<std::string> parent_pid = state.parent_id;
+            for (auto& p_st : ir.states) {
+                if ((!parent_p.empty() && (p_st.name == parent_p || p_st.id == parent_p)) ||
+                    (parent_pid.has_value() && (p_st.id == *parent_pid || p_st.name == *parent_pid))) {
+                    p_st.children_ids.erase(std::remove(p_st.children_ids.begin(), p_st.children_ids.end(), state.id),
+                                            p_st.children_ids.end());
+                    p_st.children_ids.erase(std::remove(p_st.children_ids.begin(), p_st.children_ids.end(), state.name),
+                                            p_st.children_ids.end());
+                }
             }
 
             // Remove mid state

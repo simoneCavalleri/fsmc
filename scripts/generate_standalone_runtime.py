@@ -59,6 +59,9 @@ THREAD_FILES = [
 ]
 
 
+RUNTIME_HEADER_NAMES = {os.path.basename(p) for p in CORE_FILES + THREAD_FILES} | set(CORE_FILES + THREAD_FILES)
+
+
 def clean_file_content(filepath):
     """Reads a runtime header, strips #pragma once, local #includes, and returns system includes + body."""
     system_includes = []
@@ -74,13 +77,17 @@ def clean_file_content(filepath):
             m_sys = re.match(r"^#include\s*<([^>]+)>", stripped)
             if m_sys:
                 inc = m_sys.group(1)
-                if inc not in system_includes:
-                    system_includes.append(inc)
+                if not inc.startswith("fsm/") and inc not in RUNTIME_HEADER_NAMES and os.path.basename(inc) not in RUNTIME_HEADER_NAMES:
+                    if inc not in system_includes:
+                        system_includes.append(inc)
                 continue
             
-            # Match local fsm include (skip it)
-            if re.match(r'^#include\s*["<]fsm/', stripped):
-                continue
+            # Match local fsm include or relative runtime header include (skip it)
+            m_loc = re.match(r'^#include\s*"([^"]+)"', stripped)
+            if m_loc:
+                inc_path = m_loc.group(1)
+                if inc_path.startswith("fsm/") or inc_path in RUNTIME_HEADER_NAMES or os.path.basename(inc_path) in RUNTIME_HEADER_NAMES:
+                    continue
             
             body_lines.append(line)
             
@@ -116,6 +123,8 @@ def generate_emitter_header(class_name, standard_name, core_incs, core_chunks, t
     
     # Format system includes
     core_inc_str = "\n".join(f'#include <{inc}>' for inc in sorted(core_incs))
+    if standard_name == "C++17":
+        core_inc_str = "#ifndef FSMC_CPP17_RUNTIME\n#define FSMC_CPP17_RUNTIME 1\n#endif\n" + core_inc_str
     thread_inc_str = "\n".join(f'#include <{inc}>' for inc in sorted(thread_incs) if inc not in core_incs)
     
     core_emits = []
@@ -229,9 +238,9 @@ def main():
     cpp20_path = os.path.join(backend_cpp_dir, "cpp20_standalone_runtime.hpp")
 
     # 2. C++17 Standalone Runtime
-    # For C++17, remove C++20 specific headers like <concepts>
-    cpp17_core_incs = [i for i in core_incs if i != "concepts"]
-    cpp17_thread_incs = [i for i in thread_incs if i != "concepts" and i != "stop_token"]
+    # For C++17, remove C++20 specific headers like <concepts> and <span>
+    cpp17_core_incs = [i for i in core_incs if i not in ("concepts", "span")]
+    cpp17_thread_incs = [i for i in thread_incs if i not in ("concepts", "span", "stop_token")]
     cpp17_code = generate_emitter_header(
         "Cpp17StandaloneRuntime", "C++17",
         cpp17_core_incs, core_chunks,
@@ -252,12 +261,12 @@ def main():
                 is_out_of_date = True
             else:
                 with open(path, "r", encoding="utf-8") as f:
-                    existing = f.read()
-                if existing != content:
+                    existing = f.read().replace("\r\n", "\n")
+                if existing != content.replace("\r\n", "\n"):
                     print(f"[OUT OF DATE] Content differs in {path}", file=sys.stderr)
                     is_out_of_date = True
         else:
-            with open(path, "w", encoding="utf-8") as f:
+            with open(path, "w", encoding="utf-8", newline="\n") as f:
                 f.write(content)
             print(f"[GENERATED] Successfully updated {path}")
 

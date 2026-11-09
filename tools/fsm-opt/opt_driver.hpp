@@ -43,7 +43,7 @@ class OptDriver {
         }
 
         if (opts.show_version) {
-            std::cout << "fsm-opt v0.8.0 (Formal FSM Intermediate Representation Optimizer & Linter)\n";
+            std::cout << "fsm-opt v0.9.0 (Formal FSM Intermediate Representation Optimizer & Linter)\n";
             return 0;
         }
 
@@ -100,11 +100,19 @@ class OptDriver {
             std::cerr << "Frontend Parse Error: " << err << "\n";
             return 1;
         }
+        if (ir.name.empty() || ir.name == "Fsm" || ir.name == "MyStateMachine") {
+            ir.name = infer_fsm_name_from_file(opts.input_path);
+        }
+
+        const bool emitting_to_stdout = !opts.verify_only &&
+                                        (opts.output_path.empty() || is_stdout_path(opts.output_path)) &&
+                                        (opts.emit_explicit || (!opts.show_metrics && !opts.profile));
+        std::ostream& dump_stream = emitting_to_stdout ? std::cerr : std::cout;
 
         if (opts.print_before_all) {
-            std::cout << "\n=== [IR BEFORE PASSES] ===\n"
-                      << fsm::ir::FsmIrSerializer::serialize_json(ir) << "\n"
-                      << "==========================\n";
+            dump_stream << "\n=== [IR BEFORE PASSES] ===\n"
+                        << fsm::ir::FsmIrSerializer::serialize_json(ir) << "\n"
+                        << "==========================\n";
         }
 
         // Build Pass Pipeline and Diagnostic Engine
@@ -113,13 +121,15 @@ class OptDriver {
         if (!opts.custom_passes.empty()) {
             auto pass_names = split_string(opts.custom_passes, ',');
             for (const auto& p_name : pass_names) {
-                if (p_name == "canonicalize") {
+                if (p_name == "canonicalize" || p_name == "hierarchy-canonicalization") {
                     pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
+                } else if (p_name == "semantic-validation") {
+                    pm.add_pass(std::make_unique<SemanticValidationPass>());
                 } else if (p_name == "guard-simplification") {
                     pm.add_pass(std::make_unique<GuardSimplificationPassWrapper>());
-                } else if (p_name == "determinism") {
+                } else if (p_name == "determinism" || p_name == "determinism-enforcement") {
                     pm.add_pass(std::make_unique<DeterminismEnforcementPassWrapper>());
-                } else if (p_name == "race-check") {
+                } else if (p_name == "race-check" || p_name == "orthogonal-interference") {
                     pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
                 } else if (p_name == "dead-state-pruning") {
                     pm.add_pass(std::make_unique<DeadStatePruningPassWrapper>(true));
@@ -169,9 +179,10 @@ class OptDriver {
                     pm.add_pass(std::make_unique<TimedInvariantsVerifierPassWrapper>());
                 } else if (p_name == "event-queue-bound") {
                     pm.add_pass(std::make_unique<EventQueueBoundPassWrapper>());
-                } else if (p_name == "inline-submachines") {
-                    pm.add_pass(std::make_unique<SubmachineInliningPassWrapper>());
-                } else if (p_name == "sampled-change-trigger") {
+                } else if (p_name == "inline-submachines" || p_name == "submachine-inlining") {
+                    pm.add_pass(std::make_unique<SubmachineInliningPassWrapper>(
+                        create_filesystem_submachine_resolver(opts.input_path, opts.submachine_dir)));
+                } else if (p_name == "sampled-change-trigger" || p_name == "sampled-change-triggers") {
                     pm.add_pass(std::make_unique<SampledChangeTriggerPassWrapper>());
                 } else if (p_name == "connective-junction-chaining") {
                     pm.add_pass(std::make_unique<ConnectiveJunctionChainingPassWrapper>());
@@ -223,25 +234,30 @@ class OptDriver {
         }
 
         if (opts.print_after_all) {
-            std::cout << "\n=== [IR AFTER PASSES] ===\n"
-                      << fsm::ir::FsmIrSerializer::serialize_json(ir) << "\n"
-                      << "=========================\n";
+            dump_stream << "\n=== [IR AFTER PASSES] ===\n"
+                        << fsm::ir::FsmIrSerializer::serialize_json(ir) << "\n"
+                        << "=========================\n";
         }
 
         if (opts.profile) {
-            std::cout << "\n=== [PassManager Execution Profile] ===\n";
+            dump_stream << "\n=== [PassManager Execution Profile] ===\n";
             for (const auto& s : pm.get_stats()) {
-                std::cout << "  - " << s.pass_name << ": " << s.duration_ms << " ms\n";
+                dump_stream << "  - " << s.pass_name << ": " << s.duration_ms << " ms\n";
             }
-            std::cout << "=======================================\n";
+            dump_stream << "=======================================\n";
         }
 
         if (opts.show_metrics) {
-            print_metrics(ir);
+            print_metrics(ir, dump_stream);
         }
 
         if (opts.verify_only) {
             return diag.has_errors() ? 1 : 0;
+        }
+
+        if ((opts.output_path.empty() || is_stdout_path(opts.output_path)) && !opts.emit_explicit &&
+            (opts.show_metrics || opts.profile)) {
+            return 0;
         }
 
         // Serialization & Emission
@@ -262,7 +278,7 @@ class OptDriver {
                 std::cerr << "Error: " << write_err << "\n";
                 return 1;
             }
-            std::cout << "[SUCCESS] Optimized output written to: " << opts.output_path << "\n";
+            std::cerr << "[SUCCESS] Optimized output written to: " << opts.output_path << "\n";
         } else {
             std::cout << output_str;
         }
@@ -283,16 +299,16 @@ class OptDriver {
         return tokens;
     }
 
-    static void print_metrics(const fsm::ir::FsmIr& ir) {
-        std::cout << "\n=== [FSM Formal IR Graph Metrics: " << ir.name << "] ===\n"
-                  << "  - States (Total):      " << ir.states.size() << "\n"
-                  << "  - Events (Signals):    " << ir.signals.size() << "\n"
-                  << "  - Transitions (Edges): " << ir.transitions.size() << "\n"
-                  << "  - Guards (Predicates): " << ir.guards.size() << "\n"
-                  << "  - Actions (Effects):   " << ir.actions.size() << "\n"
-                  << "  - Temporal Properties: " << ir.properties.size() << "\n"
-                  << "  - State Variables:     " << ir.variables.size() << "\n"
-                  << "====================================================\n";
+    static void print_metrics(const fsm::ir::FsmIr& ir, std::ostream& out = std::cout) {
+        out << "\n=== [FSM Formal IR Graph Metrics: " << ir.name << "] ===\n"
+            << "  - States (Total):      " << ir.states.size() << "\n"
+            << "  - Events (Signals):    " << ir.signals.size() << "\n"
+            << "  - Transitions (Edges): " << ir.transitions.size() << "\n"
+            << "  - Guards (Predicates): " << ir.guards.size() << "\n"
+            << "  - Actions (Effects):   " << ir.actions.size() << "\n"
+            << "  - Temporal Properties: " << ir.properties.size() << "\n"
+            << "  - State Variables:     " << ir.variables.size() << "\n"
+            << "====================================================\n";
     }
 };
 

@@ -502,4 +502,47 @@ TEST(DiagramExport, FsmIrModel_ExportedToDotGraphvizFormat) {
     EXPECT_EQ(parsed_ir.transitions[0].get_action(), "StartPrimerAction");
 }
 
+/**
+ * @brief Verify PlantUmlSerializer and MermaidSerializer emit initial transition when model uses initial_state_id.
+ */
+TEST(DiagramExport, PlantUmlAndMermaid_InitialStateFromId_EmitsInitialArrow) {
+    FsmIr model;
+    model.name = "IdBasedSM";
+    model.initial_state = "";
+    model.initial_state_id = "init_hash_123";
+
+    StateNode init_st("StandingBy", "Standby state");
+    init_st.id = "init_hash_123";
+    model.states.push_back(init_st);
+
+    const std::string puml = PlantUmlSerializer::serialize(model);
+    EXPECT_NE(puml.find("[*] --> StandingBy"), std::string::npos);
+
+    const std::string mermaid = MermaidSerializer::serialize(model);
+    EXPECT_NE(mermaid.find("[*] --> StandingBy"), std::string::npos);
+}
+
+/**
+ * @brief Verify PlantUmlSerializer emits [H*] when a composite state has has_deep_history=true.
+ */
+TEST(DiagramExport, PlantUml_DeepHistoryPseudostate_EmittedCorrectly) {
+    FsmIr model;
+    model.name = "DeepHistoryModel";
+    model.initial_state = "Operating";
+
+    StateNode comp("Operating", "Composite parent");
+    comp.is_composite = true;
+    comp.has_history = false;
+    comp.has_deep_history = true;
+    comp.initial_sub_state = "Sub1";
+
+    StateNode sub("Sub1", "Substate 1", "Operating");
+
+    model.states.push_back(comp);
+    model.states.push_back(sub);
+
+    const std::string puml = PlantUmlSerializer::serialize(model);
+    EXPECT_NE(puml.find("[H*]"), std::string::npos);
+}
+
 }  // namespace

@@ -13,7 +13,9 @@ struct OptOptions {
     std::string output_path;
     std::string format_override;
     std::string custom_passes;
+    std::string submachine_dir;
     std::string emit_format = "ir";
+    bool emit_explicit = false;
     std::string diagnostic_format = "text";
     bool profile = false;
     bool verify_only = false;
@@ -113,6 +115,7 @@ inline void print_available_passes() {
         << " 30. pipe-through         - Filters and transforms IR via external Unix command\n"
         << " 31. sampled-change-trigger - Desugars sampled change triggers into shadow registers\n"
         << " 32. connective-junction-chaining - Chains multi-hop connective junction paths into atomic transitions\n"
+        << " 33. semantic-validation  - Validates variable/port targets, type resolution, and algebraic assignments\n"
         << "============================================================================\n";
 }
 
@@ -160,8 +163,24 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
             opts.format_override = argv[++i];
         } else if (arg.starts_with("--format=")) {
             opts.format_override = std::string(arg.substr(9));
+        } else if (arg == "--passes" || arg == "-p") {
+            if (i + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + std::string(arg);
+                return opts;
+            }
+            opts.custom_passes = argv[++i];
         } else if (arg.starts_with("--passes=")) {
-            opts.custom_passes = arg.substr(9);
+            opts.custom_passes = std::string(arg.substr(9));
+        } else if (arg == "--submachine-dir") {
+            if (i + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + std::string(arg);
+                return opts;
+            }
+            opts.submachine_dir = argv[++i];
+        } else if (arg.starts_with("--submachine-dir=")) {
+            opts.submachine_dir = std::string(arg.substr(17));
         } else if (arg == "--prune-dead") {
             opts.prune_dead = true;
         } else if (arg == "--print-before-all") {
@@ -174,24 +193,34 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
             opts.show_metrics = true;
         } else if (arg == "--emit-ir") {
             opts.emit_format = "ir";
+            opts.emit_explicit = true;
         } else if (arg == "--emit-puml") {
             opts.emit_format = "puml";
+            opts.emit_explicit = true;
         } else if (arg == "--emit-mmd") {
             opts.emit_format = "mmd";
+            opts.emit_explicit = true;
         } else if (arg == "--emit-sysml") {
             opts.emit_format = "sysml";
+            opts.emit_explicit = true;
         } else if (arg == "--emit-json") {
             opts.emit_format = "json";
+            opts.emit_explicit = true;
         } else if (arg == "--emit-dot") {
             opts.emit_format = "dot";
+            opts.emit_explicit = true;
         } else if (arg == "--emit-scxml") {
             opts.emit_format = "scxml";
+            opts.emit_explicit = true;
         } else if (arg == "--emit-cameo" || arg == "--emit-xmi") {
             opts.emit_format = "cameo";
+            opts.emit_explicit = true;
         } else if (arg == "--emit-smv" || arg == "--emit-nuxmv") {
             opts.emit_format = "smv";
+            opts.emit_explicit = true;
         } else if (arg == "--emit-stateflow" || arg == "--emit-sfx" || arg == "--emit-simulink") {
             opts.emit_format = "stateflow";
+            opts.emit_explicit = true;
         } else if (arg == "--diagnostic-format") {
             if (i + 1 >= argc) {
                 opts.is_valid = false;

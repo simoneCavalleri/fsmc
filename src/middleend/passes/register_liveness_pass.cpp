@@ -58,6 +58,14 @@ void collect_reads_from_action(const ir::ActionSignature& act, const std::unorde
                 if (known_vars.count(id))
                     out_reads.insert(id);
             }
+        } else if (std::holds_alternative<ir::SignalEmitOp>(inst.op)) {
+            const auto& op = std::get<ir::SignalEmitOp>(inst.op);
+            for (const auto& arg : op.arguments) {
+                for (const auto& id : extract_identifiers(arg)) {
+                    if (known_vars.count(id))
+                        out_reads.insert(id);
+                }
+            }
         } else if (std::holds_alternative<ir::ActionCallOp>(inst.op)) {
             const auto& op = std::get<ir::ActionCallOp>(inst.op);
             for (const auto& r : op.read_set) {
@@ -88,12 +96,14 @@ void collect_writes_from_action(const ir::ActionSignature& act, const std::unord
     for (const auto& inst : act.instructions) {
         if (std::holds_alternative<ir::StoreOp>(inst.op)) {
             const auto& op = std::get<ir::StoreOp>(inst.op);
-            if (known_vars.count(op.target.name)) {
+            if (op.op == ir::AssignmentOp::Assign && op.target.member_path.empty() &&
+                !op.target.constant_index.has_value() && known_vars.count(op.target.name)) {
                 out_writes.insert(op.target.name);
             }
         } else if (std::holds_alternative<ir::PortReadOp>(inst.op)) {
             const auto& op = std::get<ir::PortReadOp>(inst.op);
-            if (known_vars.count(op.destination.name)) {
+            if (op.destination.member_path.empty() && !op.destination.constant_index.has_value() &&
+                known_vars.count(op.destination.name)) {
                 out_writes.insert(op.destination.name);
             }
         } else if (std::holds_alternative<ir::ActionCallOp>(inst.op)) {
@@ -105,7 +115,8 @@ void collect_writes_from_action(const ir::ActionSignature& act, const std::unord
         }
     }
     for (const auto& assign : act.assignments) {
-        if (known_vars.count(assign.target.name)) {
+        if (assign.op == ir::AssignmentOp::Assign && assign.target.member_path.empty() &&
+            !assign.target.constant_index.has_value() && known_vars.count(assign.target.name)) {
             out_writes.insert(assign.target.name);
         }
     }
@@ -127,31 +138,61 @@ bool RegisterLivenessPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     std::unordered_map<std::string, std::unordered_set<std::string>> state_uses;
     std::unordered_map<std::string, std::unordered_set<std::string>> state_defs;
     std::unordered_map<std::string, std::vector<std::string>> successors;
+    std::unordered_map<std::string, std::vector<std::unordered_set<std::string>>> outgoing_edge_defs;
+    std::unordered_map<std::string, bool> has_guarded_outgoing;
 
     for (const auto& state : ir.states) {
         state_uses[state.id] = {};
         state_defs[state.id] = {};
         successors[state.id] = {};
 
-        // Invariants use variables
+        // State entry actions execute first upon entering the state:
+        // track reads that occur before an unconditional write vs writes that occur before any read.
+        for (const auto& act : state.entry_actions) {
+            std::unordered_set<std::string> act_reads;
+            collect_reads_from_action(act, known_vars, act_reads);
+            for (const auto& r : act_reads) {
+                if (state_defs[state.id].count(r) == 0) {
+                    state_uses[state.id].insert(r);
+                }
+            }
+            std::unordered_set<std::string> act_writes;
+            collect_writes_from_action(act, known_vars, act_writes);
+            for (const auto& w : act_writes) {
+                if (state_uses[state.id].count(w) == 0) {
+                    state_defs[state.id].insert(w);
+                }
+            }
+        }
+
+        // Invariants use variables while in the state
         for (const auto& inv : state.invariants) {
             for (const auto& id : extract_identifiers(inv.to_string())) {
-                if (known_vars.count(id))
+                if (known_vars.count(id) && state_defs[state.id].count(id) == 0)
                     state_uses[state.id].insert(id);
             }
         }
 
-        // State entry/exit actions
-        for (const auto& act : state.entry_actions) {
-            collect_writes_from_action(act, known_vars, state_defs[state.id]);
-            collect_reads_from_action(act, known_vars, state_uses[state.id]);
-        }
+        // State exit actions
         for (const auto& act : state.exit_actions) {
-            collect_reads_from_action(act, known_vars, state_uses[state.id]);
+            std::unordered_set<std::string> exit_reads;
+            collect_reads_from_action(act, known_vars, exit_reads);
+            for (const auto& r : exit_reads) {
+                if (state_defs[state.id].count(r) == 0) {
+                    state_uses[state.id].insert(r);
+                }
+            }
         }
     }
 
-    std::vector<std::set<std::string>> transition_simultaneous_uses;
+    struct EdgeInfo {
+        std::string src_id;
+        std::string dst_id;
+        std::set<std::string> uses;
+        std::set<std::string> defs;
+    };
+    std::vector<EdgeInfo> edges;
+    edges.reserve(ir.transitions.size());
 
     for (const auto& edge : ir.transitions) {
         std::string src_id = edge.source_id;
@@ -167,60 +208,80 @@ bool RegisterLivenessPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             }
         }
 
-        successors[src_id].push_back(dst_id);
-
         std::set<std::string> trans_uses;
         // Transition guards use variables
-        if (edge.guard_ast) {
+        if (edge.guard_ast.has_value()) {
             for (const auto& id : extract_identifiers(edge.guard_ast->to_string())) {
                 if (known_vars.count(id)) {
-                    state_uses[src_id].insert(id);
                     trans_uses.insert(id);
                 }
             }
-        } else if (edge.guard) {
+        } else if (edge.guard && !edge.guard->empty()) {
             for (const auto& id : extract_identifiers(*edge.guard)) {
                 if (known_vars.count(id)) {
-                    state_uses[src_id].insert(id);
                     trans_uses.insert(id);
                 }
             }
         }
 
         // Transition actions
+        std::set<std::string> edge_defs;
         if (edge.transition_action) {
             std::unordered_set<std::string> act_reads;
             collect_reads_from_action(*edge.transition_action, known_vars, act_reads);
             for (const auto& r : act_reads) {
-                state_uses[src_id].insert(r);
                 trans_uses.insert(r);
             }
-            collect_writes_from_action(*edge.transition_action, known_vars, state_defs[src_id]);
+            std::unordered_set<std::string> act_writes;
+            collect_writes_from_action(*edge.transition_action, known_vars, act_writes);
+            for (const auto& w : act_writes) {
+                if (act_reads.count(w) == 0) {
+                    edge_defs.insert(w);
+                }
+            }
         }
 
-        if (trans_uses.size() > 1) {
-            transition_simultaneous_uses.push_back(std::move(trans_uses));
-        }
+        edges.push_back({src_id, dst_id, std::move(trans_uses), std::move(edge_defs)});
     }
 
     // Backward dataflow fixed point for LiveIn and LiveOut
     std::unordered_map<std::string, std::set<std::string>> live_in;
     std::unordered_map<std::string, std::set<std::string>> live_out;
+    std::vector<std::set<std::string>> edge_live_in(edges.size());
 
     bool changed = true;
     while (changed) {
         changed = false;
+
+        // 1. Edge LiveIn = (Target LiveIn \ Edge Defs) U Edge Uses
+        for (std::size_t i = 0; i < edges.size(); ++i) {
+            const auto& e = edges[i];
+            const auto& dst_in = live_in[e.dst_id];
+            std::set<std::string> new_edge_in = dst_in;
+            for (const auto& d : e.defs) {
+                new_edge_in.erase(d);
+            }
+            for (const auto& u : e.uses) {
+                new_edge_in.insert(u);
+            }
+            if (new_edge_in != edge_live_in[i]) {
+                edge_live_in[i] = std::move(new_edge_in);
+                changed = true;
+            }
+        }
+
+        // 2. State LiveOut = Union(LiveIn of outgoing edges)
+        //    State LiveIn  = (LiveOut \ State Defs) U State Uses
         for (const auto& state : ir.states) {
             const std::string& sid = state.id;
 
-            // LiveOut[s] = union(LiveIn[succ])
             std::set<std::string> new_out;
-            for (const auto& succ_id : successors[sid]) {
-                const auto& succ_in = live_in[succ_id];
-                new_out.insert(succ_in.begin(), succ_in.end());
+            for (std::size_t i = 0; i < edges.size(); ++i) {
+                if (edges[i].src_id == sid) {
+                    new_out.insert(edge_live_in[i].begin(), edge_live_in[i].end());
+                }
             }
 
-            // LiveIn[s] = (LiveOut[s] \ Def[s]) U Use[s]
             std::set<std::string> new_in = new_out;
             for (const auto& d : state_defs[sid]) {
                 new_in.erase(d);
@@ -260,8 +321,18 @@ bool RegisterLivenessPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         add_interference_clique(live_in[state.id]);
         add_interference_clique(live_out[state.id]);
     }
-    for (const auto& tu : transition_simultaneous_uses) {
-        add_interference_clique(tu);
+    for (const auto& eli : edge_live_in) {
+        add_interference_clique(eli);
+    }
+
+    // Only share a hardware register_index between variables with the same DataType
+    for (std::size_t i = 0; i < ir.variables.size(); ++i) {
+        for (std::size_t j = i + 1; j < ir.variables.size(); ++j) {
+            if (ir.variables[i].type != ir.variables[j].type) {
+                interference[ir.variables[i].name].insert(ir.variables[j].name);
+                interference[ir.variables[j].name].insert(ir.variables[i].name);
+            }
+        }
     }
 
     // Graph coloring (Welsh-Powell heuristic)

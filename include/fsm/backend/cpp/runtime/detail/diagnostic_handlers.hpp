@@ -30,6 +30,7 @@ class diagnostic_handler_manager {
     [[nodiscard]] exception_handler get_exception_handler_copy() const { return exception_handler_; }
 
     [[nodiscard]] std::exception_ptr last_exception() const noexcept { return last_exception_; }
+    [[nodiscard]] std::exception_ptr& last_exception_ref() noexcept { return last_exception_; }
     void set_last_exception(std::exception_ptr ep) noexcept { last_exception_ = ep; }
     void clear_last_exception() noexcept { last_exception_ = nullptr; }
 

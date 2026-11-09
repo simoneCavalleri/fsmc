@@ -203,6 +203,10 @@ class deterministic_timer_manager<0> {
         return false;
     }
 
+    constexpr bool set_timer_duration(std::uint32_t /*timer_id*/, std::uint64_t /*duration_ms*/) noexcept {
+        return false;
+    }
+
     constexpr bool cancel_timer(std::uint32_t /*timer_id*/) noexcept { return false; }
 
     constexpr void reset() noexcept {}

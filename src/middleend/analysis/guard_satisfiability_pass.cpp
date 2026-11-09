@@ -85,11 +85,23 @@ std::unordered_map<std::string, Interval> GuardSatisfiabilityPass::extract_guard
 }
 
 bool GuardSatisfiabilityPass::run(FsmIr& ir, DiagnosticEngine& diag) {
-    // Group transitions by (source, event)
+    auto get_trigger_key = [](const TransitionEdge& edge) -> std::string {
+        if (!edge.event.empty()) {
+            return edge.event;
+        }
+        std::string tn = edge.get_trigger_name();
+        if (!tn.empty()) {
+            return tn;
+        }
+        return "anonymous";
+    };
+
+    // Group transitions by (source, trigger/event)
     std::map<std::pair<std::string, std::string>, std::vector<const TransitionEdge*>> groups;
     for (const auto& t : ir.transitions) {
         std::string src = t.source;
-        groups[{src, t.event}].push_back(&t);
+        std::string evt = get_trigger_key(t);
+        groups[{src, evt}].push_back(&t);
     }
 
     for (const auto& [key, trans_list] : groups) {

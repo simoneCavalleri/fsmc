@@ -48,6 +48,7 @@ class BoolExpr {
     virtual ~BoolExpr() = default;
     [[nodiscard]] virtual bool evaluate(const std::map<std::string, bool>& env) const = 0;
     virtual void collect_variables(std::vector<std::string>& vars) const = 0;
+    [[nodiscard]] virtual std::string to_cpp_expr(const std::map<std::string, std::string>& var_map) const = 0;
 };
 
 /**
@@ -66,6 +67,21 @@ class VarExpr : public BoolExpr {
             vars.push_back(name_);
         }
     }
+    [[nodiscard]] std::string to_cpp_expr(const std::map<std::string, std::string>& var_map) const override {
+        auto it = var_map.find(name_);
+        if (it != var_map.end()) {
+            return it->second;
+        }
+        std::string safe_name;
+        for (char c : name_) {
+            if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') {
+                safe_name.push_back(c);
+            } else {
+                safe_name.push_back('_');
+            }
+        }
+        return safe_name.empty() ? "cond" : safe_name;
+    }
     [[nodiscard]] const std::string& name() const noexcept { return name_; }
 
   private:
@@ -81,6 +97,9 @@ class NotExpr : public BoolExpr {
     explicit NotExpr(std::unique_ptr<BoolExpr> sub) : sub_(std::move(sub)) {}
     [[nodiscard]] bool evaluate(const std::map<std::string, bool>& env) const override { return !sub_->evaluate(env); }
     void collect_variables(std::vector<std::string>& vars) const override { sub_->collect_variables(vars); }
+    [[nodiscard]] std::string to_cpp_expr(const std::map<std::string, std::string>& var_map) const override {
+        return "(!" + sub_->to_cpp_expr(var_map) + ")";
+    }
 
   private:
     std::unique_ptr<BoolExpr> sub_;
@@ -106,6 +125,11 @@ class BinaryExpr : public BoolExpr {
     void collect_variables(std::vector<std::string>& vars) const override {
         left_->collect_variables(vars);
         right_->collect_variables(vars);
+    }
+
+    [[nodiscard]] std::string to_cpp_expr(const std::map<std::string, std::string>& var_map) const override {
+        const char* op_str = (op_ == And) ? " && " : " || ";
+        return "(" + left_->to_cpp_expr(var_map) + op_str + right_->to_cpp_expr(var_map) + ")";
     }
 
   private:

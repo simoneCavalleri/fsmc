@@ -31,6 +31,11 @@ void FsmGraphOps::normalize_hierarchy(FsmIr& ir) {
         if (t.parent_scope.empty() && !t.source.empty()) {
             if (auto* src_state = ir.find_state_mut(t.source)) {
                 if (!src_state->pinned_parent) {
+                    if (const auto* p = ir.find_state(src_state->parent_state)) {
+                        if (p->initial_sub_state == src_state->name) {
+                            continue;
+                        }
+                    }
                     src_state->parent_state = "";
                 }
             }
@@ -152,10 +157,18 @@ void FsmGraphOps::sync_interfaces(FsmIr& ir) {
         }
     }
 
-    // 4. Synchronize signals and events from transitions
-    for (const auto& tr : ir.transitions) {
-        if (!tr.event.empty() && tr.event != "anonymous_event" && tr.event != "completion_event" &&
-            is_valid_ident(tr.event)) {
+    // 4. Synchronize signals and events from transitions, and sync trigger with event
+    auto is_anon = [](const std::string& ev) {
+        return ev.empty() || ev == "anonymous_event" || ev == "completion_event" || ev == "AnonymousEvent" ||
+               ev == "anonymous" || ev == "none";
+    };
+    for (auto& tr : ir.transitions) {
+        if (!tr.event.empty() && !is_anon(tr.event) && std::holds_alternative<AnonymousTrigger>(tr.trigger)) {
+            tr.trigger = SignalTrigger{tr.event, "payload"};
+        } else if (tr.event.empty() && std::holds_alternative<SignalTrigger>(tr.trigger)) {
+            tr.event = std::get<SignalTrigger>(tr.trigger).signal_name;
+        }
+        if (!tr.event.empty() && !is_anon(tr.event) && is_valid_ident(tr.event)) {
             ir.add_event(tr.event);
         }
     }
@@ -226,7 +239,8 @@ void FsmGraphOps::canonicalize(FsmIr& ir) {
         ir.id = compute_deterministic_id(ir.name + (ir.package.empty() ? "" : "_" + ir.package));
     }
     if (ir.initial_state_id.empty() && !ir.initial_state.empty()) {
-        ir.initial_state_id = ir.initial_state;
+        const auto* st = ir.find_state(ir.initial_state);
+        ir.initial_state_id = st != nullptr ? st->id : compute_deterministic_id(ir.initial_state);
     }
     // Synchronize transitions: guard <-> guard_ast
     for (auto& tr : ir.transitions) {

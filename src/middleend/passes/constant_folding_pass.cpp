@@ -27,10 +27,10 @@ bool ConstantFoldingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 
         // Constant evaluation patterns
         if (g == "true" || g == "1" || g == "1 == 1" || g == "0 == 0" || g == "!false" || g == "!0") {
-            t.guard = std::nullopt;  // Unconditional
+            t.set_guard(std::nullopt);  // Unconditional
             modified = true;
         } else if (g == "false" || g == "0" || g == "1 == 0" || g == "0 == 1" || g == "!true" || g == "!1") {
-            t.guard = "false";
+            t.set_guard("false");
             modified = true;
         } else {
             // Check simple integer comparisons: e.g. "5 > 3", "2 < 1", "4 == 4", "3 != 3"
@@ -56,9 +56,9 @@ bool ConstantFoldingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                     result = (left >= right);
 
                 if (result) {
-                    t.guard = std::nullopt;
+                    t.set_guard(std::nullopt);
                 } else {
-                    t.guard = "false";
+                    t.set_guard("false");
                 }
                 modified = true;
             }

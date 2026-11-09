@@ -1,11 +1,18 @@
 #pragma once
 
+#include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
+#include <map>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <string_view>
+
+#include "fsm/frontend/common/parser_factory.hpp"
+#include "fsm/ir/fsm_ir.hpp"
 
 namespace fsm::tools {
 
@@ -149,6 +156,11 @@ inline std::string read_file_content(const std::string& path, std::string& error
 inline bool write_file_content(const std::string& path, std::string_view content, std::string& error_msg) {
     if (is_stdout_path(path)) {
         std::cout << content;
+        std::cout.flush();
+        if (std::cout.fail()) {
+            error_msg = "Failed while writing to standard output";
+            return false;
+        }
         return true;
     }
 
@@ -163,6 +175,11 @@ inline bool write_file_content(const std::string& path, std::string_view content
         return false;
     }
     stream << content;
+    stream.flush();
+    if (stream.fail()) {
+        error_msg = "Failed while writing to file: " + safe_path.string();
+        return false;
+    }
     return true;
 }
 
@@ -175,20 +192,84 @@ inline std::string infer_fsm_name_from_file(const std::string& path) {
     if (stem.empty()) {
         return "MyStateMachine";
     }
-    // Capitalize first letter and sanitize
+    // Capitalize first letter after any non-alphanumeric separator and sanitize
     std::string result;
     bool cap_next = true;
     for (char c : stem) {
-        if (c == '_' || c == '-' || c == '.') {
+        const auto uc = static_cast<unsigned char>(c);
+        if (!std::isalnum(uc)) {
             cap_next = true;
         } else if (cap_next) {
-            result += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            result += static_cast<char>(std::toupper(uc));
             cap_next = false;
         } else {
             result += c;
         }
     }
-    return result.empty() ? "MyStateMachine" : result;
+    if (result.empty()) {
+        return "MyStateMachine";
+    }
+    if (std::isdigit(static_cast<unsigned char>(result.front()))) {
+        result = "Fsm_" + result;
+    }
+    return result;
+}
+
+/**
+ * @brief Creates a stateful filesystem submachine resolver for SubmachineInliningPass.
+ */
+inline std::function<const fsm::ir::FsmIr*(const std::string&)> create_filesystem_submachine_resolver(
+    const std::string& input_file, const std::string& submachine_dir = "") {
+    auto loaded_submachines = std::make_shared<std::map<std::string, fsm::ir::FsmIr>>();
+    return [input_file, submachine_dir, loaded_submachines](const std::string& sub_name) -> const fsm::ir::FsmIr* {
+        if (!is_valid_path_string(sub_name) || sub_name.find("..") != std::string::npos) {
+            return nullptr;
+        }
+        auto it = loaded_submachines->find(sub_name);
+        if (it != loaded_submachines->end()) {
+            return &it->second;
+        }
+
+        fs::path search_dir;
+        if (!submachine_dir.empty()) {
+            search_dir = fs::path(submachine_dir);
+        } else if (!input_file.empty() && !is_stdin_path(input_file)) {
+            search_dir = fs::path(input_file).parent_path();
+        }
+        if (search_dir.empty()) {
+            std::error_code ec;
+            search_dir = fs::current_path(ec);
+        }
+
+        static constexpr const char* kExtensions[] = {".sysml", ".puml",      ".plantuml", ".mmd", ".mermaid",
+                                                      ".xmi",   ".scxml",     ".json",     ".dot", ".gv",
+                                                      ".sfx",   ".stateflow", ".slx",      ".smv"};
+
+        for (const char* ext : kExtensions) {
+            fs::path candidate = search_dir / (sub_name + ext);
+            std::error_code ec;
+            if (fs::exists(candidate, ec) && fs::is_regular_file(candidate, ec)) {
+                std::string read_err;
+                std::string sub_content = read_file_content(candidate.string(), read_err);
+                if (read_err.empty()) {
+                    auto sub_parser = fsm::frontend::ParserFactory::create(candidate.string(), "auto");
+                    if (sub_parser) {
+                        fsm::ir::FsmIr sub_ir;
+                        std::string sub_err;
+                        if (sub_parser->parse(sub_content, sub_ir, sub_err)) {
+                            if (sub_ir.name.empty() || sub_ir.name == "Fsm" || sub_ir.name == "MyStateMachine") {
+                                sub_ir.name = sub_name;
+                            }
+                            sub_ir.normalize_hierarchy();
+                            (*loaded_submachines)[sub_name] = std::move(sub_ir);
+                            return &(*loaded_submachines)[sub_name];
+                        }
+                    }
+                }
+            }
+        }
+        return nullptr;
+    };
 }
 
 }  // namespace fsm::tools

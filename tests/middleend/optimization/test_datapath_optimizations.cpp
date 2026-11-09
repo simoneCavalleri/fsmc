@@ -367,24 +367,24 @@ TEST(TransitionFusion, TransientIntermediateState_FusesTransitionsAndBypassesSta
 
     StateNode s_start("s_start", "s_start");
     StateNode s_trans("s_trans", "s_trans");
+    ActionSignature a1("act1");
+    StoreOp op1;
+    op1.target = LValueTarget("x");
+    op1.expression = "x + 1";
+    a1.instructions.emplace_back(op1);
+    s_trans.exit_actions.push_back(a1);
     StateNode s_end("s_end", "s_end");
     ir.states.push_back(s_start);
     ir.states.push_back(s_trans);
     ir.states.push_back(s_end);
 
-    // Transition 1: s_start -> s_trans on event EV1 with guard G1 and action A1
+    // Transition 1: s_start -> s_trans on event EV1 with guard G1
     TransitionEdge t1;
     t1.source_id = "s_start";
     t1.target_id = "s_trans";
     t1.trigger = SignalTrigger("EV1");
     t1.guard = "x > 0";
     t1.guard_ast = GuardAstNode("x > 0");
-    ActionSignature a1("act1");
-    StoreOp op1;
-    op1.target = LValueTarget("x");
-    op1.expression = "x + 1";
-    a1.instructions.emplace_back(op1);
-    t1.transition_action = a1;
     ir.add_transition(t1);
 
     // Transition 2: s_trans -> s_end immediate (AnonymousTrigger) with guard G2 and action A2
@@ -466,6 +466,70 @@ TEST(TransitionFusion, StatesWithExternalTriggersOrInitial_PreservedWithoutFusio
     // Neither state should be removed!
     EXPECT_EQ(ir.states.size(), 2);
     EXPECT_EQ(ir.transitions.size(), 2);
+}
+
+/**
+ * @brief Verify TransitionFusionPass preserves composite initial substates and states with do_activity.
+ */
+TEST(TransitionFusion, CompositeInitialSubstateOrDoActivity_PreservedWithoutFusion) {
+    FsmIr ir;
+    ir.name = "HierarchicalWithActivities";
+    ir.initial_state = "Parent";
+
+    StateNode parent("Parent", "Parent composite");
+    parent.is_composite = true;
+    parent.initial_sub_state = "SubInit";
+    parent.children_ids = {"subinit_id", "subother_id"};
+
+    StateNode sub_init("SubInit", "Initial substate");
+    sub_init.id = "subinit_id";
+    sub_init.parent_state = "Parent";
+
+    StateNode sub_other("SubOther", "Target substate");
+    sub_other.id = "subother_id";
+    sub_other.parent_state = "Parent";
+
+    StateNode active_do("ActiveDo", "State with do activity");
+    active_do.do_activity = "LongComputation";
+
+    ir.states.push_back(parent);
+    ir.states.push_back(sub_init);
+    ir.states.push_back(sub_other);
+    ir.states.push_back(active_do);
+
+    // Incoming and immediate outgoing from SubInit: must NOT be fused because it is initial_sub_state
+    TransitionEdge t1;
+    t1.source = "Parent";
+    t1.target = "SubInit";
+    t1.trigger = SignalTrigger("EvEnter");
+    ir.add_transition(t1);
+
+    TransitionEdge t2;
+    t2.source = "SubInit";
+    t2.target = "SubOther";
+    t2.trigger = AnonymousTrigger{};
+    ir.add_transition(t2);
+
+    // Incoming and immediate outgoing from ActiveDo: must NOT be fused because of do_activity
+    TransitionEdge t3;
+    t3.source = "SubOther";
+    t3.target = "ActiveDo";
+    t3.trigger = SignalTrigger("EvCompute");
+    ir.add_transition(t3);
+
+    TransitionEdge t4;
+    t4.source = "ActiveDo";
+    t4.target = "SubOther";
+    t4.trigger = AnonymousTrigger{};
+    ir.add_transition(t4);
+
+    DiagnosticEngine diag;
+    TransitionFusionPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+
+    // Both SubInit and ActiveDo must remain preserved in ir.states
+    EXPECT_NE(ir.find_state("SubInit"), nullptr);
+    EXPECT_NE(ir.find_state("ActiveDo"), nullptr);
 }
 
 // ============================================================================

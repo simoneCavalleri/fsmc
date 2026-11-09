@@ -9,6 +9,8 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+#include <thread>
 #endif
 
 #include <array>
@@ -87,7 +89,13 @@ bool PipeThroughPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     int in_pipe[2];   // Parent writes, child reads
     int out_pipe[2];  // Child writes, parent reads
 
-    if (pipe(in_pipe) != 0 || pipe(out_pipe) != 0) {
+    if (pipe(in_pipe) != 0) {
+        diag.report(Diagnostic::error("E_PIPE_FAIL", "Failed to create IPC pipes for external pass filter."));
+        return false;
+    }
+    if (pipe(out_pipe) != 0) {
+        close(in_pipe[0]);
+        close(in_pipe[1]);
         diag.report(Diagnostic::error("E_PIPE_FAIL", "Failed to create IPC pipes for external pass filter."));
         return false;
     }
@@ -121,15 +129,17 @@ bool PipeThroughPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     close(in_pipe[0]);
     close(out_pipe[1]);
 
-    // Write input JSON to child stdin
-    size_t written = 0;
-    while (written < input_json.size()) {
-        ssize_t n = write(in_pipe[1], input_json.data() + written, input_json.size() - written);
-        if (n <= 0)
-            break;
-        written += static_cast<size_t>(n);
-    }
-    close(in_pipe[1]);
+    // Write input JSON to child stdin asynchronously so payloads > 64 KB do not deadlock pipe buffers
+    std::thread writer([&input_json, write_fd = in_pipe[1]]() {
+        size_t written = 0;
+        while (written < input_json.size()) {
+            ssize_t n = write(write_fd, input_json.data() + written, input_json.size() - written);
+            if (n <= 0)
+                break;
+            written += static_cast<size_t>(n);
+        }
+        close(write_fd);
+    });
 
     // Read output JSON from child stdout
     std::string output_json;
@@ -139,6 +149,7 @@ bool PipeThroughPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         output_json.append(buf.data(), static_cast<size_t>(n_read));
     }
     close(out_pipe[0]);
+    writer.join();
 
     int status = 0;
     waitpid(pid, &status, 0);

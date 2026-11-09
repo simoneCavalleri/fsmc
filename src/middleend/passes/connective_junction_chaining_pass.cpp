@@ -1,6 +1,7 @@
 #include "fsm/middleend/passes/connective_junction_chaining_pass.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <functional>
 #include <map>
 #include <string>
@@ -23,12 +24,30 @@ bool is_else_guard(const std::optional<std::string>& g) {
     return val == "else" || val == "otherwise" || val == "default";
 }
 
+bool is_plain_identifier_guard(const std::string& g) {
+    if (g.empty()) {
+        return false;
+    }
+    if (std::isalpha(static_cast<unsigned char>(g[0])) == 0 && g[0] != '_') {
+        return false;
+    }
+    for (char c : g) {
+        if (std::isalnum(static_cast<unsigned char>(c)) == 0 && c != '_') {
+            return false;
+        }
+    }
+    return true;
+}
+
 std::string combine_two_guards(const std::string& g1, const std::string& g2) {
     if (g1.empty())
         return g2;
     if (g2.empty())
         return g1;
-    return "fsm::and_<" + g1 + ", " + g2 + ">";
+    if (is_plain_identifier_guard(g1) && is_plain_identifier_guard(g2)) {
+        return "fsm::and_<" + g1 + ", " + g2 + ">";
+    }
+    return "(" + g1 + ") && (" + g2 + ")";
 }
 
 }  // namespace
@@ -137,24 +156,36 @@ bool ConnectiveJunctionChainingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 }
             }
             if (!combined_guard.empty()) {
-                composite.guard = combined_guard;
-                composite.guard_ast = GuardAstNode(combined_guard);
+                composite.set_guard(combined_guard);
             }
 
             // Combine Condition Actions
             std::vector<std::string> cond_action_names;
             std::vector<ActionAssignment> cond_assignments;
+            std::vector<ActionAstNode> cond_instructions;
+            bool cond_accepts_event = false;
+            std::vector<std::string> cond_invocations;
             for (const auto& edge : current_path) {
                 if (edge.condition_action.has_value()) {
                     if (!edge.condition_action->name.empty()) {
                         cond_action_names.push_back(edge.condition_action->name);
                     }
+                    if (!edge.condition_action->invocation.empty() &&
+                        edge.condition_action->invocation != edge.condition_action->name) {
+                        cond_invocations.push_back(edge.condition_action->invocation);
+                    }
+                    if (edge.condition_action->accepts_event) {
+                        cond_accepts_event = true;
+                    }
                     for (const auto& assign : edge.condition_action->assignments) {
                         cond_assignments.push_back(assign);
                     }
+                    for (const auto& inst : edge.condition_action->instructions) {
+                        cond_instructions.push_back(inst);
+                    }
                 }
             }
-            if (!cond_action_names.empty() || !cond_assignments.empty()) {
+            if (!cond_action_names.empty() || !cond_assignments.empty() || !cond_instructions.empty()) {
                 std::string combined_cond_name;
                 for (size_t i = 0; i < cond_action_names.size(); ++i) {
                     if (i > 0)
@@ -166,23 +197,47 @@ bool ConnectiveJunctionChainingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 }
                 ActionSignature sig(combined_cond_name);
                 sig.assignments = std::move(cond_assignments);
+                sig.instructions = std::move(cond_instructions);
+                sig.accepts_event = cond_accepts_event;
+                if (!cond_invocations.empty()) {
+                    std::string combined_inv;
+                    for (size_t i = 0; i < cond_invocations.size(); ++i) {
+                        if (i > 0)
+                            combined_inv += "; ";
+                        combined_inv += cond_invocations[i];
+                    }
+                    sig.invocation = std::move(combined_inv);
+                }
                 composite.condition_action = std::move(sig);
             }
 
             // Combine Transition Actions
             std::vector<std::string> trans_action_names;
             std::vector<ActionAssignment> trans_assignments;
+            std::vector<ActionAstNode> trans_instructions;
+            bool trans_accepts_event = false;
+            std::vector<std::string> trans_invocations;
             for (const auto& edge : current_path) {
                 if (edge.transition_action.has_value()) {
                     if (!edge.transition_action->name.empty()) {
                         trans_action_names.push_back(edge.transition_action->name);
                     }
+                    if (!edge.transition_action->invocation.empty() &&
+                        edge.transition_action->invocation != edge.transition_action->name) {
+                        trans_invocations.push_back(edge.transition_action->invocation);
+                    }
+                    if (edge.transition_action->accepts_event) {
+                        trans_accepts_event = true;
+                    }
                     for (const auto& assign : edge.transition_action->assignments) {
                         trans_assignments.push_back(assign);
                     }
+                    for (const auto& inst : edge.transition_action->instructions) {
+                        trans_instructions.push_back(inst);
+                    }
                 }
             }
-            if (!trans_action_names.empty() || !trans_assignments.empty()) {
+            if (!trans_action_names.empty() || !trans_assignments.empty() || !trans_instructions.empty()) {
                 std::string combined_trans_name;
                 for (size_t i = 0; i < trans_action_names.size(); ++i) {
                     if (i > 0)
@@ -194,6 +249,17 @@ bool ConnectiveJunctionChainingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 }
                 ActionSignature sig(combined_trans_name);
                 sig.assignments = std::move(trans_assignments);
+                sig.instructions = std::move(trans_instructions);
+                sig.accepts_event = trans_accepts_event;
+                if (!trans_invocations.empty()) {
+                    std::string combined_inv;
+                    for (size_t i = 0; i < trans_invocations.size(); ++i) {
+                        if (i > 0)
+                            combined_inv += "; ";
+                        combined_inv += trans_invocations[i];
+                    }
+                    sig.invocation = std::move(combined_inv);
+                }
                 composite.transition_action = std::move(sig);
             }
 

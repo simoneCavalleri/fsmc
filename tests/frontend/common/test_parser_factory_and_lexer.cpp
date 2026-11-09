@@ -222,6 +222,15 @@ TEST(LexerUtils, ReservedKeywords_EscapesCppKeywordsWithUnderscore) {
     EXPECT_EQ(escape_cpp_keyword("class"), "class_");
     EXPECT_EQ(escape_cpp_keyword("default"), "default_");
     EXPECT_EQ(escape_cpp_keyword("Running"), "Running");
+
+    // sanitize_identifier must automatically escape C++ keywords
+    EXPECT_EQ(sanitize_identifier("class"), "class_");
+    EXPECT_EQ(sanitize_identifier("switch"), "switch_");
+    EXPECT_EQ(sanitize_identifier("default"), "default_");
+    EXPECT_EQ(sanitize_identifier("template"), "template_");
+    EXPECT_EQ(sanitize_identifier("void"), "void_");
+    EXPECT_EQ(sanitize_identifier("Active"), "Active");
+    EXPECT_EQ(sanitize_identifier("Sensor-01"), "Sensor_01");
 }
 
 }  // namespace

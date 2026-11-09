@@ -226,3 +226,10 @@ fsmc_target_sources(test_cmake_integration
 
 add_fsm_unit_test(test_multiformat_presets_roundtrip DIR integration STANDARD 20)
 target_compile_definitions(test_multiformat_presets_roundtrip PRIVATE FSMC_INCLUDE_DIR="${PROJECT_SOURCE_DIR}/include")
+
+if(Python3_FOUND)
+    add_test(NAME test_documentation_freshness
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../scripts/verify_docs.py
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..
+    )
+endif()

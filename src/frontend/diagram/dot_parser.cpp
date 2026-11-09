@@ -311,6 +311,9 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
                 auto parsed = GuardExpressionParser::parse(guard_name);
                 if (!parsed.cpp_type.empty()) {
                     trans.guard = parsed.cpp_type;
+                    for (const auto& detail : parsed.atomic_guard_details) {
+                        model.add_guard(detail.name, "", detail.expression, detail.expression);
+                    }
                     for (const auto& atomic : parsed.atomic_guards) {
                         model.add_guard(atomic);
                     }

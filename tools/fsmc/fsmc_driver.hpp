@@ -70,7 +70,7 @@ class FsmcDriver {
         }
 
         if (opts.show_version) {
-            std::cout << "fsmc version 0.8.0 (Universal State Machine Compiler & Optimization Infrastructure)\n";
+            std::cout << "fsmc version 0.9.0 (Universal State Machine Compiler & Optimization Infrastructure)\n";
             return 0;
         }
 
@@ -166,7 +166,7 @@ class FsmcDriver {
 
         // Check for companion sidecar manifest (--sidecar <file> or auto-discovery)
         std::string sidecar_path = opts.sidecar_file;
-        if (sidecar_path.empty()) {
+        if (sidecar_path.empty() && !is_stdin_path(opts.input_file)) {
             // Auto-discovery
             fs::path p(opts.input_file);
             std::string stem = p.stem().string();
@@ -195,9 +195,13 @@ class FsmcDriver {
                 std::string parse_manifest_err;
                 if (CompanionManifestParser::parse(sidecar_content, manifest, parse_manifest_err)) {
                     std::string combine_err;
-                    fsm::frontend::diagram::DiagramContractCombiner::combine(model, manifest, combine_err);
+                    if (!fsm::frontend::diagram::DiagramContractCombiner::combine(model, manifest, combine_err)) {
+                        std::cerr << "Error combining companion manifest '" << sidecar_path << "': " << combine_err
+                                  << "\n";
+                        return 1;
+                    }
                     has_sidecar = true;
-                    std::cout << "info: Loaded companion manifest: '" << sidecar_path << "'\n";
+                    std::cerr << "info: Loaded companion manifest: '" << sidecar_path << "'\n";
                 } else {
                     std::cerr << "Warning: Failed to parse companion manifest '" << sidecar_path
                               << "': " << parse_manifest_err << "\n";
@@ -211,7 +215,7 @@ class FsmcDriver {
                 std::cerr << "warning[W0301]: Untyped or inferred symbol in diagram source: '" << opts.input_file
                           << "'\n";
                 if (!opts.allow_diagram_codegen && !opts.verify_mode && opts.export_diagram_format.empty() &&
-                    opts.rtm_output_file.empty()) {
+                    opts.rtm_output_file.empty() && opts.emit_sidecar.empty() && opts.emit_test_harness.empty()) {
                     std::cerr << "\n[ERROR] Direct code generation blocked: '" << opts.input_file
                               << "' is a visual diagram format (" << parser->format_name()
                               << ").\nPass '--sidecar <manifest.yaml>' or '--allow-diagram-codegen' to allow code "
@@ -263,25 +267,39 @@ class FsmcDriver {
         }
 
         // Execute Middle-End Optimization Passes
-        if (opts.opt_level > 0) {
-            PassManager pm;
-            if (opts.pipeline_mode == "7stage" && opts.export_diagram_format.empty() && !opts.strict_determinism &&
-                !opts.check_races && !opts.inline_submachines && opts.simplify_guards) {
-                pm = PassManager::create_verified_7stage_pipeline(opts.opt_level >= 2 || opts.prune_dead_states);
-            } else {
+        DiagnosticEngine middleend_diag;
+        DiagnosticFormat diag_fmt = parse_diagnostic_format(opts.diagnostic_format);
+
+        PassManager pm;
+        if (opts.pipeline_mode == "7stage" && opts.export_diagram_format.empty()) {
+            if (opts.inline_submachines) {
+                create_submachine_pass(opts)->run(model, middleend_diag);
+            }
+            const bool optimize_7stage = opts.opt_level > 0 && (opts.opt_level >= 2 || opts.prune_dead_states);
+            pm = PassManager::create_verified_7stage_pipeline(optimize_7stage);
+            if (opts.inline_submachines) {
+                pm.add_pass(create_submachine_pass(opts));
+            }
+            if (opts.check_races) {
+                pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
+            }
+        } else {
+            if (opts.export_diagram_format.empty() || opts.opt_level > 0) {
                 pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
-                if (opts.simplify_guards) {
-                    pm.add_pass(std::make_unique<GuardSimplificationPassWrapper>());
-                }
-                if (opts.strict_determinism) {
-                    pm.add_pass(std::make_unique<DeterminismEnforcementPassWrapper>());
-                }
-                if (opts.check_races) {
-                    pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
-                }
-                if (opts.inline_submachines) {
-                    pm.add_pass(create_submachine_pass(opts));
-                }
+            }
+            if (opts.opt_level > 0 && opts.simplify_guards) {
+                pm.add_pass(std::make_unique<GuardSimplificationPassWrapper>());
+            }
+            if (opts.strict_determinism) {
+                pm.add_pass(std::make_unique<DeterminismEnforcementPassWrapper>());
+            }
+            if (opts.check_races) {
+                pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
+            }
+            if (opts.inline_submachines) {
+                pm.add_pass(create_submachine_pass(opts));
+            }
+            if (opts.opt_level > 0) {
                 if (opts.prune_dead_states || opts.opt_level >= 2) {
                     pm.add_pass(std::make_unique<ConstantFoldingPassWrapper>());
                     pm.add_pass(std::make_unique<DeadStatePruningPassWrapper>(true));
@@ -306,47 +324,78 @@ class FsmcDriver {
                 pm.add_pass(std::make_unique<WcetAnalysisPassWrapper>());
                 if (opts.verify_mode || opts.export_diagram_format.empty()) {
                     pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
-                    pm.add_pass(std::make_unique<ModelCheckingPass>());
-                }
-            }
-            DiagnosticFormat diag_fmt = parse_diagnostic_format(opts.diagnostic_format);
-
-            for (const auto& plugin_path : opts.pass_plugins) {
-                DiagnosticEngine plugin_diag;
-                if (!pm.load_plugin(plugin_path, plugin_diag)) {
-                    std::cerr << plugin_diag.render_to_format(diag_fmt, content);
-                    return 1;
-                }
-            }
-            if (!opts.pipe_through_cmd.empty()) {
-                pm.add_pass(std::make_unique<PipeThroughPassWrapper>(opts.pipe_through_cmd));
-            }
-
-            DiagnosticEngine diag;
-            if (!pm.run(model, diag)) {
-                std::cerr << diag.render_to_format(diag_fmt, content);
-                return 1;
-            }
-
-            if (opts.werror && !diag.get_diagnostics().empty()) {
-                bool has_warnings = false;
-                for (const auto& d : diag.get_diagnostics()) {
-                    if (d.severity == DiagnosticSeverity::Warning || d.severity == DiagnosticSeverity::Fatal ||
-                        d.severity == DiagnosticSeverity::Error) {
-                        has_warnings = true;
-                        break;
+                    if (!opts.verify_mode) {
+                        pm.add_pass(std::make_unique<ModelCheckingPass>());
                     }
-                }
-                if (has_warnings) {
-                    std::cerr << "\n[ERROR] -Werror enabled: compilation failed due to middle-end warnings/errors:\n";
-                    std::cerr << diag.render_to_format(diag_fmt, content);
-                    return 1;
                 }
             }
         }
 
+        for (const auto& plugin_path : opts.pass_plugins) {
+            DiagnosticEngine plugin_diag;
+            if (!pm.load_plugin(plugin_path, plugin_diag)) {
+                std::cerr << plugin_diag.render_to_format(diag_fmt, content);
+                return 1;
+            }
+        }
+        if (!opts.pipe_through_cmd.empty()) {
+            pm.add_pass(std::make_unique<PipeThroughPassWrapper>(opts.pipe_through_cmd));
+        }
+
+        if (!pm.run(model, middleend_diag) && !opts.verify_mode) {
+            std::cerr << middleend_diag.render_to_format(diag_fmt, content);
+            return 1;
+        }
+
+        if (opts.werror && !middleend_diag.get_diagnostics().empty() && !opts.verify_mode) {
+            bool has_warnings = false;
+            for (const auto& d : middleend_diag.get_diagnostics()) {
+                if (d.severity == DiagnosticSeverity::Warning || d.severity == DiagnosticSeverity::Fatal ||
+                    d.severity == DiagnosticSeverity::Error || d.severity == DiagnosticSeverity::SafetyCritical) {
+                    has_warnings = true;
+                    break;
+                }
+            }
+            if (has_warnings) {
+                std::cerr << "\n[ERROR] -Werror enabled: compilation failed due to middle-end warnings/errors:\n";
+                std::cerr << middleend_diag.render_to_format(diag_fmt, content);
+                return 1;
+            }
+        } else if (!middleend_diag.get_diagnostics().empty() && !opts.verify_mode) {
+            std::cerr << middleend_diag.render_to_format(diag_fmt, content);
+        }
+
         // Semantic validation
-        const auto validation = FsmValidator::validate(model);
+        auto validation = FsmValidator::validate(model);
+        const auto validator_only_warnings = validation.warnings;
+        for (const auto& d : middleend_diag.get_diagnostics()) {
+            const std::string formatted = d.code.empty() ? d.message : ("[" + d.code + "] " + d.message);
+            const bool already_in_diag =
+                std::any_of(validation.diagnostics.begin(), validation.diagnostics.end(),
+                            [&](const DiagnosticMessage& existing) { return existing.message == d.message; });
+            if (d.severity == DiagnosticSeverity::Warning) {
+                validation.warnings.push_back(formatted);
+                if (!already_in_diag) {
+                    validation.diagnostics.push_back({DiagnosticSeverity::Warning, d.code, d.message});
+                }
+            } else if (d.severity == DiagnosticSeverity::SafetyCritical) {
+                validation.errors.push_back(formatted);
+                validation.is_valid = false;
+                if (!already_in_diag) {
+                    validation.diagnostics.push_back({DiagnosticSeverity::SafetyCritical, d.code, d.message});
+                }
+            } else if (d.severity == DiagnosticSeverity::Error || d.severity == DiagnosticSeverity::Fatal) {
+                validation.errors.push_back(formatted);
+                validation.is_valid = false;
+                if (!already_in_diag) {
+                    validation.diagnostics.push_back({DiagnosticSeverity::Error, d.code, d.message});
+                }
+            } else if (d.severity == DiagnosticSeverity::Info) {
+                if (!already_in_diag) {
+                    validation.diagnostics.push_back({DiagnosticSeverity::Info, d.code, d.message});
+                }
+            }
+        }
 
         if (opts.verify_mode) {
             if (opts.verify_engine == "nuxmv" || (opts.verify_engine == "auto" && is_nuxmv_available())) {
@@ -355,8 +404,13 @@ class FsmcDriver {
             return print_verification_report(opts, model, validation);
         }
 
-        for (const auto& warn_msg : validation.warnings) {
-            std::cerr << "[WARNING] " << warn_msg << "\n";
+        for (const auto& warn_msg : validator_only_warnings) {
+            const bool already_printed_by_middleend =
+                std::any_of(middleend_diag.get_diagnostics().begin(), middleend_diag.get_diagnostics().end(),
+                            [&](const Diagnostic& d) { return warn_msg.find(d.message) != std::string::npos; });
+            if (!already_printed_by_middleend) {
+                std::cerr << "[WARNING] " << warn_msg << "\n";
+            }
         }
 
         if (opts.werror && !validation.warnings.empty()) {
@@ -389,7 +443,11 @@ class FsmcDriver {
                 std::cerr << "Error: " << write_err << "\n";
                 return 1;
             }
-            std::cout << "[SUCCESS] Requirement Traceability Matrix exported to: " << opts.rtm_output_file << "\n";
+            std::cerr << "[SUCCESS] Requirement Traceability Matrix exported to: " << opts.rtm_output_file << "\n";
+            if (opts.output_file.empty() && opts.emit_sidecar.empty() && opts.emit_test_harness.empty() &&
+                opts.export_diagram_format.empty()) {
+                return 0;
+            }
         }
 
         // Diagram Export
@@ -407,7 +465,7 @@ class FsmcDriver {
                     std::cerr << "Error: " << write_err << "\n";
                     return 1;
                 }
-                std::cout << "[SUCCESS] Diagram exported to " << opts.export_diagram_format << ": " << opts.output_file
+                std::cerr << "[SUCCESS] Diagram exported to " << opts.export_diagram_format << ": " << opts.output_file
                           << "\n";
             } else {
                 std::cout << exported_diagram;
@@ -426,7 +484,7 @@ class FsmcDriver {
                               << "\n";
                     return 1;
                 }
-                std::cout << "[SUCCESS] Companion manifest sidecar exported to: " << opts.emit_sidecar << "\n";
+                std::cerr << "[SUCCESS] Companion manifest sidecar exported to: " << opts.emit_sidecar << "\n";
             }
             return 0;
         }
@@ -444,7 +502,7 @@ class FsmcDriver {
                 std::cerr << "Error writing sidecar manifest to '" << opts.emit_sidecar << "': " << write_err << "\n";
                 return 1;
             }
-            std::cout << "[SUCCESS] Companion manifest sidecar exported to: " << opts.emit_sidecar << "\n";
+            std::cerr << "[SUCCESS] Companion manifest sidecar exported to: " << opts.emit_sidecar << "\n";
             if (opts.output_file.empty() && opts.emit_test_harness.empty() && opts.rtm_output_file.empty()) {
                 return 0;
             }
@@ -459,10 +517,24 @@ class FsmcDriver {
                           << "\n";
                 return 1;
             }
-            std::cout << "[SUCCESS] MC/DC Test Harness synthesized successfully to: " << opts.emit_test_harness << "\n";
-            if (opts.output_file.empty() && opts.export_diagram_format.empty() && opts.rtm_output_file.empty()) {
+            std::cerr << "[SUCCESS] MC/DC Test Harness synthesized successfully to: " << opts.emit_test_harness << "\n";
+            if (opts.output_file.empty() && opts.export_diagram_format.empty()) {
                 return 0;
             }
+        }
+
+        if (opts.output_file.empty() &&
+            (!opts.rtm_output_file.empty() || !opts.emit_sidecar.empty() || !opts.emit_test_harness.empty())) {
+            return 0;
+        }
+
+        // Enforce untyped diagram codegen safety check before C++ generation
+        if (parser->kind() == FrontendKind::Diagram && !has_sidecar && !opts.allow_diagram_codegen) {
+            std::cerr << "\n[ERROR] Direct code generation blocked: '" << opts.input_file
+                      << "' is a visual diagram format (" << parser->format_name()
+                      << ").\nPass '--sidecar <manifest.yaml>' or '--allow-diagram-codegen' to allow code "
+                         "generation, or use '--verify' / '--export <fmt>' / '--rtm-output <file>'.\n";
+            return 1;
         }
 
         // Generate C++ code
@@ -550,10 +622,28 @@ class FsmcDriver {
                   << " Requirement Traceability Matrix (@fsm:req) : " << model.name << "\n"
                   << "============================================================================\n";
         std::size_t req_count = 0;
+        if (!model.satisfies_reqs.empty()) {
+            std::cout << " Model '" << model.name << "' -> Requirements: ";
+            for (const auto& r : model.satisfies_reqs) {
+                std::cout << "[" << r << "] ";
+                ++req_count;
+            }
+            std::cout << "\n";
+        }
         for (const auto& st : model.states) {
             if (!st.traceability_reqs.empty()) {
                 std::cout << " State '" << st.name << "' -> Requirements: ";
                 for (const auto& r : st.traceability_reqs) {
+                    std::cout << "[" << r << "] ";
+                    ++req_count;
+                }
+                std::cout << "\n";
+            }
+        }
+        for (const auto& t : model.transitions) {
+            if (!t.traceability_reqs.empty()) {
+                std::cout << " Transition '" << t.source << " -> " << t.target << "' -> Requirements: ";
+                for (const auto& r : t.traceability_reqs) {
                     std::cout << "[" << r << "] ";
                     ++req_count;
                 }
@@ -572,47 +662,8 @@ class FsmcDriver {
     }
 
     static std::unique_ptr<IPass> create_submachine_pass(const FsmcOptions& opts) {
-        auto loaded_submachines = std::make_shared<std::map<std::string, fsm::ir::FsmIr>>();
-        auto sub_pass = std::make_unique<SubmachineInliningPass>(
-            [opts, loaded_submachines](const std::string& sub_name) -> const fsm::ir::FsmIr* {
-                if (loaded_submachines->count(sub_name) != 0) {
-                    return &(*loaded_submachines)[sub_name];
-                }
-                fs::path search_dir = opts.submachine_dir.empty() ? fs::path(opts.input_file).parent_path()
-                                                                  : fs::path(opts.submachine_dir);
-                for (const auto& ext : {".sysml", ".puml", ".mmd", ".xmi", ".scxml", ".json", ".dot"}) {
-                    fs::path candidate = search_dir / (sub_name + ext);
-                    if (fs::exists(candidate)) {
-                        std::string read_err;
-                        std::string sub_content = read_file_content(candidate.string(), read_err);
-                        if (read_err.empty()) {
-                            auto sub_parser = ParserFactory::create(candidate.string(), "auto");
-                            if (sub_parser) {
-                                fsm::ir::FsmIr sub_ir;
-                                std::string sub_err;
-                                if (sub_parser->parse(sub_content, sub_ir, sub_err)) {
-                                    (*loaded_submachines)[sub_name] = std::move(sub_ir);
-                                    return &(*loaded_submachines)[sub_name];
-                                }
-                            }
-                        }
-                    }
-                }
-                return nullptr;
-            });
-
-        class SubmachineWrapper : public IPass {
-          public:
-            explicit SubmachineWrapper(std::unique_ptr<SubmachineInliningPass> pass) : pass_(std::move(pass)) {}
-            [[nodiscard]] std::string name() const override { return SubmachineInliningPass::name(); }
-            [[nodiscard]] std::string description() const override { return SubmachineInliningPass::description(); }
-            bool run(fsm::ir::FsmIr& ir, DiagnosticEngine& diag) override { return pass_->run(ir, diag); }
-
-          private:
-            std::unique_ptr<SubmachineInliningPass> pass_;
-        };
-
-        return std::make_unique<SubmachineWrapper>(std::move(sub_pass));
+        return std::make_unique<SubmachineInliningPassWrapper>(
+            create_filesystem_submachine_resolver(opts.input_file, opts.submachine_dir));
     }
 
     static int run_nuxmv_verification(const FsmcOptions& opts, const fsm::ir::FsmIr& model,
@@ -798,10 +849,15 @@ class FsmcDriver {
             std::cout << nuxmv_output;
         }
 
+        if (opts.werror && !validation.warnings.empty()) {
+            std::cerr << "\n[ERROR] -Werror enabled: verification failed due to warnings.\n";
+            all_passed = false;
+        }
+
         std::cout << "----------------------------------------------------------------------------\n"
                   << " nuXmv Status: "
-                  << (all_passed ? "PASSED (Model Sound & Properties Formally Verified)"
-                                 : "FAILED (Violations Detected)")
+                  << (all_passed && validation.is_valid ? "PASSED (Model Sound & Properties Formally Verified)"
+                                                        : "FAILED (Violations Detected)")
                   << "\n============================================================================\n";
 
         return (all_passed && validation.is_valid) ? 0 : 1;
@@ -843,6 +899,15 @@ class FsmcDriver {
         }
 
         bool all_valid = validation.is_valid;
+        for (const auto& diag : validation.diagnostics) {
+            if (diag.severity == DiagnosticSeverity::SafetyCritical || diag.severity == DiagnosticSeverity::Error) {
+                all_valid = false;
+            }
+        }
+        if (opts.werror && !validation.warnings.empty()) {
+            std::cerr << "\n[ERROR] -Werror enabled: verification failed due to warnings.\n";
+            all_valid = false;
+        }
 
         if (!model.properties.empty()) {
             std::cout << "----------------------------------------------------------------------------\n"

@@ -60,7 +60,7 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
     }
     out << "    <packagedElement xmi:type=\"uml:StateMachine\" xmi:id=\"_sm1\" name=\"" << escape_xml(model_name)
         << "\">\n";
-    out << "      <region xmi:id=\"_r1\">\n";
+    out << "      <region xmi:type=\"uml:Region\" xmi:id=\"_r1\">\n";
 
     std::map<std::string, std::string> id_map;
     size_t id_counter = 1;
@@ -127,7 +127,7 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
 
         if (state.is_composite) {
             std::string reg_id = "_r_" + st_id;
-            out << pad << "  <region xmi:id=\"" << reg_id << "\">\n";
+            out << pad << "  <region xmi:type=\"uml:Region\" xmi:id=\"" << reg_id << "\">\n";
 
             if (!state.initial_sub_state.empty() && id_map.count(state.initial_sub_state)) {
                 std::string init_ps = "_ps_init_" + st_id;

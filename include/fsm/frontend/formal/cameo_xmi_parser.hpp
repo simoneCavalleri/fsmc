@@ -44,22 +44,6 @@ class CameoXmiParser : public IParser {
 
   private:
     static void find_signals(const std::shared_ptr<XmlNode>& node, std::vector<std::shared_ptr<XmlNode>>& out_signals);
-    static void find_state_machines(const std::shared_ptr<XmlNode>& node,
-                                    std::vector<std::shared_ptr<XmlNode>>& out_sm);
-    void parse_state_machine_element(const std::shared_ptr<XmlNode>& parent_node, FsmIr& model,
-                                     const std::string& current_parent_state,
-                                     std::map<std::string, std::string>& id_to_name,
-                                     std::map<std::string, bool>& id_is_choice,
-                                     std::map<std::string, bool>& id_is_initial,
-                                     std::map<std::string, bool>& id_is_history,
-                                     std::map<std::string, bool>& id_is_deep_history);
-    static void parse_transition_element(const std::shared_ptr<XmlNode>& trans_node, FsmIr& model,
-                                         const std::string& current_parent_state,
-                                         const std::map<std::string, std::string>& id_to_name,
-                                         const std::map<std::string, bool>& id_is_choice,
-                                         const std::map<std::string, bool>& id_is_initial,
-                                         const std::map<std::string, bool>& id_is_history,
-                                         const std::map<std::string, bool>& id_is_deep_history);
 };
 
 using CameoParser = CameoXmiParser;

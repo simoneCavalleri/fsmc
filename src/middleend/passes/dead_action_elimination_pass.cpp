@@ -117,14 +117,36 @@ bool DeadActionEliminationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         known_vars.insert(v.name);
     }
 
-    // 1. Collect all variable reads across model (guards, invariants, clocks, actions)
+    // 1. Collect all variable reads across model (guards, invariants, clocks, properties, actions)
     std::unordered_set<std::string> read_vars;
+
+    for (const auto& prop : ir.properties) {
+        for (const auto& ident : extract_identifiers(prop.raw_formula)) {
+            if (known_vars.count(ident))
+                read_vars.insert(ident);
+        }
+        if (prop.ast) {
+            for (const auto& ident : extract_identifiers(prop.ast->to_string())) {
+                if (known_vars.count(ident))
+                    read_vars.insert(ident);
+            }
+        }
+    }
 
     for (const auto& state : ir.states) {
         for (const auto& inv : state.invariants) {
             for (const auto& ident : extract_identifiers(inv.to_string())) {
                 if (known_vars.count(ident))
                     read_vars.insert(ident);
+            }
+        }
+        if (state.time_invariant.has_value()) {
+            for (const auto& ident : extract_identifiers(state.time_invariant->to_string())) {
+                if (known_vars.count(ident))
+                    read_vars.insert(ident);
+            }
+            if (known_vars.count(state.time_invariant->clock)) {
+                read_vars.insert(state.time_invariant->clock);
             }
         }
     }
@@ -149,10 +171,28 @@ bool DeadActionEliminationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                         read_vars.insert(ident);
                 }
             }
+            for (const auto& ident : extract_identifiers(ct.raw_expression)) {
+                if (known_vars.count(ident))
+                    read_vars.insert(ident);
+            }
+        } else if (std::holds_alternative<ir::TimeTrigger>(edge.trigger)) {
+            const auto& tt = std::get<ir::TimeTrigger>(edge.trigger);
+            if (!tt.dynamic_expression.empty()) {
+                for (const auto& ident : extract_identifiers(tt.dynamic_expression)) {
+                    if (known_vars.count(ident))
+                        read_vars.insert(ident);
+                }
+            }
         }
     }
 
     auto collect_action_reads = [&](const ir::ActionSignature& act) {
+        if (!act.invocation.empty()) {
+            for (const auto& ident : extract_identifiers(act.invocation)) {
+                if (known_vars.count(ident))
+                    read_vars.insert(ident);
+            }
+        }
         for (const auto& inst : act.instructions) {
             for (const auto& v : known_vars) {
                 if (action_reads_var(inst, v)) {

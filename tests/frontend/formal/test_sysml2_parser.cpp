@@ -636,4 +636,55 @@ TEST(Sysml2Parser, FractionalMillisAfterDuration_RoundedToNearest) {
     EXPECT_EQ(tt.duration_ms, 501u);
 }
 
+/**
+ * @brief Regression BUG-01: SysML v2 entry and exit action blocks must parse assignments.
+ * @scenario State with entry action { counter = 0; status = 1; } and exit action { counter += 1; }.
+ * @expected Both entry and exit actions capture variable assignments in st->entry_actions and st->exit_actions.
+ */
+TEST(Sysml2Parser, EntryAndExitActionBlocks_AssignmentsPopulatedInIr) {
+    const std::string sysml_text = R"(
+    state def LifecycleFSM {
+        attribute counter : Integer = 0;
+        attribute status : Integer = 0;
+
+        entry; then Active;
+
+        state Active {
+            entry action InitActive {
+                counter = 0;
+                status = 1;
+            }
+            exit action {
+                counter += 1;
+            }
+        }
+    }
+    )";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+
+    const auto* st = model.find_state("Active");
+    ASSERT_NE(st, nullptr);
+
+    ASSERT_EQ(st->entry_actions.size(), 1u);
+    const auto& entry_act = st->entry_actions[0];
+    EXPECT_EQ(entry_act.name, "InitActive");
+    ASSERT_EQ(entry_act.assignments.size(), 2u);
+    EXPECT_EQ(entry_act.assignments[0].target.name, "counter");
+    EXPECT_EQ(entry_act.assignments[0].expression, "0");
+    EXPECT_EQ(entry_act.assignments[1].target.name, "status");
+    EXPECT_EQ(entry_act.assignments[1].expression, "1");
+
+    // Verify Exit Action
+    ASSERT_EQ(st->exit_actions.size(), 1u);
+    const auto& exit_act = st->exit_actions[0];
+    EXPECT_EQ(exit_act.name, "Active_exit");
+    ASSERT_EQ(exit_act.assignments.size(), 1u);
+    EXPECT_EQ(exit_act.assignments[0].target.name, "counter");
+    EXPECT_EQ(exit_act.assignments[0].expression, "counter + 1");
+}
+
 }  // namespace

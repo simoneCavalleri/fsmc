@@ -52,7 +52,11 @@ jobs:
 
       - name: Install MkDocs & Plugins
         run: |
-          pip install mkdocs mkdocs-material pymdown-extensions
+          pip install mkdocs mkdocs-material pymdown-extensions pyyaml
+
+      - name: Verify Documentation Freshness & Veracity Gate
+        run: |
+          python3 scripts/verify_docs.py
 
       - name: Build Docs with --strict Quality Gate
         run: |

@@ -379,4 +379,65 @@ TEST_F(FsmOptOptionsTest, StandardInput_PositionalDash_Recognized) {
     EXPECT_EQ(opts.input_path, "-");
 }
 
+/**
+ * @brief Test Intent: Verify space-separated --passes, semantic-validation pass, sampled-change-triggers alias, and
+ * clean --metrics output without unrequested JSON IR.
+ * Scenario: Run fsm-opt with space-separated '--passes semantic-validation,sampled-change-triggers' and '--metrics'.
+ */
+TEST_F(FsmOptOptionsTest, SpaceSeparatedPassesAndCleanMetricsOutput) {
+    testing::internal::CaptureStdout();
+    char p[] = "fsm-opt";
+    char i[] = "-i";
+    std::string in_str = model_file_;
+    char passes_flag[] = "--passes";
+    char passes_val[] = "semantic-validation,sampled-change-triggers";
+    char metrics_flag[] = "--metrics";
+    char* argv[] = {p, i, in_str.data(), passes_flag, passes_val, metrics_flag};
+
+    const auto opts = fsm::tools::parse_opt_args(6, argv);
+    EXPECT_TRUE(opts.is_valid);
+    EXPECT_EQ(opts.custom_passes, "semantic-validation,sampled-change-triggers");
+
+    int rc = fsm::tools::OptDriver::run(opts);
+    std::string out = testing::internal::GetCapturedStdout();
+    EXPECT_EQ(rc, 0);
+    EXPECT_NE(out.find("FSM Formal IR Graph Metrics"), std::string::npos);
+    EXPECT_EQ(out.find("\"states\""), std::string::npos);
+}
+
+/**
+ * @brief Test Intent: Verify --passes=inline-submachines in fsm-opt resolves external submachine files from disk.
+ * Scenario: Create a submachine model file and a parent model referencing it, then run fsm-opt with inline-submachines.
+ */
+TEST_F(FsmOptOptionsTest, InlineSubmachinesPass_ResolvesExternalSubmachineFiles) {
+    fs::path sub_file = test_dir_ / "SubCalib.puml";
+    {
+        std::ofstream out(sub_file);
+        out << "@startuml\n[*] --> Step1\nStep1 --> Step2 : EvNext\n@enduml\n";
+    }
+    fs::path parent_file = test_dir_ / "ParentArm.puml";
+    {
+        std::ofstream out(parent_file);
+        out << "@startuml\n[*] --> Calibrating\nstate Calibrating : @fsm:submachine SubCalib\n@enduml\n";
+    }
+    fs::path out_ir = test_dir_ / "inlined_ir.json";
+
+    char p[] = "fsm-opt";
+    char i[] = "-i";
+    std::string in_str = parent_file.string();
+    char passes[] = "--passes=inline-submachines";
+    char o[] = "-o";
+    std::string out_str = out_ir.string();
+    char* argv[] = {p, i, in_str.data(), passes, o, out_str.data()};
+
+    const auto opts = fsm::tools::parse_opt_args(6, argv);
+    EXPECT_EQ(fsm::tools::OptDriver::run(opts), 0);
+    EXPECT_TRUE(fs::exists(out_ir));
+
+    std::ifstream ifs(out_ir);
+    std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+    EXPECT_NE(content.find("Calibrating_Step1"), std::string::npos);
+    EXPECT_NE(content.find("Calibrating_Step2"), std::string::npos);
+}
+
 }  // namespace

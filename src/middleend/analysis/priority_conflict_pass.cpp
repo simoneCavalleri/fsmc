@@ -7,25 +7,32 @@
 
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace fsm::middleend::analysis {
 
 namespace {
 
-std::string get_trigger_key(const ir::TriggerVariant& trigger) {
-    if (std::holds_alternative<ir::SignalTrigger>(trigger)) {
-        return "signal:" + std::get<ir::SignalTrigger>(trigger).signal_name;
+std::string get_trigger_key(const ir::TransitionEdge& edge) {
+    if (!edge.event.empty()) {
+        return "event:" + edge.event;
     }
-    if (std::holds_alternative<ir::AnonymousTrigger>(trigger)) {
-        return "anonymous";
+    if (std::holds_alternative<ir::SignalTrigger>(edge.trigger)) {
+        const auto& sig = std::get<ir::SignalTrigger>(edge.trigger).signal_name;
+        if (!sig.empty()) {
+            return "event:" + sig;
+        }
     }
-    if (std::holds_alternative<ir::TimeTrigger>(trigger)) {
-        const auto& tt = std::get<ir::TimeTrigger>(trigger);
+    if (std::holds_alternative<ir::TimeTrigger>(edge.trigger)) {
+        const auto& tt = std::get<ir::TimeTrigger>(edge.trigger);
         return "time:" + std::to_string(tt.duration_in_ms());
     }
-    if (std::holds_alternative<ir::ChangeTrigger>(trigger)) {
-        return "change:" + std::get<ir::ChangeTrigger>(trigger).raw_expression;
+    if (std::holds_alternative<ir::ChangeTrigger>(edge.trigger)) {
+        return "change:" + std::get<ir::ChangeTrigger>(edge.trigger).raw_expression;
+    }
+    if (std::holds_alternative<ir::AnonymousTrigger>(edge.trigger)) {
+        return "anonymous";
     }
     return "unknown";
 }
@@ -33,16 +40,41 @@ std::string get_trigger_key(const ir::TriggerVariant& trigger) {
 bool is_ancestor_of(const ir::FsmIr& ir, const std::string& parent_id, const std::string& child_id) {
     const auto* child = ir.find_state_by_id(child_id);
     if (!child)
+        child = ir.find_state_by_name(child_id);
+    if (!child)
         return false;
 
-    std::string curr_parent = child->parent_id.value_or("");
-    while (!curr_parent.empty()) {
-        if (curr_parent == parent_id)
-            return true;
-        const auto* p = ir.find_state_by_id(curr_parent);
-        if (!p)
+    std::string canonical_parent_id = parent_id;
+    std::string canonical_parent_name = parent_id;
+    if (const auto* p_node = ir.find_state_by_id(parent_id)) {
+        canonical_parent_name = p_node->name;
+    } else if (const auto* p_node2 = ir.find_state_by_name(parent_id)) {
+        canonical_parent_id = p_node2->id;
+    }
+
+    const auto* curr = child;
+    std::unordered_set<std::string> visited;
+    while (curr) {
+        if (!visited.insert(curr->id.empty() ? curr->name : curr->id).second) {
             break;
-        curr_parent = p->parent_id.value_or("");
+        }
+        std::string p_id = curr->parent_id.value_or("");
+        std::string p_name = curr->parent_state;
+
+        if ((!p_id.empty() && (p_id == canonical_parent_id || p_id == parent_id)) ||
+            (!p_name.empty() &&
+             (p_name == canonical_parent_name || p_name == parent_id || p_name == canonical_parent_id))) {
+            return true;
+        }
+
+        const auto* next_p = !p_id.empty() ? ir.find_state_by_id(p_id) : nullptr;
+        if (!next_p && !p_name.empty()) {
+            next_p = ir.find_state_by_name(p_name);
+        }
+        if (!next_p && !p_id.empty()) {
+            next_p = ir.find_state_by_name(p_id);
+        }
+        curr = next_p;
     }
     return false;
 }
@@ -76,8 +108,8 @@ bool PriorityConflictPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 const auto* t1 = edges[i];
                 const auto* t2 = edges[j];
 
-                std::string k1 = get_trigger_key(t1->trigger);
-                std::string k2 = get_trigger_key(t2->trigger);
+                std::string k1 = get_trigger_key(*t1);
+                std::string k2 = get_trigger_key(*t2);
 
                 if (k1 == k2 && !k1.empty()) {
                     // Both trigger on same event
@@ -113,8 +145,8 @@ bool PriorityConflictPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 
             if (is_ancestor_of(ir, src1, src2)) {
                 // src1 is ancestor (parent) of src2 (child)
-                std::string k1 = get_trigger_key(t1.trigger);
-                std::string k2 = get_trigger_key(t2.trigger);
+                std::string k1 = get_trigger_key(t1);
+                std::string k2 = get_trigger_key(t2);
 
                 if (k1 == k2 && !k1.empty()) {
                     // Preemption conflict check

@@ -209,9 +209,11 @@ struct seq_ {
 
     template <typename... Args>
     constexpr void operator()(Args&&... args) const {
-        call_action(Action1{}, args...);
+        Action1 a1{};
+        call_action(a1, args...);
         if constexpr (sizeof...(Rest) == 0) {
-            call_action(Action2{}, args...);
+            Action2 a2{};
+            call_action(a2, args...);
         } else {
             seq_<Action2, Rest...>{}(std::forward<Args>(args)...);
         }
@@ -374,8 +376,8 @@ struct on<EventType, void> {
 // Helper for fluent creation
 template <typename SourceState, typename EventType, typename TargetState, typename ActionType = no_action,
           typename GuardType = no_guard>
-constexpr auto make_transition(ActionType action = {}, GuardType guard = {}) {
-    return transition<SourceState, EventType, TargetState, ActionType, GuardType>{std::move(action), std::move(guard)};
+constexpr auto make_transition(ActionType /*action*/ = {}, GuardType /*guard*/ = {}) {
+    return transition<SourceState, EventType, TargetState, ActionType, GuardType>{};
 }
 
 }  // namespace fsm

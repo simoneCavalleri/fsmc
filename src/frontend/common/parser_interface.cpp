@@ -167,7 +167,7 @@ std::string sanitize_identifier(std::string_view str) {
     if (!result.empty() && result.front() >= '0' && result.front() <= '9') {
         result = "_" + result;
     }
-    return result;
+    return escape_cpp_keyword(result);
 }
 
 }  // namespace fsm::frontend

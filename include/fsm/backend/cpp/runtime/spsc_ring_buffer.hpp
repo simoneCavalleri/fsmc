@@ -31,7 +31,7 @@ class spsc_ring_buffer {
     spsc_ring_buffer() = default;
 
     ~spsc_ring_buffer() {
-        const std::size_t head = head_.load(std::memory_order_relaxed);
+        const std::size_t head = head_.load(std::memory_order_acquire);
         std::size_t tail = tail_.load(std::memory_order_relaxed);
         while (tail != head) {
             get_slot(tail)->~T();
@@ -94,7 +94,7 @@ class spsc_ring_buffer {
     }
 
     void clear() noexcept {
-        const std::size_t head = head_.load(std::memory_order_relaxed);
+        const std::size_t head = head_.load(std::memory_order_acquire);
         std::size_t tail = tail_.load(std::memory_order_relaxed);
         while (tail != head) {
             get_slot(tail)->~T();
@@ -124,7 +124,7 @@ class spsc_ring_buffer {
 
     // Aligned byte storage for placement-new.
     T* get_slot(std::size_t index) noexcept {
-        return reinterpret_cast<T*>(raw_storage_.data() + (index & IndexMask) * sizeof(T));
+        return std::launder(reinterpret_cast<T*>(raw_storage_.data() + (index & IndexMask) * sizeof(T)));
     }
 
     // C4324: MSVC warns when a struct is padded due to __declspec(align) / alignas.

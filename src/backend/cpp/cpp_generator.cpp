@@ -29,6 +29,9 @@ std::string CppGenerator::generate_header(const FsmIr& model, const GeneratorOpt
         diagnostic::DiagnosticEngine diag;
         middleend::passes::ConnectiveJunctionChainingPass junction_pass;
         junction_pass.run(processed_model, diag);
+        if (diag.has_errors()) {
+            throw std::invalid_argument(diag.render_to_string());
+        }
     }
 
     bool has_choice_structure = !processed_model.choice_nodes.empty();
@@ -42,6 +45,9 @@ std::string CppGenerator::generate_header(const FsmIr& model, const GeneratorOpt
         diagnostic::DiagnosticEngine diag;
         middleend::passes::ChoiceInliningPass choice_pass;
         choice_pass.run(processed_model, diag);
+        if (diag.has_errors()) {
+            throw std::invalid_argument(diag.render_to_string());
+        }
     }
 
     bool has_fork_join = false;
@@ -55,6 +61,9 @@ std::string CppGenerator::generate_header(const FsmIr& model, const GeneratorOpt
         diagnostic::DiagnosticEngine diag;
         middleend::passes::ForkJoinLoweringPass fork_join_pass;
         fork_join_pass.run(processed_model, diag);
+        if (diag.has_errors()) {
+            throw std::invalid_argument(diag.render_to_string());
+        }
     }
 
     bool has_parallel_structure = false;

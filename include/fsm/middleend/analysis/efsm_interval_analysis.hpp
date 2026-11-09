@@ -115,17 +115,20 @@ struct Interval {
     bool operator!=(const Interval& other) const noexcept { return !(*this == other); }
 };
 
+enum class EFSMFindingKind { UnsatisfiableGuard, PortRangeViolation, VariableRangeViolation };
+
 /**
  * @struct EFSMAnalysisFinding
  * @brief Diagnostic finding produced by data-path abstract interpretation.
  */
 struct EFSMAnalysisFinding {
-    std::string variable_name;  ///< Affected variable identifier
-    std::string transition_id;  ///< ID of transition triggering the finding
-    std::string source_state;   ///< Originating state
-    std::string target_state;   ///< Destination state
-    std::string message;        ///< Descriptive finding text
-    bool is_error{false};       ///< True if violation is fatal, false if warning
+    std::string variable_name;                                  ///< Affected variable identifier
+    std::string transition_id;                                  ///< ID of transition triggering the finding
+    std::string source_state;                                   ///< Originating state
+    std::string target_state;                                   ///< Destination state
+    std::string message;                                        ///< Descriptive finding text
+    bool is_error{false};                                       ///< True if violation is fatal, false if warning
+    EFSMFindingKind kind{EFSMFindingKind::UnsatisfiableGuard};  ///< Specific classification of finding
 };
 
 /**

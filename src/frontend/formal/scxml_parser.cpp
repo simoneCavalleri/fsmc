@@ -4,6 +4,7 @@
 #include <functional>
 #include <map>
 #include <regex>
+#include <sstream>
 #include <utility>
 
 #include "fsm/frontend/directive/directive_parser.hpp"
@@ -307,15 +308,30 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
                     if (!loc.empty()) {
                         act.assignments.push_back({loc, expr});
                     }
-                } else if (entry_child->tag == "send" || entry_child->tag == "raise") {
+                } else if (entry_child->tag == "send" || entry_child->tag == "raise" ||
+                           ends_with(entry_child->tag, ":send") || ends_with(entry_child->tag, ":raise")) {
                     std::string evt = entry_child->get_attr("event");
                     if (!evt.empty()) {
-                        act.name = sanitize_identifier(evt);
+                        std::string s_evt = sanitize_identifier(evt);
+                        if (act.name.empty()) {
+                            act.name = s_evt;
+                        }
+                        act.instructions.push_back(SignalEmitOp{s_evt, {}, std::nullopt});
+                        model.add_action(s_evt);
                     }
-                } else if (entry_child->tag == "script" || entry_child->tag == "log") {
+                } else if (entry_child->tag == "script" || entry_child->tag == "log" ||
+                           ends_with(entry_child->tag, ":script") || ends_with(entry_child->tag, ":log")) {
                     std::string expr = entry_child->get_attr("expr");
+                    if (expr.empty()) {
+                        expr = std::string(trim(entry_child->text_content));
+                    }
                     if (!expr.empty()) {
-                        act.name = sanitize_identifier(expr);
+                        std::string s_expr = sanitize_identifier(expr);
+                        if (act.name.empty()) {
+                            act.name = s_expr;
+                        }
+                        act.instructions.push_back(ActionCallOp{s_expr, {}, {}, {}});
+                        model.add_action(s_expr);
                     }
                 }
             }
@@ -323,10 +339,10 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
             if (!direct_act.empty()) {
                 act.name = sanitize_identifier(direct_act);
             }
-            if (act.name.empty() && !act.assignments.empty()) {
+            if (act.name.empty() && (!act.assignments.empty() || !act.instructions.empty())) {
                 act.name = "entry_" + current_parent_state;
             }
-            if (!act.name.empty() || !act.assignments.empty()) {
+            if (!act.name.empty() || !act.assignments.empty() || !act.instructions.empty()) {
                 auto* curr_state = model.find_state_mut(current_parent_state);
                 if (curr_state != nullptr) {
                     model.add_action(act.name);
@@ -344,10 +360,30 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
                     if (!loc.empty()) {
                         act.assignments.push_back({loc, expr});
                     }
-                } else if (exit_child->tag == "send" || exit_child->tag == "raise") {
+                } else if (exit_child->tag == "send" || exit_child->tag == "raise" ||
+                           ends_with(exit_child->tag, ":send") || ends_with(exit_child->tag, ":raise")) {
                     std::string evt = exit_child->get_attr("event");
                     if (!evt.empty()) {
-                        act.name = sanitize_identifier(evt);
+                        std::string s_evt = sanitize_identifier(evt);
+                        if (act.name.empty()) {
+                            act.name = s_evt;
+                        }
+                        act.instructions.push_back(SignalEmitOp{s_evt, {}, std::nullopt});
+                        model.add_action(s_evt);
+                    }
+                } else if (exit_child->tag == "script" || exit_child->tag == "log" ||
+                           ends_with(exit_child->tag, ":script") || ends_with(exit_child->tag, ":log")) {
+                    std::string expr = exit_child->get_attr("expr");
+                    if (expr.empty()) {
+                        expr = std::string(trim(exit_child->text_content));
+                    }
+                    if (!expr.empty()) {
+                        std::string s_expr = sanitize_identifier(expr);
+                        if (act.name.empty()) {
+                            act.name = s_expr;
+                        }
+                        act.instructions.push_back(ActionCallOp{s_expr, {}, {}, {}});
+                        model.add_action(s_expr);
                     }
                 }
             }
@@ -355,10 +391,10 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
             if (!direct_act.empty()) {
                 act.name = sanitize_identifier(direct_act);
             }
-            if (act.name.empty() && !act.assignments.empty()) {
+            if (act.name.empty() && (!act.assignments.empty() || !act.instructions.empty())) {
                 act.name = "exit_" + current_parent_state;
             }
-            if (!act.name.empty() || !act.assignments.empty()) {
+            if (!act.name.empty() || !act.assignments.empty() || !act.instructions.empty()) {
                 auto* curr_state = model.find_state_mut(current_parent_state);
                 if (curr_state != nullptr) {
                     model.add_action(act.name);
@@ -442,6 +478,7 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
     std::string target = trans_node->get_attr("target");
     std::string action;
     std::vector<ActionAssignment> assignments;
+    std::vector<ActionAstNode> instructions;
 
     if (action.empty())
         action = trans_node->get_attr("action");
@@ -458,12 +495,26 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
                    ends_with(child->tag, ":raise")) {
             std::string send_event = child->get_attr("event");
             if (!send_event.empty()) {
-                action = send_event;
+                std::string s_evt = sanitize_identifier(send_event);
+                if (action.empty()) {
+                    action = s_evt;
+                }
+                instructions.push_back(SignalEmitOp{s_evt, {}, std::nullopt});
+                model.add_action(s_evt);
             }
-        } else if (child->tag == "log" || child->tag == "script") {
+        } else if (child->tag == "log" || child->tag == "script" || ends_with(child->tag, ":log") ||
+                   ends_with(child->tag, ":script")) {
             std::string log_expr = child->get_attr("expr");
+            if (log_expr.empty()) {
+                log_expr = std::string(trim(child->text_content));
+            }
             if (!log_expr.empty()) {
-                action = log_expr;
+                std::string s_expr = sanitize_identifier(log_expr);
+                if (action.empty()) {
+                    action = s_expr;
+                }
+                instructions.push_back(ActionCallOp{s_expr, {}, {}, {}});
+                model.add_action(s_expr);
             }
         }
     }
@@ -472,8 +523,17 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
         return;
     }
 
+    std::vector<std::string> target_tokens;
+    if (!target.empty()) {
+        std::istringstream iss(target);
+        std::string tok;
+        while (iss >> tok) {
+            target_tokens.push_back(tok);
+        }
+    }
+
     std::string src = current_state;
-    std::string dst = target.empty() ? src : target;
+    std::string dst = target_tokens.empty() ? src : target_tokens.front();
 
     bool is_history = false;
     bool is_deep_history = false;
@@ -492,11 +552,23 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
         is_history = true;
     }
 
-    bool is_internal = target.empty() || trans_node->get_attr("type") == "internal";
+    bool is_internal = target_tokens.empty() || trans_node->get_attr("type") == "internal";
 
     TransitionEdge trans;
     trans.source = sanitize_identifier(src);
     trans.target = sanitize_identifier(dst);
+    if (target_tokens.size() > 1) {
+        for (const auto& t_raw : target_tokens) {
+            std::string t_san = sanitize_identifier(t_raw);
+            if (!t_san.empty()) {
+                trans.target_ids.push_back(t_san);
+                trans.multi_target_ids.push_back(t_san);
+                if (!model.is_choice_node(t_san)) {
+                    model.add_state(t_san);
+                }
+            }
+        }
+    }
     trans.target_is_history = is_history;
     trans.target_is_deep_history = is_deep_history;
     if (is_history) {
@@ -525,12 +597,13 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
             trans.guard = guard_name;
         }
     }
-    if (!action.empty() || !assignments.empty()) {
+    if (!action.empty() || !assignments.empty() || !instructions.empty()) {
         std::string act_name =
             !action.empty() ? sanitize_identifier(action) : ("act_" + trans.source + "_" + trans.target);
         ActionSignature sig;
         sig.name = act_name;
         sig.assignments = assignments;
+        sig.instructions = std::move(instructions);
         trans.transition_action = std::move(sig);
         model.add_action(act_name);
     }
@@ -542,6 +615,11 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
             trans.priority = static_cast<std::uint32_t>(std::stoul(prio_str));
         } catch (...) {
         }
+    }
+
+    const auto* src_st = model.find_state(trans.source);
+    if (src_st != nullptr && !src_st->parent_state.empty()) {
+        trans.parent_scope = src_st->parent_state;
     }
 
     if (!model.is_choice_node(trans.source)) {

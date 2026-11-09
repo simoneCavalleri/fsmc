@@ -55,6 +55,9 @@ bool LivelockAnalysisPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     for (const auto& state : ir.states) {
         zero_adj[state.id] = {};
     }
+    for (const auto& choice : ir.choice_nodes) {
+        zero_adj[choice.name] = {};
+    }
 
     for (const auto& edge : ir.transitions) {
         if (!is_zero_time_transition(edge)) {
@@ -111,6 +114,13 @@ bool LivelockAnalysisPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     for (const auto& state : ir.states) {
         if (color[state.id] == 0) {
             if (dfs(dfs, state.id)) {
+                has_livelock = true;
+            }
+        }
+    }
+    for (const auto& choice : ir.choice_nodes) {
+        if (color[choice.name] == 0) {
+            if (dfs(dfs, choice.name)) {
                 has_livelock = true;
             }
         }

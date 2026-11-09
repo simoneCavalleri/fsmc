@@ -151,6 +151,22 @@ Attaches requirement traceability tags, history semantics, or continuous activit
 
 ---
 
+### 7. Modular Submachine Inlining (`@fsm:submachine`)
+Enables modular decomposition of statecharts by inlining external diagram files directly into composite states:
+
+```text
+@fsm:submachine file="<path_to_diagram>" [target="<StateName>"]
+```
+
+*Example:*
+```plantuml
+state Operational {
+    ' @fsm:submachine file="subcharts/flight_control.puml" target="Operational"
+}
+```
+
+---
+
 ## 4. End-to-End Example: Roundtrip & C++ Code Generation
 
 The following example demonstrates how directives enable a PlantUML diagram to generate strongly typed C++20 code and transpile losslessly into Mermaid:

@@ -54,8 +54,17 @@ std::string to_smv_predicate(std::string_view expr) {
     // Strip domain prefixes (in., out., reg.)
     for (const char* prefix : {"in.", "out.", "reg."}) {
         size_t pos = 0;
+        size_t plen = std::string_view(prefix).length();
         while ((pos = s.find(prefix, pos)) != std::string::npos) {
-            s.erase(pos, std::string_view(prefix).length());
+            bool prefix_boundary =
+                (pos == 0) || (!std::isalnum(static_cast<unsigned char>(s[pos - 1])) && s[pos - 1] != '_');
+            bool suffix_ident = (pos + plen < s.size()) &&
+                                (std::isalpha(static_cast<unsigned char>(s[pos + plen])) || s[pos + plen] == '_');
+            if (prefix_boundary && suffix_ident) {
+                s.erase(pos, plen);
+            } else {
+                pos += plen;
+            }
         }
     }
 
@@ -184,6 +193,43 @@ std::string format_ast_for_smv(const PropertyAstNode& node, const std::vector<st
             return "X (" + format_ast_for_smv(node.children[0], event_names) + ")";
         }
         return "X (state = " + sanitize_smv_ident(node.atom) + ")";
+    }
+    if (node.op == TemporalOp::AG || node.op == TemporalOp::EG || node.op == TemporalOp::AF ||
+        node.op == TemporalOp::EF || node.op == TemporalOp::AX || node.op == TemporalOp::EX) {
+        std::string op_name;
+        switch (node.op) {
+            case TemporalOp::AG:
+                op_name = "AG";
+                break;
+            case TemporalOp::EG:
+                op_name = "EG";
+                break;
+            case TemporalOp::AF:
+                op_name = "AF";
+                break;
+            case TemporalOp::EF:
+                op_name = "EF";
+                break;
+            case TemporalOp::AX:
+                op_name = "AX";
+                break;
+            case TemporalOp::EX:
+                op_name = "EX";
+                break;
+            default:
+                break;
+        }
+        if (!node.children.empty()) {
+            return op_name + " (" + format_ast_for_smv(node.children[0], event_names) + ")";
+        }
+        return op_name + " (state = " + sanitize_smv_ident(node.atom) + ")";
+    }
+    if (node.op == TemporalOp::AU || node.op == TemporalOp::EU) {
+        std::string path_q = (node.op == TemporalOp::AU) ? "A" : "E";
+        if (node.children.size() >= 2) {
+            return path_q + " [" + format_ast_for_smv(node.children[0], event_names) + " U " +
+                   format_ast_for_smv(node.children[1], event_names) + "]";
+        }
     }
     if (node.op == TemporalOp::Until || node.op == TemporalOp::Implies || node.op == TemporalOp::Equivalent ||
         node.op == TemporalOp::And || node.op == TemporalOp::Or) {
@@ -347,9 +393,16 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
         return guard_val;  // Fallback: use as-is (may be a named guard type or inline expr)
     };
 
+    auto is_fallback_guard = [](const std::optional<std::string>& g) {
+        if (!g.has_value() || g->empty()) {
+            return true;
+        }
+        return *g == "else" || *g == "otherwise" || *g == "default";
+    };
+
     std::set<std::string> free_guard_vars;
     for (const auto& t : model.transitions) {
-        if (t.guard.has_value() && !t.guard->empty()) {
+        if (!is_fallback_guard(t.guard)) {
             std::string resolved = resolve_guard_expr(*t.guard);
             std::string smv_guard = to_smv_predicate(resolved);
             extract_smv_identifiers(smv_guard, known_idents, free_guard_vars);
@@ -384,7 +437,14 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
     out << "ASSIGN\n";
 
     // Initial state
-    std::string init_st = model.initial_state_id.empty() ? model.initial_state : model.initial_state_id;
+    std::string init_st = model.initial_state;
+    if (init_st.empty()) {
+        if (const auto* s = model.find_state_by_id(model.initial_state_id)) {
+            init_st = s->name;
+        } else {
+            init_st = model.initial_state_id;
+        }
+    }
     if (init_st.empty() && !model.states.empty()) {
         init_st = model.states.front().name;
     }
@@ -396,6 +456,13 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
     // Initial variables
     for (const auto& var : model.variables) {
         std::string val = var.initial_value.empty() ? "0" : var.initial_value;
+        if (var.type.is_boolean()) {
+            if (val == "1" || val == "true" || val == "TRUE") {
+                val = "TRUE";
+            } else {
+                val = "FALSE";
+            }
+        }
         out << "  init(" << sanitize_smv_ident(var.name) << ") := " << val << ";\n";
     }
 
@@ -437,7 +504,7 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
         } else if (!evt.empty() && evt != "Anonymous" && evt != "none") {
             out << " & event = " << sanitize_smv_ident(evt);
         }
-        if (t.guard.has_value() && !t.guard->empty()) {
+        if (!is_fallback_guard(t.guard)) {
             std::string guard_str = to_smv_predicate(resolve_guard_expr(*t.guard));
             out << " & (" << guard_str << ")";
         }
@@ -461,6 +528,27 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
             std::string prop_name = sanitize_smv_ident(prop.name);
             std::string smv_formula = to_smv_formula(prop, event_names);
 
+            auto ast_has_ctl = [](auto& self, const PropertyAstNode& n) -> bool {
+                if (n.op == TemporalOp::AG || n.op == TemporalOp::EG || n.op == TemporalOp::AF ||
+                    n.op == TemporalOp::EF || n.op == TemporalOp::AX || n.op == TemporalOp::EX ||
+                    n.op == TemporalOp::AU || n.op == TemporalOp::EU) {
+                    return true;
+                }
+                for (const auto& c : n.children) {
+                    if (self(self, c))
+                        return true;
+                }
+                return false;
+            };
+
+            bool is_ctl = (prop.ast.has_value() && ast_has_ctl(ast_has_ctl, *prop.ast)) ||
+                          prop.name.find("ctl") != std::string::npos ||
+                          prop.description.find("CTL") != std::string::npos;
+            if (!is_ctl) {
+                static const std::regex ctl_re(R"(\b(AG|AF|EF|EG|AX|EX)\b|A\s*\[|E\s*\[)");
+                is_ctl = std::regex_search(smv_formula, ctl_re);
+            }
+
             if (prop.kind == PropertyKind::Invariant) {
                 // INVARSPEC does not take the leading 'G' temporal operator
                 std::string invar_formula = smv_formula;
@@ -471,6 +559,9 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
                 }
                 out << "INVARSPEC -- " << prop_name << "\n";
                 out << "  " << invar_formula << ";\n\n";
+            } else if (is_ctl) {
+                out << "CTLSPEC -- " << prop_name << "\n";
+                out << "  " << smv_formula << ";\n\n";
             } else {
                 out << "LTLSPEC -- " << prop_name << "\n";
                 out << "  " << smv_formula << ";\n\n";

@@ -607,7 +607,7 @@ TEST(ConnectiveJunctionChaining, MultiHopChain_FusesIntoCompoundTransition) {
     EXPECT_EQ(comp.target, "StateB");
     EXPECT_EQ(comp.event, "EvTick");
     ASSERT_TRUE(comp.guard.has_value());
-    EXPECT_EQ(*comp.guard, "fsm::and_<x > 0, y > 0>");
+    EXPECT_EQ(*comp.guard, "(x > 0) && (y > 0)");
     ASSERT_TRUE(comp.condition_action.has_value());
     EXPECT_EQ(comp.condition_action->name, "ca1_ca2");
     ASSERT_TRUE(comp.transition_action.has_value());
@@ -703,4 +703,111 @@ TEST(ConnectiveJunctionChaining, SelfTransitionThroughJunction_PreservesExternal
     EXPECT_EQ(comp.event, "EvLoop");
     EXPECT_EQ(comp.guard.value_or(""), "flag == true");
     EXPECT_EQ(comp.kind, TransitionEdgeKind::External);
+}
+
+/**
+ * @brief Verify that ConnectiveJunctionChainingPass preserves ActionAstNode instructions, accepts_event, and
+ * invocations.
+ */
+TEST(ConnectiveJunctionChaining, ActionInstructionsAndInvocations_PreservedAcrossChainedPath) {
+    FsmIr ir;
+    DiagnosticEngine diag;
+
+    ir.add_state("Start");
+    ir.add_state("J1", "", StateKind::Junction);
+    ir.add_state("End");
+
+    ActionSignature ca("cond_act", "srv.Check()");
+    StoreOp op1;
+    op1.expression = "x = 42";
+    ca.instructions.emplace_back(op1);
+
+    ActionSignature ta("trans_act", "srv.Fire()");
+    ta.accepts_event = true;
+    StoreOp op2;
+    op2.expression = "y = 99";
+    ta.instructions.emplace_back(op2);
+
+    TransitionEdge t1("Start", "J1", "EvTrigger");
+    t1.condition_action = ca;
+
+    TransitionEdge t2("J1", "End", "");
+    t2.transition_action = ta;
+
+    ir.transitions.push_back(t1);
+    ir.transitions.push_back(t2);
+
+    bool res = ConnectiveJunctionChainingPass::run(ir, diag);
+    EXPECT_TRUE(res);
+    EXPECT_FALSE(diag.has_errors());
+
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    const auto& comp = ir.transitions[0];
+    EXPECT_EQ(comp.source, "Start");
+    EXPECT_EQ(comp.target, "End");
+
+    ASSERT_TRUE(comp.condition_action.has_value());
+    EXPECT_EQ(comp.condition_action->instructions.size(), 1u);
+    EXPECT_EQ(std::get<StoreOp>(comp.condition_action->instructions[0].op).expression, "x = 42");
+    EXPECT_EQ(comp.condition_action->invocation, "srv.Check()");
+
+    ASSERT_TRUE(comp.transition_action.has_value());
+    EXPECT_EQ(comp.transition_action->instructions.size(), 1u);
+    EXPECT_EQ(std::get<StoreOp>(comp.transition_action->instructions[0].op).expression, "y = 99");
+    EXPECT_TRUE(comp.transition_action->accepts_event);
+    EXPECT_EQ(comp.transition_action->invocation, "srv.Fire()");
+}
+
+/**
+ * @brief Verify that ForkJoinLoweringPass preserves branch actions and clock resets when lowering Fork and Join.
+ */
+TEST(ForkJoinLowering, BranchActionsAndClockResets_PreservedInLoweredTransitions) {
+    FsmIr ir;
+    DiagnosticEngine diag;
+
+    ir.add_state("Init");
+    StateNode fork_node("Fork1");
+    fork_node.kind = StateKind::Fork;
+    ir.states.push_back(fork_node);
+    ir.add_state("RegionA");
+    ir.add_state("RegionB");
+
+    TransitionEdge t_in("Init", "Fork1", "EvFork");
+
+    ActionSignature act_a("act_branch_a");
+    StoreOp op_a;
+    op_a.expression = "init_a = 1";
+    act_a.instructions.emplace_back(op_a);
+    TransitionEdge t_branch_a("Fork1", "RegionA", "", std::nullopt, act_a);
+    t_branch_a.clock_resets.push_back("clk_a");
+
+    ActionSignature act_b("act_branch_b");
+    StoreOp op_b;
+    op_b.expression = "init_b = 2";
+    act_b.instructions.emplace_back(op_b);
+    TransitionEdge t_branch_b("Fork1", "RegionB", "", std::nullopt, act_b);
+    t_branch_b.clock_resets.push_back("clk_b");
+
+    ir.transitions.push_back(t_in);
+    ir.transitions.push_back(t_branch_a);
+    ir.transitions.push_back(t_branch_b);
+
+    bool res = ForkJoinLoweringPass::run(ir, diag);
+    EXPECT_TRUE(res);
+
+    EXPECT_EQ(ir.find_state("Fork1"), nullptr);
+    ASSERT_EQ(ir.transitions.size(), 1u);
+
+    const auto& lowered = ir.transitions[0];
+    EXPECT_EQ(lowered.source, "Init");
+    EXPECT_EQ(lowered.target_ids.size(), 2u);
+
+    ASSERT_TRUE(lowered.transition_action.has_value());
+    EXPECT_EQ(lowered.transition_action->instructions.size(), 2u);
+    EXPECT_EQ(std::get<StoreOp>(lowered.transition_action->instructions[0].op).expression, "init_a = 1");
+    EXPECT_EQ(std::get<StoreOp>(lowered.transition_action->instructions[1].op).expression, "init_b = 2");
+
+    ASSERT_EQ(lowered.clock_resets.size(), 2u);
+    EXPECT_EQ(lowered.clock_resets[0], "clk_a");
+    EXPECT_EQ(lowered.clock_resets[1], "clk_b");
 }

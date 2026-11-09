@@ -3,10 +3,10 @@
 Automated Test Suite Catalog Generator for fsmc.
 
 Extracts in-code `@brief Test Intent:` and `Scenario:` Doxygen comments from all
-Google Test source files and generates `docs/TEST_SUITE_CATALOG.md`.
+Google Test source files and generates `docs/reference/test_suite_catalog.md`.
 
 Usage:
-    python3 scripts/generate_test_catalog.py [--output docs/TEST_SUITE_CATALOG.md] [--check]
+    python3 scripts/generate_test_catalog.py [--output docs/reference/test_suite_catalog.md] [--check]
 """
 
 import argparse
@@ -34,7 +34,7 @@ SUBSYSTEMS = [
 
 # Regex patterns for extracting test documentation
 DOC_BLOCK_PATTERN = re.compile(
-    r"/\*\*(.*?)\*/\s*(?:TEST(?:_F)?\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)|int\s+main\s*\()",
+    r"/\*\*((?:(?!\*/).)*?)\*/\s*(?:TEST(?:_F)?\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)|int\s+main\s*\()",
     re.DOTALL,
 )
 
@@ -109,7 +109,8 @@ def generate_catalog(root_dir: Path) -> str:
         lines.append(f"## {subsystem_name}")
         lines.append("")
         for rel_path, tests in files:
-            lines.append(f"### [`{rel_path.name}`](../{rel_path}) (`{rel_path}`)")
+            posix_path = rel_path.as_posix()
+            lines.append(f"### [`{rel_path.name}`](../../{posix_path}) (`{posix_path}`)")
             if not tests:
                 lines.append("- *(Executable binary test verification)*")
                 lines.append("")
@@ -155,16 +156,18 @@ def main():
         if not out_file.exists():
             print(f"Error: {out_file} does not exist. Run generator to create it.", file=sys.stderr)
             sys.exit(1)
-        existing_content = out_file.read_text(encoding="utf-8")
-        if existing_content.strip() != generated_content.strip():
-            print("Error: TEST_SUITE_CATALOG.md is out of date with in-code test comments!", file=sys.stderr)
+        existing_content = out_file.read_text(encoding="utf-8").replace("\r\n", "\n")
+        gen_clean = generated_content.replace("\r\n", "\n")
+        if existing_content.strip() != gen_clean.strip():
+            print("Error: docs/reference/test_suite_catalog.md is out of date with in-code test comments!", file=sys.stderr)
             print("Run 'python3 scripts/generate_test_catalog.py' to synchronize.", file=sys.stderr)
             sys.exit(1)
         print("Catalog is up-to-date with all in-code test documentation.")
         sys.exit(0)
 
     out_file.parent.mkdir(parents=True, exist_ok=True)
-    out_file.write_text(generated_content, encoding="utf-8")
+    with open(out_file, "w", encoding="utf-8", newline="\n") as f:
+        f.write(generated_content)
     print(f"Successfully generated {out_file} from in-code test comments.")
 
 

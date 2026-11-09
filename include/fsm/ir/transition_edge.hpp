@@ -194,7 +194,12 @@ struct TransitionEdge {
         }
         if (std::holds_alternative<TimeTrigger>(trigger)) {
             const auto& t = std::get<TimeTrigger>(trigger);
-            return (t.periodic ? "every_" : "after_") + std::to_string(t.duration_ms) + "ms";
+            const auto dur = t.duration_ms > 0 ? t.duration_ms : t.duration_in_ms();
+            if (t.kind == TimeTriggerKind::At) {
+                return "at_" + (t.dynamic_expression.empty() ? std::to_string(dur) + "ms" : t.dynamic_expression);
+            }
+            return ((t.periodic || t.kind == TimeTriggerKind::Every) ? "every_" : "after_") + std::to_string(dur) +
+                   "ms";
         }
         if (std::holds_alternative<ChangeTrigger>(trigger)) {
             const auto& c = std::get<ChangeTrigger>(trigger);
@@ -210,9 +215,12 @@ struct TransitionEdge {
 
     bool operator==(const TransitionEdge& other) const noexcept {
         return id == other.id && source == other.source && target == other.target && source_ids == other.source_ids &&
-               target_ids == other.target_ids && trigger == other.trigger && guard_ast == other.guard_ast &&
-               condition_action == other.condition_action && transition_action == other.transition_action &&
-               kind == other.kind && priority == other.priority && description == other.description;
+               target_ids == other.target_ids && event == other.event && trigger == other.trigger &&
+               guard == other.guard && guard_ast == other.guard_ast && condition_action == other.condition_action &&
+               transition_action == other.transition_action && kind == other.kind && priority == other.priority &&
+               target_is_history == other.target_is_history && target_is_deep_history == other.target_is_deep_history &&
+               clock_resets == other.clock_resets && traceability_reqs == other.traceability_reqs &&
+               description == other.description;
     }
 };
 

@@ -51,45 +51,76 @@ std::shared_ptr<XmlNode> XmlNode::find_child_recursive(std::string_view tag_name
 }
 
 std::string SimpleXmlParser::unescape_xml(std::string str) {
-    auto replace_all = [](std::string& s, const std::string& from, const std::string& to) {
-        size_t p = 0;
-        while ((p = s.find(from, p)) != std::string::npos) {
-            s.replace(p, from.length(), to);
-            p += to.length();
-        }
-    };
-    replace_all(str, "&amp;", "&");
-    replace_all(str, "&lt;", "<");
-    replace_all(str, "&gt;", ">");
-    replace_all(str, "&quot;", "\"");
-    replace_all(str, "&apos;", "'");
-
-    // Decode decimal and hexadecimal numeric character references: &#NN; and &#xHH;
-    size_t p = 0;
-    while ((p = str.find("&#", p)) != std::string::npos) {
-        size_t semi = str.find(';', p + 2);
-        if (semi != std::string::npos && semi - p <= 8) {
-            std::string code_str = str.substr(p + 2, semi - (p + 2));
-            int code = -1;
-            try {
-                if (!code_str.empty() && (code_str[0] == 'x' || code_str[0] == 'X')) {
-                    code = std::stoi(code_str.substr(1), nullptr, 16);
-                } else if (!code_str.empty() && std::isdigit(static_cast<unsigned char>(code_str[0]))) {
-                    code = std::stoi(code_str, nullptr, 10);
+    std::string out;
+    out.reserve(str.size());
+    size_t i = 0;
+    while (i < str.size()) {
+        if (str[i] == '&') {
+            size_t semi = str.find(';', i + 1);
+            if (semi != std::string::npos && semi - i <= 12) {
+                std::string_view entity(str.data() + i + 1, semi - (i + 1));
+                if (entity == "amp") {
+                    out += '&';
+                    i = semi + 1;
+                    continue;
                 }
-            } catch (...) {
-            }
-            if (code >= 0 && code <= 255) {
-                char ch = static_cast<char>(code);
-                str.replace(p, semi - p + 1, 1, ch);
-                p += 1;
-                continue;
+                if (entity == "lt") {
+                    out += '<';
+                    i = semi + 1;
+                    continue;
+                }
+                if (entity == "gt") {
+                    out += '>';
+                    i = semi + 1;
+                    continue;
+                }
+                if (entity == "quot") {
+                    out += '"';
+                    i = semi + 1;
+                    continue;
+                }
+                if (entity == "apos") {
+                    out += '\'';
+                    i = semi + 1;
+                    continue;
+                }
+                if (entity.size() >= 2 && entity[0] == '#') {
+                    std::string code_str(entity.substr(1));
+                    long long code = -1;
+                    try {
+                        if (!code_str.empty() && (code_str[0] == 'x' || code_str[0] == 'X')) {
+                            code = std::stoll(code_str.substr(1), nullptr, 16);
+                        } else if (!code_str.empty() && std::isdigit(static_cast<unsigned char>(code_str[0]))) {
+                            code = std::stoll(code_str, nullptr, 10);
+                        }
+                    } catch (...) {
+                    }
+                    if (code >= 0 && code <= 0x10FFFF) {
+                        auto cp = static_cast<uint32_t>(code);
+                        if (cp <= 0x7Fu) {
+                            out += static_cast<char>(cp);
+                        } else if (cp <= 0x7FFu) {
+                            out += static_cast<char>(0xC0u | ((cp >> 6u) & 0x1Fu));
+                            out += static_cast<char>(0x80u | (cp & 0x3Fu));
+                        } else if (cp <= 0xFFFFu) {
+                            out += static_cast<char>(0xE0u | ((cp >> 12u) & 0x0Fu));
+                            out += static_cast<char>(0x80u | ((cp >> 6u) & 0x3Fu));
+                            out += static_cast<char>(0x80u | (cp & 0x3Fu));
+                        } else {
+                            out += static_cast<char>(0xF0u | ((cp >> 18u) & 0x07u));
+                            out += static_cast<char>(0x80u | ((cp >> 12u) & 0x3Fu));
+                            out += static_cast<char>(0x80u | ((cp >> 6u) & 0x3Fu));
+                            out += static_cast<char>(0x80u | (cp & 0x3Fu));
+                        }
+                        i = semi + 1;
+                        continue;
+                    }
+                }
             }
         }
-        p += 2;
+        out += str[i++];
     }
-
-    return str;
+    return out;
 }
 
 std::string SimpleXmlParser::trim_sv(std::string_view input_sv) {
@@ -224,14 +255,46 @@ std::shared_ptr<XmlNode> SimpleXmlParser::parse(std::string_view xml_text, std::
             continue;
         }
 
-        // Check processing instruction <? ... ?> or <! ... > (e.g., <!DOCTYPE ...>)
-        if (starts_with(xml_text.substr(tag_start), "<?") || starts_with(xml_text.substr(tag_start), "<!")) {
-            size_t pi_end = xml_text.find('>', tag_start + 2);
+        // Check processing instruction <? ... ?> or <! ... > (e.g., <!DOCTYPE ... [ ... ]>)
+        if (starts_with(xml_text.substr(tag_start), "<?")) {
+            size_t pi_end = xml_text.find("?>", tag_start + 2);
             if (pi_end == std::string_view::npos) {
+                pi_end = xml_text.find('>', tag_start + 2);
+                if (pi_end == std::string_view::npos) {
+                    idx = len;
+                    break;
+                }
+                idx = pi_end + 1;
+            } else {
+                idx = pi_end + 2;
+            }
+            continue;
+        }
+        if (starts_with(xml_text.substr(tag_start), "<!")) {
+            size_t scan = tag_start + 2;
+            int bracket_depth = 0;
+            char in_q = '\0';
+            while (scan < len) {
+                char ch = xml_text[scan];
+                if (in_q != '\0') {
+                    if (ch == in_q)
+                        in_q = '\0';
+                } else if (ch == '"' || ch == '\'') {
+                    in_q = ch;
+                } else if (ch == '[') {
+                    bracket_depth++;
+                } else if (ch == ']' && bracket_depth > 0) {
+                    bracket_depth--;
+                } else if (ch == '>' && bracket_depth == 0) {
+                    break;
+                }
+                scan++;
+            }
+            if (scan >= len) {
                 idx = len;
                 break;
             }
-            idx = pi_end + 1;
+            idx = scan + 1;
             continue;
         }
 

@@ -141,6 +141,9 @@ void CameoXmiGraphResolver::process_subvertex(const std::shared_ptr<XmlNode>& ve
     // 5. Handle History pseudostates (attach history semantics directly to enclosing parent state)
     if (st_kind == StateKind::ShallowHistory || st_kind == StateKind::DeepHistory) {
         if (!parent_state.empty()) {
+            if (!id.empty()) {
+                id_to_name[id] = parent_state;
+            }
             if (auto* p = model.find_state_mut(parent_state)) {
                 p->has_history = true;
                 if (st_kind == StateKind::DeepHistory) {
@@ -353,6 +356,12 @@ void CameoXmiGraphResolver::process_transition(const std::shared_ptr<XmlNode>& t
     TransitionEdge trans;
     trans.source = src_name;
     trans.target = dst_name;
+    auto dst_kind_it = id_to_kind.find(dst_id);
+    if (dst_kind_it != id_to_kind.end() &&
+        (dst_kind_it->second == StateKind::ShallowHistory || dst_kind_it->second == StateKind::DeepHistory)) {
+        trans.target_is_history = true;
+        trans.target_is_deep_history = (dst_kind_it->second == StateKind::DeepHistory);
+    }
     trans.event = sanitize_identifier(event_name);
     if (!event_name.empty()) {
         SignalDefinition sig;

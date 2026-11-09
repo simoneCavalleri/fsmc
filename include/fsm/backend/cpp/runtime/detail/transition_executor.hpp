@@ -15,30 +15,40 @@
 
 namespace fsm::detail {
 
-template <typename Current, typename Target, typename State, typename Event, typename In, typename Out,
-          typename Registers, typename Services>
+template <typename SubState, typename SuperState>
+inline constexpr bool is_strict_substate_of_v =
+    !std::is_same_v<SubState, SuperState> &&
+    (get_state_name_static<SubState>() != get_state_name_static<SuperState>()) &&
+    is_substate_of_v<SubState, SuperState>;
+
+template <typename Ancestor, typename TransSrc, typename Target>
+inline constexpr bool is_lca_or_above_v =
+    is_strict_substate_of_v<TransSrc, Ancestor> && is_strict_substate_of_v<Target, Ancestor>;
+
+template <typename Current, typename Target, typename TransSrc = Current, typename State, typename Event, typename In,
+          typename Out, typename Registers, typename Services>
 constexpr void call_hierarchical_on_exit(State& current_state, const Event& event, const In& in, Out& out,
                                          Registers& reg, Services& srv) {
     call_on_exit(current_state, event, in, out, reg, srv);
     if constexpr (has_parent_type<State>::value) {
         using Parent = typename State::parent_type;
-        if constexpr (!is_substate_of_v<Target, Parent>) {
+        if constexpr (!is_lca_or_above_v<Parent, TransSrc, Target>) {
             if constexpr (std::is_default_constructible_v<Parent>) {
                 Parent parent_inst{};
-                call_hierarchical_on_exit<Current, Target, Parent>(parent_inst, event, in, out, reg, srv);
+                call_hierarchical_on_exit<Current, Target, TransSrc, Parent>(parent_inst, event, in, out, reg, srv);
             }
         }
     }
 }
 
-template <typename Current, typename Target, typename Ancestor, typename Event, typename In, typename Out,
-          typename Registers, typename Services>
+template <typename Current, typename Target, typename TransSrc, typename Ancestor, typename Event, typename In,
+          typename Out, typename Registers, typename Services>
 constexpr void call_ancestor_on_enter_helper(const Event& event, const In& in, Out& out, Registers& reg,
                                              Services& srv) {
     if constexpr (has_parent_type<Ancestor>::value) {
         using SuperParent = typename Ancestor::parent_type;
-        if constexpr (!is_substate_of_v<Current, SuperParent>) {
-            call_ancestor_on_enter_helper<Current, Target, SuperParent>(event, in, out, reg, srv);
+        if constexpr (!is_lca_or_above_v<SuperParent, TransSrc, Target>) {
+            call_ancestor_on_enter_helper<Current, Target, TransSrc, SuperParent>(event, in, out, reg, srv);
         }
     }
     if constexpr (!std::is_same_v<Ancestor, Target>) {
@@ -49,14 +59,14 @@ constexpr void call_ancestor_on_enter_helper(const Event& event, const In& in, O
     }
 }
 
-template <typename Current, typename Target, typename State, typename Event, typename In, typename Out,
-          typename Registers, typename Services>
+template <typename Current, typename Target, typename TransSrc = Current, typename State, typename Event, typename In,
+          typename Out, typename Registers, typename Services>
 constexpr void call_hierarchical_on_enter(State& target_state, const Event& event, const In& in, Out& out,
                                           Registers& reg, Services& srv) {
     if constexpr (has_parent_type<Target>::value) {
         using Parent = typename Target::parent_type;
-        if constexpr (!is_substate_of_v<Current, Parent>) {
-            call_ancestor_on_enter_helper<Current, Target, Parent>(event, in, out, reg, srv);
+        if constexpr (!is_lca_or_above_v<Parent, TransSrc, Target>) {
+            call_ancestor_on_enter_helper<Current, Target, TransSrc, Parent>(event, in, out, reg, srv);
         }
     }
     call_on_enter(target_state, event, in, out, reg, srv);
@@ -116,18 +126,7 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
                                               std::index_sequence<Indices...> /*indices*/) {
     constexpr bool has_observer = !std::is_same_v<std::decay_t<ObserverCallback>, no_observer>;
 
-    auto resolve_srv = [&]() -> Services& {
-        if (services_ != nullptr) {
-            return *services_;
-        }
-        if constexpr (std::is_default_constructible_v<Services>) {
-            static Services dummy{};
-            return dummy;
-        } else {
-            std::terminate();
-        }
-    };
-    Services& srv = resolve_srv();
+    Services& srv = (services_ != nullptr) ? *services_ : fsm_inst.resolve_services();
 
     bool any_guard_rejected = false;
     std::optional<transition_trace> executed_trace = std::nullopt;
@@ -204,12 +203,12 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
                 // 3. state reassignment
                 // 4. on_enter(dst_state)
                 TransDst dst_state{};
-                call_hierarchical_on_exit<CurrentSrc, TransDst>(src_state, event, in, out, registers_, srv);
+                call_hierarchical_on_exit<CurrentSrc, TransDst, TransSrc>(src_state, event, in, out, registers_, srv);
                 Action act{};
                 call_action(act, event, src_state, dst_state, in, out, registers_, srv);
 
                 fsm_inst.set_current_state_variant(std::move(dst_state));
-                call_hierarchical_on_enter<CurrentSrc, TransDst>(
+                call_hierarchical_on_enter<CurrentSrc, TransDst, TransSrc>(
                     std::get<TransDst>(fsm_inst.get_current_state_variant()), event, in, out, registers_, srv);
 
                 const auto dst_name = get_state_name(std::get<TransDst>(fsm_inst.get_current_state_variant()));

@@ -107,7 +107,10 @@ void StateTimeInvariant::parse_duration_and_unit(std::string_view dur_str) {
     if (!dur_str.empty() && dur_str.back() == ';')
         dur_str.remove_suffix(1);
 
-    if (dur_str.ends_with("[ms]")) {
+    if (dur_str.ends_with("[min]")) {
+        unit = TimeUnit::Minutes;
+        dur_str.remove_suffix(5);
+    } else if (dur_str.ends_with("[ms]")) {
         unit = TimeUnit::Milliseconds;
         dur_str.remove_suffix(4);
     } else if (dur_str.ends_with("[s]")) {
@@ -119,6 +122,9 @@ void StateTimeInvariant::parse_duration_and_unit(std::string_view dur_str) {
     } else if (dur_str.ends_with("[ns]")) {
         unit = TimeUnit::Nanoseconds;
         dur_str.remove_suffix(4);
+    } else if (dur_str.ends_with("min")) {
+        unit = TimeUnit::Minutes;
+        dur_str.remove_suffix(3);
     } else if (dur_str.ends_with("ms")) {
         unit = TimeUnit::Milliseconds;
         dur_str.remove_suffix(2);

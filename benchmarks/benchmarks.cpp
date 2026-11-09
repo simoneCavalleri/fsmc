@@ -28,12 +28,14 @@
 // Global Heap Allocation Tracker for Google Benchmark
 // ============================================================================
 static std::atomic<std::size_t> g_heap_allocations{0};
+static std::atomic<std::size_t> g_total_tracked_allocations{0};
 static std::atomic<std::size_t> g_heap_bytes_allocated{0};
 static std::atomic<bool> g_tracking_enabled{false};
 
 void* operator new(std::size_t size) {
     if (g_tracking_enabled.load(std::memory_order_relaxed)) {
         g_heap_allocations.fetch_add(1, std::memory_order_relaxed);
+        g_total_tracked_allocations.fetch_add(1, std::memory_order_relaxed);
         g_heap_bytes_allocated.fetch_add(size, std::memory_order_relaxed);
     }
     void* ptr = std::malloc(size);
@@ -41,6 +43,39 @@ void* operator new(std::size_t size) {
         throw std::bad_alloc();
     }
     return ptr;
+}
+
+void* operator new[](std::size_t size) {
+    return ::operator new(size);
+}
+
+void* operator new(std::size_t size, std::align_val_t alignment) {
+    if (g_tracking_enabled.load(std::memory_order_relaxed)) {
+        g_heap_allocations.fetch_add(1, std::memory_order_relaxed);
+        g_total_tracked_allocations.fetch_add(1, std::memory_order_relaxed);
+        g_heap_bytes_allocated.fetch_add(size, std::memory_order_relaxed);
+    }
+    std::size_t align = static_cast<std::size_t>(alignment);
+    if (align < sizeof(void*)) {
+        align = sizeof(void*);
+    }
+    std::size_t rounded_size = ((size + align - 1) / align) * align;
+    if (rounded_size == 0) {
+        rounded_size = align;
+    }
+#if defined(_WIN32)
+    void* ptr = _aligned_malloc(rounded_size, align);
+#else
+    void* ptr = std::aligned_alloc(align, rounded_size);
+#endif
+    if (ptr == nullptr) {
+        throw std::bad_alloc();
+    }
+    return ptr;
+}
+
+void* operator new[](std::size_t size, std::align_val_t alignment) {
+    return ::operator new(size, alignment);
 }
 
 #if defined(__GNUC__) && !defined(__clang__)
@@ -54,6 +89,34 @@ void operator delete(void* ptr) noexcept {
 
 void operator delete(void* ptr, std::size_t /*unused*/) noexcept {
     std::free(ptr);
+}
+
+void operator delete[](void* ptr) noexcept {
+    std::free(ptr);
+}
+
+void operator delete[](void* ptr, std::size_t /*unused*/) noexcept {
+    std::free(ptr);
+}
+
+void operator delete(void* ptr, std::align_val_t /*unused*/) noexcept {
+#if defined(_WIN32)
+    _aligned_free(ptr);
+#else
+    std::free(ptr);
+#endif
+}
+
+void operator delete(void* ptr, std::size_t /*unused*/, std::align_val_t alignment) noexcept {
+    ::operator delete(ptr, alignment);
+}
+
+void operator delete[](void* ptr, std::align_val_t alignment) noexcept {
+    ::operator delete(ptr, alignment);
+}
+
+void operator delete[](void* ptr, std::size_t /*unused*/, std::align_val_t alignment) noexcept {
+    ::operator delete(ptr, alignment);
 }
 
 #if defined(__GNUC__) && !defined(__clang__)
@@ -155,6 +218,8 @@ using HfsmFSM = fsm::fsm<HfsmTable, fsm::no_ports, fsm::no_ports, BenchRegisters
 static void BM_Dispatch_SingleTransition_PingPong(benchmark::State& state) {
     bench::BenchFSM machine;
 
+    g_heap_allocations.store(0, std::memory_order_relaxed);
+    g_heap_bytes_allocated.store(0, std::memory_order_relaxed);
     g_tracking_enabled.store(true, std::memory_order_release);
     for (auto _ : state) {
         auto res = machine.dispatch(bench::Event1{});
@@ -171,6 +236,8 @@ BENCHMARK(BM_Dispatch_SingleTransition_PingPong);
 static void BM_Dispatch_SequentialCycle_3States(benchmark::State& state) {
     bench::BenchFSM machine;
 
+    g_heap_allocations.store(0, std::memory_order_relaxed);
+    g_heap_bytes_allocated.store(0, std::memory_order_relaxed);
     g_tracking_enabled.store(true, std::memory_order_release);
     for (auto _ : state) {
         auto r1 = machine.dispatch(bench::Event1{});
@@ -191,6 +258,8 @@ BENCHMARK(BM_Dispatch_SequentialCycle_3States);
 static void BM_Dispatch_InternalTransition(benchmark::State& state) {
     bench::BenchFSM machine;
 
+    g_heap_allocations.store(0, std::memory_order_relaxed);
+    g_heap_bytes_allocated.store(0, std::memory_order_relaxed);
     g_tracking_enabled.store(true, std::memory_order_release);
     for (auto _ : state) {
         auto res = machine.dispatch(bench::InternalPing{});
@@ -208,6 +277,8 @@ static void BM_Dispatch_HFSM_SubStatePingPong(benchmark::State& state) {
     bench::HfsmFSM machine;
     bool toggle = false;
 
+    g_heap_allocations.store(0, std::memory_order_relaxed);
+    g_heap_bytes_allocated.store(0, std::memory_order_relaxed);
     g_tracking_enabled.store(true, std::memory_order_release);
     for (auto _ : state) {
         if (!toggle) {
@@ -427,8 +498,9 @@ int main(int argc, char** argv) {
 
     std::cout << "\n======================================================================\n";
     std::cout << "  Zero Heap Allocations Check: "
-              << (g_heap_allocations.load() == 0 ? "[PASSED - PURE ZERO HEAP ALLOCATIONS]" : "[FAILED]") << "\n";
+              << (g_total_tracked_allocations.load() == 0 ? "[PASSED - PURE ZERO HEAP ALLOCATIONS]" : "[FAILED]")
+              << "\n";
     std::cout << "======================================================================\n";
 
-    return g_heap_allocations.load() == 0 ? 0 : 1;
+    return g_total_tracked_allocations.load() == 0 ? 0 : 1;
 }

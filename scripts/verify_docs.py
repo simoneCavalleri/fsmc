@@ -113,8 +113,8 @@ def check_markdown_links(docs_dir: Path) -> tuple:
         # Exclude code blocks from link scanning
         # Remove fenced code blocks ``` ... ```
         clean_content = re.sub(r"```[\s\S]*?```", "", content)
-        # Remove inline code `...`
-        clean_content = re.sub(r"`[^`]*`", "", clean_content)
+        # Replace inline code `...` with placeholder so [`code`](url) links remain matchable
+        clean_content = re.sub(r"`[^`]*`", "CODE", clean_content)
 
         for match in link_pattern.finditer(clean_content):
             label = match.group(1).strip()
@@ -157,8 +157,9 @@ def check_markdown_links(docs_dir: Path) -> tuple:
                 # Normalize anchor
                 clean_anchor = anchor.lower().strip()
                 if clean_anchor not in headings:
-                    # Allow slight variations or ignore if it's an auto-generated tab
-                    pass
+                    errors.append(
+                        f"{md_file.relative_to(docs_dir)}: Broken anchor '#{anchor}' in link '{raw_url}'"
+                    )
 
     return total_links, errors
 

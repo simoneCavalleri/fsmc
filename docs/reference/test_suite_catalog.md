@@ -5,16 +5,15 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 496  
+**Total Documented Test Cases**: 518  
 
 ---
 
 ## Core Runtime Subsystem
 
-### [`test_async_and_guards.cpp`](../tests/backend/cpp/runtime/test_async_and_guards.cpp) (`tests/backend/cpp/runtime/test_async_and_guards.cpp`)
+### [`test_async_and_guards.cpp`](../../tests/backend/cpp/runtime/test_async_and_guards.cpp) (`tests/backend/cpp/runtime/test_async_and_guards.cpp`)
 #### `AsyncAndGuards.GuardEvaluation_RejectionAndAcceptance_TransitionExecutedCorrectly`
-**Test Intent**: Unit test suite for asynchronous dispatching, thread-safe workers, and guard evaluation.
-/
+**Test Intent**: Verify guard predicate rejection, acceptance, and state transition integrity.
 
 #### `AsyncAndGuards.DeferredEvents_QueueingAndReplay_ProcessedInTargetState`
 **Test Intent**: Verify runtime deferred event queueing and automated cascade replay.
@@ -52,15 +51,13 @@
 #### `AsyncAndGuards.ThreadSafeFsm_Reentrancy_QueuedAndDrainedSequentially`
 **Test Intent**: Verify thread_safe_fsm detects same-thread reentrant dispatch and enqueues instead of deadlocking.
 
-### [`test_choice.cpp`](../tests/backend/cpp/runtime/test_choice.cpp) (`tests/backend/cpp/runtime/test_choice.cpp`)
+### [`test_choice.cpp`](../../tests/backend/cpp/runtime/test_choice.cpp) (`tests/backend/cpp/runtime/test_choice.cpp`)
 #### `ChoicePseudostate.ChoicePseudostate_ConditionalEvaluation_BranchesToTarget`
-**Test Intent**: Unit test suite for choice pseudostates and conditional branching in runtime.
-/
+**Test Intent**: Verify choice pseudostate parsing, code generation, and conditional runtime branching.
 
-### [`test_composite_guards.cpp`](../tests/backend/cpp/runtime/test_composite_guards.cpp) (`tests/backend/cpp/runtime/test_composite_guards.cpp`)
+### [`test_composite_guards.cpp`](../../tests/backend/cpp/runtime/test_composite_guards.cpp) (`tests/backend/cpp/runtime/test_composite_guards.cpp`)
 #### `CompositeGuards.DirectCombinators_BooleanEvaluation_MatchesExpectedOutcome`
-**Test Intent**: Unit test suite for composite boolean guard expressions and combinators.
-/
+**Test Intent**: Verify direct boolean guard combinators (and_, or_, not_).
 
 #### `CompositeGuards.GuardExpressionParser_NestedExpressions_ParsedIntoAst`
 **Test Intent**: Verify parsing of simple and deeply nested boolean guard expressions.
@@ -74,10 +71,9 @@
 #### `CompositeGuards.RuntimeExecution_CompositeGuards_EvaluatedDuringDispatch`
 **Test Intent**: Verify runtime dispatching with compound boolean guards.
 
-### [`test_context_contract.cpp`](../tests/backend/cpp/runtime/test_context_contract.cpp) (`tests/backend/cpp/runtime/test_context_contract.cpp`)
+### [`test_context_contract.cpp`](../../tests/backend/cpp/runtime/test_context_contract.cpp) (`tests/backend/cpp/runtime/test_context_contract.cpp`)
 #### `DomainContract.SignalValidator_FieldConstraints_EnforcedAtRuntime`
-**Test Intent**: Unit test suite for domain context contracts, signal validators, and compile-time safety.
-/
+**Test Intent**: Verify runtime signal attribute validation predicates.
 
 #### `DomainContract.Cpp20Concepts_TypeValidation_EnsuresDomainSafety`
 **Test Intent**: Verify C++20 domain concepts enforcing event, state, and context type requirements.
@@ -94,10 +90,9 @@
 #### `DomainContract.RegistersConstReadOnly_ConstAccess_PreventsMutation`
 **Test Intent**: Verify const read-only access to context registers.
 
-### [`test_deep_history_multi_level.cpp`](../tests/backend/cpp/runtime/test_deep_history_multi_level.cpp) (`tests/backend/cpp/runtime/test_deep_history_multi_level.cpp`)
+### [`test_deep_history_multi_level.cpp`](../../tests/backend/cpp/runtime/test_deep_history_multi_level.cpp) (`tests/backend/cpp/runtime/test_deep_history_multi_level.cpp`)
 #### `DeepHistory.FourLevelHierarchy_AstAndCodegen_GeneratesValidHistoryTables`
-**Test Intent**: Unit test suite for multi-level deep history pseudostate restoration.
-/
+**Test Intent**: Verify 4-level deep history AST representation and code generation.
 
 #### `DeepHistory.RuntimeExecution_DeepHistory_RestoresDeepLeafSubstate`
 **Test Intent**: Verify runtime deep history restoration of deeply nested leaf state.
@@ -108,10 +103,9 @@
 #### `DeepHistory.AncestorHistoryRecording_ThreeLevelHierarchy_RecordsAllAncestors`
 **Test Intent**: Verify that exiting AncestorLeaf records history for both AncestorParent and AncestorGrandParent.
 
-### [`test_deferred.cpp`](../tests/backend/cpp/runtime/test_deferred.cpp) (`tests/backend/cpp/runtime/test_deferred.cpp`)
+### [`test_deferred.cpp`](../../tests/backend/cpp/runtime/test_deferred.cpp) (`tests/backend/cpp/runtime/test_deferred.cpp`)
 #### `DeferredEvents.PlantUml_DeferredEvents_ParsedIntoIr`
-**Test Intent**: Unit test suite for deferred event queueing, capacity limits, and replay semantics.
-/
+**Test Intent**: Verify PlantUML parsing of deferred events.
 
 #### `DeferredEvents.Mermaid_DeferredEvents_ParsedIntoIr`
 **Test Intent**: Verify Mermaid parsing of deferred events.
@@ -140,10 +134,9 @@
 #### `DeferredEvents.HierarchicalInheritance_SubstatesInheritAncestorDeferredEvents`
 **Test Intent**: Verify that substates inherit deferred events declared on their parent / ancestor composite states.
 
-### [`test_flight_recorder.cpp`](../tests/backend/cpp/runtime/test_flight_recorder.cpp) (`tests/backend/cpp/runtime/test_flight_recorder.cpp`)
+### [`test_flight_recorder.cpp`](../../tests/backend/cpp/runtime/test_flight_recorder.cpp) (`tests/backend/cpp/runtime/test_flight_recorder.cpp`)
 #### `FlightRecorder.CircularRingBuffer_PushAndWrap_OverwritesOldestEntries`
-**Test Intent**: Unit test suite for circular flight recorder, state history logging, and diagnostics.
-/
+**Test Intent**: Verify flight recorder circular ring buffer push and wrap behavior.
 
 #### `FlightRecorder.ChronologicalIndexing_Dump_ReturnsOrderedTraceEntries`
 **Test Intent**: Verify chronological indexing and string formatting of flight recorder dump.
@@ -154,10 +147,9 @@
 #### `FlightRecorder.DeterministicTimer_StepTick_RecordsTickEventsInHistory`
 **Test Intent**: Verify recording of deterministic timer ticks in flight recorder.
 
-### [`test_fsm.cpp`](../tests/backend/cpp/runtime/test_fsm.cpp) (`tests/backend/cpp/runtime/test_fsm.cpp`)
+### [`test_fsm.cpp`](../../tests/backend/cpp/runtime/test_fsm.cpp) (`tests/backend/cpp/runtime/test_fsm.cpp`)
 #### `FsmCore.BasicTransitions_EventDispatch_UpdatesCurrentState`
-**Test Intent**: Unit test suite for core synchronous and thread-safe FSM runtime execution.
-/
+**Test Intent**: Verify basic synchronous transitions and runtime state introspection.
 
 #### `FsmCore.LifecycleHooks_ExecutionOrder_ExecutesEntryActionExit`
 **Test Intent**: Verify lifecycle hook execution order (on_exit, transition action, on_entry).
@@ -180,18 +172,16 @@
 #### `FsmCore.ServicesSupport_NonDefaultConstructible_InjectedSuccessfully`
 **Test Intent**: Verify support for non-default-constructible context services.
 
-### [`test_hfsm.cpp`](../tests/backend/cpp/runtime/test_hfsm.cpp) (`tests/backend/cpp/runtime/test_hfsm.cpp`)
+### [`test_hfsm.cpp`](../../tests/backend/cpp/runtime/test_hfsm.cpp) (`tests/backend/cpp/runtime/test_hfsm.cpp`)
 #### `HfsmHierarchy.PlantUmlCompositeState_NestedHierarchy_ParsedCorrectly`
-**Test Intent**: Unit test suite for hierarchical composite states and HFSM event dispatching.
-/
+**Test Intent**: Verify PlantUML composite state parsing and runtime initialization.
 
 #### `HfsmHierarchy.MermaidCompositeState_NestedHierarchy_ParsedCorrectly`
 **Test Intent**: Verify Mermaid composite state parsing and runtime initialization.
 
-### [`test_history.cpp`](../tests/backend/cpp/runtime/test_history.cpp) (`tests/backend/cpp/runtime/test_history.cpp`)
+### [`test_history.cpp`](../../tests/backend/cpp/runtime/test_history.cpp) (`tests/backend/cpp/runtime/test_history.cpp`)
 #### `HistoryPseudostate.PlantUmlHistory_ShallowHistory_ParsedIntoIr`
-**Test Intent**: Unit test suite for shallow and deep history pseudostates in runtime.
-/
+**Test Intent**: Verify PlantUML shallow history pseudostate parsing.
 
 #### `HistoryPseudostate.MermaidDeepHistory_DeepHistory_ParsedIntoIr`
 **Test Intent**: Verify Mermaid deep history pseudostate parsing.
@@ -205,18 +195,16 @@
 #### `HistoryPseudostate.BoundedStorage_HistoryCapacity_MaintainsConfiguredFootprint`
 **Test Intent**: Verify bounded history storage capacity in embedded environments.
 
-### [`test_internal_transition.cpp`](../tests/backend/cpp/runtime/test_internal_transition.cpp) (`tests/backend/cpp/runtime/test_internal_transition.cpp`)
+### [`test_internal_transition.cpp`](../../tests/backend/cpp/runtime/test_internal_transition.cpp) (`tests/backend/cpp/runtime/test_internal_transition.cpp`)
 #### `InternalTransition.RuntimeExecution_InternalTransition_ExecutesActionWithoutEntryExit`
-**Test Intent**: Unit test suite for internal state transitions without entry/exit execution.
-/
+**Test Intent**: Verify runtime execution of internal transition without invoking entry or exit hooks.
 
 #### `InternalTransition.ParserAndCodegen_InternalTransition_PreservesSemanticsInCode`
 **Test Intent**: Verify parser extraction and C++ code generation for internal transitions.
 
-### [`test_observer.cpp`](../tests/backend/cpp/runtime/test_observer.cpp) (`tests/backend/cpp/runtime/test_observer.cpp`)
+### [`test_observer.cpp`](../../tests/backend/cpp/runtime/test_observer.cpp) (`tests/backend/cpp/runtime/test_observer.cpp`)
 #### `ObserverPattern.SyncFsm_ObserverHooks_NotifiedOnStateTransitions`
-**Test Intent**: Unit test suite for observer pattern hooks and transition telemetry.
-/
+**Test Intent**: Verify synchronous FSM observer notifications on state transitions.
 
 #### `ObserverPattern.ThreadSafeFsm_ObserverHooks_NotifiedAsynchronously`
 **Test Intent**: Verify thread-safe FSM observer notifications across threads.
@@ -227,10 +215,9 @@
 #### `ObserverPattern.ReentrantSend_InsideObserver_ExecutesWithoutDeadlock`
 **Test Intent**: Verify reentrant event posting from inside observer callback.
 
-### [`test_policy_config.cpp`](../tests/backend/cpp/runtime/test_policy_config.cpp) (`tests/backend/cpp/runtime/test_policy_config.cpp`)
+### [`test_policy_config.cpp`](../../tests/backend/cpp/runtime/test_policy_config.cpp) (`tests/backend/cpp/runtime/test_policy_config.cpp`)
 #### `PolicyConfig.DefaultPolicy_Extraction_YieldsDefaultTraits`
-**Test Intent**: Unit test suite for policy-based design and fluent state machine configuration.
-/
+**Test Intent**: Verify default policy traits extraction from state machine templates.
 
 #### `PolicyConfig.ArbitraryOrderPolicy_Extraction_ResolvesSpecifiedTraits`
 **Test Intent**: Verify arbitrary order policy template argument extraction.
@@ -250,10 +237,9 @@
 #### `PolicyConfig.FluentBuilder_OnTransitionCallback_AttachesCustomObserver`
 **Test Intent**: Verify on_transition fluent callback registration.
 
-### [`test_ring_buffer_overflow.cpp`](../tests/backend/cpp/runtime/test_ring_buffer_overflow.cpp) (`tests/backend/cpp/runtime/test_ring_buffer_overflow.cpp`)
+### [`test_ring_buffer_overflow.cpp`](../../tests/backend/cpp/runtime/test_ring_buffer_overflow.cpp) (`tests/backend/cpp/runtime/test_ring_buffer_overflow.cpp`)
 #### `RingBufferOverflow.DropIncomingPolicy_QueueFull_DropsNewIncomingEvents`
-**Test Intent**: Unit test suite for ring buffer overflow policies (DropIncoming, DropOldest).
-/
+**Test Intent**: Verify DropIncoming ring buffer overflow policy.
 
 #### `RingBufferOverflow.DropOldestPolicy_QueueFull_OverwritesOldestEvents`
 **Test Intent**: Verify DropOldest ring buffer overflow policy.
@@ -261,10 +247,9 @@
 #### `SpscFsm.QueueOverflow_ExcessEventsRejected`
 **Test Intent**: Verify SPSC queue overflow rejection under fixed capacity.
 
-### [`test_spsc_fsm.cpp`](../tests/backend/cpp/runtime/test_spsc_fsm.cpp) (`tests/backend/cpp/runtime/test_spsc_fsm.cpp`)
+### [`test_spsc_fsm.cpp`](../../tests/backend/cpp/runtime/test_spsc_fsm.cpp) (`tests/backend/cpp/runtime/test_spsc_fsm.cpp`)
 #### `SpscFsm.CompileTimeIntrospection_StaticQueries_ReportsCapacitiesAndTypes`
-**Test Intent**: Unit test suite for Single-Producer Single-Consumer (SPSC) lock-free FSM runtime.
-/
+**Test Intent**: Verify compile-time introspection on SPSC state machine.
 
 #### `SpscFsm.ProducerConsumer_SingleThread_TransitionsAccurately`
 **Test Intent**: Verify basic producer-consumer execution on SPSC FSM.
@@ -278,10 +263,9 @@
 #### `SpscFsm.HierarchicalIsIn_AndReset`
 **Test Intent**: Verify hierarchical is_in and reset functionality in SPSC FSM.
 
-### [`test_spsc_queue.cpp`](../tests/backend/cpp/runtime/test_spsc_queue.cpp) (`tests/backend/cpp/runtime/test_spsc_queue.cpp`)
+### [`test_spsc_queue.cpp`](../../tests/backend/cpp/runtime/test_spsc_queue.cpp) (`tests/backend/cpp/runtime/test_spsc_queue.cpp`)
 #### `SpscRingBuffer.SingleThreadOps_PushAndPop_OperatesCorrectly`
-**Test Intent**: Unit test suite for lock-free SPSC ring buffer memory management and lifecycles.
-/
+**Test Intent**: Verify single-thread push, pop, empty, and full operations on SPSC ring buffer.
 
 #### `SpscRingBuffer.ConcurrentStress_ProducerConsumer_ZeroDataLoss`
 **Test Intent**: Verify concurrent multi-threaded stress test on SPSC ring buffer.
@@ -295,13 +279,12 @@
 #### `SpscRingBuffer.NonDefaultConstructible_Emplace_ConstructsInPlace`
 **Test Intent**: Verify in-place emplacement of non-default-constructible payloads.
 
-### [`test_state_serialization.cpp`](../tests/backend/cpp/runtime/test_state_serialization.cpp) (`tests/backend/cpp/runtime/test_state_serialization.cpp`)
+### [`test_state_serialization.cpp`](../../tests/backend/cpp/runtime/test_state_serialization.cpp) (`tests/backend/cpp/runtime/test_state_serialization.cpp`)
 - *(Executable binary test verification)*
 
-### [`test_thread_safe_stress.cpp`](../tests/backend/cpp/runtime/test_thread_safe_stress.cpp) (`tests/backend/cpp/runtime/test_thread_safe_stress.cpp`)
+### [`test_thread_safe_stress.cpp`](../../tests/backend/cpp/runtime/test_thread_safe_stress.cpp) (`tests/backend/cpp/runtime/test_thread_safe_stress.cpp`)
 #### `ThreadSafeStress.HighConcurrency_TwentyThreadsFiftyThousandEvents_AllEventsProcessed`
-**Test Intent**: Unit test suite for high-concurrency stress testing of thread_safe_fsm.
-/
+**Test Intent**: Verify high-concurrency multi-threaded stress: 20 threads submitting 50,000 events.
 
 #### `ThreadSafeStress.MixedEvents_ConcurrentImmediateAndTimed_ProcessedDeterministically`
 **Test Intent**: Verify concurrent mixing of immediate and delayed/timed events under load.
@@ -309,10 +292,9 @@
 #### `ThreadSafeFsm.HierarchicalIsIn_AndReset`
 **Test Intent**: Verify hierarchical is_in and reset functionality in thread_safe_fsm.
 
-### [`test_timed_transitions.cpp`](../tests/backend/cpp/runtime/test_timed_transitions.cpp) (`tests/backend/cpp/runtime/test_timed_transitions.cpp`)
+### [`test_timed_transitions.cpp`](../../tests/backend/cpp/runtime/test_timed_transitions.cpp) (`tests/backend/cpp/runtime/test_timed_transitions.cpp`)
 #### `TimedTransitions.SyncTimedEvent_Dispatch_TransitionsAfterDuration`
-**Test Intent**: Unit test suite for timed transitions, timer cancellation, and discrete tick stepping.
-/
+**Test Intent**: Verify synchronous timed transition triggering after elapsed duration.
 
 #### `TimedTransitions.TimedTableRow_TickAutomaticallyDispatchesAfterEvent`
 **Test Intent**: Verify timed table rows are armed automatically when a state is entered.
@@ -353,10 +335,9 @@
 #### `TimedTransitions.SequentialStates_TransitionEarly_ArmsTargetStateTimerAndCancelsOld`
 **Test Intent**: Verify sequential state transitions cancel old timers and cleanly arm target state timers.
 
-### [`test_traits_and_hooks.cpp`](../tests/backend/cpp/runtime/test_traits_and_hooks.cpp) (`tests/backend/cpp/runtime/test_traits_and_hooks.cpp`)
+### [`test_traits_and_hooks.cpp`](../../tests/backend/cpp/runtime/test_traits_and_hooks.cpp) (`tests/backend/cpp/runtime/test_traits_and_hooks.cpp`)
 #### `TraitsAndHooks.TypeListAlgorithms_TransformAndFilter_CompileTimeExpectedTypes`
-**Test Intent**: Unit test suite for type-list traits, metaprogramming algorithms, and reflection hooks.
-/
+**Test Intent**: Verify type list algorithms (contains, filter, transform, unique).
 
 #### `TraitsAndHooks.Reflection_StateAndEventDemangling_ProducesReadableNames`
 **Test Intent**: Verify compile-time and runtime type demangling of state and event names.
@@ -394,10 +375,9 @@
 #### `TraitsAndHooks.HierarchicalLifecycleHooks_LcaTraversal_ExecutesCompositeParentHooks`
 **Test Intent**: Verify that transitioning across LCA boundaries executes parent on_exit and on_enter hooks.
 
-### [`test_zero_alloc_runtime.cpp`](../tests/backend/cpp/runtime/test_zero_alloc_runtime.cpp) (`tests/backend/cpp/runtime/test_zero_alloc_runtime.cpp`)
+### [`test_zero_alloc_runtime.cpp`](../../tests/backend/cpp/runtime/test_zero_alloc_runtime.cpp) (`tests/backend/cpp/runtime/test_zero_alloc_runtime.cpp`)
 #### `ZeroAllocRuntime.StaticRingBuffer_BasicOperations_ExecutesWithoutHeapAllocations`
-**Test Intent**: Unit test suite for zero-allocation runtime, static ring buffers, and embedded static vectors.
-/
+**Test Intent**: Verify static ring buffer push, pop, and capacity operations.
 
 #### `ZeroAllocRuntime.MemoryFootprint_CompileTimeSize_ZeroHeapOverhead`
 **Test Intent**: Verify compile-time memory footprint of zero-allocation state machine.
@@ -424,15 +404,15 @@
 
 ## C++ Backend Codegen Subsystem
 
-### [`test_cpp17_standalone.cpp`](../tests/backend/cpp/test_cpp17_standalone.cpp) (`tests/backend/cpp/test_cpp17_standalone.cpp`)
+### [`test_cpp17_standalone.cpp`](../../tests/backend/cpp/test_cpp17_standalone.cpp) (`tests/backend/cpp/test_cpp17_standalone.cpp`)
 - *(Executable binary test verification)*
 
-### [`test_cpp20_standalone.cpp`](../tests/backend/cpp/test_cpp20_standalone.cpp) (`tests/backend/cpp/test_cpp20_standalone.cpp`)
+### [`test_cpp20_standalone.cpp`](../../tests/backend/cpp/test_cpp20_standalone.cpp) (`tests/backend/cpp/test_cpp20_standalone.cpp`)
 - *(Executable binary test verification)*
 
-### [`test_cpp_e2e_compiler.cpp`](../tests/backend/cpp/test_cpp_e2e_compiler.cpp) (`tests/backend/cpp/test_cpp_e2e_compiler.cpp`)
+### [`test_cpp_e2e_compiler.cpp`](../../tests/backend/cpp/test_cpp_e2e_compiler.cpp) (`tests/backend/cpp/test_cpp_e2e_compiler.cpp`)
 #### `CppE2ECompiler.GeneratedStandaloneHeaders_CompileAndExecuteUnderCpp17AndCpp20`
-**Test Intent**: End-to-End integration and host compiler verification test suite for C++ Emitter (C++17 & C++20).
+**Test Intent**: Verify end-to-end standalone header generation, compilation under host compiler, and runtime execution.
 
 #### `CppE2ECompiler.RuntimeBundling_ExportsHeadersAndResilientCode`
 **Test Intent**: Verify RuntimeExporter bundles standalone runtime headers and resilience code.
@@ -458,9 +438,9 @@
 #### `CppE2ECompiler.NoStubsAndNoThreadSafeGeneration_CompilesCleanly`
 **Test Intent**: Verify generation with include_stubs=false and thread_safe=false.
 
-### [`test_cpp_model_emitter.cpp`](../tests/backend/cpp/test_cpp_model_emitter.cpp) (`tests/backend/cpp/test_cpp_model_emitter.cpp`)
+### [`test_cpp_model_emitter.cpp`](../../tests/backend/cpp/test_cpp_model_emitter.cpp) (`tests/backend/cpp/test_cpp_model_emitter.cpp`)
 #### `CppModelEmitter.PartitionedDomainStructures_EmittedCorrectly`
-**Test Intent**: Unit verification suite for C++ model emitter syntax generation.
+**Test Intent**: Verify C++ emission of partitioned domain structures (ports, signals, states, transitions).
 
 #### `CppModelEmitter.TypedSignalPayloads_EmittedWithValidators`
 **Test Intent**: Verify C++ emission of strongly-typed signal structs with inline validator predicates.
@@ -528,17 +508,22 @@
 #### `CppModelEmitter.SignalWithAttributes_EmitsDefaultAndParameterizedConstructors`
 **Test Intent**: Verify that signals with attributes emit default constructor alongside parameterized constructor.
 
-### [`test_generated_fsm.cpp`](../tests/backend/cpp/test_generated_fsm.cpp) (`tests/backend/cpp/test_generated_fsm.cpp`)
+#### `CppModelEmitter.LifecycleActionWithAssignments_EmittedAsAssignmentStructNotExternalService`
+**Test Intent**: Regression BUG-01: Lifecycle entry/exit actions with assignments must be emitted as
+
+#### `CppModelEmitter.ReservedCppKeywords_EscapedInEmittedTypesAndTransitionTable`
+**Test Intent**: Regression BUG-02: C++ reserved keywords used as state, event, or action names
+
+### [`test_generated_fsm.cpp`](../../tests/backend/cpp/test_generated_fsm.cpp) (`tests/backend/cpp/test_generated_fsm.cpp`)
 - *(Executable binary test verification)*
 
 ---
 
 ## Diagram & Emitter Backend Subsystem
 
-### [`test_companion_manifest_emitter.cpp`](../tests/backend/diagram/test_companion_manifest_emitter.cpp) (`tests/backend/diagram/test_companion_manifest_emitter.cpp`)
+### [`test_companion_manifest_emitter.cpp`](../../tests/backend/diagram/test_companion_manifest_emitter.cpp) (`tests/backend/diagram/test_companion_manifest_emitter.cpp`)
 #### `CompanionManifestEmitter.ModelContract_ExtractedIntoManifest`
-**Test Intent**: Unit test suite for companion manifest emission (YAML/JSON sidecar contracts).
-/
+**Test Intent**: Verify companion manifest data extraction from full FsmIr model.
 
 #### `CompanionManifestEmitter.YamlSidecar_RoundtrippedLosslessly`
 **Test Intent**: Verify YAML companion manifest serialization and deserialization roundtrip.
@@ -549,10 +534,9 @@
 #### `CompanionManifestEmitter.BareTopologyAndSidecar_RecombinedIntoCompleteModel`
 **Test Intent**: Verify sidecar roundtrip with bare diagram topology and YAML manifest recombiner.
 
-### [`test_diagram_export.cpp`](../tests/backend/diagram/test_diagram_export.cpp) (`tests/backend/diagram/test_diagram_export.cpp`)
+### [`test_diagram_export.cpp`](../../tests/backend/diagram/test_diagram_export.cpp) (`tests/backend/diagram/test_diagram_export.cpp`)
 #### `DiagramExport.CameoXmiModel_ExportedToMermaidAndValidated`
-**Test Intent**: Unit test suite for cross-format diagram and formal model serializers.
-/
+**Test Intent**: Verify cross-format export from Cameo OMG XMI to Mermaid state diagrams.
 
 #### `DiagramExport.ScxmlModel_ExportedToPlantUmlAndValidated`
 **Test Intent**: Verify cross-format export from W3C SCXML to PlantUML state diagrams.
@@ -575,14 +559,19 @@
 #### `DiagramExport.FsmIrModel_ExportedToDotGraphvizFormat`
 **Test Intent**: Verify DOT / Graphviz diagram serialization and syntax integrity.
 
+#### `DiagramExport.PlantUmlAndMermaid_InitialStateFromId_EmitsInitialArrow`
+**Test Intent**: Verify PlantUmlSerializer and MermaidSerializer emit initial transition when model uses initial_state_id.
+
+#### `DiagramExport.PlantUml_DeepHistoryPseudostate_EmittedCorrectly`
+**Test Intent**: Verify PlantUmlSerializer emits [H*] when a composite state has has_deep_history=true.
+
 ---
 
 ## Multi-Format Emitter & Factory Subsystem
 
-### [`test_emitter_factory.cpp`](../tests/backend/common/test_emitter_factory.cpp) (`tests/backend/common/test_emitter_factory.cpp`)
+### [`test_emitter_factory.cpp`](../../tests/backend/common/test_emitter_factory.cpp) (`tests/backend/common/test_emitter_factory.cpp`)
 #### `EmitterFactory.SupportedFormatsList_ContainsAllRegisteredBackends`
-**Test Intent**: Unit test suite for the multi-format emitter factory.
-/
+**Test Intent**: Verify query of supported emitter target formats.
 
 #### `EmitterFactory.CanonicalModel_EmittedAcrossAllRegisteredFormats`
 **Test Intent**: Verify emission across all supported formats via factory dispatcher.
@@ -591,10 +580,9 @@
 
 ## MC/DC Verification & Harness Subsystem
 
-### [`test_mcdc_harness.cpp`](../tests/backend/verification/test_mcdc_harness.cpp) (`tests/backend/verification/test_mcdc_harness.cpp`)
+### [`test_mcdc_harness.cpp`](../../tests/backend/verification/test_mcdc_harness.cpp) (`tests/backend/verification/test_mcdc_harness.cpp`)
 #### `McdcHarness.ConjunctionExpression_IndependencePairsCalculated`
-**Test Intent**: Unit test suite for MC/DC test harness generation and independence pair analysis.
-/
+**Test Intent**: Verify MCDC independence pair computation on conjunction A && B.
 
 #### `McdcHarness.TransitionGuard_GtestHarnessGenerated`
 **Test Intent**: Verify McdcHarnessGenerator produces GoogleTest harness string for transition guards.
@@ -606,10 +594,9 @@
 
 ## Formal Model Checking & nuXmv Subsystem
 
-### [`test_formal_roundtrip.cpp`](../tests/backend/formal/test_formal_roundtrip.cpp) (`tests/backend/formal/test_formal_roundtrip.cpp`)
+### [`test_formal_roundtrip.cpp`](../../tests/backend/formal/test_formal_roundtrip.cpp) (`tests/backend/formal/test_formal_roundtrip.cpp`)
 #### `FormalRoundtrip.ConnectionManagerPreset_PreservedAcrossFormats`
-**Test Intent**: Unit test suite verifying lossless roundtrip transpilation across all supported formats.
-/
+**Test Intent**: Verify lossless roundtrip serialization across all supported diagram/schema formats for Connection Manager
 
 #### `FormalRoundtrip.AsyncMotorControllerPreset_PreservedAcrossFormats`
 **Test Intent**: Verify lossless multi-format roundtrip for Async Motor Controller preset.
@@ -657,10 +644,9 @@
 
 ## Requirements Traceability (RTM) Subsystem
 
-### [`test_rtm_emitter.cpp`](../tests/backend/rtm/test_rtm_emitter.cpp) (`tests/backend/rtm/test_rtm_emitter.cpp`)
+### [`test_rtm_emitter.cpp`](../../tests/backend/rtm/test_rtm_emitter.cpp) (`tests/backend/rtm/test_rtm_emitter.cpp`)
 #### `RtmEmitter.TraceabilityResults_EmittedInMarkdownAndJson`
-**Test Intent**: Unit test suite for the Requirements Traceability Matrix (RTM) emitter.
-/
+**Test Intent**: Verify Markdown and JSON export of Requirements Traceability Matrix with verification outcomes.
 
 #### `RtmEmitter.UntracedElements_AuditedWithSummaryDiagnostic`
 **Test Intent**: Verify RtmEmitter::audit_traceability reports untraced states and summary statistics.
@@ -669,10 +655,9 @@
 
 ## Diagnostic Engine Subsystem
 
-### [`test_diagnostics.cpp`](../tests/diagnostic/test_diagnostics.cpp) (`tests/diagnostic/test_diagnostics.cpp`)
+### [`test_diagnostics.cpp`](../../tests/diagnostic/test_diagnostics.cpp) (`tests/diagnostic/test_diagnostics.cpp`)
 #### `DiagnosticEngine.WarningWithSourceSpan_RenderedWithCaretUnderlineAndHelp`
-**Test Intent**: Unit test suite for the compiler diagnostic engine and source caret rendering.
-/
+**Test Intent**: Verify diagnostic engine source code rendering with line numbers, caret underlines, and help tips.
 
 #### `DiagnosticEngine.FormatOutput_GitHubAndJson`
 **Test Intent**: Verify GitHub Actions and JSON diagnostic format output.
@@ -681,10 +666,9 @@
 
 ## Frontend Parser Subsystem
 
-### [`test_json_parser.cpp`](../tests/frontend/common/test_json_parser.cpp) (`tests/frontend/common/test_json_parser.cpp`)
+### [`test_json_parser.cpp`](../../tests/frontend/common/test_json_parser.cpp) (`tests/frontend/common/test_json_parser.cpp`)
 #### `JsonParser.StandardStatechartSchema_ExtractsStatesTransitionsGuardsAndActions`
-**Test Intent**: Unit tests for front-end JSON statechart parser, composite states, transitions arrays, and port constraints.
-/
+**Test Intent**: Verify XState-compatible JSON statechart format parsing.
 
 #### `JsonParser.NestedStatesProperty_SynthesizesCompositeHierarchy`
 **Test Intent**: Verify nested composite states within JSON schema.
@@ -698,10 +682,9 @@
 #### `JsonParser.DirectionalPortsWithIntervalBounds_PopulatesPortDefinitions`
 **Test Intent**: Verify parsing of typed ports and range constraints in JSON schema.
 
-### [`test_parser_classification.cpp`](../tests/frontend/common/test_parser_classification.cpp) (`tests/frontend/common/test_parser_classification.cpp`)
+### [`test_parser_classification.cpp`](../../tests/frontend/common/test_parser_classification.cpp) (`tests/frontend/common/test_parser_classification.cpp`)
 #### `FrontendClassification.FormalParsers_ReportsFormalFrontendKind`
-**Test Intent**: Unit tests for front-end parser taxonomy and format classification (Formal vs Diagram).
-/
+**Test Intent**: Verify formal parser implementations report FrontendKind::Formal and canonical format tokens.
 
 #### `FrontendClassification.DiagramParsers_ReportsDiagramFrontendKind`
 **Test Intent**: Verify diagram parser implementations report FrontendKind::Diagram and canonical format tokens.
@@ -709,10 +692,9 @@
 #### `ParserFactory.FormatNameToKindLookup_ResolvesFormalAndDiagramKinds`
 **Test Intent**: Verify ParserFactory format name to FrontendKind resolution mapping.
 
-### [`test_parser_factory_and_lexer.cpp`](../tests/frontend/common/test_parser_factory_and_lexer.cpp) (`tests/frontend/common/test_parser_factory_and_lexer.cpp`)
+### [`test_parser_factory_and_lexer.cpp`](../../tests/frontend/common/test_parser_factory_and_lexer.cpp) (`tests/frontend/common/test_parser_factory_and_lexer.cpp`)
 #### `ParserFactory.CanonicalFormatNames_InstantiatesCorrespondingParser`
-**Test Intent**: Unit tests for ParserFactory dynamic parser resolution and LexerUtils lexical analysis routines.
-/
+**Test Intent**: Verify ParserFactory instantiation by canonical format identifier string.
 
 #### `ParserFactory.FileExtensions_ResolvesMatchingParserImplementation`
 **Test Intent**: Verify ParserFactory instantiation based on input file path extension.
@@ -732,10 +714,9 @@
 #### `LexerUtils.ReservedKeywords_EscapesCppKeywordsWithUnderscore`
 **Test Intent**: Verify C++ reserved keyword detection and identifier escaping utilities.
 
-### [`test_parser_negative.cpp`](../tests/frontend/common/test_parser_negative.cpp) (`tests/frontend/common/test_parser_negative.cpp`)
+### [`test_parser_negative.cpp`](../../tests/frontend/common/test_parser_negative.cpp) (`tests/frontend/common/test_parser_negative.cpp`)
 #### `PlantUmlParser.EmptyAndCorruptedInputStreams_RejectsWithInformativeDiagnostic`
-**Test Intent**: Negative unit tests across front-end parsers verifying rejection of malformed, empty, or corrupt inputs.
-/
+**Test Intent**: Verify PlantUmlParser rejects malformed, empty, and corrupted syntax with informative error strings.
 
 #### `MermaidParser.MissingStatesAndMalformedArrows_RejectsParseCleanly`
 **Test Intent**: Verify MermaidParser rejects empty inputs and malformed transition statements.
@@ -752,10 +733,9 @@
 #### `FsmValidator.DisconnectedSubgraphsAndTrapStates_EmitsSemanticWarningDiagnostics`
 **Test Intent**: Verify FsmValidator semantic diagnostics (unreachable island states, trap/deadlock states).
 
-### [`test_xml_parser.cpp`](../tests/frontend/common/test_xml_parser.cpp) (`tests/frontend/common/test_xml_parser.cpp`)
+### [`test_xml_parser.cpp`](../../tests/frontend/common/test_xml_parser.cpp) (`tests/frontend/common/test_xml_parser.cpp`)
 #### `XmlParser.BasicXmlDocument_ParsedIntoElementHierarchy`
-**Test Intent**: Unit test suite for the lightweight XML parser and DOM abstraction.
-/
+**Test Intent**: Verify basic XML parsing and hierarchical element navigation.
 
 #### `XmlParser.EntityReferences_DecodedCorrectly`
 **Test Intent**: Verify XML entity decoding in attribute values.
@@ -766,10 +746,9 @@
 #### `XmlParser.NamespacePrefixedTags_ResolvedAgnostically`
 **Test Intent**: Verify XML namespace prefix-agnostic recursive tag lookup.
 
-### [`test_diagram_sidecar.cpp`](../tests/frontend/diagram/test_diagram_sidecar.cpp) (`tests/frontend/diagram/test_diagram_sidecar.cpp`)
+### [`test_diagram_sidecar.cpp`](../../tests/frontend/diagram/test_diagram_sidecar.cpp) (`tests/frontend/diagram/test_diagram_sidecar.cpp`)
 #### `DiagramSidecar.PlantUmlTopology_CombinedWithYamlCompanionManifest`
-**Test Intent**: Unit test suite for the Diagram Sidecar Pattern combining diagram topology with companion manifests.
-/
+**Test Intent**: Verify Diagram Sidecar Pattern combining PlantUML with .fsm.yaml companion manifest.
 
 #### `DiagramSidecar.MermaidTopology_CombinedWithJsonCompanionManifest`
 **Test Intent**: Verify Diagram Sidecar Pattern with Mermaid topology and JSON manifest.
@@ -777,18 +756,16 @@
 #### `DiagramSidecar.CompanionManifest_WithCustomTypes_PopulatesModelCustomTypes`
 **Test Intent**: Verify companion manifest with custom_types registers TypeDefinition in model.
 
-### [`test_dot_parser.cpp`](../tests/frontend/diagram/test_dot_parser.cpp) (`tests/frontend/diagram/test_dot_parser.cpp`)
+### [`test_dot_parser.cpp`](../../tests/frontend/diagram/test_dot_parser.cpp) (`tests/frontend/diagram/test_dot_parser.cpp`)
 #### `DotParser.BasicDotDigraph_ParsedIntoValidFsmIr`
-**Test Intent**: Unit test suite for the Graphviz DOT statechart parser.
-/
+**Test Intent**: Verify Graphviz DOT graph parsing with transition labels and initial pseudostate.
 
 #### `DotParser.ClusterSubgraph_ParsedAsCompositeState`
 **Test Intent**: Verify DOT subgraph cluster parsing into hierarchical composite states.
 
-### [`test_mermaid_parser.cpp`](../tests/frontend/diagram/test_mermaid_parser.cpp) (`tests/frontend/diagram/test_mermaid_parser.cpp`)
+### [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) (`tests/frontend/diagram/test_mermaid_parser.cpp`)
 #### `MermaidParser.BasicDiagram_ParsedIntoValidFsmIr`
-**Test Intent**: Unit test suite for the Mermaid stateDiagram-v2 parser and frontend dialect.
-/
+**Test Intent**: Verify Mermaid syntax parsing, state aliases, guard/action extraction, and validation.
 
 #### `MermaidParser.CommentsNotesAndHierarchy_ParsedCorrectly`
 **Test Intent**: Verify Mermaid comment stripping, note stripping, and composite state hierarchy.
@@ -802,13 +779,12 @@
 #### `MermaidParser.PortDirectives_ParsedWithAttributesAndConstraints`
 **Test Intent**: Verify Mermaid parsing of @fsm:port directives into FsmIr.
 
-### [`test_multiline_actions.cpp`](../tests/frontend/diagram/test_multiline_actions.cpp) (`tests/frontend/diagram/test_multiline_actions.cpp`)
+### [`test_multiline_actions.cpp`](../../tests/frontend/diagram/test_multiline_actions.cpp) (`tests/frontend/diagram/test_multiline_actions.cpp`)
 - *(Executable binary test verification)*
 
-### [`test_plantuml_parser.cpp`](../tests/frontend/diagram/test_plantuml_parser.cpp) (`tests/frontend/diagram/test_plantuml_parser.cpp`)
+### [`test_plantuml_parser.cpp`](../../tests/frontend/diagram/test_plantuml_parser.cpp) (`tests/frontend/diagram/test_plantuml_parser.cpp`)
 #### `PlantUmlParser.BasicDiagram_ParsedIntoValidFsmIr`
-**Test Intent**: Unit test suite for the PlantUML state diagram parser and frontend dialect.
-/
+**Test Intent**: Verify basic PlantUML syntax parsing and model validation.
 
 #### `PlantUmlParser.CommentsAndCompositeHierarchy_ParsedCorrectly`
 **Test Intent**: Verify PlantUML single-line and multi-line comment stripping and composite states.
@@ -828,9 +804,9 @@
 #### `PlantUmlParser.GuardWithDivisionOperator_PreservedAndNotTreatedAsAction`
 **Test Intent**: Verify that division operators '/' inside guards are not mistaken for action delimiters.
 
-### [`test_directive_parser.cpp`](../tests/frontend/directive/test_directive_parser.cpp) (`tests/frontend/directive/test_directive_parser.cpp`)
+### [`test_directive_parser.cpp`](../../tests/frontend/directive/test_directive_parser.cpp) (`tests/frontend/directive/test_directive_parser.cpp`)
 #### `DirectiveParser.StateDirective_ParsesTraceabilityAndActivities`
-**Test Intent**: Unit tests for front-end directive parser (@fsm:state, @fsm:defer, @fsm:signal, @fsm:port, @fsm:enum,
+**Test Intent**: Verify '@fsm:state' directive parsing for traceability requirements and history metadata.
 
 #### `DirectiveParser.DeferDirective_ExtractsDeferredEventList`
 **Test Intent**: Verify '@fsm:defer [...]' directive parsing for deferred events.
@@ -853,10 +829,9 @@
 #### `GuardParser.RelationalExpressions_TokenizedAndForwarded`
 **Test Intent**: Verify GuardExpressionParser extracts atomic relational guard expressions and builds valid C++ expressions.
 
-### [`test_cameo_parser.cpp`](../tests/frontend/formal/test_cameo_parser.cpp) (`tests/frontend/formal/test_cameo_parser.cpp`)
+### [`test_cameo_parser.cpp`](../../tests/frontend/formal/test_cameo_parser.cpp) (`tests/frontend/formal/test_cameo_parser.cpp`)
 #### `CameoParser.BasicXmiDocument_ParsedIntoValidFsmIr`
-**Test Intent**: Unit test suite for the Cameo Systems Modeler (OMG XMI 2.x) frontend parser.
-/
+**Test Intent**: Verify Cameo OMG XMI 2.x standard XML document parsing.
 
 #### `CameoParser.CompositeAndChoicePseudostates_ParsedIntoValidFsmIr`
 **Test Intent**: Verify Cameo nested composite regions and choice pseudostates.
@@ -876,10 +851,9 @@
 #### `CameoParser.CrossReferencedTriggersAndSysmlProfiles_ResolvedCorrectly`
 **Test Intent**: Verify two-pass resolution of cross-referenced Signal events and SysML profile stereotypes.
 
-### [`test_scxml_parser.cpp`](../tests/frontend/formal/test_scxml_parser.cpp) (`tests/frontend/formal/test_scxml_parser.cpp`)
+### [`test_scxml_parser.cpp`](../../tests/frontend/formal/test_scxml_parser.cpp) (`tests/frontend/formal/test_scxml_parser.cpp`)
 #### `ScxmlParser.BasicScxmlDocument_ParsedIntoValidFsmIr`
-**Test Intent**: Unit test suite for the W3C SCXML (State Chart XML) frontend parser.
-/
+**Test Intent**: Verify W3C SCXML document parsing with internal transitions.
 
 #### `ScxmlParser.IndustrialPressSnippet_ParsedIntoValidFsmIr`
 **Test Intent**: Verify parsing of real-world industrial press SCXML specification.
@@ -893,10 +867,9 @@
 #### `ScxmlParser.RawBooleanConditions_PreservedInGuardsAndSerialized`
 **Test Intent**: Verify SCXML raw boolean condition preservation and roundtrip serialization.
 
-### [`test_scxml_semantic_completeness.cpp`](../tests/frontend/formal/test_scxml_semantic_completeness.cpp) (`tests/frontend/formal/test_scxml_semantic_completeness.cpp`)
+### [`test_scxml_semantic_completeness.cpp`](../../tests/frontend/formal/test_scxml_semantic_completeness.cpp) (`tests/frontend/formal/test_scxml_semantic_completeness.cpp`)
 #### `ScxmlSemanticCompleteness.ParallelRegions_ParsedAsOrthogonalStates`
-**Test Intent**: Unit test suite verifying W3C SCXML semantic completeness (parallel regions, final states, events).
-/
+**Test Intent**: Verify SCXML <parallel> orthogonal regions parsing into FsmIr.
 
 #### `ScxmlSemanticCompleteness.FinalStates_EmitsCompletionEvents`
 **Test Intent**: Verify SCXML <final> states and automatic completion events.
@@ -910,10 +883,9 @@
 #### `ScxmlSemanticCompleteness.HistoryPseudostates_ResolvedAndRoundtripSerialized`
 **Test Intent**: Verify SCXML <history> pseudostates resolution and roundtrip serialization.
 
-### [`test_smv_parser.cpp`](../tests/frontend/formal/test_smv_parser.cpp) (`tests/frontend/formal/test_smv_parser.cpp`)
+### [`test_smv_parser.cpp`](../../tests/frontend/formal/test_smv_parser.cpp) (`tests/frontend/formal/test_smv_parser.cpp`)
 #### `SmvParser.BasicSmvModule_ParsedIntoValidFsmIr`
-**Test Intent**: Unit test suite for the nuXmv / SMV formal model frontend parser.
-/
+**Test Intent**: Verify basic nuXmv / SMV module state machine parsing.
 
 #### `SmvParser.VariablesAndInitExpressions_CapturedInIr`
 **Test Intent**: Verify SMV auxiliary state variables, ranges, and init expressions.
@@ -939,10 +911,9 @@
 #### `SmvParser.NestedParenthesesInCondition_NotSplitPrematurely`
 **Test Intent**: Verify SMV condition splitting preserves nested parentheses containing '&'.
 
-### [`test_stateflow_parser.cpp`](../tests/frontend/formal/test_stateflow_parser.cpp) (`tests/frontend/formal/test_stateflow_parser.cpp`)
+### [`test_stateflow_parser.cpp`](../../tests/frontend/formal/test_stateflow_parser.cpp) (`tests/frontend/formal/test_stateflow_parser.cpp`)
 #### `StateflowParser.BasicStateflowChart_ParsedIntoValidFsmIr`
-**Test Intent**: Unit test suite for the MathWorks Stateflow chart frontend parser.
-/
+**Test Intent**: Verify basic Stateflow chart syntax ingestion and transition parsing.
 
 #### `StateflowParser.TemporalLogicTriggers_MappedToTimerEvents`
 **Test Intent**: Verify Stateflow temporal logic triggers (after, before, at, every).
@@ -962,10 +933,9 @@
 #### `StateflowParser.FractionalDurationsAndGuardRawExpressions_Preserved`
 **Test Intent**: Verify Stateflow fractional time duration parsing and guard expression preservation.
 
-### [`test_stateflow_slx_ingestion.cpp`](../tests/frontend/formal/test_stateflow_slx_ingestion.cpp) (`tests/frontend/formal/test_stateflow_slx_ingestion.cpp`)
+### [`test_stateflow_slx_ingestion.cpp`](../../tests/frontend/formal/test_stateflow_slx_ingestion.cpp) (`tests/frontend/formal/test_stateflow_slx_ingestion.cpp`)
 #### `StateflowSlxIngestion.IngestStoredSlxContainer_ParsesModelDirectly`
-**Test Intent**: Unit test suite for direct ingestion of MathWorks Stateflow .slx container archives.
-/
+**Test Intent**: Verify direct ingestion of uncompressed (stored) Stateflow .slx container.
 
 #### `StateflowSlxIngestion.IngestDeflatedSlxContainer_ParsesModelDirectly`
 **Test Intent**: Verify direct ingestion of Deflate-compressed Stateflow .slx container.
@@ -979,14 +949,13 @@
 #### `StateflowSlxIngestion.CorruptedSlxContainer_FailsGracefully`
 **Test Intent**: Verify rejection of corrupted or empty ZIP containers.
 
-### [`test_sysml2_advanced_constructs.cpp`](../tests/frontend/formal/test_sysml2_advanced_constructs.cpp) (`tests/frontend/formal/test_sysml2_advanced_constructs.cpp`)
+### [`test_sysml2_advanced_constructs.cpp`](../../tests/frontend/formal/test_sysml2_advanced_constructs.cpp) (`tests/frontend/formal/test_sysml2_advanced_constructs.cpp`)
 #### `Sysml2AdvancedConstructs.ParallelStateAndSlashActions_RoundtrippedLosslessly`
-**Test Intent**: Unit test suite for SysML v2 advanced constructs (nested/qualified packages,
+**Test Intent**: Verify SysML v2 parallel states and lifecycle slash action syntax (entry / act; exit / act;)
 
-### [`test_sysml2_flight_control.cpp`](../tests/frontend/formal/test_sysml2_flight_control.cpp) (`tests/frontend/formal/test_sysml2_flight_control.cpp`)
+### [`test_sysml2_flight_control.cpp`](../../tests/frontend/formal/test_sysml2_flight_control.cpp) (`tests/frontend/formal/test_sysml2_flight_control.cpp`)
 #### `Sysml2FlightControl.FlightMissionController_ParsedIntoValidFsmIr`
-**Test Intent**: Integration verification suite for OMG SysML v2 Flight Mission Controller pipeline.
-/
+**Test Intent**: Verify SysML v2 parsing of aerospace FlightMissionController specification.
 
 #### `Sysml2FlightControl.IntervalAnalysis_ProvesVariableSafety`
 **Test Intent**: Verify middle-end safety passes and EFSM interval analysis on flight control model.
@@ -1000,10 +969,9 @@
 #### `Sysml2FlightControl.EmergencyStop_TransitionsToSafeFailsafe`
 **Test Intent**: Verify runtime emergency stop failsafe transition.
 
-### [`test_sysml2_parser.cpp`](../tests/frontend/formal/test_sysml2_parser.cpp) (`tests/frontend/formal/test_sysml2_parser.cpp`)
+### [`test_sysml2_parser.cpp`](../../tests/frontend/formal/test_sysml2_parser.cpp) (`tests/frontend/formal/test_sysml2_parser.cpp`)
 #### `Sysml2Parser.MultilineTransitions_ParsedIntoValidFsmIr`
-**Test Intent**: Unit test suite for the OMG SysML v2 State Definition frontend parser.
-/
+**Test Intent**: Verify multiline SysML v2 transition syntax with accept, if, and do clauses.
 
 #### `Sysml2Parser.CompactTransitions_ParsedIntoValidFsmIr`
 **Test Intent**: Verify compact inline SysML v2 transition syntax (first S1; then S2;).
@@ -1038,10 +1006,12 @@
 #### `Sysml2Parser.FractionalMillisAfterDuration_RoundedToNearest`
 **Test Intent**: Regression: `after 500.5 ms` must round to 501 ms, not truncate to 500 ms.
 
-### [`test_sysml2_structured_data.cpp`](../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
+#### `Sysml2Parser.EntryAndExitActionBlocks_AssignmentsPopulatedInIr`
+**Test Intent**: Regression BUG-01: SysML v2 entry and exit action blocks must parse assignments.
+
+### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`
-**Test Intent**: Unit test suite for SysML v2 structured data types, enums, temporal triggers, and connection points.
-/
+**Test Intent**: Verify SysML v2 enum definition parsing into FsmIr data types.
 
 #### `Sysml2StructuredData.StructDefinitions_ParsedIntoIrTypes`
 **Test Intent**: Verify SysML v2 struct and datatype definitions parsing.
@@ -1059,9 +1029,9 @@
 
 ## Formal IR Subsystem
 
-### [`test_data_definitions.cpp`](../tests/ir/test_data_definitions.cpp) (`tests/ir/test_data_definitions.cpp`)
+### [`test_data_definitions.cpp`](../../tests/ir/test_data_definitions.cpp) (`tests/ir/test_data_definitions.cpp`)
 #### `EnumDefinition.LiteralInstantiationAndQueryMethods_PreservesValueSemantics`
-**Test Intent**: Unit tests for IR user-defined data structures: EnumDefinition, StructDefinition, and JSON schema
+**Test Intent**: Verify EnumDefinition and EnumLiteral creation, query methods, and value semantics.
 
 #### `StructDefinition.FieldAttributesAndDomainContracts_PreservesValueSemantics`
 **Test Intent**: Verify StructDefinition and StructField attributes, ISQ units, domain contracts, and equality.
@@ -1078,10 +1048,9 @@
 #### `DataType.ComplexTemplatedAndNamespacedTypes_PreservedAccurately`
 **Test Intent**: Verify DataType::from_string preserves complex C++ templated types and std:: namespaces
 
-### [`test_data_type.cpp`](../tests/ir/test_data_type.cpp) (`tests/ir/test_data_type.cpp`)
+### [`test_data_type.cpp`](../../tests/ir/test_data_type.cpp) (`tests/ir/test_data_type.cpp`)
 #### `DataType.PrimitiveFactories_ClassifiesKindsAndBitWidths`
-**Test Intent**: Unit tests for DataType target-agnostic type system, classification, parsing, and multi-language lowering.
-/
+**Test Intent**: Verify DataType primitive factories, kind classifications, and bit-width calculations.
 
 #### `DataType.CustomEnumAndStructTypes_PreservesTypenameAndKind`
 **Test Intent**: Verify DataType user-defined types (enumeration, structure, custom handle).
@@ -1104,9 +1073,9 @@
 #### `DataType.TypeClassificationStringFormatting_SerializesToStream`
 **Test Intent**: Verify TypeClassification string serialization and stream output operator.
 
-### [`test_efsm_metamodel_extensions.cpp`](../tests/ir/test_efsm_metamodel_extensions.cpp) (`tests/ir/test_efsm_metamodel_extensions.cpp`)
+### [`test_efsm_metamodel_extensions.cpp`](../../tests/ir/test_efsm_metamodel_extensions.cpp) (`tests/ir/test_efsm_metamodel_extensions.cpp`)
 #### `LValueTarget.QualifiedPathAndScopingSyntax_ParsesRegistersLocalsAndPorts`
-**Test Intent**: Unit tests for EFSM metamodel extensions: LValueTarget, ActionAssignment, StateTimeInvariant, and
+**Test Intent**: Verify LValueTarget scope qualification, member paths, and array index parsing.
 
 #### `ActionAssignment.AssignmentStatementsAndOperators_ExtractsLValueAndRValueExpressions`
 **Test Intent**: Verify ActionAssignment construction and assignment statement parsing.
@@ -1120,10 +1089,9 @@
 #### `TransitionEdge.ConditionActionsAndPriorities_SortsCanonicallyByAscendingPriority`
 **Test Intent**: Verify dual transition actions (condition and transition effects) and priority canonicalization.
 
-### [`test_fsm_ir.cpp`](../tests/ir/test_fsm_ir.cpp) (`tests/ir/test_fsm_ir.cpp`)
+### [`test_fsm_ir.cpp`](../../tests/ir/test_fsm_ir.cpp) (`tests/ir/test_fsm_ir.cpp`)
 #### `FsmIr.ModularHeaderSubcomponents_ConvertsEnumsAndDispatchesVariants`
-**Test Intent**: Unit tests for core Intermediate Representation (FsmIr), state hierarchy, AST expressions, and serialization.
-/
+**Test Intent**: Verify modular IR header decoupling, enum converters, and trigger variants.
 
 #### `DeterministicId.HierarchicalStatePaths_GeneratesStableUniqueIds`
 **Test Intent**: Verify deterministic FNV-1a 64-bit ID computation for state node identification.
@@ -1200,9 +1168,9 @@
 #### `FsmIr.CanonicalTransitionPriority_EnforcesAscendingEvaluationOrder`
 **Test Intent**: Verify canonical transition sorting enforces strict ascending priority ordering.
 
-### [`test_fsm_ir_semantic_completeness.cpp`](../tests/ir/test_fsm_ir_semantic_completeness.cpp) (`tests/ir/test_fsm_ir_semantic_completeness.cpp`)
+### [`test_fsm_ir_semantic_completeness.cpp`](../../tests/ir/test_fsm_ir_semantic_completeness.cpp) (`tests/ir/test_fsm_ir_semantic_completeness.cpp`)
 #### `StateKind.TerminatePseudostate_DifferentiatedFromFinalState`
-**Test Intent**: Unit tests for target-agnostic FSM IR semantic completeness extensions:
+**Test Intent**: Verify StateKind::Terminate pseudostate classification and string conversions.
 
 #### `ClockDefinition.TimedAutomataClocksAndResets_InitializesAndComparesCorrectly`
 **Test Intent**: Verify ClockDefinition creation, resolution units, and clock reset operations.
@@ -1229,10 +1197,12 @@
 
 ## Middle-End Verification & Transformation Subsystem
 
-### [`test_inlining_passes.cpp`](../tests/middleend/canonicalization/test_inlining_passes.cpp) (`tests/middleend/canonicalization/test_inlining_passes.cpp`)
+### [`test_inlining_passes.cpp`](../../tests/middleend/canonicalization/test_inlining_passes.cpp) (`tests/middleend/canonicalization/test_inlining_passes.cpp`)
 #### `SubmachineInlining.SubmachineReference_SplicedIntoHostCompositeState`
-**Test Intent**: Unit tests for submachine and choice pseudo-state inlining canonicalization passes.
-/
+**Test Intent**: Verify SubmachineInliningPass graph splicing and entry port remapping.
+
+#### `SubmachineInlining.ChoiceNodesAndVariables_InlinedWithSynchronizedIds`
+**Test Intent**: Verify SubmachineInliningPass clones Choice nodes and machine-scoped variables with proper prefixes.
 
 #### `ChoiceInlining.DecisionBranches_FlattenedIntoCompositeTransitions`
 **Test Intent**: Verify ChoiceInliningPass flattens choice pseudostates into direct composite transitions.
@@ -1240,10 +1210,9 @@
 #### `ChoiceInlining.SelfTransitionThroughChoice_PreservesExternalKind`
 **Test Intent**: Verify that a transition through a choice node returning to the source state
 
-### [`test_orthogonal_product.cpp`](../tests/middleend/canonicalization/test_orthogonal_product.cpp) (`tests/middleend/canonicalization/test_orthogonal_product.cpp`)
+### [`test_orthogonal_product.cpp`](../../tests/middleend/canonicalization/test_orthogonal_product.cpp) (`tests/middleend/canonicalization/test_orthogonal_product.cpp`)
 #### `OrthogonalProduct.ConcurrentRegions_ExpandedToCartesianProductStates`
-**Test Intent**: Unit tests for OrthogonalProductPass Cartesian product canonicalization.
-/
+**Test Intent**: Verify OrthogonalProductPass expands concurrent regions into Cartesian product states.
 
 #### `OrthogonalProduct.IncompleteParallelState_ReportsDiagnosticWithoutMutation`
 **Test Intent**: Reject malformed parallel states instead of silently changing their semantics.
@@ -1272,17 +1241,16 @@
 #### `OrthogonalProduct.ExternalEntryIntoSubState_ActivatesInitialStatesInOtherRegions`
 **Test Intent**: External transition entering a sub-state must activate initial states in all other regions.
 
-### [`test_pass_manager.cpp`](../tests/middleend/canonicalization/test_pass_manager.cpp) (`tests/middleend/canonicalization/test_pass_manager.cpp`)
+### [`test_pass_manager.cpp`](../../tests/middleend/canonicalization/test_pass_manager.cpp) (`tests/middleend/canonicalization/test_pass_manager.cpp`)
 #### `PassManager.DefaultPipelineExecution_CollectsStatisticsAndEmitsDiagnostics`
-**Test Intent**: Unit tests for PassManager execution pipeline, pass chaining, and statistical profiling.
-/
+**Test Intent**: Verify PassManager default optimization and analysis pipeline execution.
 
 #### `PassManager.CustomPassRegistration_ModifiesIrAndRecordsExecutionStats`
 **Test Intent**: Verify custom pass registration and extension in PassManager.
 
-### [`test_structural_lowering.cpp`](../tests/middleend/canonicalization/test_structural_lowering.cpp) (`tests/middleend/canonicalization/test_structural_lowering.cpp`)
+### [`test_structural_lowering.cpp`](../../tests/middleend/canonicalization/test_structural_lowering.cpp) (`tests/middleend/canonicalization/test_structural_lowering.cpp`)
 #### `HistoryLowering.ShallowHistoryTarget_LowersToShadowRegisterAndDispatchGuards`
-**Test Intent**: Unit tests for Category A Structural Lowering Suite:
+**Test Intent**: Verify shallow history pseudostate lowering into shadow variables and dynamic dispatch.
 
 #### `DeferredEventLowering.DeferredEventsDeclared_LowersToBufferVariablesAndRecallTransitions`
 **Test Intent**: Verify deferred events lowering into bounded queue buffers and recall transitions.
@@ -1308,10 +1276,15 @@
 #### `ConnectiveJunctionChaining.SelfTransitionThroughJunction_PreservesExternalKind`
 **Test Intent**: Verify that a self-transition chained through a junction preserves External kind.
 
-### [`test_common_action_factoring.cpp`](../tests/middleend/optimization/test_common_action_factoring.cpp) (`tests/middleend/optimization/test_common_action_factoring.cpp`)
+#### `ConnectiveJunctionChaining.ActionInstructionsAndInvocations_PreservedAcrossChainedPath`
+**Test Intent**: Verify that ConnectiveJunctionChainingPass preserves ActionAstNode instructions, accepts_event, and invocations.
+
+#### `ForkJoinLowering.BranchActionsAndClockResets_PreservedInLoweredTransitions`
+**Test Intent**: Verify that ForkJoinLoweringPass preserves branch actions and clock resets when lowering Fork and Join.
+
+### [`test_common_action_factoring.cpp`](../../tests/middleend/optimization/test_common_action_factoring.cpp) (`tests/middleend/optimization/test_common_action_factoring.cpp`)
 #### `CommonActionFactoring.ConvergentTransitionsIdenticalAction_FactoredIntoTargetEntry`
-**Test Intent**: Unit tests for CommonActionFactoringPass redundant action hoist and sink optimizations.
-/
+**Test Intent**: Verify factoring of common transition actions on convergent edges into target state entry actions.
 
 #### `CommonActionFactoring.DivergentTransitionsIdenticalAction_FactoredIntoSourceExit`
 **Test Intent**: Verify factoring of common transition actions on divergent edges into source state exit actions.
@@ -1319,10 +1292,12 @@
 #### `CommonActionFactoring.Pseudostates_NeverFactored`
 **Test Intent**: Verify that CommonActionFactoringPass does NOT factor actions into pseudostates.
 
-### [`test_constant_folding_and_minimization.cpp`](../tests/middleend/optimization/test_constant_folding_and_minimization.cpp) (`tests/middleend/optimization/test_constant_folding_and_minimization.cpp`)
+#### `CommonActionFactoring.CompositeInitialSubstate_PreservedWithoutFactoringIntoEntry`
+**Test Intent**: Verify that convergent transitions into a composite state's initial substate are not factored into entry.
+
+### [`test_constant_folding_and_minimization.cpp`](../../tests/middleend/optimization/test_constant_folding_and_minimization.cpp) (`tests/middleend/optimization/test_constant_folding_and_minimization.cpp`)
 #### `ConstantFolding.TautologicalAndContradictoryGuards_EvaluatedAndPruned`
-**Test Intent**: Unit tests for ConstantFoldingPass guard evaluation and StateMinimizationPass equivalence partitioning.
-/
+**Test Intent**: Verify ConstantFoldingPass folds tautological guards and eliminates false transitions.
 
 #### `StateMinimization.BehaviorallyEquivalentStates_MergedIntoCanonicalRepresentative`
 **Test Intent**: Verify StateMinimizationPass merges behaviorally equivalent states.
@@ -1336,9 +1311,9 @@
 #### `StateMinimization.ActivityAndInvariantDifferences_PreventMerger`
 **Test Intent**: Verify states with different do_activity or time invariants are kept separate.
 
-### [`test_datapath_optimizations.cpp`](../tests/middleend/optimization/test_datapath_optimizations.cpp) (`tests/middleend/optimization/test_datapath_optimizations.cpp`)
+### [`test_datapath_optimizations.cpp`](../../tests/middleend/optimization/test_datapath_optimizations.cpp) (`tests/middleend/optimization/test_datapath_optimizations.cpp`)
 #### `DeadActionElimination.UnreadVariableStore_PrunedFromTransitionAction`
-**Test Intent**: Unit tests for Category B Data-Path Optimizations:
+**Test Intent**: Verify DeadActionEliminationPass prunes unread variable assignments.
 
 #### `DeadActionElimination.OverwrittenAndIdentityStores_PrunedFromActionSequence`
 **Test Intent**: Verify DeadActionEliminationPass prunes write-after-write shadows and identity assignments.
@@ -1361,6 +1336,9 @@
 #### `TransitionFusion.StatesWithExternalTriggersOrInitial_PreservedWithoutFusion`
 **Test Intent**: Verify TransitionFusionPass preserves states requiring external triggers or designated as initial states.
 
+#### `TransitionFusion.CompositeInitialSubstateOrDoActivity_PreservedWithoutFusion`
+**Test Intent**: Verify TransitionFusionPass preserves composite initial substates and states with do_activity.
+
 #### `CommonActionFactoring.ConvergentIncomingEdges_FactorsActionIntoTargetEntry`
 **Test Intent**: Verify CommonActionFactoringPass factors common transition actions on convergent edges into target entry.
 
@@ -1370,26 +1348,29 @@
 #### `CommonActionFactoring.InitialStateWithIncomingEdges_PreservesInitialStateSemantics`
 **Test Intent**: Verify CommonActionFactoringPass avoids hoisting into initial state entry actions to protect reset semantics.
 
-### [`test_dead_state_pruning.cpp`](../tests/middleend/optimization/test_dead_state_pruning.cpp) (`tests/middleend/optimization/test_dead_state_pruning.cpp`)
+### [`test_dead_state_pruning.cpp`](../../tests/middleend/optimization/test_dead_state_pruning.cpp) (`tests/middleend/optimization/test_dead_state_pruning.cpp`)
 #### `DeadStatePruning.UnreachableSubgraphsAndContradictoryGuards_EliminatedFromIr`
-**Test Intent**: Unit tests for DeadStatePruningPass reachability and dead transition analysis.
-/
+**Test Intent**: Verify DeadStatePruningPass removes unreachable states and dead transitions.
 
 #### `DeadStatePruning.LeafInitialState_PreservesActiveParentAndGlobalTransitions`
 **Test Intent**: Verify DeadStatePruningPass does not prune enclosing parent states or global transitions
 
-### [`test_guard_simplification.cpp`](../tests/middleend/optimization/test_guard_simplification.cpp) (`tests/middleend/optimization/test_guard_simplification.cpp`)
-#### `GuardSimplification.AlgebraicBooleanExpressions_SimplifiedAndNormalized`
-**Test Intent**: Unit tests for GuardSimplificationPass boolean algebra reductions.
-/
+#### `DeadStatePruning.UnreachableChoicePseudostate_PrunedCleanly`
+**Test Intent**: Verify that DeadStatePruningPass prunes unreachable choice nodes cleanly without leaving zombie choices.
 
-### [`test_adversarial_qa.cpp`](../tests/middleend/verification/test_adversarial_qa.cpp) (`tests/middleend/verification/test_adversarial_qa.cpp`)
+#### `DeadStatePruning.InitialStateIdDifferentFromName_PreservesReachableStates`
+**Test Intent**: Verify reachability when initial_state_id is distinct from initial_state name.
+
+### [`test_guard_simplification.cpp`](../../tests/middleend/optimization/test_guard_simplification.cpp) (`tests/middleend/optimization/test_guard_simplification.cpp`)
+#### `GuardSimplification.AlgebraicBooleanExpressions_SimplifiedAndNormalized`
+**Test Intent**: Verify algebraic boolean simplifications (double negation, constant folding, idempotency).
+
+### [`test_adversarial_qa.cpp`](../../tests/middleend/verification/test_adversarial_qa.cpp) (`tests/middleend/verification/test_adversarial_qa.cpp`)
 - *(Executable binary test verification)*
 
-### [`test_concurrency_verification.cpp`](../tests/middleend/verification/test_concurrency_verification.cpp) (`tests/middleend/verification/test_concurrency_verification.cpp`)
+### [`test_concurrency_verification.cpp`](../../tests/middleend/verification/test_concurrency_verification.cpp) (`tests/middleend/verification/test_concurrency_verification.cpp`)
 #### `OrthogonalInterference.ConcurrentConflictingVariableWrites_EmitsDataRaceError`
-**Test Intent**: Unit tests for concurrency safety, data race detection, and determinism verification passes.
-/
+**Test Intent**: Verify OrthogonalInterferencePass detects concurrent data races in parallel (AND) states.
 
 #### `DeterminismEnforcement.MultipleTransitionsFromSameSource_SortedByAscendingPriority`
 **Test Intent**: Verify DeterminismEnforcementPass canonical priority sorting and collision detection.
@@ -1397,10 +1378,9 @@
 #### `DeterminismEnforcement.ConflictingTransitionsSamePriority_EmitsDeterminismError`
 **Test Intent**: Verify determinism enforcement detects non-deterministic collisions on identical-priority branches.
 
-### [`test_efsm_interval_analysis.cpp`](../tests/middleend/verification/test_efsm_interval_analysis.cpp) (`tests/middleend/verification/test_efsm_interval_analysis.cpp`)
+### [`test_efsm_interval_analysis.cpp`](../../tests/middleend/verification/test_efsm_interval_analysis.cpp) (`tests/middleend/verification/test_efsm_interval_analysis.cpp`)
 #### `EfsmIntervalAnalysis.CompliantPortBounds_PassesWithoutErrors`
-**Test Intent**: Unit tests for EFSMIntervalAnalyzer abstract interpretation and port interval contracts.
-/
+**Test Intent**: Verify EFSM interval analysis validates port domain bounds and detects contract violations.
 
 #### `EfsmIntervalAnalysis.OutOfRangePortAssignment_EmitsPortRangeViolation`
 **Test Intent**: Verify EFSM interval analyzer detects out-of-range assignments violating OutPort contracts.
@@ -1408,9 +1388,9 @@
 #### `EfsmIntervalAnalysis.GuardOutsidePortDomain_EmitsUnsatisfiableDiagnostic`
 **Test Intent**: Verify EFSM interval analyzer detects unsatisfiable guards over bounded InPorts.
 
-### [`test_formal_safety_passes.cpp`](../tests/middleend/verification/test_formal_safety_passes.cpp) (`tests/middleend/verification/test_formal_safety_passes.cpp`)
+### [`test_formal_safety_passes.cpp`](../../tests/middleend/verification/test_formal_safety_passes.cpp) (`tests/middleend/verification/test_formal_safety_passes.cpp`)
 #### `LivelockAnalysis.NonZeroTimeTransitions_PassesWithoutErrors`
-**Test Intent**: Unit tests for Category D Formal Safety & Analysis Passes:
+**Test Intent**: Verify LivelockAnalysisPass validates systems without zero-time instantaneous cycles.
 
 #### `LivelockAnalysis.ZeroTimeAutonomousCycles_EmitsLivelockDiagnostic`
 **Test Intent**: Verify LivelockAnalysisPass detects infinite zero-time autonomous cycles.
@@ -1419,8 +1399,17 @@
 **Test Intent**: Verify LivelockAnalysisPass and FsmValidator catch cycles with explicit "anonymous_event" /
 "completion_event".
 
+#### `LivelockAnalysis.ChoicePseudostatesZeroTimeLoop_DetectedAsLivelock`
+**Test Intent**: Verify LivelockAnalysisPass detects cycles confined to Choice pseudostates in choice_nodes.
+
 #### `PriorityConflict.InvertedChildPrecedenceUnderOuterFirst_EmitsPriorityConflictDiagnostic`
 **Test Intent**: Verify PriorityConflictPass detects hierarchical policy preemption violations.
+
+#### `PriorityConflict.ParentStateHierarchyStringName_DetectsHierarchicalPreemptionConflict`
+**Test Intent**: Verify PriorityConflictPass detects hierarchical preemption violations when hierarchy is defined via parent_state name.
+
+#### `FsmValidator.InitialStateSpecifiedViaId_ValidatesCleanlyWithoutConstCastMutation`
+**Test Intent**: Verify FsmValidator correctly accepts initial_state_id without const_cast mutation or false warnings.
 
 #### `TimedInvariantsVerifier.TransitionDelayWithinStatePermanence_PassesVerification`
 **Test Intent**: Verify TimedInvariantsVerifierPass validates states whose outgoing transitions respect stay permanence.
@@ -1431,10 +1420,9 @@
 #### `EventQueueBound.DeferredEventsAndSignalEmits_CalculatesSafeCapacityPowerOfTwo`
 **Test Intent**: Verify EventQueueBoundPass computes safe static queue capacity rounded up to a power of two.
 
-### [`test_guard_satisfiability.cpp`](../tests/middleend/verification/test_guard_satisfiability.cpp) (`tests/middleend/verification/test_guard_satisfiability.cpp`)
+### [`test_guard_satisfiability.cpp`](../../tests/middleend/verification/test_guard_satisfiability.cpp) (`tests/middleend/verification/test_guard_satisfiability.cpp`)
 #### `GuardSatisfiability.DisjointNumericGuardIntervals_EmitsNoWarnings`
-**Test Intent**: Unit tests for GuardSatisfiabilityPass interval analysis, dead guards, and mutual exclusivity.
-/
+**Test Intent**: Verify that provably disjoint numeric guard intervals emit no ambiguity warnings.
 
 #### `GuardSatisfiability.OverlappingGuardsIdenticalPriority_EmitsAmbiguityWarning`
 **Test Intent**: Verify that overlapping guard intervals on the same event and priority emit warning W0301.
@@ -1451,13 +1439,15 @@
 #### `GuardSatisfiability.QualifiedVariableDomainParsing_ExtractsExactIntervalBoundaries`
 **Test Intent**: Verify zero-allocation parse_guard_domain with qualifiers and numeric formats.
 
-### [`test_ltl_model_checker_extended.cpp`](../tests/middleend/verification/test_ltl_model_checker_extended.cpp) (`tests/middleend/verification/test_ltl_model_checker_extended.cpp`)
+#### `GuardSatisfiability.DistinctTriggersWithEmptyEventString_DoNotConflict`
+**Test Intent**: Verify that distinct triggers (e.g. SignalTrigger vs TimeTrigger) with empty event string do not conflict.
+
+### [`test_ltl_model_checker_extended.cpp`](../../tests/middleend/verification/test_ltl_model_checker_extended.cpp) (`tests/middleend/verification/test_ltl_model_checker_extended.cpp`)
 - *(Executable binary test verification)*
 
-### [`test_model_checker_reachability.cpp`](../tests/middleend/verification/test_model_checker_reachability.cpp) (`tests/middleend/verification/test_model_checker_reachability.cpp`)
+### [`test_model_checker_reachability.cpp`](../../tests/middleend/verification/test_model_checker_reachability.cpp) (`tests/middleend/verification/test_model_checker_reachability.cpp`)
 #### `FsmValidator.SoundStateHierarchy_PassesValidationWithoutErrors`
-**Test Intent**: Unit tests for FSM formal validator, graph reachability, livelock cycles, and EFSM interval analysis.
-/
+**Test Intent**: Verify formal validation passes for a sound state machine with zero defects.
 
 #### `FsmValidator.AutonomousClosedCycle_EmitsLivelockDiagnostic`
 **Test Intent**: Verify model checker detection of livelock cycles with no exit transitions.
@@ -1480,10 +1470,9 @@
 #### `EfsmIntervalAnalysis.OutOfRangeVariableGuardCondition_FlagsUnsatisfiableBranch`
 **Test Intent**: Verify EFSM Interval Analysis detects unsatisfiable guard conditions across data paths.
 
-### [`test_model_checker_temporal_logic.cpp`](../tests/middleend/verification/test_model_checker_temporal_logic.cpp) (`tests/middleend/verification/test_model_checker_temporal_logic.cpp`)
+### [`test_model_checker_temporal_logic.cpp`](../../tests/middleend/verification/test_model_checker_temporal_logic.cpp) (`tests/middleend/verification/test_model_checker_temporal_logic.cpp`)
 #### `LtlPropertyParser.BasicUnaryAndBinaryOperators_ParsesAstAndToString`
-**Test Intent**: Unit tests for LTL/CTL temporal logic parser, ModelChecker solver, and SMV formal specification generation.
-/
+**Test Intent**: Verify LTL formula tokenization and operator parsing (G, F, X, !, &&, ||, U, ->).
 
 #### `LtlPropertyParser.NestedTemporalFormulas_PreservesAssociativityAndPrecedence`
 **Test Intent**: Verify complex nested temporal logic formulas (response properties, mutual exclusion).
@@ -1524,10 +1513,9 @@
 #### `EFSMDataPathPass.UnsatisfiableGuard_PrunesDeadTransitionWhenOptimizationEnabled`
 **Test Intent**: Verify EFSMDataPathPass dead transition pruning based on unsatisfiable guard intervals.
 
-### [`test_timed_automata_verification.cpp`](../tests/middleend/verification/test_timed_automata_verification.cpp) (`tests/middleend/verification/test_timed_automata_verification.cpp`)
+### [`test_timed_automata_verification.cpp`](../../tests/middleend/verification/test_timed_automata_verification.cpp) (`tests/middleend/verification/test_timed_automata_verification.cpp`)
 #### `TimedDeadlockPass.RacingTimeoutAndEventSamePriority_EmitsAmbiguityWarning`
-**Test Intent**: Unit tests for timed automata deadlock pass, SMV clock emission, and deterministic runtime timer management.
-/
+**Test Intent**: Verify TimedDeadlockPass flags racing timeouts without explicit priority differentiation.
 
 #### `SmvSerializer.TimeTriggeredTransitions_EmitsTickCountersAndNextTransitions`
 **Test Intent**: Verify SMV formal serializer emits discrete tick counter variables and next-state assignments for timers.
@@ -1535,10 +1523,9 @@
 #### `DeterministicTimerManager.SingleShotAndPeriodicTimers_StepsAndExpiresDeterministically`
 **Test Intent**: Verify deterministic timer manager handles one-shot and periodic timer steps without drifting.
 
-### [`test_wcet_analysis.cpp`](../tests/middleend/verification/test_wcet_analysis.cpp) (`tests/middleend/verification/test_wcet_analysis.cpp`)
+### [`test_wcet_analysis.cpp`](../../tests/middleend/verification/test_wcet_analysis.cpp) (`tests/middleend/verification/test_wcet_analysis.cpp`)
 #### `WcetAnalysis.EventlessCyclicTransitions_EmitsZenoCycleError`
-**Test Intent**: Unit tests for WcetAnalysisPass static execution time bounding and Zeno cycle detection.
-/
+**Test Intent**: Verify WcetAnalysisPass detects infinite zero-time Zeno cycles.
 
 #### `WcetAnalysis.LinearEventlessChains_ComputesBoundedMicroSteps`
 **Test Intent**: Verify WcetAnalysisPass computes bounded micro-steps for terminating chains.
@@ -1547,25 +1534,23 @@
 
 ## Integration & Build Subsystem
 
-### [`test_full_7stage_pipeline.cpp`](../tests/integration/pipeline/test_full_7stage_pipeline.cpp) (`tests/integration/pipeline/test_full_7stage_pipeline.cpp`)
+### [`test_full_7stage_pipeline.cpp`](../../tests/integration/pipeline/test_full_7stage_pipeline.cpp) (`tests/integration/pipeline/test_full_7stage_pipeline.cpp`)
 #### `VerifiedPipeline.MultiStageCompilerPipeline_LowersOptimizesAndVerifiesIr`
-**Test Intent**: Integration tests for the verified 7-stage compilation pipeline, pass dependencies, and statistics.
-/
+**Test Intent**: Verify full execution of the verified 7-stage middle-end compilation pipeline.
 
 #### `VerifiedPipeline.MissingPrerequisitePass_EmitsDependencyWarning`
 **Test Intent**: Verify pipeline warning diagnostics when a registered pass has unmet prerequisites.
 
-### [`test_pipeline_extensibility.cpp`](../tests/integration/pipeline/test_pipeline_extensibility.cpp) (`tests/integration/pipeline/test_pipeline_extensibility.cpp`)
+### [`test_pipeline_extensibility.cpp`](../../tests/integration/pipeline/test_pipeline_extensibility.cpp) (`tests/integration/pipeline/test_pipeline_extensibility.cpp`)
 #### `PipeThroughPass.PosixFilterExecution_RoundtripsIrFidelity`
-**Test Intent**: Integration tests for pipeline extensibility, external Unix pipe filters, and dynamic plugin loading.
-/
+**Test Intent**: Verify PipeThroughPass filters IR faithfully through an external Unix command.
 
 #### `PluginLoader.MissingSharedObject_FailsGracefullyWithDiagnostic`
 **Test Intent**: Verify PluginLoader handles non-existent or invalid plugin files gracefully.
 
-### [`test_cli_driver_errors.cpp`](../tests/integration/test_cli_driver_errors.cpp) (`tests/integration/test_cli_driver_errors.cpp`)
+### [`test_cli_driver_errors.cpp`](../../tests/integration/test_cli_driver_errors.cpp) (`tests/integration/test_cli_driver_errors.cpp`)
 #### `FsmcDriver.MissingInput_ReturnsNonZero`
-**Test Intent**: Comprehensive regression tests for controlled fsmc and fsm-opt driver failure contracts.
+**Test Intent**: Ensure fsmc and fsm-opt drivers reject missing input specifications cleanly.
 
 **Scenario**:
   - Invoke FsmcDriver and OptDriver with empty input paths.
@@ -1633,12 +1618,18 @@
 **Scenario**:
   - Run formal verification on sound model with verify_engine set to 'auto'.
 
-### [`test_cmake_integration.cpp`](../tests/integration/test_cmake_integration.cpp) (`tests/integration/test_cmake_integration.cpp`)
+#### `CliOptions.InvalidEngineAndRtmFormat_AreRejected`
+**Test Intent**: Verify invalid --engine and --rtm-format values are rejected by CLI option parser.
+
+**Scenario**:
+  - Pass unsupported values '--engine=z3' and '--rtm-format=xml' to parse_cli_args.
+
+### [`test_cmake_integration.cpp`](../../tests/integration/test_cmake_integration.cpp) (`tests/integration/test_cmake_integration.cpp`)
 - *(Executable binary test verification)*
 
-### [`test_fsm_opt_cli_options.cpp`](../tests/integration/test_fsm_opt_cli_options.cpp) (`tests/integration/test_fsm_opt_cli_options.cpp`)
+### [`test_fsm_opt_cli_options.cpp`](../../tests/integration/test_fsm_opt_cli_options.cpp) (`tests/integration/test_fsm_opt_cli_options.cpp`)
 #### `FsmOptOptionsTest.GeneralOptions_HelpVersionAndListPasses_ReturnZero`
-**Test Intent**: Comprehensive verification suite for all fsm-opt command-line options.
+**Test Intent**: Verify general informational flags (-h, --help, -v, --version, --list-passes) exit cleanly with
 
 **Scenario**:
   - Invoke fsm-opt with each informational option individually and verify successful exit code 0.
@@ -1699,9 +1690,21 @@
 **Scenario**:
   - Pass '-' as positional input and verify parsed input_path is '-'.
 
-### [`test_fsmc_cli_options.cpp`](../tests/integration/test_fsmc_cli_options.cpp) (`tests/integration/test_fsmc_cli_options.cpp`)
+#### `FsmOptOptionsTest.SpaceSeparatedPassesAndCleanMetricsOutput`
+**Test Intent**: Verify space-separated --passes, semantic-validation pass, sampled-change-triggers alias, and
+
+**Scenario**:
+  - Run fsm-opt with space-separated '--passes semantic-validation,sampled-change-triggers' and '--metrics'.
+
+#### `FsmOptOptionsTest.InlineSubmachinesPass_ResolvesExternalSubmachineFiles`
+**Test Intent**: Verify --passes=inline-submachines in fsm-opt resolves external submachine files from disk.
+
+**Scenario**:
+  - Create a submachine model file and a parent model referencing it, then run fsm-opt with inline-submachines.
+
+### [`test_fsmc_cli_options.cpp`](../../tests/integration/test_fsmc_cli_options.cpp) (`tests/integration/test_fsmc_cli_options.cpp`)
 #### `FsmcOptionsTest.ExportRuntime_ToExistingDirectory_CreatesHeader`
-**Test Intent**: Comprehensive verification suite for all fsmc command-line options.
+**Test Intent**: Verify --export-runtime cleanly exports standalone runtime header to an existing directory
 
 **Scenario**:
   - Pass existing directory to --export-runtime and verify fsm.hpp is created
@@ -1817,9 +1820,27 @@
 **Scenario**:
   - Pass '-' as positional input and verify parsed input_file is '-'.
 
-### [`test_multiformat_presets_roundtrip.cpp`](../tests/integration/test_multiformat_presets_roundtrip.cpp) (`tests/integration/test_multiformat_presets_roundtrip.cpp`)
+#### `FsmcOptionsTest.VerifyMode_PrintsCounterexampleAndHonorsWerror`
+**Test Intent**: Verify --verify mode prints full verification report with counterexamples and honors -Werror.
+
+**Scenario**:
+  - Run --verify on a model with a violated LTL property and on a model with warnings under -Werror.
+
+#### `FsmcOptionsTest.RtmEarlyExitAndDiagramCodegenBlocker`
+**Test Intent**: Verify --rtm without -o exits cleanly without dumping C++ to stdout, and diagram codegen check
+
+**Scenario**:
+  - Run --rtm alone (verify empty stdout) and run --rtm with -o on an untyped PlantUML diagram (verify blocked).
+
+#### `FsmcOptionsTest.ModularPositionalOrderingAndIdentifierSanitization`
+**Test Intent**: Verify --modular before positional input file does not consume the input file as a header, and
+
+**Scenario**:
+  - Parse '--modular model.sysml' and '--modular <fsm/fsm.hpp> model.sysml', and test infer_fsm_name_from_file.
+
+### [`test_multiformat_presets_roundtrip.cpp`](../../tests/integration/test_multiformat_presets_roundtrip.cpp) (`tests/integration/test_multiformat_presets_roundtrip.cpp`)
 #### `MultiformatPresets.Sysml2UavMission_PassesRoundtripAndStrictCompilation`
-**Test Intent**: Formal Verification and End-to-End Roundtrip Suite for Canonical Multi-Format Presets.
+**Test Intent**: Verify Autonomous UAV Mission SysML v2 preset end-to-end.
 
 #### `MultiformatPresets.ScxmlIndustrialPress_PassesRoundtripAndStrictCompilation`
 **Test Intent**: Verify Industrial Press SCXML preset end-to-end.

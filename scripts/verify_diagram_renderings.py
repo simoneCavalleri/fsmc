@@ -44,6 +44,10 @@ def verify_graphviz(dot_code):
     """Verifies that Graphviz DOT compiles to a valid SVG layout with 0 errors."""
     code, stdout, stderr = run_cmd(["dot", "-Tsvg"], input_text=dot_code)
     if code != 0:
+        if "not recognized" in stderr or "dot -c" in stderr:
+            code_dot, stdout_dot, stderr_dot = run_cmd(["dot", "-Tdot"], input_text=dot_code)
+            if code_dot == 0:
+                return True, "Valid Graphviz DOT Syntax & Layout (fallback)"
         return False, f"Graphviz layout error: {stderr}"
     if not stdout.startswith("<?xml") and "<svg" not in stdout:
         return False, "Graphviz did not produce valid SVG output"
@@ -159,50 +163,80 @@ def main():
             src_text = f.read()
 
         # 1. Graphviz DOT
-        dot_out = run_cmd(["./build/bin/fsmc", "-i", path, "--export", "dot"])[1]
-        ok, msg = verify_graphviz(dot_out)
+        rc, dot_out, dot_err = run_cmd(["./build/bin/fsmc", "-i", path, "--export", "dot"])
+        if rc != 0:
+            ok, msg = False, f"fsmc export failed (exit {rc}): {dot_err.strip()}"
+        else:
+            ok, msg = verify_graphviz(dot_out)
         print(f"  • Graphviz (.dot)     -> Engine Layout: {'✓ PASS' if ok else '✗ FAIL'} ({msg})")
         total += 1
         if ok: passed += 1
 
         # 2. PlantUML
-        puml_out = run_cmd(["./build/bin/fsmc", "-i", path, "--export", "plantuml"])[1]
-        ok, msg = verify_plantuml(puml_out)
+        rc, puml_out, puml_err = run_cmd(["./build/bin/fsmc", "-i", path, "--export", "plantuml"])
+        if rc != 0:
+            ok, msg = False, f"fsmc export failed (exit {rc}): {puml_err.strip()}"
+        else:
+            ok, msg = verify_plantuml(puml_out)
         print(f"  • PlantUML (.puml)    -> Engine Syntax: {'✓ PASS' if ok else '✗ FAIL'} ({msg})")
         total += 1
         if ok: passed += 1
 
         # 3. W3C SCXML
-        scxml_out = run_cmd(["./build/bin/fsmc", "-i", path, "--export", "scxml"])[1]
-        ok, msg = verify_scxml(scxml_out)
+        rc, scxml_out, scxml_err = run_cmd(["./build/bin/fsmc", "-i", path, "--export", "scxml"])
+        if rc != 0:
+            ok, msg = False, f"fsmc export failed (exit {rc}): {scxml_err.strip()}"
+        else:
+            ok, msg = verify_scxml(scxml_out)
         print(f"  • W3C SCXML (.scxml)  -> XML Validator: {'✓ PASS' if ok else '✗ FAIL'} ({msg})")
         total += 1
         if ok: passed += 1
 
         # 4. XState JSON
-        json_out = run_cmd(["./build/bin/fsmc", "-i", path, "--export", "json"])[1]
-        ok, msg = verify_json(json_out)
+        rc, json_out, json_err = run_cmd(["./build/bin/fsmc", "-i", path, "--export", "json"])
+        if rc != 0:
+            ok, msg = False, f"fsmc export failed (exit {rc}): {json_err.strip()}"
+        else:
+            ok, msg = verify_json(json_out)
         print(f"  • XState (.json)      -> JSON Validator:{'✓ PASS' if ok else '✗ FAIL'} ({msg})")
         total += 1
         if ok: passed += 1
 
         # 5. Mermaid
-        mmd_out = run_cmd(["./build/bin/fsmc", "-i", path, "--export", "mermaid"])[1]
-        ok, msg = verify_mermaid(mmd_out)
+        rc, mmd_out, mmd_err = run_cmd(["./build/bin/fsmc", "-i", path, "--export", "mermaid"])
+        if rc != 0:
+            ok, msg = False, f"fsmc export failed (exit {rc}): {mmd_err.strip()}"
+        else:
+            ok, msg = verify_mermaid(mmd_out)
         print(f"  • Mermaid (.mmd)      -> Grammar Syntax:{'✓ PASS' if ok else '✗ FAIL'} ({msg})")
         total += 1
         if ok: passed += 1
 
         # 6. OMG SysML v2
-        sysml_out = run_cmd(["./build/bin/fsmc", "-i", path, "--export", "sysml2"])[1]
-        ok, msg = verify_sysml2(sysml_out)
+        rc, sysml_out, sysml_err = run_cmd(["./build/bin/fsmc", "-i", path, "--export", "sysml2"])
+        if rc != 0:
+            ok, msg = False, f"fsmc export failed (exit {rc}): {sysml_err.strip()}"
+        else:
+            ok, msg = verify_sysml2(sysml_out)
         print(f"  • OMG SysML v2 (.sysml)-> Grammar & IR:  {'✓ PASS' if ok else '✗ FAIL'} ({msg})")
         total += 1
         if ok: passed += 1
 
+        # 7. Cameo / MagicDraw XMI
+        rc, xmi_out, xmi_err = run_cmd(["./build/bin/fsmc", "-i", path, "--export", "cameo"])
+        if rc != 0:
+            ok, msg = False, f"fsmc export failed (exit {rc}): {xmi_err.strip()}"
+        else:
+            ok, msg = verify_cameo_xmi(xmi_out)
+        print(f"  • Cameo XMI (.xmi)    -> OMG XMI Schema:{'✓ PASS' if ok else '✗ FAIL'} ({msg})")
+        total += 1
+        if ok: passed += 1
+
+    pct = round(passed / total * 100) if total > 0 else 0
     print("\n==================================================================")
-    print(f" Summary: {passed}/{total} Render & Standards Validations Passed ({round(passed/total*100)}%)")
+    print(f" Summary: {passed}/{total} Render & Standards Validations Passed ({pct}%)")
     print("==================================================================")
+    sys.exit(0 if passed == total and total > 0 else 1)
 
 if __name__ == "__main__":
     main()

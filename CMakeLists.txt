@@ -15,13 +15,19 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Export compile commands for tooling (clangd, clang-tidy, IDEs)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Output binaries directly to build/bin
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+if(NOT DEFINED PROJECT_IS_TOP_LEVEL)
+    string(COMPARE EQUAL "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}" PROJECT_IS_TOP_LEVEL)
+endif()
+
+# Output binaries directly to build/bin when building fsmc standalone
+if(PROJECT_IS_TOP_LEVEL)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+endif()
 
 # Project build options
-option(FSMC_ENABLE_TESTING "Build the test suites" ON)
-option(FSMC_ENABLE_EXAMPLES "Build example applications" ON)
-option(FSMC_ENABLE_BENCHMARKS "Build micro-benchmarks" ON)
+option(FSMC_ENABLE_TESTING "Build the test suites" ${PROJECT_IS_TOP_LEVEL})
+option(FSMC_ENABLE_EXAMPLES "Build example applications" ${PROJECT_IS_TOP_LEVEL})
+option(FSMC_ENABLE_BENCHMARKS "Build micro-benchmarks" ${PROJECT_IS_TOP_LEVEL})
 option(FSMC_ENABLE_SANITIZERS "Enable Address and Undefined sanitizers (Debug only)" OFF)
 option(FSMC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors (-Werror)" OFF)
 
@@ -56,23 +62,21 @@ endif()
 find_package(Threads REQUIRED)
 
 # Fast compiler cache support (ccache)
-find_program(CCACHE_PROGRAM ccache)
-if(CCACHE_PROGRAM)
-    message(STATUS "Found ccache: ${CCACHE_PROGRAM}")
-    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
-    set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK "${CCACHE_PROGRAM}")
+if(PROJECT_IS_TOP_LEVEL)
+    find_program(CCACHE_PROGRAM ccache)
+    if(CCACHE_PROGRAM)
+        message(STATUS "Found ccache: ${CCACHE_PROGRAM}")
+        set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
+        set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK "${CCACHE_PROGRAM}")
+    endif()
 endif()
 
 # ==============================================================================
-# Modular Interface Library Targets (fsmc::ir, fsmc::runtime)
+# Modular Interface Library Targets (fsmc::runtime)
 # ==============================================================================
 add_library(fsmc_runtime INTERFACE)
 add_library(fsmc::fsmc_runtime ALIAS fsmc_runtime)
 add_library(fsmc::runtime ALIAS fsmc_runtime)
-add_library(fsmc::ir ALIAS fsmc_runtime)
-add_library(fsmc::middleend ALIAS fsmc_runtime)
-add_library(fsmc::frontend ALIAS fsmc_runtime)
-add_library(fsmc::backend ALIAS fsmc_runtime)
 
 target_include_directories(fsmc_runtime INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -90,7 +94,12 @@ file(GLOB_RECURSE FSMC_COMPILER_SOURCES CONFIGURE_DEPENDS
 )
 
 add_library(fsmc_compiler STATIC ${FSMC_COMPILER_SOURCES})
+add_library(fsmc::fsmc_compiler ALIAS fsmc_compiler)
 add_library(fsmc::compiler ALIAS fsmc_compiler)
+add_library(fsmc::ir ALIAS fsmc_compiler)
+add_library(fsmc::middleend ALIAS fsmc_compiler)
+add_library(fsmc::frontend ALIAS fsmc_compiler)
+add_library(fsmc::backend ALIAS fsmc_compiler)
 
 target_include_directories(fsmc_compiler PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -151,14 +160,14 @@ if(Python3_FOUND)
     add_custom_target(generate_test_catalog
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_test_catalog.py
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Generating docs/TEST_SUITE_CATALOG.md from in-code test comments..."
+        COMMENT "Generating docs/reference/test_suite_catalog.md from in-code test comments..."
         VERBATIM
     )
 
     add_custom_target(check_test_catalog
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_test_catalog.py --check
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Validating that docs/TEST_SUITE_CATALOG.md is synchronized with in-code test comments..."
+        COMMENT "Validating that docs/reference/test_suite_catalog.md is synchronized with in-code test comments..."
         VERBATIM
     )
 

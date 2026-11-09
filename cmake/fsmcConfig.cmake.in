@@ -1,11 +1,28 @@
 @PACKAGE_INIT@
 
-include(CMakeFindDependencyTargets OPTIONAL)
+include(CMakeFindDependencyMacro)
 include(FindPackageHandleStandardArgs)
 
+find_dependency(Threads)
+if(@ZLIB_FOUND@)
+    find_dependency(ZLIB)
+endif()
+
 # Include the exported targets
-if(NOT TARGET fsmc::fsmc)
+if(NOT TARGET fsmc::fsmc_runtime)
     include("${CMAKE_CURRENT_LIST_DIR}/fsmcTargets.cmake")
+endif()
+
+# Define documented alias targets for installed consumers
+if(TARGET fsmc::fsmc_runtime AND NOT TARGET fsmc::runtime)
+    add_library(fsmc::runtime ALIAS fsmc::fsmc_runtime)
+endif()
+if(TARGET fsmc::fsmc_compiler)
+    foreach(_alias compiler ir middleend frontend backend)
+        if(NOT TARGET fsmc::${_alias})
+            add_library(fsmc::${_alias} ALIAS fsmc::fsmc_compiler)
+        endif()
+    endforeach()
 endif()
 
 # Include the code generation helpers

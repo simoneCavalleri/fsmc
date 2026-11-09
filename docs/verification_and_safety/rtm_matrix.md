@@ -68,15 +68,15 @@ To generate the traceability report during compilation:
   "fsm_name": "EngineController",
   "total_requirements": 2,
   "verified_requirements": 2,
-  "compliance_percentage": 100.0,
+  "compliance_rate": 100.0,
   "requirements": [
     {
       "id": "REQ-ENG-SAFE-01",
       "description": "Safe shutdown guarantee",
-      "covered_states": ["SafeShutdown"],
-      "covered_transitions": [],
-      "formal_properties": ["SafeShutdownGuaranteed"],
-      "status": "PASSED"
+      "status": "VERIFIED",
+      "covering_states": ["SafeShutdown"],
+      "covering_transitions": [],
+      "formal_properties": ["SafeShutdownGuaranteed"]
     }
   ]
 }
@@ -95,7 +95,7 @@ You can embed requirement traceability checks into your continuous integration p
     fsmc -i models/engine.sysml --req-audit --rtm-output build/rtm_report.json
     
     # Assert 100% compliance using jq
-    COMPLIANCE=$(jq '.compliance_percentage' build/rtm_report.json)
+    COMPLIANCE=$(jq '.compliance_rate' build/rtm_report.json)
     if (( $(echo "$COMPLIANCE < 100.0" | bc -l) )); then
       echo "::error::Requirement Traceability compliance is $COMPLIANCE% (< 100%)!"
       exit 1

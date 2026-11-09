@@ -52,6 +52,8 @@ VAR
 ### B. Free Boolean Guards & Bounded Variables
 - **Free Boolean Guards**: Guard identifiers (e.g. `[HasGpsLock]`, `[ValidClearance]`) that are not explicit ports are declared as `VAR <ident> : boolean;`, allowing nuXmv to explore all non-deterministic truth combinations symbolically.
 - **Composite C++ Template Guards**: Recursive C++ template guards (`fsm::and_<A, B>`, `fsm::or_<A, B>`, `fsm::not_<A>`) are automatically decompiled into standard SMV propositional logic (`(A & B)`, `(A | B)`, `!(A)`).
+- **Robust Identifier Normalization**: Domain prefixes (`in.`, `out.`, `reg.`) are stripped with token word-boundary awareness, ensuring compound variable names such as `cabin.temp` or `main.x` remain uncorrupted.
+- **Strict Boolean Initialization**: Boolean variables in `ASSIGN` sections are initialized using standard uppercase `TRUE` / `FALSE` literals, ensuring strict type-checking compliance in `nuXmv` and `NuSMV`.
 - **Data Path Variables**: Numeric integer/real ports with range contracts are declared as bounded sub-ranges (e.g. `batteryLevel : 0..100;`).
 
 ---

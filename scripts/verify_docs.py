@@ -10,6 +10,7 @@ Verifies that:
 
 import os
 import re
+import subprocess
 import sys
 import yaml
 from pathlib import Path
@@ -164,6 +165,123 @@ def check_markdown_links(docs_dir: Path) -> tuple:
     return total_links, errors
 
 
+def check_version_synchronization(repo_root: Path) -> list:
+    """Verifies that the project version in CMakeLists.txt is strictly synchronized
+    across conanfile.py, vcpkg.json, CHANGELOG.md, CLI drivers and docs."""
+    errors = []
+    cmake_file = repo_root / "CMakeLists.txt"
+    if not cmake_file.exists():
+        errors.append("CMakeLists.txt not found in repository root")
+        return errors
+
+    cmake_content = cmake_file.read_text(encoding="utf-8")
+    m = re.search(r"project\s*\(\s*fsmc\s+VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)", cmake_content)
+    if not m:
+        errors.append("Could not extract project VERSION from CMakeLists.txt")
+        return errors
+    current_version = m.group(1)
+
+    # 1. Check conanfile.py
+    conan_file = repo_root / "conanfile.py"
+    if conan_file.exists():
+        conan_content = conan_file.read_text(encoding="utf-8")
+        if f'version = "{current_version}"' not in conan_content:
+            errors.append(f"conanfile.py version mismatch: expected 'version = \"{current_version}\"'")
+
+    # 2. Check vcpkg.json
+    vcpkg_file = repo_root / "vcpkg.json"
+    if vcpkg_file.exists():
+        vcpkg_content = vcpkg_file.read_text(encoding="utf-8")
+        if f'"version-string": "{current_version}"' not in vcpkg_content:
+            errors.append(f"vcpkg.json version mismatch: expected '\"version-string\": \"{current_version}\"'")
+
+    # 3. Check CHANGELOG.md
+    changelog_file = repo_root / "CHANGELOG.md"
+    if changelog_file.exists():
+        changelog_content = changelog_file.read_text(encoding="utf-8")
+        if f"## [{current_version}]" not in changelog_content:
+            errors.append(f"CHANGELOG.md is missing an entry for the current version: '## [{current_version}]'")
+
+    # 4. Check fsmc_driver.hpp and opt_driver.hpp
+    fsmc_driver = repo_root / "tools/fsmc/fsmc_driver.hpp"
+    if fsmc_driver.exists():
+        driver_content = fsmc_driver.read_text(encoding="utf-8")
+        if f"version {current_version}" not in driver_content:
+            errors.append(f"tools/fsmc/fsmc_driver.hpp version string mismatch: expected 'version {current_version}'")
+
+    opt_driver = repo_root / "tools/fsm-opt/opt_driver.hpp"
+    if opt_driver.exists():
+        opt_content = opt_driver.read_text(encoding="utf-8")
+        if f"v{current_version}" not in opt_content:
+            errors.append(f"tools/fsm-opt/opt_driver.hpp version string mismatch: expected 'v{current_version}'")
+
+    # 5. Check docs references (installation.md, integration_guide.md)
+    inst_doc = repo_root / "docs/getting_started/installation.md"
+    if inst_doc.exists():
+        inst_content = inst_doc.read_text(encoding="utf-8")
+        if f"fsmc/{current_version}" not in inst_content:
+            errors.append(f"docs/getting_started/installation.md stale package version: expected 'fsmc/{current_version}'")
+
+    integ_doc = repo_root / "docs/getting_started/integration_guide.md"
+    if integ_doc.exists():
+        integ_content = integ_doc.read_text(encoding="utf-8")
+        if f"fsmc/{current_version}" not in integ_content:
+            errors.append(f"docs/getting_started/integration_guide.md stale package version: expected 'fsmc/{current_version}'")
+
+    return errors
+
+
+def check_catalog_and_runtime_freshness(repo_root: Path) -> list:
+    """Verifies that generated artifacts in docs/ and include/ are in sync with source code."""
+    errors = []
+
+    # Check test suite catalog synchronization
+    catalog_script = repo_root / "scripts/generate_test_catalog.py"
+    if catalog_script.exists():
+        ret = subprocess.run([sys.executable, str(catalog_script), "--check"], capture_output=True, text=True)
+        if ret.returncode != 0:
+            errors.append(
+                "docs/reference/test_suite_catalog.md is out of sync with in-code test definitions! "
+                "Run: cmake --build build --target generate_test_catalog"
+            )
+
+    # Check standalone runtime synchronization
+    runtime_script = repo_root / "scripts/generate_standalone_runtime.py"
+    if runtime_script.exists():
+        ret = subprocess.run([sys.executable, str(runtime_script), "--check"], capture_output=True, text=True)
+        if ret.returncode != 0:
+            errors.append(
+                "Standalone runtime single-headers are out of sync with include/fsm/backend/cpp/runtime/! "
+                "Run: cmake --build build --target generate_standalone_runtime"
+            )
+
+    return errors
+
+
+def check_orphaned_docs(repo_root: Path, docs_dir: Path) -> list:
+    """Checks that all markdown files in docs/ are referenced in mkdocs.yml."""
+    mkdocs_file = repo_root / "mkdocs.yml"
+    if not mkdocs_file.exists():
+        return []
+
+    try:
+        content = mkdocs_file.read_text(encoding="utf-8")
+    except Exception:
+        return []
+
+    errors = []
+    md_files = list(docs_dir.rglob("*.md"))
+    for f in md_files:
+        rel = str(f.relative_to(docs_dir))
+        # Ignore special files or overrides if any
+        if rel.startswith("overrides/") or rel.startswith("stylesheets/"):
+            continue
+        if rel not in content:
+            errors.append(f"Orphaned documentation file not included in mkdocs.yml nav: docs/{rel}")
+
+    return errors
+
+
 def main():
     repo_root = Path(__file__).resolve().parent.parent
     docs_dir = repo_root / "docs"
@@ -173,27 +291,33 @@ def main():
         sys.exit(1)
 
     print("==================================================")
-    print(" fsmc Documentation Veracity & Link Integrity Check")
+    print(" fsmc Documentation Veracity & Freshness Gate")
     print("==================================================")
 
     nav_errors = check_mkdocs_nav(repo_root, docs_dir)
     total_links, link_errors = check_markdown_links(docs_dir)
+    version_errors = check_version_synchronization(repo_root)
+    sync_errors = check_catalog_and_runtime_freshness(repo_root)
+    orphan_errors = check_orphaned_docs(repo_root, docs_dir)
 
-    all_errors = nav_errors + link_errors
+    all_errors = nav_errors + link_errors + version_errors + sync_errors + orphan_errors
 
     print("\n----------------- Summary -----------------")
-    print(f"Total Navigation Entries Checked : Valid")
-    print(f"Total Internal Links Checked    : {total_links}")
-    print(f"Total Issues Found               : {len(all_errors)}")
+    print(f"Navigation & Hierarchy Check     : {'PASSED' if not nav_errors else 'FAILED'}")
+    print(f"Total Internal Links Checked     : {total_links} ({'PASSED' if not link_errors else 'FAILED'})")
+    print(f"Version Synchronization Check    : {'PASSED' if not version_errors else 'FAILED'}")
+    print(f"Test Catalog & Runtime Sync Gate : {'PASSED' if not sync_errors else 'FAILED'}")
+    print(f"Orphaned Documentation Check     : {'PASSED' if not orphan_errors else 'FAILED'}")
+    print(f"Total Quality Gate Issues Found  : {len(all_errors)}")
     print("-------------------------------------------")
 
     if all_errors:
-        print("\n[FAIL] Documentation issues detected:")
+        print("\n[FAIL] Documentation quality gate issues detected:")
         for err in all_errors:
             print(f"  * {err}")
         sys.exit(1)
     else:
-        print("\n[SUCCESS] All documentation files, navigation links, and cross-references are valid!")
+        print("\n[SUCCESS] Documentation is 100% up-to-date, valid, and synchronized!")
         sys.exit(0)
 
 

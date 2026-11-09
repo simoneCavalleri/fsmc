@@ -136,6 +136,9 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FsmcTools.cmake)
 # Core CLI compiler & IR toolchain targets
 add_subdirectory(tools)
 
+# Python 3 interpreter for test scripts, catalog generation & doc quality gates
+find_package(Python3 COMPONENTS Interpreter)
+
 # Testing
 if(FSMC_ENABLE_TESTING)
     enable_testing()
@@ -182,6 +185,13 @@ if(Python3_FOUND)
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_standalone_runtime.py --check
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Checking that standalone runtimes are synchronized with include/fsm/backend/cpp/runtime/..."
+        VERBATIM
+    )
+
+    add_custom_target(check_docs
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/verify_docs.py
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Validating documentation veracity, links, freshness, and version synchronization..."
         VERBATIM
     )
 endif()

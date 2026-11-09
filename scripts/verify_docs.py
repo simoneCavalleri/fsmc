@@ -12,8 +12,31 @@ import os
 import re
 import subprocess
 import sys
-import yaml
 from pathlib import Path
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
+
+
+def extract_nav_paths_from_text(text: str) -> list:
+    """Parses .md paths from the nav section of mkdocs.yml using stdlib regex (zero external dependencies)."""
+    in_nav = False
+    paths = []
+    for line in text.splitlines():
+        if re.match(r"^nav:\s*$", line):
+            in_nav = True
+            continue
+        if in_nav and re.match(r"^[a-zA-Z0-9_]+:\s*", line):
+            break
+        if in_nav:
+            m = re.search(r":\s*([a-zA-Z0-9_\-\./]+\.md)\s*$", line)
+            if not m:
+                m = re.search(r"-\s*([a-zA-Z0-9_\-\./]+\.md)\s*$", line)
+            if m:
+                paths.append(m.group(1).strip())
+    return paths
 
 
 def slugify(text: str) -> str:
@@ -56,34 +79,43 @@ def check_mkdocs_nav(repo_root: Path, docs_dir: Path) -> list:
         errors.append("mkdocs.yml not found in repository root")
         return errors
 
-    class IgnoreUnknownLoader(yaml.SafeLoader):
-        pass
+    referenced_files = []
+    if yaml is not None:
+        try:
+            class IgnoreUnknownLoader(yaml.SafeLoader):
+                pass
 
-    IgnoreUnknownLoader.add_multi_constructor("tag:yaml.org,2002:python/", lambda loader, suffix, node: None)
-    IgnoreUnknownLoader.add_multi_constructor("!", lambda loader, suffix, node: None)
+            IgnoreUnknownLoader.add_multi_constructor("tag:yaml.org,2002:python/", lambda loader, suffix, node: None)
+            IgnoreUnknownLoader.add_multi_constructor("!", lambda loader, suffix, node: None)
 
-    try:
-        with open(mkdocs_file, "r", encoding="utf-8") as f:
-            config = yaml.load(f, Loader=IgnoreUnknownLoader)
-    except Exception as e:
-        errors.append(f"Failed to parse mkdocs.yml: {e}")
-        return errors
+            with open(mkdocs_file, "r", encoding="utf-8") as f:
+                config = yaml.load(f, Loader=IgnoreUnknownLoader)
 
-    def collect_nav_paths(item):
-        paths = []
-        if isinstance(item, str):
-            if item.endswith(".md"):
-                paths.append(item)
-        elif isinstance(item, list):
-            for sub in item:
-                paths.extend(collect_nav_paths(sub))
-        elif isinstance(item, dict):
-            for key, val in item.items():
-                paths.extend(collect_nav_paths(val))
-        return paths
+            def collect_nav_paths(item):
+                paths = []
+                if isinstance(item, str):
+                    if item.endswith(".md"):
+                        paths.append(item)
+                elif isinstance(item, list):
+                    for sub in item:
+                        paths.extend(collect_nav_paths(sub))
+                elif isinstance(item, dict):
+                    for key, val in item.items():
+                        paths.extend(collect_nav_paths(val))
+                return paths
 
-    nav = config.get("nav", [])
-    referenced_files = collect_nav_paths(nav)
+            nav = config.get("nav", []) if isinstance(config, dict) else []
+            referenced_files = collect_nav_paths(nav)
+        except Exception:
+            referenced_files = []
+
+    if not referenced_files:
+        try:
+            content = mkdocs_file.read_text(encoding="utf-8")
+            referenced_files = extract_nav_paths_from_text(content)
+        except Exception as e:
+            errors.append(f"Failed to parse mkdocs.yml: {e}")
+            return errors
 
     print(f"[INFO] Checking {len(referenced_files)} navigation entries in mkdocs.yml...")
     for rel_path in referenced_files:

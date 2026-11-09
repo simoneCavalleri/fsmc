@@ -239,7 +239,8 @@ void FsmGraphOps::canonicalize(FsmIr& ir) {
         ir.id = compute_deterministic_id(ir.name + (ir.package.empty() ? "" : "_" + ir.package));
     }
     if (ir.initial_state_id.empty() && !ir.initial_state.empty()) {
-        ir.initial_state_id = ir.initial_state;
+        const auto* st = ir.find_state(ir.initial_state);
+        ir.initial_state_id = st != nullptr ? st->id : compute_deterministic_id(ir.initial_state);
     }
     // Synchronize transitions: guard <-> guard_ast
     for (auto& tr : ir.transitions) {

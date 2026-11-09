@@ -31,10 +31,22 @@ uint32_t read_u32_le(const unsigned char* p) noexcept {
            (static_cast<uint32_t>(p[3]) << 24);
 }
 
+constexpr uint32_t MAX_UNCOMP_SIZE = 64u * 1024u * 1024u;  // 64 MB cap against ZIP bombs
+
 bool decompress_entry(uint16_t method, const unsigned char* data_ptr, uint32_t comp_size, uint32_t uncomp_size,
                       const std::string& filename, std::string& out, std::string& err) {
+    if (uncomp_size > MAX_UNCOMP_SIZE) {
+        err = "Stateflow Parser: Uncompressed size (" + std::to_string(uncomp_size) + ") exceeds maximum limit for '" +
+              filename + "'";
+        return false;
+    }
     if (method == 0) {
         // Stored (uncompressed)
+        if (uncomp_size != comp_size) {
+            err = "Stateflow Parser: Stored ZIP entry '" + filename +
+                  "' has mismatched compressed and uncompressed sizes";
+            return false;
+        }
         out.assign(reinterpret_cast<const char*>(data_ptr), uncomp_size);
         return true;
     }
@@ -124,12 +136,17 @@ bool extract_stateflow_from_slx(std::string_view zip_content, std::string& extra
                 (!is_stateflow && (filename == "simulink/blockdiagram.xml" || filename == "blockdiagram.xml" ||
                                    filename.find("blockdiagram.xml") != std::string::npos));
 
-            if ((is_stateflow || is_blockdiagram) && local_hdr_offset + 30 <= total_size) {
+            if ((is_stateflow || is_blockdiagram) && static_cast<std::size_t>(local_hdr_offset) + 30 <= total_size) {
                 uint16_t loc_fn_len = read_u16_le(bytes + local_hdr_offset + 26);
                 uint16_t loc_extra_len = read_u16_le(bytes + local_hdr_offset + 28);
-                std::size_t data_offset = local_hdr_offset + 30 + loc_fn_len + loc_extra_len;
+                std::size_t data_offset =
+                    static_cast<std::size_t>(local_hdr_offset) + 30 + loc_fn_len + loc_extra_len;
 
-                if (data_offset + comp_size <= total_size) {
+                bool bounds_ok = (data_offset <= total_size && comp_size <= total_size - data_offset);
+                if (bounds_ok && method == 0) {
+                    bounds_ok = (uncomp_size == comp_size && uncomp_size <= total_size - data_offset);
+                }
+                if (bounds_ok) {
                     std::string decomp;
                     if (decompress_entry(method, bytes + data_offset, comp_size, uncomp_size, filename, decomp, err)) {
                         if (is_stateflow) {
@@ -142,6 +159,9 @@ bool extract_stateflow_from_slx(std::string_view zip_content, std::string& extra
                     } else if (is_stateflow) {
                         return false;
                     }
+                } else if (is_stateflow) {
+                    err = "Stateflow Parser: Corrupted ZIP entry bounds for '" + filename + "'";
+                    return false;
                 }
             }
 
@@ -166,10 +186,11 @@ bool extract_stateflow_from_slx(std::string_view zip_content, std::string& extra
         uint16_t fn_len = read_u16_le(bytes + offset + 26);
         uint16_t extra_len = read_u16_le(bytes + offset + 28);
 
-        std::size_t header_len = 30 + fn_len + extra_len;
-        if (offset + header_len + comp_size > total_size) {
+        std::size_t header_len = static_cast<std::size_t>(30) + fn_len + extra_len;
+        if (header_len > total_size - offset || comp_size > total_size - offset - header_len) {
             break;
         }
+        std::size_t data_offset = offset + header_len;
 
         std::string filename(reinterpret_cast<const char*>(bytes + offset + 30), fn_len);
         bool is_stateflow = (filename == "simulink/stateflow.xml" || filename == "stateflow.xml" ||
@@ -179,19 +200,28 @@ bool extract_stateflow_from_slx(std::string_view zip_content, std::string& extra
                                filename.find("blockdiagram.xml") != std::string::npos));
 
         if (is_stateflow || is_blockdiagram) {
-            std::string decomp;
-            if (decompress_entry(method, bytes + offset + header_len, comp_size, uncomp_size, filename, decomp, err)) {
+            if (method == 0 && (uncomp_size != comp_size || uncomp_size > total_size - data_offset)) {
                 if (is_stateflow) {
-                    extracted_xml = std::move(decomp);
-                    return true;
+                    err = "Stateflow Parser: Stored ZIP entry '" + filename + "' exceeds archive bounds";
+                    return false;
                 }
-                if (is_blockdiagram && fallback_blockdiagram_xml.empty()) {
-                    fallback_blockdiagram_xml = std::move(decomp);
+            } else {
+                std::string decomp;
+                if (decompress_entry(method, bytes + data_offset, comp_size, uncomp_size, filename, decomp, err)) {
+                    if (is_stateflow) {
+                        extracted_xml = std::move(decomp);
+                        return true;
+                    }
+                    if (is_blockdiagram && fallback_blockdiagram_xml.empty()) {
+                        fallback_blockdiagram_xml = std::move(decomp);
+                    }
+                } else if (is_stateflow) {
+                    return false;
                 }
             }
         }
 
-        offset += header_len + comp_size;
+        offset = data_offset + comp_size;
     }
 
     if (!fallback_blockdiagram_xml.empty()) {

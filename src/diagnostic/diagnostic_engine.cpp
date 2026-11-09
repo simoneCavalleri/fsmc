@@ -65,22 +65,27 @@ std::string DiagnosticEngine::render_to_string(std::string_view source_content) 
                 ss << "\033[0m: " << diag.message << "\n";
                 break;
             case DiagnosticSeverity::Note:
-                ss << "\033[1;36mnote\033[0m: " << diag.message << "\n";
+                ss << "\033[1;36mnote";
+                if (!diag.code.empty())
+                    ss << "[" << diag.code << "]";
+                ss << "\033[0m: " << diag.message << "\n";
                 break;
         }
 
+        const size_t gutter_width = std::to_string(diag.span.is_valid() ? diag.span.line : 1).size() + 2;
+
         // Location arrow
         if (diag.span.is_valid()) {
-            ss << "  \033[1;34m-->\033[0m " << diag.span.file_path << ":" << diag.span.line << ":" << diag.span.column
-               << "\n";
+            ss << std::string(gutter_width - 1, ' ') << "\033[1;34m-->\033[0m " << diag.span.file_path << ":"
+               << diag.span.line << ":" << diag.span.column << "\n";
 
             // If source line is available, print context and caret
             if (!source_content.empty()) {
                 std::string line_text = extract_line(source_content, diag.span.line);
                 if (!line_text.empty()) {
-                    ss << "   \033[1;34m|\033[0m\n";
+                    ss << std::string(gutter_width, ' ') << "\033[1;34m|\033[0m\n";
                     ss << " " << diag.span.line << " \033[1;34m|\033[0m " << line_text << "\n";
-                    ss << "   \033[1;34m|\033[0m ";
+                    ss << std::string(gutter_width, ' ') << "\033[1;34m|\033[0m ";
                     size_t pad = (diag.span.column > 0) ? (diag.span.column - 1) : 0;
                     for (size_t i = 0; i < pad; ++i)
                         ss << " ";
@@ -92,9 +97,43 @@ std::string DiagnosticEngine::render_to_string(std::string_view source_content) 
             }
         }
 
+        // Secondary labels
+        for (const auto& [sec_span, sec_label] : diag.secondary_labels) {
+            const size_t sec_gutter = std::to_string(sec_span.is_valid() ? sec_span.line : 1).size() + 2;
+            if (sec_span.is_valid()) {
+                ss << std::string(sec_gutter - 1, ' ') << "\033[1;34m-->\033[0m " << sec_span.file_path << ":"
+                   << sec_span.line << ":" << sec_span.column;
+                if (!sec_label.empty()) {
+                    ss << " (" << sec_label << ")";
+                }
+                ss << "\n";
+                if (!source_content.empty()) {
+                    std::string sec_line_text = extract_line(source_content, sec_span.line);
+                    if (!sec_line_text.empty()) {
+                        ss << std::string(sec_gutter, ' ') << "\033[1;34m|\033[0m\n";
+                        ss << " " << sec_span.line << " \033[1;34m|\033[0m " << sec_line_text << "\n";
+                        ss << std::string(sec_gutter, ' ') << "\033[1;34m|\033[0m ";
+                        size_t pad = (sec_span.column > 0) ? (sec_span.column - 1) : 0;
+                        for (size_t i = 0; i < pad; ++i)
+                            ss << " ";
+                        ss << "\033[1;36m-";
+                        for (size_t i = 1; i < sec_span.length; ++i)
+                            ss << "-";
+                        if (!sec_label.empty()) {
+                            ss << " " << sec_label;
+                        }
+                        ss << "\033[0m\n";
+                    }
+                }
+            } else if (!sec_label.empty()) {
+                ss << std::string(gutter_width, ' ') << "\033[1;34m=\033[0m \033[1mnote\033[0m: " << sec_label << "\n";
+            }
+        }
+
         // Help suggestion
         if (!diag.help_suggestion.empty()) {
-            ss << "   \033[1;34m=\033[0m \033[1mhelp\033[0m: " << diag.help_suggestion << "\n";
+            ss << std::string(gutter_width, ' ') << "\033[1;34m=\033[0m \033[1mhelp\033[0m: " << diag.help_suggestion
+               << "\n";
         }
         ss << "\n";
     }
@@ -114,6 +153,23 @@ std::string DiagnosticEngine::render_to_format(DiagnosticFormat format, std::str
 }
 
 std::string DiagnosticEngine::render_github_actions() const {
+    auto escape_gh_data = [](std::string_view str) {
+        std::string out;
+        out.reserve(str.size());
+        for (char c : str) {
+            if (c == '%') {
+                out += "%25";
+            } else if (c == '\r') {
+                out += "%0D";
+            } else if (c == '\n') {
+                out += "%0A";
+            } else {
+                out += c;
+            }
+        }
+        return out;
+    };
+
     std::ostringstream ss;
     for (const auto& diag : diagnostics_) {
         std::string cmd;
@@ -134,20 +190,20 @@ std::string DiagnosticEngine::render_github_actions() const {
         ss << "::" << cmd;
         std::string params;
         if (diag.span.is_valid()) {
-            params += "file=" + diag.span.file_path + ",line=" + std::to_string(diag.span.line) +
+            params += "file=" + escape_gh_data(diag.span.file_path) + ",line=" + std::to_string(diag.span.line) +
                       ",col=" + std::to_string(diag.span.column);
         }
         if (!diag.code.empty()) {
             if (!params.empty())
                 params += ",";
-            params += "title=" + diag.code;
+            params += "title=" + escape_gh_data(diag.code);
         }
         if (!params.empty()) {
             ss << " " << params;
         }
-        ss << "::" << diag.message;
+        ss << "::" << escape_gh_data(diag.message);
         if (!diag.help_suggestion.empty()) {
-            ss << " | Help: " << diag.help_suggestion;
+            ss << " | Help: " << escape_gh_data(diag.help_suggestion);
         }
         ss << "\n";
     }
@@ -228,6 +284,20 @@ std::string DiagnosticEngine::render_json() const {
             ss << "    \"line\": " << diag.span.line << ",\n";
             ss << "    \"column\": " << diag.span.column << ",\n";
             ss << "    \"length\": " << diag.span.length << ",\n";
+        }
+        if (!diag.secondary_labels.empty()) {
+            ss << "    \"secondary_labels\": [\n";
+            for (size_t j = 0; j < diag.secondary_labels.size(); ++j) {
+                const auto& [sec_span, sec_msg] = diag.secondary_labels[j];
+                ss << "      {\"file\": \"" << escape_json_str(sec_span.file_path) << "\", \"line\": " << sec_span.line
+                   << ", \"column\": " << sec_span.column << ", \"length\": " << sec_span.length << ", \"label\": \""
+                   << escape_json_str(sec_msg) << "\"}";
+                if (j + 1 < diag.secondary_labels.size()) {
+                    ss << ",";
+                }
+                ss << "\n";
+            }
+            ss << "    ],\n";
         }
         ss << "    \"help\": \"" << escape_json_str(diag.help_suggestion) << "\"\n";
         ss << "  }";

@@ -55,6 +55,164 @@ std::string escape_json(std::string_view s) {
 }
 
 // ============================================================================
+// Action & Transition Helpers
+// ============================================================================
+
+void emit_assignments_array(std::ostream& out, const std::vector<ActionAssignment>& assignments) {
+    out << "[";
+    for (size_t a = 0; a < assignments.size(); ++a) {
+        if (a > 0)
+            out << ", ";
+        const auto& assign = assignments[a];
+        out << "{\"variable\": \"" << escape_json(assign.target.name) << "\", \"target\": \""
+            << escape_json(assign.target.full_path()) << "\", \"scoped_target\": \""
+            << escape_json(assign.target.scoped_path()) << "\", \"scope\": \""
+            << lvalue_scope_to_string(assign.target.scope) << "\", \"op\": \""
+            << assignment_op_to_string(assign.op) << "\", \"expression\": \""
+            << escape_json(assign.expression) << "\"";
+        if (assign.expr_ast.has_value()) {
+            out << ", \"ast\": " << assign.expr_ast->to_json();
+        }
+        out << "}";
+    }
+    out << "]";
+}
+
+void emit_action_signature_object(std::ostream& out, const ActionSignature& act) {
+    out << "{\"name\": \"" << escape_json(act.name) << "\", \"invocation\": \"" << escape_json(act.invocation)
+        << "\", \"accepts_event\": " << (act.accepts_event ? "true" : "false") << ", \"assignments\": ";
+    emit_assignments_array(out, act.assignments);
+    out << "}";
+}
+
+void emit_transition_metadata(std::ostream& out, const TransitionEdge& t, const std::string& field_pad,
+                              bool is_top_level = false) {
+    if (!is_top_level && !t.id.empty()) {
+        out << ",\n" << field_pad << "\"id\": \"" << escape_json(t.id) << "\"";
+    }
+    if (!is_top_level && t.kind != TransitionEdgeKind::External) {
+        out << ",\n" << field_pad << "\"kind\": \"" << transition_edge_kind_to_string(t.kind) << "\"";
+    }
+    if (!is_top_level && t.priority > 0) {
+        out << ",\n" << field_pad << "\"priority\": " << t.priority;
+    }
+    if (t.target_is_history) {
+        out << ",\n" << field_pad << "\"target_is_history\": true";
+        out << ",\n" << field_pad << "\"target_is_deep_history\": " << (t.target_is_deep_history ? "true" : "false");
+    }
+    if (!t.description.empty()) {
+        out << ",\n" << field_pad << "\"description\": \"" << escape_json(t.description) << "\"";
+    }
+    if (t.guard && !t.guard->empty()) {
+        std::string diag_guard = frontend::directive::GuardExpressionParser::to_diagram_string(*t.guard);
+        out << ",\n"
+            << field_pad << "\"guard\": \""
+            << escape_json(diag_guard) << "\"";
+        if (*t.guard != diag_guard && t.guard->find("fsm::") == std::string::npos) {
+            out << ",\n" << field_pad << "\"raw_guard\": \"" << escape_json(*t.guard) << "\"";
+        }
+        if (t.guard_ast.has_value()) {
+            out << ",\n" << field_pad << "\"guard_ast\": \"" << escape_json(t.guard_ast->to_string()) << "\"";
+        }
+    } else if (t.guard_ast.has_value()) {
+        out << ",\n" << field_pad << "\"guard_ast\": \"" << escape_json(t.guard_ast->to_string()) << "\"";
+    }
+    if (std::holds_alternative<TimeTrigger>(t.trigger)) {
+        const auto& tt = std::get<TimeTrigger>(t.trigger);
+        out << ",\n"
+            << field_pad << "\"time_trigger\": {\"kind\": \"" << time_trigger_kind_to_string(tt.kind)
+            << "\", \"duration_value\": " << tt.duration_value << ", \"unit\": \"" << time_unit_to_string(tt.unit)
+            << "\", \"duration_ms\": " << tt.duration_in_ms()
+            << ", \"periodic\": " << (tt.is_periodic() ? "true" : "false") << ", \"dynamic_expression\": \""
+            << escape_json(tt.dynamic_expression) << "\"}";
+    } else if (std::holds_alternative<ChangeTrigger>(t.trigger)) {
+        const auto& ct = std::get<ChangeTrigger>(t.trigger);
+        out << ",\n"
+            << field_pad << "\"change_trigger\": {\"raw_expression\": \"" << escape_json(ct.raw_expression)
+            << "\", \"active_on_true\": " << (ct.active_on_true ? "true" : "false") << "}";
+    } else if (std::holds_alternative<SignalTrigger>(t.trigger)) {
+        const auto& st = std::get<SignalTrigger>(t.trigger);
+        if (st.payload_binding != "payload" || !st.payload_type.empty() || !st.payload_parameters.empty()) {
+            out << ",\n"
+                << field_pad << "\"signal_trigger\": {\"signal_name\": \"" << escape_json(st.signal_name)
+                << "\", \"payload_binding\": \"" << escape_json(st.payload_binding) << "\", \"payload_type\": \""
+                << escape_json(st.payload_type) << "\", \"payload_parameters\": [";
+            for (size_t p = 0; p < st.payload_parameters.size(); ++p) {
+                if (p > 0)
+                    out << ", ";
+                out << "{\"name\": \"" << escape_json(st.payload_parameters[p].first) << "\", \"type\": \""
+                    << escape_json(st.payload_parameters[p].second) << "\"}";
+            }
+            out << "]}";
+        }
+    } else if (std::holds_alternative<AnonymousTrigger>(t.trigger)) {
+        const auto& at = std::get<AnonymousTrigger>(t.trigger);
+        if (!at.is_completion || at.description != "completion") {
+            out << ",\n"
+                << field_pad << "\"anonymous_trigger\": {\"is_completion\": " << (at.is_completion ? "true" : "false")
+                << ", \"description\": \"" << escape_json(at.description) << "\"}";
+        }
+    }
+    std::string act = t.get_action();
+    if (!act.empty()) {
+        out << ",\n"
+            << field_pad << "\"action\": \"" << escape_json(act) << "\",\n"
+            << field_pad << "\"action_sig\": \"" << escape_json(act) << "\"";
+        if (is_top_level && t.transition_action.has_value()) {
+            out << ",\n" << field_pad << "\"transition_action\": \"" << escape_json(t.transition_action->name) << "\"";
+        }
+    }
+    if (t.transition_action.has_value()) {
+        out << ",\n" << field_pad << "\"transition_action_obj\": ";
+        emit_action_signature_object(out, *t.transition_action);
+    }
+    if (t.condition_action.has_value()) {
+        out << ",\n" << field_pad << "\"condition_action\": ";
+        emit_action_signature_object(out, *t.condition_action);
+    }
+    if (!is_top_level && !t.source_ids.empty()) {
+        out << ",\n" << field_pad << "\"source_ids\": [";
+        for (size_t s = 0; s < t.source_ids.size(); ++s) {
+            if (s > 0)
+                out << ", ";
+            out << "\"" << escape_json(t.source_ids[s]) << "\"";
+        }
+        out << "]";
+    }
+    if (!is_top_level && !t.target_ids.empty()) {
+        out << ",\n" << field_pad << "\"target_ids\": [";
+        for (size_t s = 0; s < t.target_ids.size(); ++s) {
+            if (s > 0)
+                out << ", ";
+            out << "\"" << escape_json(t.target_ids[s]) << "\"";
+        }
+        out << "]";
+    }
+    if (!t.clock_resets.empty()) {
+        out << ",\n" << field_pad << "\"clock_resets\": [";
+        for (size_t c = 0; c < t.clock_resets.size(); ++c) {
+            if (c > 0)
+                out << ", ";
+            out << "\"" << escape_json(t.clock_resets[c]) << "\"";
+        }
+        out << "]";
+    }
+    if (!t.traceability_reqs.empty()) {
+        out << ",\n" << field_pad << "\"traceability_reqs\": [";
+        for (size_t r = 0; r < t.traceability_reqs.size(); ++r) {
+            if (r > 0)
+                out << ", ";
+            out << "\"" << escape_json(t.traceability_reqs[r]) << "\"";
+        }
+        out << "]";
+    }
+    if (t.transition_action.has_value() && !t.transition_action->assignments.empty()) {
+        out << ",\n" << field_pad << "\"assignments\": ";
+        emit_assignments_array(out, t.transition_action->assignments);
+    }
+}
+
+// ============================================================================
 // State Serializer Helper
 // ============================================================================
 
@@ -64,13 +222,52 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, i
 
     bool need_comma = false;
 
+    if (!state.id.empty()) {
+        out << pad << "  \"id\": \"" << escape_json(state.id) << "\"";
+        need_comma = true;
+    }
+
+    if (!state.alias.empty()) {
+        if (need_comma) {
+            out << ",\n";
+        }
+        out << pad << "  \"alias\": \"" << escape_json(state.alias) << "\"";
+        need_comma = true;
+    }
+
+    if (!state.description.empty()) {
+        if (need_comma) {
+            out << ",\n";
+        }
+        out << pad << "  \"description\": \"" << escape_json(state.description) << "\"";
+        need_comma = true;
+    }
+
+    if (state.pinned_parent) {
+        if (need_comma) {
+            out << ",\n";
+        }
+        out << pad << "  \"pinned_parent\": true";
+        need_comma = true;
+    }
+
     if (!state.entry_actions.empty()) {
+        if (need_comma) {
+            out << ",\n";
+        }
         out << pad << "  \"entry\": [";
         for (size_t i = 0; i < state.entry_actions.size(); ++i) {
             out << "\"" << escape_json(state.entry_actions[i].name) << "\"";
             if (i + 1 < state.entry_actions.size()) {
                 out << ", ";
             }
+        }
+        out << "],\n";
+        out << pad << "  \"entry_actions\": [";
+        for (size_t i = 0; i < state.entry_actions.size(); ++i) {
+            if (i > 0)
+                out << ", ";
+            emit_action_signature_object(out, state.entry_actions[i]);
         }
         out << "]";
         need_comma = true;
@@ -87,6 +284,13 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, i
                 out << ", ";
             }
         }
+        out << "],\n";
+        out << pad << "  \"exit_actions\": [";
+        for (size_t i = 0; i < state.exit_actions.size(); ++i) {
+            if (i > 0)
+                out << ", ";
+            emit_action_signature_object(out, state.exit_actions[i]);
+        }
         out << "]";
         need_comma = true;
     }
@@ -98,14 +302,24 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, i
         out << pad << "  \"type\": \"history\",\n";
         out << pad << "  \"history\": \"" << (state.has_deep_history ? "deep" : "shallow") << "\"";
         need_comma = true;
-    } else if (state.is_composite) {
+    }
+    if (state.is_composite) {
         if (need_comma) {
             out << ",\n";
         }
-        out << pad << "  \"type\": \"compound\"";
+        if (!state.has_history) {
+            out << pad << "  \"type\": \"compound\",\n";
+        }
+        out << pad << "  \"is_composite\": true";
         if (!state.initial_sub_state.empty()) {
             out << ",\n" << pad << "  \"initial\": \"" << escape_json(state.initial_sub_state) << "\"";
         }
+        need_comma = true;
+    } else if (!state.initial_sub_state.empty()) {
+        if (need_comma) {
+            out << ",\n";
+        }
+        out << pad << "  \"initial\": \"" << escape_json(state.initial_sub_state) << "\"";
         need_comma = true;
     }
 
@@ -122,6 +336,20 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, i
             out << ",\n";
         }
         out << pad << "  \"time_invariant\": \"" << escape_json(state.time_invariant->to_string()) << "\"";
+        need_comma = true;
+    }
+
+    if (!state.invariants.empty()) {
+        if (need_comma) {
+            out << ",\n";
+        }
+        out << pad << "  \"invariants\": [";
+        for (size_t inv_i = 0; inv_i < state.invariants.size(); ++inv_i) {
+            if (inv_i > 0)
+                out << ", ";
+            out << "\"" << escape_json(state.invariants[inv_i].to_string()) << "\"";
+        }
+        out << "]";
         need_comma = true;
     }
 
@@ -248,64 +476,12 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, i
                 if (t->target_is_history) {
                     target_str += t->target_is_deep_history ? "[H*]" : "[H]";
                 }
-                out << pad << "    \"" << evt_name << "\": {\n";
-                out << pad << "      \"target\": \"" << target_str << "\"";
-                if (t->priority > 0) {
-                    out << ",\n" << pad << "      \"priority\": " << t->priority;
-                }
-                if (t->guard && !t->guard->empty()) {
-                    out << ",\n"
-                        << pad << "      \"guard\": \""
-                        << escape_json(frontend::directive::GuardExpressionParser::to_diagram_string(*t->guard))
-                        << "\"";
-                }
-                if (t->guard_ast.has_value()) {
-                    out << ",\n" << pad << "      \"guard_ast\": \"" << escape_json(t->guard_ast->to_string()) << "\"";
-                }
-                std::string act = t->get_action();
-                if (!act.empty()) {
-                    out << ",\n"
-                        << pad << "      \"action\": \"" << escape_json(act) << "\",\n"
-                        << pad << "      \"action_sig\": \"" << escape_json(act) << "\"";
-                }
-                if (!t->source_ids.empty()) {
-                    out << ",\n" << pad << "      \"source_ids\": [";
-                    for (size_t s = 0; s < t->source_ids.size(); ++s) {
-                        if (s > 0)
-                            out << ", ";
-                        out << "\"" << escape_json(t->source_ids[s]) << "\"";
-                    }
-                    out << "]";
-                }
-                if (!t->target_ids.empty()) {
-                    out << ",\n" << pad << "      \"target_ids\": [";
-                    for (size_t s = 0; s < t->target_ids.size(); ++s) {
-                        if (s > 0)
-                            out << ", ";
-                        out << "\"" << escape_json(t->target_ids[s]) << "\"";
-                    }
-                    out << "]";
-                }
-                if (t->transition_action.has_value() && !t->transition_action->assignments.empty()) {
-                    out << ",\n" << pad << "      \"assignments\": [";
-                    for (size_t a = 0; a < t->transition_action->assignments.size(); ++a) {
-                        if (a > 0)
-                            out << ", ";
-                        const auto& assign = t->transition_action->assignments[a];
-                        out << "{\"variable\": \"" << escape_json(assign.target.name) << "\", \"target\": \""
-                            << escape_json(assign.target.full_path()) << "\", \"op\": \""
-                            << assignment_op_to_string(assign.op) << "\", \"expression\": \""
-                            << escape_json(assign.expression) << "\"";
-                        if (assign.expr_ast.has_value()) {
-                            out << ", \"ast\": " << assign.expr_ast->to_json();
-                        }
-                        out << "}";
-                    }
-                    out << "]";
-                }
+                out << pad << "    \"" << escape_json(evt_name) << "\": {\n";
+                out << pad << "      \"target\": \"" << escape_json(target_str) << "\"";
+                emit_transition_metadata(out, *t, pad + "      ");
                 out << "\n" << pad << "    }";
             } else {
-                out << pad << "    \"" << evt_name << "\": [\n";
+                out << pad << "    \"" << escape_json(evt_name) << "\": [\n";
                 for (size_t t_idx = 0; t_idx < trans_list.size(); ++t_idx) {
                     const auto* t = trans_list[t_idx];
                     std::string target_str = t->target;
@@ -313,61 +489,8 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, i
                         target_str += t->target_is_deep_history ? "[H*]" : "[H]";
                     }
                     out << pad << "      {\n";
-                    out << pad << "        \"target\": \"" << target_str << "\"";
-                    if (t->priority > 0) {
-                        out << ",\n" << pad << "        \"priority\": " << t->priority;
-                    }
-                    if (t->guard && !t->guard->empty()) {
-                        out << ",\n"
-                            << pad << "        \"guard\": \""
-                            << escape_json(frontend::directive::GuardExpressionParser::to_diagram_string(*t->guard))
-                            << "\"";
-                    }
-                    if (t->guard_ast.has_value()) {
-                        out << ",\n"
-                            << pad << "        \"guard_ast\": \"" << escape_json(t->guard_ast->to_string()) << "\"";
-                    }
-                    std::string t_act = t->get_action();
-                    if (!t_act.empty()) {
-                        out << ",\n"
-                            << pad << "        \"action\": \"" << escape_json(t_act) << "\",\n"
-                            << pad << "        \"action_sig\": \"" << escape_json(t_act) << "\"";
-                    }
-                    if (!t->source_ids.empty()) {
-                        out << ",\n" << pad << "        \"source_ids\": [";
-                        for (size_t s = 0; s < t->source_ids.size(); ++s) {
-                            if (s > 0)
-                                out << ", ";
-                            out << "\"" << escape_json(t->source_ids[s]) << "\"";
-                        }
-                        out << "]";
-                    }
-                    if (!t->target_ids.empty()) {
-                        out << ",\n" << pad << "        \"target_ids\": [";
-                        for (size_t s = 0; s < t->target_ids.size(); ++s) {
-                            if (s > 0)
-                                out << ", ";
-                            out << "\"" << escape_json(t->target_ids[s]) << "\"";
-                        }
-                        out << "]";
-                    }
-                    if (t->transition_action.has_value() && !t->transition_action->assignments.empty()) {
-                        out << ",\n" << pad << "        \"assignments\": [";
-                        for (size_t a = 0; a < t->transition_action->assignments.size(); ++a) {
-                            if (a > 0)
-                                out << ", ";
-                            const auto& assign = t->transition_action->assignments[a];
-                            out << "{\"variable\": \"" << escape_json(assign.target.name) << "\", \"target\": \""
-                                << escape_json(assign.target.full_path()) << "\", \"op\": \""
-                                << assignment_op_to_string(assign.op) << "\", \"expression\": \""
-                                << escape_json(assign.expression) << "\"";
-                            if (assign.expr_ast.has_value()) {
-                                out << ", \"ast\": " << assign.expr_ast->to_json();
-                            }
-                            out << "}";
-                        }
-                        out << "]";
-                    }
+                    out << pad << "        \"target\": \"" << escape_json(target_str) << "\"";
+                    emit_transition_metadata(out, *t, pad + "        ");
                     out << "\n" << pad << "      }";
                     if (t_idx + 1 < trans_list.size()) {
                         out << ",";
@@ -388,7 +511,9 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, i
     // Child states if composite
     std::vector<const StateNode*> child_states;
     for (const auto& s : model.states) {
-        if (s.parent_state == state.name) {
+        if (s.name != state.name &&
+            (s.parent_state == state.name || (!state.fqn.empty() && s.parent_state == state.fqn) ||
+             (s.parent_id.has_value() && !state.id.empty() && *s.parent_id == state.id))) {
             child_states.push_back(&s);
         }
     }
@@ -422,15 +547,31 @@ std::string FsmIrSerializer::serialize_json(const FsmIr& ir, int indent_spaces) 
     std::ostringstream out;
     std::string sm_name = ir.name.empty() ? "StateMachine" : ir.name;
     out << "{\n";
-    out << "  \"id\": \"" << sm_name << "\",\n";
-    out << "  \"name\": \"" << sm_name << "\",\n";
+    out << "  \"id\": \"" << escape_json(sm_name) << "\",\n";
+    if (!ir.id.empty()) {
+        out << "  \"fsm_id\": \"" << escape_json(ir.id) << "\",\n";
+    }
+    out << "  \"name\": \"" << escape_json(sm_name) << "\",\n";
 
     if (!ir.initial_state.empty()) {
-        out << "  \"initial\": \"" << ir.initial_state << "\",\n";
+        out << "  \"initial\": \"" << escape_json(ir.initial_state) << "\",\n";
+    }
+    if (!ir.initial_state_id.empty()) {
+        out << "  \"initial_state_id\": \"" << escape_json(ir.initial_state_id) << "\",\n";
     }
 
     if (!ir.package.empty()) {
         out << "  \"package\": \"" << escape_json(ir.package) << "\",\n";
+    }
+
+    if (!ir.satisfies_reqs.empty()) {
+        out << "  \"satisfies_reqs\": [";
+        for (size_t r = 0; r < ir.satisfies_reqs.size(); ++r) {
+            if (r > 0)
+                out << ", ";
+            out << "\"" << escape_json(ir.satisfies_reqs[r]) << "\"";
+        }
+        out << "],\n";
     }
 
     // Attributes
@@ -464,7 +605,9 @@ std::string FsmIrSerializer::serialize_json(const FsmIr& ir, int indent_spaces) 
             out << "      \"name\": \"" << escape_json(port.name) << "\",\n";
             out << "      \"type\": \"" << escape_json(port.type.to_canonical_string()) << "\",\n";
             out << "      \"direction\": \""
-                << (port.is_out() ? "out" : (port.direction == PortDirection::InOut ? "inout" : "in")) << "\"";
+                << (port.direction == PortDirection::InOut ? "inout"
+                                                           : (port.direction == PortDirection::Out ? "out" : "in"))
+                << "\"";
             if (port.min_value.has_value()) {
                 out << ",\n      \"min\": " << *port.min_value;
                 out << ",\n      \"min_value\": " << *port.min_value;
@@ -476,11 +619,19 @@ std::string FsmIrSerializer::serialize_json(const FsmIr& ir, int indent_spaces) 
             if (!port.constraint.empty()) {
                 out << ",\n      \"constraint\": \"" << escape_json(port.constraint) << "\"";
             }
+            if (!port.default_value.empty()) {
+                out << ",\n      \"default\": \"" << escape_json(port.default_value) << "\"";
+                out << ",\n      \"default_value\": \"" << escape_json(port.default_value) << "\"";
+            }
             if (port.physical_unit.has_value()) {
+                out << ",\n      \"unit\": \"" << escape_json(*port.physical_unit) << "\"";
                 out << ",\n      \"physical_unit\": \"" << escape_json(*port.physical_unit) << "\"";
             }
             if (!port.description.empty()) {
                 out << ",\n      \"description\": \"" << escape_json(port.description) << "\"";
+            }
+            if (!port.bound_to.empty()) {
+                out << ",\n      \"bound_to\": \"" << escape_json(port.bound_to) << "\"";
             }
             out << "\n    }";
             if (p + 1 < ir.ports.size()) {
@@ -502,13 +653,19 @@ std::string FsmIrSerializer::serialize_json(const FsmIr& ir, int indent_spaces) 
             out << "      \"init\": \"" << escape_json(var.initial_value) << "\",\n";
             out << "      \"initial_value\": \"" << escape_json(var.initial_value) << "\"";
             if (var.min_value.has_value()) {
+                out << ",\n      \"min\": " << *var.min_value;
                 out << ",\n      \"min_value\": " << *var.min_value;
             }
             if (var.max_value.has_value()) {
+                out << ",\n      \"max\": " << *var.max_value;
                 out << ",\n      \"max_value\": " << *var.max_value;
             }
             if (var.physical_unit.has_value()) {
+                out << ",\n      \"unit\": \"" << escape_json(*var.physical_unit) << "\"";
                 out << ",\n      \"physical_unit\": \"" << escape_json(*var.physical_unit) << "\"";
+            }
+            if (var.register_index.has_value()) {
+                out << ",\n      \"register_index\": " << *var.register_index;
             }
             if (!var.description.empty()) {
                 out << ",\n      \"description\": \"" << escape_json(var.description) << "\"";
@@ -614,6 +771,7 @@ std::string FsmIrSerializer::serialize_json(const FsmIr& ir, int indent_spaces) 
             out << "      \"name\": \"" << escape_json(t.name) << "\",\n";
             out << "      \"kind\": \"" << type_kind_to_string(t.kind) << "\",\n";
             out << "      \"underlying_type\": \"" << escape_json(t.underlying_type) << "\",\n";
+            out << "      \"description\": \"" << escape_json(t.description) << "\",\n";
             out << "      \"is_datatype\": " << (t.is_datatype ? "true" : "false");
             if (!t.literals.empty()) {
                 out << ",\n      \"literals\": [\n";
@@ -622,6 +780,9 @@ std::string FsmIrSerializer::serialize_json(const FsmIr& ir, int indent_spaces) 
                     out << "        { \"name\": \"" << escape_json(lit.name) << "\"";
                     if (lit.value.has_value()) {
                         out << ", \"value\": " << *lit.value;
+                    }
+                    if (!lit.description.empty()) {
+                        out << ", \"description\": \"" << escape_json(lit.description) << "\"";
                     }
                     out << " }";
                     if (li + 1 < t.literals.size())
@@ -637,7 +798,21 @@ std::string FsmIrSerializer::serialize_json(const FsmIr& ir, int indent_spaces) 
                     out << "        { \"name\": \"" << escape_json(f.name) << "\", \"type\": \""
                         << escape_json(f.type.to_canonical_string()) << "\"";
                     if (!f.default_value.empty()) {
-                        out << ", \"default\": \"" << escape_json(f.default_value) << "\"";
+                        out << ", \"default\": \"" << escape_json(f.default_value) << "\", \"default_value\": \""
+                            << escape_json(f.default_value) << "\"";
+                    }
+                    if (f.physical_unit.has_value()) {
+                        out << ", \"unit\": \"" << escape_json(*f.physical_unit) << "\", \"physical_unit\": \""
+                            << escape_json(*f.physical_unit) << "\"";
+                    }
+                    if (f.min_value.has_value()) {
+                        out << ", \"min\": " << *f.min_value << ", \"min_value\": " << *f.min_value;
+                    }
+                    if (f.max_value.has_value()) {
+                        out << ", \"max\": " << *f.max_value << ", \"max_value\": " << *f.max_value;
+                    }
+                    if (!f.description.empty()) {
+                        out << ", \"description\": \"" << escape_json(f.description) << "\"";
                     }
                     out << " }";
                     if (fi + 1 < t.fields.size())
@@ -661,12 +836,20 @@ std::string FsmIrSerializer::serialize_json(const FsmIr& ir, int indent_spaces) 
             const auto& sig = ir.signals[s];
             out << "    {\n";
             out << "      \"name\": \"" << escape_json(sig.name) << "\"";
+            if (!sig.description.empty()) {
+                out << ",\n      \"description\": \"" << escape_json(sig.description) << "\"";
+            }
             if (!sig.attributes.empty()) {
                 out << ",\n      \"attributes\": [\n";
                 for (size_t a = 0; a < sig.attributes.size(); ++a) {
                     const auto& attr = sig.attributes[a];
                     out << "        { \"name\": \"" << escape_json(attr.name) << "\", \"type\": \""
-                        << escape_json(attr.type.to_canonical_string()) << "\" }";
+                        << escape_json(attr.type.to_canonical_string()) << "\"";
+                    if (!attr.default_value.empty()) {
+                        out << ", \"default\": \"" << escape_json(attr.default_value) << "\", \"default_value\": \""
+                            << escape_json(attr.default_value) << "\"";
+                    }
+                    out << " }";
                     if (a + 1 < sig.attributes.size()) {
                         out << ",";
                     }
@@ -760,37 +943,13 @@ std::string FsmIrSerializer::serialize_json(const FsmIr& ir, int indent_spaces) 
             out << "],\n";
             out << "      \"kind\": \"" << transition_edge_kind_to_string(tr.kind) << "\",\n";
             out << "      \"priority\": " << tr.priority << ",\n";
-            out << "      \"trigger\": \"" << escape_json(tr.get_trigger_name()) << "\",\n";
-            if (tr.guard.has_value()) {
-                std::string diag_g = frontend::directive::GuardExpressionParser::to_diagram_string(*tr.guard);
-                out << "      \"guard\": \"" << escape_json(diag_g) << "\",\n";
-                out << "      \"guard_ast\": \""
-                    << escape_json(tr.guard_ast.has_value() ? tr.guard_ast->to_string() : diag_g) << "\",\n";
-            } else if (tr.guard_ast.has_value()) {
-                out << "      \"guard_ast\": \"" << escape_json(tr.guard_ast->to_string()) << "\",\n";
-            }
-            if (tr.transition_action.has_value()) {
-                const auto& act = *tr.transition_action;
-                out << "      \"action\": \"" << escape_json(act.name) << "\",\n";
-                out << "      \"action_sig\": \"" << escape_json(act.name) << "\",\n";
-                out << "      \"transition_action\": \"" << escape_json(act.name) << "\",\n";
-                out << "      \"assignments\": [";
-                for (size_t a = 0; a < act.assignments.size(); ++a) {
-                    if (a > 0)
-                        out << ", ";
-                    const auto& assign = act.assignments[a];
-                    out << "{\"variable\": \"" << escape_json(assign.target.name) << "\", \"target\": \""
-                        << escape_json(assign.target.full_path()) << "\", \"op\": \""
-                        << assignment_op_to_string(assign.op) << "\", \"expression\": \""
-                        << escape_json(assign.expression) << "\"";
-                    if (assign.expr_ast.has_value()) {
-                        out << ", \"ast\": " << assign.expr_ast->to_json();
-                    }
-                    out << "}";
-                }
-                out << "]\n";
+            out << "      \"event\": \"" << escape_json(tr.event) << "\",\n";
+            out << "      \"trigger\": \"" << escape_json(tr.get_trigger_name()) << "\"";
+            emit_transition_metadata(out, tr, "      ", true);
+            if (!tr.transition_action.has_value() || tr.transition_action->assignments.empty()) {
+                out << ",\n      \"assignments\": []\n";
             } else {
-                out << "      \"assignments\": []\n";
+                out << "\n";
             }
             out << "    }" << (i + 1 < ir.transitions.size() ? "," : "") << "\n";
         }

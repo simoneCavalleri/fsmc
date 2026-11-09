@@ -219,6 +219,34 @@ bool FsmIr::is_choice_node(const std::string& node_name) const noexcept {
 void FsmIr::add_type(TypeDefinition type) {
     for (auto& existing : custom_types) {
         if (existing.name == type.name) {
+            if (existing.kind == type.kind && type.kind == TypeKind::Struct) {
+                if (type.description.empty() && !existing.description.empty()) {
+                    type.description = existing.description;
+                }
+                for (auto& field : type.fields) {
+                    for (const auto& old_field : existing.fields) {
+                        if (old_field.name == field.name) {
+                            if (field.default_value.empty() && !old_field.default_value.empty()) {
+                                field.default_value = old_field.default_value;
+                            }
+                            if ((!field.physical_unit.has_value() || field.physical_unit->empty()) &&
+                                old_field.physical_unit.has_value()) {
+                                field.physical_unit = old_field.physical_unit;
+                            }
+                            if (!field.min_value.has_value() && old_field.min_value.has_value()) {
+                                field.min_value = old_field.min_value;
+                            }
+                            if (!field.max_value.has_value() && old_field.max_value.has_value()) {
+                                field.max_value = old_field.max_value;
+                            }
+                            if (field.description.empty() && !old_field.description.empty()) {
+                                field.description = old_field.description;
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
             existing = std::move(type);
             return;
         }
@@ -227,25 +255,51 @@ void FsmIr::add_type(TypeDefinition type) {
 }
 
 StateNode& FsmIr::add_or_get_state(const std::string& state_name, const std::string& parent_fqn, StateKind kind) {
+    const std::string actual_parent = (parent_fqn == state_name) ? "" : parent_fqn;
     for (auto& s : states) {
-        if (s.name == state_name) {
+        if (s.name == state_name &&
+            (actual_parent.empty() || s.parent_state.empty() || s.parent_state == actual_parent || s.fqn == actual_parent + "." + state_name)) {
+            if (!actual_parent.empty() && s.parent_state.empty()) {
+                s.parent_state = actual_parent;
+                auto* parent = find_state_by_fqn(actual_parent);
+                if (parent == nullptr) {
+                    parent = find_state_by_name(actual_parent);
+                }
+                if (parent != nullptr) {
+                    s.fqn = parent->fqn + "." + state_name;
+                    s.parent_id = parent->id;
+                    parent->children_ids.push_back(s.id);
+                    parent->is_composite = true;
+                    if (parent->kind == StateKind::Atomic) {
+                        parent->kind = StateKind::Composite;
+                    }
+                } else {
+                    s.fqn = actual_parent + "." + state_name;
+                }
+            }
             return s;
         }
     }
-    std::string full_fqn = parent_fqn.empty() ? state_name : (parent_fqn + "." + state_name);
+    const auto* existing_parent = actual_parent.empty() ? nullptr : find_state_by_fqn(actual_parent);
+    if (existing_parent == nullptr && !actual_parent.empty()) {
+        existing_parent = find_state_by_name(actual_parent);
+    }
+    std::string full_fqn =
+        existing_parent != nullptr ? (existing_parent->fqn + "." + state_name)
+                                   : (actual_parent.empty() ? state_name : (actual_parent + "." + state_name));
     std::string s_id = compute_deterministic_id(full_fqn);
     StateNode node(s_id, state_name, full_fqn, kind);
-    node.parent_state = parent_fqn;
-    if (!parent_fqn.empty()) {
-        const auto* parent = find_state_by_name(parent_fqn);
-        if (parent != nullptr) {
-            node.parent_id = parent->id;
-        }
+    node.parent_state = actual_parent;
+    if (existing_parent != nullptr) {
+        node.parent_id = existing_parent->id;
     }
     states.push_back(node);
     // Link child to parent
-    if (!parent_fqn.empty()) {
-        auto* parent = find_state_by_name(parent_fqn);
+    if (!actual_parent.empty()) {
+        auto* parent = find_state_by_fqn(actual_parent);
+        if (parent == nullptr) {
+            parent = find_state_by_name(actual_parent);
+        }
         if (parent != nullptr) {
             parent->children_ids.push_back(node.id);
             parent->is_composite = true;
@@ -395,7 +449,8 @@ TransitionEdge& FsmIr::add_transition(const std::string& src_id, const std::stri
         trig_str = std::get<SignalTrigger>(trigger).signal_name;
         add_event(trig_str);
     } else if (std::holds_alternative<TimeTrigger>(trigger)) {
-        trig_str = std::to_string(std::get<TimeTrigger>(trigger).duration_ms);
+        const auto& t = std::get<TimeTrigger>(trigger);
+        trig_str = std::to_string(t.duration_ms > 0 ? t.duration_ms : t.duration_in_ms());
     }
     std::string guard_str = guard.has_value() ? guard->to_string() : "";
     std::string canonical_sig = src_id + "->" + dst_id + ":" + trig_str + "[" + guard_str + "]";

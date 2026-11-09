@@ -78,11 +78,35 @@ bool PlantUmlParser::parse(std::string_view content, FsmIr& out_model, std::stri
                 continue;
             } else if (body.rfind("state", 0) == 0) {
                 DirectiveParser::parse_state_directive(body, out_model, parent_stack);
-            } else if (!parent_stack.empty()) {
-                auto* st = out_model.find_state_mut(parent_stack.back());
-                if (st != nullptr) {
+            } else {
+                std::string target_state;
+                auto fsm_pos = trimmed.find("@fsm:");
+                auto colon_pos = trimmed.find(':');
+                if (colon_pos != std::string_view::npos && colon_pos < fsm_pos) {
+                    std::string prefix = std::string(trim(trimmed.substr(0, colon_pos)));
+                    if (prefix.rfind("state ", 0) == 0) {
+                        prefix = std::string(trim(prefix.substr(6)));
+                    }
+                    target_state = prefix;
+                } else if (!parent_stack.empty()) {
+                    target_state = parent_stack.back();
+                }
+
+                if (!target_state.empty()) {
+                    auto* st = out_model.find_state_mut(target_state);
+                    if (st == nullptr) {
+                        std::string parent_for_state = parent_stack.empty() ? "" : parent_stack.back();
+                        if (parent_for_state == target_state) {
+                            parent_for_state = "";
+                        }
+                        st = &out_model.add_state(target_state, parent_for_state);
+                    }
                     if (body.rfind("defer", 0) == 0) {
                         DirectiveParser::parse_defer_directive(body, *st);
+                    } else if (body.rfind("submachine", 0) == 0) {
+                        DirectiveParser::parse_submachine_directive(body, *st);
+                    } else {
+                        DirectiveParser::parse_state_directive(body, *st);
                     }
                 }
             }
@@ -104,7 +128,20 @@ bool PlantUmlParser::parse(std::string_view content, FsmIr& out_model, std::stri
             continue;
         }
 
-        if (starts_with(trimmed, "note ") || starts_with(trimmed, "note\t")) {
+        if (starts_with(trimmed, "note ") || starts_with(trimmed, "note\t") || trimmed == "note") {
+            const bool is_inline_note = (trimmed.find(':') != std::string_view::npos) ||
+                                        (starts_with(trimmed, "note \"") &&
+                                         trimmed.find(" as ") != std::string_view::npos);
+            if (!is_inline_note) {
+                while (std::getline(stream, line)) {
+                    ++line_num;
+                    std::string_view note_line = trim(line);
+                    if (note_line == "end note" || note_line == "endnote" ||
+                        starts_with(note_line, "end note ") || starts_with(note_line, "endnote ")) {
+                        break;
+                    }
+                }
+            }
             continue;
         }
 
@@ -254,7 +291,14 @@ void PlantUmlParser::parse_deferred_event(std::string_view line, FsmIr& model,
 
     const std::string event_name = sanitize_identifier(rest);
     if (!event_name.empty()) {
-        const std::string current_parent = parent_stack.empty() ? "" : parent_stack.back();
+        std::string current_parent;
+        if (!parent_stack.empty()) {
+            if (parent_stack.back() == state_name) {
+                current_parent = (parent_stack.size() >= 2) ? parent_stack[parent_stack.size() - 2] : "";
+            } else {
+                current_parent = parent_stack.back();
+            }
+        }
         model.add_state(state_name, current_parent);
         model.add_event(event_name);
         if (auto* state = model.find_state_mut(state_name)) {
@@ -318,6 +362,9 @@ void PlantUmlParser::parse_internal_transition(std::string_view line, FsmIr& mod
             auto parsed = GuardExpressionParser::parse(grd);
             if (!parsed.cpp_type.empty()) {
                 guard_name = parsed.cpp_type;
+                for (const auto& detail : parsed.atomic_guard_details) {
+                    model.add_guard(detail.name, "", detail.expression, detail.expression);
+                }
                 for (const auto& atomic : parsed.atomic_guards) {
                     model.add_guard(atomic);
                 }
@@ -326,7 +373,8 @@ void PlantUmlParser::parse_internal_transition(std::string_view line, FsmIr& mod
         label = label.substr(0, open_bracket) + label.substr(close_bracket + 1);
     }
 
-    const std::string event_name = sanitize_identifier(trim(label));
+    const std::string raw_event = std::string(trim(label));
+    const std::string event_name = sanitize_identifier(raw_event);
     if (event_name.empty()) {
         return;
     }
@@ -334,21 +382,21 @@ void PlantUmlParser::parse_internal_transition(std::string_view line, FsmIr& mod
     model.add_state(state_name, parent_for_state);
 
     // Native PlantUML lifecycle hooks: entry, exit, do
-    if (event_name == "entry" && parsed_action) {
+    if ((raw_event == "entry" || event_name == "entry") && parsed_action) {
         model.add_action(parsed_action->name);
         if (auto* st = model.find_state_mut(state_name)) {
             st->entry_actions.push_back(*parsed_action);
         }
         return;
     }
-    if (event_name == "exit" && parsed_action) {
+    if ((raw_event == "exit" || event_name == "exit") && parsed_action) {
         model.add_action(parsed_action->name);
         if (auto* st = model.find_state_mut(state_name)) {
             st->exit_actions.push_back(*parsed_action);
         }
         return;
     }
-    if (event_name == "do" && parsed_action) {
+    if ((raw_event == "do" || event_name == "do" || event_name == "do_") && parsed_action) {
         if (auto* st = model.find_state_mut(state_name)) {
             st->do_activity = parsed_action->name;
         }
@@ -488,6 +536,9 @@ bool PlantUmlParser::parse_transition_line(std::string_view line, FsmIr& model, 
             auto parsed = GuardExpressionParser::parse(raw_guard);
             if (!parsed.cpp_type.empty()) {
                 guard_name = parsed.cpp_type;
+                for (const auto& detail : parsed.atomic_guard_details) {
+                    model.add_guard(detail.name, "", detail.expression, detail.expression);
+                }
                 for (const auto& atomic : parsed.atomic_guards) {
                     model.add_guard(atomic);
                 }

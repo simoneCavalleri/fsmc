@@ -330,7 +330,8 @@ struct FsmIr {
     [[nodiscard]] bool is_well_formed(std::string& error) const noexcept;
 
     bool operator==(const FsmIr& other) const noexcept {
-        return name == other.name && package == other.package && initial_state_id == other.initial_state_id &&
+        return name == other.name && package == other.package && initial_state == other.initial_state &&
+               initial_state_id == other.initial_state_id &&
                concurrency == other.concurrency && satisfies_reqs == other.satisfies_reqs &&
                attributes == other.attributes && states == other.states && transitions == other.transitions &&
                ports == other.ports && signals == other.signals && variables == other.variables &&

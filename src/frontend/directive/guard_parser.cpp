@@ -120,6 +120,10 @@ class GuardTokenizerAndParser {
         while (current().type == TokenType::Or) {
             advance();
             std::string right = parse_and(atomic, atomic_details);
+            if (left.empty() || right.empty()) {
+                error_ = true;
+                return "";
+            }
             std::string temp = "fsm::or_<";
             temp.append(left).append(", ").append(right).append(">");
             left = std::move(temp);
@@ -132,6 +136,10 @@ class GuardTokenizerAndParser {
         while (current().type == TokenType::And) {
             advance();
             std::string right = parse_unary(atomic, atomic_details);
+            if (left.empty() || right.empty()) {
+                error_ = true;
+                return "";
+            }
             std::string temp = "fsm::and_<";
             temp.append(left).append(", ").append(right).append(">");
             left = std::move(temp);
@@ -143,6 +151,10 @@ class GuardTokenizerAndParser {
         if (current().type == TokenType::Not) {
             advance();
             std::string sub = parse_unary(atomic, atomic_details);
+            if (sub.empty()) {
+                error_ = true;
+                return "";
+            }
             return "fsm::not_<" + sub + ">";
         }
         return parse_primary(atomic, atomic_details);
@@ -186,6 +198,7 @@ class GuardTokenizerAndParser {
     size_t pos_{0};
     std::vector<Token> tokens_;
     size_t token_idx_{0};
+    bool error_{false};
 };
 
 }  // namespace

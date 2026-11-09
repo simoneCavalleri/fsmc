@@ -59,6 +59,11 @@ class DirectiveParser {
     static bool parse_defer_directive(std::string_view body, StateNode& state);
 
     /**
+     * @brief Parses a submachine reference directive on a state node.
+     */
+    static bool parse_submachine_directive(std::string_view body, StateNode& state);
+
+    /**
      * @brief Parses a typed signal definition directive.
      */
     static std::optional<SignalDefinition> parse_signal_directive(std::string_view body);

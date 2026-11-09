@@ -86,10 +86,7 @@ std::unique_ptr<IParser> ParserFactory::create_by_extension(std::string_view fil
 
 std::unique_ptr<IParser> ParserFactory::create(std::string_view file_path, std::string_view format_override) {
     if (!format_override.empty() && format_override != "auto") {
-        auto parser = create_by_format(format_override);
-        if (parser) {
-            return parser;
-        }
+        return create_by_format(format_override);
     }
     auto parser = create_by_extension(file_path);
     if (parser) {

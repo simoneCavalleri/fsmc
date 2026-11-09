@@ -229,8 +229,8 @@ struct AnonymousTrigger {
     bool is_completion{true};               ///< True if standard completion transition
     std::string description{"completion"};  ///< Human-readable documentation comment
 
-    constexpr bool operator==(const AnonymousTrigger& other) const noexcept {
-        return is_completion == other.is_completion;
+    bool operator==(const AnonymousTrigger& other) const noexcept {
+        return is_completion == other.is_completion && description == other.description;
     }
 };
 

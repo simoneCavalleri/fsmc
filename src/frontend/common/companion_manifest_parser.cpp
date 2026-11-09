@@ -236,8 +236,27 @@ void parse_types_section(const std::vector<LineInfo>& lines, size_t& idx, std::v
     CompanionCustomType current;
     bool has_current = false;
     bool in_fields = false;
+    bool in_literals = false;
     CompanionTypeField current_field;
     bool has_current_field = false;
+
+    auto parse_inline_list = [](std::string_view raw, std::vector<std::string>& out) {
+        std::string s = trim(raw);
+        if (!s.empty() && s.front() == '[')
+            s.erase(0, 1);
+        if (!s.empty() && s.back() == ',')
+            s.pop_back();
+        if (!s.empty() && s.back() == ']')
+            s.pop_back();
+        std::istringstream iss(s);
+        std::string item;
+        while (std::getline(iss, item, ',')) {
+            std::string cleaned = unquote(item);
+            if (!cleaned.empty()) {
+                out.push_back(std::move(cleaned));
+            }
+        }
+    };
 
     while (idx < lines.size() && lines[idx].indent > 0) {
         const auto& line = lines[idx];
@@ -251,6 +270,11 @@ void parse_types_section(const std::vector<LineInfo>& lines, size_t& idx, std::v
                     has_current_field = false;
                 }
                 in_fields = false;
+                idx++;
+                continue;
+            }
+            if (in_literals) {
+                in_literals = false;
                 idx++;
                 continue;
             }
@@ -268,6 +292,8 @@ void parse_types_section(const std::vector<LineInfo>& lines, size_t& idx, std::v
                 types.push_back(std::move(current));
                 current = CompanionCustomType{};
                 has_current = false;
+                in_fields = false;
+                in_literals = false;
                 idx++;
                 continue;
             }
@@ -285,8 +311,9 @@ void parse_types_section(const std::vector<LineInfo>& lines, size_t& idx, std::v
             }
             has_current = true;
             in_fields = false;
+            in_literals = false;
             text = trim(text.substr(2));
-        } else if (text == "{" && !in_fields) {
+        } else if (text == "{" && !in_fields && !in_literals) {
             if (has_current) {
                 types.push_back(std::move(current));
                 current = CompanionCustomType{};
@@ -300,6 +327,40 @@ void parse_types_section(const std::vector<LineInfo>& lines, size_t& idx, std::v
         k = unquote(k);
         if (k == "fields" || k == "members") {
             in_fields = true;
+            in_literals = false;
+            idx++;
+            continue;
+        }
+        if (k == "literals" || k == "enum_literals" || k == "values") {
+            std::string trimmed_v = trim(v);
+            if (!trimmed_v.empty() && trimmed_v != "[") {
+                parse_inline_list(trimmed_v, current.enum_literals);
+                in_literals = false;
+            } else {
+                in_literals = true;
+                in_fields = false;
+            }
+            idx++;
+            continue;
+        }
+
+        if (in_literals) {
+            if (text.rfind("- ", 0) == 0) {
+                std::string item = trim(text.substr(2));
+                auto [lk, lv] = split_key_value(item);
+                if (!lv.empty() && unquote(lk) == "name") {
+                    current.enum_literals.push_back(unquote(lv));
+                } else {
+                    std::string lit = unquote(item);
+                    if (!lit.empty()) {
+                        current.enum_literals.push_back(std::move(lit));
+                    }
+                }
+            } else if (k == "name" && !v.empty()) {
+                current.enum_literals.push_back(unquote(v));
+            } else if (v.empty() && !k.empty() && k != "{" && k != "}" && k != "[") {
+                current.enum_literals.push_back(unquote(k));
+            }
             idx++;
             continue;
         }

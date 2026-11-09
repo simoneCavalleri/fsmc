@@ -680,29 +680,114 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
     }
 
     // 7b. State Lifecycle Actions: entry action <Act>; / exit action <Act>;
-    static const std::regex entry_block_regex(R"(^entry(?:\s*\/)?(?:\s+do)?(?:\s+action)?\s*\{([\s\S]*)\})",
-                                              std::regex::optimize);
+    auto parse_lifecycle_action_block = [&](const std::string& block_content, const std::string& explicit_name,
+                                            const std::string& default_name,
+                                            std::vector<ActionSignature>& target_actions) {
+        std::string trimmed_block = trim(block_content);
+        std::stringstream ss(trimmed_block);
+        std::string statement;
+        std::vector<ActionAssignment> assignments;
+        std::vector<std::string> standalone_calls;
+
+        static const std::regex assign_regex(
+            R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(=|\+=|-=|\*=|\/=)\s*(.+)$)",
+            std::regex::optimize);
+        static const std::regex inc_regex(
+            R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(\+\+|--)$)",
+            std::regex::optimize);
+
+        while (std::getline(ss, statement, ';')) {
+            statement = trim(statement);
+            if (statement.empty())
+                continue;
+
+            std::smatch assign_match;
+            if (std::regex_match(statement, assign_match, assign_regex)) {
+                std::string scope_prefix = assign_match[1].str();
+                std::string var = assign_match[2].str();
+                std::string op = assign_match[3].str();
+                std::string rhs = trim(assign_match[4].str());
+                LValueTarget tgt(scope_prefix + var);
+                if (op == "=") {
+                    assignments.push_back({tgt, rhs});
+                } else if (op == "+=") {
+                    assignments.push_back({tgt, var + " + " + rhs});
+                } else if (op == "-=") {
+                    assignments.push_back({tgt, var + " - " + rhs});
+                } else if (op == "*=") {
+                    assignments.push_back({tgt, var + " * (" + rhs + ")"});
+                } else if (op == "/=") {
+                    assignments.push_back({tgt, var + " / (" + rhs + ")"});
+                }
+            } else if (std::regex_match(statement, assign_match, inc_regex)) {
+                std::string scope_prefix = assign_match[1].str();
+                std::string var = assign_match[2].str();
+                std::string op = assign_match[3].str();
+                LValueTarget tgt(scope_prefix + var);
+                if (op == "++") {
+                    assignments.push_back({tgt, var + " + 1"});
+                } else {
+                    assignments.push_back({tgt, var + " - 1"});
+                }
+            } else {
+                std::string act_call = statement;
+                if (act_call.ends_with("()")) {
+                    act_call.resize(act_call.size() - 2);
+                    act_call = trim(act_call);
+                }
+                act_call = sanitize_identifier(act_call);
+                if (!act_call.empty()) {
+                    standalone_calls.push_back(act_call);
+                }
+            }
+        }
+
+        const bool has_assignments = !assignments.empty();
+        if (has_assignments) {
+            std::string act_name = !explicit_name.empty() ? explicit_name : default_name;
+            ActionSignature sig(act_name);
+            sig.assignments = std::move(assignments);
+            model.add_action(act_name);
+            target_actions.push_back(std::move(sig));
+        }
+
+        for (const auto& call : standalone_calls) {
+            model.add_action(call);
+            target_actions.emplace_back(call);
+        }
+
+        if (!has_assignments && standalone_calls.empty()) {
+            std::string act_name = !explicit_name.empty() ? explicit_name : default_name;
+            model.add_action(act_name);
+            target_actions.emplace_back(act_name);
+        }
+    };
+
+    static const std::regex entry_block_regex(
+        R"(^entry(?:\s*\/)?(?:\s+do)?(?:\s+action)?(?:\s+([A-Za-z_][A-Za-z0-9_]*))?\s*\{([\s\S]*)\})",
+        std::regex::optimize);
     if (std::regex_search(stmt, match, entry_block_regex)) {
-        std::string act_name = !state_stack.empty() ? (state_stack.back() + "_entry") : "entry_action";
-        model.add_action(act_name);
+        std::string explicit_name = match[1].matched ? sanitize_identifier(match[1].str()) : "";
+        std::string default_name = !state_stack.empty() ? (state_stack.back() + "_entry") : "entry_action";
         if (!state_stack.empty()) {
             auto* st = model.find_state_mut(state_stack.back());
             if (st != nullptr) {
-                st->entry_actions.emplace_back(act_name);
+                parse_lifecycle_action_block(match[2].str(), explicit_name, default_name, st->entry_actions);
             }
         }
         return true;
     }
 
-    static const std::regex exit_block_regex(R"(^exit(?:\s*\/)?(?:\s+do)?(?:\s+action)?\s*\{([\s\S]*)\})",
-                                             std::regex::optimize);
+    static const std::regex exit_block_regex(
+        R"(^exit(?:\s*\/)?(?:\s+do)?(?:\s+action)?(?:\s+([A-Za-z_][A-Za-z0-9_]*))?\s*\{([\s\S]*)\})",
+        std::regex::optimize);
     if (std::regex_search(stmt, match, exit_block_regex)) {
-        std::string act_name = !state_stack.empty() ? (state_stack.back() + "_exit") : "exit_action";
-        model.add_action(act_name);
+        std::string explicit_name = match[1].matched ? sanitize_identifier(match[1].str()) : "";
+        std::string default_name = !state_stack.empty() ? (state_stack.back() + "_exit") : "exit_action";
         if (!state_stack.empty()) {
             auto* st = model.find_state_mut(state_stack.back());
             if (st != nullptr) {
-                st->exit_actions.emplace_back(act_name);
+                parse_lifecycle_action_block(match[2].str(), explicit_name, default_name, st->exit_actions);
             }
         }
         return true;
@@ -1018,35 +1103,40 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
                 continue;
 
             static const std::regex assign_regex(
-                R"(^(?:(?:out|in|reg|service|context)\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(=|\+=|-=|\*=|\/=)\s*(.+)$)",
+                R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(=|\+=|-=|\*=|\/=)\s*(.+)$)",
                 std::regex::optimize);
             static const std::regex inc_regex(
-                R"(^(?:(?:out|in|reg|service|context)\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(\+\+|--)$)", std::regex::optimize);
+                R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(\+\+|--)$)",
+                std::regex::optimize);
             std::smatch assign_match;
             if (std::regex_match(statement, assign_match, assign_regex)) {
                 // Variable assignment or compound assignment op
-                std::string var = assign_match[1].str();
-                std::string op = assign_match[2].str();
-                std::string rhs = trim(assign_match[3].str());
+                std::string scope_prefix = assign_match[1].str();
+                std::string var = assign_match[2].str();
+                std::string op = assign_match[3].str();
+                std::string rhs = trim(assign_match[4].str());
+                LValueTarget tgt(scope_prefix + var);
                 if (op == "=") {
-                    assignments.push_back({var, rhs});
+                    assignments.push_back({tgt, rhs});
                 } else if (op == "+=") {
-                    assignments.push_back({var, var + " + " + rhs});
+                    assignments.push_back({tgt, var + " + " + rhs});
                 } else if (op == "-=") {
-                    assignments.push_back({var, var + " - " + rhs});
+                    assignments.push_back({tgt, var + " - " + rhs});
                 } else if (op == "*=") {
-                    assignments.push_back({var, var + " * (" + rhs + ")"});
+                    assignments.push_back({tgt, var + " * (" + rhs + ")"});
                 } else if (op == "/=") {
-                    assignments.push_back({var, var + " / (" + rhs + ")"});
+                    assignments.push_back({tgt, var + " / (" + rhs + ")"});
                 }
             } else if (std::regex_match(statement, assign_match, inc_regex)) {
                 // Increment or decrement shorthand (++ or --)
-                std::string var = assign_match[1].str();
-                std::string op = assign_match[2].str();
+                std::string scope_prefix = assign_match[1].str();
+                std::string var = assign_match[2].str();
+                std::string op = assign_match[3].str();
+                LValueTarget tgt(scope_prefix + var);
                 if (op == "++") {
-                    assignments.push_back({var, var + " + 1"});
+                    assignments.push_back({tgt, var + " + 1"});
                 } else {
-                    assignments.push_back({var, var + " - 1"});
+                    assignments.push_back({tgt, var + " - 1"});
                 }
             } else {
                 // Standalone action method call
@@ -1174,7 +1264,34 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
         return true;
     }
 
-    // 8. Construct the canonical TransitionEdge representation
+    // 8. Ensure states, choice nodes, and signals are synchronized in the model first
+    if (!model.is_choice_node(source)) {
+        model.add_or_get_state(source, "");
+    }
+    if (!model.is_choice_node(target)) {
+        model.add_or_get_state(target, "");
+        if (target_is_history) {
+            auto* target_state = model.find_state_mut(target);
+            if (target_state != nullptr) {
+                target_state->has_history = true;
+                if (target_is_deep_history) {
+                    target_state->has_deep_history = true;
+                }
+            }
+        }
+    }
+    for (const auto& t_name : fork_targets) {
+        if (!model.is_choice_node(t_name)) {
+            model.add_or_get_state(t_name, "");
+        }
+    }
+    for (const auto& s_name : join_sources) {
+        if (!model.is_choice_node(s_name)) {
+            model.add_or_get_state(s_name, "");
+        }
+    }
+
+    // 9. Construct the canonical TransitionEdge representation
     TransitionEdge trans;
     trans.source = source;
     trans.target = target;
@@ -1223,38 +1340,10 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     trans.parent_scope = state_stack.empty() ? "" : state_stack.back();
 
     // Distinguish internal from external transitions
-    if (source == target && !event.empty() && stmt.find("then") == std::string::npos &&
-        stmt.find("to") == std::string::npos) {
+    if (source == target && !event.empty() && !std::regex_search(stmt, then_regex)) {
         trans.kind = TransitionEdgeKind::Internal;
     } else {
         trans.kind = TransitionEdgeKind::External;
-    }
-
-    // 9. Ensure states, choice nodes, and signals are synchronized in the model
-    if (!model.is_choice_node(source)) {
-        model.add_or_get_state(source, "");
-    }
-    if (!model.is_choice_node(target)) {
-        model.add_or_get_state(target, "");
-        if (target_is_history) {
-            auto* target_state = model.find_state_mut(target);
-            if (target_state != nullptr) {
-                target_state->has_history = true;
-                if (target_is_deep_history) {
-                    target_state->has_deep_history = true;
-                }
-            }
-        }
-    }
-    for (const auto& t_name : fork_targets) {
-        if (!model.is_choice_node(t_name)) {
-            model.add_or_get_state(t_name, "");
-        }
-    }
-    for (const auto& s_name : join_sources) {
-        if (!model.is_choice_node(s_name)) {
-            model.add_or_get_state(s_name, "");
-        }
     }
 
     if (!event.empty()) {

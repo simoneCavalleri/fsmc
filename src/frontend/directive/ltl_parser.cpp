@@ -70,6 +70,38 @@ class LtlTokenizerAndParser {
                c == '!' || c == '&' || c == '|' || c == '-' || c == '=' || c == '<' || c == '>';
     }
 
+    [[nodiscard]] bool is_prev_comparison_op() const {
+        if (tokens_.empty() || tokens_.back().type != TokenType::Atom) {
+            return false;
+        }
+        const std::string& prev = tokens_.back().value;
+        if (prev.empty()) {
+            return false;
+        }
+        char last = prev.back();
+        return last == '=' || last == '<' || last == '>';
+    }
+
+    [[nodiscard]] bool is_followed_by_comparison_op(size_t after_pos) const {
+        size_t i = after_pos;
+        while (i < src_.size() && std::isspace(static_cast<unsigned char>(src_[i])) != 0) {
+            ++i;
+        }
+        if (i >= src_.size()) {
+            return false;
+        }
+        if (i + 1 < src_.size()) {
+            if ((src_[i] == '=' && src_[i + 1] == '=') || (src_[i] == '!' && src_[i + 1] == '=') ||
+                (src_[i] == '<' && src_[i + 1] == '=') || (src_[i] == '>' && src_[i + 1] == '=')) {
+                if (i + 2 < src_.size() && src_[i] == '<' && src_[i + 1] == '=' && src_[i + 2] == '>') {
+                    return false;
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
     void tokenize() {
         while (pos_ < src_.size()) {
             char c = src_[pos_];
@@ -94,7 +126,8 @@ class LtlTokenizerAndParser {
                 ++pos_;
                 continue;
             }
-            if (c == 'G' && (pos_ + 1 >= src_.size() || is_delim(src_[pos_ + 1]))) {
+            if (c == 'G' && (pos_ + 1 >= src_.size() || is_delim(src_[pos_ + 1])) && !is_prev_comparison_op() &&
+                !is_followed_by_comparison_op(pos_ + 1)) {
                 tokens_.push_back({TokenType::Globally, "G"});
                 ++pos_;
                 continue;
@@ -106,28 +139,32 @@ class LtlTokenizerAndParser {
                 pos_ += 2;
                 continue;
             }
-            if (c == 'F' && (pos_ + 1 >= src_.size() || is_delim(src_[pos_ + 1]))) {
+            if (c == 'F' && (pos_ + 1 >= src_.size() || is_delim(src_[pos_ + 1])) && !is_prev_comparison_op() &&
+                !is_followed_by_comparison_op(pos_ + 1)) {
                 tokens_.push_back({TokenType::Finally, "F"});
                 ++pos_;
                 continue;
             }
 
             // X (Next)
-            if (c == 'X' && (pos_ + 1 >= src_.size() || is_delim(src_[pos_ + 1]))) {
+            if (c == 'X' && (pos_ + 1 >= src_.size() || is_delim(src_[pos_ + 1])) && !is_prev_comparison_op() &&
+                !is_followed_by_comparison_op(pos_ + 1)) {
                 tokens_.push_back({TokenType::Next, "X"});
                 ++pos_;
                 continue;
             }
 
             // U (Until)
-            if (c == 'U' && (pos_ + 1 >= src_.size() || is_delim(src_[pos_ + 1]))) {
+            if (c == 'U' && (pos_ + 1 >= src_.size() || is_delim(src_[pos_ + 1])) && !is_prev_comparison_op() &&
+                !is_followed_by_comparison_op(pos_ + 1)) {
                 tokens_.push_back({TokenType::Until, "U"});
                 ++pos_;
                 continue;
             }
 
             // R (Release)
-            if (c == 'R' && (pos_ + 1 >= src_.size() || is_delim(src_[pos_ + 1]))) {
+            if (c == 'R' && (pos_ + 1 >= src_.size() || is_delim(src_[pos_ + 1])) && !is_prev_comparison_op() &&
+                !is_followed_by_comparison_op(pos_ + 1)) {
                 tokens_.push_back({TokenType::Release, "R"});
                 ++pos_;
                 continue;
@@ -173,8 +210,8 @@ class LtlTokenizerAndParser {
                 continue;
             }
 
-            // Not: !
-            if (c == '!') {
+            // Not: ! (but not !=)
+            if (c == '!' && !(pos_ + 1 < src_.size() && src_[pos_ + 1] == '=')) {
                 tokens_.push_back({TokenType::Not, "!"});
                 ++pos_;
                 continue;
@@ -201,7 +238,10 @@ class LtlTokenizerAndParser {
                         ch == ']') {
                         break;
                     }
-                    if (ch == '&' || ch == '|' || ch == '!') {
+                    if (ch == '&' || ch == '|') {
+                        break;
+                    }
+                    if (ch == '!' && !(pos_ + 1 < src_.size() && src_[pos_ + 1] == '=')) {
                         break;
                     }
                     if (ch == '-' && pos_ + 1 < src_.size() && src_[pos_ + 1] == '>') {
@@ -227,21 +267,21 @@ class LtlTokenizerAndParser {
                 tokens_.push_back({TokenType::Or, "||"});
             } else if (word == "NOT" || word == "not") {
                 tokens_.push_back({TokenType::Not, "!"});
-            } else if (word == "EX") {
+            } else if (!is_prev_comparison_op() && !is_followed_by_comparison_op(pos_) && word == "EX") {
                 tokens_.push_back({TokenType::EX, "EX"});
-            } else if (word == "AX") {
+            } else if (!is_prev_comparison_op() && !is_followed_by_comparison_op(pos_) && word == "AX") {
                 tokens_.push_back({TokenType::AX, "AX"});
-            } else if (word == "EF") {
+            } else if (!is_prev_comparison_op() && !is_followed_by_comparison_op(pos_) && word == "EF") {
                 tokens_.push_back({TokenType::EF, "EF"});
-            } else if (word == "AF") {
+            } else if (!is_prev_comparison_op() && !is_followed_by_comparison_op(pos_) && word == "AF") {
                 tokens_.push_back({TokenType::AF, "AF"});
-            } else if (word == "EG") {
+            } else if (!is_prev_comparison_op() && !is_followed_by_comparison_op(pos_) && word == "EG") {
                 tokens_.push_back({TokenType::EG, "EG"});
-            } else if (word == "AG") {
+            } else if (!is_prev_comparison_op() && !is_followed_by_comparison_op(pos_) && word == "AG") {
                 tokens_.push_back({TokenType::AG, "AG"});
-            } else if (word == "EU") {
+            } else if (!is_prev_comparison_op() && !is_followed_by_comparison_op(pos_) && word == "EU") {
                 tokens_.push_back({TokenType::EU, "EU"});
-            } else if (word == "AU") {
+            } else if (!is_prev_comparison_op() && !is_followed_by_comparison_op(pos_) && word == "AU") {
                 tokens_.push_back({TokenType::AU, "AU"});
             } else if (!word.empty()) {
                 tokens_.push_back({TokenType::Atom, word});

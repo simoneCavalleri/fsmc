@@ -427,6 +427,9 @@ void MermaidParser::parse_internal_transition(std::string_view line, FsmIr& mode
             auto parsed = GuardExpressionParser::parse(grd);
             if (!parsed.cpp_type.empty()) {
                 guard_name = parsed.cpp_type;
+                for (const auto& detail : parsed.atomic_guard_details) {
+                    model.add_guard(detail.name, "", detail.expression, detail.expression);
+                }
                 for (const auto& atomic : parsed.atomic_guards) {
                     model.add_guard(atomic);
                 }

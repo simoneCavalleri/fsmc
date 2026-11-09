@@ -70,7 +70,7 @@ class FsmcDriver {
         }
 
         if (opts.show_version) {
-            std::cout << "fsmc version 0.8.0 (Universal State Machine Compiler & Optimization Infrastructure)\n";
+            std::cout << "fsmc version 0.9.0 (Universal State Machine Compiler & Optimization Infrastructure)\n";
             return 0;
         }
 

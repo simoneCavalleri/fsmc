@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.9.0] - 2026-11-09
+
+### Added
+- **Formal Verification & Abstract Interpretation Soundness**:
+  - Implemented direct greatest fixed-point computation for CTL $AG(P)$ formulas using `pre_all` iteration, eliminating over-approximation inversion from negated reachability.
+  - Implemented relational operator inversion for formula negations (`!(a == b)` $\rightarrow$ `a != b`, `!(a < b)` $\rightarrow$ `a >= b`) to preserve sound three-valued interval evaluation.
+  - Added support for top-level disjunctions (`||`, convex hull joining) and conjunctions (`&&`, interval intersection) in `EFSMIntervalAnalyzer::parse_guard_domain`.
+  - Added support for compound assignment operators (`+=`, `-=`, `*=`, `/=`) in EFSM interval data-path propagation.
+  - Introduced explicit `EFSMFindingKind` enum (`UnsatisfiableGuard`, `PortRangeViolation`, `VariableRangeViolation`), guaranteeing that dead transition pruning is restricted strictly to provably unsatisfiable guards.
+- **Backend Synthesizers & Formats**:
+  - Added word-boundary token validation to `SmvSerializer::to_smv_predicate` for domain prefix stripping (`in.`, `out.`, `reg.`), preventing accidental identifier substring mangling.
+  - Added strict uppercase `TRUE`/`FALSE` boolean variable initialization in SMV output for seamless compatibility with strict nuXmv / NuSMV checkers.
+  - Enhanced `McdcHarnessGenerator` with automatic AST variable collection and C++ parameter identifier sanitization for compound guard expressions.
+  - Added PlantUML `@fsm:submachine` directive support for modular subchart inclusion.
+- **Automated Documentation Freshness & Veracity Quality Gate**:
+  - Added dedicated CMake target `check_docs` and CTest test `test_documentation_freshness` (expanding test suite to 94 tests).
+  - Integrated automated validation in GitHub Actions CI for version synchronization across project files, broken link and anchor detection, and test catalog freshness.
+
+### Fixed
+- **Memory Safety & Runtime Concurrency**:
+  - Fixed use-after-free and integer overflow vulnerabilities in `fsm::deserialize`.
+  - Hardened Stateflow `.slx` parser against ZIP bombs and heap buffer over-reads.
+  - Corrected memory ordering (`acquire`/`release`) in `spsc_fsm` and `spsc_ring_buffer`, and added `mutation_guard` to prevent worker thread livelocks upon exceptions.
+  - Eliminated data races on diagnostic counters, reentrancy depth, and potential self-deadlocks during recursive `step()`/`tick()` in `thread_safe_fsm`.
+  - Fixed double invocation of `do_activity` in `step(dt)` and corrected Lowest Common Ancestor (LCA) resolution for composite state transitions.
+- **Frontend & Canonical IR**:
+  - Fixed struct metadata overwrites by user types in `FsmIrSerializer` and `FsmIrDeserializer`.
+  - Preserved bidirectional `InOut` port contracts and extended metadata fields (`min`, `max`, `unit`, `register_index`).
+  - Fixed word-boundary checks for `to` target states and forward-referencing in SysML v2 statecharts.
+  - Fixed unary minus negation formatting in `ExpressionAstNode::to_string()` for negative literals (`-(-x)` wrapped in parentheses).
+- **Optimization Passes**:
+  - Preserved initial state entry actions and opaque callbacks in `BoundaryActionFusionPass`.
+  - Removed premature break on intra-region events and fixed iterator invalidation in `OrthogonalProductPass`.
+  - Enforced `External` transition kind and fixed multi-level descendant traversal in `HistoryLoweringPass`.
+  - Converted `RegisterLivenessPass` into a formal edge-based dataflow analysis.
+  - Fixed false-positive recursive inlining detection on default names (`"Fsm"` / `"MyStateMachine"`) in `SubmachineInliningPass`.
+- **Tooling & Build System**:
+  - Fixed CMake and Conan target aliases and modernized include path configurations.
+  - Diverted CLI informative messages to `std::cerr` to prevent Unix pipe corruption when stdout is redirected.
+  - Enforced full codebase conformity to `clang-format` under `-Werror`.
+
+---
+
 ## [0.8.0] - 2026-10-02
 
 ### Added

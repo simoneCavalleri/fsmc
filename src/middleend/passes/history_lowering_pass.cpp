@@ -37,6 +37,13 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         return false;
     }
 
+    std::unordered_set<std::string> all_pruned_history_names;
+    for (const auto& s : ir.states) {
+        if (s.kind == StateKind::ShallowHistory || s.kind == StateKind::DeepHistory) {
+            all_pruned_history_names.insert(s.name);
+        }
+    }
+
     for (const auto& parent_name : composite_with_history) {
         auto* parent = ir.find_state_mut(parent_name);
         if (parent == nullptr)
@@ -49,11 +56,17 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 
         // Collect all direct substates (or recursive substates if deep)
         std::vector<std::string> target_substates;
+        std::unordered_set<std::string> history_pseudostates_of_parent;
+        history_pseudostates_of_parent.insert(parent_name + ".[H]");
+        history_pseudostates_of_parent.insert(parent_name + ".[H*]");
+        history_pseudostates_of_parent.insert(parent_name + "_H");
+        history_pseudostates_of_parent.insert(parent_name + "_HStar");
         std::string default_substate = parent->initial_sub_state;
 
         for (const auto& s : ir.states) {
             if (s.parent_state == parent_name) {
                 if (s.kind == StateKind::ShallowHistory || s.kind == StateKind::DeepHistory) {
+                    history_pseudostates_of_parent.insert(s.name);
                     if (s.kind == StateKind::DeepHistory)
                         is_deep = true;
                     // Find default target from outgoing transition of history pseudostate
@@ -65,6 +78,43 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 } else {
                     target_substates.push_back(s.name);
                 }
+            }
+        }
+
+        // 3. Attach exit action to substates recording active state (and collect deep descendants)
+        for (auto& s : ir.states) {
+            bool is_target = false;
+            if (is_deep) {
+                // Check if s is descendant of parent, guarding against cycles
+                std::string curr_p = s.parent_state;
+                std::unordered_set<std::string> visited;
+                while (!curr_p.empty() && visited.insert(curr_p).second) {
+                    if (curr_p == parent_name) {
+                        is_target = true;
+                        break;
+                    }
+                    const auto* p_node = ir.find_state(curr_p);
+                    curr_p = (p_node != nullptr) ? p_node->parent_state : "";
+                }
+            } else {
+                is_target = (s.parent_state == parent_name);
+            }
+
+            if (is_target && s.kind != StateKind::ShallowHistory && s.kind != StateKind::DeepHistory) {
+                if (std::find(target_substates.begin(), target_substates.end(), s.name) == target_substates.end()) {
+                    target_substates.push_back(s.name);
+                }
+                // Synthesize StoreOp to update shadow register
+                StoreOp store;
+                store.target = LValueTarget(history_var_name, LValueScope::Register);
+                store.op = AssignmentOp::Assign;
+                store.expression = "\"" + s.name + "\"";
+
+                ActionSignature exit_sig("__record_history_" + s.name);
+                exit_sig.instructions.emplace_back(store, "Record active substate on exit");
+                exit_sig.assignments.emplace_back(store.target, store.expression);
+                s.exit_actions.push_back(std::move(exit_sig));
+                modified = true;
             }
         }
 
@@ -90,39 +140,6 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             modified = true;
         }
 
-        // 3. Attach exit action to substates recording active state
-        for (auto& s : ir.states) {
-            bool is_target = false;
-            if (is_deep) {
-                // Check if s is descendant of parent
-                std::string curr_p = s.parent_state;
-                while (!curr_p.empty()) {
-                    if (curr_p == parent_name) {
-                        is_target = true;
-                        break;
-                    }
-                    const auto* p_node = ir.find_state(curr_p);
-                    curr_p = (p_node != nullptr) ? p_node->parent_state : "";
-                }
-            } else {
-                is_target = (s.parent_state == parent_name);
-            }
-
-            if (is_target && s.kind != StateKind::ShallowHistory && s.kind != StateKind::DeepHistory) {
-                // Synthesize StoreOp to update shadow register
-                StoreOp store;
-                store.target = LValueTarget(history_var_name, LValueScope::Register);
-                store.op = AssignmentOp::Assign;
-                store.expression = "\"" + s.name + "\"";
-
-                ActionSignature exit_sig("__record_history_" + s.name);
-                exit_sig.instructions.emplace_back(store, "Record active substate on exit");
-                exit_sig.assignments.emplace_back(store.target, store.expression);
-                s.exit_actions.push_back(std::move(exit_sig));
-                modified = true;
-            }
-        }
-
         // 4. Synthesize Choice Restore Pseudostate
         std::string restore_choice_name = parent_name + "_HistoryRestore";
         StateNode restore_node(restore_choice_name, "Choice branch restoring recorded history substate", parent_name);
@@ -134,27 +151,25 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         for (const auto& sub_name : target_substates) {
             std::string grd = history_var_name + " == \"" + sub_name + "\"";
             TransitionEdge branch(restore_choice_name, sub_name, "", grd, std::nullopt, "Restore branch to " + sub_name,
-                                  TransitionEdgeKind::Internal, 0);
+                                  TransitionEdgeKind::External, 0);
             ir.transitions.push_back(std::move(branch));
         }
 
         // Add default/else fallback branch
         TransitionEdge fallback(restore_choice_name, default_substate, "", "else", std::nullopt,
-                                "Default history restore fallback", TransitionEdgeKind::Internal, 0);
+                                "Default history restore fallback", TransitionEdgeKind::External, 0);
         ir.transitions.push_back(std::move(fallback));
 
         // 5. Retarget incoming transitions pointing to history to the restore choice node
         for (auto& t : ir.transitions) {
-            bool targets_history = t.target_is_history || t.target_is_deep_history;
-            if (!targets_history) {
-                const auto* dst = ir.find_state(t.target);
-                if (dst != nullptr && (dst->kind == StateKind::ShallowHistory || dst->kind == StateKind::DeepHistory) &&
-                    dst->parent_state == parent_name) {
-                    targets_history = true;
-                }
+            bool targets_this_parent_history = false;
+            if (history_pseudostates_of_parent.count(t.target) > 0) {
+                targets_this_parent_history = true;
+            } else if ((t.target_is_history || t.target_is_deep_history) && t.target == parent_name) {
+                targets_this_parent_history = true;
             }
 
-            if (targets_history && (t.target == parent_name || t.target.find(parent_name) != std::string::npos)) {
+            if (targets_this_parent_history) {
                 t.target = restore_choice_name;
                 t.target_id = compute_deterministic_id(restore_choice_name);
                 t.target_ids = {restore_choice_name};
@@ -166,7 +181,14 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         }
     }
 
-    // 6. Prune obsolete History state nodes
+    // 6. Prune obsolete History state nodes and their outgoing default transitions
+    if (!all_pruned_history_names.empty()) {
+        ir.transitions.erase(std::remove_if(ir.transitions.begin(), ir.transitions.end(),
+                                            [&](const TransitionEdge& t) {
+                                                return all_pruned_history_names.count(t.source) > 0;
+                                            }),
+                             ir.transitions.end());
+    }
     ir.states.erase(std::remove_if(ir.states.begin(), ir.states.end(),
                                    [](const StateNode& s) {
                                        return s.kind == StateKind::ShallowHistory || s.kind == StateKind::DeepHistory;

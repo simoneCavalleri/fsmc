@@ -32,7 +32,7 @@ bool OrthogonalProductPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     }
 
     for (const auto& p_name : parallel_state_names) {
-        auto* parent = ir.find_state_mut(p_name);
+        const auto* parent = ir.find_state(p_name);
         if (parent == nullptr) {
             continue;
         }
@@ -45,7 +45,7 @@ bool OrthogonalProductPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             continue;
         }
 
-        if (expand_parallel_state(ir, *parent, diag)) {
+        if (expand_parallel_state(ir, p_name, diag)) {
             modified = true;
         }
     }
@@ -58,9 +58,12 @@ bool OrthogonalProductPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     return modified;
 }
 
-bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, StateNode& parent, DiagnosticEngine& diag) {
-    const std::string parent_name = parent.name;
-    const auto declared_regions = parent.orthogonal_regions;
+bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& parent_name, DiagnosticEngine& diag) {
+    const auto* initial_parent = ir.find_state(parent_name);
+    if (initial_parent == nullptr) {
+        return false;
+    }
+    const auto declared_regions = initial_parent->orthogonal_regions;
     std::vector<RegionInfo> regions;
     std::unordered_set<std::string> all_sub_state_names;
 
@@ -230,7 +233,7 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, StateNode& parent, 
     // Collect all intra-region transitions
     std::vector<TransitionEdge> intra_transitions;
     for (const auto& t : ir.transitions) {
-        if (all_sub_state_names.count(t.source) > 0 || all_sub_state_names.count(t.target) > 0) {
+        if (all_sub_state_names.count(t.source) > 0 && all_sub_state_names.count(t.target) > 0) {
             intra_transitions.push_back(t);
         }
     }
@@ -247,63 +250,141 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, StateNode& parent, 
         std::string src_product = tuple_to_name(tup);
 
         for (const auto& ev : region_events) {
-            // Check which regions transition on ev from tup
-            std::vector<std::string> next_tup = tup;
+            std::vector<std::vector<const TransitionEdge*>> matching_per_region(regions.size());
             bool any_transitioned = false;
-            std::vector<std::string> guards;
-            std::vector<std::string> actions;
-            std::vector<ActionAssignment> assignments;
-
             for (std::size_t r = 0; r < regions.size(); ++r) {
                 const std::string& current_state = tup[r];
                 for (const auto& t : intra_transitions) {
                     if (t.source == current_state && t.event == ev) {
-                        next_tup[r] = t.target;
+                        matching_per_region[r].push_back(&t);
                         any_transitioned = true;
-                        if (t.guard.has_value() && !t.guard->empty()) {
-                            guards.push_back(*t.guard);
-                        }
-                        if (t.transition_action.has_value()) {
-                            if (!t.transition_action->name.empty()) {
-                                actions.push_back(t.transition_action->name);
-                            }
-                            for (const auto& a : t.transition_action->assignments) {
-                                assignments.push_back(a);
-                            }
-                        }
-                        break;
                     }
                 }
             }
 
-            if (any_transitioned) {
-                std::string dst_product = tuple_to_name(next_tup);
-                TransitionEdge pt;
-                pt.source = src_product;
-                pt.target = dst_product;
-                pt.event = ev;
-                if (!guards.empty()) {
-                    std::string combined_guard;
-                    for (std::size_t i = 0; i < guards.size(); ++i) {
-                        if (i > 0)
-                            combined_guard += " && ";
-                        combined_guard += "(" + guards[i] + ")";
+            if (!any_transitioned) {
+                continue;
+            }
+
+            std::vector<const TransitionEdge*> chosen_transitions(regions.size(), nullptr);
+            std::function<void(std::size_t)> build_combinations = [&](std::size_t r) {
+                if (r == regions.size()) {
+                    std::vector<std::string> next_tup = tup;
+                    std::vector<std::string> guards;
+                    std::vector<std::string> actions;
+                    std::vector<ActionAssignment> assignments;
+                    std::vector<ActionAstNode> instructions;
+                    std::optional<ActionSignature> cond_action;
+                    std::vector<std::string> clock_resets;
+                    std::uint32_t priority = 0;
+
+                    for (std::size_t idx = 0; idx < regions.size(); ++idx) {
+                        const auto* t = chosen_transitions[idx];
+                        if (t == nullptr) {
+                            continue;
+                        }
+                        next_tup[idx] = t->target;
+                        if (t->guard.has_value() && !t->guard->empty()) {
+                            guards.push_back(*t->guard);
+                        }
+                        if (t->transition_action.has_value()) {
+                            if (!t->transition_action->name.empty()) {
+                                actions.push_back(t->transition_action->name);
+                            }
+                            for (const auto& a : t->transition_action->assignments) {
+                                assignments.push_back(a);
+                            }
+                            for (const auto& inst : t->transition_action->instructions) {
+                                instructions.push_back(inst);
+                            }
+                        }
+                        if (t->condition_action.has_value() && !cond_action.has_value()) {
+                            cond_action = t->condition_action;
+                        }
+                        for (const auto& cr : t->clock_resets) {
+                            clock_resets.push_back(cr);
+                        }
+                        if (priority == 0 && t->priority != 0) {
+                            priority = t->priority;
+                        }
                     }
-                    pt.guard = combined_guard;
-                }
-                if (!assignments.empty() || !actions.empty()) {
-                    std::string combined_act;
-                    for (std::size_t i = 0; i < actions.size(); ++i) {
-                        if (i > 0)
-                            combined_act += "; ";
-                        combined_act += actions[i];
+
+                    std::string dst_product = tuple_to_name(next_tup);
+                    TransitionEdge pt;
+                    pt.source = src_product;
+                    pt.source_id = compute_deterministic_id(src_product);
+                    pt.target = dst_product;
+                    pt.target_id = compute_deterministic_id(dst_product);
+                    pt.event = ev;
+                    pt.trigger = SignalTrigger(ev);
+                    pt.priority = priority;
+                    pt.clock_resets = std::move(clock_resets);
+                    pt.condition_action = std::move(cond_action);
+
+                    if (!guards.empty()) {
+                        if (guards.size() == 1) {
+                            pt.set_guard("(" + guards[0] + ")");
+                        } else {
+                            std::string combined_guard;
+                            for (std::size_t i = 0; i < guards.size(); ++i) {
+                                if (i > 0)
+                                    combined_guard += " && ";
+                                combined_guard += "(" + guards[i] + ")";
+                            }
+                            pt.set_guard(combined_guard);
+                        }
                     }
-                    ActionSignature sig;
-                    sig.name = combined_act.empty() ? ("act_" + src_product + "_" + dst_product) : combined_act;
-                    sig.assignments = assignments;
-                    pt.transition_action = std::move(sig);
+                    if (!assignments.empty() || !actions.empty() || !instructions.empty()) {
+                        std::string combined_act;
+                        for (std::size_t i = 0; i < actions.size(); ++i) {
+                            if (i > 0)
+                                combined_act += "; ";
+                            combined_act += actions[i];
+                        }
+                        ActionSignature sig;
+                        sig.name = combined_act.empty() ? ("act_" + src_product + "_" + dst_product) : combined_act;
+                        sig.assignments = std::move(assignments);
+                        sig.instructions = std::move(instructions);
+                        pt.transition_action = std::move(sig);
+                    }
+                    new_product_transitions.push_back(std::move(pt));
+                    return;
                 }
-                new_product_transitions.push_back(std::move(pt));
+
+                if (matching_per_region[r].empty()) {
+                    chosen_transitions[r] = nullptr;
+                    build_combinations(r + 1);
+                } else {
+                    for (const auto* t : matching_per_region[r]) {
+                        chosen_transitions[r] = t;
+                        build_combinations(r + 1);
+                    }
+                }
+            };
+            build_combinations(0);
+        }
+
+        // Also synthesize intra-region eventless/anonymous/timed/change transitions (t.event.empty())
+        for (std::size_t r = 0; r < regions.size(); ++r) {
+            const std::string& current_state = tup[r];
+            for (const auto& t : intra_transitions) {
+                if (t.event.empty() && t.source == current_state) {
+                    std::vector<std::string> next_tup = tup;
+                    next_tup[r] = t.target;
+                    std::string dst_product = tuple_to_name(next_tup);
+
+                    TransitionEdge pt = t;
+                    pt.source = src_product;
+                    pt.source_id = compute_deterministic_id(src_product);
+                    pt.target = dst_product;
+                    pt.target_id = compute_deterministic_id(dst_product);
+                    pt.source_ids = {src_product};
+                    pt.multi_source_ids = {pt.source_id};
+                    pt.target_ids = {dst_product};
+                    pt.multi_target_ids = {pt.target_id};
+                    pt.id = compute_deterministic_id(pt.source + "->" + pt.target + ":" + pt.get_trigger_name());
+                    new_product_transitions.push_back(std::move(pt));
+                }
             }
         }
     }
@@ -316,7 +397,7 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, StateNode& parent, 
             continue;
         }
 
-        if (!t.target_ids.empty()) {
+        if (t.target_ids.size() > 1) {
             bool targets_region = false;
             for (const auto& tid : t.target_ids) {
                 if (all_sub_state_names.count(tid) > 0 || tid == parent_name) {
@@ -338,11 +419,17 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, StateNode& parent, 
                     }
                 }
                 t.target = tuple_to_name(resolved_tup);
+                t.target_id = compute_deterministic_id(t.target);
                 t.target_ids.clear();
                 t.multi_target_ids.clear();
             }
         } else if (t.target == parent_name) {
             t.target = initial_product_state_name;
+            t.target_id = compute_deterministic_id(t.target);
+            if (!t.target_ids.empty()) {
+                t.target_ids = {t.target};
+                t.multi_target_ids = {t.target_id};
+            }
         } else if (all_sub_state_names.count(t.target) > 0) {
             std::vector<std::string> resolved_tup(regions.size());
             for (std::size_t r = 0; r < regions.size(); ++r) {
@@ -355,6 +442,11 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, StateNode& parent, 
                 }
             }
             t.target = tuple_to_name(resolved_tup);
+            t.target_id = compute_deterministic_id(t.target);
+            if (!t.target_ids.empty()) {
+                t.target_ids = {t.target};
+                t.multi_target_ids = {t.target_id};
+            }
         }
     }
 
@@ -364,7 +456,7 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, StateNode& parent, 
             continue;
         }
 
-        if (!t.source_ids.empty()) {
+        if (t.source_ids.size() > 1) {
             bool sources_from_region = false;
             for (const auto& sid : t.source_ids) {
                 if (all_sub_state_names.count(sid) > 0) {
@@ -373,29 +465,65 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, StateNode& parent, 
                 }
             }
             if (sources_from_region) {
-                std::vector<std::string> resolved_tup(regions.size());
+                std::vector<std::vector<std::string>> allowed_per_region(regions.size());
                 for (std::size_t r = 0; r < regions.size(); ++r) {
-                    resolved_tup[r] = regions[r].states.empty() ? "" : regions[r].states.back();
                     for (const auto& sid : t.source_ids) {
                         for (const auto& st : regions[r].states) {
                             if (st == sid) {
-                                resolved_tup[r] = st;
+                                allowed_per_region[r].push_back(st);
                                 break;
                             }
                         }
                     }
+                    if (allowed_per_region[r].empty()) {
+                        allowed_per_region[r] = regions[r].states;
+                    }
                 }
-                t.source = tuple_to_name(resolved_tup);
-                t.source_ids.clear();
-                t.multi_source_ids.clear();
+
+                std::vector<std::string> join_source_products;
+                std::vector<std::string> cur_join_tup(regions.size());
+                std::function<void(std::size_t)> expand_join = [&](std::size_t r) {
+                    if (r == regions.size()) {
+                        join_source_products.push_back(tuple_to_name(cur_join_tup));
+                        return;
+                    }
+                    for (const auto& st : allowed_per_region[r]) {
+                        cur_join_tup[r] = st;
+                        expand_join(r + 1);
+                    }
+                };
+                expand_join(0);
+
+                if (!join_source_products.empty()) {
+                    t.source = join_source_products[0];
+                    t.source_id = compute_deterministic_id(t.source);
+                    t.source_ids.clear();
+                    t.multi_source_ids.clear();
+                    for (std::size_t i = 1; i < join_source_products.size(); ++i) {
+                        TransitionEdge clone = t;
+                        clone.source = join_source_products[i];
+                        clone.source_id = compute_deterministic_id(clone.source);
+                        new_product_transitions.push_back(std::move(clone));
+                    }
+                }
             }
         } else if (all_sub_state_names.count(t.source) > 0) {
             auto it = state_to_all_products.find(t.source);
             if (it != state_to_all_products.end() && !it->second.empty()) {
                 t.source = it->second[0];
+                t.source_id = compute_deterministic_id(t.source);
+                if (!t.source_ids.empty()) {
+                    t.source_ids = {t.source};
+                    t.multi_source_ids = {t.source_id};
+                }
                 for (std::size_t i = 1; i < it->second.size(); ++i) {
                     TransitionEdge clone = t;
                     clone.source = it->second[i];
+                    clone.source_id = compute_deterministic_id(clone.source);
+                    if (!clone.source_ids.empty()) {
+                        clone.source_ids = {clone.source};
+                        clone.multi_source_ids = {clone.source_id};
+                    }
                     new_product_transitions.push_back(std::move(clone));
                 }
             }

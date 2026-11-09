@@ -51,7 +51,7 @@ class OrthogonalProductPass {
         std::vector<std::string> states;
     };
 
-    bool expand_parallel_state(FsmIr& ir, StateNode& parent, DiagnosticEngine& diag);
+    bool expand_parallel_state(FsmIr& ir, const std::string& parent_name, DiagnosticEngine& diag);
 };
 
 }  // namespace fsm::middleend::passes

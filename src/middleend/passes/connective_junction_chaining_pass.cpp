@@ -1,6 +1,7 @@
 #include "fsm/middleend/passes/connective_junction_chaining_pass.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <functional>
 #include <map>
 #include <string>
@@ -23,12 +24,30 @@ bool is_else_guard(const std::optional<std::string>& g) {
     return val == "else" || val == "otherwise" || val == "default";
 }
 
+bool is_plain_identifier_guard(const std::string& g) {
+    if (g.empty()) {
+        return false;
+    }
+    if (std::isalpha(static_cast<unsigned char>(g[0])) == 0 && g[0] != '_') {
+        return false;
+    }
+    for (char c : g) {
+        if (std::isalnum(static_cast<unsigned char>(c)) == 0 && c != '_') {
+            return false;
+        }
+    }
+    return true;
+}
+
 std::string combine_two_guards(const std::string& g1, const std::string& g2) {
     if (g1.empty())
         return g2;
     if (g2.empty())
         return g1;
-    return "fsm::and_<" + g1 + ", " + g2 + ">";
+    if (is_plain_identifier_guard(g1) && is_plain_identifier_guard(g2)) {
+        return "fsm::and_<" + g1 + ", " + g2 + ">";
+    }
+    return "(" + g1 + ") && (" + g2 + ")";
 }
 
 }  // namespace
@@ -137,8 +156,7 @@ bool ConnectiveJunctionChainingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 }
             }
             if (!combined_guard.empty()) {
-                composite.guard = combined_guard;
-                composite.guard_ast = GuardAstNode(combined_guard);
+                composite.set_guard(combined_guard);
             }
 
             // Combine Condition Actions

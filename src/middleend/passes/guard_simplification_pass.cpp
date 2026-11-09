@@ -8,6 +8,28 @@ namespace fsm::middleend::passes {
 using namespace fsm::ir;
 using namespace fsm::diagnostic;
 
+namespace {
+
+bool are_complementary(const GuardAstNode& a, const GuardAstNode& b) {
+    if (a.op == GuardOp::Not && !a.children.empty() && a.children[0] == b) {
+        return true;
+    }
+    if (b.op == GuardOp::Not && !b.children.empty() && b.children[0] == a) {
+        return true;
+    }
+    if (a.op == GuardOp::None && b.op == GuardOp::None) {
+        if (a.expression == "!" + b.expression || a.expression == "!(" + b.expression + ")") {
+            return true;
+        }
+        if (b.expression == "!" + a.expression || b.expression == "!(" + a.expression + ")") {
+            return true;
+        }
+    }
+    return false;
+}
+
+}  // namespace
+
 GuardAstNode GuardSimplificationPass::simplify_node(const GuardAstNode& node) {
     // Base case: atomic expression
     if (node.op == GuardOp::None) {
@@ -68,6 +90,12 @@ GuardAstNode GuardSimplificationPass::simplify_node(const GuardAstNode& node) {
             if (item.op == GuardOp::None && item.expression == "true") {
                 continue;
             }
+            // Complementary check (A && !A -> false)
+            for (const auto& existing : cleaned) {
+                if (are_complementary(existing, item)) {
+                    return GuardAstNode("false");
+                }
+            }
             // Duplicate check
             if (std::find(cleaned.begin(), cleaned.end(), item) == cleaned.end()) {
                 cleaned.push_back(item);
@@ -91,6 +119,12 @@ GuardAstNode GuardSimplificationPass::simplify_node(const GuardAstNode& node) {
             // Skip "false" in OR
             if (item.op == GuardOp::None && item.expression == "false") {
                 continue;
+            }
+            // Complementary check (A || !A -> true)
+            for (const auto& existing : cleaned) {
+                if (are_complementary(existing, item)) {
+                    return GuardAstNode("true");
+                }
             }
             // Duplicate check
             if (std::find(cleaned.begin(), cleaned.end(), item) == cleaned.end()) {

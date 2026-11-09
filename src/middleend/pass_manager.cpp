@@ -268,24 +268,40 @@ bool ModelSafetyVerifierPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         std::string curr = queue.front();
         queue.pop();
 
-        // 1. Include sub-states if composite or parallel
-        for (const auto& s : ir.states) {
-            bool matches_parent = (!s.parent_state.empty() && s.parent_state == curr) ||
-                                  (s.parent_id.has_value() && *s.parent_id == curr);
-            if (matches_parent && reachable.count(s.name) == 0) {
-                reachable.insert(s.name);
-                if (!s.id.empty()) {
-                    reachable.insert(s.id);
-                }
-                queue.push(s.name);
-            }
-        }
-
-        // 2. Include parent state if sub-state is reached
         const auto* curr_st = ir.find_state_by_name(curr);
         if (!curr_st) {
             curr_st = ir.find_state_by_id(curr);
         }
+
+        // 1. Include sub-states: for sequential Composite states with an explicit initial_sub_state,
+        // only automatically mark initial_sub_state as reachable; for Parallel or empty initial_sub_state, mark all children.
+        bool mark_all_children =
+            (curr_st == nullptr) || (curr_st->kind == StateKind::Parallel) ||
+            !curr_st->orthogonal_regions.empty() || curr_st->initial_sub_state.empty();
+        if (mark_all_children) {
+            for (const auto& s : ir.states) {
+                bool matches_parent = (!s.parent_state.empty() && s.parent_state == curr) ||
+                                      (s.parent_id.has_value() && *s.parent_id == curr) ||
+                                      (curr_st != nullptr && !s.parent_state.empty() && s.parent_state == curr_st->name);
+                if (matches_parent && reachable.count(s.name) == 0) {
+                    reachable.insert(s.name);
+                    if (!s.id.empty()) {
+                        reachable.insert(s.id);
+                    }
+                    queue.push(s.name);
+                }
+            }
+        } else if (!curr_st->initial_sub_state.empty() && reachable.count(curr_st->initial_sub_state) == 0) {
+            reachable.insert(curr_st->initial_sub_state);
+            if (const auto* sub_node = ir.find_state_by_name(curr_st->initial_sub_state)) {
+                if (!sub_node->id.empty()) {
+                    reachable.insert(sub_node->id);
+                }
+            }
+            queue.push(curr_st->initial_sub_state);
+        }
+
+        // 2. Include parent state if sub-state is reached
         if (curr_st != nullptr && !curr_st->parent_state.empty()) {
             if (reachable.count(curr_st->parent_state) == 0) {
                 reachable.insert(curr_st->parent_state);
@@ -495,6 +511,9 @@ bool EFSMDataPathPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     if (prune_dead_transitions_) {
         std::size_t removed_count = 0;
         for (const auto& f : findings) {
+            if (f.is_error) {
+                continue;
+            }
             auto it = std::find_if(ir.transitions.begin(), ir.transitions.end(), [&](const TransitionEdge& t) {
                 if (!f.transition_id.empty() && t.id == f.transition_id)
                     return true;
@@ -838,6 +857,7 @@ PassManager PassManager::create_verified_7stage_pipeline(bool optimize) {
     // Stage 2: Structural Lowering Suite
     pm.add_pass(std::make_unique<ForkJoinLoweringPassWrapper>());
     pm.add_pass(std::make_unique<HistoryLoweringPassWrapper>());
+    pm.add_pass(std::make_unique<EventQueueBoundPassWrapper>());
     pm.add_pass(std::make_unique<DeferredEventLoweringPassWrapper>());
     pm.add_pass(std::make_unique<OrthogonalProductPassWrapper>());
     pm.add_pass(std::make_unique<BoundaryActionFusionPassWrapper>());
@@ -849,7 +869,6 @@ PassManager PassManager::create_verified_7stage_pipeline(bool optimize) {
     pm.add_pass(std::make_unique<LivelockAnalysisPassWrapper>());
     pm.add_pass(std::make_unique<PriorityConflictPassWrapper>());
     pm.add_pass(std::make_unique<TimedInvariantsVerifierPassWrapper>());
-    pm.add_pass(std::make_unique<EventQueueBoundPassWrapper>());
     pm.add_pass(std::make_unique<GuardSatisfiabilityPassWrapper>());
 
     // Stage 4: Symbolic Model Checking

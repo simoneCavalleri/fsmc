@@ -367,24 +367,24 @@ TEST(TransitionFusion, TransientIntermediateState_FusesTransitionsAndBypassesSta
 
     StateNode s_start("s_start", "s_start");
     StateNode s_trans("s_trans", "s_trans");
+    ActionSignature a1("act1");
+    StoreOp op1;
+    op1.target = LValueTarget("x");
+    op1.expression = "x + 1";
+    a1.instructions.emplace_back(op1);
+    s_trans.exit_actions.push_back(a1);
     StateNode s_end("s_end", "s_end");
     ir.states.push_back(s_start);
     ir.states.push_back(s_trans);
     ir.states.push_back(s_end);
 
-    // Transition 1: s_start -> s_trans on event EV1 with guard G1 and action A1
+    // Transition 1: s_start -> s_trans on event EV1 with guard G1
     TransitionEdge t1;
     t1.source_id = "s_start";
     t1.target_id = "s_trans";
     t1.trigger = SignalTrigger("EV1");
     t1.guard = "x > 0";
     t1.guard_ast = GuardAstNode("x > 0");
-    ActionSignature a1("act1");
-    StoreOp op1;
-    op1.target = LValueTarget("x");
-    op1.expression = "x + 1";
-    a1.instructions.emplace_back(op1);
-    t1.transition_action = a1;
     ir.add_transition(t1);
 
     // Transition 2: s_trans -> s_end immediate (AnonymousTrigger) with guard G2 and action A2

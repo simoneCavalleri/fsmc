@@ -287,8 +287,8 @@ bool StateMinimizationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     for (const auto& t : ir.transitions) {
         bool exists = false;
         for (const auto& u : unique_transitions) {
-            if (u.source == t.source && u.target == t.target && u.get_trigger_name() == t.get_trigger_name() &&
-                u.guard == t.guard && u.kind == t.kind && u.priority == t.priority &&
+            if (u.source == t.source && u.target == t.target && u.trigger == t.trigger && u.guard == t.guard &&
+                u.guard_ast == t.guard_ast && u.kind == t.kind && u.priority == t.priority &&
                 u.clock_resets == t.clock_resets && u.condition_action == t.condition_action &&
                 u.transition_action == t.transition_action) {
                 exists = true;

@@ -461,8 +461,7 @@ TransitionEdge& FsmIr::add_transition(const std::string& src_id, const std::stri
         edge.event = std::get<SignalTrigger>(edge.trigger).signal_name;
     }
     if (guard.has_value()) {
-        edge.guard = guard->to_string();
-        edge.guard_ast = std::move(guard);
+        edge.set_guard_ast(std::move(guard));
     }
     if (trans_action.has_value()) {
         edge.transition_action = std::move(trans_action);

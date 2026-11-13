@@ -1322,7 +1322,7 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
         trans.trigger = *time_trigger;
     }
     if (!guard.empty()) {
-        trans.guard = guard;
+        trans.set_guard(guard);
     }
     if (trans_send_action.has_value()) {
         trans.transition_action = std::move(trans_send_action);

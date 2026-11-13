@@ -920,51 +920,60 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
             out << " */\n";
             out << "struct " << struct_name << " {\n";
             std::vector<ActionAssignment> assignments;
+            std::vector<ActionAstNode> instructions;
+            auto collect_action_body = [&](const ActionSignature& act) {
+                for (const auto& a : act.assignments) {
+                    assignments.push_back(a);
+                }
+                for (const auto& inst : act.instructions) {
+                    instructions.push_back(inst);
+                }
+            };
             for (const auto& t : model.transitions) {
                 if (t.condition_action.has_value() && t.condition_action->name == action_item.name) {
-                    for (const auto& a : t.condition_action->assignments) {
-                        assignments.push_back(a);
-                    }
+                    collect_action_body(*t.condition_action);
                 }
                 if (t.transition_action.has_value() && t.transition_action->name == action_item.name) {
-                    for (const auto& a : t.transition_action->assignments) {
-                        assignments.push_back(a);
-                    }
+                    collect_action_body(*t.transition_action);
                 }
             }
             for (const auto& st : model.states) {
                 for (const auto& a : st.entry_actions) {
                     if (a.name == action_item.name) {
-                        for (const auto& assign : a.assignments) {
-                            assignments.push_back(assign);
-                        }
+                        collect_action_body(a);
                     }
                 }
                 for (const auto& a : st.exit_actions) {
                     if (a.name == action_item.name) {
-                        for (const auto& assign : a.assignments) {
-                            assignments.push_back(assign);
-                        }
+                        collect_action_body(a);
                     }
                 }
             }
 
-            if (!assignments.empty()) {
+            bool has_datapath_instructions = false;
+            for (const auto& inst : instructions) {
+                if (std::holds_alternative<StoreOp>(inst.op) || std::holds_alternative<PortWriteOp>(inst.op) ||
+                    std::holds_alternative<PortReadOp>(inst.op)) {
+                    has_datapath_instructions = true;
+                    break;
+                }
+                if (const auto* call = std::get_if<ActionCallOp>(&inst.op)) {
+                    if (instructions.size() > 1 || !call->arguments.empty() || !call->read_set.empty() ||
+                        !call->write_set.empty()) {
+                        has_datapath_instructions = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!assignments.empty() || has_datapath_instructions) {
                 bool uses_out = false;
                 bool uses_reg = false;
                 bool uses_in = false;
                 bool uses_cmd = false;
                 bool uses_srv = false;
 
-                for (const auto& assign : assignments) {
-                    std::string qualified_rhs = qualify_expression(assign.expression, model);
-                    const auto* p = model.find_port(assign.target.name);
-                    bool is_out = (assign.target.scope == LValueScope::OutPort) || (p != nullptr && p->is_out());
-                    if (is_out) {
-                        uses_out = true;
-                    } else {
-                        uses_reg = true;
-                    }
+                auto scan_rhs_usage = [&](const std::string& qualified_rhs) {
                     if (has_member_access_prefix(qualified_rhs, {"in"})) {
                         uses_in = true;
                     }
@@ -979,6 +988,46 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                     }
                     if (has_member_access_prefix(qualified_rhs, {"srv", "service"})) {
                         uses_srv = true;
+                    }
+                };
+
+                for (const auto& assign : assignments) {
+                    const auto* p = model.find_port(assign.target.name);
+                    bool is_out = (assign.target.scope == LValueScope::OutPort) || (p != nullptr && p->is_out());
+                    if (is_out) {
+                        uses_out = true;
+                    } else {
+                        uses_reg = true;
+                    }
+                    scan_rhs_usage(qualify_expression(assign.expression, model));
+                }
+
+                for (const auto& inst : instructions) {
+                    if (const auto* st = std::get_if<StoreOp>(&inst.op)) {
+                        const auto* p = model.find_port(st->target.name);
+                        bool is_out = (st->target.scope == LValueScope::OutPort) || (p != nullptr && p->is_out());
+                        if (is_out) {
+                            uses_out = true;
+                        } else {
+                            uses_reg = true;
+                        }
+                        scan_rhs_usage(qualify_expression(st->expression, model));
+                    } else if (const auto* pw = std::get_if<PortWriteOp>(&inst.op)) {
+                        uses_out = true;
+                        scan_rhs_usage(qualify_expression(pw->expression, model));
+                    } else if (std::holds_alternative<PortReadOp>(inst.op)) {
+                        uses_in = true;
+                        uses_reg = true;
+                    } else if (const auto* ac = std::get_if<ActionCallOp>(&inst.op)) {
+                        uses_srv = true;
+                        for (const auto& arg : ac->arguments) {
+                            scan_rhs_usage(qualify_expression(arg, model));
+                        }
+                    } else if (const auto* se = std::get_if<SignalEmitOp>(&inst.op)) {
+                        uses_srv = true;
+                        for (const auto& arg : se->arguments) {
+                            scan_rhs_usage(qualify_expression(arg, model));
+                        }
                     }
                 }
 
@@ -1000,6 +1049,39 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                         } else {
                             out << indent << "reg." << assign.target.full_path() << " " << op_str << " " << expr
                                 << ";\n";
+                        }
+                    }
+                    for (const auto& inst : instructions) {
+                        if (const auto* st = std::get_if<StoreOp>(&inst.op)) {
+                            std::string expr = qualify_expression(st->expression, model);
+                            const auto* p = model.find_port(st->target.name);
+                            bool is_out = (st->target.scope == LValueScope::OutPort) || (p != nullptr && p->is_out());
+                            std::string_view op_str = assignment_op_to_string(st->op);
+                            if (is_out) {
+                                out << indent << "out." << st->target.full_path() << " " << op_str << " " << expr
+                                    << ";\n";
+                            } else {
+                                out << indent << "reg." << st->target.full_path() << " " << op_str << " " << expr
+                                    << ";\n";
+                            }
+                        } else if (const auto* pw = std::get_if<PortWriteOp>(&inst.op)) {
+                            std::string expr = qualify_expression(pw->expression, model);
+                            out << indent << "out." << escape_cpp_keyword(pw->port_name) << " = " << expr << ";\n";
+                        } else if (const auto* pr = std::get_if<PortReadOp>(&inst.op)) {
+                            if (!pr->destination.name.empty()) {
+                                out << indent << "reg." << pr->destination.full_path() << " = in."
+                                    << escape_cpp_keyword(pr->port_name) << ";\n";
+                            }
+                        } else if (const auto* ac = std::get_if<ActionCallOp>(&inst.op)) {
+                            out << indent << "srv." << escape_cpp_keyword(ac->function_name) << "(";
+                            for (std::size_t i = 0; i < ac->arguments.size(); ++i) {
+                                if (i > 0)
+                                    out << ", ";
+                                out << qualify_expression(ac->arguments[i], model);
+                            }
+                            out << ");\n";
+                        } else if (const auto* se = std::get_if<SignalEmitOp>(&inst.op)) {
+                            out << indent << "// emit signal: " << se->signal_name << "\n";
                         }
                     }
                 };
@@ -1215,7 +1297,61 @@ void CppModelEmitter::emit_transition_table(std::ostream& out, const FsmIr& mode
             }
         }
 
+        auto render_cpp_guard_type = [](auto& self, const ir::GuardAstNode& node) -> std::optional<std::string> {
+            if (node.op == ir::GuardOp::None) {
+                const std::string& expr = node.expression;
+                if (expr.empty() || expr == "else" || expr == "otherwise" || expr == "default") {
+                    return std::string("::fsm::no_guard");
+                }
+                // Accept plain C++ identifiers or already-qualified ::fsm:: / fsm:: combinators
+                bool is_ident = (std::isalpha(static_cast<unsigned char>(expr[0])) != 0 || expr[0] == '_');
+                for (std::size_t i = 1; is_ident && i < expr.size(); ++i) {
+                    if (std::isalnum(static_cast<unsigned char>(expr[i])) == 0 && expr[i] != '_') {
+                        is_ident = false;
+                    }
+                }
+                if (is_ident) {
+                    return escape_cpp_keyword(expr);
+                }
+                if (expr.rfind("::fsm::", 0) == 0) {
+                    return expr;
+                }
+                if (expr.rfind("fsm::", 0) == 0) {
+                    return "::" + expr;
+                }
+                return std::nullopt;
+            }
+            if (node.op == ir::GuardOp::Not && node.children.size() == 1) {
+                auto inner = self(self, node.children[0]);
+                if (!inner.has_value()) {
+                    return std::nullopt;
+                }
+                return "::fsm::not_<" + *inner + ">";
+            }
+            if ((node.op == ir::GuardOp::And || node.op == ir::GuardOp::Or) && !node.children.empty()) {
+                std::string out_type = (node.op == ir::GuardOp::And) ? "::fsm::and_<" : "::fsm::or_<";
+                for (std::size_t i = 0; i < node.children.size(); ++i) {
+                    auto child = self(self, node.children[i]);
+                    if (!child.has_value()) {
+                        return std::nullopt;
+                    }
+                    if (i > 0) {
+                        out_type += ", ";
+                    }
+                    out_type += *child;
+                }
+                out_type += ">";
+                return out_type;
+            }
+            return std::nullopt;
+        };
+
         std::string guard_type = t.guard.value_or("::fsm::no_guard");
+        if (t.guard_ast.has_value() && t.guard_ast->op != ir::GuardOp::None) {
+            if (auto ast_type = render_cpp_guard_type(render_cpp_guard_type, *t.guard_ast); ast_type.has_value()) {
+                guard_type = std::move(*ast_type);
+            }
+        }
         if (guard_type.empty() || guard_type == "else" || guard_type == "otherwise" || guard_type == "default") {
             guard_type = "::fsm::no_guard";
         }

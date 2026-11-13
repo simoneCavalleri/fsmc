@@ -194,8 +194,11 @@ bool TransitionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 fused.target = out_edge.target;
                 fused.trigger = in_edge.trigger;
                 fused.event = in_edge.event;
-                fused.guard = compose_guard_strings(in_edge.guard, out_edge.guard);
-                fused.guard_ast = compose_guard_asts(in_edge.guard_ast, out_edge.guard_ast);
+                if (auto fused_ast = compose_guard_asts(in_edge.guard_ast, out_edge.guard_ast); fused_ast.has_value()) {
+                    fused.set_guard_ast(std::move(fused_ast));
+                } else {
+                    fused.set_guard(compose_guard_strings(in_edge.guard, out_edge.guard));
+                }
 
                 // Preserve and chain condition_action
                 auto fused_cond = compose_actions(in_edge.condition_action, out_edge.condition_action);

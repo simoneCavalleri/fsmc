@@ -247,4 +247,32 @@ TEST(ChoiceInlining, SelfTransitionThroughChoice_PreservesExternalKind) {
     EXPECT_EQ(inlined.kind, TransitionEdgeKind::External);
 }
 
+TEST(ChoiceInlining, CombinedGuards_ProduceTargetAgnosticGuardAst) {
+    FsmIr ir;
+    ir.name = "ChoiceGuardAstFSM";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+    ir.add_state("Choice1", "", StateKind::Choice);
+    ir.add_state("Ready");
+
+    TransitionEdge in_t("Idle", "Choice1", "StartCmd");
+    in_t.set_guard("PowerOk");
+    ir.add_transition(in_t);
+
+    TransitionEdge out_t("Choice1", "Ready", "");
+    out_t.set_guard("DoorClosed");
+    ir.add_transition(out_t);
+
+    ChoiceInliningPass pass;
+    DiagnosticEngine diag;
+    ASSERT_TRUE(pass.run(ir, diag));
+    ASSERT_EQ(ir.transitions.size(), 1u);
+
+    const auto& combined = ir.transitions[0];
+    ASSERT_TRUE(combined.guard_ast.has_value());
+    EXPECT_EQ(combined.guard_ast->op, GuardOp::And);
+    EXPECT_EQ(combined.guard_ast->to_string(), "PowerOk && DoorClosed");
+    EXPECT_EQ(combined.guard.value_or("").find("fsm::and_"), std::string::npos);
+}
+
 }  // namespace

@@ -54,7 +54,7 @@ inline std::vector<std::string> split_top_level(std::string_view sv, std::string
 }
 
 inline bool eval_numeric_predicate(std::string_view expr, const std::unordered_map<std::string, double>& env,
-                                   bool& symbolic_fallback) {
+                                   bool& symbolic_fallback, const fsm::ir::FsmIr* model = nullptr) {
     std::string s = trim_sv(expr);
     if (s.empty() || s == "true" || s == "else" || s == "otherwise" || s == "default") {
         return true;
@@ -65,7 +65,7 @@ inline bool eval_numeric_predicate(std::string_view expr, const std::unordered_m
     // Handle logical OR / AND
     if (auto or_parts = split_top_level(s, "||"); or_parts.size() > 1) {
         for (const auto& p : or_parts) {
-            if (eval_numeric_predicate(p, env, symbolic_fallback)) {
+            if (eval_numeric_predicate(p, env, symbolic_fallback, model)) {
                 return true;
             }
         }
@@ -73,7 +73,7 @@ inline bool eval_numeric_predicate(std::string_view expr, const std::unordered_m
     }
     if (auto and_parts = split_top_level(s, "&&"); and_parts.size() > 1) {
         for (const auto& p : and_parts) {
-            if (!eval_numeric_predicate(p, env, symbolic_fallback)) {
+            if (!eval_numeric_predicate(p, env, symbolic_fallback, model)) {
                 return false;
             }
         }
@@ -81,7 +81,69 @@ inline bool eval_numeric_predicate(std::string_view expr, const std::unordered_m
     }
     // Strip outer parentheses if balanced
     if (s.size() >= 2 && s.front() == '(' && s.back() == ')') {
-        return eval_numeric_predicate(std::string_view(s).substr(1, s.size() - 2), env, symbolic_fallback);
+        return eval_numeric_predicate(std::string_view(s).substr(1, s.size() - 2), env, symbolic_fallback, model);
+    }
+    // Handle C++ guard combinators (fsm::and_<...>, fsm::or_<...>, fsm::not_<...>)
+    auto match_combinator = [&](std::string_view prefix, std::string_view& inner_out) -> bool {
+        if (s.size() > prefix.size() + 1 && s.rfind(prefix, 0) == 0 && s.back() == '>') {
+            inner_out = std::string_view(s).substr(prefix.size(), s.size() - prefix.size() - 1);
+            return true;
+        }
+        return false;
+    };
+    auto split_angle_comma = [](std::string_view sv) -> std::vector<std::string> {
+        std::vector<std::string> out;
+        int depth = 0;
+        std::size_t start = 0;
+        for (std::size_t i = 0; i < sv.size(); ++i) {
+            if (sv[i] == '<' || sv[i] == '(') {
+                ++depth;
+            } else if ((sv[i] == '>' || sv[i] == ')') && depth > 0) {
+                --depth;
+            } else if (depth == 0 && sv[i] == ',') {
+                out.push_back(trim_sv(sv.substr(start, i - start)));
+                start = i + 1;
+            }
+        }
+        out.push_back(trim_sv(sv.substr(start)));
+        return out;
+    };
+    std::string_view comb_inner;
+    if (match_combinator("::fsm::and_<", comb_inner) || match_combinator("fsm::and_<", comb_inner)) {
+        for (const auto& p : split_angle_comma(comb_inner)) {
+            if (!eval_numeric_predicate(p, env, symbolic_fallback, model)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (match_combinator("::fsm::or_<", comb_inner) || match_combinator("fsm::or_<", comb_inner)) {
+        for (const auto& p : split_angle_comma(comb_inner)) {
+            if (eval_numeric_predicate(p, env, symbolic_fallback, model)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if (match_combinator("::fsm::not_<", comb_inner) || match_combinator("fsm::not_<", comb_inner)) {
+        return !eval_numeric_predicate(comb_inner, env, symbolic_fallback, model);
+    }
+    // Resolve named GuardModel from FsmIr::guards if present
+    if (model != nullptr) {
+        for (const auto& gsig : model->guards) {
+            if (gsig.name == s) {
+                std::string resolved;
+                if (gsig.normalized_expression.has_value() && !gsig.normalized_expression->empty()) {
+                    resolved = *gsig.normalized_expression;
+                } else if (gsig.raw_expression.has_value() && !gsig.raw_expression->empty()) {
+                    resolved = *gsig.raw_expression;
+                }
+                if (!resolved.empty() && resolved != s) {
+                    return eval_numeric_predicate(resolved, env, symbolic_fallback, model);
+                }
+                break;
+            }
+        }
     }
 
     auto resolve_val = [&](const std::string& tok, double& out_val) -> bool {
@@ -318,7 +380,39 @@ class IrSimulator {
                     if (tr.get_trigger_name() != ev.name)
                         continue;
                     bool sym = false;
-                    std::string g_expr = tr.guard.value_or("");
+                    auto resolve_guard_atom = [&](const std::string& expr) -> bool {
+                        bool atom_sym = false;
+                        bool ok = detail::eval_numeric_predicate(expr, step_env, atom_sym, &model);
+                        if (atom_sym) {
+                            sym = true;
+                        }
+                        return ok;
+                    };
+                    auto eval_guard_ast = [&](auto& self, const fsm::ir::GuardAstNode& node) -> bool {
+                        if (node.op == fsm::ir::GuardOp::None) {
+                            return resolve_guard_atom(node.expression);
+                        }
+                        if (node.op == fsm::ir::GuardOp::Not && node.children.size() == 1) {
+                            return !self(self, node.children[0]);
+                        }
+                        if (node.op == fsm::ir::GuardOp::And && !node.children.empty()) {
+                            for (const auto& ch : node.children) {
+                                if (!self(self, ch)) {
+                                    return false;
+                                }
+                            }
+                            return true;
+                        }
+                        if (node.op == fsm::ir::GuardOp::Or && !node.children.empty()) {
+                            for (const auto& ch : node.children) {
+                                if (self(self, ch)) {
+                                    return true;
+                                }
+                            }
+                            return false;
+                        }
+                        return resolve_guard_atom(node.expression);
+                    };
                     if (const auto* st_trig = std::get_if<fsm::ir::SignalTrigger>(&tr.trigger)) {
                         if (!st_trig->payload_binding.empty()) {
                             for (const auto& [k, v] : ev.numeric_payload) {
@@ -326,7 +420,13 @@ class IrSimulator {
                             }
                         }
                     }
-                    if (detail::eval_numeric_predicate(g_expr, step_env, sym)) {
+                    bool guard_passed = false;
+                    if (tr.guard_ast.has_value() && tr.guard_ast->op != fsm::ir::GuardOp::None) {
+                        guard_passed = eval_guard_ast(eval_guard_ast, *tr.guard_ast);
+                    } else {
+                        guard_passed = resolve_guard_atom(tr.guard.value_or(""));
+                    }
+                    if (guard_passed) {
                         matched = &tr;
                         used_symbolic_guard = sym;
                         break;

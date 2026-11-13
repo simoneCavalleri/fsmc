@@ -56,11 +56,11 @@ plugins:
 
 validation:
   nav:
-    omitted_files: ignore
+    omitted_files: warn
   links:
-    not_found: ignore
-    absolute_links: ignore
-    unrecognized_links: ignore
+    not_found: warn
+    absolute_links: info
+    unrecognized_links: warn
 
 markdown_extensions:
   - admonition

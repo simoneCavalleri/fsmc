@@ -1091,11 +1091,14 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                     }
                 };
 
-                // Overload 1: (const InPorts& in, OutPorts& out, Registers& reg)
-                out << "    template <typename InPorts, typename OutPorts, typename Registers>\n";
-                out << "    void operator()(" << in_param << ", " << out_param << ", " << reg_param << ") const {\n";
-                emit_assignment_lines("        ");
-                out << "    }\n\n";
+                if (!uses_cmd) {
+                    // Overload 1: (const InPorts& in, OutPorts& out, Registers& reg)
+                    out << "    template <typename InPorts, typename OutPorts, typename Registers>\n";
+                    out << "    void operator()(" << in_param << ", " << out_param << ", " << reg_param
+                        << ") const {\n";
+                    emit_assignment_lines("        ");
+                    out << "    }\n\n";
+                }
 
                 // Overload 2: (const Event& cmd, const InPorts& in, OutPorts& out, Registers& reg)
                 out << "    template <typename Event, typename InPorts, typename OutPorts, typename Registers>\n";
@@ -1113,12 +1116,16 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                 emit_assignment_lines("        ");
                 out << "    }\n\n";
 
-                // Overload 4: (const InPorts& in, OutPorts& out, Registers& reg, Services& srv) for lifecycle hooks
-                out << "    template <typename InPorts, typename OutPorts, typename Registers, typename Services>\n";
-                out << "    void operator()(" << in_param << ", " << out_param << ", " << reg_param << ", " << srv_param
-                    << ") const {\n";
-                emit_assignment_lines("        ");
-                out << "    }\n";
+                if (!uses_cmd) {
+                    // Overload 4: (const InPorts& in, OutPorts& out, Registers& reg, Services& srv) for lifecycle
+                    // hooks
+                    out << "    template <typename InPorts, typename OutPorts, typename Registers, typename "
+                           "Services>\n";
+                    out << "    void operator()(" << in_param << ", " << out_param << ", " << reg_param << ", "
+                        << srv_param << ") const {\n";
+                    emit_assignment_lines("        ");
+                    out << "    }\n";
+                }
             } else {
                 // External service invocation
                 std::string srv_call_name = escape_cpp_keyword(action_item.name);

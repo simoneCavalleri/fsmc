@@ -30,6 +30,7 @@
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/ir/signal_definition.hpp"
 #include "fsm/middleend/passes/boundary_action_fusion_pass.hpp"
+#include "fsm/middleend/passes/choice_inlining_pass.hpp"
 
 using namespace fsm::backend::cpp;
 using namespace fsm::backend;
@@ -1103,6 +1104,136 @@ int main() {
 
     run_standard_test("-std=c++17", CppStandard::Cpp17, "cpp17");
     run_standard_test("-std=c++20", CppStandard::Cpp20, "cpp20");
+
+    fs::remove_all(temp_dir);
+}
+
+TEST(CppE2ECompilerTest, V010TypedEventsChoiceInliningInstructionsAndSpscRejection) {
+    fsm::ir::FsmIr model;
+    model.name = "V010E2eFsm";
+    model.initial_state = "Idle";
+
+    model.add_state("Idle");
+    fsm::ir::StateNode choice("ChoiceHub");
+    choice.kind = fsm::ir::StateKind::Choice;
+    model.states.push_back(choice);
+    model.add_state("HighMode");
+    model.add_state("LowMode");
+
+    fsm::ir::VariableDefinition reg_flag;
+    reg_flag.name = "mode_flag";
+    reg_flag.type = fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::Boolean};
+    reg_flag.initial_value = "false";
+    model.add_variable(std::move(reg_flag));
+
+    fsm::ir::PortDefinition out_port;
+    out_port.name = "out_port";
+    out_port.type = fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::UInt32};
+    out_port.direction = fsm::ir::PortDirection::Out;
+    model.add_port(std::move(out_port));
+
+    fsm::ir::SignalDefinition pkt("Packet");
+    pkt.attributes.emplace_back("len", fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::UInt32}, "64");
+    pkt.validators.push_back("len > 0 && len <= 1500");
+    model.add_signal(pkt);
+
+    fsm::ir::SignalDefinition reset_sig("Reset");
+    model.add_signal(reset_sig);
+
+    // Idle -> ChoiceHub on Packet with ActionSignature::instructions
+    fsm::ir::TransitionEdge t_in("t_in", "Idle", "ChoiceHub", fsm::ir::SignalTrigger{"Packet", "payload"});
+    fsm::ir::ActionSignature act_in("record_pkt");
+    act_in.instructions.push_back(fsm::ir::StoreOp{fsm::ir::LValueTarget("mode_flag", fsm::ir::LValueScope::Register),
+                                                   fsm::ir::AssignmentOp::Assign, "true", std::nullopt});
+    act_in.instructions.push_back(fsm::ir::PortWriteOp{"out_port", "payload.len", std::nullopt, false});
+    t_in.set_action(act_in);
+    model.add_transition(t_in);
+
+    // ChoiceHub -> HighMode (is_high_len) / LowMode (else)
+    model.add_guard("is_high_len", "", "payload.len >= 100", "payload.len >= 100");
+    fsm::ir::TransitionEdge t_high("ChoiceHub", "HighMode", "");
+    t_high.set_guard("is_high_len");
+    model.add_transition(t_high);
+
+    fsm::ir::TransitionEdge t_low("ChoiceHub", "LowMode", "");
+    t_low.set_guard("else");
+    model.add_transition(t_low);
+
+    // Reset back to Idle
+    model.add_transition(fsm::ir::TransitionEdge("HighMode", "Idle", "Reset"));
+    model.add_transition(fsm::ir::TransitionEdge("LowMode", "Idle", "Reset"));
+
+    fsm::diagnostic::DiagnosticEngine diag;
+    ASSERT_TRUE(fsm::middleend::passes::ChoiceInliningPass::run(model, diag));
+
+    const std::string driver_source = R"(
+#include "v010_fsm.hpp"
+#include <cassert>
+
+int main() {
+    using namespace fsm;
+    V010E2eFsmInPorts in{};
+    V010E2eFsmOutPorts out{};
+    V010E2eFsmServices srv{};
+
+    // 1. Synchronous FSM: invalid Packet rejected safely via .is_valid()
+    V010E2eFsm sm;
+    auto bad_res = sm.dispatch(Packet{0}, in, out, srv);
+    assert(bad_res.status == dispatch_status::guard_rejected);
+    assert(sm.is_in<Idle>());
+    assert(!sm.registers().mode_flag);
+    assert(out.out_port == 0);
+
+    // 2. Synchronous FSM: valid Packet(250) -> HighMode via inlined Choice + instructions
+    auto ok_res = sm.dispatch(Packet{250}, in, out, srv);
+    assert(ok_res.is_success());
+    assert(sm.is_in<HighMode>());
+    assert(sm.registers().mode_flag);
+    assert(out.out_port == 250);
+
+    // 3. SPSC FSM: invalid Packet rejected on post(), valid Packet(50) -> LowMode
+    SpscV010E2eFsm spsc;
+    assert(!spsc.post(Packet{2000}));
+    assert(spsc.post(Packet{50}));
+    assert(spsc.process_one(in, out, srv));
+    assert(spsc.is_in<LowMode>());
+    assert(out.out_port == 50);
+
+    return 0;
+}
+)";
+
+    namespace fs = std::filesystem;
+    fs::path temp_dir = fs::temp_directory_path() / "fsmc_e2e_v010_comprehensive_test";
+    fs::create_directories(temp_dir);
+
+    auto run_std = [&](const std::string& std_flag, CppStandard std_enum, const std::string& suffix) {
+        GeneratorOptions opts;
+        opts.cpp_standard = std_enum;
+        opts.target_namespace = "fsm";  // Exercises ::fsm::and_ / ::fsm::not_ inside namespace fsm
+        opts.standalone = true;
+        opts.include_stubs = true;
+        std::string code = CppGenerator::generate_header(model, opts);
+
+        fs::path hdr = temp_dir / "v010_fsm.hpp";
+        {
+            std::ofstream hf(hdr);
+            hf << code;
+        }
+        fs::path drv = temp_dir / ("driver_" + suffix + ".cpp");
+        {
+            std::ofstream df(drv);
+            df << driver_source;
+        }
+        std::string exe = (temp_dir / ("runner_" + suffix)).string();
+        std::string cmd = "g++ " + std_flag + " -Wall -Wextra -Werror -pedantic -Wconversion -I" + temp_dir.string() +
+                          " " + drv.string() + " -o " + exe;
+        ASSERT_EQ(std::system(cmd.c_str()), 0) << "[" << suffix << "] Compilation failed";
+        EXPECT_EQ(std::system(exe.c_str()), 0) << "[" << suffix << "] Execution failed";
+    };
+
+    run_std("-std=c++17", CppStandard::Cpp17, "cpp17");
+    run_std("-std=c++20", CppStandard::Cpp20, "cpp20");
 
     fs::remove_all(temp_dir);
 }

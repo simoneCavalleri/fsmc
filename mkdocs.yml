@@ -30,6 +30,9 @@ theme:
         icon: material/brightness-4
         name: Switch to light mode
   features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
     - navigation.indexes
     - navigation.path
     - navigation.tracking
@@ -84,6 +87,9 @@ markdown_extensions:
   - attr_list
   - md_in_html
   - tables
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - toc:
       permalink: true
       toc_depth: 3
@@ -106,7 +112,7 @@ nav:
       - Transitions & Event Triggers: concepts/transitions_and_events.md
       - Guards & Action Effects: concepts/guards_and_actions.md
 
-  - Tutorials & Practical Guides:
+  - Tutorials:
       - Tutorials Overview: tutorials/index.md
       - Step-by-Step Tutorials:
           - "Step 1: First Statechart": tutorials/01_first_statechart.md
@@ -120,7 +126,7 @@ nav:
           - Unit Testing Guide: runtime_api/testing_guide.md
           - Troubleshooting & FAQ: runtime_api/faq_and_troubleshooting.md
 
-  - Systems Modeling & Verification:
+  - Modeling & Verification:
       - Modeling Languages:
           - Format Selection & Overview: formal_languages/index.md
           - OMG SysML v2: formal_languages/sysml_v2.md
@@ -137,7 +143,7 @@ nav:
           - MC/DC Test Synthesis: verification_and_safety/mcdc_synthesis.md
           - Requirement Traceability (RTM): verification_and_safety/rtm_matrix.md
 
-  - C++ Runtime Backend:
+  - C++ Runtime:
       - Runtime Overview: runtime_api/index.md
       - Core Building Blocks: runtime_api/core_concepts.md
       - Policy-Based Configuration: runtime_api/policy_configuration.md
@@ -151,14 +157,14 @@ nav:
           - Architectural Design Patterns: runtime_api/design_patterns.md
       - Multi-Target Roadmap: runtime_api/multi_target_roadmap.md
 
-  - Technical Reference:
+  - Reference:
       - Reference Hub: reference/index.md
       - CLI Reference (fsmc & fsm-opt): getting_started/cli_usage.md
       - C++ Runtime API Reference: runtime_api/reference.md
       - CMake Build Integration: reference/cmake_integration.md
       - Master Test Suite Catalog: reference/test_suite_catalog.md
 
-  - Compiler Internals & Contributing:
+  - Internals:
       - Internals Overview: internals/index.md
       - Pipeline Architecture: internals/architecture.md
       - Canonical IR Specification: internals/fsm_ir_specification.md

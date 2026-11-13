@@ -1,44 +1,72 @@
-# fsmc — Universal State Machine Compiler
+---
+hide:
+  - navigation
+---
 
-**`fsmc`** (Finite State Machine Compiler) is an open-source, format-agnostic compiler and formal verification toolchain for Model-Based statecharts. It bridges high-level modeling specifications—such as OMG SysML v2, W3C SCXML, and Cameo / MagicDraw (XMI)—with verification engines, format transpilers, and deterministic execution runtimes.
+<div class="fsmc-hero" markdown="1">
+<div class="fsmc-hero__badge">v0.9.0 &middot; C++17 / C++20 &middot; Zero-Heap Runtime &middot; LTL / CTL</div>
 
-The architecture is centered around a strongly typed canonical Intermediate Representation (**`FsmIr`**), decoupling frontend model ingestion from middle-end verification passes and backend target emission.
+# Universal State Machine Compiler
+
+**`fsmc`** bridges Model-Based Systems Engineering (**OMG SysML v2**, **MathWorks Stateflow**, **W3C SCXML**, **Cameo XMI**, **nuXmv SMV**) and visual diagrams with formal verification and zero-allocation C++ execution runtimes—unified through the canonical **`FsmIr`** intermediate representation.
+
+<div class="fsmc-hero__actions" markdown="1">
+[Quickstart Guide](getting_started/quickstart.md){ .md-button .md-button--primary }
+[Step-by-Step Tutorials](tutorials/index.md){ .md-button }
+</div>
+</div>
 
 ---
 
-## Architecture Overview
+## Why Engineers Choose `fsmc`
+
+<div class="grid cards" markdown>
+
+-   :material-translate:{ .lg .middle } **9 Modeling Frontends, 1 IR**
+
+    ---
+
+    Ingest SysML v2, Stateflow XML, Cameo XMI 2.1, SCXML, SMV, JSON, PlantUML, Mermaid, or Graphviz DOT into a single canonical `FsmIr` graph—and transpile cleanly across notations.
+
+    [:octicons-arrow-right-24: Modeling Languages](formal_languages/index.md)
+
+-   :material-shield-check-outline:{ .lg .middle } **Built-In Formal Verification**
+
+    ---
+
+    Check deadlocks, reachability, interval guard satisfiability, WCET bounds, and LTL/CTL temporal properties natively—or export directly to **nuXmv**, **RTM matrices**, and **MC/DC** GoogleTest harnesses.
+
+    [:octicons-arrow-right-24: Verification & Safety](verification_and_safety/index.md)
+
+-   :material-memory:{ .lg .middle } **Zero-Heap C++17 / C++20 Runtime**
+
+    ---
+
+    Compile-time transition tables with strict 4-domain isolation (`InPorts`, `OutPorts`, `Registers`, `Services`), zero virtual dispatch on hot paths, synchronous, lock-free SPSC, and thread-safe modes.
+
+    [:octicons-arrow-right-24: C++ Runtime Backend](runtime_api/index.md)
+
+-   :material-cogs:{ .lg .middle } **33 Middle-End Compiler Passes**
+
+    ---
+
+    Run deterministic optimization, orthogonal product flattening, connective junction chaining, submachine inlining, dynamic C++ plugins, and Unix filter pipelines via `fsm-opt`.
+
+    [:octicons-arrow-right-24: Middle-End Passes](internals/middleend_passes.md)
+
+</div>
+
+---
+
+## Compiler Pipeline Architecture
 
 ```mermaid
-flowchart LR
-    subgraph Frontend["1. Frontend Ingestion"]
-        SysML["OMG SysML v2"]
-        Stateflow["MathWorks Stateflow"]
-        XMI["Cameo / MagicDraw XMI"]
-        SCXML["W3C SCXML"]
-        Diagrams["PlantUML / Mermaid / DOT / JSON"]
-    end
+flowchart TB
+    Frontend["<b>1. Frontend Ingestion (9 Formats)</b><br/>SysML v2 · Stateflow · Cameo XMI · SCXML · SMV · JSON · PlantUML · Mermaid · DOT"]
+    IR["<b>2. Canonical FsmIr & 33 Middle-End Passes</b><br/>Guard Simplification · EFSM Interval Analysis · LTL / CTL Model Checking · Plugins"]
+    Backend["<b>3. Backend Emission</b><br/>C++17 / C++20 Zero-Heap Headers · Format Transpilation · RTM · MC/DC Tests"]
 
-    subgraph MiddleEnd["2. Canonical IR & Verification"]
-        IR["Canonical AST (FsmIr)<br/>Native JSON Engine"]
-        Passes["33 Registered Passes (7 Stages)<br/>(fsm-opt Optimizer)"]
-        SMT["EFSM Interval & Guard Analysis (∇ Widening)"]
-        MC["Native & nuXmv Model Checking (LTL / CTL)"]
-        Pipe["Unix Filter Pipeline (--pipe-through)<br/>Dynamic C++ Pass Plugins"]
-    end
-
-    subgraph Backend["3. Backend Targets & Emitters"]
-        Transpile["Lossless Transpilation<br/>(SysML v2, SCXML, Diagrams, Stateflow)"]
-        RTM["Traceability Matrix (RTM)"]
-        MCDC["MC/DC Test Harness Synthesis"]
-        CppGen["C++17 / C++20 Runtime Target<br/>(Zero-Heap Reference Backend)"]
-    end
-
-    Frontend --> IR
-    IR --> Passes
-    Passes --> SMT
-    Passes --> MC
-    Passes --> Pipe
-    Passes --> Backend
+    Frontend --> IR --> Backend
 ```
 
 ### Compiler Subsystems

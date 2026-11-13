@@ -19,7 +19,7 @@ event def SensorThresholdExceeded {
 }
 ```
 
-#### Typed Payload Resolution & Validation (`v0.10.0`)
+#### Typed Payload Resolution & Validation
 `fsmc` enforces typed event payload safety end-to-end across static analysis, code generation, and runtime dispatch:
 
 - **Static Member Resolution**: References to `payload.<field>`, `cmd.<field>`, `event.<field>`, `sig.<field>`, `ev.<field>`, or a transition's explicit `payload_binding` are resolved against `SignalDefinition::attributes`. Accessing an unknown field, or referencing event payload fields in triggerless contexts (`on_enter`, `on_exit`, `AnonymousTrigger`, or `TimeTrigger`), is rejected during `SemanticValidationPass`.

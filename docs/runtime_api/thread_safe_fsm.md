@@ -244,13 +244,12 @@ void on_timer_tick(const SensorData& raw_sensors) {
 | Method | Return Type | Description |
 | :--- | :--- | :--- |
 | `current_state_name()` | `std::string_view` | Safely acquires lock and returns the active state name. |
-| `is_in_state<State>()` | `bool` | Checks active state or whether active state is a descendant of composite `State` under mutex synchronization. |
-| `is_in<State>()` | `bool` | Alias for `is_in_state<State>()`. |
+| `is_in_state<State>()` | `bool` | Exact leaf check: returns `true` only if the active variant state matches `State` directly under mutex synchronization. |
+| `is_in<State>()` | `bool` | Hierarchical check: returns `true` if the active state is `State` or a descendant substate of composite `State` under mutex synchronization. |
 | `is_invariant_satisfied()` | `bool` | Thread-safe check of state permanence invariant satisfaction. |
 | `has_invariant_violation()` | `bool` | Thread-safe check if a temporal invariant violation has occurred. |
 | `last_invariant_violation()` | `std::optional<invariant_violation_info>` | Safely retrieves violation details (state, elapsed time, bound). |
-| `on_invariant_violation(handler)` | `void` | Registers invariant violation callback under mutex synchronization. |
-| `clear_invariant_violation()` | `void` | Resets invariant violation status under mutex synchronization. |
+| `set_invariant_violation_handler(handler)` | `void` | Registers invariant violation callback under mutex synchronization. |
 | `snapshot_registers()` | `Registers` | Copies internal registers under `dispatch_mutex_` lock. |
 | `update_registers(Registers reg)` | `void` | Safely updates internal registers under `dispatch_mutex_` lock. |
 | `with_registers(Callable&& fn)` | `auto` | Executes callable `fn(registers)` inside an exclusive mutex lock guard. |

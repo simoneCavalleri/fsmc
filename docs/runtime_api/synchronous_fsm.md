@@ -307,19 +307,28 @@ With `fsmc`, continuous time dwell is counted deterministically in `Registers` (
 #include "fsm/backend/cpp/runtime/fsm.hpp"
 #include <iostream>
 
+struct PowerRegisters {
+    std::uint64_t elapsed_ticks{0};
+};
+
 struct PreCharge { static constexpr std::string_view name = "PreCharge"; };
 struct Armed     { static constexpr std::string_view name = "Armed";     };
 
+struct ResetTicks {
+    void operator()(PowerRegisters& reg) const noexcept { reg.elapsed_ticks = 0; }
+};
+
 // Transition after 5 periodic ticks in PreCharge:
 using PowerTable = fsm::transition_table<
-    fsm::row<PreCharge, fsm::anonymous_event, Armed>::when<fsm::in_state_for<5>>
+    fsm::row<PreCharge, fsm::anonymous_event, Armed, fsm::in_state_for<5>, ResetTicks>
 >;
 
 int main() {
-    fsm::fsm<PowerTable> sm;
+    fsm::make_fsm<PowerTable, fsm::with_registers<PowerRegisters>> sm;
 
     // Simulate 100 Hz control loop ticks:
     for (int tick = 1; tick <= 6; ++tick) {
+        sm.registers().elapsed_ticks = static_cast<std::uint64_t>(tick);
         fsm::step_result res = sm.step();
         std::cout << "Tick " << tick << ": state = " << sm.current_state_name();
         if (res.has_transitioned()) {
@@ -447,7 +456,7 @@ When permanence constraints exist, `fsm.tick(dt)` automatically accumulates stat
 TimedSafetyFSM fsm(reg);
 
 // Register an immediate violation callback
-fsm.on_invariant_violation([](const fsm::invariant_violation_info& info) {
+fsm.set_invariant_violation_handler([](const fsm::invariant_violation_info& info) {
     std::cerr << "TEMPORAL INVARIANT VIOLATED in state '" << info.state_name
               << "': elapsed " << info.elapsed_ms
               << "ms exceeds bound of " << info.max_allowed_ms << "ms!\n";

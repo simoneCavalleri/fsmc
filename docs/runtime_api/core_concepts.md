@@ -404,18 +404,24 @@ sm.post(EvAuthSuccess{}); // Transitions to Connected
 !!! note
     `step(dt, in, out)` advances the **built-in synchronous timer manager** — a separate compile-time subsystem activated via `fsm::with_timer_capacity<N>` — **not** the `in_state_for<N>` counter. These two systems are independent.
 
-When you use `fsm::with_timer_capacity<N>`, the runtime maintains an internal priority queue of timers. You advance it by passing `dt` (milliseconds or `std::chrono::duration`) to `step`:
+When you use `fsm::with_timer_capacity<N>` (or transition rows triggered by `fsm::after_ms<Ms>` / `fsm::every_ms<Ms>`), the runtime maintains a compile-time bounded timer table. You advance it by passing `dt` (`std::uint64_t` milliseconds or `std::chrono::duration`) to `tick(dt)` or `step(dt, ...)`:
 
 ```cpp
+// Option A: Declarative timed transition row (auto-armed on entry to Waiting)
+using TimeoutTable = fsm::transition_table<
+    fsm::row<Waiting, fsm::after_ms<500>, TimedOut>
+>;
+
 using TimerFSM = fsm::make_fsm<
-    MyTable,
-    fsm::with_timer_capacity<8>   // enable built-in timer manager
+    TimeoutTable,
+    fsm::with_ports<InPorts, OutPorts>,
+    fsm::with_timer_capacity<8>   // reserve up to 8 active timers
 >;
 
 TimerFSM sm;
 
-// Schedule an internal timer to fire EvTimeout after 500 ms:
-sm.arm_timer(EvTimeout{}, 500);   // 500 ms
+// Manual timer scheduling is also available directly via timer_manager():
+// sm.timer_manager().start_timer(/*timer_id=*/1, /*duration_ms=*/500, /*periodic=*/false);
 
 // In control loop — pass dt to advance the timer manager clock:
 while (running) {

@@ -19,7 +19,11 @@ template <
     typename Services = no_services,
     typename InitialState = typename Table::initial_state,
     typename Observer = no_observer,
-    std::size_t DeferredCapacity = 16
+    std::size_t DeferredCapacity = 16,
+    std::size_t TimerCapacity =
+        (detail::table_timed_events_count_v<Table> > 0
+             ? (detail::table_timed_events_count_v<Table> > 4 ? detail::table_timed_events_count_v<Table> : 4)
+             : 0)
 >
 class fsm;
 ```
@@ -60,10 +64,10 @@ class fsm;
 - `template <typename Rep, typename Period, typename Callback> std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired)`: Advances deterministic timers and invokes `on_expired(timer_id)` for each expired timer.
 
 #### State Inspection & Introspection
-- `template <typename State> [[nodiscard]] constexpr bool is_in() const noexcept`: Returns `true` if active leaf state matches `State`, or if the active leaf state is a descendant substate of composite `State` (recursive hierarchical state query in $O(1)$ constexpr time).
-- `template <typename State> [[nodiscard]] constexpr bool is_in_state() const noexcept`: Alias for `is_in<State>()`.
-- `[[nodiscard]] constexpr std::size_t state_index() const noexcept`: Returns 0-based variant index of active state.
-- `[[nodiscard]] constexpr std::string_view current_state_name() const noexcept`: Returns human-readable name of active state.
+- `template <typename State> [[nodiscard]] bool is_in() const noexcept`: Hierarchical check returning `true` if the active leaf state matches `State` or is a descendant substate of composite `State` ($O(1)$).
+- `template <typename State> [[nodiscard]] bool is_in_state() const noexcept`: Exact leaf-state check returning `true` only if the active variant alternative matches `State` directly.
+- `[[nodiscard]] const state_variant& get_current_state_variant() const noexcept`: Returns the underlying `std::variant` holding the active state (call `.index()` for its 0-based variant index).
+- `[[nodiscard]] std::string_view current_state_name() const`: Returns human-readable name of active state.
 - `void reset()`: Resets the state machine back to its initial state, re-invoking initial state `on_enter` actions, restoring default data registers, and clearing active timers, invariants, history cache, and deferred event queues.
 
 #### History & Deferred Event Queries
@@ -74,11 +78,11 @@ class fsm;
 - `void clear_deferred_events() noexcept`: Alias for `clear_deferred()`.
 
 #### State Residence Time Invariants
-- `[[nodiscard]] constexpr bool is_invariant_satisfied() const noexcept`: Returns `true` if current state residence time does not violate any `max_stay_duration_ms` constraint.
-- `[[nodiscard]] constexpr bool has_invariant_violation() const noexcept`: Returns `true` if an invariant violation has been detected.
+- `[[nodiscard]] std::uint64_t state_residence_time() const noexcept`: Returns accumulated residence time in milliseconds in the current state.
+- `[[nodiscard]] bool is_invariant_satisfied() const noexcept`: Returns `true` if current state residence time does not violate any `max_stay_duration_ms` constraint.
+- `[[nodiscard]] bool has_invariant_violation() const noexcept`: Returns `true` if an invariant violation has been detected.
 - `[[nodiscard]] const std::optional<invariant_violation_info>& last_invariant_violation() const noexcept`: Returns metadata about the most recent invariant violation (state, elapsed ms, max allowed ms).
-- `void on_invariant_violation(std::function<void(const invariant_violation_info&)> handler)`: Attaches callback invoked immediately when an invariant violation occurs during `tick()`.
-- `void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler)`: Alias for `on_invariant_violation()`.
+- `void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler)`: Attaches callback invoked immediately when an invariant violation occurs during `tick()`.
 - `void clear_invariant_violation() noexcept`: Resets invariant violation status and cached info.
 
 #### Internal Memory
@@ -120,8 +124,8 @@ struct config;
 - `fsm::with_ports<In, Out>`: Specifies input and output port structures (default: `no_ports, no_ports`).
 - `fsm::with_services<Srv>`: Specifies external injected service interface (default: `no_services`).
 - `fsm::with_observer<Obs>`: Specifies compile-time observer type (default: `no_observer`).
-- `fsm::with_trace_buffer<Capacity>`: Installs zero-allocation circular ring buffer flight recorder (`TraceBuffer<Capacity>`).
-- `fsm::with_timer_capacity<N>`: Configures static capacity of deterministic timer manager (default: `4`).
+- `fsm::with_trace_buffer<Capacity>`: Installs fixed-capacity circular ring buffer flight recorder (`TraceBuffer<Capacity>`).
+- `fsm::with_timer_capacity<N>`: Configures static capacity of deterministic timer manager (default: `0` when no timed triggers exist, or `max(4, timed_events)` when present).
 - `fsm::with_initial_state<State>`: Overrides root initial state type (default: `Table::initial_state`).
 - `fsm::with_deferred_capacity<N>`: Configures static capacity of deferred event queue (default: `16`).
 - `fsm::with_queue_capacity<N>`: Configures ring buffer capacity in SPSC/async wrappers (default: `64`).
@@ -163,7 +167,7 @@ using MyTable = fsm::transition_table<
 using CombinedGuard = fsm::and_<GuardA, fsm::or_<GuardB, fsm::not_<GuardC>>>;
 ```
 
-### State, History & Sampled Trigger Guard Predicates
+### State & History Guard Predicates
 ```cpp
 #include <fsm/backend/cpp/runtime/transition.hpp>
 
@@ -173,8 +177,8 @@ using InActiveMode = fsm::in_state<ActiveMode>;
 // Guard checking if recorded history of ParentState matches SubState
 using ResumedFromNominal = fsm::history_is<Operational, Nominal>;
 
-// Sampled change trigger: evaluates predicate on a port and fires on value change across cycles
-using AltitudeJump = fsm::change_<PortAccessor, Predicate>;
+// Dwell guard checking Registers residence counter (elapsed_ticks >= 10)
+using SettledGuard = fsm::in_state_for<10>;
 ```
 
 ### Action Combinators: `fsm::seq_`
@@ -305,7 +309,8 @@ template <
     typename Registers = no_registers,
     typename Services = no_services,
     std::size_t QueueCapacity = 64,
-    typename InitialState = typename Table::initial_state
+    typename InitialState = typename Table::initial_state,
+    std::size_t DeferredCapacity = 16
 >
 class spsc_fsm;
 ```
@@ -330,13 +335,13 @@ class spsc_fsm;
 #### Reader Context & Invariant Inspection (Lock-Free)
 - `Registers snapshot_registers() const noexcept`: Captures consistent register snapshot using atomic sequence lock without blocking worker.
 - `std::string_view state_name() const noexcept`: Atomic load of active state name.
-- `template <typename State> bool is_in_state() const noexcept`: Atomic state type query (supports leaf states and composite ancestor states).
-- `template <typename State> bool is_in() const noexcept`: Alias for `is_in_state<State>()`.
+- `std::size_t state_index() const noexcept`: Atomic acquire-load of active variant state index.
+- `template <typename State> bool is_in() const noexcept`: Lock-free hierarchical query (matches leaf state or composite ancestor).
+- `template <typename State> bool is_in_state() const noexcept`: Lock-free exact leaf-state check.
 - `bool is_invariant_satisfied() const noexcept`: Checks if current state residence satisfies permanence invariant.
 - `bool has_invariant_violation() const noexcept`: Checks if an invariant violation has occurred.
 - `std::optional<invariant_violation_info> last_invariant_violation() const noexcept`: Returns last invariant violation info.
-- `void on_invariant_violation(std::function<void(const invariant_violation_info&)> handler)`: Attaches invariant violation callback.
-- `void clear_invariant_violation() noexcept`: Resets invariant violation status.
+- `void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler)`: Attaches invariant violation callback.
 
 ---
 
@@ -373,7 +378,7 @@ template <
     typename Registers = no_registers,
     typename Services = no_services,
     typename InitialState = typename Table::initial_state,
-    std::size_t MaxQueueSize = 256
+    std::size_t DeferredCapacity = 16
 >
 class thread_safe_fsm;
 ```
@@ -397,13 +402,12 @@ class thread_safe_fsm;
 - `template <typename Rep, typename Period, typename Callback> std::size_t tick(std::chrono::duration<Rep, Period> dt, Callback on_expired)`: Thread-safe timer tick with expiration callback.
 - `void reset()`: Safely acquires lock, resets state machine to initial state, restores default registers, and clears active timers and pending events.
 - `std::string_view current_state_name() const`: Returns active state name under mutex lock.
-- `template <typename State> bool is_in_state() const`: Checks state type under mutex lock (supports leaf states and composite ancestor states).
-- `template <typename State> bool is_in() const`: Alias for `is_in_state<State>()`.
+- `template <typename State> bool is_in() const noexcept`: Hierarchical check (matches active leaf or composite ancestor) under mutex lock.
+- `template <typename State> bool is_in_state() const noexcept`: Exact leaf-state check under mutex lock.
 - `bool is_invariant_satisfied() const`: Thread-safe permanence invariant check.
 - `bool has_invariant_violation() const`: Thread-safe invariant violation check.
 - `std::optional<invariant_violation_info> last_invariant_violation() const`: Thread-safe retrieval of violation info.
-- `void on_invariant_violation(std::function<void(const invariant_violation_info&)> handler)`: Attaches invariant violation callback.
-- `void clear_invariant_violation()`: Resets invariant violation status under mutex lock.
+- `void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler)`: Attaches invariant violation callback.
 
 #### Safe-by-Design Datapath Access
 - `registers_type snapshot_registers() const`: Safely returns an isolated, consistent copy of internal registers under mutex lock.

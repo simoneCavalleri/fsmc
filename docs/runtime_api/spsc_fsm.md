@@ -186,13 +186,12 @@ void rtos_periodic_control_task(void* param) {
 | `Registers snapshot_registers()` | Captures a consistent copy of `Registers` using an atomic sequence lock without mutexes or blocking the worker task. |
 | `with_registers(Callable&& fn)` | Executes `fn(Registers copy)` over a safe seqlock snapshot. |
 | `std::string_view state_name()` | Returns the name string of the current active state via atomic acquire-load and compile-time table lookup. |
-| `bool is_in<State>()` | Checks active state or whether active state is a descendant of composite `State` in $O(1)$ lock-free time via atomic index comparison. |
-| `bool is_in_state<State>()` | Alias for `is_in<State>()`. |
+| `bool is_in<State>()` | Hierarchical check: returns `true` if the active state is `State` or a descendant substate of composite `State` ($O(1)$ lock-free). |
+| `bool is_in_state<State>()` | Exact leaf check: returns `true` only if the active state variant type matches `State` directly ($O(1)$ lock-free). |
 | `bool is_invariant_satisfied()` | Lock-free check if current state residence satisfies permanence invariant. |
 | `bool has_invariant_violation()` | Lock-free check if an invariant violation has occurred. |
 | `std::optional<invariant_violation_info> last_invariant_violation()` | Retrieves metadata of the most recent invariant violation. |
-| `void on_invariant_violation(handler)` | Registers callback hook executed when an invariant violation occurs. |
-| `void clear_invariant_violation()` | Resets invariant violation status and cached info. |
+| `void set_invariant_violation_handler(handler)` | Registers callback hook executed when an invariant violation occurs. |
 
 !!! info "Seqlock Trivially Copyable Contract"
     In compliance with the ISO C++ memory model, `fsm::spsc_fsm` requires `Registers` to satisfy `std::is_trivially_copyable_v<Registers>` (or `fsm::no_registers`). This compile-time contract ensures that concurrent non-atomic reads during active writer cycles cannot produce torn pointer reads, undefined behavior, or memory corruption. For complex types requiring dynamic heap allocations, use `fsm::thread_safe_fsm`.

@@ -110,6 +110,36 @@ EFSMIntervalAnalyzer::compute_state_intervals() {
 
             // Propagate variable and port assignments across the transition
             auto next_env = curr_env;
+            std::unordered_set<std::string> ephemeral_payload_keys;
+            if (const auto* sig_trig = std::get_if<SignalTrigger>(&t.trigger)) {
+                if (const auto* sig_def = ir_.find_signal(sig_trig->signal_name); sig_def != nullptr) {
+                    for (const auto& attr : sig_def->attributes) {
+                        Interval attr_iv;
+                        for (const auto& val_expr : sig_def->validators) {
+                            if (auto bound = parse_guard_domain(val_expr, attr.name); bound.has_value()) {
+                                attr_iv = attr_iv.intersect_with(*bound);
+                            }
+                        }
+                        if (t.guard.has_value()) {
+                            if (auto g_bound = parse_guard_domain(*t.guard, attr.name); g_bound.has_value()) {
+                                attr_iv = attr_iv.intersect_with(*g_bound);
+                            }
+                        }
+                        for (const std::string& pfx : {std::string("payload."), std::string("cmd."),
+                                                       std::string("event."), std::string("ev.")}) {
+                            std::string k = pfx + attr.name;
+                            next_env[k] = attr_iv;
+                            ephemeral_payload_keys.insert(k);
+                        }
+                        if (!sig_trig->payload_binding.empty()) {
+                            std::string k = sig_trig->payload_binding + "." + attr.name;
+                            next_env[k] = attr_iv;
+                            ephemeral_payload_keys.insert(k);
+                        }
+                    }
+                }
+            }
+
             auto process_action_assignments = [&](const std::optional<ActionSignature>& act_opt) {
                 if (!act_opt.has_value())
                     return;
@@ -120,12 +150,15 @@ EFSMIntervalAnalyzer::compute_state_intervals() {
             process_action_assignments(t.condition_action);
             process_action_assignments(t.transition_action);
 
-            // Merge into target state environment
+            // Merge into target state environment (excluding ephemeral transition-local payload bindings)
             auto& target_env = state_envs[t.target];
             bool changed = false;
             bool apply_widening = (state_visits[t.target] >= 3);
 
             for (const auto& [var_name, interval] : next_env) {
+                if (ephemeral_payload_keys.count(var_name) > 0) {
+                    continue;
+                }
                 auto it_tgt = target_env.find(var_name);
                 if (it_tgt == target_env.end()) {
                     target_env[var_name] = interval;
@@ -508,6 +541,11 @@ void EFSMIntervalAnalyzer::apply_assignment(std::unordered_map<std::string, Inte
             }
         }
     } catch (...) {
+    }
+
+    if (auto it_raw = env.find(expr); it_raw != env.end()) {
+        update_target(it_raw->second);
+        return;
     }
 
     std::string clean_expr = strip_qualifier(expr);

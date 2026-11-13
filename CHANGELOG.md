@@ -11,28 +11,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Typed Event Payloads End-to-End**:
-  - `SemanticAnalyzer` now validates payload member accesses (`payload.*`, `cmd.*`, `event.*`, `<payload_binding>.*`) against `SignalDefinition::attributes`, forbids payload references in triggerless contexts (`on_enter`, `on_exit`, `AnonymousTrigger`, `TimeTrigger`), and enforces `trivially_copyable` signal attributes under `SPSC` / `RealTime` policies.
+  - `SemanticAnalyzer` validates payload member accesses (`payload.*`, `cmd.*`, `event.*`, `<payload_binding>.*`) against `SignalDefinition::attributes`, forbids payload references in triggerless contexts (`on_enter`, `on_exit`, `AnonymousTrigger`, `TimeTrigger`), and enforces `trivially_copyable` signal attributes under `SPSC` / `RealTime` policies.
   - `EFSMIntervalAnalyzer` propagates bounded numeric intervals from `SignalDefinition::validators` and transition guards into target-state register intervals.
-  - `fsm::dispatch()` and `spsc_fsm::post()` automatically validate `.is_valid()` on typed signal payloads (`reject_invalid_payload`, zero-overhead `if constexpr` when absent) and `spsc_fsm` enforces `std::is_trivially_copyable_v<event_variant>` at compile time.
+  - `fsm::dispatch()` and `spsc_fsm::post()` validate `.is_valid()` on typed signal payloads (`reject_invalid_payload`, zero-overhead `if constexpr` when absent) and `spsc_fsm` enforces `std::is_trivially_copyable_v<event_variant>` at compile time.
   - `CppModelEmitter` supports `payload` qualification and omits unsafe eventless guard overloads when guards reference event payloads.
 - **IR Simulator & Verification DX**:
   - Added `fsmc --simulate` / `--trace <file.json>` (`IrSimulator`) for direct `FsmIr` trace execution with payload validator enforcement.
-  - Added `fsmc --export-cex-gtest <file.cpp>` (`CounterexampleGTestExporter`) to turn formal verification counterexamples into reproducible GoogleTest C++ cases.
+  - Added `fsmc --export-cex-gtest <file.cpp>` (`CounterexampleGTestExporter`) to turn formal verification counterexamples into compilable GoogleTest C++ cases.
   - Added `--base-url` option to `scripts/generate_test_catalog.py` for direct repository links.
 
 ### Changed
 - **IR & Middle-End Convergence**:
-  - Replaced C++-coupled `"fsm::and_<...>"` string concatenation in `ConnectiveJunctionChainingPass` and `ChoiceInliningPass` with pure target-agnostic `GuardAstNode` composition, lowered to `::fsm::and_<...>` / `::fsm::or_<...>` / `::fsm::not_<...>` in `CppModelEmitter`.
+  - Replaced C++-coupled `"fsm::and_<...>"` string concatenation in `ConnectiveJunctionChainingPass` and `ChoiceInliningPass` with target-agnostic `GuardAstNode` composition, lowered to `::fsm::and_<...>` / `::fsm::or_<...>` / `::fsm::not_<...>` in `CppModelEmitter`.
   - Extended `CppModelEmitter::emit_actions` to lower `ActionSignature::instructions` (`StoreOp`, `PortWriteOp`, `PortReadOp`, `ActionCallOp`, `SignalEmitOp`) alongside `assignments`.
   - Standardized `TransitionEdge` guard mutations via `set_guard()` / `set_guard_ast()` and tightened EFSM trigger/guard equivalence in `StateMinimizationPass`.
+- **Documentation & Verification Gate Overhaul**:
+  - Overhauled the MkDocs Material documentation hierarchy, aligned CLI flags, formal language guides, runtime C++ API signatures, IR/pass references, and tutorials with the compiler implementation, and strengthened `scripts/verify_docs.py` content, link, and freshness checks.
 
 ### Fixed
-- **Frontends, Codegen & Verification Stability**:
-  - Added XState `"context"` object deserialization to `FsmIrDeserializer::deserialize_json` and preserved per-guard expressions across JSON roundtrips.
-  - Added automatic `<data expr="..."/>` type inference (`bool`, `double`, `int32_t`, `uint32_t`, `std::string`) in `ScxmlParser` when `type` is omitted.
-  - Fixed `Sysml2Parser` signal validator parsing, forward-declared signal event matching, and C++ keyword escaping for state/target/member identifiers and `[else]` choice branches.
-  - Fixed `qualify_expression_identifiers` in `CppModelEmitter` to resolve C++ keyword-escaped variable/port names (`switch` $\to$ `reg.switch_`).
-  - Fixed `CounterexampleGTestExporter::export_gtest` to emit `using namespace <ns>;` and `<ModelName> sm;` so `--export-cex-gtest` compiles directly against generated headers.
+- **C++ Code Generation & Compiler Portability**:
+  - Prevented `-Wunused-parameter` errors under AppleClang / Clang `-Werror` in `CppModelEmitter::emit_actions` by not marking `Services& srv` as used for comment-only `SignalEmitOp` instructions and by marking `in`/`reg` used for `PortReadOp` only when `destination.name` is non-empty.
+  - Appended `f` suffixes to floating-point literals assigned to `Float32` variables and output ports in generated action bodies, eliminating `-Wconversion` narrowing warnings/errors under strict compiler flags.
+  - Deduplicated emitted action bodies when multiple transitions share the same action name in `CppModelEmitter::emit_actions`.
+  - Updated `qualify_expression` in `CppModelEmitter` to escape C++ keyword member accesses (`expr.keyword` → `expr.keyword_`) and resolve already-escaped C++ keyword variable and port identifiers (`reg.<kw>_`, `in.<kw>_`, `out.<kw>_`) in guards and expressions.
+  - Qualified `fsm_generated::signal{}` explicitly in the keyword-escaping E2E test to avoid name lookup ambiguity with C `::signal` from `<sys/signal.h>` on macOS.
+- **Frontends, Parsers & Canonical IR Serialization**:
+  - Fixed `Sysml2Parser` signal validator parsing to ingest standalone `assert constraint { ... }` blocks and inline attribute `assert { ... }` constraints inside `item def` (normalizing `self`, `and`, `or`, `not`), match forward-declared signal events, and sanitize target variable identifiers in assignment and `++`/`--` statements.
+  - Fixed `ScxmlParser` `<datamodel>` `<data>` type inference when `type` is omitted (`bool`, `std::string`, `double`, `int32_t`, falling back to `uint32_t` instead of defaulting all types to `uint32_t`).
+  - Added top-level XState-style `"context"` object deserialization with automatic type inference (`bool`, `int32_t`, `double`, `std::string`) to `FsmIrDeserializer::deserialize_json`.
+  - Fixed `FsmIrSerializer::serialize_json` and `FsmIrDeserializer::deserialize_json` to preserve the `guards` array (`name`, `description`, `raw_expression`, `normalized_expression`) across JSON roundtrips.
+  - Fixed `GuardExpressionParser::parse` to handle `else`, `otherwise`, and `default` branch keywords without creating invalid atomic guard structs.
+- **Simulator & Counterexample Verification DX**:
+  - Fixed `IrSimulator` guard evaluation to traverse structured `GuardAstNode` combinators, evaluate lowered `fsm::and_`/`or_`/`not_` expressions, and resolve named `GuardModel` entries from `FsmIr::guards`.
+  - Fixed `CounterexampleGTestExporter::export_gtest` to emit `using namespace <ns>;` (propagated from `--namespace`) and instantiate `<ModelName> sm;` instead of `<ModelName>FSM sm;` so exported GTest counterexamples compile directly against generated headers.
 
 ---
 

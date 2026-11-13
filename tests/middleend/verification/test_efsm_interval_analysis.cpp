@@ -115,4 +115,42 @@ TEST(EfsmIntervalAnalysis, GuardOutsidePortDomain_EmitsUnsatisfiableDiagnostic) 
     EXPECT_TRUE(found_unsat_guard);
 }
 
+TEST(EFSMIntervalAnalysis, SignalPayloadValidatorPropagatesBoundedIntervalToRegister) {
+    FsmIr model;
+    model.name = "PayloadIntervalFSM";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Receiving");
+
+    VariableDefinition reg_len;
+    reg_len.name = "last_len";
+    reg_len.type = DataType{PrimitiveTypeKind::UInt32};
+    reg_len.initial_value = "0";
+    model.add_variable(std::move(reg_len));
+
+    SignalDefinition sig("Packet");
+    sig.attributes.emplace_back("len", DataType{PrimitiveTypeKind::UInt32}, "64");
+    sig.validators.push_back("len >= 10 && len <= 1500");
+    model.add_signal(sig);
+
+    TransitionEdge t("t1", "Idle", "Receiving", SignalTrigger{"Packet", "payload"});
+    ActionSignature act("capture_len");
+    ActionAssignment assign;
+    assign.target = LValueTarget("last_len", LValueScope::Register);
+    assign.op = AssignmentOp::Assign;
+    assign.expression = "payload.len";
+    act.assignments.push_back(assign);
+    t.set_action(act);
+    model.add_transition(t);
+
+    EFSMIntervalAnalyzer analyzer(model);
+    auto envs = analyzer.compute_state_intervals();
+
+    ASSERT_TRUE(envs.count("Receiving") > 0);
+    ASSERT_TRUE(envs.at("Receiving").count("last_len") > 0);
+    const Interval& iv = envs.at("Receiving").at("last_len");
+    EXPECT_DOUBLE_EQ(iv.lo, 10.0);
+    EXPECT_DOUBLE_EQ(iv.hi, 1500.0);
+}
+
 }  // namespace

@@ -897,6 +897,9 @@ TEST_F(FsmcOptionsTest, SimulateAndExportCexGTest_ParseAndExecuteCleanly) {
     mc.counterexample_trace.push_back({0, "Idle", "Packet", "", "start"});
     mc.counterexample_trace.push_back({1, "Active", "", "", "reached"});
     std::string gtest_src = fsm::tools::CounterexampleGTestExporter::export_gtest(model, mc);
+    EXPECT_NE(gtest_src.find("using namespace fsm_generated;"), std::string::npos);
+    EXPECT_NE(gtest_src.find("    SimModel sm;"), std::string::npos);
+    EXPECT_EQ(gtest_src.find("SimModelFSM sm;"), std::string::npos);
     EXPECT_NE(gtest_src.find("TEST(SimModelCounterexampleTest, Reproduces_SafetyReach)"), std::string::npos);
     EXPECT_NE(gtest_src.find("sm.dispatch(Packet{});"), std::string::npos);
     EXPECT_NE(gtest_src.find("EXPECT_TRUE(sm.is_in<Active>());"), std::string::npos);

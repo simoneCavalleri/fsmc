@@ -949,7 +949,8 @@ class FsmcDriver {
                         std::cout << "  " << ce;
                     }
                     if (!opts.export_cex_gtest.empty() && !res.counterexample_trace.empty()) {
-                        std::string gtest_code = CounterexampleGTestExporter::export_gtest(model, res);
+                        std::string gtest_code =
+                            CounterexampleGTestExporter::export_gtest(model, res, "", opts.ns_name);
                         std::string write_err;
                         if (!write_file_content(opts.export_cex_gtest, gtest_code, write_err)) {
                             std::cerr << "Error exporting counterexample GTest: " << write_err << "\n";

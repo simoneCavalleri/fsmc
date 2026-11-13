@@ -1,6 +1,7 @@
 #include "fsm/ir/fsm_ir_deserializer.hpp"
 
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <map>
@@ -1142,6 +1143,39 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
                     out_ir.add_variable(std::move(var));
                 }
             }
+        }
+    }
+
+    // XState-style "context": { "var": initial_value, ... }
+    const auto* ctx_obj = root.get_child("context");
+    if (ctx_obj != nullptr && ctx_obj->is_object()) {
+        for (const auto& [raw_name, val] : ctx_obj->obj_members) {
+            std::string name = sanitize_identifier(raw_name);
+            if (name.empty() || out_ir.find_variable(name) != nullptr) {
+                continue;
+            }
+            VariableDefinition var;
+            var.name = std::move(name);
+            if (val.type == JsonType::Bool) {
+                var.type = "bool";
+                var.initial_value = val.bool_val ? "true" : "false";
+            } else if (val.type == JsonType::Number) {
+                double int_part = 0.0;
+                if (std::modf(val.num_val, &int_part) == 0.0) {
+                    var.type = "int32_t";
+                    var.initial_value = std::to_string(static_cast<long long>(val.num_val));
+                } else {
+                    var.type = "double";
+                    var.initial_value = std::to_string(val.num_val);
+                }
+            } else if (val.type == JsonType::String) {
+                var.type = "std::string";
+                var.initial_value = "\"" + val.str_val + "\"";
+            } else {
+                var.type = "int32_t";
+                var.initial_value = "0";
+            }
+            out_ir.add_variable(std::move(var));
         }
     }
 

@@ -120,7 +120,7 @@ fsmc -i flight_mission.sysml --export smv -o flight_model.smv
 nuXmv flight_model.smv
 ```
 
-### Counterexample-to-GTest Export & IR Trace Simulation (`v0.10.0`)
+### Counterexample-to-GTest Export & IR Trace Simulation
 
 When a formal property fails, you can turn its counterexample directly into a reproducible GoogleTest C++ regression test, or step through event traces directly on `FsmIr` before codegen:
 

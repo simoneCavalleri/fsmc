@@ -11,26 +11,36 @@ using namespace fsm::diagnostic;
 
 namespace {
 
-bool is_plain_identifier_guard(const std::string& g) {
-    if (g.empty()) {
-        return false;
-    }
-    if (std::isalpha(static_cast<unsigned char>(g[0])) == 0 && g[0] != '_') {
-        return false;
-    }
-    for (char c : g) {
-        if (std::isalnum(static_cast<unsigned char>(c)) == 0 && c != '_') {
-            return false;
-        }
-    }
-    return true;
+bool is_else_guard(const std::optional<std::string>& g) {
+    return !g.has_value() || g->empty() || *g == "else" || *g == "otherwise" || *g == "default";
 }
 
-std::string combine_choice_guards(const std::string& g1, const std::string& g2) {
-    if (is_plain_identifier_guard(g1) && is_plain_identifier_guard(g2)) {
-        return "fsm::and_<" + g1 + ", " + g2 + ">";
+std::optional<GuardAstNode> extract_non_else_guard_ast(const TransitionEdge& edge) {
+    if (is_else_guard(edge.guard)) {
+        return std::nullopt;
     }
-    return "(" + g1 + ") && (" + g2 + ")";
+    if (edge.guard_ast.has_value()) {
+        const std::string text = edge.guard_ast->to_string();
+        if (text.empty() || text == "else" || text == "otherwise" || text == "default") {
+            return std::nullopt;
+        }
+        return edge.guard_ast;
+    }
+    if (edge.guard.has_value() && !edge.guard->empty()) {
+        return GuardAstNode(*edge.guard);
+    }
+    return std::nullopt;
+}
+
+std::optional<GuardAstNode> combine_choice_guard_asts(const std::optional<GuardAstNode>& lhs,
+                                                      const std::optional<GuardAstNode>& rhs) {
+    if (!lhs.has_value()) {
+        return rhs;
+    }
+    if (!rhs.has_value()) {
+        return lhs;
+    }
+    return GuardAstNode(GuardOp::And, {*lhs, *rhs});
 }
 
 }  // namespace
@@ -104,22 +114,11 @@ bool ChoiceInliningPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
                     composite.kind = TransitionEdgeKind::External;
                     composite.priority = (out.priority > 0) ? out.priority : in.priority;
 
-                    // Combine Guards
-                    std::string combined_guard;
-                    auto is_else = [](const std::optional<std::string>& g) {
-                        return !g.has_value() || g->empty() || *g == "else" || *g == "otherwise" || *g == "default";
-                    };
-
-                    if (!is_else(in.guard) && !is_else(out.guard)) {
-                        combined_guard = combine_choice_guards(*in.guard, *out.guard);
-                    } else if (!is_else(out.guard)) {
-                        combined_guard = *out.guard;
-                    } else if (!is_else(in.guard)) {
-                        combined_guard = *in.guard;
-                    }
-
-                    if (!combined_guard.empty()) {
-                        composite.set_guard(combined_guard);
+                    // Combine Guards as target-agnostic GuardAstNode
+                    auto combined_guard =
+                        combine_choice_guard_asts(extract_non_else_guard_ast(in), extract_non_else_guard_ast(out));
+                    if (combined_guard.has_value()) {
+                        composite.set_guard_ast(std::move(combined_guard));
                     }
 
                     // Combine Condition Actions

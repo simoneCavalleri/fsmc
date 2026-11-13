@@ -147,8 +147,7 @@ bool GuardSimplificationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     for (auto& t : ir.transitions) {
         if (t.guard_ast.has_value()) {
             GuardAstNode simplified = simplify_node(*t.guard_ast);
-            t.guard_ast = simplified;
-            t.guard = simplified.to_string();
+            t.set_guard_ast(simplified);
 
             if (t.guard == "false") {
                 diag.report(Diagnostic::warning(

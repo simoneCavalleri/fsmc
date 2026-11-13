@@ -15,8 +15,9 @@ fsmc/
 │   ├── middleend/   # PassManager, Dead State Pruning, Determinism, Guard Satisfiability, Inlining, TimedDeadlockPass, EFSM Interval Analysis & ModelChecker
 │   ├── diagnostic/  # Rich DiagnosticEngine with ANSI colors, SourceSpan, and visual carets
 │   ├── frontend/    # Two-Category Parser Ingestion Infrastructure & ParserFactory
-│   │   ├── formal/  # High-Semantics Formal Models (SysML v2, W3C SCXML, Cameo / MagicDraw XMI, Stateflow XML, nuXmv SMV)
-│   │   └── diagram/ # Visual Diagram Sketch Notations (PlantUML, Mermaid, Graphviz DOT, XState JSON)
+│   │   ├── common/  # IParser interface, ParserFactory, XState JSON parser
+│   │   ├── formal/  # High-semantics Formal Models (SysML v2, Stateflow XML, Cameo XMI, W3C SCXML, nuXmv SMV)
+│   │   └── diagram/ # Visual Diagram Sketch Notations (PlantUML, Mermaid, Graphviz DOT)
 │   └── backend/     # Target Code Generators, EmitterFactory & Zero-Overhead C++ Runtime
 │       ├── cpp/     # C++17/C++20 Standalone Bundles & Modular Generators
 │       │   └── runtime/ # Canonical Zero-Heap Real-Time Runtime Engine (fsm, spsc_fsm, thread_safe_fsm, static_ring_buffer)
@@ -27,7 +28,7 @@ fsmc/
 │   ├── fsmc/        # Primary Multi-Format Compiler Driver CLI
 │   └── fsm-opt/     # Standalone Formal IR Optimizer, Linter & Roundtrip Formatter CLI
 ├── examples/        # Aerospace, Automotive ECU, and Resilient IoT Showcases
-├── tests/           # Modular GoogleTest Suites (93 test targets, 100% pass)
+├── tests/           # Modular GoogleTest Suites (85 test suites / 94 CTest targets)
 │   ├── backend/     # Codegen, roundtrip lossless export, and backend/cpp/runtime tests
 │   ├── frontend/    # Frontend tests partitioned into formal/ and diagram/
 │   ├── ir/          # Serialization and AST integrity
@@ -48,17 +49,17 @@ fsmc/
            ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ 1. Frontend Ingestion & ParserFactory                       │
-│  • Formal Models (include/fsm/frontend/formal/):            │
+│  • Formal Models (include/fsm/frontend/formal/ & common/):   │
 │    - SysML v2 Parser (Native textual .sysml grammar)        │
 │    - Cameo / MagicDraw Parser (OMG XMI 2.x XML parser)      │
 │    - W3C SCXML Parser (State Chart XML specification)       │
-│    - MathWorks Stateflow Parser (Simulink XML/JSON format)  │
+│    - MathWorks Stateflow Parser (Simulink XML/SLX/SFX)      │
+│    - XState JSON Parser (Structured JSON Statecharts)       │
 │    - nuXmv / SMV Parser (Formal symbolic specification)     │
 │  • Visual Diagrams (include/fsm/frontend/diagram/):         │
 │    - PlantUML Parser (State diagram block tokenization)     │
 │    - Mermaid Parser (StateDiagram-v2 grammar)               │
 │    - Graphviz DOT Parser (Unix graph grammar)               │
-│    - XState JSON Parser (Modern JSON Statecharts)           │
 └──────────────────────────────┬──────────────────────────────┘
                                │
                                ▼
@@ -75,7 +76,7 @@ fsmc/
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 3. Middle-End Optimizer & Verifier (32 Passes, 7 Stages)    │
+│ 3. Middle-End Optimizer & Verifier (33 Registered Passes)   │
 │  • Stage 1: Canonicalization & Semantic Validation          │
 │  • Stage 2: Structural Lowering (LCA Action Fusion, Choice, │
 │             Fork/Join, Orthogonal Product, History, Deferred│
@@ -120,17 +121,16 @@ fsmc/
 
 ```cpp
 enum class FrontendKind : std::uint8_t {
-    Formal,   ///< Strict formal metamodel: SysML v2, W3C SCXML, Cameo/MagicDraw XMI, nuXmv/SMV
-    Diagram   ///< Visual diagram notation: PlantUML, Mermaid, Graphviz DOT, XState JSON
+    Formal,   ///< Formal metamodels: SysML v2, Stateflow, W3C SCXML, Cameo XMI, XState JSON, nuXmv/SMV
+    Diagram   ///< Visual diagram notations: PlantUML, Mermaid, Graphviz DOT
 };
 ```
 
-1. **`FrontendKind::Formal` (`include/fsm/frontend/formal/`)**:
-    - Backed by formal specifications where variables, types, units, and transitions have precise mathematical semantics.
-    - Code generation proceeds directly without heuristic warnings.
+1. **`FrontendKind::Formal` (`include/fsm/frontend/formal/` and `common/json_parser.hpp`)**:
+    - Formal specifications and structured metamodels; C++ code generation proceeds directly without requiring `--allow-diagram`.
 2. **`FrontendKind::Diagram` (`include/fsm/frontend/diagram/`)**:
-    - Visual sketching notations where state charts are descriptive. Types and payloads are inferred or supplemented via lossless `@fsm:` directives.
-    - Codegen requires explicit confirmation via `--allow-diagram-codegen` and emits warning `warning[W0301]: Untyped or inferred symbol in diagram source`.
+    - Visual diagram notations where types and metadata may be supplied via `@fsm:*` directives or `.fsm.yaml` sidecars.
+    - C++ code generation requires explicit confirmation via `--allow-diagram` (or `--allow-diagram-codegen`) and emits `warning[W0301]`.
 
 ---
 
@@ -210,66 +210,21 @@ where `Nin` is the number of incoming transitions and `Nout` is the number of ou
 
 ---
 
-## 7. Hard Real-Time, Zero-Heap C++ Runtime Architecture
+## 7. Real-Time C++ Runtime Architecture Summary
 
-The C++ runtime engine (`include/fsm/backend/cpp/runtime/`) is designed for mission-critical, hard real-time embedded environments:
+The C++ runtime headers (`include/fsm/backend/cpp/runtime/`) implement zero-heap execution primitives shared between standalone and modular generated code:
 
-1. **Deterministic Ring Buffers & Overflow Policies**:
-    - `fsm::static_ring_buffer<T, Capacity, Policy>` provides fixed-capacity zero-heap event buffering with configurable overflow policies:
-        - `OverflowPolicy::DropOldest`: Overwrites oldest unconsumed event (telemetry/streaming mode).
-        - `OverflowPolicy::DropIncoming`: Discards new event on full queue (resilient backpressure).
-        - `OverflowPolicy::AssertOnOverflow`: Traps execution immediately (hard real-time safety critical).
-2. **Lock-Free SPSC Engine (`fsm::spsc_fsm`)**:
-    - `fsm::spsc_fsm<Table, InPorts, OutPorts, Registers, Services, Capacity, InitialState>` combines compile-time state machine folding with fixed-capacity static ring buffers, providing wait-free O(1) ISR event production and lock-free seqlock registers reading.
-3. **Synchronous Deterministic Timer Manager**:
-    - `fsm::deterministic_timer_manager<MaxTimers>` manages state machine timeout events via discrete `tick(delta_ms, callback)` invocations, perfectly matching hardware tick timers (SysTick) without background threads.
+1. **Deterministic Ring Buffers (`fsm::static_ring_buffer<T, Capacity, Policy>`)**: Fixed-capacity queues configurable with `OverflowPolicy::DropOldest`, `OverflowPolicy::DropIncoming`, or `OverflowPolicy::AssertOnOverflow`.
+2. **Lock-Free SPSC Engine (`fsm::spsc_fsm<Table, InPorts, OutPorts, Registers, Services, Capacity, InitialState, DeferredCapacity>`)**: Wait-free single-producer/single-consumer ISR queue paired with seqlock `Registers` snapshots (enforcing `std::is_trivially_copyable_v<Registers>`).
+3. **Thread-Safe Async Engine (`fsm::thread_safe_fsm`)**: Dual-mutex (`dispatch_mutex_` + `queue_mutex_`) design with snapshot notification dispatch and safe shutdown draining.
+4. **Deterministic Timer Manager (`fsm::deterministic_timer_manager<MaxTimers>`)**: Tick-driven hardware timing via `tick(delta_ms, callback)` without OS timer threads.
+
+For full template parameters, behavioral contracts, and usage examples, see the [C++ Runtime Architecture & API Reference](../runtime_api/index.md).
 
 
 ---
 
-## 8. Composite Guard AST & Recursive Parser
-
-To support complex boolean logic in model diagrams (e.g. `[PowerOk && (!Fault || Override)]`), `fsmc` incorporates an expression tokenizer and recursive-descent parser (`GuardExpressionParser`):
-
-- Generates a nested C++ type representation using variadic templates: `fsm::and_<PowerOk, fsm::or_<fsm::not_<Fault>, Override>>`.
-- Extracts unique atomic guard identifiers to generate forward-declared stubs only for leaf predicates.
-- Short-circuits evaluations at runtime with zero temporary objects.
-
----
-
-## 9. HFSM Hierarchy & History State Resolution
-
-1. **Parent Transition Inheritance (Flattening)**:
-    - Outgoing transitions defined on parent macro-states are automatically propagated to all child sub-states during code generation, unless a child explicitly overrides the triggering event.
-2. **Dynamic History Restoration**:
-    - For composite states targeted with shallow history `State[H]` or deep history `State[H*]`, the runtime tracks the last active child sub-state and dynamically restores it upon re-entry.
-    - If the macro-state has never been visited before, the machine defaults to the initial sub-state.
-
----
-
-## 10. Thread-Safe Concurrency & Polling Architecture
-
-`fsm::thread_safe_fsm` delivers high-throughput concurrent event handling while strictly preventing data races, deadlocks, and use-after-free conditions:
-
-1. **Dual Mutex Model**:
-    - `dispatch_mutex_`: Serializes state mutations and action execution.
-    - `queue_mutex_`: Protects the internal event FIFO queue independently from dispatch execution.
-2. **Snapshot-Based Notification Dispatch**:
-    - Transition information and observer callbacks are captured under `dispatch_mutex_` and invoked outside the lock, preventing deadlocks when observers self-post events.
-3. **Single-Consumer Polling Guard & O(1) Queue**:
-    - Backed by `std::deque<event_handler>`, `process_one()` achieves deterministic O(1) front popping.
-    - Guarded by atomic test-and-set (`is_polling_`), enforcing single-consumer sequential event consumption.
-4. **Deterministic Lifecycle & Safe Shutdown**:
-    - Worker thread ID (`worker_thread_id_`) and stopping thread ID (`stopping_thread_id_`) are tracked via lock-free atomics.
-    - External event enqueueing is safely rejected during shutdown (`is_stopping_`), while cascading events generated by active actions are fully drained before destruction.
-5. **Lock-Free SPSC Seqlock & Atomic State Inspection**:
-    - `fsm::spsc_fsm` enforces `std::is_trivially_copyable_v<Registers>` at compile-time for sound seqlock reader snapshots without torn pointers.
-    - Active state query (`is_in<State>()`) matches atomic state indices against compile-time type indices (`type_list_index_of_v`), fully decoupling telemetry reader threads from the underlying FSM engine.
-
-
----
-
-## 11. Multi-Format Model Ecosystem & Formal Verification Role
+## 8. Multi-Format Model Ecosystem & Formal Verification Role
 
 `fsmc` establishes a clear architectural boundary between **Executable Statechart Modeling** and **Formal Symbolic Verification**:
 

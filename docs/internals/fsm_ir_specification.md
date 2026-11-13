@@ -4,9 +4,9 @@ This document provides the formal specification of the **`FsmIr` (Finite State M
 
 ```
 [ Frontend Parsers ] ──▶  FsmIr  ──▶ [ PassManager ] ──▶ [ Codegen Backends & Serializers ]
-(SysML v2, Cameo XMI,     (AST)      (30 Optimization &   (C++17, C++20, JSON, SysML v2,
- SCXML, Stateflow XML,                Verification Passes) Cameo, SCXML, Stateflow, SMV,
- PlantUML, Mermaid, DOT,                                   Mermaid, PlantUML, DOT, RTM)
+(SysML v2, Cameo XMI,     (AST)      (33 Registered      (C++17, C++20, JSON, SysML v2,
+ SCXML, Stateflow XML,                Passes)             Cameo, SCXML, Stateflow, SMV,
+ PlantUML, Mermaid, DOT,                                  Mermaid, PlantUML, DOT, RTM)
  JSON, nuXmv SMV)
 ```
 
@@ -52,13 +52,17 @@ The IR subsystem is organized in modular, single-responsibility header files und
 
 | Field | Type | Description |
 | :--- | :--- | :--- |
+| `id` | `std::string` | Unique deterministic identifier for the state machine. |
 | `name` | `std::string` | Canonical name of the state machine class. |
 | `package` | `std::string` | Backend-agnostic package / namespace identifier (e.g. `"avionics.guidance"`). |
-| `initial_state_id` / `initial_state` | `std::string` | Identifier or name of the root initial state. |
+| `initial_state_id` / `initial_state` | `std::string` | Deterministic identifier and unqualified name of the root initial state. |
+| `concurrency` / `execution_semantics` | `ConcurrencySemantics`, `ExecutionSemantics` | Mathematical dispatch, orthogonal conflict, and preemption semantics. |
+| `satisfies_reqs` | `std::vector<std::string>` | Model-level requirement traceability identifiers. |
 | `states` | `std::vector<StateNode>` | Ordered collection of all state nodes in the graph. |
 | `transitions` | `std::vector<TransitionEdge>` | Ordered collection of all directed transition edges. |
 | `ports` | `std::vector<PortDefinition>` | Typed `InPorts` / `OutPorts` with formal domain range contracts (`min_value`, `max_value`, `constraint`). |
 | `signals` | `std::vector<SignalDefinition>` | Canonical source of truth for all events and typed signals (`SignalDefinition`). |
+| `clocks` | `std::vector<ClockDefinition>` | Timed Automata continuous clocks. |
 | `variables` | `std::vector<VariableDefinition>` | State variables (internal `Registers`) with types, units, initial values, and SMT bounds (EFSM). |
 | `custom_types` | `std::vector<TypeDefinition>` | Canonical source of truth for user-defined compound types (`Enum`, `Struct`, `Alias`). |
 | `attributes` | `std::unordered_map<std::string, std::string>` | Extensible metadata key-value pairs (e.g., standard, version, domain-specific annotations). |
@@ -66,6 +70,7 @@ The IR subsystem is organized in modular, single-responsibility header files und
 | `guards` | `std::vector<GuardModel>` | Guard predicate identifiers synthesized from transition conditions. |
 | `actions` | `std::vector<ActionModel>` | Action routine identifiers synthesized from transitions and state entry/exit actions. |
 | `choice_nodes` | `std::vector<ChoiceNodeModel>` | Dynamic choice pseudostate descriptors. |
+| `bindings` | `std::vector<BindingConnector>` | Structural port and signal connectors (SysML v2 `bind` / `connect`). |
 
 ---
 
@@ -103,18 +108,18 @@ Represents a directed transition between states or pseudostates, with full suppo
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `id` | `std::string` | Deterministic FNV-1a unique hash computed over source, target, trigger, and guard. |
-| `source` | `std::string` | Source state name. |
-| `target` | `std::string` | Target state name. |
-| `source_ids` | `std::vector<std::string>` | Multi-source endpoints for **Join** rendezvous synchronization. |
-| `target_ids` | `std::vector<std::string>` | Multi-target endpoints for **Fork** parallel branch splits. |
+| `source` / `target` | `std::string` | Source and target state names (`source_id` / `target_id` hold deterministic IDs). |
+| `source_ids` / `target_ids` | `std::vector<std::string>` | Multi-source endpoints for **Join** and multi-target endpoints for **Fork** synchronization. |
+| `clock_resets` | `std::vector<std::string>` | Timed Automata clocks reset when the transition fires. |
 | `event` | `std::string` | Triggering event name (or empty for anonymous transitions). |
 | `trigger` | `TriggerVariant` | Type-safe variant: `SignalTrigger`, `TimeTrigger`, `AnonymousTrigger`. |
-| `guard_ast` | `std::optional<GuardAstNode>` | Structured AST representation for boolean guard logic (`AND`, `OR`, `NOT`). |
-| `action_sig` | `std::optional<ActionSignature>` | Action invocation signature, arguments, and variable assignments (`assignments`). |
+| `guard` / `guard_ast` | `std::optional<std::string>`, `std::optional<GuardAstNode>` | Raw guard string and structured boolean AST representation (`AND`, `OR`, `NOT`). |
+| `condition_action` | `std::optional<ActionSignature>` | Immediate condition action (`[guard] / { cond_act }`). |
+| `transition_action` | `std::optional<ActionSignature>` | Transition effect action executed during state exit/entry. |
 | `kind` | `TransitionEdgeKind` | `External` (default lifecycle), `Internal` (in-place execution), `Local`. |
-| `priority` | `std::uint32_t` | Evaluation precedence contract (`1 = Highest, 2 = Next, ..., 0 = Default/Lowest`). |
-| `target_is_history` | `bool` | Target is shallow history `[H]`. |
-| `target_is_deep_history` | `bool` | Target is deep history `[H*]`. |
+| `priority` | `std::uint32_t` | Evaluation precedence contract (`1 = Highest, 2 = Next, ..., 0 = Default`). |
+| `target_is_history` / `target_is_deep_history` | `bool` | Target is shallow `[H]` or deep `[H*]` history. |
+| `traceability_reqs` | `std::vector<std::string>` | Requirement traceability tags linked to this edge. |
 
 #### Structured Trigger Types (`trigger.hpp`):
 1. **`SignalTrigger`**:
@@ -141,8 +146,7 @@ enum class PortDirection : std::uint8_t { In, Out, InOut };
 
 struct PortDefinition {
     std::string name;
-    std::string type{"float"};
-    VariableTypeKind type_kind{VariableTypeKind::Float};
+    DataType type{PrimitiveTypeKind::Float32};
     PortDirection direction{PortDirection::In};
     std::optional<double> min_value;   // Lower range contract bound
     std::optional<double> max_value;   // Upper range contract bound
@@ -164,7 +168,8 @@ Enables formal verification via the built-in model checker and external symbolic
 
 ```cpp
 enum class TemporalOp : std::uint8_t {
-    Atom, Globally, Finally, Next, Until, Release, Implies, Equivalent, And, Or, Not
+    Atom, Globally, Finally, Next, Until, Release, Implies, Equivalent, And, Or, Not,
+    EX, AX, EF, AF, EG, AG, EU, AU
 };
 
 struct PropertyAstNode {
@@ -176,6 +181,7 @@ struct PropertyAstNode {
 struct FormalProperty {
     std::string id;
     std::string name;
+    std::string description;
     PropertyKind kind{PropertyKind::Safety}; // Safety, Liveness, Invariant, Reachability, DeadlockFreedom
     std::string raw_formula;                 // e.g. "G (LowBattery -> F (SafeLand))"
     std::optional<PropertyAstNode> ast;
@@ -187,24 +193,14 @@ struct FormalProperty {
 
 ### 1.6 State Variables & Physical Units (`variable_definition.hpp`)
 ```cpp
-enum class VariableTypeKind : std::uint8_t {
-    Integer, Float, Boolean, String, Custom
-};
-
-struct physical_unit {
-    std::string name;       // e.g. "percent", "meters_per_second"
-    std::string symbol;     // e.g. "%", "m/s"
-    std::string dimension;  // e.g. "velocity"
-};
-
 struct VariableDefinition {
     std::string name;
-    std::string type{"uint32_t"};
-    VariableTypeKind type_kind{VariableTypeKind::Integer};
+    DataType type{PrimitiveTypeKind::UInt32};
     std::string initial_value{"0"};
-    std::optional<int64_t> min_value; // Bounded domain for SMT verification
+    std::optional<std::string> physical_unit; // e.g. "[mm/s]", "[degC]"
+    std::optional<int64_t> min_value;         // Bounded domain for SMT/interval verification
     std::optional<int64_t> max_value;
-    std::optional<physical_unit> unit; // Physical measurement unit
+    std::optional<std::size_t> register_index{std::nullopt};
     std::string description;
 };
 
@@ -284,29 +280,25 @@ TransitionId = FNV-1a(SourceFQN -> TargetFQN : Trigger [GuardAST])
 
 ## 3. Diagram Inline Directives (`@fsm:`)
 
-Inline directives allow modelers to annotate diagrams with formal metadata without altering the visual syntax:
+Inline directives allow visual diagrams (`.puml`, `.mmd`, `.dot`) to declare typed ports, registers, signals, deferred events, formal temporal properties, and submachine references inside native comments:
 
 ```plantuml
 @startuml
 state Standby
 state Navigating {
-    ' @fsm:state kind=Composite initial=CoarseNav do=async_sensor_poll req="REQ-NAV-01"
+    ' @fsm:state name=Navigating do_activity="async_sensor_poll" satisfies=["REQ-NAV-01"]
+    ' @fsm:defer [EmergencyHold]
     state CoarseNav
     state FineNav
 }
 
-' @fsm:defer event=EmergencyHold state=Navigating
-' @fsm:signal name=EvTelemetry type="const TelemetryPacket&" validator="ptr != nullptr"
+' @fsm:signal EvTelemetry{const TelemetryPacket* ptr, uint32_t len} validator="ptr != nullptr && len > 0"
 
 Standby --> Navigating : StartMission [HasTelemetry] / ArmNav
 @enduml
 ```
 
-### Supported Directives
-1. **`@fsm:state`**: Declares state attributes (`kind`, `initial`, `do`, `req`, `desc`).
-2. **`@fsm:defer`**: Declares deferred signals on specific states (`event`, `state`).
-3. **`@fsm:signal`**: Declares typed signal definitions and validation expressions (`name`, `type`, `validator`).
-4. **`@fsm:trans`**: Configures transition metadata (`kind=Internal`, `priority`).
+For the complete normative reference of all supported `@fsm:*` directives, see [Visual Diagrams & Directives Reference](../formal_languages/diagrams.md#2-embedded-directives-fsm).
 
 ---
 

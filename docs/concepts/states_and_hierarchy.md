@@ -61,8 +61,8 @@ Recursively restores the full hierarchy chain down to the deepest active leaf st
     }
 
     state Suspended {
-        // Transition targeting the history of Operational
-        transition on ResumeCmd then Operational::[H];
+        // Transition targeting the shallow history of Operational
+        transition on ResumeCmd then Operational[H];
     }
     ```
 
@@ -82,17 +82,7 @@ Recursively restores the full hierarchy chain down to the deepest active leaf st
     </state>
     ```
 
-=== "Canonical IR Semantics (`FsmIr`)"
-    In the canonical Intermediate Representation, transitions targeting history pseudostates specify:
-
-    - `target_is_history: true` for shallow history `[H]`.
-    - `target_is_deep_history: true` for deep history `[H*]`.
-    - `history_fallback_target`: the designated fallback substate if the parent composite state was never previously entered.
-
-    *(For C++ target implementation details, see the [Runtime C++ API](../runtime_api/synchronous_fsm.md) chapter).*
-
-!!! tip "Exact Compile-Time History Allocation"
-    In the C++ runtime ([`detail/history_manager.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/backend/cpp/runtime/detail/history_manager.hpp)), the history storage buffer capacity is strictly bounded at compile-time by `count_parent_states_v<Table::states>` (the exact number of composite parents with substates), eliminating any heap usage and avoiding stack waste over total state count.
+For details on how shallow (`[H]`) and deep (`[H*]`) history pseudostates are represented in the IR and lowered to fixed-capacity C++ runtime storage, see the [Canonical IR Specification](../internals/fsm_ir_specification.md) and [Synchronous Engine Guide](../runtime_api/synchronous_fsm.md).
 
 
 ---

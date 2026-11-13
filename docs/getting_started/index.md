@@ -9,21 +9,15 @@ This section describes how to install `fsmc`, run verification passes, transpile
 | Guide | Description | Target Audience |
 | :--- | :--- | :--- |
 | **[Installation & Setup](installation.md)** | System requirements, CMake `FetchContent`, Conan 2.0, vcpkg, and building from source. | All Users |
-| **[Quickstart Tutorial](quickstart.md)** | End-to-end walkthrough from authoring a statechart to formal verification and execution. | New Users |
-| **[CLI Reference (`fsmc` & `fsm-opt`)](cli_usage.md)** | Comprehensive command-line flag manual for compilation, verification, and standalone export. | Developers / CI |
-| **[Build System Integration](integration_guide.md)** | Automated CMake target integration using `fsmc_target_sources()` and package managers. | Build Engineers |
+| **[Quickstart Tutorial](quickstart.md)** | End-to-end walkthrough from authoring a SysML v2 statechart to formal verification and C++ execution. | New Users |
+| **[Developer Cheat Sheet](quick_reference.md)** | Single-page C++ runtime and CLI quick reference for daily engineering work. | Developers |
+| **[CLI Reference (`fsmc` & `fsm-opt`)](cli_usage.md)** | Comprehensive command-line flag manual for compilation, verification, and export. | Developers / CI |
+| **[Build System Integration](integration_guide.md)** | Automated CMake integration (`fsmc_target_sources`), package managers, and CI verification gates. | Build Engineers |
 
 ---
 
-## Compiler Workflows
+## How `fsmc` Fits Into Your Workflow
 
-Depending on your engineering workflow, `fsmc` supports three primary operational modes:
-
-### 1. Model-Based Engineering (MBSE & Transpilation)
-Author statecharts in high-level engineering formalisms (OMG SysML v2, Cameo / MagicDraw XMI, W3C SCXML). Use `fsmc` to transpile models losslessly between formats, generate visual diagrams, or produce requirement traceability matrices (RTM) for certification audits.
-
-### 2. Formal Verification & Static Analysis
-Run compile-time safety and liveness analysis without executing code. `fsmc` translates statecharts into formal transition systems, verifying interval contracts and temporal invariants (LTL/CTL) natively and exporting to nuXmv / SMV.
-
-### 3. Target Code Generation
-Compile verified statecharts into standalone, zero-heap C++17 or C++20 header files. The generated code adheres to the MBSE 4-domain memory architecture (`InPorts`, `OutPorts`, `Registers`, `Services`) with zero dynamic memory allocation and deterministic execution bounds.
+1. **Author or Import Models**: Write clean textual SysML v2 or ingest existing MathWorks Stateflow, Cameo XMI, W3C SCXML, XState JSON, PlantUML, Mermaid, or Graphviz DOT models.
+2. **Verify and Optimize**: Run middle-end static checks (`--verify`) for deadlocks, interval domain soundness, and LTL/CTL temporal properties, or export to nuXmv SMV and Requirement Traceability Matrices (RTM).
+3. **Compile and Integrate**: Emit zero-heap C++17 or C++20 headers structured around segregated `InPorts`, `OutPorts`, `Registers`, and `Services` domains, and run via synchronous (`fsm::fsm`), lock-free SPSC (`fsm::spsc_fsm`), or async MPSC (`fsm::thread_safe_fsm`) engines.

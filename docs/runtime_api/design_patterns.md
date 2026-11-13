@@ -331,7 +331,7 @@ struct ValveServices  { virtual void transmit_uart(std::span<const uint8_t>) = 0
 #### Why Domain Segregation is Critical:
 - **`InPorts` (Read-Only)**: Enforces the synchronous latching principle—inputs cannot be accidentally overwritten midway through cycle execution.
 - **`OutPorts` (Write-Only Buffer)**: Ensures single-assignment execution semantics—outputs are committed to hardware actuators strictly upon cycle completion.
-- **`Services` (Interface)**: Enables 100% deterministic unit testing by substituting physical hardware drivers with mock services.
+- **`Services` (Interface)**: Enables deterministic unit testing by substituting physical hardware drivers with mock services.
 
 ---
 
@@ -358,7 +358,7 @@ struct Paused       { static constexpr std::string_view name = "Paused";       }
 
 ### Gotcha: Single-Argument `dispatch(event)` vs `OutPorts` Buffers
 
-Calling `fsm.dispatch(event)` is **100% idiomatic and recommended** for:
+Calling `fsm.dispatch(event)` is **idiomatic and recommended** for:
 
 1. Stateless state machines (`fsm::no_ports`),
 2. State machines where actions modify internal `Registers`, call bound `Services`, or trigger state transitions.

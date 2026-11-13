@@ -9,10 +9,10 @@
 [![Release](https://img.shields.io/github/v/release/simoneCavalleri/fsmc?color=blue)](https://github.com/simoneCavalleri/fsmc/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Standards](https://img.shields.io/badge/Standards-OMG%20SysML%20v2%20%7C%20UML%202.5%20%7C%20W3C%20SCXML%20%7C%20nuXmv-orange.svg)](https://simoneCavalleri.github.io/fsmc/formal_languages/uml_reference/)
-[![Tests](https://img.shields.io/badge/Tests-93%20Targets%20Passing-success.svg)](https://simoneCavalleri.github.io/fsmc/reference/test_suite_catalog/)
+[![Tests](https://img.shields.io/badge/Tests-85%20Suites%20%7C%2094%20CTest%20Targets-success.svg)](https://simoneCavalleri.github.io/fsmc/reference/test_suite_catalog/)
 
 **The Universal Finite State Machine Compiler, Optimization & Formal Verification Infrastructure.**  
-*Ingest, verify, optimize, transpile, and compile statecharts across 9 industry modeling formats with extensible target backends.*
+*Ingest, verify, optimize, transpile, and compile statecharts across 9 modeling formats into deterministic C++17/C++20 runtimes.*
 
 [Documentation](https://simoneCavalleri.github.io/fsmc/) • [Quickstart](https://simoneCavalleri.github.io/fsmc/getting_started/quickstart/) • [CLI Reference](https://simoneCavalleri.github.io/fsmc/getting_started/cli_usage/) • [Runtime API](https://simoneCavalleri.github.io/fsmc/runtime_api/synchronous_fsm/) • [Changelog](CHANGELOG.md)
 
@@ -35,7 +35,7 @@ flowchart TD
 
     subgraph Compiler["2. Canonical IR & Middle-End Passes (fsm-opt)"]
         IR["<b>Canonical Metamodel (FsmIr)</b><br/>Partitioned Memory Model:<br/>InPorts • OutPorts • Registers • Services<br/>Unified Native JSON AST Engine"]
-        Passes["<b>32 Analysis & Optimization Passes</b><br/>7-Stage Pipeline • Structural Lowering<br/>Temporal Model Checking • EFSM Intervals<br/>Unix Pipeline (--pipe-through) • C++ Plugins"]
+        Passes["<b>33 Registered Analysis & Opt Passes</b><br/>7-Stage Verified Pipeline • Structural Lowering<br/>Temporal Model Checking • EFSM Intervals<br/>Unix Pipeline (--pipe-through) • C++ Plugins"]
     end
 
     subgraph Targets["3. Extensible Target Backends"]
@@ -57,13 +57,13 @@ flowchart TD
 | :--- | :--- | :--- |
 | **Universal Ingestion** | Ingest and parse statecharts from 9 formats: OMG SysML v2, Cameo / MagicDraw (OMG XMI), W3C SCXML, MathWorks Stateflow XML, nuXmv / SMV, PlantUML, Mermaid, Graphviz DOT, and Canonical JSON. | [Modeling Languages](https://simoneCavalleri.github.io/fsmc/formal_languages/sysml_v2/) |
 | **Pluggable Backends** | Decoupled architecture supporting code generation for modern C++ (C++17/20), formal SMV logic for external provers, visual diagram transpilation, and future target languages. | [Architecture](https://simoneCavalleri.github.io/fsmc/internals/architecture/) |
-| **Canonical IR & Optimizer (`fsm-opt`)** | Strongly typed `FsmIr` with 32 optimization, lowering, and analysis passes across a verified 7-stage pipeline, standalone optimizer driver (`fsm-opt`), Unix filter pipeline (`--pipe-through`), and dynamic C++ pass plugins. | [Middle-End Passes](https://simoneCavalleri.github.io/fsmc/internals/middleend_passes/) |
+| **Canonical IR & Optimizer (`fsm-opt`)** | Strongly typed `FsmIr` with 33 registered passes (28 in the 7-stage verified pipeline), standalone optimizer driver (`fsm-opt`), Unix filter pipeline (`--pipe-through`), and dynamic C++ pass plugins. | [Middle-End Passes](https://simoneCavalleri.github.io/fsmc/internals/middleend_passes/) |
 | **Partitioned Domains** | Clean separation of `InPorts` (read-only), `OutPorts` (write-only), `Registers` ($z^{-1}$ internal state), and `Services` (injected dependencies/side-effects). | [Architecture](https://simoneCavalleri.github.io/fsmc/concepts/guards_and_actions/) |
 | **Dual-Paradigm Execution** | Synchronous continuous sampled loop (`step(in, out)`) and asynchronous event-driven dispatch (`dispatch(ev, in, out)`). | [Runtime C++ API](https://simoneCavalleri.github.io/fsmc/runtime_api/synchronous_fsm/) |
 | **Formal Model Checking** | Integrated LTL/CTL temporal model checker verifying safety invariants, livelocks, deadlock freedom, and choice completeness before emission. | [Model Checking](https://simoneCavalleri.github.io/fsmc/verification_and_safety/model_checking/) |
 | **EFSM Interval Analysis** | Abstract interpretation of numerical guard bounds (`<`, `>`, `<=`, `>=`) with widening $\nabla$ detecting dead transitions and contract violations. | [Interval Analysis](https://simoneCavalleri.github.io/fsmc/verification_and_safety/interval_analysis/) |
 | **MC/DC Test Harness Synthesis** | Automated synthesis of GoogleTest C++ test harnesses verifying Modified Condition / Decision Coverage (MC/DC) for safety standards (DO-178C / ISO 26262). | [MC/DC Synthesis](https://simoneCavalleri.github.io/fsmc/verification_and_safety/mcdc_synthesis/) |
-| **Requirement Traceability (RTM)** | Automated Requirement Traceability Matrix export in Markdown and JSON linking `@fsm:req` annotations to model elements. | [RTM Specification](https://simoneCavalleri.github.io/fsmc/verification_and_safety/rtm_matrix/) |
+| **Requirement Traceability (RTM)** | Automated Requirement Traceability Matrix export in Markdown and JSON from `satisfy requirement` and `@fsm:state satisfies` annotations. | [RTM Specification](https://simoneCavalleri.github.io/fsmc/verification_and_safety/rtm_matrix/) |
 | **Zero-Overhead C++ Backend** | Reference implementation with zero heap allocation, zero virtual tables, $O(1)$ dispatching, deterministic real-time timer (`tick(dt)`), state residence permanence invariants, `fsm::snapshot_recorder` time-travel replay, and thread-safe lock-free SPSC / MPSC wrappers. | [Runtime C++ API](https://simoneCavalleri.github.io/fsmc/runtime_api/synchronous_fsm/) |
 
 ---
@@ -112,13 +112,31 @@ state def SatelliteControl {
 }
 ```
 
-Run **`fsmc`** to formally verify and compile into a standalone C++20 header:
+Run **`fsmc`** to verify the model and generate a standalone C++20 header:
 
 ```bash
-fsmc -i satellite.sysml -o satellite_fsm.hpp --std 20 --standalone
+fsmc -i satellite.sysml --verify
+fsmc -i satellite.sysml -o satellite_fsm.hpp --std 20 --standalone --name SatelliteControlFSM
 ```
 
-Or optimize and analyze the model using **`fsm-opt`**:
+Then instantiate and drive the generated state machine from C++ (`main.cpp`):
+
+```cpp
+#include "satellite_fsm.hpp"
+
+int main() {
+    SatelliteControlRegisters reg{0};
+    SatelliteControlFSM sm(reg);
+    SatelliteControlInPorts in{ .sensor_temp = 25.0 };
+    SatelliteControlOutPorts out{};
+
+    sm.dispatch(EvSysInit{}, in, out);
+    in.sensor_temp = 95.0;
+    sm.step(in, out); // Transitions to SafeMode
+}
+```
+
+Or inspect and optimize the IR using **`fsm-opt`**:
 
 ```bash
 fsm-opt -i satellite.sysml --passes=dead-state-pruning,guard-simplification --emit-ir

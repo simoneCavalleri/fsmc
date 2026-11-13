@@ -1036,19 +1036,18 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                     } else if (const auto* pw = std::get_if<PortWriteOp>(&inst.op)) {
                         uses_out = true;
                         scan_rhs_usage(qualify_expression(pw->expression, model));
-                    } else if (std::holds_alternative<PortReadOp>(inst.op)) {
-                        uses_in = true;
-                        uses_reg = true;
+                    } else if (const auto* pr = std::get_if<PortReadOp>(&inst.op)) {
+                        if (!pr->destination.name.empty()) {
+                            uses_in = true;
+                            uses_reg = true;
+                        }
                     } else if (const auto* ac = std::get_if<ActionCallOp>(&inst.op)) {
                         uses_srv = true;
                         for (const auto& arg : ac->arguments) {
                             scan_rhs_usage(qualify_expression(arg, model));
                         }
-                    } else if (const auto* se = std::get_if<SignalEmitOp>(&inst.op)) {
-                        uses_srv = true;
-                        for (const auto& arg : se->arguments) {
-                            scan_rhs_usage(qualify_expression(arg, model));
-                        }
+                    } else if (std::holds_alternative<SignalEmitOp>(inst.op)) {
+                        // SignalEmitOp currently emits a diagnostic comment without touching runtime parameters
                     }
                 }
 

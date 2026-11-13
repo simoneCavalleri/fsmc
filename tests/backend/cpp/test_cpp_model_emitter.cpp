@@ -1033,3 +1033,44 @@ TEST(CppModelEmitterTest, PayloadGuard_QualifiesPayloadAndOmitsEventlessFallback
     // Must not emit eventless (const InPorts& in, const Registers& reg) returning true!
     EXPECT_EQ(str.find("operator()(const InPorts& in, const Registers& reg) const noexcept"), std::string::npos);
 }
+
+TEST(CppModelEmitterTest, SignalEmitOp_DoesNotEmitUnusedServicesParameter) {
+    FsmIr model;
+    model.name = "SignalEmitCheck";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Active");
+
+    VariableDefinition var;
+    var.name = "count";
+    var.type = DataType{PrimitiveTypeKind::UInt32};
+    var.initial_value = "0";
+    model.add_variable(std::move(var));
+    model.add_event("EvGo");
+
+    ActionSignature act("EmitAndStore");
+    StoreOp store_op;
+    store_op.target = LValueTarget("count", LValueScope::Register);
+    store_op.op = AssignmentOp::Assign;
+    store_op.expression = "1";
+    act.instructions.emplace_back(store_op, "Increment count");
+
+    SignalEmitOp emit_op;
+    emit_op.signal_name = "EvDone";
+    emit_op.arguments = {"arg1"};
+    act.instructions.emplace_back(emit_op, "Emit done signal");
+
+    TransitionEdge trans("Idle", "Active", "EvGo");
+    trans.transition_action = act;
+    model.transitions.push_back(trans);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = true;
+    CppModelEmitter::emit_model(out, model, opts);
+    std::string str = out.str();
+
+    EXPECT_EQ(str.find("Services& srv)"), std::string::npos);
+    EXPECT_NE(str.find("Services& /*srv*/)"), std::string::npos);
+    EXPECT_NE(str.find("// emit signal: EvDone"), std::string::npos);
+}

@@ -291,7 +291,20 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
                             VariableDefinition var;
                             var.name = sanitize_identifier(var_id);
                             var.initial_value = expr;
-                            var.type = type_str.empty() ? "uint32_t" : type_str;
+                            if (!type_str.empty()) {
+                                var.type = type_str;
+                            } else if (expr == "true" || expr == "false") {
+                                var.type = "bool";
+                            } else if (expr.size() >= 2 && ((expr.front() == '"' && expr.back() == '"') ||
+                                                            (expr.front() == '\'' && expr.back() == '\''))) {
+                                var.type = "std::string";
+                            } else if (expr.find('.') != std::string::npos) {
+                                var.type = "double";
+                            } else if (!expr.empty() && expr.front() == '-') {
+                                var.type = "int32_t";
+                            } else {
+                                var.type = "uint32_t";
+                            }
                             model.add_variable(std::move(var));
                         }
                     }

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 519  
+**Total Documented Test Cases**: 520  
 
 ---
 
@@ -866,6 +866,9 @@
 
 #### `ScxmlParser.RawBooleanConditions_PreservedInGuardsAndSerialized`
 **Test Intent**: Verify SCXML raw boolean condition preservation and roundtrip serialization.
+
+#### `ScxmlParserTest.InfersDataModelVariableTypesFromExpr`
+**Test Intent**: Verify SCXML <data> type inference when 'type' attribute is omitted.
 
 ### [`test_scxml_semantic_completeness.cpp`](../../tests/frontend/formal/test_scxml_semantic_completeness.cpp) (`tests/frontend/formal/test_scxml_semantic_completeness.cpp`)
 #### `ScxmlSemanticCompleteness.ParallelRegions_ParsedAsOrthogonalStates`

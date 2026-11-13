@@ -26,6 +26,8 @@
 #include "fsm/backend/cpp/runtime/traits/hook_traits.hpp"
 #include "fsm/backend/cpp/runtime_exporter.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
+#include "fsm/frontend/diagram/plantuml_parser.hpp"
+#include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/action.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/ir/signal_definition.hpp"
@@ -1332,6 +1334,106 @@ int main() {
         ASSERT_EQ(std::system(compile_cmd.c_str()), 0) << "[" << suffix << "] Compilation failed";
         EXPECT_EQ(std::system(exe.c_str()), 0) << "[" << suffix << "] Execution failed";
     }
+
+    fs::remove_all(temp_dir);
+}
+
+TEST(CppE2ECompilerTest, UserBugHunt_CppKeywordEscapingAndPlantUmlElseChoice) {
+    // 1. C++ keywords as port, variable, state, and signal names in SysML v2
+    const std::string kw_sysml = R"(
+state def KeywordFSM {
+    in port switch : Integer;
+    out port default : Integer;
+    attribute class : Integer = 0;
+
+    entry; then operator;
+    state operator;
+    state struct;
+
+    transition from operator accept signal
+        if in.switch > 0
+        do { class = 1; default = 42; }
+        then struct;
+}
+)";
+    fsm::ir::FsmIr kw_model;
+    std::string err;
+    fsm::frontend::formal::Sysml2Parser sysml_parser;
+    ASSERT_TRUE(sysml_parser.parse(kw_sysml, kw_model, err)) << err;
+
+    const std::string kw_driver = R"(
+#include "kw_fsm.hpp"
+#include <cassert>
+
+int main() {
+    using namespace fsm_generated;
+    KeywordFSM sm;
+    KeywordFSMInPorts in{};
+    KeywordFSMOutPorts out{};
+    KeywordFSMServices srv{};
+    in.switch_ = 1;
+    auto res = sm.dispatch(signal_{}, in, out, srv);
+    assert(res.is_success());
+    assert(sm.is_in<struct_>());
+    assert(sm.registers().class_ == 1);
+    assert(out.default_ == 42);
+    return 0;
+}
+)";
+
+    namespace fs = std::filesystem;
+    fs::path temp_dir = fs::temp_directory_path() / "fsmc_e2e_bug_hunt_round2";
+    fs::create_directories(temp_dir);
+
+    {
+        GeneratorOptions opts;
+        opts.cpp_standard = CppStandard::Cpp17;
+        opts.standalone = true;
+        opts.include_stubs = true;
+        std::string code = CppGenerator::generate_header(kw_model, opts);
+
+        fs::path hdr = temp_dir / "kw_fsm.hpp";
+        {
+            std::ofstream hf(hdr);
+            hf << code;
+        }
+        fs::path drv = temp_dir / "kw_drv.cpp";
+        {
+            std::ofstream df(drv);
+            df << kw_driver;
+        }
+        std::string exe = (temp_dir / "kw_runner").string();
+        std::string compile_cmd = "g++ -std=c++17 -Wall -Wextra -Werror -pedantic -Wconversion -I" + temp_dir.string() +
+                                  " " + drv.string() + " -o " + exe;
+        ASSERT_EQ(std::system(compile_cmd.c_str()), 0);
+        EXPECT_EQ(std::system(exe.c_str()), 0);
+    }
+
+    // 2. PlantUML <<choice>> with [else] must not emit `struct else_ { return else; }`
+    const std::string puml_src = R"(
+@startuml
+state Idle
+state Check <<choice>>
+state Fast
+state Slow
+[*] --> Idle
+Idle --> Check : Go
+Check --> Fast : [is_fast]
+Check --> Slow : [else]
+@enduml
+)";
+    fsm::ir::FsmIr puml_model;
+    fsm::frontend::diagram::PlantUmlParser puml_parser;
+    ASSERT_TRUE(puml_parser.parse(puml_src, puml_model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine diag;
+    ASSERT_TRUE(fsm::middleend::passes::ChoiceInliningPass::run(puml_model, diag));
+
+    GeneratorOptions opts;
+    opts.cpp_standard = CppStandard::Cpp17;
+    opts.standalone = true;
+    opts.include_stubs = true;
+    std::string puml_code = CppGenerator::generate_header(puml_model, opts);
+    EXPECT_EQ(puml_code.find("struct else_"), std::string::npos);
 
     fs::remove_all(temp_dir);
 }

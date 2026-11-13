@@ -22,6 +22,8 @@
 #include <sstream>
 
 #include "fsm/frontend/formal/sysml2_parser.hpp"
+#include "fsm/ir/fsm_ir_deserializer.hpp"
+#include "fsm/ir/fsm_ir_serializer.hpp"
 #include "tools/fsmc/fsmc_driver.hpp"
 #include "tools/fsmc/fsmc_options.hpp"
 
@@ -1047,6 +1049,43 @@ package DroneControl {
     EXPECT_EQ(final_state, "Cruising");
     EXPECT_NE(sim_out.str().find("[REJECTED: invalid signal payload]"), std::string::npos);
     EXPECT_EQ(sim_out.str().find("[symbolic-guard]"), std::string::npos);
+}
+
+TEST(FsmcCliOptionsTest, UserBugHunt_IrJsonRoundtripPreservesGuardsAndExpressions) {
+    const std::string sysml_src = R"(
+package DroneControl {
+    item def SetSpeedCmd {
+        attribute target_speed : Real;
+    }
+    state def DroneFSM {
+        entry; then Grounded;
+        state Grounded;
+        state Cruising;
+        transition from Grounded accept SetSpeedCmd
+            if payload.target_speed > 30.0
+            then Cruising;
+    }
+}
+)";
+    fsm::ir::FsmIr model;
+    std::string err;
+    fsm::frontend::formal::Sysml2Parser parser;
+    ASSERT_TRUE(parser.parse(sysml_src, model, err)) << err;
+    ASSERT_FALSE(model.guards.empty());
+
+    std::string json_ir = fsm::ir::FsmIrSerializer::serialize_json(model);
+    fsm::ir::FsmIr reloaded;
+    ASSERT_TRUE(fsm::ir::FsmIrDeserializer::deserialize_json(json_ir, reloaded, err)) << err;
+    ASSERT_FALSE(reloaded.guards.empty());
+
+    bool found_expr = false;
+    for (const auto& g : reloaded.guards) {
+        if (g.normalized_expression.has_value() && g.normalized_expression->find("30.0") != std::string::npos) {
+            found_expr = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_expr);
 }
 
 }  // namespace

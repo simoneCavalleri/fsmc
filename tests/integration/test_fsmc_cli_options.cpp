@@ -837,4 +837,66 @@ TEST_F(FsmcOptionsTest, ModularPositionalOrderingAndIdentifierSanitization) {
     EXPECT_EQ(fsm::tools::infer_fsm_name_from_file("01_my@state+machine.sysml"), "Fsm_01MyStateMachine");
 }
 
+/**
+ * @brief Test Intent: Verify --simulate --trace executes IR simulation with payload validation and
+ *        --export-cex-gtest parses and emits valid GoogleTest reproduction stubs.
+ * Scenario: Parse CLI flags for simulation/CEX export, run trace simulation on a PlantUML model, and verify CEX
+ *           exporter output.
+ */
+TEST_F(FsmcOptionsTest, SimulateAndExportCexGTest_ParseAndExecuteCleanly) {
+    fs::path trace_path = test_dir_ / "trace.json";
+    {
+        std::ofstream tf(trace_path);
+        tf << "[\"Start\"]\n";
+    }
+
+    char p[] = "fsmc";
+    char i[] = "-i";
+    std::string in_str = puml_file_;
+    char sim[] = "--simulate";
+    char tr[] = "--trace";
+    std::string tr_str = trace_path.string();
+    char cex[] = "--export-cex-gtest";
+    fs::path cex_path = test_dir_ / "cex_test.cpp";
+    std::string cex_str = cex_path.string();
+
+    char* argv[] = {p, i, in_str.data(), sim, tr, tr_str.data(), cex, cex_str.data()};
+    const auto opts = fsm::tools::parse_cli_args(8, argv);
+    EXPECT_TRUE(opts.is_valid);
+    EXPECT_TRUE(opts.simulate_mode);
+    EXPECT_EQ(opts.trace_file, trace_path.string());
+    EXPECT_EQ(opts.export_cex_gtest, cex_path.string());
+    EXPECT_EQ(fsm::tools::FsmcDriver::run(opts), 0);
+
+    // Direct test on IrSimulator & CounterexampleGTestExporter
+    fsm::ir::FsmIr model;
+    model.name = "SimModel";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Active");
+    fsm::ir::SignalDefinition sig("Packet");
+    sig.attributes.emplace_back("len", fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::UInt32}, "64");
+    sig.validators.push_back("len > 0 && len <= 1500");
+    model.add_signal(sig);
+    model.add_transition(fsm::ir::TransitionEdge("Idle", "Active", "Packet"));
+
+    std::ostringstream sim_out;
+    // First event rejected by validator (len=0), second accepted (len=128)
+    std::string final_state = fsm::tools::IrSimulator::simulate_trace(
+        model, R"([{"event":"Packet","payload":{"len":0}},{"event":"Packet","payload":{"len":128}}])", sim_out);
+    EXPECT_EQ(final_state, "Active");
+    EXPECT_NE(sim_out.str().find("[REJECTED: invalid signal payload]"), std::string::npos);
+
+    fsm::middleend::analysis::ModelCheckResult mc;
+    mc.passed = false;
+    mc.property_name = "SafetyReach";
+    mc.property_formula = "G (!Fault)";
+    mc.counterexample_trace.push_back({0, "Idle", "Packet", "", "start"});
+    mc.counterexample_trace.push_back({1, "Active", "", "", "reached"});
+    std::string gtest_src = fsm::tools::CounterexampleGTestExporter::export_gtest(model, mc);
+    EXPECT_NE(gtest_src.find("TEST(SimModelCounterexampleTest, Reproduces_SafetyReach)"), std::string::npos);
+    EXPECT_NE(gtest_src.find("sm.dispatch(Packet{});"), std::string::npos);
+    EXPECT_NE(gtest_src.find("EXPECT_TRUE(sm.is_in<Active>());"), std::string::npos);
+}
+
 }  // namespace

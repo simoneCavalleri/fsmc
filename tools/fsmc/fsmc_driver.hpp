@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+#include "ir_simulator.hpp"
+
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -214,8 +216,9 @@ class FsmcDriver {
             if (!has_sidecar) {
                 std::cerr << "warning[W0301]: Untyped or inferred symbol in diagram source: '" << opts.input_file
                           << "'\n";
-                if (!opts.allow_diagram_codegen && !opts.verify_mode && opts.export_diagram_format.empty() &&
-                    opts.rtm_output_file.empty() && opts.emit_sidecar.empty() && opts.emit_test_harness.empty()) {
+                if (!opts.allow_diagram_codegen && !opts.verify_mode && !opts.simulate_mode &&
+                    opts.export_diagram_format.empty() && opts.rtm_output_file.empty() && opts.emit_sidecar.empty() &&
+                    opts.emit_test_harness.empty()) {
                     std::cerr << "\n[ERROR] Direct code generation blocked: '" << opts.input_file
                               << "' is a visual diagram format (" << parser->format_name()
                               << ").\nPass '--sidecar <manifest.yaml>' or '--allow-diagram-codegen' to allow code "
@@ -395,6 +398,24 @@ class FsmcDriver {
                     validation.diagnostics.push_back({DiagnosticSeverity::Info, d.code, d.message});
                 }
             }
+        }
+
+        if (opts.simulate_mode) {
+            std::string trace_content;
+            if (!opts.trace_file.empty()) {
+                std::string trace_read_err;
+                trace_content = read_file_content(opts.trace_file, trace_read_err);
+                if (!trace_read_err.empty()) {
+                    std::cerr << "Error: " << trace_read_err << "\n";
+                    return 1;
+                }
+            } else {
+                std::ostringstream ss;
+                ss << std::cin.rdbuf();
+                trace_content = ss.str();
+            }
+            IrSimulator::simulate_trace(model, trace_content, std::cout);
+            return 0;
         }
 
         if (opts.verify_mode) {
@@ -926,6 +947,16 @@ class FsmcDriver {
                     std::string ce = res.format_counterexample();
                     if (!ce.empty()) {
                         std::cout << "  " << ce;
+                    }
+                    if (!opts.export_cex_gtest.empty() && !res.counterexample_trace.empty()) {
+                        std::string gtest_code = CounterexampleGTestExporter::export_gtest(model, res);
+                        std::string write_err;
+                        if (!write_file_content(opts.export_cex_gtest, gtest_code, write_err)) {
+                            std::cerr << "Error exporting counterexample GTest: " << write_err << "\n";
+                        } else {
+                            std::cout << "  [EXPORTED] Counterexample GTest written to: " << opts.export_cex_gtest
+                                      << "\n";
+                        }
                     }
                 }
             }

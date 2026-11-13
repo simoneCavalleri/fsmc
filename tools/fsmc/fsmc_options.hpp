@@ -48,6 +48,9 @@ struct FsmcOptions {
     std::vector<std::string> pass_plugins;   // --load-pass-plugin "<path.so>"
     std::string emit_test_harness;           // --emit-test-harness <file>
     std::string emit_sidecar;                // --emit-sidecar <file>
+    bool simulate_mode = false;              // --simulate
+    std::string trace_file;                  // --trace <file.json>
+    std::string export_cex_gtest;            // --export-cex-gtest <file.cpp>
     std::string diagnostic_format = "text";  // --diagnostic-format <text|json|github>
     bool show_help = false;
     bool show_version = false;
@@ -114,6 +117,9 @@ inline void print_help(const char* prog_name) {
         << "  --engine <auto|nuxmv>        Verification engine (default: 'auto')\n"
         << "  --ltl <formula>              Verify custom Linear Temporal Logic specification\n"
         << "  --ctl <formula>              Verify custom Computation Tree Logic specification\n"
+        << "  --simulate                   Simulate event trace directly on FsmIr (with --trace or stdin)\n"
+        << "  --trace <file>               JSON/line event trace file for --simulate\n"
+        << "  --export-cex-gtest <file>    Export formal verification counterexample to GoogleTest C++\n"
         << "  --diagnostic-format <fmt>    Diagnostic output format: 'text', 'json', or 'github'\n\n"
         << "General Options:\n"
         << "  -h, --help                   Show this help message and exit\n"
@@ -545,6 +551,30 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             opts.emit_sidecar = argv[++idx];
         } else if (arg.rfind("--emit-sidecar=", 0) == 0) {
             opts.emit_sidecar = arg.substr(15);
+
+            // 15b. Interactive / Trace IR simulation and CEX -> GTest export
+        } else if (arg == "--simulate") {
+            opts.simulate_mode = true;
+        } else if (arg == "--trace") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
+            opts.simulate_mode = true;
+            opts.trace_file = argv[++idx];
+        } else if (arg.rfind("--trace=", 0) == 0) {
+            opts.simulate_mode = true;
+            opts.trace_file = arg.substr(8);
+        } else if (arg == "--export-cex-gtest") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
+            opts.export_cex_gtest = argv[++idx];
+        } else if (arg.rfind("--export-cex-gtest=", 0) == 0) {
+            opts.export_cex_gtest = arg.substr(19);
 
             // 16. Positional argument: input model file path
         } else if (!arg.empty() && (arg[0] != '-' || arg == "-")) {

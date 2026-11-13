@@ -21,6 +21,7 @@
 #include <fstream>
 #include <sstream>
 
+#include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "tools/fsmc/fsmc_driver.hpp"
 #include "tools/fsmc/fsmc_options.hpp"
 
@@ -1006,6 +1007,46 @@ TEST(FsmcCliOptionsTest, V010SimulatorHfsmGuardsRegistersAndCliSimulate) {
     EXPECT_EQ(fsm::tools::FsmcDriver::run(opts), 0);
 
     std::filesystem::remove_all(tmp);
+}
+
+TEST(FsmcCliOptionsTest, UserBugHunt_Sysml2TypedEventsValidatorAndCombinatorSimulation) {
+    const std::string sysml_src = R"(
+package DroneControl {
+    item def SetSpeedCmd {
+        attribute target_speed : Real;
+        assert constraint { target_speed >= 0.0 and target_speed <= 120.0; }
+    }
+    state def DroneFSM {
+        entry; then Grounded;
+        state Grounded;
+        state Hovering;
+        state Cruising;
+        transition from Grounded accept SetSpeedCmd
+            if payload.target_speed > 0.0 && payload.target_speed <= 30.0
+            then Hovering;
+        transition from Grounded accept SetSpeedCmd
+            if payload.target_speed > 30.0
+            then Cruising;
+        transition from Hovering accept LandCmd then Grounded;
+    }
+}
+)";
+    fsm::ir::FsmIr model;
+    std::string err;
+    fsm::frontend::formal::Sysml2Parser parser;
+    ASSERT_TRUE(parser.parse(sysml_src, model, err)) << err;
+
+    const auto* sig = model.find_signal("SetSpeedCmd");
+    ASSERT_NE(sig, nullptr);
+    EXPECT_FALSE(sig->validators.empty());
+
+    std::ostringstream sim_out;
+    std::string trace =
+        "SetSpeedCmd target_speed=-5\nSetSpeedCmd target_speed=20\nLandCmd\nSetSpeedCmd target_speed=80\n";
+    std::string final_state = fsm::tools::IrSimulator::simulate_trace(model, trace, sim_out);
+    EXPECT_EQ(final_state, "Cruising");
+    EXPECT_NE(sim_out.str().find("[REJECTED: invalid signal payload]"), std::string::npos);
+    EXPECT_EQ(sim_out.str().find("[symbolic-guard]"), std::string::npos);
 }
 
 }  // namespace

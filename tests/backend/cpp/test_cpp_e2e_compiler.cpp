@@ -1226,14 +1226,112 @@ int main() {
             df << driver_source;
         }
         std::string exe = (temp_dir / ("runner_" + suffix)).string();
-        std::string cmd = "g++ " + std_flag + " -Wall -Wextra -Werror -pedantic -Wconversion -I" + temp_dir.string() +
-                          " " + drv.string() + " -o " + exe;
-        ASSERT_EQ(std::system(cmd.c_str()), 0) << "[" << suffix << "] Compilation failed";
+        std::string compile_cmd = "g++ " + std_flag + " -Wall -Wextra -Werror -pedantic -Wconversion -I" +
+                                  temp_dir.string() + " " + drv.string() + " -o " + exe;
+        ASSERT_EQ(std::system(compile_cmd.c_str()), 0) << "[" << suffix << "] Compilation failed";
         EXPECT_EQ(std::system(exe.c_str()), 0) << "[" << suffix << "] Execution failed";
     };
 
     run_std("-std=c++17", CppStandard::Cpp17, "cpp17");
     run_std("-std=c++20", CppStandard::Cpp20, "cpp20");
+
+    fs::remove_all(temp_dir);
+}
+
+TEST(CppE2ECompilerTest, UserBugHunt_DuplicateActionNameAndFloat32Conversion) {
+    fsm::ir::FsmIr model;
+    model.name = "FloatActionDedupFsm";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Low");
+    model.add_state("High");
+
+    fsm::ir::VariableDefinition reg_cnt;
+    reg_cnt.name = "calls";
+    reg_cnt.type = fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::UInt32};
+    reg_cnt.initial_value = "0";
+    model.add_variable(std::move(reg_cnt));
+
+    fsm::ir::PortDefinition out_pwm;
+    out_pwm.name = "pwm";
+    out_pwm.type = fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::Float32};
+    out_pwm.direction = fsm::ir::PortDirection::Out;
+    model.add_port(std::move(out_pwm));
+
+    fsm::ir::SignalDefinition cmd("SetSpeed");
+    cmd.attributes.emplace_back("speed", fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::Float32}, "0.0f");
+    model.add_signal(cmd);
+
+    fsm::ir::ActionSignature shared_act("update_vars");
+    fsm::ir::ActionAssignment a1;
+    a1.target = fsm::ir::LValueTarget("calls", fsm::ir::LValueScope::Register);
+    a1.op = fsm::ir::AssignmentOp::AddAssign;
+    a1.expression = "1";
+    shared_act.assignments.push_back(a1);
+
+    fsm::ir::ActionAssignment a2;
+    a2.target = fsm::ir::LValueTarget("pwm", fsm::ir::LValueScope::OutPort);
+    a2.op = fsm::ir::AssignmentOp::Assign;
+    a2.expression = "payload.speed * 2.0";  // double literal assigned to Float32 port
+    shared_act.assignments.push_back(a2);
+
+    fsm::ir::TransitionEdge t1("Idle", "Low", "SetSpeed");
+    t1.set_action(shared_act);
+    model.add_transition(t1);
+
+    fsm::ir::TransitionEdge t2("Low", "High", "SetSpeed");
+    t2.set_action(shared_act);
+    model.add_transition(t2);
+
+    const std::string driver_source = R"(
+#include "float_dedup_fsm.hpp"
+#include <cassert>
+
+int main() {
+    using namespace fsm_generated;
+    FloatActionDedupFsm sm;
+    FloatActionDedupFsmInPorts in{};
+    FloatActionDedupFsmOutPorts out{};
+    FloatActionDedupFsmServices srv{};
+
+    auto res = sm.dispatch(SetSpeed{12.5f}, in, out, srv);
+    assert(res.is_success());
+    assert(sm.is_in<Low>());
+    assert(sm.registers().calls == 1);  // Must NOT be 2 (deduplicated)
+    assert(out.pwm == 25.0f);
+    return 0;
+}
+)";
+
+    namespace fs = std::filesystem;
+    fs::path temp_dir = fs::temp_directory_path() / "fsmc_e2e_bug_hunt_float_dedup";
+    fs::create_directories(temp_dir);
+
+    for (const auto& [std_flag, std_enum, suffix] :
+         {std::tuple<std::string, CppStandard, std::string>{"-std=c++17", CppStandard::Cpp17, "cpp17"},
+          std::tuple<std::string, CppStandard, std::string>{"-std=c++20", CppStandard::Cpp20, "cpp20"}}) {
+        GeneratorOptions opts;
+        opts.cpp_standard = std_enum;
+        opts.standalone = true;
+        opts.include_stubs = true;
+        std::string code = CppGenerator::generate_header(model, opts);
+
+        fs::path hdr = temp_dir / "float_dedup_fsm.hpp";
+        {
+            std::ofstream hf(hdr);
+            hf << code;
+        }
+        fs::path drv = temp_dir / ("driver_" + suffix + ".cpp");
+        {
+            std::ofstream df(drv);
+            df << driver_source;
+        }
+        std::string exe = (temp_dir / ("runner_" + suffix)).string();
+        std::string compile_cmd = "g++ " + std_flag + " -Wall -Wextra -Werror -pedantic -Wconversion -I" +
+                                  temp_dir.string() + " " + drv.string() + " -o " + exe;
+        ASSERT_EQ(std::system(compile_cmd.c_str()), 0) << "[" << suffix << "] Compilation failed";
+        EXPECT_EQ(std::system(exe.c_str()), 0) << "[" << suffix << "] Execution failed";
+    }
 
     fs::remove_all(temp_dir);
 }

@@ -926,13 +926,18 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
             out << "struct " << struct_name << " {\n";
             std::vector<ActionAssignment> assignments;
             std::vector<ActionAstNode> instructions;
+            bool body_collected = false;
             auto collect_action_body = [&](const ActionSignature& act) {
+                if (body_collected || (act.assignments.empty() && act.instructions.empty())) {
+                    return;
+                }
                 for (const auto& a : act.assignments) {
                     assignments.push_back(a);
                 }
                 for (const auto& inst : act.instructions) {
                     instructions.push_back(inst);
                 }
+                body_collected = true;
             };
             for (const auto& t : model.transitions) {
                 if (t.condition_action.has_value() && t.condition_action->name == action_item.name) {
@@ -1042,9 +1047,53 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                 std::string cmd_param = uses_cmd ? "const Event& cmd" : "const Event& /*cmd*/";
                 std::string srv_param = uses_srv ? "Services& srv" : "Services& /*srv*/";
 
+                auto is_float32_target = [&](const std::string& target_name) -> bool {
+                    if (const auto* p = model.find_port(target_name)) {
+                        return p->type.is_primitive() && p->type.primitive() == PrimitiveTypeKind::Float32;
+                    }
+                    if (const auto* v = model.find_variable(target_name)) {
+                        return v->type.is_primitive() && v->type.primitive() == PrimitiveTypeKind::Float32;
+                    }
+                    return false;
+                };
+
+                auto suffix_float32_literals = [](const std::string& expr_in) -> std::string {
+                    std::string res;
+                    res.reserve(expr_in.size() + 8);
+                    for (std::size_t i = 0; i < expr_in.size(); ++i) {
+                        if (std::isdigit(static_cast<unsigned char>(expr_in[i])) != 0 &&
+                            (i == 0 || (std::isalnum(static_cast<unsigned char>(expr_in[i - 1])) == 0 &&
+                                        expr_in[i - 1] != '_'))) {
+                            std::size_t j = i;
+                            bool has_dot = false;
+                            while (j < expr_in.size() &&
+                                   (std::isdigit(static_cast<unsigned char>(expr_in[j])) != 0 || expr_in[j] == '.')) {
+                                if (expr_in[j] == '.') {
+                                    has_dot = true;
+                                }
+                                ++j;
+                            }
+                            if (has_dot && j > i &&
+                                (j == expr_in.size() ||
+                                 (expr_in[j] != 'f' && expr_in[j] != 'F' && expr_in[j] != 'l' && expr_in[j] != 'L' &&
+                                  expr_in[j] != 'e' && expr_in[j] != 'E'))) {
+                                res.append(expr_in, i, j - i);
+                                res.push_back('f');
+                                i = j - 1;
+                                continue;
+                            }
+                        }
+                        res.push_back(expr_in[i]);
+                    }
+                    return res;
+                };
+
                 auto emit_assignment_lines = [&](std::string_view indent) {
                     for (const auto& assign : assignments) {
                         std::string expr = qualify_expression(assign.expression, model);
+                        if (is_float32_target(assign.target.name)) {
+                            expr = suffix_float32_literals(expr);
+                        }
                         const auto* p = model.find_port(assign.target.name);
                         bool is_out = (assign.target.scope == LValueScope::OutPort) || (p != nullptr && p->is_out());
                         std::string_view op_str = assignment_op_to_string(assign.op);
@@ -1059,6 +1108,9 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                     for (const auto& inst : instructions) {
                         if (const auto* st = std::get_if<StoreOp>(&inst.op)) {
                             std::string expr = qualify_expression(st->expression, model);
+                            if (is_float32_target(st->target.name)) {
+                                expr = suffix_float32_literals(expr);
+                            }
                             const auto* p = model.find_port(st->target.name);
                             bool is_out = (st->target.scope == LValueScope::OutPort) || (p != nullptr && p->is_out());
                             std::string_view op_str = assignment_op_to_string(st->op);
@@ -1071,6 +1123,9 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                             }
                         } else if (const auto* pw = std::get_if<PortWriteOp>(&inst.op)) {
                             std::string expr = qualify_expression(pw->expression, model);
+                            if (is_float32_target(pw->port_name)) {
+                                expr = suffix_float32_literals(expr);
+                            }
                             out << indent << "out." << escape_cpp_keyword(pw->port_name) << " = " << expr << ";\n";
                         } else if (const auto* pr = std::get_if<PortReadOp>(&inst.op)) {
                             if (!pr->destination.name.empty()) {

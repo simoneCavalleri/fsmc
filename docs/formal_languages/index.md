@@ -1,20 +1,23 @@
 # Modeling Languages & Formats
 
-`fsmc` features a multi-format frontend and backend ingestion pipeline supporting **8 industry standard formats** across Model-Based Systems Engineering (MBSE), formal verification, and visual diagramming.
+`fsmc` features a multi-format frontend and backend pipeline supporting **9 modeling and interchange formats** across Model-Based Systems Engineering (MBSE), formal verification, and visual diagramming.
 
 ---
 
-## 1. Supported Modeling Standards
+## 1. Format Selection Decision Guide
 
-| Format | Standard / Domain | Ingestion & Export Capabilities | Reference Guide |
+| Format | Category | Best Used When... | Reference Guide |
 | :--- | :--- | :--- | :--- |
-| **OMG SysML v2** | Textual MBSE | First-class textual SysML v2 syntax (`state def`, `transition on`, actions, ports, constraints, enums, structs). | [SysML v2 Guide](sysml_v2.md) |
-| **MathWorks Stateflow** | Industrial Control | Simulink Stateflow XML chart models with temporal triggers (`after(N, sec)`), hierarchy, and transitions. | [Stateflow Guide](stateflow.md) |
-| **Cameo / MagicDraw** | Industrial CASE MBSE | OMG XMI 2.1 / 2.4 interchange standard exported by Dassault Systèmes Cameo / MagicDraw. | [Cameo XMI Guide](cameo_magicdraw.md) |
-| **W3C SCXML** | Formal Web / Telecom | XML-based State Chart XML standard with datamodels, event parameters, and parallel regions. | [W3C SCXML Guide](scxml.md) |
-| **nuXmv / SMV** | Formal Verification | Symbolic transition system specifications with temporal LTL (`LTLSPEC`) and CTL (`CTLSPEC`) formulas. | [nuXmv / SMV Guide](smv_nuxmv.md) |
-| **Visual Diagrams** | Documentation & Design | PlantUML (`@startuml`), Mermaid (`stateDiagram-v2`), Graphviz DOT, and XState JSON. | [Diagrams Guide](diagrams.md) |
-| **UML 2.5 Mapping** | Semantic Compliance | Complete cross-format mapping matrix and UML 2.5 state machine feature alignment. | [UML Reference](uml_reference.md) |
+| **OMG SysML v2** (`.sysml`) | Formal MBSE | Authoring new safety-critical or embedded state machines with native ports, constraints, and LTL/CTL properties. | [SysML v2 Guide](sysml_v2.md) |
+| **MathWorks Stateflow** (`.slx`, `.sfx`, `.xml`) | Industrial Control | Migrating or compiling existing Simulink Stateflow charts into zero-allocation C++ without commercial codegen toolboxes. | [Stateflow Guide](stateflow.md) |
+| **Cameo / MagicDraw** (`.xmi`, `.xml`) | CASE MBSE | Compiling XMI 2.1 models exported from Dassault Systèmes Cameo Systems Modeler or MagicDraw. | [Cameo XMI Guide](cameo_magicdraw.md) |
+| **W3C SCXML** (`.scxml`) | Standards / Exchange | Interchanging statecharts with standard SCXML tooling, datamodels, and parallel `<parallel>` regions. | [W3C SCXML Guide](scxml.md) |
+| **XState JSON** (`.json`) | Formal / Web Statecharts | Sharing structured JSON statecharts across TypeScript/UI workflows and C++ embedded controllers. | [UML & Feature Matrix](uml_reference.md) |
+| **nuXmv / SMV** (`.smv`) | Formal Verification | Exporting symbolic Kripke models (`--export smv`) for exhaustive BDD/BMC proof in external nuXmv / NuSMV. | [nuXmv / SMV Guide](smv_nuxmv.md) |
+| **PlantUML** (`.puml`) | Visual Diagram | Maintaining lightweight review diagrams enriched with `@fsm:*` comment directives or `.fsm.yaml` sidecars. | [Diagrams Guide](diagrams.md) |
+| **Mermaid** (`.mmd`) | Visual Diagram | Rendering `stateDiagram-v2` charts natively in GitHub Markdown, wikis, and PRs. | [Diagrams Guide](diagrams.md) |
+| **Graphviz DOT** (`.dot`, `.gv`) | Visual Diagram | Inspecting compiled/flattened topology graphs and structural metrics. | [Diagrams Guide](diagrams.md) |
+| **UML 2.5 Cross-Reference** | Reference | Comparing exact construct mappings across SysML v2, SCXML, XState, Cameo, PlantUML, Mermaid, and DOT. | [UML Reference](uml_reference.md) |
 
 ---
 
@@ -25,8 +28,8 @@
 ```mermaid
 flowchart TD
     subgraph Frontends["1. Frontend Ingestion"]
-        F1["OMG SysML v2<br/>(.sysml)"] --- F2["Cameo XMI<br/>(.xmi)"] --- F3["W3C SCXML<br/>(.scxml)"]
-        F4["PlantUML<br/>(.puml)"] --- F5["Mermaid<br/>(.mmd)"] --- F6["Graphviz DOT<br/>& XState JSON"]
+        F1["OMG SysML v2 (.sysml)<br/>MathWorks Stateflow (.xml/.slx/.sfx)"] --- F2["Cameo XMI (.xmi)<br/>W3C SCXML (.scxml)"]
+        F3["XState JSON (.json)<br/>nuXmv SMV (.smv)"] --- F4["Visual Diagrams<br/>(PlantUML .puml, Mermaid .mmd, DOT .dot)"]
     end
 
     subgraph Core["2. Canonical AST & Middle-End"]
@@ -37,7 +40,7 @@ flowchart TD
 
     subgraph Emitters["3. Pluggable Emitters & Backends"]
         E1["C++17 / C++20<br/>Runtime Headers"] --- E2["nuXmv / SMV<br/>Formal Verification Logic"]
-        E3["Transpiled Visual Diagrams<br/>(PUML, MMD, DOT, SCXML)"] --- E4["Requirement Traceability<br/>(RTM Matrix Reports)"]
+        E3["Transpiled Visual Diagrams<br/>(PUML, MMD, DOT, SCXML, Stateflow)"] --- E4["Requirement Traceability<br/>(RTM Matrix Reports)"]
     end
 
     Frontends --> Core
@@ -59,18 +62,18 @@ Visual diagram languages (like PlantUML and Mermaid) are traditionally purely gr
 
 ## 4. Cross-Format Feature Matrix
 
-| Feature | SysML v2 | Cameo XMI | W3C SCXML | PlantUML | Mermaid | nuXmv / SMV |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Hierarchical States (HFSM)** | `state def { ... }` | `uml:Region` | `<state><state/></state>` | `state P { ... }` | `state P { ... }` | Flattened states |
-| **Choice Junctions** | `choice Branch;` | `uml:Pseudostate` | `<transition cond="...">` | `state C <<choice>>` | `state C <<choice>>` | `case ... esac` |
-| **Shallow & Deep History** | `history` | `uml:Pseudostate` | `<history type="deep"/>` | `[H]`, `[H*]` | `[H]` | $z^{-1}$ memory var |
-| **Hardware Ports (`In`/`Out`)** | `in/out port` + `assert` | `uml:Port` | `<!-- @fsm:port -->` | `' @fsm:port` | `%% @fsm:port` | Bounded `VAR`/`IVAR` |
-| **Internal Memory (`Registers`)** | `attribute` | `uml:Property` | `<datamodel>` | `' @fsm:var` | `%% @fsm:var` | `VAR` + `next()` |
-| **Timed Dwell Transitions** | `after 500 ms` | `TimeTrigger` | `<transition delay="...">` | `[after 500 ms]` | `[after 500 ms]` | `timer : 0..500` |
-| **Deferred Events** | `// @fsm:defer` | `<<deferred>>` | `<!-- @fsm:defer -->` | `' @fsm:defer` | `%% @fsm:defer` | Discrete Event Queue |
-| **Safety Invariants (LTL)** | `@fsm:property` | Stereotype | `<!-- @fsm:property -->` | `' @fsm:property` | `%% @fsm:property` | `INVARSPEC` |
-| **Liveness & Response (LTL)** | `@fsm:property` | Stereotype | `<!-- @fsm:property -->` | `' @fsm:property` | `%% @fsm:property` | `LTLSPEC G (P -> F Q)` |
-| **Requirement Traceability** | `@fsm:req` | `<<Satisfy>>` | `<!-- @fsm:req -->` | `' @fsm:state satisfies` | `%% @fsm:state satisfies` | Traceability Matrix |
+| Feature | SysML v2 | Stateflow | Cameo XMI | W3C SCXML | XState JSON | PlantUML / Mermaid / DOT | nuXmv / SMV |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Frontend Category** | Formal | Formal | Formal | Formal | Formal | Diagram (`--allow-diagram`) | Formal |
+| **Hierarchical States (HFSM)** | `state def { ... }` | `EXCLUSIVE_OR` | `uml:Region` | `<state><state/></state>` | Nested `states` | `state P { ... }` / `subgraph` | Flattened states |
+| **Choice / Connective Junctions** | `choice Branch;` | `CONNECTIVE` | `uml:Pseudostate` | `<transition cond="...">` | `cond` array | `<<choice>>` / `shape=diamond` | `case ... esac` |
+| **Shallow & Deep History** | `[H]`, `[H*]` | `HISTORY` | `uml:Pseudostate` | `<history type="deep"/>` | `type: "history"` | `[H]`, `[H*]` | $z^{-1}$ memory var |
+| **Hardware Ports (`In`/`Out`)** | `in/out port` + `assert` | `<!-- @fsm:port -->` | `uml:Port` | `<!-- @fsm:port -->` | `@fsm:port` / sidecar | `@fsm:port` / sidecar | Bounded `VAR` |
+| **Internal Memory (`Registers`)** | `attribute` | `<!-- @fsm:register -->` | `uml:Property` | `<datamodel>` | `context` | `@fsm:var` / sidecar | `VAR` + `next()` |
+| **Timed Dwell Transitions** | `after 500 ms` | `after(N, msec)` | `TimeTrigger` | `<transition delay="...">` | `after: { ... }` | `after(500ms)` / `after_500ms` | `timer : 0..500` |
+| **Deferred Events** | `defer Evt;` | `@fsm:defer` | `<<deferred>>` | `<defer event="..."/>` | `"defer": [...]` | `@fsm:defer [Evt]` | Discrete Event Queue |
+| **Safety & Liveness (LTL/CTL)** | `assert property` / `// @fsm:property` | `<!-- @fsm:property -->` | Stereotype / comment | `<!-- @fsm:property -->` | `@fsm:property` | `@fsm:property` | `INVARSPEC` / `LTLSPEC` / `CTLSPEC` |
+| **Requirement Traceability** | `satisfy requirement REQ;` | `<!-- @fsm:state satisfies=[...] -->` | `<<Satisfy>>` | `satisfies="..."` | `@fsm:state satisfies=[...]` | `@fsm:state satisfies=[...]` | Traceability Matrix |
 
 ---
 

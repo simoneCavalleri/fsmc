@@ -1,8 +1,14 @@
-# Visual Diagrams & Lossless Directives
+# Visual Diagrams & Directives Reference
 
-`fsmc` provides bidirectional parsing and emission across visual diagram notations (**PlantUML**, **Mermaid**, **Graphviz DOT**, and **XState JSON**).
+`fsmc` provides bidirectional parsing and emission across visual diagram notations (**PlantUML**, **Mermaid**, and **Graphviz DOT**).
 
-Visual diagrams are often treated as informal sketches lacking type systems and memory partitioning. `fsmc` bridges this gap with **Lossless Diagram Directives (`@fsm:*`)**, allowing engineering teams to design full-featured, formally verified statecharts directly inside documentation and diagram files.
+Because visual diagram languages lack native constructs for strongly typed I/O ports, persistent registers, or temporal logic formulas, `fsmc` supports two complementary enrichment mechanisms:
+
+1. **Inline `@fsm:*` Directives** embedded in native diagram comments.
+2. **External Companion Sidecar Manifests** (`.fsm.yaml` or `.fsm.json`) supplied via `--sidecar` / emitted via `--emit-sidecar`.
+
+!!! warning "Diagram Code Generation Guardrail (`--allow-diagram`)"
+    By default, compiling a visual diagram (`.puml`, `.mmd`, `.dot`) directly to C++ is blocked unless you pass `--allow-diagram` (or `--allow-diagram-codegen`). Format transpilation (`--export`) and verification (`--verify`) work without extra flags.
 
 ---
 
@@ -40,12 +46,12 @@ stateDiagram-v2
 ### Graphviz DOT (`.dot`)
 Directed graphs formatted for automated topological layout generation and graph metrics calculation.
 
-### XState JSON (`.json`)
-W3C SCXML-compatible JSON schema commonly used in web applications and JavaScript/TypeScript UI workflows.
+!!! note "XState JSON Classification"
+    XState JSON (`.json`) is classified as a **Formal** structured frontend in `fsmc` (rather than an informal visual sketch), so C++ code generation from `.json` does not require `--allow-diagram`.
 
 ---
 
-## 2. Lossless Diagram Directives (`@fsm:*`)
+## 2. Embedded Directives (`@fsm:*`)
 
 Standard diagram notations cannot natively declare hardware I/O ports, typed registers, or formal temporal logic formulas. 
 
@@ -155,13 +161,13 @@ Attaches requirement traceability tags, history semantics, or continuous activit
 Enables modular decomposition of statecharts by inlining external diagram files directly into composite states:
 
 ```text
-@fsm:submachine file="<path_to_diagram>" [target="<StateName>"]
+@fsm:submachine name="<TargetMachineName>" uri="<path_to_diagram>"
 ```
 
 *Example:*
 ```plantuml
 state Operational {
-    ' @fsm:submachine file="subcharts/flight_control.puml" target="Operational"
+    ' @fsm:submachine name="FlightControlFSM" uri="subcharts/flight_control.puml"
 }
 ```
 

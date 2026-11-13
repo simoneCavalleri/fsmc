@@ -49,163 +49,81 @@ The verification engine evaluates **Linear Temporal Logic (LTL)** and **Computat
 
 ---
 
-### Computation Tree Logic (CTL) Engine & Branching Semantics
+## Running Verification via CLI
 
-While Linear Temporal Logic (LTL) reasons about single infinite linear execution traces, Computation Tree Logic (CTL) explicitly quantifies over the **branching tree of non-deterministic execution paths**:
+You can invoke the built-in formal model checker with `-V` / `--verify` (or positional `verify`):
 
-```mermaid
-graph TD
-    S0["S0: Standby"] --> S1["S1: Precheck"]
-    S0 --> S2["S2: Abort"]
-    S1 --> S3["S3: Drive"]
-    S1 --> S4["S4: EmergencyShutdown"]
-    S3 --> S3
-    S4 --> S4
-
-    classDef nominal fill:#1b4d3e,stroke:#2ecc71,stroke-width:2px,color:#fff;
-    classDef fault fill:#4d1b1b,stroke:#e74c3c,stroke-width:2px,color:#fff;
-    class S0,S1,S3 nominal;
-    class S2,S4 fault;
+```bash
+fsmc -i examples/01_basic_patterns/network_protocol/connection.sysml --verify
 ```
 
-#### Path Quantifiers vs State Operators
-Every temporal operator in CTL is paired with an explicit path quantifier:
-- **`E` (Existential Path Quantifier)**: *"There exists at least one execution path starting from this state where..."*
-  - Example: `EF (Standby)` verifies that from any point, it is **possible** to return to Standby (Reversibility).
-- **`A` (Universal Path Quantifier)**: *"On every possible execution path starting from this state..."*
-  - Example: `AG (Fault -> AF Recovery)` verifies that if a fault occurs, recovery is **unconditionally inevitable** on all branches.
+### Options and Flags
 
-#### Native Polynomial Fixed-Point Evaluation
-`fsmc` computes CTL satisfaction sets $Sat(\Phi) \subseteq S$ natively via direct fixed-point iteration on the explicit Kripke structure:
-
-$$\begin{aligned}
-Sat(EX(\Phi)) &= \{ s \in S \mid \exists s' \in Succ(s) : s' \in Sat(\Phi) \} \\
-Sat(AX(\Phi)) &= \{ s \in S \mid \forall s' \in Succ(s) : s' \in Sat(\Phi) \} \\
-Sat(EF(\Phi)) &= \mu Z . (Sat(\Phi) \cup Sat(EX(Z))) \quad \text{(Backward BFS Least Fixed-Point)} \\
-Sat(AF(\Phi)) &= \mu Z . (Sat(\Phi) \cup Sat(AX(Z))) \quad \text{(All-Path Inevitability)} \\
-Sat(EG(\Phi)) &= \nu Z . (Sat(\Phi) \cap Sat(EX(Z))) \quad \text{(Greatest Fixed-Point via Tarjan SCCs)} \\
-Sat(AG(\Phi)) &= \nu Z . (Sat(\Phi) \cap Sat(AX(Z))) \quad \text{(Direct Greatest Fixed-Point Universal Safety)} \\
-Sat(E[\Phi_1 \mathbin{U} \Phi_2]) &= \mu Z . (Sat(\Phi_2) \cup (Sat(\Phi_1) \cap Sat(EX(Z)))) \\
-Sat(A[\Phi_1 \mathbin{U} \Phi_2]) &= \mu Z . (Sat(\Phi_2) \cup (Sat(\Phi_1) \cap Sat(AX(Z))))
-\end{aligned}$$
-
-Because the Kripke state space is finite, all fixed-point computations terminate in at most $|S|$ iterations ($O(|S| + |T|)$ polynomial complexity), guaranteeing instant compile-time verification without external solver binaries.
-
-!!! note "Sound Interval Evaluation & Formula Negation"
-    In EFSM models with numeric datapath variables, atomic relational predicates under negation (such as `!(x == 5)` or `!(altitude < 1000)`) are evaluated via relational operator inversion ($x \neq 5$ and $\text{altitude} \ge 1000$) rather than boolean set complement. This preserves sound three-valued logic (True, False, Unknown) over interval lattices, preventing false certifications on unconstrained or unbounded interval states.
-
----
-
-### How to Use Temporal Operators: Practical Recipes
-
-#### 1. `G (P)` — Safety Invariants ("Bad things never happen")
-Use `G` (Globally) when a condition must **always** remain true throughout the entire lifecycle of the state machine.
-
-- **Mutual Exclusion**: Proving two orthogonal or conflicting states never activate at the same time:
-  ```sysml
-  @fsm:property DisjointFlight = "G (!(Preflight && InFlight))";
-  ```
-- **Hazard Prevention**: Ensuring actuators are disabled during sensitive operations:
-  ```sysml
-  @fsm:property NoDriveWhileCharging = "G (Charging -> !MotorsEnabled)";
-  ```
-
-#### 2. `F (P)` — Eventual Completion ("Good things eventually happen")
-Use `F` (Finally) to prove that the state machine does not get stuck in a bootloader or infinite initialization trap and eventually reaches operational status.
-
-- **Initialization Guarantee**:
-  ```sysml
-  @fsm:property BootCompletes = "F (Operational)";
-  ```
-
-#### 3. `G (P -> F Q)` — Response / Leadsto (The Core System Pattern)
-This is the **most frequently used pattern in reactive systems**. It proves that every time an event, trigger, or fault `P` occurs, the state machine is guaranteed to eventually transition to the handling state `Q`.
-
-- **Fail-Safe Response**: Low battery must always lead to a safe landing state:
-  ```sysml
-  @fsm:property LowBatteryRecovery = "G (LowBattery -> F Landed)";
-  ```
-- **Command Acknowledgment**: When a reset command is received, the system must eventually return to Standby:
-  ```sysml
-  @fsm:property ResetGuaranteed = "G (EvReset -> F Standby)";
-  ```
-
-#### 4. `X (P)` — Immediate Step Transition
-Use `X` (Next) to verify the behavior of the single cycle immediately following an event.
-
-- **Immediate Interlock**: Triggering an emergency stop must disarm the system on the very next step:
-  ```sysml
-  @fsm:property InstantDisarm = "G (EmergencyStop -> X Disarmed)";
-  ```
-
-#### 5. `P U Q` — Holding Conditions (Until)
-Use `U` (Until) when a state machine must remain in a holding mode `P` up until a specific completion threshold `Q` is met:
-- Solved via backward fixed-point computation: $P$ must hold along all prefixes leading to a reachable state satisfying $Q$.
-- Any non-terminating cycle avoiding $Q$ or violating $P$ produces an explicit counterexample trace.
-
-```sysml
-@fsm:property HoldUntilCalibrated = "(state == Preflight) U (state == Ready)";
-```
-
-#### 6. `G F (P)` — Recurrence ("Infinitely Often")
-Use `G F` to prove liveness cycles and non-starvation:
-- Evaluated via Tarjan's Strongly Connected Components (SCCs) decomposition: every reachable terminal cycle must contain at least one state satisfying $P$.
-
-```sysml
-@fsm:property ServicedInfinitelyOften = "G F (state == ProcessTelemetry)";
-```
-
-#### 7. `F G (P)` — Persistence ("Eventually Always")
-Use `F G` to prove stabilization and convergence:
-- Evaluated via SCC analysis: the statechart eventually transitions into a terminal cycle where $P$ holds permanently in all states of the component.
-
-```sysml
-@fsm:property EventuallyStabilized = "F G (state == SteadyOrbit)";
-```
-
----
-
-### EFSM Data-Path Abstract Interpretation Integration
-`ModelChecker` integrates data-path interval abstract interpretation directly into property evaluation:
-- Relational variable predicates ($x > 10$, $temp \le 100.0$) evaluate against the fixed-point numeric intervals computed for each reachable state.
-- If an upper bound $iv.hi \le 100$ holds in every reachable state, $G (temp \le 100)$ passes unconditionally without state explosion.
-- Counterexamples pinpoint the exact state and transition where the variable interval strays outside the property bound.
-
----
-
-### Combining Logic Operators
-
-You can compose complex multi-condition specifications using standard boolean operators:
-- `&&` (Logical AND)
-- `||` (Logical OR)
-- `!` (Logical NOT)
-- `->` (Logical Implication: *"if P then Q"*)
-
-**Example Multi-Condition Safety Property**:
-```sysml
-// If a critical sensor fault occurs while in HighSpeed mode, the machine must eventually enter EmergencyBrake
-@fsm:property CriticalFaultBrake = "G ((SensorFault && HighSpeed) -> F EmergencyBrake)";
-```
-
----
-
-### Mission-Critical Formal Safety Patterns
-
-In safety-critical and high-integrity statecharts, formal specifications typically express canonical verification patterns:
-
-| Safety Archetype | Informal Requirement | Canonical LTL Template | Concrete `fsmc` Example |
+| Option | Argument | Description | Default |
 | :--- | :--- | :--- | :--- |
-| **Deadlock Freedom** | The machine can never enter an unintended trap state without escape transitions. | `G (!Deadlock)` | Built-in analysis (`fsmc verify`) |
-| **Hazard Invariant** | Dangerous actuator states can never occur when safety interlocks are triggered. | `G (HazardTrigger -> SafeState)` | `G (DoorOpen -> !Spin)` |
-| **Fault Recovery (Response)** | Every detected fault condition must deterministically trigger safe degraded recovery. | `G (Fault -> F RecoveryState)` | `G (LowBattery -> F Landed)` |
-| **Strict Ordering (Precedence)** | A critical high-energy state can only be activated if preceded by complete self-test. | `!ArmState U SelfTestPassed` | `!Armed U CalibrationDone` |
-| **Reversibility / Home Reachability** | From any operational failure, the system can always return to a standby state. | `G (F Standby)` | `G (F Idle)` |
+| `--engine` | `auto`, `internal`, `nuxmv` | Verification engine (`auto`/`internal` run the built-in graph model checker; `nuxmv` delegates to an external `nuXmv` solver if available). | `auto` |
+| `--ltl` | `"<formula>"` | Injects an ad-hoc LTL formula for verification on the input model. | `""` |
+| `--ctl` | `"<formula>"` | Injects an ad-hoc CTL formula for verification on the input model. | `""` |
+
+### Passing Verification Report
+
+```text
+============================================================================
+ Formal Model Verification Report: ConnectionFSM
+============================================================================
+ Input File:       examples/01_basic_patterns/network_protocol/connection.sysml
+ States:           4
+ Total Events:     8
+ Transitions:      11
+ Choice Nodes:     0
+ Deferred Triggers:0
+----------------------------------------------------------------------------
+ Diagnostics:
+  [INFO] (EventQueueBound): Estimated maximum event queue bound: 2 slots (max deferred: 0, max burst emits: 0).
+  [INFO] (I_WCET_BOUND): Certified maximum micro-step bound per macro-step: 0 steps.
+----------------------------------------------------------------------------
+ Verification Status: PASSED (Model Sound & Properties Verified)
+============================================================================
+```
+
+### Ad-Hoc LTL / CTL Verification from CLI
+
+When verifying custom temporal properties via `--ltl` or `--ctl`, any violation outputs `E_MODEL_CHECK_VIOLATION` along with an execution counterexample trace:
+
+```bash
+fsmc -i examples/01_basic_patterns/network_protocol/connection.sysml --verify \
+    --ltl "G (state == Disconnected -> F state == Connected)"
+```
+
+Example failure output format:
+```text
+error[E_MODEL_CHECK_VIOLATION]: Formal property 'cli_ltl_property' [Safety] VIOLATED: Invariant 'G (State == Closed -> F State == Established)' evaluated to false in state 'Suspended'
+Counterexample execution trace:
+    Step 0: State 'Disconnected' --[ConnectCmd]--> (Initial active state)
+    Step 1: State 'Connecting' --[HandshakeOkEvent]--> (Normal transition execution)
+    Step 2: State 'Connected' --[NetworkDegradedEvent]--> (Normal transition execution)
+    Step 3: State 'Suspended' (Property violated in state 'Suspended')
+```
+
+### nuXmv / SMV Formal Logic Export
+
+You can export the transition model into canonical SMV logic (`--export smv`) for external verification with `nuXmv`:
+
+```bash
+# Export formal SMV specification
+fsmc -i flight_mission.sysml --export smv -o flight_model.smv
+
+# Execute nuXmv externally
+nuXmv flight_model.smv
+```
 
 ---
 
 ## Specifying Properties in Models
 
 ### 1. In OMG SysML v2
+Use either native `assert property Name : Formula;` or a `// @fsm:property` comment directive:
+
 ```sysml
 package FlightControl {
     state def AircraftMission {
@@ -215,10 +133,10 @@ package FlightControl {
         state Landed;
 
         // Formal Safety Property: Mutual exclusion between Preflight and InFlight
-        @fsm:property DisjointFlight = "G (!(Preflight && InFlight))";
+        // @fsm:property DisjointFlight = "G (!(Preflight && InFlight))";
 
         // Formal Liveness Property: Low battery always eventually leads to Landed
-        @fsm:property SafeLandingOnLowBattery = "G (LowBattery -> F Landed)";
+        // @fsm:property SafeLandingOnLowBattery = "G (LowBattery -> F Landed)";
     }
 }
 ```
@@ -236,40 +154,83 @@ Preflight --> InFlight : TakeoffCmd
 InFlight --> Landed : LowBattery
 
 ' Embedded Formal Verification Invariant
-/' @fsm:property SafeDescent = "G (LowBattery -> F Landed)" '/
+' @fsm:property name=SafeDescent formula="G (LowBattery -> F Landed)"
 @enduml
 ```
 
 ---
 
-## Running Verification via CLI
+## Practical Temporal Logic Recipes
 
-Execute the model checker against your model:
+#### 1. `G (P)` — Safety Invariants ("Bad things never happen")
+Use `G` (Globally) when a condition must **always** remain true throughout the lifecycle of the state machine:
 
-```bash
-fsmc -i flight_mission.sysml --verify
+```sysml
+// @fsm:property DisjointFlight = "G (!(Preflight && InFlight))";
+// @fsm:property NoDriveWhileCharging = "G (Charging -> !MotorsEnabled)";
 ```
 
-### Passing Output
-```text
-[INFO] Parsed 8 states, 12 transitions from flight_mission.sysml
-[INFO] Model Checking started:
-  [PASS] Property 'DisjointFlight': G (!(Preflight && InFlight))
-  [PASS] Property 'SafeLandingOnLowBattery': G (LowBattery -> F Landed)
-  [PASS] Deadlock Freedom: No terminal unhandled dead-end states detected
-  [PASS] Unreachable State Analysis: 0 dead states found
-[SUCCESS] All 4 formal verification properties SOUND and VERIFIED.
+#### 2. `F (P)` — Eventual Completion ("Good things eventually happen")
+Use `F` (Finally) to verify that the state machine reaches an operational target:
+
+```sysml
+// @fsm:property BootCompletes = "F (Operational)";
 ```
 
-### Diagnosing Counterexample Violations
+#### 3. `G (P -> F Q)` — Response / Leadsto
+Proves that whenever trigger/fault `P` occurs, response state `Q` is eventually reached:
 
-When a formal property fails, `fsmc` does not simply report a failure—it outputs a **step-by-step counterexample trace** pinpointing the exact transition sequence and data values that trigger the breach:
+```sysml
+// @fsm:property LowBatteryRecovery = "G (LowBattery -> F Landed)";
+// @fsm:property ResetGuaranteed = "G (EvReset -> F Standby)";
+```
+
+#### 4. `X (P)` — Immediate Step Transition
+Verifies the immediate successor state following an event:
+
+```sysml
+// @fsm:property InstantDisarm = "G (EmergencyStop -> X Disarmed)";
+```
+
+#### 5. `P U Q` — Holding Conditions (Until)
+Proves `P` holds continuously along all paths until `Q` becomes true (note you can reference either `state == StateName` or bare `StateName` identifiers):
+
+```sysml
+// @fsm:property HoldUntilCalibrated = "(state == Preflight) U (state == Ready)";
+```
+
+#### 6. `G F (P)` — Recurrence ("Infinitely Often") & 7. `F G (P)` — Persistence
+Evaluated via Strongly Connected Components (SCC) decomposition:
+
+```sysml
+// @fsm:property ServicedInfinitelyOften = "G F (state == ProcessTelemetry)";
+// @fsm:property EventuallyStabilized = "F G (state == SteadyOrbit)";
+```
+
+### EFSM Data-Path Integration & Composite Operators
+You can combine relational predicates (`temp <= 100.0`) and boolean connectives (`&&`, `||`, `!`, `->`):
+
+```sysml
+// @fsm:property CriticalFaultBrake = "G ((SensorFault && HighSpeed) -> F EmergencyBrake)";
+```
+
+| Safety Archetype | Informal Requirement | Canonical LTL Template | Concrete `fsmc` Example |
+| :--- | :--- | :--- | :--- |
+| **Deadlock Freedom** | No unintended trap states without outgoing paths. | `G (!Deadlock)` | Built-in structural check (`--verify`) |
+| **Hazard Invariant** | Hazardous states are blocked when interlocks trip. | `G (HazardTrigger -> SafeState)` | `G (DoorOpen -> !Spin)` |
+| **Fault Recovery (Response)** | Fault conditions transition to a safe degraded state. | `G (Fault -> F RecoveryState)` | `G (LowBattery -> F Landed)` |
+| **Strict Ordering (Precedence)** | High-energy mode requires completed self-test. | `!ArmState U SelfTestPassed` | `!Armed U CalibrationDone` |
+| **Reversibility / Home Reachability** | System can always recover back to Standby. | `G (F Standby)` | `G (F Idle)` |
+
+---
+
+## Diagnosing Counterexample Violations
+
+When a property fails, the model checker emits `error[E_MODEL_CHECK_VIOLATION]` with an execution trace pinpointing the failing sequence:
 
 #### Case A: Safety Invariant Violation (Finite Trace)
 
-A safety violation demonstrates a finite sequence of valid transitions leading to a forbidden state configuration:
-
-=== "Flawed Model (Triggers E0401)"
+=== "Flawed Model (Triggers E_MODEL_CHECK_VIOLATION)"
     ```sysml
     package SystemSafety {
         state def PowerUnit {
@@ -277,33 +238,22 @@ A safety violation demonstrates a finite sequence of valid transitions leading t
             state Charging;
             state HighLoad;
 
-            // Invariant: System must never be HighLoad while Charging
-            @fsm:property SafeOperation = "G !(Charging && HighLoad)";
+            // @fsm:property SafeOperation = "G !(Charging && HighLoad)";
 
             entry; then Disconnected;
-            
-            // Flaw: Unconditional transition into HighLoad while in parallel Charging region
+
             transition plug_in first Disconnected then Charging;
-            transition start_load first Charging then HighLoad; // Bug: Transitions to HighLoad without disconnecting
+            transition start_load first Charging then HighLoad; // Bug: transitions into HighLoad
         }
     }
     ```
 
 === "Compiler Counterexample Output"
     ```text
-    error[E0401]: Formal safety property 'SafeOperation' violated!
-      --> power_unit.sysml:8:9
-       |
-     8 |         @fsm:property SafeOperation = "G !(Charging && HighLoad)";
-       |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Invariant breached
-       |
-    Counterexample Execution Trace:
-      [Step 1] Initial state: Disconnected
-      [Step 2] Event injected: EvPlugIn
-      [Step 3] Transition fired: Disconnected -> Charging
-      [Step 4] Event injected: EvStartLoad
-      [Step 5] Transition fired: Charging -> HighLoad (while charging active)
-      [Result] State configuration violates invariant 'G !(Charging && HighLoad)'!
+    error[E_MODEL_CHECK_VIOLATION]: Formal property 'SafeOperation' [Safety] VIOLATED: Invariant 'G !(Charging && HighLoad)' evaluated to false in state 'HighLoad'
+    Counterexample execution trace:
+        Step 0: State 'Disconnected' --[plug_in]--> Charging
+        Step 1: State 'Charging' --[start_load]--> HighLoad
     ```
 
 === "Resolved Model (Clean)"
@@ -314,23 +264,20 @@ A safety violation demonstrates a finite sequence of valid transitions leading t
             state Charging;
             state HighLoad;
 
-            @fsm:property SafeOperation = "G !(Charging && HighLoad)";
+            // @fsm:property SafeOperation = "G !(Charging && HighLoad)";
 
             entry; then Disconnected;
-            
+
             transition plug_in first Disconnected then Charging;
-            // Fixed: must transition through Disconnected before enabling HighLoad
             transition stop_and_load first Charging accept EvStartLoad then Disconnected;
             transition enable_load   first Disconnected accept EvEnableLoad then HighLoad;
         }
     }
     ```
 
-#### Case B: Liveness / Response Violation (Infinite Lasso Cycle)
+#### Case B: Liveness / Response Violation (Lasso Cycle)
 
-A liveness violation (`G (P -> F Q)`) occurs when the system can enter an infinite loop (a "lasso cycle") where the required response `Q` is starved and never reached:
-
-=== "Flawed Model with Livelock (Triggers E0402)"
+=== "Flawed Model with Livelock (Triggers E_MODEL_CHECK_VIOLATION)"
     ```sysml
     package FlightSystem {
         state def MissionController {
@@ -338,12 +285,9 @@ A liveness violation (`G (P -> F Q)`) occurs when the system can enter an infini
             state HoldingPattern;
             state Landed;
 
-            // Liveness: Low battery must always eventually lead to Landed
-            @fsm:property SafeLanding = "G (LowBattery -> F Landed)";
+            // @fsm:property SafeLanding = "G (LowBattery -> F Landed)";
 
             transition on_low_bat first InFlight accept LowBattery then HoldingPattern;
-            
-            // Flaw: HoldingPattern loops indefinitely on EvHoldTick, with no path to Landed!
             transition hold_loop first HoldingPattern accept EvHoldTick then HoldingPattern;
         }
     }
@@ -351,21 +295,12 @@ A liveness violation (`G (P -> F Q)`) occurs when the system can enter an infini
 
 === "Compiler Counterexample Output"
     ```text
-    error[E0402]: Formal liveness property 'SafeLanding' violated!
-      --> mission.sysml:8:9
-       |
-     8 |         @fsm:property SafeLanding = "G (LowBattery -> F Landed)";
-       |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Liveness starved
-       |
+    error[E_MODEL_CHECK_VIOLATION]: Formal property 'SafeLanding' [Liveness] VIOLATED: 'Landed' is not reachable from cyclic state 'HoldingPattern'
     Counterexample Lasso Execution Trace:
-      Prefix Path:
-        [Step 1] State: InFlight
-        [Step 2] Event: LowBattery
-        [Step 3] Transition fired: InFlight -> HoldingPattern
-      Infinite Cycle Loop (Lasso):
-        ┌─► [Step 4] State: HoldingPattern
-        │   [Step 5] Event: EvHoldTick -> Transition fired: HoldingPattern -> HoldingPattern
-        └── (Cycle repeats indefinitely: 'Landed' is never reachable from this loop!)
+      Prefix:
+        Step 0: InFlight --[LowBattery]--> HoldingPattern
+      Cycle:
+        Step 1: HoldingPattern --[EvHoldTick]--> HoldingPattern
     ```
 
 === "Resolved Model (Clean)"
@@ -376,11 +311,9 @@ A liveness violation (`G (P -> F Q)`) occurs when the system can enter an infini
             state HoldingPattern;
             state Landed;
 
-            @fsm:property SafeLanding = "G (LowBattery -> F Landed)";
+            // @fsm:property SafeLanding = "G (LowBattery -> F Landed)";
 
             transition on_low_bat first InFlight accept LowBattery then HoldingPattern;
-            
-            // Fixed: HoldingPattern has guaranteed exit path to Landed
             transition hold_loop first HoldingPattern accept EvHoldTick if in.holding_time < 5.0 then HoldingPattern;
             transition descend   first HoldingPattern if in.holding_time >= 5.0 then Landed;
         }
@@ -389,76 +322,37 @@ A liveness violation (`G (P -> F Q)`) occurs when the system can enter an infini
 
 ---
 
-## CLI Formal Verification with `fsmc verify`
+## CTL Branching Semantics & Fixed-Point Engine Internals
 
-`fsmc` provides first-class, standalone model checking directly via the command line through the `verify` sub-command:
+While LTL reasons over linear execution traces, Computation Tree Logic (CTL) quantifies over branching execution paths (`E` existential, `A` universal):
 
-```bash
-fsmc verify <model_file> [options]
+```mermaid
+graph TD
+    S0["S0: Standby"] --> S1["S1: Precheck"]
+    S0 --> S2["S2: Abort"]
+    S1 --> S3["S3: Drive"]
+    S1 --> S4["S4: EmergencyShutdown"]
+    S3 --> S3
+    S4 --> S4
 ```
 
-### Options and Flags
+- **`E` (Existential Path Quantifier)**: e.g. `EF (Standby)` checks whether at least one path can return to `Standby`.
+- **`A` (Universal Path Quantifier)**: e.g. `AG (Fault -> AF Recovery)` checks whether recovery holds across all branches.
 
-| Option | Argument | Description | Default |
-| :--- | :--- | :--- | :--- |
-| `--engine` | `auto`, `nuxmv` | Specifies the verification engine. `auto` runs the internal graph model checker. For nuXmv symbolic verification, export with `-e smv`. | `auto` |
-| `--ltl` | `"<formula>"` | Injects an ad-hoc LTL formula for verification on the input model. | `""` |
-| `--ctl` | `"<formula>"` | Injects an ad-hoc CTL formula for verification on the input model. | `""` |
+`fsmc` computes CTL satisfaction sets $Sat(\Phi) \subseteq S$ via fixed-point iteration on the explicit Kripke structure:
 
-### 1. Verifying Structural Soundness and Built-in Invariants
+$$\begin{aligned}
+Sat(EX(\Phi)) &= \{ s \in S \mid \exists s' \in Succ(s) : s' \in Sat(\Phi) \} \\
+Sat(AX(\Phi)) &= \{ s \in S \mid \forall s' \in Succ(s) : s' \in Sat(\Phi) \} \\
+Sat(EF(\Phi)) &= \mu Z . (Sat(\Phi) \cup Sat(EX(Z))) \quad \text{(Backward BFS Least Fixed-Point)} \\
+Sat(AF(\Phi)) &= \mu Z . (Sat(\Phi) \cup Sat(AX(Z))) \quad \text{(All-Path Inevitability)} \\
+Sat(EG(\Phi)) &= \nu Z . (Sat(\Phi) \cap Sat(EX(Z))) \quad \text{(Greatest Fixed-Point via Tarjan SCCs)} \\
+Sat(AG(\Phi)) &= \nu Z . (Sat(\Phi) \cap Sat(AX(Z))) \quad \text{(Universal Safety)} \\
+Sat(E[\Phi_1 \mathbin{U} \Phi_2]) &= \mu Z . (Sat(\Phi_2) \cup (Sat(\Phi_1) \cap Sat(EX(Z)))) \\
+Sat(A[\Phi_1 \mathbin{U} \Phi_2]) &= \mu Z . (Sat(\Phi_2) \cup (Sat(\Phi_1) \cap Sat(AX(Z))))
+\end{aligned}$$
 
-```bash
-fsmc verify examples/connection_manager/connection.smv
-```
+Because the finite Kripke graph is bounded by $|S|$ states, fixed-point evaluation terminates in $O(|S| + |T|)$ steps without requiring external solver binaries.
 
-**Output:**
-```text
-============================================================================
- Formal Model Verification Report: Connection
-============================================================================
- Input File:       examples/connection_manager/connection.smv
- States:           4
- Total Events:     8
- Transitions:      11
- Choice Nodes:     0
- Deferred Triggers:0
-----------------------------------------------------------------------------
- Diagnostics:
-  (No warnings or errors detected. Model is formally sound!)
-----------------------------------------------------------------------------
- Verification Status: PASSED (Model Sound & Properties Verified)
-============================================================================
-```
-
-### 2. Ad-hoc LTL Verification with Execution Counterexample Trace
-
-When verifying custom temporal properties from the CLI, any violation generates an exact state-by-state counterexample execution trace:
-
-```bash
-fsmc verify examples/connection_manager/connection.smv \
-    --ltl "G (State == Closed -> F State == Established)"
-```
-
-**Output:**
-```text
-error[E_MODEL_CHECK_VIOLATION]: Formal property 'cli_ltl_property' [Safety] VIOLATED: Invariant 'G (State == Closed -> F State == Established)' evaluated to false in state 'Suspended'
-Counterexample execution trace:
-    Step 0: State 'Disconnected' --[ConnectCmd if ((HasNetworkGuard && HasValidCredentialsGuard))]--> (Initial active state)
-    Step 1: State 'Connecting' --[HandshakeOkEvent]--> (Normal transition execution)
-    Step 2: State 'Connected' --[NetworkDegradedEvent]--> (Normal transition execution)
-    Step 3: State 'Suspended' (Invariant 'G (State == Closed -> F State == Established)' evaluated to false in state 'Suspended')
-```
-
----
-
-## nuXmv / SMV Formal Logic Export
-
-You can export the transition model directly into canonical SMV logic for external verification tools such as nuXmv:
-
-```bash
-# Export formal SMV specification
-fsmc -i flight_mission.sysml --export smv -o flight_model.smv
-
-# Execute nuXmv externally (optional)
-nuxmv flight_model.smv
-```
+!!! note "Sound Interval Evaluation & Formula Negation"
+    In EFSM models with numeric datapath variables, atomic relational predicates under negation (such as `!(x == 5)` or `!(altitude < 1000)`) are evaluated via relational operator inversion ($x \neq 5$ and $\text{altitude} \ge 1000$) rather than boolean complement, preserving sound three-valued evaluation over interval lattices.

@@ -222,11 +222,9 @@ When multiple transitions share the same `(source_state, trigger_event)` and hav
             state LowAltitude;
 
             // Resolution B: Priority disambiguation (Priority 1 evaluates before Priority 2)
-            @fsm:priority 1
-            transition to_high first Normal if in.altitude > 500.0 then HighAltitude;
+            transition to_high priority = 1 first Normal if in.altitude > 500.0 then HighAltitude;
 
-            @fsm:priority 2
-            transition to_low  first Normal if in.altitude < 800.0 then LowAltitude;
+            transition to_low  priority = 2 first Normal if in.altitude < 800.0 then LowAltitude;
         }
     }
     ```

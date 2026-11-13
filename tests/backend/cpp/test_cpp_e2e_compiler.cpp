@@ -23,6 +23,7 @@
 #include "fsm/backend/cpp/runtime/fsm.hpp"
 #include "fsm/backend/cpp/runtime/spsc_fsm.hpp"
 #include "fsm/backend/cpp/runtime/thread_safe_fsm.hpp"
+#include "fsm/ir/fsm_ir_deserializer.hpp"
 #include "fsm/backend/cpp/runtime/traits/hook_traits.hpp"
 #include "fsm/backend/cpp/runtime_exporter.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
@@ -1435,5 +1436,52 @@ Check --> Slow : [else]
     std::string puml_code = CppGenerator::generate_header(puml_model, opts);
     EXPECT_EQ(puml_code.find("struct else_"), std::string::npos);
 
+    fs::remove_all(temp_dir);
+}
+
+TEST(CppE2ECompilerTest, XStateJsonContextVariablesCompile) {
+    const std::string json_src = R"({
+  "id": "JsonCtxDemo",
+  "initial": "Idle",
+  "context": { "count": 0, "ready": true },
+  "states": {
+    "Idle": { "on": { "Go": { "target": "Done", "guard": "count == 0 && ready" } } },
+    "Done": {}
+  }
+})";
+    fsm::ir::FsmIr model;
+    std::string err;
+    ASSERT_TRUE(fsm::ir::FsmIrDeserializer::deserialize_json(json_src, model, err)) << err;
+    ASSERT_NE(model.find_variable("count"), nullptr);
+    ASSERT_NE(model.find_variable("ready"), nullptr);
+
+    GeneratorOptions opts;
+    opts.cpp_standard = CppStandard::Cpp17;
+    opts.standalone = true;
+    std::string code = CppGenerator::generate_header(model, opts);
+
+    fs::path temp_dir = fs::temp_directory_path() / "fsmc_e2e_json_ctx_test";
+    fs::create_directories(temp_dir);
+    fs::path hdr = temp_dir / "JsonCtxDemo_fsm.hpp";
+    fs::path drv = temp_dir / "driver.cpp";
+    {
+        std::ofstream out(hdr);
+        out << code;
+    }
+    {
+        std::ofstream out(drv);
+        out << "#include \"JsonCtxDemo_fsm.hpp\"\n"
+            << "using namespace fsm_generated;\n"
+            << "int main() {\n"
+            << "    JsonCtxDemo sm;\n"
+            << "    sm.dispatch(Go{});\n"
+            << "    return sm.is_in<Done>() ? 0 : 1;\n"
+            << "}\n";
+    }
+    std::string exe = (temp_dir / "runner").string();
+    std::string compile_cmd = "g++ -std=c++17 -Wall -Wextra -Werror -pedantic -Wconversion -I" + temp_dir.string() +
+                              " " + drv.string() + " -o " + exe;
+    ASSERT_EQ(std::system(compile_cmd.c_str()), 0);
+    EXPECT_EQ(std::system(exe.c_str()), 0);
     fs::remove_all(temp_dir);
 }

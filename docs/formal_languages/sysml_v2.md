@@ -80,8 +80,8 @@ state ActiveFlight {
 state EmergencyHold;
 ```
 
-> [!WARNING]
-> **MBSE Exchange vs C++ Backend (`ECPP006`)**: State-level `do action <Activity>();` (`do_activity`) is fully parsed and preserved in `FsmIr` for lossless MBSE model exchange (e.g., SysML v2 $\leftrightarrow$ SCXML $\leftrightarrow$ Cameo $\leftrightarrow$ Stateflow). However, the zero-heap synchronous C++ reference backend rejects unlowered `do_activity` with diagnostic `ECPP006`, because synchronous finite state automata require discrete zero-time run-to-completion semantics. For background work in C++, use transition actions or the multi-threaded `thread_safe_fsm` executor.
+!!! warning "MBSE Exchange vs C++ Backend (`ECPP006`)"
+    State-level `do action <Activity>();` (`do_activity`) is fully parsed and preserved in `FsmIr` for lossless MBSE model exchange (e.g., SysML v2 $\leftrightarrow$ SCXML $\leftrightarrow$ Cameo $\leftrightarrow$ Stateflow). However, the zero-heap synchronous C++ reference backend rejects unlowered `do_activity` with diagnostic `ECPP006`, because synchronous finite state automata require discrete zero-time run-to-completion semantics. For background work in C++, use transition actions or the multi-threaded `thread_safe_fsm` executor.
 
 ---
 

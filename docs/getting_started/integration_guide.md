@@ -127,8 +127,8 @@ fsmc_target_sources(my_app
 
 ## 5. Rust Ecosystem: Cargo & `build.rs` (Roadmap Preview)
 
-> [!NOTE]
-> **Roadmap Preview**: The Rust target emitter is currently under design and active development. The pattern below illustrates the upcoming Cargo build integration workflow.
+!!! note "Roadmap Preview"
+    The Rust target emitter is currently under design and active development. The pattern below illustrates the upcoming Cargo build integration workflow.
 
 In Rust projects targeting `#![no_std]` bare-metal firmware or native services, models can be automatically recompiled whenever diagram files change using a standard Cargo `build.rs` build script.
 
@@ -172,8 +172,8 @@ fn main() {
 
 ## 6. Embedded C Ecosystem: Makefile & Meson (Roadmap Preview)
 
-> [!NOTE]
-> **Roadmap Preview**: The ISO C99 embedded C target emitter is currently under design. The patterns below illustrate the upcoming build integration workflow for automotive and RTOS projects.
+!!! note "Roadmap Preview"
+    The ISO C99 embedded C target emitter is currently under design. The patterns below illustrate the upcoming build integration workflow for automotive and RTOS projects.
 
 For automotive AUTOSAR Classic, aerospace, or RTOS projects with custom toolchains (IAR, Keil, GCC-ARM):
 

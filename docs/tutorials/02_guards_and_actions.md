@@ -93,8 +93,6 @@ state def ConnectionManager {
 
 ---
 
----
-
 ## 3. The Binding Contract: Model to C++ (The Rosetta Stone)
 
 When `fsmc` compiles an EFSM model, it maps domain definitions into strongly typed C++20 structures:
@@ -167,8 +165,8 @@ When a transition executes, `fsmc` enforces the strict **UML 2.5 Run-to-Completi
 
 If the guard returns `false`, no exit actions occur, and the machine remains in the source state.
 
-> [!NOTE]
-> **C++ State Hook Naming**: While UML and SysML v2 formal specifications refer to state lifecycle actions as "entry action" and "exit action", the C++ runtime lifecycle traits look for member functions named `on_enter(...)` and `on_exit(...)` on state structs. Both methods can be parameterless `void on_enter()` or accept any subset of domain parameters `(event, in, out, reg, srv)`.
+!!! note "C++ State Hook Naming"
+    While UML and SysML v2 formal specifications refer to state lifecycle actions as "entry action" and "exit action", the C++ runtime lifecycle traits look for member functions named `on_enter(...)` and `on_exit(...)` on state structs. Both methods can be parameterless `void on_enter()` or accept any subset of domain parameters `(event, in, out, reg, srv)`.
 
 ---
 

@@ -2,8 +2,8 @@
 
 A single-page printable reference card covering the universal CLI commands, formal verification syntax, and target runtime APIs across supported languages.
 
-> [!NOTE]
-> **Active Target vs. Roadmap Previews**: The **C++ Backend** (`C++17/C++20`) is the active production runtime. Rust and C tabs illustrate **preview specifications** under the multi-target roadmap.
+!!! note "Active Target vs. Roadmap Previews"
+    The **C++ Backend** (`C++17/C++20`) is the active production runtime. Rust and C tabs illustrate **preview specifications** under the multi-target roadmap.
 
 ---
 

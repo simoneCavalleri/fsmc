@@ -113,8 +113,8 @@ Expected output:
     ```
 
 === "Rust Target (Roadmap Preview)"
-    > [!NOTE]
-    > **Upcoming Target Preview**: Rust code generation is currently in development under the multi-target roadmap. C++ is the active production runtime.
+    !!! note "Upcoming Target Preview"
+        Rust code generation is currently in development under the multi-target roadmap. C++ is the active production runtime.
 
     Compile the model into an idiomatic `#![no_std]` Rust module:
     ```bash
@@ -122,8 +122,8 @@ Expected output:
     ```
 
 === "C Target (Embedded C Roadmap)"
-    > [!NOTE]
-    > **Upcoming Target Preview**: ISO C99 embedded C code generation is currently in development under the multi-target roadmap. C++ is the active production runtime.
+    !!! note "Upcoming Target Preview"
+        ISO C99 embedded C code generation is currently in development under the multi-target roadmap. C++ is the active production runtime.
 
     Compile the model into deterministic, zero-heap C headers and sources:
     ```bash
@@ -184,8 +184,8 @@ Expected output:
     ```
 
 === "Rust Target (Roadmap Preview)"
-    > [!NOTE]
-    > **Upcoming Target Preview**: Preview of planned `#![no_std]` Rust application integration.
+    !!! note "Upcoming Target Preview"
+        Preview of planned `#![no_std]` Rust application integration.
 
     Create `main.rs`:
     ```rust
@@ -218,8 +218,8 @@ Expected output:
     ```
 
 === "C Target (Embedded C Roadmap)"
-    > [!NOTE]
-    > **Upcoming Target Preview**: Preview of planned ISO C99 embedded C application integration.
+    !!! note "Upcoming Target Preview"
+        Preview of planned ISO C99 embedded C application integration.
 
     Create `main.c`:
     ```c
@@ -274,16 +274,16 @@ Expected output:
     ```
 
 === "Rust Target (Roadmap Preview)"
-    > [!NOTE]
-    > **Upcoming Target Preview**: Build command for future Rust target releases.
+    !!! note "Upcoming Target Preview"
+        Build command for future Rust target releases.
 
     ```bash
     cargo run --release
     ```
 
 === "C Target (Embedded C Roadmap)"
-    > [!NOTE]
-    > **Upcoming Target Preview**: Build command for future C target releases.
+    !!! note "Upcoming Target Preview"
+        Build command for future C target releases.
 
     ```bash
     gcc -std=c99 main.c uav_mission_fsm.c -o uav_app -Wall -Wextra -pedantic

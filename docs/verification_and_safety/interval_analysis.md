@@ -106,9 +106,10 @@ Because the intersection is empty, the guard can never evaluate to `true` at run
             transition boost first Cruising if in.battery_soc > 80.0 then TurboMode;
         }
     }
-> [!TIP]
-> **Automated Dead Transition Pruning**:
-> In optimization modes (`-O2` or `--prune`), transitions identified as having empty guard intersections ($\text{Domain} \cap \text{Guard} = \emptyset$, classified strictly as `EFSMFindingKind::UnsatisfiableGuard`) are automatically pruned from the emitted state machine table by `DeadStatePruningPass` and `EFSMDataPathPass`, eliminating dead branches completely. Note that out-of-range port or variable contract warnings are reported as diagnostics and do not trigger transition deletion.
+    ```
+
+!!! tip "Automated Dead Transition Pruning"
+    In optimization modes (`-O2` or `--prune`), transitions identified as having empty guard intersections ($\text{Domain} \cap \text{Guard} = \emptyset$, classified strictly as `EFSMFindingKind::UnsatisfiableGuard`) are automatically pruned from the emitted state machine table by `DeadStatePruningPass` and `EFSMDataPathPass`, eliminating dead branches completely. Note that out-of-range port or variable contract warnings are reported as diagnostics and do not trigger transition deletion.
 
 ---
 

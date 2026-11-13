@@ -43,11 +43,10 @@ class fsm;
 
 ### Member Functions
 
-> [!TIP]
-> **Which Overload to Call?**
-> - **Standard (Recommended for 90% of apps)**: If services were passed at construction (`fsm(reg, srv)`), call `fsm.dispatch(ev, in, out)` and `fsm.step(in, out)`.
-> - **Stateless / No-Ports (Events Only)**: If your model defines no ports, call `fsm.dispatch(ev)` (`step()` is only needed if using anonymous transitions).
-> - **Dynamic / Call-Site Injection (Production & Testing)**: If services were not bound at construction (e.g. multi-channel dispatch, hardware failover, or unit testing with mocks), pass `srv` explicitly: `fsm.dispatch(ev, in, out, srv)`.
+!!! tip "Which Overload to Call?"
+    - **Standard (Recommended for 90% of apps)**: If services were passed at construction (`fsm(reg, srv)`), call `fsm.dispatch(ev, in, out)` and `fsm.step(in, out)`.
+    - **Stateless / No-Ports (Events Only)**: If your model defines no ports, call `fsm.dispatch(ev)` (`step()` is only needed if using anonymous transitions).
+    - **Dynamic / Call-Site Injection (Production & Testing)**: If services were not bound at construction (e.g. multi-channel dispatch, hardware failover, or unit testing with mocks), pass `srv` explicitly: `fsm.dispatch(ev, in, out, srv)`.
 
 #### Lifecycle & Execution
 - `step_result step(const in_ports_type& in, out_ports_type& out, services_type& srv)`: Evaluates continuous condition transitions. Automatically invokes active state `do_activity(...)` during steady-state residence.
@@ -411,8 +410,8 @@ class thread_safe_fsm;
 - `void update_registers(registers_type reg)`: Atomically updates internal registers under mutex lock.
 - `template <typename Func> decltype(auto) with_registers(Func&& fn)`: Executes callable `fn(registers)` inside exclusive mutex lock.
 
-> [!IMPORTANT]
-> **Data Race Prevention**: Direct naked references via `registers()` and `unsafe_registers()` were permanently removed to eliminate data races and torn reads. Always use `with_registers()`, `update_registers()`, or `snapshot_registers()`.
+!!! info "Data Race Prevention"
+    Direct naked references via `registers()` and `unsafe_registers()` were permanently removed to eliminate data races and torn reads. Always use `with_registers()`, `update_registers()`, or `snapshot_registers()`.
 
 ---
 

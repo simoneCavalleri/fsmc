@@ -67,8 +67,6 @@ struct step_result {
 
 ---
 
----
-
 ## 2. Zero-Allocation Flight Recorder Telemetry
 
 For post-mortem auditing, blackbox event logging, and hard real-time diagnostics, `fsmc` provides `fsm::TraceBuffer<Capacity>` and `fsm::flight_recorder_observer<Capacity>` ([`flight_recorder.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/backend/cpp/runtime/flight_recorder.hpp)).

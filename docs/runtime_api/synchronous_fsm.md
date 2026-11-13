@@ -2,8 +2,8 @@
 
 `fsm::fsm` is the foundational execution engine of `fsmc`. It executes state transitions directly on the caller's stack with **zero dynamic memory allocation**, **zero virtual table overhead**, and deterministic $O(1)$ dispatch time.
 
-> [!NOTE]
-> For the universal building blocks shared across all execution engines (States, Events, 4-Domain Memory, Guard & Action signatures, and History), see the **[Universal Runtime Fundamentals](core_concepts.md)** chapter.
+!!! note
+    For the universal building blocks shared across all execution engines (States, Events, 4-Domain Memory, Guard & Action signatures, and History), see the **[Universal Runtime Fundamentals](core_concepts.md)** chapter.
 
 ---
 
@@ -25,8 +25,6 @@ Caller Thread ──► fsm.dispatch(Event, in, out)
                        ▼
 Caller Thread ◄── Returns dispatch_result
 ```
-
----
 
 ---
 
@@ -283,9 +281,8 @@ fsm.dispatch(EvStart{}, in, out);
 fsm.step(in, out);
 ```
 
-> [!TIP]
-> **Non-Default Constructible Services**:  
-> `Services` is not required to have a default constructor. The runtime directly references `*services_` provided at construction time, avoiding spurious dummy stack instantiations. This allows `Services` to hold hardware references, open sockets, or non-copyable handles configured at initialization.
+!!! tip "Non-Default Constructible Services"
+    `Services` is not required to have a default constructor. The runtime directly references `*services_` provided at construction time, avoiding spurious dummy stack instantiations. This allows `Services` to hold hardware references, open sockets, or non-copyable handles configured at initialization.
 
 ### Style C: Stateless / Minimal State Machine (No Ports, No Services)
 For pure control flow with `fsm::no_ports` and `fsm::no_services`:
@@ -354,8 +351,8 @@ If your state machine defines custom `InPorts` and `OutPorts`, but you invoke th
 2. **`OutPorts`**: Constructs a temporary `OutPorts{}` on the stack. Actions will write to it, but **the output values will be discarded when `dispatch()` returns**.
 3. **`Services`**: Automatically reuses the service bound at construction (`fsm(reg, srv)`).
 
-> [!IMPORTANT]
-> **Capturing Actuator Outputs**: If transition actions write actuator commands to `OutPorts`, always pass your output buffer `fsm.dispatch(event, in, out)` so your application can read and commit the results to hardware.
+!!! info "Capturing Actuator Outputs"
+    If transition actions write actuator commands to `OutPorts`, always pass your output buffer `fsm.dispatch(event, in, out)` so your application can read and commit the results to hardware.
 
 ---
 

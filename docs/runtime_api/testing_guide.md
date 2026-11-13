@@ -182,6 +182,7 @@ TEST(DroneServiceTest, ActionCallsServiceDriver) {
     sm.dispatch(EvStart{}, in, out);
     // Verify hardware mock interaction
 }
+```
 
 ---
 

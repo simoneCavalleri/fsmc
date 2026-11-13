@@ -14,8 +14,8 @@ The **C++ Reference Backend** provides a header-only, **100% zero-heap, zero-vta
 | **Rust Target** | Rust 2021 (`no_std`) | Typestate transitions, lock-free static channels | Compile-time memory safety, zero panic | **Preview / In Development** |
 | **C Target** | ISO C99 / C11 | Static transition table, switch-case dispatch | Embedded C, zero malloc | **Preview / Planned RFC** |
 
-> [!NOTE]
-> **Production vs. Preview**: The **C++ Backend** is the active production-ready target. Rust and C code generation are preview targets currently being designed and implemented.
+!!! note "Production vs. Preview"
+    The **C++ Backend** is the active production-ready target. Rust and C code generation are preview targets currently being designed and implemented.
 
 ---
 

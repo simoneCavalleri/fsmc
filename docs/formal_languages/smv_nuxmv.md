@@ -2,9 +2,8 @@
 
 `fsmc` compiles statechart models into canonical symbolic transition systems strictly compliant with the **nuXmv 2.0+** and **NuSMV 2.6+** model checking engines.
 
-> [!NOTE]
-> **Role in the Toolchain**:
-> In standard workflows, SMV is **used primarily as an Export Target**. Engineers author models in expressive modeling languages (SysML v2, Cameo XMI, SCXML, PlantUML) and invoke `fsmc --export smv` to generate `.smv` logic files for automated mathematical verification and counterexample extraction in the external **nuXmv** solver suite.
+!!! note "Role in the Toolchain"
+    In standard workflows, SMV is **used primarily as an Export Target**. Engineers author models in expressive modeling languages (SysML v2, Cameo XMI, SCXML, PlantUML) and invoke `fsmc --export smv` to generate `.smv` logic files for automated mathematical verification and counterexample extraction in the external **nuXmv** solver suite.
 
 ---
 

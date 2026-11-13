@@ -194,6 +194,5 @@ void rtos_periodic_control_task(void* param) {
 | `void on_invariant_violation(handler)` | Registers callback hook executed when an invariant violation occurs. |
 | `void clear_invariant_violation()` | Resets invariant violation status and cached info. |
 
-> [!IMPORTANT]
-> **Seqlock Trivially Copyable Contract**:  
-> In compliance with the ISO C++ memory model, `fsm::spsc_fsm` requires `Registers` to satisfy `std::is_trivially_copyable_v<Registers>` (or `fsm::no_registers`). This compile-time contract ensures that concurrent non-atomic reads during active writer cycles cannot produce torn pointer reads, undefined behavior, or memory corruption. For complex types requiring dynamic heap allocations, use `fsm::thread_safe_fsm`.
+!!! info "Seqlock Trivially Copyable Contract"
+    In compliance with the ISO C++ memory model, `fsm::spsc_fsm` requires `Registers` to satisfy `std::is_trivially_copyable_v<Registers>` (or `fsm::no_registers`). This compile-time contract ensures that concurrent non-atomic reads during active writer cycles cannot produce torn pointer reads, undefined behavior, or memory corruption. For complex types requiring dynamic heap allocations, use `fsm::thread_safe_fsm`.

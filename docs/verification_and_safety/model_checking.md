@@ -91,9 +91,8 @@ Sat(A[\Phi_1 \mathbin{U} \Phi_2]) &= \mu Z . (Sat(\Phi_2) \cup (Sat(\Phi_1) \cap
 
 Because the Kripke state space is finite, all fixed-point computations terminate in at most $|S|$ iterations ($O(|S| + |T|)$ polynomial complexity), guaranteeing instant compile-time verification without external solver binaries.
 
-> [!NOTE]
-> **Sound Interval Evaluation & Formula Negation**:
-> In EFSM models with numeric datapath variables, atomic relational predicates under negation (such as `!(x == 5)` or `!(altitude < 1000)`) are evaluated via relational operator inversion ($x \neq 5$ and $\text{altitude} \ge 1000$) rather than boolean set complement. This preserves sound three-valued logic (True, False, Unknown) over interval lattices, preventing false certifications on unconstrained or unbounded interval states.
+!!! note "Sound Interval Evaluation & Formula Negation"
+    In EFSM models with numeric datapath variables, atomic relational predicates under negation (such as `!(x == 5)` or `!(altitude < 1000)`) are evaluated via relational operator inversion ($x \neq 5$ and $\text{altitude} \ge 1000$) rather than boolean set complement. This preserves sound three-valued logic (True, False, Unknown) over interval lattices, preventing false certifications on unconstrained or unbounded interval states.
 
 ---
 

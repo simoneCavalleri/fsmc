@@ -241,8 +241,8 @@ int main() {
 }
 ```
 
-> [!TIP]
-> Both workflows use the **exact same zero-overhead runtime engine** (`fsm::fsm`). The `fsmc` compiler simply automates authoring, validation, and multi-format conversion from visual and MBSE models.
+!!! tip
+    Both workflows use the **exact same zero-overhead runtime engine** (`fsm::fsm`). The `fsmc` compiler simply automates authoring, validation, and multi-format conversion from visual and MBSE models.
 
 ---
 

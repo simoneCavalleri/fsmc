@@ -51,8 +51,8 @@ my_project/
     ```
 
 === "Rust Target (Roadmap Preview)"
-    > [!NOTE]
-    > **Roadmap Preview**: Rust code generation is a planned multi-target release feature. C++ is the current production runtime.
+    !!! note "Roadmap Preview"
+        Rust code generation is a planned multi-target release feature. C++ is the current production runtime.
 
     ```bash
     # Generate idiomatic `#![no_std]` Rust module
@@ -60,8 +60,8 @@ my_project/
     ```
 
 === "C Target (Embedded C Roadmap)"
-    > [!NOTE]
-    > **Roadmap Preview**: ISO C99 embedded C code generation is a planned multi-target feature. C++ is the current production runtime.
+    !!! note "Roadmap Preview"
+        ISO C99 embedded C code generation is a planned multi-target feature. C++ is the current production runtime.
 
     ```bash
     # Generate embedded C header and implementation
@@ -153,8 +153,8 @@ The `with_*` policy modifiers can be composed in any order — the compiler reso
     ```
 
 === "Rust Target (Roadmap Preview)"
-    > [!NOTE]
-    > **Roadmap Preview**: Preview of upcoming Rust `#![no_std]` application code.
+    !!! note "Roadmap Preview"
+        Preview of upcoming Rust `#![no_std]` application code.
 
     In your `main.rs`:
     ```rust
@@ -175,8 +175,8 @@ The `with_*` policy modifiers can be composed in any order — the compiler reso
     ```
 
 === "C Target (Embedded C Roadmap)"
-    > [!NOTE]
-    > **Roadmap Preview**: Preview of upcoming ISO C99 application code.
+    !!! note "Roadmap Preview"
+        Preview of upcoming ISO C99 application code.
 
     In your `main.c`:
     ```c

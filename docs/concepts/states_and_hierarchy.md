@@ -91,8 +91,8 @@ Recursively restores the full hierarchy chain down to the deepest active leaf st
 
     *(For C++ target implementation details, see the [Runtime C++ API](../runtime_api/synchronous_fsm.md) chapter).*
 
-> [!TIP]
-> **Exact Compile-Time History Allocation**: In the C++ runtime ([`detail/history_manager.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/backend/cpp/runtime/detail/history_manager.hpp)), the history storage buffer capacity is strictly bounded at compile-time by `count_parent_states_v<Table::states>` (the exact number of composite parents with substates), eliminating any heap usage and avoiding stack waste over total state count.
+!!! tip "Exact Compile-Time History Allocation"
+    In the C++ runtime ([`detail/history_manager.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/backend/cpp/runtime/detail/history_manager.hpp)), the history storage buffer capacity is strictly bounded at compile-time by `count_parent_states_v<Table::states>` (the exact number of composite parents with substates), eliminating any heap usage and avoiding stack waste over total state count.
 
 
 ---

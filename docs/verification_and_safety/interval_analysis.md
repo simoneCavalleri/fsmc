@@ -29,6 +29,7 @@ flowchart TD
 ```
 
 - **InPorts Contracts**: Initialized directly from port range annotations (`min_value`, `max_value`, e.g. `sensor_temp : [-50.0, 150.0]`).
+- **Signal Payload Validators (`v0.10.0`)**: Bounded constraints on `SignalDefinition::validators` (e.g. `len > 0 && len <= 512`) seed payload field intervals at transition entry and propagate through transition assignments into target-state registers.
 - **Registers**: Initialized from their default initial value (e.g. `cycle_count = 0` $\implies [0, 0]$).
 - **Assignments mutate intervals**:
   - Addition / Subtraction: $[a, b] \pm [c, d] \implies [a \pm c, b \pm d]$

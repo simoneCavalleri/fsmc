@@ -26,6 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Extended `CppModelEmitter::emit_actions` to lower `ActionSignature::instructions` (`StoreOp`, `PortWriteOp`, `PortReadOp`, `ActionCallOp`, `SignalEmitOp`) alongside `assignments`.
   - Standardized `TransitionEdge` guard mutations via `set_guard()` / `set_guard_ast()` and tightened EFSM trigger/guard equivalence in `StateMinimizationPass`.
 
+### Fixed
+- **Frontends, Codegen & Verification Stability**:
+  - Added XState `"context"` object deserialization to `FsmIrDeserializer::deserialize_json` and preserved per-guard expressions across JSON roundtrips.
+  - Added automatic `<data expr="..."/>` type inference (`bool`, `double`, `int32_t`, `uint32_t`, `std::string`) in `ScxmlParser` when `type` is omitted.
+  - Fixed `Sysml2Parser` signal validator parsing, forward-declared signal event matching, and C++ keyword escaping for state/target/member identifiers and `[else]` choice branches.
+  - Fixed `qualify_expression_identifiers` in `CppModelEmitter` to resolve C++ keyword-escaped variable/port names (`switch` $\to$ `reg.switch_`).
+  - Fixed `CounterexampleGTestExporter::export_gtest` to emit `using namespace <ns>;` and `<ModelName> sm;` so `--export-cex-gtest` compiles directly against generated headers.
+
 ---
 
 ## [0.9.0] - 2026-11-09

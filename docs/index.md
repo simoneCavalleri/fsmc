@@ -4,7 +4,7 @@ hide:
 ---
 
 <div class="fsmc-hero" markdown="1">
-<div class="fsmc-hero__badge">v0.9.0 &middot; C++17 / C++20 &middot; Zero-Heap Runtime &middot; LTL / CTL</div>
+<div class="fsmc-hero__badge">v0.10.0 &middot; C++17 / C++20 &middot; Zero-Heap Runtime &middot; LTL / CTL</div>
 
 # Universal State Machine Compiler
 
@@ -104,12 +104,15 @@ flowchart TB
 
 ```bash
 # 1. Formally verify structural soundness and temporal invariants (LTL / CTL)
-fsmc -i mission.sysml --verify
+fsmc -i mission.sysml --verify --export-cex-gtest mission_cex_test.cpp
 
-# 2. Export Requirement Traceability Matrix or MC/DC GoogleTest harness
+# 2. Simulate an event trace directly on canonical IR before codegen
+fsmc -i mission.sysml --simulate --trace trace.json
+
+# 3. Export Requirement Traceability Matrix or MC/DC GoogleTest harness
 fsmc -i mission.sysml --rtm-output rtm_matrix.md --harness mission_mcdc_test.cpp
 
-# 3. Compile to a standalone zero-heap C++20 header (C++17 also supported)
+# 4. Compile to a standalone zero-heap C++20 header (C++17 also supported)
 fsmc -i mission.sysml -o mission_fsm.hpp --std 20 --standalone --namespace mission
 ```
 

@@ -128,7 +128,7 @@ fsmc_target_sources(flight_control
     # 1. Clone repository and create local Conan package
     git clone https://github.com/simoneCavalleri/fsmc.git
     cd fsmc
-    conan create . --version 0.9.0 -s build_type=Release
+    conan create . --version 0.10.0 -s build_type=Release
     ```
 
     Once created in your local cache, consume it in your project:
@@ -136,7 +136,7 @@ fsmc_target_sources(flight_control
     ```ini
     # conanfile.txt
     [requires]
-    fsmc/0.9.0
+    fsmc/0.10.0
 
     [generators]
     CMakeDeps

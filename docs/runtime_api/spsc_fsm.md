@@ -27,7 +27,7 @@ sequenceDiagram
     Reader->>Task: snapshot_registers() [Consistent copy without blocking Task]
 ```
 
-- **Producer Context (ISR / DMA)**: Calls `post()` in deterministic, wait-free $O(1)$ time.
+- **Producer Context (ISR / DMA)**: Calls `post()` in deterministic, wait-free $O(1)$ time. If an event payload implements `.is_valid()` and returns `false`, `post()` rejects it immediately without writing to the lock-free ring buffer.
 - **Consumer Context (RTOS Worker)**: Calls `process_one()` or `run_until_empty()` to execute state transitions sequentially in Run-to-Completion order.
 - **Reader Context (Telemetry / Loggers)**: Calls `snapshot_registers()` to capture consistent register snapshots via an atomic Sequence Lock (seqlock).
 
@@ -193,5 +193,5 @@ void rtos_periodic_control_task(void* param) {
 | `std::optional<invariant_violation_info> last_invariant_violation()` | Retrieves metadata of the most recent invariant violation. |
 | `void set_invariant_violation_handler(handler)` | Registers callback hook executed when an invariant violation occurs. |
 
-!!! info "Seqlock Trivially Copyable Contract"
-    In compliance with the ISO C++ memory model, `fsm::spsc_fsm` requires `Registers` to satisfy `std::is_trivially_copyable_v<Registers>` (or `fsm::no_registers`). This compile-time contract ensures that concurrent non-atomic reads during active writer cycles cannot produce torn pointer reads, undefined behavior, or memory corruption. For complex types requiring dynamic heap allocations, use `fsm::thread_safe_fsm`.
+!!! info "Seqlock & Ring Buffer Trivially Copyable Contract"
+    In compliance with the ISO C++ memory model, `fsm::spsc_fsm` enforces at compile time (`static_assert`) that both `Registers` (or `fsm::no_registers`) and `typename Table::event_variant` satisfy `std::is_trivially_copyable_v`. This compile-time contract guarantees lock-free atomic ring buffer transfers and concurrent seqlock register snapshots cannot trigger torn reads, undefined behavior, or heap corruption. For complex types requiring dynamic heap allocations, use `fsm::thread_safe_fsm`.

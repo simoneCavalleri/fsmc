@@ -11,7 +11,7 @@
 | SCXML Element | Attributes / Children | `fsmc` Semantic Mapping |
 | :--- | :--- | :--- |
 | `<scxml>` | `name`, `initial`, `version="1.0"` | Root state machine model |
-| `<datamodel>` | `<data id="..." expr="..."/>` | Internal memory registers (`Registers`) |
+| `<datamodel>` | `<data id="..." expr="..."/>` | Internal memory registers (`Registers`), inferring `bool`, `double`, `int32_t`, `uint32_t`, or `std::string` from `expr` when `type` is omitted |
 | `<state>` | `id`, `initial` | Simple atomic state or composite parent state |
 | `<parallel>` | `id` | Orthogonal concurrent execution regions (flattened via `OrthogonalProductPass`) |
 | `<history>` | `id`, `type="shallow\|deep"` | History pseudostate with $z^{-1}$ memory |

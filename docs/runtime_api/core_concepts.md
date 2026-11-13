@@ -51,13 +51,20 @@ Events are strongly-typed signals passed to the state machine:
 struct EvStart {};
 struct EvStop  {};
 
-// 2. Event carrying typed payload data
+// 2. Event carrying typed payload data (with optional compile/runtime validator)
 struct EvConfigure {
     std::uint32_t profile_id{0};
     float target_speed{0.0f};
     bool enable_telemetry{false};
+
+    [[nodiscard]] constexpr bool is_valid() const noexcept {
+        return target_speed >= 0.0f && target_speed <= 500.0f;
+    }
 };
 ```
+
+!!! tip "Automatic Runtime Payload Rejection"
+    When an event type defines `is_valid()`, both `fsm::fsm::dispatch()` and `fsm::spsc_fsm::post()` automatically evaluate it before table matching or ring-buffer queuing, rejecting malformed events at zero overhead (`if constexpr`).
 
 ---
 

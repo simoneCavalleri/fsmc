@@ -47,7 +47,7 @@ stateDiagram-v2
 Directed graphs formatted for automated topological layout generation and graph metrics calculation.
 
 !!! note "XState JSON Classification"
-    XState JSON (`.json`) is classified as a **Formal** structured frontend in `fsmc` (rather than an informal visual sketch), so C++ code generation from `.json` does not require `--allow-diagram`.
+    XState JSON (`.json`) is classified as a **Formal** structured frontend in `fsmc` (rather than an informal visual sketch), so C++ code generation from `.json` does not require `--allow-diagram`. Both canonical `"variables"` arrays and XState-style `"context": { ... }` objects are mapped automatically to typed `Registers`.
 
 ---
 

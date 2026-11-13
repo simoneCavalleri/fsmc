@@ -951,3 +951,126 @@ TEST(CppModelEmitter, ReservedCppKeywords_EscapedInEmittedTypesAndTransitionTabl
     // Check initial state alias
     EXPECT_NE(str.find("::fsm::with_initial_state<switch_>"), std::string::npos);
 }
+
+TEST(CppModelEmitterTest, ActionInstructionsAndCompoundGuardAstLowering) {
+    FsmIr model;
+    model.name = "AstLoweringModel";
+    model.initial_state = "Idle";
+
+    model.add_state("Idle");
+    model.add_state("Active");
+    VariableDefinition var;
+    var.name = "hist_reg";
+    var.type = DataType{PrimitiveTypeKind::UInt32};
+    var.initial_value = "0";
+    model.add_variable(std::move(var));
+
+    PortDefinition out_port;
+    out_port.name = "led_out";
+    out_port.direction = PortDirection::Out;
+    out_port.type = DataType{PrimitiveTypeKind::Boolean};
+    model.add_port(std::move(out_port));
+    model.add_event("EvGo");
+
+    ActionSignature act("RecordAndSignal");
+    StoreOp store_op;
+    store_op.target = LValueTarget("hist_reg", LValueScope::Register);
+    store_op.op = AssignmentOp::Assign;
+    store_op.expression = "1";
+    act.instructions.emplace_back(store_op, "Record shadow register");
+
+    PortWriteOp pw_op;
+    pw_op.port_name = "led_out";
+    pw_op.expression = "true";
+    act.instructions.emplace_back(pw_op, "Enable LED");
+
+    TransitionEdge trans("Idle", "Active", "EvGo");
+    trans.set_guard_ast(GuardAstNode(GuardOp::And, {GuardAstNode("PowerOk"), GuardAstNode("DoorClosed")}));
+    trans.transition_action = act;
+    model.transitions.push_back(trans);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = false;
+    CppModelEmitter::emit_model(out, model, opts);
+    std::string str = out.str();
+
+    EXPECT_NE(str.find("::fsm::and_<PowerOk, DoorClosed>"), std::string::npos);
+
+    std::ostringstream out_stubs;
+    opts.include_stubs = true;
+    CppModelEmitter::emit_model(out_stubs, model, opts);
+    std::string stub_str = out_stubs.str();
+    EXPECT_NE(stub_str.find("reg.hist_reg = 1;"), std::string::npos);
+    EXPECT_NE(stub_str.find("out.led_out = true;"), std::string::npos);
+}
+
+TEST(CppModelEmitterTest, PayloadGuard_QualifiesPayloadAndOmitsEventlessFallback) {
+    FsmIr model;
+    model.name = "PayloadGuardModel";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Active");
+
+    SignalDefinition sig("Packet");
+    sig.attributes.emplace_back("len", DataType{PrimitiveTypeKind::UInt32}, "0");
+    model.add_signal(sig);
+
+    GuardModel gm("ValidPacketLen", "ValidPacketLen", "payload.len > 0", "payload.len > 0");
+    model.guards.push_back(gm);
+
+    TransitionEdge trans("Idle", "Active", "Packet");
+    trans.set_guard("ValidPacketLen");
+    model.transitions.push_back(trans);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = true;
+    CppModelEmitter::emit_model(out, model, opts);
+    std::string str = out.str();
+
+    EXPECT_NE(str.find("return cmd.len > 0;"), std::string::npos);
+    // Must not emit eventless (const InPorts& in, const Registers& reg) returning true!
+    EXPECT_EQ(str.find("operator()(const InPorts& in, const Registers& reg) const noexcept"), std::string::npos);
+}
+
+TEST(CppModelEmitterTest, SignalEmitOp_DoesNotEmitUnusedServicesParameter) {
+    FsmIr model;
+    model.name = "SignalEmitCheck";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Active");
+
+    VariableDefinition var;
+    var.name = "count";
+    var.type = DataType{PrimitiveTypeKind::UInt32};
+    var.initial_value = "0";
+    model.add_variable(std::move(var));
+    model.add_event("EvGo");
+
+    ActionSignature act("EmitAndStore");
+    StoreOp store_op;
+    store_op.target = LValueTarget("count", LValueScope::Register);
+    store_op.op = AssignmentOp::Assign;
+    store_op.expression = "1";
+    act.instructions.emplace_back(store_op, "Increment count");
+
+    SignalEmitOp emit_op;
+    emit_op.signal_name = "EvDone";
+    emit_op.arguments = {"arg1"};
+    act.instructions.emplace_back(emit_op, "Emit done signal");
+
+    TransitionEdge trans("Idle", "Active", "EvGo");
+    trans.transition_action = act;
+    model.transitions.push_back(trans);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = true;
+    CppModelEmitter::emit_model(out, model, opts);
+    std::string str = out.str();
+
+    EXPECT_EQ(str.find("Services& srv)"), std::string::npos);
+    EXPECT_NE(str.find("Services& /*srv*/)"), std::string::npos);
+    EXPECT_NE(str.find("// emit signal: EvDone"), std::string::npos);
+}

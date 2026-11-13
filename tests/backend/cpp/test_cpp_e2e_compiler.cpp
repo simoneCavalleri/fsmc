@@ -26,10 +26,14 @@
 #include "fsm/backend/cpp/runtime/traits/hook_traits.hpp"
 #include "fsm/backend/cpp/runtime_exporter.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
+#include "fsm/frontend/diagram/plantuml_parser.hpp"
+#include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/action.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/ir/fsm_ir_deserializer.hpp"
 #include "fsm/ir/signal_definition.hpp"
 #include "fsm/middleend/passes/boundary_action_fusion_pass.hpp"
+#include "fsm/middleend/passes/choice_inlining_pass.hpp"
 
 using namespace fsm::backend::cpp;
 using namespace fsm::backend;
@@ -1104,5 +1108,426 @@ int main() {
     run_standard_test("-std=c++17", CppStandard::Cpp17, "cpp17");
     run_standard_test("-std=c++20", CppStandard::Cpp20, "cpp20");
 
+    fs::remove_all(temp_dir);
+}
+
+TEST(CppE2ECompilerTest, V010TypedEventsChoiceInliningInstructionsAndSpscRejection) {
+    fsm::ir::FsmIr model;
+    model.name = "V010E2eFsm";
+    model.initial_state = "Idle";
+
+    model.add_state("Idle");
+    fsm::ir::StateNode choice("ChoiceHub");
+    choice.kind = fsm::ir::StateKind::Choice;
+    model.states.push_back(choice);
+    model.add_state("HighMode");
+    model.add_state("LowMode");
+
+    fsm::ir::VariableDefinition reg_flag;
+    reg_flag.name = "mode_flag";
+    reg_flag.type = fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::Boolean};
+    reg_flag.initial_value = "false";
+    model.add_variable(std::move(reg_flag));
+
+    fsm::ir::PortDefinition out_port;
+    out_port.name = "out_port";
+    out_port.type = fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::UInt32};
+    out_port.direction = fsm::ir::PortDirection::Out;
+    model.add_port(std::move(out_port));
+
+    fsm::ir::SignalDefinition pkt("Packet");
+    pkt.attributes.emplace_back("len", fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::UInt32}, "64");
+    pkt.validators.push_back("len > 0 && len <= 1500");
+    model.add_signal(pkt);
+
+    fsm::ir::SignalDefinition reset_sig("Reset");
+    model.add_signal(reset_sig);
+
+    // Idle -> ChoiceHub on Packet with ActionSignature::instructions
+    fsm::ir::TransitionEdge t_in("t_in", "Idle", "ChoiceHub", fsm::ir::SignalTrigger{"Packet", "payload"});
+    fsm::ir::ActionSignature act_in("record_pkt");
+    act_in.instructions.push_back(fsm::ir::StoreOp{fsm::ir::LValueTarget("mode_flag", fsm::ir::LValueScope::Register),
+                                                   fsm::ir::AssignmentOp::Assign, "true", std::nullopt});
+    act_in.instructions.push_back(fsm::ir::PortWriteOp{"out_port", "payload.len", std::nullopt, false});
+    t_in.set_action(act_in);
+    model.add_transition(t_in);
+
+    // ChoiceHub -> HighMode (is_high_len) / LowMode (else)
+    model.add_guard("is_high_len", "", "payload.len >= 100", "payload.len >= 100");
+    fsm::ir::TransitionEdge t_high("ChoiceHub", "HighMode", "");
+    t_high.set_guard("is_high_len");
+    model.add_transition(t_high);
+
+    fsm::ir::TransitionEdge t_low("ChoiceHub", "LowMode", "");
+    t_low.set_guard("else");
+    model.add_transition(t_low);
+
+    // Reset back to Idle
+    model.add_transition(fsm::ir::TransitionEdge("HighMode", "Idle", "Reset"));
+    model.add_transition(fsm::ir::TransitionEdge("LowMode", "Idle", "Reset"));
+
+    fsm::diagnostic::DiagnosticEngine diag;
+    ASSERT_TRUE(fsm::middleend::passes::ChoiceInliningPass::run(model, diag));
+
+    const std::string driver_source = R"(
+#include "v010_fsm.hpp"
+#include <cassert>
+
+int main() {
+    using namespace fsm;
+    V010E2eFsmInPorts in{};
+    V010E2eFsmOutPorts out{};
+    V010E2eFsmServices srv{};
+
+    // 1. Synchronous FSM: invalid Packet rejected safely via .is_valid()
+    V010E2eFsm sm;
+    auto bad_res = sm.dispatch(Packet{0}, in, out, srv);
+    assert(bad_res.status == dispatch_status::guard_rejected);
+    assert(sm.is_in<Idle>());
+    assert(!sm.registers().mode_flag);
+    assert(out.out_port == 0);
+
+    // 2. Synchronous FSM: valid Packet(250) -> HighMode via inlined Choice + instructions
+    auto ok_res = sm.dispatch(Packet{250}, in, out, srv);
+    assert(ok_res.is_success());
+    assert(sm.is_in<HighMode>());
+    assert(sm.registers().mode_flag);
+    assert(out.out_port == 250);
+
+    // 3. SPSC FSM: invalid Packet rejected on post(), valid Packet(50) -> LowMode
+    SpscV010E2eFsm spsc;
+    assert(!spsc.post(Packet{2000}));
+    assert(spsc.post(Packet{50}));
+    assert(spsc.process_one(::fsm::no_ports{}, out));
+    assert(spsc.is_in<LowMode>());
+    assert(out.out_port == 50);
+
+    return 0;
+}
+)";
+
+    namespace fs = std::filesystem;
+    fs::path temp_dir = fs::temp_directory_path() / "fsmc_e2e_v010_comprehensive_test";
+    fs::create_directories(temp_dir);
+
+    auto run_std = [&](const std::string& std_flag, CppStandard std_enum, const std::string& suffix) {
+        GeneratorOptions opts;
+        opts.cpp_standard = std_enum;
+        opts.target_namespace = "fsm";  // Exercises ::fsm::and_ / ::fsm::not_ inside namespace fsm
+        opts.standalone = true;
+        opts.include_stubs = true;
+        std::string code = CppGenerator::generate_header(model, opts);
+
+        fs::path hdr = temp_dir / "v010_fsm.hpp";
+        {
+            std::ofstream hf(hdr);
+            hf << code;
+        }
+        fs::path drv = temp_dir / ("driver_" + suffix + ".cpp");
+        {
+            std::ofstream df(drv);
+            df << driver_source;
+        }
+        std::string exe = (temp_dir / ("runner_" + suffix)).string();
+        std::string compile_cmd = "g++ " + std_flag + " -Wall -Wextra -Werror -pedantic -Wconversion -I" +
+                                  temp_dir.string() + " " + drv.string() + " -o " + exe;
+        ASSERT_EQ(std::system(compile_cmd.c_str()), 0) << "[" << suffix << "] Compilation failed";
+        EXPECT_EQ(std::system(exe.c_str()), 0) << "[" << suffix << "] Execution failed";
+    };
+
+    run_std("-std=c++17", CppStandard::Cpp17, "cpp17");
+    run_std("-std=c++20", CppStandard::Cpp20, "cpp20");
+
+    fs::remove_all(temp_dir);
+}
+
+TEST(CppE2ECompilerTest, UserBugHunt_DuplicateActionNameAndFloat32Conversion) {
+    fsm::ir::FsmIr model;
+    model.name = "FloatActionDedupFsm";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Low");
+    model.add_state("High");
+
+    fsm::ir::VariableDefinition reg_cnt;
+    reg_cnt.name = "calls";
+    reg_cnt.type = fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::UInt32};
+    reg_cnt.initial_value = "0";
+    model.add_variable(std::move(reg_cnt));
+
+    fsm::ir::PortDefinition out_pwm;
+    out_pwm.name = "pwm";
+    out_pwm.type = fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::Float32};
+    out_pwm.direction = fsm::ir::PortDirection::Out;
+    model.add_port(std::move(out_pwm));
+
+    fsm::ir::SignalDefinition cmd("SetSpeed");
+    cmd.attributes.emplace_back("speed", fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::Float32}, "0.0f");
+    model.add_signal(cmd);
+
+    fsm::ir::ActionSignature shared_act("update_vars");
+    fsm::ir::ActionAssignment a1;
+    a1.target = fsm::ir::LValueTarget("calls", fsm::ir::LValueScope::Register);
+    a1.op = fsm::ir::AssignmentOp::AddAssign;
+    a1.expression = "1";
+    shared_act.assignments.push_back(a1);
+
+    fsm::ir::ActionAssignment a2;
+    a2.target = fsm::ir::LValueTarget("pwm", fsm::ir::LValueScope::OutPort);
+    a2.op = fsm::ir::AssignmentOp::Assign;
+    a2.expression = "payload.speed * 2.0";  // double literal assigned to Float32 port
+    shared_act.assignments.push_back(a2);
+
+    fsm::ir::TransitionEdge t1("Idle", "Low", "SetSpeed");
+    t1.set_action(shared_act);
+    model.add_transition(t1);
+
+    fsm::ir::TransitionEdge t2("Low", "High", "SetSpeed");
+    t2.set_action(shared_act);
+    model.add_transition(t2);
+
+    const std::string driver_source = R"(
+#include "float_dedup_fsm.hpp"
+#include <cassert>
+
+int main() {
+    using namespace fsm_generated;
+    FloatActionDedupFsm sm;
+    FloatActionDedupFsmInPorts in{};
+    FloatActionDedupFsmOutPorts out{};
+    FloatActionDedupFsmServices srv{};
+
+    auto res = sm.dispatch(SetSpeed{12.5f}, in, out, srv);
+    assert(res.is_success());
+    assert(sm.is_in<Low>());
+    assert(sm.registers().calls == 1);  // Must NOT be 2 (deduplicated)
+    assert(out.pwm == 25.0f);
+    return 0;
+}
+)";
+
+    namespace fs = std::filesystem;
+    fs::path temp_dir = fs::temp_directory_path() / "fsmc_e2e_bug_hunt_float_dedup";
+    fs::create_directories(temp_dir);
+
+    for (const auto& [std_flag, std_enum, suffix] :
+         {std::tuple<std::string, CppStandard, std::string>{"-std=c++17", CppStandard::Cpp17, "cpp17"},
+          std::tuple<std::string, CppStandard, std::string>{"-std=c++20", CppStandard::Cpp20, "cpp20"}}) {
+        GeneratorOptions opts;
+        opts.cpp_standard = std_enum;
+        opts.standalone = true;
+        opts.include_stubs = true;
+        std::string code = CppGenerator::generate_header(model, opts);
+
+        fs::path hdr = temp_dir / "float_dedup_fsm.hpp";
+        {
+            std::ofstream hf(hdr);
+            hf << code;
+        }
+        fs::path drv = temp_dir / ("driver_" + suffix + ".cpp");
+        {
+            std::ofstream df(drv);
+            df << driver_source;
+        }
+        std::string exe = (temp_dir / ("runner_" + suffix)).string();
+        std::string compile_cmd = "g++ " + std_flag + " -Wall -Wextra -Werror -pedantic -Wconversion -I" +
+                                  temp_dir.string() + " " + drv.string() + " -o " + exe;
+        ASSERT_EQ(std::system(compile_cmd.c_str()), 0) << "[" << suffix << "] Compilation failed";
+        EXPECT_EQ(std::system(exe.c_str()), 0) << "[" << suffix << "] Execution failed";
+    }
+
+    fs::remove_all(temp_dir);
+}
+
+TEST(CppE2ECompilerTest, UserBugHunt_CppKeywordEscapingAndPlantUmlElseChoice) {
+    // 1. C++ keywords as port, variable, state, and signal names in SysML v2
+    const std::string kw_sysml = R"(
+state def KeywordFSM {
+    in port switch : Integer;
+    out port default : Integer;
+    attribute class : Integer = 0;
+
+    entry; then operator;
+    state operator;
+    state struct;
+
+    transition from operator accept signal
+        if in.switch > 0
+        do { class = 1; default = 42; }
+        then struct;
+}
+)";
+    fsm::ir::FsmIr kw_model;
+    std::string err;
+    fsm::frontend::formal::Sysml2Parser sysml_parser;
+    ASSERT_TRUE(sysml_parser.parse(kw_sysml, kw_model, err)) << err;
+
+    const std::string kw_driver = R"(
+#include "kw_fsm.hpp"
+#include <cassert>
+
+int main() {
+    using namespace fsm_generated;
+    KeywordFSM sm;
+    KeywordFSMInPorts in{};
+    KeywordFSMOutPorts out{};
+    KeywordFSMServices srv{};
+    in.switch_ = 1;
+    auto res = sm.dispatch(fsm_generated::signal{}, in, out, srv);
+    assert(res.is_success());
+    assert(sm.is_in<struct_>());
+    assert(sm.registers().class_ == 1);
+    assert(out.default_ == 42);
+    return 0;
+}
+)";
+
+    namespace fs = std::filesystem;
+    fs::path temp_dir = fs::temp_directory_path() / "fsmc_e2e_bug_hunt_round2";
+    fs::create_directories(temp_dir);
+
+    {
+        GeneratorOptions opts;
+        opts.cpp_standard = CppStandard::Cpp17;
+        opts.standalone = true;
+        opts.include_stubs = true;
+        std::string code = CppGenerator::generate_header(kw_model, opts);
+
+        fs::path hdr = temp_dir / "kw_fsm.hpp";
+        {
+            std::ofstream hf(hdr);
+            hf << code;
+        }
+        fs::path drv = temp_dir / "kw_drv.cpp";
+        {
+            std::ofstream df(drv);
+            df << kw_driver;
+        }
+        std::string exe = (temp_dir / "kw_runner").string();
+        std::string compile_cmd = "g++ -std=c++17 -Wall -Wextra -Werror -pedantic -Wconversion -I" + temp_dir.string() +
+                                  " " + drv.string() + " -o " + exe;
+        ASSERT_EQ(std::system(compile_cmd.c_str()), 0);
+        EXPECT_EQ(std::system(exe.c_str()), 0);
+    }
+
+    // 2. PlantUML <<choice>> with [else] must not emit `struct else_ { return else; }`
+    const std::string puml_src = R"(
+@startuml
+state Idle
+state Check <<choice>>
+state Fast
+state Slow
+[*] --> Idle
+Idle --> Check : Go
+Check --> Fast : [is_fast]
+Check --> Slow : [else]
+@enduml
+)";
+    fsm::ir::FsmIr puml_model;
+    fsm::frontend::diagram::PlantUmlParser puml_parser;
+    ASSERT_TRUE(puml_parser.parse(puml_src, puml_model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine diag;
+    ASSERT_TRUE(fsm::middleend::passes::ChoiceInliningPass::run(puml_model, diag));
+
+    GeneratorOptions opts;
+    opts.cpp_standard = CppStandard::Cpp17;
+    opts.standalone = true;
+    opts.include_stubs = true;
+    std::string puml_code = CppGenerator::generate_header(puml_model, opts);
+    EXPECT_EQ(puml_code.find("struct else_"), std::string::npos);
+
+    fs::remove_all(temp_dir);
+}
+
+TEST(CppE2ECompilerTest, XStateJsonContextVariablesCompile) {
+    const std::string json_src = R"({
+  "id": "JsonCtxDemo",
+  "initial": "Idle",
+  "context": { "count": 0, "ready": true },
+  "states": {
+    "Idle": { "on": { "Go": { "target": "Done", "guard": "count == 0 && ready" } } },
+    "Done": {}
+  }
+})";
+    fsm::ir::FsmIr model;
+    std::string err;
+    ASSERT_TRUE(fsm::ir::FsmIrDeserializer::deserialize_json(json_src, model, err)) << err;
+    ASSERT_NE(model.find_variable("count"), nullptr);
+    ASSERT_NE(model.find_variable("ready"), nullptr);
+
+    GeneratorOptions opts;
+    opts.cpp_standard = CppStandard::Cpp17;
+    opts.standalone = true;
+    std::string code = CppGenerator::generate_header(model, opts);
+
+    fs::path temp_dir = fs::temp_directory_path() / "fsmc_e2e_json_ctx_test";
+    fs::create_directories(temp_dir);
+    fs::path hdr = temp_dir / "JsonCtxDemo_fsm.hpp";
+    fs::path drv = temp_dir / "driver.cpp";
+    {
+        std::ofstream out(hdr);
+        out << code;
+    }
+    {
+        std::ofstream out(drv);
+        out << "#include \"JsonCtxDemo_fsm.hpp\"\n"
+            << "using namespace fsm_generated;\n"
+            << "int main() {\n"
+            << "    JsonCtxDemo sm;\n"
+            << "    sm.dispatch(Go{});\n"
+            << "    return sm.is_in<Done>() ? 0 : 1;\n"
+            << "}\n";
+    }
+    std::string exe = (temp_dir / "runner").string();
+    std::string compile_cmd = "g++ -std=c++17 -Wall -Wextra -Werror -pedantic -Wconversion -I" + temp_dir.string() +
+                              " " + drv.string() + " -o " + exe;
+    ASSERT_EQ(std::system(compile_cmd.c_str()), 0);
+    EXPECT_EQ(std::system(exe.c_str()), 0);
+    fs::remove_all(temp_dir);
+}
+
+TEST(CppE2ECompilerTest, KeywordVariableAndPortInGuardCompiles) {
+    const std::string json_src = R"({
+  "id": "KeywordGuardDemo",
+  "initial": "default",
+  "context": { "switch": 0 },
+  "states": {
+    "default": { "on": { "class": { "target": "register", "guard": "switch == 0" } } },
+    "register": {}
+  }
+})";
+    fsm::ir::FsmIr model;
+    std::string err;
+    ASSERT_TRUE(fsm::ir::FsmIrDeserializer::deserialize_json(json_src, model, err)) << err;
+
+    GeneratorOptions opts;
+    opts.cpp_standard = CppStandard::Cpp17;
+    opts.standalone = true;
+    std::string code = CppGenerator::generate_header(model, opts);
+    EXPECT_NE(code.find("reg.switch_ == 0"), std::string::npos);
+
+    fs::path temp_dir = fs::temp_directory_path() / "fsmc_e2e_kw_guard_test";
+    fs::create_directories(temp_dir);
+    fs::path hdr = temp_dir / "KeywordGuardDemo_fsm.hpp";
+    fs::path drv = temp_dir / "driver.cpp";
+    {
+        std::ofstream out(hdr);
+        out << code;
+    }
+    {
+        std::ofstream out(drv);
+        out << "#include \"KeywordGuardDemo_fsm.hpp\"\n"
+            << "using namespace fsm_generated;\n"
+            << "int main() {\n"
+            << "    KeywordGuardDemo sm;\n"
+            << "    sm.dispatch(class_{});\n"
+            << "    return sm.is_in<register_>() ? 0 : 1;\n"
+            << "}\n";
+    }
+    std::string exe = (temp_dir / "runner").string();
+    std::string compile_cmd = "g++ -std=c++17 -Wall -Wextra -Werror -pedantic -Wconversion -I" + temp_dir.string() +
+                              " " + drv.string() + " -o " + exe;
+    ASSERT_EQ(std::system(compile_cmd.c_str()), 0);
+    EXPECT_EQ(std::system(exe.c_str()), 0);
     fs::remove_all(temp_dir);
 }

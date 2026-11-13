@@ -11,9 +11,10 @@
 
 When invoking `dispatch()` or `step()` on `fsm::fsm`:
 
-1. **Stack Execution**: Transition logic, guard evaluation, and action execution run synchronously within the caller's execution thread.
-2. **Deterministic Run-to-Completion (RTC)**: The state transition completes entirely before the function call returns.
-3. **Zero Queue Overhead**: No dynamic heap allocations or asynchronous queue latencies.
+1. **Zero-Overhead Payload Validation (`.is_valid()`)**: If an incoming `Event` type exposes an `.is_valid()` member function (`detail::has_is_valid_v<Event>`), `dispatch()` validates `event.is_valid()` before evaluating any transition row. Invalid payloads are rejected immediately with `dispatch_status::guard_rejected` (and trigger any registered observer). Event types without `.is_valid()` incur zero overhead (`if constexpr`).
+2. **Stack Execution**: Transition logic, guard evaluation, and action execution run synchronously within the caller's execution thread.
+3. **Deterministic Run-to-Completion (RTC)**: The state transition completes entirely before the function call returns.
+4. **Zero Queue Overhead**: No dynamic heap allocations or asynchronous queue latencies.
 
 ```
 Caller Thread ──► fsm.dispatch(Event, in, out)

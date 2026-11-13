@@ -115,4 +115,82 @@ TEST(EfsmIntervalAnalysis, GuardOutsidePortDomain_EmitsUnsatisfiableDiagnostic) 
     EXPECT_TRUE(found_unsat_guard);
 }
 
+TEST(EFSMIntervalAnalysis, SignalPayloadValidatorPropagatesBoundedIntervalToRegister) {
+    FsmIr model;
+    model.name = "PayloadIntervalFSM";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Receiving");
+
+    VariableDefinition reg_len;
+    reg_len.name = "last_len";
+    reg_len.type = DataType{PrimitiveTypeKind::UInt32};
+    reg_len.initial_value = "0";
+    model.add_variable(std::move(reg_len));
+
+    SignalDefinition sig("Packet");
+    sig.attributes.emplace_back("len", DataType{PrimitiveTypeKind::UInt32}, "64");
+    sig.validators.push_back("len >= 10 && len <= 1500");
+    model.add_signal(sig);
+
+    TransitionEdge t("t1", "Idle", "Receiving", SignalTrigger{"Packet", "payload"});
+    ActionSignature act("capture_len");
+    ActionAssignment assign;
+    assign.target = LValueTarget("last_len", LValueScope::Register);
+    assign.op = AssignmentOp::Assign;
+    assign.expression = "payload.len";
+    act.assignments.push_back(assign);
+    t.set_action(act);
+    model.add_transition(t);
+
+    EFSMIntervalAnalyzer analyzer(model);
+    auto envs = analyzer.compute_state_intervals();
+
+    ASSERT_TRUE(envs.count("Receiving") > 0);
+    ASSERT_TRUE(envs.at("Receiving").count("last_len") > 0);
+    const Interval& iv = envs.at("Receiving").at("last_len");
+    EXPECT_DOUBLE_EQ(iv.lo, 10.0);
+    EXPECT_DOUBLE_EQ(iv.hi, 1500.0);
+}
+
+TEST(EFSMIntervalAnalysis, MultipleValidatorsAndGuardIntersectToTightInterval) {
+    FsmIr model;
+    model.name = "TightPayloadIntervalFSM";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Bounded");
+
+    VariableDefinition reg_val;
+    reg_val.name = "clamped_val";
+    reg_val.type = DataType{PrimitiveTypeKind::UInt32};
+    reg_val.initial_value = "0";
+    model.add_variable(std::move(reg_val));
+
+    SignalDefinition sig("Sample");
+    sig.attributes.emplace_back("val", DataType{PrimitiveTypeKind::UInt32}, "20");
+    sig.validators.push_back("val >= 10");
+    sig.validators.push_back("val <= 100");
+    model.add_signal(sig);
+
+    TransitionEdge t("t1", "Idle", "Bounded", SignalTrigger{"Sample", "payload"});
+    t.set_guard("payload.val <= 50");
+    ActionSignature act("store_val");
+    ActionAssignment assign;
+    assign.target = LValueTarget("clamped_val", LValueScope::Register);
+    assign.op = AssignmentOp::Assign;
+    assign.expression = "payload.val";
+    act.assignments.push_back(assign);
+    t.set_action(act);
+    model.add_transition(t);
+
+    EFSMIntervalAnalyzer analyzer(model);
+    auto envs = analyzer.compute_state_intervals();
+
+    ASSERT_TRUE(envs.count("Bounded") > 0);
+    ASSERT_TRUE(envs.at("Bounded").count("clamped_val") > 0);
+    const Interval& iv = envs.at("Bounded").at("clamped_val");
+    EXPECT_DOUBLE_EQ(iv.lo, 10.0);
+    EXPECT_DOUBLE_EQ(iv.hi, 50.0);
+}
+
 }  // namespace

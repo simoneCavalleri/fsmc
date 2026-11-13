@@ -85,6 +85,8 @@ class spsc_fsm {
     static_assert(
         std::is_trivially_copyable_v<Registers> || std::is_same_v<Registers, no_registers>,
         "spsc_fsm requires Registers to be trivially copyable for sound seqlock snapshots without torn reads.");
+    static_assert(std::is_trivially_copyable_v<typename Table::event_variant>,
+                  "spsc_fsm requires all Event payloads to be trivially copyable for lock-free ring buffer safety.");
 
   public:
     using fsm_type = fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, no_observer, DeferredCapacity>;
@@ -143,10 +145,30 @@ class spsc_fsm {
      */
     template <typename Event>
     [[nodiscard]] bool post(Event&& event) noexcept {
+        if constexpr (detail::has_is_valid_v<std::decay_t<Event>>) {
+            if (!event.is_valid()) {
+                return false;
+            }
+        }
         return queue_.push(event_variant{std::forward<Event>(event)});
     }
 
-    [[nodiscard]] bool post(const event_variant& event) noexcept { return queue_.push(event); }
+    [[nodiscard]] bool post(const event_variant& event) noexcept {
+        const bool payload_ok = std::visit(
+            [](const auto& evt) -> bool {
+                using EvType = std::decay_t<decltype(evt)>;
+                if constexpr (detail::has_is_valid_v<EvType>) {
+                    return evt.is_valid();
+                } else {
+                    return true;
+                }
+            },
+            event);
+        if (!payload_ok) {
+            return false;
+        }
+        return queue_.push(event);
+    }
 
     // ========================================================================
     // Consumer API (Single Consumer / Dedicated Worker Thread)

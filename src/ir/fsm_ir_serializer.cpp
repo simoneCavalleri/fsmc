@@ -872,6 +872,31 @@ std::string FsmIrSerializer::serialize_json(const FsmIr& ir, int indent_spaces) 
         out << "  ],\n";
     }
 
+    // Guards
+    if (!ir.guards.empty()) {
+        out << "  \"guards\": [\n";
+        for (size_t g = 0; g < ir.guards.size(); ++g) {
+            const auto& grd = ir.guards[g];
+            out << "    {\n";
+            out << "      \"name\": \"" << escape_json(grd.name) << "\"";
+            if (!grd.description.empty()) {
+                out << ",\n      \"description\": \"" << escape_json(grd.description) << "\"";
+            }
+            if (grd.raw_expression.has_value()) {
+                out << ",\n      \"raw_expression\": \"" << escape_json(*grd.raw_expression) << "\"";
+            }
+            if (grd.normalized_expression.has_value()) {
+                out << ",\n      \"normalized_expression\": \"" << escape_json(*grd.normalized_expression) << "\"";
+            }
+            out << "\n    }";
+            if (g + 1 < ir.guards.size()) {
+                out << ",";
+            }
+            out << "\n";
+        }
+        out << "  ],\n";
+    }
+
     // Properties
     if (!ir.properties.empty()) {
         out << "  \"properties\": [\n";

@@ -8,6 +8,7 @@ In this guide, you will learn how **`fsmc`** implements **Extended Finite State 
 - Defining **InPorts** (read-only with range contracts), **OutPorts** (write-only), and **Registers** (internal memory).
 - Formulating **Guard Conditions** (`if [expr]`) over ports and registers.
 - Executing **Actions** that mutate `OutPorts`, update `Registers`, and trigger external `Services`.
+- Defining **Typed Event Payloads** (`item def`) with `assert constraint` validators enforced automatically at dispatch time (`.is_valid()`).
 
 ---
 
@@ -278,6 +279,69 @@ if (res.is_success()) {
 ```
 
 `dispatch_result` is non-allocating: all `transition_trace` fields are `std::string_view` pointing into static storage. It adds zero runtime overhead when not used.
+
+---
+
+## 8. Typed Event Payloads & Runtime Validation (`.is_valid()`)
+
+Events can also carry strongly typed parameters defined as SysML v2 `item def` blocks with `assert constraint` contracts:
+
+```sysml
+package ConnPkg {
+    item def ConnectCmd {
+        attribute timeout_ms : Integer;
+        assert constraint { timeout_ms >= 100 and timeout_ms <= 5000; }
+    }
+
+    state def ConnectionManager {
+        in port is_authenticated : Boolean;
+        attribute retry_count : Integer = 0;
+
+        entry; then Disconnected;
+        state Disconnected;
+        state Connecting;
+
+        transition t_connect
+            first Disconnected
+            accept ConnectCmd
+            if payload.timeout_ms <= 3000 and in.is_authenticated
+            do action { reg.retry_count = 0; }
+            then Connecting;
+    }
+}
+```
+
+When `fsmc` compiles this model, it synthesizes `constexpr bool is_valid() const noexcept` directly on the generated `ConnectCmd` struct:
+
+```cpp
+struct ConnectCmd {
+    static constexpr std::string_view name = "ConnectCmd";
+    uint32_t timeout_ms{};
+
+    constexpr ConnectCmd() = default;
+    constexpr explicit ConnectCmd(uint32_t timeout_ms_) : timeout_ms(std::move(timeout_ms_)) {}
+
+    [[nodiscard]] constexpr bool is_valid() const noexcept {
+        return (timeout_ms >= 100 && timeout_ms <= 5000);
+    }
+};
+```
+
+Both `fsm::fsm::dispatch()` and `fsm::spsc_fsm::post()` automatically evaluate `.is_valid()` at zero overhead (`if constexpr`) before transition evaluation or queuing:
+
+```cpp
+// Out-of-range payload (50 ms < 100 ms): rejected before guards or actions run
+auto r_invalid = fsm.dispatch(ConnectCmd{50}, in, out);
+assert(r_invalid.is_guard_rejected());
+assert(fsm.is_in<Disconnected>());
+
+// Valid payload passing guard (500 ms <= 3000 ms)
+auto r_valid = fsm.dispatch(ConnectCmd{500}, in, out);
+assert(r_valid.is_success());
+assert(fsm.is_in<Connecting>());
+```
+
+Additionally, under `SPSC` or `RealTime` concurrency policies, `SemanticValidationPass` (and `spsc_fsm` at compile time via `static_assert`) verifies that all event payload attributes remain `trivially_copyable`.
 
 ---
 

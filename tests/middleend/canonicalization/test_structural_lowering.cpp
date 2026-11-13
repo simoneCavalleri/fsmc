@@ -607,7 +607,10 @@ TEST(ConnectiveJunctionChaining, MultiHopChain_FusesIntoCompoundTransition) {
     EXPECT_EQ(comp.target, "StateB");
     EXPECT_EQ(comp.event, "EvTick");
     ASSERT_TRUE(comp.guard.has_value());
-    EXPECT_EQ(*comp.guard, "(x > 0) && (y > 0)");
+    EXPECT_EQ(*comp.guard, "x > 0 && y > 0");
+    ASSERT_TRUE(comp.guard_ast.has_value());
+    EXPECT_EQ(comp.guard_ast->op, GuardOp::And);
+    EXPECT_EQ(comp.guard_ast->children.size(), 2u);
     ASSERT_TRUE(comp.condition_action.has_value());
     EXPECT_EQ(comp.condition_action->name, "ca1_ca2");
     ASSERT_TRUE(comp.transition_action.has_value());

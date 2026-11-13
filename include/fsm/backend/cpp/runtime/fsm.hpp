@@ -20,6 +20,17 @@
 
 namespace fsm {
 
+namespace detail {
+template <typename T, typename = void>
+struct has_is_valid : std::false_type {};
+
+template <typename T>
+struct has_is_valid<T, std::void_t<decltype(std::declval<const T&>().is_valid())>> : std::true_type {};
+
+template <typename T>
+inline constexpr bool has_is_valid_v = has_is_valid<std::decay_t<T>>::value;
+}  // namespace detail
+
 /**
  * @brief Core Compile-Time Finite State Machine Engine (Model-Based Systems Engineering Partitioned Domain
  * Architecture).
@@ -238,6 +249,18 @@ class fsm {
 
     template <typename Event>
     dispatch_result dispatch(const Event& event, const in_ports_type& in, out_ports_type& out, services_type& srv) {
+        if constexpr (detail::has_is_valid_v<Event>) {
+            if (!event.is_valid()) {
+                if constexpr (has_observer) {
+                    observer_(transition_info{current_state_name(),
+                                              {},
+                                              get_event_name(event),
+                                              dispatch_status::guard_rejected,
+                                              transition_kind::external});
+                }
+                return dispatch_result{dispatch_status::guard_rejected, std::nullopt};
+            }
+        }
         auto res = dispatch_direct_ports(event, in, out, srv);
         if (res.is_unhandled()) {
             bool was_deferred = false;

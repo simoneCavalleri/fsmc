@@ -61,7 +61,7 @@ flowchart TD
 * **Why it matters**: Guarantees deterministic, order-independent IR construction and reproducible generated code across host platforms and filesystems.
 
 #### 2. `semantic-validation` (`SemanticValidationPass`)
-* **What it does**: Validates variable and port targets, algebraic assignment semantics, and type resolution across the datapath.
+* **What it does**: Validates variable and port targets, algebraic assignment semantics, typed event payload member accesses (`payload.*`, `cmd.*`, `payload_binding.*`) against `SignalDefinition::attributes` (rejecting payload references in triggerless actions/guards), `SPSC`/`RealTime` trivial-copyability rules, and type resolution across the datapath.
 
 #### 3. `guard-simplification` (`GuardSimplificationPass`)
 * **What it does**: Performs bottom-up algebraic boolean rewriting on transition guard ASTs (double negation elimination, tautology absorption, De Morgan's laws).
@@ -83,10 +83,10 @@ flowchart TD
 * **What it does**: Flattens hierarchical transition boundaries into Lowest Common Ancestor (LCA) sequences: source exit path $\to$ transition action $\to$ target entry path. Clears lowered state hooks to eliminate duplicate action executions.
 
 #### 8. `connective-junction-chaining` (`ConnectiveJunctionChainingPass`)
-* **What it does**: Collapses multi-hop connective junction paths (`StateA -> J1 [g1] -> J2 [g2] -> StateB`) into direct atomic transitions guarded by compound conjuncts $(g_1 \land g_2)$ and fusing condition actions and transition actions into compound actions (`Action1_Action2`). Removes intermediate micro-states.
+* **What it does**: Collapses multi-hop connective junction paths (`StateA -> J1 [g1] -> J2 [g2] -> StateB`) into direct atomic transitions guarded by target-agnostic `GuardAstNode` conjunctions $(g_1 \land g_2)$ and fusing condition actions and transition actions into compound signatures. Removes intermediate micro-states.
 
 #### 9. `choice-inlining` (`ChoiceInliningPass`)
-* **What it does**: Collapses dynamic choice (`Choice`) pseudostates into direct composite guarded transitions.
+* **What it does**: Collapses dynamic choice (`Choice`) pseudostates into direct composite guarded transitions using target-agnostic `GuardAstNode` combinators.
 
 #### 10. `inline-submachines` (`SubmachineInliningPass`)
 * **What it does**: Inlines external reusable statecharts referenced via `SubmachineRef` directly into the parent statechart hierarchy.

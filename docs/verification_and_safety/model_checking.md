@@ -64,6 +64,9 @@ fsmc -i examples/01_basic_patterns/network_protocol/connection.sysml --verify
 | `--engine` | `auto`, `internal`, `nuxmv` | Verification engine (`auto`/`internal` run the built-in graph model checker; `nuxmv` delegates to an external `nuXmv` solver if available). | `auto` |
 | `--ltl` | `"<formula>"` | Injects an ad-hoc LTL formula for verification on the input model. | `""` |
 | `--ctl` | `"<formula>"` | Injects an ad-hoc CTL formula for verification on the input model. | `""` |
+| `--export-cex-gtest` | `<file>` | Exports counterexample traces from violated LTL/CTL properties into a compilable GoogleTest C++ unit test. | None |
+| `--simulate` | *(flag)* | Simulates an event trace directly on canonical `FsmIr` (`IrSimulator`) with validator enforcement. | `false` |
+| `--trace` | `<file>` | JSON array (`[{"event": "..."}]`) or line-based event trace input for `--simulate` (defaults to stdin). | `stdin` |
 
 ### Passing Verification Report
 
@@ -115,6 +118,18 @@ fsmc -i flight_mission.sysml --export smv -o flight_model.smv
 
 # Execute nuXmv externally
 nuXmv flight_model.smv
+```
+
+### Counterexample-to-GTest Export & IR Trace Simulation
+
+When a formal property fails, you can turn its counterexample directly into a reproducible GoogleTest C++ regression test, or step through event traces directly on `FsmIr` before codegen:
+
+```bash
+# Export any formal property counterexample to a compilable GoogleTest stub
+fsmc -i flight_mission.sysml --verify --export-cex-gtest flight_cex_test.cpp
+
+# Replay a JSON or line-based event trace on the IR simulator (enforcing signal validators)
+fsmc -i flight_mission.sysml --simulate --trace events.json
 ```
 
 ---

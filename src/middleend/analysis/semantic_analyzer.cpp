@@ -1,5 +1,8 @@
 #include "fsm/middleend/analysis/semantic_analyzer.hpp"
 
+#include <cctype>
+#include <unordered_set>
+
 namespace fsm::middleend::analysis {
 
 using namespace fsm::ir;
@@ -48,13 +51,52 @@ bool SemanticAnalyzer::validate(const FsmIr& ir, std::vector<std::string>& error
         }
     }
 
-    // 3. Verify Signal Attribute Types
+    // 3. Verify Signal Attribute Types & SPSC/RealTime Trivially-Copyable Constraint
+    auto is_trivially_copyable_type = [&](auto& self, const DataType& dt,
+                                          std::unordered_set<std::string>& visited) -> bool {
+        if (dt.is_primitive()) {
+            return !dt.is_string();
+        }
+        const auto& cname = dt.custom_name();
+        if (cname.rfind("std::string", 0) == 0 || cname.rfind("std::vector", 0) == 0 ||
+            cname.rfind("std::map", 0) == 0 || cname.rfind("std::unordered_", 0) == 0) {
+            return false;
+        }
+        if (visited.count(cname) > 0) {
+            return true;
+        }
+        visited.insert(cname);
+        if (const auto* ct = ir.find_type(cname); ct != nullptr && ct->kind == TypeKind::Struct) {
+            for (const auto& field : ct->fields) {
+                if (!self(self, field.type, visited)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+
+    const bool require_trivially_copyable_events =
+        (ir.concurrency.dispatch == EventDispatchSemantics::ActiveObjectAsynchronous) ||
+        (ir.attributes.count("spsc") > 0) || (ir.attributes.count("realtime") > 0) ||
+        (ir.attributes.find("execution_policy") != ir.attributes.end() &&
+         (ir.attributes.at("execution_policy") == "SPSC" || ir.attributes.at("execution_policy") == "RealTime"));
+
     for (const auto& sig : ir.signals) {
         for (const auto& attr : sig.attributes) {
             if (!is_known_data_type(attr.type)) {
                 errors.push_back("Signal '" + sig.name + "' attribute '" + attr.name + "' references unknown type '" +
                                  attr.type.to_canonical_string() + "'");
                 valid = false;
+            }
+            if (require_trivially_copyable_events) {
+                std::unordered_set<std::string> visited;
+                if (!is_trivially_copyable_type(is_trivially_copyable_type, attr.type, visited)) {
+                    errors.push_back("Signal '" + sig.name + "' attribute '" + attr.name + "' of type '" +
+                                     attr.type.to_canonical_string() +
+                                     "' is not trivially copyable, which is mandatory under SPSC / RealTime policy");
+                    valid = false;
+                }
             }
         }
     }
@@ -190,6 +232,139 @@ bool SemanticAnalyzer::validate(const FsmIr& ir, std::vector<std::string>& error
     for (const auto& gm : ir.guards) {
         if (gm.raw_expression.has_value()) {
             check_guard_purity(*gm.raw_expression, "guard '" + gm.name + "'");
+        }
+    }
+
+    // 7. Verify Typed Event Payload Member References
+    auto is_ident_start = [](char c) {
+        return std::isalpha(static_cast<unsigned char>(c)) != 0 || c == '_';
+    };
+    auto is_ident_char = [](char c) {
+        return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_';
+    };
+
+    auto check_payload_references = [&](std::string_view expr, const TransitionEdge* edge, const std::string& ctx) {
+        if (expr.empty()) {
+            return;
+        }
+        std::string custom_binding;
+        const SignalDefinition* bound_signal = nullptr;
+        bool has_signal_trigger = false;
+        if (edge != nullptr && std::holds_alternative<SignalTrigger>(edge->trigger)) {
+            has_signal_trigger = true;
+            const auto& trig = std::get<SignalTrigger>(edge->trigger);
+            if (!trig.payload_binding.empty()) {
+                custom_binding = trig.payload_binding;
+            }
+            bound_signal = ir.find_signal(trig.signal_name);
+        }
+
+        const std::size_t n = expr.size();
+        for (std::size_t i = 0; i < n;) {
+            if (expr[i] == '"' || expr[i] == '\'') {
+                const char q = expr[i++];
+                while (i < n) {
+                    if (expr[i] == '\\' && i + 1 < n) {
+                        i += 2;
+                    } else if (expr[i++] == q) {
+                        break;
+                    }
+                }
+                continue;
+            }
+            if (is_ident_start(expr[i])) {
+                const std::size_t start = i;
+                while (i < n && is_ident_char(expr[i])) {
+                    ++i;
+                }
+                std::string_view prefix = expr.substr(start, i - start);
+                std::size_t dot_pos = i;
+                while (dot_pos < n && std::isspace(static_cast<unsigned char>(expr[dot_pos])) != 0) {
+                    ++dot_pos;
+                }
+                if (dot_pos < n && expr[dot_pos] == '.') {
+                    std::size_t m_start = dot_pos + 1;
+                    while (m_start < n && std::isspace(static_cast<unsigned char>(expr[m_start])) != 0) {
+                        ++m_start;
+                    }
+                    if (m_start < n && is_ident_start(expr[m_start])) {
+                        std::size_t m_end = m_start;
+                        while (m_end < n && is_ident_char(expr[m_end])) {
+                            ++m_end;
+                        }
+                        std::string_view member = expr.substr(m_start, m_end - m_start);
+                        const bool is_payload_prefix =
+                            (prefix == "payload" || prefix == "cmd" || prefix == "event" || prefix == "ev" ||
+                             prefix == "sig" || (!custom_binding.empty() && prefix == custom_binding));
+                        if (is_payload_prefix) {
+                            if (!has_signal_trigger) {
+                                errors.push_back("Payload/event member access '" + std::string(prefix) + "." +
+                                                 std::string(member) + "' in " + ctx + " which has no signal trigger");
+                                valid = false;
+                            } else if (bound_signal != nullptr && !bound_signal->attributes.empty() &&
+                                       member != "is_valid") {
+                                bool found_attr = false;
+                                for (const auto& attr : bound_signal->attributes) {
+                                    if (attr.name == member) {
+                                        found_attr = true;
+                                        break;
+                                    }
+                                }
+                                if (!found_attr) {
+                                    errors.push_back("Signal '" + bound_signal->name + "' has no payload attribute '" +
+                                                     std::string(member) + "' referenced in " + ctx);
+                                    valid = false;
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                ++i;
+            }
+        }
+    };
+
+    auto check_action_payloads = [&](const ActionSignature& act, const TransitionEdge* edge, const std::string& ctx) {
+        for (const auto& assign : act.assignments) {
+            check_payload_references(assign.expression, edge, ctx);
+        }
+        for (const auto& inst : act.instructions) {
+            if (const auto* st = std::get_if<StoreOp>(&inst.op)) {
+                check_payload_references(st->expression, edge, ctx);
+            } else if (const auto* pw = std::get_if<PortWriteOp>(&inst.op)) {
+                check_payload_references(pw->expression, edge, ctx);
+            } else if (const auto* ac = std::get_if<ActionCallOp>(&inst.op)) {
+                for (const auto& arg : ac->arguments) {
+                    check_payload_references(arg, edge, ctx);
+                }
+            } else if (const auto* se = std::get_if<SignalEmitOp>(&inst.op)) {
+                for (const auto& arg : se->arguments) {
+                    check_payload_references(arg, edge, ctx);
+                }
+            }
+        }
+    };
+
+    for (const auto& tr : ir.transitions) {
+        const std::string ctx = "transition '" + tr.source + " -> " + tr.target + "'";
+        if (tr.guard.has_value()) {
+            check_payload_references(*tr.guard, &tr, ctx);
+        }
+        if (tr.condition_action.has_value()) {
+            check_action_payloads(*tr.condition_action, &tr, ctx);
+        }
+        if (tr.transition_action.has_value()) {
+            check_action_payloads(*tr.transition_action, &tr, ctx);
+        }
+    }
+
+    for (const auto& st : ir.states) {
+        for (const auto& act : st.entry_actions) {
+            check_action_payloads(act, nullptr, "state '" + st.name + "' entry action");
+        }
+        for (const auto& act : st.exit_actions) {
+            check_action_payloads(act, nullptr, "state '" + st.name + "' exit action");
         }
     }
 

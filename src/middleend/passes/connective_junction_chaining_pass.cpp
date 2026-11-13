@@ -24,30 +24,37 @@ bool is_else_guard(const std::optional<std::string>& g) {
     return val == "else" || val == "otherwise" || val == "default";
 }
 
-bool is_plain_identifier_guard(const std::string& g) {
-    if (g.empty()) {
-        return false;
+std::optional<GuardAstNode> extract_non_else_guard_ast(const TransitionEdge& edge) {
+    if (is_else_guard(edge.guard)) {
+        return std::nullopt;
     }
-    if (std::isalpha(static_cast<unsigned char>(g[0])) == 0 && g[0] != '_') {
-        return false;
-    }
-    for (char c : g) {
-        if (std::isalnum(static_cast<unsigned char>(c)) == 0 && c != '_') {
-            return false;
+    if (edge.guard_ast.has_value()) {
+        const std::string text = edge.guard_ast->to_string();
+        if (text.empty() || text == "else" || text == "otherwise" || text == "default") {
+            return std::nullopt;
         }
+        return edge.guard_ast;
     }
-    return true;
+    if (edge.guard.has_value() && !edge.guard->empty()) {
+        return GuardAstNode(*edge.guard);
+    }
+    return std::nullopt;
 }
 
-std::string combine_two_guards(const std::string& g1, const std::string& g2) {
-    if (g1.empty())
-        return g2;
-    if (g2.empty())
-        return g1;
-    if (is_plain_identifier_guard(g1) && is_plain_identifier_guard(g2)) {
-        return "fsm::and_<" + g1 + ", " + g2 + ">";
+std::optional<GuardAstNode> combine_guard_asts(const std::optional<GuardAstNode>& lhs,
+                                               const std::optional<GuardAstNode>& rhs) {
+    if (!lhs.has_value()) {
+        return rhs;
     }
-    return "(" + g1 + ") && (" + g2 + ")";
+    if (!rhs.has_value()) {
+        return lhs;
+    }
+    if (lhs->op == GuardOp::And) {
+        GuardAstNode merged = *lhs;
+        merged.children.push_back(*rhs);
+        return merged;
+    }
+    return GuardAstNode(GuardOp::And, {*lhs, *rhs});
 }
 
 }  // namespace
@@ -148,15 +155,13 @@ bool ConnectiveJunctionChainingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 }
             }
 
-            // Combine Guards
-            std::string combined_guard;
+            // Combine Guards as target-agnostic GuardAstNode
+            std::optional<GuardAstNode> combined_guard;
             for (const auto& edge : current_path) {
-                if (!is_else_guard(edge.guard)) {
-                    combined_guard = combine_two_guards(combined_guard, *edge.guard);
-                }
+                combined_guard = combine_guard_asts(combined_guard, extract_non_else_guard_ast(edge));
             }
-            if (!combined_guard.empty()) {
-                composite.set_guard(combined_guard);
+            if (combined_guard.has_value()) {
+                composite.set_guard_ast(std::move(combined_guard));
             }
 
             // Combine Condition Actions

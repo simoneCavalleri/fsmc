@@ -19,6 +19,13 @@ event def SensorThresholdExceeded {
 }
 ```
 
+#### Typed Payload Resolution & Validation
+`fsmc` enforces typed event payload safety end-to-end across static analysis, code generation, and runtime dispatch:
+
+- **Static Member Resolution**: References to `payload.<field>`, `cmd.<field>`, `event.<field>`, `sig.<field>`, `ev.<field>`, or a transition's explicit `payload_binding` are resolved against `SignalDefinition::attributes`. Accessing an unknown field, or referencing event payload fields in triggerless contexts (`on_enter`, `on_exit`, `AnonymousTrigger`, or `TimeTrigger`), is rejected during `SemanticValidationPass`.
+- **SPSC / RealTime Trivially-Copyable Contract**: Under `SPSC` or `RealTime` concurrency policies, signal attributes must be trivially copyable (no `std::string` or dynamic containers).
+- **Safe Runtime Payload Rejection (`.is_valid()`)**: Generated signal structs carrying validator constraints expose `constexpr bool is_valid() const noexcept`. Both `fsm::dispatch()` and `fsm::spsc_fsm::post()` automatically check `.is_valid()` at zero overhead (`if constexpr`) before transition evaluation or queuing, rejecting malformed events cleanly.
+
 ### 2. Timed Transitions (`after` and `every`)
 Timed triggers model real-time timeouts and periodic ticks:
 

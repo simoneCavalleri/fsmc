@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 518  
+**Total Documented Test Cases**: 520  
 
 ---
 
@@ -866,6 +866,9 @@
 
 #### `ScxmlParser.RawBooleanConditions_PreservedInGuardsAndSerialized`
 **Test Intent**: Verify SCXML raw boolean condition preservation and roundtrip serialization.
+
+#### `ScxmlParserTest.InfersDataModelVariableTypesFromExpr`
+**Test Intent**: Verify SCXML <data> type inference when 'type' attribute is omitted.
 
 ### [`test_scxml_semantic_completeness.cpp`](../../tests/frontend/formal/test_scxml_semantic_completeness.cpp) (`tests/frontend/formal/test_scxml_semantic_completeness.cpp`)
 #### `ScxmlSemanticCompleteness.ParallelRegions_ParsedAsOrthogonalStates`
@@ -1837,6 +1840,13 @@
 
 **Scenario**:
   - Parse '--modular model.sysml' and '--modular <fsm/fsm.hpp> model.sysml', and test infer_fsm_name_from_file.
+
+#### `FsmcOptionsTest.SimulateAndExportCexGTest_ParseAndExecuteCleanly`
+**Test Intent**: Verify --simulate --trace executes IR simulation with payload validation and
+--export-cex-gtest parses and emits valid GoogleTest reproduction stubs.
+
+**Scenario**:
+  - Parse CLI flags for simulation/CEX export, run trace simulation on a PlantUML model, and verify CEX
 
 ### [`test_multiformat_presets_roundtrip.cpp`](../../tests/integration/test_multiformat_presets_roundtrip.cpp) (`tests/integration/test_multiformat_presets_roundtrip.cpp`)
 #### `MultiformatPresets.Sysml2UavMission_PassesRoundtripAndStrictCompilation`

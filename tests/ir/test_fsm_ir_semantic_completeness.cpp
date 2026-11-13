@@ -16,6 +16,7 @@
 #include "fsm/ir/state_node.hpp"
 #include "fsm/ir/transition_edge.hpp"
 #include "fsm/ir/trigger.hpp"
+#include "fsm/middleend/analysis/semantic_analyzer.hpp"
 
 using namespace fsm::ir;
 
@@ -295,4 +296,143 @@ TEST(FsmIr, SemanticCompletenessModel_IntegratesClocksTerminatesAndContinuousTri
     EXPECT_TRUE(t->transition_action.has_value());
     EXPECT_EQ(t->transition_action->instructions.size(), 1U);
     EXPECT_EQ(t->transition_action->instructions[0].kind, ActionOpKind::PortWrite);
+}
+
+TEST(TypedEventPayloads, SemanticAnalyzerEnforcesPayloadAndSpscConstraints) {
+    using fsm::middleend::analysis::SemanticAnalyzer;
+
+    // 1. Valid payload binding & existing field
+    {
+        FsmIr ir;
+        ir.name = "ValidPayloadFSM";
+        ir.initial_state = "Idle";
+        ir.add_state("Idle");
+        ir.add_state("Active");
+        VariableDefinition v;
+        v.name = "rx_len";
+        v.type = DataType{PrimitiveTypeKind::UInt32};
+        ir.add_variable(std::move(v));
+
+        SignalDefinition sig("Packet");
+        sig.attributes.emplace_back("len", DataType{PrimitiveTypeKind::UInt32}, "0");
+        ir.add_signal(sig);
+
+        TransitionEdge tr("t1", "Idle", "Active", SignalTrigger{"Packet", "pkt"});
+        tr.set_guard("pkt.len > 0");
+        ActionSignature act("store_len");
+        ActionAssignment assign;
+        assign.target = LValueTarget("rx_len", LValueScope::Register);
+        assign.op = AssignmentOp::Assign;
+        assign.expression = "pkt.len";
+        act.assignments.push_back(assign);
+        tr.set_action(act);
+        ir.transitions.push_back(tr);
+
+        auto res = SemanticAnalyzer::analyze(ir);
+        EXPECT_TRUE(res.valid);
+    }
+
+    // 2. Nonexistent field on SignalDefinition
+    {
+        FsmIr ir;
+        ir.name = "BadFieldFSM";
+        ir.initial_state = "Idle";
+        ir.add_state("Idle");
+        ir.add_state("Active");
+        SignalDefinition sig("Packet");
+        sig.attributes.emplace_back("len", DataType{PrimitiveTypeKind::UInt32}, "0");
+        ir.add_signal(sig);
+
+        TransitionEdge tr("t1", "Idle", "Active", SignalTrigger{"Packet", "payload"});
+        tr.set_guard("payload.unknown_field > 0");
+        ir.transitions.push_back(tr);
+
+        auto res = SemanticAnalyzer::analyze(ir);
+        EXPECT_FALSE(res.valid);
+    }
+
+    // 3. Payload access in triggerless entry action
+    {
+        FsmIr ir;
+        ir.name = "BadEntryPayloadFSM";
+        ir.initial_state = "Idle";
+        StateNode st("Idle");
+        VariableDefinition v;
+        v.name = "x";
+        v.type = DataType{PrimitiveTypeKind::UInt32};
+        ir.add_variable(std::move(v));
+        ActionSignature entry("bad_entry");
+        ActionAssignment assign;
+        assign.target = LValueTarget("x", LValueScope::Register);
+        assign.op = AssignmentOp::Assign;
+        assign.expression = "payload.len";
+        entry.assignments.push_back(assign);
+        st.entry_actions.push_back(entry);
+        ir.states.push_back(st);
+
+        auto res = SemanticAnalyzer::analyze(ir);
+        EXPECT_FALSE(res.valid);
+    }
+
+    // 4. Non-trivially-copyable signal attribute rejected under SPSC policy
+    {
+        FsmIr ir;
+        ir.name = "SpscStringPayloadFSM";
+        ir.initial_state = "Idle";
+        ir.add_state("Idle");
+        ir.attributes["execution_policy"] = "SPSC";
+        SignalDefinition sig("TextMsg");
+        sig.attributes.emplace_back("text", DataType{PrimitiveTypeKind::String}, "\"\"");
+        ir.add_signal(sig);
+
+        auto res = SemanticAnalyzer::analyze(ir);
+        EXPECT_FALSE(res.valid);
+    }
+
+    // 5. Nested StructDefinition containing String field rejected under RealTime policy
+    {
+        FsmIr ir;
+        ir.name = "RealtimeNestedStringFSM";
+        ir.initial_state = "Idle";
+        ir.add_state("Idle");
+        ir.attributes["execution_policy"] = "RealTime";
+
+        StructDefinition inner;
+        inner.name = "InnerMeta";
+        inner.fields.push_back({"label", DataType{PrimitiveTypeKind::String}, "\"\""});
+        ir.add_struct(inner);
+
+        StructDefinition outer;
+        outer.name = "OuterHeader";
+        outer.fields.push_back({"meta", DataType(TypeClassification::Struct, "InnerMeta"), "{}"});
+        ir.add_struct(outer);
+
+        SignalDefinition sig("Frame");
+        sig.attributes.emplace_back("hdr", DataType(TypeClassification::Struct, "OuterHeader"), "{}");
+        ir.add_signal(sig);
+
+        auto res = SemanticAnalyzer::analyze(ir);
+        EXPECT_FALSE(res.valid);
+    }
+
+    // 6. Payload access rejected on TimeTrigger and AnonymousTrigger
+    {
+        FsmIr ir;
+        ir.name = "BadTriggerPayloadFSM";
+        ir.initial_state = "Idle";
+        ir.add_state("Idle");
+        ir.add_state("Next");
+
+        TransitionEdge t_time("t_time", "Idle", "Next", TimeTrigger{10});
+        t_time.set_guard("payload.len > 0");
+        ir.add_transition(t_time);
+
+        TransitionEdge t_anon("t_anon", "Next", "Idle", AnonymousTrigger{});
+        t_anon.set_guard("payload.len == 0");
+        ir.add_transition(t_anon);
+
+        auto res = SemanticAnalyzer::analyze(ir);
+        EXPECT_FALSE(res.valid);
+        EXPECT_GE(res.errors.size(), 2U);
+    }
 }

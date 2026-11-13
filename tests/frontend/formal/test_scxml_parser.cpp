@@ -246,4 +246,44 @@ TEST(ScxmlParser, RawBooleanConditions_PreservedInGuardsAndSerialized) {
     EXPECT_NE(xml.find("current &lt; 2.0"), std::string::npos);
 }
 
+/**
+ * @brief Verify SCXML <data> type inference when 'type' attribute is omitted.
+ * @scenario Parse <datamodel> with boolean, floating-point, negative, and unsigned expressions.
+ * @expected Variables receive inferred types (bool, double, int32_t, uint32_t) instead of always uint32_t.
+ */
+TEST(ScxmlParserTest, InfersDataModelVariableTypesFromExpr) {
+    const std::string scxml_content = R"(
+        <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Idle">
+            <datamodel>
+                <data id="active" expr="false"/>
+                <data id="gain" expr="1.5"/>
+                <data id="offset" expr="-10"/>
+                <data id="retries" expr="0"/>
+            </datamodel>
+            <state id="Idle"/>
+        </scxml>
+    )";
+
+    ScxmlParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(scxml_content, model, err)) << err;
+
+    const auto* active = model.find_variable("active");
+    ASSERT_NE(active, nullptr);
+    EXPECT_EQ(active->type, "bool");
+
+    const auto* gain = model.find_variable("gain");
+    ASSERT_NE(gain, nullptr);
+    EXPECT_EQ(gain->type, "double");
+
+    const auto* offset = model.find_variable("offset");
+    ASSERT_NE(offset, nullptr);
+    EXPECT_EQ(offset->type, "int32_t");
+
+    const auto* retries = model.find_variable("retries");
+    ASSERT_NE(retries, nullptr);
+    EXPECT_EQ(retries->type, "uint32_t");
+}
+
 }  // namespace

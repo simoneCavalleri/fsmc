@@ -180,4 +180,26 @@ TEST(DomainContract, RegistersConstReadOnly_ConstAccess_PreventsMutation) {
     EXPECT_DOUBLE_EQ(read_value, 36.6);
 }
 
+TEST(DomainContract, InvalidSignalPayload_AutomaticallyRejectedAtDispatchBoundary) {
+    struct Idle {};
+    struct Active {};
+    using Table = fsm::transition_table<fsm::transition<Idle, EvPacketRecv, Active>>;
+
+    fsm::fsm<Table> sm;
+    std::uint8_t buf[4] = {1, 2, 3, 4};
+
+    // Invalid payload (len == 0) must be rejected safely before matching transitions
+    EvPacketRecv bad_ev(0, buf);
+    auto bad_res = sm.dispatch(bad_ev);
+    EXPECT_FALSE(bad_res.is_success());
+    EXPECT_TRUE(bad_res.is_guard_rejected());
+    EXPECT_TRUE(sm.is_in<Idle>());
+
+    // Valid payload executes the transition normally
+    EvPacketRecv good_ev(4, buf);
+    auto good_res = sm.dispatch(good_ev);
+    EXPECT_TRUE(good_res.is_success());
+    EXPECT_TRUE(sm.is_in<Active>());
+}
+
 }  // namespace

@@ -1,6 +1,7 @@
 #include "fsm/ir/fsm_ir_deserializer.hpp"
 
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <map>
@@ -1145,6 +1146,39 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
         }
     }
 
+    // XState-style "context": { "var": initial_value, ... }
+    const auto* ctx_obj = root.get_child("context");
+    if (ctx_obj != nullptr && ctx_obj->is_object()) {
+        for (const auto& [raw_name, val] : ctx_obj->obj_members) {
+            std::string name = sanitize_identifier(raw_name);
+            if (name.empty() || out_ir.find_variable(name) != nullptr) {
+                continue;
+            }
+            VariableDefinition var;
+            var.name = std::move(name);
+            if (val.type == JsonType::Bool) {
+                var.type = "bool";
+                var.initial_value = val.bool_val ? "true" : "false";
+            } else if (val.type == JsonType::Number) {
+                double int_part = 0.0;
+                if (std::modf(val.num_val, &int_part) == 0.0) {
+                    var.type = "int32_t";
+                    var.initial_value = std::to_string(static_cast<long long>(val.num_val));
+                } else {
+                    var.type = "double";
+                    var.initial_value = std::to_string(val.num_val);
+                }
+            } else if (val.type == JsonType::String) {
+                var.type = "std::string";
+                var.initial_value = "\"" + val.str_val + "\"";
+            } else {
+                var.type = "int32_t";
+                var.initial_value = "0";
+            }
+            out_ir.add_variable(std::move(var));
+        }
+    }
+
     // Ports
     const auto* ports_arr = root.get_child("ports");
     if (ports_arr != nullptr && ports_arr->is_array()) {
@@ -1216,6 +1250,29 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
                 if (!sig.name.empty()) {
                     out_ir.signals.push_back(std::move(sig));
                 }
+            }
+        }
+    }
+
+    // Guards
+    const auto* guards_arr = root.get_child("guards");
+    if (guards_arr != nullptr && guards_arr->is_array()) {
+        for (const auto& g_val : guards_arr->arr_val) {
+            if (g_val.is_object()) {
+                std::string g_name = g_val.get_string("name");
+                if (g_name.empty()) {
+                    continue;
+                }
+                std::string g_desc = g_val.get_string("description");
+                std::optional<std::string> raw_expr;
+                if (const auto* r = g_val.get_child("raw_expression"); r != nullptr && r->is_string()) {
+                    raw_expr = r->str_val;
+                }
+                std::optional<std::string> norm_expr;
+                if (const auto* n = g_val.get_child("normalized_expression"); n != nullptr && n->is_string()) {
+                    norm_expr = n->str_val;
+                }
+                out_ir.add_guard(g_name, std::move(g_desc), std::move(raw_expr), std::move(norm_expr));
             }
         }
     }

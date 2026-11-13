@@ -21,6 +21,9 @@
 #include <fstream>
 #include <sstream>
 
+#include "fsm/frontend/formal/sysml2_parser.hpp"
+#include "fsm/ir/fsm_ir_deserializer.hpp"
+#include "fsm/ir/fsm_ir_serializer.hpp"
 #include "tools/fsmc/fsmc_driver.hpp"
 #include "tools/fsmc/fsmc_options.hpp"
 
@@ -835,6 +838,257 @@ TEST_F(FsmcOptionsTest, ModularPositionalOrderingAndIdentifierSanitization) {
         EXPECT_EQ(opts.input_file, model_file_);
     }
     EXPECT_EQ(fsm::tools::infer_fsm_name_from_file("01_my@state+machine.sysml"), "Fsm_01MyStateMachine");
+}
+
+/**
+ * @brief Test Intent: Verify --simulate --trace executes IR simulation with payload validation and
+ *        --export-cex-gtest parses and emits valid GoogleTest reproduction stubs.
+ * Scenario: Parse CLI flags for simulation/CEX export, run trace simulation on a PlantUML model, and verify CEX
+ *           exporter output.
+ */
+TEST_F(FsmcOptionsTest, SimulateAndExportCexGTest_ParseAndExecuteCleanly) {
+    fs::path trace_path = test_dir_ / "trace.json";
+    {
+        std::ofstream tf(trace_path);
+        tf << "[\"Start\"]\n";
+    }
+
+    char p[] = "fsmc";
+    char i[] = "-i";
+    std::string in_str = puml_file_;
+    char sim[] = "--simulate";
+    char tr[] = "--trace";
+    std::string tr_str = trace_path.string();
+    char cex[] = "--export-cex-gtest";
+    fs::path cex_path = test_dir_ / "cex_test.cpp";
+    std::string cex_str = cex_path.string();
+
+    char* argv[] = {p, i, in_str.data(), sim, tr, tr_str.data(), cex, cex_str.data()};
+    const auto opts = fsm::tools::parse_cli_args(8, argv);
+    EXPECT_TRUE(opts.is_valid);
+    EXPECT_TRUE(opts.simulate_mode);
+    EXPECT_EQ(opts.trace_file, trace_path.string());
+    EXPECT_EQ(opts.export_cex_gtest, cex_path.string());
+    EXPECT_EQ(fsm::tools::FsmcDriver::run(opts), 0);
+
+    // Direct test on IrSimulator & CounterexampleGTestExporter
+    fsm::ir::FsmIr model;
+    model.name = "SimModel";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Active");
+    fsm::ir::SignalDefinition sig("Packet");
+    sig.attributes.emplace_back("len", fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::UInt32}, "64");
+    sig.validators.push_back("len > 0 && len <= 1500");
+    model.add_signal(sig);
+    model.add_transition(fsm::ir::TransitionEdge("Idle", "Active", "Packet"));
+
+    std::ostringstream sim_out;
+    // First event rejected by validator (len=0), second accepted (len=128)
+    std::string final_state = fsm::tools::IrSimulator::simulate_trace(
+        model, R"([{"event":"Packet","payload":{"len":0}},{"event":"Packet","payload":{"len":128}}])", sim_out);
+    EXPECT_EQ(final_state, "Active");
+    EXPECT_NE(sim_out.str().find("[REJECTED: invalid signal payload]"), std::string::npos);
+
+    fsm::middleend::analysis::ModelCheckResult mc;
+    mc.passed = false;
+    mc.property_name = "SafetyReach";
+    mc.property_formula = "G (!Fault)";
+    mc.counterexample_trace.push_back({0, "Idle", "Packet", "", "start"});
+    mc.counterexample_trace.push_back({1, "Active", "", "", "reached"});
+    std::string gtest_src = fsm::tools::CounterexampleGTestExporter::export_gtest(model, mc);
+    EXPECT_NE(gtest_src.find("using namespace fsm_generated;"), std::string::npos);
+    EXPECT_NE(gtest_src.find("    SimModel sm;"), std::string::npos);
+    EXPECT_EQ(gtest_src.find("SimModelFSM sm;"), std::string::npos);
+    EXPECT_NE(gtest_src.find("TEST(SimModelCounterexampleTest, Reproduces_SafetyReach)"), std::string::npos);
+    EXPECT_NE(gtest_src.find("sm.dispatch(Packet{});"), std::string::npos);
+    EXPECT_NE(gtest_src.find("EXPECT_TRUE(sm.is_in<Active>());"), std::string::npos);
+}
+
+TEST(FsmcCliOptionsTest, V010SimulatorHfsmGuardsRegistersAndCliSimulate) {
+    // 1. Direct IrSimulator coverage: HFSM parent transition, numeric guards, register updates,
+    //    line-based trace, [REJECTED], and [UNHANDLED].
+    fsm::ir::FsmIr model;
+    model.name = "HfsmSimModel";
+    model.initial_state = "ChildA";
+
+    fsm::ir::StateNode parent("Parent");
+    parent.kind = fsm::ir::StateKind::Composite;
+    model.states.push_back(parent);
+
+    fsm::ir::StateNode child_a("ChildA");
+    child_a.parent_state = "Parent";
+    model.states.push_back(child_a);
+
+    fsm::ir::StateNode child_b("ChildB");
+    child_b.parent_state = "Parent";
+    model.states.push_back(child_b);
+
+    fsm::ir::VariableDefinition count_var;
+    count_var.name = "count";
+    count_var.type = fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::Int32};
+    count_var.initial_value = "0";
+    model.add_variable(std::move(count_var));
+
+    fsm::ir::SignalDefinition pkt("Packet");
+    pkt.attributes.emplace_back("len", fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::UInt32}, "64");
+    pkt.validators.push_back("len > 0 && len <= 1500");
+    model.add_signal(pkt);
+    model.add_signal(fsm::ir::SignalDefinition("Reset"));
+
+    fsm::ir::TransitionEdge t1("ChildA", "ChildB", "Packet");
+    t1.set_guard("len >= 100 && count <= 5");
+    fsm::ir::ActionSignature act1("inc_count");
+    fsm::ir::ActionAssignment a1;
+    a1.target = fsm::ir::LValueTarget("count", fsm::ir::LValueScope::Register);
+    a1.op = fsm::ir::AssignmentOp::AddAssign;
+    a1.expression = "2";
+    act1.assignments.push_back(a1);
+    t1.set_action(act1);
+    model.add_transition(t1);
+
+    // Transition defined on Parent, matched while in ChildB
+    fsm::ir::TransitionEdge t_reset("Parent", "ChildA", "Reset");
+    model.add_transition(t_reset);
+
+    std::ostringstream sim_out;
+    std::string trace =
+        "# line-based trace\n"
+        "Packet len=0\n"    // rejected by validator
+        "Packet len=50\n"   // unhandled (guard len >= 100 fails)
+        "Packet len=512\n"  // transitions ChildA -> ChildB, count += 2
+        "UnknownEv\n"       // unhandled
+        "Reset\n";          // HFSM parent transition Parent -> ChildA
+    std::string final_state = fsm::tools::IrSimulator::simulate_trace(model, trace, sim_out);
+    EXPECT_EQ(final_state, "ChildA");
+    EXPECT_NE(sim_out.str().find("[REJECTED: invalid signal payload]"), std::string::npos);
+    EXPECT_NE(sim_out.str().find("[UNHANDLED]"), std::string::npos);
+    EXPECT_NE(sim_out.str().find("--> ChildB"), std::string::npos);
+    EXPECT_NE(sim_out.str().find("--> ChildA"), std::string::npos);
+
+    // 2. CounterexampleGTestExporter with multi-step trace
+    fsm::middleend::analysis::ModelCheckResult mc;
+    mc.passed = false;
+    mc.property_name = "CountBound";
+    mc.property_formula = "G (count < 10)";
+    mc.counterexample_trace.push_back({0, "ChildA", "Packet", "512", "step0"});
+    mc.counterexample_trace.push_back({1, "ChildB", "Reset", "", "step1"});
+    mc.counterexample_trace.push_back({2, "ChildA", "", "", "final"});
+    std::string gtest_src = fsm::tools::CounterexampleGTestExporter::export_gtest(model, mc, "hfsm_sim_model.hpp");
+    EXPECT_NE(gtest_src.find("#include \"hfsm_sim_model.hpp\""), std::string::npos);
+    EXPECT_NE(gtest_src.find("TEST(HfsmSimModelCounterexampleTest, Reproduces_CountBound)"), std::string::npos);
+    EXPECT_NE(gtest_src.find("sm.dispatch(Packet{});"), std::string::npos);
+    EXPECT_NE(gtest_src.find("sm.dispatch(Reset{});"), std::string::npos);
+
+    // 3. End-to-end CLI --simulate --trace via FsmcDriver
+    std::filesystem::path tmp = std::filesystem::temp_directory_path() / "fsmc_v010_cli_sim_test";
+    std::filesystem::create_directories(tmp);
+    std::filesystem::path fsm_file = tmp / "model.fsm.json";
+    std::filesystem::path trace_file = tmp / "events.trace";
+    {
+        std::ofstream mf(fsm_file);
+        mf << R"({
+            "name": "CliSimFsm",
+            "initial_state": "Idle",
+            "states": [{"name": "Idle"}, {"name": "Running"}],
+            "signals": [{"name": "Start"}],
+            "transitions": [{"source": "Idle", "target": "Running", "trigger": "Start"}]
+        })";
+    }
+    {
+        std::ofstream tf(trace_file);
+        tf << R"([{"event":"Start"}])";
+    }
+
+    std::string arg0 = "fsmc";
+    std::string arg1 = fsm_file.string();
+    std::string arg2 = "--simulate";
+    std::string arg3 = "--trace";
+    std::string arg4 = trace_file.string();
+    char* argv[] = {arg0.data(), arg1.data(), arg2.data(), arg3.data(), arg4.data()};
+    auto opts = fsm::tools::parse_cli_args(5, argv);
+    EXPECT_TRUE(opts.simulate_mode);
+    EXPECT_EQ(opts.trace_file, trace_file.string());
+    EXPECT_EQ(fsm::tools::FsmcDriver::run(opts), 0);
+
+    std::filesystem::remove_all(tmp);
+}
+
+TEST(FsmcCliOptionsTest, UserBugHunt_Sysml2TypedEventsValidatorAndCombinatorSimulation) {
+    const std::string sysml_src = R"(
+package DroneControl {
+    item def SetSpeedCmd {
+        attribute target_speed : Real;
+        assert constraint { target_speed >= 0.0 and target_speed <= 120.0; }
+    }
+    state def DroneFSM {
+        entry; then Grounded;
+        state Grounded;
+        state Hovering;
+        state Cruising;
+        transition from Grounded accept SetSpeedCmd
+            if payload.target_speed > 0.0 && payload.target_speed <= 30.0
+            then Hovering;
+        transition from Grounded accept SetSpeedCmd
+            if payload.target_speed > 30.0
+            then Cruising;
+        transition from Hovering accept LandCmd then Grounded;
+    }
+}
+)";
+    fsm::ir::FsmIr model;
+    std::string err;
+    fsm::frontend::formal::Sysml2Parser parser;
+    ASSERT_TRUE(parser.parse(sysml_src, model, err)) << err;
+
+    const auto* sig = model.find_signal("SetSpeedCmd");
+    ASSERT_NE(sig, nullptr);
+    EXPECT_FALSE(sig->validators.empty());
+
+    std::ostringstream sim_out;
+    std::string trace =
+        "SetSpeedCmd target_speed=-5\nSetSpeedCmd target_speed=20\nLandCmd\nSetSpeedCmd target_speed=80\n";
+    std::string final_state = fsm::tools::IrSimulator::simulate_trace(model, trace, sim_out);
+    EXPECT_EQ(final_state, "Cruising");
+    EXPECT_NE(sim_out.str().find("[REJECTED: invalid signal payload]"), std::string::npos);
+    EXPECT_EQ(sim_out.str().find("[symbolic-guard]"), std::string::npos);
+}
+
+TEST(FsmcCliOptionsTest, UserBugHunt_IrJsonRoundtripPreservesGuardsAndExpressions) {
+    const std::string sysml_src = R"(
+package DroneControl {
+    item def SetSpeedCmd {
+        attribute target_speed : Real;
+    }
+    state def DroneFSM {
+        entry; then Grounded;
+        state Grounded;
+        state Cruising;
+        transition from Grounded accept SetSpeedCmd
+            if payload.target_speed > 30.0
+            then Cruising;
+    }
+}
+)";
+    fsm::ir::FsmIr model;
+    std::string err;
+    fsm::frontend::formal::Sysml2Parser parser;
+    ASSERT_TRUE(parser.parse(sysml_src, model, err)) << err;
+    ASSERT_FALSE(model.guards.empty());
+
+    std::string json_ir = fsm::ir::FsmIrSerializer::serialize_json(model);
+    fsm::ir::FsmIr reloaded;
+    ASSERT_TRUE(fsm::ir::FsmIrDeserializer::deserialize_json(json_ir, reloaded, err)) << err;
+    ASSERT_FALSE(reloaded.guards.empty());
+
+    bool found_expr = false;
+    for (const auto& g : reloaded.guards) {
+        if (g.normalized_expression.has_value() && g.normalized_expression->find("30.0") != std::string::npos) {
+            found_expr = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_expr);
 }
 
 }  // namespace

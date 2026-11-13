@@ -520,6 +520,30 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
+    // 2d. Assert constraint inside an Item / Signal Definition: assert constraint { <expr> }
+    if (!current_item_def.empty()) {
+        static const std::regex item_constraint_regex(
+            R"(^(?:assert\s+)?constraint\s*(?:[A-Za-z_][A-Za-z0-9_]*\s*)?\{(.+)\}\s*;?$)", std::regex::optimize);
+        if (std::regex_search(stmt, match, item_constraint_regex)) {
+            std::string expr = trim(match[1].str());
+            while (!expr.empty() && expr.back() == ';') {
+                expr = trim(expr.substr(0, expr.size() - 1));
+            }
+            expr = std::regex_replace(expr, std::regex(R"(\band\b)"), "&&");
+            expr = std::regex_replace(expr, std::regex(R"(\bor\b)"), "||");
+            expr = std::regex_replace(expr, std::regex(R"(\bnot\b\s*)"), "!");
+            if (!expr.empty()) {
+                for (auto& sig : model.signals) {
+                    if (sig.name == current_item_def) {
+                        sig.validators.push_back(std::move(expr));
+                        break;
+                    }
+                }
+            }
+            return true;
+        }
+    }
+
     // 3. Attribute / Variable declaration: attribute <name> : <Type> [[unit]] [= <init>] / var <name> : <Type>
     static const std::regex attr_regex(
         R"(^(?:attribute|var)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_:]+)(?:\s*(\[[^\]]+\]))?(?:\s*=\s*([^;]+))?)",
@@ -549,6 +573,27 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
                 if (sig.name == current_item_def) {
                     SignalAttribute sa(attr_name, canonical_dt, init_val);
                     sig.attributes.push_back(std::move(sa));
+                    auto assert_pos = stmt.find("assert");
+                    if (assert_pos != std::string::npos) {
+                        auto c_start = stmt.find('{', assert_pos);
+                        auto c_end = stmt.rfind('}');
+                        if (c_start != std::string::npos && c_end != std::string::npos && c_end > c_start) {
+                            std::string c_expr = trim(stmt.substr(c_start + 1, c_end - c_start - 1));
+                            while (!c_expr.empty() && c_expr.front() == '{') {
+                                c_expr = trim(c_expr.substr(1));
+                            }
+                            while (!c_expr.empty() && (c_expr.back() == '}' || c_expr.back() == ';')) {
+                                c_expr = trim(c_expr.substr(0, c_expr.size() - 1));
+                            }
+                            c_expr = std::regex_replace(c_expr, std::regex(R"(\bself\b)"), attr_name);
+                            c_expr = std::regex_replace(c_expr, std::regex(R"(\band\b)"), "&&");
+                            c_expr = std::regex_replace(c_expr, std::regex(R"(\bor\b)"), "||");
+                            c_expr = std::regex_replace(c_expr, std::regex(R"(\bnot\b\s*)"), "!");
+                            if (!c_expr.empty()) {
+                                sig.validators.push_back(std::move(c_expr));
+                            }
+                        }
+                    }
                     break;
                 }
             }
@@ -704,7 +749,7 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
             std::smatch assign_match;
             if (std::regex_match(statement, assign_match, assign_regex)) {
                 std::string scope_prefix = assign_match[1].str();
-                std::string var = assign_match[2].str();
+                std::string var = sanitize_identifier(assign_match[2].str());
                 std::string op = assign_match[3].str();
                 std::string rhs = trim(assign_match[4].str());
                 LValueTarget tgt(scope_prefix + var);
@@ -721,7 +766,7 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
                 }
             } else if (std::regex_match(statement, assign_match, inc_regex)) {
                 std::string scope_prefix = assign_match[1].str();
-                std::string var = assign_match[2].str();
+                std::string var = sanitize_identifier(assign_match[2].str());
                 std::string op = assign_match[3].str();
                 LValueTarget tgt(scope_prefix + var);
                 if (op == "++") {
@@ -1112,7 +1157,7 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
             if (std::regex_match(statement, assign_match, assign_regex)) {
                 // Variable assignment or compound assignment op
                 std::string scope_prefix = assign_match[1].str();
-                std::string var = assign_match[2].str();
+                std::string var = sanitize_identifier(assign_match[2].str());
                 std::string op = assign_match[3].str();
                 std::string rhs = trim(assign_match[4].str());
                 LValueTarget tgt(scope_prefix + var);
@@ -1130,7 +1175,7 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
             } else if (std::regex_match(statement, assign_match, inc_regex)) {
                 // Increment or decrement shorthand (++ or --)
                 std::string scope_prefix = assign_match[1].str();
-                std::string var = assign_match[2].str();
+                std::string var = sanitize_identifier(assign_match[2].str());
                 std::string op = assign_match[3].str();
                 LValueTarget tgt(scope_prefix + var);
                 if (op == "++") {
@@ -1322,7 +1367,7 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
         trans.trigger = *time_trigger;
     }
     if (!guard.empty()) {
-        trans.guard = guard;
+        trans.set_guard(guard);
     }
     if (trans_send_action.has_value()) {
         trans.transition_action = std::move(trans_send_action);

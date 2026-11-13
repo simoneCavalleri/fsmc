@@ -23,7 +23,6 @@
 #include "fsm/backend/cpp/runtime/fsm.hpp"
 #include "fsm/backend/cpp/runtime/spsc_fsm.hpp"
 #include "fsm/backend/cpp/runtime/thread_safe_fsm.hpp"
-#include "fsm/ir/fsm_ir_deserializer.hpp"
 #include "fsm/backend/cpp/runtime/traits/hook_traits.hpp"
 #include "fsm/backend/cpp/runtime_exporter.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
@@ -31,6 +30,7 @@
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/action.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/ir/fsm_ir_deserializer.hpp"
 #include "fsm/ir/signal_definition.hpp"
 #include "fsm/middleend/passes/boundary_action_fusion_pass.hpp"
 #include "fsm/middleend/passes/choice_inlining_pass.hpp"
@@ -1476,6 +1476,52 @@ TEST(CppE2ECompilerTest, XStateJsonContextVariablesCompile) {
             << "    JsonCtxDemo sm;\n"
             << "    sm.dispatch(Go{});\n"
             << "    return sm.is_in<Done>() ? 0 : 1;\n"
+            << "}\n";
+    }
+    std::string exe = (temp_dir / "runner").string();
+    std::string compile_cmd = "g++ -std=c++17 -Wall -Wextra -Werror -pedantic -Wconversion -I" + temp_dir.string() +
+                              " " + drv.string() + " -o " + exe;
+    ASSERT_EQ(std::system(compile_cmd.c_str()), 0);
+    EXPECT_EQ(std::system(exe.c_str()), 0);
+    fs::remove_all(temp_dir);
+}
+
+TEST(CppE2ECompilerTest, KeywordVariableAndPortInGuardCompiles) {
+    const std::string json_src = R"({
+  "id": "KeywordGuardDemo",
+  "initial": "default",
+  "context": { "switch": 0 },
+  "states": {
+    "default": { "on": { "class": { "target": "register", "guard": "switch == 0" } } },
+    "register": {}
+  }
+})";
+    fsm::ir::FsmIr model;
+    std::string err;
+    ASSERT_TRUE(fsm::ir::FsmIrDeserializer::deserialize_json(json_src, model, err)) << err;
+
+    GeneratorOptions opts;
+    opts.cpp_standard = CppStandard::Cpp17;
+    opts.standalone = true;
+    std::string code = CppGenerator::generate_header(model, opts);
+    EXPECT_NE(code.find("reg.switch_ == 0"), std::string::npos);
+
+    fs::path temp_dir = fs::temp_directory_path() / "fsmc_e2e_kw_guard_test";
+    fs::create_directories(temp_dir);
+    fs::path hdr = temp_dir / "KeywordGuardDemo_fsm.hpp";
+    fs::path drv = temp_dir / "driver.cpp";
+    {
+        std::ofstream out(hdr);
+        out << code;
+    }
+    {
+        std::ofstream out(drv);
+        out << "#include \"KeywordGuardDemo_fsm.hpp\"\n"
+            << "using namespace fsm_generated;\n"
+            << "int main() {\n"
+            << "    KeywordGuardDemo sm;\n"
+            << "    sm.dispatch(class_{});\n"
+            << "    return sm.is_in<register_>() ? 0 : 1;\n"
             << "}\n";
     }
     std::string exe = (temp_dir / "runner").string();

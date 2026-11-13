@@ -85,17 +85,23 @@ std::string qualify_expression(std::string expr, const FsmIr& model) {
                     out += "cmd";
                     continue;
                 }
-                if (model.find_variable(tok) != nullptr) {
-                    out += "reg." + escape_cpp_keyword(tok);
+                const std::string escaped_tok = escape_cpp_keyword(tok);
+                if (model.find_variable(tok) != nullptr ||
+                    (escaped_tok != tok && model.find_variable(escaped_tok) != nullptr)) {
+                    out += "reg." + escaped_tok;
                     continue;
                 }
-                if (const auto* port = model.find_port(tok); port != nullptr) {
+                const auto* port = model.find_port(tok);
+                if (port == nullptr && escaped_tok != tok) {
+                    port = model.find_port(escaped_tok);
+                }
+                if (port != nullptr) {
                     if (port->is_in()) {
-                        out += "in." + escape_cpp_keyword(tok);
+                        out += "in." + escaped_tok;
                         continue;
                     }
                     if (port->is_out()) {
-                        out += "out." + escape_cpp_keyword(tok);
+                        out += "out." + escaped_tok;
                         continue;
                     }
                 }

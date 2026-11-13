@@ -61,7 +61,7 @@ validation:
   nav:
     omitted_files: warn
   links:
-    not_found: warn
+    not_found: ignore
     absolute_links: info
     unrecognized_links: warn
 

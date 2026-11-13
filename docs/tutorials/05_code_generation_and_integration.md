@@ -1,6 +1,9 @@
-# Tutorial 5: Code Generation & Build Integration
+# Step 5: Code Generation & Build Integration
 
-In this tutorial, you will learn how to turn your verified state machine models into production-ready software:
+!!! note "Curriculum Continuity"
+    In **[Step 4](04_formal_verification.md)**, we verified safety invariants and generated Requirement Traceability matrices. In this step, we return to the `ConnectionManager` model from Step 2 to compile it into production C++ code, integrate it with CMake, and choose the right concurrency runtime.
+
+In this guide, you will learn how to turn verified state machine models into production software:
 
 - How `fsmc` uses the **Generation Gap Pattern** to ensure safe, non-destructive builds.
 - Generating standalone and modular C++ code (C++17 and C++20).
@@ -34,172 +37,110 @@ my_project/
 
 ## 2. Generating Code from the Command Line
 
-=== "C++ Target (Production)"
-    ```bash
-    # Option A: Generate a standalone self-contained C++20 header with embedded zero-alloc runtime
-    fsmc -i connection.sysml -o connection_fsm.hpp --target cpp --std 20 --standalone
+Use `fsmc` to emit either a standalone single-file header or a modular header paired with an exported runtime library:
 
-    # Option B: Export the runtime once and generate modular lightweight headers (ideal for multi-FSM projects)
-    # 1. Export standalone runtime library into your project include path (creates fsm.hpp):
+=== "Standalone Header (Single-FSM)"
+    ```bash
+    # Self-contained C++20 header with embedded zero-allocation runtime
+    fsmc -i connection.sysml -o connection_fsm.hpp --target cpp --std 20 --standalone --namespace conn --name ConnectionManager
+    ```
+
+=== "Modular Headers (Multi-FSM Projects)"
+    ```bash
+    # 1. Export runtime headers once into your project include path
     fsmc --export-runtime ./include/ --std 20
 
-    # 2. Generate lightweight FSM definition including external "fsm.hpp":
-    fsmc -i connection.sysml -o connection_fsm.hpp --target cpp --std 20 --modular
+    # 2. Generate a lightweight FSM header referencing the shared runtime
+    fsmc -i connection.sysml -o connection_fsm.hpp --target cpp --std 20 --modular --namespace conn --name ConnectionManager
 
-    # Option C: Use custom runtime header include path
-    fsmc -i connection.sysml -o connection_fsm.hpp --modular="<fsm/fsm.hpp>"
+    # Or specify a custom runtime header include path
+    fsmc -i connection.sysml -o connection_fsm.hpp --modular="<fsm/fsm.hpp>" --namespace conn --name ConnectionManager
     ```
 
-=== "Rust Target (Roadmap Preview)"
-    !!! note "Roadmap Preview"
-        Rust code generation is a planned multi-target release feature. C++ is the current production runtime.
-
-    ```bash
-    # Generate idiomatic `#![no_std]` Rust module
-    fsmc -i connection.sysml -o connection_fsm.rs --target rust --namespace conn
-    ```
-
-=== "C Target (Embedded C Roadmap)"
-    !!! note "Roadmap Preview"
-        ISO C99 embedded C code generation is a planned multi-target feature. C++ is the current production runtime.
-
-    ```bash
-    # Generate embedded C header and implementation
-    fsmc -i connection.sysml -o connection_fsm.h --target c --prefix conn_
-    ```
+!!! info "Target Backends"
+    Production code generation targets **C++17** and **C++20** (`--target cpp`). For planned Rust (`no_std`) and ISO C99 backends, see the **[Multi-Target Architecture & Roadmap](../runtime_api/multi_target_roadmap.md)**.
 
 ---
 
 ## 3. Understanding the Generated Header
 
-The generated `connection_fsm.hpp` exposes three **policy-based type aliases** — one for each concurrency model:
+The generated `connection_fsm.hpp` exposes three **policy-based type aliases**—one for each concurrency model:
 
 ```cpp
-// Synchronous FSM (single-threaded, zero-allocation)
+// Synchronous FSM (single-threaded, stack-allocated)
 using ConnectionManager = ::fsm::make_fsm<
     ConnectionManagerTable,
+    ::fsm::with_initial_state<Disconnected>,
+    ::fsm::with_ports<ConnectionManagerInPorts, ConnectionManagerOutPorts>,
+    ::fsm::with_registers<ConnectionManagerRegisters>,
+    ::fsm::with_services<ConnectionManagerServices>,
+    ::fsm::with_observer<::fsm::dynamic_observer>
+>;
+
+// Thread-safe Active Object FSM (mutex-protected dispatch + event queue)
+using ThreadSafeConnectionManager = ::fsm::make_thread_safe_fsm<
+    ConnectionManagerTable,
+    ::fsm::with_initial_state<Disconnected>,
     ::fsm::with_ports<ConnectionManagerInPorts, ConnectionManagerOutPorts>,
     ::fsm::with_registers<ConnectionManagerRegisters>,
     ::fsm::with_services<ConnectionManagerServices>
 >;
 
-// Lock-free SPSC FSM (ISR producer → consumer thread)
+// Lock-free SPSC FSM (ISR/producer -> single consumer thread)
 using SpscConnectionManager = ::fsm::make_spsc_fsm<
     ConnectionManagerTable,
+    ::fsm::with_initial_state<Disconnected>,
     ::fsm::with_ports<ConnectionManagerInPorts, ConnectionManagerOutPorts>,
     ::fsm::with_registers<ConnectionManagerRegisters>,
     ::fsm::with_services<ConnectionManagerServices>,
     ::fsm::with_queue_capacity<64>
 >;
-
-// Mutex-protected thread-safe FSM (multi-consumer safe)
-using ThreadSafeConnectionManager = ::fsm::make_thread_safe_fsm<
-    ConnectionManagerTable,
-    ::fsm::with_ports<ConnectionManagerInPorts, ConnectionManagerOutPorts>,
-    ::fsm::with_registers<ConnectionManagerRegisters>,
-    ::fsm::with_services<ConnectionManagerServices>
->;
 ```
 
-The `with_*` policy modifiers can be composed in any order — the compiler resolves each domain independently via template specialization.
+Each `with_*` policy binds independently. When the model references external action names, `fsmc` generates a virtual `ConnectionManagerServices` interface; otherwise, `ConnectionManagerServices` aliases `::fsm::no_services`.
 
 ---
 
 ## 4. Using the Generated State Machine
 
-=== "C++ Target (Production)"
-    In your `main.cpp`:
-    ```cpp
-    #include <cassert>
-    #include <iostream>
-    #include "connection_fsm.hpp"
+In your `main.cpp`, instantiate `ConnectionManager` with your register state and drive it via `dispatch()` or periodic `step()` calls:
 
-    // Implement the abstract service interface generated by fsmc
-    struct ConcreteConnectionServices : public conn::ConnectionManagerServices {
-        void log(const std::string& msg) override {
-            std::cout << "[SERVICE LOG] " << msg << "\n";
-        }
-    };
+```cpp
+#include <cassert>
+#include <iostream>
+#include "connection_fsm.hpp"
 
-    int main() {
-        using namespace conn;
+int main() {
+    using namespace conn;
 
-        // Policy-based instantiation: all domains bound at compile time
-        ConnectionManagerRegisters reg{};
-        ConcreteConnectionServices srv;
-        ConnectionManager fsm(reg, srv);
+    // Bind persistent registers and instantiate stack-allocated FSM
+    ConnectionManagerRegisters reg{};
+    ConnectionManager fsm(reg);
 
-        ConnectionManagerInPorts in;
-        in.latency_ms = 45.0;
-        in.is_authenticated = true;
-        ConnectionManagerOutPorts out;
+    ConnectionManagerInPorts in{};
+    in.latency_ms = 45.0f;
+    in.is_authenticated = true;
+    ConnectionManagerOutPorts out{};
 
-        // Validate port range contracts (generated by fsmc from SysML v2 constraints)
-        assert(in.validate_contracts());
-        std::cout << "Initial state: " << fsm.current_state_name() << "\n";
+    // Validate port range contracts generated from SysML v2 constraints
+    assert(in.validate_contracts());
+    std::cout << "Initial state: " << fsm.current_state_name() << "\n";
 
-        // 1. Dispatch typed events
-        fsm.dispatch(ConnectCmd{}, in, out);
-        std::cout << "State after ConnectCmd: " << fsm.current_state_name() << "\n";
+    // 1. Dispatch typed events
+    fsm.dispatch(ConnectCmd{}, in, out);
+    std::cout << "State after ConnectCmd: " << fsm.current_state_name() << "\n";
 
-        fsm.dispatch(HandshakeOk{}, in, out);
-        std::cout << "State after HandshakeOk: " << fsm.current_state_name() << "\n";
+    fsm.dispatch(HandshakeOk{}, in, out);
+    std::cout << "State after HandshakeOk: " << fsm.current_state_name() << "\n";
 
-        // 2. Sampled continuous step (periodic IEC 61131-3 / SCADE style)
-        fsm.step(in, out);
+    // 2. Sampled continuous step (periodic control-loop tick)
+    fsm.step(in, out);
 
-        return 0;
-    }
-    ```
+    return 0;
+}
+```
 
-=== "Rust Target (Roadmap Preview)"
-    !!! note "Roadmap Preview"
-        Preview of upcoming Rust `#![no_std]` application code.
-
-    In your `main.rs`:
-    ```rust
-    use conn::connection_fsm::*;
-
-    fn main() {
-        let mut fsm = ConnectionManagerFsm::new(ConnectionRegisters::default());
-        let mut in_ports = ConnectionInPorts { latency_ms: 45.0, is_authenticated: true };
-        let mut out_ports = ConnectionOutPorts::default();
-
-        // 1. Dispatch typed events
-        fsm.dispatch(&Event::ConnectCmd, &in_ports, &mut out_ports);
-        fsm.dispatch(&Event::HandshakeOk, &in_ports, &mut out_ports);
-
-        // 2. Sampled continuous step
-        fsm.step(&in_ports, &mut out_ports);
-    }
-    ```
-
-=== "C Target (Embedded C Roadmap)"
-    !!! note "Roadmap Preview"
-        Preview of upcoming ISO C99 application code.
-
-    In your `main.c`:
-    ```c
-    #include "connection_fsm.h"
-
-    int main(void) {
-        conn_fsm_t fsm;
-        conn_registers_t reg = {0};
-        conn_in_ports_t in = {.latency_ms = 45.0f, .is_authenticated = true};
-        conn_out_ports_t out = {0};
-
-        conn_fsm_init(&fsm, &reg);
-
-        /* 1. Dispatch typed events */
-        conn_fsm_dispatch(&fsm, CONN_EV_CONNECT, &in, &out);
-        conn_fsm_dispatch(&fsm, CONN_EV_HANDSHAKE_OK, &in, &out);
-
-        /* 2. Sampled continuous step */
-        conn_fsm_step(&fsm, &in, &out);
-
-        return 0;
-    }
-    ```
+For interrupt-driven producers or multi-threaded systems, instantiate `SpscConnectionManager` or `ThreadSafeConnectionManager` instead of `ConnectionManager` using the same transition table and domain contracts. See **[Execution Topologies Overview](../runtime_api/index.md)** for full API details.
 
 ---
 
@@ -219,22 +160,22 @@ add_executable(my_app
 
 target_link_libraries(my_app PRIVATE fsmc::runtime)
 
-# Automatically compile models/connection.sysml into ${CMAKE_CURRENT_BINARY_DIR}/generated_fsm/
+# Automatically compile models/connection.sysml into ${CMAKE_CURRENT_BINARY_DIR}/generated_my_app/
 fsmc_target_sources(my_app
     DIAGRAMS models/connection.sysml
-    NAME ConnectionManagerFSM
+    NAME ConnectionManager
     STANDARD 20
     STANDALONE
     NAMESPACE conn
 )
 ```
 
+See the **[CMake Integration Reference](../reference/cmake_integration.md)** for full argument documentation (`OUTPUT_DIR`, `RUNTIME_HEADER`, `VERIFY`, `STRICT`, and more).
+
 ---
 
 ## Next Steps
 
-Now that you have mastered the complete pipeline from modeling to code generation, proceed to the capstone chapter:
-
-**[Tutorial 6: Complete Real-World Case Study (Autonomous UAV Controller)](06_real_world_case_study.md)**.
+Now that you can generate and integrate state machine builds cleanly, proceed to **[Step 6: Complete Real-World Case Study — Autonomous UAV Flight Controller](06_real_world_case_study.md)**.
 
 

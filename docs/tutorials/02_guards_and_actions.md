@@ -1,8 +1,9 @@
-# Tutorial 2: Extended State Machines (EFSM), Guards & Datapath
+# Step 2: Extended State Machines (EFSM), Guards & Datapath
 
-In pure finite state automata, states represent purely discrete symbolic stages. Real-world systems, however, depend on continuous numerical parameters—battery levels, retry counters, timeouts, and sensor readings.
+!!! note "Curriculum Continuity"
+    In **[Step 1](01_first_statechart.md)**, we built and ran a discrete 4-state `ConnectionManager`. Real-world systems, however, depend on continuous numerical parameters—latency thresholds, retry counters, timeouts, and sensor readings. In this step, we extend the same `ConnectionManager` into an **Extended Finite State Machine (EFSM)**.
 
-In this tutorial, you will learn how **`fsmc`** implements **Extended Finite State Machines (EFSM)** using partitioned data domains:
+In this guide, you will learn how **`fsmc`** implements **Extended Finite State Machines (EFSM)** using partitioned data domains:
 
 - Defining **InPorts** (read-only with range contracts), **OutPorts** (write-only), and **Registers** (internal memory).
 - Formulating **Guard Conditions** (`if [expr]`) over ports and registers.
@@ -137,14 +138,14 @@ struct ConnectionManagerFSMRegisters {
 
 During middle-end optimization, `fsmc` parses guard expressions into structured AST trees:
 
-1. **Boolean Simplification (`GuardSimplificationPass`)**:
+1. **Boolean Simplification (`guard-simplification`)**:
    Redundant expressions are reduced algebraically:
     - `not(not A) => A`
     - `A and true => A`
     - `A and false => false` (triggers static dead-branch pruning)
-2. **EFSM Interval Analysis (`EFSMDataPathPass`)**:
+2. **EFSM Interval Analysis (`efsm-data-path`)**:
    Checks whether `in.latency_ms < 500.0` is satisfiable given the `[0, 10000]` input domain.
-3. **Deterministic Evaluation Order**:
+3. **Deterministic Evaluation Order (`guard-satisfiability`)**:
    Guards evaluating to mutually exclusive domains (`reg.retry_count < 3` vs `reg.retry_count >= 3`) are verified to guarantee deterministic dispatch.
 
 ---
@@ -232,7 +233,7 @@ int main() {
     assert(fsm.is_in<Disconnected>());
     assert(out.socket_connected == false);
 
-    std::cout << "\n[SUCCESS] EFSM ports, contracts, guards, and actions verified!\n";
+    std::cout << "\n[SUCCESS] EFSM ports, contracts, guards, and actions verified.\n";
     return 0;
 }
 ```
@@ -252,7 +253,7 @@ High latency (850ms) blocked transition. Remaining in: Connecting
 State after HandshakeOk (nominal): Connected
 State after DisconnectCmd: Disconnected
 
-[SUCCESS] EFSM ports, contracts, guards, and actions verified!
+[SUCCESS] EFSM ports, contracts, guards, and actions verified.
 ```
 
 ---
@@ -282,7 +283,7 @@ if (res.is_success()) {
 
 ## Next Steps
 
-In **[Tutorial 3: Hierarchical Statecharts (HFSM) & History](03_hierarchical_hfsm.md)**, you will learn how to nest state machines into composite superstates and restore memory configurations using History pseudostates.
+In **[Step 3: Hierarchical Statecharts (HFSM) & History](03_hierarchical_hfsm.md)**, you will learn how to nest state machines into composite superstates and restore memory configurations using History pseudostates.
 
 
 

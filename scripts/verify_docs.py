@@ -314,6 +314,52 @@ def check_orphaned_docs(repo_root: Path, docs_dir: Path) -> list:
     return errors
 
 
+def check_content_hygiene(repo_root: Path, docs_dir: Path) -> list:
+    """Checks Markdown formatting hygiene and prevents common documentation regressions."""
+    errors = []
+    gfm_re = re.compile(r"^\s*>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]")
+    target_re = re.compile(r"--target\s+(?:rust|c)\b")
+    pass_re = re.compile(
+        r"\b(?:30|32)\s+(?:built-in\s+|middle-end\s+|optimization\s+|compiler\s+)*(?:passes|pass)\b",
+        re.IGNORECASE,
+    )
+
+    files = sorted(docs_dir.rglob("*.md"))
+    readme = repo_root / "README.md"
+    if readme.exists():
+        files.append(readme)
+
+    for md_file in files:
+        rel = md_file.relative_to(repo_root).as_posix()
+        content = md_file.read_text(encoding="utf-8")
+        in_fence = False
+        fence_char = ""
+        fence_len = 0
+
+        for idx, line in enumerate(content.splitlines(), 1):
+            fence_match = re.match(r"^\s*(`{3,}|~{3,})(.*)$", line)
+            if fence_match:
+                marker, rest = fence_match.group(1), fence_match.group(2).strip()
+                if not in_fence:
+                    in_fence = True
+                    fence_char = marker[0]
+                    fence_len = len(marker)
+                elif marker[0] == fence_char and len(marker) >= fence_len and rest == "":
+                    in_fence = False
+
+            if rel.startswith("docs/") and gfm_re.match(line):
+                errors.append(f"{rel}:{idx}: Use MkDocs '!!! <type>' admonition instead of GFM alert '{line.strip()}'")
+            if rel != "docs/runtime_api/multi_target_roadmap.md" and target_re.search(line):
+                errors.append(f"{rel}:{idx}: Unimplemented target flag outside roadmap: '{line.strip()}'")
+            if pass_re.search(line):
+                errors.append(f"{rel}:{idx}: Stale pass count reference (expected 33 registered / 28 7-stage): '{line.strip()}'")
+
+        if in_fence:
+            errors.append(f"{rel}: Unclosed fenced code block detected")
+
+    return errors
+
+
 def main():
     repo_root = Path(__file__).resolve().parent.parent
     docs_dir = repo_root / "docs"
@@ -331,8 +377,9 @@ def main():
     version_errors = check_version_synchronization(repo_root)
     sync_errors = check_catalog_and_runtime_freshness(repo_root)
     orphan_errors = check_orphaned_docs(repo_root, docs_dir)
+    hygiene_errors = check_content_hygiene(repo_root, docs_dir)
 
-    all_errors = nav_errors + link_errors + version_errors + sync_errors + orphan_errors
+    all_errors = nav_errors + link_errors + version_errors + sync_errors + orphan_errors + hygiene_errors
 
     print("\n----------------- Summary -----------------")
     print(f"Navigation & Hierarchy Check     : {'PASSED' if not nav_errors else 'FAILED'}")
@@ -340,6 +387,7 @@ def main():
     print(f"Version Synchronization Check    : {'PASSED' if not version_errors else 'FAILED'}")
     print(f"Test Catalog & Runtime Sync Gate : {'PASSED' if not sync_errors else 'FAILED'}")
     print(f"Orphaned Documentation Check     : {'PASSED' if not orphan_errors else 'FAILED'}")
+    print(f"Content & Hygiene Regression Gate: {'PASSED' if not hygiene_errors else 'FAILED'}")
     print(f"Total Quality Gate Issues Found  : {len(all_errors)}")
     print("-------------------------------------------")
 

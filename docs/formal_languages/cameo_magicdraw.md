@@ -31,7 +31,7 @@ To export state machine diagrams from Cameo Systems Modeler for compilation with
 | **Guard Predicate** | `<guard xmi:type="uml:Constraint"> <specification body="..."/>` | Strongly typed boolean guard AST |
 | **Transition Action** | `<effect xmi:type="uml:OpaqueBehavior" body="..."/>` | Inlined execution action |
 | **Port Definition** | `<ownedPort xmi:type="uml:Port">` | Segregated `InPorts` / `OutPorts` domain |
-| **Requirement Link** | `<sysml:Satisfy base_Abstraction="...">` | Requirement Traceability (`@fsm:req`) |
+| **Requirement Link** | `<sysml:Satisfy base_Abstraction="...">` | Requirement Traceability (`traceability_reqs`) |
 
 ---
 

@@ -12,9 +12,10 @@ Every compiler execution or linter invocation passes through the **`PassManager`
 class IPass {
 public:
     virtual ~IPass() = default;
-    [[nodiscard]] virtual std::string name() const = 0;
+    [[nodiscard]] virtual std::string name() const { return "anonymous-pass"; }
     [[nodiscard]] virtual std::string description() const = 0;
     virtual bool run(FsmIr& ir, DiagnosticEngine& diag) = 0;
+    [[nodiscard]] virtual std::vector<std::string> required_prerequisites() const { return {}; }
 };
 ```
 
@@ -36,7 +37,7 @@ fsm-opt -i model.sysml --passes=canonicalize,constant-folding,dead-state-pruning
 
 ### 2. Comprehensive Pass Reference: The 7-Stage Pipeline
 
-`fsmc` provides 30 built-in middle-end passes organized across a verified 7-stage compilation pipeline (`PassManager::create_verified_7stage_pipeline`):
+`fsmc` registers **33 middle-end passes** in `PassManager` (inspectable via `fsm-opt --list-passes`). Of these, **28 passes** execute in `PassManager::create_verified_7stage_pipeline(optimize = true)`, while the remaining 5 specialized passes (`inline-submachines`, `choice-completeness`, `race-check`, `state-minimization`, `pipe-through`) are activated by standard optimization modes (`-O1`, `-O2`), dedicated flags (`--inline`, `--races`, `--pipe-through`), or custom `fsm-opt --passes=...` pipelines:
 
 ```mermaid
 flowchart TD
@@ -57,7 +58,7 @@ flowchart TD
 
 #### 1. `canonicalize` (`HierarchyCanonicalizationPass`)
 * **What it does**: Computes deterministic 64-bit FNV-1a identifiers, normalizes Fully Qualified Names (`FQN`, e.g. `"Operating.Running.Active"`), reconciles parent-child relationships, and sorts all states and transitions into deterministic order.
-* **Why it matters**: Guarantees bit-for-bit reproducible code generation across different operating systems, file systems, and compiler toolchains.
+* **Why it matters**: Guarantees deterministic, order-independent IR construction and reproducible generated code across host platforms and filesystems.
 
 #### 2. `semantic-validation` (`SemanticValidationPass`)
 * **What it does**: Validates variable and port targets, algebraic assignment semantics, and type resolution across the datapath.
@@ -97,7 +98,7 @@ flowchart TD
 
 ### Stage 3: Formal Safety & Invariant Verification
 
-#### 12. `sampled-change-triggers` (`SampledChangeTriggerPass`)
+#### 12. `sampled-change-trigger` (`SampledChangeTriggerPass`)
 * **What it does**: Lowers continuous stream change triggers (`when (pred)`) into discrete edge-triggered guards with unit-delay shadow registers ($z^{-1}$, `!prev_pred && pred`) sampled synchronously at each control step.
 
 #### 13. `livelock-analysis` (`LivelockAnalysisPass`)

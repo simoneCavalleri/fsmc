@@ -4,8 +4,8 @@
 
 Its architecture strictly decouples model ingestion and formal verification from target code emission using a canonical Intermediate Representation (**`FsmIr`**). While C++ serves as the initial reference production backend, the metamodel natively maps to diverse programming languages and safety-critical execution runtimes.
 
-> [!IMPORTANT]
-> **Active Production Target vs. Roadmap Previews**: The **C++ Reference Backend** (`C++17/C++20`) is the active production-ready code generation target. The **Rust** (`no_std`) and **C** (`Embedded C`) backends described in this roadmap represent **preview specifications and RFC designs**.
+!!! info "Active Production Target vs. Roadmap Previews"
+    The **C++ Reference Backend** (`C++17/C++20`) is the active production-ready code generation target. The **Rust** (`no_std`) and **C** (`Embedded C`) backends described in this roadmap represent **preview specifications and RFC designs**.
 
 ---
 

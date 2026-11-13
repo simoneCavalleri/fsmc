@@ -67,8 +67,6 @@ struct step_result {
 
 ---
 
----
-
 ## 2. Zero-Allocation Flight Recorder Telemetry
 
 For post-mortem auditing, blackbox event logging, and hard real-time diagnostics, `fsmc` provides `fsm::TraceBuffer<Capacity>` and `fsm::flight_recorder_observer<Capacity>` ([`flight_recorder.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/backend/cpp/runtime/flight_recorder.hpp)).
@@ -192,9 +190,9 @@ timers.tick(10, [](uint32_t expired_id) {
 
 For high-integrity systems, Digital Twin synchronization, Hardware-in-the-Loop (HIL) fault recovery, and time-travel replay debugging, `fsmc` provides `fsm::snapshot_recorder<Capacity, MaxSize>` ([`snapshot_recorder.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/backend/cpp/runtime/snapshot_recorder.hpp)).
 
-### Architectural Properties:
-* **Zero Dynamic Allocation**: Fixed $O(1)$ ring buffer residing entirely on the stack or in static memory.
-* **Integrity Validation**: Snapshots are packed with byte-level state identifiers and CRC/checksum headers (`fsm::state_snapshot_entry`).
+### Architectural Properties
+* **Fixed-Capacity Storage**: Fixed $O(1)$ ring buffer residing entirely on the stack or in static memory.
+* **Integrity Validation**: Snapshots are packed with byte-level state identifiers and CRC/checksum headers (`fsm::snapshot_entry`).
 * **Time-Travel Rollback**: Instantly restores active variant state, discrete registers, and timers to any prior recorded checkpoint.
 
 ### Complete Usage Example:
@@ -229,14 +227,16 @@ if (restored) {
 recorder.rollback(ecu, 1 /* step back */);
 ```
 
-### API Reference:
+### API Reference
 
 | Method | Signature | Description |
 | :--- | :--- | :--- |
-| `record` | `bool record(const FSM& fsm, uint32_t id = 0, uint64_t ts = 0)` | Captures binary snapshot into circular ring buffer. Returns `true` on success. |
+| `record` | `bool record(const FSM& fsm, uint32_t tag = 0, uint64_t ts = 0)` | Captures binary snapshot into circular ring buffer. Returns `true` on success. |
 | `rollback` | `bool rollback(FSM& fsm, size_t steps = 1)` | Unwinds state by `steps` chronological snapshots. |
-| `rewind_to_checkpoint` | `bool rewind_to_checkpoint(FSM& fsm, uint32_t checkpoint_id)` | Scans backward and restores the newest snapshot matching `checkpoint_id`. |
-| `latest` | `const Entry* latest() const` | Returns pointer to the most recently recorded snapshot entry. |
-| `oldest` | `const Entry* oldest() const` | Returns pointer to the oldest recorded snapshot entry still in buffer. |
-| `count` | `size_t count() const` | Current number of active snapshots stored in the recorder ($0 \le \text{count} \le \text{Capacity}$). |
+| `rewind_to_checkpoint` | `bool rewind_to_checkpoint(FSM& fsm, uint32_t tag)` | Scans backward and restores the newest snapshot matching `tag`. |
+| `latest` | `const entry_type* latest() const` | Returns pointer to the most recently recorded snapshot entry (or `nullptr` if empty). |
+| `size` | `size_t size() const` | Current number of snapshots stored in the recorder ($0 \le \text{size} \le \text{Capacity}$). |
+| `capacity` | `size_t capacity() const` | Compile-time maximum capacity of the circular ring buffer. |
+| `empty` / `full` | `bool empty() const` / `bool full() const` | Checks whether the recorder buffer is empty or full. |
+| `total_recorded` | `uint64_t total_recorded() const` | Cumulative count of `record()` invocations since initialization. |
 | `clear` | `void clear()` | Flushes all recorded snapshots in $O(1)$. |

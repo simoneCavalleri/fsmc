@@ -46,7 +46,7 @@ Common mistakes:
 
 ### Q2: Is `fsmc` compatible with `-fno-exceptions` and `-fno-rtti`?
 
-**Yes, 100% natively.**
+**Yes, natively.**
 
 - `fsmc` does not use `throw`, `catch`, or `try`. All transition outcomes are returned deterministically via `dispatch_result` and `step_result`.
 - State identification uses `constexpr std::string_view name` and compile-time type indices, eliminating all runtime RTTI (`typeid` / `dynamic_cast`).
@@ -68,7 +68,7 @@ To fire an event, call `sm.dispatch(Event{})`.
 
 `fsm::row` is a compile-time type list requiring named functor types (structs). This guarantees:
 
-1. **Zero runtime overhead**: Inlines 100% into direct branch instructions with 0 indirect function pointers.
+1. **Zero runtime overhead**: Compiles into direct branch instructions with zero indirect function pointers.
 2. **Formal Verifiability**: Enables the compiler to analyze guard satisfiability formally and model check properties in nuXmv.
 
 To define custom logic, write a lightweight 1-line struct:

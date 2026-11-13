@@ -2,9 +2,8 @@
 
 `fsmc` compiles statechart models into canonical symbolic transition systems strictly compliant with the **nuXmv 2.0+** and **NuSMV 2.6+** model checking engines.
 
-> [!NOTE]
-> **Role in the Toolchain**:
-> In standard workflows, SMV is **used primarily as an Export Target**. Engineers author models in expressive modeling languages (SysML v2, Cameo XMI, SCXML, PlantUML) and invoke `fsmc --export smv` to generate `.smv` logic files for automated mathematical verification and counterexample extraction in the external **nuXmv** solver suite.
+!!! note "Role in the Toolchain"
+    In standard workflows, SMV is **used primarily as an Export Target**. Engineers author models in expressive modeling languages (SysML v2, Cameo XMI, SCXML, PlantUML) and invoke `fsmc --export smv` to generate `.smv` logic files for automated mathematical verification and counterexample extraction in the external **nuXmv** solver suite.
 
 ---
 
@@ -75,15 +74,23 @@ ASSIGN
 
 ---
 
-### D. Safety Invariants & Temporal LTL Properties
-- **State Invariants** (`@fsm:property InvarName = "G !(...)";`): Stripped of the redundant outer temporal operator and formatted as native `INVARSPEC`:
+### D. Safety Invariants, LTL & CTL Properties
+- **State Invariants** (`// @fsm:property InvarName = "G !(...)";`): Stripped of the outer `G` quantifier and formatted as native `INVARSPEC`:
   ```smv
   INVARSPEC !(state = SensorCalib & state = WaypointNav);
   ```
-- **LTL Temporal Properties** (`@fsm:property ResponseLanding = "G (LowBat -> F Landed)";`): Formatted as native `LTLSPEC`:
+- **LTL Temporal Properties** (`// @fsm:property ResponseLanding = "G (LowBat -> F Landed)";`): Formatted as native `LTLSPEC`:
   ```smv
   LTLSPEC G (event = LowBatteryEvent & batteryLevel < 20 -> F (state = Landed));
   ```
+- **CTL Temporal Properties** (`AG`, `EF`, `AF`, `EG`, `EX`, `AX`, `E[..U..]`, `A[..U..]`): Formatted as native `CTLSPEC` during SMV export:
+  ```smv
+  CTLSPEC AG (state = InFlight -> EF (state = Landed));
+  ```
+
+!!! note "Internal vs. External nuXmv Verification"
+    - `fsmc -i model.sysml --verify` (or `--engine internal`) evaluates LTL, CTL, reachability, and deadlock checks using the built-in polynomial model checker with zero external dependencies.
+    - `fsmc -i model.sysml --verify --engine nuxmv` delegates symbolic checking to an installed `nuXmv` binary when available, and `fsmc -i model.sysml --export smv -o model.smv` emits the `.smv` artifact explicitly for manual or scripted runs.
 
 ---
 

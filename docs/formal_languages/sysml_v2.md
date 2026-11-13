@@ -80,8 +80,8 @@ state ActiveFlight {
 state EmergencyHold;
 ```
 
-> [!WARNING]
-> **MBSE Exchange vs C++ Backend (`ECPP006`)**: State-level `do action <Activity>();` (`do_activity`) is fully parsed and preserved in `FsmIr` for lossless MBSE model exchange (e.g., SysML v2 $\leftrightarrow$ SCXML $\leftrightarrow$ Cameo $\leftrightarrow$ Stateflow). However, the zero-heap synchronous C++ reference backend rejects unlowered `do_activity` with diagnostic `ECPP006`, because synchronous finite state automata require discrete zero-time run-to-completion semantics. For background work in C++, use transition actions or the multi-threaded `thread_safe_fsm` executor.
+!!! warning "MBSE Exchange vs C++ Backend (`ECPP006`)"
+    State-level `do action <Activity>();` (`do_activity`) is fully parsed and preserved in `FsmIr` for lossless MBSE model exchange (e.g., SysML v2 $\leftrightarrow$ SCXML $\leftrightarrow$ Cameo $\leftrightarrow$ Stateflow). However, the zero-heap synchronous C++ reference backend rejects unlowered `do_activity` with diagnostic `ECPP006`, because synchronous finite state automata require discrete zero-time run-to-completion semantics. For background work in C++, use transition actions or the multi-threaded `thread_safe_fsm` executor.
 
 ---
 
@@ -139,31 +139,35 @@ transition check_fail first ClearanceCheck if not in.gps_lock then Preflight;
 
 ---
 
-## 2. Formal Directives in SysML v2
+## 2. Formal Directives & Traceability in SysML v2
 
-You can embed formal verification specifications and requirement traceability annotations directly into SysML v2 comments and declarations:
+In addition to native SysML v2 constructs (`assert property`, `satisfy requirement`, `defer`), you can embed `@fsm:*` annotations inside `//` comments:
 
 ```sysml
 package MissionSafety {
     state def UAVControl {
         // Formal Safety Invariant: Never allow HighThrust while Landed
-        @fsm:property InvariantNoThrustOnGround = "G !(Landed && HighThrust)";
+        assert property InvariantNoThrustOnGround : G !(Landed && HighThrust);
 
-        // Formal Liveness Property: When LowBattery occurs, the system must eventually Land
-        @fsm:property ResponseLanding = "G (EvLowBattery -> F Landed)";
+        // Or equivalently via comment directive:
+        // @fsm:property ResponseLanding = "G (EvLowBattery -> F Landed)";
 
         state Landed {
-            // Requirement Traceability Tag
-            @fsm:req "REQ-UAV-001";
-            
+            // Native SysML v2 requirement traceability
+            satisfy requirement REQ-UAV-001;
+
             // Defer sensor payload commands until flight is active
-            @fsm:defer [EvStreamTelemetry, EvStartMission];
+            defer EvStreamTelemetry;
+            defer EvStartMission;
         }
 
         state HighThrust;
     }
 }
 ```
+
+!!! note "Boolean Operators in SysML v2 Guards"
+    The SysML v2 parser accepts both C-style boolean operators (`&&`, `||`, `!`) and keyword forms (`and`, `or`, `not`) inside `if` guard expressions.
 
 ---
 
@@ -177,7 +181,7 @@ package MissionSafety {
             out port heater_cmd : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
             attribute cycles : Integer = 0;
 
-            @fsm:property SafeBat = "G (EvCritBat -> F SafeMode)";
+            // @fsm:property SafeBat = "G (EvCritBat -> F SafeMode)";
 
             entry; then Standby;
 

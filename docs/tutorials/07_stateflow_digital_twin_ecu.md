@@ -1,6 +1,7 @@
 # Step 7: Stateflow Digital Twin ECU & Time-Travel Rollback
 
-In this tutorial, we implement an automotive **Electronic Control Unit (ECU)** power and drive mode manager using **MathWorks Stateflow XML (`.sfx`)**, optimize it using the compiler's middle-end **Connective Junction Chaining Pass**, and integrate it with a zero-heap **Time-Travel Snapshot Recorder** for real-time fault recovery and digital twin telemetry.
+!!! note "Curriculum Continuity"
+    In **[Step 6](06_real_world_case_study.md)**, we built and formally verified a SysML v2 aerospace controller. In this final step, we switch frontends to **MathWorks Stateflow XML (`.sfx`)**, use the compiler's middle-end **Connective Junction Chaining Pass**, and integrate `fsm::snapshot_recorder` for zero-heap time-travel rollback.
 
 ---
 
@@ -16,11 +17,11 @@ In safety-critical automotive systems (ISO 26262 ASIL-B/D), electronic control u
 flowchart TD
     subgraph Model ["MathWorks Stateflow (ecu.sfx)"]
         SF1["Standby State"] --> EvStart["EvStart"]
-        EvStart --> J1{"Junction Precheck"}
-        J1 -->|"[sensors_ok == 1]"| J2{"Junction Mode"}
-        J1 -->|"[default]"| StandbyAlert["Standby / Fault Alert"]
+        EvStart --> J1{"Junction_Precheck"}
+        J1 -->|"[sensors_ok == 1]"| J2{"Junction_Mode"}
+        J1 -->|"[sensors_ok == 0]"| Shutdown["EmergencyShutdown"]
         J2 -->|"[eco_requested == 0]"| Drive["Drive State"]
-        J2 -->|"[eco_requested == 1]"| EcoDrive["EcoDrive State"]
+        J2 -->|"[eco_requested == 1]"| EcoMode["EcoMode State"]
     end
 
     subgraph Optimization ["fsmc / fsm-opt Compiler"]
@@ -42,105 +43,61 @@ flowchart TD
 
 ## 2. Stateflow Source Specification (`ecu.sfx`)
 
-The state machine is authored directly in Simulink Stateflow XML format:
+The state machine is authored in Simulink Stateflow XML format (matching [`examples/06_stateflow_digital_twin_ecu/ecu.sfx`](https://github.com/simoneCavalleri/fsmc/blob/main/examples/06_stateflow_digital_twin_ecu/ecu.sfx)):
 
 ```xml
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <Stateflow>
-  <machine id="1" name="EcuEngineModel">
-    <chart id="2" name="EcuEngineChart">
-      
-      <!-- States -->
-      <state id="10" name="Standby">
-        <type>OR</type>
-      </state>
-      <state id="20" name="Drive">
-        <type>OR</type>
-      </state>
-      <state id="30" name="EcoDrive">
-        <type>OR</type>
-      </state>
-      <state id="40" name="LimpHome">
-        <type>OR</type>
-      </state>
+    <machine name="DigitalTwinECU">
+        <chart id="1" name="EcuEngineController">
+            <state id="10" name="Standby"/>
+            <junction id="20" SSID="Precheck" type="CONNECTIVE"/>
+            <junction id="21" SSID="Mode" type="CONNECTIVE"/>
+            <state id="30" name="Drive"/>
+            <state id="31" name="EcoMode"/>
+            <state id="40" name="LimpHome"/>
+            <state id="50" name="EmergencyShutdown"/>
 
-      <!-- Connective Flow Junctions -->
-      <junction id="100" type="CONNECTIVE"/>
-      <junction id="101" type="CONNECTIVE"/>
+            <!-- Connective Junction Chaining Path -->
+            <transition src="Standby" dst="Junction_Precheck" labelString="EvStart / { checkSensors(); }"/>
+            <transition src="Junction_Precheck" dst="Junction_Mode" labelString="[sensors_ok == 1]"/>
+            <transition src="Junction_Precheck" dst="EmergencyShutdown" labelString="[sensors_ok == 0] / { faultAlert(); }"/>
+            <transition src="Junction_Mode" dst="Drive" labelString="[eco_requested == 0] / { setDriveRpm(); }"/>
+            <transition src="Junction_Mode" dst="EcoMode" labelString="[eco_requested == 1] / { setEcoRpm(); }"/>
 
-      <!-- Default Transition -->
-      <transition id="1">
-        <src id="0"/>
-        <dst id="10"/>
-      </transition>
-
-      <!-- Multi-Hop Connective Flow Paths -->
-      <transition id="2">
-        <src id="10"/>
-        <dst id="100"/>
-        <trigger>EvStart</trigger>
-        <action>checkSensors()</action>
-      </transition>
-
-      <transition id="3">
-        <src id="100"/>
-        <dst id="101"/>
-        <guard>sensors_ok == 1</guard>
-      </transition>
-
-      <transition id="4">
-        <src id="101"/>
-        <dst id="20"/>
-        <guard>eco_requested == 0</guard>
-        <action>setDriveRpm()</action>
-      </transition>
-
-      <transition id="5">
-        <src id="101"/>
-        <dst id="30"/>
-        <guard>eco_requested == 1</guard>
-        <action>setEcoRpm()</action>
-      </transition>
-
-      <!-- Anomaly & Shutdown Transitions -->
-      <transition id="7">
-        <src id="20"/>
-        <dst id="40"/>
-        <trigger>EvOverheat</trigger>
-        <guard>engine_temp > 105.0</guard>
-        <action>activateCooling()</action>
-      </transition>
-
-      <transition id="8">
-        <src id="20"/>
-        <dst id="10"/>
-        <trigger>EvStop</trigger>
-        <action>shutdownEngine()</action>
-      </transition>
-
-    </chart>
-  </machine>
+            <!-- Operational Transitions -->
+            <transition src="Drive" dst="LimpHome" labelString="EvOverheat [engine_temp &gt; 105] / { activateCooling(); }"/>
+            <transition src="Drive" dst="Standby" labelString="EvStop / { shutdownEngine(); }"/>
+            <transition src="EcoMode" dst="Standby" labelString="EvStop / { shutdownEngine(); }"/>
+            <transition src="LimpHome" dst="EmergencyShutdown" labelString="EvCriticalFault / { emergencyKill(); }"/>
+            <transition src="LimpHome" dst="Drive" labelString="EvCooledDown [engine_temp &lt; 90] / { restorePower(); }"/>
+        </chart>
+    </machine>
 </Stateflow>
 ```
 
 ---
 
-## 3. Connective Junction Chaining
+## 3. Connective Junction Chaining & Code Generation
 
 In standard statechart semantics, connective junctions are transient decision points that must execute without resting. Rather than synthesizing synthetic intermediate states or complex runtime interpreters, `fsmc` features the **Connective Junction Chaining Pass** (`connective-junction-chaining`) in Stage 2 of the middle-end pipeline:
 
-$$\text{Standby} \xrightarrow{\text{EvStart}} J_{100} \xrightarrow{[\text{sensors\_ok}]} J_{101} \xrightarrow{[\text{eco\_requested} == 0]} \text{Drive}$$
+$$\text{Standby} \xrightarrow{\text{EvStart}} \text{Junction\_Precheck} \xrightarrow{[\text{sensors\_ok} == 1]} \text{Junction\_Mode} \xrightarrow{[\text{eco\_requested} == 0]} \text{Drive}$$
 
 The pass performs depth-first search along outgoing junction transitions:
-1. **Guard Conjunction**: Conjoins all condition predicates along the path into a single composite boolean AST (`and_(sensors_ok == 1, eco_requested == 0)`).
-2. **Action Sequentialization**: Sequences all condition and transition actions along the path in strict FIFO order (`checkSensors(); setDriveRpm();`).
-3. **Direct Edge Synthesis**: Replaces the multi-hop flowchart with direct edges between the original source state (`Standby`) and the destination leaf states (`Drive`, `EcoDrive`).
-4. **Dead Junction Elimination**: Eliminates the intermediate junctions $J_{100}$ and $J_{101}$ from the target state space.
+1. **Guard Conjunction**: Conjoins all condition predicates along the path into a single composite boolean AST (`fsm::and_<sensors_ok_eq_1, eco_requested_eq_0>`).
+2. **Action Sequentialization**: Chains all condition and transition actions along the path in strict FIFO order (`checkSensors_setDriveRpm`).
+3. **Direct Edge Synthesis**: Replaces the multi-hop flowchart with direct edges between `Standby` and the destination leaf states (`Drive`, `EcoMode`, `EmergencyShutdown`).
+4. **Dead Junction Elimination**: Eliminates the intermediate junctions from the target state space.
 
-You can inspect the transformed IR using `fsm-opt`:
+You can inspect the transformed IR using `fsm-opt` and compile the standalone C++20 header using `fsmc`:
 
 ```bash
+# Inspect chained transitions in FsmIr JSON
 fsm-opt ecu.sfx --passes=connective-junction-chaining --emit-ir
+
+# Compile standalone C++20 ECU header
+fsmc -i ecu.sfx -o ecu_fsm.hpp --std 20 --standalone --namespace automotive::ecu --name EcuEngineFSM
 ```
 
 ---
@@ -183,7 +140,6 @@ Below is the complete, runnable C++ test harness (`main.cpp`):
 #include <iostream>
 
 #include "ecu_fsm.hpp"
-#include "fsm/backend/cpp/runtime/snapshot_recorder.hpp"
 
 namespace automotive::ecu {
 
@@ -320,3 +276,12 @@ Expected output:
 1. **Stateflow Flowchart Collapsing**: The middle-end `connective-junction-chaining` pass collapses arbitrary directed acyclic flow graphs of connective junctions into single-step compound transitions, avoiding runtime overhead.
 2. **Dual Action Modeling**: Chained actions across multi-hop edges are combined using `fsm::seq_`, maintaining strict sequential execution semantics.
 3. **Zero-Heap Time-Travel Rollback**: `fsm::snapshot_recorder` provides hardware-in-the-loop (HIL) systems and digital twin monitors with bounded memory snapshot history and checksum-validated rollback capabilities.
+
+---
+
+## Next Steps
+
+You have completed the tutorial curriculum. Explore further in:
+- **[Systems Modeling & Formal Languages](../formal_languages/index.md)** for full frontend syntax and sidecar manifests.
+- **[C++ Runtime Backend](../runtime_api/index.md)** for SPSC, Thread-Safe, and real-time memory tuning.
+- **[CMake Integration Reference](../reference/cmake_integration.md)** for production build recipes.

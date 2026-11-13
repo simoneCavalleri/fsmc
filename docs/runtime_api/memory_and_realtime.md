@@ -2,7 +2,7 @@
 
 In safety-critical embedded systems, automotive firmware, and aerospace controllers, dynamic memory allocations (`malloc`, `new`, `std::vector`, `std::function`) and dynamic virtual tables are strictly prohibited due to heap fragmentation and non-deterministic timing risks.
 
-The `fsmc` C++17/C++20 reference backend is engineered to provide **100% zero-heap, zero-vtable, and zero-exception** guarantees.
+The `fsmc` C++17/C++20 reference backend is engineered to provide **zero-heap, zero-vtable, and zero-exception** guarantees.
 
 ---
 
@@ -102,7 +102,7 @@ For embedded systems where discrete events are produced inside hardware Interrup
 `fsmc` provides built-in binary snapshot serialization and restoration designed for high-reliability embedded checkpoints, NVRAM retention across reboot cycles, and hot-standby dual-redundant synchronization.
 
 ### Key Guarantees
-- **100% Zero-Heap**: Operates directly into caller-provided stack buffers, fixed arrays, or non-volatile memory slots using `std::span<std::uint8_t>` or raw buffer pointers.
+- **Zero-Heap Operation**: Operates directly into caller-provided stack buffers, fixed arrays, or non-volatile memory slots using `std::span<std::uint8_t>` or raw buffer pointers.
 - **Full Statechart Capture**: Serializes active state variant index, history states, deterministic timers, residence duration (time invariants), and datapath registers.
 - **Defensive Integrity Validation**: Packed header with magic word (`0x46534D43`), schema revision, registers size check, and 32-bit FNV-1a checksum. Deserialization strictly rejects truncated, outdated, or corrupted snapshots.
 

@@ -1195,7 +1195,7 @@ int main() {
     SpscV010E2eFsm spsc;
     assert(!spsc.post(Packet{2000}));
     assert(spsc.post(Packet{50}));
-    assert(spsc.process_one(in, out, srv));
+    assert(spsc.process_one(::fsm::no_ports{}, out));
     assert(spsc.is_in<LowMode>());
     assert(out.out_port == 50);
 

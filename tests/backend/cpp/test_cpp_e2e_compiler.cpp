@@ -1373,7 +1373,7 @@ int main() {
     KeywordFSMOutPorts out{};
     KeywordFSMServices srv{};
     in.switch_ = 1;
-    auto res = sm.dispatch(signal{}, in, out, srv);
+    auto res = sm.dispatch(fsm_generated::signal{}, in, out, srv);
     assert(res.is_success());
     assert(sm.is_in<struct_>());
     assert(sm.registers().class_ == 1);

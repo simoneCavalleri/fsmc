@@ -2,7 +2,7 @@
 
 The `fsmc` compiler translates state machine models into deterministic, formally verified execution runtimes across multiple target programming languages.
 
-The **C++ Reference Backend** provides a header-only, **100% zero-heap, zero-vtable, and zero-exception** C++17/C++20 runtime library located in [`include/fsm/backend/cpp/runtime/`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/backend/cpp/runtime/). For planned Rust (`no_std`) and ISO C99 code generators, see the **[Multi-Target Architecture & Roadmap](multi_target_roadmap.md)**.
+The **C++ Reference Backend** provides a header-only, **zero-heap, zero-vtable, and zero-exception** C++17/C++20 runtime library located in [`include/fsm/backend/cpp/runtime/`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/backend/cpp/runtime/). For planned Rust (`no_std`) and ISO C99 code generators, see the **[Multi-Target Architecture & Roadmap](multi_target_roadmap.md)**.
 
 ---
 
@@ -14,8 +14,8 @@ The **C++ Reference Backend** provides a header-only, **100% zero-heap, zero-vta
 | **Rust Target** | Rust 2021 (`no_std`) | Typestate transitions, lock-free static channels | Compile-time memory safety, zero panic | **Preview / In Development** |
 | **C Target** | ISO C99 / C11 | Static transition table, switch-case dispatch | Embedded C, zero malloc | **Preview / Planned RFC** |
 
-> [!NOTE]
-> **Production vs. Preview**: The **C++ Backend** is the active production-ready target. Rust and C code generation are preview targets currently being designed and implemented.
+!!! note "Production vs. Preview"
+    The **C++ Backend** is the active production-ready target. Rust and C code generation are preview targets currently being designed and implemented.
 
 ---
 
@@ -83,7 +83,7 @@ flowchart TD
 | :--- | :--- | :--- | :--- |
 | **Modern Factory Alias** | `fsm::make_fsm<Table, Policies...>` | `fsm::make_spsc_fsm<Table, Policies...>` | `fsm::make_thread_safe_fsm<Table, Policies...>` |
 | **Concurrency Model** | Single-threaded (runs on caller's stack) | Single-Producer Single-Consumer (Lock-Free) | Multi-Producer Single-Consumer (Active Object) |
-| **Heap Allocation** | **0 bytes** (100% stack / static) | **0 bytes** (pre-allocated static ring buffer) | **0 bytes** core (std::function queue tasks) |
+| **Heap Allocation** | **0 bytes** (stack / static) | **0 bytes** (pre-allocated static ring buffer) | **0 bytes** core (`std::function` queue tasks) |
 | **Synchronization Overhead** | **Zero** (no atomics, no mutexes) | **Wait-free $O(1)$** ingest (atomic acquire-release) | **Mutex-guarded** queue & condition variable |
 | **ISR Safety** | Safe if called within ISR context | **Guaranteed Wait-Free ISR Ingress** | Unsafe from ISRs (uses `std::mutex`) |
 | **Timed Event Scheduling** | Discrete cycle step (`step(dt)`) | Discrete cycle step (`step(dt)`) | **Physical timers** (`post_delayed`, `post_state_timeout`) |

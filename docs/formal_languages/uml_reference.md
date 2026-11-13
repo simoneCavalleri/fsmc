@@ -424,164 +424,62 @@ struct DeploySolarPanelsAction {
 };
 ```
 
-## 10. Multi-Format Modeling Reference
+## 10. Format Feature Matrix & Extensions Specification
 
-In addition to SysML v2, PlantUML, and Mermaid, `fsmc` supports:
+### A. Frontend Classification (Formal Models vs. Visual Diagrams)
 
-### A. Cameo Systems Modeler / MagicDraw (`.xmi`, `.xml`, `.uml`)
-```xml
-<packagedElement xmi:type="uml:StateMachine" xmi:id="_sm1" name="MissionFSM">
-  <region xmi:id="_r1">
-    <subvertex xmi:type="uml:Pseudostate" xmi:id="_init" kind="initial"/>
-    <subvertex xmi:type="uml:State" xmi:id="_s1" name="Standby"/>
-    <subvertex xmi:type="uml:State" xmi:id="_s2" name="InFlight"/>
-    <transition source="_init" target="_s1"/>
-    <transition source="_s1" target="_s2">
-      <trigger name="AuthorizeCmd"/>
-      <guard name="ValidClearanceGuard"/>
-      <effect name="ArmEnginesAction"/>
-    </transition>
-  </region>
-</packagedElement>
-```
-
-### B. W3C SCXML (`.scxml`)
-```xml
-<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Standby" name="MissionFSM">
-  <state id="Standby">
-    <transition event="AuthorizeCmd" cond="ValidClearanceGuard" target="InFlight">
-      <send event="ArmEnginesAction"/>
-    </transition>
-  </state>
-  <state id="InFlight"/>
-</scxml>
-```
-
-### C. XState JSON Statechart (`.json`)
-```json
-{
-  "id": "MissionFSM",
-  "initial": "Standby",
-  "states": {
-    "Standby": {
-      "on": {
-        "AuthorizeCmd": {
-          "target": "InFlight",
-          "cond": "ValidClearanceGuard",
-          "actions": ["ArmEnginesAction"]
-        }
-      }
-    },
-    "InFlight": {}
-  }
-}
-```
-
-### D. Graphviz DOT (`.dot`, `.gv`)
-```dot
-digraph MissionFSM {
-  __start__ [shape=point];
-  __start__ -> Standby;
-  Standby -> InFlight [label="AuthorizeCmd [ValidClearanceGuard] / ArmEnginesAction"];
-}
-```
-
----
-
-## 11. Format Feature Matrix & Extensions Specification
-
-### A. Frontend Classification (Formal Models vs Visual Diagrams)
-
-`fsmc` categorizes statechart formats into two distinct frontend classes:
+`fsmc` categorizes input formats into two frontend classes:
 
 1. **Formal Metamodels (`include/fsm/frontend/formal/`)**:
-    - **Cameo / MagicDraw (OMG XMI 2.x)**, **OMG SysML v2**, and **W3C SCXML**.
-    - Strict symbol and type declarations, mathematical semantics, physical units. Direct compilation to C++ without warnings.
+   - **OMG SysML v2** (`.sysml`), **MathWorks Stateflow** (`.slx`, `.sfx`, `.xml`), **Cameo / MagicDraw** (`.xmi`), **W3C SCXML** (`.scxml`), **nuXmv / SMV** (`.smv`), and **XState JSON** (`.json`).
+   - Explicit symbol declarations and typed semantics. Direct C++ compilation is enabled without extra flags.
 2. **Visual Diagrams (`include/fsm/frontend/diagram/`)**:
-    - **PlantUML**, **Mermaid `stateDiagram-v2`**, **Graphviz DOT**, and **XState JSON**.
-    - Descriptive sketch notations. Code generation requires `--allow-diagram-codegen` and emits `warning[W0301]`.
+   - **PlantUML** (`.puml`), **Mermaid `stateDiagram-v2`** (`.mmd`), and **Graphviz DOT** (`.dot`, `.gv`).
+   - Sketch notations designed for documentation and review; direct C++ generation requires `--allow-diagram` (or `--allow-diagram-codegen`). See the individual format guides for [Cameo XMI](cameo_magicdraw.md), [W3C SCXML](scxml.md), [Stateflow](stateflow.md), and [Visual Diagrams](diagrams.md).
 
+### B. Feature Matrix (Native vs. Extended Syntax)
 
-### B. Feature Matrix (Native vs Extended Syntax)
-
-The table below details which UML 2.5 / Statechart features are supported **natively** by each official format specification versus features for which `fsmc` defines a **clean, renderer-safe extension**:
-
-| Feature / Concept | Cameo OMG XMI | OMG SysML v2 | W3C SCXML | XState JSON | PlantUML | Mermaid | Graphviz DOT |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Frontend Category** | **Formal** | **Formal** | **Formal** | **Diagram** | **Diagram** | **Diagram** | **Diagram** |
-| **Simple States & Transitions** | **Native** | **Native** | **Native** | **Native** | **Native** | **Native** | **Native** |
-| **Initial / Final States** | **Native** | **Native** | **Native** | **Native** | **Native** (`[*]`) | **Native** (`[*]`) | **Extended** (`shape=point`) |
-| **Composite States (HFSM)** | **Native** | **Native** | **Native** | **Native** | **Native** | **Native** | **Extended** (`subgraph`) |
-| **Internal Transitions** | **Native** | **Native** | **Native** | **Native** | **Native** (`State : E / A`) | **Native** (`State : E / A`) | **Extended** (`internal=true`) |
-| **Choice / Junction** | **Native** | **Native** | **Extended** (`cond` list) | **Extended** (`cond` list) | **Native** (`<<choice>>`) | **Native** (`<<choice>>`) | **Extended** (`shape=diamond`) |
-| **History States (`[H]`, `[H*]`)** | **Native** | **Native** | **Native** | **Native** | **Native** (`State[H]`) | **Extended** (`[H]`) | *N/A* |
-| **Deferred Events (Deferrable)** | **Native** | **Native** (`defer Evt;`) | **Extended** (`<defer>`) | **Extended** (`"defer": []`) | **Extended** (`: defer Evt`) | **Extended** (`: [defer] Evt`) | **Extended** (`defer="..."`) |
-| **Composite Guards (`!`, `&&`, `\|\|`)** | **Extended** (AST) | **Native** | **Native** | **Native** | **Extended** (AST) | **Extended** (AST) | **Extended** (AST) |
-| **Timed Transitions (`after_ms<N>`)** | **Extended** (AST) | **Native** (`after 500ms`) | **Native** (`delay=...`) | **Native** (`after: {}`) | **Extended** (AST) | **Extended** (AST) | **Extended** (AST) |
-| **Lossless Comment Directives** | *N/A* | *N/A* | *N/A* | *N/A* | **`@fsm:` comments** | **`%% @fsm:` comments** | **`// @fsm:` comments** |
-
----
+| Feature / Concept | Cameo OMG XMI | OMG SysML v2 | Stateflow | W3C SCXML | XState JSON | PlantUML | Mermaid | Graphviz DOT |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Frontend Category** | **Formal** | **Formal** | **Formal** | **Formal** | **Formal** | **Diagram** | **Diagram** | **Diagram** |
+| **Simple States & Transitions** | Native | Native | Native | Native | Native | Native | Native | Native |
+| **Initial / Final States** | Native | Native | Native | Native | Native | Native (`[*]`) | Native (`[*]`) | Extended (`shape=point`) |
+| **Composite States (HFSM)** | Native | Native | Native (`EXCLUSIVE_OR`) | Native | Native | Native | Native | Extended (`subgraph`) |
+| **Internal Transitions** | Native | Native | Native | Native | Native | Native (`State : E / A`) | Native (`State : E / A`) | Extended (`internal=true`) |
+| **Choice / Junction** | Native | Native | Native (`CONNECTIVE`) | Extended (`cond` list) | Extended (`cond` list) | Native (`<<choice>>`) | Native (`<<choice>>`) | Extended (`shape=diamond`) |
+| **History States (`[H]`, `[H*]`)** | Native | Native (`[H]`, `[H*]`) | Native (`HISTORY`) | Native | Native (`type: "history"`) | Native (`State[H]`) | Extended (`[H]`) | *N/A* |
+| **Deferred Events** | Native | Native (`defer Evt;`) | Extended (`@fsm:defer`) | Extended (`<defer>`) | Native (`"defer": []`) | Extended (`: defer Evt`) | Extended (`: [defer] Evt`) | Extended (`defer="..."`) |
+| **Composite Guards (`!`, `&&`, `||`)** | Extended (AST) | Native (`and`/`&&`, `or`/`||`, `not`/`!`) | Native | Native | Native | Extended (AST) | Extended (AST) | Extended (AST) |
+| **Timed Transitions (`after_ms<N>`)** | Extended (AST) | Native (`after 500 ms`) | Native (`after(500, msec)`) | Native (`delay=...`) | Native (`after: {}`) | Extended (AST) | Extended (AST) | Extended (AST) |
+| **Comment Directives** | *N/A* | `// @fsm:...` | `<!-- @fsm:... -->` | `<!-- @fsm:... -->` | `@fsm:...` / sidecar | `' @fsm:...` | `%% @fsm:...` | `// @fsm:...` |
 
 ### C. Extension Design Principles
 
-When a diagram format lacks a native keyword for advanced UML 2.5 constructs (such as *deferred events* or *choice pseudostates* in visual diagram languages), `fsmc` extensions adhere to three non-negotiable design principles:
+When a visual format lacks a native keyword for UML 2.5 constructs (such as deferred events or timed transitions), `fsmc` extensions follow three principles:
 
-1. **100% Renderer-Safe (Non-Intrusive)**:  
-   Extensions never break official diagram renderers (e.g. PlantUML Java JAR, Mermaid.js CLI, Graphviz `dot`). The extension syntax renders cleanly as regular state text, attributes, or stereotypes without visual or grammatical errors.
+1. **Renderer-Safe (Non-Intrusive)**: Extensions never break standard diagram renderers (PlantUML JAR, Mermaid.js CLI, Graphviz `dot`), rendering cleanly as notes, attributes, or stereotypes.
+2. **Deterministic Parsing**: The parser evaluates input through explicit grammar and token matching rather than heuristic guessing.
+3. **Zero-Overhead Lowering**: Features omitted from a model emit no extra runtime structures or branches in generated C++.
 
-2. **Deterministic Parsing (Zero Heuristics / Guessing)**:  
-   The parser evaluates input strictly through formal grammar and token matching. It never "guesses" or makes assumptions about unspecified behaviors.
+For the complete comment-directive syntax (`@fsm:port`, `@fsm:var`, `@fsm:signal`, `@fsm:property`, `@fsm:defer`, `@fsm:state`, `@fsm:submachine`), see [Visual Diagrams & Directives](diagrams.md).
 
-3. **Graceful Zero-Overhead Degradation**:  
-   If a feature is omitted in a diagram, the compiled C++ model completely excludes data structures and branching logic for that feature (0 bytes memory footprint, 0 CPU overhead).
+### D. Timed Transitions (`after(...)`, `every(...)`) & SMV Discrete Timers
 
----
-
-### D. Lossless Diagram Directives (`@fsm:`)
-
-For visual diagram formats (PlantUML, Mermaid, Graphviz DOT), `fsmc` supports lossless metadata directives placed inside comments:
-
-- **State Metadata**:
-  ```plantuml
-  ' @fsm:state kind=Composite initial=Idle do=poll_sensor req="REQ-01"
-  ```
-
-- **Extended Variables with Physical Units**:
-  ```plantuml
-  ' @fsm:var battery_level : float = 100.0 [percent]
-  ' @fsm:var velocity : float = 0.0 [m/s]
-  ```
-
-- **Typed Signals & Payloads**:
-  ```plantuml
-  ' @fsm:signal name=ConnectCmd type="const ConnectionRequest&" validator="req.port > 0"
-  ```
-
-- **Formal Verification Properties**:
-  ```plantuml
-  ' @fsm:property name=SafeLanding kind=Safety formula="G (LowBattery -> F SafeLand)" req="REQ-SAFE-09"
-  ```
-
----
-
-### E. Timed Transitions (`after(...)`, `every(...)`) & SMV Discrete Timers
-
-- **OMG SysML v2**: `transition accept after 500ms then NextState;`
+- **OMG SysML v2**: `transition accept after 500 ms then NextState;`
+- **MathWorks Stateflow**: `after(500, msec)` or `after(0.5, sec)`
 - **W3C SCXML**: `<transition delay="500ms" target="NextState"/>`
 - **XState JSON**: `"after": { "500": "NextState" }`
 - **PlantUML / Mermaid / DOT**: `after_500ms`, `after_10s`, `after_50us`, `after(500ms)`, `every(100ms)`
-- **SMV Formal Synthesis**: The SMV serializer automatically allocates discrete tick counter variables (`timer_<State> : 0..<duration>;`) and emits state-bounded counting rules and reset conditions on transition entry.
+- **SMV Formal Synthesis**: The SMV serializer allocates discrete tick counters (`timer_<State> : 0..<duration>;`) and resets them on transition entry.
 
----
+### E. Static Semantic Validation Summary
 
-### D. Semantic Validation Pipeline (`fsm_validator`)
+After parsing any input format, the validation passes verify:
 
-After parsing any input format, `fsmc` runs an exhaustive static analysis pass verifying:
-
-- **Reachability Analysis**: Identifies states that cannot be transitioned to from the initial state (`[WARNING] State unreachable from initial state: 'StateName'`).
-- **Target Integrity**: Verifies that all transition destinations exist in the model.
-- **Initial State Determinism**: Ensures every composite region has a well-defined initial state (inferred from first state if omitted).
-- **Choice Branch Completeness**: Ensures choice pseudostates possess at least one valid outgoing branch.
-- **Identifier Sanitization**: Automatically normalizes names to valid C++ identifiers while preserving semantic traceability.
+- **Reachability Analysis**: Identifies states unreachable from the initial state.
+- **Target Integrity**: Verifies that all transition targets and composite parents resolve to valid states.
+- **Initial State Determinism**: Ensures every composite region has a well-defined initial entry transition.
+- **Choice Branch Completeness**: Ensures choice pseudostates possess valid outgoing branches.
+- **Identifier Sanitization**: Normalizes identifiers to valid C++ symbols while preserving trace names.
 
 

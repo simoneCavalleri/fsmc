@@ -8,33 +8,43 @@ Maintaining clear traceability between functional requirements, model elements, 
 
 ## 1. Tagging Requirements in Models
 
-Requirements can be attached to states, transitions, and formal properties using the `@fsm:req` directive:
+Requirements can be attached to states and formal properties natively in SysML v2 (`satisfy requirement`), or via `@fsm:*` diagram/comment directives (`@fsm:state satisfies=[...]`, `@fsm:property ... req="..."`):
 
-```sysml
-package AerospaceEngine {
-    state def EngineController {
-        // Tagged State
-        @fsm:req "REQ-ENG-SAFE-01"
-        state SafeShutdown;
+=== "OMG SysML v2"
+    ```sysml
+    package AerospaceEngine {
+        state def EngineController {
+            // Tagged Formal LTL Property linked to REQ-ENG-SAFE-01
+            // @fsm:property SafeShutdownGuaranteed = "G (EmergencyStop -> F SafeShutdown)" req="REQ-ENG-SAFE-01"
 
-        state Running {
-            // Tagged Transition
-            @fsm:req "REQ-ENG-EMERG-02"
-            transition on EmergencyStop to SafeShutdown;
+            state Running {
+                satisfy requirement REQ-ENG-EMERG-02;
+                transition on EmergencyStop then SafeShutdown;
+            }
+
+            state SafeShutdown {
+                satisfy requirement REQ-ENG-SAFE-01;
+            }
         }
-
-        // Tagged Formal LTL Property
-        @fsm:req "REQ-ENG-SAFE-01"
-        @fsm:property SafeShutdownGuaranteed = "G (EmergencyStop -> F SafeShutdown)";
     }
-}
-```
+    ```
+
+=== "PlantUML / Mermaid Directives"
+    ```plantuml
+    @startuml
+    ' @fsm:property name=SafeShutdownGuaranteed formula="G (EmergencyStop -> F SafeShutdown)" req="REQ-ENG-SAFE-01"
+    ' @fsm:state name=SafeShutdown satisfies=["REQ-ENG-SAFE-01"]
+    ' @fsm:state name=Running satisfies=["REQ-ENG-EMERG-02"]
+    [*] --> Running
+    Running --> SafeShutdown : EmergencyStop
+    @enduml
+    ```
 
 ---
 
 ## 2. Generating Compliance Reports
 
-To generate the traceability report during compilation:
+To generate the traceability report during compilation using `--rtm` (or `--rtm-output`):
 
 === "Markdown Audit Report"
     ```bash
@@ -43,7 +53,7 @@ To generate the traceability report during compilation:
 
 === "JSON Structured Schema"
     ```bash
-    fsmc -i engine.sysml --rtm-output engine_rtm.json
+    fsmc -i engine.sysml --rtm-output engine_rtm.json --rtm-format json
     ```
 
 ---

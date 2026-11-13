@@ -1,10 +1,10 @@
 # Integration & Build System Guide
 
-This guide details how to integrate **`fsmc`** and its generated state machines into diverse build systems across C++, Rust, and C ecosystems, as well as CI/CD quality gates.
+This guide details how to integrate **`fsmc`** and its generated C++ state machines into CMake builds, package managers, standalone firmware toolchains, and CI/CD quality gates. For planned Rust and C ecosystems, see the [Multi-Target Roadmap](../runtime_api/multi_target_roadmap.md).
 
 ---
 
-## 1. C/C++ Ecosystem: Modern CMake Integration
+## 1. Modern CMake Integration
 
 `fsmc` provides target-based CMake packages exporting granular interface libraries and code generation macros.
 
@@ -12,11 +12,11 @@ This guide details how to integrate **`fsmc`** and its generated state machines 
 
 | CMake Target | Alias | Description |
 | :--- | :--- | :--- |
-| `fsmc_runtime` | `fsmc::runtime`, `fsmc::fsmc_runtime` | Embedded zero-allocation header-only runtime (`fsm`, `spsc_ring_buffer`, `static_ring_buffer`). |
+| `fsmc_runtime` | `fsmc::runtime`, `fsmc::fsmc_runtime` | Embedded zero-allocation header-only runtime (`fsm`, `spsc_fsm`, `thread_safe_fsm`, `static_ring_buffer`). |
 | `fsmc_ir` | `fsmc::ir` | Strongly-typed AST, semantic graph model, and JSON serializer. |
 | `fsmc_middleend`| `fsmc::middleend` | `PassManager`, hierarchy canonicalizer, safety verifiers. |
-| `fsmc_frontend` | `fsmc::frontend` | 8 Ingestion parsers (SysML v2, Cameo XMI, SCXML, nuXmv SMV, JSON, DOT, PUML, MMD). |
-| `fsmc_backend`  | `fsmc::backend` | C++17/20 generators and graphical emitters. |
+| `fsmc_frontend` | `fsmc::frontend` | 9 Ingestion parsers (SysML v2, Stateflow, Cameo XMI, SCXML, nuXmv SMV, XState JSON, PlantUML, Mermaid, DOT). |
+| `fsmc_backend`  | `fsmc::backend` | C++17/20 generators and graphical/formal emitters. |
 | `fsmc_compiler` | `fsmc::compiler` | Full compiler pipeline aggregating all modular libraries. |
 
 ### Basic CMake Application Setup
@@ -81,20 +81,15 @@ fsmc_target_sources(my_app
 
 ---
 
-## 3. `fsmc_target_sources` Parameter Reference
+## 3. `fsmc_target_sources` Macro Overview
 
-| Parameter | Type | Description |
-| :--- | :--- | :--- |
-| `DIAGRAMS` | `list` (**Required**) | Paths to `.sysml`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, or `.dot` files. |
-| `NAME` | `string` | Generated state machine class name (default: inferred from diagram file stem). |
-| `STANDARD` | `17` or `20` | Target C++ standard (default: `17`). |
-| `NAMESPACE` | `string` | C++ namespace wrapping states, events, and FSM aliases (default: `fsm_generated`). |
-| `OUTPUT_DIR` | `path` | Output directory for generated headers (default: `${CMAKE_CURRENT_BINARY_DIR}/generated_fsm`). |
-| `STANDALONE` | `flag` | Embeds the zero-overhead engine directly into the generated header (zero dependencies). |
-| `MODULAR` | `flag` | Generates a header that includes external runtime header (default: `"fsm.hpp"`, matching `--export-runtime`). |
-| `RUNTIME_HEADER` | `string` | Custom runtime header path included in modular mode (e.g. `"fsm.hpp"`, `"<fsm/fsm.hpp>"`). |
-| `NO_THREAD_SAFE` | `flag` | Disables generation of the `thread_safe_fsm` wrapper alias. |
-| `NO_STUBS` | `flag` | Emits forward declarations for custom user-defined guard and action structs. |
+| Parameter | Default / Notes |
+| :--- | :--- |
+| `DIAGRAMS` (**Required**) | One or more `.sysml`, `.slx`, `.sfx`, `.xmi`, `.scxml`, `.smv`, `.json`, `.puml`, `.mmd`, or `.dot` files. |
+| `OUTPUT_DIR` | Defaults to `${CMAKE_CURRENT_BINARY_DIR}/generated_${TARGET_NAME}`. |
+| `STANDALONE` / `MODULAR` | Self-contained header vs. external runtime include (`RUNTIME_HEADER` defaults to `"fsm.hpp"`). |
+
+For the full signature and every parameter (`NAME`, `STANDARD`, `NAMESPACE`, `NO_THREAD_SAFE`, `NO_STUBS`, `FORMAT`, `TARGET_LANG`), see the **[CMake Integration Reference](../reference/cmake_integration.md)**.
 
 ---
 
@@ -125,118 +120,27 @@ fsmc_target_sources(my_app
 
 ---
 
-## 5. Rust Ecosystem: Cargo & `build.rs` (Roadmap Preview)
+## 5. Standalone Drop-in & Custom Makefiles (Bare-Metal / Zero Deps)
 
-> [!NOTE]
-> **Roadmap Preview**: The Rust target emitter is currently under design and active development. The pattern below illustrates the upcoming Cargo build integration workflow.
+When building firmware with GNU Make or custom embedded toolchains where integrating CMake is not desirable, invoke `fsmc --standalone` in a pre-build rule:
 
-In Rust projects targeting `#![no_std]` bare-metal firmware or native services, models can be automatically recompiled whenever diagram files change using a standard Cargo `build.rs` build script.
+```makefile
+MODEL   = models/uav_mission.sysml
+GEN_DIR = src/generated
+GEN_HDR = $(GEN_DIR)/uav_mission_fsm.hpp
 
-### Directory Structure
-```text
-my_rust_project/
-├── Cargo.toml
-├── build.rs
-├── models/
-│   └── flight.sysml
-└── src/
-    ├── main.rs
-    └── generated/
-        └── flight_fsm.rs (generated by build.rs)
+$(GEN_HDR): $(MODEL)
+	@mkdir -p $(GEN_DIR)
+	fsmc -i $< -o $(GEN_HDR) --target cpp --std 20 --standalone
 ```
 
-### `build.rs` Pattern
-```rust
-// build.rs
-use std::process::Command;
-
-fn main() {
-    let model_path = "models/flight.sysml";
-    let output_path = "src/generated/flight_fsm.rs";
-
-    // Re-run this build script only if the SysML model changes
-    println!("cargo:rerun-if-changed={}", model_path);
-
-    let status = Command::new("fsmc")
-        .args(["-i", model_path, "-o", output_path, "--target", "rust", "--namespace", "avionics"])
-        .status()
-        .expect("Failed to execute fsmc. Ensure fsmc binary is installed and in PATH.");
-
-    if !status.success() {
-        panic!("fsmc compilation failed for {}", model_path);
-    }
-}
-```
+Drop the generated single-header artifact directly into your firmware sources—it requires no external libraries, dynamic linkers, or third-party dependencies.
 
 ---
 
-## 6. Embedded C Ecosystem: Makefile & Meson (Roadmap Preview)
+## 6. CI/CD Quality Gate: Formal Verification in CI
 
-> [!NOTE]
-> **Roadmap Preview**: The ISO C99 embedded C target emitter is currently under design. The patterns below illustrate the upcoming build integration workflow for automotive and RTOS projects.
-
-For automotive AUTOSAR Classic, aerospace, or RTOS projects with custom toolchains (IAR, Keil, GCC-ARM):
-
-=== "GNU Makefile"
-    ```makefile
-    # Makefile rule for automatic code generation
-    MODEL = models/uav_mission.sysml
-    GEN_DIR = src/generated
-    GEN_HDR = $(GEN_DIR)/uav_mission_fsm.h
-
-    all: app
-
-    $(GEN_HDR): $(MODEL)
-    	@mkdir -p $(GEN_DIR)
-    	fsmc -i $< -o $(GEN_HDR) --target c --prefix avionics_
-
-    src/main.o: src/main.c $(GEN_HDR)
-    	$(CC) -std=c99 -Wall -Wextra -I$(GEN_DIR) -c $< -o $@
-
-    app: src/main.o
-    	$(CC) $^ -o $@
-    ```
-
-=== "Meson Build"
-    ```meson
-    project('embedded_ecu', 'c', default_options: ['c_std=c99'])
-
-    fsmc_bin = find_program('fsmc', required: true)
-
-    fsm_gen = custom_target(
-      'fsm_generation',
-      input: 'models/uav_mission.sysml',
-      output: ['uav_mission_fsm.h', 'uav_mission_fsm.c'],
-      command: [fsmc_bin, '-i', '@INPUT@', '-o', '@OUTPUT0@', '--target', 'c', '--prefix', 'avionics_']
-    )
-
-    executable('ecu_app', 'src/main.c', fsm_gen)
-    ```
-
----
-
-## 7. Standalone Drop-in (Zero Dependencies)
-
-When building firmware where integrating a compiler into the build system is not desirable, generate self-contained artifacts manually:
-
-```bash
-# C++ Standalone Single-Header
-fsmc -i model.sysml -o model_fsm.hpp --target cpp --std 20 --standalone
-
-# Rust Standalone Module
-fsmc -i model.sysml -o model_fsm.rs --target rust
-
-# C99 Standalone Header & Implementation
-fsmc -i model.sysml -o model_fsm.h --target c
-```
-
-Drop the generated files directly into your source repository. They require **no external runtime libraries, no dynamic linkers, and no third-party package dependencies**.
-
----
-
-## 8. CI/CD Quality Gate: Formal Verification in CI
-
-Prevent broken models or unreachable states from ever reaching your main branch by integrating `fsmc verify` into your automated CI pipeline.
+Prevent broken models or unreachable states from reaching your main branch by integrating `fsmc --verify` into CI:
 
 === "GitHub Actions (`.github/workflows/verify.yml`)"
     ```yaml
@@ -250,17 +154,10 @@ Prevent broken models or unreachable states from ever reaching your main branch 
         steps:
           - uses: actions/checkout@v4
 
-          - name: Install fsmc
+          - name: Verify All Statechart Models
             run: |
-              # Download pre-built release binary or build from source
-              sudo cp fsmc /usr/local/bin/fsmc
-              sudo chmod +x /usr/local/bin/fsmc
-
-          - name: Run Formal Verification on All Statechart Models
-            run: |
-              # Fails the pipeline if deadlocks, incomplete guards, or invariant violations exist
-              fsmc verify models/spacecraft.sysml
-              fsmc verify models/protocol.scxml --ltl "G (Request -> F Response)"
+              fsmc -i models/spacecraft.sysml --verify
+              fsmc -i models/protocol.scxml --verify --ltl "G (Request -> F Response)"
     ```
 
 === "GitLab CI (`.gitlab-ci.yml`)"
@@ -273,7 +170,7 @@ Prevent broken models or unreachable states from ever reaching your main branch 
       stage: verify
       image: ubuntu:22.04
       script:
-        - fsmc verify models/*.sysml
+        - for m in models/*.sysml; do fsmc -i "$m" --verify; done
       rules:
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     ```

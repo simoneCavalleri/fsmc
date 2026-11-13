@@ -34,8 +34,8 @@ struct Running {
 };
 ```
 
-> [!NOTE]
-> Like transition actions, lifecycle hooks can also directly accept `OutPorts&`, `Registers&`, or `Services&` once your datapath domains are defined (see **[Section 3: The 4-Domain Datapath Model](#3-the-4-domain-segregated-datapath-model)**).
+!!! note
+    Like transition actions, lifecycle hooks can also directly accept `OutPorts&`, `Registers&`, or `Services&` once your datapath domains are defined (see **[Section 3: The 4-Domain Datapath Model](#3-the-4-domain-segregated-datapath-model)**).
 
 ---
 
@@ -106,12 +106,11 @@ struct MotorRegisters { std::uint32_t cycle_counter{0}; std::uint32_t error_coun
 struct MotorServices  { virtual void log_info(std::string_view msg) = 0; };
 ```
 
-> [!TIP]
-> **Which Call Style Should I Use?**
-> - **Standard Style (Recommended for 90% of apps)**: Bind services at construction (`MyFSM fsm(reg, srv);`), then simply call `fsm.dispatch(ev, in, out);` and `fsm.step(in, out);`.
-> - **Minimal / Pure Logic (Events Only)**: If you don't use I/O ports or services, construct `MyFSM fsm;` and simply call `fsm.dispatch(ev);` (`step()` is not needed).
-> - **Pure I/O (No Services)**: If you only use ports and registers, construct `MyFSM fsm(reg);` and call `fsm.dispatch(ev, in, out);` and `fsm.step(in, out);`.
-> - **Dynamic / Multi-Channel (Production & Testing)**: If services vary at runtime (e.g. multi-channel dispatch, redundant failover drivers, or unit testing with mocks), construct `MyFSM fsm(reg);` and inject `srv` per call: `fsm.dispatch(ev, in, out, srv);`.
+!!! tip "Which Call Style Should I Use?"
+    - **Standard Style (Recommended for 90% of apps)**: Bind services at construction (`MyFSM fsm(reg, srv);`), then simply call `fsm.dispatch(ev, in, out);` and `fsm.step(in, out);`.
+    - **Minimal / Pure Logic (Events Only)**: If you don't use I/O ports or services, construct `MyFSM fsm;` and simply call `fsm.dispatch(ev);` (`step()` is not needed).
+    - **Pure I/O (No Services)**: If you only use ports and registers, construct `MyFSM fsm(reg);` and call `fsm.dispatch(ev, in, out);` and `fsm.step(in, out);`.
+    - **Dynamic / Multi-Channel (Production & Testing)**: If services vary at runtime (e.g. multi-channel dispatch, redundant failover drivers, or unit testing with mocks), construct `MyFSM fsm(reg);` and inject `srv` per call: `fsm.dispatch(ev, in, out, srv);`.
 
 ---
 
@@ -309,8 +308,8 @@ using HfsmTable = fsm::transition_table<
 >;
 ```
 
-> [!TIP]
-> **Zero-Heap Bounded History Allocation**: The history storage buffer capacity is strictly bounded at compile-time by `count_parent_states_v<Table::states>`, eliminating heap usage and allocating stack storage strictly for composite parents.
+!!! tip "Zero-Heap Bounded History Allocation"
+    The history storage buffer capacity is strictly bounded at compile-time by `count_parent_states_v<Table::states>`, eliminating heap usage and allocating stack storage strictly for composite parents.
 
 ---
 
@@ -358,8 +357,8 @@ if (res.has_transitioned()) {
 }
 ```
 
-> [!IMPORTANT]
-> **`in_state_for<N>` is not magic**: it simply evaluates `registers.elapsed_ticks >= N`. Your control loop must increment `elapsed_ticks` each cycle. The reset action (`ResetTicks`) should zero it when the transition fires, ready for the next state's dwell measurement.
+!!! info "`in_state_for<N>` is not magic"
+    it simply evaluates `registers.elapsed_ticks >= N`. Your control loop must increment `elapsed_ticks` each cycle. The reset action (`ResetTicks`) should zero it when the transition fires, ready for the next state's dwell measurement.
 
 ### Pattern B: Delta-Time Accumulation in `Registers` ($z^{-1}$)
 When the time period $\Delta t$ fluctuates (e.g. OS scheduling jitter), accumulate physical elapsed time inside `Registers`:
@@ -402,21 +401,27 @@ sm.post(EvAuthSuccess{}); // Transitions to Connected
 
 ### Pattern D: Hardware Timer Manager — `step(dt)` with `with_timer_capacity<N>`
 
-> [!NOTE]
-> `step(dt, in, out)` advances the **built-in synchronous timer manager** — a separate compile-time subsystem activated via `fsm::with_timer_capacity<N>` — **not** the `in_state_for<N>` counter. These two systems are independent.
+!!! note
+    `step(dt, in, out)` advances the **built-in synchronous timer manager** — a separate compile-time subsystem activated via `fsm::with_timer_capacity<N>` — **not** the `in_state_for<N>` counter. These two systems are independent.
 
-When you use `fsm::with_timer_capacity<N>`, the runtime maintains an internal priority queue of timers. You advance it by passing `dt` (milliseconds or `std::chrono::duration`) to `step`:
+When you use `fsm::with_timer_capacity<N>` (or transition rows triggered by `fsm::after_ms<Ms>` / `fsm::every_ms<Ms>`), the runtime maintains a compile-time bounded timer table. You advance it by passing `dt` (`std::uint64_t` milliseconds or `std::chrono::duration`) to `tick(dt)` or `step(dt, ...)`:
 
 ```cpp
+// Option A: Declarative timed transition row (auto-armed on entry to Waiting)
+using TimeoutTable = fsm::transition_table<
+    fsm::row<Waiting, fsm::after_ms<500>, TimedOut>
+>;
+
 using TimerFSM = fsm::make_fsm<
-    MyTable,
-    fsm::with_timer_capacity<8>   // enable built-in timer manager
+    TimeoutTable,
+    fsm::with_ports<InPorts, OutPorts>,
+    fsm::with_timer_capacity<8>   // reserve up to 8 active timers
 >;
 
 TimerFSM sm;
 
-// Schedule an internal timer to fire EvTimeout after 500 ms:
-sm.arm_timer(EvTimeout{}, 500);   // 500 ms
+// Manual timer scheduling is also available directly via timer_manager():
+// sm.timer_manager().start_timer(/*timer_id=*/1, /*duration_ms=*/500, /*periodic=*/false);
 
 // In control loop — pass dt to advance the timer manager clock:
 while (running) {

@@ -172,4 +172,4 @@ The clean separation of sampled discrete time into **Registers ($z^{-1}$)** guar
        TRUE                                : dwell_ticks;
      esac;
    ```
-   Because time advances discretely through the control loop without asynchronous preemption, model checkers can verify temporal properties (LTL/CTL) exhaustively with zero abstraction error.
+   Because time advances discretely through the control loop without asynchronous preemption, model checkers verify temporal properties (LTL/CTL) with exact cycle-level correspondence between the model and generated code.

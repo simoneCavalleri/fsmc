@@ -1,8 +1,9 @@
-# Tutorial 3: Hierarchical Statecharts (HFSM) & History
+# Step 3: Hierarchical Statecharts (HFSM) & History
 
-As software grows, flat state machines suffer from **combinatorial state explosion**: every new state requires duplicate transition paths for common events like `EmergencyStop`, `Reset`, or `Pause`.
+!!! note "Curriculum Continuity"
+    In **[Step 2](02_guards_and_actions.md)**, we attached typed I/O ports, registers, and boolean guards to flat states. As systems grow, flat state machines suffer from **combinatorial state explosion**: every new state requires duplicate transition paths for common events like `FaultDetected`, `Reset`, or `Pause`.
 
-In this tutorial, you will learn how **`fsmc`** implements **Hierarchical State Machines (HFSM)**:
+In this guide, you will learn how **`fsmc`** implements **Hierarchical State Machines (HFSM)**:
 
 - Organizing behaviors into **Composite States** (Superstates and Sub-states).
 - **Transition Inheritance**: Handling global events uniformly across an entire state hierarchy.
@@ -129,6 +130,24 @@ stateDiagram-v2
 - **Shallow History (`[H]`)**: Restores the direct child state of `Flight`.
 - **Deep History (`[H*]`)**: Restores the nested active state recursively across all levels of hierarchy.
 
+In SysML v2, target a state's history pseudostate by appending `[H]` (shallow) or `[H*]` (deep) directly to the target state name:
+
+```sysml
+state Suspended;
+
+transition t_pause
+    first Flight
+    accept PauseMissionCmd
+    then Suspended;
+
+transition t_resume
+    first Suspended
+    accept ResumeMissionCmd
+    then Flight[H*];
+```
+
+`fsmc` compiles `[H]` and `[H*]` into static `fsm::history_is<CompositeState, SubState>` transition-table entries with zero dynamic allocation.
+
 ---
 
 ## 4. Compile and Run the HFSM in C++
@@ -184,7 +203,7 @@ int main() {
               << fsm.current_state_name() << "\n";
     assert(fsm.is_in<Emergency>());
 
-    std::cout << "\n[SUCCESS] Hierarchical state machine and transition inheritance verified!\n";
+    std::cout << "\n[SUCCESS] Hierarchical state machine and transition inheritance verified.\n";
     return 0;
 }
 ```
@@ -205,14 +224,14 @@ State after TargetAltitudeReached: Cruising
 State after HoldCmd: HoldingPattern
 State after FaultDetected (inherited from Flight): Emergency
 
-[SUCCESS] Hierarchical state machine and transition inheritance verified!
+[SUCCESS] Hierarchical state machine and transition inheritance verified.
 ```
 
 ---
 
 ## Next Steps
 
-Now that you can design expressive, hierarchical statecharts and execute them in C++, let's explore how to **mathematically prove their safety** before deploying to production in **[Tutorial 4: Formal Verification & Model Checking](04_formal_verification.md)**.
+Now that you can design hierarchical statecharts and execute them in C++, proceed to **[Step 4: Formal Verification & Model Checking](04_formal_verification.md)** to mathematically check safety invariants before deployment.
 
 
 

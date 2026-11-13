@@ -78,77 +78,39 @@ $$\text{Action}: (\text{OutPorts}, \text{Registers}, \text{Services}, \text{InPo
 
 ---
 
-## 3. Compile-Time Boolean Algebra & Guard Simplification
+## 3. Compile-Time Simplification & Analysis
 
-During middle-end optimization, the `GuardSimplificationPass` analyzes and reduces composite boolean guard trees algebraically before verification or target emission:
+Before code generation, the compiler's middle-end passes normalize and analyze boolean guards and choice topologies:
 
-- Double negation elimination: $\neg(\neg A) \iff A$
-- Neutral elements: $A \land \text{true} \iff A$, $A \lor \text{false} \iff A$
-- Dominant elements: $A \land \text{false} \iff \text{false}$, $A \lor \text{true} \iff \text{true}$
-- De Morgan's laws: $\neg(A \land B) \iff \neg A \lor \neg B$
-
----
-
-## 4. Choice and Junction Inlining (`ChoiceInliningPass`)
-
-When models contain intermediate decision pseudostates (`<<choice>>` or `<<junction>>`), the middle-end optimizer inlines the decision tree directly into flat composite transitions.
-
-For example, a transition path `StateA -> ChoiceNode -> StateB` with incoming guard $G_1$ and outgoing guard $G_2$ is transformed into a direct composite transition `StateA -> StateB` guarded by $(G_1 \land G_2)$ and executing combined actions $(A_1; A_2)$.
-
-This eliminates intermediate pseudostate allocations and yields direct branch resolution in emitted targets.
-
----
-
-## 5. Guard Satisfiability & Mutual Exclusivity (`GuardSatisfiabilityPass`)
-
-During compilation and verification, `fsmc` runs an in-process abstract interpretation pass to evaluate guard constraints:
-
-1. **Dead Guard Detection (`W0302`)**: Identifies guard conditions that are logically unsatisfiable or contradict variable domain bounds (e.g. `x > 50 && x < 20`).
-2. **Mutual Exclusivity & Overlap Verification (`W0301`)**: When multiple transitions originate from the same state on the same event with identical priority, `GuardSatisfiabilityPass` proves whether their interval domains are provably disjoint (e.g., `x > 50` vs `x <= 50`). If guard conditions overlap without priority differentiation, a non-deterministic ambiguity warning is emitted.
+- **Boolean Simplification**: Reduces double negations ($\neg(\neg A) \iff A$), tautologies, and De Morgan expressions.
+- **Choice & Junction Flattening**: Collapses intermediate decision chains (`StateA -> Choice -> StateB`) into atomic guarded transitions ($(G_1 \land G_2)$ with fused actions $(A_1; A_2)$).
+- **Dead-Guard & Overlap Detection**: Uses interval analysis to flag contradictory guards (`W0302`) and non-disjoint overlapping guards without explicit priority (`W0301`).
 
 ```
        [ Source State ] ─── Event E ───► [ Guard: x > 50  (Priority 1) ] ──► State A
                         ─── Event E ───► [ Guard: x <= 30 (Priority 1) ] ──► State B
                         ▲
-                        └─► Provably Disjoint Intervals => Deterministic & Verified!
+                        └─► Disjoint Intervals => Deterministic
 ```
 
----
-
-## 6. C++20 Concept Constraints (`fsm::Guard`, `fsm::Action`)
-
-In the modern C++20 runtime, transition definitions are constrained by compile-time concepts in [`fsm/backend/cpp/runtime/traits/concepts.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/backend/cpp/runtime/traits/concepts.hpp):
-
-- **`fsm::Guard<G, Event, State, InPorts, Registers, Services>`**: Ensures $G$ is a callable functor returning a type convertible to `bool`, accepting any valid subset of domain parameters.
-- **`fsm::Action<A, Event, SrcState, DstState, InPorts, OutPorts, Registers, Services>`**: Ensures $A$ is a callable functor accepting any valid subset of lifecycle arguments.
-
-Primitive scalar types (e.g., passing `int` instead of a functor) and mismatched signatures trigger clear, readable `static_assert` diagnostic messages during compilation.
+See the [Middle-End Passes Catalogue](../internals/middleend_passes.md) and [EFSM Interval Analysis](../verification_and_safety/interval_analysis.md) for compiler internals.
 
 ---
 
-## 7. Transition Lifecycle & Execution Semantics
+## 4. Transition Lifecycle & Execution Semantics
 
-When transitions fire and during ongoing state residence, the runtime executes lifecycle hooks in strict deterministic sequence:
+When transitions fire and during ongoing state residence, `fsmc` enforces a deterministic execution sequence:
 
 ### Four-Phase Transition Execution
-1. **Guard Evaluation**: Pure predicate check. If `false`, aborts without state mutation.
+1. **Guard Evaluation**: Pure predicate check. If `false`, the transition aborts without mutating state.
 2. **Condition Action (Stateflow/UML)**: If the guard passes, condition actions execute immediately *before* state exit.
-3. **Source Exit**: `on_exit(src_state, event, in, out, reg, srv)`
-4. **Transition Action**: `action(event, src_state, dst_state, in, out, reg, srv)`
-5. **State Transition & Target Entry**: Assigns active variant and executes `on_enter(dst_state, event, in, out, reg, srv)`.
+3. **Source Exit**: `on_exit` executes for exited source states (inner-to-outer up to the LCA).
+4. **Transition Action**: Executes side-effects across `OutPorts`, `Registers`, and `Services`.
+5. **Target Entry**: Updates the active state and executes `on_enter` (outer-to-inner from the LCA).
 
-### Dual Action Execution (`::fsm::seq_`)
-When a transition specifies both a Condition Action and a Transition Action (e.g., `[guard] { cond_act } / { trans_act }`), `fsmc` compiles them into a compound sequence `::fsm::seq_<CondAction, TransAction>`. Both actions are called deterministically in FIFO order with zero heap allocations.
+### Dual Actions, Continuous Activities & Change Triggers
+- **Dual Action Execution**: Models combining a condition action and transition action (`[guard] { cond_act } / { trans_act }`) execute both actions in deterministic sequence.
+- **Continuous In-State Activity (`do_activity`)**: States with continuous activities execute them synchronously on periodic `step()` / `tick()` steps.
+- **Sampled Change Triggers (`when (pred)`)**: Continuous edge-triggered conditions compare the current predicate against a $z^{-1}$ previous-cycle register (`!prev_pred && pred`).
 
-### Continuous In-State Execution (`do_activity`)
-States defining a continuous or during activity (`do_activity` in SysML v2 / UML or `du:` in Stateflow) have their action invoked synchronously on every tick:
-- Periodic control steps: `sm.tick(dt)` or `sm.step()` automatically dispatch the active state's `do_activity(in, out, reg, srv)`.
-- Trait-driven: detected via `fsm::traits::has_do_activity_v<State>` at compile time; states without an activity incur zero runtime overhead.
-
-### Discrete Sampled Change Triggers (`when (pred)`)
-Continuous signal predicates (`when (in.pressure > 10.0)`) are lowered via `SampledChangeTriggerPass`:
-1. Synthesizes a discrete delay register: `reg.__prev_pred` ($z^{-1}$).
-2. Evaluates an edge-triggered guard: `(!reg.__prev_pred && (in.pressure > 10.0))`.
-3. Samples and latches continuous changes deterministically on every clock cycle.
-
-For complete C++ runtime API details, see the dedicated **[Runtime C++ API](../runtime_api/index.md)** chapter.
+For C++ functor concepts (`fsm::Guard`, `fsm::Action`), signatures, and code examples, see **[Core C++ Building Blocks](../runtime_api/core_concepts.md)**.

@@ -182,6 +182,7 @@ TEST(DroneServiceTest, ActionCallsServiceDriver) {
     sm.dispatch(EvStart{}, in, out);
     // Verify hardware mock interaction
 }
+```
 
 ---
 
@@ -238,11 +239,11 @@ TEST(FlightRecorderTest, VerifyExecutionTraceSequence) {
     DroneRegisters reg{};
     TestFSM sm(reg);
 
-    DroneInPorts in{};
+    DroneInPorts in{.battery_percent = 100.0f};
     DroneOutPorts out{};
 
     sm.dispatch(EvStart{}, in, out);
-    sm.dispatch(EvLand{}, in, out);
+    sm.dispatch(EvStop{}, in, out);
 
     const auto& recorder = sm.observer().recorder();
     ASSERT_EQ(recorder.size(), 2u);
@@ -250,11 +251,11 @@ TEST(FlightRecorderTest, VerifyExecutionTraceSequence) {
     // Verify chronological sequence
     EXPECT_EQ(recorder[0].source_state, "Idle");
     EXPECT_EQ(recorder[0].event_name, "EvStart");
-    EXPECT_EQ(recorder[0].target_state, "Hovering");
+    EXPECT_EQ(recorder[0].target_state, "Running");
 
-    EXPECT_EQ(recorder[1].source_state, "Hovering");
-    EXPECT_EQ(recorder[1].event_name, "EvLand");
-    EXPECT_EQ(recorder[1].target_state, "Landed");
+    EXPECT_EQ(recorder[1].source_state, "Running");
+    EXPECT_EQ(recorder[1].event_name, "EvStop");
+    EXPECT_EQ(recorder[1].target_state, "Idle");
 }
 ```
 
@@ -265,7 +266,7 @@ TEST(FlightRecorderTest, VerifyExecutionTraceSequence) {
 For DO-178C and ISO 26262 compliance testing, `fsmc` can automatically synthesize complete GoogleTest test harnesses verifying Modified Condition / Decision Coverage (MC/DC) for all transition guards:
 
 ```bash
-fsmc -i drone.sysml --emit-test-harness test_drone_mcdc.cpp
+fsmc -i drone.sysml --harness test_drone_mcdc.cpp
 g++ -std=c++20 test_drone_mcdc.cpp -lgtest -lgtest_main -pthread -o mcdc_tests
 ./mcdc_tests
 ```

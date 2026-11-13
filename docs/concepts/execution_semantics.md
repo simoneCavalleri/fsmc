@@ -37,8 +37,8 @@ In event-driven architectures (e.g. protocol parsers, command interfaces, UI eve
 - The machine matches the active state and incoming event trigger against transition candidates.
 - Returns a dispatch status (**`success`**, **`deferred`**, **`guard_rejected`**, or **`unhandled`**).
 
-> [!NOTE]
-> For a full formal specification of discrete sampled time vs continuous physical timers, state residence in registers, and timeout invalidation mechanics, see **[Dual-Paradigm Temporal Models](temporal_models.md)**.
+!!! note
+    For a full formal specification of discrete sampled time vs continuous physical timers, state residence in registers, and timeout invalidation mechanics, see **[Dual-Paradigm Temporal Models](temporal_models.md)**.
 
 ---
 

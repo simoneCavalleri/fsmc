@@ -1,6 +1,6 @@
-# Tutorial 1: Designing Your First State Machine
+# Step 1: Designing Your First State Machine
 
-In this tutorial, you will create, visualize, and analyze your very first state machine using **`fsmc`**.
+In this first step, you will create, compile, and run your initial state machine using **`fsmc`**.
 
 By the end of this guide, you will understand:
 
@@ -172,7 +172,7 @@ int main() {
     std::cout << "State after ConnectionLost: " << fsm.current_state_name() << "\n";
     assert(fsm.is_in<Reconnecting>());
 
-    std::cout << "\n[SUCCESS] State machine dispatched events with 0 heap allocations!\n";
+    std::cout << "\n[SUCCESS] State machine dispatched events with zero heap allocations.\n";
     return 0;
 }
 ```
@@ -195,7 +195,7 @@ State after ConnectCmd: Connecting
 State after HandshakeOk: Connected
 State after ConnectionLost: Reconnecting
 
-[SUCCESS] State machine dispatched events with 0 heap allocations!
+[SUCCESS] State machine dispatched events with zero heap allocations.
 ```
 
 ---
@@ -241,8 +241,8 @@ int main() {
 }
 ```
 
-> [!TIP]
-> Both workflows use the **exact same zero-overhead runtime engine** (`fsm::fsm`). The `fsmc` compiler simply automates authoring, validation, and multi-format conversion from visual and MBSE models.
+!!! tip
+    Both workflows use the **exact same zero-overhead runtime engine** (`fsm::fsm`). The `fsmc` compiler simply automates authoring, validation, and multi-format conversion from visual and MBSE models.
 
 ---
 
@@ -284,9 +284,9 @@ fsm-opt -i connection.sysml --emit-ir
 
 ---
 
-## 5. Converting Across Formats (Lossless Transpilation)
+## 5. Converting Across Formats (Model-to-Model)
 
-Because `fsmc` maintains this neutral Intermediate Representation, you can convert models seamlessly between any supported format:
+Because `fsmc` maintains this neutral Intermediate Representation, you can convert models between supported formats while preserving states, events, and transition structure:
 
 ```bash
 # Convert SysML v2 to Mermaid
@@ -303,7 +303,7 @@ fsmc -i connection.sysml -e dot -o connection.dot
 
 ## Next Steps
 
-Now that you have built and executed your first state machine, let's learn how to add **Partitioned I/O Ports, Internal Registers, Conditional Guards**, and **Lifecycle Actions** in **[Tutorial 2: Extended State Machines (EFSM), Guards & Datapath](02_guards_and_actions.md)**.
+Now that you have built and executed your first state machine, proceed to **[Step 2: Extended State Machines (EFSM), Guards & Datapath](02_guards_and_actions.md)** to add partitioned I/O ports, internal registers, conditional guards, and lifecycle actions.
 
 
 

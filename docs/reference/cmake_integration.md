@@ -27,6 +27,7 @@ fsmc_target_sources(
     [STANDARD <17|20>]
     [NAMESPACE <NamespaceName>]
     [OUTPUT_DIR <OutputDirectory>]
+    [RUNTIME_HEADER <HeaderPath>]
     [STANDALONE]
     [MODULAR]
     [NO_THREAD_SAFE]
@@ -40,11 +41,11 @@ fsmc_target_sources(
 | Parameter | Type | Description |
 | :--- | :--- | :--- |
 | `<TargetName>` | Target | The CMake target (executable or library) receiving the generated header. |
-| `DIAGRAMS` | Files | List of input statechart files (`.sysml`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, `.dot`). |
+| `DIAGRAMS` | Files | List of input statechart files (`.sysml`, `.slx`, `.sfx`, `.xmi`, `.scxml`, `.smv`, `.json`, `.puml`, `.mmd`, `.dot`). |
 | `NAME` | String | Name of the generated C++ class (e.g. `UavMissionFSM`). |
 | `STANDARD` | Integer | C++ standard version (`17` or `20`). Default: `17`. |
 | `NAMESPACE` | String | C++ namespace to enclose generated types. Default: `fsm_generated`. |
-| `OUTPUT_DIR` | Path | Output directory for generated headers (default: `${CMAKE_CURRENT_BINARY_DIR}/generated_<target>`). |
+| `OUTPUT_DIR` | Path | Output directory for generated headers (default: `${CMAKE_CURRENT_BINARY_DIR}/generated_${TARGET_NAME}`). |
 | `STANDALONE` | Flag | Generate self-contained header with embedded zero-alloc runtime. |
 | `MODULAR` | Flag | Generate header that includes external runtime header (default: `"fsm.hpp"`, matching `--export-runtime`). |
 | `RUNTIME_HEADER` | String | Custom runtime header path included in modular mode (e.g. `"fsm.hpp"`, `"<fsm/fsm.hpp>"`). |

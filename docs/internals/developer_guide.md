@@ -29,8 +29,9 @@ fsmc/
 │   ├── ir/                  # Unified AST (FsmIr, StateNode, TransitionEdge, PortDefinition)
 │   ├── diagnostic/          # DiagnosticEngine with ANSI colors, SourceSpan, and carets
 │   ├── frontend/            # Parser interfaces & implementations
-│   │   ├── formal/          # High-semantics formal parsers (SysML v2, Cameo XMI, SCXML, SMV)
-│   │   ├── diagram/         # Diagram sketch parsers (PlantUML, Mermaid, DOT, JSON)
+│   │   ├── common/          # IParser, ParserFactory, XState JSON parser
+│   │   ├── formal/          # Formal model parsers (SysML v2, Stateflow, Cameo XMI, SCXML, SMV)
+│   │   ├── diagram/         # Visual diagram parsers (PlantUML, Mermaid, DOT)
 │   │   └── directive/       # Annotation, guard, and LTL/INVAR parsers
 │   ├── middleend/           # PassManager, transformation passes, and model checkers
 │   │   ├── passes/          # Optimization & dead-state elimination passes
@@ -44,8 +45,8 @@ fsmc/
 ├── tools/
 │   ├── fsmc/                # Primary compiler driver CLI
 │   └── fsm-opt/             # Standalone formal IR optimizer & linter CLI
-├── tests/                   # Modular GoogleTest suites (54 suites, 100% green)
-├── scripts/                 # Maintenance tools (generate_standalone_runtime.py)
+├── tests/                   # Modular GoogleTest suites (85 test suites / 94 CTest targets)
+├── scripts/                 # Maintenance tools (generate_standalone_runtime.py, verify_docs.py)
 └── docs/                    # MkDocs documentation source
 ```
 
@@ -71,7 +72,7 @@ namespace fsm::frontend {
 
 class CustomModelParser : public IParser {
 public:
-    [[nodiscard]] std::string_view name() const noexcept override {
+    [[nodiscard]] std::string_view format_name() const noexcept override {
         return "custom_format";
     }
 
@@ -80,14 +81,18 @@ public:
     }
 
     bool parse(std::string_view source_code, fsm::ir::FsmIr& out_model, std::string& out_error) override {
+        (void)source_code;
+        (void)out_error;
         out_model.name = "ParsedStateMachine";
 
-        // Step 1: Parse states and transitions
-        // out_model.states.push_back(StateNode{"Idle"});
-        // out_model.transitions.push_back(TransitionEdge{"Idle", "Active", "EvStart"});
+        // Step 1: Add states and transitions via FsmIr helpers
+        // out_model.add_state("Idle");
+        // out_model.add_state("Active");
+        // out_model.transitions.emplace_back("Idle", "Active", "EvStart");
 
-        // Step 2: Extract port and register contracts if present
-        // out_model.ports.push_back(PortDefinition("sensor_val", "float", PortDirection::In));
+        // Step 2: Add port contracts if present
+        // out_model.ports.emplace_back("sensor_val", fsm::ir::PrimitiveTypeKind::Float32,
+        //                              fsm::ir::PortDirection::In);
 
         // Step 3: Always normalize hierarchy before returning
         out_model.normalize_hierarchy();
@@ -123,13 +128,15 @@ namespace fsm::middleend {
 
 class RedundantTransitionPass : public IPass {
 public:
-    [[nodiscard]] std::string_view name() const noexcept override {
-        return "RedundantTransitionPass";
+    [[nodiscard]] std::string name() const override {
+        return "redundant-transition";
     }
 
-    PassResult run(fsm::ir::FsmIr& model, fsm::diagnostic::DiagnosticEngine& diag) override {
-        bool modified = false;
+    [[nodiscard]] std::string description() const override {
+        return "Detects unguarded spontaneous self-transitions";
+    }
 
+    bool run(fsm::ir::FsmIr& model, fsm::diagnostic::DiagnosticEngine& diag) override {
         for (const auto& trans : model.transitions) {
             if (trans.source == trans.target && !trans.guard.has_value() && trans.event.empty()) {
                 diag.report(fsm::diagnostic::Diagnostic::warning(
@@ -138,8 +145,7 @@ public:
                 ));
             }
         }
-
-        return modified ? PassResult::Modified : PassResult::Preserved;
+        return true;
     }
 };
 

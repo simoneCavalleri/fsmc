@@ -59,16 +59,16 @@ std::string gtest_suite = fsm::backend::verification::McdcHarnessGenerator::gene
 
 ### CLI Usage
 
-The `--emit-test-harness` option exposes this generator directly from the `fsmc` compiler driver:
+The `--harness` (alias `--emit-test-harness`) option exposes this generator directly from the `fsmc` compiler driver:
 
 ```bash
 # Generate C++ model and corresponding MC/DC test suite
-fsmc -i flight_control.sysml -o flight_control.hpp --emit-test-harness flight_control_mcdc_test.cpp
+fsmc -i flight_control.sysml -o flight_control.hpp --harness flight_control_mcdc_test.cpp
 ```
 
 ### Example Generated GoogleTest Suite
 
-Given a transition guard: `[alt_valid && (climb_rate > 500 || pilot_override)]`:
+Given a transition guard `[alt_valid && (climb_rate_valid || pilot_override)]`:
 
 ```cpp
 #include <gtest/gtest.h>

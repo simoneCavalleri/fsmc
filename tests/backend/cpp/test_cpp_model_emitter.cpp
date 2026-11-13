@@ -1004,3 +1004,32 @@ TEST(CppModelEmitterTest, ActionInstructionsAndCompoundGuardAstLowering) {
     EXPECT_NE(stub_str.find("reg.hist_reg = 1;"), std::string::npos);
     EXPECT_NE(stub_str.find("out.led_out = true;"), std::string::npos);
 }
+
+TEST(CppModelEmitterTest, PayloadGuard_QualifiesPayloadAndOmitsEventlessFallback) {
+    FsmIr model;
+    model.name = "PayloadGuardModel";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Active");
+
+    SignalDefinition sig("Packet");
+    sig.attributes.emplace_back("len", DataType{PrimitiveTypeKind::UInt32}, "0");
+    model.add_signal(sig);
+
+    GuardModel gm("ValidPacketLen", "ValidPacketLen", "payload.len > 0", "payload.len > 0");
+    model.guards.push_back(gm);
+
+    TransitionEdge trans("Idle", "Active", "Packet");
+    trans.set_guard("ValidPacketLen");
+    model.transitions.push_back(trans);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = true;
+    CppModelEmitter::emit_model(out, model, opts);
+    std::string str = out.str();
+
+    EXPECT_NE(str.find("return cmd.len > 0;"), std::string::npos);
+    // Must not emit eventless (const InPorts& in, const Registers& reg) returning true!
+    EXPECT_EQ(str.find("operator()(const InPorts& in, const Registers& reg) const noexcept"), std::string::npos);
+}

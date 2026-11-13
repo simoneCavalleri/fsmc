@@ -3744,6 +3744,17 @@ class snapshot_recorder {
 // --- Begin: fsm.hpp ---
 namespace fsm {
 
+namespace detail {
+template <typename T, typename = void>
+struct has_is_valid : std::false_type {};
+
+template <typename T>
+struct has_is_valid<T, std::void_t<decltype(std::declval<const T&>().is_valid())>> : std::true_type {};
+
+template <typename T>
+inline constexpr bool has_is_valid_v = has_is_valid<std::decay_t<T>>::value;
+}  // namespace detail
+
 /**
  * @brief Core Compile-Time Finite State Machine Engine (Model-Based Systems Engineering Partitioned Domain
  * Architecture).
@@ -3962,6 +3973,18 @@ class fsm {
 
     template <typename Event>
     dispatch_result dispatch(const Event& event, const in_ports_type& in, out_ports_type& out, services_type& srv) {
+        if constexpr (detail::has_is_valid_v<Event>) {
+            if (!event.is_valid()) {
+                if constexpr (has_observer) {
+                    observer_(transition_info{current_state_name(),
+                                              {},
+                                              get_event_name(event),
+                                              dispatch_status::guard_rejected,
+                                              transition_kind::external});
+                }
+                return dispatch_result{dispatch_status::guard_rejected, std::nullopt};
+            }
+        }
         auto res = dispatch_direct_ports(event, in, out, srv);
         if (res.is_unhandled()) {
             bool was_deferred = false;
@@ -6265,6 +6288,8 @@ class spsc_fsm {
     static_assert(
         std::is_trivially_copyable_v<Registers> || std::is_same_v<Registers, no_registers>,
         "spsc_fsm requires Registers to be trivially copyable for sound seqlock snapshots without torn reads.");
+    static_assert(std::is_trivially_copyable_v<typename Table::event_variant>,
+                  "spsc_fsm requires all Event payloads to be trivially copyable for lock-free ring buffer safety.");
 
   public:
     using fsm_type = fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, no_observer, DeferredCapacity>;
@@ -6323,10 +6348,30 @@ class spsc_fsm {
      */
     template <typename Event>
     [[nodiscard]] bool post(Event&& event) noexcept {
+        if constexpr (detail::has_is_valid_v<std::decay_t<Event>>) {
+            if (!event.is_valid()) {
+                return false;
+            }
+        }
         return queue_.push(event_variant{std::forward<Event>(event)});
     }
 
-    [[nodiscard]] bool post(const event_variant& event) noexcept { return queue_.push(event); }
+    [[nodiscard]] bool post(const event_variant& event) noexcept {
+        const bool payload_ok = std::visit(
+            [](const auto& evt) -> bool {
+                using EvType = std::decay_t<decltype(evt)>;
+                if constexpr (detail::has_is_valid_v<EvType>) {
+                    return evt.is_valid();
+                } else {
+                    return true;
+                }
+            },
+            event);
+        if (!payload_ok) {
+            return false;
+        }
+        return queue_.push(event);
+    }
 
     // ========================================================================
     // Consumer API (Single Consumer / Dedicated Worker Thread)

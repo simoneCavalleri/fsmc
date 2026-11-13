@@ -80,7 +80,8 @@ std::string qualify_expression(std::string expr, const FsmIr& model) {
             bool followed_by_dot = (next < n && expr[next] == '.');
 
             if (!preceded_by_member_or_scope && !followed_by_scope) {
-                if (followed_by_dot && (tok == "f" || tok == "cmd" || tok == "event" || tok == "sig" || tok == "ev")) {
+                if (followed_by_dot &&
+                    (tok == "f" || tok == "cmd" || tok == "event" || tok == "sig" || tok == "ev" || tok == "payload")) {
                     out += "cmd";
                     continue;
                 }
@@ -817,12 +818,14 @@ void CppModelEmitter::emit_guards(std::ostream& out, const FsmIr& model, const G
             out << "struct " << guard_struct_name << " {\n";
 
             out << "    // Domain guard evaluation (InPorts, Registers, Event payload)\n";
-            out << "    template <typename InPorts, typename Registers>\n";
-            out << "    [[nodiscard]] constexpr bool operator()(const InPorts& in, const Registers& reg) const "
-                   "noexcept {\n";
-            out << "        (void)in; (void)reg;\n";
-            out << "        return " << non_event_expr << ";\n";
-            out << "    }\n\n";
+            if (!references_event) {
+                out << "    template <typename InPorts, typename Registers>\n";
+                out << "    [[nodiscard]] constexpr bool operator()(const InPorts& in, const Registers& reg) const "
+                       "noexcept {\n";
+                out << "        (void)in; (void)reg;\n";
+                out << "        return " << non_event_expr << ";\n";
+                out << "    }\n\n";
+            }
 
             out << "    template <typename Event, typename InPorts, typename Registers>\n";
             out << "    [[nodiscard]] constexpr bool operator()(const Event& cmd, const InPorts& in, const "
@@ -831,11 +834,13 @@ void CppModelEmitter::emit_guards(std::ostream& out, const FsmIr& model, const G
             out << "        return " << expr << ";\n";
             out << "    }\n\n";
 
-            out << "    template <typename InPorts>\n";
-            out << "    [[nodiscard]] constexpr bool operator()(const InPorts& in) const noexcept {\n";
-            out << "        (void)in;\n";
-            out << "        return " << in_only_expr << ";\n";
-            out << "    }\n\n";
+            if (!references_event) {
+                out << "    template <typename InPorts>\n";
+                out << "    [[nodiscard]] constexpr bool operator()(const InPorts& in) const noexcept {\n";
+                out << "        (void)in;\n";
+                out << "        return " << in_only_expr << ";\n";
+                out << "    }\n\n";
+            }
 
             out << "    template <typename Event, typename SrcState, typename InPorts, typename Registers, "
                    "typename Services, typename Fsm>\n";
@@ -1499,8 +1504,20 @@ void CppModelEmitter::emit_fsm_aliases(std::ostream& out, const FsmIr& model, co
                 break;
             }
         }
+        bool events_trivially_copyable = true;
+        for (const auto& sig : model.signals) {
+            for (const auto& attr : sig.attributes) {
+                if (!is_type_trivially_copyable(is_type_trivially_copyable, attr.type)) {
+                    events_trivially_copyable = false;
+                    break;
+                }
+            }
+            if (!events_trivially_copyable) {
+                break;
+            }
+        }
 
-        if (registers_trivially_copyable) {
+        if (registers_trivially_copyable && events_trivially_copyable) {
             out << "/**\n";
             out << " * @typedef Spsc" << model.name << "\n";
             out << " * @brief Lock-Free Single-Producer Single-Consumer State Machine for '" << model.name << "'.\n";

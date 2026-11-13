@@ -28,6 +28,10 @@ fsmc -i flight.sysml -e smv -o flight.smv
 
 # Requirement Traceability Matrix (RTM) & MC/DC Test Harness
 fsmc -i flight.sysml --req-audit --rtm rtm.md --harness flight_test.cpp
+
+# Interactive IR Trace Simulation & Counterexample GTest Export
+fsmc -i flight.sysml --simulate --trace events.json
+fsmc -i flight.sysml --verify --export-cex-gtest flight_cex_test.cpp
 ```
 
 ---

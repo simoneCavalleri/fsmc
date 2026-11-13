@@ -61,6 +61,9 @@ fsmc --export-runtime <directory_or_file> [--std 17|20]
 | `-Werror` | Treat all compiler diagnostics and middle-end warnings as fatal errors. | `false` |
 | `--strict, --strict-determinism` | Fail compilation on non-deterministic branch collisions or unprioritized triggers. | `false` |
 | `--races, --check-races` | Perform static data-race analysis across parallel orthogonal regions. | `false` |
+| `--simulate` | Simulate event trace directly on `FsmIr` with validator checks (reads `--trace` or stdin). | `false` |
+| `--trace <file>` | JSON or line-based event trace input file consumed by `--simulate`. | `stdin` |
+| `--export-cex-gtest <file>` | Export formal verification counterexample traces to a compilable GoogleTest C++ file. | None |
 | `--harness, --emit-test-harness <file>` | Synthesize a standalone GoogleTest C++ harness verifying MC/DC condition coverage. | None |
 | `--req-audit` | Print Requirement Traceability Matrix (from `satisfy requirement` / `@fsm:state satisfies`) to terminal before code generation. | `false` |
 | `--rtm, --rtm-output <file>` | Export Requirement Traceability Matrix report to a file. | None |

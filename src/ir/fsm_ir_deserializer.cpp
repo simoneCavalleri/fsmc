@@ -1220,6 +1220,29 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
         }
     }
 
+    // Guards
+    const auto* guards_arr = root.get_child("guards");
+    if (guards_arr != nullptr && guards_arr->is_array()) {
+        for (const auto& g_val : guards_arr->arr_val) {
+            if (g_val.is_object()) {
+                std::string g_name = g_val.get_string("name");
+                if (g_name.empty()) {
+                    continue;
+                }
+                std::string g_desc = g_val.get_string("description");
+                std::optional<std::string> raw_expr;
+                if (const auto* r = g_val.get_child("raw_expression"); r != nullptr && r->is_string()) {
+                    raw_expr = r->str_val;
+                }
+                std::optional<std::string> norm_expr;
+                if (const auto* n = g_val.get_child("normalized_expression"); n != nullptr && n->is_string()) {
+                    norm_expr = n->str_val;
+                }
+                out_ir.add_guard(g_name, std::move(g_desc), std::move(raw_expr), std::move(norm_expr));
+            }
+        }
+    }
+
     // Enums
     const auto* enums_arr = root.get_child("enums");
     if (enums_arr != nullptr && enums_arr->is_array()) {

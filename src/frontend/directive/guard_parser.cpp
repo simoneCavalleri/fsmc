@@ -305,6 +305,9 @@ ParsedGuardResult GuardExpressionParser::parse(std::string_view raw_expr) {
     if (expr.empty()) {
         return {"", {}, {}};
     }
+    if (expr == "else" || expr == "otherwise" || expr == "default") {
+        return {expr, {}, {}};
+    }
 
     // Normalize textual boolean keywords
     static const std::regex not_re(R"(\bnot\b|\bNOT\b)", std::regex::optimize);

@@ -749,7 +749,7 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
             std::smatch assign_match;
             if (std::regex_match(statement, assign_match, assign_regex)) {
                 std::string scope_prefix = assign_match[1].str();
-                std::string var = assign_match[2].str();
+                std::string var = sanitize_identifier(assign_match[2].str());
                 std::string op = assign_match[3].str();
                 std::string rhs = trim(assign_match[4].str());
                 LValueTarget tgt(scope_prefix + var);
@@ -766,7 +766,7 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
                 }
             } else if (std::regex_match(statement, assign_match, inc_regex)) {
                 std::string scope_prefix = assign_match[1].str();
-                std::string var = assign_match[2].str();
+                std::string var = sanitize_identifier(assign_match[2].str());
                 std::string op = assign_match[3].str();
                 LValueTarget tgt(scope_prefix + var);
                 if (op == "++") {
@@ -1157,7 +1157,7 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
             if (std::regex_match(statement, assign_match, assign_regex)) {
                 // Variable assignment or compound assignment op
                 std::string scope_prefix = assign_match[1].str();
-                std::string var = assign_match[2].str();
+                std::string var = sanitize_identifier(assign_match[2].str());
                 std::string op = assign_match[3].str();
                 std::string rhs = trim(assign_match[4].str());
                 LValueTarget tgt(scope_prefix + var);
@@ -1175,7 +1175,7 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
             } else if (std::regex_match(statement, assign_match, inc_regex)) {
                 // Increment or decrement shorthand (++ or --)
                 std::string scope_prefix = assign_match[1].str();
-                std::string var = assign_match[2].str();
+                std::string var = sanitize_identifier(assign_match[2].str());
                 std::string op = assign_match[3].str();
                 LValueTarget tgt(scope_prefix + var);
                 if (op == "++") {

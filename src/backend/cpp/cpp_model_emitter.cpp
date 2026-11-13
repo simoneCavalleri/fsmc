@@ -101,6 +101,11 @@ std::string qualify_expression(std::string expr, const FsmIr& model) {
                 }
             }
 
+            if (prev > 0 && expr[prev - 1] == '.') {
+                out += escape_cpp_keyword(tok);
+                continue;
+            }
+
             out += tok;
             continue;
         }

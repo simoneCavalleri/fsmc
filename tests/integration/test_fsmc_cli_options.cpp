@@ -899,4 +899,113 @@ TEST_F(FsmcOptionsTest, SimulateAndExportCexGTest_ParseAndExecuteCleanly) {
     EXPECT_NE(gtest_src.find("EXPECT_TRUE(sm.is_in<Active>());"), std::string::npos);
 }
 
+TEST(FsmcCliOptionsTest, V010SimulatorHfsmGuardsRegistersAndCliSimulate) {
+    // 1. Direct IrSimulator coverage: HFSM parent transition, numeric guards, register updates,
+    //    line-based trace, [REJECTED], and [UNHANDLED].
+    fsm::ir::FsmIr model;
+    model.name = "HfsmSimModel";
+    model.initial_state = "ChildA";
+
+    fsm::ir::StateNode parent("Parent");
+    parent.kind = fsm::ir::StateKind::Composite;
+    model.states.push_back(parent);
+
+    fsm::ir::StateNode child_a("ChildA");
+    child_a.parent_state = "Parent";
+    model.states.push_back(child_a);
+
+    fsm::ir::StateNode child_b("ChildB");
+    child_b.parent_state = "Parent";
+    model.states.push_back(child_b);
+
+    fsm::ir::VariableDefinition count_var;
+    count_var.name = "count";
+    count_var.type = fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::Int32};
+    count_var.initial_value = "0";
+    model.add_variable(std::move(count_var));
+
+    fsm::ir::SignalDefinition pkt("Packet");
+    pkt.attributes.emplace_back("len", fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::UInt32}, "64");
+    pkt.validators.push_back("len > 0 && len <= 1500");
+    model.add_signal(pkt);
+    model.add_signal(fsm::ir::SignalDefinition("Reset"));
+
+    fsm::ir::TransitionEdge t1("ChildA", "ChildB", "Packet");
+    t1.set_guard("len >= 100 && count <= 5");
+    fsm::ir::ActionSignature act1("inc_count");
+    fsm::ir::ActionAssignment a1;
+    a1.target = fsm::ir::LValueTarget("count", fsm::ir::LValueScope::Register);
+    a1.op = fsm::ir::AssignmentOp::AddAssign;
+    a1.expression = "2";
+    act1.assignments.push_back(a1);
+    t1.set_action(act1);
+    model.add_transition(t1);
+
+    // Transition defined on Parent, matched while in ChildB
+    fsm::ir::TransitionEdge t_reset("Parent", "ChildA", "Reset");
+    model.add_transition(t_reset);
+
+    std::ostringstream sim_out;
+    std::string trace =
+        "# line-based trace\n"
+        "Packet len=0\n"    // rejected by validator
+        "Packet len=50\n"   // unhandled (guard len >= 100 fails)
+        "Packet len=512\n"  // transitions ChildA -> ChildB, count += 2
+        "UnknownEv\n"       // unhandled
+        "Reset\n";          // HFSM parent transition Parent -> ChildA
+    std::string final_state = fsm::tools::IrSimulator::simulate_trace(model, trace, sim_out);
+    EXPECT_EQ(final_state, "ChildA");
+    EXPECT_NE(sim_out.str().find("[REJECTED: invalid signal payload]"), std::string::npos);
+    EXPECT_NE(sim_out.str().find("[UNHANDLED]"), std::string::npos);
+    EXPECT_NE(sim_out.str().find("--> ChildB"), std::string::npos);
+    EXPECT_NE(sim_out.str().find("--> ChildA"), std::string::npos);
+
+    // 2. CounterexampleGTestExporter with multi-step trace
+    fsm::middleend::analysis::ModelCheckResult mc;
+    mc.passed = false;
+    mc.property_name = "CountBound";
+    mc.property_formula = "G (count < 10)";
+    mc.counterexample_trace.push_back({0, "ChildA", "Packet", "512", "step0"});
+    mc.counterexample_trace.push_back({1, "ChildB", "Reset", "", "step1"});
+    mc.counterexample_trace.push_back({2, "ChildA", "", "", "final"});
+    std::string gtest_src = fsm::tools::CounterexampleGTestExporter::export_gtest(model, mc, "hfsm_sim_model.hpp");
+    EXPECT_NE(gtest_src.find("#include \"hfsm_sim_model.hpp\""), std::string::npos);
+    EXPECT_NE(gtest_src.find("TEST(HfsmSimModelCounterexampleTest, Reproduces_CountBound)"), std::string::npos);
+    EXPECT_NE(gtest_src.find("sm.dispatch(Packet{});"), std::string::npos);
+    EXPECT_NE(gtest_src.find("sm.dispatch(Reset{});"), std::string::npos);
+
+    // 3. End-to-end CLI --simulate --trace via FsmcDriver
+    std::filesystem::path tmp = std::filesystem::temp_directory_path() / "fsmc_v010_cli_sim_test";
+    std::filesystem::create_directories(tmp);
+    std::filesystem::path fsm_file = tmp / "model.fsm.json";
+    std::filesystem::path trace_file = tmp / "events.trace";
+    {
+        std::ofstream mf(fsm_file);
+        mf << R"({
+            "name": "CliSimFsm",
+            "initial_state": "Idle",
+            "states": [{"name": "Idle"}, {"name": "Running"}],
+            "signals": [{"name": "Start"}],
+            "transitions": [{"source": "Idle", "target": "Running", "trigger": "Start"}]
+        })";
+    }
+    {
+        std::ofstream tf(trace_file);
+        tf << R"([{"event":"Start"}])";
+    }
+
+    std::string arg0 = "fsmc";
+    std::string arg1 = fsm_file.string();
+    std::string arg2 = "--simulate";
+    std::string arg3 = "--trace";
+    std::string arg4 = trace_file.string();
+    char* argv[] = {arg0.data(), arg1.data(), arg2.data(), arg3.data(), arg4.data()};
+    auto opts = fsm::tools::parse_cli_args(5, argv);
+    EXPECT_TRUE(opts.simulate_mode);
+    EXPECT_EQ(opts.trace_file, trace_file.string());
+    EXPECT_EQ(fsm::tools::FsmcDriver::run(opts), 0);
+
+    std::filesystem::remove_all(tmp);
+}
+
 }  // namespace

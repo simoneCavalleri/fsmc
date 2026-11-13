@@ -388,4 +388,51 @@ TEST(TypedEventPayloads, SemanticAnalyzerEnforcesPayloadAndSpscConstraints) {
         auto res = SemanticAnalyzer::analyze(ir);
         EXPECT_FALSE(res.valid);
     }
+
+    // 5. Nested StructDefinition containing String field rejected under RealTime policy
+    {
+        FsmIr ir;
+        ir.name = "RealtimeNestedStringFSM";
+        ir.initial_state = "Idle";
+        ir.add_state("Idle");
+        ir.attributes["execution_policy"] = "RealTime";
+
+        StructDefinition inner;
+        inner.name = "InnerMeta";
+        inner.fields.push_back({"label", DataType{PrimitiveTypeKind::String}, "\"\""});
+        ir.add_struct(inner);
+
+        StructDefinition outer;
+        outer.name = "OuterHeader";
+        outer.fields.push_back({"meta", DataType(TypeClassification::Struct, "InnerMeta"), "{}"});
+        ir.add_struct(outer);
+
+        SignalDefinition sig("Frame");
+        sig.attributes.emplace_back("hdr", DataType(TypeClassification::Struct, "OuterHeader"), "{}");
+        ir.add_signal(sig);
+
+        auto res = SemanticAnalyzer::analyze(ir);
+        EXPECT_FALSE(res.valid);
+    }
+
+    // 6. Payload access rejected on TimeTrigger and AnonymousTrigger
+    {
+        FsmIr ir;
+        ir.name = "BadTriggerPayloadFSM";
+        ir.initial_state = "Idle";
+        ir.add_state("Idle");
+        ir.add_state("Next");
+
+        TransitionEdge t_time("t_time", "Idle", "Next", TimeTrigger{10});
+        t_time.set_guard("payload.len > 0");
+        ir.add_transition(t_time);
+
+        TransitionEdge t_anon("t_anon", "Next", "Idle", AnonymousTrigger{});
+        t_anon.set_guard("payload.len == 0");
+        ir.add_transition(t_anon);
+
+        auto res = SemanticAnalyzer::analyze(ir);
+        EXPECT_FALSE(res.valid);
+        EXPECT_GE(res.errors.size(), 2U);
+    }
 }

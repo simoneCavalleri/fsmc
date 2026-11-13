@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.10.0] - 2026-11-13
+
+### Added
+- **Typed Event Payloads End-to-End**:
+  - `SemanticAnalyzer` now validates payload member accesses (`payload.*`, `cmd.*`, `event.*`, `<payload_binding>.*`) against `SignalDefinition::attributes`, forbids payload references in triggerless contexts (`on_enter`, `on_exit`, `AnonymousTrigger`, `TimeTrigger`), and enforces `trivially_copyable` signal attributes under `SPSC` / `RealTime` policies.
+  - `EFSMIntervalAnalyzer` propagates bounded numeric intervals from `SignalDefinition::validators` and transition guards into target-state register intervals.
+  - `fsm::dispatch()` and `spsc_fsm::post()` automatically validate `.is_valid()` on typed signal payloads (`reject_invalid_payload`, zero-overhead `if constexpr` when absent) and `spsc_fsm` enforces `std::is_trivially_copyable_v<event_variant>` at compile time.
+  - `CppModelEmitter` supports `payload` qualification and omits unsafe eventless guard overloads when guards reference event payloads.
+- **IR Simulator & Verification DX**:
+  - Added `fsmc --simulate` / `--trace <file.json>` (`IrSimulator`) for direct `FsmIr` trace execution with payload validator enforcement.
+  - Added `fsmc --export-cex-gtest <file.cpp>` (`CounterexampleGTestExporter`) to turn formal verification counterexamples into reproducible GoogleTest C++ cases.
+  - Added `--base-url` option to `scripts/generate_test_catalog.py` for direct repository links.
+
+### Changed
+- **IR & Middle-End Convergence**:
+  - Replaced C++-coupled `"fsm::and_<...>"` string concatenation in `ConnectiveJunctionChainingPass` and `ChoiceInliningPass` with pure target-agnostic `GuardAstNode` composition, lowered to `::fsm::and_<...>` / `::fsm::or_<...>` / `::fsm::not_<...>` in `CppModelEmitter`.
+  - Extended `CppModelEmitter::emit_actions` to lower `ActionSignature::instructions` (`StoreOp`, `PortWriteOp`, `PortReadOp`, `ActionCallOp`, `SignalEmitOp`) alongside `assignments`.
+  - Standardized `TransitionEdge` guard mutations via `set_guard()` / `set_guard_ast()` and tightened EFSM trigger/guard equivalence in `StateMinimizationPass`.
+
+---
+
 ## [0.9.0] - 2026-11-09
 
 ### Added

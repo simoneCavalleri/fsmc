@@ -63,7 +63,7 @@ def extract_test_info(content: str):
     return tests
 
 
-def generate_catalog(root_dir: Path) -> str:
+def generate_catalog(root_dir: Path, base_url: str = "") -> str:
     lines = []
     lines.append("# Master Test Suite & Behavioral Verification Catalog")
     lines.append("")
@@ -110,7 +110,8 @@ def generate_catalog(root_dir: Path) -> str:
         lines.append("")
         for rel_path, tests in files:
             posix_path = rel_path.as_posix()
-            lines.append(f"### [`{rel_path.name}`](../../{posix_path}) (`{posix_path}`)")
+            target_url = f"{base_url.rstrip('/')}/{posix_path}" if base_url else f"../../{posix_path}"
+            lines.append(f"### [`{rel_path.name}`]({target_url}) (`{posix_path}`)")
             if not tests:
                 lines.append("- *(Executable binary test verification)*")
                 lines.append("")
@@ -144,13 +145,18 @@ def main():
         help="Output path for the generated catalog.",
     )
     parser.add_argument("--check", action="store_true", help="Check if the catalog is up-to-date without writing.")
+    parser.add_argument(
+        "--base-url",
+        default="",
+        help="Optional repository blob base URL for source links (e.g. https://github.com/org/repo/blob/main).",
+    )
 
     args = parser.parse_args()
 
     root_dir = Path(__file__).resolve().parent.parent
     out_file = root_dir / args.output
 
-    generated_content = generate_catalog(root_dir)
+    generated_content = generate_catalog(root_dir, base_url=args.base_url)
 
     if args.check:
         if not out_file.exists():

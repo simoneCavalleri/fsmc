@@ -477,7 +477,7 @@ VAR
 ASSIGN
   init(state) := Idle;
   init(count) := 0;
-  -- @fsm entry state=Idle action="count = 10"
+  -- @fsm: entry state=Idle action="count = 10"
   next(state) := case
     state = Idle & event = START & count < 20 : Active; -- action: count = count + 1
     state = Active & event = STOP : Idle; -- action: count = 0

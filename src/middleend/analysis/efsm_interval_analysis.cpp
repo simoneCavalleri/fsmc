@@ -280,13 +280,28 @@ EFSMIntervalAnalyzer::compute_state_intervals() {
             }
         };
 
-        // Propagate environment along composite hierarchy (entry into initial substate, exit to parent group)
+        // Propagate environment along composite hierarchy (entry into initial substate / orthogonal regions, exit to
+        // parent group)
         if (const auto* curr_node = ir_.find_state(curr_state)) {
             if (curr_node->is_composite && !curr_node->initial_sub_state.empty()) {
-                merge_env_into_state(curr_node->initial_sub_state, curr_env, {});
+                const auto* init_st = ir_.find_state(curr_node->initial_sub_state);
+                merge_env_into_state(init_st != nullptr ? init_st->name : curr_node->initial_sub_state, curr_env, {});
+            }
+            for (const auto& reg : curr_node->orthogonal_regions) {
+                if (!reg.initial_state_id.empty()) {
+                    const auto* init_st = ir_.find_state(reg.initial_state_id);
+                    merge_env_into_state(init_st != nullptr ? init_st->name : reg.initial_state_id, curr_env, {});
+                }
+                const std::string& reg_key = !reg.name.empty() ? reg.name : reg.id;
+                if (!reg_key.empty()) {
+                    if (const auto* reg_st = ir_.find_state(reg_key)) {
+                        merge_env_into_state(reg_st->name, curr_env, {});
+                    }
+                }
             }
             if (!curr_node->parent_state.empty()) {
-                merge_env_into_state(curr_node->parent_state, curr_env, {});
+                const auto* parent_st = ir_.find_state(curr_node->parent_state);
+                merge_env_into_state(parent_st != nullptr ? parent_st->name : curr_node->parent_state, curr_env, {});
             }
         }
 

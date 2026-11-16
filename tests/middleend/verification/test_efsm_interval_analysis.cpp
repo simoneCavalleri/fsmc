@@ -360,4 +360,61 @@ TEST(EFSMIntervalAnalysisTest, AppliesStateEntryActionsToStateEnvironment) {
     }
 }
 
+/**
+ * @brief Verify EFSMIntervalAnalyzer propagates variable intervals through orthogonal regions.
+ * @scenario Parallel state 'Par' has two orthogonal regions Reg1 (R1A -> R1B with x = x + 1) and
+ * Reg2 (R2A -> R2B with x = x + 1), and an outgoing transition 'Par -> Done [x >= 2]'.
+ * @expected Guard 'x >= 2' is NOT falsely flagged as UnsatisfiableGuard.
+ */
+TEST(EFSMIntervalAnalysisTest, PropagatesIntervalsAcrossOrthogonalRegions) {
+    FsmIr ir;
+    ir.name = "OrthogonalInterval";
+    ir.initial_state = "Par";
+    ir.variables.emplace_back("x", DataType(PrimitiveTypeKind::Int32), "0");
+
+    auto& par = ir.add_state("Par");
+    par.is_composite = true;
+    par.kind = StateKind::Parallel;
+    par.orthogonal_regions.emplace_back("Reg1", "Reg1", "R1A");
+    par.orthogonal_regions.emplace_back("Reg2", "Reg2", "R2A");
+
+    auto& reg1 = ir.add_state("Reg1", "Par");
+    reg1.is_composite = true;
+    reg1.initial_sub_state = "R1A";
+    ir.add_state("R1A", "Reg1");
+    ir.add_state("R1B", "Reg1");
+
+    auto& reg2 = ir.add_state("Reg2", "Par");
+    reg2.is_composite = true;
+    reg2.initial_sub_state = "R2A";
+    ir.add_state("R2A", "Reg2");
+    ir.add_state("R2B", "Reg2");
+
+    ir.add_state("Done");
+
+    ActionSignature inc_x("inc_x");
+    StoreOp st;
+    st.target = LValueTarget("x", LValueScope::Register);
+    st.op = AssignmentOp::Assign;
+    st.expression = "x + 1";
+    inc_x.instructions.emplace_back(st);
+
+    ir.add_transition(TransitionEdge("R1A", "R1B", "E1", std::nullopt, inc_x));
+    ir.add_transition(TransitionEdge("R1B", "R1A", "E1"));
+    ir.add_transition(TransitionEdge("R2A", "R2B", "E2", std::nullopt, inc_x));
+    ir.add_transition(TransitionEdge("R2B", "R2A", "E2"));
+
+    TransitionEdge check_t("Par", "Done", "STOP", "x >= 2");
+    check_t.id = "t_ortho_check";
+    ir.add_transition(check_t);
+
+    EFSMIntervalAnalyzer analyzer(ir);
+    DiagnosticEngine diag;
+    auto findings = analyzer.analyze(diag);
+
+    for (const auto& f : findings) {
+        EXPECT_NE(f.transition_id, "t_ortho_check");
+    }
+}
+
 }  // namespace

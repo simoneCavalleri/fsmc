@@ -137,7 +137,9 @@ std::string qualify_expression(std::string expr, const FsmIr& model) {
 
             if (!preceded_by_member_or_scope && !followed_by_scope) {
                 if (followed_by_dot &&
-                    (tok == "f" || tok == "cmd" || tok == "event" || tok == "sig" || tok == "ev" || tok == "payload")) {
+                    (tok == "f" || tok == "cmd" || tok == "event" || tok == "sig" || tok == "ev" || tok == "payload" ||
+                     std::any_of(model.signals.begin(), model.signals.end(),
+                                 [&](const SignalDefinition& sig) { return sig.name == tok; }))) {
                     out += "cmd";
                     continue;
                 }
@@ -160,6 +162,22 @@ std::string qualify_expression(std::string expr, const FsmIr& model) {
                         out += "out." + escaped_tok;
                         continue;
                     }
+                }
+                bool is_signal_attr = false;
+                for (const auto& sig : model.signals) {
+                    for (const auto& attr : sig.attributes) {
+                        if (attr.name == tok || (escaped_tok != tok && attr.name == escaped_tok)) {
+                            is_signal_attr = true;
+                            break;
+                        }
+                    }
+                    if (is_signal_attr) {
+                        break;
+                    }
+                }
+                if (is_signal_attr) {
+                    out += "cmd." + escaped_tok;
+                    continue;
                 }
             }
 

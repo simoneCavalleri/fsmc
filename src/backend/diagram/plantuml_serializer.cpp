@@ -97,7 +97,8 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
         out << "]\n";
     }
 
-    if (!state.initial_sub_state.empty()) {
+    const bool is_parallel = (state.kind == StateKind::Parallel || !state.orthogonal_regions.empty());
+    if (!is_parallel && !state.initial_sub_state.empty()) {
         out << pad << "  [*] --> " << state.initial_sub_state << "\n";
     }
     if (state.has_history || state.has_deep_history) {
@@ -121,7 +122,6 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
     }
 
     // Child states in declaration order
-    const bool is_parallel = (state.kind == StateKind::Parallel || !state.orthogonal_regions.empty());
     size_t emitted_children = 0;
     for (const auto& child : model.states) {
         if (child.parent_state == state.name) {

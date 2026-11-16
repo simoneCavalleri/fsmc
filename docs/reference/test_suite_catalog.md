@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 604  
+**Total Documented Test Cases**: 606  
 
 ---
 
@@ -856,6 +856,9 @@
 #### `MermaidParser.DistinctAssignmentActionNames_AcrossLifecycleAndTransitions`
 **Test Intent**: Verify synthesized assignment action names do not collide across entry, exit, and transitions.
 
+#### `MermaidSerializerTest.ParallelStateOmitsInitialSubstateAndRoundtripsThreeRegions`
+**Test Intent**: Verify MermaidSerializer omits `[*] --> initial_sub_state` inside StateKind::Parallel blocks.
+
 ### [`test_multiline_actions.cpp`](../../tests/frontend/diagram/test_multiline_actions.cpp) (`tests/frontend/diagram/test_multiline_actions.cpp`)
 - *(Executable binary test verification)*
 
@@ -889,6 +892,9 @@
 
 #### `PlantUmlParser.DistinctAssignmentActionNames_AcrossLifecycleAndTransitions`
 **Test Intent**: Verify synthesized assignment action names do not collide across entry, exit, and transitions.
+
+#### `PlantUmlSerializerTest.ParallelStateOmitsInitialSubstateAndRoundtripsThreeRegions`
+**Test Intent**: Verify PlantUmlSerializer omits `[*] --> initial_sub_state` inside StateKind::Parallel blocks.
 
 ### [`test_directive_parser.cpp`](../../tests/frontend/directive/test_directive_parser.cpp) (`tests/frontend/directive/test_directive_parser.cpp`)
 #### `DirectiveParser.StateDirective_ParsesTraceabilityAndActivities`

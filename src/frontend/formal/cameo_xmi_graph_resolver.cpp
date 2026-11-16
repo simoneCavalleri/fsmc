@@ -330,7 +330,6 @@ void CameoXmiGraphResolver::process_subvertex(const std::shared_ptr<XmlNode>& ve
                 reg_state->is_composite = true;
             }
             process_region(sub, model, reg_name, id_map, id_to_name, id_to_kind);
-            process_transitions_in_region(sub, model, reg_name, id_map, id_to_name, id_to_kind);
 
             OrthogonalRegion ortho_reg;
             ortho_reg.id = reg_name;
@@ -356,7 +355,6 @@ void CameoXmiGraphResolver::process_subvertex(const std::shared_ptr<XmlNode>& ve
                 s->is_composite = true;
             }
             process_region(sub, model, state_name, id_map, id_to_name, id_to_kind);
-            process_transitions_in_region(sub, model, state_name, id_map, id_to_name, id_to_kind);
         }
     }
 }
@@ -369,6 +367,53 @@ void CameoXmiGraphResolver::process_transitions_in_region(
     for (const auto& child : region_node->children) {
         if (child->tag == "transition" || ends_with(child->tag, ":transition")) {
             process_transition(child, model, parent_state, id_map, id_to_name, id_to_kind);
+        }
+    }
+
+    for (const auto& child : region_node->children) {
+        if (child->tag != "subvertex" && !ends_with(child->tag, ":subvertex")) {
+            continue;
+        }
+        std::string sub_id = child->get_attr("xmi:id");
+        if (sub_id.empty()) {
+            sub_id = child->get_attr("id");
+        }
+        std::string sub_state_name;
+        if (auto it = id_to_name.find(sub_id); it != id_to_name.end()) {
+            sub_state_name = it->second;
+        } else {
+            sub_state_name = sanitize_identifier(child->get_attr("name"));
+        }
+        if (sub_state_name.empty()) {
+            continue;
+        }
+
+        std::vector<std::shared_ptr<XmlNode>> sub_regions;
+        for (const auto& sub_child : child->children) {
+            if (sub_child->tag == "region" || ends_with(sub_child->tag, ":region")) {
+                sub_regions.push_back(sub_child);
+            }
+        }
+        if (sub_regions.size() > 1) {
+            for (size_t idx = 0; idx < sub_regions.size(); ++idx) {
+                const auto& sub = sub_regions[idx];
+                std::string reg_name = sanitize_identifier(sub->get_attr("name"));
+                if (reg_name.empty()) {
+                    reg_name = sub_state_name + "_Region" + std::to_string(idx + 1);
+                }
+                process_transitions_in_region(sub, model, reg_name, id_map, id_to_name, id_to_kind);
+
+                // Refresh orthogonal region initial_state_id after initial transitions are processed
+                if (const auto* reg_state = model.find_state(reg_name);
+                    reg_state != nullptr && !reg_state->initial_sub_state.empty()) {
+                    if (auto* parent = model.find_state_mut(sub_state_name);
+                        parent != nullptr && idx < parent->orthogonal_regions.size()) {
+                        parent->orthogonal_regions[idx].initial_state_id = reg_state->initial_sub_state;
+                    }
+                }
+            }
+        } else if (sub_regions.size() == 1) {
+            process_transitions_in_region(sub_regions[0], model, sub_state_name, id_map, id_to_name, id_to_kind);
         }
     }
 }

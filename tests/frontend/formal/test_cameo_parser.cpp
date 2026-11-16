@@ -515,4 +515,42 @@ TEST(CameoParser, RoundtripVariablesAndAssignmentActions_PreservedInXmi) {
     EXPECT_EQ(rt.transitions[0].transition_action->assignments[0].expression, "x * 2");
 }
 
+/**
+ * @brief Verify CameoXmiParser resolves transition targets declared later in sibling/outer regions.
+ * @scenario Composite state '_s1' has a transition targeting '_s3' ('Machining'), which is declared after '_s1'.
+ * @expected Transition target resolves to 'Machining' instead of raw XMI ID '_s3'.
+ */
+TEST(CameoParserTest, ResolvesForwardReferencedSiblingTargetsInsideCompositeRegions) {
+    const std::string xmi = R"xml(
+<xmi:XMI xmi:version="2.1" xmlns:uml="http://www.omg.org/spec/UML/20090901" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1">
+  <uml:Model xmi:id="_m1" name="ForwardTargetModel">
+    <packagedElement xmi:type="uml:StateMachine" xmi:id="_sm1" name="ForwardTargetFsm">
+      <region xmi:type="uml:Region" xmi:id="_r1">
+        <subvertex xmi:type="uml:Pseudostate" xmi:id="_ps_root" kind="initial"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s1" name="Operational">
+          <region xmi:type="uml:Region" xmi:id="_r_s1">
+            <subvertex xmi:type="uml:Pseudostate" xmi:id="_ps_s1" kind="initial"/>
+            <transition xmi:id="_t_init_s1" source="_ps_s1" target="_s2"/>
+            <subvertex xmi:type="uml:State" xmi:id="_s2" name="Idle"/>
+            <transition xmi:id="_t_fwd" source="_s2" target="_s3" trigger="StartJobCmd"/>
+          </region>
+        </subvertex>
+        <subvertex xmi:type="uml:State" xmi:id="_s3" name="Machining"/>
+        <transition xmi:id="_t_root" source="_ps_root" target="_s1"/>
+      </region>
+    </packagedElement>
+  </uml:Model>
+</xmi:XMI>
+)xml";
+
+    CameoXmiParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xmi, ir, err)) << err;
+
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    EXPECT_EQ(ir.transitions[0].source, "Idle");
+    EXPECT_EQ(ir.transitions[0].target, "Machining");
+}
+
 }  // namespace

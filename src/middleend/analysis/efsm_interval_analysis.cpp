@@ -227,7 +227,27 @@ EFSMIntervalAnalyzer::compute_state_intervals() {
         in_worklist.erase(curr_state);
         state_visits[curr_state]++;
 
-        const auto curr_env = state_envs[curr_state];
+        // Apply state entry_actions to stored state_envs[curr_state] before evaluating outgoing transitions
+        auto& stored_env = state_envs[curr_state];
+        auto apply_action_sig = [&](std::unordered_map<std::string, Interval>& env, const ActionSignature& act) {
+            for (const auto& assign : act.assignments) {
+                apply_assignment(env, assign);
+            }
+            if (act.assignments.empty()) {
+                for (const auto& inst : act.instructions) {
+                    if (const auto* st = std::get_if<StoreOp>(&inst.op)) {
+                        ActionAssignment a(st->target, st->expression, st->op);
+                        apply_assignment(env, a);
+                    }
+                }
+            }
+        };
+        if (const auto* curr_node = ir_.find_state(curr_state)) {
+            for (const auto& entry_act : curr_node->entry_actions) {
+                apply_action_sig(stored_env, entry_act);
+            }
+        }
+        const auto curr_env = stored_env;
 
         auto merge_env_into_state = [&](const std::string& target_state,
                                         const std::unordered_map<std::string, Interval>& src_env,

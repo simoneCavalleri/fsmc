@@ -1082,6 +1082,9 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     static const std::regex after_regex(
         R"(\b(?:accept\s+)?after\s*(?:\(\s*(\d+(?:\.\d+)?)\s*(?:\[(?:SI::|ISQ::)?([A-Za-z]+)\]|([A-Za-z]+))?\s*\)|(\d+(?:\.\d+)?)\s*(?:\[(?:SI::|ISQ::)?([A-Za-z]+)\]|([A-Za-z]+))?))",
         std::regex::optimize);
+    static const std::regex every_regex(
+        R"(\b(?:accept\s+)?every\s*(?:\(\s*(\d+(?:\.\d+)?)\s*(?:\[(?:SI::|ISQ::)?([A-Za-z]+)\]|([A-Za-z]+))?\s*\)|(\d+(?:\.\d+)?)\s*(?:\[(?:SI::|ISQ::)?([A-Za-z]+)\]|([A-Za-z]+))?))",
+        std::regex::optimize);
     static const std::regex at_regex(R"(\b(?:accept\s+)?at\s*(?:\(\s*([^)]+)\s*\)|([A-Za-z0-9_:]+)))",
                                      std::regex::optimize);
     static const std::regex change_when_regex(R"(\b(?:accept\s+)?when\s*\(([^)]+)\))", std::regex::optimize);
@@ -1100,24 +1103,20 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
         source = state_stack.back();
     }
 
-    // 4. Trigger resolution: Time triggers (after, at) or Event triggers (accept, when)
-    if (std::regex_search(stmt, match, after_regex)) {
-        std::string val_str = match[1].matched ? match[1].str() : match[4].str();
-        std::string unit_str = match[2].matched   ? match[2].str()
-                               : match[3].matched ? match[3].str()
-                               : match[5].matched ? match[5].str()
-                               : match[6].matched ? match[6].str()
-                                                  : "ms";
+    auto parse_duration_ms_match = [](const std::smatch& m) -> uint64_t {
+        std::string val_str = m[1].matched ? m[1].str() : m[4].str();
+        std::string unit_str = m[2].matched   ? m[2].str()
+                               : m[3].matched ? m[3].str()
+                               : m[5].matched ? m[5].str()
+                               : m[6].matched ? m[6].str()
+                                              : "ms";
         double raw_val = 0.0;
         try {
             raw_val = std::stod(val_str);
         } catch (const std::exception&) {
             raw_val = 1.0;
         }
-        // Apply unit multiplier to raw_val BEFORE converting to integer milliseconds.
-        // Without this, fractional values like `after 1.5 s` would be truncated to
-        // raw_val=1.5 -> 1 ms instead of the correct 1500 ms.
-        double duration_ms_f = raw_val;  // default: already in milliseconds
+        double duration_ms_f = raw_val;
         if (unit_str == "s" || unit_str == "sec" || unit_str == "seconds") {
             duration_ms_f = raw_val * 1000.0;
         } else if (unit_str == "min") {
@@ -1125,11 +1124,19 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
         } else if (unit_str == "h") {
             duration_ms_f = raw_val * 3600000.0;
         }
-        uint64_t duration_ms = static_cast<uint64_t>(duration_ms_f + 0.5);  // round to nearest ms
-        if (duration_ms == 0)
-            duration_ms = 1;
+        uint64_t duration_ms = static_cast<uint64_t>(duration_ms_f + 0.5);
+        return duration_ms == 0 ? 1 : duration_ms;
+    };
+
+    // 4. Trigger resolution: Time triggers (after, every, at) or Event triggers (accept, when)
+    if (std::regex_search(stmt, match, after_regex)) {
+        const uint64_t duration_ms = parse_duration_ms_match(match);
         time_trigger = TimeTrigger(TimeTriggerKind::After, duration_ms, TimeUnit::Milliseconds);
         event = "after_" + std::to_string(duration_ms) + "ms";
+    } else if (std::regex_search(stmt, match, every_regex)) {
+        const uint64_t duration_ms = parse_duration_ms_match(match);
+        time_trigger = TimeTrigger(TimeTriggerKind::Every, duration_ms, TimeUnit::Milliseconds);
+        event = "every_" + std::to_string(duration_ms) + "ms";
     } else if (std::regex_search(stmt, match, at_regex)) {
         std::string at_target = match[1].matched ? match[1].str() : match[2].str();
         time_trigger = TimeTrigger(TimeTriggerKind::At, 0, TimeUnit::Milliseconds);

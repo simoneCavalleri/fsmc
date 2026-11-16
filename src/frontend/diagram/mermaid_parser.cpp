@@ -187,6 +187,15 @@ bool MermaidParser::parse(std::string_view content, FsmIr& out_model, std::strin
                         parent->kind = StateKind::Parallel;
                         parent->is_composite = true;
                         parent->orthogonal_regions = std::move(regions);
+                        for (const auto& reg : parent->orthogonal_regions) {
+                            for (auto& st : out_model.states) {
+                                if (st.parent_state == reg.id || st.parent_state == reg.name ||
+                                    std::find(reg.state_ids.begin(), reg.state_ids.end(), st.name) !=
+                                        reg.state_ids.end()) {
+                                    st.pinned_parent = true;
+                                }
+                            }
+                        }
                     }
                 }
             }

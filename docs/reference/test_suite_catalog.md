@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 561  
+**Total Documented Test Cases**: 565  
 
 ---
 
@@ -586,6 +586,9 @@
 #### `DiagramExport.PlantUml_DeepHistoryPseudostate_EmittedCorrectly`
 **Test Intent**: Verify PlantUmlSerializer emits [H*] when a composite state has has_deep_history=true.
 
+#### `DiagramExport.PlantUmlAndMermaid_ParallelState_EmitsOrthogonalSeparator`
+**Test Intent**: Verify PlantUmlSerializer and MermaidSerializer emit '--' separators between parallel regions.
+
 ---
 
 ## Multi-Format Emitter & Factory Subsystem
@@ -814,6 +817,9 @@
 
 #### `MermaidParserTest.OrthogonalSeparatorCreatesParallelRegions`
 **Test Intent**: Verify MermaidParser recognizes '--' orthogonal region separator inside composite states.
+
+#### `MermaidParserTest.ForkJoinWithExternalTransitionsPreservesRegionHierarchy`
+**Test Intent**: Verify Mermaid states inside orthogonal regions keep pinned_parent when referenced by root Fork/Join
 
 ### [`test_multiline_actions.cpp`](../../tests/frontend/diagram/test_multiline_actions.cpp) (`tests/frontend/diagram/test_multiline_actions.cpp`)
 - *(Executable binary test verification)*
@@ -1071,6 +1077,9 @@
 
 #### `Sysml2ParserTest.ParsesAcceptWhenAsChangeTrigger`
 **Test Intent**: Verify Sysml2Parser parses 'accept when(<expr>)' as a ChangeTrigger rather than a signal named 'when'.
+
+#### `Sysml2ParserTest.ParsesAcceptEveryAsPeriodicTimeTrigger`
+**Test Intent**: Verify Sysml2Parser parses 'accept every(<dur><unit>)' as a periodic TimeTrigger.
 
 ### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`
@@ -1504,6 +1513,9 @@
 
 #### `EFSMIntervalAnalysisTest.PropagatesIntervalsAcrossCompositeHierarchy`
 **Test Intent**: Verify EFSMIntervalAnalyzer propagates variable updates across composite state hierarchy.
+
+#### `EFSMIntervalAnalysisTest.AppliesStateEntryActionsToStateEnvironment`
+**Test Intent**: Verify EFSMIntervalAnalyzer applies state entry_actions before checking outgoing guards.
 
 ### [`test_formal_safety_passes.cpp`](../../tests/middleend/verification/test_formal_safety_passes.cpp) (`tests/middleend/verification/test_formal_safety_passes.cpp`)
 #### `LivelockAnalysis.NonZeroTimeTransitions_PassesWithoutErrors`

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 520  
+**Total Documented Test Cases**: 525  
 
 ---
 
@@ -146,6 +146,9 @@
 
 #### `FlightRecorder.DeterministicTimer_StepTick_RecordsTickEventsInHistory`
 **Test Intent**: Verify recording of deterministic timer ticks in flight recorder.
+
+#### `FlightRecorder.ConstFlightRecorderObserver_RecordsWithoutUndefinedBehavior`
+**Test Intent**: Verify const flight_recorder_observer safely records transitions via mutable TraceBuffer.
 
 ### [`test_fsm.cpp`](../../tests/backend/cpp/runtime/test_fsm.cpp) (`tests/backend/cpp/runtime/test_fsm.cpp`)
 #### `FsmCore.BasicTransitions_EventDispatch_UpdatesCurrentState`
@@ -1244,12 +1247,18 @@
 #### `OrthogonalProduct.ExternalEntryIntoSubState_ActivatesInitialStatesInOtherRegions`
 **Test Intent**: External transition entering a sub-state must activate initial states in all other regions.
 
+#### `OrthogonalProduct.InternalSelfLoopInRegion_RemainsInternalInProduct`
+**Test Intent**: Verify internal self-loops in orthogonal regions remain Internal transitions in product states.
+
 ### [`test_pass_manager.cpp`](../../tests/middleend/canonicalization/test_pass_manager.cpp) (`tests/middleend/canonicalization/test_pass_manager.cpp`)
 #### `PassManager.DefaultPipelineExecution_CollectsStatisticsAndEmitsDiagnostics`
 **Test Intent**: Verify PassManager default optimization and analysis pipeline execution.
 
 #### `PassManager.CustomPassRegistration_ModifiesIrAndRecordsExecutionStats`
 **Test Intent**: Verify custom pass registration and extension in PassManager.
+
+#### `PassManager.NoOpTransformationWrappersReturnSuccessAndAnalyticalPreserveIr`
+**Test Intent**: Verify no-op transformation wrappers satisfy IPass::run() contract and analysis passes preserve IR.
 
 ### [`test_structural_lowering.cpp`](../../tests/middleend/canonicalization/test_structural_lowering.cpp) (`tests/middleend/canonicalization/test_structural_lowering.cpp`)
 #### `HistoryLowering.ShallowHistoryTarget_LowersToShadowRegisterAndDispatchGuards`
@@ -1284,6 +1293,9 @@
 
 #### `ForkJoinLowering.BranchActionsAndClockResets_PreservedInLoweredTransitions`
 **Test Intent**: Verify that ForkJoinLoweringPass preserves branch actions and clock resets when lowering Fork and Join.
+
+#### `StructuralLowering.HistoryLowering_PinsParentAcrossNormalizeHierarchy`
+**Test Intent**: Verify HistoryLoweringPass pins _HistoryRestore parent_state across normalize_hierarchy().
 
 ### [`test_common_action_factoring.cpp`](../../tests/middleend/optimization/test_common_action_factoring.cpp) (`tests/middleend/optimization/test_common_action_factoring.cpp`)
 #### `CommonActionFactoring.ConvergentTransitionsIdenticalAction_FactoredIntoTargetEntry`
@@ -1390,6 +1402,9 @@
 
 #### `EfsmIntervalAnalysis.GuardOutsidePortDomain_EmitsUnsatisfiableDiagnostic`
 **Test Intent**: Verify EFSM interval analyzer detects unsatisfiable guards over bounded InPorts.
+
+#### `EFSMIntervalAnalysis.IntervalEqualityAndZeroTimesInfinity_SoundWithoutNaN`
+**Test Intent**: Verify Interval equality with infinities and 0 * inf multiplication do not produce NaN.
 
 ### [`test_formal_safety_passes.cpp`](../../tests/middleend/verification/test_formal_safety_passes.cpp) (`tests/middleend/verification/test_formal_safety_passes.cpp`)
 #### `LivelockAnalysis.NonZeroTimeTransitions_PassesWithoutErrors`

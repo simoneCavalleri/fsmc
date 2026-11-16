@@ -122,4 +122,21 @@ TEST(FlightRecorder, DeterministicTimer_StepTick_RecordsTickEventsInHistory) {
     EXPECT_FALSE(sm.timer_manager().is_timer_active(1));
 }
 
+/**
+ * @brief Verify const flight_recorder_observer safely records transitions via mutable TraceBuffer.
+ * @scenario Invoke a const-qualified flight_recorder_observer instance on transition_info events.
+ * @expected Trace entry is recorded cleanly without const_cast undefined behavior.
+ */
+TEST(FlightRecorder, ConstFlightRecorderObserver_RecordsWithoutUndefinedBehavior) {
+    const flight_recorder_observer<8> observer(42);
+    observer(transition_info{"StateA", "StateB", "EvGo", dispatch_status::success});
+
+    ASSERT_EQ(observer.recorder().size(), 1u);
+    EXPECT_EQ(observer.recorder()[0].tick, 42u);
+    EXPECT_EQ(observer.recorder()[0].source_state, "StateA");
+    EXPECT_EQ(observer.recorder()[0].target_state, "StateB");
+    EXPECT_EQ(observer.recorder()[0].event_name, "EvGo");
+    EXPECT_TRUE(observer.recorder()[0].transition_taken);
+}
+
 }  // namespace

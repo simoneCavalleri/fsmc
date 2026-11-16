@@ -109,4 +109,37 @@ TEST(PassManager, SampledChangeTriggerAndSubmachineWrappers_ExecuteCleanly) {
     EXPECT_TRUE(std::holds_alternative<AnonymousTrigger>(ir.transitions[0].trigger));
 }
 
+/**
+ * @brief Verify no-op transformation wrappers satisfy IPass::run() contract and analysis passes preserve IR.
+ * @scenario Run lowering/optimization wrappers on a minimal IR with no matching constructs alongside analysis passes.
+ * @expected Transformation wrappers return true (not fatal failure) and analysis stats mark modified_ir == false.
+ */
+TEST(PassManager, NoOpTransformationWrappersReturnSuccessAndAnalyticalPreserveIr) {
+    FsmIr ir;
+    ir.name = "MinimalPassManagerIr";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+
+    PassManager pm;
+    pm.add_pass(std::make_unique<SemanticValidationPass>());
+    pm.add_pass(std::make_unique<HistoryLoweringPassWrapper>());
+    pm.add_pass(std::make_unique<ForkJoinLoweringPassWrapper>());
+    pm.add_pass(std::make_unique<DeferredEventLoweringPassWrapper>());
+    pm.add_pass(std::make_unique<BoundaryActionFusionPassWrapper>());
+    pm.add_pass(std::make_unique<OrthogonalProductPassWrapper>());
+    pm.add_pass(std::make_unique<ChoiceCompletenessPass>());
+    pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
+    pm.add_pass(std::make_unique<WcetAnalysisPassWrapper>());
+    pm.add_pass(std::make_unique<EFSMDataPathPass>(false));
+
+    DiagnosticEngine diag;
+    EXPECT_TRUE(pm.run(ir, diag));
+    ASSERT_EQ(pm.get_stats().size(), 10u);
+    EXPECT_FALSE(pm.get_stats()[0].modified_ir);
+    EXPECT_FALSE(pm.get_stats()[6].modified_ir);
+    EXPECT_FALSE(pm.get_stats()[7].modified_ir);
+    EXPECT_FALSE(pm.get_stats()[8].modified_ir);
+    EXPECT_FALSE(pm.get_stats()[9].modified_ir);
+}
+
 }  // namespace

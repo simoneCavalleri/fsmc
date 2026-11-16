@@ -193,4 +193,39 @@ TEST(EFSMIntervalAnalysis, MultipleValidatorsAndGuardIntersectToTightInterval) {
     EXPECT_DOUBLE_EQ(iv.hi, 50.0);
 }
 
+/**
+ * @brief Verify Interval equality with infinities and 0 * inf multiplication do not produce NaN.
+ * @scenario Compare unbounded/half-bounded intervals and multiply zero interval by unbounded interval.
+ * @expected Equal infinite bounds compare equal; multiplication with 0.0 yields exact [0, 0].
+ */
+TEST(EFSMIntervalAnalysis, IntervalEqualityAndZeroTimesInfinity_SoundWithoutNaN) {
+    const double inf = std::numeric_limits<double>::infinity();
+    Interval unbounded;
+    Interval unbounded2;
+    EXPECT_EQ(unbounded, unbounded2);
+
+    Interval half_lo(0.0, inf);
+    Interval half_lo2(0.0, inf);
+    EXPECT_EQ(half_lo, half_lo2);
+    EXPECT_NE(half_lo, unbounded);
+
+    Interval empty1(5.0, 1.0);
+    Interval empty2(2.0, -3.0);
+    EXPECT_EQ(empty1, empty2);
+    EXPECT_NE(empty1, unbounded);
+
+    Interval zero_iv(0.0, 0.0);
+    Interval prod_scalar = unbounded.mul(0.0);
+    EXPECT_FALSE(std::isnan(prod_scalar.lo));
+    EXPECT_FALSE(std::isnan(prod_scalar.hi));
+    EXPECT_DOUBLE_EQ(prod_scalar.lo, 0.0);
+    EXPECT_DOUBLE_EQ(prod_scalar.hi, 0.0);
+
+    Interval prod_iv = zero_iv.mul(unbounded);
+    EXPECT_FALSE(std::isnan(prod_iv.lo));
+    EXPECT_FALSE(std::isnan(prod_iv.hi));
+    EXPECT_DOUBLE_EQ(prod_iv.lo, 0.0);
+    EXPECT_DOUBLE_EQ(prod_iv.hi, 0.0);
+}
+
 }  // namespace

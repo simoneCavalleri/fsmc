@@ -144,6 +144,8 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         std::string restore_choice_name = parent_name + "_HistoryRestore";
         StateNode restore_node(restore_choice_name, "Choice branch restoring recorded history substate", parent_name);
         restore_node.kind = StateKind::Choice;
+        // Preserve parent membership across normalize_hierarchy() even before choice inlining.
+        restore_node.pinned_parent = true;
         ir.states.push_back(std::move(restore_node));
         ir.choice_nodes.emplace_back(restore_choice_name);
 

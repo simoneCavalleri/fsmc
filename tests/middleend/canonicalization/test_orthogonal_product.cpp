@@ -560,4 +560,49 @@ TEST(OrthogonalProduct, ExternalEntryIntoSubState_ActivatesInitialStatesInOtherR
     EXPECT_TRUE(found);
 }
 
+/**
+ * @brief Verify internal self-loops in orthogonal regions remain Internal transitions in product states.
+ * @scenario Lower deferred events inside an orthogonal region before OrthogonalProductPass.
+ * @expected Generated self-loop in product state retains TransitionEdgeKind::Internal.
+ */
+TEST(OrthogonalProduct, InternalSelfLoopInRegion_RemainsInternalInProduct) {
+    FsmIr model;
+    model.name = "DeferredProductModel";
+
+    auto& par = model.add_state("P", "", StateKind::Parallel);
+    OrthogonalRegion r1;
+    r1.id = "R1";
+    r1.name = "R1";
+    r1.initial_state_id = "X";
+    r1.state_ids = {"X", "Y"};
+
+    OrthogonalRegion r2;
+    r2.id = "R2";
+    r2.name = "R2";
+    r2.initial_state_id = "A";
+    r2.state_ids = {"A", "B"};
+
+    par.orthogonal_regions = {r1, r2};
+    model.add_state("X", "R1");
+    model.add_state("Y", "R1");
+    model.add_state("A", "R2");
+    model.add_state("B", "R2");
+
+    TransitionEdge internal_loop("X", "X", "EvDefer", std::nullopt, std::nullopt, "", TransitionEdgeKind::Internal);
+    model.add_transition(internal_loop);
+
+    OrthogonalProductPass pass;
+    DiagnosticEngine diag;
+    ASSERT_TRUE(pass.run(model, diag));
+
+    bool found_internal = false;
+    for (const auto& t : model.transitions) {
+        if (t.source == "P_X_A" && t.target == "P_X_A" && t.event == "EvDefer") {
+            EXPECT_EQ(t.kind, TransitionEdgeKind::Internal);
+            found_internal = true;
+        }
+    }
+    EXPECT_TRUE(found_internal);
+}
+
 }  // namespace

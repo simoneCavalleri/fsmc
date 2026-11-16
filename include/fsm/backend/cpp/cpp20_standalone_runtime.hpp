@@ -2361,8 +2361,7 @@ class flight_recorder_observer {
     }
 
     void operator()(const transition_info& info) const noexcept {
-        const_cast<TraceBuffer<Capacity>&>(recorder_).record(current_tick_, info.source, info.event, info.target,
-                                                             info.status == dispatch_status::success);
+        recorder_.record(current_tick_, info.source, info.event, info.target, info.status == dispatch_status::success);
     }
 
     template <typename State, typename Event>
@@ -2378,7 +2377,7 @@ class flight_recorder_observer {
 
   private:
     std::uint64_t current_tick_{0};
-    TraceBuffer<Capacity> recorder_{};
+    mutable TraceBuffer<Capacity> recorder_{};
 };
 
 }  // namespace fsm

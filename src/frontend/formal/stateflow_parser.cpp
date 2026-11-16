@@ -625,10 +625,10 @@ StateflowParser::StateflowLabelComponents StateflowParser::parse_stateflow_label
 
 static ActionSignature build_stateflow_action(std::string_view raw_action, const std::string& fallback_prefix) {
     static const std::regex assign_regex(
-        R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(=|\+=|-=|\*=|\/=)\s*(.+)$)",
+        R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*(=|\+=|-=|\*=|\/=)\s*(.+)$)",
         std::regex::optimize);
     static const std::regex inc_regex(
-        R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(\+\+|--)$)",
+        R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*(\+\+|--)$)",
         std::regex::optimize);
 
     std::vector<ActionAssignment> assignments;
@@ -645,7 +645,7 @@ static ActionSignature build_stateflow_action(std::string_view raw_action, const
         std::smatch m;
         if (std::regex_match(trimmed, m, assign_regex)) {
             std::string scope_prefix = m[1].str();
-            std::string var = sanitize_identifier(m[2].str());
+            std::string var_path = m[2].str();
             std::string op = m[3].str();
             std::string rhs = m[4].str();
             size_t rfirst = rhs.find_first_not_of(" \t\r\n");
@@ -653,24 +653,24 @@ static ActionSignature build_stateflow_action(std::string_view raw_action, const
             if (rfirst != std::string::npos) {
                 rhs = rhs.substr(rfirst, rlast - rfirst + 1);
             }
-            LValueTarget tgt(scope_prefix + var);
+            LValueTarget tgt(scope_prefix + var_path);
             if (op == "=") {
                 assignments.push_back({tgt, rhs});
             } else if (op == "+=") {
-                assignments.push_back({tgt, var + " + " + rhs});
+                assignments.push_back({tgt, var_path + " + " + rhs});
             } else if (op == "-=") {
-                assignments.push_back({tgt, var + " - " + rhs});
+                assignments.push_back({tgt, var_path + " - " + rhs});
             } else if (op == "*=") {
-                assignments.push_back({tgt, var + " * (" + rhs + ")"});
+                assignments.push_back({tgt, var_path + " * (" + rhs + ")"});
             } else if (op == "/=") {
-                assignments.push_back({tgt, var + " / (" + rhs + ")"});
+                assignments.push_back({tgt, var_path + " / (" + rhs + ")"});
             }
         } else if (std::regex_match(trimmed, m, inc_regex)) {
             std::string scope_prefix = m[1].str();
-            std::string var = sanitize_identifier(m[2].str());
+            std::string var_path = m[2].str();
             std::string op = m[3].str();
-            LValueTarget tgt(scope_prefix + var);
-            assignments.push_back({tgt, op == "++" ? (var + " + 1") : (var + " - 1")});
+            LValueTarget tgt(scope_prefix + var_path);
+            assignments.push_back({tgt, op == "++" ? (var_path + " + 1") : (var_path + " - 1")});
         }
     }
 

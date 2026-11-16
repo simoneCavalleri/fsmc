@@ -430,6 +430,22 @@ class PassManager {
      */
     [[nodiscard]] const std::vector<PassExecutionStats>& get_stats() const noexcept;
 
+    /**
+     * @brief Instantiates a registered built-in pass by its canonical CLI name or alias.
+     * @param pass_name Canonical pass identifier (e.g., "guard-simplification", "history-lowering").
+     * @param pipe_cmd Optional shell command when pass_name == "pipe-through".
+     * @param submachine_resolver Optional resolver callback when pass_name is "inline-submachines".
+     * @return Unique pointer to the instantiated IPass, or nullptr if unrecognized.
+     */
+    [[nodiscard]] static std::unique_ptr<IPass> create_pass_by_name(
+        std::string_view pass_name, std::string_view pipe_cmd = "",
+        SubmachineInliningPassWrapper::SubmachineResolver submachine_resolver = nullptr);
+
+    /**
+     * @brief Returns the canonical CLI names of all built-in passes registered in the middle-end.
+     */
+    [[nodiscard]] static std::vector<std::string_view> registered_pass_names();
+
   private:
     plugin::PluginLoader plugin_loader_;
     std::vector<std::unique_ptr<IPass>> passes_;

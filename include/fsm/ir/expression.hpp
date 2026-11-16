@@ -61,7 +61,19 @@ enum class ExpressionOp : std::uint8_t {
     ShiftRight,  ///< Shift right (>>)
     BitwiseAnd,  ///< Bitwise AND (&)
     BitwiseOr,   ///< Bitwise OR (|)
-    BitwiseXor   ///< Bitwise XOR (^)
+    BitwiseXor,  ///< Bitwise XOR (^)
+
+    // Binary Relational & Equality Operators
+    Equal,         ///< Equality (==)
+    NotEqual,      ///< Inequality (!=)
+    LessThan,      ///< Less than (<)
+    LessEqual,     ///< Less than or equal (<=)
+    GreaterThan,   ///< Greater than (>)
+    GreaterEqual,  ///< Greater than or equal (>=)
+
+    // Binary Logical Operators
+    LogicalAnd,  ///< Logical conjunction (&&)
+    LogicalOr    ///< Logical disjunction (||)
 };
 
 [[nodiscard]] std::string_view expression_kind_to_string(ExpressionKind kind) noexcept;
@@ -186,6 +198,11 @@ struct ExpressionAstNode {
      * @return Root ExpressionAstNode of the parsed expression.
      */
     static ExpressionAstNode parse(std::string_view text);
+
+    /**
+     * @brief Collects all variable, port, and event parameter reference symbols in pre-order.
+     */
+    void collect_references(std::vector<std::string>& out) const;
 
     bool operator==(const ExpressionAstNode& other) const noexcept;
 };

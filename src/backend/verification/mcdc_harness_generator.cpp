@@ -2,11 +2,11 @@
 
 #include <sstream>
 
-#include "fsm/frontend/directive/guard_parser.hpp"
+#include "fsm/ir/guard.hpp"
 
 namespace fsm::backend::verification {
 
-using frontend::directive::GuardExpressionParser;
+using ir::GuardExpressionParser;
 
 std::string McdcHarnessGenerator::trim(std::string_view s) {
     while (!s.empty() && (s.front() == ' ' || s.front() == '\t'))

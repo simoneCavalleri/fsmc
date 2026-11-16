@@ -19,53 +19,7 @@ namespace fsm::backend::cpp {
 
 class Cpp20StandaloneRuntime {
   public:
-    static void emit(std::ostream& out, const GeneratorOptions& opts) {
-        out << R"raw_fsm_runtime(
-// Core System Includes
-#include <array>
-#include <cassert>
-#include <chrono>
-#include <concepts>
-#include <cstddef>
-#include <cstdint>
-#include <cstring>
-#include <functional>
-#include <iomanip>
-#include <iterator>
-#include <optional>
-#include <ostream>
-#include <span>
-#include <string_view>
-#include <tuple>
-#include <type_traits>
-#include <utility>
-#include <variant>
-)raw_fsm_runtime";
-
-        if (opts.thread_safe) {
-            out << R"raw_fsm_runtime(
-// Thread-Safe System Includes
-#include <atomic>
-#include <condition_variable>
-#include <exception>
-#include <future>
-#include <memory>
-#include <mutex>
-#include <new>
-#include <queue>
-#include <string>
-#include <thread>
-#include <vector>
-)raw_fsm_runtime";
-        }
-
-        out << R"raw_fsm_runtime(
-
-// ============================================================================
-// Core Runtime (C++20)
-// ============================================================================
-)raw_fsm_runtime";
-
+    static void emit_core_body(std::ostream& out) {
         out << R"raw_fsm_runtime(
 // --- Begin: traits/type_list.hpp ---
 #if defined(__has_cpp_attribute)
@@ -118,16 +72,12 @@ struct type_list_cat<List1, List2, Rest...> {
 template <typename... Lists>
 using type_list_cat_t = typename type_list_cat<Lists...>::type;
 
-// Check if type_list contains T
+// Check if type_list contains T (O(1) recursion depth via C++17 fold expression)
 template <typename T, typename List>
 struct type_list_contains;
 
-template <typename T>
-struct type_list_contains<T, type_list<>> : std::false_type {};
-
-template <typename T, typename Head, typename... Tail>
-struct type_list_contains<T, type_list<Head, Tail...>>
-    : std::conditional_t<std::is_same_v<T, Head>, std::true_type, type_list_contains<T, type_list<Tail...>>> {};
+template <typename T, typename... Ts>
+struct type_list_contains<T, type_list<Ts...>> : std::bool_constant<(std::is_same_v<T, Ts> || ...)> {};
 
 template <typename T, typename List>
 inline constexpr bool type_list_contains_v = type_list_contains<T, List>::value;
@@ -3280,13 +3230,25 @@ constexpr void call_initial_hierarchical_on_enter(Target& target_state, const In
     call_on_enter(target_state, anonymous_event{}, in, out, reg, srv);
 }
 
+template <typename T>
+struct row_type_tag {
+    using type = T;
+};
+
+template <typename RowType, typename CurrentSrc, typename Event>
+inline constexpr bool is_row_applicable_v =
+    (std::is_same_v<CurrentSrc, typename RowType::source> || is_substate_of_v<CurrentSrc, typename RowType::source>) &&
+    (std::is_same_v<std::decay_t<Event>, typename RowType::event> ||
+     (std::is_same_v<std::decay_t<Event>, anonymous_event> &&
+      std::is_same_v<typename RowType::event, anonymous_event>));
+
 template <typename Table, typename CurrentSrc, typename Event, typename In, typename Out, typename Registers,
           typename Services, typename FsmInstance, typename ObserverCallback, typename RecordHistoryFn,
-          std::size_t... Indices>
+          typename... RowTypes>
 dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event& event, const In& in, Out& out,
                                               Registers& registers_, Services* services_, FsmInstance& fsm_inst,
                                               const ObserverCallback& observer_, RecordHistoryFn&& record_history_fn,
-                                              std::index_sequence<Indices...> /*indices*/) {
+                                              type_list<RowTypes...> /*rows*/) {
     constexpr bool has_observer = !std::is_same_v<std::decay_t<ObserverCallback>, no_observer>;
 
     Services& srv = (services_ != nullptr) ? *services_ : fsm_inst.resolve_services();
@@ -3295,16 +3257,11 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
     std::optional<transition_trace> executed_trace = std::nullopt;
     std::optional<transition_trace> last_rejected_trace = std::nullopt;
 
-    auto try_index = [&](auto idx_constant) -> bool {
-        constexpr std::size_t Index = decltype(idx_constant)::value;
-        using RowType = std::tuple_element_t<Index, decltype(Table::rows)>;
+    auto try_row = [&](auto row_tag) -> bool {
+        using RowType = typename decltype(row_tag)::type;
         using TransSrc = typename RowType::source;
-        using TransEvt = typename RowType::event;
 
-        if constexpr ((std::is_same_v<CurrentSrc, TransSrc> || is_substate_of_v<CurrentSrc, TransSrc>) &&
-                      (std::is_same_v<std::decay_t<Event>, TransEvt> ||
-                       (std::is_same_v<std::decay_t<Event>, anonymous_event> &&
-                        std::is_same_v<TransEvt, anonymous_event>))) {
+        if constexpr (is_row_applicable_v<RowType, CurrentSrc, Event>) {
             using Guard = typename RowType::guard_type;
             using Action = typename RowType::action_type;
             using TransDst = typename RowType::target;
@@ -3391,7 +3348,7 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
         return false;
     };
 
-    bool executed = (try_index(std::integral_constant<std::size_t, Indices>{}) || ...);
+    bool executed = (try_row(row_type_tag<RowTypes>{}) || ...);
     if (executed) {
         return dispatch_result{dispatch_status::success, executed_trace};
     }
@@ -3401,6 +3358,18 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
     return dispatch_result{
         dispatch_status::unhandled,
         transition_trace{get_state_name(src_state), {}, get_event_name(event), {}, {}, transition_kind::external}};
+}
+
+template <typename Table, typename CurrentSrc, typename Event, typename In, typename Out, typename Registers,
+          typename Services, typename FsmInstance, typename ObserverCallback, typename RecordHistoryFn,
+          std::size_t... Indices>
+dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event& event, const In& in, Out& out,
+                                              Registers& registers_, Services* services_, FsmInstance& fsm_inst,
+                                              const ObserverCallback& observer_, RecordHistoryFn&& record_history_fn,
+                                              std::index_sequence<Indices...> /*indices*/) {
+    return execute_transition_from_ports<Table, CurrentSrc>(src_state, event, in, out, registers_, services_, fsm_inst,
+                                                            observer_, std::forward<RecordHistoryFn>(record_history_fn),
+                                                            typename Table::transitions_list{});
 }
 
 }  // namespace fsm::detail
@@ -4052,7 +4021,7 @@ class fsm {
                 };
                 return detail::execute_transition_from_ports<Table, CurrentSrc>(
                     src_state, event, in, out, this->registers_, &srv, *this, this->observer_, record_fn,
-                    std::make_index_sequence<std::tuple_size_v<decltype(this->table_.rows)>>{});
+                    typename Table::transitions_list{});
             },
             current_state_);
     }
@@ -4781,16 +4750,10 @@ using make_fsm = fsm<config<Table, Policies...>>;
 
 // --- End: detail/fsm_policy_adapter.hpp ---
 )raw_fsm_runtime";
+    }
 
-        if (opts.thread_safe) {
-            out << R"raw_fsm_runtime(
-
-// ============================================================================
-// Thread-Safe & Asynchronous Runtime (C++20)
-// ============================================================================
-)raw_fsm_runtime";
-
-            out << R"raw_fsm_runtime(
+    static void emit_thread_body(std::ostream& out) {
+        out << R"raw_fsm_runtime(
 // --- Begin: spsc_ring_buffer.hpp ---
 namespace fsm {
 
@@ -4931,7 +4894,7 @@ class spsc_ring_buffer {
 // --- End: spsc_ring_buffer.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: static_ring_buffer.hpp ---
 namespace fsm {
 
@@ -5050,7 +5013,7 @@ class static_ring_buffer {
 // --- End: static_ring_buffer.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: async_types.hpp ---
 namespace fsm {
 
@@ -5076,7 +5039,7 @@ struct timed_event {
 // --- End: async_types.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: async_event_queue.hpp ---
 namespace fsm {
 
@@ -5244,7 +5207,7 @@ class async_event_queue {
 // --- End: async_event_queue.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: detail/reentrancy_tracker.hpp ---
 namespace fsm::detail {
 
@@ -5285,7 +5248,7 @@ class reentrancy_tracker {
 // --- End: detail/reentrancy_tracker.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: detail/notification_dispatcher.hpp ---
 namespace fsm::detail {
 
@@ -5361,7 +5324,7 @@ inline void invoke_notifications_outside_lock(const Event& evt, const dispatch_s
 // --- End: detail/notification_dispatcher.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: detail/diagnostic_handlers.hpp ---
 namespace fsm::detail {
 
@@ -5415,7 +5378,7 @@ class diagnostic_handler_manager {
 // --- End: detail/diagnostic_handlers.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: detail/worker_thread_controller.hpp ---
 namespace fsm::detail {
 
@@ -5533,7 +5496,7 @@ class worker_thread_controller {
 // --- End: detail/worker_thread_controller.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: thread_safe_fsm.hpp ---
 namespace fsm {
 
@@ -6179,7 +6142,7 @@ class thread_safe_fsm {
 // --- End: thread_safe_fsm.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: detail/thread_safe_policy_adapter.hpp ---
 namespace fsm {
 
@@ -6212,7 +6175,7 @@ using make_thread_safe_fsm = thread_safe_fsm<config<Table, Policies...>>;
 // --- End: detail/thread_safe_policy_adapter.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: spsc_fsm.hpp ---
 namespace fsm {
 
@@ -6632,7 +6595,7 @@ class spsc_fsm {
 // --- End: spsc_fsm.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: detail/spsc_policy_adapter.hpp ---
 namespace fsm {
 
@@ -6666,6 +6629,66 @@ using make_spsc_fsm = spsc_fsm<config<Table, Policies...>>;
 
 // --- End: detail/spsc_policy_adapter.hpp ---
 )raw_fsm_runtime";
+    }
+
+    static void emit(std::ostream& out, const GeneratorOptions& opts) {
+        out << R"raw_fsm_runtime(
+// Core System Includes
+#include <array>
+#include <cassert>
+#include <chrono>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <functional>
+#include <iomanip>
+#include <iterator>
+#include <optional>
+#include <ostream>
+#include <span>
+#include <string_view>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <variant>
+)raw_fsm_runtime";
+
+        if (opts.thread_safe) {
+            out << R"raw_fsm_runtime(
+// Thread-Safe System Includes
+#include <atomic>
+#include <condition_variable>
+#include <exception>
+#include <future>
+#include <memory>
+#include <mutex>
+#include <new>
+#include <queue>
+#include <string>
+#include <thread>
+#include <vector>
+)raw_fsm_runtime";
+        }
+
+        out << R"raw_fsm_runtime(
+
+// ============================================================================
+// Core Runtime (C++20)
+// ============================================================================
+)raw_fsm_runtime";
+
+        emit_core_body(out);
+
+        if (opts.thread_safe) {
+            out << R"raw_fsm_runtime(
+
+// ============================================================================
+// Thread-Safe & Asynchronous Runtime (C++20)
+// ============================================================================
+)raw_fsm_runtime";
+
+            emit_thread_body(out);
         }
     }
 };

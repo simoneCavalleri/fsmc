@@ -117,13 +117,25 @@ constexpr void call_initial_hierarchical_on_enter(Target& target_state, const In
     call_on_enter(target_state, anonymous_event{}, in, out, reg, srv);
 }
 
+template <typename T>
+struct row_type_tag {
+    using type = T;
+};
+
+template <typename RowType, typename CurrentSrc, typename Event>
+inline constexpr bool is_row_applicable_v =
+    (std::is_same_v<CurrentSrc, typename RowType::source> || is_substate_of_v<CurrentSrc, typename RowType::source>) &&
+    (std::is_same_v<std::decay_t<Event>, typename RowType::event> ||
+     (std::is_same_v<std::decay_t<Event>, anonymous_event> &&
+      std::is_same_v<typename RowType::event, anonymous_event>));
+
 template <typename Table, typename CurrentSrc, typename Event, typename In, typename Out, typename Registers,
           typename Services, typename FsmInstance, typename ObserverCallback, typename RecordHistoryFn,
-          std::size_t... Indices>
+          typename... RowTypes>
 dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event& event, const In& in, Out& out,
                                               Registers& registers_, Services* services_, FsmInstance& fsm_inst,
                                               const ObserverCallback& observer_, RecordHistoryFn&& record_history_fn,
-                                              std::index_sequence<Indices...> /*indices*/) {
+                                              type_list<RowTypes...> /*rows*/) {
     constexpr bool has_observer = !std::is_same_v<std::decay_t<ObserverCallback>, no_observer>;
 
     Services& srv = (services_ != nullptr) ? *services_ : fsm_inst.resolve_services();
@@ -132,16 +144,11 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
     std::optional<transition_trace> executed_trace = std::nullopt;
     std::optional<transition_trace> last_rejected_trace = std::nullopt;
 
-    auto try_index = [&](auto idx_constant) -> bool {
-        constexpr std::size_t Index = decltype(idx_constant)::value;
-        using RowType = std::tuple_element_t<Index, decltype(Table::rows)>;
+    auto try_row = [&](auto row_tag) -> bool {
+        using RowType = typename decltype(row_tag)::type;
         using TransSrc = typename RowType::source;
-        using TransEvt = typename RowType::event;
 
-        if constexpr ((std::is_same_v<CurrentSrc, TransSrc> || is_substate_of_v<CurrentSrc, TransSrc>) &&
-                      (std::is_same_v<std::decay_t<Event>, TransEvt> ||
-                       (std::is_same_v<std::decay_t<Event>, anonymous_event> &&
-                        std::is_same_v<TransEvt, anonymous_event>))) {
+        if constexpr (is_row_applicable_v<RowType, CurrentSrc, Event>) {
             using Guard = typename RowType::guard_type;
             using Action = typename RowType::action_type;
             using TransDst = typename RowType::target;
@@ -228,7 +235,7 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
         return false;
     };
 
-    bool executed = (try_index(std::integral_constant<std::size_t, Indices>{}) || ...);
+    bool executed = (try_row(row_type_tag<RowTypes>{}) || ...);
     if (executed) {
         return dispatch_result{dispatch_status::success, executed_trace};
     }
@@ -238,6 +245,18 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
     return dispatch_result{
         dispatch_status::unhandled,
         transition_trace{get_state_name(src_state), {}, get_event_name(event), {}, {}, transition_kind::external}};
+}
+
+template <typename Table, typename CurrentSrc, typename Event, typename In, typename Out, typename Registers,
+          typename Services, typename FsmInstance, typename ObserverCallback, typename RecordHistoryFn,
+          std::size_t... Indices>
+dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event& event, const In& in, Out& out,
+                                              Registers& registers_, Services* services_, FsmInstance& fsm_inst,
+                                              const ObserverCallback& observer_, RecordHistoryFn&& record_history_fn,
+                                              std::index_sequence<Indices...> /*indices*/) {
+    return execute_transition_from_ports<Table, CurrentSrc>(src_state, event, in, out, registers_, services_, fsm_inst,
+                                                            observer_, std::forward<RecordHistoryFn>(record_history_fn),
+                                                            typename Table::transitions_list{});
 }
 
 }  // namespace fsm::detail

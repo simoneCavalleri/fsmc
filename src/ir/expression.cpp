@@ -61,6 +61,22 @@ std::string_view expression_op_to_string(ExpressionOp op) noexcept {
             return "|";
         case ExpressionOp::BitwiseXor:
             return "^";
+        case ExpressionOp::Equal:
+            return "==";
+        case ExpressionOp::NotEqual:
+            return "!=";
+        case ExpressionOp::LessThan:
+            return "<";
+        case ExpressionOp::LessEqual:
+            return "<=";
+        case ExpressionOp::GreaterThan:
+            return ">";
+        case ExpressionOp::GreaterEqual:
+            return ">=";
+        case ExpressionOp::LogicalAnd:
+            return "&&";
+        case ExpressionOp::LogicalOr:
+            return "||";
     }
     return "";
 }
@@ -86,9 +102,25 @@ ExpressionOp string_to_expression_op(std::string_view str) noexcept {
         return ExpressionOp::BitwiseOr;
     if (str == "^")
         return ExpressionOp::BitwiseXor;
+    if (str == "==")
+        return ExpressionOp::Equal;
+    if (str == "!=")
+        return ExpressionOp::NotEqual;
+    if (str == "<")
+        return ExpressionOp::LessThan;
+    if (str == "<=")
+        return ExpressionOp::LessEqual;
+    if (str == ">")
+        return ExpressionOp::GreaterThan;
+    if (str == ">=")
+        return ExpressionOp::GreaterEqual;
+    if (str == "&&" || str == "and" || str == "AND")
+        return ExpressionOp::LogicalAnd;
+    if (str == "||" || str == "or" || str == "OR")
+        return ExpressionOp::LogicalOr;
     if (str == "~")
         return ExpressionOp::BitwiseNot;
-    if (str == "!")
+    if (str == "!" || str == "not" || str == "NOT")
         return ExpressionOp::LogicalNot;
     return ExpressionOp::None;
 }
@@ -135,18 +167,30 @@ std::string ExpressionAstNode::to_string() const {
                     case ExpressionOp::Multiply:
                     case ExpressionOp::Divide:
                     case ExpressionOp::Modulo:
-                        return 6;
+                        return 10;
                     case ExpressionOp::Add:
                     case ExpressionOp::Subtract:
-                        return 5;
+                        return 9;
                     case ExpressionOp::ShiftLeft:
                     case ExpressionOp::ShiftRight:
-                        return 4;
+                        return 8;
+                    case ExpressionOp::LessThan:
+                    case ExpressionOp::LessEqual:
+                    case ExpressionOp::GreaterThan:
+                    case ExpressionOp::GreaterEqual:
+                        return 7;
+                    case ExpressionOp::Equal:
+                    case ExpressionOp::NotEqual:
+                        return 6;
                     case ExpressionOp::BitwiseAnd:
-                        return 3;
+                        return 5;
                     case ExpressionOp::BitwiseXor:
-                        return 2;
+                        return 4;
                     case ExpressionOp::BitwiseOr:
+                        return 3;
+                    case ExpressionOp::LogicalAnd:
+                        return 2;
+                    case ExpressionOp::LogicalOr:
                         return 1;
                     default:
                         return 0;
@@ -249,7 +293,63 @@ struct Parser {
         return pos >= src.size();
     }
 
-    std::optional<ExpressionAstNode> parse_expression() { return parse_bitwise_or(); }
+    [[nodiscard]] bool match_keyword_op(std::string_view kw) {
+        skip_ws();
+        if (pos + kw.size() > src.size() || src.substr(pos, kw.size()) != kw) {
+            return false;
+        }
+        if (pos + kw.size() < src.size()) {
+            char next_c = src[pos + kw.size()];
+            if (std::isalnum(static_cast<unsigned char>(next_c)) != 0 || next_c == '_' || next_c == '.' ||
+                next_c == ':') {
+                return false;
+            }
+        }
+        pos += kw.size();
+        return true;
+    }
+
+    std::optional<ExpressionAstNode> parse_expression() { return parse_logical_or(); }
+
+    std::optional<ExpressionAstNode> parse_logical_or() {
+        auto left = parse_logical_and();
+        if (!left)
+            return std::nullopt;
+        skip_ws();
+        while (pos < src.size()) {
+            if (pos + 1 < src.size() && src[pos] == '|' && src[pos + 1] == '|') {
+                pos += 2;
+            } else if (!match_keyword_op("or") && !match_keyword_op("OR")) {
+                break;
+            }
+            auto right = parse_logical_and();
+            if (!right)
+                return std::nullopt;
+            left = ExpressionAstNode::make_binary(ExpressionOp::LogicalOr, std::move(*left), std::move(*right));
+            skip_ws();
+        }
+        return left;
+    }
+
+    std::optional<ExpressionAstNode> parse_logical_and() {
+        auto left = parse_bitwise_or();
+        if (!left)
+            return std::nullopt;
+        skip_ws();
+        while (pos < src.size()) {
+            if (pos + 1 < src.size() && src[pos] == '&' && src[pos + 1] == '&') {
+                pos += 2;
+            } else if (!match_keyword_op("and") && !match_keyword_op("AND")) {
+                break;
+            }
+            auto right = parse_bitwise_or();
+            if (!right)
+                return std::nullopt;
+            left = ExpressionAstNode::make_binary(ExpressionOp::LogicalAnd, std::move(*left), std::move(*right));
+            skip_ws();
+        }
+        return left;
+    }
 
     std::optional<ExpressionAstNode> parse_bitwise_or() {
         auto left = parse_bitwise_xor();
@@ -284,16 +384,71 @@ struct Parser {
     }
 
     std::optional<ExpressionAstNode> parse_bitwise_and() {
-        auto left = parse_shift();
+        auto left = parse_equality();
         if (!left)
             return std::nullopt;
         skip_ws();
         while (pos < src.size() && src[pos] == '&' && (pos + 1 >= src.size() || src[pos + 1] != '&')) {
             pos++;
-            auto right = parse_shift();
+            auto right = parse_equality();
             if (!right)
                 return std::nullopt;
             left = ExpressionAstNode::make_binary(ExpressionOp::BitwiseAnd, std::move(*left), std::move(*right));
+            skip_ws();
+        }
+        return left;
+    }
+
+    std::optional<ExpressionAstNode> parse_equality() {
+        auto left = parse_relational();
+        if (!left)
+            return std::nullopt;
+        skip_ws();
+        while (pos + 1 < src.size()) {
+            ExpressionOp op = ExpressionOp::None;
+            if (src[pos] == '=' && src[pos + 1] == '=') {
+                op = ExpressionOp::Equal;
+            } else if (src[pos] == '!' && src[pos + 1] == '=') {
+                op = ExpressionOp::NotEqual;
+            } else {
+                break;
+            }
+            pos += 2;
+            auto right = parse_relational();
+            if (!right)
+                return std::nullopt;
+            left = ExpressionAstNode::make_binary(op, std::move(*left), std::move(*right));
+            skip_ws();
+        }
+        return left;
+    }
+
+    std::optional<ExpressionAstNode> parse_relational() {
+        auto left = parse_shift();
+        if (!left)
+            return std::nullopt;
+        skip_ws();
+        while (pos < src.size()) {
+            ExpressionOp op = ExpressionOp::None;
+            if (pos + 1 < src.size() && src[pos] == '<' && src[pos + 1] == '=') {
+                op = ExpressionOp::LessEqual;
+                pos += 2;
+            } else if (pos + 1 < src.size() && src[pos] == '>' && src[pos + 1] == '=') {
+                op = ExpressionOp::GreaterEqual;
+                pos += 2;
+            } else if (src[pos] == '<' && (pos + 1 >= src.size() || src[pos + 1] != '<')) {
+                op = ExpressionOp::LessThan;
+                pos += 1;
+            } else if (src[pos] == '>' && (pos + 1 >= src.size() || src[pos + 1] != '>')) {
+                op = ExpressionOp::GreaterThan;
+                pos += 1;
+            } else {
+                break;
+            }
+            auto right = parse_shift();
+            if (!right)
+                return std::nullopt;
+            left = ExpressionAstNode::make_binary(op, std::move(*left), std::move(*right));
             skip_ws();
         }
         return left;
@@ -397,6 +552,12 @@ struct Parser {
                 return std::nullopt;
             return ExpressionAstNode::make_unary(ExpressionOp::LogicalNot, std::move(*child));
         }
+        if (match_keyword_op("not") || match_keyword_op("NOT")) {
+            auto child = parse_unary();
+            if (!child)
+                return std::nullopt;
+            return ExpressionAstNode::make_unary(ExpressionOp::LogicalNot, std::move(*child));
+        }
         if (c == '+') {
             pos++;  // unary plus, ignore
             return parse_unary();
@@ -476,6 +637,11 @@ struct Parser {
             if (id.starts_with("reg.")) {
                 return ExpressionAstNode::make_variable_ref(std::string(id.substr(4)));
             }
+            if (id.starts_with("payload.") || id.starts_with("cmd.") || id.starts_with("event.") ||
+                id.starts_with("sig.") || id.starts_with("ev.")) {
+                size_t dot_pos = id.find('.');
+                return ExpressionAstNode::make_event_param_ref("", std::string(id.substr(dot_pos + 1)));
+            }
             if (id.find("::") != std::string_view::npos) {
                 return ExpressionAstNode::make_enum_literal(std::string(id));
             }
@@ -492,6 +658,18 @@ struct Parser {
 };
 
 }  // namespace
+
+void ExpressionAstNode::collect_references(std::vector<std::string>& out) const {
+    if (kind == ExpressionKind::VariableRef || kind == ExpressionKind::PortRef ||
+        kind == ExpressionKind::EventParamRef) {
+        if (!symbol.empty()) {
+            out.push_back(symbol);
+        }
+    }
+    for (const auto& child : children) {
+        child.collect_references(out);
+    }
+}
 
 ExpressionAstNode ExpressionAstNode::parse(std::string_view text) {
     std::string trimmed;

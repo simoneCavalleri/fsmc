@@ -64,6 +64,11 @@ struct PropertyAstNode {
      */
     [[nodiscard]] std::string to_string() const;
 
+    /**
+     * @brief Parses a temporal logic (LTL/CTL) formula string into a structured PropertyAstNode.
+     */
+    [[nodiscard]] static std::optional<PropertyAstNode> parse(std::string_view raw_formula);
+
     bool operator==(const PropertyAstNode& other) const noexcept {
         return op == other.op && atom == other.atom && children == other.children;
     }

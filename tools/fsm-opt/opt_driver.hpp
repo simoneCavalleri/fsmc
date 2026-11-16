@@ -120,74 +120,10 @@ class OptDriver {
         PassManager pm;
         if (!opts.custom_passes.empty()) {
             auto pass_names = split_string(opts.custom_passes, ',');
+            auto submachine_resolver = create_filesystem_submachine_resolver(opts.input_path, opts.submachine_dir);
             for (const auto& p_name : pass_names) {
-                if (p_name == "canonicalize" || p_name == "hierarchy-canonicalization") {
-                    pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
-                } else if (p_name == "semantic-validation") {
-                    pm.add_pass(std::make_unique<SemanticValidationPass>());
-                } else if (p_name == "guard-simplification") {
-                    pm.add_pass(std::make_unique<GuardSimplificationPassWrapper>());
-                } else if (p_name == "determinism" || p_name == "determinism-enforcement") {
-                    pm.add_pass(std::make_unique<DeterminismEnforcementPassWrapper>());
-                } else if (p_name == "race-check" || p_name == "orthogonal-interference") {
-                    pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
-                } else if (p_name == "dead-state-pruning") {
-                    pm.add_pass(std::make_unique<DeadStatePruningPassWrapper>(true));
-                } else if (p_name == "choice-completeness") {
-                    pm.add_pass(std::make_unique<ChoiceCompletenessPass>());
-                } else if (p_name == "choice-inlining") {
-                    pm.add_pass(std::make_unique<ChoiceInliningPassWrapper>());
-                } else if (p_name == "timed-deadlock") {
-                    pm.add_pass(std::make_unique<TimedDeadlockPassWrapper>());
-                } else if (p_name == "efsm-data-path") {
-                    pm.add_pass(std::make_unique<EFSMDataPathPass>());
-                } else if (p_name == "safety-verifier") {
-                    pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
-                } else if (p_name == "model-checking") {
-                    pm.add_pass(std::make_unique<ModelCheckingPass>());
-                } else if (p_name == "orthogonal-product") {
-                    pm.add_pass(std::make_unique<OrthogonalProductPassWrapper>());
-                } else if (p_name == "wcet-analysis") {
-                    pm.add_pass(std::make_unique<WcetAnalysisPassWrapper>());
-                } else if (p_name == "constant-folding") {
-                    pm.add_pass(std::make_unique<ConstantFoldingPassWrapper>());
-                } else if (p_name == "state-minimization") {
-                    pm.add_pass(std::make_unique<StateMinimizationPassWrapper>());
-                } else if (p_name == "guard-satisfiability") {
-                    pm.add_pass(std::make_unique<GuardSatisfiabilityPassWrapper>());
-                } else if (p_name == "fork-join-lowering") {
-                    pm.add_pass(std::make_unique<ForkJoinLoweringPassWrapper>());
-                } else if (p_name == "history-lowering") {
-                    pm.add_pass(std::make_unique<HistoryLoweringPassWrapper>());
-                } else if (p_name == "deferred-event-lowering") {
-                    pm.add_pass(std::make_unique<DeferredEventLoweringPassWrapper>());
-                } else if (p_name == "boundary-action-fusion") {
-                    pm.add_pass(std::make_unique<BoundaryActionFusionPassWrapper>());
-                } else if (p_name == "dead-action-elimination") {
-                    pm.add_pass(std::make_unique<DeadActionEliminationPassWrapper>());
-                } else if (p_name == "register-liveness") {
-                    pm.add_pass(std::make_unique<RegisterLivenessPassWrapper>());
-                } else if (p_name == "transition-fusion") {
-                    pm.add_pass(std::make_unique<TransitionFusionPassWrapper>());
-                } else if (p_name == "common-action-factoring") {
-                    pm.add_pass(std::make_unique<CommonActionFactoringPassWrapper>());
-                } else if (p_name == "livelock-analysis") {
-                    pm.add_pass(std::make_unique<LivelockAnalysisPassWrapper>());
-                } else if (p_name == "priority-conflict-check") {
-                    pm.add_pass(std::make_unique<PriorityConflictPassWrapper>());
-                } else if (p_name == "timed-invariants-verifier") {
-                    pm.add_pass(std::make_unique<TimedInvariantsVerifierPassWrapper>());
-                } else if (p_name == "event-queue-bound") {
-                    pm.add_pass(std::make_unique<EventQueueBoundPassWrapper>());
-                } else if (p_name == "inline-submachines" || p_name == "submachine-inlining") {
-                    pm.add_pass(std::make_unique<SubmachineInliningPassWrapper>(
-                        create_filesystem_submachine_resolver(opts.input_path, opts.submachine_dir)));
-                } else if (p_name == "sampled-change-trigger" || p_name == "sampled-change-triggers") {
-                    pm.add_pass(std::make_unique<SampledChangeTriggerPassWrapper>());
-                } else if (p_name == "connective-junction-chaining") {
-                    pm.add_pass(std::make_unique<ConnectiveJunctionChainingPassWrapper>());
-                } else if (p_name == "pipe-through") {
-                    pm.add_pass(std::make_unique<PipeThroughPassWrapper>(opts.pipe_through_cmd));
+                if (auto pass = PassManager::create_pass_by_name(p_name, opts.pipe_through_cmd, submachine_resolver)) {
+                    pm.add_pass(std::move(pass));
                 } else {
                     diag.report(Diagnostic::warning("W0201", "Unrecognized pass name: '" + p_name + "'. Skipping.",
                                                     SourceSpan{opts.input_path, 1, 1, 1}));

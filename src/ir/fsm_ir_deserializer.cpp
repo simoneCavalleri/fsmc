@@ -12,17 +12,13 @@
 #include <utility>
 #include <vector>
 
-#include "fsm/frontend/common/parser_interface.hpp"
-#include "fsm/frontend/directive/guard_parser.hpp"
-#include "fsm/frontend/directive/ltl_parser.hpp"
+#include "fsm/ir/formal_property.hpp"
+#include "fsm/ir/guard.hpp"
+#include "fsm/ir/identifier_utils.hpp"
 
 namespace fsm::ir {
 
 namespace {
-
-std::string sanitize_identifier(std::string_view raw) {
-    return fsm::frontend::sanitize_identifier(raw);
-}
 
 enum class JsonType : std::uint8_t { Null, Bool, Number, String, Array, Object };
 
@@ -444,7 +440,7 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
         guard_str = trans_obj.get_string("guard_ast");
     }
     if (!guard_str.empty()) {
-        auto parsed = frontend::directive::GuardExpressionParser::parse(guard_str);
+        auto parsed = GuardExpressionParser::parse(guard_str);
         if (!parsed.cpp_type.empty()) {
             trans.guard = parsed.cpp_type;
             for (const auto& detail : parsed.atomic_guard_details) {
@@ -1451,7 +1447,7 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
                     prop.id = p_id;
                 }
                 if (!formula.empty()) {
-                    prop.ast = frontend::directive::LtlPropertyParser::parse(formula);
+                    prop.ast = PropertyAstNode::parse(formula);
                 }
                 out_ir.properties.push_back(std::move(prop));
             }

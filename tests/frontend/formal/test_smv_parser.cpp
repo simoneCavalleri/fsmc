@@ -463,4 +463,55 @@ ASSIGN
     EXPECT_NE(expr.find("fault == false"), std::string::npos);
 }
 
+/**
+ * @brief Verify inline action assignments and normalized guard expressions in SMV.
+ * @scenario Parse SMV with inline `-- action: count = count + 1`, lifecycle action metadata, and a guard.
+ * @expected Transition and lifecycle actions populate `assignments`, and the guard populates `normalized_expression`.
+ */
+TEST(SmvParser, ActionAssignmentsAndNormalizedGuards_PopulatedForNoStubs) {
+    const std::string smv_content = R"(MODULE CounterFSM
+VAR
+  state : {Idle, Active};
+  event : {none, START, STOP};
+  count : 0..100;
+ASSIGN
+  init(state) := Idle;
+  init(count) := 0;
+  -- @fsm entry state=Idle action="count = 10"
+  next(state) := case
+    state = Idle & event = START & count < 20 : Active; -- action: count = count + 1
+    state = Active & event = STOP : Idle; -- action: count = 0
+    TRUE : state;
+  esac;
+)";
+
+    SmvParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+
+    const StateNode* idle = model.find_state("Idle");
+    ASSERT_NE(idle, nullptr);
+    ASSERT_EQ(idle->entry_actions.size(), 1u);
+    ASSERT_EQ(idle->entry_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(idle->entry_actions[0].assignments[0].target.name, "count");
+    EXPECT_EQ(idle->entry_actions[0].assignments[0].expression, "10");
+
+    ASSERT_EQ(model.transitions.size(), 2u);
+    ASSERT_TRUE(model.transitions[0].transition_action.has_value());
+    ASSERT_EQ(model.transitions[0].transition_action->assignments.size(), 1u);
+    EXPECT_EQ(model.transitions[0].transition_action->assignments[0].target.name, "count");
+    EXPECT_EQ(model.transitions[0].transition_action->assignments[0].expression, "count + 1");
+
+    ASSERT_TRUE(model.transitions[1].transition_action.has_value());
+    ASSERT_EQ(model.transitions[1].transition_action->assignments.size(), 1u);
+    EXPECT_EQ(model.transitions[1].transition_action->assignments[0].target.name, "count");
+    EXPECT_EQ(model.transitions[1].transition_action->assignments[0].expression, "0");
+    EXPECT_NE(model.transitions[0].transition_action->name, model.transitions[1].transition_action->name);
+
+    ASSERT_FALSE(model.guards.empty());
+    ASSERT_TRUE(model.guards[0].normalized_expression.has_value());
+    EXPECT_NE(model.guards[0].normalized_expression->find("count < 20"), std::string::npos);
+}
+
 }  // namespace

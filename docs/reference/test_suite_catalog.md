@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 587  
+**Total Documented Test Cases**: 588  
 
 ---
 
@@ -1004,6 +1004,9 @@
 
 #### `SmvParser.EqualityAndBooleanLiterals_NormalizedToCppSyntax`
 **Test Intent**: Regression: SMV equality `=` and `TRUE`/`FALSE` literals in guards are normalized for C++ / semantic passes.
+
+#### `SmvParser.ActionAssignmentsAndNormalizedGuards_PopulatedForNoStubs`
+**Test Intent**: Verify inline action assignments and normalized guard expressions in SMV.
 
 ### [`test_stateflow_parser.cpp`](../../tests/frontend/formal/test_stateflow_parser.cpp) (`tests/frontend/formal/test_stateflow_parser.cpp`)
 #### `StateflowParser.BasicStateflowChart_ParsedIntoValidFsmIr`

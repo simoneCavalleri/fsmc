@@ -308,4 +308,35 @@ package RoundtripTest {
     EXPECT_EQ(reloaded_structs[0].fields[0].name, "packet_id");
 }
 
+/**
+ * @brief Verify Sysml2Parser converts sub-millisecond time trigger units (`us`, `ns`) to milliseconds.
+ * @scenario Parse SysML v2 transitions using `after(2000us)`, `every(5000000ns)`, and `after(500us)`.
+ * @expected Durations convert to 2ms, 5ms, and 1ms (minimum clamped ms) instead of 2000ms/5000000ms/500ms.
+ */
+TEST(Sysml2StructuredData, TimeTriggers_SubMillisecondUnitsConvertToMs) {
+    const std::string sysml_src = R"(
+state def SubMsTimers {
+    entry; then S0;
+    state S0 {
+        transition first S0 accept after(2000us) then S1;
+    }
+    state S1 {
+        transition first S1 accept every(5000000ns) then S1;
+        transition first S1 accept after(500us) then S2;
+    }
+    state S2;
+}
+)";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml_src, model, err)) << "Error: " << err;
+    ASSERT_EQ(model.transitions.size(), 3u);
+
+    EXPECT_EQ(std::get<TimeTrigger>(model.transitions[0].trigger).duration_in_ms(), 2u);
+    EXPECT_EQ(std::get<TimeTrigger>(model.transitions[1].trigger).duration_in_ms(), 5u);
+    EXPECT_EQ(std::get<TimeTrigger>(model.transitions[2].trigger).duration_in_ms(), 1u);
+}
+
 }  // namespace

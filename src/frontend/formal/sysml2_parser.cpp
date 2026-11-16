@@ -1178,6 +1178,10 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
             duration_ms_f = raw_val * 60000.0;
         } else if (unit_str == "h") {
             duration_ms_f = raw_val * 3600000.0;
+        } else if (unit_str == "us" || unit_str == "usec" || unit_str == "microseconds") {
+            duration_ms_f = raw_val / 1000.0;
+        } else if (unit_str == "ns" || unit_str == "nsec" || unit_str == "nanoseconds") {
+            duration_ms_f = raw_val / 1000000.0;
         }
         uint64_t duration_ms = static_cast<uint64_t>(duration_ms_f + 0.5);
         return duration_ms == 0 ? 1 : duration_ms;

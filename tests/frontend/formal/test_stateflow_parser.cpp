@@ -475,4 +475,45 @@ TEST(StateflowParser, TransitionActionAssignments_PopulatedInActionSignature) {
     EXPECT_EQ(tr.transition_action->assignments[1].expression, "y + 1");
 }
 
+/**
+ * @brief Regression: Stateflow state `entry` / `exit` attributes with variable assignments populate `assignments`.
+ * @scenario Parse a Stateflow chart with `entry="x = 10" exit="x = 20"` on `S1` and `entry="x += 5"` on `S2`.
+ * @expected Both `entry_actions` and `exit_actions` contain structured `ActionAssignment` entries.
+ */
+TEST(StateflowParser, StateLifecycleAssignments_PopulatedInEntryAndExitActions) {
+    const std::string sf_xml = R"(
+        <Stateflow>
+            <chart id="1" name="SfStateAssign" initial="S1">
+                <state id="10" name="S1" entry="x = 10" exit="x = 20"/>
+                <state id="20" name="S2" entry="x += 5"/>
+                <transition src="S1" dst="S2" labelString="EvNext"/>
+            </chart>
+        </Stateflow>
+    )";
+
+    StateflowParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err;
+
+    const auto* s1 = model.find_state("S1");
+    ASSERT_NE(s1, nullptr);
+    ASSERT_EQ(s1->entry_actions.size(), 1u);
+    ASSERT_EQ(s1->entry_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(s1->entry_actions[0].assignments[0].target.name, "x");
+    EXPECT_EQ(s1->entry_actions[0].assignments[0].expression, "10");
+
+    ASSERT_EQ(s1->exit_actions.size(), 1u);
+    ASSERT_EQ(s1->exit_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(s1->exit_actions[0].assignments[0].target.name, "x");
+    EXPECT_EQ(s1->exit_actions[0].assignments[0].expression, "20");
+
+    const auto* s2 = model.find_state("S2");
+    ASSERT_NE(s2, nullptr);
+    ASSERT_EQ(s2->entry_actions.size(), 1u);
+    ASSERT_EQ(s2->entry_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(s2->entry_actions[0].assignments[0].target.name, "x");
+    EXPECT_EQ(s2->entry_actions[0].assignments[0].expression, "x + 5");
+}
+
 }  // namespace

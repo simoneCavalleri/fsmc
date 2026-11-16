@@ -1,5 +1,8 @@
 #include "fsm/frontend/formal/cameo_xmi_graph_resolver.hpp"
 
+#include <cctype>
+#include <regex>
+#include <sstream>
 #include <unordered_map>
 #include <vector>
 
@@ -49,6 +52,72 @@ std::shared_ptr<XmlNode> CameoXmiGraphResolver::find_state_machine(
     }
     // Fallback recursive search
     return root->find_child_recursive("StateMachine");
+}
+
+static std::optional<ActionSignature> try_build_cameo_assignment_action(std::string_view raw_action,
+                                                                        const std::string& fallback_prefix) {
+    static const std::regex assign_regex(
+        R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*(=|\+=|-=|\*=|\/=)\s*(.+)$)",
+        std::regex::optimize);
+    static const std::regex inc_regex(
+        R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*(\+\+|--)$)",
+        std::regex::optimize);
+
+    std::vector<ActionAssignment> assignments;
+    std::string raw_str(raw_action);
+    std::stringstream ss(raw_str);
+    std::string stmt;
+    while (std::getline(ss, stmt, ';')) {
+        size_t first = stmt.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos) {
+            continue;
+        }
+        size_t last = stmt.find_last_not_of(" \t\r\n");
+        std::string trimmed = stmt.substr(first, last - first + 1);
+        std::smatch m;
+        if (std::regex_match(trimmed, m, assign_regex)) {
+            std::string scope_prefix = m[1].str();
+            std::string var_path = m[2].str();
+            std::string op = m[3].str();
+            std::string rhs = m[4].str();
+            size_t rfirst = rhs.find_first_not_of(" \t\r\n");
+            size_t rlast = rhs.find_last_not_of(" \t\r\n");
+            if (rfirst != std::string::npos) {
+                rhs = rhs.substr(rfirst, rlast - rfirst + 1);
+            }
+            LValueTarget tgt(scope_prefix + var_path);
+            if (op == "=") {
+                assignments.push_back({tgt, rhs});
+            } else if (op == "+=") {
+                assignments.push_back({tgt, var_path + " + " + rhs});
+            } else if (op == "-=") {
+                assignments.push_back({tgt, var_path + " - " + rhs});
+            } else if (op == "*=") {
+                assignments.push_back({tgt, var_path + " * (" + rhs + ")"});
+            } else if (op == "/=") {
+                assignments.push_back({tgt, var_path + " / (" + rhs + ")"});
+            }
+        } else if (std::regex_match(trimmed, m, inc_regex)) {
+            std::string scope_prefix = m[1].str();
+            std::string var_path = m[2].str();
+            std::string op = m[3].str();
+            LValueTarget tgt(scope_prefix + var_path);
+            assignments.push_back({tgt, op == "++" ? (var_path + " + 1") : (var_path + " - 1")});
+        }
+    }
+
+    if (assignments.empty()) {
+        return std::nullopt;
+    }
+    std::string target_id = assignments.front().target.name;
+    for (char& ch : target_id) {
+        if (std::isalnum(static_cast<unsigned char>(ch)) == 0 && ch != '_') {
+            ch = '_';
+        }
+    }
+    ActionSignature sig(fallback_prefix + "_" + target_id);
+    sig.assignments = std::move(assignments);
+    return sig;
 }
 
 void CameoXmiGraphResolver::process_region(const std::shared_ptr<XmlNode>& region_node, FsmIr& model,
@@ -165,18 +234,24 @@ void CameoXmiGraphResolver::process_subvertex(const std::shared_ptr<XmlNode>& ve
         if (act->tag == "entry" || ends_with(act->tag, ":entry")) {
             std::string aname = act->get_attr("name");
             if (!aname.empty()) {
-                model.add_action(sanitize_identifier(aname));
+                auto assign_sig = try_build_cameo_assignment_action(aname, state_name + "_entry");
+                ActionSignature sig =
+                    assign_sig.has_value() ? std::move(*assign_sig) : ActionSignature(sanitize_identifier(aname));
+                model.add_action(sig.name);
                 if (auto* s = model.find_state_mut(state_name)) {
-                    s->entry_actions.push_back(ActionSignature(sanitize_identifier(aname)));
+                    s->entry_actions.push_back(std::move(sig));
                 }
             }
             // Exit actions
         } else if (act->tag == "exit" || ends_with(act->tag, ":exit")) {
             std::string aname = act->get_attr("name");
             if (!aname.empty()) {
-                model.add_action(sanitize_identifier(aname));
+                auto assign_sig = try_build_cameo_assignment_action(aname, state_name + "_exit");
+                ActionSignature sig =
+                    assign_sig.has_value() ? std::move(*assign_sig) : ActionSignature(sanitize_identifier(aname));
+                model.add_action(sig.name);
                 if (auto* s = model.find_state_mut(state_name)) {
-                    s->exit_actions.push_back(ActionSignature(sanitize_identifier(aname)));
+                    s->exit_actions.push_back(std::move(sig));
                 }
             }
             // Ongoing state activities
@@ -416,7 +491,7 @@ void CameoXmiGraphResolver::process_transition(const std::shared_ptr<XmlNode>& t
         if (!parsed.cpp_type.empty()) {
             trans.guard = parsed.cpp_type;
             for (const auto& detail : parsed.atomic_guard_details) {
-                model.add_guard(detail.name, "", detail.expression, std::nullopt);
+                model.add_guard(detail.name, "", detail.expression, detail.expression);
             }
             for (const auto& a : parsed.atomic_guards) {
                 model.add_guard(a);
@@ -426,13 +501,17 @@ void CameoXmiGraphResolver::process_transition(const std::shared_ptr<XmlNode>& t
             // expression (which would corrupt operator characters like >, &&, ! etc.).
             std::string guard_name = "guard_" + sanitize_identifier(src_name) + "_to_" + sanitize_identifier(dst_name) +
                                      "_" + std::to_string(model.transitions.size() + 1);
-            model.add_guard(guard_name, "", std::optional<std::string>{guard_expr}, std::nullopt);
+            model.add_guard(guard_name, "", std::optional<std::string>{guard_expr},
+                            std::optional<std::string>{guard_expr});
             trans.guard = guard_name;
         }
     }
 
     if (!action_name.empty()) {
-        trans.transition_action = ActionSignature(sanitize_identifier(action_name));
+        std::string prefix = sanitize_identifier(src_name) + "_" + sanitize_identifier(dst_name) + "_act";
+        auto assign_sig = try_build_cameo_assignment_action(action_name, prefix);
+        trans.transition_action =
+            assign_sig.has_value() ? std::move(*assign_sig) : ActionSignature(sanitize_identifier(action_name));
         model.add_action(trans.transition_action->name);
     }
 

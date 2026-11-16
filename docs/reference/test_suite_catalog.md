@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 581  
+**Total Documented Test Cases**: 582  
 
 ---
 
@@ -914,6 +914,9 @@
 
 #### `CameoParser.ParallelOrthogonalRegions_ParsedAndRoundtripped`
 **Test Intent**: Regression: Cameo XMI states with multiple `<region>` children parse as `StateKind::Parallel` and roundtrip.
+
+#### `CameoParser.GuardExpressionsAndEffectAssignments_PreservedInIr`
+**Test Intent**: Regression: Cameo XMI guards preserve `normalized_expression` and `effect` assignments populate `assignments`.
 
 ### [`test_scxml_parser.cpp`](../../tests/frontend/formal/test_scxml_parser.cpp) (`tests/frontend/formal/test_scxml_parser.cpp`)
 #### `ScxmlParser.BasicScxmlDocument_ParsedIntoValidFsmIr`

@@ -92,7 +92,8 @@ bool CommonActionFactoringPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
             bool all_have_action = true;
             for (std::size_t idx : incoming_indices) {
                 const auto& t = ir.transitions[idx];
-                if (!t.transition_action.has_value() || t.transition_action->empty()) {
+                if (!t.transition_action.has_value() || t.transition_action->empty() ||
+                    t.transition_action->name.rfind("fused_", 0) == 0) {
                     all_have_action = false;
                     break;
                 }
@@ -142,7 +143,8 @@ bool CommonActionFactoringPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
             bool all_have_action = true;
             for (std::size_t idx : outgoing_indices) {
                 const auto& t = ir.transitions[idx];
-                if (!t.transition_action.has_value() || t.transition_action->empty()) {
+                if (!t.transition_action.has_value() || t.transition_action->empty() ||
+                    t.transition_action->name.rfind("fused_", 0) == 0) {
                     all_have_action = false;
                     break;
                 }

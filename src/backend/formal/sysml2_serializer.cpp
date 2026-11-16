@@ -2,7 +2,7 @@
 
 #include <sstream>
 
-#include "fsm/frontend/directive/guard_parser.hpp"
+#include "fsm/ir/guard.hpp"
 
 namespace fsm::backend::formal {
 
@@ -217,8 +217,7 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
             out << "        accept " << trans.event << "\n";
         }
         if (trans.guard && !trans.guard->empty()) {
-            out << "        if "
-                << frontend::directive::GuardExpressionParser::to_diagram_string(*trans.guard, model.guards) << "\n";
+            out << "        if " << ir::GuardExpressionParser::to_diagram_string(*trans.guard, model.guards) << "\n";
         }
         std::string act = trans.get_action();
         if (!act.empty()) {

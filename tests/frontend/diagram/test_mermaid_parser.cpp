@@ -160,4 +160,41 @@ TEST(MermaidParser, PortDirectives_ParsedWithAttributesAndConstraints) {
     EXPECT_DOUBLE_EQ(v_in->max_value.value_or(0.0), 36.0);
 }
 
+/**
+ * @brief Verify Mermaid parsing of nested square brackets in transition guards and atomic_guard_details preservation.
+ * @scenario Parse Mermaid transition with array subscript in guard [buf[0] > 10 && ready].
+ * @expected Full bracketed guard is extracted without truncation and atomic GuardModel entries preserve raw_expression.
+ */
+TEST(MermaidParser, NestedSquareBracketsInGuard_PreservesRawExpressionDetails) {
+    const std::string mmd = R"(
+    stateDiagram-v2
+        [*] --> StateA
+        StateA --> StateB : EvGo [buf[0] > 10 && ready] / OnGo
+    )";
+
+    MermaidParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err;
+
+    ASSERT_EQ(model.transitions.size(), 1u);
+    EXPECT_EQ(model.transitions[0].event, "EvGo");
+    ASSERT_TRUE(model.transitions[0].guard.has_value());
+    EXPECT_NE(model.transitions[0].guard->find("fsm::and_<"), std::string::npos);
+
+    ASSERT_EQ(model.guards.size(), 2u);
+    bool found_array_expr = false;
+    bool found_ready_expr = false;
+    for (const auto& g : model.guards) {
+        if (g.raw_expression.has_value() && *g.raw_expression == "buf[0] > 10") {
+            found_array_expr = true;
+        }
+        if (g.raw_expression.has_value() && *g.raw_expression == "ready") {
+            found_ready_expr = true;
+        }
+    }
+    EXPECT_TRUE(found_array_expr);
+    EXPECT_TRUE(found_ready_expr);
+}
+
 }  // namespace

@@ -4,6 +4,7 @@
 #include <sstream>
 
 #include "fsm/frontend/diagram/diagram_action_parser.hpp"
+#include "fsm/frontend/diagram/diagram_parser_common.hpp"
 #include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
 
@@ -11,7 +12,6 @@ namespace fsm::frontend::diagram {
 
 using namespace fsm::ir;
 using directive::DirectiveParser;
-using directive::GuardExpressionParser;
 
 bool MermaidParser::parse(std::string_view content, FsmIr& out_model, std::string& out_error) {
     std::istringstream stream(std::string{content});
@@ -418,23 +418,11 @@ void MermaidParser::parse_internal_transition(std::string_view line, FsmIr& mode
         label = label.substr(0, slash_pos);
     }
 
-    std::optional<std::string> guard_name;
-    const auto open_bracket = label.find('[');
-    const auto close_bracket = label.find(']', open_bracket);
-    if (open_bracket != std::string::npos && close_bracket != std::string::npos) {
-        const std::string grd = std::string(trim(label.substr(open_bracket + 1, close_bracket - open_bracket - 1)));
-        if (!grd.empty()) {
-            auto parsed = GuardExpressionParser::parse(grd);
-            if (!parsed.cpp_type.empty()) {
-                guard_name = parsed.cpp_type;
-                for (const auto& detail : parsed.atomic_guard_details) {
-                    model.add_guard(detail.name, "", detail.expression, detail.expression);
-                }
-                for (const auto& atomic : parsed.atomic_guards) {
-                    model.add_guard(atomic);
-                }
-            }
-        }
+    std::string raw_guard;
+    std::size_t open_bracket = std::string::npos;
+    std::size_t close_bracket = std::string::npos;
+    if (detail::extract_balanced_square_brackets(label, open_bracket, close_bracket)) {
+        raw_guard = std::string(trim(label.substr(open_bracket + 1, close_bracket - open_bracket - 1)));
         label = label.substr(0, open_bracket) + label.substr(close_bracket + 1);
     }
 
@@ -471,7 +459,7 @@ void MermaidParser::parse_internal_transition(std::string_view line, FsmIr& mode
     trans.source = state_name;
     trans.target = state_name;
     trans.event = event_name;
-    trans.guard = guard_name;
+    detail::apply_parsed_guard(model, trans, raw_guard, state_name, state_name);
     if (parsed_action) {
         trans.transition_action = *parsed_action;
     }
@@ -553,7 +541,7 @@ bool MermaidParser::parse_transition_line(std::string_view line, FsmIr& model, s
     // Parse Event, Guard, Action, Priority from label:
     // Format: EventName (prio=1) [GuardName] / ActionName
     std::string event_name;
-    std::optional<std::string> guard_name;
+    std::string raw_guard;
     std::optional<ActionSignature> parsed_action;
     std::uint32_t priority = 0;
 
@@ -583,19 +571,10 @@ bool MermaidParser::parse_transition_line(std::string_view line, FsmIr& model, s
         }
 
         // Check for Guard: [GuardName]
-        const auto open_bracket = label.find('[');
-        const auto close_bracket = label.find(']', open_bracket);
-        if (open_bracket != std::string::npos && close_bracket != std::string::npos) {
-            const std::string grd = std::string(trim(label.substr(open_bracket + 1, close_bracket - open_bracket - 1)));
-            if (!grd.empty()) {
-                auto parsed = GuardExpressionParser::parse(grd);
-                if (!parsed.cpp_type.empty()) {
-                    guard_name = parsed.cpp_type;
-                    for (const auto& atomic : parsed.atomic_guards) {
-                        model.add_guard(atomic);
-                    }
-                }
-            }
+        std::size_t open_bracket = std::string::npos;
+        std::size_t close_bracket = std::string::npos;
+        if (detail::extract_balanced_square_brackets(label, open_bracket, close_bracket)) {
+            raw_guard = std::string(trim(label.substr(open_bracket + 1, close_bracket - open_bracket - 1)));
             label = label.substr(0, open_bracket) + label.substr(close_bracket + 1);
         }
 
@@ -632,7 +611,7 @@ bool MermaidParser::parse_transition_line(std::string_view line, FsmIr& model, s
     trans.source = src;
     trans.target = dst;
     trans.event = event_name;
-    trans.guard = guard_name;
+    detail::apply_parsed_guard(model, trans, raw_guard, src, dst);
     if (parsed_action) {
         trans.transition_action = *parsed_action;
     }

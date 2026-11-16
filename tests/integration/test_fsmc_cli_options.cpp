@@ -1132,4 +1132,50 @@ TEST(FsmcCliOptionsTest, SharedCommonCompilerArgHelper_ParsesFlagsUniformlyAcros
     EXPECT_TRUE(opt_opts.werror);
 }
 
+TEST(FsmcCliOptionsTest, IrSimulator_EvaluatesCompoundAstExpressionsAndStoreInstructions) {
+    fsm::ir::FsmIr model;
+    model.name = "AstSimModel";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Counting");
+    model.add_state("Done");
+
+    fsm::ir::VariableDefinition count_var;
+    count_var.name = "count";
+    count_var.type = fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::Int32};
+    count_var.initial_value = "2";
+    model.add_variable(std::move(count_var));
+
+    fsm::ir::SignalDefinition tick_sig("Tick");
+    tick_sig.attributes.emplace_back("step", fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::Int32}, "1");
+    model.add_signal(tick_sig);
+
+    fsm::ir::TransitionEdge t1("Idle", "Counting", "Tick");
+    fsm::ir::ActionSignature act1("compute_count");
+    act1.assignments.emplace_back(fsm::ir::LValueTarget("count", fsm::ir::LValueScope::Register), "count + 2 * step",
+                                  fsm::ir::AssignmentOp::Assign);
+    fsm::ir::StoreOp store_op;
+    store_op.target = fsm::ir::LValueTarget("count", fsm::ir::LValueScope::Register);
+    store_op.op = fsm::ir::AssignmentOp::MulAssign;
+    store_op.expression = "3";
+    act1.instructions.emplace_back(store_op);
+
+    fsm::ir::PortWriteOp port_write;
+    port_write.port_name = "status_out";
+    port_write.expression = "count + 1";
+    act1.instructions.emplace_back(port_write);
+    t1.set_transition_action(act1);
+    model.add_transition(t1);
+
+    fsm::ir::TransitionEdge t2("Counting", "Done", "Tick");
+    t2.set_guard("(count + 2) * 2 >= 50 && status_out == 25");
+    model.add_transition(t2);
+
+    std::ostringstream sim_out;
+    std::string trace = "Tick step=3\nTick step=1\n";
+    std::string final_state = fsm::tools::IrSimulator::simulate_trace(model, trace, sim_out);
+    EXPECT_EQ(final_state, "Done");
+    EXPECT_EQ(sim_out.str().find("[symbolic-guard]"), std::string::npos);
+}
+
 }  // namespace

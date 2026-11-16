@@ -127,6 +127,7 @@ struct StateNode {
     std::vector<std::string> deferred_events;    ///< Events deferred while in this state
     std::vector<std::string> traceability_reqs;  ///< Traceability requirement tags (e.g., "REQ-SAFETY-01")
     std::string description;                     ///< Human-readable documentation comment
+    std::uint32_t source_line{0};                ///< 1-based source line number for diagnostics (0 = unknown)
 
     StateNode() = default;
 

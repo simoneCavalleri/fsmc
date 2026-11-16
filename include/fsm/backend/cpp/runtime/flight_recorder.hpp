@@ -95,10 +95,13 @@ class TraceBuffer {
      * @brief Formats human-readable flight recorder dump table to output stream.
      */
     void dump(std::ostream& os) const {
+        constexpr std::string_view kSeparator =
+            "--------------------------------------------------------------------------------------------";
+        static_assert(kSeparator.size() == 92);
         os << "=== FSM Flight Recorder Audit Trace (" << count_ << "/" << Capacity << " entries) ===\n";
         os << std::left << std::setw(10) << "TICK" << std::setw(25) << "SOURCE" << std::setw(25) << "EVENT"
            << std::setw(25) << "TARGET" << "STATUS\n";
-        os << std::string(92, '-') << "\n";
+        os << kSeparator << "\n";
 
         for (std::size_t i = 0; i < count_; ++i) {
             const auto& entry = (*this)[i];

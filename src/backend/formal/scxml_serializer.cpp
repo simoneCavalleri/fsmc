@@ -3,7 +3,7 @@
 #include <sstream>
 
 #include "fsm/frontend/directive/directive_parser.hpp"
-#include "fsm/frontend/directive/guard_parser.hpp"
+#include "fsm/ir/guard.hpp"
 
 namespace fsm::backend::formal {
 
@@ -123,8 +123,7 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
                 out << " event=\"" << escape_xml(trans.event) << "\"";
             }
             if (trans.guard && !trans.guard->empty()) {
-                std::string readable_guard =
-                    frontend::directive::GuardExpressionParser::to_diagram_string(*trans.guard, model.guards);
+                std::string readable_guard = ir::GuardExpressionParser::to_diagram_string(*trans.guard, model.guards);
                 out << " cond=\"" << escape_xml(readable_guard) << "\"";
             }
             if (!trans.target.empty() && trans.kind != TransitionEdgeKind::Internal) {

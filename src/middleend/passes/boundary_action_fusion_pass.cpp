@@ -68,6 +68,25 @@ bool BoundaryActionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         }
     };
 
+    auto is_initial_entry_kept = [&ir](const StateNode* s) -> bool {
+        if (s == nullptr) {
+            return false;
+        }
+        const bool is_machine_initial =
+            (!ir.initial_state.empty() && (s->name == ir.initial_state || s->id == ir.initial_state)) ||
+            (!ir.initial_state_id.empty() && (s->name == ir.initial_state_id || s->id == ir.initial_state_id));
+        if (is_machine_initial) {
+            return true;
+        }
+        for (const auto& other_s : ir.states) {
+            if (!other_s.initial_sub_state.empty() &&
+                (other_s.initial_sub_state == s->name || other_s.initial_sub_state == s->id)) {
+                return true;
+            }
+        }
+        return false;
+    };
+
     for (auto& t : ir.transitions) {
         if (t.kind == TransitionEdgeKind::Internal) {
             continue;
@@ -135,7 +154,7 @@ bool BoundaryActionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         }
         if (!has_boundary_actions) {
             for (const auto* s : entry_path) {
-                if (!s->entry_actions.empty()) {
+                if (!s->entry_actions.empty() && !is_initial_entry_kept(s)) {
                     has_boundary_actions = true;
                     break;
                 }
@@ -186,7 +205,11 @@ bool BoundaryActionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         }
 
         // Append entry actions (in descending LCA-to-target order), skipping unchanged orthogonal region actions
+        // and initial states whose on_enter hook must stay intact for runtime startup.
         for (const auto* s : entry_path) {
+            if (is_initial_entry_kept(s)) {
+                continue;
+            }
             for (const auto& act : s->entry_actions) {
                 if (!act.name.empty() && skip_entry.count(act.name) != 0) {
                     continue;
@@ -226,20 +249,7 @@ bool BoundaryActionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             continue;
         }
         if (auto* mutable_s = ir.find_state_mut(name)) {
-            const bool is_machine_initial =
-                (!ir.initial_state.empty() &&
-                 (mutable_s->name == ir.initial_state || mutable_s->id == ir.initial_state)) ||
-                (!ir.initial_state_id.empty() &&
-                 (mutable_s->name == ir.initial_state_id || mutable_s->id == ir.initial_state_id));
-            bool is_composite_initial = false;
-            for (const auto& other_s : ir.states) {
-                if (!other_s.initial_sub_state.empty() &&
-                    (other_s.initial_sub_state == mutable_s->name || other_s.initial_sub_state == mutable_s->id)) {
-                    is_composite_initial = true;
-                    break;
-                }
-            }
-            if (!is_machine_initial && !is_composite_initial) {
+            if (!is_initial_entry_kept(mutable_s)) {
                 mutable_s->entry_actions.clear();
             }
         }

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 591  
+**Total Documented Test Cases**: 592  
 
 ---
 
@@ -1433,6 +1433,9 @@
 
 #### `BoundaryActionFusion.CrossBoundaryTransition_ClearsHooksOnFusedNodes`
 **Test Intent**: Verify that BoundaryActionFusionPass clears entry/exit hooks on traversed StateNodes.
+
+#### `StructuralLowering.BoundaryActionFusion_DoesNotDuplicateInitialStateEntryHook`
+**Test Intent**: Verify that BoundaryActionFusionPass does not duplicate entry actions kept on initial states.
 
 #### `BoundaryActionFusion.InternalTransition_NotModifiedByPass`
 **Test Intent**: Verify that BoundaryActionFusionPass does not modify internal transitions.

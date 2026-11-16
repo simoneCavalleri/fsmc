@@ -541,7 +541,7 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
         trans.guard = raw_guard;
     }
     std::string guard_ast_str = trans_obj.get_string("guard_ast");
-    if (!guard_ast_str.empty()) {
+    if (!guard_ast_str.empty() && guard_ast_str.find("fsm::") != std::string::npos) {
         trans.guard_ast = GuardAstNode(guard_ast_str);
     } else if (trans.guard.has_value() && !trans.guard->empty()) {
         trans.guard_ast = GuardAstNode(*trans.guard);

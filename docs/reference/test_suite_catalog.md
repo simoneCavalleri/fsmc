@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 609  
+**Total Documented Test Cases**: 610  
 
 ---
 
@@ -1350,6 +1350,9 @@
 
 #### `FsmIr.ExpressionEvaluationAndLosslessJsonRoundtrip_PreservesInstructionsClocksAndChoices`
 **Test Intent**: Verify ExpressionAstNode numeric and boolean evaluation and lossless JSON roundtrip of instructions, clocks,
+
+#### `FsmIr.JsonDeserializer_PreservesCppGuardTypeInGuardAstForBooleanExpressions`
+**Test Intent**: Verify FsmIrDeserializer keeps parsed C++ guard type in guard_ast when JSON contains readable boolean guards.
 
 ### [`test_fsm_ir_semantic_completeness.cpp`](../../tests/ir/test_fsm_ir_semantic_completeness.cpp) (`tests/ir/test_fsm_ir_semantic_completeness.cpp`)
 #### `StateKind.TerminatePseudostate_DifferentiatedFromFinalState`

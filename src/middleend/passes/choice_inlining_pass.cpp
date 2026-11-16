@@ -54,7 +54,8 @@ bool ChoiceInliningPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
         }
     }
     for (const auto& s : ir.states) {
-        if (s.kind == StateKind::Choice || s.kind == StateKind::Junction) {
+        if (s.kind == StateKind::Choice || s.kind == StateKind::Junction || s.kind == StateKind::EntryPoint ||
+            s.kind == StateKind::ExitPoint) {
             if (std::find(choice_names.begin(), choice_names.end(), s.name) == choice_names.end()) {
                 choice_names.push_back(s.name);
             }

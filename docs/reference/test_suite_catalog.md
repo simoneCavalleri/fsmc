@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 608  
+**Total Documented Test Cases**: 609  
 
 ---
 
@@ -1509,6 +1509,9 @@
 
 #### `HistoryLowering.DeepHistoryOnlyRecordsLeafSubstates`
 **Test Intent**: Verify Deep History lowering only attaches exit history recording to leaf states, not intermediate composites.
+
+#### `StructuralLowering.ChoiceInlining_InlinesEntryPointAndExitPointPseudostates`
+**Test Intent**: Verify ChoiceInliningPass inlines StateKind::EntryPoint and StateKind::ExitPoint pseudostates.
 
 ### [`test_common_action_factoring.cpp`](../../tests/middleend/optimization/test_common_action_factoring.cpp) (`tests/middleend/optimization/test_common_action_factoring.cpp`)
 #### `CommonActionFactoring.ConvergentTransitionsIdenticalAction_FactoredIntoTargetEntry`

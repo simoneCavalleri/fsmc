@@ -1306,3 +1306,40 @@ TEST(CppModelEmitter, LowersTargetAgnosticInfixBooleanGuardsToCppCombinators) {
 
     EXPECT_NE(str.find("fsm::or_<fsm::not_<fsm::and_<a_ok, b_ok>>, c_ok>"), std::string::npos);
 }
+
+/**
+ * @brief Verify CppModelEmitter disambiguates action struct names colliding with event/state names and emits
+ *        valid functors for pure SignalEmitOp actions.
+ * @scenario Transition Idle -> Step1 emits internal signal 'EvNext' which is also a trigger on Step1 -> Step2.
+ * @expected Action struct is emitted as 'EvNext_action' (no struct redefinition) with 'emit signal: EvNext'.
+ */
+TEST(CppModelEmitter, DisambiguatesActionCollidingWithEventAndEmitsSignalEmitOp) {
+    FsmIr model;
+    model.name = "SignalEmitCollisionFsm";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Step1");
+    model.add_state("Step2");
+    model.add_event("EvGo");
+    model.add_event("EvNext");
+
+    ActionSignature emit_act("EvNext");
+    emit_act.instructions.emplace_back(SignalEmitOp{"EvNext", {}, std::nullopt});
+    model.add_action("EvNext");
+
+    TransitionEdge t1("Idle", "Step1", "EvGo", std::nullopt, emit_act);
+    TransitionEdge t2("Step1", "Step2", "EvNext");
+    model.transitions.push_back(t1);
+    model.transitions.push_back(t2);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = false;
+    CppModelEmitter::emit_model(out, model, opts);
+    const std::string str = out.str();
+
+    EXPECT_NE(str.find("struct EvNext {"), std::string::npos);
+    EXPECT_NE(str.find("struct EvNext_action {"), std::string::npos);
+    EXPECT_NE(str.find("// emit signal: EvNext"), std::string::npos);
+    EXPECT_NE(str.find("::then<EvNext_action>"), std::string::npos);
+}

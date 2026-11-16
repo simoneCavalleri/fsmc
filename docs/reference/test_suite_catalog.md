@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 611  
+**Total Documented Test Cases**: 612  
 
 ---
 
@@ -546,6 +546,9 @@
 
 #### `CppModelEmitter.LowersTargetAgnosticInfixBooleanGuardsToCppCombinators`
 **Test Intent**: Verify CppModelEmitter lowers target-agnostic infix boolean guards in IR to C++ template combinators.
+
+#### `CppModelEmitter.DisambiguatesActionCollidingWithEventAndEmitsSignalEmitOp`
+**Test Intent**: Verify CppModelEmitter disambiguates action struct names colliding with event/state names and emits
 
 ### [`test_generated_fsm.cpp`](../../tests/backend/cpp/test_generated_fsm.cpp) (`tests/backend/cpp/test_generated_fsm.cpp`)
 - *(Executable binary test verification)*

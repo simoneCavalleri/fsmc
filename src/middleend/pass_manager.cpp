@@ -203,7 +203,8 @@ std::string ChoiceInliningPassWrapper::description() const {
 
 bool ChoiceInliningPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     ChoiceInliningPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 // ============================================================================
@@ -219,7 +220,8 @@ std::string ConnectiveJunctionChainingPassWrapper::description() const {
 
 bool ConnectiveJunctionChainingPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     ConnectiveJunctionChainingPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 // ============================================================================
@@ -434,7 +436,8 @@ std::string DeadStatePruningPassWrapper::description() const {
 }
 
 bool DeadStatePruningPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    return pass_->run(ir, diag);
+    (void)pass_->run(ir, diag);
+    return !diag.has_errors();
 }
 
 // ============================================================================
@@ -548,7 +551,8 @@ std::string OrthogonalProductPassWrapper::description() const {
 
 bool OrthogonalProductPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     OrthogonalProductPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 // ============================================================================
@@ -584,7 +588,8 @@ std::string ConstantFoldingPassWrapper::description() const {
 
 bool ConstantFoldingPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     ConstantFoldingPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 // ============================================================================
@@ -600,7 +605,8 @@ std::string StateMinimizationPassWrapper::description() const {
 
 bool StateMinimizationPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     StateMinimizationPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 // ============================================================================
@@ -635,7 +641,8 @@ std::string ForkJoinLoweringPassWrapper::description() const {
 }
 bool ForkJoinLoweringPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     ForkJoinLoweringPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 std::string HistoryLoweringPassWrapper::name() const {
@@ -646,7 +653,8 @@ std::string HistoryLoweringPassWrapper::description() const {
 }
 bool HistoryLoweringPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     HistoryLoweringPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 std::string DeferredEventLoweringPassWrapper::name() const {
@@ -657,7 +665,8 @@ std::string DeferredEventLoweringPassWrapper::description() const {
 }
 bool DeferredEventLoweringPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     DeferredEventLoweringPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 std::string BoundaryActionFusionPassWrapper::name() const {
@@ -668,7 +677,8 @@ std::string BoundaryActionFusionPassWrapper::description() const {
 }
 bool BoundaryActionFusionPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     BoundaryActionFusionPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 std::string SampledChangeTriggerPassWrapper::name() const {
@@ -679,7 +689,8 @@ std::string SampledChangeTriggerPassWrapper::description() const {
 }
 bool SampledChangeTriggerPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     SampledChangeTriggerPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 SubmachineInliningPassWrapper::SubmachineInliningPassWrapper(SubmachineResolver resolver)
@@ -693,7 +704,8 @@ std::string SubmachineInliningPassWrapper::description() const {
 }
 bool SubmachineInliningPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     SubmachineInliningPass pass(resolver_);
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 // ============================================================================
@@ -708,7 +720,8 @@ std::string DeadActionEliminationPassWrapper::description() const {
 }
 bool DeadActionEliminationPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     DeadActionEliminationPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 std::string RegisterLivenessPassWrapper::name() const {
@@ -719,7 +732,8 @@ std::string RegisterLivenessPassWrapper::description() const {
 }
 bool RegisterLivenessPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     RegisterLivenessPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 std::string TransitionFusionPassWrapper::name() const {
@@ -730,7 +744,8 @@ std::string TransitionFusionPassWrapper::description() const {
 }
 bool TransitionFusionPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     TransitionFusionPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 std::string CommonActionFactoringPassWrapper::name() const {
@@ -741,7 +756,8 @@ std::string CommonActionFactoringPassWrapper::description() const {
 }
 bool CommonActionFactoringPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     CommonActionFactoringPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 // ============================================================================

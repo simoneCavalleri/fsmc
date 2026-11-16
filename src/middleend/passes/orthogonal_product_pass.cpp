@@ -277,11 +277,17 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                     std::optional<ActionSignature> cond_action;
                     std::vector<std::string> clock_resets;
                     std::uint32_t priority = 0;
+                    bool any_chosen = false;
+                    bool all_internal = true;
 
                     for (std::size_t idx = 0; idx < regions.size(); ++idx) {
                         const auto* t = chosen_transitions[idx];
                         if (t == nullptr) {
                             continue;
+                        }
+                        any_chosen = true;
+                        if (t->kind != TransitionEdgeKind::Internal) {
+                            all_internal = false;
                         }
                         next_tup[idx] = t->target;
                         if (t->guard.has_value() && !t->guard->empty()) {
@@ -317,6 +323,8 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                     pt.target_id = compute_deterministic_id(dst_product);
                     pt.event = ev;
                     pt.trigger = SignalTrigger(ev);
+                    pt.kind = (any_chosen && all_internal && src_product == dst_product) ? TransitionEdgeKind::Internal
+                                                                                         : TransitionEdgeKind::External;
                     pt.priority = priority;
                     pt.clock_resets = std::move(clock_resets);
                     pt.condition_action = std::move(cond_action);

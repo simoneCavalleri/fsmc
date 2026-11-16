@@ -814,3 +814,38 @@ TEST(ForkJoinLowering, BranchActionsAndClockResets_PreservedInLoweredTransitions
     EXPECT_EQ(lowered.clock_resets[0], "clk_a");
     EXPECT_EQ(lowered.clock_resets[1], "clk_b");
 }
+
+/**
+ * @brief Verify HistoryLoweringPass pins _HistoryRestore parent_state across normalize_hierarchy().
+ * @scenario Run HistoryLoweringPass on a composite state with history, then invoke normalize_hierarchy().
+ * @expected Synthesized _HistoryRestore choice node retains parent_state and pinned_parent == true.
+ */
+TEST(StructuralLowering, HistoryLowering_PinsParentAcrossNormalizeHierarchy) {
+    FsmIr ir;
+    ir.name = "HistoryPinModel";
+    ir.initial_state = "Outer";
+
+    StateNode outer("Outer");
+    outer.is_composite = true;
+    outer.initial_sub_state = "SubA";
+    outer.has_history = true;
+    ir.states.push_back(outer);
+
+    ir.add_state("SubA", "Outer");
+    ir.add_state("SubB", "Outer");
+    ir.add_state("Outside");
+    ir.add_transition(TransitionEdge("SubA", "SubB", "EvStep"));
+    ir.add_transition(TransitionEdge("Outer", "Outside", "EvExit"));
+    TransitionEdge restore_t("Outside", "Outer", "EvResume");
+    restore_t.target_is_history = true;
+    ir.add_transition(restore_t);
+
+    DiagnosticEngine diag;
+    EXPECT_TRUE(HistoryLoweringPass::run(ir, diag));
+    ir.normalize_hierarchy();
+
+    const StateNode* restore_node = ir.find_state("Outer_HistoryRestore");
+    ASSERT_NE(restore_node, nullptr);
+    EXPECT_TRUE(restore_node->pinned_parent);
+    EXPECT_EQ(restore_node->parent_state, "Outer");
+}

@@ -418,13 +418,10 @@ void PlantUmlParser::parse_internal_transition(std::string_view line, FsmIr& mod
         return;
     }
 
-    std::optional<ActionSignature> parsed_action;
+    std::string raw_action;
     const auto slash_pos = DiagramActionParser::find_action_slash(label);
     if (slash_pos != std::string::npos) {
-        const std::string act = std::string(trim(label.substr(slash_pos + 1)));
-        if (!act.empty()) {
-            parsed_action = DiagramActionParser::parse_action_block(act, "action_" + state_name);
-        }
+        raw_action = std::string(trim(label.substr(slash_pos + 1)));
         label = label.substr(0, slash_pos);
     }
 
@@ -440,6 +437,18 @@ void PlantUmlParser::parse_internal_transition(std::string_view line, FsmIr& mod
     const std::string event_name = sanitize_identifier(raw_event);
     if (event_name.empty()) {
         return;
+    }
+
+    std::optional<ActionSignature> parsed_action;
+    if (!raw_action.empty()) {
+        std::string fallback = "action_" + state_name + "_" + event_name;
+        if (raw_event == "entry" || event_name == "entry") {
+            fallback = "entry_" + state_name;
+        } else if (raw_event == "exit" || event_name == "exit") {
+            fallback = "exit_" + state_name;
+        }
+        parsed_action = DiagramActionParser::parse_action_block(raw_action, fallback);
+        detail::disambiguate_synthesized_action(model, *parsed_action);
     }
 
     model.add_state(state_name, parent_for_state);
@@ -582,12 +591,10 @@ bool PlantUmlParser::parse_transition_line(std::string_view line, FsmIr& model, 
         }
 
         // Check for Action: / ActionName
+        std::string raw_action;
         const auto slash_pos = DiagramActionParser::find_action_slash(label);
         if (slash_pos != std::string::npos) {
-            const std::string act = std::string(trim(label.substr(slash_pos + 1)));
-            if (!act.empty()) {
-                parsed_action = DiagramActionParser::parse_action_block(act, "action_" + src + "_" + dst);
-            }
+            raw_action = std::string(trim(label.substr(slash_pos + 1)));
             label = label.substr(0, slash_pos);
         }
 
@@ -603,6 +610,12 @@ bool PlantUmlParser::parse_transition_line(std::string_view line, FsmIr& model, 
         const std::string evt = std::string(trim(label));
         if (!evt.empty()) {
             event_name = sanitize_identifier(evt);
+        }
+
+        if (!raw_action.empty()) {
+            const std::string fallback = "action_" + src + "_" + dst + (event_name.empty() ? "" : "_" + event_name);
+            parsed_action = DiagramActionParser::parse_action_block(raw_action, fallback);
+            detail::disambiguate_synthesized_action(model, *parsed_action);
         }
     }
 

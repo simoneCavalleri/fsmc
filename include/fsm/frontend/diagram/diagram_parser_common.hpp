@@ -103,4 +103,32 @@ inline void apply_parsed_guard(ir::FsmIr& model, ir::TransitionEdge& trans, std:
     }
 }
 
+/**
+ * @brief Ensures synthesized assignment action names do not collide across distinct actions in a model.
+ * @param model Target FsmIr model containing already-registered action names.
+ * @param sig ActionSignature whose synthesized name will be disambiguated if already taken.
+ */
+inline void disambiguate_synthesized_action(const ir::FsmIr& model, ir::ActionSignature& sig) {
+    if (sig.assignments.empty() || sig.name.empty()) {
+        return;
+    }
+    auto has_action = [&](const std::string& candidate) {
+        for (const auto& act : model.actions) {
+            if (act.name == candidate) {
+                return true;
+            }
+        }
+        return false;
+    };
+    if (!has_action(sig.name)) {
+        return;
+    }
+    const std::string base = sig.name;
+    std::size_t suffix = 2;
+    while (has_action(base + "_" + std::to_string(suffix))) {
+        ++suffix;
+    }
+    sig.name = base + "_" + std::to_string(suffix);
+}
+
 }  // namespace fsm::frontend::diagram::detail

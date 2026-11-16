@@ -278,4 +278,48 @@ stateDiagram-v2
     EXPECT_EQ(b2->parent_state, "R2");
 }
 
+/**
+ * @brief Verify synthesized assignment action names do not collide across entry, exit, and transitions.
+ * @scenario Parse Mermaid where Ready entry, Ready exit, and two transitions all assign to variable x.
+ * @expected All four ActionSignature entries have distinct names and retain their own assignment expressions.
+ */
+TEST(MermaidParser, DistinctAssignmentActionNames_AcrossLifecycleAndTransitions) {
+    const std::string mmd = R"mmd(
+stateDiagram-v2
+    [*] --> Ready
+    Ready : entry / x = 10
+    Ready : exit / x += 1
+    Ready --> Running : START [x >= 10] / x = x * 2
+    Ready --> Running : FAST / x = 99
+)mmd";
+
+    MermaidParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(mmd, model, err)) << err;
+
+    const StateNode* ready = model.find_state("Ready");
+    ASSERT_NE(ready, nullptr);
+    ASSERT_EQ(ready->entry_actions.size(), 1u);
+    ASSERT_EQ(ready->exit_actions.size(), 1u);
+    ASSERT_EQ(model.transitions.size(), 2u);
+    ASSERT_TRUE(model.transitions[0].transition_action.has_value());
+    ASSERT_TRUE(model.transitions[1].transition_action.has_value());
+
+    const std::string n_entry = ready->entry_actions[0].name;
+    const std::string n_exit = ready->exit_actions[0].name;
+    const std::string n_t0 = model.transitions[0].transition_action->name;
+    const std::string n_t1 = model.transitions[1].transition_action->name;
+
+    EXPECT_NE(n_entry, n_exit);
+    EXPECT_NE(n_entry, n_t0);
+    EXPECT_NE(n_exit, n_t0);
+    EXPECT_NE(n_t0, n_t1);
+
+    EXPECT_EQ(ready->entry_actions[0].assignments[0].expression, "10");
+    EXPECT_EQ(ready->exit_actions[0].assignments[0].expression, "1");
+    EXPECT_EQ(model.transitions[0].transition_action->assignments[0].expression, "x * 2");
+    EXPECT_EQ(model.transitions[1].transition_action->assignments[0].expression, "99");
+}
+
 }  // namespace

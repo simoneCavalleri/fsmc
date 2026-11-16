@@ -275,4 +275,47 @@ TEST(ChoiceInlining, CombinedGuards_ProduceTargetAgnosticGuardAst) {
     EXPECT_EQ(combined.guard.value_or("").find("fsm::and_"), std::string::npos);
 }
 
+/**
+ * @brief Regression: `else` fallback branches in ChoiceInliningPass must sort after guarded branches.
+ * @scenario Inline a choice node with a guarded branch to `Working` and an `else` branch to `ErrorState`.
+ * @expected The guarded branch receives higher priority (smaller non-zero priority) than the `else` fallback.
+ */
+TEST(InliningPasses, ChoiceInlining_ElseBranchHasLowerPriorityThanGuardedBranch) {
+    FsmIr ir;
+    ir.name = "ChoiceElsePrio";
+    ir.initial_state = "Working";
+    ir.add_state("Working");
+    ir.add_state("ErrorState");
+    ir.add_state("Decide", "", StateKind::Choice);
+    ir.add_event("EvCheck");
+
+    ir.add_transition(TransitionEdge("Working", "Decide", "EvCheck"));
+    TransitionEdge t_ok("Decide", "Working", "");
+    t_ok.set_guard("sensor_ok_eq_true");
+    ir.add_transition(std::move(t_ok));
+
+    TransitionEdge t_else("Decide", "ErrorState", "");
+    t_else.set_guard("else");
+    ir.add_transition(std::move(t_else));
+
+    ChoiceInliningPass pass;
+    DiagnosticEngine diag;
+    ASSERT_TRUE(pass.run(ir, diag));
+    ASSERT_EQ(ir.transitions.size(), 2u);
+
+    const TransitionEdge* guarded_edge = nullptr;
+    const TransitionEdge* else_edge = nullptr;
+    for (const auto& t : ir.transitions) {
+        if (t.target == "Working") {
+            guarded_edge = &t;
+        } else if (t.target == "ErrorState") {
+            else_edge = &t;
+        }
+    }
+    ASSERT_NE(guarded_edge, nullptr);
+    ASSERT_NE(else_edge, nullptr);
+    EXPECT_GT(guarded_edge->priority, 0u);
+    EXPECT_EQ(else_edge->priority, 0u);
+}
+
 }  // namespace

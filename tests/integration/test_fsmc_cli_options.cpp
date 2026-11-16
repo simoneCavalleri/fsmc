@@ -24,6 +24,8 @@
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir_deserializer.hpp"
 #include "fsm/ir/fsm_ir_serializer.hpp"
+#include "tools/common/cli_utils.hpp"
+#include "tools/fsm-opt/opt_options.hpp"
 #include "tools/fsmc/fsmc_driver.hpp"
 #include "tools/fsmc/fsmc_options.hpp"
 
@@ -1089,6 +1091,45 @@ package DroneControl {
         }
     }
     EXPECT_TRUE(found_expr);
+}
+
+TEST(FsmcCliOptionsTest, SharedCommonCompilerArgHelper_ParsesFlagsUniformlyAcrossTools) {
+    char p[] = "fsmc";
+    char in_eq[] = "--input=in_model.sysml";
+    char out_eq[] = "--output=out_model.hpp";
+    char diag_eq[] = "--diagnostic-format=json";
+    char sub_eq[] = "--submachine-dir=/tmp/submachines";
+    char fmt_eq[] = "--format=sysml2";
+    char pipe_eq[] = "--pipe-through=cat";
+    char plug_eq[] = "--load-pass-plugin=my_plugin.so";
+    char werr[] = "-Werror";
+
+    char* argv[] = {p, in_eq, out_eq, diag_eq, sub_eq, fmt_eq, pipe_eq, plug_eq, werr};
+    int argc = 9;
+
+    const auto fsmc_opts = fsm::tools::parse_cli_args(argc, argv);
+    EXPECT_TRUE(fsmc_opts.is_valid);
+    EXPECT_EQ(fsmc_opts.input_file, "in_model.sysml");
+    EXPECT_EQ(fsmc_opts.output_file, "out_model.hpp");
+    EXPECT_EQ(fsmc_opts.diagnostic_format, "json");
+    EXPECT_EQ(fsmc_opts.submachine_dir, "/tmp/submachines");
+    EXPECT_EQ(fsmc_opts.format, "sysml2");
+    EXPECT_EQ(fsmc_opts.pipe_through_cmd, "cat");
+    ASSERT_EQ(fsmc_opts.pass_plugins.size(), 1u);
+    EXPECT_EQ(fsmc_opts.pass_plugins[0], "my_plugin.so");
+    EXPECT_TRUE(fsmc_opts.werror);
+
+    const auto opt_opts = fsm::tools::parse_opt_args(argc, argv);
+    EXPECT_TRUE(opt_opts.is_valid);
+    EXPECT_EQ(opt_opts.input_path, "in_model.sysml");
+    EXPECT_EQ(opt_opts.output_path, "out_model.hpp");
+    EXPECT_EQ(opt_opts.diagnostic_format, "json");
+    EXPECT_EQ(opt_opts.submachine_dir, "/tmp/submachines");
+    EXPECT_EQ(opt_opts.format_override, "sysml2");
+    EXPECT_EQ(opt_opts.pipe_through_cmd, "cat");
+    ASSERT_EQ(opt_opts.pass_plugins.size(), 1u);
+    EXPECT_EQ(opt_opts.pass_plugins[0], "my_plugin.so");
+    EXPECT_TRUE(opt_opts.werror);
 }
 
 }  // namespace

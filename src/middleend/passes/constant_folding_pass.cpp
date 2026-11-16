@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <regex>
+#include <unordered_map>
 #include <unordered_set>
+
+#include "fsm/ir/expression.hpp"
 
 namespace fsm::middleend::passes {
 
@@ -61,6 +64,23 @@ bool ConstantFoldingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                     t.set_guard("false");
                 }
                 modified = true;
+            } else {
+                auto ast = ExpressionAstNode::parse(g);
+                if (ast.kind != ExpressionKind::RawExpression) {
+                    std::vector<std::string> refs;
+                    ast.collect_references(refs);
+                    if (refs.empty()) {
+                        const std::unordered_map<std::string, double> empty_env;
+                        if (auto val = ast.evaluate_boolean(empty_env); val.has_value()) {
+                            if (*val) {
+                                t.set_guard(std::nullopt);
+                            } else {
+                                t.set_guard("false");
+                            }
+                            modified = true;
+                        }
+                    }
+                }
             }
         }
     }

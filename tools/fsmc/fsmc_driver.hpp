@@ -280,9 +280,6 @@ class FsmcDriver {
             }
             const bool optimize_7stage = opts.opt_level > 0 && (opts.opt_level >= 2 || opts.prune_dead_states);
             pm = PassManager::create_verified_7stage_pipeline(optimize_7stage);
-            if (opts.inline_submachines) {
-                pm.add_pass(create_submachine_pass(opts));
-            }
             if (opts.check_races) {
                 pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
             }

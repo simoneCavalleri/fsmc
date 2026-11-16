@@ -5,7 +5,9 @@
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#if !defined(FSMC_FREESTANDING)
 #include <thread>
+#endif
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -391,9 +393,11 @@ class spsc_fsm {
     struct mutation_guard {
         explicit mutation_guard(spsc_fsm& owner) noexcept : owner_(owner) {
             owner_.seq_.fetch_add(1, std::memory_order_acq_rel);
+            std::atomic_thread_fence(std::memory_order_release);
         }
         ~mutation_guard() noexcept {
             owner_.state_index_.store(owner_.fsm_.get_current_state_variant().index(), std::memory_order_release);
+            std::atomic_thread_fence(std::memory_order_release);
             owner_.seq_.fetch_add(1, std::memory_order_release);
         }
         mutation_guard(const mutation_guard&) = delete;
@@ -411,7 +415,11 @@ class spsc_fsm {
         do {
             s0 = seq_.load(std::memory_order_acquire);
             while (s0 & 1U) {
+#if !defined(FSMC_FREESTANDING)
                 std::this_thread::yield();
+#else
+                (void)0;
+#endif
                 s0 = seq_.load(std::memory_order_acquire);
             }
             result = fn();

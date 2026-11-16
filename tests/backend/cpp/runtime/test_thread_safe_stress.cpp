@@ -225,4 +225,74 @@ TEST(ThreadSafeFsm, HierarchicalIsIn_AndReset) {
     EXPECT_TRUE(machine.is_in<TsSuperState>());
 }
 
+struct ReentrantInPorts {
+    int sensor_value = 0;
+};
+
+struct ReentrantOutPorts {
+    int actuator_value = 0;
+};
+
+struct ReentrantRegisters {
+    int recorded_sensor = 0;
+};
+
+struct TriggerReentrantEvent {};
+struct FollowUpPortEvent {};
+
+struct ReentrantMachineHolder;
+
+struct ReentrantServices {
+    std::function<void()> trigger_reentrant_send;
+};
+
+struct ActionTriggerFollowUp {
+    template <typename Src, typename Dst>
+    void operator()(const TriggerReentrantEvent& /*evt*/, Src& /*src*/, Dst& /*dst*/, const ReentrantInPorts& /*in*/,
+                    ReentrantOutPorts& /*out*/, ReentrantRegisters& /*reg*/, ReentrantServices& srv) const {
+        if (srv.trigger_reentrant_send) {
+            srv.trigger_reentrant_send();
+        }
+    }
+};
+
+struct ActionRecordPort {
+    template <typename Src, typename Dst>
+    void operator()(const FollowUpPortEvent& /*evt*/, Src& /*src*/, Dst& /*dst*/, const ReentrantInPorts& in,
+                    ReentrantOutPorts& out, ReentrantRegisters& reg, ReentrantServices& /*srv*/) const {
+        reg.recorded_sensor = in.sensor_value;
+        out.actuator_value = in.sensor_value * 2;
+    }
+};
+
+using ReentrantPortTable =
+    fsm::transition_table<fsm::transition<Idle, TriggerReentrantEvent, Processing, ActionTriggerFollowUp>,
+                          fsm::transition<Processing, FollowUpPortEvent, Syncing, ActionRecordPort>>;
+
+/**
+ * @brief Verify with_timer_manager() thread-safe access and reentrant send(event, in, out) preserving in-port values.
+ */
+TEST(ThreadSafeFsm, WithTimerManagerAndReentrantSendWithPorts_PreservesInPorts) {
+    ReentrantServices srv;
+    fsm::thread_safe_fsm<ReentrantPortTable, ReentrantInPorts, ReentrantOutPorts, ReentrantRegisters, ReentrantServices>
+        machine(srv);
+
+    const std::size_t active_timers = machine.with_timer_manager([](const auto& tm) { return tm.active_count(); });
+    EXPECT_EQ(active_timers, 0u);
+
+    srv.trigger_reentrant_send = [&machine]() {
+        ReentrantInPorts nested_in{42};
+        ReentrantOutPorts nested_out{};
+        auto res = machine.send(FollowUpPortEvent{}, nested_in, nested_out);
+        EXPECT_EQ(res.status, fsm::dispatch_status::deferred);
+    };
+
+    ReentrantInPorts outer_in{7};
+    ReentrantOutPorts outer_out{};
+    auto res = machine.send(TriggerReentrantEvent{}, outer_in, outer_out);
+    EXPECT_TRUE(res.is_success());
+    EXPECT_TRUE(machine.is_in_state<Syncing>());
+    EXPECT_EQ(machine.snapshot_registers().recorded_sensor, 42);
+}
+
 }  // namespace

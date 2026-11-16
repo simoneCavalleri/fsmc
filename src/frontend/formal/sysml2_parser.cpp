@@ -309,8 +309,6 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
                                      std::string& current_enum_def, std::string& current_struct_def,
                                      std::string& error_message, size_t line_number, bool is_block_open,
                                      SysmlBlockKind& out_kind, Sysml2SymbolResolver& symbol_resolver) {
-    (void)error_message;
-    (void)line_number;
     const std::string stmt = normalize_whitespace(raw_stmt);
     out_kind = SysmlBlockKind::ActionBlock;
     if (stmt.empty()) {
@@ -988,7 +986,14 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         stmt.find("then") != std::string::npos || stmt.find("first") != std::string::npos ||
         stmt.find("after") != std::string::npos || stmt.find("fork") != std::string::npos ||
         stmt.find("join") != std::string::npos) {
-        return parse_transition_statement(stmt, model, state_stack);
+        if (!parse_transition_statement(stmt, model, state_stack)) {
+            if (!error_message.empty() && line_number > 0 && error_message.find("line ") == std::string::npos &&
+                error_message.find("Line ") == std::string::npos) {
+                error_message = "Line " + std::to_string(line_number) + ": " + error_message;
+            }
+            return false;
+        }
+        return true;
     }
 
     return true;

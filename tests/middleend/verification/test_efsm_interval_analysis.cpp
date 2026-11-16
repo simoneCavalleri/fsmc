@@ -228,4 +228,57 @@ TEST(EFSMIntervalAnalysis, IntervalEqualityAndZeroTimesInfinity_SoundWithoutNaN)
     EXPECT_DOUBLE_EQ(prod_iv.hi, 0.0);
 }
 
+/**
+ * @brief Verify integer strict inequality interval analysis detects unsatisfiable adjacent integer bounds.
+ * @scenario Integer variable 'x' in [0, 10] with transition guard 'x > 5 && x < 6'.
+ * @expected Strict integer bounds [6, +inf] and [-inf, 5] have empty intersection and report UnsatisfiableGuard.
+ */
+TEST(EFSMIntervalAnalysis, IntegerStrictInequality_DetectsUnsatisfiableAdjacentBounds) {
+    FsmIr model;
+    model.name = "IntegerStrictGuardFSM";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Unreachable");
+    model.add_state("Safe");
+
+    PortDefinition in_x("x", DataType{PrimitiveTypeKind::Int32}, PortDirection::In);
+    in_x.min_value = 0.0;
+    in_x.max_value = 100.0;
+    model.ports.push_back(in_x);
+
+    TransitionEdge t_dead("t_dead", "Idle", "Unreachable", SignalTrigger{"Check", ""});
+    t_dead.set_guard("x > 5 && x < 6");
+    model.add_transition(t_dead);
+
+    TransitionEdge t_safe("t_safe", "Idle", "Safe", SignalTrigger{"GoSafe", ""});
+    t_safe.set_guard("x < 50");
+    ActionSignature act("scale_x");
+    act.assignments.emplace_back(LValueTarget("scaled_x", LValueScope::Register), "(x + 2) * 3");
+    t_safe.set_action(act);
+    model.add_transition(t_safe);
+
+    VariableDefinition scaled_var("scaled_x", DataType{PrimitiveTypeKind::Int32}, "0");
+    model.add_variable(scaled_var);
+
+    DiagnosticEngine diag;
+    EFSMIntervalAnalyzer analyzer(model);
+    auto findings = analyzer.analyze(diag);
+
+    bool found_unsat = false;
+    for (const auto& f : findings) {
+        if (f.transition_id == "t_dead" && f.kind == EFSMFindingKind::UnsatisfiableGuard) {
+            found_unsat = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_unsat);
+
+    auto envs = analyzer.compute_state_intervals();
+    ASSERT_TRUE(envs.count("Safe") > 0);
+    EXPECT_DOUBLE_EQ(envs.at("Safe").at("x").lo, 0.0);
+    EXPECT_DOUBLE_EQ(envs.at("Safe").at("x").hi, 49.0);
+    EXPECT_DOUBLE_EQ(envs.at("Safe").at("scaled_x").lo, 6.0);
+    EXPECT_DOUBLE_EQ(envs.at("Safe").at("scaled_x").hi, 153.0);
+}
+
 }  // namespace

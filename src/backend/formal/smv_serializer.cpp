@@ -518,6 +518,70 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
     out << "    TRUE : state;\n";
     out << "  esac;\n\n";
 
+    // Data-path variable evolution: next(var) := case ... esac;
+    for (const auto& var : model.variables) {
+        if (var.type.is_string()) {
+            continue;
+        }
+        bool has_assign = false;
+        for (const auto& t : sorted_transitions) {
+            if (t.source.empty() || t.target.empty() || !t.transition_action.has_value()) {
+                continue;
+            }
+            for (const auto& assign : t.transition_action->assignments) {
+                if ((assign.target.name == var.name || assign.target == var.name) &&
+                    assign.op == AssignmentOp::Assign && !assign.expression.empty()) {
+                    has_assign = true;
+                    break;
+                }
+            }
+            if (has_assign) {
+                break;
+            }
+        }
+        if (!has_assign) {
+            continue;
+        }
+
+        std::string vname = sanitize_smv_ident(var.name);
+        out << "  next(" << vname << ") := case\n";
+        for (const auto& t : sorted_transitions) {
+            if (t.source.empty() || t.target.empty() || !t.transition_action.has_value()) {
+                continue;
+            }
+            const ActionAssignment* matched_assign = nullptr;
+            for (const auto& assign : t.transition_action->assignments) {
+                if ((assign.target.name == var.name || assign.target == var.name) &&
+                    assign.op == AssignmentOp::Assign && !assign.expression.empty()) {
+                    matched_assign = &assign;
+                }
+            }
+            if (matched_assign == nullptr) {
+                continue;
+            }
+
+            const std::string& src = t.source;
+            std::string evt = t.event.empty() ? t.get_trigger_name() : t.event;
+            out << "    state = " << sanitize_smv_ident(src);
+            if (std::holds_alternative<TimeTrigger>(t.trigger)) {
+                const auto& tt = std::get<TimeTrigger>(t.trigger);
+                std::uint64_t dur = tt.duration_in_ms();
+                if (dur == 0)
+                    dur = 1;
+                out << " & timer_" << sanitize_smv_ident(src) << " >= " << dur;
+            } else if (!evt.empty() && evt != "Anonymous" && evt != "none") {
+                out << " & event = " << sanitize_smv_ident(evt);
+            }
+            if (!is_fallback_guard(t.guard)) {
+                std::string guard_str = to_smv_predicate(resolve_guard_expr(*t.guard));
+                out << " & (" << guard_str << ")";
+            }
+            out << " : " << to_smv_predicate(matched_assign->expression) << ";\n";
+        }
+        out << "    TRUE : " << vname << ";\n";
+        out << "  esac;\n\n";
+    }
+
     // 3. Formal Properties (LTLSPEC & INVARSPEC)
     if (!model.properties.empty()) {
         out << "-- ============================================================================\n";

@@ -1337,4 +1337,96 @@ TEST(FsmIr, CanonicalTransitionPriority_EnforcesAscendingEvaluationOrder) {
     EXPECT_EQ(edges[3].target, "S1");
 }
 
+/**
+ * @brief Verify ExpressionAstNode numeric and boolean evaluation and lossless JSON roundtrip of instructions, clocks,
+ * and choice nodes.
+ * @scenario Evaluate algebraic and boolean ASTs against a symbol environment, and roundtrip an FsmIr with instructions,
+ * clocks, and choice nodes through JSON.
+ * @expected Evaluation produces exact numeric/boolean results (or nullopt on divide-by-zero/unknowns), and JSON
+ * deserialization restores instructions, clocks, and choice nodes.
+ */
+TEST(FsmIr, ExpressionEvaluationAndLosslessJsonRoundtrip_PreservesInstructionsClocksAndChoices) {
+    std::unordered_map<std::string, double> env = {
+        {"x", 10.0},
+        {"y", 4.0},
+        {"sensor", 25.5},
+        {"flag", 1.0},
+    };
+
+    auto expr_arith = ExpressionAstNode::parse("(x + y) * 2 - in.sensor");
+    auto val_arith = expr_arith.evaluate_numeric(env);
+    ASSERT_TRUE(val_arith.has_value());
+    EXPECT_DOUBLE_EQ(*val_arith, 2.5);
+
+    auto expr_div_zero = ExpressionAstNode::parse("x / (y - 4)");
+    EXPECT_FALSE(expr_div_zero.evaluate_numeric(env).has_value());
+
+    auto expr_unknown = ExpressionAstNode::parse("x + missing_var");
+    EXPECT_FALSE(expr_unknown.evaluate_numeric(env).has_value());
+
+    auto expr_bool = ExpressionAstNode::parse("x > y && (in.sensor >= 20.0 || missing_var > 0)");
+    auto val_bool = expr_bool.evaluate_boolean(env);
+    ASSERT_TRUE(val_bool.has_value());
+    EXPECT_TRUE(*val_bool);
+
+    // Lossless JSON serialization of instructions, clocks, and choice_nodes
+    FsmIr ir;
+    ir.name = "LosslessRoundtripMachine";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+    ir.add_state("Active");
+    ir.clocks.emplace_back("clk_dwell", TimeUnit::Milliseconds, "State dwell clock");
+    ir.add_choice_node("CheckSensor");
+
+    ActionSignature act("ComplexEffect", "run_effect()");
+    StoreOp store_op;
+    store_op.target = LValueTarget("counter", LValueScope::Register);
+    store_op.op = AssignmentOp::AddAssign;
+    store_op.expression = "1";
+    act.instructions.emplace_back(store_op, "Increment counter");
+
+    PortWriteOp pw_op;
+    pw_op.port_name = "tx_bus";
+    pw_op.expression = "42";
+    act.instructions.emplace_back(pw_op, "Write bus");
+
+    PortReadOp pr_op;
+    pr_op.port_name = "rx_bus";
+    pr_op.destination = LValueTarget("rx_val", LValueScope::Local);
+    act.instructions.emplace_back(pr_op, "Read bus");
+
+    SignalEmitOp se_op;
+    se_op.signal_name = "EvDone";
+    se_op.arguments = {"1", "2"};
+    se_op.target_port = "out_port";
+    act.instructions.emplace_back(se_op, "Emit completion");
+
+    ActionCallOp ac_op;
+    ac_op.function_name = "calibrate";
+    ac_op.arguments = {"x"};
+    ac_op.read_set = {"x"};
+    ac_op.write_set = {"cal"};
+    act.instructions.emplace_back(ac_op, "Call calibration");
+
+    TransitionEdge edge("Idle", "Active", "EvGo");
+    edge.transition_action = act;
+    ir.add_transition(std::move(edge));
+
+    std::string json = FsmIrSerializer::serialize_json(ir);
+    EXPECT_NE(json.find("\"clocks\": ["), std::string::npos);
+    EXPECT_NE(json.find("\"choice_nodes\": ["), std::string::npos);
+    EXPECT_NE(json.find("\"instructions\": ["), std::string::npos);
+
+    FsmIr restored;
+    std::string err;
+    ASSERT_TRUE(FsmIrDeserializer::deserialize_json(json, restored, err)) << err;
+    ASSERT_EQ(restored.clocks.size(), 1u);
+    EXPECT_EQ(restored.clocks[0].name, "clk_dwell");
+    EXPECT_EQ(restored.clocks[0].resolution, TimeUnit::Milliseconds);
+    EXPECT_TRUE(restored.is_choice_node("CheckSensor"));
+    ASSERT_EQ(restored.transitions.size(), 1u);
+    ASSERT_TRUE(restored.transitions[0].transition_action.has_value());
+    EXPECT_EQ(restored.transitions[0].transition_action->instructions, act.instructions);
+}
+
 }  // namespace

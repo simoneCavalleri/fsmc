@@ -2,6 +2,8 @@
 
 #include <cctype>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
 
 #include "fsm/frontend/common/json_parser.hpp"
@@ -91,6 +93,23 @@ std::unique_ptr<IParser> ParserFactory::create(std::string_view file_path, std::
     auto parser = create_by_extension(file_path);
     if (parser) {
         return parser;
+    }
+    if (!file_path.empty() && file_path != "-" && file_path != "/dev/stdin") {
+        std::error_code ec;
+        std::filesystem::path p(file_path);
+        if (std::filesystem::exists(p, ec) && std::filesystem::is_regular_file(p, ec)) {
+            std::ifstream stream(p);
+            if (stream.is_open()) {
+                std::stringstream buffer;
+                buffer << stream.rdbuf();
+                std::string detected = detect_format_from_content(buffer.str());
+                if (!detected.empty()) {
+                    if (auto content_parser = create_by_format(detected)) {
+                        return content_parser;
+                    }
+                }
+            }
+        }
     }
     // Default fallback to PlantUML parser
     return std::make_unique<PlantUmlParser>();

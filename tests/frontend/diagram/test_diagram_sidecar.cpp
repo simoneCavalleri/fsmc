@@ -7,6 +7,7 @@
 
 #include <string>
 
+#include "fsm/backend/diagram/companion_manifest_emitter.hpp"
 #include "fsm/frontend/common/companion_manifest_parser.hpp"
 #include "fsm/frontend/diagram/diagram_contract_combiner.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
@@ -253,6 +254,54 @@ signals:
     ASSERT_EQ(model.custom_types[0].fields.size(), 2u);
     EXPECT_EQ(model.custom_types[0].fields[0].name, "id");
     EXPECT_EQ(model.custom_types[0].fields[1].name, "payload");
+}
+
+/**
+ * @brief Verify CompanionManifestEmitter, CompanionManifestParser, and DiagramContractCombiner preserve property kind,
+ *        traceability requirement, and description across YAML sidecar roundtrip.
+ * @scenario FsmIr with a PropertyKind::Reachability formal property, req ID, and description emitted to YAML sidecar
+ *           and recombined onto a diagram FsmIr.
+ * @expected Recombined FormalProperty retains PropertyKind::Reachability, traceability_req, and description.
+ */
+TEST(DiagramSidecar, PreservesPropertyKindReqAndDescAcrossSidecarRoundtrip) {
+    FsmIr src;
+    src.name = "PropRoundtrip";
+    src.initial_state = "Idle";
+    src.add_state("Idle");
+    src.add_state("Target");
+    src.add_transition(TransitionEdge("Idle", "Target", "Go"));
+
+    FormalProperty fp;
+    fp.name = "TargetReachable";
+    fp.kind = PropertyKind::Reachability;
+    fp.raw_formula = "F Target";
+    fp.traceability_req = "REQ-REACH-01";
+    fp.description = "Target state is reachable";
+    src.add_property(std::move(fp));
+
+    const std::string yaml = fsm::backend::diagram::CompanionManifestEmitter::emit_yaml(src);
+    EXPECT_NE(yaml.find("kind: \"Reachability\""), std::string::npos);
+
+    CompanionManifest parsed_manifest;
+    std::string err;
+    ASSERT_TRUE(CompanionManifestParser::parse(yaml, parsed_manifest, err)) << err;
+    ASSERT_EQ(parsed_manifest.properties.size(), 1u);
+    EXPECT_EQ(parsed_manifest.properties[0].kind, "Reachability");
+    EXPECT_EQ(parsed_manifest.properties[0].req, "REQ-REACH-01");
+    EXPECT_EQ(parsed_manifest.properties[0].desc, "Target state is reachable");
+
+    FsmIr dst;
+    dst.name = "PropRoundtrip";
+    dst.initial_state = "Idle";
+    dst.add_state("Idle");
+    dst.add_state("Target");
+    dst.add_transition(TransitionEdge("Idle", "Target", "Go"));
+
+    ASSERT_TRUE(DiagramContractCombiner::combine(dst, parsed_manifest, err)) << err;
+    ASSERT_EQ(dst.properties.size(), 1u);
+    EXPECT_EQ(dst.properties[0].kind, PropertyKind::Reachability);
+    EXPECT_EQ(dst.properties[0].traceability_req, "REQ-REACH-01");
+    EXPECT_EQ(dst.properties[0].description, "Target state is reachable");
 }
 
 }  // namespace

@@ -198,19 +198,19 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
         // is required for the runtime is_substate_of check.
         node.pinned_parent = true;
 
-        // Combine entry and exit actions from active member states (deduplicated)
+        // Combine entry and exit actions from active member states (deduplicated by full signature)
         for (const auto& member : tup) {
             const auto* m_node = ir.find_state(member);
             if (m_node != nullptr) {
                 for (const auto& act : m_node->entry_actions) {
                     if (std::none_of(node.entry_actions.begin(), node.entry_actions.end(),
-                                     [&](const auto& existing) { return existing.name == act.name; })) {
+                                     [&](const auto& existing) { return existing == act; })) {
                         node.entry_actions.push_back(act);
                     }
                 }
                 for (const auto& act : m_node->exit_actions) {
                     if (std::none_of(node.exit_actions.begin(), node.exit_actions.end(),
-                                     [&](const auto& existing) { return existing.name == act.name; })) {
+                                     [&](const auto& existing) { return existing == act; })) {
                         node.exit_actions.push_back(act);
                     }
                 }
@@ -316,6 +316,37 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                     }
 
                     std::string dst_product = tuple_to_name(next_tup);
+                    if (src_product != dst_product) {
+                        std::string skip_exit;
+                        std::string skip_entry;
+                        for (std::size_t idx = 0; idx < regions.size(); ++idx) {
+                            if (tup[idx] == next_tup[idx]) {
+                                if (const auto* m_node = ir.find_state(tup[idx])) {
+                                    for (const auto& act : m_node->exit_actions) {
+                                        if (!act.name.empty()) {
+                                            if (!skip_exit.empty())
+                                                skip_exit += "\n";
+                                            skip_exit += act.name;
+                                        }
+                                    }
+                                    for (const auto& act : m_node->entry_actions) {
+                                        if (!act.name.empty()) {
+                                            if (!skip_entry.empty())
+                                                skip_entry += "\n";
+                                            skip_entry += act.name;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (!skip_exit.empty()) {
+                            ir.attributes["ortho_skip_exit:" + src_product + "->" + dst_product] = std::move(skip_exit);
+                        }
+                        if (!skip_entry.empty()) {
+                            ir.attributes["ortho_skip_entry:" + src_product + "->" + dst_product] =
+                                std::move(skip_entry);
+                        }
+                    }
                     TransitionEdge pt;
                     pt.source = src_product;
                     pt.source_id = compute_deterministic_id(src_product);

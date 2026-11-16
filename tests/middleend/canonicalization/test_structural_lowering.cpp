@@ -849,3 +849,85 @@ TEST(StructuralLowering, HistoryLowering_PinsParentAcrossNormalizeHierarchy) {
     EXPECT_TRUE(restore_node->pinned_parent);
     EXPECT_EQ(restore_node->parent_state, "Outer");
 }
+
+/**
+ * @brief Verify ForkJoinLoweringPass preserves incoming Join branch guards and events.
+ * @scenario Join pseudo-state Join1 with incoming edges from A1 (guard g_a, event EvSync) and B1 (guard g_b),
+ *           and outgoing edge Join1 -> Done (no event, guard g_out).
+ * @expected Lowered transition preserves event EvSync, source_ids {A1, B1}, and combined guard (g_out && g_a && g_b).
+ */
+TEST(ForkJoinLowering, JoinBranchGuardsAndEvent_PreservedInLoweredTransitions) {
+    FsmIr ir;
+    DiagnosticEngine diag;
+
+    ir.add_state("A1");
+    ir.add_state("B1");
+    StateNode join_node("Join1");
+    join_node.kind = StateKind::Join;
+    ir.states.push_back(join_node);
+    ir.add_state("Done");
+
+    TransitionEdge in_a("A1", "Join1", "EvSync", "g_a");
+    TransitionEdge in_b("B1", "Join1", "", "g_b");
+    TransitionEdge out_j("Join1", "Done", "", "g_out");
+
+    ir.transitions.push_back(in_a);
+    ir.transitions.push_back(in_b);
+    ir.transitions.push_back(out_j);
+
+    ASSERT_TRUE(ForkJoinLoweringPass::run(ir, diag));
+    EXPECT_EQ(ir.find_state("Join1"), nullptr);
+    ASSERT_EQ(ir.transitions.size(), 1u);
+
+    const auto& lowered = ir.transitions[0];
+    EXPECT_EQ(lowered.target, "Done");
+    EXPECT_EQ(lowered.source_ids.size(), 2u);
+    EXPECT_EQ(lowered.event, "EvSync");
+    ASSERT_TRUE(lowered.guard.has_value());
+    EXPECT_NE(lowered.guard->find("g_out"), std::string::npos);
+    EXPECT_NE(lowered.guard->find("g_a"), std::string::npos);
+    EXPECT_NE(lowered.guard->find("g_b"), std::string::npos);
+}
+
+/**
+ * @brief Verify FsmIr::operator== compares clocks, guards, actions, choice_nodes, bindings, and execution_semantics.
+ * @scenario Two identical FsmIr instances modified one field at a time.
+ * @expected Inequality detected for each of the newly compared fields.
+ */
+TEST(StructuralLoweringTest, FsmIrEqualityComparesAllFields) {
+    FsmIr a;
+    a.name = "EqModel";
+    a.initial_state = "Idle";
+    FsmIr b = a;
+    EXPECT_EQ(a, b);
+
+    b.execution_semantics.preemption_priority = HierarchicalPriority::InnerFirst;
+    EXPECT_NE(a, b);
+    b = a;
+
+    b.clocks.push_back(ClockDefinition("clk"));
+    EXPECT_NE(a, b);
+    b = a;
+
+    GuardModel gm;
+    gm.name = "g1";
+    gm.raw_expression = "x > 0";
+    b.guards.push_back(gm);
+    EXPECT_NE(a, b);
+    b = a;
+
+    ActionModel am;
+    am.name = "act1";
+    b.actions.push_back(am);
+    EXPECT_NE(a, b);
+    b = a;
+
+    ChoiceNodeModel cm;
+    cm.name = "c1";
+    b.choice_nodes.push_back(cm);
+    EXPECT_NE(a, b);
+    b = a;
+
+    b.bindings.push_back(BindingConnector("dst_port", "src_port"));
+    EXPECT_NE(a, b);
+}

@@ -332,9 +332,12 @@ struct FsmIr {
     bool operator==(const FsmIr& other) const noexcept {
         return name == other.name && package == other.package && initial_state == other.initial_state &&
                initial_state_id == other.initial_state_id && concurrency == other.concurrency &&
-               satisfies_reqs == other.satisfies_reqs && attributes == other.attributes && states == other.states &&
-               transitions == other.transitions && ports == other.ports && signals == other.signals &&
-               variables == other.variables && custom_types == other.custom_types && properties == other.properties;
+               execution_semantics == other.execution_semantics && satisfies_reqs == other.satisfies_reqs &&
+               attributes == other.attributes && states == other.states && transitions == other.transitions &&
+               ports == other.ports && signals == other.signals && clocks == other.clocks &&
+               variables == other.variables && custom_types == other.custom_types && properties == other.properties &&
+               guards == other.guards && actions == other.actions && choice_nodes == other.choice_nodes &&
+               bindings == other.bindings;
     }
 };
 

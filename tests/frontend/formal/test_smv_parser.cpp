@@ -391,4 +391,76 @@ ASSIGN
     EXPECT_TRUE(found_flags) << "Expected compound guard containing both flag1 and flag2";
 }
 
+/**
+ * @brief Regression: inline `-- action:` comments after `;` must not swallow the next case branch.
+ * @scenario Parse an SMV next(state) case block where transitions end with `; -- action: <name>`.
+ * @expected All transitions and their commented actions are preserved without dropping following rows.
+ */
+TEST(SmvParser, InlineActionCommentsDoNotDropSubsequentTransitions) {
+    const std::string smv_content = R"(MODULE DroneFSM
+VAR
+  state : {Preflight, Idle, Hovering, Landing};
+  event : {none, EvArm, EvTakeoff, EvLand};
+ASSIGN
+  init(state) := Preflight;
+  next(state) := case
+    state = Preflight & event = EvArm : Idle; -- action: start_idle
+    state = Idle & event = EvTakeoff : Hovering; -- action: start_ascent
+    state = Hovering & event = EvLand : Landing;
+    TRUE : state;
+  esac;
+)";
+
+    SmvParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+
+    ASSERT_EQ(model.transitions.size(), 3u);
+    EXPECT_EQ(model.transitions[0].source, "Preflight");
+    EXPECT_EQ(model.transitions[0].target, "Idle");
+    ASSERT_TRUE(model.transitions[0].transition_action.has_value());
+    EXPECT_EQ(model.transitions[0].transition_action->name, "start_idle");
+
+    EXPECT_EQ(model.transitions[1].source, "Idle");
+    EXPECT_EQ(model.transitions[1].target, "Hovering");
+    ASSERT_TRUE(model.transitions[1].transition_action.has_value());
+    EXPECT_EQ(model.transitions[1].transition_action->name, "start_ascent");
+
+    EXPECT_EQ(model.transitions[2].source, "Hovering");
+    EXPECT_EQ(model.transitions[2].target, "Landing");
+}
+
+/**
+ * @brief Regression: SMV equality `=` and `TRUE`/`FALSE` literals in guards are normalized for C++ / semantic passes.
+ * @scenario Parse an SMV transition guard `(arm_cmd = TRUE) & (fault = FALSE)`.
+ * @expected Guard raw_expression uses `==`, `&&`, `true`, and `false` instead of mutating `=`.
+ */
+TEST(SmvParser, EqualityAndBooleanLiterals_NormalizedToCppSyntax) {
+    const std::string smv_content = R"(MODULE ArmFSM
+VAR
+  state : {Preflight, Armed};
+  event : {none, EvArm};
+  arm_cmd : boolean;
+  fault : boolean;
+ASSIGN
+  init(state) := Preflight;
+  next(state) := case
+    state = Preflight & event = EvArm & (arm_cmd = TRUE) & (fault = FALSE) : Armed;
+    TRUE : state;
+  esac;
+)";
+
+    SmvParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+    ASSERT_EQ(model.transitions.size(), 1u);
+    ASSERT_FALSE(model.guards.empty());
+    ASSERT_TRUE(model.guards[0].raw_expression.has_value());
+    const std::string& expr = *model.guards[0].raw_expression;
+    EXPECT_NE(expr.find("arm_cmd == true"), std::string::npos);
+    EXPECT_NE(expr.find("fault == false"), std::string::npos);
+}
+
 }  // namespace

@@ -351,6 +351,10 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
             }
 
             auto* s = model.find_state_mut(st_name);
+            std::string initial_sub = child->get_attr("initial");
+            if (s != nullptr && !initial_sub.empty()) {
+                s->initial_sub_state = sanitize_identifier(initial_sub);
+            }
 
             // Parse entry, during, exit attributes
             std::string entry_act = child->get_attr("entry");
@@ -630,6 +634,12 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
     if (src.empty() && !dst.empty()) {
         if (scope.empty() && model.initial_state.empty()) {
             model.initial_state = sanitize_identifier(dst);
+        } else if (!scope.empty()) {
+            if (auto* parent = model.find_state_mut(scope)) {
+                if (parent->initial_sub_state.empty()) {
+                    parent->initial_sub_state = sanitize_identifier(dst);
+                }
+            }
         }
         return;
     }

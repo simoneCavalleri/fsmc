@@ -47,6 +47,9 @@ static void emit_state(std::ostream& out, const StateNode& state, const FsmIr& m
     if (state.kind == StateKind::Parallel) {
         out << " decomposition=\"PARALLEL_AND\"";
     }
+    if (!state.initial_sub_state.empty()) {
+        out << " initial=\"" << escape_xml(state.initial_sub_state) << "\"";
+    }
     if (!state.entry_actions.empty()) {
         std::string entry_str;
         for (const auto& act : state.entry_actions) {

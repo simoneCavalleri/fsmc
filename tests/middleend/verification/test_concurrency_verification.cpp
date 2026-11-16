@@ -84,7 +84,7 @@ TEST(OrthogonalInterference, EmptyRegionStateIds_DiscoveredViaParentStateAndEntr
     ir.name = "ConcurrentHierarchicalFSM";
     ir.initial_state = "Par";
 
-    auto& par = ir.add_or_get_state("Par", "", StateKind::Parallel);
+    ir.add_or_get_state("Par", "", StateKind::Parallel);
     ir.add_or_get_state("RegA", "Par");
     ir.add_or_get_state("RegB", "Par");
     ir.add_or_get_state("A1", "RegA");
@@ -98,7 +98,7 @@ TEST(OrthogonalInterference, EmptyRegionStateIds_DiscoveredViaParentStateAndEntr
     reg_a.name = "RegA";
     OrthogonalRegion reg_b;
     reg_b.name = "RegB";
-    par.orthogonal_regions = {reg_a, reg_b};
+    ir.find_state_mut("Par")->orthogonal_regions = {reg_a, reg_b};
 
     TransitionEdge t_a("A1", "A2", "EvA");
     ActionSignature act_a("ActA");

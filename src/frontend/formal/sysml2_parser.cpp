@@ -646,6 +646,13 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
     }
 
     // 5. state <Name> (composite or leaf, optional parallel)
+    static const std::regex digit_state_decl_regex(R"(^(?:parallel\s+)?state\s+([0-9][A-Za-z0-9_]*))",
+                                                   std::regex::optimize);
+    if (std::regex_search(stmt, match, digit_state_decl_regex)) {
+        error_message =
+            "Invalid SysML v2 state identifier '" + match[1].str() + "': identifiers cannot start with a digit";
+        return false;
+    }
     static const std::regex state_decl_regex(R"(^(parallel\s+)?state\s+([A-Za-z_][A-Za-z0-9_]*))",
                                              std::regex::optimize);
     if (std::regex_search(stmt, match, state_decl_regex)) {
@@ -992,6 +999,14 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
                 "Line " + std::to_string(line_number) +
                 ": Invalid SysML v2 transition syntax ('->' is not supported; use 'transition [first <Src>] "
                 "[accept <Evt>] then <Dst>')";
+            return false;
+        }
+        static const std::regex digit_endpoint_regex(R"(\b(?:first|from|then|to)\s+([0-9][A-Za-z0-9_]*))",
+                                                     std::regex::optimize);
+        std::smatch digit_match;
+        if (std::regex_search(stmt, digit_match, digit_endpoint_regex)) {
+            error_message = "Line " + std::to_string(line_number) + ": Invalid SysML v2 state identifier '" +
+                            digit_match[1].str() + "': identifiers cannot start with a digit";
             return false;
         }
         if (!parse_transition_statement(stmt, model, state_stack)) {

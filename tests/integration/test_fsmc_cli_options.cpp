@@ -1178,4 +1178,51 @@ TEST(FsmcCliOptionsTest, IrSimulator_EvaluatesCompoundAstExpressionsAndStoreInst
     EXPECT_EQ(sim_out.str().find("[symbolic-guard]"), std::string::npos);
 }
 
+/**
+ * @brief Verify --races detects concurrent data races even when --7stage pipeline is active.
+ * @scenario SysML v2 model with parallel regions RegA and RegB concurrently writing shared_counter on EvTick.
+ * @expected FsmcDriver::run with --7stage --races fails (returns 1) before OrthogonalProductPass flattens regions.
+ */
+TEST(FsmcCliOptionsTest, CheckRaces_DetectsDataRaceUnder7StagePipeline) {
+    const std::string sysml_path = "/tmp/fsmc_test_races_7stage.sysml";
+    const std::string out_path = "/tmp/fsmc_test_races_7stage.hpp";
+    {
+        std::ofstream ofs(sysml_path);
+        ofs << R"sysml(
+package RacePkg {
+    state def RaceFsm {
+        attribute shared_counter : UInt32 = 0;
+        entry; then Par;
+        parallel state Par {
+            state RegA {
+                entry; then A1;
+                state A1;
+                state A2;
+                transition first A1 accept EvTick do { shared_counter = shared_counter + 1; } then A2;
+            }
+            state RegB {
+                entry; then B1;
+                state B1;
+                state B2;
+                transition first B1 accept EvTick do { shared_counter = shared_counter + 2; } then B2;
+            }
+        }
+    }
+}
+)sysml";
+    }
+
+    fsm::tools::FsmcOptions opts;
+    opts.input_file = sysml_path;
+    opts.output_file = out_path;
+    opts.pipeline_mode = "7stage";
+    opts.check_races = true;
+
+    const int rc = fsm::tools::FsmcDriver::run(opts);
+    EXPECT_EQ(rc, 1);
+
+    std::filesystem::remove(sysml_path);
+    std::filesystem::remove(out_path);
+}
+
 }  // namespace

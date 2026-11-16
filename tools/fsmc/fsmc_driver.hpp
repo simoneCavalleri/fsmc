@@ -274,15 +274,17 @@ class FsmcDriver {
         DiagnosticFormat diag_fmt = parse_diagnostic_format(opts.diagnostic_format);
 
         PassManager pm;
+        bool race_check_ok = true;
         if (opts.pipeline_mode == "7stage" && opts.export_diagram_format.empty()) {
             if (opts.inline_submachines) {
                 create_submachine_pass(opts)->run(model, middleend_diag);
             }
+            if (opts.check_races) {
+                OrthogonalInterferencePassWrapper race_pass;
+                race_check_ok = race_pass.run(model, middleend_diag);
+            }
             const bool optimize_7stage = opts.opt_level > 0 && (opts.opt_level >= 2 || opts.prune_dead_states);
             pm = PassManager::create_verified_7stage_pipeline(optimize_7stage);
-            if (opts.check_races) {
-                pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
-            }
         } else {
             if (opts.export_diagram_format.empty() || opts.opt_level > 0) {
                 pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
@@ -293,11 +295,11 @@ class FsmcDriver {
             if (opts.strict_determinism) {
                 pm.add_pass(std::make_unique<DeterminismEnforcementPassWrapper>());
             }
-            if (opts.check_races) {
-                pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
-            }
             if (opts.inline_submachines) {
                 pm.add_pass(create_submachine_pass(opts));
+            }
+            if (opts.check_races) {
+                pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
             }
             if (opts.opt_level > 0) {
                 if (opts.prune_dead_states || opts.opt_level >= 2) {
@@ -342,7 +344,7 @@ class FsmcDriver {
             pm.add_pass(std::make_unique<PipeThroughPassWrapper>(opts.pipe_through_cmd));
         }
 
-        if (!pm.run(model, middleend_diag) && !opts.verify_mode) {
+        if ((!race_check_ok || !pm.run(model, middleend_diag)) && !opts.verify_mode) {
             std::cerr << middleend_diag.render_to_format(diag_fmt, content);
             return 1;
         }

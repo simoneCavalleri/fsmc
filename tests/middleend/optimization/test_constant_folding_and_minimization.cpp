@@ -63,6 +63,34 @@ TEST(ConstantFolding, TautologicalAndContradictoryGuards_EvaluatedAndPruned) {
 }
 
 /**
+ * @brief Verify ConstantFoldingPass resolves symbolic guard names via FsmIr::guards.
+ * @scenario Transitions reference symbolic GuardModel names (`g_taut`, `g_contra`, `false_`) backed by constant
+ * expressions (`5 > 2`, `2 > 5`, `false`).
+ * @expected Contradictory transitions are pruned and tautological transition becomes unguarded.
+ */
+TEST(ConstantFolding, NamedGuardModels_ResolvedAndFolded) {
+    FsmIr model;
+    model.name = "NamedConstGuardModel";
+    model.add_state("S1");
+    model.add_state("S2");
+    model.add_guard("g_taut", "", std::optional<std::string>{"5 > 2"}, std::optional<std::string>{"5 > 2"});
+    model.add_guard("g_contra", "", std::optional<std::string>{"2 > 5"}, std::optional<std::string>{"2 > 5"});
+    model.add_guard("false_", "", std::optional<std::string>{"false"}, std::optional<std::string>{"false"});
+
+    model.add_transition(TransitionEdge("S1", "S2", "EvTaut", "g_taut"));
+    model.add_transition(TransitionEdge("S1", "S2", "EvContra", "g_contra"));
+    model.add_transition(TransitionEdge("S1", "S2", "EvFalseKw", "false_"));
+
+    ConstantFoldingPass pass;
+    DiagnosticEngine diag;
+    ASSERT_TRUE(pass.run(model, diag));
+
+    ASSERT_EQ(model.transitions.size(), 1u);
+    EXPECT_EQ(model.transitions[0].event, "EvTaut");
+    EXPECT_FALSE(model.transitions[0].guard.has_value());
+}
+
+/**
  * @brief Verify StateMinimizationPass merges behaviorally equivalent states.
  * @scenario States Equiv1 and Equiv2 transition to Target on identical event 'Step' with identical guards/actions.
  * @expected Equiv1 and Equiv2 merged into a single representative state, minimizing state count.

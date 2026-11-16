@@ -22,11 +22,26 @@ bool ConstantFoldingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         }
 
         std::string g = *t.guard;
+        for (const auto& gm : ir.guards) {
+            if (gm.name == g) {
+                if (gm.normalized_expression.has_value() && !gm.normalized_expression->empty()) {
+                    g = *gm.normalized_expression;
+                } else if (gm.raw_expression.has_value() && !gm.raw_expression->empty()) {
+                    g = *gm.raw_expression;
+                }
+                break;
+            }
+        }
         // Trim whitespace
         while (!g.empty() && (g.front() == ' ' || g.front() == '\t'))
             g.erase(g.begin());
         while (!g.empty() && (g.back() == ' ' || g.back() == '\t'))
             g.pop_back();
+        if (g == "true_") {
+            g = "true";
+        } else if (g == "false_") {
+            g = "false";
+        }
 
         // Constant evaluation patterns
         if (g == "true" || g == "1" || g == "1 == 1" || g == "0 == 0" || g == "!false" || g == "!0") {

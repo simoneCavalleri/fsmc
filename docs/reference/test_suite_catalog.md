@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 598  
+**Total Documented Test Cases**: 599  
 
 ---
 
@@ -1508,6 +1508,9 @@
 ### [`test_constant_folding_and_minimization.cpp`](../../tests/middleend/optimization/test_constant_folding_and_minimization.cpp) (`tests/middleend/optimization/test_constant_folding_and_minimization.cpp`)
 #### `ConstantFolding.TautologicalAndContradictoryGuards_EvaluatedAndPruned`
 **Test Intent**: Verify ConstantFoldingPass folds tautological guards and eliminates false transitions.
+
+#### `ConstantFolding.NamedGuardModels_ResolvedAndFolded`
+**Test Intent**: Verify ConstantFoldingPass resolves symbolic guard names via FsmIr::guards.
 
 #### `StateMinimization.BehaviorallyEquivalentStates_MergedIntoCanonicalRepresentative`
 **Test Intent**: Verify StateMinimizationPass merges behaviorally equivalent states.

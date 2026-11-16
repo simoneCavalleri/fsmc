@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 576  
+**Total Documented Test Cases**: 577  
 
 ---
 
@@ -1008,6 +1008,10 @@
 
 #### `StateflowParser.CompositeInitialSubstate_RoundtripsViaAttributeAndInitialTransition`
 **Test Intent**: Regression: composite state initial_substate is preserved by StateflowParser and StateflowSerializer.
+
+#### `StateflowParser.TransitionActionAssignments_PopulatedInActionSignature`
+**Test Intent**: Regression: Stateflow transition action blocks with variable assignments populate
+`ActionSignature::assignments`.
 
 ### [`test_stateflow_slx_ingestion.cpp`](../../tests/frontend/formal/test_stateflow_slx_ingestion.cpp) (`tests/frontend/formal/test_stateflow_slx_ingestion.cpp`)
 #### `StateflowSlxIngestion.IngestStoredSlxContainer_ParsesModelDirectly`

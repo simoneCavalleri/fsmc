@@ -441,4 +441,38 @@ TEST(StateflowParser, CompositeInitialSubstate_RoundtripsViaAttributeAndInitialT
     EXPECT_EQ(reparsed_active->initial_sub_state, "Idle");
 }
 
+/**
+ * @brief Regression: Stateflow transition action blocks with variable assignments populate
+ * `ActionSignature::assignments`.
+ * @scenario Parse a Stateflow transition with `labelString="EvGo [a &gt; 0 &amp;&amp; b &lt; 10] / { x = a; y += 1 }"`.
+ * @expected `transition_action->assignments` contains `x = a` and `y = y + 1` rather than sanitizing `x = a` as a
+ *           service call name.
+ */
+TEST(StateflowParser, TransitionActionAssignments_PopulatedInActionSignature) {
+    const std::string sf_xml = R"(
+        <Stateflow>
+            <chart id="1" name="SfAssignChart" initial="Idle">
+                <state id="10" name="Idle"/>
+                <state id="20" name="Done"/>
+                <transition src="Idle" dst="Done"
+                    labelString="EvGo [a &gt; 0 &amp;&amp; b &lt; 10] / { x = a; y += 1 }"/>
+            </chart>
+        </Stateflow>
+    )";
+
+    StateflowParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err;
+
+    ASSERT_EQ(model.transitions.size(), 1u);
+    const auto& tr = model.transitions[0];
+    ASSERT_TRUE(tr.transition_action.has_value());
+    ASSERT_EQ(tr.transition_action->assignments.size(), 2u);
+    EXPECT_EQ(tr.transition_action->assignments[0].target.name, "x");
+    EXPECT_EQ(tr.transition_action->assignments[0].expression, "a");
+    EXPECT_EQ(tr.transition_action->assignments[1].target.name, "y");
+    EXPECT_EQ(tr.transition_action->assignments[1].expression, "y + 1");
+}
+
 }  // namespace

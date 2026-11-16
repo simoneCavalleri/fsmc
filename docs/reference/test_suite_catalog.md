@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 584  
+**Total Documented Test Cases**: 585  
 
 ---
 
@@ -723,6 +723,9 @@
 
 #### `JsonParser.XStateActionAssignments_PopulatedInActionSignature`
 **Test Intent**: Regression: XState JSON transition action strings with assignments (`"x = 42"`) populate `assignments`.
+
+#### `JsonParser.XStateLifecycleAssignments_PopulatedInEntryAndExitActions`
+**Test Intent**: Regression: XState JSON `entry` and `exit` string assignments populate `ActionSignature::assignments`.
 
 ### [`test_parser_classification.cpp`](../../tests/frontend/common/test_parser_classification.cpp) (`tests/frontend/common/test_parser_classification.cpp`)
 #### `FrontendClassification.FormalParsers_ReportsFormalFrontendKind`

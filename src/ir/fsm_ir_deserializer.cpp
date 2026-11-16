@@ -829,87 +829,54 @@ void parse_states_object(const JsonValue& states_obj, FsmIr& model, const std::s
             }
         }
 
-        // Parse entry actions
-        if (const auto* entry_acts_val = state_data.get_child("entry_actions");
-            entry_acts_val != nullptr && entry_acts_val->is_array() && curr != nullptr) {
-            for (const auto& item : entry_acts_val->arr_val) {
+        auto parse_lifecycle_actions = [&](const char* primary_key, const char* fallback_key, const char* suffix,
+                                           std::vector<ActionSignature>& target) {
+            if (curr == nullptr) {
+                return;
+            }
+            auto append_action_str = [&](const std::string& raw) {
+                if (raw.empty()) {
+                    return;
+                }
+                if (auto assign_sig = try_parse_assignment_action(raw, curr->name + suffix)) {
+                    model.add_action(assign_sig->name);
+                    target.push_back(std::move(*assign_sig));
+                } else {
+                    std::string act = sanitize_identifier(raw);
+                    model.add_action(act);
+                    target.push_back(ActionSignature{act});
+                }
+            };
+            auto append_action_item = [&](const JsonValue& item) {
                 if (item.is_object()) {
                     ActionSignature sig = parse_action_signature_object(item);
                     if (!sig.name.empty()) {
                         model.add_action(sig.name);
                     }
-                    curr->entry_actions.push_back(std::move(sig));
+                    target.push_back(std::move(sig));
                 } else if (item.is_string()) {
-                    std::string act = sanitize_identifier(item.str_val);
-                    model.add_action(act);
-                    curr->entry_actions.push_back(ActionSignature{act});
+                    append_action_str(item.str_val);
                 }
-            }
-        } else {
-            const auto* entry_val = state_data.get_child("entry");
-            if (entry_val != nullptr && curr != nullptr) {
-                if (entry_val->is_string()) {
-                    std::string act = sanitize_identifier(entry_val->str_val);
-                    model.add_action(act);
-                    curr->entry_actions.push_back(ActionSignature{act});
-                } else if (entry_val->is_array()) {
-                    for (const auto& item : entry_val->arr_val) {
-                        if (item.is_string()) {
-                            std::string act = sanitize_identifier(item.str_val);
-                            model.add_action(act);
-                            curr->entry_actions.push_back(ActionSignature{act});
-                        } else if (item.is_object()) {
-                            ActionSignature sig = parse_action_signature_object(item);
-                            if (!sig.name.empty()) {
-                                model.add_action(sig.name);
-                            }
-                            curr->entry_actions.push_back(std::move(sig));
-                        }
-                    }
-                }
-            }
-        }
+            };
 
-        // Parse exit actions
-        if (const auto* exit_acts_val = state_data.get_child("exit_actions");
-            exit_acts_val != nullptr && exit_acts_val->is_array() && curr != nullptr) {
-            for (const auto& item : exit_acts_val->arr_val) {
-                if (item.is_object()) {
-                    ActionSignature sig = parse_action_signature_object(item);
-                    if (!sig.name.empty()) {
-                        model.add_action(sig.name);
-                    }
-                    curr->exit_actions.push_back(std::move(sig));
-                } else if (item.is_string()) {
-                    std::string act = sanitize_identifier(item.str_val);
-                    model.add_action(act);
-                    curr->exit_actions.push_back(ActionSignature{act});
+            if (const auto* primary_val = state_data.get_child(primary_key);
+                primary_val != nullptr && primary_val->is_array()) {
+                for (const auto& item : primary_val->arr_val) {
+                    append_action_item(item);
                 }
-            }
-        } else {
-            const auto* exit_val = state_data.get_child("exit");
-            if (exit_val != nullptr && curr != nullptr) {
-                if (exit_val->is_string()) {
-                    std::string act = sanitize_identifier(exit_val->str_val);
-                    model.add_action(act);
-                    curr->exit_actions.push_back(ActionSignature{act});
-                } else if (exit_val->is_array()) {
-                    for (const auto& item : exit_val->arr_val) {
-                        if (item.is_string()) {
-                            std::string act = sanitize_identifier(item.str_val);
-                            model.add_action(act);
-                            curr->exit_actions.push_back(ActionSignature{act});
-                        } else if (item.is_object()) {
-                            ActionSignature sig = parse_action_signature_object(item);
-                            if (!sig.name.empty()) {
-                                model.add_action(sig.name);
-                            }
-                            curr->exit_actions.push_back(std::move(sig));
-                        }
+            } else if (const auto* fallback_val = state_data.get_child(fallback_key)) {
+                if (fallback_val->is_string()) {
+                    append_action_str(fallback_val->str_val);
+                } else if (fallback_val->is_array()) {
+                    for (const auto& item : fallback_val->arr_val) {
+                        append_action_item(item);
                     }
                 }
             }
-        }
+        };
+
+        parse_lifecycle_actions("entry_actions", "entry", "_entry", curr->entry_actions);
+        parse_lifecycle_actions("exit_actions", "exit", "_exit", curr->exit_actions);
 
         // Parse type / history / composite / initial
         std::string s_type = state_data.get_string("type");

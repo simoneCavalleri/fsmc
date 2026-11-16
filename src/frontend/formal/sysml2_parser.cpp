@@ -411,11 +411,14 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    // 2a-2. Enum Literal: enum <LitName> [ = <val> ]
-    static const std::regex enum_lit_regex(R"(^enum\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*=\s*(-?\d+))?)",
+    // 2a-2. Enum Literal: [enum] <LitName> [ = <val> ]
+    static const std::regex enum_lit_regex(R"(^(?:enum\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*=\s*(-?\d+))?$)",
                                            std::regex::optimize);
-    if (!current_enum_def.empty() && std::regex_search(stmt, match, enum_lit_regex)) {
+    if (!current_enum_def.empty() && std::regex_match(stmt, match, enum_lit_regex)) {
         const std::string lit_name = sanitize_identifier(match[1].str());
+        if (lit_name == "doc" || lit_name == "comment" || lit_name == "attribute") {
+            return true;
+        }
         std::optional<int64_t> val = std::nullopt;
         if (match[2].matched) {
             try {

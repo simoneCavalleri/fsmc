@@ -932,4 +932,39 @@ package HistoryDotPkg {
     EXPECT_TRUE(active->has_deep_history);
 }
 
+/**
+ * @brief Regression: bare enum literals without repeating `enum` inside `enum def` must be parsed.
+ * @scenario Parse `enum def OpMode { Boot; Auto = 2; Manual; }` inside a SysML2 state def.
+ * @expected `OpMode` contains all three `EnumLiteral` entries with `Auto` having value `2`.
+ */
+TEST(Sysml2ParserTest, ParsesBareEnumLiteralsInsideEnumDef) {
+    const std::string sysml = R"sysml(
+package BareEnumPkg {
+    state def SystemCtrl {
+        enum def OpMode {
+            Boot;
+            Auto = 2;
+            Manual;
+        }
+        entry; then Init;
+        state Init;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+
+    const auto* op_mode = model.find_enum("OpMode");
+    ASSERT_NE(op_mode, nullptr);
+    ASSERT_EQ(op_mode->literals.size(), 3u);
+    EXPECT_EQ(op_mode->literals[0].name, "Boot");
+    EXPECT_EQ(op_mode->literals[1].name, "Auto");
+    ASSERT_TRUE(op_mode->literals[1].value.has_value());
+    EXPECT_EQ(*op_mode->literals[1].value, 2);
+    EXPECT_EQ(op_mode->literals[2].name, "Manual");
+}
+
 }  // namespace

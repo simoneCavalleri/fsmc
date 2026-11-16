@@ -346,4 +346,11 @@ struct ActionModel {
     bool operator==(const ActionModel& other) const noexcept = default;
 };
 
+/**
+ * @brief Parses semicolon-separated variable assignment statements into an ActionSignature.
+ * @return Populated ActionSignature if at least one assignment/increment statement is matched; std::nullopt otherwise.
+ */
+std::optional<ActionSignature> try_parse_assignment_action(std::string_view raw_action,
+                                                           const std::string& fallback_prefix);
+
 }  // namespace fsm::ir

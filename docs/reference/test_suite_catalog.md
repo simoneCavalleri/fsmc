@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 570  
+**Total Documented Test Cases**: 571  
 
 ---
 
@@ -801,6 +801,10 @@
 
 #### `DotParser.ClusterSubgraph_ParsedAsCompositeState`
 **Test Intent**: Verify DOT subgraph cluster parsing into hierarchical composite states.
+
+#### `DotParser.ScopedInitialIdentifiers_PopulateInitialSubstateWithoutPointShape`
+**Test Intent**: Regression: scoped initial node names (e.g. `initial_Active`) inside cluster subgraphs set
+`initial_sub_state` without requiring an explicit `[shape=point]` node declaration.
 
 ### [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) (`tests/frontend/diagram/test_mermaid_parser.cpp`)
 #### `MermaidParser.BasicDiagram_ParsedIntoValidFsmIr`

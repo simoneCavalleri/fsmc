@@ -257,8 +257,10 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
             }
 
             // Is initial transition?
-            if (point_nodes.count(src_raw) != 0 || src_raw.rfind("__start", 0) == 0 || src_raw == "[*]" ||
-                src_raw == "__start__" || src_raw == "start" || src_raw == "init" || src_raw == "initial") {
+            if (point_nodes.count(src_raw) != 0 || src_raw.rfind("__start", 0) == 0 ||
+                src_raw.rfind("initial_", 0) == 0 || src_raw.rfind("init_", 0) == 0 ||
+                src_raw.rfind("start_", 0) == 0 || src_raw == "[*]" || src_raw == "__start__" || src_raw == "start" ||
+                src_raw == "init" || src_raw == "initial") {
                 std::string init_target = sanitize_identifier(dst_raw);
                 if (current_parent_state.empty()) {
                     model.initial_state = init_target;

@@ -421,4 +421,43 @@ TEST(CameoParser, ParallelOrthogonalRegions_ParsedAndRoundtripped) {
     EXPECT_EQ(reparsed_running->kind, StateKind::Parallel);
 }
 
+/**
+ * @brief Regression: Cameo XMI guards preserve `normalized_expression` and `effect` assignments populate `assignments`.
+ * @scenario Parse an XMI transition with `guard="x &gt; 0 &amp;&amp; y &lt; 10"` and `effect="z = x"`.
+ * @expected Guard models have `normalized_expression` populated and `transition_action->assignments` contains `z = x`.
+ */
+TEST(CameoParser, GuardExpressionsAndEffectAssignments_PreservedInIr) {
+    const std::string xmi_content = R"(<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="2.1" xmlns:uml="http://www.omg.org/spec/UML/20090901" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1">
+  <uml:Model xmi:id="_m1" name="CameoExecModel">
+    <packagedElement xmi:type="uml:StateMachine" xmi:id="_sm1" name="CameoExec">
+      <region xmi:type="uml:Region" xmi:id="_r1">
+        <subvertex xmi:type="uml:Pseudostate" xmi:id="_ps0" kind="initial"/>
+        <transition xmi:id="_t0" source="_ps0" target="_s1"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s1" name="Idle"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s2" name="Done"/>
+        <transition xmi:id="_t1" source="_s1" target="_s2" trigger="EvGo" guard="x &gt; 0 &amp;&amp; y &lt; 10" effect="z = x"/>
+      </region>
+    </packagedElement>
+  </uml:Model>
+</xmi:XMI>)";
+
+    CameoXmiParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xmi_content, model, err)) << err;
+
+    ASSERT_EQ(model.transitions.size(), 1u);
+    const auto& tr = model.transitions[0];
+    ASSERT_TRUE(tr.transition_action.has_value());
+    ASSERT_EQ(tr.transition_action->assignments.size(), 1u);
+    EXPECT_EQ(tr.transition_action->assignments[0].target.name, "z");
+    EXPECT_EQ(tr.transition_action->assignments[0].expression, "x");
+
+    ASSERT_GE(model.guards.size(), 2u);
+    for (const auto& gm : model.guards) {
+        EXPECT_TRUE(gm.normalized_expression.has_value());
+    }
+}
+
 }  // namespace

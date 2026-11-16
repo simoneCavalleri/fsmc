@@ -350,6 +350,72 @@ TEST(RegisterLiveness, InterferingVariableLifetimes_AllocatesDistinctRegisters) 
     EXPECT_NE(*ir.variables[0].register_index, *ir.variables[1].register_index);
 }
 
+/**
+ * @brief Verify RegisterLivenessPass tracks variable uses and defs inside condition_action StoreOp instructions.
+ */
+TEST(RegisterLiveness, ConditionActionStoreOp_TracksUseAndDefCorrectly) {
+    FsmIr ir;
+    ir.name = "ConditionActionLivenessMachine";
+    ir.initial_state_id = "s1";
+
+    ir.variables.emplace_back("v_cond", DataType::int32(), "0");
+    ir.variables.emplace_back("v_trans", DataType::int32(), "0");
+
+    StateNode s1("s1", "s1");
+    StateNode s2("s2", "s2");
+    ir.states.push_back(s1);
+    ir.states.push_back(s2);
+
+    // s1 -> s2 defines both v_cond and v_trans
+    TransitionEdge t1;
+    t1.source_id = "s1";
+    t1.target_id = "s2";
+    t1.trigger = SignalTrigger("INIT_VARS");
+    ActionSignature init_act;
+    StoreOp st1;
+    st1.target = LValueTarget("v_cond");
+    st1.expression = "10";
+    init_act.instructions.emplace_back(st1);
+    StoreOp st2;
+    st2.target = LValueTarget("v_trans");
+    st2.expression = "20";
+    init_act.instructions.emplace_back(st2);
+    t1.transition_action = init_act;
+    ir.add_transition(t1);
+
+    // s2 -> s1 reads v_cond in condition_action and v_trans in transition_action
+    TransitionEdge t2;
+    t2.source_id = "s2";
+    t2.target_id = "s1";
+    t2.trigger = SignalTrigger("STEP");
+
+    ActionSignature cond_act;
+    StoreOp cond_st;
+    cond_st.target = LValueTarget("v_cond");
+    cond_st.op = AssignmentOp::AddAssign;
+    cond_st.expression = "1";
+    cond_act.instructions.emplace_back(cond_st);
+    t2.condition_action = cond_act;
+
+    ActionSignature trans_act;
+    StoreOp trans_st;
+    trans_st.target = LValueTarget("v_trans");
+    trans_st.op = AssignmentOp::AddAssign;
+    trans_st.expression = "v_cond";
+    trans_act.instructions.emplace_back(trans_st);
+    t2.transition_action = trans_act;
+    ir.add_transition(t2);
+
+    DiagnosticEngine diag;
+    RegisterLivenessPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+
+    ASSERT_TRUE(ir.variables[0].register_index.has_value());
+    ASSERT_TRUE(ir.variables[1].register_index.has_value());
+    // Both v_cond and v_trans are live across s2 into t2, so they must get distinct registers
+    EXPECT_NE(*ir.variables[0].register_index, *ir.variables[1].register_index);
+}
+
 // ============================================================================
 // TransitionFusionPass Tests
 // ============================================================================
@@ -702,4 +768,39 @@ TEST(CommonActionFactoring, InitialStateWithIncomingEdges_PreservesInitialStateS
     EXPECT_TRUE(s->entry_actions.empty());
     EXPECT_TRUE(ir.transitions[0].transition_action.has_value());
     EXPECT_TRUE(ir.transitions[1].transition_action.has_value());
+}
+
+/**
+ * @brief Verify TransitionFusionPass preserves intermediate states referenced in formal properties.
+ */
+TEST(TransitionFusion, StateReferencedByFormalProperty_PreservedWithoutFusion) {
+    FsmIr ir;
+    ir.name = "PropertyPreservedFusionFSM";
+    ir.initial_state_id = "s_start";
+
+    ir.states.emplace_back("s_start", "s_start");
+    ir.states.emplace_back("s_verify", "s_verify");
+    ir.states.emplace_back("s_end", "s_end");
+
+    TransitionEdge t1;
+    t1.source_id = "s_start";
+    t1.target_id = "s_verify";
+    t1.trigger = SignalTrigger("GO");
+    ir.add_transition(t1);
+
+    TransitionEdge t2;
+    t2.source_id = "s_verify";
+    t2.target_id = "s_end";
+    t2.trigger = AnonymousTrigger{};
+    ir.add_transition(t2);
+
+    ir.add_property(FormalProperty("VerifyReached", PropertyKind::Reachability, "F(s_verify)"));
+
+    DiagnosticEngine diag;
+    TransitionFusionPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+
+    // s_verify is referenced in ir.properties and must NOT be fused away
+    EXPECT_NE(ir.find_state("s_verify"), nullptr);
+    EXPECT_EQ(ir.states.size(), 3u);
 }

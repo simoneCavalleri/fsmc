@@ -5,13 +5,13 @@
 #include <variant>
 
 #include "fsm/frontend/directive/directive_parser.hpp"
-#include "fsm/frontend/directive/guard_parser.hpp"
+#include "fsm/ir/guard.hpp"
 
 namespace fsm::backend::formal {
 
 using namespace fsm::ir;
 using frontend::directive::DirectiveParser;
-using frontend::directive::GuardExpressionParser;
+using ir::GuardExpressionParser;
 
 static std::string escape_xml(std::string_view input) {
     std::string res;

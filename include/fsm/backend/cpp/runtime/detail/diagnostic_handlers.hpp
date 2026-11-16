@@ -27,6 +27,12 @@ class diagnostic_handler_manager {
     void set_user_observer(observer_fn obs) { user_observer_ = std::move(obs); }
     void clear_user_observer() { user_observer_ = nullptr; }
 
+    [[nodiscard]] bool has_any_callback() const noexcept {
+        return static_cast<bool>(unhandled_handler_) || static_cast<bool>(guard_rejected_handler_) ||
+               static_cast<bool>(deferred_handler_) || static_cast<bool>(failure_handler_) ||
+               static_cast<bool>(exception_handler_) || static_cast<bool>(user_observer_);
+    }
+
     [[nodiscard]] exception_handler get_exception_handler_copy() const { return exception_handler_; }
 
     [[nodiscard]] std::exception_ptr last_exception() const noexcept { return last_exception_; }

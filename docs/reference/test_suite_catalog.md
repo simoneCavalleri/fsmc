@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 532  
+**Total Documented Test Cases**: 539  
 
 ---
 
@@ -149,6 +149,9 @@
 
 #### `FlightRecorder.ConstFlightRecorderObserver_RecordsWithoutUndefinedBehavior`
 **Test Intent**: Verify const flight_recorder_observer safely records transitions via mutable TraceBuffer.
+
+#### `FlightRecorder.SetInvariantViolationHandler_FunctionPointerOverload_IsNoexceptAndInvoked`
+**Test Intent**: Verify function-pointer overload of set_invariant_violation_handler is noexcept and invokes callback.
 
 ### [`test_fsm.cpp`](../../tests/backend/cpp/runtime/test_fsm.cpp) (`tests/backend/cpp/runtime/test_fsm.cpp`)
 #### `FsmCore.BasicTransitions_EventDispatch_UpdatesCurrentState`
@@ -300,6 +303,9 @@
 
 #### `ThreadSafeFsm.WithTimerManagerAndReentrantSendWithPorts_PreservesInPorts`
 **Test Intent**: Verify with_timer_manager() thread-safe access and reentrant send(event, in, out) preserving in-port values.
+
+#### `ThreadSafeFsm.SendFastPath_WithAndWithoutDiagnosticCallbacks_DispatchesCorrectly`
+**Test Intent**: Verify synchronous send() zero-allocation fast-path without callbacks and notification path with callbacks.
 
 ### [`test_timed_transitions.cpp`](../../tests/backend/cpp/runtime/test_timed_transitions.cpp) (`tests/backend/cpp/runtime/test_timed_transitions.cpp`)
 #### `TimedTransitions.SyncTimedEvent_Dispatch_TransitionsAfterDuration`
@@ -585,6 +591,9 @@
 #### `EmitterFactory.CanonicalModel_EmittedAcrossAllRegisteredFormats`
 **Test Intent**: Verify emission across all supported formats via factory dispatcher.
 
+#### `EmitterFactory.FormatDiscoveryAndCppTargetEmission_SupportedAndSynthesized`
+**Test Intent**: Verify EmitterFactory format discovery and C++ target code emission.
+
 ---
 
 ## MC/DC Verification & Harness Subsystem
@@ -787,6 +796,9 @@
 
 #### `MermaidParser.PortDirectives_ParsedWithAttributesAndConstraints`
 **Test Intent**: Verify Mermaid parsing of @fsm:port directives into FsmIr.
+
+#### `MermaidParser.NestedSquareBracketsInGuard_PreservesRawExpressionDetails`
+**Test Intent**: Verify Mermaid parsing of nested square brackets in transition guards and atomic_guard_details preservation.
 
 ### [`test_multiline_actions.cpp`](../../tests/frontend/diagram/test_multiline_actions.cpp) (`tests/frontend/diagram/test_multiline_actions.cpp`)
 - *(Executable binary test verification)*
@@ -1325,6 +1337,9 @@
 #### `CommonActionFactoring.CompositeInitialSubstate_PreservedWithoutFactoringIntoEntry`
 **Test Intent**: Verify that convergent transitions into a composite state's initial substate are not factored into entry.
 
+#### `CommonActionFactoring.FusedBoundaryActions_NeverRefactoredIntoEntryOrExit`
+**Test Intent**: Verify CommonActionFactoringPass skips transition actions whose name starts with "fused_".
+
 ### [`test_constant_folding_and_minimization.cpp`](../../tests/middleend/optimization/test_constant_folding_and_minimization.cpp) (`tests/middleend/optimization/test_constant_folding_and_minimization.cpp`)
 #### `ConstantFolding.TautologicalAndContradictoryGuards_EvaluatedAndPruned`
 **Test Intent**: Verify ConstantFoldingPass folds tautological guards and eliminates false transitions.
@@ -1360,6 +1375,9 @@
 #### `RegisterLiveness.InterferingVariableLifetimes_AllocatesDistinctRegisters`
 **Test Intent**: Verify RegisterLivenessPass assigns distinct register allocations for simultaneously interfering variables.
 
+#### `RegisterLiveness.ConditionActionStoreOp_TracksUseAndDefCorrectly`
+**Test Intent**: Verify RegisterLivenessPass tracks variable uses and defs inside condition_action StoreOp instructions.
+
 #### `TransitionFusion.TransientIntermediateState_FusesTransitionsAndBypassesState`
 **Test Intent**: Verify TransitionFusionPass fuses transient intermediate states and concatenates guards and actions.
 
@@ -1377,6 +1395,9 @@
 
 #### `CommonActionFactoring.InitialStateWithIncomingEdges_PreservesInitialStateSemantics`
 **Test Intent**: Verify CommonActionFactoringPass avoids hoisting into initial state entry actions to protect reset semantics.
+
+#### `TransitionFusion.StateReferencedByFormalProperty_PreservedWithoutFusion`
+**Test Intent**: Verify TransitionFusionPass preserves intermediate states referenced in formal properties.
 
 ### [`test_dead_state_pruning.cpp`](../../tests/middleend/optimization/test_dead_state_pruning.cpp) (`tests/middleend/optimization/test_dead_state_pruning.cpp`)
 #### `DeadStatePruning.UnreachableSubgraphsAndContradictoryGuards_EliminatedFromIr`

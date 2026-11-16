@@ -9,6 +9,7 @@
 #include <variant>
 #include <vector>
 
+#include "fsm/ir/expression.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/model_checker.hpp"
 
@@ -79,9 +80,24 @@ inline bool eval_numeric_predicate(std::string_view expr, const std::unordered_m
         }
         return true;
     }
-    // Strip outer parentheses if balanced
+    // Strip outer parentheses if balanced across the entire expression
     if (s.size() >= 2 && s.front() == '(' && s.back() == ')') {
-        return eval_numeric_predicate(std::string_view(s).substr(1, s.size() - 2), env, symbolic_fallback, model);
+        int depth = 0;
+        bool wraps_all = true;
+        for (std::size_t i = 0; i + 1 < s.size(); ++i) {
+            if (s[i] == '(') {
+                ++depth;
+            } else if (s[i] == ')') {
+                --depth;
+            }
+            if (depth == 0) {
+                wraps_all = false;
+                break;
+            }
+        }
+        if (wraps_all) {
+            return eval_numeric_predicate(std::string_view(s).substr(1, s.size() - 2), env, symbolic_fallback, model);
+        }
     }
     // Handle C++ guard combinators (fsm::and_<...>, fsm::or_<...>, fsm::not_<...>)
     auto match_combinator = [&](std::string_view prefix, std::string_view& inner_out) -> bool {
@@ -143,6 +159,13 @@ inline bool eval_numeric_predicate(std::string_view expr, const std::unordered_m
                 }
                 break;
             }
+        }
+    }
+
+    auto ast = fsm::ir::ExpressionAstNode::parse(s);
+    if (ast.kind != fsm::ir::ExpressionKind::RawExpression) {
+        if (auto b = ast.evaluate_boolean(env); b.has_value()) {
+            return *b;
         }
     }
 
@@ -443,28 +466,60 @@ class IrSimulator {
                 continue;
             }
 
+            auto eval_rhs = [&](const std::string& expr_str, double& rhs_out) -> bool {
+                auto ast = fsm::ir::ExpressionAstNode::parse(expr_str);
+                if (ast.kind != fsm::ir::ExpressionKind::RawExpression) {
+                    if (auto v = ast.evaluate_numeric(step_env); v.has_value()) {
+                        rhs_out = *v;
+                        return true;
+                    }
+                }
+                if (auto it = step_env.find(expr_str); it != step_env.end()) {
+                    rhs_out = it->second;
+                    return true;
+                }
+                try {
+                    rhs_out = std::stod(expr_str);
+                    return true;
+                } catch (...) {
+                    return false;
+                }
+            };
+            auto apply_assign_op = [&](const std::string& target_name, fsm::ir::AssignmentOp op, double rhs) {
+                if (op == fsm::ir::AssignmentOp::Assign) {
+                    env[target_name] = rhs;
+                } else if (op == fsm::ir::AssignmentOp::AddAssign) {
+                    env[target_name] += rhs;
+                } else if (op == fsm::ir::AssignmentOp::SubAssign) {
+                    env[target_name] -= rhs;
+                } else if (op == fsm::ir::AssignmentOp::MulAssign) {
+                    env[target_name] *= rhs;
+                } else if (op == fsm::ir::AssignmentOp::DivAssign && rhs != 0.0) {
+                    env[target_name] /= rhs;
+                }
+                step_env[target_name] = env[target_name];
+            };
             auto apply_act = [&](const std::optional<fsm::ir::ActionSignature>& act_opt) {
                 if (!act_opt.has_value())
                     return;
                 for (const auto& assign : act_opt->assignments) {
                     double rhs = 0.0;
-                    bool sym = false;
-                    if (auto it = step_env.find(assign.expression); it != step_env.end()) {
-                        rhs = it->second;
-                    } else {
-                        try {
-                            rhs = std::stod(assign.expression);
-                        } catch (...) {
-                            sym = true;
-                        }
+                    if (eval_rhs(assign.expression, rhs)) {
+                        apply_assign_op(assign.target.name, assign.op, rhs);
                     }
-                    if (!sym) {
-                        if (assign.op == fsm::ir::AssignmentOp::Assign)
-                            env[assign.target.name] = rhs;
-                        else if (assign.op == fsm::ir::AssignmentOp::AddAssign)
-                            env[assign.target.name] += rhs;
-                        else if (assign.op == fsm::ir::AssignmentOp::SubAssign)
-                            env[assign.target.name] -= rhs;
+                }
+                for (const auto& inst : act_opt->instructions) {
+                    if (const auto* st = std::get_if<fsm::ir::StoreOp>(&inst.op)) {
+                        double rhs = 0.0;
+                        if (eval_rhs(st->expression, rhs)) {
+                            apply_assign_op(st->target.name, st->op, rhs);
+                        }
+                    } else if (const auto* pw = std::get_if<fsm::ir::PortWriteOp>(&inst.op)) {
+                        double rhs = 0.0;
+                        if (eval_rhs(pw->expression, rhs)) {
+                            env[pw->port_name] = rhs;
+                            step_env[pw->port_name] = rhs;
+                        }
                     }
                 }
             };

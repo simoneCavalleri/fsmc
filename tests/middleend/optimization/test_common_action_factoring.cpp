@@ -240,3 +240,69 @@ TEST(CommonActionFactoring, CompositeInitialSubstate_PreservedWithoutFactoringIn
     EXPECT_TRUE(ir.transitions[0].transition_action.has_value());
     EXPECT_TRUE(ir.transitions[1].transition_action.has_value());
 }
+
+/**
+ * @brief Verify CommonActionFactoringPass skips transition actions whose name starts with "fused_".
+ */
+TEST(CommonActionFactoring, FusedBoundaryActions_NeverRefactoredIntoEntryOrExit) {
+    FsmIr ir;
+    ir.name = "FusedActionFactoringGuardTest";
+    ir.initial_state_id = "start";
+
+    ir.states.emplace_back("start", "start");
+    ir.states.emplace_back("s1", "s1");
+    ir.states.emplace_back("s2", "s2");
+    ir.states.emplace_back("target", "target");
+
+    ActionSignature fused_act("fused_s1_to_target");
+    StoreOp store_op;
+    store_op.target = LValueTarget("counter");
+    store_op.expression = "counter + 1";
+    fused_act.instructions.emplace_back(store_op);
+
+    // Convergent transitions into target with "fused_" action name
+    TransitionEdge t1;
+    t1.source_id = "s1";
+    t1.target_id = "target";
+    t1.trigger = SignalTrigger("EV1");
+    t1.transition_action = fused_act;
+    ir.add_transition(t1);
+
+    TransitionEdge t2;
+    t2.source_id = "s2";
+    t2.target_id = "target";
+    t2.trigger = SignalTrigger("EV2");
+    t2.transition_action = fused_act;
+    ir.add_transition(t2);
+
+    // Divergent transitions from start with "fused_" action name
+    TransitionEdge t3;
+    t3.source_id = "start";
+    t3.target_id = "s1";
+    t3.trigger = SignalTrigger("GO1");
+    t3.transition_action = fused_act;
+    ir.add_transition(t3);
+
+    TransitionEdge t4;
+    t4.source_id = "start";
+    t4.target_id = "s2";
+    t4.trigger = SignalTrigger("GO2");
+    t4.transition_action = fused_act;
+    ir.add_transition(t4);
+
+    DiagnosticEngine diag;
+    CommonActionFactoringPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+
+    const auto* tgt = ir.find_state("target");
+    ASSERT_NE(tgt, nullptr);
+    EXPECT_TRUE(tgt->entry_actions.empty());
+
+    const auto* st = ir.find_state("start");
+    ASSERT_NE(st, nullptr);
+    EXPECT_TRUE(st->exit_actions.empty());
+
+    for (const auto& t : ir.transitions) {
+        EXPECT_TRUE(t.transition_action.has_value());
+    }
+}

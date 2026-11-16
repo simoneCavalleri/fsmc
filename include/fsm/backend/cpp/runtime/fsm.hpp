@@ -557,6 +557,19 @@ class fsm {
         invariant_mgr_.set_invariant_violation_handler(std::move(handler));
     }
 
+    void set_invariant_violation_handler(void (*handler)(const invariant_violation_info&)) noexcept {
+        invariant_mgr_.set_violation_handler(handler);
+    }
+
+    template <typename Callable,
+              std::enable_if_t<std::is_convertible_v<Callable, void (*)(const invariant_violation_info&)> &&
+                                   !std::is_same_v<std::decay_t<Callable>, void (*)(const invariant_violation_info&)>,
+                               int> = 0>
+    void set_invariant_violation_handler(Callable&& handler) noexcept {
+        invariant_mgr_.set_violation_handler(
+            static_cast<void (*)(const invariant_violation_info&)>(std::forward<Callable>(handler)));
+    }
+
     bool check_invariants() { return invariant_mgr_.check_invariants(current_state_); }
 
     /**

@@ -56,6 +56,7 @@ struct TransitionEdge {
     bool target_is_deep_history{false};                     ///< True if pointing to a deep history state [H*]
     std::string parent_scope;                               ///< Enclosing composite state scope
     std::vector<std::string> traceability_reqs;             ///< Traceability requirement tags (e.g. "REQ-TRANS-01")
+    std::uint32_t source_line{0};  ///< 1-based source line number for diagnostics (0 = unknown)
 
     TransitionEdge() = default;
 

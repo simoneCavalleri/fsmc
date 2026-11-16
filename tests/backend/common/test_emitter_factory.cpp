@@ -89,4 +89,40 @@ TEST(EmitterFactory, CanonicalModel_EmittedAcrossAllRegisteredFormats) {
     EXPECT_TRUE(invalid_out.empty());
 }
 
+/**
+ * @brief Verify EmitterFactory format discovery and C++ target code emission.
+ * @scenario Query supported_formats(), is_supported_format(), and emit C++ headers via EmitterFactory::emit().
+ * @expected Format queries report C++ and diagram formats accurately, and emit(model, "cpp") generates valid C++
+ * header.
+ */
+TEST(EmitterFactory, FormatDiscoveryAndCppTargetEmission_SupportedAndSynthesized) {
+    const auto formats = EmitterFactory::supported_formats();
+    EXPECT_GE(formats.size(), 11u);
+
+    EXPECT_TRUE(EmitterFactory::is_supported_format("cpp"));
+    EXPECT_TRUE(EmitterFactory::is_supported_format("c++"));
+    EXPECT_TRUE(EmitterFactory::is_supported_format("c++17"));
+    EXPECT_TRUE(EmitterFactory::is_supported_format("c++20"));
+    EXPECT_TRUE(EmitterFactory::is_supported_format("plantuml"));
+    EXPECT_TRUE(EmitterFactory::is_supported_format("mermaid"));
+    EXPECT_TRUE(EmitterFactory::is_supported_format("sysml2"));
+    EXPECT_TRUE(EmitterFactory::is_supported_format("scxml"));
+    EXPECT_FALSE(EmitterFactory::is_supported_format("nonexistent_target"));
+
+    FsmIr model;
+    model.name = "FormatTestFSM";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Active");
+    model.add_transition(TransitionEdge("Idle", "Active", "EvStart"));
+
+    const std::string cpp_out = EmitterFactory::emit(model, "cpp");
+    EXPECT_FALSE(cpp_out.empty());
+    EXPECT_NE(cpp_out.find("FormatTestFSM"), std::string::npos);
+
+    const std::string cpp17_out = EmitterFactory::emit(model, "c++17");
+    EXPECT_FALSE(cpp17_out.empty());
+    EXPECT_NE(cpp17_out.find("FormatTestFSM"), std::string::npos);
+}
+
 }  // namespace

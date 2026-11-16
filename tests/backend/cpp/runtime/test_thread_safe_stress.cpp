@@ -295,4 +295,64 @@ TEST(ThreadSafeFsm, WithTimerManagerAndReentrantSendWithPorts_PreservesInPorts) 
     EXPECT_EQ(machine.snapshot_registers().recorded_sensor, 42);
 }
 
+/**
+ * @brief Verify synchronous send() zero-allocation fast-path without callbacks and notification path with callbacks.
+ * @scenario Dispatch events via send() first with no diagnostic callbacks registered, then register observer and
+ *           unhandled handler callbacks, and finally clear observer.
+ * @expected Fast-path executes transitions cleanly; registered callbacks receive transition and unhandled
+ * notifications.
+ */
+TEST(ThreadSafeFsm, SendFastPath_WithAndWithoutDiagnosticCallbacks_DispatchesCorrectly) {
+    StressServices ctx;
+    fsm::thread_safe_fsm<StressTransitionTable, fsm::no_ports, fsm::no_ports, fsm::no_registers, StressServices>
+        machine(ctx);
+
+    // 1. Fast-path: no diagnostic callbacks registered
+    auto r1 = machine.send(StartEvent{});
+    EXPECT_TRUE(r1.is_success());
+    EXPECT_TRUE(machine.is_in_state<Processing>());
+    EXPECT_EQ(ctx.total_starts.load(), 1u);
+
+    auto r2 = machine.send(FinishEvent{});
+    EXPECT_TRUE(r2.is_success());
+    EXPECT_TRUE(machine.is_in_state<Idle>());
+    EXPECT_EQ(ctx.total_finishes.load(), 1u);
+
+    // Unhandled event on fast-path (FinishEvent in Idle)
+    auto r_unhandled_fast = machine.send(FinishEvent{});
+    EXPECT_TRUE(r_unhandled_fast.is_unhandled());
+
+    // 2. Register observer and unhandled callback
+    std::size_t observed_transitions = 0;
+    std::size_t unhandled_notifications = 0;
+    machine.set_observer([&observed_transitions](const fsm::transition_info& info) {
+        if (info.status == fsm::dispatch_status::success) {
+            ++observed_transitions;
+        }
+    });
+    machine.set_unhandled_handler([&unhandled_notifications](std::string_view /*evt*/, std::string_view /*state*/) {
+        ++unhandled_notifications;
+    });
+
+    auto r3 = machine.send(StartEvent{});
+    EXPECT_TRUE(r3.is_success());
+    EXPECT_EQ(observed_transitions, 1u);
+    EXPECT_EQ(unhandled_notifications, 0u);
+
+    // Unhandled event in Processing (StartEvent is unhandled in Processing)
+    auto r4 = machine.send(StartEvent{});
+    EXPECT_TRUE(r4.is_unhandled());
+    EXPECT_EQ(unhandled_notifications, 1u);
+
+    // 3. Clear callbacks to return to fast-path
+    machine.clear_observer();
+    machine.set_unhandled_handler(nullptr);
+
+    auto r5 = machine.send(FinishEvent{});
+    EXPECT_TRUE(r5.is_success());
+    EXPECT_TRUE(machine.is_in_state<Idle>());
+    EXPECT_EQ(observed_transitions, 1u);
+    EXPECT_EQ(unhandled_notifications, 1u);
+}
+
 }  // namespace

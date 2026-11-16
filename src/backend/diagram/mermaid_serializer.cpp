@@ -8,13 +8,13 @@
 #include <sstream>
 
 #include "fsm/frontend/directive/directive_parser.hpp"
-#include "fsm/frontend/directive/guard_parser.hpp"
+#include "fsm/ir/guard.hpp"
 
 namespace fsm::backend::diagram {
 
 using namespace fsm::ir;
 using frontend::directive::DirectiveParser;
-using frontend::directive::GuardExpressionParser;
+using ir::GuardExpressionParser;
 
 namespace {
 

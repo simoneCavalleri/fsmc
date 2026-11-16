@@ -161,29 +161,53 @@ bool SemanticAnalyzer::validate(const FsmIr& ir, std::vector<std::string>& error
         }
     };
 
-    for (const auto& tr : ir.transitions) {
-        if (tr.condition_action.has_value()) {
-            for (const auto& assign : tr.condition_action->assignments) {
-                check_assignment(assign, "transition '" + tr.source + " -> " + tr.target + "'");
+    auto validate_action_signature = [&](const ActionSignature& act, const std::string& context_desc) {
+        for (const auto& assign : act.assignments) {
+            check_assignment(assign, context_desc);
+        }
+        for (const auto& inst : act.instructions) {
+            if (const auto* st = std::get_if<StoreOp>(&inst.op)) {
+                ActionAssignment temp_asgn(st->target, st->expression, st->op);
+                if (st->expr_ast.has_value()) {
+                    temp_asgn.expr_ast = st->expr_ast;
+                }
+                check_assignment(temp_asgn, context_desc);
+            } else if (const auto* pw = std::get_if<PortWriteOp>(&inst.op)) {
+                if (const auto* port = ir.find_port(pw->port_name);
+                    port != nullptr && port->direction == PortDirection::In) {
+                    errors.push_back("Illegal write to read-only input port '" + pw->port_name + "' in " +
+                                     context_desc);
+                    valid = false;
+                }
+            } else if (const auto* pr = std::get_if<PortReadOp>(&inst.op)) {
+                if (!pr->destination.name.empty()) {
+                    if (const auto* port = ir.find_port(pr->destination.name);
+                        port != nullptr && port->direction == PortDirection::In) {
+                        errors.push_back("Illegal write to read-only input port '" + pr->destination.name + "' in " +
+                                         context_desc);
+                        valid = false;
+                    }
+                }
             }
         }
+    };
+
+    for (const auto& tr : ir.transitions) {
+        const std::string ctx = "transition '" + tr.source + " -> " + tr.target + "'";
+        if (tr.condition_action.has_value()) {
+            validate_action_signature(*tr.condition_action, ctx);
+        }
         if (tr.transition_action.has_value()) {
-            for (const auto& assign : tr.transition_action->assignments) {
-                check_assignment(assign, "transition '" + tr.source + " -> " + tr.target + "'");
-            }
+            validate_action_signature(*tr.transition_action, ctx);
         }
     }
 
     for (const auto& st : ir.states) {
         for (const auto& act : st.entry_actions) {
-            for (const auto& assign : act.assignments) {
-                check_assignment(assign, "state '" + st.name + "' entry action");
-            }
+            validate_action_signature(act, "state '" + st.name + "' entry action");
         }
         for (const auto& act : st.exit_actions) {
-            for (const auto& assign : act.assignments) {
-                check_assignment(assign, "state '" + st.name + "' exit action");
-            }
+            validate_action_signature(act, "state '" + st.name + "' exit action");
         }
     }
 
@@ -382,7 +406,12 @@ bool SemanticAnalyzer::validate(const FsmIr& ir, DiagnosticEngine& diag) {
     std::vector<std::string> warnings;
     bool ok = validate(ir, errors, warnings);
     for (const auto& err : errors) {
-        diag.report(Diagnostic::error("E0501", err));
+        if (err.find("Illegal write to read-only input port") != std::string::npos ||
+            err.find("Cannot assign to read-only InPort") != std::string::npos) {
+            diag.report(Diagnostic::error("E0403", err));
+        } else {
+            diag.report(Diagnostic::error("E0501", err));
+        }
     }
     for (const auto& warn : warnings) {
         diag.report(Diagnostic::warning("W0501", warn));

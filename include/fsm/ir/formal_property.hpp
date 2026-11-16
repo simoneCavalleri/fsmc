@@ -99,6 +99,7 @@ struct FormalProperty {
     std::string raw_formula;                  ///< Source formula string
     std::optional<PropertyAstNode> ast;       ///< Parsed temporal logic AST
     std::string traceability_req;             ///< Traceability requirement tag (e.g. "REQ-SAFE-01")
+    std::uint32_t source_line{0};             ///< 1-based source line number for diagnostics (0 = unknown)
 
     FormalProperty() = default;
     FormalProperty(std::string prop_name, PropertyKind prop_kind, std::string formula, std::string desc = "",

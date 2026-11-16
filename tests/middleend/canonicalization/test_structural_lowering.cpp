@@ -308,6 +308,41 @@ TEST(BoundaryActionFusion, CrossBoundaryTransition_ClearsHooksOnFusedNodes) {
 }
 
 /**
+ * @brief Verify that BoundaryActionFusionPass does not duplicate entry actions kept on initial states.
+ * @scenario Run BoundaryActionFusionPass on a machine whose initial state has an entry assignment and an incoming
+ * transition from another state.
+ * @expected The initial state keeps its entry_actions for runtime startup, and the incoming transition does not fuse a
+ * duplicate copy of that entry action.
+ */
+TEST(StructuralLowering, BoundaryActionFusion_DoesNotDuplicateInitialStateEntryHook) {
+    FsmIr ir;
+    ir.name = "InitEntryNoDup";
+    ir.initial_state = "Step1";
+    ir.add_variable(VariableDefinition("count", DataType{PrimitiveTypeKind::Int32}, "0"));
+
+    StateNode s1("Step1");
+    ActionSignature s1_entry("Step1_entry");
+    s1_entry.assignments.emplace_back(LValueTarget("count"), "count + 1");
+    s1.entry_actions.push_back(std::move(s1_entry));
+
+    StateNode s2("Step2");
+    ir.states.push_back(std::move(s1));
+    ir.states.push_back(std::move(s2));
+
+    ir.transitions.emplace_back("Step1", "Step2", "NEXT");
+    ir.transitions.emplace_back("Step2", "Step1", "BACK");
+
+    DiagnosticEngine diag;
+    const bool modified = BoundaryActionFusionPass::run(ir, diag);
+    EXPECT_FALSE(modified);
+
+    const StateNode* s1_after = ir.find_state("Step1");
+    ASSERT_NE(s1_after, nullptr);
+    ASSERT_EQ(s1_after->entry_actions.size(), 1u);
+    EXPECT_FALSE(ir.transitions[1].transition_action.has_value());
+}
+
+/**
  * @brief Verify that BoundaryActionFusionPass does not modify internal transitions.
  * @scenario State 'A' has both an internal self-transition (on EvInternal) and an exit action.
  * @expected The internal transition is left unchanged; no fusion is attempted on it.

@@ -9,6 +9,7 @@
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/passes/boundary_action_fusion_pass.hpp"
+#include "fsm/middleend/passes/choice_inlining_pass.hpp"
 #include "fsm/middleend/passes/connective_junction_chaining_pass.hpp"
 #include "fsm/middleend/passes/deferred_event_lowering_pass.hpp"
 #include "fsm/middleend/passes/fork_join_lowering_pass.hpp"
@@ -1117,4 +1118,49 @@ TEST(HistoryLowering, DeepHistoryOnlyRecordsLeafSubstates) {
         }
     }
     EXPECT_TRUE(found_fallback_to_leaf_a);
+}
+
+/**
+ * @brief Verify ChoiceInliningPass inlines StateKind::EntryPoint and StateKind::ExitPoint pseudostates.
+ * @scenario Composite 'Active' has EntryPoint 'Ingress' (`Idle -> Ingress -> Sub2`) and ExitPoint 'Egress'
+ *           (`Sub2 -> Egress -> Done`).
+ * @expected `Ingress` and `Egress` are inlined and removed, producing direct transitions `Idle -> Sub2` and
+ *           `Sub2 -> Done`.
+ */
+TEST(StructuralLowering, ChoiceInlining_InlinesEntryPointAndExitPointPseudostates) {
+    FsmIr ir;
+    ir.name = "EntryExitInline";
+    ir.initial_state = "Idle";
+
+    StateNode idle("Idle");
+    StateNode done("Done");
+    StateNode active("Active");
+    active.is_composite = true;
+    active.initial_sub_state = "Sub1";
+    StateNode sub1("Sub1", "", "Active");
+    StateNode sub2("Sub2", "", "Active");
+    StateNode ingress("Ingress", "", "Active");
+    ingress.kind = StateKind::EntryPoint;
+    StateNode egress("Egress", "", "Active");
+    egress.kind = StateKind::ExitPoint;
+
+    ir.states = {idle, done, active, sub1, sub2, ingress, egress};
+    ir.transitions.emplace_back("Idle", "Ingress", "EvEnter");
+    ir.transitions.emplace_back("Ingress", "Sub2", "");
+    ir.transitions.emplace_back("Sub2", "Egress", "EvFinish");
+    ir.transitions.emplace_back("Egress", "Done", "");
+
+    DiagnosticEngine diag;
+    ASSERT_TRUE(ChoiceInliningPass::run(ir, diag));
+
+    EXPECT_EQ(ir.find_state("Ingress"), nullptr);
+    EXPECT_EQ(ir.find_state("Egress"), nullptr);
+
+    ASSERT_EQ(ir.transitions.size(), 2u);
+    EXPECT_EQ(ir.transitions[0].source, "Idle");
+    EXPECT_EQ(ir.transitions[0].target, "Sub2");
+    EXPECT_EQ(ir.transitions[0].event, "EvEnter");
+    EXPECT_EQ(ir.transitions[1].source, "Sub2");
+    EXPECT_EQ(ir.transitions[1].target, "Done");
+    EXPECT_EQ(ir.transitions[1].event, "EvFinish");
 }

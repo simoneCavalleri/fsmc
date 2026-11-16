@@ -745,4 +745,34 @@ package Timing {
     EXPECT_TRUE(std::holds_alternative<TimeTrigger>(reparsed.transitions[0].trigger));
 }
 
+/**
+ * @brief Verify Sysml2Parser recognizes standalone 'choice <Name>;' declarations as Choice pseudostates.
+ * @scenario SysML v2 model declaring 'choice CheckCount;'.
+ * @expected CheckCount has StateKind::Choice and is registered in model.choice_nodes.
+ */
+TEST(Sysml2ParserTest, RecognizesChoiceKeywordDeclaration) {
+    const std::string sysml = R"sysml(
+package ChoicePkg {
+    state def M {
+        entry; then A;
+        state A;
+        state B;
+        choice CheckCount;
+        transition first A accept EvGo then CheckCount;
+        transition first CheckCount if ok then B;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+
+    const StateNode* c = model.find_state("CheckCount");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->kind, StateKind::Choice);
+    EXPECT_TRUE(model.is_choice_node("CheckCount"));
+}
+
 }  // namespace

@@ -229,6 +229,47 @@ EFSMIntervalAnalyzer::compute_state_intervals() {
 
         const auto curr_env = state_envs[curr_state];
 
+        auto merge_env_into_state = [&](const std::string& target_state,
+                                        const std::unordered_map<std::string, Interval>& src_env,
+                                        const std::unordered_set<std::string>& skip_keys) {
+            auto& target_env = state_envs[target_state];
+            bool changed = false;
+            bool apply_widening = (state_visits[target_state] >= 3);
+
+            for (const auto& [var_name, interval] : src_env) {
+                if (skip_keys.count(var_name) > 0) {
+                    continue;
+                }
+                auto it_tgt = target_env.find(var_name);
+                if (it_tgt == target_env.end()) {
+                    target_env[var_name] = interval;
+                    changed = true;
+                } else {
+                    auto merged =
+                        apply_widening ? it_tgt->second.widen_with(interval) : it_tgt->second.join_with(interval);
+                    if (merged != it_tgt->second) {
+                        it_tgt->second = merged;
+                        changed = true;
+                    }
+                }
+            }
+
+            if (changed && in_worklist.count(target_state) == 0) {
+                worklist.push(target_state);
+                in_worklist.insert(target_state);
+            }
+        };
+
+        // Propagate environment along composite hierarchy (entry into initial substate, exit to parent group)
+        if (const auto* curr_node = ir_.find_state(curr_state)) {
+            if (curr_node->is_composite && !curr_node->initial_sub_state.empty()) {
+                merge_env_into_state(curr_node->initial_sub_state, curr_env, {});
+            }
+            if (!curr_node->parent_state.empty()) {
+                merge_env_into_state(curr_node->parent_state, curr_env, {});
+            }
+        }
+
         // Inspect all outgoing transitions from curr_state
         for (const auto& t : ir_.transitions) {
             if (t.source != curr_state) {
@@ -294,37 +335,20 @@ EFSMIntervalAnalyzer::compute_state_intervals() {
                 for (const auto& assign : act_opt->assignments) {
                     apply_assignment(next_env, assign);
                 }
+                if (act_opt->assignments.empty()) {
+                    for (const auto& inst : act_opt->instructions) {
+                        if (const auto* st = std::get_if<StoreOp>(&inst.op)) {
+                            ActionAssignment a(st->target, st->expression, st->op);
+                            apply_assignment(next_env, a);
+                        }
+                    }
+                }
             };
             process_action_assignments(t.condition_action);
             process_action_assignments(t.transition_action);
 
             // Merge into target state environment (excluding ephemeral transition-local payload bindings)
-            auto& target_env = state_envs[t.target];
-            bool changed = false;
-            bool apply_widening = (state_visits[t.target] >= 3);
-
-            for (const auto& [var_name, interval] : next_env) {
-                if (ephemeral_payload_keys.count(var_name) > 0) {
-                    continue;
-                }
-                auto it_tgt = target_env.find(var_name);
-                if (it_tgt == target_env.end()) {
-                    target_env[var_name] = interval;
-                    changed = true;
-                } else {
-                    auto merged =
-                        apply_widening ? it_tgt->second.widen_with(interval) : it_tgt->second.join_with(interval);
-                    if (merged != it_tgt->second) {
-                        it_tgt->second = merged;
-                        changed = true;
-                    }
-                }
-            }
-
-            if (changed && in_worklist.count(t.target) == 0) {
-                worklist.push(t.target);
-                in_worklist.insert(t.target);
-            }
+            merge_env_into_state(t.target, next_env, ephemeral_payload_keys);
         }
     }
 

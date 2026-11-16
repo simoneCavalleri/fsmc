@@ -28,6 +28,23 @@ bool is_ident_char(char c) noexcept {
     return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_';
 }
 
+std::string resolve_action_cpp_name(const std::string& raw_name, const FsmIr& model) {
+    if (raw_name.empty()) {
+        return "";
+    }
+    bool collides = model.find_state(raw_name) != nullptr || model.is_choice_node(raw_name) ||
+                    model.find_signal(raw_name) != nullptr;
+    if (!collides) {
+        for (const auto& t : model.transitions) {
+            if (t.event == raw_name) {
+                collides = true;
+                break;
+            }
+        }
+    }
+    return collides ? escape_cpp_keyword(raw_name + "_action") : escape_cpp_keyword(raw_name);
+}
+
 bool has_unresolved_identifiers(std::string_view expr) {
     static const std::unordered_set<std::string_view> allowed = {
         "in",           "out",     "reg",    "cmd",         "srv",        "true",
@@ -807,15 +824,15 @@ void CppModelEmitter::emit_states(std::ostream& out, const FsmIr& model, const G
             out << "    template <typename InPorts, typename OutPorts, typename Registers, typename Services";
             if (!options.include_stubs) {
                 for (std::size_t i = 0; i < action_names.size(); ++i) {
-                    out << ", typename Act" << i << " = " << escape_cpp_keyword(action_names[i]);
+                    out << ", typename Act" << i << " = " << resolve_action_cpp_name(action_names[i], model);
                 }
             }
             out << ">\n";
             out << "    void " << method_name
                 << "(const InPorts& in, OutPorts& out, Registers& reg, Services& srv) const {\n";
             for (std::size_t i = 0; i < action_names.size(); ++i) {
-                std::string act_type =
-                    options.include_stubs ? escape_cpp_keyword(action_names[i]) : ("Act" + std::to_string(i));
+                std::string act_type = options.include_stubs ? resolve_action_cpp_name(action_names[i], model)
+                                                             : ("Act" + std::to_string(i));
                 std::string var_name =
                     std::string(var_prefix) + (action_names.size() > 1 || std::string_view(var_prefix) != "activity"
                                                    ? ("_" + std::to_string(i))
@@ -1095,13 +1112,13 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                  it != end; ++it) {
                 std::string id = it->str();
                 if (id != "fsm" && id != "and_" && id != "or_" && id != "not_" && id != "seq_" && id != "no_action") {
-                    forward_declared_actions.insert(id);
+                    forward_declared_actions.insert(resolve_action_cpp_name(id, model));
                 }
             }
             continue;
         }
 
-        std::string struct_name = escape_cpp_keyword(action_item.name);
+        std::string struct_name = resolve_action_cpp_name(action_item.name, model);
         out << "/**\n";
         out << " * @struct " << struct_name << "\n";
         out << " * @brief Transition action effect for '" << action_item.name << "'.\n";
@@ -1111,7 +1128,7 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
         bool has_datapath_instructions = false;
         for (const auto& inst : instructions) {
             if (std::holds_alternative<StoreOp>(inst.op) || std::holds_alternative<PortWriteOp>(inst.op) ||
-                std::holds_alternative<PortReadOp>(inst.op)) {
+                std::holds_alternative<PortReadOp>(inst.op) || std::holds_alternative<SignalEmitOp>(inst.op)) {
                 has_datapath_instructions = true;
                 break;
             }
@@ -1438,7 +1455,7 @@ void CppModelEmitter::emit_transition_table(std::ostream& out, const FsmIr& mode
         std::string s = escape_type(src);
         std::string e = escape_type(evt);
         std::string t = escape_type(tgt);
-        std::string a = (act.rfind("::", 0) == 0) ? act : escape_cpp_keyword(act);
+        std::string a = (act.rfind("::", 0) == 0) ? act : resolve_action_cpp_name(act, model);
         std::string g = (grd.rfind("::", 0) == 0) ? grd : escape_cpp_keyword(grd);
         if (!first_row) {
             out << ",\n    ::fsm::row<" << s << ", " << e << ", " << t << ">";
@@ -1458,7 +1475,7 @@ void CppModelEmitter::emit_transition_table(std::ostream& out, const FsmIr& mode
                                  const std::string& grd) {
         std::string s = escape_type(src);
         std::string e = escape_type(evt);
-        std::string a = (act.rfind("::", 0) == 0) ? act : escape_cpp_keyword(act);
+        std::string a = (act.rfind("::", 0) == 0) ? act : resolve_action_cpp_name(act, model);
         std::string g = (grd.rfind("::", 0) == 0) ? grd : escape_cpp_keyword(grd);
         if (!first_row) {
             out << ",\n    ::fsm::internal_row<" << s << ", " << e << ">";
@@ -1508,8 +1525,8 @@ void CppModelEmitter::emit_transition_table(std::ostream& out, const FsmIr& mode
         std::string action_type;
         if (t.condition_action.has_value() && !t.condition_action->name.empty() && t.transition_action.has_value() &&
             !t.transition_action->name.empty()) {
-            action_type = "::fsm::seq_<" + escape_cpp_keyword(t.condition_action->name) + ", " +
-                          escape_cpp_keyword(t.transition_action->name) + ">";
+            action_type = "::fsm::seq_<" + resolve_action_cpp_name(t.condition_action->name, model) + ", " +
+                          resolve_action_cpp_name(t.transition_action->name, model) + ">";
         } else {
             action_type = t.get_action();
             if (action_type.empty()) {

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 610  
+**Total Documented Test Cases**: 611  
 
 ---
 
@@ -543,6 +543,9 @@
 
 #### `CppModelEmitterTest.NoStubsEmitsSynthesizedGuardsAndAssignmentsWhileDeferringExternalStubs`
 **Test Intent**: Regression: `--no-stubs` (`include_stubs = false`) still emits synthesized guards and assignment actions
+
+#### `CppModelEmitter.LowersTargetAgnosticInfixBooleanGuardsToCppCombinators`
+**Test Intent**: Verify CppModelEmitter lowers target-agnostic infix boolean guards in IR to C++ template combinators.
 
 ### [`test_generated_fsm.cpp`](../../tests/backend/cpp/test_generated_fsm.cpp) (`tests/backend/cpp/test_generated_fsm.cpp`)
 - *(Executable binary test verification)*

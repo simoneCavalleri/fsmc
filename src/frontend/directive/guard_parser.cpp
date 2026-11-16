@@ -36,15 +36,19 @@ class GuardTokenizerAndParser {
         token_idx_ = 0;
         std::vector<std::string> atomic_guards;
         std::vector<AtomicGuardInfo> atomic_details;
-        std::string cpp_type = parse_or(atomic_guards, atomic_details);
-        if (cpp_type.empty()) {
+        auto node = parse_or(atomic_guards, atomic_details);
+        if (node.cpp_type.empty()) {
             std::string fallback = sanitize_identifier(src_);
-            return {fallback, {fallback}, {{fallback, std::string(src_)}}};
+            return {fallback, {fallback}, {{fallback, std::string(src_)}}, GuardAstNode(fallback)};
         }
-        return {cpp_type, atomic_guards, atomic_details};
+        return {std::move(node.cpp_type), std::move(atomic_guards), std::move(atomic_details), std::move(node.ast)};
     }
 
   private:
+    struct ParsedNode {
+        std::string cpp_type;
+        GuardAstNode ast;
+    };
     void tokenize() {
         while (pos_ < src_.size()) {
             char c = src_[pos_];
@@ -119,55 +123,57 @@ class GuardTokenizerAndParser {
         tokens_.push_back({TokenType::End, "", ""});
     }
 
-    std::string parse_or(std::vector<std::string>& atomic, std::vector<AtomicGuardInfo>& atomic_details) {
-        std::string left = parse_and(atomic, atomic_details);
+    ParsedNode parse_or(std::vector<std::string>& atomic, std::vector<AtomicGuardInfo>& atomic_details) {
+        auto left = parse_and(atomic, atomic_details);
         while (current().type == TokenType::Or) {
             advance();
-            std::string right = parse_and(atomic, atomic_details);
-            if (left.empty() || right.empty()) {
+            auto right = parse_and(atomic, atomic_details);
+            if (left.cpp_type.empty() || right.cpp_type.empty()) {
                 error_ = true;
-                return "";
+                return {};
             }
             std::string temp = "fsm::or_<";
-            temp.append(left).append(", ").append(right).append(">");
-            left = std::move(temp);
+            temp.append(left.cpp_type).append(", ").append(right.cpp_type).append(">");
+            left.cpp_type = std::move(temp);
+            left.ast = GuardAstNode(GuardOp::Or, {std::move(left.ast), std::move(right.ast)});
         }
         return left;
     }
 
-    std::string parse_and(std::vector<std::string>& atomic, std::vector<AtomicGuardInfo>& atomic_details) {
-        std::string left = parse_unary(atomic, atomic_details);
+    ParsedNode parse_and(std::vector<std::string>& atomic, std::vector<AtomicGuardInfo>& atomic_details) {
+        auto left = parse_unary(atomic, atomic_details);
         while (current().type == TokenType::And) {
             advance();
-            std::string right = parse_unary(atomic, atomic_details);
-            if (left.empty() || right.empty()) {
+            auto right = parse_unary(atomic, atomic_details);
+            if (left.cpp_type.empty() || right.cpp_type.empty()) {
                 error_ = true;
-                return "";
+                return {};
             }
             std::string temp = "fsm::and_<";
-            temp.append(left).append(", ").append(right).append(">");
-            left = std::move(temp);
+            temp.append(left.cpp_type).append(", ").append(right.cpp_type).append(">");
+            left.cpp_type = std::move(temp);
+            left.ast = GuardAstNode(GuardOp::And, {std::move(left.ast), std::move(right.ast)});
         }
         return left;
     }
 
-    std::string parse_unary(std::vector<std::string>& atomic, std::vector<AtomicGuardInfo>& atomic_details) {
+    ParsedNode parse_unary(std::vector<std::string>& atomic, std::vector<AtomicGuardInfo>& atomic_details) {
         if (current().type == TokenType::Not) {
             advance();
-            std::string sub = parse_unary(atomic, atomic_details);
-            if (sub.empty()) {
+            auto sub = parse_unary(atomic, atomic_details);
+            if (sub.cpp_type.empty()) {
                 error_ = true;
-                return "";
+                return {};
             }
-            return "fsm::not_<" + sub + ">";
+            return {"fsm::not_<" + sub.cpp_type + ">", GuardAstNode(GuardOp::Not, {std::move(sub.ast)})};
         }
         return parse_primary(atomic, atomic_details);
     }
 
-    std::string parse_primary(std::vector<std::string>& atomic, std::vector<AtomicGuardInfo>& atomic_details) {
+    ParsedNode parse_primary(std::vector<std::string>& atomic, std::vector<AtomicGuardInfo>& atomic_details) {
         if (current().type == TokenType::LParen) {
             advance();
-            std::string inner = parse_or(atomic, atomic_details);
+            auto inner = parse_or(atomic, atomic_details);
             if (current().type == TokenType::RParen) {
                 advance();
             }
@@ -179,9 +185,9 @@ class GuardTokenizerAndParser {
             advance();
             atomic.push_back(ident);
             atomic_details.push_back({ident, raw});
-            return ident;
+            return {ident, GuardAstNode(ident)};
         }
-        return "";
+        return {};
     }
 
     [[nodiscard]] const Token& current() const {
@@ -310,7 +316,7 @@ ParsedGuardResult GuardExpressionParser::parse(std::string_view raw_expr) {
         return {"", {}, {}};
     }
     if (expr == "else" || expr == "otherwise" || expr == "default") {
-        return {expr, {}, {}};
+        return {expr, {}, {}, GuardAstNode(expr)};
     }
 
     // Normalize textual boolean keywords
@@ -329,7 +335,7 @@ ParsedGuardResult GuardExpressionParser::parse(std::string_view raw_expr) {
         if (ident.empty()) {
             return {"", {}, {}};
         }
-        return {ident, {ident}, {{ident, expr}}};
+        return {ident, {ident}, {{ident, expr}}, GuardAstNode(ident)};
     }
 
     // Full boolean expression parser

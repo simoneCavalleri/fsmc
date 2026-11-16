@@ -207,6 +207,11 @@ TEST(GuardParser, RelationalExpressions_TokenizedAndForwarded) {
     EXPECT_EQ(res.atomic_guard_details[1].name, "faultCount_lt_3");
     EXPECT_EQ(res.atomic_guard_details[1].expression, "faultCount < 3");
     EXPECT_NE(res.cpp_type.find("fsm::and_<canBusHealthy, faultCount_lt_3>"), std::string::npos);
+    ASSERT_TRUE(res.ast.has_value());
+    EXPECT_EQ(res.ast->op, GuardOp::And);
+    ASSERT_EQ(res.ast->children.size(), 2u);
+    EXPECT_EQ(res.ast->children[0].expression, "canBusHealthy");
+    EXPECT_EQ(res.ast->children[1].expression, "faultCount_lt_3");
 
     auto res2 = GuardExpressionParser::parse("(keyInserted and batteryLevel > 11.5)");
     ASSERT_EQ(res2.atomic_guard_details.size(), 2u);

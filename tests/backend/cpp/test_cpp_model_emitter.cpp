@@ -1277,3 +1277,32 @@ TEST(CppModelEmitterTest, NoStubsEmitsSynthesizedGuardsAndAssignmentsWhileDeferr
     EXPECT_NE(str.find("struct ExternalAction;"), std::string::npos);
     EXPECT_EQ(str.find("struct ExternalAction {"), std::string::npos);
 }
+
+/**
+ * @brief Verify CppModelEmitter lowers target-agnostic infix boolean guards in IR to C++ template combinators.
+ * @scenario Transition has `t.guard = "!(a_ok && b_ok) || c_ok"` without `fsm::` prefix.
+ * @expected Emitted transition table contains `::fsm::or_<::fsm::not_<::fsm::and_<a_ok, b_ok>>, c_ok>`.
+ */
+TEST(CppModelEmitter, LowersTargetAgnosticInfixBooleanGuardsToCppCombinators) {
+    FsmIr model;
+    model.name = "InfixGuardFsm";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Done");
+    model.add_event("EvGo");
+    model.add_guard("a_ok");
+    model.add_guard("b_ok");
+    model.add_guard("c_ok");
+
+    TransitionEdge t("Idle", "Done", "EvGo");
+    t.guard = "!(a_ok && b_ok) || c_ok";
+    model.transitions.push_back(t);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = false;
+    CppModelEmitter::emit_model(out, model, opts);
+    const std::string str = out.str();
+
+    EXPECT_NE(str.find("fsm::or_<fsm::not_<fsm::and_<a_ok, b_ok>>, c_ok>"), std::string::npos);
+}

@@ -521,10 +521,12 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
     if (guard_str.empty()) {
         guard_str = trans_obj.get_string("guard_ast");
     }
+    std::optional<GuardAstNode> parsed_guard_ast;
     if (!guard_str.empty()) {
         auto parsed = GuardExpressionParser::parse(guard_str);
         if (!parsed.cpp_type.empty()) {
             trans.guard = parsed.cpp_type;
+            parsed_guard_ast = std::move(parsed.ast);
             for (const auto& detail : parsed.atomic_guard_details) {
                 model.add_guard(detail.name, "", detail.expression, detail.expression);
             }
@@ -543,6 +545,8 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
     std::string guard_ast_str = trans_obj.get_string("guard_ast");
     if (!guard_ast_str.empty() && guard_ast_str.find("fsm::") != std::string::npos) {
         trans.guard_ast = GuardAstNode(guard_ast_str);
+    } else if (parsed_guard_ast.has_value()) {
+        trans.guard_ast = std::move(*parsed_guard_ast);
     } else if (trans.guard.has_value() && !trans.guard->empty()) {
         trans.guard_ast = GuardAstNode(*trans.guard);
     }

@@ -1574,6 +1574,13 @@ void CppModelEmitter::emit_transition_table(std::ostream& out, const FsmIr& mode
         }
         if (guard_type.empty() || guard_type == "else" || guard_type == "otherwise" || guard_type == "default") {
             guard_type = "::fsm::no_guard";
+        } else if (guard_type.rfind("::fsm::", 0) != 0 && guard_type.rfind("fsm::", 0) != 0 &&
+                   (guard_type.find('&') != std::string::npos || guard_type.find('|') != std::string::npos ||
+                    guard_type.find('!') != std::string::npos || guard_type.find('(') != std::string::npos)) {
+            auto parsed = ir::GuardExpressionParser::parse(guard_type);
+            if (!parsed.cpp_type.empty()) {
+                guard_type = std::move(parsed.cpp_type);
+            }
         }
 
         const auto* target_node = find_state_by_name(t.target);

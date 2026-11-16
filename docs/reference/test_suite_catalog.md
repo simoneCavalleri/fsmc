@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 606  
+**Total Documented Test Cases**: 607  
 
 ---
 
@@ -951,6 +951,9 @@
 
 #### `CameoParser.RoundtripVariablesAndAssignmentActions_PreservedInXmi`
 **Test Intent**: Verify CameoSerializer preserves variables, ports, and assignment actions across XMI roundtrip.
+
+#### `CameoParserTest.ResolvesForwardReferencedSiblingTargetsInsideCompositeRegions`
+**Test Intent**: Verify CameoXmiParser resolves transition targets declared later in sibling/outer regions.
 
 ### [`test_scxml_parser.cpp`](../../tests/frontend/formal/test_scxml_parser.cpp) (`tests/frontend/formal/test_scxml_parser.cpp`)
 #### `ScxmlParser.BasicScxmlDocument_ParsedIntoValidFsmIr`

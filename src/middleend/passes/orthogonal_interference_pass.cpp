@@ -9,6 +9,84 @@ namespace fsm::middleend::passes {
 using namespace fsm::ir;
 using namespace fsm::diagnostic;
 
+namespace {
+
+struct RegionWrite {
+    std::string location;
+    std::string variable;
+};
+
+std::unordered_set<std::string> collect_region_states(const FsmIr& ir, const OrthogonalRegion& reg) {
+    std::unordered_set<std::string> states;
+    std::vector<std::string> queue;
+    for (const auto& sid : reg.state_ids) {
+        if (const auto* st = ir.find_state(sid)) {
+            if (states.insert(st->name).second) {
+                queue.push_back(st->name);
+            }
+        } else if (states.insert(sid).second) {
+            queue.push_back(sid);
+        }
+    }
+    if (!reg.name.empty() && states.insert(reg.name).second) {
+        queue.push_back(reg.name);
+    }
+    if (!reg.id.empty() && reg.id != reg.name && states.insert(reg.id).second) {
+        queue.push_back(reg.id);
+    }
+    for (std::size_t idx = 0; idx < queue.size(); ++idx) {
+        const std::string curr = queue[idx];
+        for (const auto& candidate : ir.states) {
+            if (candidate.parent_state == curr && states.insert(candidate.name).second) {
+                queue.push_back(candidate.name);
+            }
+        }
+    }
+    return states;
+}
+
+std::vector<RegionWrite> collect_region_writes(const FsmIr& ir, const OrthogonalRegion& reg) {
+    const std::unordered_set<std::string> region_states = collect_region_states(ir, reg);
+    std::vector<RegionWrite> writes;
+
+    for (const auto& t : ir.transitions) {
+        if (region_states.count(t.source) == 0) {
+            continue;
+        }
+        const std::string loc = "transition " + t.source + "->" + t.target;
+        if (t.condition_action.has_value()) {
+            for (const auto& assign : t.condition_action->assignments) {
+                writes.push_back({loc, assign.target.name});
+            }
+        }
+        if (t.transition_action.has_value()) {
+            for (const auto& assign : t.transition_action->assignments) {
+                writes.push_back({loc, assign.target.name});
+            }
+        }
+    }
+
+    for (const auto& st : ir.states) {
+        if (region_states.count(st.name) == 0) {
+            continue;
+        }
+        for (const auto& act : st.entry_actions) {
+            for (const auto& assign : act.assignments) {
+                writes.push_back({"state " + st.name + " entry", assign.target.name});
+            }
+        }
+        for (const auto& act : st.exit_actions) {
+            for (const auto& assign : act.assignments) {
+                writes.push_back({"state " + st.name + " exit", assign.target.name});
+            }
+        }
+    }
+
+    return writes;
+}
+
+}  // namespace
+
 bool OrthogonalInterferencePass::run(const FsmIr& ir, DiagnosticEngine& diag) {
     for (const auto& state : ir.states) {
         if (state.kind != StateKind::Parallel && state.orthogonal_regions.size() < 2) {
@@ -22,46 +100,12 @@ bool OrthogonalInterferencePass::run(const FsmIr& ir, DiagnosticEngine& diag) {
                 const auto& reg_a = regions[i];
                 const auto& reg_b = regions[j];
 
-                std::unordered_set<std::string> states_a(reg_a.state_ids.begin(), reg_a.state_ids.end());
-                std::unordered_set<std::string> states_b(reg_b.state_ids.begin(), reg_b.state_ids.end());
-
-                // Collect variables modified in region A
-                std::vector<std::pair<const TransitionEdge*, std::string>> writes_a;
-                for (const auto& t : ir.transitions) {
-                    if (states_a.count(t.source) != 0) {
-                        if (t.condition_action.has_value()) {
-                            for (const auto& assign : t.condition_action->assignments) {
-                                writes_a.emplace_back(&t, assign.target.name);
-                            }
-                        }
-                        if (t.transition_action.has_value()) {
-                            for (const auto& assign : t.transition_action->assignments) {
-                                writes_a.emplace_back(&t, assign.target.name);
-                            }
-                        }
-                    }
-                }
-
-                // Collect variables modified in region B
-                std::vector<std::pair<const TransitionEdge*, std::string>> writes_b;
-                for (const auto& t : ir.transitions) {
-                    if (states_b.count(t.source) != 0) {
-                        if (t.condition_action.has_value()) {
-                            for (const auto& assign : t.condition_action->assignments) {
-                                writes_b.emplace_back(&t, assign.target.name);
-                            }
-                        }
-                        if (t.transition_action.has_value()) {
-                            for (const auto& assign : t.transition_action->assignments) {
-                                writes_b.emplace_back(&t, assign.target.name);
-                            }
-                        }
-                    }
-                }
+                const std::vector<RegionWrite> writes_a = collect_region_writes(ir, reg_a);
+                const std::vector<RegionWrite> writes_b = collect_region_writes(ir, reg_b);
 
                 // Check for overlapping variable writes (data races or architectural isolation violations)
-                for (const auto& [tr_a, var_a] : writes_a) {
-                    for (const auto& [tr_b, var_b] : writes_b) {
+                for (const auto& [loc_a, var_a] : writes_a) {
+                    for (const auto& [loc_b, var_b] : writes_b) {
                         if (var_a == var_b) {
                             if (ir.concurrency.datapath_isolation == DatapathIsolation::PartitionedDatapath) {
                                 std::string msg =
@@ -90,9 +134,8 @@ bool OrthogonalInterferencePass::run(const FsmIr& ir, DiagnosticEngine& diag) {
                                 diag.report(Diagnostic::info("I_DOCUMENT_ORDER_SERIALIZED", msg));
                             } else {
                                 std::string msg = "Data race / concurrent interference detected in parallel state '" +
-                                                  state.name + "': Region '" + reg_a.name + "' (transition " +
-                                                  tr_a->source + "->" + tr_a->target + ") and Region '" + reg_b.name +
-                                                  "' (transition " + tr_b->source + "->" + tr_b->target +
+                                                  state.name + "': Region '" + reg_a.name + "' (" + loc_a +
+                                                  ") and Region '" + reg_b.name + "' (" + loc_b +
                                                   ") concurrently mutate shared variable '" + var_a + "'.";
                                 diag.report(Diagnostic::safety_critical("W_CONCURRENT_DATA_RACE", msg));
                             }

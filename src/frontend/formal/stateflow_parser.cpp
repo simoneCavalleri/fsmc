@@ -447,6 +447,36 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
 
             // Recursively parse child states and transitions
             parse_chart_elements(child, model, st_name);
+
+            // Populate orthogonal_regions for PARALLEL_AND states after children are parsed
+            if (auto* par_st = model.find_state_mut(st_name);
+                par_st != nullptr && par_st->kind == StateKind::Parallel) {
+                par_st->is_composite = true;
+                par_st->initial_sub_state.clear();
+                auto is_pseudo = [](const StateNode& sn) {
+                    return sn.kind == StateKind::Junction || sn.kind == StateKind::Choice ||
+                           sn.kind == StateKind::Fork || sn.kind == StateKind::Join ||
+                           sn.kind == StateKind::EntryPoint || sn.kind == StateKind::ExitPoint;
+                };
+                for (const auto& reg_node : model.states) {
+                    if (reg_node.parent_state != st_name || is_pseudo(reg_node)) {
+                        continue;
+                    }
+                    OrthogonalRegion reg;
+                    reg.id = reg_node.name;
+                    reg.name = reg_node.name;
+                    reg.initial_state_id = reg_node.initial_sub_state;
+                    for (const auto& leaf : model.states) {
+                        if (leaf.parent_state == reg_node.name && !is_pseudo(leaf)) {
+                            reg.state_ids.push_back(leaf.name);
+                            if (reg.initial_state_id.empty()) {
+                                reg.initial_state_id = leaf.name;
+                            }
+                        }
+                    }
+                    par_st->orthogonal_regions.push_back(std::move(reg));
+                }
+            }
         } else if (child->tag == "junction" || child->tag == "Junction") {
             std::string jtype = child->get_attr("type");
             std::string jid = child->get_attr("SSID");

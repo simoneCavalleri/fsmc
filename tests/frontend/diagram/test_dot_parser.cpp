@@ -80,4 +80,35 @@ TEST(DotParser, ClusterSubgraph_ParsedAsCompositeState) {
     EXPECT_EQ(inflight->kind, StateKind::Composite);
 }
 
+/**
+ * @brief Regression: scoped initial node names (e.g. `initial_Active`) inside cluster subgraphs set
+ *        `initial_sub_state` without requiring an explicit `[shape=point]` node declaration.
+ * @scenario Parse a DOT digraph containing `initial -> Active` and `initial_Active -> Idle` inside `cluster_Active`.
+ * @expected `initial_Active` is not added as a regular state and `Active->initial_sub_state` is `Idle`.
+ */
+TEST(DotParser, ScopedInitialIdentifiers_PopulateInitialSubstateWithoutPointShape) {
+    const std::string dot_content = R"(digraph HierarchyDot {
+    initial -> Active;
+    subgraph cluster_Active {
+        initial_Active -> Idle;
+        Idle -> Running [label="Start / begin_work"];
+        Running -> Idle [label="Stop / stop_work"];
+    }
+    Active -> Fault [label="Error"];
+}
+)";
+
+    DotParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+
+    EXPECT_EQ(ir.initial_state, "Active");
+    EXPECT_EQ(ir.find_state("initial_Active"), nullptr);
+    const auto* active = ir.find_state("Active");
+    ASSERT_NE(active, nullptr);
+    EXPECT_EQ(active->initial_sub_state, "Idle");
+    EXPECT_EQ(ir.states.size(), 4u);
+}
+
 }  // namespace

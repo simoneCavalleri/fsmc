@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 612  
+**Total Documented Test Cases**: 613  
 
 ---
 
@@ -1207,6 +1207,9 @@
 
 #### `Sysml2StructuredData.FullModel_RoundtrippedLosslessly`
 **Test Intent**: Verify lossless roundtrip serialization of SysML v2 models with structured data.
+
+#### `Sysml2StructuredData.TimeTriggers_SubMillisecondUnitsConvertToMs`
+**Test Intent**: Verify Sysml2Parser converts sub-millisecond time trigger units (`us`, `ns`) to milliseconds.
 
 ---
 

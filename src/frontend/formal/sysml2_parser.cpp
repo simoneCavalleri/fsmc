@@ -986,6 +986,14 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         stmt.find("then") != std::string::npos || stmt.find("first") != std::string::npos ||
         stmt.find("after") != std::string::npos || stmt.find("fork") != std::string::npos ||
         stmt.find("join") != std::string::npos) {
+        if (stmt.rfind("transition", 0) == 0 && stmt.find("->") != std::string::npos &&
+            stmt.find("then") == std::string::npos && stmt.find(" to ") == std::string::npos) {
+            error_message =
+                "Line " + std::to_string(line_number) +
+                ": Invalid SysML v2 transition syntax ('->' is not supported; use 'transition [first <Src>] "
+                "[accept <Evt>] then <Dst>')";
+            return false;
+        }
         if (!parse_transition_statement(stmt, model, state_stack)) {
             if (!error_message.empty() && line_number > 0 && error_message.find("line ") == std::string::npos &&
                 error_message.find("Line ") == std::string::npos) {

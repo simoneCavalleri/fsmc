@@ -9,6 +9,7 @@
 #include <set>
 #include <sstream>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 #include "fsm/ir/identifier_utils.hpp"
@@ -25,6 +26,62 @@ bool is_ident_start(char c) noexcept {
 
 bool is_ident_char(char c) noexcept {
     return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_';
+}
+
+bool has_unresolved_identifiers(std::string_view expr) {
+    static const std::unordered_set<std::string_view> allowed = {
+        "in",           "out",     "reg",    "cmd",         "srv",        "true",
+        "false",        "nullptr", "sizeof", "static_cast", "const_cast", "reinterpret_cast",
+        "dynamic_cast", "and",     "or",     "not",         "bitand",     "bitor",
+        "xor"};
+    const std::size_t n = expr.size();
+    std::size_t i = 0;
+    while (i < n) {
+        if (expr[i] == '"' || expr[i] == '\'') {
+            const char quote = expr[i++];
+            while (i < n) {
+                const char c = expr[i++];
+                if (c == '\\' && i < n) {
+                    ++i;
+                } else if (c == quote) {
+                    break;
+                }
+            }
+            continue;
+        }
+        if (std::isdigit(static_cast<unsigned char>(expr[i])) != 0) {
+            while (i < n && (is_ident_char(expr[i]) || expr[i] == '.')) {
+                ++i;
+            }
+            continue;
+        }
+        if (is_ident_start(expr[i])) {
+            const std::size_t start = i;
+            while (i < n && is_ident_char(expr[i])) {
+                ++i;
+            }
+            const std::string_view tok = expr.substr(start, i - start);
+            std::size_t prev = start;
+            while (prev > 0 && std::isspace(static_cast<unsigned char>(expr[prev - 1])) != 0) {
+                --prev;
+            }
+            const bool preceded_by_access = (prev > 0 && expr[prev - 1] == '.') ||
+                                            (prev >= 2 && expr[prev - 2] == '-' && expr[prev - 1] == '>') ||
+                                            (prev >= 2 && expr[prev - 2] == ':' && expr[prev - 1] == ':');
+            std::size_t next = i;
+            while (next < n && std::isspace(static_cast<unsigned char>(expr[next])) != 0) {
+                ++next;
+            }
+            const bool followed_by_call_or_scope =
+                (next < n && expr[next] == '(') || (next + 1 < n && expr[next] == ':' && expr[next + 1] == ':');
+            if (!preceded_by_access && !followed_by_call_or_scope && allowed.find(tok) == allowed.end()) {
+                return true;
+            }
+            continue;
+        }
+        ++i;
+    }
+    return false;
 }
 
 std::string qualify_expression(std::string expr, const FsmIr& model) {
@@ -133,6 +190,12 @@ bool has_member_access_prefix(const std::string& expr, std::initializer_list<std
                 } else if (c == quote) {
                     break;
                 }
+            }
+            continue;
+        }
+        if (std::isdigit(static_cast<unsigned char>(expr[i])) != 0) {
+            while (i < n && (is_ident_char(expr[i]) || expr[i] == '.')) {
+                ++i;
             }
             continue;
         }
@@ -797,8 +860,12 @@ void CppModelEmitter::emit_guards(std::ostream& out, const FsmIr& model, const G
                                   *guard_item.normalized_expression != guard_item.name &&
                                   (guard_item.name != (*guard_item.normalized_expression + "Guard"));
             std::string expr;
+            bool expr_unresolved = false;
             if (has_expr) {
                 expr = qualify_expression(*guard_item.normalized_expression, model);
+                if (has_unresolved_identifiers(expr)) {
+                    expr_unresolved = true;
+                }
             } else {
                 const auto* p = model.find_port(guard_item.name);
                 const auto* v = model.find_variable(guard_item.name);
@@ -812,10 +879,12 @@ void CppModelEmitter::emit_guards(std::ostream& out, const FsmIr& model, const G
                     expr = "true";
                 }
             }
-            bool references_event = has_member_access_prefix(expr, {"cmd", "event", "payload"});
-            bool references_reg = has_member_access_prefix(expr, {"reg"});
-            std::string non_event_expr = references_event ? "true" : expr;
-            std::string in_only_expr = (references_event || references_reg) ? "true" : expr;
+            const std::string eval_expr = expr_unresolved ? "true" : expr;
+            bool references_event =
+                !expr_unresolved && has_member_access_prefix(eval_expr, {"cmd", "event", "payload"});
+            bool references_reg = !expr_unresolved && has_member_access_prefix(eval_expr, {"reg"});
+            std::string non_event_expr = references_event ? "true" : eval_expr;
+            std::string in_only_expr = (references_event || references_reg) ? "true" : eval_expr;
 
             std::string guard_struct_name = escape_cpp_keyword(guard_item.name);
             out << "/**\n";
@@ -833,6 +902,9 @@ void CppModelEmitter::emit_guards(std::ostream& out, const FsmIr& model, const G
                 out << "    [[nodiscard]] constexpr bool operator()(const InPorts& in, const Registers& reg) const "
                        "noexcept {\n";
                 out << "        (void)in; (void)reg;\n";
+                if (expr_unresolved) {
+                    out << "        // Unresolved guard expression: " << expr << "\n";
+                }
                 out << "        return " << non_event_expr << ";\n";
                 out << "    }\n\n";
             }
@@ -841,13 +913,19 @@ void CppModelEmitter::emit_guards(std::ostream& out, const FsmIr& model, const G
             out << "    [[nodiscard]] constexpr bool operator()(const Event& cmd, const InPorts& in, const "
                    "Registers& reg) const noexcept {\n";
             out << "        (void)cmd; (void)in; (void)reg;\n";
-            out << "        return " << expr << ";\n";
+            if (expr_unresolved) {
+                out << "        // Unresolved guard expression: " << expr << "\n";
+            }
+            out << "        return " << eval_expr << ";\n";
             out << "    }\n\n";
 
             if (!references_event) {
                 out << "    template <typename InPorts>\n";
                 out << "    [[nodiscard]] constexpr bool operator()(const InPorts& in) const noexcept {\n";
                 out << "        (void)in;\n";
+                if (expr_unresolved) {
+                    out << "        // Unresolved guard expression: " << expr << "\n";
+                }
                 out << "        return " << in_only_expr << ";\n";
                 out << "    }\n\n";
             }
@@ -857,7 +935,10 @@ void CppModelEmitter::emit_guards(std::ostream& out, const FsmIr& model, const G
             out << "    [[nodiscard]] constexpr bool operator()(const Event& cmd, const SrcState& /*src*/, const "
                    "InPorts& in, const Registers& reg, Services& /*srv*/, const Fsm& /*fsm*/) const noexcept {\n";
             out << "        (void)cmd; (void)in; (void)reg;\n";
-            out << "        return " << expr << ";\n";
+            if (expr_unresolved) {
+                out << "        // Unresolved guard expression: " << expr << "\n";
+            }
+            out << "        return " << eval_expr << ";\n";
             out << "    }\n";
             out << "};\n\n";
         }
@@ -1155,7 +1236,7 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                     }
                 };
 
-                if (!uses_cmd) {
+                if (!uses_cmd && !uses_srv) {
                     // Overload 1: (const InPorts& in, OutPorts& out, Registers& reg)
                     out << "    template <typename InPorts, typename OutPorts, typename Registers>\n";
                     out << "    void operator()(" << in_param << ", " << out_param << ", " << reg_param
@@ -1164,12 +1245,14 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                     out << "    }\n\n";
                 }
 
-                // Overload 2: (const Event& cmd, const InPorts& in, OutPorts& out, Registers& reg)
-                out << "    template <typename Event, typename InPorts, typename OutPorts, typename Registers>\n";
-                out << "    void operator()(" << cmd_param << ", " << in_param << ", " << out_param << ", " << reg_param
-                    << ") const {\n";
-                emit_assignment_lines("        ");
-                out << "    }\n\n";
+                if (!uses_srv) {
+                    // Overload 2: (const Event& cmd, const InPorts& in, OutPorts& out, Registers& reg)
+                    out << "    template <typename Event, typename InPorts, typename OutPorts, typename Registers>\n";
+                    out << "    void operator()(" << cmd_param << ", " << in_param << ", " << out_param << ", "
+                        << reg_param << ") const {\n";
+                    emit_assignment_lines("        ");
+                    out << "    }\n\n";
+                }
 
                 // Overload 3: Full 5-domain (const Event& cmd, const InPorts& in, OutPorts& out, Registers& reg,
                 // Services& srv)
@@ -1520,15 +1603,16 @@ void CppModelEmitter::emit_fsm_aliases(std::ostream& out, const FsmIr& model, co
         init_state = escape_cpp_keyword(init_state);
     }
 
+    const std::string fsm_alias_name = (model.find_state(model.name) != nullptr) ? (model.name + "Fsm") : model.name;
     out << "/**\n";
-    out << " * @typedef " << model.name << "\n";
+    out << " * @typedef " << fsm_alias_name << "\n";
     out << " * @brief Primary Synchronous Core State Machine instance for '" << model.name << "' on caller stack.\n";
     for (const auto& req : model.satisfies_reqs) {
         out << " * @trace " << req << "\n";
         out << " * @satisfies " << req << "\n";
     }
     out << " */\n";
-    out << "using " << model.name << " = ::fsm::make_fsm<\n";
+    out << "using " << fsm_alias_name << " = ::fsm::make_fsm<\n";
     out << "    " << table_type_name << ",\n";
     out << "    ::fsm::with_initial_state<" << init_state << ">,\n";
     out << "    ::fsm::with_ports<" << model.name << "InPorts, " << model.name << "OutPorts>,\n";

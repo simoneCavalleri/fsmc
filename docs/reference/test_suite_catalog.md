@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 542  
+**Total Documented Test Cases**: 548  
 
 ---
 
@@ -529,6 +529,9 @@
 #### `CppModelEmitter.ReservedCppKeywords_EscapedInEmittedTypesAndTransitionTable`
 **Test Intent**: Regression BUG-02: C++ reserved keywords used as state, event, or action names
 
+#### `CppModelEmitterTest.ActionCallOpOmitsNoServiceOverloadsAndDisambiguatesModelName`
+**Test Intent**: Verify actions using ActionCallOp omit overloads lacking Services& srv, and unresolved guards fall back
+
 ### [`test_generated_fsm.cpp`](../../tests/backend/cpp/test_generated_fsm.cpp) (`tests/backend/cpp/test_generated_fsm.cpp`)
 - *(Executable binary test verification)*
 
@@ -825,6 +828,9 @@
 #### `PlantUmlParser.GuardWithDivisionOperator_PreservedAndNotTreatedAsAction`
 **Test Intent**: Verify that division operators '/' inside guards are not mistaken for action delimiters.
 
+#### `PlantUmlParserTest.OrthogonalSeparatorCreatesParallelRegions`
+**Test Intent**: Verify PlantUML '--' orthogonal region separator populates StateKind::Parallel and orthogonal_regions.
+
 ### [`test_directive_parser.cpp`](../../tests/frontend/directive/test_directive_parser.cpp) (`tests/frontend/directive/test_directive_parser.cpp`)
 #### `DirectiveParser.StateDirective_ParsesTraceabilityAndActivities`
 **Test Intent**: Verify '@fsm:state' directive parsing for traceability requirements and history metadata.
@@ -890,6 +896,9 @@
 
 #### `ScxmlParserTest.InfersDataModelVariableTypesFromExpr`
 **Test Intent**: Verify SCXML <data> type inference when 'type' attribute is omitted.
+
+#### `ScxmlParserTest.ParallelRegionsLeaveStateIdsEmptyForSubstateDiscovery`
+**Test Intent**: Verify SCXML <parallel> registers orthogonal regions without putting region IDs into state_ids.
 
 ### [`test_scxml_semantic_completeness.cpp`](../../tests/frontend/formal/test_scxml_semantic_completeness.cpp) (`tests/frontend/formal/test_scxml_semantic_completeness.cpp`)
 #### `ScxmlSemanticCompleteness.ParallelRegions_ParsedAsOrthogonalStates`
@@ -1032,6 +1041,12 @@
 
 #### `Sysml2Parser.EntryAndExitActionBlocks_AssignmentsPopulatedInIr`
 **Test Intent**: Regression BUG-01: SysML v2 entry and exit action blocks must parse assignments.
+
+#### `Sysml2ParserTest.RejectsArrowTransitionSyntaxWithDiagnostic`
+**Test Intent**: Verify invalid 'transition Src -> Dst' syntax is rejected with a clear syntax error.
+
+#### `Sysml2ParserTest.RoundTripsTimeTriggerWithoutSyntheticSignal`
+**Test Intent**: Verify Sysml2Serializer preserves TimeTrigger as 'accept after(...)' without synthetic event def.
 
 ### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`
@@ -1276,6 +1291,9 @@
 
 #### `OrthogonalProduct.SkipsUnchangedRegionEntryExitActionsOnProductTransition`
 **Test Intent**: Verify BoundaryActionFusionPass skips unchanged orthogonal region entry/exit hooks.
+
+#### `OrthogonalProduct.SimultaneousTransitionsSanitizeCombinedActionAndSingleGuard`
+**Test Intent**: Verify simultaneous orthogonal transitions combine actions with valid C++ identifier and single guard without
 
 ### [`test_pass_manager.cpp`](../../tests/middleend/canonicalization/test_pass_manager.cpp) (`tests/middleend/canonicalization/test_pass_manager.cpp`)
 #### `PassManager.DefaultPipelineExecution_CollectsStatisticsAndEmitsDiagnostics`

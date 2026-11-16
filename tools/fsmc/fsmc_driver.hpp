@@ -221,8 +221,8 @@ class FsmcDriver {
                     opts.emit_test_harness.empty()) {
                     std::cerr << "\n[ERROR] Direct code generation blocked: '" << opts.input_file
                               << "' is a visual diagram format (" << parser->format_name()
-                              << ").\nPass '--sidecar <manifest.yaml>' or '--allow-diagram-codegen' to allow code "
-                                 "generation, or use '--verify' / '--export <fmt>' / '--rtm-output <file>'.\n";
+                              << ").\nPass '--sidecar <manifest.yaml>' or '--allow-diagram' to allow code "
+                                 "generation, or use '--verify' / '--export <fmt>' / '--rtm <file>'.\n";
                     return 1;
                 }
             }
@@ -416,6 +416,10 @@ class FsmcDriver {
         }
 
         if (opts.verify_mode) {
+            if (!opts.output_file.empty()) {
+                std::cerr << "note: '-o " << opts.output_file
+                          << "' is ignored in '--verify' mode (verification does not emit code).\n";
+            }
             if (opts.verify_engine == "nuxmv" || (opts.verify_engine == "auto" && is_nuxmv_available())) {
                 return run_nuxmv_verification(opts, model, validation);
             }
@@ -550,8 +554,8 @@ class FsmcDriver {
         if (parser->kind() == FrontendKind::Diagram && !has_sidecar && !opts.allow_diagram_codegen) {
             std::cerr << "\n[ERROR] Direct code generation blocked: '" << opts.input_file
                       << "' is a visual diagram format (" << parser->format_name()
-                      << ").\nPass '--sidecar <manifest.yaml>' or '--allow-diagram-codegen' to allow code "
-                         "generation, or use '--verify' / '--export <fmt>' / '--rtm-output <file>'.\n";
+                      << ").\nPass '--sidecar <manifest.yaml>' or '--allow-diagram' to allow code "
+                         "generation, or use '--verify' / '--export <fmt>' / '--rtm <file>'.\n";
             return 1;
         }
 

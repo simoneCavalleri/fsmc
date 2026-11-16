@@ -1,5 +1,6 @@
 #include "fsm/backend/formal/sysml2_serializer.hpp"
 
+#include <set>
 #include <sstream>
 
 #include "fsm/ir/guard.hpp"
@@ -169,8 +170,24 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
         out << "\n";
     }
 
+    // Collect synthetic event names used solely by TimeTriggers so we don't emit redundant event defs
+    std::set<std::string> time_trigger_events;
+    std::set<std::string> non_time_events;
+    for (const auto& trans : model.transitions) {
+        if (std::holds_alternative<ir::TimeTrigger>(trans.trigger)) {
+            if (!trans.event.empty()) {
+                time_trigger_events.insert(trans.event);
+            }
+        } else if (!trans.event.empty()) {
+            non_time_events.insert(trans.event);
+        }
+    }
+
     // Native SysML v2 Signals & Item Definitions
     for (const auto& sig : model.signals) {
+        if (sig.attributes.empty() && time_trigger_events.count(sig.name) > 0 && non_time_events.count(sig.name) == 0) {
+            continue;
+        }
         if (sig.attributes.empty()) {
             out << "    event def " << sig.name << ";\n";
         } else {
@@ -213,7 +230,16 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
             out << "        priority " << trans.priority << "\n";
         }
         out << "        first " << trans.source << "\n";
-        if (!trans.event.empty()) {
+        if (const auto* tt = std::get_if<ir::TimeTrigger>(&trans.trigger)) {
+            const std::string_view unit_str = ir::time_unit_to_string(tt->unit);
+            if (tt->kind == ir::TimeTriggerKind::Every) {
+                out << "        accept every(" << tt->duration_value << unit_str << ")\n";
+            } else if (tt->kind == ir::TimeTriggerKind::At) {
+                out << "        accept at(" << tt->duration_value << unit_str << ")\n";
+            } else {
+                out << "        accept after(" << tt->duration_value << unit_str << ")\n";
+            }
+        } else if (!trans.event.empty()) {
             out << "        accept " << trans.event << "\n";
         }
         if (trans.guard && !trans.guard->empty()) {

@@ -286,4 +286,40 @@ TEST(ScxmlParserTest, InfersDataModelVariableTypesFromExpr) {
     EXPECT_EQ(retries->type, "uint32_t");
 }
 
+/**
+ * @brief Verify SCXML <parallel> registers orthogonal regions without putting region IDs into state_ids.
+ * @scenario <parallel id="Par"> with two <state> regions Reg1 (R1A, R1B) and Reg2 (R2A, R2B).
+ * @expected Regions have empty state_ids so OrthogonalProductPass discovers their nested substates.
+ */
+TEST(ScxmlParserTest, ParallelRegionsLeaveStateIdsEmptyForSubstateDiscovery) {
+    const std::string scxml_content = R"xml(
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Par">
+  <parallel id="Par">
+    <state id="Reg1" initial="R1A">
+      <state id="R1A"><transition event="go" target="R1B"/></state>
+      <state id="R1B"/>
+    </state>
+    <state id="Reg2" initial="R2A">
+      <state id="R2A"><transition event="sync" target="R2B"/></state>
+      <state id="R2B"/>
+    </state>
+  </parallel>
+</scxml>
+)xml";
+
+    ScxmlParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(scxml_content, model, err)) << err;
+
+    const StateNode* par = model.find_state("Par");
+    ASSERT_NE(par, nullptr);
+    EXPECT_EQ(par->kind, StateKind::Parallel);
+    ASSERT_EQ(par->orthogonal_regions.size(), 2u);
+    EXPECT_TRUE(par->orthogonal_regions[0].state_ids.empty());
+    EXPECT_TRUE(par->orthogonal_regions[1].state_ids.empty());
+    EXPECT_EQ(par->orthogonal_regions[0].initial_state_id, "R1A");
+    EXPECT_EQ(par->orthogonal_regions[1].initial_state_id, "R2A");
+}
+
 }  // namespace

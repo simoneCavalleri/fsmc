@@ -193,12 +193,13 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
                 if (parent != nullptr) {
                     parent->is_composite = true;
                     if (parent->kind == StateKind::Parallel) {
-                        // Register parallel child as an orthogonal region root
+                        // Register parallel child as an orthogonal region root;
+                        // leave state_ids empty so OrthogonalProductPass discovers nested substates
+                        // (or falls back to the region itself if it is an atomic leaf region).
                         OrthogonalRegion reg;
                         reg.id = state_name;
                         reg.name = state_name;
                         reg.initial_state_id = sub_initial.empty() ? state_name : sanitize_identifier(sub_initial);
-                        reg.state_ids.push_back(state_name);
                         parent->orthogonal_regions.push_back(std::move(reg));
                     } else if (parent->initial_sub_state.empty()) {
                         parent->initial_sub_state = state_name;

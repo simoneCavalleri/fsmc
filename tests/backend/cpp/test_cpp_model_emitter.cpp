@@ -1074,3 +1074,48 @@ TEST(CppModelEmitterTest, SignalEmitOp_DoesNotEmitUnusedServicesParameter) {
     EXPECT_NE(str.find("Services& /*srv*/)"), std::string::npos);
     EXPECT_NE(str.find("// emit signal: EvDone"), std::string::npos);
 }
+
+/**
+ * @brief Verify actions using ActionCallOp omit overloads lacking Services& srv, and unresolved guards fall back
+ * cleanly.
+ * @scenario Model with ActionCallOp, an undeclared-symbol guard, and a state named identically to the FSM model.
+ * @expected Generated C++ omits 3/4-arg action overloads without Services&, emits compilable fallback for unresolved
+ *           guard, and disambiguates the FSM type alias with 'Fsm' suffix.
+ */
+TEST(CppModelEmitterTest, ActionCallOpOmitsNoServiceOverloadsAndDisambiguatesModelName) {
+    FsmIr model;
+    model.name = "Par";
+    model.initial_state = "Par";
+    model.add_state("Par");
+    model.add_state("Done");
+    model.add_event("EvGo");
+
+    ActionSignature act("run_seq");
+    ActionCallOp call_op;
+    call_op.function_name = "do_step";
+    act.instructions.emplace_back(call_op);
+
+    model.add_guard("undeclared_gt_0", "", "undeclared_var > 0", "undeclared_var > 0");
+    TransitionEdge trans("Par", "Done", "EvGo", "undeclared_gt_0", act);
+    model.transitions.push_back(trans);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = true;
+    CppModelEmitter::emit_model(out, model, opts);
+    std::string str = out.str();
+
+    // Action functor must not emit non-Services overloads when srv is referenced
+    EXPECT_EQ(str.find("void operator()(const InPorts& /*in*/, OutPorts& /*out*/, Registers& /*reg*/) const"),
+              std::string::npos);
+    EXPECT_EQ(str.find("void operator()(const Event& /*cmd*/, const InPorts& /*in*/, OutPorts& /*out*/, Registers& "
+                       "/*reg*/) const"),
+              std::string::npos);
+    EXPECT_NE(str.find("Services& srv) const"), std::string::npos);
+
+    // Unresolved guard expression falls back to compilable stub
+    EXPECT_NE(str.find("// Unresolved guard expression: undeclared_var > 0"), std::string::npos);
+
+    // Model alias collides with state 'Par', so it is disambiguated as 'ParFsm'
+    EXPECT_NE(str.find("using ParFsm = ::fsm::make_fsm<"), std::string::npos);
+}

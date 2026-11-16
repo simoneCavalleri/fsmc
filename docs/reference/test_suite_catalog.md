@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 603  
+**Total Documented Test Cases**: 604  
 
 ---
 
@@ -1061,6 +1061,9 @@
 
 #### `StateflowParser.RoundtripAssignmentsAndNormalizedGuards_PreservedInXml`
 **Test Intent**: Verify StateflowSerializer and StateflowParser preserve assignments and normalized guards on roundtrip.
+
+#### `StateflowParserTest.ParsesParallelAndDecompositionIntoOrthogonalRegions`
+**Test Intent**: Verify StateflowParser populates orthogonal_regions for decomposition="PARALLEL_AND" states.
 
 ### [`test_stateflow_slx_ingestion.cpp`](../../tests/frontend/formal/test_stateflow_slx_ingestion.cpp) (`tests/frontend/formal/test_stateflow_slx_ingestion.cpp`)
 #### `StateflowSlxIngestion.IngestStoredSlxContainer_ParsesModelDirectly`

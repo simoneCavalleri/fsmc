@@ -571,4 +571,48 @@ TEST(StateflowParser, RoundtripAssignmentsAndNormalizedGuards_PreservedInXml) {
     EXPECT_EQ(*rt.guards[0].normalized_expression, "x >= 10");
 }
 
+/**
+ * @brief Verify StateflowParser populates orthogonal_regions for decomposition="PARALLEL_AND" states.
+ * @scenario Stateflow XML with parallel state 'Operational' containing two child region states Reg1 and Reg2.
+ * @expected 'Operational' has StateKind::Parallel, empty initial_sub_state, and 2 orthogonal_regions.
+ */
+TEST(StateflowParserTest, ParsesParallelAndDecompositionIntoOrthogonalRegions) {
+    const std::string xml = R"xml(
+<ModelInformation>
+  <Stateflow>
+    <machine name="ParSf">
+      <chart name="ParSf" initial="Operational">
+        <state id="1" name="Operational" decomposition="PARALLEL_AND">
+          <state id="2" name="Reg1" initial="R1A">
+            <state id="3" name="R1A"/>
+            <state id="4" name="R1B"/>
+          </state>
+          <state id="5" name="Reg2" initial="R2A">
+            <state id="6" name="R2A"/>
+            <state id="7" name="R2B"/>
+          </state>
+        </state>
+      </chart>
+    </machine>
+  </Stateflow>
+</ModelInformation>
+)xml";
+
+    StateflowParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, ir, err)) << "Error: " << err;
+
+    const auto* op = ir.find_state("Operational");
+    ASSERT_NE(op, nullptr);
+    EXPECT_EQ(op->kind, StateKind::Parallel);
+    EXPECT_TRUE(op->is_composite);
+    EXPECT_TRUE(op->initial_sub_state.empty());
+    ASSERT_EQ(op->orthogonal_regions.size(), 2u);
+    EXPECT_EQ(op->orthogonal_regions[0].name, "Reg1");
+    EXPECT_EQ(op->orthogonal_regions[0].initial_state_id, "R1A");
+    EXPECT_EQ(op->orthogonal_regions[1].name, "Reg2");
+    EXPECT_EQ(op->orthogonal_regions[1].initial_state_id, "R2A");
+}
+
 }  // namespace

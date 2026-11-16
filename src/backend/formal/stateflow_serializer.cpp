@@ -41,6 +41,21 @@ static std::string escape_xml(std::string_view input) {
     return res;
 }
 
+static std::string format_action_for_stateflow(const ActionSignature& act) {
+    if (!act.assignments.empty()) {
+        std::string expr;
+        for (std::size_t i = 0; i < act.assignments.size(); ++i) {
+            if (i > 0) {
+                expr += "; ";
+            }
+            const auto& a = act.assignments[i];
+            expr += a.target.full_path() + " " + std::string(assignment_op_to_string(a.op)) + " " + a.expression;
+        }
+        return expr;
+    }
+    return act.name;
+}
+
 static void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, size_t indent, size_t& state_id) {
     std::string pad(indent * 2, ' ');
     out << pad << "<state id=\"" << (state_id++) << "\" name=\"" << escape_xml(state.name) << "\"";
@@ -55,7 +70,7 @@ static void emit_state(std::ostream& out, const StateNode& state, const FsmIr& m
         for (const auto& act : state.entry_actions) {
             if (!entry_str.empty())
                 entry_str += "; ";
-            entry_str += act.name;
+            entry_str += format_action_for_stateflow(act);
         }
         out << " entry=\"" << escape_xml(entry_str) << "\"";
     }
@@ -67,7 +82,7 @@ static void emit_state(std::ostream& out, const StateNode& state, const FsmIr& m
         for (const auto& act : state.exit_actions) {
             if (!exit_str.empty())
                 exit_str += "; ";
-            exit_str += act.name;
+            exit_str += format_action_for_stateflow(act);
         }
         out << " exit=\"" << escape_xml(exit_str) << "\"";
     }
@@ -129,14 +144,14 @@ static std::string format_transition_label(const TransitionEdge& trans, const Fs
         if (!label.empty()) {
             label += " ";
         }
-        label += "{ " + trans.condition_action->name + " }";
+        label += "{ " + format_action_for_stateflow(*trans.condition_action) + " }";
     }
 
     if (trans.transition_action.has_value() && !trans.transition_action->name.empty()) {
         if (!label.empty()) {
             label += " ";
         }
-        label += "/ { " + trans.transition_action->name + " }";
+        label += "/ { " + format_action_for_stateflow(*trans.transition_action) + " }";
     }
 
     return label;

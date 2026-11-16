@@ -726,7 +726,7 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
         if (!parsed.cpp_type.empty()) {
             trans.guard = parsed.cpp_type;
             for (const auto& detail : parsed.atomic_guard_details) {
-                model.add_guard(detail.name, "", detail.expression, std::nullopt);
+                model.add_guard(detail.name, "", detail.expression, detail.expression);
             }
             for (const auto& a : parsed.atomic_guards) {
                 model.add_guard(a);
@@ -736,7 +736,8 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
             // boolean expression (which would corrupt operator characters like >, &&, ! etc.).
             std::string guard_name = "guard_" + sanitize_identifier(src_name) + "_to_" + sanitize_identifier(dst_name) +
                                      "_" + std::to_string(model.transitions.size() + 1);
-            model.add_guard(guard_name, "", std::optional<std::string>{comps.guard}, std::nullopt);
+            model.add_guard(guard_name, "", std::optional<std::string>{comps.guard},
+                            std::optional<std::string>{comps.guard});
             trans.guard = guard_name;
         }
     }

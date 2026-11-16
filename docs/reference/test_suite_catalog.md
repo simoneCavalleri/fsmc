@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 593  
+**Total Documented Test Cases**: 594  
 
 ---
 
@@ -1045,6 +1045,9 @@
 
 #### `StateflowParser.StateLifecycleAssignments_PopulatedInEntryAndExitActions`
 **Test Intent**: Regression: Stateflow state `entry` / `exit` attributes with variable assignments populate `assignments`.
+
+#### `StateflowParser.RoundtripAssignmentsAndNormalizedGuards_PreservedInXml`
+**Test Intent**: Verify StateflowSerializer and StateflowParser preserve assignments and normalized guards on roundtrip.
 
 ### [`test_stateflow_slx_ingestion.cpp`](../../tests/frontend/formal/test_stateflow_slx_ingestion.cpp) (`tests/frontend/formal/test_stateflow_slx_ingestion.cpp`)
 #### `StateflowSlxIngestion.IngestStoredSlxContainer_ParsesModelDirectly`

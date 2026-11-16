@@ -516,4 +516,59 @@ TEST(StateflowParser, StateLifecycleAssignments_PopulatedInEntryAndExitActions) 
     EXPECT_EQ(s2->entry_actions[0].assignments[0].expression, "x + 5");
 }
 
+/**
+ * @brief Verify StateflowSerializer and StateflowParser preserve assignments and normalized guards on roundtrip.
+ * @scenario Serialize an FsmIr with entry/exit/transition assignments and a guard, then re-parse the XML.
+ * @expected All assignment expressions and guard normalized_expression values survive the roundtrip.
+ */
+TEST(StateflowParser, RoundtripAssignmentsAndNormalizedGuards_PreservedInXml) {
+    FsmIr orig;
+    orig.name = "SfRt";
+    orig.initial_state = "Ready";
+    orig.add_variable(VariableDefinition("x", DataType{PrimitiveTypeKind::Int32}, "0"));
+
+    StateNode ready("Ready");
+    ActionSignature entry_act("Ready_entry_x");
+    entry_act.assignments.emplace_back(LValueTarget("x"), "10");
+    ready.entry_actions.push_back(std::move(entry_act));
+
+    ActionSignature exit_act("Ready_exit_x");
+    exit_act.assignments.emplace_back(LValueTarget("x"), "x + 1");
+    ready.exit_actions.push_back(std::move(exit_act));
+
+    StateNode running("Running");
+    orig.states.push_back(std::move(ready));
+    orig.states.push_back(std::move(running));
+
+    orig.add_guard("x_gte_10", "", std::optional<std::string>{"x >= 10"}, std::optional<std::string>{"x >= 10"});
+    ActionSignature tr_act("tr_x");
+    tr_act.assignments.emplace_back(LValueTarget("x"), "x * 2");
+    orig.transitions.emplace_back("Ready", "Running", "START", "x_gte_10", std::move(tr_act));
+
+    const std::string xml = StateflowSerializer::serialize(orig);
+    StateflowParser parser;
+    FsmIr rt;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, rt, err)) << "Error: " << err;
+
+    const auto* rt_ready = rt.find_state("Ready");
+    ASSERT_NE(rt_ready, nullptr);
+    ASSERT_EQ(rt_ready->entry_actions.size(), 1u);
+    ASSERT_EQ(rt_ready->entry_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(rt_ready->entry_actions[0].assignments[0].expression, "10");
+
+    ASSERT_EQ(rt_ready->exit_actions.size(), 1u);
+    ASSERT_EQ(rt_ready->exit_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(rt_ready->exit_actions[0].assignments[0].expression, "x + 1");
+
+    ASSERT_EQ(rt.transitions.size(), 1u);
+    ASSERT_TRUE(rt.transitions[0].transition_action.has_value());
+    ASSERT_EQ(rt.transitions[0].transition_action->assignments.size(), 1u);
+    EXPECT_EQ(rt.transitions[0].transition_action->assignments[0].expression, "x * 2");
+
+    ASSERT_FALSE(rt.guards.empty());
+    ASSERT_TRUE(rt.guards[0].normalized_expression.has_value());
+    EXPECT_EQ(*rt.guards[0].normalized_expression, "x >= 10");
+}
+
 }  // namespace

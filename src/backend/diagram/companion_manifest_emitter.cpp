@@ -84,7 +84,10 @@ frontend::CompanionManifest CompanionManifestEmitter::build_manifest(const ir::F
     for (const auto& p : ir.properties) {
         frontend::CompanionProperty cp;
         cp.name = p.name;
+        cp.kind = ir::property_kind_to_string(p.kind);
         cp.formula = !p.raw_formula.empty() ? p.raw_formula : (p.ast.has_value() ? p.ast->to_string() : "");
+        cp.req = p.traceability_req;
+        cp.desc = p.description;
         manifest.properties.push_back(std::move(cp));
     }
 
@@ -219,7 +222,16 @@ std::string CompanionManifestEmitter::emit_yaml(const frontend::CompanionManifes
         ss << "\nproperties:\n";
         for (const auto& prop : manifest.properties) {
             ss << "  - name: \"" << prop.name << "\"\n";
+            if (!prop.kind.empty()) {
+                ss << "    kind: \"" << prop.kind << "\"\n";
+            }
             ss << "    formula: \"" << prop.formula << "\"\n";
+            if (!prop.req.empty()) {
+                ss << "    req: \"" << prop.req << "\"\n";
+            }
+            if (!prop.desc.empty()) {
+                ss << "    desc: \"" << prop.desc << "\"\n";
+            }
         }
     }
 
@@ -336,8 +348,17 @@ std::string CompanionManifestEmitter::emit_json(const frontend::CompanionManifes
         const auto& prop = manifest.properties[i];
         ss << "    {\n";
         ss << "      \"name\": \"" << prop.name << "\",\n";
-        ss << "      \"formula\": \"" << prop.formula << "\"\n";
-        ss << "    }" << (i + 1 < manifest.properties.size() ? "," : "") << "\n";
+        if (!prop.kind.empty()) {
+            ss << "      \"kind\": \"" << prop.kind << "\",\n";
+        }
+        ss << "      \"formula\": \"" << prop.formula << "\"";
+        if (!prop.req.empty()) {
+            ss << ",\n      \"req\": \"" << prop.req << "\"";
+        }
+        if (!prop.desc.empty()) {
+            ss << ",\n      \"desc\": \"" << prop.desc << "\"";
+        }
+        ss << "\n    }" << (i + 1 < manifest.properties.size() ? "," : "") << "\n";
     }
     ss << "  ],\n";
 

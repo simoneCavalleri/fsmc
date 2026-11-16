@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 607  
+**Total Documented Test Cases**: 608  
 
 ---
 
@@ -809,6 +809,9 @@
 
 #### `DiagramSidecar.CompanionManifest_WithCustomTypes_PopulatesModelCustomTypes`
 **Test Intent**: Verify companion manifest with custom_types registers TypeDefinition in model.
+
+#### `DiagramSidecar.PreservesPropertyKindReqAndDescAcrossSidecarRoundtrip`
+**Test Intent**: Verify CompanionManifestEmitter, CompanionManifestParser, and DiagramContractCombiner preserve property kind,
 
 ### [`test_dot_parser.cpp`](../../tests/frontend/diagram/test_dot_parser.cpp) (`tests/frontend/diagram/test_dot_parser.cpp`)
 #### `DotParser.BasicDotDigraph_ParsedIntoValidFsmIr`

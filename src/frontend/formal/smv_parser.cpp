@@ -343,7 +343,7 @@ static std::string normalize_smv_guard_expr(std::string_view expr) {
 
 void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
     std::string clean_line = line;
-    std::string action_from_comment;
+    std::string raw_action_from_comment;
     auto comment_pos = line.find("--");
     if (comment_pos != std::string::npos) {
         std::string comment = line.substr(comment_pos + 2);
@@ -352,7 +352,7 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
             act_pos = comment.find("action=");
         }
         if (act_pos != std::string::npos) {
-            action_from_comment = sanitize_identifier(trim(comment.substr(act_pos + 7)));
+            raw_action_from_comment = trim(comment.substr(act_pos + 7));
         }
         clean_line = line.substr(0, comment_pos);
     }
@@ -476,13 +476,25 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
             // operator characters (e.g. "x > 0 && !y" → "x__0____y").
             std::string guard_name = "guard_" + sanitize_identifier(src) + "_to_" + sanitize_identifier(target_state) +
                                      "_" + std::to_string(model.transitions.size() + 1);
-            model.add_guard(guard_name, "", std::optional<std::string>{normalize_smv_guard_expr(guard_expr)},
-                            std::nullopt);
+            const std::string norm_guard = normalize_smv_guard_expr(guard_expr);
+            model.add_guard(guard_name, "", std::optional<std::string>{norm_guard},
+                            std::optional<std::string>{norm_guard});
             trans.guard = guard_name;
         }
-        if (!action_from_comment.empty()) {
-            trans.transition_action = ActionSignature(action_from_comment);
-            model.add_action(action_from_comment);
+        if (!raw_action_from_comment.empty()) {
+            const std::string prefix = "action_" + sanitize_identifier(src) + "_" + sanitize_identifier(target_state) +
+                                       (event_name.empty() ? "" : "_" + event_name) + "_" +
+                                       std::to_string(model.transitions.size() + 1);
+            if (auto assign_sig = try_parse_assignment_action(raw_action_from_comment, prefix)) {
+                model.add_action(assign_sig->name);
+                trans.transition_action = std::move(*assign_sig);
+            } else {
+                std::string act_id = sanitize_identifier(raw_action_from_comment);
+                if (!act_id.empty()) {
+                    trans.transition_action = ActionSignature(act_id);
+                    model.add_action(act_id);
+                }
+            }
         }
         model.add_transition(trans);
     }
@@ -550,12 +562,16 @@ void SmvParser::parse_action_directive(const std::string& body, FsmIr& model, co
         st = &new_st;
     }
 
-    if (type == "entry") {
-        st->entry_actions.emplace_back(act_name);
-    } else if (type == "exit") {
-        st->exit_actions.emplace_back(act_name);
+    ActionSignature act_sig(sanitize_identifier(act_name));
+    if (auto assign_sig = try_parse_assignment_action(act_name, sanitize_identifier(st_name) + "_" + type)) {
+        act_sig = std::move(*assign_sig);
     }
-    model.add_action(act_name);
+    if (type == "entry") {
+        st->entry_actions.push_back(act_sig);
+    } else if (type == "exit") {
+        st->exit_actions.push_back(act_sig);
+    }
+    model.add_action(act_sig.name);
 }
 
 void SmvParser::parse_defer_directive(const std::string& body, FsmIr& model) {

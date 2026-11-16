@@ -1,6 +1,7 @@
 #include "fsm/frontend/formal/scxml_parser.hpp"
 
 #include <cctype>
+#include <cmath>
 #include <functional>
 #include <map>
 #include <regex>
@@ -594,6 +595,34 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
         }
     }
     trans.event = sanitize_identifier(event);
+    {
+        static const std::regex time_ev_regex(R"(^(after|every)_([0-9]+(?:\.[0-9]+)?)(ms|us|s|m)$)",
+                                              std::regex::optimize);
+        std::smatch tm;
+        if (std::regex_match(trans.event, tm, time_ev_regex)) {
+            const TimeTriggerKind kind = (tm[1].str() == "every") ? TimeTriggerKind::Every : TimeTriggerKind::After;
+            const std::string unit_str = tm[3].str();
+            double val = 0.0;
+            try {
+                val = std::stod(tm[2].str());
+            } catch (...) {
+                val = 0.0;
+            }
+            if (unit_str == "us") {
+                trans.trigger =
+                    TimeTrigger(kind, static_cast<std::uint64_t>(std::llround(val)), TimeUnit::Microseconds);
+            } else if (unit_str == "ms") {
+                trans.trigger =
+                    TimeTrigger(kind, static_cast<std::uint64_t>(std::llround(val)), TimeUnit::Milliseconds);
+            } else if (unit_str == "s") {
+                trans.trigger =
+                    TimeTrigger(kind, static_cast<std::uint64_t>(std::llround(val * 1000.0)), TimeUnit::Milliseconds);
+            } else if (unit_str == "m") {
+                trans.trigger =
+                    TimeTrigger(kind, static_cast<std::uint64_t>(std::llround(val * 60000.0)), TimeUnit::Milliseconds);
+            }
+        }
+    }
     if (!cond.empty()) {
         auto parsed = directive::GuardExpressionParser::parse(cond);
         if (!parsed.cpp_type.empty()) {

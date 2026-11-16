@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 589  
+**Total Documented Test Cases**: 590  
 
 ---
 
@@ -954,6 +954,9 @@
 
 #### `ScxmlParserTest.ParallelRegionsLeaveStateIdsEmptyForSubstateDiscovery`
 **Test Intent**: Verify SCXML <parallel> registers orthogonal regions without putting region IDs into state_ids.
+
+#### `ScxmlParserTest.ParsesAfterAndEveryTimeTriggerEvents`
+**Test Intent**: Verify SCXML time-trigger event names (after_50ms, every_2s) populate TransitionEdge::trigger.
 
 ### [`test_scxml_semantic_completeness.cpp`](../../tests/frontend/formal/test_scxml_semantic_completeness.cpp) (`tests/frontend/formal/test_scxml_semantic_completeness.cpp`)
 #### `ScxmlSemanticCompleteness.ParallelRegions_ParsedAsOrthogonalStates`

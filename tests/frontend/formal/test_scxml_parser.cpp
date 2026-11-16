@@ -322,4 +322,37 @@ TEST(ScxmlParserTest, ParallelRegionsLeaveStateIdsEmptyForSubstateDiscovery) {
     EXPECT_EQ(par->orthogonal_regions[1].initial_state_id, "R2A");
 }
 
+/**
+ * @brief Verify SCXML time-trigger event names (after_50ms, every_2s) populate TransitionEdge::trigger.
+ * @scenario Parse SCXML with transitions triggered by `after_50ms` and `every_2s`.
+ * @expected Transitions hold `TimeTrigger` variants with matching kind and millisecond durations.
+ */
+TEST(ScxmlParserTest, ParsesAfterAndEveryTimeTriggerEvents) {
+    const std::string scxml_content = R"xml(
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Wait">
+  <state id="Wait">
+    <transition event="after_50ms" target="Done"/>
+    <transition event="every_2s" target="Wait"/>
+  </state>
+  <state id="Done"/>
+</scxml>
+)xml";
+
+    ScxmlParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(scxml_content, model, err)) << err;
+
+    ASSERT_EQ(model.transitions.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(model.transitions[0].trigger));
+    const auto& tt0 = std::get<TimeTrigger>(model.transitions[0].trigger);
+    EXPECT_EQ(tt0.kind, TimeTriggerKind::After);
+    EXPECT_EQ(tt0.duration_in_ms(), 50u);
+
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(model.transitions[1].trigger));
+    const auto& tt1 = std::get<TimeTrigger>(model.transitions[1].trigger);
+    EXPECT_EQ(tt1.kind, TimeTriggerKind::Every);
+    EXPECT_EQ(tt1.duration_in_ms(), 2000u);
+}
+
 }  // namespace

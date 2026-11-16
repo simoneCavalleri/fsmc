@@ -41,8 +41,10 @@ std::string escape_xml(const std::string& input) {
 
 void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, size_t indent) {
     std::string pad(indent, ' ');
-    out << pad << "<state id=\"" << escape_xml(state.name) << "\"";
-    if (!state.initial_sub_state.empty()) {
+    const bool is_parallel = (state.kind == StateKind::Parallel || !state.orthogonal_regions.empty());
+    const std::string tag_name = is_parallel ? "parallel" : "state";
+    out << pad << "<" << tag_name << " id=\"" << escape_xml(state.name) << "\"";
+    if (!is_parallel && !state.initial_sub_state.empty()) {
         out << " initial=\"" << escape_xml(state.initial_sub_state) << "\"";
     }
     if (!state.traceability_reqs.empty()) {
@@ -164,7 +166,7 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
         }
     }
 
-    out << pad << "</state>\n";
+    out << pad << "</" << tag_name << ">\n";
 }
 
 }  // namespace

@@ -355,4 +355,49 @@ TEST(ScxmlParserTest, ParsesAfterAndEveryTimeTriggerEvents) {
     EXPECT_EQ(tt1.duration_in_ms(), 2000u);
 }
 
+/**
+ * @brief Verify ScxmlSerializer emits `<parallel>` for StateKind::Parallel states without `initial` attribute.
+ * @scenario Parallel state 'Par' with two orthogonal regions Reg1 (R1A, R1B) and Reg2 (R2A, R2B).
+ * @expected Serialized SCXML contains `<parallel id="Par">` and roundtrips via ScxmlParser with 2 orthogonal regions.
+ */
+TEST(ScxmlSerializerTest, SerializesParallelStateAsParallelElement) {
+    FsmIr ir;
+    ir.name = "ParRoundtrip";
+    ir.initial_state = "Par";
+
+    auto& par = ir.add_state("Par");
+    par.is_composite = true;
+    par.kind = StateKind::Parallel;
+    par.orthogonal_regions.emplace_back("Reg1", "Reg1", "R1A");
+    par.orthogonal_regions.emplace_back("Reg2", "Reg2", "R2A");
+
+    auto& reg1 = ir.add_state("Reg1", "Par");
+    reg1.is_composite = true;
+    reg1.initial_sub_state = "R1A";
+    ir.add_state("R1A", "Reg1");
+    ir.add_state("R1B", "Reg1");
+
+    auto& reg2 = ir.add_state("Reg2", "Par");
+    reg2.is_composite = true;
+    reg2.initial_sub_state = "R2A";
+    ir.add_state("R2A", "Reg2");
+    ir.add_state("R2B", "Reg2");
+
+    ir.add_transition(TransitionEdge("R1A", "R1B", "E1"));
+    ir.add_transition(TransitionEdge("R2A", "R2B", "E2"));
+
+    const std::string xml = ScxmlSerializer::serialize(ir);
+    EXPECT_NE(xml.find("<parallel id=\"Par\">"), std::string::npos);
+    EXPECT_NE(xml.find("</parallel>"), std::string::npos);
+
+    ScxmlParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+    const auto* par_parsed = parsed.find_state("Par");
+    ASSERT_NE(par_parsed, nullptr);
+    EXPECT_EQ(par_parsed->kind, StateKind::Parallel);
+    EXPECT_EQ(par_parsed->orthogonal_regions.size(), 2u);
+}
+
 }  // namespace

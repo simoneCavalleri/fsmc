@@ -322,7 +322,10 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
                 }
             }
             if (!action_name.empty()) {
-                trans.transition_action = ActionSignature(sanitize_identifier(action_name));
+                std::string prefix = sanitize_identifier(src) + "_" + sanitize_identifier(dst) + "_act";
+                auto assign_sig = ::fsm::ir::try_parse_assignment_action(action_name, prefix);
+                trans.transition_action =
+                    assign_sig.has_value() ? std::move(*assign_sig) : ActionSignature(sanitize_identifier(action_name));
                 model.add_action(trans.transition_action->name);
             }
             trans.kind = (src == dst && attrs.find("internal") != std::string::npos) ? TransitionEdgeKind::Internal

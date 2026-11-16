@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 582  
+**Total Documented Test Cases**: 584  
 
 ---
 
@@ -721,6 +721,9 @@
 #### `JsonParserTest.DeserializesXStateParallelTypeIntoOrthogonalRegions`
 **Test Intent**: Verify JsonParser / FsmIrDeserializer converts XState "type": "parallel" into StateKind::Parallel and
 
+#### `JsonParser.XStateActionAssignments_PopulatedInActionSignature`
+**Test Intent**: Regression: XState JSON transition action strings with assignments (`"x = 42"`) populate `assignments`.
+
 ### [`test_parser_classification.cpp`](../../tests/frontend/common/test_parser_classification.cpp) (`tests/frontend/common/test_parser_classification.cpp`)
 #### `FrontendClassification.FormalParsers_ReportsFormalFrontendKind`
 **Test Intent**: Verify formal parser implementations report FrontendKind::Formal and canonical format tokens.
@@ -808,6 +811,9 @@
 #### `DotParser.ScopedInitialIdentifiers_PopulateInitialSubstateWithoutPointShape`
 **Test Intent**: Regression: scoped initial node names (e.g. `initial_Active`) inside cluster subgraphs set
 `initial_sub_state` without requiring an explicit `[shape=point]` node declaration.
+
+#### `DotParser.TransitionActionAssignments_PopulatedInActionSignature`
+**Test Intent**: Regression: DOT transition action assignments (`/ x = 42`) populate `ActionSignature::assignments`.
 
 ### [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) (`tests/frontend/diagram/test_mermaid_parser.cpp`)
 #### `MermaidParser.BasicDiagram_ParsedIntoValidFsmIr`

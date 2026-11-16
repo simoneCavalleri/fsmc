@@ -272,4 +272,35 @@ TEST(JsonParserTest, DeserializesXStateParallelTypeIntoOrthogonalRegions) {
     ASSERT_EQ(active->orthogonal_regions.size(), 2u);
 }
 
+/**
+ * @brief Regression: XState JSON transition action strings with assignments (`"x = 42"`) populate `assignments`.
+ * @scenario Parse an XState JSON machine with `"actions": ["x = 42"]` on a transition.
+ * @expected `transition_action->assignments` contains `x = 42`.
+ */
+TEST(JsonParser, XStateActionAssignments_PopulatedInActionSignature) {
+    const std::string json_content = R"json({
+  "id": "JsonAssign",
+  "initial": "Idle",
+  "context": { "x": 0 },
+  "states": {
+    "Idle": {
+      "on": {
+        "EvGo": { "target": "Done", "cond": "x == 0", "actions": ["x = 42"] }
+      }
+    },
+    "Done": {}
+  }
+})json";
+
+    JsonParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << err;
+    ASSERT_EQ(model.transitions.size(), 1u);
+    ASSERT_TRUE(model.transitions[0].transition_action.has_value());
+    ASSERT_EQ(model.transitions[0].transition_action->assignments.size(), 1u);
+    EXPECT_EQ(model.transitions[0].transition_action->assignments[0].target.name, "x");
+    EXPECT_EQ(model.transitions[0].transition_action->assignments[0].expression, "42");
+}
+
 }  // namespace

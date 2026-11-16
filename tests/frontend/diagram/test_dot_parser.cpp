@@ -111,4 +111,27 @@ TEST(DotParser, ScopedInitialIdentifiers_PopulateInitialSubstateWithoutPointShap
     EXPECT_EQ(ir.states.size(), 4u);
 }
 
+/**
+ * @brief Regression: DOT transition action assignments (`/ x = 42`) populate `ActionSignature::assignments`.
+ * @scenario Parse a DOT edge `Idle -> Done [label="EvGo [ok == true] / x = 42"];`.
+ * @expected `transition_action->assignments` contains `x = 42`.
+ */
+TEST(DotParser, TransitionActionAssignments_PopulatedInActionSignature) {
+    const std::string dot_content = R"(digraph DotAssign {
+    initial -> Idle;
+    Idle -> Done [label="EvGo [ok == true] / x = 42"];
+}
+)";
+
+    DotParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    ASSERT_EQ(ir.transitions[0].transition_action->assignments.size(), 1u);
+    EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].target.name, "x");
+    EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].expression, "42");
+}
+
 }  // namespace

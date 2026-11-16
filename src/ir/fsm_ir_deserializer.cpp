@@ -577,9 +577,15 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
             }
         }
         if (!act_str.empty()) {
-            std::string act_san = sanitize_identifier(act_str);
-            model.add_action(act_san);
-            trans.transition_action = ActionSignature{act_san};
+            std::string prefix = sanitize_identifier(trans.source) + "_" + sanitize_identifier(trans.target) + "_act";
+            if (auto assign_sig = try_parse_assignment_action(act_str, prefix)) {
+                model.add_action(assign_sig->name);
+                trans.transition_action = std::move(*assign_sig);
+            } else {
+                std::string act_san = sanitize_identifier(act_str);
+                model.add_action(act_san);
+                trans.transition_action = ActionSignature{act_san};
+            }
         }
     }
 

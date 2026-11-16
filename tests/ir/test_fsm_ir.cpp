@@ -1429,4 +1429,38 @@ TEST(FsmIr, ExpressionEvaluationAndLosslessJsonRoundtrip_PreservesInstructionsCl
     EXPECT_EQ(restored.transitions[0].transition_action->instructions, act.instructions);
 }
 
+/**
+ * @brief Verify FsmIrDeserializer keeps parsed C++ guard type in guard_ast when JSON contains readable boolean guards.
+ * @scenario Deserialize JSON transition with `"guard": "!(a_gte_10 && b_eq_0) || c_lt_5"` and matching `"guard_ast"`.
+ * @expected Both `guard` and `guard_ast->expression` hold the C++ template guard (`::fsm::or_<...>`), not raw
+ * operators.
+ */
+TEST(FsmIr, JsonDeserializer_PreservesCppGuardTypeInGuardAstForBooleanExpressions) {
+    const std::string json = R"json({
+  "name": "JsonGuardAst",
+  "initial_state": "S0",
+  "states": {
+    "S0": {
+      "on": {
+        "EvTest": {
+          "target": "Pass",
+          "guard": "!(a_gte_10 && b_eq_0) || c_lt_5",
+          "guard_ast": "!(a_gte_10 && b_eq_0) || c_lt_5"
+        }
+      }
+    },
+    "Pass": {}
+  }
+})json";
+
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(FsmIrDeserializer::deserialize_json(json, ir, err)) << err;
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    ASSERT_TRUE(ir.transitions[0].guard.has_value());
+    EXPECT_NE(ir.transitions[0].guard->find("fsm::or_<"), std::string::npos);
+    ASSERT_TRUE(ir.transitions[0].guard_ast.has_value());
+    EXPECT_EQ(ir.transitions[0].guard_ast->to_string(), *ir.transitions[0].guard);
+}
+
 }  // namespace

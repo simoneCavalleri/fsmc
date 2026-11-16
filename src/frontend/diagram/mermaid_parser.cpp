@@ -483,13 +483,10 @@ void MermaidParser::parse_internal_transition(std::string_view line, FsmIr& mode
         return;
     }
 
-    std::optional<ActionSignature> parsed_action;
+    std::string raw_action;
     const auto slash_pos = DiagramActionParser::find_action_slash(label);
     if (slash_pos != std::string::npos) {
-        const std::string act = std::string(trim(label.substr(slash_pos + 1)));
-        if (!act.empty()) {
-            parsed_action = DiagramActionParser::parse_action_block(act, "action_" + state_name);
-        }
+        raw_action = std::string(trim(label.substr(slash_pos + 1)));
         label = label.substr(0, slash_pos);
     }
 
@@ -504,6 +501,18 @@ void MermaidParser::parse_internal_transition(std::string_view line, FsmIr& mode
     const std::string event_name = sanitize_identifier(trim(label));
     if (event_name.empty()) {
         return;
+    }
+
+    std::optional<ActionSignature> parsed_action;
+    if (!raw_action.empty()) {
+        std::string fallback = "action_" + state_name + "_" + event_name;
+        if (event_name == "entry") {
+            fallback = "entry_" + state_name;
+        } else if (event_name == "exit") {
+            fallback = "exit_" + state_name;
+        }
+        parsed_action = DiagramActionParser::parse_action_block(raw_action, fallback);
+        detail::disambiguate_synthesized_action(model, *parsed_action);
     }
 
     const std::string current_parent = parent_stack.empty() ? "" : parent_stack.back();
@@ -636,12 +645,10 @@ bool MermaidParser::parse_transition_line(std::string_view line, FsmIr& model, s
         }
 
         // Check for Action: / ActionName
+        std::string raw_action;
         const auto slash_pos = DiagramActionParser::find_action_slash(label);
         if (slash_pos != std::string::npos) {
-            const std::string act = std::string(trim(label.substr(slash_pos + 1)));
-            if (!act.empty()) {
-                parsed_action = DiagramActionParser::parse_action_block(act, "action_" + src + "_" + dst);
-            }
+            raw_action = std::string(trim(label.substr(slash_pos + 1)));
             label = label.substr(0, slash_pos);
         }
 
@@ -657,6 +664,12 @@ bool MermaidParser::parse_transition_line(std::string_view line, FsmIr& model, s
         const std::string evt = std::string(trim(label));
         if (!evt.empty() && evt != "Anonymous" && evt != "AnonymousEvent" && evt != "anonymous") {
             event_name = sanitize_identifier(evt);
+        }
+
+        if (!raw_action.empty()) {
+            const std::string fallback = "action_" + src + "_" + dst + (event_name.empty() ? "" : "_" + event_name);
+            parsed_action = DiagramActionParser::parse_action_block(raw_action, fallback);
+            detail::disambiguate_synthesized_action(model, *parsed_action);
         }
     }
 

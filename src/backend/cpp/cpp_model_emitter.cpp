@@ -1234,6 +1234,24 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                 return res;
             };
 
+            auto escape_member_path = [](const std::string& path) -> std::string {
+                std::string res;
+                std::size_t start = 0;
+                while (start <= path.size()) {
+                    const std::size_t dot = path.find('.', start);
+                    if (!res.empty()) {
+                        res.push_back('.');
+                    }
+                    if (dot == std::string::npos) {
+                        res += escape_cpp_keyword(path.substr(start));
+                        break;
+                    }
+                    res += escape_cpp_keyword(path.substr(start, dot - start));
+                    start = dot + 1;
+                }
+                return res;
+            };
+
             auto emit_assignment_lines = [&](std::string_view indent) {
                 for (const auto& assign : assignments) {
                     std::string expr = qualify_expression(assign.expression, model);
@@ -1243,10 +1261,11 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                     const auto* p = model.find_port(assign.target.name);
                     bool is_out = (assign.target.scope == LValueScope::OutPort) || (p != nullptr && p->is_out());
                     std::string_view op_str = assignment_op_to_string(assign.op);
+                    const std::string tgt = escape_member_path(assign.target.full_path());
                     if (is_out) {
-                        out << indent << "out." << assign.target.full_path() << " " << op_str << " " << expr << ";\n";
+                        out << indent << "out." << tgt << " " << op_str << " " << expr << ";\n";
                     } else {
-                        out << indent << "reg." << assign.target.full_path() << " " << op_str << " " << expr << ";\n";
+                        out << indent << "reg." << tgt << " " << op_str << " " << expr << ";\n";
                     }
                 }
                 for (const auto& inst : instructions) {
@@ -1258,10 +1277,11 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                         const auto* p = model.find_port(st->target.name);
                         bool is_out = (st->target.scope == LValueScope::OutPort) || (p != nullptr && p->is_out());
                         std::string_view op_str = assignment_op_to_string(st->op);
+                        const std::string tgt = escape_member_path(st->target.full_path());
                         if (is_out) {
-                            out << indent << "out." << st->target.full_path() << " " << op_str << " " << expr << ";\n";
+                            out << indent << "out." << tgt << " " << op_str << " " << expr << ";\n";
                         } else {
-                            out << indent << "reg." << st->target.full_path() << " " << op_str << " " << expr << ";\n";
+                            out << indent << "reg." << tgt << " " << op_str << " " << expr << ";\n";
                         }
                     } else if (const auto* pw = std::get_if<PortWriteOp>(&inst.op)) {
                         std::string expr = qualify_expression(pw->expression, model);
@@ -1271,7 +1291,7 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                         out << indent << "out." << escape_cpp_keyword(pw->port_name) << " = " << expr << ";\n";
                     } else if (const auto* pr = std::get_if<PortReadOp>(&inst.op)) {
                         if (!pr->destination.name.empty()) {
-                            out << indent << "reg." << pr->destination.full_path() << " = in."
+                            out << indent << "reg." << escape_member_path(pr->destination.full_path()) << " = in."
                                 << escape_cpp_keyword(pr->port_name) << ";\n";
                         }
                     } else if (const auto* ac = std::get_if<ActionCallOp>(&inst.op)) {

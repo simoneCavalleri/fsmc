@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 585  
+**Total Documented Test Cases**: 587  
 
 ---
 
@@ -843,6 +843,9 @@
 #### `MermaidParserTest.ForkJoinWithExternalTransitionsPreservesRegionHierarchy`
 **Test Intent**: Verify Mermaid states inside orthogonal regions keep pinned_parent when referenced by root Fork/Join
 
+#### `MermaidParser.DistinctAssignmentActionNames_AcrossLifecycleAndTransitions`
+**Test Intent**: Verify synthesized assignment action names do not collide across entry, exit, and transitions.
+
 ### [`test_multiline_actions.cpp`](../../tests/frontend/diagram/test_multiline_actions.cpp) (`tests/frontend/diagram/test_multiline_actions.cpp`)
 - *(Executable binary test verification)*
 
@@ -873,6 +876,9 @@
 
 #### `PlantUmlParserTest.ForkJoinWithExternalTransitionsPreservesRegionHierarchy`
 **Test Intent**: Verify PlantUML states inside regions keep pinned_parent when referenced by root-level Fork/Join transitions.
+
+#### `PlantUmlParser.DistinctAssignmentActionNames_AcrossLifecycleAndTransitions`
+**Test Intent**: Verify synthesized assignment action names do not collide across entry, exit, and transitions.
 
 ### [`test_directive_parser.cpp`](../../tests/frontend/directive/test_directive_parser.cpp) (`tests/frontend/directive/test_directive_parser.cpp`)
 #### `DirectiveParser.StateDirective_ParsesTraceabilityAndActivities`

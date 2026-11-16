@@ -320,10 +320,28 @@ static bool try_parse_assignment_statement(const std::string& statement, std::ve
         return std::string(sv.substr(first, last - first + 1));
     };
 
+    auto sanitize_dotted_path = [](const std::string& path) -> std::string {
+        std::string res;
+        std::size_t start = 0;
+        while (start <= path.size()) {
+            const std::size_t dot = path.find('.', start);
+            if (!res.empty()) {
+                res.push_back('.');
+            }
+            if (dot == std::string::npos) {
+                res += sanitize_identifier(path.substr(start));
+                break;
+            }
+            res += sanitize_identifier(path.substr(start, dot - start));
+            start = dot + 1;
+        }
+        return res;
+    };
+
     std::smatch assign_match;
     if (std::regex_match(statement, assign_match, assign_regex)) {
         std::string scope_prefix = assign_match[1].str();
-        std::string var_path = assign_match[2].str();
+        std::string var_path = sanitize_dotted_path(assign_match[2].str());
         std::string op = assign_match[3].str();
         std::string rhs = trim_ws(assign_match[4].str());
         LValueTarget tgt(scope_prefix + var_path);
@@ -342,7 +360,7 @@ static bool try_parse_assignment_statement(const std::string& statement, std::ve
     }
     if (std::regex_match(statement, assign_match, inc_regex)) {
         std::string scope_prefix = assign_match[1].str();
-        std::string var_path = assign_match[2].str();
+        std::string var_path = sanitize_dotted_path(assign_match[2].str());
         std::string op = assign_match[3].str();
         LValueTarget tgt(scope_prefix + var_path);
         assignments.push_back({tgt, (op == "++") ? (var_path + " + 1") : (var_path + " - 1")});
@@ -1232,6 +1250,24 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
                 action = to_pascal_case(trans_name) + "Action";
             } else {
                 action = "update_state_vars";
+            }
+            if (explicit_action_name.empty()) {
+                auto has_action = [&](const std::string& candidate) {
+                    for (const auto& existing : model.actions) {
+                        if (existing.name == candidate) {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+                if (has_action(action)) {
+                    const std::string base = action;
+                    std::size_t suffix = 2;
+                    while (has_action(base + "_" + std::to_string(suffix))) {
+                        ++suffix;
+                    }
+                    action = base + "_" + std::to_string(suffix);
+                }
             }
             model.add_action(action);
         }

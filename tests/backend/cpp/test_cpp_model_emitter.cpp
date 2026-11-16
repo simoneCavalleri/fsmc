@@ -1141,3 +1141,34 @@ TEST(CppModelEmitterTest, StandaloneHeaderWrapsEmbeddedRuntimeInIncludeGuard) {
     EXPECT_NE(code.find("#define FSMC_EMBEDDED_RUNTIME_INCLUDED"), std::string::npos);
     EXPECT_NE(code.find("#endif // FSMC_EMBEDDED_RUNTIME_INCLUDED"), std::string::npos);
 }
+
+/**
+ * @brief Verify --no-stubs defers lifecycle action instantiation via dependent template parameters.
+ * @scenario State with entry, exit, and do_activity emitted with include_stubs=false.
+ * @expected Lifecycle hooks use dependent Act0 template parameters so incomplete forward-declared actions compile.
+ */
+TEST(CppModelEmitterTest, NoStubsDefersLifecycleActionInstantiationViaDependentTemplate) {
+    FsmIr model;
+    model.name = "NoStubsDemo";
+    model.initial_state = "Idle";
+    auto& idle = model.add_state("Idle");
+    idle.entry_actions.emplace_back("on_idle_enter");
+    idle.exit_actions.emplace_back("on_idle_exit");
+    idle.do_activity = "on_idle_do";
+    model.add_action("on_idle_enter");
+    model.add_action("on_idle_exit");
+    model.add_action("on_idle_do");
+
+    GeneratorOptions opts;
+    opts.include_stubs = false;
+    std::ostringstream out;
+    CppModelEmitter::emit_model(out, model, opts);
+    const std::string str = out.str();
+
+    EXPECT_NE(str.find("typename Act0 = on_idle_enter"), std::string::npos);
+    EXPECT_NE(str.find("typename Act0 = on_idle_exit"), std::string::npos);
+    EXPECT_NE(str.find("typename Act0 = on_idle_do"), std::string::npos);
+    EXPECT_NE(str.find("auto entry_action_0 = Act0{};"), std::string::npos);
+    EXPECT_NE(str.find("auto exit_action_0 = Act0{};"), std::string::npos);
+    EXPECT_NE(str.find("auto activity = Act0{};"), std::string::npos);
+}

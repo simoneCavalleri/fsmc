@@ -35,6 +35,9 @@ class CppModelEmitter {
     /** @brief Emits state tags and hierarchy descriptors. */
     static void emit_states(std::ostream& out, const FsmIr& model);
 
+    /** @brief Emits state tags and hierarchy descriptors with emission options. */
+    static void emit_states(std::ostream& out, const FsmIr& model, const GeneratorOptions& options);
+
     /** @brief Emits guard callable functors and evaluation functions. */
     static void emit_guards(std::ostream& out, const FsmIr& model, const GeneratorOptions& options);
 

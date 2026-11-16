@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 565  
+**Total Documented Test Cases**: 566  
 
 ---
 
@@ -534,6 +534,9 @@
 
 #### `CppModelEmitterTest.StandaloneHeaderWrapsEmbeddedRuntimeInIncludeGuard`
 **Test Intent**: Verify standalone C++ generation wraps the embedded runtime in FSMC_EMBEDDED_RUNTIME_INCLUDED guard.
+
+#### `CppModelEmitterTest.NoStubsDefersLifecycleActionInstantiationViaDependentTemplate`
+**Test Intent**: Verify --no-stubs defers lifecycle action instantiation via dependent template parameters.
 
 ### [`test_generated_fsm.cpp`](../../tests/backend/cpp/test_generated_fsm.cpp) (`tests/backend/cpp/test_generated_fsm.cpp`)
 - *(Executable binary test verification)*

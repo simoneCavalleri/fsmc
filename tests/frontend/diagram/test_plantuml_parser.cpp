@@ -8,9 +8,11 @@
 #include <optional>
 #include <string>
 
+#include "fsm/backend/diagram/plantuml_serializer.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/middleend/analysis/fsm_validator.hpp"
 
+using namespace fsm::backend::diagram;
 using namespace fsm::frontend::diagram;
 using namespace fsm::frontend;
 using namespace fsm::middleend::analysis;
@@ -353,6 +355,55 @@ Ready --> Running : FAST / x = 99
     EXPECT_EQ(ready->exit_actions[0].assignments[0].expression, "1");
     EXPECT_EQ(model.transitions[0].transition_action->assignments[0].expression, "x * 2");
     EXPECT_EQ(model.transitions[1].transition_action->assignments[0].expression, "99");
+}
+
+/**
+ * @brief Verify PlantUmlSerializer omits `[*] --> initial_sub_state` inside StateKind::Parallel blocks.
+ * @scenario Parallel state 'Par' has 3 orthogonal regions (Reg1, Reg2, Reg3) and a non-empty initial_sub_state.
+ * @expected Serialized PlantUML omits `[*] --> Reg3` inside Par and roundtrips all 3 orthogonal regions.
+ */
+TEST(PlantUmlSerializerTest, ParallelStateOmitsInitialSubstateAndRoundtripsThreeRegions) {
+    FsmIr ir;
+    ir.name = "Par3";
+    ir.initial_state = "Par";
+
+    auto& par = ir.add_state("Par");
+    par.is_composite = true;
+    par.kind = StateKind::Parallel;
+    par.initial_sub_state = "Reg3";
+    par.orthogonal_regions.emplace_back("Reg1", "Reg1", "A1");
+    par.orthogonal_regions.emplace_back("Reg2", "Reg2", "B1");
+    par.orthogonal_regions.emplace_back("Reg3", "Reg3", "C1");
+
+    auto& r1 = ir.add_state("Reg1", "Par");
+    r1.is_composite = true;
+    r1.initial_sub_state = "A1";
+    ir.add_state("A1", "Reg1");
+    ir.add_state("A2", "Reg1");
+
+    auto& r2 = ir.add_state("Reg2", "Par");
+    r2.is_composite = true;
+    r2.initial_sub_state = "B1";
+    ir.add_state("B1", "Reg2");
+    ir.add_state("B2", "Reg2");
+
+    auto& r3 = ir.add_state("Reg3", "Par");
+    r3.is_composite = true;
+    r3.initial_sub_state = "C1";
+    ir.add_state("C1", "Reg3");
+    ir.add_state("C2", "Reg3");
+
+    const std::string puml = PlantUmlSerializer::serialize(ir);
+    EXPECT_EQ(puml.find("[*] --> Reg3"), std::string::npos);
+
+    PlantUmlParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(puml, parsed, err)) << err;
+    const auto* par_parsed = parsed.find_state("Par");
+    ASSERT_NE(par_parsed, nullptr);
+    EXPECT_EQ(par_parsed->kind, StateKind::Parallel);
+    EXPECT_EQ(par_parsed->orthogonal_regions.size(), 3u);
 }
 
 }  // namespace

@@ -1052,6 +1052,7 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     std::string action;
     std::uint32_t priority = 0;
     std::optional<TimeTrigger> time_trigger;
+    std::optional<ChangeTrigger> change_trigger;
 
     // 1. Optional transition name matching
     static const std::regex trans_name_regex(R"(^transition\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
@@ -1083,6 +1084,7 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
         std::regex::optimize);
     static const std::regex at_regex(R"(\b(?:accept\s+)?at\s*(?:\(\s*([^)]+)\s*\)|([A-Za-z0-9_:]+)))",
                                      std::regex::optimize);
+    static const std::regex change_when_regex(R"(\b(?:accept\s+)?when\s*\(([^)]+)\))", std::regex::optimize);
     static const std::regex accept_regex(
         R"(\b(?:accept|when)\s+(?:([A-Za-z_][A-Za-z0-9_]*)\s*:\s*)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
     static const std::regex if_regex(R"(\bif\s+([^;]+?)(?=\s+(?:do\b|then\b|to\b|;|$)))", std::regex::optimize);
@@ -1133,6 +1135,9 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
         time_trigger = TimeTrigger(TimeTriggerKind::At, 0, TimeUnit::Milliseconds);
         time_trigger->dynamic_expression = trim(at_target);
         event = "at_" + sanitize_identifier(at_target);
+    } else if (std::regex_search(stmt, match, change_when_regex)) {
+        change_trigger = ChangeTrigger(trim(match[1].str()), true);
+        event.clear();
     } else if (std::regex_search(stmt, match, accept_regex)) {
         event = sanitize_identifier(match[2].str());
     }
@@ -1393,6 +1398,8 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     trans.event = event;
     if (time_trigger.has_value()) {
         trans.trigger = *time_trigger;
+    } else if (change_trigger.has_value()) {
+        trans.trigger = *change_trigger;
     }
     if (!guard.empty()) {
         trans.set_guard(guard);

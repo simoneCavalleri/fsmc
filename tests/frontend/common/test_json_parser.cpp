@@ -238,4 +238,38 @@ TEST(JsonParser, DirectionalPortsWithIntervalBounds_PopulatesPortDefinitions) {
     EXPECT_DOUBLE_EQ(out_p->max_value.value_or(0.0), 200.0);
 }
 
+/**
+ * @brief Verify JsonParser / FsmIrDeserializer converts XState "type": "parallel" into StateKind::Parallel and
+ * orthogonal_regions.
+ * @scenario XState JSON state Active with "type": "parallel" and two child region states Reg1, Reg2.
+ * @expected Active has StateKind::Parallel and 2 orthogonal_regions with Reg1 and Reg2.
+ */
+TEST(JsonParserTest, DeserializesXStateParallelTypeIntoOrthogonalRegions) {
+    const std::string json_content = R"json(
+{
+  "id": "ParJson",
+  "initial": "Active",
+  "states": {
+    "Active": {
+      "type": "parallel",
+      "states": {
+        "Reg1": { "initial": "A1", "states": { "A1": { "on": { "NEXT": "A2" } }, "A2": {} } },
+        "Reg2": { "initial": "B1", "states": { "B1": { "on": { "SYNC": "B2" } }, "B2": {} } }
+      }
+    }
+  }
+}
+)json";
+
+    JsonParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << err;
+
+    const StateNode* active = model.find_state("Active");
+    ASSERT_NE(active, nullptr);
+    EXPECT_EQ(active->kind, StateKind::Parallel);
+    ASSERT_EQ(active->orthogonal_regions.size(), 2u);
+}
+
 }  // namespace

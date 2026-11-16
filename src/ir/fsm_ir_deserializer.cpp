@@ -921,6 +921,10 @@ void parse_states_object(const JsonValue& states_obj, FsmIr& model, const std::s
         if (s_type == "compound" && curr != nullptr) {
             curr->is_composite = true;
         }
+        if (s_type == "parallel" && curr != nullptr) {
+            curr->is_composite = true;
+            curr->kind = StateKind::Parallel;
+        }
         if (const auto* ic_val = state_data.get_child("is_composite")) {
             if (ic_val->type == JsonType::Bool && curr != nullptr) {
                 curr->is_composite = ic_val->bool_val;
@@ -1089,6 +1093,21 @@ void parse_states_object(const JsonValue& states_obj, FsmIr& model, const std::s
                         fake_obj.obj_val["target"] = elem;
                         parse_single_transition_object(fake_obj, state_name, "always", model);
                     }
+                }
+            }
+        }
+
+        // If state was declared with XState "type": "parallel" without explicit orthogonal_regions,
+        // register each direct child state as an orthogonal region.
+        if (auto* par_node = model.find_state_mut(state_name);
+            par_node != nullptr && par_node->kind == StateKind::Parallel && par_node->orthogonal_regions.empty()) {
+            for (const auto& child : model.states) {
+                if (child.parent_state == state_name) {
+                    OrthogonalRegion reg;
+                    reg.id = child.name;
+                    reg.name = child.name;
+                    reg.initial_state_id = child.initial_sub_state.empty() ? child.name : child.initial_sub_state;
+                    par_node->orthogonal_regions.push_back(std::move(reg));
                 }
             }
         }

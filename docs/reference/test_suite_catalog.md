@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 557  
+**Total Documented Test Cases**: 561  
 
 ---
 
@@ -706,6 +706,9 @@
 #### `JsonParser.DirectionalPortsWithIntervalBounds_PopulatesPortDefinitions`
 **Test Intent**: Verify parsing of typed ports and range constraints in JSON schema.
 
+#### `JsonParserTest.DeserializesXStateParallelTypeIntoOrthogonalRegions`
+**Test Intent**: Verify JsonParser / FsmIrDeserializer converts XState "type": "parallel" into StateKind::Parallel and
+
 ### [`test_parser_classification.cpp`](../../tests/frontend/common/test_parser_classification.cpp) (`tests/frontend/common/test_parser_classification.cpp`)
 #### `FrontendClassification.FormalParsers_ReportsFormalFrontendKind`
 **Test Intent**: Verify formal parser implementations report FrontendKind::Formal and canonical format tokens.
@@ -839,6 +842,9 @@
 
 #### `PlantUmlParserTest.OrthogonalSeparatorCreatesParallelRegions`
 **Test Intent**: Verify PlantUML '--' orthogonal region separator populates StateKind::Parallel and orthogonal_regions.
+
+#### `PlantUmlParserTest.ForkJoinWithExternalTransitionsPreservesRegionHierarchy`
+**Test Intent**: Verify PlantUML states inside regions keep pinned_parent when referenced by root-level Fork/Join transitions.
 
 ### [`test_directive_parser.cpp`](../../tests/frontend/directive/test_directive_parser.cpp) (`tests/frontend/directive/test_directive_parser.cpp`)
 #### `DirectiveParser.StateDirective_ParsesTraceabilityAndActivities`
@@ -1062,6 +1068,9 @@
 
 #### `Sysml2ParserTest.RejectsDigitLeadingIdentifierWithDiagnostic`
 **Test Intent**: Verify Sysml2Parser rejects state identifiers starting with a digit with a clear diagnostic.
+
+#### `Sysml2ParserTest.ParsesAcceptWhenAsChangeTrigger`
+**Test Intent**: Verify Sysml2Parser parses 'accept when(<expr>)' as a ChangeTrigger rather than a signal named 'when'.
 
 ### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`
@@ -1958,6 +1967,9 @@
 
 #### `FsmcCliOptionsTest.CheckRaces_DetectsDataRaceUnder7StagePipeline`
 **Test Intent**: Verify --races detects concurrent data races even when --7stage pipeline is active.
+
+#### `FsmcCliOptionsTest.VerifyMode_ExpandsParallelStatesBeforeCtlCheck`
+**Test Intent**: Verify --ctl / --verify expands orthogonal parallel regions even in standard pipeline mode.
 
 ### [`test_multiformat_presets_roundtrip.cpp`](../../tests/integration/test_multiformat_presets_roundtrip.cpp) (`tests/integration/test_multiformat_presets_roundtrip.cpp`)
 #### `MultiformatPresets.Sysml2UavMission_PassesRoundtripAndStrictCompilation`

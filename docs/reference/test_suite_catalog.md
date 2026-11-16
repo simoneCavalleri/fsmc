@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 579  
+**Total Documented Test Cases**: 580  
 
 ---
 
@@ -1118,6 +1118,9 @@
 
 #### `Sysml2ParserTest.ParsesBareEnumLiteralsInsideEnumDef`
 **Test Intent**: Regression: bare enum literals without repeating `enum` inside `enum def` must be parsed.
+
+#### `Sysml2ParserTest.ParsesStructMemberAssignmentsInActions`
+**Test Intent**: Regression: struct member lvalues (`pos.x = 2.5`) in SysML2 action blocks preserve `member_path`.
 
 ### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`

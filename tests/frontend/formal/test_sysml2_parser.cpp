@@ -967,4 +967,48 @@ package BareEnumPkg {
     EXPECT_EQ(op_mode->literals[2].name, "Manual");
 }
 
+/**
+ * @brief Regression: struct member lvalues (`pos.x = 2.5`) in SysML2 action blocks preserve `member_path`.
+ * @scenario Parse `do action { pos.x = 2.5; pos.y += 1.0; }` on a transition where `pos` is a struct variable.
+ * @expected `assignments` captures `target.name == "pos"` and `target.member_path == {"x"}` / `{"y"}`.
+ */
+TEST(Sysml2ParserTest, ParsesStructMemberAssignmentsInActions) {
+    const std::string sysml = R"sysml(
+package StructAssignPkg {
+    state def Mover {
+        struct def Vec2 {
+            attribute x : float32 = 0.0;
+            attribute y : float32 = 0.0;
+        }
+        attribute pos : Vec2;
+        event def EvStep;
+        entry; then Idle;
+        state Idle {
+            transition t1 first Idle then Moving accept EvStep
+                do action { pos.x = 2.5; pos.y += 1.0; };
+        }
+        state Moving;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+
+    ASSERT_EQ(model.transitions.size(), 1u);
+    ASSERT_TRUE(model.transitions[0].transition_action.has_value());
+    const auto& assigns = model.transitions[0].transition_action->assignments;
+    ASSERT_EQ(assigns.size(), 2u);
+    EXPECT_EQ(assigns[0].target.name, "pos");
+    ASSERT_EQ(assigns[0].target.member_path.size(), 1u);
+    EXPECT_EQ(assigns[0].target.member_path[0], "x");
+    EXPECT_EQ(assigns[0].expression, "2.5");
+    EXPECT_EQ(assigns[1].target.name, "pos");
+    ASSERT_EQ(assigns[1].target.member_path.size(), 1u);
+    EXPECT_EQ(assigns[1].target.member_path[0], "y");
+    EXPECT_EQ(assigns[1].expression, "pos.y + 1.0");
+}
+
 }  // namespace

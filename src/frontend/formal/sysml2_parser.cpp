@@ -303,6 +303,54 @@ std::string Sysml2Parser::to_pascal_case(const std::string& str) {
     return res.empty() ? "Custom" : res;
 }
 
+static bool try_parse_assignment_statement(const std::string& statement, std::vector<ActionAssignment>& assignments) {
+    static const std::regex assign_regex(
+        R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*(=|\+=|-=|\*=|\/=)\s*(.+)$)",
+        std::regex::optimize);
+    static const std::regex inc_regex(
+        R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*(\+\+|--)$)",
+        std::regex::optimize);
+
+    auto trim_ws = [](std::string_view sv) -> std::string {
+        size_t first = sv.find_first_not_of(" \t\r\n");
+        if (first == std::string_view::npos) {
+            return "";
+        }
+        size_t last = sv.find_last_not_of(" \t\r\n");
+        return std::string(sv.substr(first, last - first + 1));
+    };
+
+    std::smatch assign_match;
+    if (std::regex_match(statement, assign_match, assign_regex)) {
+        std::string scope_prefix = assign_match[1].str();
+        std::string var_path = assign_match[2].str();
+        std::string op = assign_match[3].str();
+        std::string rhs = trim_ws(assign_match[4].str());
+        LValueTarget tgt(scope_prefix + var_path);
+        if (op == "=") {
+            assignments.push_back({tgt, rhs});
+        } else if (op == "+=") {
+            assignments.push_back({tgt, var_path + " + " + rhs});
+        } else if (op == "-=") {
+            assignments.push_back({tgt, var_path + " - " + rhs});
+        } else if (op == "*=") {
+            assignments.push_back({tgt, var_path + " * (" + rhs + ")"});
+        } else if (op == "/=") {
+            assignments.push_back({tgt, var_path + " / (" + rhs + ")"});
+        }
+        return true;
+    }
+    if (std::regex_match(statement, assign_match, inc_regex)) {
+        std::string scope_prefix = assign_match[1].str();
+        std::string var_path = assign_match[2].str();
+        std::string op = assign_match[3].str();
+        LValueTarget tgt(scope_prefix + var_path);
+        assignments.push_back({tgt, (op == "++") ? (var_path + " + 1") : (var_path + " - 1")});
+        return true;
+    }
+    return false;
+}
+
 bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, std::vector<std::string>& state_stack,
                                      std::vector<std::string>& package_stack,
                                      std::vector<std::size_t>& package_push_counts, std::string& current_item_def,
@@ -742,47 +790,12 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         std::vector<ActionAssignment> assignments;
         std::vector<std::string> standalone_calls;
 
-        static const std::regex assign_regex(
-            R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(=|\+=|-=|\*=|\/=)\s*(.+)$)",
-            std::regex::optimize);
-        static const std::regex inc_regex(
-            R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(\+\+|--)$)",
-            std::regex::optimize);
-
         while (std::getline(ss, statement, ';')) {
             statement = trim(statement);
             if (statement.empty())
                 continue;
 
-            std::smatch assign_match;
-            if (std::regex_match(statement, assign_match, assign_regex)) {
-                std::string scope_prefix = assign_match[1].str();
-                std::string var = sanitize_identifier(assign_match[2].str());
-                std::string op = assign_match[3].str();
-                std::string rhs = trim(assign_match[4].str());
-                LValueTarget tgt(scope_prefix + var);
-                if (op == "=") {
-                    assignments.push_back({tgt, rhs});
-                } else if (op == "+=") {
-                    assignments.push_back({tgt, var + " + " + rhs});
-                } else if (op == "-=") {
-                    assignments.push_back({tgt, var + " - " + rhs});
-                } else if (op == "*=") {
-                    assignments.push_back({tgt, var + " * (" + rhs + ")"});
-                } else if (op == "/=") {
-                    assignments.push_back({tgt, var + " / (" + rhs + ")"});
-                }
-            } else if (std::regex_match(statement, assign_match, inc_regex)) {
-                std::string scope_prefix = assign_match[1].str();
-                std::string var = sanitize_identifier(assign_match[2].str());
-                std::string op = assign_match[3].str();
-                LValueTarget tgt(scope_prefix + var);
-                if (op == "++") {
-                    assignments.push_back({tgt, var + " + 1"});
-                } else {
-                    assignments.push_back({tgt, var + " - 1"});
-                }
-            } else {
+            if (!try_parse_assignment_statement(statement, assignments)) {
                 std::string act_call = statement;
                 if (act_call.ends_with("()")) {
                     act_call.resize(act_call.size() - 2);
@@ -1190,43 +1203,7 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
             if (statement.empty())
                 continue;
 
-            static const std::regex assign_regex(
-                R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(=|\+=|-=|\*=|\/=)\s*(.+)$)",
-                std::regex::optimize);
-            static const std::regex inc_regex(
-                R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(\+\+|--)$)",
-                std::regex::optimize);
-            std::smatch assign_match;
-            if (std::regex_match(statement, assign_match, assign_regex)) {
-                // Variable assignment or compound assignment op
-                std::string scope_prefix = assign_match[1].str();
-                std::string var = sanitize_identifier(assign_match[2].str());
-                std::string op = assign_match[3].str();
-                std::string rhs = trim(assign_match[4].str());
-                LValueTarget tgt(scope_prefix + var);
-                if (op == "=") {
-                    assignments.push_back({tgt, rhs});
-                } else if (op == "+=") {
-                    assignments.push_back({tgt, var + " + " + rhs});
-                } else if (op == "-=") {
-                    assignments.push_back({tgt, var + " - " + rhs});
-                } else if (op == "*=") {
-                    assignments.push_back({tgt, var + " * (" + rhs + ")"});
-                } else if (op == "/=") {
-                    assignments.push_back({tgt, var + " / (" + rhs + ")"});
-                }
-            } else if (std::regex_match(statement, assign_match, inc_regex)) {
-                // Increment or decrement shorthand (++ or --)
-                std::string scope_prefix = assign_match[1].str();
-                std::string var = sanitize_identifier(assign_match[2].str());
-                std::string op = assign_match[3].str();
-                LValueTarget tgt(scope_prefix + var);
-                if (op == "++") {
-                    assignments.push_back({tgt, var + " + 1"});
-                } else {
-                    assignments.push_back({tgt, var + " - 1"});
-                }
-            } else {
+            if (!try_parse_assignment_statement(statement, assignments)) {
                 // Standalone action method call
                 std::string act_call = sanitize_identifier(statement);
                 if (!act_call.empty()) {

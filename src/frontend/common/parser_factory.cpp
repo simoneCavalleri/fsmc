@@ -90,9 +90,12 @@ std::unique_ptr<IParser> ParserFactory::create(std::string_view file_path, std::
     if (!format_override.empty() && format_override != "auto") {
         return create_by_format(format_override);
     }
-    auto parser = create_by_extension(file_path);
-    if (parser) {
-        return parser;
+    const std::string ext = std::filesystem::path(file_path).extension().string();
+    if (ext != ".xml") {
+        auto parser = create_by_extension(file_path);
+        if (parser) {
+            return parser;
+        }
     }
     if (!file_path.empty() && file_path != "-" && file_path != "/dev/stdin") {
         std::error_code ec;
@@ -110,6 +113,9 @@ std::unique_ptr<IParser> ParserFactory::create(std::string_view file_path, std::
                 }
             }
         }
+    }
+    if (ext == ".xml") {
+        return std::make_unique<CameoXmiParser>();
     }
     // Default fallback to PlantUML parser
     return std::make_unique<PlantUmlParser>();

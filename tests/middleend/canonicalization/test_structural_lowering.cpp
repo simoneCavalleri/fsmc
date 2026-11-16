@@ -977,3 +977,53 @@ TEST(HistoryLowering, EmitsValidGuardIdentifiersAndPrioritizedFallback) {
         EXPECT_NE(g.name, "Step1");
     }
 }
+
+/**
+ * @brief Verify Deep History lowering only attaches exit history recording to leaf states, not intermediate composites.
+ * @scenario 3-level hierarchy Outer -> Inner -> {LeafA, LeafB} with transition Off -> Outer[H*].
+ * @expected Inner does NOT get __record_history_Inner; LeafA and LeafB do, and default fallback targets LeafA.
+ */
+TEST(HistoryLowering, DeepHistoryOnlyRecordsLeafSubstates) {
+    FsmIr ir;
+    ir.name = "DeepHistLeafTest";
+    ir.initial_state = "Off";
+
+    StateNode off("Off");
+    StateNode outer("Outer");
+    outer.is_composite = true;
+    outer.has_history = true;
+    outer.has_deep_history = true;
+    outer.initial_sub_state = "Inner";
+
+    StateNode inner("Inner", "", "Outer");
+    inner.is_composite = true;
+    inner.initial_sub_state = "LeafA";
+
+    StateNode leaf_a("LeafA", "", "Inner");
+    StateNode leaf_b("LeafB", "", "Inner");
+    ir.states = {off, outer, inner, leaf_a, leaf_b};
+
+    TransitionEdge t("Off", "Outer", "EvResume");
+    t.target_is_history = true;
+    t.target_is_deep_history = true;
+    ir.transitions.push_back(t);
+
+    DiagnosticEngine diag;
+    ASSERT_TRUE(HistoryLoweringPass::run(ir, diag));
+
+    const StateNode* inner_after = ir.find_state("Inner");
+    ASSERT_NE(inner_after, nullptr);
+    EXPECT_TRUE(inner_after->exit_actions.empty());
+
+    const StateNode* leaf_b_after = ir.find_state("LeafB");
+    ASSERT_NE(leaf_b_after, nullptr);
+    EXPECT_FALSE(leaf_b_after->exit_actions.empty());
+
+    bool found_fallback_to_leaf_a = false;
+    for (const auto& tr : ir.transitions) {
+        if (tr.source == "Outer_HistoryRestore" && tr.guard == "else" && tr.target == "LeafA") {
+            found_fallback_to_leaf_a = true;
+        }
+    }
+    EXPECT_TRUE(found_fallback_to_leaf_a);
+}

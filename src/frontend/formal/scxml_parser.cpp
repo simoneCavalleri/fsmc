@@ -599,7 +599,7 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
         if (!parsed.cpp_type.empty()) {
             trans.guard = parsed.cpp_type;
             for (const auto& detail : parsed.atomic_guard_details) {
-                model.add_guard(detail.name, "", detail.expression, std::nullopt);
+                model.add_guard(detail.name, "", detail.expression, detail.expression);
             }
             for (const auto& atomic : parsed.atomic_guards) {
                 model.add_guard(atomic);
@@ -607,7 +607,7 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
         } else {
             std::string guard_name = "guard_" + sanitize_identifier(src) + "_to_" + sanitize_identifier(dst) + "_" +
                                      std::to_string(model.transitions.size() + 1);
-            model.add_guard(guard_name, "", std::optional<std::string>{cond}, std::nullopt);
+            model.add_guard(guard_name, "", std::optional<std::string>{cond}, std::optional<std::string>{cond});
             trans.guard = guard_name;
         }
     }

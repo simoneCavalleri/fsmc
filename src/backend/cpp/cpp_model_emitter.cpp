@@ -877,122 +877,130 @@ void CppModelEmitter::emit_guards(std::ostream& out, const FsmIr& model, const G
         return;
     }
 
-    if (options.include_stubs) {
-        out << "// ============================================================================\n";
-        out << "// Guards\n";
-        out << "// ============================================================================\n\n";
+    out << "// ============================================================================\n";
+    out << "// Guards\n";
+    out << "// ============================================================================\n\n";
 
-        for (const auto& guard_item : model.guards) {
-            if (guard_item.name == "else" || guard_item.name == "default" ||
-                guard_item.name.find("::") != std::string::npos || guard_item.name.find('<') != std::string::npos ||
-                guard_item.name.find('>') != std::string::npos || guard_item.name.find(' ') != std::string::npos ||
-                guard_item.name.find('&') != std::string::npos || guard_item.name.find('|') != std::string::npos ||
-                guard_item.name.find('!') != std::string::npos) {
-                continue;
-            }
-            const bool has_expr = guard_item.normalized_expression.has_value() &&
-                                  !guard_item.normalized_expression->empty() &&
-                                  *guard_item.normalized_expression != guard_item.name &&
-                                  (guard_item.name != (*guard_item.normalized_expression + "Guard"));
-            std::string expr;
-            bool expr_unresolved = false;
-            if (has_expr) {
-                expr = qualify_expression(*guard_item.normalized_expression, model);
-                if (has_unresolved_identifiers(expr)) {
-                    expr_unresolved = true;
+    std::set<std::string> forward_declared_guards;
+    const std::regex ident_re(R"([A-Za-z_][A-Za-z0-9_]*)");
+
+    for (const auto& guard_item : model.guards) {
+        if (guard_item.name == "else" || guard_item.name == "default" ||
+            guard_item.name.find("::") != std::string::npos || guard_item.name.find('<') != std::string::npos ||
+            guard_item.name.find('>') != std::string::npos || guard_item.name.find(' ') != std::string::npos ||
+            guard_item.name.find('&') != std::string::npos || guard_item.name.find('|') != std::string::npos ||
+            guard_item.name.find('!') != std::string::npos) {
+            if (!options.include_stubs) {
+                for (std::sregex_iterator it(guard_item.name.begin(), guard_item.name.end(), ident_re), end; it != end;
+                     ++it) {
+                    std::string id = it->str();
+                    if (id != "fsm" && id != "and_" && id != "or_" && id != "not_" && id != "xor_" &&
+                        id != "no_guard" && id != "else" && id != "default") {
+                        forward_declared_guards.insert(id);
+                    }
                 }
+            }
+            continue;
+        }
+        const bool has_expr = guard_item.normalized_expression.has_value() &&
+                              !guard_item.normalized_expression->empty() &&
+                              *guard_item.normalized_expression != guard_item.name &&
+                              (guard_item.name != (*guard_item.normalized_expression + "Guard"));
+        std::string expr;
+        bool expr_unresolved = false;
+        bool is_domain_symbol = false;
+        if (has_expr) {
+            expr = qualify_expression(*guard_item.normalized_expression, model);
+            if (has_unresolved_identifiers(expr)) {
+                expr_unresolved = true;
+            }
+        } else {
+            const auto* p = model.find_port(guard_item.name);
+            const auto* v = model.find_variable(guard_item.name);
+            if (p != nullptr && p->is_in()) {
+                expr = "in." + escape_cpp_keyword(guard_item.name);
+                is_domain_symbol = true;
+            } else if (p != nullptr && p->is_out()) {
+                expr = "out." + escape_cpp_keyword(guard_item.name);
+                is_domain_symbol = true;
+            } else if (v != nullptr) {
+                expr = "reg." + escape_cpp_keyword(guard_item.name);
+                is_domain_symbol = true;
             } else {
-                const auto* p = model.find_port(guard_item.name);
-                const auto* v = model.find_variable(guard_item.name);
-                if (p != nullptr && p->is_in()) {
-                    expr = "in." + escape_cpp_keyword(guard_item.name);
-                } else if (p != nullptr && p->is_out()) {
-                    expr = "out." + escape_cpp_keyword(guard_item.name);
-                } else if (v != nullptr) {
-                    expr = "reg." + escape_cpp_keyword(guard_item.name);
-                } else {
-                    expr = "true";
-                }
+                expr = "true";
             }
-            const std::string eval_expr = expr_unresolved ? "true" : expr;
-            bool references_event =
-                !expr_unresolved && has_member_access_prefix(eval_expr, {"cmd", "event", "payload"});
-            bool references_reg = !expr_unresolved && has_member_access_prefix(eval_expr, {"reg"});
-            std::string non_event_expr = references_event ? "true" : eval_expr;
-            std::string in_only_expr = (references_event || references_reg) ? "true" : eval_expr;
+        }
+        const bool has_model_impl = (has_expr && !expr_unresolved) || is_domain_symbol;
+        if (!options.include_stubs && !has_model_impl) {
+            forward_declared_guards.insert(guard_item.name);
+            continue;
+        }
+        const std::string eval_expr = expr_unresolved ? "true" : expr;
+        bool references_event = !expr_unresolved && has_member_access_prefix(eval_expr, {"cmd", "event", "payload"});
+        bool references_reg = !expr_unresolved && has_member_access_prefix(eval_expr, {"reg"});
+        std::string non_event_expr = references_event ? "true" : eval_expr;
+        std::string in_only_expr = (references_event || references_reg) ? "true" : eval_expr;
 
-            std::string guard_struct_name = escape_cpp_keyword(guard_item.name);
-            out << "/**\n";
-            out << " * @struct " << guard_struct_name << "\n";
-            out << " * @brief Transition guard predicate for '" << guard_item.name << "'.\n";
-            if (has_expr) {
-                out << " * @note Evaluates: `" << expr << "`\n";
-            }
-            out << " */\n";
-            out << "struct " << guard_struct_name << " {\n";
+        std::string guard_struct_name = escape_cpp_keyword(guard_item.name);
+        out << "/**\n";
+        out << " * @struct " << guard_struct_name << "\n";
+        out << " * @brief Transition guard predicate for '" << guard_item.name << "'.\n";
+        if (has_expr) {
+            out << " * @note Evaluates: `" << expr << "`\n";
+        }
+        out << " */\n";
+        out << "struct " << guard_struct_name << " {\n";
 
-            out << "    // Domain guard evaluation (InPorts, Registers, Event payload)\n";
-            if (!references_event) {
-                out << "    template <typename InPorts, typename Registers>\n";
-                out << "    [[nodiscard]] constexpr bool operator()(const InPorts& in, const Registers& reg) const "
-                       "noexcept {\n";
-                out << "        (void)in; (void)reg;\n";
-                if (expr_unresolved) {
-                    out << "        // Unresolved guard expression: " << expr << "\n";
-                }
-                out << "        return " << non_event_expr << ";\n";
-                out << "    }\n\n";
-            }
-
-            out << "    template <typename Event, typename InPorts, typename Registers>\n";
-            out << "    [[nodiscard]] constexpr bool operator()(const Event& cmd, const InPorts& in, const "
-                   "Registers& reg) const noexcept {\n";
-            out << "        (void)cmd; (void)in; (void)reg;\n";
+        out << "    // Domain guard evaluation (InPorts, Registers, Event payload)\n";
+        if (!references_event) {
+            out << "    template <typename InPorts, typename Registers>\n";
+            out << "    [[nodiscard]] constexpr bool operator()(const InPorts& in, const Registers& reg) const "
+                   "noexcept {\n";
+            out << "        (void)in; (void)reg;\n";
             if (expr_unresolved) {
                 out << "        // Unresolved guard expression: " << expr << "\n";
             }
-            out << "        return " << eval_expr << ";\n";
+            out << "        return " << non_event_expr << ";\n";
             out << "    }\n\n";
+        }
 
-            if (!references_event) {
-                out << "    template <typename InPorts>\n";
-                out << "    [[nodiscard]] constexpr bool operator()(const InPorts& in) const noexcept {\n";
-                out << "        (void)in;\n";
-                if (expr_unresolved) {
-                    out << "        // Unresolved guard expression: " << expr << "\n";
-                }
-                out << "        return " << in_only_expr << ";\n";
-                out << "    }\n\n";
-            }
+        out << "    template <typename Event, typename InPorts, typename Registers>\n";
+        out << "    [[nodiscard]] constexpr bool operator()(const Event& cmd, const InPorts& in, const "
+               "Registers& reg) const noexcept {\n";
+        out << "        (void)cmd; (void)in; (void)reg;\n";
+        if (expr_unresolved) {
+            out << "        // Unresolved guard expression: " << expr << "\n";
+        }
+        out << "        return " << eval_expr << ";\n";
+        out << "    }\n\n";
 
-            out << "    template <typename Event, typename SrcState, typename InPorts, typename Registers, "
-                   "typename Services, typename Fsm>\n";
-            out << "    [[nodiscard]] constexpr bool operator()(const Event& cmd, const SrcState& /*src*/, const "
-                   "InPorts& in, const Registers& reg, Services& /*srv*/, const Fsm& /*fsm*/) const noexcept {\n";
-            out << "        (void)cmd; (void)in; (void)reg;\n";
+        if (!references_event) {
+            out << "    template <typename InPorts>\n";
+            out << "    [[nodiscard]] constexpr bool operator()(const InPorts& in) const noexcept {\n";
+            out << "        (void)in;\n";
             if (expr_unresolved) {
                 out << "        // Unresolved guard expression: " << expr << "\n";
             }
-            out << "        return " << eval_expr << ";\n";
-            out << "    }\n";
-            out << "};\n\n";
+            out << "        return " << in_only_expr << ";\n";
+            out << "    }\n\n";
         }
 
-    } else {
-        out << "// Forward declaration of custom Guards\n";
-        std::set<std::string> declared_guards;
-        for (const auto& guard_item : model.guards) {
-            std::regex ident_re(R"([A-Za-z_][A-Za-z0-9_]*)");
-            for (std::sregex_iterator it(guard_item.name.begin(), guard_item.name.end(), ident_re), end; it != end;
-                 ++it) {
-                std::string id = it->str();
-                if (id != "fsm" && id != "and_" && id != "or_" && id != "not_" && id != "xor_" && id != "no_guard" &&
-                    id != "else" && id != "default") {
-                    declared_guards.insert(id);
-                }
-            }
+        out << "    template <typename Event, typename SrcState, typename InPorts, typename Registers, "
+               "typename Services, typename Fsm>\n";
+        out << "    [[nodiscard]] constexpr bool operator()(const Event& cmd, const SrcState& /*src*/, const "
+               "InPorts& in, const Registers& reg, Services& /*srv*/, const Fsm& /*fsm*/) const noexcept {\n";
+        out << "        (void)cmd; (void)in; (void)reg;\n";
+        if (expr_unresolved) {
+            out << "        // Unresolved guard expression: " << expr << "\n";
         }
-        for (const auto& g : declared_guards) {
+        out << "        return " << eval_expr << ";\n";
+        out << "    }\n";
+        out << "};\n\n";
+    }
+
+    if (!forward_declared_guards.empty()) {
+        out << "// Forward declaration of custom Guards\n";
+        for (const auto& g : forward_declared_guards) {
             out << "struct " << escape_cpp_keyword(g) << ";\n";
         }
         out << "\n";
@@ -1042,317 +1050,315 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
     out << "// Actions\n";
     out << "// ============================================================================\n\n";
 
-    if (options.include_stubs) {
-        for (const auto& action_item : effective_actions) {
-            std::string struct_name = escape_cpp_keyword(action_item.name);
-            out << "/**\n";
-            out << " * @struct " << struct_name << "\n";
-            out << " * @brief Transition action effect for '" << action_item.name << "'.\n";
-            out << " */\n";
-            out << "struct " << struct_name << " {\n";
-            std::vector<ActionAssignment> assignments;
-            std::vector<ActionAstNode> instructions;
-            bool body_collected = false;
-            auto collect_action_body = [&](const ActionSignature& act) {
-                if (body_collected || (act.assignments.empty() && act.instructions.empty())) {
-                    return;
-                }
-                for (const auto& a : act.assignments) {
-                    assignments.push_back(a);
-                }
-                for (const auto& inst : act.instructions) {
-                    instructions.push_back(inst);
-                }
-                body_collected = true;
-            };
-            for (const auto& t : model.transitions) {
-                if (t.condition_action.has_value() && t.condition_action->name == action_item.name) {
-                    collect_action_body(*t.condition_action);
-                }
-                if (t.transition_action.has_value() && t.transition_action->name == action_item.name) {
-                    collect_action_body(*t.transition_action);
-                }
-            }
-            for (const auto& st : model.states) {
-                for (const auto& a : st.entry_actions) {
-                    if (a.name == action_item.name) {
-                        collect_action_body(a);
-                    }
-                }
-                for (const auto& a : st.exit_actions) {
-                    if (a.name == action_item.name) {
-                        collect_action_body(a);
-                    }
-                }
-            }
+    std::set<std::string> forward_declared_actions;
+    const std::regex act_ident_re(R"([A-Za-z_][A-Za-z0-9_]*)");
 
-            bool has_datapath_instructions = false;
-            for (const auto& inst : instructions) {
-                if (std::holds_alternative<StoreOp>(inst.op) || std::holds_alternative<PortWriteOp>(inst.op) ||
-                    std::holds_alternative<PortReadOp>(inst.op)) {
+    for (const auto& action_item : effective_actions) {
+        std::vector<ActionAssignment> assignments;
+        std::vector<ActionAstNode> instructions;
+        bool body_collected = false;
+        auto collect_action_body = [&](const ActionSignature& act) {
+            if (body_collected || (act.assignments.empty() && act.instructions.empty())) {
+                return;
+            }
+            for (const auto& a : act.assignments) {
+                assignments.push_back(a);
+            }
+            for (const auto& inst : act.instructions) {
+                instructions.push_back(inst);
+            }
+            body_collected = true;
+        };
+        for (const auto& t : model.transitions) {
+            if (t.condition_action.has_value() && t.condition_action->name == action_item.name) {
+                collect_action_body(*t.condition_action);
+            }
+            if (t.transition_action.has_value() && t.transition_action->name == action_item.name) {
+                collect_action_body(*t.transition_action);
+            }
+        }
+        for (const auto& st : model.states) {
+            for (const auto& a : st.entry_actions) {
+                if (a.name == action_item.name) {
+                    collect_action_body(a);
+                }
+            }
+            for (const auto& a : st.exit_actions) {
+                if (a.name == action_item.name) {
+                    collect_action_body(a);
+                }
+            }
+        }
+
+        if (!options.include_stubs && assignments.empty() && instructions.empty()) {
+            for (std::sregex_iterator it(action_item.name.begin(), action_item.name.end(), act_ident_re), end;
+                 it != end; ++it) {
+                std::string id = it->str();
+                if (id != "fsm" && id != "and_" && id != "or_" && id != "not_" && id != "seq_" && id != "no_action") {
+                    forward_declared_actions.insert(id);
+                }
+            }
+            continue;
+        }
+
+        std::string struct_name = escape_cpp_keyword(action_item.name);
+        out << "/**\n";
+        out << " * @struct " << struct_name << "\n";
+        out << " * @brief Transition action effect for '" << action_item.name << "'.\n";
+        out << " */\n";
+        out << "struct " << struct_name << " {\n";
+
+        bool has_datapath_instructions = false;
+        for (const auto& inst : instructions) {
+            if (std::holds_alternative<StoreOp>(inst.op) || std::holds_alternative<PortWriteOp>(inst.op) ||
+                std::holds_alternative<PortReadOp>(inst.op)) {
+                has_datapath_instructions = true;
+                break;
+            }
+            if (const auto* call = std::get_if<ActionCallOp>(&inst.op)) {
+                if (instructions.size() > 1 || !call->arguments.empty() || !call->read_set.empty() ||
+                    !call->write_set.empty()) {
                     has_datapath_instructions = true;
                     break;
                 }
-                if (const auto* call = std::get_if<ActionCallOp>(&inst.op)) {
-                    if (instructions.size() > 1 || !call->arguments.empty() || !call->read_set.empty() ||
-                        !call->write_set.empty()) {
-                        has_datapath_instructions = true;
-                        break;
-                    }
+            }
+        }
+
+        if (!assignments.empty() || has_datapath_instructions) {
+            bool uses_out = false;
+            bool uses_reg = false;
+            bool uses_in = false;
+            bool uses_cmd = false;
+            bool uses_srv = false;
+
+            auto scan_rhs_usage = [&](const std::string& qualified_rhs) {
+                if (has_member_access_prefix(qualified_rhs, {"in"})) {
+                    uses_in = true;
                 }
+                if (has_member_access_prefix(qualified_rhs, {"out"})) {
+                    uses_out = true;
+                }
+                if (has_member_access_prefix(qualified_rhs, {"reg"})) {
+                    uses_reg = true;
+                }
+                if (has_member_access_prefix(qualified_rhs, {"cmd", "event", "payload"})) {
+                    uses_cmd = true;
+                }
+                if (has_member_access_prefix(qualified_rhs, {"srv", "service"})) {
+                    uses_srv = true;
+                }
+            };
+
+            for (const auto& assign : assignments) {
+                const auto* p = model.find_port(assign.target.name);
+                bool is_out = (assign.target.scope == LValueScope::OutPort) || (p != nullptr && p->is_out());
+                if (is_out) {
+                    uses_out = true;
+                } else {
+                    uses_reg = true;
+                }
+                scan_rhs_usage(qualify_expression(assign.expression, model));
             }
 
-            if (!assignments.empty() || has_datapath_instructions) {
-                bool uses_out = false;
-                bool uses_reg = false;
-                bool uses_in = false;
-                bool uses_cmd = false;
-                bool uses_srv = false;
-
-                auto scan_rhs_usage = [&](const std::string& qualified_rhs) {
-                    if (has_member_access_prefix(qualified_rhs, {"in"})) {
-                        uses_in = true;
-                    }
-                    if (has_member_access_prefix(qualified_rhs, {"out"})) {
-                        uses_out = true;
-                    }
-                    if (has_member_access_prefix(qualified_rhs, {"reg"})) {
-                        uses_reg = true;
-                    }
-                    if (has_member_access_prefix(qualified_rhs, {"cmd", "event", "payload"})) {
-                        uses_cmd = true;
-                    }
-                    if (has_member_access_prefix(qualified_rhs, {"srv", "service"})) {
-                        uses_srv = true;
-                    }
-                };
-
-                for (const auto& assign : assignments) {
-                    const auto* p = model.find_port(assign.target.name);
-                    bool is_out = (assign.target.scope == LValueScope::OutPort) || (p != nullptr && p->is_out());
+            for (const auto& inst : instructions) {
+                if (const auto* st = std::get_if<StoreOp>(&inst.op)) {
+                    const auto* p = model.find_port(st->target.name);
+                    bool is_out = (st->target.scope == LValueScope::OutPort) || (p != nullptr && p->is_out());
                     if (is_out) {
                         uses_out = true;
                     } else {
                         uses_reg = true;
                     }
-                    scan_rhs_usage(qualify_expression(assign.expression, model));
+                    scan_rhs_usage(qualify_expression(st->expression, model));
+                } else if (const auto* pw = std::get_if<PortWriteOp>(&inst.op)) {
+                    uses_out = true;
+                    scan_rhs_usage(qualify_expression(pw->expression, model));
+                } else if (const auto* pr = std::get_if<PortReadOp>(&inst.op)) {
+                    if (!pr->destination.name.empty()) {
+                        uses_in = true;
+                        uses_reg = true;
+                    }
+                } else if (const auto* ac = std::get_if<ActionCallOp>(&inst.op)) {
+                    uses_srv = true;
+                    for (const auto& arg : ac->arguments) {
+                        scan_rhs_usage(qualify_expression(arg, model));
+                    }
+                } else if (std::holds_alternative<SignalEmitOp>(inst.op)) {
+                    // SignalEmitOp currently emits a diagnostic comment without touching runtime parameters
                 }
+            }
 
+            std::string in_param = uses_in ? "const InPorts& in" : "const InPorts& /*in*/";
+            std::string out_param = uses_out ? "OutPorts& out" : "OutPorts& /*out*/";
+            std::string reg_param = uses_reg ? "Registers& reg" : "Registers& /*reg*/";
+            std::string cmd_param = uses_cmd ? "const Event& cmd" : "const Event& /*cmd*/";
+            std::string srv_param = uses_srv ? "Services& srv" : "Services& /*srv*/";
+
+            auto is_float32_target = [&](const std::string& target_name) -> bool {
+                if (const auto* p = model.find_port(target_name)) {
+                    return p->type.is_primitive() && p->type.primitive() == PrimitiveTypeKind::Float32;
+                }
+                if (const auto* v = model.find_variable(target_name)) {
+                    return v->type.is_primitive() && v->type.primitive() == PrimitiveTypeKind::Float32;
+                }
+                return false;
+            };
+
+            auto suffix_float32_literals = [](const std::string& expr_in) -> std::string {
+                std::string res;
+                res.reserve(expr_in.size() + 8);
+                for (std::size_t i = 0; i < expr_in.size(); ++i) {
+                    if (std::isdigit(static_cast<unsigned char>(expr_in[i])) != 0 &&
+                        (i == 0 ||
+                         (std::isalnum(static_cast<unsigned char>(expr_in[i - 1])) == 0 && expr_in[i - 1] != '_'))) {
+                        std::size_t j = i;
+                        bool has_dot = false;
+                        while (j < expr_in.size() &&
+                               (std::isdigit(static_cast<unsigned char>(expr_in[j])) != 0 || expr_in[j] == '.')) {
+                            if (expr_in[j] == '.') {
+                                has_dot = true;
+                            }
+                            ++j;
+                        }
+                        if (has_dot && j > i &&
+                            (j == expr_in.size() || (expr_in[j] != 'f' && expr_in[j] != 'F' && expr_in[j] != 'l' &&
+                                                     expr_in[j] != 'L' && expr_in[j] != 'e' && expr_in[j] != 'E'))) {
+                            res.append(expr_in, i, j - i);
+                            res.push_back('f');
+                            i = j - 1;
+                            continue;
+                        }
+                    }
+                    res.push_back(expr_in[i]);
+                }
+                return res;
+            };
+
+            auto emit_assignment_lines = [&](std::string_view indent) {
+                for (const auto& assign : assignments) {
+                    std::string expr = qualify_expression(assign.expression, model);
+                    if (is_float32_target(assign.target.name)) {
+                        expr = suffix_float32_literals(expr);
+                    }
+                    const auto* p = model.find_port(assign.target.name);
+                    bool is_out = (assign.target.scope == LValueScope::OutPort) || (p != nullptr && p->is_out());
+                    std::string_view op_str = assignment_op_to_string(assign.op);
+                    if (is_out) {
+                        out << indent << "out." << assign.target.full_path() << " " << op_str << " " << expr << ";\n";
+                    } else {
+                        out << indent << "reg." << assign.target.full_path() << " " << op_str << " " << expr << ";\n";
+                    }
+                }
                 for (const auto& inst : instructions) {
                     if (const auto* st = std::get_if<StoreOp>(&inst.op)) {
-                        const auto* p = model.find_port(st->target.name);
-                        bool is_out = (st->target.scope == LValueScope::OutPort) || (p != nullptr && p->is_out());
-                        if (is_out) {
-                            uses_out = true;
-                        } else {
-                            uses_reg = true;
-                        }
-                        scan_rhs_usage(qualify_expression(st->expression, model));
-                    } else if (const auto* pw = std::get_if<PortWriteOp>(&inst.op)) {
-                        uses_out = true;
-                        scan_rhs_usage(qualify_expression(pw->expression, model));
-                    } else if (const auto* pr = std::get_if<PortReadOp>(&inst.op)) {
-                        if (!pr->destination.name.empty()) {
-                            uses_in = true;
-                            uses_reg = true;
-                        }
-                    } else if (const auto* ac = std::get_if<ActionCallOp>(&inst.op)) {
-                        uses_srv = true;
-                        for (const auto& arg : ac->arguments) {
-                            scan_rhs_usage(qualify_expression(arg, model));
-                        }
-                    } else if (std::holds_alternative<SignalEmitOp>(inst.op)) {
-                        // SignalEmitOp currently emits a diagnostic comment without touching runtime parameters
-                    }
-                }
-
-                std::string in_param = uses_in ? "const InPorts& in" : "const InPorts& /*in*/";
-                std::string out_param = uses_out ? "OutPorts& out" : "OutPorts& /*out*/";
-                std::string reg_param = uses_reg ? "Registers& reg" : "Registers& /*reg*/";
-                std::string cmd_param = uses_cmd ? "const Event& cmd" : "const Event& /*cmd*/";
-                std::string srv_param = uses_srv ? "Services& srv" : "Services& /*srv*/";
-
-                auto is_float32_target = [&](const std::string& target_name) -> bool {
-                    if (const auto* p = model.find_port(target_name)) {
-                        return p->type.is_primitive() && p->type.primitive() == PrimitiveTypeKind::Float32;
-                    }
-                    if (const auto* v = model.find_variable(target_name)) {
-                        return v->type.is_primitive() && v->type.primitive() == PrimitiveTypeKind::Float32;
-                    }
-                    return false;
-                };
-
-                auto suffix_float32_literals = [](const std::string& expr_in) -> std::string {
-                    std::string res;
-                    res.reserve(expr_in.size() + 8);
-                    for (std::size_t i = 0; i < expr_in.size(); ++i) {
-                        if (std::isdigit(static_cast<unsigned char>(expr_in[i])) != 0 &&
-                            (i == 0 || (std::isalnum(static_cast<unsigned char>(expr_in[i - 1])) == 0 &&
-                                        expr_in[i - 1] != '_'))) {
-                            std::size_t j = i;
-                            bool has_dot = false;
-                            while (j < expr_in.size() &&
-                                   (std::isdigit(static_cast<unsigned char>(expr_in[j])) != 0 || expr_in[j] == '.')) {
-                                if (expr_in[j] == '.') {
-                                    has_dot = true;
-                                }
-                                ++j;
-                            }
-                            if (has_dot && j > i &&
-                                (j == expr_in.size() ||
-                                 (expr_in[j] != 'f' && expr_in[j] != 'F' && expr_in[j] != 'l' && expr_in[j] != 'L' &&
-                                  expr_in[j] != 'e' && expr_in[j] != 'E'))) {
-                                res.append(expr_in, i, j - i);
-                                res.push_back('f');
-                                i = j - 1;
-                                continue;
-                            }
-                        }
-                        res.push_back(expr_in[i]);
-                    }
-                    return res;
-                };
-
-                auto emit_assignment_lines = [&](std::string_view indent) {
-                    for (const auto& assign : assignments) {
-                        std::string expr = qualify_expression(assign.expression, model);
-                        if (is_float32_target(assign.target.name)) {
+                        std::string expr = qualify_expression(st->expression, model);
+                        if (is_float32_target(st->target.name)) {
                             expr = suffix_float32_literals(expr);
                         }
-                        const auto* p = model.find_port(assign.target.name);
-                        bool is_out = (assign.target.scope == LValueScope::OutPort) || (p != nullptr && p->is_out());
-                        std::string_view op_str = assignment_op_to_string(assign.op);
+                        const auto* p = model.find_port(st->target.name);
+                        bool is_out = (st->target.scope == LValueScope::OutPort) || (p != nullptr && p->is_out());
+                        std::string_view op_str = assignment_op_to_string(st->op);
                         if (is_out) {
-                            out << indent << "out." << assign.target.full_path() << " " << op_str << " " << expr
-                                << ";\n";
+                            out << indent << "out." << st->target.full_path() << " " << op_str << " " << expr << ";\n";
                         } else {
-                            out << indent << "reg." << assign.target.full_path() << " " << op_str << " " << expr
-                                << ";\n";
+                            out << indent << "reg." << st->target.full_path() << " " << op_str << " " << expr << ";\n";
                         }
-                    }
-                    for (const auto& inst : instructions) {
-                        if (const auto* st = std::get_if<StoreOp>(&inst.op)) {
-                            std::string expr = qualify_expression(st->expression, model);
-                            if (is_float32_target(st->target.name)) {
-                                expr = suffix_float32_literals(expr);
-                            }
-                            const auto* p = model.find_port(st->target.name);
-                            bool is_out = (st->target.scope == LValueScope::OutPort) || (p != nullptr && p->is_out());
-                            std::string_view op_str = assignment_op_to_string(st->op);
-                            if (is_out) {
-                                out << indent << "out." << st->target.full_path() << " " << op_str << " " << expr
-                                    << ";\n";
-                            } else {
-                                out << indent << "reg." << st->target.full_path() << " " << op_str << " " << expr
-                                    << ";\n";
-                            }
-                        } else if (const auto* pw = std::get_if<PortWriteOp>(&inst.op)) {
-                            std::string expr = qualify_expression(pw->expression, model);
-                            if (is_float32_target(pw->port_name)) {
-                                expr = suffix_float32_literals(expr);
-                            }
-                            out << indent << "out." << escape_cpp_keyword(pw->port_name) << " = " << expr << ";\n";
-                        } else if (const auto* pr = std::get_if<PortReadOp>(&inst.op)) {
-                            if (!pr->destination.name.empty()) {
-                                out << indent << "reg." << pr->destination.full_path() << " = in."
-                                    << escape_cpp_keyword(pr->port_name) << ";\n";
-                            }
-                        } else if (const auto* ac = std::get_if<ActionCallOp>(&inst.op)) {
-                            out << indent << "srv." << escape_cpp_keyword(ac->function_name) << "(";
-                            for (std::size_t i = 0; i < ac->arguments.size(); ++i) {
-                                if (i > 0)
-                                    out << ", ";
-                                out << qualify_expression(ac->arguments[i], model);
-                            }
-                            out << ");\n";
-                        } else if (const auto* se = std::get_if<SignalEmitOp>(&inst.op)) {
-                            out << indent << "// emit signal: " << se->signal_name << "\n";
+                    } else if (const auto* pw = std::get_if<PortWriteOp>(&inst.op)) {
+                        std::string expr = qualify_expression(pw->expression, model);
+                        if (is_float32_target(pw->port_name)) {
+                            expr = suffix_float32_literals(expr);
                         }
+                        out << indent << "out." << escape_cpp_keyword(pw->port_name) << " = " << expr << ";\n";
+                    } else if (const auto* pr = std::get_if<PortReadOp>(&inst.op)) {
+                        if (!pr->destination.name.empty()) {
+                            out << indent << "reg." << pr->destination.full_path() << " = in."
+                                << escape_cpp_keyword(pr->port_name) << ";\n";
+                        }
+                    } else if (const auto* ac = std::get_if<ActionCallOp>(&inst.op)) {
+                        out << indent << "srv." << escape_cpp_keyword(ac->function_name) << "(";
+                        for (std::size_t i = 0; i < ac->arguments.size(); ++i) {
+                            if (i > 0)
+                                out << ", ";
+                            out << qualify_expression(ac->arguments[i], model);
+                        }
+                        out << ");\n";
+                    } else if (const auto* se = std::get_if<SignalEmitOp>(&inst.op)) {
+                        out << indent << "// emit signal: " << se->signal_name << "\n";
                     }
-                };
-
-                if (!uses_cmd && !uses_srv) {
-                    // Overload 1: (const InPorts& in, OutPorts& out, Registers& reg)
-                    out << "    template <typename InPorts, typename OutPorts, typename Registers>\n";
-                    out << "    void operator()(" << in_param << ", " << out_param << ", " << reg_param
-                        << ") const {\n";
-                    emit_assignment_lines("        ");
-                    out << "    }\n\n";
                 }
+            };
 
-                if (!uses_srv) {
-                    // Overload 2: (const Event& cmd, const InPorts& in, OutPorts& out, Registers& reg)
-                    out << "    template <typename Event, typename InPorts, typename OutPorts, typename Registers>\n";
-                    out << "    void operator()(" << cmd_param << ", " << in_param << ", " << out_param << ", "
-                        << reg_param << ") const {\n";
-                    emit_assignment_lines("        ");
-                    out << "    }\n\n";
-                }
-
-                // Overload 3: Full 5-domain (const Event& cmd, const InPorts& in, OutPorts& out, Registers& reg,
-                // Services& srv)
-                out << "    template <typename Event, typename InPorts, typename OutPorts, typename Registers, "
-                       "typename Services>\n";
-                out << "    void operator()(" << cmd_param << ", " << in_param << ", " << out_param << ", " << reg_param
-                    << ", " << srv_param << ") const {\n";
+            if (!uses_cmd && !uses_srv) {
+                // Overload 1: (const InPorts& in, OutPorts& out, Registers& reg)
+                out << "    template <typename InPorts, typename OutPorts, typename Registers>\n";
+                out << "    void operator()(" << in_param << ", " << out_param << ", " << reg_param << ") const {\n";
                 emit_assignment_lines("        ");
                 out << "    }\n\n";
+            }
 
-                if (!uses_cmd) {
-                    // Overload 4: (const InPorts& in, OutPorts& out, Registers& reg, Services& srv) for lifecycle
-                    // hooks
-                    out << "    template <typename InPorts, typename OutPorts, typename Registers, typename "
-                           "Services>\n";
-                    out << "    void operator()(" << in_param << ", " << out_param << ", " << reg_param << ", "
-                        << srv_param << ") const {\n";
-                    emit_assignment_lines("        ");
-                    out << "    }\n";
-                }
-            } else {
-                // External service invocation
-                std::string srv_call_name = escape_cpp_keyword(action_item.name);
-                out << "    template <typename Services>\n";
-                out << "    auto operator()(Services& srv) const -> decltype(srv." << srv_call_name << "()) {\n";
-                out << "        srv." << srv_call_name << "();\n";
+            if (!uses_srv) {
+                // Overload 2: (const Event& cmd, const InPorts& in, OutPorts& out, Registers& reg)
+                out << "    template <typename Event, typename InPorts, typename OutPorts, typename Registers>\n";
+                out << "    void operator()(" << cmd_param << ", " << in_param << ", " << out_param << ", " << reg_param
+                    << ") const {\n";
+                emit_assignment_lines("        ");
                 out << "    }\n\n";
+            }
 
-                out << "    template <typename Event, typename Services>\n";
-                out << "    auto operator()(const Event& /*cmd*/, Services& srv) const -> decltype(srv."
-                    << srv_call_name << "()) {\n";
-                out << "        srv." << srv_call_name << "();\n";
-                out << "    }\n\n";
+            // Overload 3: Full 5-domain (const Event& cmd, const InPorts& in, OutPorts& out, Registers& reg,
+            // Services& srv)
+            out << "    template <typename Event, typename InPorts, typename OutPorts, typename Registers, "
+                   "typename Services>\n";
+            out << "    void operator()(" << cmd_param << ", " << in_param << ", " << out_param << ", " << reg_param
+                << ", " << srv_param << ") const {\n";
+            emit_assignment_lines("        ");
+            out << "    }\n\n";
 
-                out << "    template <typename InPorts, typename OutPorts, typename Registers, typename Services>\n";
-                out << "    auto operator()(const InPorts& /*in*/, OutPorts& /*out*/, Registers& /*reg*/, "
-                       "Services& srv) const -> decltype(srv."
-                    << srv_call_name << "()) {\n";
-                out << "        srv." << srv_call_name << "();\n";
-                out << "    }\n\n";
-
-                out << "    template <typename Event, typename InPorts, typename OutPorts, typename Registers, "
-                       "typename Services>\n";
-                out << "    auto operator()(const Event& /*cmd*/, const InPorts& /*in*/, OutPorts& /*out*/, "
-                       "Registers& /*reg*/, Services& srv) const -> decltype(srv."
-                    << srv_call_name << "()) {\n";
-                out << "        srv." << srv_call_name << "();\n";
+            if (!uses_cmd) {
+                // Overload 4: (const InPorts& in, OutPorts& out, Registers& reg, Services& srv) for lifecycle
+                // hooks
+                out << "    template <typename InPorts, typename OutPorts, typename Registers, typename "
+                       "Services>\n";
+                out << "    void operator()(" << in_param << ", " << out_param << ", " << reg_param << ", " << srv_param
+                    << ") const {\n";
+                emit_assignment_lines("        ");
                 out << "    }\n";
             }
-            out << "};\n\n";
+        } else {
+            // External service invocation
+            std::string srv_call_name = escape_cpp_keyword(action_item.name);
+            out << "    template <typename Services>\n";
+            out << "    auto operator()(Services& srv) const -> decltype(srv." << srv_call_name << "()) {\n";
+            out << "        srv." << srv_call_name << "();\n";
+            out << "    }\n\n";
+
+            out << "    template <typename Event, typename Services>\n";
+            out << "    auto operator()(const Event& /*cmd*/, Services& srv) const -> decltype(srv." << srv_call_name
+                << "()) {\n";
+            out << "        srv." << srv_call_name << "();\n";
+            out << "    }\n\n";
+
+            out << "    template <typename InPorts, typename OutPorts, typename Registers, typename Services>\n";
+            out << "    auto operator()(const InPorts& /*in*/, OutPorts& /*out*/, Registers& /*reg*/, "
+                   "Services& srv) const -> decltype(srv."
+                << srv_call_name << "()) {\n";
+            out << "        srv." << srv_call_name << "();\n";
+            out << "    }\n\n";
+
+            out << "    template <typename Event, typename InPorts, typename OutPorts, typename Registers, "
+                   "typename Services>\n";
+            out << "    auto operator()(const Event& /*cmd*/, const InPorts& /*in*/, OutPorts& /*out*/, "
+                   "Registers& /*reg*/, Services& srv) const -> decltype(srv."
+                << srv_call_name << "()) {\n";
+            out << "        srv." << srv_call_name << "();\n";
+            out << "    }\n";
         }
-    } else {
+        out << "};\n\n";
+    }
+
+    if (!forward_declared_actions.empty()) {
         out << "// Forward declaration of custom Actions\n";
-        std::set<std::string> declared_actions;
-        for (const auto& action_item : model.actions) {
-            std::regex ident_re(R"([A-Za-z_][A-Za-z0-9_]*)");
-            for (std::sregex_iterator it(action_item.name.begin(), action_item.name.end(), ident_re), end; it != end;
-                 ++it) {
-                std::string id = it->str();
-                if (id != "fsm" && id != "and_" && id != "or_" && id != "not_" && id != "seq_" && id != "no_action") {
-                    declared_actions.insert(id);
-                }
-            }
-        }
-        for (const auto& a : declared_actions) {
+        for (const auto& a : forward_declared_actions) {
             out << "struct " << escape_cpp_keyword(a) << ";\n";
         }
         out << "\n";

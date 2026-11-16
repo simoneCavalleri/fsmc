@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 580  
+**Total Documented Test Cases**: 581  
 
 ---
 
@@ -540,6 +540,9 @@
 
 #### `CppModelEmitterTest.SignalPayloadAttribute_QualifiedInGuardsAndActions`
 **Test Intent**: Regression: bare signal payload attributes in guards and action assignments qualify to `cmd.<attr>`.
+
+#### `CppModelEmitterTest.NoStubsEmitsSynthesizedGuardsAndAssignmentsWhileDeferringExternalStubs`
+**Test Intent**: Regression: `--no-stubs` (`include_stubs = false`) still emits synthesized guards and assignment actions
 
 ### [`test_generated_fsm.cpp`](../../tests/backend/cpp/test_generated_fsm.cpp) (`tests/backend/cpp/test_generated_fsm.cpp`)
 - *(Executable binary test verification)*

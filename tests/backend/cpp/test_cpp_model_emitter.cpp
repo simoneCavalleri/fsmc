@@ -1218,3 +1218,62 @@ TEST(CppModelEmitterTest, SignalPayloadAttribute_QualifiedInGuardsAndActions) {
     EXPECT_EQ(str.find("operator()(const InPorts& /*in*/, OutPorts& /*out*/, Registers& reg) const"),
               std::string::npos);
 }
+
+/**
+ * @brief Regression: `--no-stubs` (`include_stubs = false`) still emits synthesized guards and assignment actions
+ *        while forward-declaring unresolved external guards and service-stub actions.
+ * @scenario Emit a model with an inline port guard `ok == true`, an assignment action `x = 42`, and external
+ *           custom symbols `ExternalGuard` / `ExternalAction` under `include_stubs = false`.
+ * @expected `ok_eq_true` and `SetX` are emitted as complete structs; `ExternalGuard` and `ExternalAction` are
+ *           forward-declared only.
+ */
+TEST(CppModelEmitterTest, NoStubsEmitsSynthesizedGuardsAndAssignmentsWhileDeferringExternalStubs) {
+    FsmIr model;
+    model.name = "MixedNoStubs";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Done");
+    PortDefinition ok_port;
+    ok_port.name = "ok";
+    ok_port.type = DataType{PrimitiveTypeKind::Boolean};
+    ok_port.direction = PortDirection::In;
+    model.ports.push_back(std::move(ok_port));
+    VariableDefinition x_var;
+    x_var.name = "x";
+    x_var.type = DataType{PrimitiveTypeKind::UInt32};
+    x_var.initial_value = "0";
+    model.add_variable(std::move(x_var));
+
+    model.guards.emplace_back("ok_eq_true", "ok_eq_true", "ok == true", "ok == true");
+    model.guards.emplace_back("ExternalGuard", "ExternalGuard");
+
+    ActionSignature set_x("SetX");
+    set_x.assignments.push_back(ActionAssignment{"x", "42"});
+    model.add_action("SetX");
+    model.add_action("ExternalAction");
+
+    TransitionEdge t1("Idle", "Done", "EvGo");
+    t1.set_guard("ok_eq_true");
+    t1.transition_action = set_x;
+    model.transitions.push_back(t1);
+
+    TransitionEdge t2("Done", "Idle", "EvReset");
+    t2.set_guard("ExternalGuard");
+    t2.set_action("ExternalAction");
+    model.transitions.push_back(t2);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = false;
+    CppModelEmitter::emit_model(out, model, opts);
+    const std::string str = out.str();
+
+    EXPECT_NE(str.find("struct ok_eq_true {"), std::string::npos);
+    EXPECT_NE(str.find("return in.ok == true;"), std::string::npos);
+    EXPECT_NE(str.find("struct SetX {"), std::string::npos);
+    EXPECT_NE(str.find("reg.x = 42;"), std::string::npos);
+    EXPECT_NE(str.find("struct ExternalGuard;"), std::string::npos);
+    EXPECT_EQ(str.find("struct ExternalGuard {"), std::string::npos);
+    EXPECT_NE(str.find("struct ExternalAction;"), std::string::npos);
+    EXPECT_EQ(str.find("struct ExternalAction {"), std::string::npos);
+}

@@ -164,14 +164,26 @@ bool SmvParser::parse(std::string_view content, FsmIr& model, std::string& error
 
         // 3. ASSIGN next(state) := case transitions
         if (current_section == Section::AssignNextState) {
-            if (!case_accumulator.empty()) {
-                case_accumulator += " ";
+            std::string line_code = trimmed;
+            std::string line_comment;
+            if (auto cpos = trimmed.find("--"); cpos != std::string::npos) {
+                line_code = trim(trimmed.substr(0, cpos));
+                line_comment = trimmed.substr(cpos);
             }
-            case_accumulator += trimmed;
+            if (!line_code.empty()) {
+                if (!case_accumulator.empty()) {
+                    case_accumulator += " ";
+                }
+                case_accumulator += line_code;
+            }
             size_t semi_pos = case_accumulator.find(';');
             while (semi_pos != std::string::npos) {
                 std::string stmt = trim(case_accumulator.substr(0, semi_pos + 1));
                 case_accumulator = trim(case_accumulator.substr(semi_pos + 1));
+                if (case_accumulator.empty() && !line_comment.empty()) {
+                    stmt += " " + line_comment;
+                    line_comment.clear();
+                }
                 if (stmt.find("TRUE :") == std::string::npos && stmt.find("TRUE:") == std::string::npos) {
                     parse_transition_case(stmt, model);
                 }
@@ -277,6 +289,56 @@ void SmvParser::parse_variable_decl(const std::string& line, FsmIr& model) {
         var.type = DataType::uint32();
     }
     model.add_variable(std::move(var));
+}
+
+static std::string normalize_smv_guard_expr(std::string_view expr) {
+    std::string out;
+    out.reserve(expr.size() + 8);
+    for (size_t i = 0; i < expr.size(); ++i) {
+        char ch = expr[i];
+        if (ch == '=') {
+            char prev = (i > 0) ? expr[i - 1] : '\0';
+            char next = (i + 1 < expr.size()) ? expr[i + 1] : '\0';
+            if (prev != '!' && prev != '<' && prev != '>' && prev != '=' && prev != ':' && next != '=') {
+                out += "==";
+            } else {
+                out.push_back(ch);
+            }
+        } else if (ch == '&') {
+            char prev = (i > 0) ? expr[i - 1] : '\0';
+            char next = (i + 1 < expr.size()) ? expr[i + 1] : '\0';
+            if (prev != '&' && next != '&') {
+                out += "&&";
+            } else {
+                out.push_back(ch);
+            }
+        } else if (ch == '|') {
+            char prev = (i > 0) ? expr[i - 1] : '\0';
+            char next = (i + 1 < expr.size()) ? expr[i + 1] : '\0';
+            if (prev != '|' && next != '|') {
+                out += "||";
+            } else {
+                out.push_back(ch);
+            }
+        } else if (std::isalpha(static_cast<unsigned char>(ch)) != 0 || ch == '_') {
+            size_t start = i;
+            while (i < expr.size() && (std::isalnum(static_cast<unsigned char>(expr[i])) != 0 || expr[i] == '_')) {
+                ++i;
+            }
+            std::string_view tok = expr.substr(start, i - start);
+            if (tok == "TRUE") {
+                out += "true";
+            } else if (tok == "FALSE") {
+                out += "false";
+            } else {
+                out.append(tok);
+            }
+            --i;
+        } else {
+            out.push_back(ch);
+        }
+    }
+    return out;
 }
 
 void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
@@ -414,7 +476,8 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
             // operator characters (e.g. "x > 0 && !y" → "x__0____y").
             std::string guard_name = "guard_" + sanitize_identifier(src) + "_to_" + sanitize_identifier(target_state) +
                                      "_" + std::to_string(model.transitions.size() + 1);
-            model.add_guard(guard_name, "", std::optional<std::string>{guard_expr}, std::nullopt);
+            model.add_guard(guard_name, "", std::optional<std::string>{normalize_smv_guard_expr(guard_expr)},
+                            std::nullopt);
             trans.guard = guard_name;
         }
         if (!action_from_comment.empty()) {

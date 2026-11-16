@@ -402,4 +402,43 @@ TEST(StateflowParser, FractionalDurationsAndGuardRawExpressions_Preserved) {
     EXPECT_NE(xml.find("temp &gt;= 180.5"), std::string::npos);
 }
 
+/**
+ * @brief Regression: composite state initial_substate is preserved by StateflowParser and StateflowSerializer.
+ * @scenario Parse a Stateflow chart with a composite state using `<transition dst="..."/>` and `initial="..."`,
+ *           then serialize and re-parse it.
+ * @expected Both forms populate `initial_substate` on the composite StateNode and survive roundtrip serialization.
+ */
+TEST(StateflowParser, CompositeInitialSubstate_RoundtripsViaAttributeAndInitialTransition) {
+    const std::string sf_xml = R"(
+        <Stateflow>
+            <chart id="1" name="CompositeInitChart" initial="Off">
+                <state id="10" name="Off"/>
+                <state id="20" name="Active">
+                    <transition id="100" dst="Idle"/>
+                    <state id="21" name="Idle"/>
+                    <state id="22" name="Running"/>
+                </state>
+            </chart>
+        </Stateflow>
+    )";
+
+    StateflowParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err;
+
+    const auto* active = model.find_state("Active");
+    ASSERT_NE(active, nullptr);
+    EXPECT_EQ(active->initial_sub_state, "Idle");
+
+    const std::string serialized = StateflowSerializer::serialize(model);
+    EXPECT_NE(serialized.find("initial=\"Idle\""), std::string::npos);
+
+    FsmIr reparsed;
+    ASSERT_TRUE(parser.parse(serialized, reparsed, err)) << "Re-parse error: " << err;
+    const auto* reparsed_active = reparsed.find_state("Active");
+    ASSERT_NE(reparsed_active, nullptr);
+    EXPECT_EQ(reparsed_active->initial_sub_state, "Idle");
+}
+
 }  // namespace

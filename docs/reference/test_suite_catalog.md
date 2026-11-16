@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 566  
+**Total Documented Test Cases**: 569  
 
 ---
 
@@ -968,6 +968,12 @@
 #### `SmvParser.NestedParenthesesInCondition_NotSplitPrematurely`
 **Test Intent**: Verify SMV condition splitting preserves nested parentheses containing '&'.
 
+#### `SmvParser.InlineActionCommentsDoNotDropSubsequentTransitions`
+**Test Intent**: Regression: inline `-- action:` comments after `;` must not swallow the next case branch.
+
+#### `SmvParser.EqualityAndBooleanLiterals_NormalizedToCppSyntax`
+**Test Intent**: Regression: SMV equality `=` and `TRUE`/`FALSE` literals in guards are normalized for C++ / semantic passes.
+
 ### [`test_stateflow_parser.cpp`](../../tests/frontend/formal/test_stateflow_parser.cpp) (`tests/frontend/formal/test_stateflow_parser.cpp`)
 #### `StateflowParser.BasicStateflowChart_ParsedIntoValidFsmIr`
 **Test Intent**: Verify basic Stateflow chart syntax ingestion and transition parsing.
@@ -989,6 +995,9 @@
 
 #### `StateflowParser.FractionalDurationsAndGuardRawExpressions_Preserved`
 **Test Intent**: Verify Stateflow fractional time duration parsing and guard expression preservation.
+
+#### `StateflowParser.CompositeInitialSubstate_RoundtripsViaAttributeAndInitialTransition`
+**Test Intent**: Regression: composite state initial_substate is preserved by StateflowParser and StateflowSerializer.
 
 ### [`test_stateflow_slx_ingestion.cpp`](../../tests/frontend/formal/test_stateflow_slx_ingestion.cpp) (`tests/frontend/formal/test_stateflow_slx_ingestion.cpp`)
 #### `StateflowSlxIngestion.IngestStoredSlxContainer_ParsesModelDirectly`

@@ -799,4 +799,33 @@ package WeirdNames {
     EXPECT_NE(err.find("123Start"), std::string::npos);
 }
 
+/**
+ * @brief Verify Sysml2Parser parses 'accept when(<expr>)' as a ChangeTrigger rather than a signal named 'when'.
+ * @scenario SysML v2 transition 'transition first Normal accept when(temp > 100) then Alarm;'.
+ * @expected Transition trigger holds ChangeTrigger with raw_expression 'temp > 100'.
+ */
+TEST(Sysml2ParserTest, ParsesAcceptWhenAsChangeTrigger) {
+    const std::string sysml = R"sysml(
+package ChangePkg {
+    state def TempMonitor {
+        attribute temp : Int32 = 25;
+        entry; then Normal;
+        state Normal;
+        state Alarm;
+        transition first Normal accept when(temp > 100) then Alarm;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+
+    ASSERT_EQ(model.transitions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ChangeTrigger>(model.transitions[0].trigger));
+    const auto& ct = std::get<ChangeTrigger>(model.transitions[0].trigger);
+    EXPECT_EQ(ct.raw_expression, "temp > 100");
+}
+
 }  // namespace

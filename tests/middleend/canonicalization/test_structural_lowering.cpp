@@ -511,9 +511,17 @@ TEST(SampledChangeTrigger, RisingEdgeTrigger_LowersToShadowRegisterAndEdgeGuard)
     ASSERT_EQ(ir.transitions.size(), 1U);
     EXPECT_TRUE(std::holds_alternative<AnonymousTrigger>(ir.transitions[0].trigger));
 
-    // 2. Guard contains edge detection
+    // 2. Guard references registered edge-detection GuardModel
     ASSERT_TRUE(ir.transitions[0].guard.has_value());
-    EXPECT_NE(ir.transitions[0].guard->find("(!__change_Monitoring_0_prev && (temp > 100))"), std::string::npos);
+    EXPECT_EQ(*ir.transitions[0].guard, "__change_Monitoring_0_prev_edge");
+    bool found_edge_guard = false;
+    for (const auto& gm : ir.guards) {
+        if (gm.name == "__change_Monitoring_0_prev_edge" && gm.raw_expression.has_value() &&
+            gm.raw_expression->find("(!__change_Monitoring_0_prev && (temp > 100))") != std::string::npos) {
+            found_edge_guard = true;
+        }
+    }
+    EXPECT_TRUE(found_edge_guard);
 
     // 3. Shadow register allocated in variables
     const auto* shadow = ir.find_variable("__change_Monitoring_0_prev");
@@ -548,7 +556,15 @@ TEST(SampledChangeTrigger, FallingEdgeTrigger_SynthesizesHighToLowDetector) {
     EXPECT_TRUE(res);
 
     ASSERT_TRUE(ir.transitions[0].guard.has_value());
-    EXPECT_NE(ir.transitions[0].guard->find("(__change_Running_0_prev && !(is_active))"), std::string::npos);
+    EXPECT_EQ(*ir.transitions[0].guard, "__change_Running_0_prev_edge");
+    bool found_falling_guard = false;
+    for (const auto& gm : ir.guards) {
+        if (gm.name == "__change_Running_0_prev_edge" && gm.raw_expression.has_value() &&
+            gm.raw_expression->find("(__change_Running_0_prev && !(is_active))") != std::string::npos) {
+            found_falling_guard = true;
+        }
+    }
+    EXPECT_TRUE(found_falling_guard);
 }
 
 TEST(SampledChangeTrigger, NoChangeTriggers_ReturnsFalse) {

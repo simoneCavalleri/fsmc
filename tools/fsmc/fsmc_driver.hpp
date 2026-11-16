@@ -324,6 +324,11 @@ class FsmcDriver {
                 pm.add_pass(std::make_unique<TimedInvariantsVerifierPassWrapper>());
                 pm.add_pass(std::make_unique<EventQueueBoundPassWrapper>());
                 pm.add_pass(std::make_unique<WcetAnalysisPassWrapper>());
+                if (opts.verify_mode) {
+                    pm.add_pass(std::make_unique<HistoryLoweringPassWrapper>());
+                    pm.add_pass(std::make_unique<ForkJoinLoweringPassWrapper>());
+                    pm.add_pass(std::make_unique<OrthogonalProductPassWrapper>());
+                }
                 if (opts.verify_mode || opts.export_diagram_format.empty()) {
                     pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
                     if (!opts.verify_mode) {

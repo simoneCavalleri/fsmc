@@ -21,6 +21,9 @@ bool DeterminismEnforcementPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         const auto& [src, evt] = key;
         if (trans_list.size() <= 1)
             continue;
+        if (const auto* src_node = ir.find_state(src); src_node != nullptr && src_node->kind == StateKind::Fork) {
+            continue;
+        }
 
         // Count unconditional transitions (no guard)
         std::size_t unconditional_count = 0;

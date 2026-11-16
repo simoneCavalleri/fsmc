@@ -266,4 +266,48 @@ state Active {
     EXPECT_EQ(active->orthogonal_regions[1].initial_state_id, "B1");
 }
 
+/**
+ * @brief Verify PlantUML states inside regions keep pinned_parent when referenced by root-level Fork/Join transitions.
+ * @scenario Parallel state Par with R1 { A1 -> A2 } -- R2 { B1 -> B2 } and external A2 -> J / B2 -> J transitions.
+ * @expected A2 stays inside R1 and B2 stays inside R2 after normalize_hierarchy().
+ */
+TEST(PlantUmlParserTest, ForkJoinWithExternalTransitionsPreservesRegionHierarchy) {
+    const std::string puml = R"puml(
+@startuml
+[*] --> Init
+state F <<fork>>
+state J <<join>>
+state Par {
+  state R1 {
+    [*] --> A1
+    A1 --> A2 : EvA
+  }
+  --
+  state R2 {
+    [*] --> B1
+    B1 --> B2 : EvB
+  }
+}
+Init --> F : EvStart
+F --> A1
+F --> B1
+A2 --> J : EvDone
+B2 --> J : EvDone
+J --> Finished
+@enduml
+)puml";
+
+    PlantUmlParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << err;
+
+    const StateNode* a2 = model.find_state("A2");
+    const StateNode* b2 = model.find_state("B2");
+    ASSERT_NE(a2, nullptr);
+    ASSERT_NE(b2, nullptr);
+    EXPECT_EQ(a2->parent_state, "R1");
+    EXPECT_EQ(b2->parent_state, "R2");
+}
+
 }  // namespace

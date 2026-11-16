@@ -1225,4 +1225,40 @@ package RacePkg {
     std::filesystem::remove(out_path);
 }
 
+/**
+ * @brief Verify --ctl / --verify expands orthogonal parallel regions even in standard pipeline mode.
+ * @scenario SCXML <parallel id="Par"> model checked with ctl_property = "EF Par_R1B_R2B" without --7stage.
+ * @expected FsmcDriver::run returns 0 (CTL property verified on expanded product states).
+ */
+TEST(FsmcCliOptionsTest, VerifyMode_ExpandsParallelStatesBeforeCtlCheck) {
+    const std::string scxml_path = "/tmp/fsmc_test_verify_par.scxml";
+    {
+        std::ofstream ofs(scxml_path);
+        ofs << R"xml(
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Par">
+  <parallel id="Par">
+    <state id="Reg1" initial="R1A">
+      <state id="R1A"><transition event="go" target="R1B"/></state>
+      <state id="R1B"/>
+    </state>
+    <state id="Reg2" initial="R2A">
+      <state id="R2A"><transition event="sync" target="R2B"/></state>
+      <state id="R2B"/>
+    </state>
+  </parallel>
+</scxml>
+)xml";
+    }
+
+    fsm::tools::FsmcOptions opts;
+    opts.input_file = scxml_path;
+    opts.verify_mode = true;
+    opts.ctl_spec = "EF Par_R1B_R2B";
+
+    const int rc = fsm::tools::FsmcDriver::run(opts);
+    EXPECT_EQ(rc, 0);
+
+    std::filesystem::remove(scxml_path);
+}
+
 }  // namespace

@@ -55,11 +55,13 @@ bool SampledChangeTriggerPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             edge_guard = "(" + shadow_var + " && !(" + raw_expr + "))";
         }
 
+        std::string full_guard_expr = edge_guard;
         if (t.guard.has_value() && !t.guard->empty() && *t.guard != "true") {
-            t.set_guard("(" + edge_guard + " && (" + *t.guard + "))");
-        } else {
-            t.set_guard(edge_guard);
+            full_guard_expr = "(" + edge_guard + " && (" + *t.guard + "))";
         }
+        const std::string guard_name = shadow_var + "_edge";
+        ir.add_guard(guard_name, "Sampled edge-detector guard for change trigger", full_guard_expr, full_guard_expr);
+        t.set_guard(guard_name);
 
         // 4. Synthesize or update action to record the change
         std::string act_name = "Update_" + shadow_var;

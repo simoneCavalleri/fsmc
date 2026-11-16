@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 571  
+**Total Documented Test Cases**: 573  
 
 ---
 
@@ -1100,6 +1100,9 @@
 #### `Sysml2ParserTest.ParsesAcceptEveryAsPeriodicTimeTrigger`
 **Test Intent**: Verify Sysml2Parser parses 'accept every(<dur><unit>)' as a periodic TimeTrigger.
 
+#### `Sysml2ParserTest.ParsesTrailingIfGuardAfterThenClause`
+**Test Intent**: Regression: `if <guard>` at the end of a SysML2 transition statement (after `then <target>`) must parse.
+
 ### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`
 **Test Intent**: Verify SysML v2 enum definition parsing into FsmIr data types.
@@ -1306,6 +1309,9 @@
 
 #### `ChoiceInlining.SelfTransitionThroughChoice_PreservesExternalKind`
 **Test Intent**: Verify that a transition through a choice node returning to the source state
+
+#### `InliningPasses.ChoiceInlining_ElseBranchHasLowerPriorityThanGuardedBranch`
+**Test Intent**: Regression: `else` fallback branches in ChoiceInliningPass must sort after guarded branches.
 
 ### [`test_orthogonal_product.cpp`](../../tests/middleend/canonicalization/test_orthogonal_product.cpp) (`tests/middleend/canonicalization/test_orthogonal_product.cpp`)
 #### `OrthogonalProduct.ConcurrentRegions_ExpandedToCartesianProductStates`

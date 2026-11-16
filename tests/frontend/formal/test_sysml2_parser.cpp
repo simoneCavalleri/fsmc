@@ -856,4 +856,36 @@ package PeriodicPkg {
     EXPECT_EQ(tt.duration_in_ms(), 100u);
 }
 
+/**
+ * @brief Regression: `if <guard>` at the end of a SysML2 transition statement (after `then <target>`) must parse.
+ * @scenario Parse choice transitions `transition t_ok first Decide then Working if sensor_ok == true;`.
+ * @expected Both the boolean guard and the `else` guard are captured on the transitions.
+ */
+TEST(Sysml2ParserTest, ParsesTrailingIfGuardAfterThenClause) {
+    const std::string sysml = R"sysml(
+package TrailingIfPkg {
+    state def Checker {
+        in port sensor_ok : bool = true;
+        entry; then Working;
+        state Working;
+        state ErrorState;
+        choice Decide;
+        transition t_ok first Decide then Working if sensor_ok == true;
+        transition t_err first Decide then ErrorState if else;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+
+    ASSERT_EQ(model.transitions.size(), 2u);
+    EXPECT_TRUE(model.transitions[0].guard.has_value());
+    EXPECT_EQ(*model.transitions[0].guard, "sensor_ok_eq_true");
+    EXPECT_TRUE(model.transitions[1].guard.has_value());
+    EXPECT_EQ(*model.transitions[1].guard, "else");
+}
+
 }  // namespace

@@ -1090,7 +1090,7 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     static const std::regex change_when_regex(R"(\b(?:accept\s+)?when\s*\(([^)]+)\))", std::regex::optimize);
     static const std::regex accept_regex(
         R"(\b(?:accept|when)\s+(?:([A-Za-z_][A-Za-z0-9_]*)\s*:\s*)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
-    static const std::regex if_regex(R"(\bif\s+([^;]+?)(?=\s+(?:do\b|then\b|to\b|;|$)))", std::regex::optimize);
+    static const std::regex if_regex(R"(\bif\s+([^;]+?)(?=\s+(?:do\b|then\b|to\b)|;|$))", std::regex::optimize);
     static const std::regex do_block_regex(R"(\bdo\s*(?:action\s+)?(?:([A-Za-z_][A-Za-z0-9_]*)\s*)?\{([^}]+)\})",
                                            std::regex::optimize);
     static const std::regex do_regex(R"(\bdo\s+(?:action\s+)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);

@@ -93,6 +93,9 @@ bool ChoiceInliningPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
             }
 
             // Generate composite transitions
+            const bool has_guarded_sibling = std::any_of(outgoing.begin(), outgoing.end(), [](const TransitionEdge& o) {
+                return extract_non_else_guard_ast(o).has_value();
+            });
             std::vector<TransitionEdge> inlined_edges;
             for (const auto& in : incoming) {
                 for (const auto& out : outgoing) {
@@ -112,7 +115,20 @@ bool ChoiceInliningPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
                     composite.target_is_history = out.target_is_history;
                     composite.target_is_deep_history = out.target_is_deep_history;
                     composite.kind = TransitionEdgeKind::External;
-                    composite.priority = (out.priority > 0) ? out.priority : in.priority;
+
+                    const bool out_has_guard = extract_non_else_guard_ast(out).has_value();
+                    if (out.priority > 0) {
+                        composite.priority = out.priority;
+                    } else if (has_guarded_sibling) {
+                        if (out_has_guard) {
+                            composite.priority = (in.priority > 0) ? in.priority : 1;
+                        } else {
+                            // `else` / unguarded fallback must always evaluate after guarded siblings.
+                            composite.priority = (in.priority > 0) ? (in.priority + 1) : 0;
+                        }
+                    } else {
+                        composite.priority = in.priority;
+                    }
 
                     // Combine Guards as target-agnostic GuardAstNode
                     auto combined_guard =

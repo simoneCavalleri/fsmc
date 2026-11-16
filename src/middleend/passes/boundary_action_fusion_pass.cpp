@@ -87,6 +87,24 @@ bool BoundaryActionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         return false;
     };
 
+    // If an ancestor composite state has an outgoing external transition, descendant states may be exited via
+    // that ancestor transition at runtime. Keep their exit_actions intact on the StateNode rather than fusing/clearing.
+    std::unordered_set<std::string> external_sources;
+    for (const auto& t : ir.transitions) {
+        if (t.kind != TransitionEdgeKind::Internal && !t.source.empty()) {
+            external_sources.insert(t.source);
+        }
+    }
+    for (const auto& s : ir.states) {
+        auto ancestors = get_ancestor_chain(ir, s.name);
+        for (std::size_t i = 1; i < ancestors.size(); ++i) {
+            if (external_sources.count(ancestors[i]) != 0) {
+                states_unfused_exit.insert(s.name);
+                break;
+            }
+        }
+    }
+
     for (auto& t : ir.transitions) {
         if (t.kind == TransitionEdgeKind::Internal) {
             continue;
@@ -147,7 +165,7 @@ bool BoundaryActionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         // Check if any exit or entry actions exist along the path
         bool has_boundary_actions = false;
         for (const auto* s : exit_path) {
-            if (!s->exit_actions.empty()) {
+            if (!s->exit_actions.empty() && states_unfused_exit.count(s->name) == 0) {
                 has_boundary_actions = true;
                 break;
             }
@@ -190,7 +208,11 @@ bool BoundaryActionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                                                                   : "fused_" + t.source + "_to_" + t.target);
 
         // Append exit actions (in ascending leaf-to-LCA order), skipping unchanged orthogonal region actions
+        // and descendant states whose exit_actions must remain on StateNode for ancestor exits.
         for (const auto* s : exit_path) {
+            if (states_unfused_exit.count(s->name) != 0) {
+                continue;
+            }
             for (const auto& act : s->exit_actions) {
                 if (!act.name.empty() && skip_exit.count(act.name) != 0) {
                     continue;

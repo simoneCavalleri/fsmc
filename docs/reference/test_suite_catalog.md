@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 600  
+**Total Documented Test Cases**: 601  
 
 ---
 
@@ -1452,6 +1452,9 @@
 
 #### `StructuralLowering.BoundaryActionFusion_DoesNotDuplicateInitialStateEntryHook`
 **Test Intent**: Verify that BoundaryActionFusionPass does not duplicate entry actions kept on initial states.
+
+#### `StructuralLowering.BoundaryActionFusion_PreservesDescendantExitActionsWhenAncestorHasExternalExit`
+**Test Intent**: Verify BoundaryActionFusionPass preserves descendant exit_actions when an ancestor has an external exit.
 
 #### `BoundaryActionFusion.InternalTransition_NotModifiedByPass`
 **Test Intent**: Verify that BoundaryActionFusionPass does not modify internal transitions.

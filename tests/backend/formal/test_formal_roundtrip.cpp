@@ -1127,4 +1127,53 @@ TEST(FormalRoundtrip, UniversalDataDefinitions_PreservedAcrossFormats) {
     verify_roundtrip(baseline);
 }
 
+/**
+ * @brief Verify Sysml2Serializer emits assignment action blocks for entry, exit, and transitions.
+ * @scenario Serialize an FsmIr with entry, exit, and transition assignments to SysML v2, then re-parse it.
+ * @expected The re-parsed FsmIr retains all assignment targets and expressions.
+ */
+TEST(FormalRoundtrip, Sysml2Serializer_PreservesAssignmentBlocksAcrossRoundtrip) {
+    FsmIr baseline;
+    baseline.name = "SysmlAssignRt";
+    baseline.initial_state = "Ready";
+    baseline.add_variable(VariableDefinition("x", DataType{PrimitiveTypeKind::Int32}, "0"));
+
+    StateNode ready("Ready");
+    ActionSignature entry_act("Ready_entry_x");
+    entry_act.assignments.emplace_back(LValueTarget("x"), "10");
+    ready.entry_actions.push_back(std::move(entry_act));
+
+    ActionSignature exit_act("Ready_exit_x");
+    exit_act.assignments.emplace_back(LValueTarget("x"), "x + 1");
+    ready.exit_actions.push_back(std::move(exit_act));
+
+    baseline.states.push_back(std::move(ready));
+    baseline.states.emplace_back("Running");
+
+    ActionSignature tr_act("tr_x");
+    tr_act.assignments.emplace_back(LValueTarget("x"), "x * 2");
+    baseline.transitions.emplace_back("Ready", "Running", "GO", std::nullopt, std::move(tr_act));
+
+    const std::string sysml = Sysml2Serializer::serialize(baseline);
+    Sysml2Parser parser;
+    FsmIr rt;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, rt, err)) << err;
+
+    const StateNode* rt_ready = rt.find_state("Ready");
+    ASSERT_NE(rt_ready, nullptr);
+    ASSERT_EQ(rt_ready->entry_actions.size(), 1u);
+    ASSERT_EQ(rt_ready->entry_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(rt_ready->entry_actions[0].assignments[0].expression, "10");
+
+    ASSERT_EQ(rt_ready->exit_actions.size(), 1u);
+    ASSERT_EQ(rt_ready->exit_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(rt_ready->exit_actions[0].assignments[0].expression, "x + 1");
+
+    ASSERT_EQ(rt.transitions.size(), 1u);
+    ASSERT_TRUE(rt.transitions[0].transition_action.has_value());
+    ASSERT_EQ(rt.transitions[0].transition_action->assignments.size(), 1u);
+    EXPECT_EQ(rt.transitions[0].transition_action->assignments[0].expression, "x * 2");
+}
+
 }  // namespace

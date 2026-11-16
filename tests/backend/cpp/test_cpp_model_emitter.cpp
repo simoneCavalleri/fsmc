@@ -1119,3 +1119,25 @@ TEST(CppModelEmitterTest, ActionCallOpOmitsNoServiceOverloadsAndDisambiguatesMod
     // Model alias collides with state 'Par', so it is disambiguated as 'ParFsm'
     EXPECT_NE(str.find("using ParFsm = ::fsm::make_fsm<"), std::string::npos);
 }
+
+/**
+ * @brief Verify standalone C++ generation wraps the embedded runtime in FSMC_EMBEDDED_RUNTIME_INCLUDED guard.
+ * @scenario Generate standalone C++17 code via CppGenerator::generate.
+ * @expected Output contains #ifndef/#define/#endif FSMC_EMBEDDED_RUNTIME_INCLUDED so multiple standalone headers can
+ * coexist.
+ */
+TEST(CppModelEmitterTest, StandaloneHeaderWrapsEmbeddedRuntimeInIncludeGuard) {
+    FsmIr model;
+    model.name = "GuardDemo";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+
+    GeneratorOptions opts;
+    opts.standalone = true;
+    opts.cpp_standard = CppStandard::Cpp17;
+    const std::string code = CppGenerator::generate_header(model, opts);
+
+    EXPECT_NE(code.find("#ifndef FSMC_EMBEDDED_RUNTIME_INCLUDED"), std::string::npos);
+    EXPECT_NE(code.find("#define FSMC_EMBEDDED_RUNTIME_INCLUDED"), std::string::npos);
+    EXPECT_NE(code.find("#endif // FSMC_EMBEDDED_RUNTIME_INCLUDED"), std::string::npos);
+}

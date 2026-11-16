@@ -100,7 +100,8 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 is_target = (s.parent_state == parent_name);
             }
 
-            if (is_target && s.kind != StateKind::ShallowHistory && s.kind != StateKind::DeepHistory) {
+            if (is_target && s.kind != StateKind::ShallowHistory && s.kind != StateKind::DeepHistory &&
+                (!is_deep || !s.is_composite)) {
                 if (std::find(target_substates.begin(), target_substates.end(), s.name) == target_substates.end()) {
                     target_substates.push_back(s.name);
                 }
@@ -112,9 +113,20 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 
                 ActionSignature exit_sig("__record_history_" + s.name);
                 exit_sig.instructions.emplace_back(store, "Record active substate on exit");
-                exit_sig.assignments.emplace_back(store.target, store.expression);
                 s.exit_actions.push_back(std::move(exit_sig));
                 modified = true;
+            }
+        }
+
+        if (is_deep && !default_substate.empty()) {
+            std::unordered_set<std::string> visited_def;
+            while (visited_def.insert(default_substate).second) {
+                const auto* def_node = ir.find_state(default_substate);
+                if (def_node != nullptr && def_node->is_composite && !def_node->initial_sub_state.empty()) {
+                    default_substate = def_node->initial_sub_state;
+                } else {
+                    break;
+                }
             }
         }
 

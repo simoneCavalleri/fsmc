@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 554  
+**Total Documented Test Cases**: 557  
 
 ---
 
@@ -532,6 +532,9 @@
 #### `CppModelEmitterTest.ActionCallOpOmitsNoServiceOverloadsAndDisambiguatesModelName`
 **Test Intent**: Verify actions using ActionCallOp omit overloads lacking Services& srv, and unresolved guards fall back
 
+#### `CppModelEmitterTest.StandaloneHeaderWrapsEmbeddedRuntimeInIncludeGuard`
+**Test Intent**: Verify standalone C++ generation wraps the embedded runtime in FSMC_EMBEDDED_RUNTIME_INCLUDED guard.
+
 ### [`test_generated_fsm.cpp`](../../tests/backend/cpp/test_generated_fsm.cpp) (`tests/backend/cpp/test_generated_fsm.cpp`)
 - *(Executable binary test verification)*
 
@@ -734,6 +737,9 @@
 
 #### `LexerUtils.ReservedKeywords_EscapesCppKeywordsWithUnderscore`
 **Test Intent**: Verify C++ reserved keyword detection and identifier escaping utilities.
+
+#### `ParserFactoryTest.AutoDetectsStateflowXmlOverCameoXmi`
+**Test Intent**: Verify ParserFactory::create inspects .xml file contents to distinguish Stateflow XML from Cameo XMI.
 
 ### [`test_parser_negative.cpp`](../../tests/frontend/common/test_parser_negative.cpp) (`tests/frontend/common/test_parser_negative.cpp`)
 #### `PlantUmlParser.EmptyAndCorruptedInputStreams_RejectsWithInformativeDiagnostic`
@@ -1362,6 +1368,9 @@
 
 #### `HistoryLowering.EmitsValidGuardIdentifiersAndPrioritizedFallback`
 **Test Intent**: Verify HistoryLoweringPass emits valid C++ guard identifiers and prioritized fallback branches.
+
+#### `HistoryLowering.DeepHistoryOnlyRecordsLeafSubstates`
+**Test Intent**: Verify Deep History lowering only attaches exit history recording to leaf states, not intermediate composites.
 
 ### [`test_common_action_factoring.cpp`](../../tests/middleend/optimization/test_common_action_factoring.cpp) (`tests/middleend/optimization/test_common_action_factoring.cpp`)
 #### `CommonActionFactoring.ConvergentTransitionsIdenticalAction_FactoredIntoTargetEntry`

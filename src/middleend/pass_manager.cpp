@@ -875,7 +875,6 @@ PassManager PassManager::create_verified_7stage_pipeline(bool optimize) {
     pm.add_pass(std::make_unique<ForkJoinLoweringPassWrapper>());
     pm.add_pass(std::make_unique<HistoryLoweringPassWrapper>());
     pm.add_pass(std::make_unique<EventQueueBoundPassWrapper>());
-    pm.add_pass(std::make_unique<DeferredEventLoweringPassWrapper>());
     pm.add_pass(std::make_unique<OrthogonalProductPassWrapper>());
     pm.add_pass(std::make_unique<ConnectiveJunctionChainingPassWrapper>());
     pm.add_pass(std::make_unique<ChoiceInliningPassWrapper>());

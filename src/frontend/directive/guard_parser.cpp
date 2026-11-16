@@ -11,8 +11,12 @@
 
 #include "fsm/frontend/common/parser_interface.hpp"
 #include "fsm/ir/guard.hpp"
+#include "fsm/ir/identifier_utils.hpp"
 
-namespace fsm::frontend::directive {
+namespace fsm::ir {
+
+using frontend::starts_with;
+using frontend::trim;
 
 namespace {
 
@@ -333,4 +337,4 @@ ParsedGuardResult GuardExpressionParser::parse(std::string_view raw_expr) {
     return parser.parse_expression();
 }
 
-}  // namespace fsm::frontend::directive
+}  // namespace fsm::ir

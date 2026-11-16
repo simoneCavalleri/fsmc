@@ -330,7 +330,7 @@ class fsm {
                 };
                 return detail::execute_transition_from_ports<Table, CurrentSrc>(
                     src_state, event, in, out, this->registers_, &srv, *this, this->observer_, record_fn,
-                    std::make_index_sequence<std::tuple_size_v<decltype(this->table_.rows)>>{});
+                    typename Table::transitions_list{});
             },
             current_state_);
     }

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 525  
+**Total Documented Test Cases**: 527  
 
 ---
 
@@ -1138,6 +1138,9 @@
 #### `ExpressionAstNode.AlgebraicArithmeticAndBooleanExpressions_ParsesPrecedenceCorrectly`
 **Test Intent**: Verify ExpressionAstNode::parse string expression parser.
 
+#### `ExpressionAstNode.RelationalAndLogicalExpressions_ParsesPrecedenceAndReferences`
+**Test Intent**: Verify ExpressionAstNode::parse handles relational, equality, logical, and payload expressions.
+
 #### `ActionAssignment.AssignmentOperatorsAndExpressionAst_ExtractsCompoundAssignments`
 **Test Intent**: Verify ActionAssignment with compound assignment operators and expression ASTs.
 
@@ -1259,6 +1262,9 @@
 
 #### `PassManager.NoOpTransformationWrappersReturnSuccessAndAnalyticalPreserveIr`
 **Test Intent**: Verify no-op transformation wrappers satisfy IPass::run() contract and analysis passes preserve IR.
+
+#### `PassManager.CentralPassRegistry_InstantiatesAllRegisteredPasses`
+**Test Intent**: Verify PassManager central registry instantiates all registered built-in passes.
 
 ### [`test_structural_lowering.cpp`](../../tests/middleend/canonicalization/test_structural_lowering.cpp) (`tests/middleend/canonicalization/test_structural_lowering.cpp`)
 #### `HistoryLowering.ShallowHistoryTarget_LowersToShadowRegisterAndDispatchGuards`

@@ -142,4 +142,20 @@ TEST(PassManager, NoOpTransformationWrappersReturnSuccessAndAnalyticalPreserveIr
     EXPECT_FALSE(pm.get_stats()[9].modified_ir);
 }
 
+/**
+ * @brief Verify PassManager central registry instantiates all registered built-in passes.
+ * @scenario Iterate over PassManager::registered_pass_names() and call create_pass_by_name().
+ * @expected Every registered pass name resolves to a valid IPass instance, and unknown names return nullptr.
+ */
+TEST(PassManager, CentralPassRegistry_InstantiatesAllRegisteredPasses) {
+    auto names = PassManager::registered_pass_names();
+    EXPECT_GE(names.size(), 28u);
+    for (std::string_view name : names) {
+        auto pass = PassManager::create_pass_by_name(name, "cat");
+        ASSERT_NE(pass, nullptr) << "Failed to instantiate registered pass: " << name;
+        EXPECT_FALSE(pass->name().empty());
+    }
+    EXPECT_EQ(PassManager::create_pass_by_name("non-existent-pass-xyz"), nullptr);
+}
+
 }  // namespace

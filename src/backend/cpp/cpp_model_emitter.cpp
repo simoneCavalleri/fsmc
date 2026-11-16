@@ -11,12 +11,11 @@
 #include <string_view>
 #include <vector>
 
-#include "fsm/frontend/common/parser_interface.hpp"
+#include "fsm/ir/identifier_utils.hpp"
 
 namespace fsm::backend::cpp {
 
 using namespace fsm::ir;
-using fsm::frontend::escape_cpp_keyword;
 
 namespace {
 

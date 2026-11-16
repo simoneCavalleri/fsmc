@@ -749,6 +749,40 @@ TEST(ExpressionAstNode, AlgebraicArithmeticAndBooleanExpressions_ParsesPrecedenc
 }
 
 /**
+ * @brief Verify ExpressionAstNode::parse handles relational, equality, logical, and payload expressions.
+ * @scenario Parse compound boolean/relational expression with textual and symbolic operators and payload references.
+ * @expected AST preserves operator precedence, EventParamRef nodes, and collects referenced identifiers.
+ */
+TEST(ExpressionAstNode, RelationalAndLogicalExpressions_ParsesPrecedenceAndReferences) {
+    auto ast = ExpressionAstNode::parse("payload.speed >= 10 && in.temp < 80 || not reg.fault == true");
+    ASSERT_EQ(ast.kind, ExpressionKind::BinaryOp);
+    EXPECT_EQ(ast.op, ExpressionOp::LogicalOr);
+    ASSERT_EQ(ast.children.size(), 2u);
+
+    const auto& lhs_and = ast.children[0];
+    EXPECT_EQ(lhs_and.kind, ExpressionKind::BinaryOp);
+    EXPECT_EQ(lhs_and.op, ExpressionOp::LogicalAnd);
+    ASSERT_EQ(lhs_and.children.size(), 2u);
+    EXPECT_EQ(lhs_and.children[0].op, ExpressionOp::GreaterEqual);
+    EXPECT_EQ(lhs_and.children[0].children[0].kind, ExpressionKind::EventParamRef);
+    EXPECT_EQ(lhs_and.children[0].children[0].symbol, "speed");
+    EXPECT_EQ(lhs_and.children[1].op, ExpressionOp::LessThan);
+    EXPECT_EQ(lhs_and.children[1].children[0].kind, ExpressionKind::PortRef);
+    EXPECT_EQ(lhs_and.children[1].children[0].symbol, "temp");
+
+    const auto& rhs_eq = ast.children[1];
+    EXPECT_EQ(rhs_eq.kind, ExpressionKind::BinaryOp);
+    EXPECT_EQ(rhs_eq.op, ExpressionOp::Equal);
+
+    std::vector<std::string> refs;
+    ast.collect_references(refs);
+    ASSERT_EQ(refs.size(), 3u);
+    EXPECT_EQ(refs[0], "speed");
+    EXPECT_EQ(refs[1], "temp");
+    EXPECT_EQ(refs[2], "fault");
+}
+
+/**
  * @brief Verify ActionAssignment with compound assignment operators and expression ASTs.
  * @scenario Assignments with AddAssign, SubAssign, and MulAssign with parsed AST expressions.
  * @expected Assignment structures preserve operator kinds and target identifiers.

@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-#include "fsm/frontend/directive/guard_parser.hpp"
+#include "fsm/ir/guard.hpp"
 
 namespace fsm::ir {
 
@@ -103,7 +103,7 @@ void emit_transition_metadata(std::ostream& out, const TransitionEdge& t, const 
         out << ",\n" << field_pad << "\"description\": \"" << escape_json(t.description) << "\"";
     }
     if (t.guard && !t.guard->empty()) {
-        std::string diag_guard = frontend::directive::GuardExpressionParser::to_diagram_string(*t.guard);
+        std::string diag_guard = GuardExpressionParser::to_diagram_string(*t.guard);
         out << ",\n" << field_pad << "\"guard\": \"" << escape_json(diag_guard) << "\"";
         if (*t.guard != diag_guard && t.guard->find("fsm::") == std::string::npos) {
             out << ",\n" << field_pad << "\"raw_guard\": \"" << escape_json(*t.guard) << "\"";

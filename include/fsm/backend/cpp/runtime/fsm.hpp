@@ -742,7 +742,7 @@ class fsm {
             if (static_cast<std::size_t>(end - curr) < plen) {
                 return false;
             }
-            std::string_view parent_sv(reinterpret_cast<const char*>(curr), plen);
+            std::string_view parent_sv(static_cast<const char*>(static_cast<const void*>(curr)), plen);
             if (!resolve_static_state_name(parent_sv).has_value()) {
                 return false;
             }
@@ -757,7 +757,7 @@ class fsm {
             if (static_cast<std::size_t>(end - curr) < slen) {
                 return false;
             }
-            std::string_view substate_sv(reinterpret_cast<const char*>(curr), slen);
+            std::string_view substate_sv(static_cast<const char*>(static_cast<const void*>(curr)), slen);
             if (!resolve_static_state_name(substate_sv).has_value()) {
                 return false;
             }
@@ -790,13 +790,13 @@ class fsm {
             std::uint16_t plen = 0;
             std::memcpy(&plen, curr, sizeof(plen));
             curr += sizeof(plen);
-            std::string_view parent_sv(reinterpret_cast<const char*>(curr), plen);
+            std::string_view parent_sv(static_cast<const char*>(static_cast<const void*>(curr)), plen);
             curr += plen;
 
             std::uint16_t slen = 0;
             std::memcpy(&slen, curr, sizeof(slen));
             curr += sizeof(slen);
-            std::string_view substate_sv(reinterpret_cast<const char*>(curr), slen);
+            std::string_view substate_sv(static_cast<const char*>(static_cast<const void*>(curr)), slen);
             curr += slen;
 
             auto static_parent = resolve_static_state_name(parent_sv);

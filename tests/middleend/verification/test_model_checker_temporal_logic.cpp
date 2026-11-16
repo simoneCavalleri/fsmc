@@ -546,4 +546,54 @@ TEST(EFSMDataPathPass, UnsatisfiableGuard_PrunesDeadTransitionWhenOptimizationEn
     EXPECT_EQ(ir.transitions[0].target, "NormalTarget");
 }
 
+/**
+ * @brief Verify CTL AG invariant and AF reachability across hierarchical composite states and terminal sink states.
+ * @scenario Composite state 'Operating' with initial substate 'Working' inherits transition 'Operating -> Completed'
+ * where 'Completed' is a terminal sink state.
+ * @expected AG (!Fault) and AF Completed both evaluate to true under stuttering terminal semantics and HSM inheritance.
+ */
+TEST(ModelChecker, HierarchicalCompositeAndTerminalSinkState_VerifiesCtlInvariantsAndSmvNextVar) {
+    FsmIr ir;
+    ir.name = "HierarchicalSinkFSM";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+
+    auto& op = ir.add_state("Operating");
+    op.is_composite = true;
+    op.initial_sub_state = "Working";
+
+    auto& work = ir.add_state("Working", "Operating");
+    work.parent_state = "Operating";
+
+    ir.add_state("Completed");
+    ir.add_state("Fault");
+
+    VariableDefinition progress("progress", DataType{PrimitiveTypeKind::Int32}, "0", 0, 100, "Task progress");
+    ir.add_variable(progress);
+
+    ir.add_transition("Idle", "Operating", SignalTrigger{"Start", ""});
+
+    TransitionEdge t_done("t_done", "Operating", "Completed", SignalTrigger{"Finish", ""});
+    ActionSignature done_act("complete_task");
+    done_act.assignments.emplace_back(LValueTarget("progress", LValueScope::Register), "100");
+    t_done.set_action(done_act);
+    ir.add_transition(t_done);
+
+    ModelChecker checker(ir);
+
+    FormalProperty prop_ag("AlwaysSafe", PropertyKind::Safety, "AG (!Fault)");
+    prop_ag.ast = LtlPropertyParser::parse("AG (!Fault)");
+    auto res_ag = checker.verify_property(prop_ag);
+    EXPECT_TRUE(res_ag.passed);
+
+    FormalProperty prop_af("EventuallyCompleted", PropertyKind::Liveness, "AF Completed");
+    prop_af.ast = LtlPropertyParser::parse("AF Completed");
+    auto res_af = checker.verify_property(prop_af);
+    EXPECT_TRUE(res_af.passed);
+
+    std::string smv = SmvSerializer::serialize(ir);
+    EXPECT_NE(smv.find("next(progress) := case"), std::string::npos);
+    EXPECT_NE(smv.find("TRUE : progress;"), std::string::npos);
+}
+
 }  // namespace

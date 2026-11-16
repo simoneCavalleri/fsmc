@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -203,6 +204,16 @@ struct ExpressionAstNode {
      * @brief Collects all variable, port, and event parameter reference symbols in pre-order.
      */
     void collect_references(std::vector<std::string>& out) const;
+
+    /**
+     * @brief Evaluates the expression AST to a numeric value under the given symbol environment.
+     */
+    [[nodiscard]] std::optional<double> evaluate_numeric(const std::unordered_map<std::string, double>& env) const;
+
+    /**
+     * @brief Evaluates the expression AST to a boolean value under the given symbol environment.
+     */
+    [[nodiscard]] std::optional<bool> evaluate_boolean(const std::unordered_map<std::string, double>& env) const;
 
     bool operator==(const ExpressionAstNode& other) const noexcept;
 };

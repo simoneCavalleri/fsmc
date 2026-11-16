@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 527  
+**Total Documented Test Cases**: 532  
 
 ---
 
@@ -266,6 +266,9 @@
 #### `SpscFsm.HierarchicalIsIn_AndReset`
 **Test Intent**: Verify hierarchical is_in and reset functionality in SPSC FSM.
 
+#### `SpscFsm.SeqlockSnapshotConsistency_AcrossMultiplePostAndProcessOneCycles_NoTornReads`
+**Test Intent**: Verify sequential and concurrent snapshot_registers() consistency across post() and process_one() cycles.
+
 ### [`test_spsc_queue.cpp`](../../tests/backend/cpp/runtime/test_spsc_queue.cpp) (`tests/backend/cpp/runtime/test_spsc_queue.cpp`)
 #### `SpscRingBuffer.SingleThreadOps_PushAndPop_OperatesCorrectly`
 **Test Intent**: Verify single-thread push, pop, empty, and full operations on SPSC ring buffer.
@@ -294,6 +297,9 @@
 
 #### `ThreadSafeFsm.HierarchicalIsIn_AndReset`
 **Test Intent**: Verify hierarchical is_in and reset functionality in thread_safe_fsm.
+
+#### `ThreadSafeFsm.WithTimerManagerAndReentrantSendWithPorts_PreservesInPorts`
+**Test Intent**: Verify with_timer_manager() thread-safe access and reentrant send(event, in, out) preserving in-port values.
 
 ### [`test_timed_transitions.cpp`](../../tests/backend/cpp/runtime/test_timed_transitions.cpp) (`tests/backend/cpp/runtime/test_timed_transitions.cpp`)
 #### `TimedTransitions.SyncTimedEvent_Dispatch_TransitionsAfterDuration`
@@ -1177,6 +1183,9 @@
 #### `FsmIr.CanonicalTransitionPriority_EnforcesAscendingEvaluationOrder`
 **Test Intent**: Verify canonical transition sorting enforces strict ascending priority ordering.
 
+#### `FsmIr.ExpressionEvaluationAndLosslessJsonRoundtrip_PreservesInstructionsClocksAndChoices`
+**Test Intent**: Verify ExpressionAstNode numeric and boolean evaluation and lossless JSON roundtrip of instructions, clocks,
+
 ### [`test_fsm_ir_semantic_completeness.cpp`](../../tests/ir/test_fsm_ir_semantic_completeness.cpp) (`tests/ir/test_fsm_ir_semantic_completeness.cpp`)
 #### `StateKind.TerminatePseudostate_DifferentiatedFromFinalState`
 **Test Intent**: Verify StateKind::Terminate pseudostate classification and string conversions.
@@ -1412,6 +1421,9 @@
 #### `EFSMIntervalAnalysis.IntervalEqualityAndZeroTimesInfinity_SoundWithoutNaN`
 **Test Intent**: Verify Interval equality with infinities and 0 * inf multiplication do not produce NaN.
 
+#### `EFSMIntervalAnalysis.IntegerStrictInequality_DetectsUnsatisfiableAdjacentBounds`
+**Test Intent**: Verify integer strict inequality interval analysis detects unsatisfiable adjacent integer bounds.
+
 ### [`test_formal_safety_passes.cpp`](../../tests/middleend/verification/test_formal_safety_passes.cpp) (`tests/middleend/verification/test_formal_safety_passes.cpp`)
 #### `LivelockAnalysis.NonZeroTimeTransitions_PassesWithoutErrors`
 **Test Intent**: Verify LivelockAnalysisPass validates systems without zero-time instantaneous cycles.
@@ -1536,6 +1548,9 @@
 
 #### `EFSMDataPathPass.UnsatisfiableGuard_PrunesDeadTransitionWhenOptimizationEnabled`
 **Test Intent**: Verify EFSMDataPathPass dead transition pruning based on unsatisfiable guard intervals.
+
+#### `ModelChecker.HierarchicalCompositeAndTerminalSinkState_VerifiesCtlInvariantsAndSmvNextVar`
+**Test Intent**: Verify CTL AG invariant and AF reachability across hierarchical composite states and terminal sink states.
 
 ### [`test_timed_automata_verification.cpp`](../../tests/middleend/verification/test_timed_automata_verification.cpp) (`tests/middleend/verification/test_timed_automata_verification.cpp`)
 #### `TimedDeadlockPass.RacingTimeoutAndEventSamePriority_EmitsAmbiguityWarning`

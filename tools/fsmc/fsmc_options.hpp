@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
+#include "tools/common/cli_utils.hpp"
 
 namespace fsm::tools {
 
@@ -152,28 +153,20 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             return opts;
         }
 
-        // 2. Input and Output path specifications (-i, -o)
-        if (arg == "-i" || arg == "--input") {
-            if (idx + 1 >= argc) {
+        // 2. Shared compiler flags (-i, -o, --format, --submachine-dir, --diagnostic-format, --pipe-through,
+        // --load-pass-plugin, -Werror)
+        if (parse_common_compiler_arg(arg, idx, argc, argv, opts.input_file, opts.output_file, opts.format,
+                                      opts.submachine_dir, opts.diagnostic_format, opts.pipe_through_cmd,
+                                      opts.pass_plugins, opts.werror, opts.error_message)) {
+            if (!opts.error_message.empty()) {
                 opts.is_valid = false;
-                opts.error_message = "Missing argument for option: " + arg;
                 return opts;
             }
-            opts.input_file = argv[++idx];
-        } else if (arg.rfind("--input=", 0) == 0) {
-            opts.input_file = arg.substr(8);
-        } else if (arg == "-o" || arg == "--output") {
-            if (idx + 1 >= argc) {
-                opts.is_valid = false;
-                opts.error_message = "Missing argument for option: " + arg;
-                return opts;
-            }
-            opts.output_file = argv[++idx];
-        } else if (arg.rfind("--output=", 0) == 0) {
-            opts.output_file = arg.substr(9);
+            continue;
+        }
 
-            // 3. Target language selection (C++ code generator backend)
-        } else if (arg == "-t" || arg == "--target" || arg == "--lang") {
+        // 3. Target language selection (C++ code generator backend)
+        if (arg == "-t" || arg == "--target" || arg == "--lang") {
             if (idx + 1 >= argc) {
                 opts.is_valid = false;
                 opts.error_message = "Missing argument for option: " + arg;
@@ -227,16 +220,7 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
         } else if (arg.rfind("--package=", 0) == 0) {
             opts.ns_name = arg.substr(10);
 
-            // 5. Frontend format override and sidecar manifest options
-        } else if (arg == "--format") {
-            if (idx + 1 >= argc) {
-                opts.is_valid = false;
-                opts.error_message = "Missing argument for option: " + arg;
-                return opts;
-            }
-            opts.format = argv[++idx];
-        } else if (arg.rfind("--format=", 0) == 0) {
-            opts.format = arg.substr(9);
+            // 5. Sidecar manifest options
         } else if (arg == "--sidecar" || arg == "-s") {
             if (idx + 1 >= argc) {
                 opts.is_valid = false;
@@ -268,15 +252,6 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             opts.export_runtime_dir = argv[++idx];
         } else if (arg.rfind("--export-runtime=", 0) == 0) {
             opts.export_runtime_dir = arg.substr(17);
-        } else if (arg == "--submachine-dir") {
-            if (idx + 1 >= argc) {
-                opts.is_valid = false;
-                opts.error_message = "Missing argument for option: " + arg;
-                return opts;
-            }
-            opts.submachine_dir = argv[++idx];
-        } else if (arg.rfind("--submachine-dir=", 0) == 0) {
-            opts.submachine_dir = arg.substr(17);
 
             // 7. Middle-end optimization levels and pass configuration
         } else if (arg == "-O0" || arg == "--no-opt") {
@@ -318,8 +293,6 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             opts.strict_determinism = true;
         } else if (arg == "--races" || arg == "--check-races") {
             opts.check_races = true;
-        } else if (arg == "-Werror") {
-            opts.werror = true;
         } else if (arg == "--req-audit") {
             opts.req_audit = true;
 
@@ -478,27 +451,6 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
         } else if (arg.rfind("--ctl=", 0) == 0) {
             opts.ctl_spec = arg.substr(6);
             opts.verify_mode = true;
-        } else if (arg == "--diagnostic-format") {
-            if (idx + 1 >= argc) {
-                opts.is_valid = false;
-                opts.error_message = "Missing argument for option: " + arg;
-                return opts;
-            }
-            opts.diagnostic_format = argv[++idx];
-            if (!is_valid_diagnostic_format(opts.diagnostic_format)) {
-                opts.is_valid = false;
-                opts.error_message = "Invalid diagnostic format '" + opts.diagnostic_format +
-                                     "'. Supported formats: text, json, github.";
-                return opts;
-            }
-        } else if (arg.starts_with("--diagnostic-format=")) {
-            opts.diagnostic_format = arg.substr(20);
-            if (!is_valid_diagnostic_format(opts.diagnostic_format)) {
-                opts.is_valid = false;
-                opts.error_message = "Invalid diagnostic format '" + opts.diagnostic_format +
-                                     "'. Supported formats: text, json, github.";
-                return opts;
-            }
 
             // 12. Code generation threading and stub generation switches
         } else if (arg == "--no-thread-safe") {
@@ -507,26 +459,6 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             opts.include_stubs = false;
         } else if (arg == "--allow-diagram" || arg == "--diagram-codegen" || arg == "--allow-diagram-codegen") {
             opts.allow_diagram_codegen = true;
-
-            // 13. External pipeline tools and dynamic pass plugin loading
-        } else if (arg == "--pipe-through") {
-            if (idx + 1 >= argc) {
-                opts.is_valid = false;
-                opts.error_message = "Missing argument for option: " + arg;
-                return opts;
-            }
-            opts.pipe_through_cmd = argv[++idx];
-        } else if (arg.rfind("--pipe-through=", 0) == 0) {
-            opts.pipe_through_cmd = arg.substr(15);
-        } else if (arg == "--load-pass-plugin") {
-            if (idx + 1 >= argc) {
-                opts.is_valid = false;
-                opts.error_message = "Missing argument for option: " + arg;
-                return opts;
-            }
-            opts.pass_plugins.push_back(argv[++idx]);
-        } else if (arg.rfind("--load-pass-plugin=", 0) == 0) {
-            opts.pass_plugins.push_back(arg.substr(19));
 
             // 14. Test harness synthesis (MC/DC GoogleTest suite)
         } else if (arg == "--harness" || arg == "--emit-test-harness") {

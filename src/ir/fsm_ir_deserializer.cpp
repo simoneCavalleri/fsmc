@@ -377,6 +377,88 @@ ActionSignature parse_action_signature_object(const JsonValue& act_val) {
             }
         }
     }
+    if (const auto* insts_val = act_val.get_child("instructions")) {
+        if (insts_val->is_array()) {
+            auto parse_str_vec = [](const JsonValue* arr_node) -> std::vector<std::string> {
+                std::vector<std::string> res;
+                if (arr_node != nullptr && arr_node->is_array()) {
+                    for (const auto& elem : arr_node->arr_val) {
+                        if (elem.is_string()) {
+                            res.push_back(elem.str_val);
+                        }
+                    }
+                }
+                return res;
+            };
+            auto parse_scope = [](const std::string& scope_str) -> LValueScope {
+                if (scope_str == "OutPort") {
+                    return LValueScope::OutPort;
+                }
+                if (scope_str == "Local") {
+                    return LValueScope::Local;
+                }
+                return LValueScope::Register;
+            };
+            for (const auto& i_val : insts_val->arr_val) {
+                if (!i_val.is_object()) {
+                    continue;
+                }
+                std::string kind = i_val.get_string("kind");
+                std::string desc = i_val.get_string("description");
+                if (kind == "store") {
+                    StoreOp op;
+                    op.target = LValueTarget(i_val.get_string("target"));
+                    std::string sc = i_val.get_string("scope");
+                    if (!sc.empty()) {
+                        op.target.scope = parse_scope(sc);
+                    }
+                    op.op = string_to_assignment_op(i_val.get_string("op", "="));
+                    op.expression = i_val.get_string("expression");
+                    if (const auto* has_ast = i_val.get_child("has_expr_ast");
+                        has_ast != nullptr && has_ast->type == JsonType::Bool && has_ast->bool_val) {
+                        op.expr_ast = ExpressionAstNode::parse(op.expression);
+                    }
+                    sig.instructions.emplace_back(std::move(op), std::move(desc));
+                } else if (kind == "port_write") {
+                    PortWriteOp op;
+                    op.port_name = i_val.get_string("port_name");
+                    op.expression = i_val.get_string("expression");
+                    if (const auto* il = i_val.get_child("is_latched"); il != nullptr && il->type == JsonType::Bool) {
+                        op.is_latched = il->bool_val;
+                    }
+                    if (const auto* has_ast = i_val.get_child("has_expr_ast");
+                        has_ast != nullptr && has_ast->type == JsonType::Bool && has_ast->bool_val) {
+                        op.expr_ast = ExpressionAstNode::parse(op.expression);
+                    }
+                    sig.instructions.emplace_back(std::move(op), std::move(desc));
+                } else if (kind == "port_read") {
+                    PortReadOp op;
+                    op.port_name = i_val.get_string("port_name");
+                    op.destination = LValueTarget(i_val.get_string("destination"));
+                    std::string sc = i_val.get_string("scope");
+                    if (!sc.empty()) {
+                        op.destination.scope = parse_scope(sc);
+                    }
+                    sig.instructions.emplace_back(std::move(op), std::move(desc));
+                } else if (kind == "signal_emit") {
+                    SignalEmitOp op;
+                    op.signal_name = i_val.get_string("signal_name");
+                    op.arguments = parse_str_vec(i_val.get_child("arguments"));
+                    if (const auto* tp = i_val.get_child("target_port"); tp != nullptr && tp->is_string()) {
+                        op.target_port = tp->str_val;
+                    }
+                    sig.instructions.emplace_back(std::move(op), std::move(desc));
+                } else if (kind == "action_call") {
+                    ActionCallOp op;
+                    op.function_name = i_val.get_string("function_name");
+                    op.arguments = parse_str_vec(i_val.get_child("arguments"));
+                    op.read_set = parse_str_vec(i_val.get_child("read_set"));
+                    op.write_set = parse_str_vec(i_val.get_child("write_set"));
+                    sig.instructions.emplace_back(std::move(op), std::move(desc));
+                }
+            }
+        }
+    }
     return sig;
 }
 
@@ -1269,6 +1351,66 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
                     norm_expr = n->str_val;
                 }
                 out_ir.add_guard(g_name, std::move(g_desc), std::move(raw_expr), std::move(norm_expr));
+            }
+        }
+    }
+
+    // Clocks
+    const auto* clocks_arr = root.get_child("clocks");
+    if (clocks_arr != nullptr && clocks_arr->is_array()) {
+        for (const auto& c_val : clocks_arr->arr_val) {
+            if (c_val.is_object()) {
+                std::string c_name = sanitize_identifier(c_val.get_string("name"));
+                if (c_name.empty()) {
+                    continue;
+                }
+                bool exists = false;
+                for (const auto& existing : out_ir.clocks) {
+                    if (existing.name == c_name) {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (!exists) {
+                    TimeUnit res = time_unit_from_string(c_val.get_string("resolution", "us"));
+                    std::string desc = c_val.get_string("description");
+                    ClockDefinition clk(c_name, res, desc);
+                    std::string c_id = c_val.get_string("id");
+                    if (!c_id.empty()) {
+                        clk.id = c_id;
+                    }
+                    out_ir.clocks.push_back(std::move(clk));
+                }
+            } else if (c_val.is_string()) {
+                std::string c_name = sanitize_identifier(c_val.str_val);
+                if (!c_name.empty()) {
+                    bool exists = false;
+                    for (const auto& existing : out_ir.clocks) {
+                        if (existing.name == c_name) {
+                            exists = true;
+                            break;
+                        }
+                    }
+                    if (!exists) {
+                        out_ir.clocks.emplace_back(c_name);
+                    }
+                }
+            }
+        }
+    }
+
+    // Choice Nodes
+    const auto* choice_arr = root.get_child("choice_nodes");
+    if (choice_arr != nullptr && choice_arr->is_array()) {
+        for (const auto& cn_val : choice_arr->arr_val) {
+            std::string cn_name;
+            if (cn_val.is_object()) {
+                cn_name = sanitize_identifier(cn_val.get_string("name"));
+            } else if (cn_val.is_string()) {
+                cn_name = sanitize_identifier(cn_val.str_val);
+            }
+            if (!cn_name.empty() && !out_ir.is_choice_node(cn_name)) {
+                out_ir.add_choice_node(cn_name);
             }
         }
     }

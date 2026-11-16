@@ -153,6 +153,12 @@ void ModelChecker::build_graph() {
         return "";
     };
 
+    for (const auto& s : ir_.states) {
+        if (!s.name.empty()) {
+            adj_[s.name];
+        }
+    }
+
     for (const auto& t : ir_.transitions) {
         std::string src = resolve_name(t.source, t.source_id);
         std::string dst = resolve_name(t.target, t.target_id);
@@ -162,6 +168,63 @@ void ModelChecker::build_graph() {
             edge.event = t.event.empty() ? t.get_trigger_name() : t.event;
             edge.guard = t.guard.has_value() ? *t.guard : "";
             adj_[src].push_back(edge);
+            adj_[dst];
+        }
+    }
+
+    // Inherit outgoing transitions from ancestor composite states for child substates
+    for (const auto& s : ir_.states) {
+        if (s.name.empty() || s.parent_state.empty()) {
+            continue;
+        }
+        std::string curr_parent = s.parent_state;
+        std::unordered_set<std::string> visited_parents;
+        while (!curr_parent.empty() && visited_parents.insert(curr_parent).second) {
+            auto it_p = adj_.find(curr_parent);
+            if (it_p != adj_.end()) {
+                auto& sub_edges = adj_[s.name];
+                for (const auto& p_edge : it_p->second) {
+                    if (p_edge.event == "enter_composite") {
+                        continue;
+                    }
+                    bool exists = false;
+                    for (const auto& existing : sub_edges) {
+                        if (existing.target == p_edge.target && existing.event == p_edge.event &&
+                            existing.guard == p_edge.guard) {
+                            exists = true;
+                            break;
+                        }
+                    }
+                    if (!exists) {
+                        sub_edges.push_back(p_edge);
+                    }
+                }
+            }
+            const auto* p_node = ir_.find_state(curr_parent);
+            curr_parent = (p_node != nullptr) ? p_node->parent_state : "";
+        }
+    }
+
+    // Add initial substate entry transitions for composite states
+    for (const auto& s : ir_.states) {
+        if (s.name.empty() || s.initial_sub_state.empty()) {
+            continue;
+        }
+        std::string init_sub = resolve_name(s.initial_sub_state, s.initial_sub_state);
+        if (init_sub.empty()) {
+            continue;
+        }
+        auto& edges = adj_[s.name];
+        bool has_entry = false;
+        for (const auto& edge : edges) {
+            if (edge.target == init_sub) {
+                has_entry = true;
+                break;
+            }
+        }
+        if (!has_entry) {
+            edges.push_back(GraphEdge{init_sub, "enter_composite", ""});
+            adj_[init_sub];
         }
     }
 
@@ -865,6 +928,9 @@ std::unordered_set<std::string> ModelChecker::pre_all(const std::unordered_set<s
     std::unordered_set<std::string> result;
     for (const auto& [src, edges] : adj_) {
         if (edges.empty()) {
+            if (targets.count(src) > 0) {
+                result.insert(src);
+            }
             continue;
         }
         bool all_match = true;

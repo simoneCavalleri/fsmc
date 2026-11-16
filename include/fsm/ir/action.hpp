@@ -353,4 +353,9 @@ struct ActionModel {
 std::optional<ActionSignature> try_parse_assignment_action(std::string_view raw_action,
                                                            const std::string& fallback_prefix);
 
+/**
+ * @brief Formats an ActionSignature into assignment expressions if present, or falls back to its action name.
+ */
+std::string format_action_expression(const ActionSignature& act);
+
 }  // namespace fsm::ir

@@ -40,20 +40,20 @@ void emit_leaf_state(std::ostream& out, const StateNode& state, const std::strin
         out << pad << state.name << " : invariant " << *state.time_invariant << "\n";
     }
     for (const auto& act : state.entry_actions) {
-        out << pad << state.name << " : entry / " << act.name << "\n";
+        out << pad << state.name << " : entry / " << format_action_expression(act) << "\n";
     }
     if (state.do_activity.has_value() && !state.do_activity->empty()) {
         out << pad << state.name << " : do / " << *state.do_activity << "\n";
     }
     for (const auto& act : state.exit_actions) {
-        out << pad << state.name << " : exit / " << act.name << "\n";
+        out << pad << state.name << " : exit / " << format_action_expression(act) << "\n";
     }
     for (const auto& d_evt : state.deferred_events) {
         out << pad << state.name << " : defer " << d_evt << "\n";
     }
 }
 
-std::string build_label(const TransitionEdge& trans) {
+std::string build_label(const TransitionEdge& trans, const FsmIr& model) {
     std::string label;
     if (trans.priority > 0) {
         label += "(prio=" + std::to_string(trans.priority) + ")";
@@ -68,9 +68,10 @@ std::string build_label(const TransitionEdge& trans) {
         if (!label.empty()) {
             label += " ";
         }
-        label += "[" + GuardExpressionParser::to_diagram_string(*trans.guard) + "]";
+        label += "[" + GuardExpressionParser::to_diagram_string(*trans.guard, model.guards) + "]";
     }
-    std::string act = trans.get_action();
+    std::string act =
+        trans.transition_action.has_value() ? format_action_expression(*trans.transition_action) : trans.get_action();
     if (!act.empty()) {
         if (!label.empty()) {
             label += " ";
@@ -107,13 +108,13 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
         out << pad << "  " << state.name << " : invariant " << *state.time_invariant << "\n";
     }
     for (const auto& act : state.entry_actions) {
-        out << pad << "  " << state.name << " : entry / " << act.name << "\n";
+        out << pad << "  " << state.name << " : entry / " << format_action_expression(act) << "\n";
     }
     if (state.do_activity.has_value() && !state.do_activity->empty()) {
         out << pad << "  " << state.name << " : do / " << *state.do_activity << "\n";
     }
     for (const auto& act : state.exit_actions) {
-        out << pad << "  " << state.name << " : exit / " << act.name << "\n";
+        out << pad << "  " << state.name << " : exit / " << format_action_expression(act) << "\n";
     }
     for (const auto& d_evt : state.deferred_events) {
         out << pad << "  " << state.name << " : defer " << d_evt << "\n";
@@ -151,7 +152,7 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
                 clean_target += trans.target_is_deep_history ? "[H*]" : "[H]";
             }
             out << pad << "  " << trans.source << " --> " << clean_target;
-            std::string label = build_label(trans);
+            std::string label = build_label(trans, model);
             if (!label.empty()) {
                 out << " : " << label;
             }
@@ -311,7 +312,7 @@ std::string PlantUmlSerializer::serialize(const FsmIr& model) {
             clean_target += trans.target_is_deep_history ? "[H*]" : "[H]";
         }
         out << trans.source << " --> " << clean_target;
-        std::string label = build_label(trans);
+        std::string label = build_label(trans, model);
         if (!label.empty()) {
             out << " : " << label;
         }

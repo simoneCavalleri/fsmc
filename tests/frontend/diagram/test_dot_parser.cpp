@@ -134,4 +134,37 @@ TEST(DotParser, TransitionActionAssignments_PopulatedInActionSignature) {
     EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].expression, "42");
 }
 
+/**
+ * @brief Regression: DOT state lifecycle assignments (`(entry / x = 10)` / `(exit / x += 1)`) populate
+ * `ActionSignature::assignments`.
+ * @scenario Parse a DOT node with `(entry / x = 10)` and `(exit / x += 1)` labels.
+ * @expected `entry_actions` and `exit_actions` contain populated assignment records.
+ */
+TEST(DotParser, StateLifecycleAssignments_PopulatedInEntryAndExitActions) {
+    const std::string dot_content = R"dot(digraph DotLife {
+    __start__ -> Ready;
+    Ready [label="Ready\n(entry / x = 10)\n(exit / x += 1)"];
+    Done [label="Done"];
+    Ready -> Done [label="GO"];
+}
+)dot";
+
+    DotParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+
+    const auto* ready = ir.find_state("Ready");
+    ASSERT_NE(ready, nullptr);
+    ASSERT_EQ(ready->entry_actions.size(), 1u);
+    ASSERT_EQ(ready->entry_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(ready->entry_actions[0].assignments[0].target.name, "x");
+    EXPECT_EQ(ready->entry_actions[0].assignments[0].expression, "10");
+
+    ASSERT_EQ(ready->exit_actions.size(), 1u);
+    ASSERT_EQ(ready->exit_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(ready->exit_actions[0].assignments[0].target.name, "x");
+    EXPECT_EQ(ready->exit_actions[0].assignments[0].expression, "x + 1");
+}
+
 }  // namespace

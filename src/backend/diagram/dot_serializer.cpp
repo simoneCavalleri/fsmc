@@ -43,7 +43,7 @@ std::string escape_label(const std::string& input) {
     return res;
 }
 
-std::string build_label(const TransitionEdge& trans) {
+std::string build_label(const TransitionEdge& trans, const FsmIr& model) {
     std::string label;
     if (trans.priority > 0) {
         label += "(prio=" + std::to_string(trans.priority) + ")";
@@ -56,9 +56,10 @@ std::string build_label(const TransitionEdge& trans) {
     if (trans.guard && !trans.guard->empty()) {
         if (!label.empty())
             label += " ";
-        label += "[" + GuardExpressionParser::to_diagram_string(*trans.guard) + "]";
+        label += "[" + GuardExpressionParser::to_diagram_string(*trans.guard, model.guards) + "]";
     }
-    std::string act = trans.get_action();
+    std::string act =
+        trans.transition_action.has_value() ? format_action_expression(*trans.transition_action) : trans.get_action();
     if (!act.empty()) {
         if (!label.empty())
             label += " ";
@@ -137,13 +138,13 @@ std::string DotSerializer::serialize(const FsmIr& model) {
         if (state.is_composite) {
             std::string comp_label = state.name;
             for (const auto& act : state.entry_actions) {
-                comp_label += "\\n(entry / " + act.name + ")";
+                comp_label += "\\n(entry / " + format_action_expression(act) + ")";
             }
             if (state.do_activity.has_value() && !state.do_activity->empty()) {
                 comp_label += "\\n(do / " + *state.do_activity + ")";
             }
             for (const auto& act : state.exit_actions) {
-                comp_label += "\\n(exit / " + act.name + ")";
+                comp_label += "\\n(exit / " + format_action_expression(act) + ")";
             }
             for (const auto& d_evt : state.deferred_events) {
                 comp_label += "\\n(defer " + d_evt + ")";
@@ -188,7 +189,7 @@ std::string DotSerializer::serialize(const FsmIr& model) {
                 if (p_src == state.name) {
                     emitted_transitions.insert(i);
                     out << pad << "    " << escape_id(trans.source) << " -> " << escape_id(trans.target);
-                    std::string label = build_label(trans);
+                    std::string label = build_label(trans, model);
                     if (!label.empty()) {
                         out << " [label=\"" << escape_label(label) << "\"]";
                     }
@@ -203,13 +204,13 @@ std::string DotSerializer::serialize(const FsmIr& model) {
                 label += "\\n(stay <= " + *state.time_invariant + ")";
             }
             for (const auto& act : state.entry_actions) {
-                label += "\\n(entry / " + act.name + ")";
+                label += "\\n(entry / " + format_action_expression(act) + ")";
             }
             if (state.do_activity.has_value() && !state.do_activity->empty()) {
                 label += "\\n(do / " + *state.do_activity + ")";
             }
             for (const auto& act : state.exit_actions) {
-                label += "\\n(exit / " + act.name + ")";
+                label += "\\n(exit / " + format_action_expression(act) + ")";
             }
             for (const auto& d_evt : state.deferred_events) {
                 label += "\\n(defer " + d_evt + ")";
@@ -231,7 +232,7 @@ std::string DotSerializer::serialize(const FsmIr& model) {
             continue;
         const auto& trans = model.transitions[i];
         out << "    " << escape_id(trans.source) << " -> " << escape_id(trans.target);
-        std::string label = build_label(trans);
+        std::string label = build_label(trans, model);
         if (!label.empty()) {
             out << " [label=\"" << escape_label(label) << "\"]";
         }

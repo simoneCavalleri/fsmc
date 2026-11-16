@@ -566,4 +566,39 @@ TEST(DiagramExport, PlantUmlAndMermaid_ParallelState_EmitsOrthogonalSeparator) {
     EXPECT_NE(mmd.find("    --"), std::string::npos);
 }
 
+/**
+ * @brief Verify DOT, PlantUML, and Mermaid serializers emit assignment expressions and readable guards.
+ * @scenario Serialize an FsmIr with entry/exit/transition assignments and a guard expression across DOT, PlantUML, and
+ * Mermaid.
+ * @expected All three serialized formats contain the readable guard `[x >= 10]` and assignment expressions (`x = 10`,
+ * `x = x * 2`).
+ */
+TEST(DiagramExport, AssignmentActionsAndReadableGuards_EmittedAcrossDotPlantUmlMermaid) {
+    FsmIr model;
+    model.name = "ExprExport";
+    model.initial_state = "Ready";
+    model.add_variable(VariableDefinition("x", DataType{PrimitiveTypeKind::Int32}, "0"));
+
+    auto& ready = model.add_state("Ready");
+    ActionSignature entry_act("entry_Ready_x");
+    entry_act.assignments.emplace_back(LValueTarget("x"), "10");
+    ready.entry_actions.push_back(std::move(entry_act));
+    model.add_state("Running");
+
+    model.add_guard("x_gte_10", "", std::optional<std::string>{"x >= 10"}, std::optional<std::string>{"x >= 10"});
+    ActionSignature tr_act("act_x");
+    tr_act.assignments.emplace_back(LValueTarget("x"), "x * 2");
+    model.transitions.emplace_back("Ready", "Running", "START", "x_gte_10", std::move(tr_act));
+
+    const std::string dot = DotSerializer::serialize(model);
+    const std::string puml = PlantUmlSerializer::serialize(model);
+    const std::string mmd = MermaidSerializer::serialize(model);
+
+    for (const auto& text : {dot, puml, mmd}) {
+        EXPECT_NE(text.find("x = 10"), std::string::npos);
+        EXPECT_NE(text.find("x = x * 2"), std::string::npos);
+        EXPECT_NE(text.find("[x >= 10]"), std::string::npos);
+    }
+}
+
 }  // namespace

@@ -125,24 +125,32 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
                 if (clean_item.find("(entry /") != std::string::npos) {
                     size_t p = clean_item.find("(entry /");
                     size_t end_p = clean_item.find(')', p);
-                    std::string act =
-                        clean_item.substr(p + 8, (end_p != std::string::npos ? end_p : clean_item.size()) - (p + 8));
-                    act = sanitize_identifier(trim_line(act));
-                    if (!act.empty()) {
-                        model.add_action(act);
-                        if (auto* st = model.find_state_mut(target_state))
-                            st->entry_actions.push_back(ActionSignature{act});
+                    std::string raw_act = std::string(trim_line(
+                        clean_item.substr(p + 8, (end_p != std::string::npos ? end_p : clean_item.size()) - (p + 8))));
+                    if (!raw_act.empty()) {
+                        auto assign_sig = ::fsm::ir::try_parse_assignment_action(raw_act, target_state + "_entry");
+                        ActionSignature sig = assign_sig.has_value() ? std::move(*assign_sig)
+                                                                     : ActionSignature{sanitize_identifier(raw_act)};
+                        if (!sig.name.empty()) {
+                            model.add_action(sig.name);
+                            if (auto* st = model.find_state_mut(target_state))
+                                st->entry_actions.push_back(std::move(sig));
+                        }
                     }
                 } else if (clean_item.find("(exit /") != std::string::npos) {
                     size_t p = clean_item.find("(exit /");
                     size_t end_p = clean_item.find(')', p);
-                    std::string act =
-                        clean_item.substr(p + 7, (end_p != std::string::npos ? end_p : clean_item.size()) - (p + 7));
-                    act = sanitize_identifier(trim_line(act));
-                    if (!act.empty()) {
-                        model.add_action(act);
-                        if (auto* st = model.find_state_mut(target_state))
-                            st->exit_actions.push_back(ActionSignature{act});
+                    std::string raw_act = std::string(trim_line(
+                        clean_item.substr(p + 7, (end_p != std::string::npos ? end_p : clean_item.size()) - (p + 7))));
+                    if (!raw_act.empty()) {
+                        auto assign_sig = ::fsm::ir::try_parse_assignment_action(raw_act, target_state + "_exit");
+                        ActionSignature sig = assign_sig.has_value() ? std::move(*assign_sig)
+                                                                     : ActionSignature{sanitize_identifier(raw_act)};
+                        if (!sig.name.empty()) {
+                            model.add_action(sig.name);
+                            if (auto* st = model.find_state_mut(target_state))
+                                st->exit_actions.push_back(std::move(sig));
+                        }
                     }
                 } else if (clean_item.find("(do /") != std::string::npos) {
                     size_t p = clean_item.find("(do /");

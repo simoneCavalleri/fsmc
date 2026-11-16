@@ -52,7 +52,7 @@ void emit_leaf_state(std::ostream& out, const StateNode& state, const std::strin
     for (const auto& act : state.entry_actions) {
         if (!first)
             label += "<br/>";
-        label += "entry / " + act.name;
+        label += "entry / " + format_action_expression(act);
         first = false;
     }
     if (state.do_activity.has_value() && !state.do_activity->empty()) {
@@ -64,7 +64,7 @@ void emit_leaf_state(std::ostream& out, const StateNode& state, const std::strin
     for (const auto& act : state.exit_actions) {
         if (!first)
             label += "<br/>";
-        label += "exit / " + act.name;
+        label += "exit / " + format_action_expression(act);
         first = false;
     }
     for (const auto& d_evt : state.deferred_events) {
@@ -77,7 +77,7 @@ void emit_leaf_state(std::ostream& out, const StateNode& state, const std::strin
     out << pad << "state \"" << label << "\" as " << state.name << "\n";
 }
 
-std::string build_label(const TransitionEdge& trans) {
+std::string build_label(const TransitionEdge& trans, const FsmIr& model) {
     std::string label;
     if (trans.priority > 0) {
         label += "(prio=" + std::to_string(trans.priority) + ")";
@@ -93,9 +93,10 @@ std::string build_label(const TransitionEdge& trans) {
         if (!label.empty()) {
             label += " ";
         }
-        label += "[" + GuardExpressionParser::to_diagram_string(*trans.guard) + "]";
+        label += "[" + GuardExpressionParser::to_diagram_string(*trans.guard, model.guards) + "]";
     }
-    std::string act = trans.get_action();
+    std::string act =
+        trans.transition_action.has_value() ? format_action_expression(*trans.transition_action) : trans.get_action();
     if (!act.empty()) {
         if (!label.empty()) {
             label += " ";
@@ -143,7 +144,7 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
         if (src_parent == state.name) {
             emitted_transitions.insert(idx);
             std::string target = trans.target;
-            std::string label = build_label(trans);
+            std::string label = build_label(trans, model);
             if (target == state.name) {
                 if (!state.initial_sub_state.empty()) {
                     target = state.initial_sub_state;
@@ -173,7 +174,7 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
         for (const auto& act : state.entry_actions) {
             if (!note_content.empty())
                 note_content += ", ";
-            note_content += "entry / " + act.name;
+            note_content += "entry / " + format_action_expression(act);
         }
         if (state.do_activity.has_value() && !state.do_activity->empty()) {
             if (!note_content.empty())
@@ -183,7 +184,7 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
         for (const auto& act : state.exit_actions) {
             if (!note_content.empty())
                 note_content += ", ";
-            note_content += "exit / " + act.name;
+            note_content += "exit / " + format_action_expression(act);
         }
         for (const auto& d_evt : state.deferred_events) {
             if (!note_content.empty())
@@ -347,7 +348,7 @@ std::string MermaidSerializer::serialize(const FsmIr& model) {
         }
         const auto& trans = model.transitions[idx];
         std::string target = trans.target;
-        std::string label = build_label(trans);
+        std::string label = build_label(trans, model);
 
         // Check if source is a descendant of target
         std::string curr = trans.source;

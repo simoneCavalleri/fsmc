@@ -323,6 +323,8 @@ std::shared_ptr<XmlNode> StateflowParser::find_element_recursive(const std::shar
     return nullptr;
 }
 
+static ActionSignature build_stateflow_action(std::string_view raw_action, const std::string& fallback_prefix);
+
 void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node, FsmIr& model,
                                            const std::string& parent_state) {
     for (const auto& child : node->children) {
@@ -420,33 +422,27 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
             }
 
             if (s != nullptr) {
-                if (!entry_act.empty()) {
-                    std::istringstream iss(entry_act);
+                auto append_lifecycle_actions = [&](const std::string& raw_list, const std::string& suffix,
+                                                    std::vector<ActionSignature>& target) {
+                    if (raw_list.empty()) {
+                        return;
+                    }
+                    std::istringstream iss(raw_list);
                     std::string part;
                     while (std::getline(iss, part, ';')) {
                         std::string a = std::string(trim(part));
                         if (!a.empty()) {
-                            std::string aname = sanitize_identifier(a);
-                            model.add_action(aname);
-                            s->entry_actions.emplace_back(aname);
+                            ActionSignature sig = build_stateflow_action(a, st_name + suffix);
+                            model.add_action(sig.name);
+                            target.push_back(std::move(sig));
                         }
                     }
-                }
+                };
+                append_lifecycle_actions(entry_act, "_entry", s->entry_actions);
                 if (!during_act.empty()) {
                     s->do_activity = sanitize_identifier(during_act);
                 }
-                if (!exit_act.empty()) {
-                    std::istringstream iss(exit_act);
-                    std::string part;
-                    while (std::getline(iss, part, ';')) {
-                        std::string a = std::string(trim(part));
-                        if (!a.empty()) {
-                            std::string aname = sanitize_identifier(a);
-                            model.add_action(aname);
-                            s->exit_actions.emplace_back(aname);
-                        }
-                    }
-                }
+                append_lifecycle_actions(exit_act, "_exit", s->exit_actions);
             }
 
             // Recursively parse child states and transitions

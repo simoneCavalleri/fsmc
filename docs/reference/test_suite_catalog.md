@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 577  
+**Total Documented Test Cases**: 578  
 
 ---
 
@@ -1012,6 +1012,9 @@
 #### `StateflowParser.TransitionActionAssignments_PopulatedInActionSignature`
 **Test Intent**: Regression: Stateflow transition action blocks with variable assignments populate
 `ActionSignature::assignments`.
+
+#### `StateflowParser.StateLifecycleAssignments_PopulatedInEntryAndExitActions`
+**Test Intent**: Regression: Stateflow state `entry` / `exit` attributes with variable assignments populate `assignments`.
 
 ### [`test_stateflow_slx_ingestion.cpp`](../../tests/frontend/formal/test_stateflow_slx_ingestion.cpp) (`tests/frontend/formal/test_stateflow_slx_ingestion.cpp`)
 #### `StateflowSlxIngestion.IngestStoredSlxContainer_ParsesModelDirectly`

@@ -1172,3 +1172,49 @@ TEST(CppModelEmitterTest, NoStubsDefersLifecycleActionInstantiationViaDependentT
     EXPECT_NE(str.find("auto exit_action_0 = Act0{};"), std::string::npos);
     EXPECT_NE(str.find("auto activity = Act0{};"), std::string::npos);
 }
+
+/**
+ * @brief Regression: bare signal payload attributes in guards and action assignments qualify to `cmd.<attr>`.
+ * @scenario Emit a model with signal `SetSpeed` carrying `target_rpm`, a guard `target_rpm > 100`,
+ *           and a transition action assigning `rpm = target_rpm`.
+ * @expected Both guard and action qualify `target_rpm` as `cmd.target_rpm` and omit eventless overloads.
+ */
+TEST(CppModelEmitterTest, SignalPayloadAttribute_QualifiedInGuardsAndActions) {
+    FsmIr model;
+    model.name = "MotorCtrl";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Running");
+
+    VariableDefinition rpm_var;
+    rpm_var.name = "rpm";
+    rpm_var.type = DataType{PrimitiveTypeKind::UInt32};
+    rpm_var.initial_value = "0";
+    model.add_variable(std::move(rpm_var));
+
+    SignalDefinition sig("SetSpeed");
+    sig.attributes.emplace_back("target_rpm", DataType{PrimitiveTypeKind::UInt32}, "0");
+    model.add_signal(sig);
+
+    model.guards.emplace_back("ValidSpeed", "ValidSpeed", "target_rpm > 100", "target_rpm > 100");
+
+    ActionSignature act("SetRpm");
+    act.assignments.push_back(ActionAssignment{"rpm", "target_rpm"});
+
+    TransitionEdge trans("Idle", "Running", "SetSpeed");
+    trans.set_guard("ValidSpeed");
+    trans.transition_action = act;
+    model.transitions.push_back(trans);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = true;
+    CppModelEmitter::emit_model(out, model, opts);
+    const std::string str = out.str();
+
+    EXPECT_NE(str.find("return cmd.target_rpm > 100;"), std::string::npos);
+    EXPECT_NE(str.find("reg.rpm = cmd.target_rpm;"), std::string::npos);
+    EXPECT_EQ(str.find("operator()(const InPorts& in, const Registers& reg) const noexcept"), std::string::npos);
+    EXPECT_EQ(str.find("operator()(const InPorts& /*in*/, OutPorts& /*out*/, Registers& reg) const"),
+              std::string::npos);
+}

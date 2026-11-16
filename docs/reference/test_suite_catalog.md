@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 569  
+**Total Documented Test Cases**: 570  
 
 ---
 
@@ -537,6 +537,9 @@
 
 #### `CppModelEmitterTest.NoStubsDefersLifecycleActionInstantiationViaDependentTemplate`
 **Test Intent**: Verify --no-stubs defers lifecycle action instantiation via dependent template parameters.
+
+#### `CppModelEmitterTest.SignalPayloadAttribute_QualifiedInGuardsAndActions`
+**Test Intent**: Regression: bare signal payload attributes in guards and action assignments qualify to `cmd.<attr>`.
 
 ### [`test_generated_fsm.cpp`](../../tests/backend/cpp/test_generated_fsm.cpp) (`tests/backend/cpp/test_generated_fsm.cpp`)
 - *(Executable binary test verification)*

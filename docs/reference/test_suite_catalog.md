@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 596  
+**Total Documented Test Cases**: 597  
 
 ---
 
@@ -678,6 +678,9 @@
 
 #### `FormalRoundtrip.UniversalDataDefinitions_PreservedAcrossFormats`
 **Test Intent**: Verify universal lossless roundtrip of enum and struct definitions across all formats.
+
+#### `FormalRoundtrip.Sysml2Serializer_PreservesAssignmentBlocksAcrossRoundtrip`
+**Test Intent**: Verify Sysml2Serializer emits assignment action blocks for entry, exit, and transitions.
 
 ---
 

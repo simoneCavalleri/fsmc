@@ -57,7 +57,11 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
 
     // Entry Actions
     for (const auto& act : state.entry_actions) {
-        out << pad << "    entry action " << act.name << ";\n";
+        if (!act.assignments.empty()) {
+            out << pad << "    entry action { " << fsm::ir::format_action_expression(act) << "; }\n";
+        } else {
+            out << pad << "    entry action " << act.name << ";\n";
+        }
     }
 
     // Do Activity
@@ -67,7 +71,11 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
 
     // Exit Actions
     for (const auto& act : state.exit_actions) {
-        out << pad << "    exit action " << act.name << ";\n";
+        if (!act.assignments.empty()) {
+            out << pad << "    exit action { " << fsm::ir::format_action_expression(act) << "; }\n";
+        } else {
+            out << pad << "    exit action " << act.name << ";\n";
+        }
     }
 
     // Deferred Events
@@ -245,9 +253,13 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
         if (trans.guard && !trans.guard->empty()) {
             out << "        if " << ir::GuardExpressionParser::to_diagram_string(*trans.guard, model.guards) << "\n";
         }
-        std::string act = trans.get_action();
-        if (!act.empty()) {
-            out << "        do " << act << "\n";
+        if (trans.transition_action.has_value() && !trans.transition_action->assignments.empty()) {
+            out << "        do action { " << fsm::ir::format_action_expression(*trans.transition_action) << "; }\n";
+        } else {
+            std::string act = trans.get_action();
+            if (!act.empty()) {
+                out << "        do " << act << "\n";
+            }
         }
         out << "        then " << clean_target << ";\n";
     }

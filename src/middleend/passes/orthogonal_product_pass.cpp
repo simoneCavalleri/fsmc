@@ -7,6 +7,8 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "fsm/ir/identifier_utils.hpp"
+
 namespace fsm::middleend::passes {
 
 using namespace fsm::ir;
@@ -362,7 +364,7 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
 
                     if (!guards.empty()) {
                         if (guards.size() == 1) {
-                            pt.set_guard("(" + guards[0] + ")");
+                            pt.set_guard(guards[0]);
                         } else {
                             std::string combined_guard;
                             for (std::size_t i = 0; i < guards.size(); ++i) {
@@ -377,8 +379,15 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                         std::string combined_act;
                         for (std::size_t i = 0; i < actions.size(); ++i) {
                             if (i > 0)
-                                combined_act += "; ";
-                            combined_act += actions[i];
+                                combined_act += "_and_";
+                            combined_act += sanitize_identifier(actions[i]);
+                        }
+                        if (actions.size() > 1 && instructions.empty()) {
+                            for (const auto& act_name : actions) {
+                                ActionCallOp call_op;
+                                call_op.function_name = act_name;
+                                instructions.emplace_back(std::move(call_op));
+                            }
                         }
                         ActionSignature sig;
                         sig.name = combined_act.empty() ? ("act_" + src_product + "_" + dst_product) : combined_act;

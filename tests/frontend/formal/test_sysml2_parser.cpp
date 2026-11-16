@@ -8,6 +8,7 @@
 #include <string>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
+#include "fsm/backend/formal/sysml2_serializer.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/fsm_validator.hpp"
@@ -685,6 +686,63 @@ TEST(Sysml2Parser, EntryAndExitActionBlocks_AssignmentsPopulatedInIr) {
     ASSERT_EQ(exit_act.assignments.size(), 1u);
     EXPECT_EQ(exit_act.assignments[0].target.name, "counter");
     EXPECT_EQ(exit_act.assignments[0].expression, "counter + 1");
+}
+
+/**
+ * @brief Verify invalid 'transition Src -> Dst' syntax is rejected with a clear syntax error.
+ * @scenario SysML v2 model containing 'transition A -> B accept Ev;'.
+ * @expected Sysml2Parser::parse returns false with diagnostic mentioning '->'.
+ */
+TEST(Sysml2ParserTest, RejectsArrowTransitionSyntaxWithDiagnostic) {
+    const std::string sysml = R"sysml(
+package BadSyntax {
+    state def M {
+        entry; then A;
+        state A;
+        state B;
+        transition A -> B accept Ev;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    EXPECT_FALSE(parser.parse(sysml, model, err));
+    EXPECT_NE(err.find("->"), std::string::npos);
+}
+
+/**
+ * @brief Verify Sysml2Serializer preserves TimeTrigger as 'accept after(...)' without synthetic event def.
+ * @scenario SysML v2 model with 'transition first Hovering accept after(5000ms) then Landing;'.
+ * @expected Serialized SysML v2 contains 'accept after(5000ms)', omits 'event def after_5000ms;', and re-parses as
+ * TimeTrigger.
+ */
+TEST(Sysml2ParserTest, RoundTripsTimeTriggerWithoutSyntheticSignal) {
+    const std::string sysml = R"sysml(
+package Timing {
+    state def Drone {
+        entry; then Hovering;
+        state Hovering;
+        state Landing;
+        transition first Hovering accept after(5000ms) then Landing;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+
+    const std::string exported = fsm::backend::formal::Sysml2Serializer::serialize(model);
+    EXPECT_NE(exported.find("accept after(5000ms)"), std::string::npos);
+    EXPECT_EQ(exported.find("event def after_5000ms;"), std::string::npos);
+
+    FsmIr reparsed;
+    ASSERT_TRUE(parser.parse(exported, reparsed, err)) << err;
+    ASSERT_EQ(reparsed.transitions.size(), 1u);
+    EXPECT_TRUE(std::holds_alternative<TimeTrigger>(reparsed.transitions[0].trigger));
 }
 
 }  // namespace

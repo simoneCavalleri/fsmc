@@ -228,4 +228,42 @@ TEST(PlantUmlParser, GuardWithDivisionOperator_PreservedAndNotTreatedAsAction) {
     EXPECT_FALSE(t2.transition_action.has_value());
 }
 
+/**
+ * @brief Verify PlantUML '--' orthogonal region separator populates StateKind::Parallel and orthogonal_regions.
+ * @scenario Composite state Active with two child regions separated by '--'.
+ * @expected Active has StateKind::Parallel and 2 orthogonal regions with correct initial states.
+ */
+TEST(PlantUmlParserTest, OrthogonalSeparatorCreatesParallelRegions) {
+    const std::string puml = R"puml(
+@startuml
+[*] --> Active
+state Active {
+  state RegA {
+    [*] --> A1
+    A1 --> A2 : EvA
+  }
+  --
+  state RegB {
+    [*] --> B1
+    B1 --> B2 : EvB
+  }
+}
+@enduml
+)puml";
+
+    PlantUmlParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << err;
+
+    const StateNode* active = model.find_state("Active");
+    ASSERT_NE(active, nullptr);
+    EXPECT_EQ(active->kind, StateKind::Parallel);
+    ASSERT_EQ(active->orthogonal_regions.size(), 2u);
+    EXPECT_EQ(active->orthogonal_regions[0].id, "RegA");
+    EXPECT_EQ(active->orthogonal_regions[0].initial_state_id, "A1");
+    EXPECT_EQ(active->orthogonal_regions[1].id, "RegB");
+    EXPECT_EQ(active->orthogonal_regions[1].initial_state_id, "B1");
+}
+
 }  // namespace

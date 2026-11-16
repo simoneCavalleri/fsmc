@@ -673,4 +673,46 @@ TEST(OrthogonalProduct, SkipsUnchangedRegionEntryExitActionsOnProductTransition)
     EXPECT_TRUE(found);
 }
 
+/**
+ * @brief Verify simultaneous orthogonal transitions combine actions with valid C++ identifier and single guard without
+ * extra parens.
+ * @scenario Parallel state P with R1 (A1 -> A2 on EvGo [g1] / act1) and R2 (B1 -> B2 on EvGo / act2).
+ * @expected Combined action name is 'act1_and_act2' with 2 ActionCallOps and guard is 'g1' (no wrapping parens).
+ */
+TEST(OrthogonalProduct, SimultaneousTransitionsSanitizeCombinedActionAndSingleGuard) {
+    FsmIr model;
+    model.name = "SimulOrthoTest";
+    model.initial_state = "P";
+
+    auto& par = model.add_state("P", "", StateKind::Parallel);
+    OrthogonalRegion r1{"R1", "R1", "A1", {"A1", "A2"}, 0};
+    OrthogonalRegion r2{"R2", "R2", "B1", {"B1", "B2"}, 0};
+    par.orthogonal_regions = {r1, r2};
+
+    model.add_state("A1", "R1");
+    model.add_state("A2", "R1");
+    model.add_state("B1", "R2");
+    model.add_state("B2", "R2");
+
+    model.add_transition(TransitionEdge("A1", "A2", "EvGo", "g1", ActionSignature("act1")));
+    model.add_transition(TransitionEdge("B1", "B2", "EvGo", std::nullopt, ActionSignature("act2")));
+
+    DiagnosticEngine diag;
+    OrthogonalProductPass pass;
+    ASSERT_TRUE(pass.run(model, diag));
+
+    bool found = false;
+    for (const auto& tr : model.transitions) {
+        if (tr.source == "P_A1_B1" && tr.target == "P_A2_B2" && tr.event == "EvGo") {
+            found = true;
+            ASSERT_TRUE(tr.guard.has_value());
+            EXPECT_EQ(*tr.guard, "g1");
+            ASSERT_TRUE(tr.transition_action.has_value());
+            EXPECT_EQ(tr.transition_action->name, "act1_and_act2");
+            ASSERT_EQ(tr.transition_action->instructions.size(), 2u);
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
 }  // namespace

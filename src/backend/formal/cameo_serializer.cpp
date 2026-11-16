@@ -58,6 +58,36 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
             out << "    <!-- @fsm:struct " << DirectiveParser::format_struct_directive(ct) << " -->\n";
         }
     }
+    for (const auto& port : model.ports) {
+        out << "    <!-- @fsm:port name=" << port.name << " type=" << port.type
+            << " dir=" << port_direction_to_string(port.direction);
+        if (port.min_value.has_value()) {
+            out << " min=" << *port.min_value;
+        }
+        if (port.max_value.has_value()) {
+            out << " max=" << *port.max_value;
+        }
+        out << " -->\n";
+    }
+    for (const auto& var : model.variables) {
+        out << "    <!-- @fsm:var name=" << var.name << " type=" << var.type;
+        if (var.physical_unit.has_value()) {
+            out << " unit=\"" << *var.physical_unit << "\"";
+        }
+        if (!var.initial_value.empty()) {
+            out << " init=" << var.initial_value;
+        }
+        if (var.min_value.has_value()) {
+            out << " min=" << *var.min_value;
+        }
+        if (var.max_value.has_value()) {
+            out << " max=" << *var.max_value;
+        }
+        if (!var.description.empty()) {
+            out << " desc=\"" << var.description << "\"";
+        }
+        out << " -->\n";
+    }
     out << "    <packagedElement xmi:type=\"uml:StateMachine\" xmi:id=\"_sm1\" name=\"" << escape_xml(model_name)
         << "\">\n";
     out << "      <region xmi:type=\"uml:Region\" xmi:id=\"_r1\">\n";
@@ -92,6 +122,21 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
         return GuardExpressionParser::to_diagram_string(guard_val, model.guards);
     };
 
+    auto format_action_for_xmi = [](const ActionSignature& act) -> std::string {
+        if (!act.assignments.empty()) {
+            std::string expr;
+            for (std::size_t i = 0; i < act.assignments.size(); ++i) {
+                if (i > 0) {
+                    expr += "; ";
+                }
+                const auto& a = act.assignments[i];
+                expr += a.target.full_path() + " " + std::string(assignment_op_to_string(a.op)) + " " + a.expression;
+            }
+            return expr;
+        }
+        return act.name;
+    };
+
     // Recursive state emission
     std::function<void(const StateNode&, size_t)> emit_state_node = [&](const StateNode& state, size_t indent) {
         std::string pad(indent * 2, ' ');
@@ -112,14 +157,16 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
             << "\">\n";
 
         for (const auto& act : state.entry_actions) {
-            out << pad << "  <entry xmi:type=\"uml:Activity\" name=\"" << escape_xml(act.name) << "\"/>\n";
+            out << pad << "  <entry xmi:type=\"uml:Activity\" name=\"" << escape_xml(format_action_for_xmi(act))
+                << "\"/>\n";
         }
         if (state.do_activity.has_value() && !state.do_activity->empty()) {
             out << pad << "  <doActivity xmi:type=\"uml:Activity\" name=\"" << escape_xml(*state.do_activity)
                 << "\"/>\n";
         }
         for (const auto& act : state.exit_actions) {
-            out << pad << "  <exit xmi:type=\"uml:Activity\" name=\"" << escape_xml(act.name) << "\"/>\n";
+            out << pad << "  <exit xmi:type=\"uml:Activity\" name=\"" << escape_xml(format_action_for_xmi(act))
+                << "\"/>\n";
         }
         for (const auto& d_evt : state.deferred_events) {
             out << pad << "  <deferrableTrigger name=\"" << escape_xml(d_evt) << "\"/>\n";
@@ -180,7 +227,9 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
                         std::string readable_guard = resolve_guard_str(*trans.guard);
                         out << " guard=\"" << escape_xml(readable_guard) << "\"";
                     }
-                    std::string act = trans.get_action();
+                    std::string act = trans.transition_action.has_value()
+                                          ? format_action_for_xmi(*trans.transition_action)
+                                          : trans.get_action();
                     if (!act.empty()) {
                         out << " effect=\"" << escape_xml(act) << "\"";
                     }
@@ -246,7 +295,8 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
             std::string readable_guard = resolve_guard_str(*trans.guard);
             out << " guard=\"" << escape_xml(readable_guard) << "\"";
         }
-        std::string act = trans.get_action();
+        std::string act =
+            trans.transition_action.has_value() ? format_action_for_xmi(*trans.transition_action) : trans.get_action();
         if (!act.empty()) {
             out << " effect=\"" << escape_xml(act) << "\"";
         }

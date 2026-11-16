@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 592  
+**Total Documented Test Cases**: 593  
 
 ---
 
@@ -932,6 +932,9 @@
 
 #### `CameoParser.GuardExpressionsAndEffectAssignments_PreservedInIr`
 **Test Intent**: Regression: Cameo XMI guards preserve `normalized_expression` and `effect` assignments populate `assignments`.
+
+#### `CameoParser.RoundtripVariablesAndAssignmentActions_PreservedInXmi`
+**Test Intent**: Verify CameoSerializer preserves variables, ports, and assignment actions across XMI roundtrip.
 
 ### [`test_scxml_parser.cpp`](../../tests/frontend/formal/test_scxml_parser.cpp) (`tests/frontend/formal/test_scxml_parser.cpp`)
 #### `ScxmlParser.BasicScxmlDocument_ParsedIntoValidFsmIr`

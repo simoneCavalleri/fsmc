@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 573  
+**Total Documented Test Cases**: 574  
 
 ---
 
@@ -1102,6 +1102,9 @@
 
 #### `Sysml2ParserTest.ParsesTrailingIfGuardAfterThenClause`
 **Test Intent**: Regression: `if <guard>` at the end of a SysML2 transition statement (after `then <target>`) must parse.
+
+#### `Sysml2ParserTest.ParsesDotNotationHistoryTargets`
+**Test Intent**: Regression: dot-notation history targets (`State.H` and `State.H*`) must set history flags.
 
 ### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`

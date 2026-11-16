@@ -125,44 +125,50 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
             out << pad << "  <deferrableTrigger name=\"" << escape_xml(d_evt) << "\"/>\n";
         }
 
-        if (state.is_composite) {
-            std::string reg_id = "_r_" + st_id;
-            out << pad << "  <region xmi:type=\"uml:Region\" xmi:id=\"" << reg_id << "\">\n";
+        auto emit_region_contents = [&](const std::string& scope_name, const std::string& scope_id,
+                                        const StateNode& scope_state, size_t region_indent,
+                                        const std::string& region_name_attr) {
+            std::string rpad(region_indent * 2, ' ');
+            out << rpad << "<region xmi:type=\"uml:Region\" xmi:id=\"_r_" << scope_id << "\"";
+            if (!region_name_attr.empty()) {
+                out << " name=\"" << escape_xml(region_name_attr) << "\"";
+            }
+            out << ">\n";
 
-            if (!state.initial_sub_state.empty() && id_map.count(state.initial_sub_state)) {
-                std::string init_ps = "_ps_init_" + st_id;
-                out << pad << "    <subvertex xmi:type=\"uml:Pseudostate\" xmi:id=\"" << init_ps
+            if (!scope_state.initial_sub_state.empty() && id_map.count(scope_state.initial_sub_state)) {
+                std::string init_ps = "_ps_init_" + scope_id;
+                out << rpad << "  <subvertex xmi:type=\"uml:Pseudostate\" xmi:id=\"" << init_ps
                     << "\" kind=\"initial\"/>\n";
-                out << pad << "    <transition xmi:id=\"_t_init_" << st_id << "\" source=\"" << init_ps
-                    << "\" target=\"" << id_map[state.initial_sub_state] << "\"/>\n";
+                out << rpad << "  <transition xmi:id=\"_t_init_" << scope_id << "\" source=\"" << init_ps
+                    << "\" target=\"" << id_map[scope_state.initial_sub_state] << "\"/>\n";
             }
 
-            if (state.has_history) {
-                std::string hist_ps = "_ps_hist_" + st_id;
-                std::string kind_str = state.has_deep_history ? "deepHistory" : "shallowHistory";
-                out << pad << "    <subvertex xmi:type=\"uml:Pseudostate\" xmi:id=\"" << hist_ps << "\" kind=\""
+            if (scope_state.has_history) {
+                std::string hist_ps = "_ps_hist_" + scope_id;
+                std::string kind_str = scope_state.has_deep_history ? "deepHistory" : "shallowHistory";
+                out << rpad << "  <subvertex xmi:type=\"uml:Pseudostate\" xmi:id=\"" << hist_ps << "\" kind=\""
                     << kind_str << "\"/>\n";
             }
 
             // Child states
             for (const auto& child : model.states) {
-                if (child.parent_state == state.name) {
-                    emit_state_node(child, indent + 2);
+                if (child.parent_state == scope_name) {
+                    emit_state_node(child, region_indent + 1);
                 }
             }
 
-            // Local transitions within this composite state
+            // Local transitions within this region scope
             for (size_t i = 0; i < model.transitions.size(); ++i) {
                 if (emitted_transitions.count(i))
                     continue;
                 const auto& trans = model.transitions[i];
                 auto it_p = parent_map.find(trans.source);
                 std::string p_src = (it_p != parent_map.end()) ? it_p->second : "";
-                if (p_src == state.name) {
+                if (p_src == scope_name) {
                     emitted_transitions.insert(i);
                     std::string src_id = id_map.count(trans.source) ? id_map[trans.source] : trans.source;
                     std::string dst_id = id_map.count(trans.target) ? id_map[trans.target] : trans.target;
-                    out << pad << "    <transition xmi:id=\"_t" << (i + 1) << "\" source=\"" << src_id << "\" target=\""
+                    out << rpad << "  <transition xmi:id=\"_t" << (i + 1) << "\" source=\"" << src_id << "\" target=\""
                         << dst_id << "\"";
                     if (trans.priority > 0) {
                         out << " priority=\"" << trans.priority << "\"";
@@ -182,7 +188,27 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
                 }
             }
 
-            out << pad << "  </region>\n";
+            out << rpad << "</region>\n";
+        };
+
+        if (state.kind == StateKind::Parallel) {
+            std::vector<const StateNode*> regions;
+            for (const auto& child : model.states) {
+                if (child.parent_state == state.name) {
+                    regions.push_back(&child);
+                }
+            }
+            if (!regions.empty()) {
+                for (size_t r = 0; r < regions.size(); ++r) {
+                    const auto* reg_state = regions[r];
+                    std::string reg_scope_id = st_id + "_reg" + std::to_string(r + 1);
+                    emit_region_contents(reg_state->name, reg_scope_id, *reg_state, indent + 1, reg_state->name);
+                }
+            } else {
+                emit_region_contents(state.name, st_id, state, indent + 1, "");
+            }
+        } else if (state.is_composite) {
+            emit_region_contents(state.name, st_id, state, indent + 1, "");
         }
 
         out << pad << "</subvertex>\n";

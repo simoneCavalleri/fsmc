@@ -232,9 +232,51 @@ void CameoXmiGraphResolver::process_subvertex(const std::shared_ptr<XmlNode>& ve
         }
     }
 
-    // 8. Recursively process nested composite regions and regional transitions
+    // 8. Recursively process nested composite / parallel regions and regional transitions
+    std::vector<std::shared_ptr<XmlNode>> region_nodes;
     for (const auto& sub : vertex_node->children) {
         if (sub->tag == "region" || ends_with(sub->tag, ":region")) {
+            region_nodes.push_back(sub);
+        }
+    }
+    if (region_nodes.size() > 1) {
+        if (auto* s = model.find_state_mut(state_name)) {
+            s->is_composite = true;
+            s->kind = StateKind::Parallel;
+        }
+        for (size_t idx = 0; idx < region_nodes.size(); ++idx) {
+            const auto& sub = region_nodes[idx];
+            std::string reg_name = sanitize_identifier(sub->get_attr("name"));
+            if (reg_name.empty()) {
+                reg_name = state_name + "_Region" + std::to_string(idx + 1);
+            }
+            model.add_state(reg_name, state_name);
+            if (auto* reg_state = model.find_state_mut(reg_name)) {
+                reg_state->is_composite = true;
+            }
+            process_region(sub, model, reg_name, id_map, id_to_name, id_to_kind);
+            process_transitions_in_region(sub, model, reg_name, id_map, id_to_name, id_to_kind);
+
+            OrthogonalRegion ortho_reg;
+            ortho_reg.id = reg_name;
+            ortho_reg.name = reg_name;
+            for (const auto& st : model.states) {
+                if (st.parent_state == reg_name) {
+                    ortho_reg.state_ids.push_back(st.name);
+                }
+            }
+            if (const auto* reg_state = model.find_state(reg_name)) {
+                ortho_reg.initial_state_id =
+                    reg_state->initial_sub_state.empty() ? reg_name : reg_state->initial_sub_state;
+            } else {
+                ortho_reg.initial_state_id = reg_name;
+            }
+            if (auto* parent = model.find_state_mut(state_name)) {
+                parent->orthogonal_regions.push_back(std::move(ortho_reg));
+            }
+        }
+    } else {
+        for (const auto& sub : region_nodes) {
             if (auto* s = model.find_state_mut(state_name)) {
                 s->is_composite = true;
             }

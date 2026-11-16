@@ -8,6 +8,7 @@
 #include <string>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
+#include "fsm/backend/formal/cameo_serializer.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/frontend/formal/cameo_xmi_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
@@ -352,6 +353,72 @@ TEST(CameoParser, CrossReferencedTriggersAndSysmlProfiles_ResolvedCorrectly) {
     ASSERT_NE(safe_state, nullptr);
     ASSERT_FALSE(safe_state->traceability_reqs.empty());
     EXPECT_EQ(safe_state->traceability_reqs[0], "REQ_SAFETY_001");
+}
+
+/**
+ * @brief Regression: Cameo XMI states with multiple `<region>` children parse as `StateKind::Parallel` and roundtrip.
+ * @scenario Parse an XMI model with a `Running` state containing two `<region>` elements (`Engine`, `Lights`),
+ *           serialize back to Cameo XMI, and re-parse.
+ * @expected `Running` has `StateKind::Parallel`, both regions have their `initial_sub_state`, and roundtrip preserves
+ *           the parallel structure.
+ */
+TEST(CameoParser, ParallelOrthogonalRegions_ParsedAndRoundtripped) {
+    const std::string xmi_content = R"(<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="2.1" xmlns:uml="http://www.omg.org/spec/UML/20090901" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1">
+  <uml:Model xmi:id="_m1" name="CarParallel">
+    <packagedElement xmi:type="uml:StateMachine" xmi:id="_sm1" name="CarParallel">
+      <region xmi:type="uml:Region" xmi:id="_r1">
+        <subvertex xmi:type="uml:Pseudostate" xmi:id="_ps_root" kind="initial"/>
+        <transition xmi:id="_t_root" source="_ps_root" target="_s_run"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s_run" name="Running">
+          <region xmi:type="uml:Region" xmi:id="_r_eng" name="Engine">
+            <subvertex xmi:type="uml:Pseudostate" xmi:id="_ps_e" kind="initial"/>
+            <transition xmi:id="_t_e0" source="_ps_e" target="_s_eoff"/>
+            <subvertex xmi:type="uml:State" xmi:id="_s_eoff" name="EngineOff"/>
+            <subvertex xmi:type="uml:State" xmi:id="_s_eon" name="EngineOn"/>
+            <transition xmi:id="_t_e1" source="_s_eoff" target="_s_eon" trigger="StartEngine"/>
+          </region>
+          <region xmi:type="uml:Region" xmi:id="_r_lgt" name="Lights">
+            <subvertex xmi:type="uml:Pseudostate" xmi:id="_ps_l" kind="initial"/>
+            <transition xmi:id="_t_l0" source="_ps_l" target="_s_loff"/>
+            <subvertex xmi:type="uml:State" xmi:id="_s_loff" name="LightsOff"/>
+            <subvertex xmi:type="uml:State" xmi:id="_s_lon" name="LightsOn"/>
+            <transition xmi:id="_t_l1" source="_s_loff" target="_s_lon" trigger="ToggleLights"/>
+          </region>
+        </subvertex>
+      </region>
+    </packagedElement>
+  </uml:Model>
+</xmi:XMI>)";
+
+    CameoXmiParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xmi_content, model, err)) << err;
+
+    const auto* running = model.find_state("Running");
+    ASSERT_NE(running, nullptr);
+    EXPECT_EQ(running->kind, StateKind::Parallel);
+    ASSERT_EQ(running->orthogonal_regions.size(), 2u);
+    EXPECT_EQ(running->orthogonal_regions[0].state_ids.size(), 2u);
+    EXPECT_EQ(running->orthogonal_regions[1].state_ids.size(), 2u);
+
+    const auto* engine = model.find_state("Engine");
+    ASSERT_NE(engine, nullptr);
+    EXPECT_EQ(engine->parent_state, "Running");
+    EXPECT_EQ(engine->initial_sub_state, "EngineOff");
+
+    const auto* lights = model.find_state("Lights");
+    ASSERT_NE(lights, nullptr);
+    EXPECT_EQ(lights->parent_state, "Running");
+    EXPECT_EQ(lights->initial_sub_state, "LightsOff");
+
+    const std::string exported = fsm::backend::formal::CameoSerializer::serialize(model);
+    FsmIr reparsed;
+    ASSERT_TRUE(parser.parse(exported, reparsed, err)) << err;
+    const auto* reparsed_running = reparsed.find_state("Running");
+    ASSERT_NE(reparsed_running, nullptr);
+    EXPECT_EQ(reparsed_running->kind, StateKind::Parallel);
 }
 
 }  // namespace

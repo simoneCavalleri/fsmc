@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 575  
+**Total Documented Test Cases**: 576  
 
 ---
 
@@ -908,6 +908,9 @@
 
 #### `CameoParser.CrossReferencedTriggersAndSysmlProfiles_ResolvedCorrectly`
 **Test Intent**: Verify two-pass resolution of cross-referenced Signal events and SysML profile stereotypes.
+
+#### `CameoParser.ParallelOrthogonalRegions_ParsedAndRoundtripped`
+**Test Intent**: Regression: Cameo XMI states with multiple `<region>` children parse as `StateKind::Parallel` and roundtrip.
 
 ### [`test_scxml_parser.cpp`](../../tests/frontend/formal/test_scxml_parser.cpp) (`tests/frontend/formal/test_scxml_parser.cpp`)
 #### `ScxmlParser.BasicScxmlDocument_ParsedIntoValidFsmIr`

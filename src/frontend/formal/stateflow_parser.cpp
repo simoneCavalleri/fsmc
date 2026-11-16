@@ -627,6 +627,66 @@ StateflowParser::StateflowLabelComponents StateflowParser::parse_stateflow_label
     return res;
 }
 
+static ActionSignature build_stateflow_action(std::string_view raw_action, const std::string& fallback_prefix) {
+    static const std::regex assign_regex(
+        R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(=|\+=|-=|\*=|\/=)\s*(.+)$)",
+        std::regex::optimize);
+    static const std::regex inc_regex(
+        R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(\+\+|--)$)",
+        std::regex::optimize);
+
+    std::vector<ActionAssignment> assignments;
+    std::string raw_str(raw_action);
+    std::stringstream ss(raw_str);
+    std::string stmt;
+    while (std::getline(ss, stmt, ';')) {
+        size_t first = stmt.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos) {
+            continue;
+        }
+        size_t last = stmt.find_last_not_of(" \t\r\n");
+        std::string trimmed = stmt.substr(first, last - first + 1);
+        std::smatch m;
+        if (std::regex_match(trimmed, m, assign_regex)) {
+            std::string scope_prefix = m[1].str();
+            std::string var = sanitize_identifier(m[2].str());
+            std::string op = m[3].str();
+            std::string rhs = m[4].str();
+            size_t rfirst = rhs.find_first_not_of(" \t\r\n");
+            size_t rlast = rhs.find_last_not_of(" \t\r\n");
+            if (rfirst != std::string::npos) {
+                rhs = rhs.substr(rfirst, rlast - rfirst + 1);
+            }
+            LValueTarget tgt(scope_prefix + var);
+            if (op == "=") {
+                assignments.push_back({tgt, rhs});
+            } else if (op == "+=") {
+                assignments.push_back({tgt, var + " + " + rhs});
+            } else if (op == "-=") {
+                assignments.push_back({tgt, var + " - " + rhs});
+            } else if (op == "*=") {
+                assignments.push_back({tgt, var + " * (" + rhs + ")"});
+            } else if (op == "/=") {
+                assignments.push_back({tgt, var + " / (" + rhs + ")"});
+            }
+        } else if (std::regex_match(trimmed, m, inc_regex)) {
+            std::string scope_prefix = m[1].str();
+            std::string var = sanitize_identifier(m[2].str());
+            std::string op = m[3].str();
+            LValueTarget tgt(scope_prefix + var);
+            assignments.push_back({tgt, op == "++" ? (var + " + 1") : (var + " - 1")});
+        }
+    }
+
+    if (!assignments.empty()) {
+        std::string name = fallback_prefix + "_" + sanitize_identifier(assignments.front().target.name);
+        ActionSignature sig(std::move(name));
+        sig.assignments = std::move(assignments);
+        return sig;
+    }
+    return ActionSignature(sanitize_identifier(raw_action));
+}
+
 void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>& trans_node, FsmIr& model,
                                                  const std::string& scope) {
     std::string src = trans_node->get_attr("src");
@@ -685,11 +745,13 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
         }
     }
     if (!comps.condition_action.empty()) {
-        trans.condition_action = ActionSignature(sanitize_identifier(comps.condition_action));
+        std::string prefix = sanitize_identifier(src_name) + "_" + sanitize_identifier(dst_name) + "_cond";
+        trans.condition_action = build_stateflow_action(comps.condition_action, prefix);
         model.add_action(trans.condition_action->name);
     }
     if (!comps.transition_action.empty()) {
-        trans.transition_action = ActionSignature(sanitize_identifier(comps.transition_action));
+        std::string prefix = sanitize_identifier(src_name) + "_" + sanitize_identifier(dst_name) + "_act";
+        trans.transition_action = build_stateflow_action(comps.transition_action, prefix);
         model.add_action(trans.transition_action->name);
     }
 

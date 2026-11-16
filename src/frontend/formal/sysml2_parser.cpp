@@ -623,8 +623,8 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    // 4c. Decide / Decision pseudostate node: decide <ChoiceName>;
-    static const std::regex decide_regex(R"(^decide\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
+    // 4c. Decide / Decision / Choice pseudostate node: decide <ChoiceName>; or choice <ChoiceName>;
+    static const std::regex decide_regex(R"(^(?:decide|choice)\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
     if (std::regex_search(stmt, match, decide_regex)) {
         const std::string choice_name = sanitize_identifier(match[1].str());
         const std::string parent_name = state_stack.empty() ? "" : state_stack.back();

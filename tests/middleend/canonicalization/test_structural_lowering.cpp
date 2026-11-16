@@ -931,3 +931,49 @@ TEST(StructuralLoweringTest, FsmIrEqualityComparesAllFields) {
     b.bindings.push_back(BindingConnector("dst_port", "src_port"));
     EXPECT_NE(a, b);
 }
+
+/**
+ * @brief Verify HistoryLoweringPass emits valid C++ guard identifiers and prioritized fallback branches.
+ * @scenario Composite state Active with substates Step1/Step2 and history target Active[H].
+ * @expected History branches use identifier guard names (__hist_Active_is_Step1) with priority 1 and fallback has
+ * priority 2.
+ */
+TEST(HistoryLowering, EmitsValidGuardIdentifiersAndPrioritizedFallback) {
+    FsmIr ir;
+    ir.name = "HistGuardTest";
+    ir.initial_state = "Paused";
+
+    StateNode paused("Paused");
+    StateNode active("Active");
+    active.is_composite = true;
+    active.has_history = true;
+    active.initial_sub_state = "Step1";
+    StateNode step1("Step1", "", "Active");
+    StateNode step2("Step2", "", "Active");
+    ir.states = {paused, active, step1, step2};
+
+    TransitionEdge t("Paused", "Active", "EvResume");
+    t.target_is_history = true;
+    ir.transitions.push_back(t);
+
+    DiagnosticEngine diag;
+    ASSERT_TRUE(HistoryLoweringPass::run(ir, diag));
+
+    bool found_step1_branch = false;
+    bool found_fallback = false;
+    for (const auto& tr : ir.transitions) {
+        if (tr.source == "Active_HistoryRestore" && tr.target == "Step1" && tr.guard == "__hist_Active_is_Step1") {
+            found_step1_branch = true;
+            EXPECT_EQ(tr.priority, 1u);
+        }
+        if (tr.source == "Active_HistoryRestore" && tr.guard == "else") {
+            found_fallback = true;
+            EXPECT_EQ(tr.priority, 2u);
+        }
+    }
+    EXPECT_TRUE(found_step1_branch);
+    EXPECT_TRUE(found_fallback);
+    for (const auto& g : ir.guards) {
+        EXPECT_NE(g.name, "Step1");
+    }
+}

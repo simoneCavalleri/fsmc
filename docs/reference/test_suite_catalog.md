@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 548  
+**Total Documented Test Cases**: 552  
 
 ---
 
@@ -803,6 +803,9 @@
 #### `MermaidParser.NestedSquareBracketsInGuard_PreservesRawExpressionDetails`
 **Test Intent**: Verify Mermaid parsing of nested square brackets in transition guards and atomic_guard_details preservation.
 
+#### `MermaidParserTest.OrthogonalSeparatorCreatesParallelRegions`
+**Test Intent**: Verify MermaidParser recognizes '--' orthogonal region separator inside composite states.
+
 ### [`test_multiline_actions.cpp`](../../tests/frontend/diagram/test_multiline_actions.cpp) (`tests/frontend/diagram/test_multiline_actions.cpp`)
 - *(Executable binary test verification)*
 
@@ -1047,6 +1050,9 @@
 
 #### `Sysml2ParserTest.RoundTripsTimeTriggerWithoutSyntheticSignal`
 **Test Intent**: Verify Sysml2Serializer preserves TimeTrigger as 'accept after(...)' without synthetic event def.
+
+#### `Sysml2ParserTest.RecognizesChoiceKeywordDeclaration`
+**Test Intent**: Verify Sysml2Parser recognizes standalone 'choice <Name>;' declarations as Choice pseudostates.
 
 ### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`
@@ -1351,6 +1357,9 @@
 #### `StructuralLoweringTest.FsmIrEqualityComparesAllFields`
 **Test Intent**: Verify FsmIr::operator== compares clocks, guards, actions, choice_nodes, bindings, and execution_semantics.
 
+#### `HistoryLowering.EmitsValidGuardIdentifiersAndPrioritizedFallback`
+**Test Intent**: Verify HistoryLoweringPass emits valid C++ guard identifiers and prioritized fallback branches.
+
 ### [`test_common_action_factoring.cpp`](../../tests/middleend/optimization/test_common_action_factoring.cpp) (`tests/middleend/optimization/test_common_action_factoring.cpp`)
 #### `CommonActionFactoring.ConvergentTransitionsIdenticalAction_FactoredIntoTargetEntry`
 **Test Intent**: Verify factoring of common transition actions on convergent edges into target state entry actions.
@@ -1471,6 +1480,9 @@
 
 #### `EFSMIntervalAnalysis.IntegerStrictInequality_DetectsUnsatisfiableAdjacentBounds`
 **Test Intent**: Verify integer strict inequality interval analysis detects unsatisfiable adjacent integer bounds.
+
+#### `EFSMIntervalAnalysisTest.PropagatesIntervalsAcrossCompositeHierarchy`
+**Test Intent**: Verify EFSMIntervalAnalyzer propagates variable updates across composite state hierarchy.
 
 ### [`test_formal_safety_passes.cpp`](../../tests/middleend/verification/test_formal_safety_passes.cpp) (`tests/middleend/verification/test_formal_safety_passes.cpp`)
 #### `LivelockAnalysis.NonZeroTimeTransitions_PassesWithoutErrors`

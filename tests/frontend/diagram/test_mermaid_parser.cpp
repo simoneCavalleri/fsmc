@@ -197,4 +197,41 @@ TEST(MermaidParser, NestedSquareBracketsInGuard_PreservesRawExpressionDetails) {
     EXPECT_TRUE(found_ready_expr);
 }
 
+/**
+ * @brief Verify MermaidParser recognizes '--' orthogonal region separator inside composite states.
+ * @scenario Mermaid stateDiagram-v2 with two regions inside Active separated by '--'.
+ * @expected Active has StateKind::Parallel and 2 orthogonal_regions with correct initial states.
+ */
+TEST(MermaidParserTest, OrthogonalSeparatorCreatesParallelRegions) {
+    const std::string mmd = R"mmd(
+stateDiagram-v2
+    [*] --> Active
+    state Active {
+        state Reg1 {
+            [*] --> S1
+            S1 --> S2 : EvA
+        }
+        --
+        state Reg2 {
+            [*] --> T1
+            T1 --> T2 : EvB
+        }
+    }
+)mmd";
+
+    MermaidParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(mmd, model, err)) << err;
+
+    const StateNode* active = model.find_state("Active");
+    ASSERT_NE(active, nullptr);
+    EXPECT_EQ(active->kind, StateKind::Parallel);
+    ASSERT_EQ(active->orthogonal_regions.size(), 2u);
+    EXPECT_EQ(active->orthogonal_regions[0].id, "Reg1");
+    EXPECT_EQ(active->orthogonal_regions[0].initial_state_id, "S1");
+    EXPECT_EQ(active->orthogonal_regions[1].id, "Reg2");
+    EXPECT_EQ(active->orthogonal_regions[1].initial_state_id, "T1");
+}
+
 }  // namespace

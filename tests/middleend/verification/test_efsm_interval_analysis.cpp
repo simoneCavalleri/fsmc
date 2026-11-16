@@ -281,4 +281,49 @@ TEST(EFSMIntervalAnalysis, IntegerStrictInequality_DetectsUnsatisfiableAdjacentB
     EXPECT_DOUBLE_EQ(envs.at("Safe").at("scaled_x").hi, 153.0);
 }
 
+/**
+ * @brief Verify EFSMIntervalAnalyzer propagates variable updates across composite state hierarchy.
+ * @scenario Variable count=0 incremented in substate Step1 -> Step2, then checked on parent group transition Active ->
+ * Off.
+ * @expected Guard 'count > 0' on Active -> Off is NOT falsely flagged as UnsatisfiableGuard.
+ */
+TEST(EFSMIntervalAnalysisTest, PropagatesIntervalsAcrossCompositeHierarchy) {
+    FsmIr ir;
+    ir.name = "HierInterval";
+    ir.initial_state = "Off";
+
+    VariableDefinition cnt("count", DataType(PrimitiveTypeKind::UInt32), "0");
+    ir.variables.push_back(cnt);
+
+    ir.add_state("Off");
+    auto& active = ir.add_state("Active");
+    active.is_composite = true;
+    active.initial_sub_state = "Step1";
+    ir.add_state("Step1", "Active");
+    ir.add_state("Step2", "Active");
+    ir.add_state("Done");
+
+    ir.add_transition(TransitionEdge("Off", "Active", "EvOn"));
+
+    ActionSignature inc_act("inc");
+    StoreOp st;
+    st.target = LValueTarget("count", LValueScope::Register);
+    st.op = AssignmentOp::Assign;
+    st.expression = "count + 1";
+    inc_act.instructions.emplace_back(st);
+    ir.add_transition(TransitionEdge("Step1", "Step2", "EvNext", std::nullopt, inc_act));
+
+    TransitionEdge check_t("Active", "Done", "EvCheck", "count > 0");
+    check_t.id = "t_hier_check";
+    ir.add_transition(check_t);
+
+    EFSMIntervalAnalyzer analyzer(ir);
+    DiagnosticEngine diag;
+    auto findings = analyzer.analyze(diag);
+
+    for (const auto& f : findings) {
+        EXPECT_NE(f.transition_id, "t_hier_check");
+    }
+}
+
 }  // namespace

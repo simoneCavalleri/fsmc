@@ -151,15 +151,17 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 
         // Add restore branch transitions from choice to each substate
         for (const auto& sub_name : target_substates) {
-            std::string grd = history_var_name + " == \"" + sub_name + "\"";
-            TransitionEdge branch(restore_choice_name, sub_name, "", grd, std::nullopt, "Restore branch to " + sub_name,
-                                  TransitionEdgeKind::External, 0);
+            std::string grd_name = "__hist_" + parent_name + "_is_" + sub_name;
+            std::string grd_expr = history_var_name + " == \"" + sub_name + "\"";
+            ir.add_guard(grd_name, "History restore predicate for " + sub_name, grd_expr, grd_expr);
+            TransitionEdge branch(restore_choice_name, sub_name, "", grd_name, std::nullopt,
+                                  "Restore branch to " + sub_name, TransitionEdgeKind::External, 1);
             ir.transitions.push_back(std::move(branch));
         }
 
-        // Add default/else fallback branch
+        // Add default/else fallback branch with lower priority (2) than guarded branches (1)
         TransitionEdge fallback(restore_choice_name, default_substate, "", "else", std::nullopt,
-                                "Default history restore fallback", TransitionEdgeKind::External, 0);
+                                "Default history restore fallback", TransitionEdgeKind::External, 2);
         ir.transitions.push_back(std::move(fallback));
 
         // 5. Retarget incoming transitions pointing to history to the restore choice node

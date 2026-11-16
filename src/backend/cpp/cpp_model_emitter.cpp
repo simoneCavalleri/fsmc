@@ -704,6 +704,10 @@ void CppModelEmitter::emit_events(std::ostream& out, const FsmIr& model) {
 }
 
 void CppModelEmitter::emit_states(std::ostream& out, const FsmIr& model) {
+    emit_states(out, model, GeneratorOptions{});
+}
+
+void CppModelEmitter::emit_states(std::ostream& out, const FsmIr& model, const GeneratorOptions& options) {
     if (model.states.empty()) {
         return;
     }
@@ -779,42 +783,55 @@ void CppModelEmitter::emit_states(std::ostream& out, const FsmIr& model) {
             out << ">;\n";
         }
 
-        // Entry lifecycle actions
-        if (!state_item.entry_actions.empty()) {
-            out << "\n    /** @brief State entry lifecycle hook */\n";
-            out << "    template <typename InPorts, typename OutPorts, typename Registers, typename Services>\n";
-            out << "    void on_enter(const InPorts& in, OutPorts& out, Registers& reg, Services& srv) const {\n";
-            for (std::size_t i = 0; i < state_item.entry_actions.size(); ++i) {
-                const auto& act = state_item.entry_actions[i];
-                std::string act_type = escape_cpp_keyword(act.name);
-                out << "        auto entry_action_" << i << " = " << act_type << "{};\n";
-                out << "        ::fsm::call_action(entry_action_" << i << ", in, out, reg, srv);\n";
+        auto emit_lifecycle_hook = [&](const char* doc_comment, const char* method_name, const char* var_prefix,
+                                       const std::vector<std::string>& action_names) {
+            out << "\n    /** @brief " << doc_comment << " */\n";
+            out << "    template <typename InPorts, typename OutPorts, typename Registers, typename Services";
+            if (!options.include_stubs) {
+                for (std::size_t i = 0; i < action_names.size(); ++i) {
+                    out << ", typename Act" << i << " = " << escape_cpp_keyword(action_names[i]);
+                }
+            }
+            out << ">\n";
+            out << "    void " << method_name
+                << "(const InPorts& in, OutPorts& out, Registers& reg, Services& srv) const {\n";
+            for (std::size_t i = 0; i < action_names.size(); ++i) {
+                std::string act_type =
+                    options.include_stubs ? escape_cpp_keyword(action_names[i]) : ("Act" + std::to_string(i));
+                std::string var_name =
+                    std::string(var_prefix) + (action_names.size() > 1 || std::string_view(var_prefix) != "activity"
+                                                   ? ("_" + std::to_string(i))
+                                                   : "");
+                out << "        auto " << var_name << " = " << act_type << "{};\n";
+                out << "        ::fsm::call_action(" << var_name << ", in, out, reg, srv);\n";
             }
             out << "    }\n";
+        };
+
+        // Entry lifecycle actions
+        if (!state_item.entry_actions.empty()) {
+            std::vector<std::string> names;
+            names.reserve(state_item.entry_actions.size());
+            for (const auto& act : state_item.entry_actions) {
+                names.push_back(act.name);
+            }
+            emit_lifecycle_hook("State entry lifecycle hook", "on_enter", "entry_action", names);
         }
 
         // Exit lifecycle actions
         if (!state_item.exit_actions.empty()) {
-            out << "\n    /** @brief State exit lifecycle hook */\n";
-            out << "    template <typename InPorts, typename OutPorts, typename Registers, typename Services>\n";
-            out << "    void on_exit(const InPorts& in, OutPorts& out, Registers& reg, Services& srv) const {\n";
-            for (std::size_t i = 0; i < state_item.exit_actions.size(); ++i) {
-                const auto& act = state_item.exit_actions[i];
-                std::string act_type = escape_cpp_keyword(act.name);
-                out << "        auto exit_action_" << i << " = " << act_type << "{};\n";
-                out << "        ::fsm::call_action(exit_action_" << i << ", in, out, reg, srv);\n";
+            std::vector<std::string> names;
+            names.reserve(state_item.exit_actions.size());
+            for (const auto& act : state_item.exit_actions) {
+                names.push_back(act.name);
             }
-            out << "    }\n";
+            emit_lifecycle_hook("State exit lifecycle hook", "on_exit", "exit_action", names);
         }
 
         // Continuous do_activity hook
         if (state_item.do_activity.has_value() && !state_item.do_activity->empty()) {
-            out << "\n    /** @brief State continuous do_activity hook */\n";
-            out << "    template <typename InPorts, typename OutPorts, typename Registers, typename Services>\n";
-            out << "    void do_activity(const InPorts& in, OutPorts& out, Registers& reg, Services& srv) const {\n";
-            out << "        auto activity = " << escape_cpp_keyword(*state_item.do_activity) << "{};\n";
-            out << "        ::fsm::call_action(activity, in, out, reg, srv);\n";
-            out << "    }\n";
+            emit_lifecycle_hook("State continuous do_activity hook", "do_activity", "activity",
+                                {*state_item.do_activity});
         }
 
         if (state_item.kind == StateKind::EntryPoint) {
@@ -1694,7 +1711,7 @@ void CppModelEmitter::emit_model(std::ostream& out, const FsmIr& model, const Ge
     emit_events(out, model);
     emit_guards(out, model, options);
     emit_actions(out, model, options);
-    emit_states(out, model);
+    emit_states(out, model, options);
     emit_transition_table(out, model, options);
     emit_fsm_aliases(out, model, options);
 }

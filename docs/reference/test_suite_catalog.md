@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 597  
+**Total Documented Test Cases**: 598  
 
 ---
 
@@ -1587,6 +1587,9 @@
 ### [`test_concurrency_verification.cpp`](../../tests/middleend/verification/test_concurrency_verification.cpp) (`tests/middleend/verification/test_concurrency_verification.cpp`)
 #### `OrthogonalInterference.ConcurrentConflictingVariableWrites_EmitsDataRaceError`
 **Test Intent**: Verify OrthogonalInterferencePass detects concurrent data races in parallel (AND) states.
+
+#### `OrthogonalInterference.EmptyRegionStateIds_DiscoveredViaParentStateAndEntryActions`
+**Test Intent**: Verify OrthogonalInterferencePass discovers member states via parent_state when state_ids is empty.
 
 #### `DeterminismEnforcement.MultipleTransitionsFromSameSource_SortedByAscendingPriority`
 **Test Intent**: Verify DeterminismEnforcementPass canonical priority sorting and collision detection.

@@ -74,6 +74,53 @@ TEST(OrthogonalInterference, ConcurrentConflictingVariableWrites_EmitsDataRaceEr
 }
 
 /**
+ * @brief Verify OrthogonalInterferencePass discovers member states via parent_state when state_ids is empty.
+ * @scenario Parallel state with RegA and RegB leaving state_ids empty; RegA mutates 'x' on a transition and RegB
+ * mutates 'x' in a state entry action.
+ * @expected Pass emits 'W_CONCURRENT_DATA_RACE'.
+ */
+TEST(OrthogonalInterference, EmptyRegionStateIds_DiscoveredViaParentStateAndEntryActions) {
+    FsmIr ir;
+    ir.name = "ConcurrentHierarchicalFSM";
+    ir.initial_state = "Par";
+
+    auto& par = ir.add_or_get_state("Par", "", StateKind::Parallel);
+    ir.add_or_get_state("RegA", "Par");
+    ir.add_or_get_state("RegB", "Par");
+    ir.add_or_get_state("A1", "RegA");
+    ir.add_or_get_state("A2", "RegA");
+    auto& b1 = ir.add_or_get_state("B1", "RegB");
+    ActionSignature entry_b("B1_entry");
+    entry_b.assignments.emplace_back(LValueTarget("x"), "1");
+    b1.entry_actions.push_back(std::move(entry_b));
+
+    OrthogonalRegion reg_a;
+    reg_a.name = "RegA";
+    OrthogonalRegion reg_b;
+    reg_b.name = "RegB";
+    par.orthogonal_regions = {reg_a, reg_b};
+
+    TransitionEdge t_a("A1", "A2", "EvA");
+    ActionSignature act_a("ActA");
+    act_a.assignments.emplace_back(LValueTarget("x"), "2");
+    t_a.transition_action = std::move(act_a);
+    ir.add_transition(t_a);
+
+    OrthogonalInterferencePass pass;
+    DiagnosticEngine diag;
+    pass.run(ir, diag);
+
+    bool found_race = false;
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "W_CONCURRENT_DATA_RACE") {
+            found_race = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_race);
+}
+
+/**
  * @brief Verify DeterminismEnforcementPass canonical priority sorting and collision detection.
  * @scenario Multiple transitions from Idle on event StartCmd with non-sequential priorities (10 and 1).
  * @expected Transitions are deterministically sorted by ascending priority (1 before 10).

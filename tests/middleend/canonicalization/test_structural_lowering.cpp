@@ -343,6 +343,46 @@ TEST(StructuralLowering, BoundaryActionFusion_DoesNotDuplicateInitialStateEntryH
 }
 
 /**
+ * @brief Verify BoundaryActionFusionPass preserves descendant exit_actions when an ancestor has an external exit.
+ * @scenario Composite 'Outer' has child 'Leaf1' and 'Leaf2' (with exit_actions) and an outgoing transition
+ * `Outer -> Paused`.
+ * @expected `Leaf2::exit_actions` is preserved on the StateNode so `Outer -> Paused` executes it via runtime `on_exit`.
+ */
+TEST(StructuralLowering, BoundaryActionFusion_PreservesDescendantExitActionsWhenAncestorHasExternalExit) {
+    FsmIr ir;
+    ir.name = "AncestorExit";
+    ir.initial_state = "Outer";
+
+    StateNode outer("Outer");
+    outer.is_composite = true;
+    outer.initial_sub_state = "Leaf1";
+
+    StateNode leaf1("Leaf1", "", "Outer");
+    StateNode leaf2("Leaf2", "", "Outer");
+    leaf2.exit_actions.emplace_back("__record_history_Leaf2");
+
+    StateNode paused("Paused");
+
+    ir.states.push_back(std::move(outer));
+    ir.states.push_back(std::move(leaf1));
+    ir.states.push_back(std::move(leaf2));
+    ir.states.push_back(std::move(paused));
+
+    ir.transitions.emplace_back("Leaf1", "Leaf2", "NEXT");
+    ir.transitions.emplace_back("Leaf2", "Leaf1", "NEXT");
+    ir.transitions.emplace_back("Outer", "Paused", "PAUSE");
+
+    DiagnosticEngine diag;
+    BoundaryActionFusionPass::run(ir, diag);
+
+    const StateNode* leaf2_after = ir.find_state("Leaf2");
+    ASSERT_NE(leaf2_after, nullptr);
+    ASSERT_EQ(leaf2_after->exit_actions.size(), 1u);
+    EXPECT_EQ(leaf2_after->exit_actions[0].name, "__record_history_Leaf2");
+    EXPECT_FALSE(ir.transitions[1].transition_action.has_value());
+}
+
+/**
  * @brief Verify that BoundaryActionFusionPass does not modify internal transitions.
  * @scenario State 'A' has both an internal self-transition (on EvInternal) and an exit action.
  * @expected The internal transition is left unchanged; no fusion is attempted on it.

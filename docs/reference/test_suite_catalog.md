@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 578  
+**Total Documented Test Cases**: 579  
 
 ---
 
@@ -1115,6 +1115,9 @@
 
 #### `Sysml2ParserTest.ParsesDotNotationHistoryTargets`
 **Test Intent**: Regression: dot-notation history targets (`State.H` and `State.H*`) must set history flags.
+
+#### `Sysml2ParserTest.ParsesBareEnumLiteralsInsideEnumDef`
+**Test Intent**: Regression: bare enum literals without repeating `enum` inside `enum def` must be parsed.
 
 ### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`

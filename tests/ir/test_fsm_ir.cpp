@@ -1460,7 +1460,8 @@ TEST(FsmIr, JsonDeserializer_PreservesCppGuardTypeInGuardAstForBooleanExpression
     ASSERT_TRUE(ir.transitions[0].guard.has_value());
     EXPECT_NE(ir.transitions[0].guard->find("fsm::or_<"), std::string::npos);
     ASSERT_TRUE(ir.transitions[0].guard_ast.has_value());
-    EXPECT_EQ(ir.transitions[0].guard_ast->to_string(), *ir.transitions[0].guard);
+    EXPECT_EQ(ir.transitions[0].guard_ast->op, GuardOp::Or);
+    EXPECT_EQ(ir.transitions[0].guard_ast->to_string(), "!(a_gte_10 && b_eq_0) || c_lt_5");
 }
 
 }  // namespace

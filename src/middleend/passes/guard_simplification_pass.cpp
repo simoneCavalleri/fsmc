@@ -103,6 +103,12 @@ GuardAstNode GuardSimplificationPass::simplify_node(const GuardAstNode& node) {
             if (parsed.op != GuardOp::None) {
                 return simplify_node(parsed);
             }
+        } else if (node.expression.find('&') != std::string::npos || node.expression.find('|') != std::string::npos ||
+                   node.expression.find('!') != std::string::npos || node.expression.find('(') != std::string::npos) {
+            auto parsed = GuardExpressionParser::parse(node.expression);
+            if (parsed.ast.has_value() && parsed.ast->op != GuardOp::None) {
+                return simplify_node(*parsed.ast);
+            }
         }
         if (is_true_literal(node)) {
             return GuardAstNode("true");

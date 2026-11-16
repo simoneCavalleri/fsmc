@@ -1094,7 +1094,7 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     static const std::regex do_block_regex(R"(\bdo\s*(?:action\s+)?(?:([A-Za-z_][A-Za-z0-9_]*)\s*)?\{([^}]+)\})",
                                            std::regex::optimize);
     static const std::regex do_regex(R"(\bdo\s+(?:action\s+)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
-    static const std::regex then_regex(R"(\b(?:then|to)\s+([A-Za-z_][A-Za-z0-9_\[\]\*]*))", std::regex::optimize);
+    static const std::regex then_regex(R"(\b(?:then|to)\s+([A-Za-z_][A-Za-z0-9_.\[\]\*]*))", std::regex::optimize);
 
     // 3. Source state detection (explicit 'first/from <State>' or inherited from parent scope)
     if (std::regex_search(stmt, match, first_regex)) {
@@ -1284,19 +1284,26 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
         action = sanitize_identifier(match[1].str());
     }
 
-    // 7. Target state and History pseudostate detection ([H] or [H*])
+    // 7. Target state and History pseudostate detection ([H], [H*], .H, .H*)
     bool target_is_history = false;
     bool target_is_deep_history = false;
 
     if (std::regex_search(stmt, match, then_regex)) {
         const std::string raw_target = match[1].str();
-        if (raw_target.find("[H*]") != std::string::npos || raw_target.find("[deep_history]") != std::string::npos) {
+        auto ends_with = [](const std::string& s, const std::string& suffix) {
+            return s.size() >= suffix.size() && s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
+        };
+        if (raw_target.find("[H*]") != std::string::npos || raw_target.find("[deep_history]") != std::string::npos ||
+            ends_with(raw_target, ".H*") || ends_with(raw_target, ".deep_history")) {
             target_is_deep_history = true;
             target_is_history = true;
-            target = sanitize_identifier(raw_target.substr(0, raw_target.find('[')));
-        } else if (raw_target.find("[H]") != std::string::npos || raw_target.find("[history]") != std::string::npos) {
+            const auto pos = raw_target.find_first_of("[.");
+            target = sanitize_identifier(raw_target.substr(0, pos));
+        } else if (raw_target.find("[H]") != std::string::npos || raw_target.find("[history]") != std::string::npos ||
+                   ends_with(raw_target, ".H") || ends_with(raw_target, ".history")) {
             target_is_history = true;
-            target = sanitize_identifier(raw_target.substr(0, raw_target.find('[')));
+            const auto pos = raw_target.find_first_of("[.");
+            target = sanitize_identifier(raw_target.substr(0, pos));
         } else {
             target = sanitize_identifier(raw_target);
         }

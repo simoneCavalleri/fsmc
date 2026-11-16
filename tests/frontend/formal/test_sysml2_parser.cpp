@@ -888,4 +888,48 @@ package TrailingIfPkg {
     EXPECT_EQ(*model.transitions[1].guard, "else");
 }
 
+/**
+ * @brief Regression: dot-notation history targets (`State.H` and `State.H*`) must set history flags.
+ * @scenario Parse SysML2 transitions targeting `Active.H` and `Active.H*`.
+ * @expected Target state is `Active`, `target_is_history` is true, and `Active.H*` sets `target_is_deep_history`.
+ */
+TEST(Sysml2ParserTest, ParsesDotNotationHistoryTargets) {
+    const std::string sysml = R"sysml(
+package HistoryDotPkg {
+    state def Machine {
+        event def EvResumeShallow;
+        event def EvResumeDeep;
+        entry; then Paused;
+        state Active {
+            entry; then Step1;
+            state Step1;
+        }
+        state Paused {
+            transition t1 first Paused then Active.H accept EvResumeShallow;
+            transition t2 first Paused then Active.H* accept EvResumeDeep;
+        }
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+
+    ASSERT_EQ(model.transitions.size(), 2u);
+    EXPECT_EQ(model.transitions[0].target, "Active");
+    EXPECT_TRUE(model.transitions[0].target_is_history);
+    EXPECT_FALSE(model.transitions[0].target_is_deep_history);
+
+    EXPECT_EQ(model.transitions[1].target, "Active");
+    EXPECT_TRUE(model.transitions[1].target_is_history);
+    EXPECT_TRUE(model.transitions[1].target_is_deep_history);
+
+    const auto* active = model.find_state("Active");
+    ASSERT_NE(active, nullptr);
+    EXPECT_TRUE(active->has_history);
+    EXPECT_TRUE(active->has_deep_history);
+}
+
 }  // namespace

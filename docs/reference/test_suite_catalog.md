@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 594  
+**Total Documented Test Cases**: 596  
 
 ---
 
@@ -598,6 +598,9 @@
 #### `DiagramExport.PlantUmlAndMermaid_ParallelState_EmitsOrthogonalSeparator`
 **Test Intent**: Verify PlantUmlSerializer and MermaidSerializer emit '--' separators between parallel regions.
 
+#### `DiagramExport.AssignmentActionsAndReadableGuards_EmittedAcrossDotPlantUmlMermaid`
+**Test Intent**: Verify DOT, PlantUML, and Mermaid serializers emit assignment expressions and readable guards.
+
 ---
 
 ## Multi-Format Emitter & Factory Subsystem
@@ -817,6 +820,10 @@
 
 #### `DotParser.TransitionActionAssignments_PopulatedInActionSignature`
 **Test Intent**: Regression: DOT transition action assignments (`/ x = 42`) populate `ActionSignature::assignments`.
+
+#### `DotParser.StateLifecycleAssignments_PopulatedInEntryAndExitActions`
+**Test Intent**: Regression: DOT state lifecycle assignments (`(entry / x = 10)` / `(exit / x += 1)`) populate
+`ActionSignature::assignments`.
 
 ### [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) (`tests/frontend/diagram/test_mermaid_parser.cpp`)
 #### `MermaidParser.BasicDiagram_ParsedIntoValidFsmIr`

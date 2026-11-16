@@ -211,4 +211,19 @@ std::optional<ActionSignature> try_parse_assignment_action(std::string_view raw_
     return sig;
 }
 
+std::string format_action_expression(const ActionSignature& act) {
+    if (!act.assignments.empty()) {
+        std::string expr;
+        for (std::size_t i = 0; i < act.assignments.size(); ++i) {
+            if (i > 0) {
+                expr += "; ";
+            }
+            const auto& a = act.assignments[i];
+            expr += a.target.full_path() + " " + std::string(assignment_op_to_string(a.op)) + " " + a.expression;
+        }
+        return expr;
+    }
+    return act.name;
+}
+
 }  // namespace fsm::ir

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 574  
+**Total Documented Test Cases**: 575  
 
 ---
 
@@ -1368,6 +1368,9 @@
 
 #### `PassManager.CentralPassRegistry_InstantiatesAllRegisteredPasses`
 **Test Intent**: Verify PassManager central registry instantiates all registered built-in passes.
+
+#### `PassManager.SevenStagePipeline_PreservesNativeDeferredEvents`
+**Test Intent**: Regression: 7-stage pipeline must preserve `deferred_events` for the native C++ runtime FIFO.
 
 ### [`test_structural_lowering.cpp`](../../tests/middleend/canonicalization/test_structural_lowering.cpp) (`tests/middleend/canonicalization/test_structural_lowering.cpp`)
 #### `HistoryLowering.ShallowHistoryTarget_LowersToShadowRegisterAndDispatchGuards`

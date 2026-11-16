@@ -158,4 +158,33 @@ TEST(PassManager, CentralPassRegistry_InstantiatesAllRegisteredPasses) {
     EXPECT_EQ(PassManager::create_pass_by_name("non-existent-pass-xyz"), nullptr);
 }
 
+/**
+ * @brief Regression: 7-stage pipeline must preserve `deferred_events` for the native C++ runtime FIFO.
+ * @scenario Run `PassManager::create_verified_7stage_pipeline(true)` on a model with `Busy` deferring `EvWork`.
+ * @expected `Busy->deferred_events` still contains `EvWork` so the runtime can enqueue and recall it.
+ */
+TEST(PassManager, SevenStagePipeline_PreservesNativeDeferredEvents) {
+    FsmIr ir;
+    ir.name = "DeferredNative";
+    ir.initial_state = "Busy";
+    StateNode busy("Busy");
+    busy.deferred_events.push_back("EvWork");
+    ir.add_state(std::move(busy));
+    ir.add_state("Ready");
+    ir.add_state("Processing");
+    ir.add_event("EvDone");
+    ir.add_event("EvWork");
+    ir.add_transition(TransitionEdge("Busy", "Ready", "EvDone"));
+    ir.add_transition(TransitionEdge("Ready", "Processing", "EvWork"));
+
+    auto pm = PassManager::create_verified_7stage_pipeline(true);
+    DiagnosticEngine diag;
+    ASSERT_TRUE(pm.run(ir, diag));
+
+    const auto* busy_after = ir.find_state("Busy");
+    ASSERT_NE(busy_after, nullptr);
+    ASSERT_EQ(busy_after->deferred_events.size(), 1u);
+    EXPECT_EQ(busy_after->deferred_events[0], "EvWork");
+}
+
 }  // namespace

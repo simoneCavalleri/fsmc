@@ -274,6 +274,7 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                     std::vector<std::string> next_tup = tup;
                     std::vector<std::string> guards;
                     std::vector<std::string> actions;
+                    std::vector<std::string> external_action_calls;
                     std::vector<ActionAssignment> assignments;
                     std::vector<ActionAstNode> instructions;
                     std::optional<ActionSignature> cond_action;
@@ -298,6 +299,10 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                         if (t->transition_action.has_value()) {
                             if (!t->transition_action->name.empty()) {
                                 actions.push_back(t->transition_action->name);
+                                if (t->transition_action->assignments.empty() &&
+                                    t->transition_action->instructions.empty()) {
+                                    external_action_calls.push_back(t->transition_action->name);
+                                }
                             }
                             for (const auto& a : t->transition_action->assignments) {
                                 assignments.push_back(a);
@@ -382,8 +387,8 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                                 combined_act += "_and_";
                             combined_act += sanitize_identifier(actions[i]);
                         }
-                        if (actions.size() > 1 && instructions.empty()) {
-                            for (const auto& act_name : actions) {
+                        if (actions.size() > 1 && !external_action_calls.empty()) {
+                            for (const auto& act_name : external_action_calls) {
                                 ActionCallOp call_op;
                                 call_op.function_name = act_name;
                                 instructions.emplace_back(std::move(call_op));

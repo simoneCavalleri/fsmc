@@ -146,13 +146,36 @@ bool BoundaryActionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             continue;
         }
 
+        auto parse_skip_set = [&](const std::string& attr_key) {
+            std::unordered_set<std::string> res;
+            auto it = ir.attributes.find(attr_key);
+            if (it != ir.attributes.end()) {
+                std::size_t start = 0;
+                while (start < it->second.size()) {
+                    std::size_t nl = it->second.find('\n', start);
+                    if (nl == std::string::npos) {
+                        res.insert(it->second.substr(start));
+                        break;
+                    }
+                    res.insert(it->second.substr(start, nl - start));
+                    start = nl + 1;
+                }
+            }
+            return res;
+        };
+        const auto skip_exit = parse_skip_set("ortho_skip_exit:" + t.source + "->" + t.target);
+        const auto skip_entry = parse_skip_set("ortho_skip_entry:" + t.source + "->" + t.target);
+
         // 3. Synthesize atomic fused action
         ActionSignature fused_act(t.transition_action.has_value() ? t.transition_action->name
                                                                   : "fused_" + t.source + "_to_" + t.target);
 
-        // Append exit actions (in ascending leaf-to-LCA order)
+        // Append exit actions (in ascending leaf-to-LCA order), skipping unchanged orthogonal region actions
         for (const auto* s : exit_path) {
             for (const auto& act : s->exit_actions) {
+                if (!act.name.empty() && skip_exit.count(act.name) != 0) {
+                    continue;
+                }
                 append_action_to_fused(fused_act, act);
             }
         }
@@ -162,14 +185,19 @@ bool BoundaryActionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             append_action_to_fused(fused_act, *t.transition_action);
         }
 
-        // Append entry actions (in descending LCA-to-target order)
+        // Append entry actions (in descending LCA-to-target order), skipping unchanged orthogonal region actions
         for (const auto* s : entry_path) {
             for (const auto& act : s->entry_actions) {
+                if (!act.name.empty() && skip_entry.count(act.name) != 0) {
+                    continue;
+                }
                 append_action_to_fused(fused_act, act);
             }
         }
 
-        t.transition_action = std::move(fused_act);
+        if (!fused_act.instructions.empty() || !fused_act.assignments.empty() || t.transition_action.has_value()) {
+            t.transition_action = std::move(fused_act);
+        }
 
         for (const auto& name : exit_path_names) {
             states_cleared_exit.insert(name);

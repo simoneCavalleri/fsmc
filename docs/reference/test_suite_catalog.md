@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 539  
+**Total Documented Test Cases**: 542  
 
 ---
 
@@ -1274,6 +1274,9 @@
 #### `OrthogonalProduct.InternalSelfLoopInRegion_RemainsInternalInProduct`
 **Test Intent**: Verify internal self-loops in orthogonal regions remain Internal transitions in product states.
 
+#### `OrthogonalProduct.SkipsUnchangedRegionEntryExitActionsOnProductTransition`
+**Test Intent**: Verify BoundaryActionFusionPass skips unchanged orthogonal region entry/exit hooks.
+
 ### [`test_pass_manager.cpp`](../../tests/middleend/canonicalization/test_pass_manager.cpp) (`tests/middleend/canonicalization/test_pass_manager.cpp`)
 #### `PassManager.DefaultPipelineExecution_CollectsStatisticsAndEmitsDiagnostics`
 **Test Intent**: Verify PassManager default optimization and analysis pipeline execution.
@@ -1323,6 +1326,12 @@
 
 #### `StructuralLowering.HistoryLowering_PinsParentAcrossNormalizeHierarchy`
 **Test Intent**: Verify HistoryLoweringPass pins _HistoryRestore parent_state across normalize_hierarchy().
+
+#### `ForkJoinLowering.JoinBranchGuardsAndEvent_PreservedInLoweredTransitions`
+**Test Intent**: Verify ForkJoinLoweringPass preserves incoming Join branch guards and events.
+
+#### `StructuralLoweringTest.FsmIrEqualityComparesAllFields`
+**Test Intent**: Verify FsmIr::operator== compares clocks, guards, actions, choice_nodes, bindings, and execution_semantics.
 
 ### [`test_common_action_factoring.cpp`](../../tests/middleend/optimization/test_common_action_factoring.cpp) (`tests/middleend/optimization/test_common_action_factoring.cpp`)
 #### `CommonActionFactoring.ConvergentTransitionsIdenticalAction_FactoredIntoTargetEntry`

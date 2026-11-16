@@ -34,6 +34,8 @@ struct ChoiceNodeModel {
     std::vector<TransitionEdge> outgoing_branches;  ///< Evaluated conditional branch edges
 
     explicit ChoiceNodeModel(std::string choice_name = "") : name(std::move(choice_name)) {}
+
+    bool operator==(const ChoiceNodeModel& other) const noexcept = default;
 };
 
 }  // namespace fsm::ir

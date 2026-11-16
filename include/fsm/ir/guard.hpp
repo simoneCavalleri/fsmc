@@ -107,6 +107,7 @@ struct GuardModel {
           normalized_expression(std::move(norm_expr)) {}
 
     bool operator<(const GuardModel& other) const noexcept { return name < other.name; }
+    bool operator==(const GuardModel& other) const noexcept = default;
 };
 
 /**

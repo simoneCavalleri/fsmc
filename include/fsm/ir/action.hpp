@@ -343,6 +343,7 @@ struct ActionModel {
         : name(std::move(action_name)), description(std::move(action_desc)) {}
 
     bool operator<(const ActionModel& other) const noexcept { return name < other.name; }
+    bool operator==(const ActionModel& other) const noexcept = default;
 };
 
 }  // namespace fsm::ir

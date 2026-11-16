@@ -9,6 +9,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/passes/boundary_action_fusion_pass.hpp"
 #include "fsm/middleend/passes/fork_join_lowering_pass.hpp"
 #include "fsm/middleend/passes/orthogonal_product_pass.hpp"
 
@@ -603,6 +604,73 @@ TEST(OrthogonalProduct, InternalSelfLoopInRegion_RemainsInternalInProduct) {
         }
     }
     EXPECT_TRUE(found_internal);
+}
+
+/**
+ * @brief Verify BoundaryActionFusionPass skips unchanged orthogonal region entry/exit hooks.
+ * @scenario Parallel state P with region R1 (A1 -> A2 on EvA) and region R2 (B1 with enter_b1/exit_b1).
+ * @expected Transition P_A1_B1 -> P_A2_B1 executes exit_a1 and enter_a2, but NOT exit_b1 or enter_b1.
+ */
+TEST(OrthogonalProduct, SkipsUnchangedRegionEntryExitActionsOnProductTransition) {
+    FsmIr model;
+    model.name = "OrthoSkipHooksTest";
+    model.initial_state = "P";
+
+    auto& par = model.add_state("P", "", StateKind::Parallel);
+    OrthogonalRegion r1;
+    r1.id = "R1";
+    r1.name = "R1";
+    r1.initial_state_id = "A1";
+    r1.state_ids = {"A1", "A2"};
+
+    OrthogonalRegion r2;
+    r2.id = "R2";
+    r2.name = "R2";
+    r2.initial_state_id = "B1";
+    r2.state_ids = {"B1"};
+
+    par.orthogonal_regions = {r1, r2};
+
+    auto make_store_act = [](const std::string& name) {
+        ActionSignature sig(name);
+        StoreOp op;
+        op.expression = name;
+        sig.instructions.emplace_back(op);
+        return sig;
+    };
+
+    auto& a1 = model.add_state("A1", "R1");
+    a1.entry_actions = {make_store_act("enter_a1")};
+    a1.exit_actions = {make_store_act("exit_a1")};
+
+    auto& a2 = model.add_state("A2", "R1");
+    a2.entry_actions = {make_store_act("enter_a2")};
+    a2.exit_actions = {make_store_act("exit_a2")};
+
+    auto& b1 = model.add_state("B1", "R2");
+    b1.entry_actions = {make_store_act("enter_b1")};
+    b1.exit_actions = {make_store_act("exit_b1")};
+
+    TransitionEdge t("A1", "A2", "EvA", std::nullopt, make_store_act("act_a"));
+    model.add_transition(t);
+
+    DiagnosticEngine diag;
+    OrthogonalProductPass ortho_pass;
+    ASSERT_TRUE(ortho_pass.run(model, diag));
+    ASSERT_TRUE(BoundaryActionFusionPass::run(model, diag));
+
+    bool found = false;
+    for (const auto& tr : model.transitions) {
+        if (tr.source == "P_A1_B1" && tr.target == "P_A2_B1" && tr.event == "EvA") {
+            found = true;
+            ASSERT_TRUE(tr.transition_action.has_value());
+            ASSERT_EQ(tr.transition_action->instructions.size(), 3u);
+            EXPECT_EQ(std::get<StoreOp>(tr.transition_action->instructions[0].op).expression, "exit_a1");
+            EXPECT_EQ(std::get<StoreOp>(tr.transition_action->instructions[1].op).expression, "act_a");
+            EXPECT_EQ(std::get<StoreOp>(tr.transition_action->instructions[2].op).expression, "enter_a2");
+        }
+    }
+    EXPECT_TRUE(found);
 }
 
 }  // namespace

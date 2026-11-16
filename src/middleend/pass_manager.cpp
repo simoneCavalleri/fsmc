@@ -877,9 +877,9 @@ PassManager PassManager::create_verified_7stage_pipeline(bool optimize) {
     pm.add_pass(std::make_unique<EventQueueBoundPassWrapper>());
     pm.add_pass(std::make_unique<DeferredEventLoweringPassWrapper>());
     pm.add_pass(std::make_unique<OrthogonalProductPassWrapper>());
-    pm.add_pass(std::make_unique<BoundaryActionFusionPassWrapper>());
     pm.add_pass(std::make_unique<ConnectiveJunctionChainingPassWrapper>());
     pm.add_pass(std::make_unique<ChoiceInliningPassWrapper>());
+    pm.add_pass(std::make_unique<BoundaryActionFusionPassWrapper>());
     pm.add_pass(std::make_unique<SampledChangeTriggerPassWrapper>());
 
     // Stage 3: Formal Invariant & Safety Verification

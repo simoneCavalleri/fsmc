@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 552  
+**Total Documented Test Cases**: 554  
 
 ---
 
@@ -1054,6 +1054,9 @@
 #### `Sysml2ParserTest.RecognizesChoiceKeywordDeclaration`
 **Test Intent**: Verify Sysml2Parser recognizes standalone 'choice <Name>;' declarations as Choice pseudostates.
 
+#### `Sysml2ParserTest.RejectsDigitLeadingIdentifierWithDiagnostic`
+**Test Intent**: Verify Sysml2Parser rejects state identifiers starting with a digit with a clear diagnostic.
+
 ### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`
 **Test Intent**: Verify SysML v2 enum definition parsing into FsmIr data types.
@@ -1943,6 +1946,9 @@
 
 **Scenario**:
   - Parse CLI flags for simulation/CEX export, run trace simulation on a PlantUML model, and verify CEX
+
+#### `FsmcCliOptionsTest.CheckRaces_DetectsDataRaceUnder7StagePipeline`
+**Test Intent**: Verify --races detects concurrent data races even when --7stage pipeline is active.
 
 ### [`test_multiformat_presets_roundtrip.cpp`](../../tests/integration/test_multiformat_presets_roundtrip.cpp) (`tests/integration/test_multiformat_presets_roundtrip.cpp`)
 #### `MultiformatPresets.Sysml2UavMission_PassesRoundtripAndStrictCompilation`

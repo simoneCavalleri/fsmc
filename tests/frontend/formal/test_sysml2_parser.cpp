@@ -775,4 +775,28 @@ package ChoicePkg {
     EXPECT_TRUE(model.is_choice_node("CheckCount"));
 }
 
+/**
+ * @brief Verify Sysml2Parser rejects state identifiers starting with a digit with a clear diagnostic.
+ * @scenario SysML v2 model containing 'state 123Start;'.
+ * @expected Sysml2Parser::parse returns false with diagnostic mentioning '123Start'.
+ */
+TEST(Sysml2ParserTest, RejectsDigitLeadingIdentifierWithDiagnostic) {
+    const std::string sysml = R"sysml(
+package WeirdNames {
+    state def M {
+        entry; then 123Start;
+        state 123Start;
+        state End;
+        transition first 123Start accept Ev1 then End;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    EXPECT_FALSE(parser.parse(sysml, model, err));
+    EXPECT_NE(err.find("123Start"), std::string::npos);
+}
+
 }  // namespace

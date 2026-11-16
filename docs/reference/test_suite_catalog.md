@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 599  
+**Total Documented Test Cases**: 600  
 
 ---
 
@@ -1583,6 +1583,9 @@
 ### [`test_guard_simplification.cpp`](../../tests/middleend/optimization/test_guard_simplification.cpp) (`tests/middleend/optimization/test_guard_simplification.cpp`)
 #### `GuardSimplification.AlgebraicBooleanExpressions_SimplifiedAndNormalized`
 **Test Intent**: Verify algebraic boolean simplifications (double negation, constant folding, idempotency).
+
+#### `GuardSimplification.SerializedCppGuardTypesAndBoolKeywords_Simplified`
+**Test Intent**: Verify GuardSimplificationPass simplifies serialized `fsm::and_/or_/not_` guard strings and `true_`/`false_`
 
 ### [`test_adversarial_qa.cpp`](../../tests/middleend/verification/test_adversarial_qa.cpp) (`tests/middleend/verification/test_adversarial_qa.cpp`)
 - *(Executable binary test verification)*

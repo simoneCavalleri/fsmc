@@ -58,4 +58,30 @@ TEST(GuardSimplification, AlgebraicBooleanExpressions_SimplifiedAndNormalized) {
     EXPECT_EQ(res_da.expression, "Ready");
 }
 
+/**
+ * @brief Verify GuardSimplificationPass simplifies serialized `fsm::and_/or_/not_` guard strings and `true_`/`false_`
+ * literals.
+ * @scenario Run GuardSimplificationPass on transitions whose `guard` holds `fsm::and_<fsm::not_<fsm::not_<in_ready>>,
+ * true_>` and `fsm::or_<in_ready, false_>`.
+ * @expected Both transitions simplify down to atomic `in_ready`.
+ */
+TEST(GuardSimplification, SerializedCppGuardTypesAndBoolKeywords_Simplified) {
+    FsmIr ir;
+    ir.name = "SimplifySerialized";
+    ir.add_state("A");
+    ir.add_state("B");
+    ir.add_transition(TransitionEdge("A", "B", "Ev1", "fsm::and_<fsm::not_<fsm::not_<in_ready>>, true_>"));
+    ir.add_transition(TransitionEdge("A", "B", "Ev2", "fsm::or_<in_ready, false_>"));
+
+    GuardSimplificationPass pass;
+    DiagnosticEngine diag;
+    ASSERT_TRUE(pass.run(ir, diag));
+
+    ASSERT_EQ(ir.transitions.size(), 2u);
+    ASSERT_TRUE(ir.transitions[0].guard.has_value());
+    EXPECT_EQ(*ir.transitions[0].guard, "in_ready");
+    ASSERT_TRUE(ir.transitions[1].guard.has_value());
+    EXPECT_EQ(*ir.transitions[1].guard, "in_ready");
+}
+
 }  // namespace

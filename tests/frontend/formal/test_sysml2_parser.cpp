@@ -1011,4 +1011,66 @@ package StructAssignPkg {
     EXPECT_EQ(assigns[1].expression, "pos.y + 1.0");
 }
 
+/**
+ * @brief Verify history state and deep history state declarations resolve parent history targets.
+ * @scenario Parse SysML v2 with `history state Hist;` and `deep history state DeepHist;` referenced via dot notation.
+ * @expected Transitions target the parent composite state with `has_history`/`has_deep_history` set, without phantom
+ * states.
+ */
+TEST(Sysml2ParserTest, ParsesHistoryAndDeepHistoryStateDeclarations) {
+    const std::string sysml = R"sysml(
+state def HistMachine {
+    entry; then Op;
+    state Op {
+        entry; then S1;
+        history state Hist;
+        state S1;
+        transition from Op accept EvPause then Paused;
+    }
+    state DeepOp {
+        entry; then D1;
+        deep history state DeepHist;
+        state D1;
+        transition from DeepOp accept EvPause then Paused;
+    }
+    state Paused {
+        transition from Paused accept EvResumeOp then Op.Hist;
+        transition from Paused accept EvResumeDeep then DeepOp.DeepHist;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+
+    EXPECT_EQ(model.find_state("Op_Hist"), nullptr);
+    EXPECT_EQ(model.find_state("DeepOp_DeepHist"), nullptr);
+
+    const StateNode* op = model.find_state("Op");
+    ASSERT_NE(op, nullptr);
+    EXPECT_TRUE(op->has_history);
+    EXPECT_FALSE(op->has_deep_history);
+
+    const StateNode* deep_op = model.find_state("DeepOp");
+    ASSERT_NE(deep_op, nullptr);
+    EXPECT_TRUE(deep_op->has_history);
+    EXPECT_TRUE(deep_op->has_deep_history);
+
+    bool found_op = false;
+    bool found_deep = false;
+    for (const auto& t : model.transitions) {
+        if (t.event == "EvResumeOp") {
+            EXPECT_EQ(t.target, "Op");
+            found_op = true;
+        } else if (t.event == "EvResumeDeep") {
+            EXPECT_EQ(t.target, "DeepOp");
+            found_deep = true;
+        }
+    }
+    EXPECT_TRUE(found_op);
+    EXPECT_TRUE(found_deep);
+}
+
 }  // namespace

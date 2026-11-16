@@ -714,6 +714,26 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
+    // 4d. History pseudostate declaration: [deep|shallow] history state <HistName>;
+    static const std::regex history_state_decl_regex(
+        R"(^(?:(deep|shallow)\s+)?history\s+state\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
+    if (std::regex_search(stmt, match, history_state_decl_regex)) {
+        const bool is_deep = match[1].matched && match[1].str() == "deep";
+        const std::string hist_name = sanitize_identifier(match[2].str());
+        const std::string parent_name = state_stack.empty() ? "" : state_stack.back();
+        if (!parent_name.empty()) {
+            if (auto* pst = model.find_state_mut(parent_name)) {
+                pst->has_history = true;
+                if (is_deep) {
+                    pst->has_deep_history = true;
+                }
+            }
+            symbol_resolver.register_history_pseudostate(parent_name + "." + hist_name, parent_name, is_deep);
+            symbol_resolver.register_history_pseudostate(hist_name, parent_name, is_deep);
+        }
+        return true;
+    }
+
     // 5. state <Name> (composite or leaf, optional parallel)
     static const std::regex digit_state_decl_regex(R"(^(?:parallel\s+)?state\s+([0-9][A-Za-z0-9_]*))",
                                                    std::regex::optimize);
@@ -1043,7 +1063,7 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
                             digit_match[1].str() + "': identifiers cannot start with a digit";
             return false;
         }
-        if (!parse_transition_statement(stmt, model, state_stack)) {
+        if (!parse_transition_statement(stmt, model, state_stack, &symbol_resolver)) {
             if (!error_message.empty() && line_number > 0 && error_message.find("line ") == std::string::npos &&
                 error_message.find("Line ") == std::string::npos) {
                 error_message = "Line " + std::to_string(line_number) + ": " + error_message;
@@ -1078,7 +1098,8 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
  * @return True if parsing succeeded.
  */
 bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& model,
-                                              const std::vector<std::string>& state_stack) {
+                                              const std::vector<std::string>& state_stack,
+                                              const Sysml2SymbolResolver* symbol_resolver) {
     std::string source;
     std::string target;
     std::string event;
@@ -1309,8 +1330,14 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
         auto ends_with = [](const std::string& s, const std::string& suffix) {
             return s.size() >= suffix.size() && s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
         };
-        if (raw_target.find("[H*]") != std::string::npos || raw_target.find("[deep_history]") != std::string::npos ||
-            ends_with(raw_target, ".H*") || ends_with(raw_target, ".deep_history")) {
+        if (const auto* hist =
+                symbol_resolver != nullptr ? symbol_resolver->find_history_pseudostate(raw_target) : nullptr) {
+            target = hist->parent_state;
+            target_is_history = true;
+            target_is_deep_history = hist->is_deep;
+        } else if (raw_target.find("[H*]") != std::string::npos ||
+                   raw_target.find("[deep_history]") != std::string::npos || ends_with(raw_target, ".H*") ||
+                   ends_with(raw_target, ".deep_history")) {
             target_is_deep_history = true;
             target_is_history = true;
             const auto pos = raw_target.find_first_of("[.");

@@ -49,11 +49,26 @@ class Sysml2SymbolResolver {
      */
     [[nodiscard]] std::string resolve_type(std::string_view raw_type) const;
 
+    struct HistoryPseudostateInfo {
+        std::string parent_state;
+        bool is_deep{false};
+    };
+
+    void register_history_pseudostate(std::string qualified_name, std::string parent_state, bool is_deep) {
+        history_pseudostates_[std::move(qualified_name)] = HistoryPseudostateInfo{std::move(parent_state), is_deep};
+    }
+
+    [[nodiscard]] const HistoryPseudostateInfo* find_history_pseudostate(const std::string& raw_target) const {
+        auto it = history_pseudostates_.find(raw_target);
+        return it != history_pseudostates_.end() ? &it->second : nullptr;
+    }
+
   private:
     std::vector<std::string> search_paths_;
     std::unordered_set<std::string> imported_packages_;
     std::unordered_set<std::string> standard_types_;
     std::unordered_map<std::string, std::string> type_map_;
+    std::unordered_map<std::string, HistoryPseudostateInfo> history_pseudostates_;
 
     void init_standard_library();
 };

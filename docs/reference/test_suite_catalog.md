@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 588  
+**Total Documented Test Cases**: 589  
 
 ---
 
@@ -1145,6 +1145,9 @@
 
 #### `Sysml2ParserTest.ParsesStructMemberAssignmentsInActions`
 **Test Intent**: Regression: struct member lvalues (`pos.x = 2.5`) in SysML2 action blocks preserve `member_path`.
+
+#### `Sysml2ParserTest.ParsesHistoryAndDeepHistoryStateDeclarations`
+**Test Intent**: Verify history state and deep history state declarations resolve parent history targets.
 
 ### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`

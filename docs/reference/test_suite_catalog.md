@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 590  
+**Total Documented Test Cases**: 591  
 
 ---
 
@@ -1401,6 +1401,9 @@
 
 #### `OrthogonalProduct.SimultaneousTransitionsSanitizeCombinedActionAndSingleGuard`
 **Test Intent**: Verify simultaneous orthogonal transitions combine actions with valid C++ identifier and single guard without
+
+#### `OrthogonalProduct.SimultaneousAssignmentActions_DoNotEmitExternalServiceCalls`
+**Test Intent**: Verify simultaneous orthogonal transitions with assignment actions preserve assignments without synthesizing
 
 ### [`test_pass_manager.cpp`](../../tests/middleend/canonicalization/test_pass_manager.cpp) (`tests/middleend/canonicalization/test_pass_manager.cpp`)
 #### `PassManager.DefaultPipelineExecution_CollectsStatisticsAndEmitsDiagnostics`

@@ -715,4 +715,50 @@ TEST(OrthogonalProduct, SimultaneousTransitionsSanitizeCombinedActionAndSingleGu
     EXPECT_TRUE(found);
 }
 
+/**
+ * @brief Verify simultaneous orthogonal transitions with assignment actions preserve assignments without synthesizing
+ * external service calls.
+ * @scenario Expand parallel regions where both transitions execute assignments on the same event.
+ * @expected Combined product transition retains both assignments and keeps instructions empty.
+ */
+TEST(OrthogonalProduct, SimultaneousAssignmentActions_DoNotEmitExternalServiceCalls) {
+    FsmIr model;
+    model.name = "OrthoAssign";
+    auto& par = model.add_state("P");
+    par.kind = StateKind::Parallel;
+    OrthogonalRegion r1{"R1", "R1", "A1", {"A1", "A2"}, 0};
+    OrthogonalRegion r2{"R2", "R2", "B1", {"B1", "B2"}, 0};
+    par.orthogonal_regions = {r1, r2};
+
+    model.add_state("A1", "R1");
+    model.add_state("A2", "R1");
+    model.add_state("B1", "R2");
+    model.add_state("B2", "R2");
+    model.add_variable(VariableDefinition("hits", DataType{PrimitiveTypeKind::Int32}, "0"));
+
+    ActionSignature a1("inc_1");
+    a1.assignments.emplace_back(LValueTarget("hits"), "hits + 1");
+    ActionSignature a2("inc_10");
+    a2.assignments.emplace_back(LValueTarget("hits"), "hits + 10");
+
+    model.add_transition(TransitionEdge("A1", "A2", "GO", std::nullopt, std::move(a1)));
+    model.add_transition(TransitionEdge("B1", "B2", "GO", std::nullopt, std::move(a2)));
+
+    DiagnosticEngine diag;
+    OrthogonalProductPass pass;
+    ASSERT_TRUE(pass.run(model, diag));
+
+    bool found = false;
+    for (const auto& tr : model.transitions) {
+        if (tr.source == "P_A1_B1" && tr.target == "P_A2_B2" && tr.event == "GO") {
+            found = true;
+            ASSERT_TRUE(tr.transition_action.has_value());
+            EXPECT_EQ(tr.transition_action->name, "inc_1_and_inc_10");
+            EXPECT_EQ(tr.transition_action->assignments.size(), 2u);
+            EXPECT_TRUE(tr.transition_action->instructions.empty());
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
 }  // namespace

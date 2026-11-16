@@ -234,4 +234,48 @@ stateDiagram-v2
     EXPECT_EQ(active->orthogonal_regions[1].initial_state_id, "T1");
 }
 
+/**
+ * @brief Verify Mermaid states inside orthogonal regions keep pinned_parent when referenced by root Fork/Join
+ * transitions.
+ * @scenario Mermaid stateDiagram-v2 with Par { R1 { A1 -> A2 } -- R2 { B1 -> B2 } } and root A2 -> J / B2 -> J.
+ * @expected A2 stays inside R1 and B2 stays inside R2 after normalize_hierarchy().
+ */
+TEST(MermaidParserTest, ForkJoinWithExternalTransitionsPreservesRegionHierarchy) {
+    const std::string mmd = R"mmd(
+stateDiagram-v2
+    [*] --> Init
+    state F <<fork>>
+    state J <<join>>
+    state Par {
+        state R1 {
+            [*] --> A1
+            A1 --> A2 : EvA
+        }
+        --
+        state R2 {
+            [*] --> B1
+            B1 --> B2 : EvB
+        }
+    }
+    Init --> F : EvStart
+    F --> A1
+    F --> B1
+    A2 --> J : EvDone
+    B2 --> J : EvDone
+    J --> Finished
+)mmd";
+
+    MermaidParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(mmd, model, err)) << err;
+
+    const StateNode* a2 = model.find_state("A2");
+    const StateNode* b2 = model.find_state("B2");
+    ASSERT_NE(a2, nullptr);
+    ASSERT_NE(b2, nullptr);
+    EXPECT_EQ(a2->parent_state, "R1");
+    EXPECT_EQ(b2->parent_state, "R2");
+}
+
 }  // namespace

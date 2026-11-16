@@ -828,4 +828,32 @@ package ChangePkg {
     EXPECT_EQ(ct.raw_expression, "temp > 100");
 }
 
+/**
+ * @brief Verify Sysml2Parser parses 'accept every(<dur><unit>)' as a periodic TimeTrigger.
+ * @scenario SysML v2 transition 'transition first Active accept every(100ms) then Active;'.
+ * @expected Transition trigger holds TimeTrigger with kind=TimeTriggerKind::Every and duration_ms=100.
+ */
+TEST(Sysml2ParserTest, ParsesAcceptEveryAsPeriodicTimeTrigger) {
+    const std::string sysml = R"sysml(
+package PeriodicPkg {
+    state def Heartbeat {
+        entry; then Active;
+        state Active;
+        transition first Active accept every(100ms) then Active;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+
+    ASSERT_EQ(model.transitions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(model.transitions[0].trigger));
+    const auto& tt = std::get<TimeTrigger>(model.transitions[0].trigger);
+    EXPECT_EQ(tt.kind, TimeTriggerKind::Every);
+    EXPECT_EQ(tt.duration_in_ms(), 100u);
+}
+
 }  // namespace

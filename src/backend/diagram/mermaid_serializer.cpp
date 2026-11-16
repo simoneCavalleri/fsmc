@@ -116,13 +116,19 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
     }
 
     // Emit child states in declaration order
+    const bool is_parallel = (state.kind == StateKind::Parallel || !state.orthogonal_regions.empty());
+    size_t emitted_children = 0;
     for (const auto& child : model.states) {
         if (child.parent_state == state.name) {
+            if (is_parallel && emitted_children > 0) {
+                out << pad << "    --\n";
+            }
             if (child.is_composite) {
                 emit_state(out, child, model, parent_map, emitted_transitions, trans_order, indent + 1);
             } else {
                 emit_leaf_state(out, child, pad + "    ");
             }
+            ++emitted_children;
         }
     }
 

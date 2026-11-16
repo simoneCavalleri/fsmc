@@ -545,4 +545,25 @@ TEST(DiagramExport, PlantUml_DeepHistoryPseudostate_EmittedCorrectly) {
     EXPECT_NE(puml.find("[H*]"), std::string::npos);
 }
 
+/**
+ * @brief Verify PlantUmlSerializer and MermaidSerializer emit '--' separators between parallel regions.
+ * @scenario Parallel state Par with two child regions Reg1 and Reg2.
+ * @expected Both PlantUML and Mermaid outputs contain '--' separator inside Par.
+ */
+TEST(DiagramExport, PlantUmlAndMermaid_ParallelState_EmitsOrthogonalSeparator) {
+    FsmIr model;
+    model.name = "ParExport";
+    model.initial_state = "Par";
+
+    auto& par = model.add_state("Par", "", StateKind::Parallel);
+    par.is_composite = true;
+    model.add_state("Reg1", "Par");
+    model.add_state("Reg2", "Par");
+
+    const std::string puml = PlantUmlSerializer::serialize(model);
+    const std::string mmd = MermaidSerializer::serialize(model);
+    EXPECT_NE(puml.find("  --"), std::string::npos);
+    EXPECT_NE(mmd.find("    --"), std::string::npos);
+}
+
 }  // namespace

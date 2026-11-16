@@ -326,4 +326,38 @@ TEST(EFSMIntervalAnalysisTest, PropagatesIntervalsAcrossCompositeHierarchy) {
     }
 }
 
+/**
+ * @brief Verify EFSMIntervalAnalyzer applies state entry_actions before checking outgoing guards.
+ * @scenario Variable x=0 updated by Idle.entry_actions (x = 1), then checked by Idle -> Done [x == 1].
+ * @expected Guard 'x == 1' is NOT falsely flagged as UnsatisfiableGuard.
+ */
+TEST(EFSMIntervalAnalysisTest, AppliesStateEntryActionsToStateEnvironment) {
+    FsmIr ir;
+    ir.name = "EntryInterval";
+    ir.initial_state = "Idle";
+    ir.variables.emplace_back("x", DataType(PrimitiveTypeKind::Int32), "0");
+
+    auto& idle = ir.add_state("Idle");
+    ActionSignature entry_act("init_x");
+    StoreOp st;
+    st.target = LValueTarget("x", LValueScope::Register);
+    st.op = AssignmentOp::Assign;
+    st.expression = "1";
+    entry_act.instructions.emplace_back(st);
+    idle.entry_actions.push_back(entry_act);
+    ir.add_state("Done");
+
+    TransitionEdge t("Idle", "Done", "EvGo", "x == 1");
+    t.id = "t_entry_check";
+    ir.add_transition(t);
+
+    EFSMIntervalAnalyzer analyzer(ir);
+    DiagnosticEngine diag;
+    auto findings = analyzer.analyze(diag);
+
+    for (const auto& f : findings) {
+        EXPECT_NE(f.transition_id, "t_entry_check");
+    }
+}
+
 }  // namespace

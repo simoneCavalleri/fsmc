@@ -226,7 +226,16 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
                     req = child->get_attr("req");
                 }
                 if (!req.empty()) {
-                    curr_state->traceability_reqs.push_back(req);
+                    std::istringstream rss(req);
+                    std::string item;
+                    while (std::getline(rss, item, ',')) {
+                        std::string trimmed_req = std::string(trim(item));
+                        if (!trimmed_req.empty() &&
+                            std::find(curr_state->traceability_reqs.begin(), curr_state->traceability_reqs.end(),
+                                      trimmed_req) == curr_state->traceability_reqs.end()) {
+                            curr_state->traceability_reqs.push_back(std::move(trimmed_req));
+                        }
+                    }
                 }
                 std::string inv = child->get_attr("invariant");
                 if (!inv.empty()) {

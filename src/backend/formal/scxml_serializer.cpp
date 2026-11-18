@@ -52,7 +52,13 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
         out << " initial=\"" << escape_xml(state.initial_sub_state) << "\"";
     }
     if (!state.traceability_reqs.empty()) {
-        out << " satisfies=\"" << escape_xml(state.traceability_reqs.front()) << "\"";
+        out << " satisfies=\"";
+        for (size_t r = 0; r < state.traceability_reqs.size(); ++r) {
+            if (r > 0)
+                out << ", ";
+            out << escape_xml(state.traceability_reqs[r]);
+        }
+        out << "\"";
     }
     if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
         out << " invariant=\"" << escape_xml(*state.time_invariant) << "\"";
@@ -248,7 +254,21 @@ std::string ScxmlSerializer::serialize(const FsmIr& model) {
 
     // Emit declared signals
     for (const auto& sig : model.signals) {
-        out << "  <!-- @fsm:signal " << sig.name << " -->\n";
+        if (sig.attributes.empty()) {
+            out << "  <!-- @fsm:signal " << sig.name << " -->\n";
+        } else {
+            out << "  <!-- @fsm:signal " << sig.name << "{";
+            for (size_t i = 0; i < sig.attributes.size(); ++i) {
+                if (i > 0)
+                    out << ", ";
+                out << sig.attributes[i].type << " " << sig.attributes[i].name;
+            }
+            out << "}";
+            if (!sig.validators.empty()) {
+                out << " validator=\"" << sig.validators.front() << "\"";
+            }
+            out << " -->\n";
+        }
     }
 
     // Emit declared custom types (enums and structs)

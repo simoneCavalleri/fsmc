@@ -78,7 +78,32 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
         R"raw(^\s*([A-Za-z0-9_]+|"[^"]*")\s*\[.*shape\s*=\s*(?:point|circle|none).*\].*)raw", std::regex::icase);
     const std::regex edge_regex(
         R"raw(^\s*([A-Za-z0-9_\[\]\*]+|"[^"]*")\s*(?:->|--)\s*([A-Za-z0-9_\[\]\*]+|"[^"]*")(?:\s*\[(.*)\])?.*)raw");
-    const std::regex label_attr_regex(R"raw(label\s*=\s*"([^"]*)")raw", std::regex::icase);
+    const std::regex label_prefix_regex(R"raw(label\s*=\s*")raw", std::regex::icase);
+    auto extract_label_attr = [&label_prefix_regex](const std::string& input, std::string& out) -> bool {
+        std::smatch m;
+        if (!std::regex_search(input, m, label_prefix_regex)) {
+            return false;
+        }
+        std::size_t pos = static_cast<std::size_t>(m.position() + m.length());
+        out.clear();
+        while (pos < input.size()) {
+            char c = input[pos];
+            if (c == '\\' && pos + 1 < input.size()) {
+                char next = input[pos + 1];
+                if (next == '"' || next == '\\') {
+                    out.push_back(next);
+                    pos += 2;
+                    continue;
+                }
+            }
+            if (c == '"') {
+                return true;
+            }
+            out.push_back(c);
+            ++pos;
+        }
+        return true;
+    };
 
     while (std::getline(stream, line)) {
         std::string trimmed = trim_line(line);
@@ -192,11 +217,13 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
         };
 
         // Check cluster label inside subgraph: label = "..." or label="...";
-        const std::regex cluster_label_regex(R"raw(^\s*label\s*=\s*"([^"]*)")raw", std::regex::icase);
-        if (!current_parent_state.empty() && std::regex_search(trimmed, match, cluster_label_regex)) {
-            std::string lbl_content = match[1].str();
-            parse_label_actions(lbl_content, current_parent_state);
-            continue;
+        if (!current_parent_state.empty()) {
+            const std::regex cluster_label_prefix(R"raw(^\s*label\s*=\s*")raw", std::regex::icase);
+            std::string lbl_content;
+            if (std::regex_search(trimmed, cluster_label_prefix) && extract_label_attr(trimmed, lbl_content)) {
+                parse_label_actions(lbl_content, current_parent_state);
+                continue;
+            }
         }
 
         // Check cluster style="...dashed..." inside subgraph to infer parallel state
@@ -281,9 +308,8 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
             model.add_state(node_name, current_parent_state);
 
             // Check label for actions / activities / defers
-            std::smatch lbl_match;
-            if (std::regex_search(attrs, lbl_match, label_attr_regex)) {
-                std::string lbl_content = lbl_match[1].str();
+            std::string lbl_content;
+            if (extract_label_attr(attrs, lbl_content)) {
                 parse_label_actions(lbl_content, node_name);
             }
 
@@ -313,10 +339,7 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
             std::string attrs = match[3].matched ? match[3].str() : "";
 
             std::string label_str;
-            std::smatch label_match;
-            if (std::regex_search(attrs, label_match, label_attr_regex)) {
-                label_str = label_match[1].str();
-            } else if (!attrs.empty() && attrs.find('=') == std::string::npos) {
+            if (!extract_label_attr(attrs, label_str) && !attrs.empty() && attrs.find('=') == std::string::npos) {
                 label_str = attrs;
             }
 

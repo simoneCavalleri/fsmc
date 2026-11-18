@@ -1364,4 +1364,57 @@ state def BlockSendFsm {
     EXPECT_EQ(trans_emit.arguments[0], "1");
 }
 
+/**
+ * @brief Regression: `Sysml2Serializer` and `Sysml2Parser` preserve `TransitionEdgeKind::Local`
+ * via `local transition` syntax.
+ * @scenario Serialize a composite FSM with a local transition and an external transition to SysML2 and re-parse.
+ * @expected Re-parsed local transition has `kind == TransitionEdgeKind::Local`; external remains `External`.
+ */
+TEST(Sysml2Parser, LocalTransition_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "SysmlLocalRt";
+    ir.initial_state = "Active";
+    StateNode active("Active");
+    active.is_composite = true;
+    active.initial_sub_state = "SubA";
+    ir.add_state(active);
+    StateNode sub_a("SubA");
+    sub_a.parent_state = "Active";
+    ir.add_state(sub_a);
+    StateNode sub_b("SubB");
+    sub_b.parent_state = "Active";
+    ir.add_state(sub_b);
+
+    TransitionEdge loc("Active", "SubB", "Reset");
+    loc.kind = TransitionEdgeKind::Local;
+    ir.add_transition(loc);
+
+    TransitionEdge ext("SubA", "SubB", "Step");
+    ext.kind = TransitionEdgeKind::External;
+    ir.add_transition(ext);
+
+    const std::string sysml = fsm::backend::formal::Sysml2Serializer::serialize(ir);
+    EXPECT_NE(sysml.find("local transition"), std::string::npos) << sysml;
+
+    Sysml2Parser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 2u);
+
+    bool found_local = false;
+    bool found_external = false;
+    for (const auto& t : parsed.transitions) {
+        if (t.event == "Reset") {
+            EXPECT_EQ(t.kind, TransitionEdgeKind::Local);
+            found_local = true;
+        } else if (t.event == "Step") {
+            EXPECT_EQ(t.kind, TransitionEdgeKind::External);
+            found_external = true;
+        }
+    }
+    EXPECT_TRUE(found_local);
+    EXPECT_TRUE(found_external);
+}
+
 }  // namespace

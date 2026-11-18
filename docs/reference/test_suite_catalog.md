@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 716  
+**Total Documented Test Cases**: 717  
 
 ---
 
@@ -1504,6 +1504,9 @@
 #### `Sysml2Parser.SendViaPortInsideActionBlocks_ProducesSignalEmitOp`
 **Test Intent**: Regression: `send <Signal>(<Payload>) via <Port>;` inside `entry action { ... }` and
 `do action { ... }` blocks produces a structured `SignalEmitOp` instruction instead of a mangled
+
+#### `Sysml2Parser.LocalTransition_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `Sysml2Serializer` and `Sysml2Parser` preserve `TransitionEdgeKind::Local`
 
 ### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`

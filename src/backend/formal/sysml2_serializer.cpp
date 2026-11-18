@@ -262,7 +262,7 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
         if (trans.target_is_history) {
             clean_target += trans.target_is_deep_history ? "[H*]" : "[H]";
         }
-        out << "    transition\n";
+        out << (trans.kind == TransitionEdgeKind::Local ? "    local transition\n" : "    transition\n");
         if (trans.priority > 0) {
             out << "        priority " << trans.priority << "\n";
         }

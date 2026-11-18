@@ -95,8 +95,25 @@ class GuardTokenizerAndParser {
             // Identifier or comparison expression (consumes until logical delimiter or unnested paren)
             size_t start = pos_;
             int paren_depth = 0;
+            char in_quote = '\0';
             while (pos_ < src_.size()) {
                 char ch = src_[pos_];
+                if (in_quote != '\0') {
+                    if (ch == '\\' && pos_ + 1 < src_.size()) {
+                        pos_ += 2;
+                        continue;
+                    }
+                    if (ch == in_quote) {
+                        in_quote = '\0';
+                    }
+                    ++pos_;
+                    continue;
+                }
+                if (ch == '"' || ch == '\'') {
+                    in_quote = ch;
+                    ++pos_;
+                    continue;
+                }
                 if (ch == '(') {
                     if (pos_ == start) {
                         break;

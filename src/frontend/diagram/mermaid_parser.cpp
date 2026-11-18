@@ -610,6 +610,9 @@ bool MermaidParser::parse_transition_line(std::string_view line, FsmIr& model, s
     }
 
     std::string dst = sanitize_identifier(dst_raw);
+    if (is_history && dst.empty() && !current_parent.empty()) {
+        dst = current_parent;
+    }
 
     // Check for final state State --> [*]
     if (dst_part == "[*]") {

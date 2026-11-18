@@ -434,4 +434,33 @@ TEST(MermaidParser, Ports_RoundtripThroughDirectives) {
     EXPECT_TRUE(p_out->is_out());
 }
 
+/**
+ * @brief Regression: Mermaid standalone `[H]` / `[H*]` history target inside a composite state
+ * resolves to the enclosing composite state instead of failing with "invalid source or target state".
+ * @scenario Parse Mermaid composite state `Comp` with `Sub2 --> [H*] : Back`.
+ * @expected Transition targets `Comp`, `Comp->has_history == true`, and `Comp->has_deep_history == true`.
+ */
+TEST(MermaidParser, StandaloneHistoryTargetInsideComposite_ResolvesToParent) {
+    const std::string mmd = R"mmd(stateDiagram-v2
+    [*] --> Comp
+    state Comp {
+        [*] --> Sub1
+        Sub1 --> Sub2 : Next
+        Sub2 --> [H*] : Back
+    }
+)mmd";
+
+    MermaidParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(mmd, ir, err)) << err;
+    const auto* comp = ir.find_state("Comp");
+    ASSERT_NE(comp, nullptr);
+    EXPECT_TRUE(comp->has_history);
+    EXPECT_TRUE(comp->has_deep_history);
+    ASSERT_EQ(ir.transitions.size(), 2u);
+    EXPECT_EQ(ir.transitions[1].target, "Comp");
+    EXPECT_EQ(ir.transitions[1].event, "Back");
+}
+
 }  // namespace

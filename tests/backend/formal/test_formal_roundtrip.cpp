@@ -1377,4 +1377,31 @@ TEST(FormalRoundtrip, SmvSerializer_PreservesStateLifecycleAndDeferDirectives) {
     EXPECT_EQ(idle->exit_actions[0].assignments[0].expression, "2");
 }
 
+/**
+ * @brief Regression: `StateflowSerializer` and `StateflowParser` preserve `deferred_events` on states
+ * via the `defer="..."` state attribute across Stateflow XML roundtrips.
+ * @scenario Serialize an FSM with `Idle` deferring `Ping` and `Pong` to Stateflow XML and re-parse.
+ * @expected Re-parsed `Idle` state has `deferred_events == {"Ping", "Pong"}`.
+ */
+TEST(FormalRoundtrip, StateflowSerializer_PreservesDeferredEventsAcrossRoundtrip) {
+    FsmIr ir;
+    ir.name = "SfDeferRt";
+    ir.initial_state = "Idle";
+    auto& st = ir.add_state("Idle");
+    st.deferred_events = {"Ping", "Pong"};
+    ir.add_state("Done");
+    ir.add_transition(TransitionEdge("Idle", "Done", "Go"));
+
+    const std::string xml = StateflowSerializer::serialize(ir);
+    StateflowParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+    const auto* idle = parsed.find_state("Idle");
+    ASSERT_NE(idle, nullptr);
+    ASSERT_EQ(idle->deferred_events.size(), 2u);
+    EXPECT_EQ(idle->deferred_events[0], "Ping");
+    EXPECT_EQ(idle->deferred_events[1], "Pong");
+}
+
 }  // namespace

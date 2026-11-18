@@ -86,6 +86,15 @@ static void emit_state(std::ostream& out, const StateNode& state, const FsmIr& m
         }
         out << " exit=\"" << escape_xml(exit_str) << "\"";
     }
+    if (!state.deferred_events.empty()) {
+        std::string defer_str;
+        for (std::size_t i = 0; i < state.deferred_events.size(); ++i) {
+            if (i > 0)
+                defer_str += ", ";
+            defer_str += state.deferred_events[i];
+        }
+        out << " defer=\"" << escape_xml(defer_str) << "\"";
+    }
 
     std::vector<const StateNode*> children;
     for (const auto& s : model.states) {

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 722  
+**Total Documented Test Cases**: 723  
 
 ---
 
@@ -1989,6 +1989,9 @@
 
 #### `DeterminismEnforcement.ConflictingTransitionsSamePriority_EmitsDeterminismError`
 **Test Intent**: Verify determinism enforcement detects non-deterministic collisions on identical-priority branches.
+
+#### `DeterminismEnforcement.DistinctTriggersWithEmptyEvent_DoNotEmitFalseConflict`
+**Test Intent**: Regression: `DeterminismEnforcementPass` distinguishes transitions with empty `event` string
 
 ### [`test_efsm_interval_analysis.cpp`](../../tests/middleend/verification/test_efsm_interval_analysis.cpp) (`tests/middleend/verification/test_efsm_interval_analysis.cpp`)
 #### `EfsmIntervalAnalysis.CompliantPortBounds_PassesWithoutErrors`

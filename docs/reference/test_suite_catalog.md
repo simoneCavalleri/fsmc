@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 653  
+**Total Documented Test Cases**: 654  
 
 ---
 
@@ -881,6 +881,9 @@
 #### `DotParser.UnparenthesizedLifecycleAndDeferInNodeLabel_PopulatedCleanly`
 **Test Intent**: Regression: Graphviz DOT node labels with unparenthesized `entry / ...`, `exit / ...`,
 `do / ...`, and `defer ...` lines populate state lifecycle actions and deferred events.
+
+#### `DotParser.MultipleTransitionsSameEndpoints_DisambiguateAssignmentActionNames`
+**Test Intent**: Regression: Multiple DOT transitions between the same `source` and `target` states
 
 ### [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) (`tests/frontend/diagram/test_mermaid_parser.cpp`)
 #### `MermaidParser.BasicDiagram_ParsedIntoValidFsmIr`

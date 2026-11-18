@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 729  
+**Total Documented Test Cases**: 730  
 
 ---
 
@@ -1827,6 +1827,11 @@
 
 #### `BoundaryActionFusion.MultipleOutgoingTransitions_BothFuseBoundaryActionsWithoutPrematureClearing`
 **Test Intent**: Verify that multiple outgoing transitions from the same state both fuse boundary actions.
+
+#### `BoundaryActionFusion.LocalTransitionOnComposite_DoesNotFuseCompositeExitOrEntry`
+**Test Intent**: Regression: `BoundaryActionFusionPass` preserves composite exit/entry semantics on
+`TransitionEdgeKind::Local` transitions by setting LCA to the composite source (so composite
+`exit_actions` and `entry_actions` are NOT fused/executed, only descendant `entry_actions`).
 
 #### `ForkJoinLowering.ForkAndJoinPseudostates_LowersToMultiSourceMultiTargetTransitions`
 **Test Intent**: Verify fork and join pseudostates lowering into multi-target and multi-source transition edges.

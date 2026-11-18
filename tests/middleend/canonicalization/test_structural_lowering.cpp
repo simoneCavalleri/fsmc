@@ -527,6 +527,60 @@ TEST(BoundaryActionFusion, MultipleOutgoingTransitions_BothFuseBoundaryActionsWi
     EXPECT_EQ(std::get<StoreOp>(ir.transitions[1].transition_action->instructions[1].op).expression, "exit_A");
 }
 
+/**
+ * @brief Regression: `BoundaryActionFusionPass` preserves composite exit/entry semantics on
+ * `TransitionEdgeKind::Local` transitions by setting LCA to the composite source (so composite
+ * `exit_actions` and `entry_actions` are NOT fused/executed, only descendant `entry_actions`).
+ */
+TEST(BoundaryActionFusion, LocalTransitionOnComposite_DoesNotFuseCompositeExitOrEntry) {
+    FsmIr ir;
+    DiagnosticEngine diag;
+
+    StateNode active("Active");
+    active.is_composite = true;
+    active.initial_sub_state = "SubA";
+    ActionSignature act_exit("exit_Active");
+    StoreOp op_exit;
+    op_exit.expression = "exit_Active";
+    act_exit.instructions.emplace_back(op_exit);
+    active.exit_actions.push_back(act_exit);
+
+    ActionSignature act_entry("entry_Active");
+    StoreOp op_entry;
+    op_entry.expression = "entry_Active";
+    act_entry.instructions.emplace_back(op_entry);
+    active.entry_actions.push_back(act_entry);
+
+    StateNode sub_a("SubA", "", "Active");
+    StateNode sub_b("SubB", "", "Active");
+    ActionSignature subb_entry("entry_SubB");
+    StoreOp op_subb;
+    op_subb.expression = "entry_SubB";
+    subb_entry.instructions.emplace_back(op_subb);
+    sub_b.entry_actions.push_back(subb_entry);
+
+    ir.add_state(active);
+    ir.add_state(sub_a);
+    ir.add_state(sub_b);
+
+    TransitionEdge loc("Active", "SubB", "EvReset");
+    loc.kind = TransitionEdgeKind::Local;
+    ir.add_transition(loc);
+
+    EXPECT_TRUE(BoundaryActionFusionPass::run(ir, diag));
+
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    const auto& insts = ir.transitions[0].transition_action->instructions;
+    ASSERT_EQ(insts.size(), 1u);
+    EXPECT_EQ(std::get<StoreOp>(insts[0].op).expression, "entry_SubB");
+
+    const auto* p_active = ir.find_state("Active");
+    ASSERT_NE(p_active, nullptr);
+    EXPECT_FALSE(p_active->exit_actions.empty());
+    EXPECT_FALSE(p_active->entry_actions.empty());
+}
+
 // ============================================================================
 // 4. ForkJoinLoweringPass Tests
 // ============================================================================

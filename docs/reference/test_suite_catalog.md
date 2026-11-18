@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 630  
+**Total Documented Test Cases**: 631  
 
 ---
 
@@ -993,6 +993,10 @@
 
 #### `CameoParserTest.ResolvesForwardReferencedSiblingTargetsInsideCompositeRegions`
 **Test Intent**: Verify CameoXmiParser resolves transition targets declared later in sibling/outer regions.
+
+#### `CameoXmiParser.TransitionEffectBodyAttribute_ParsedIntoAssignments`
+**Test Intent**: Regression: Cameo XMI `<effect body="x = 99;"/>` (and `<body>` child) is extracted and parsed into
+`ActionSignature::assignments`.
 
 ### [`test_scxml_parser.cpp`](../../tests/frontend/formal/test_scxml_parser.cpp) (`tests/frontend/formal/test_scxml_parser.cpp`)
 #### `ScxmlParser.BasicScxmlDocument_ParsedIntoValidFsmIr`

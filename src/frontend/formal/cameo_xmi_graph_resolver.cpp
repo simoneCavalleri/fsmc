@@ -508,7 +508,18 @@ void CameoXmiGraphResolver::process_transition(const std::shared_ptr<XmlNode>& t
     }
     if (action_name.empty()) {
         for (const auto& eff : trans_node->find_children("effect")) {
-            action_name = eff->get_attr("name");
+            action_name = eff->get_attr("body");
+            if (action_name.empty()) {
+                for (const auto& body_node : eff->find_children("body")) {
+                    if (!body_node->text_content.empty()) {
+                        action_name = body_node->text_content;
+                        break;
+                    }
+                }
+            }
+            if (action_name.empty()) {
+                action_name = eff->get_attr("name");
+            }
             if (action_name.empty()) {
                 action_name = eff->text_content;
             }

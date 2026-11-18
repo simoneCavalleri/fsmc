@@ -553,4 +553,41 @@ TEST(CameoParserTest, ResolvesForwardReferencedSiblingTargetsInsideCompositeRegi
     EXPECT_EQ(ir.transitions[0].target, "Machining");
 }
 
+/**
+ * @brief Regression: Cameo XMI `<effect body="x = 99;"/>` (and `<body>` child) is extracted and parsed into
+ * `ActionSignature::assignments`.
+ * @scenario Parse Cameo XMI containing `<effect xmi:type="uml:OpaqueBehavior" body="x = 99;"/>`.
+ * @expected Transition carries an assignment to `x` with expression `"99"`.
+ */
+TEST(CameoXmiParser, TransitionEffectBodyAttribute_ParsedIntoAssignments) {
+    const std::string xmi = R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="2.1" xmlns:uml="http://www.omg.org/spec/UML/20090901" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1">
+  <uml:Model xmi:id="_m1" name="CameoEffectModel">
+    <!-- @fsm:var name=x type=int32 init=0 -->
+    <packagedElement xmi:type="uml:StateMachine" xmi:id="_sm1" name="CameoEffect">
+      <region xmi:type="uml:Region" xmi:id="_r1">
+        <subvertex xmi:type="uml:Pseudostate" xmi:id="_ps_init" kind="initial"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s1" name="Idle"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s2" name="Done"/>
+        <transition xmi:id="_t0" source="_ps_init" target="_s1"/>
+        <transition xmi:id="_t1" source="_s1" target="_s2" trigger="Go">
+          <effect xmi:type="uml:OpaqueBehavior" xmi:id="_ef1" body="x = 99;"/>
+        </transition>
+      </region>
+    </packagedElement>
+  </uml:Model>
+</xmi:XMI>
+)xml";
+
+    CameoXmiParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xmi, ir, err)) << err;
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    ASSERT_EQ(ir.transitions[0].transition_action->assignments.size(), 1u);
+    EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].target.name, "x");
+    EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].expression, "99");
+}
+
 }  // namespace

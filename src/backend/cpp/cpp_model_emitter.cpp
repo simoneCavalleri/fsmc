@@ -101,6 +101,31 @@ bool has_unresolved_identifiers(std::string_view expr) {
     return false;
 }
 
+std::string qualify_enum_literal(std::string_view tok, const FsmIr& model, std::string_view preferred_enum_type = "") {
+    if (!preferred_enum_type.empty()) {
+        for (const auto& ct : model.custom_types) {
+            if (ct.is_enum() && escape_cpp_keyword(ct.name) == preferred_enum_type) {
+                for (const auto& lit : ct.literals) {
+                    if (lit.name == tok) {
+                        return escape_cpp_keyword(ct.name) + "::" + escape_cpp_keyword(lit.name);
+                    }
+                }
+            }
+        }
+    }
+    for (const auto& ct : model.custom_types) {
+        if (!ct.is_enum()) {
+            continue;
+        }
+        for (const auto& lit : ct.literals) {
+            if (lit.name == tok) {
+                return escape_cpp_keyword(ct.name) + "::" + escape_cpp_keyword(lit.name);
+            }
+        }
+    }
+    return "";
+}
+
 std::string qualify_expression(std::string expr, const FsmIr& model) {
     std::string out;
     out.reserve(expr.size() + 16);
@@ -194,6 +219,11 @@ std::string qualify_expression(std::string expr, const FsmIr& model) {
                 }
                 if (is_signal_attr) {
                     out += "cmd." + escaped_tok;
+                    continue;
+                }
+                std::string qualified_enum = qualify_enum_literal(tok, model);
+                if (!qualified_enum.empty()) {
+                    out += qualified_enum;
                     continue;
                 }
             }
@@ -547,7 +577,8 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
         for (const auto& var : model.variables) {
             out << "    " << var.type.to_cpp_type() << " " << escape_cpp_keyword(var.name);
             if (!var.initial_value.empty()) {
-                out << "{" << var.initial_value << "}";
+                std::string qualified_init = qualify_enum_literal(var.initial_value, model, var.type.to_cpp_type());
+                out << "{" << (qualified_init.empty() ? var.initial_value : qualified_init) << "}";
             }
             out << ";";
             if (!var.description.empty()) {

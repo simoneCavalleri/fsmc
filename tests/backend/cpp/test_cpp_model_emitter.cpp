@@ -1343,3 +1343,40 @@ TEST(CppModelEmitter, DisambiguatesActionCollidingWithEventAndEmitsSignalEmitOp)
     EXPECT_NE(str.find("// emit signal: EvNext"), std::string::npos);
     EXPECT_NE(str.find("::then<EvNext_action>"), std::string::npos);
 }
+
+/**
+ * @brief Regression: bare enum literals in variable initializers and assignment/guard expressions are qualified
+ * with `EnumName::Literal` so `enum class` C++ code compiles without undeclared-identifier errors.
+ * @scenario Emit C++ for a model with `enum class Mode { IdleMode, RunMode }`, `m = IdleMode`, and `m = RunMode`.
+ * @expected Emits `Mode m{Mode::IdleMode};` and `reg.m = Mode::RunMode;`.
+ */
+TEST(CppModelEmitterTest, UnqualifiedEnumLiterals_QualifiedInInitialValuesAndExpressions) {
+    FsmIr model;
+    model.name = "EnumQualFsm";
+    model.initial_state = "Init";
+
+    TypeDefinition mode_enum =
+        TypeDefinition::make_enum("Mode", "uint8_t", {EnumLiteral{"IdleMode"}, EnumLiteral{"RunMode"}});
+    model.custom_types.push_back(std::move(mode_enum));
+
+    VariableDefinition var("m", DataType::from_string("Mode"), "IdleMode");
+    model.add_variable(var);
+
+    model.add_state("Init");
+    model.add_state("Active");
+    model.add_event("Start");
+
+    ActionSignature act("SetRunMode");
+    act.assignments.emplace_back(LValueTarget("m", LValueScope::Register), "RunMode");
+    model.add_action("SetRunMode");
+    model.transitions.emplace_back("Init", "Active", "Start", std::nullopt, act);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = false;
+    CppModelEmitter::emit_model(out, model, opts);
+    const std::string str = out.str();
+
+    EXPECT_NE(str.find("Mode m{Mode::IdleMode};"), std::string::npos);
+    EXPECT_NE(str.find("reg.m = Mode::RunMode;"), std::string::npos);
+}

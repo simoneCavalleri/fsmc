@@ -484,4 +484,30 @@ TEST(MermaidParser, TimeTriggerEventLabel_PopulatesTimeTrigger) {
     EXPECT_EQ(std::get<TimeTrigger>(ir.transitions[0].trigger).duration_in_ms(), 100u);
 }
 
+/**
+ * @brief Regression: `MermaidSerializer` emits `State : Event / Action` for
+ * `TransitionEdgeKind::Internal` transitions so `MermaidParser` preserves `Internal` kind across roundtrips.
+ * @scenario Serialize an internal transition `Busy --Ping--> Busy` to Mermaid and re-parse.
+ * @expected Re-parsed transition has `kind == TransitionEdgeKind::Internal`.
+ */
+TEST(MermaidParser, InternalTransition_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "MmdIntRt";
+    ir.initial_state = "Busy";
+    ir.add_state("Busy");
+    TransitionEdge t("Busy", "Busy", "Ping");
+    t.kind = TransitionEdgeKind::Internal;
+    ir.add_transition(t);
+
+    const std::string mmd = MermaidSerializer::serialize(ir);
+    EXPECT_NE(mmd.find("Busy : Ping"), std::string::npos);
+
+    MermaidParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(mmd, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 1u);
+    EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
+}
+
 }  // namespace

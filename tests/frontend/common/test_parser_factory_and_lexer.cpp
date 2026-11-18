@@ -242,7 +242,8 @@ TEST(LexerUtils, ReservedKeywords_EscapesCppKeywordsWithUnderscore) {
  * @expected ParserFactory::create returns StateflowParser (format_name() == "stateflow").
  */
 TEST(ParserFactoryTest, AutoDetectsStateflowXmlOverCameoXmi) {
-    const std::string xml_path = "/tmp/fsmc_test_stateflow_autodetect.xml";
+    const std::string xml_path =
+        (std::filesystem::temp_directory_path() / "fsmc_test_stateflow_autodetect.xml").string();
     {
         std::ofstream ofs(xml_path);
         ofs << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"

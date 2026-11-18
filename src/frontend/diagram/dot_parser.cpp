@@ -481,8 +481,14 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
                     assign_sig.has_value() ? std::move(*assign_sig) : ActionSignature(sanitize_identifier(action_name));
                 model.add_action(trans.transition_action->name);
             }
-            trans.kind = (src == dst && attrs.find("internal") != std::string::npos) ? TransitionEdgeKind::Internal
-                                                                                     : TransitionEdgeKind::External;
+            if (src == dst && attrs.find("internal") != std::string::npos) {
+                trans.kind = TransitionEdgeKind::Internal;
+            } else if (attrs.find("comment=\"local\"") != std::string::npos ||
+                       attrs.find("comment=local") != std::string::npos) {
+                trans.kind = TransitionEdgeKind::Local;
+            } else {
+                trans.kind = TransitionEdgeKind::External;
+            }
 
             model.add_state(src, current_parent_state);
             model.add_state(dst, current_parent_state);

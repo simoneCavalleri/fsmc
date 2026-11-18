@@ -265,16 +265,21 @@ std::string DotSerializer::serialize(const FsmIr& model) {
                     emitted_transitions.insert(i);
                     out << pad << "    " << escape_id(trans.source) << " -> " << escape_id(trans.target);
                     std::string label = build_label(trans, model);
-                    const bool is_int = (trans.kind == TransitionEdgeKind::Internal);
-                    if (!label.empty() || is_int) {
+                    const char* kind_comment = nullptr;
+                    if (trans.kind == TransitionEdgeKind::Internal) {
+                        kind_comment = "internal";
+                    } else if (trans.kind == TransitionEdgeKind::Local) {
+                        kind_comment = "local";
+                    }
+                    if (!label.empty() || kind_comment != nullptr) {
                         out << " [";
                         if (!label.empty()) {
                             out << "label=\"" << escape_label(label) << "\"";
                         }
-                        if (is_int) {
+                        if (kind_comment != nullptr) {
                             if (!label.empty())
                                 out << ", ";
-                            out << "comment=\"internal\"";
+                            out << "comment=\"" << kind_comment << "\"";
                         }
                         out << "]";
                     }
@@ -341,16 +346,21 @@ std::string DotSerializer::serialize(const FsmIr& model) {
         const auto& trans = model.transitions[i];
         out << "    " << escape_id(trans.source) << " -> " << escape_id(trans.target);
         std::string label = build_label(trans, model);
-        const bool is_int = (trans.kind == TransitionEdgeKind::Internal);
-        if (!label.empty() || is_int) {
+        const char* kind_comment = nullptr;
+        if (trans.kind == TransitionEdgeKind::Internal) {
+            kind_comment = "internal";
+        } else if (trans.kind == TransitionEdgeKind::Local) {
+            kind_comment = "local";
+        }
+        if (!label.empty() || kind_comment != nullptr) {
             out << " [";
             if (!label.empty()) {
                 out << "label=\"" << escape_label(label) << "\"";
             }
-            if (is_int) {
+            if (kind_comment != nullptr) {
                 if (!label.empty())
                     out << ", ";
-                out << "comment=\"internal\"";
+                out << "comment=\"" << kind_comment << "\"";
             }
             out << "]";
         }

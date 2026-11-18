@@ -193,6 +193,23 @@ std::string DotSerializer::serialize(const FsmIr& model) {
             if (is_parallel) {
                 out << pad << "    // @fsm:parallel\n";
             }
+            if (!state.traceability_reqs.empty() ||
+                (state.time_invariant.has_value() && !state.time_invariant->empty())) {
+                out << pad << "    // @fsm:state name=" << state.name;
+                if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
+                    out << " invariant=\"" << *state.time_invariant << "\"";
+                }
+                if (!state.traceability_reqs.empty()) {
+                    out << " satisfies=[";
+                    for (size_t r = 0; r < state.traceability_reqs.size(); ++r) {
+                        if (r > 0)
+                            out << ", ";
+                        out << "\"" << state.traceability_reqs[r] << "\"";
+                    }
+                    out << "]";
+                }
+                out << "\n";
+            }
             out << "\n";
 
             if (!is_parallel && !state.initial_sub_state.empty()) {
@@ -264,6 +281,23 @@ std::string DotSerializer::serialize(const FsmIr& model) {
                 label += "\\n(defer " + d_evt + ")";
             }
             out << pad << escape_id(state.name) << " [label=\"" << escape_label(label) << "\"];\n";
+            if (!state.traceability_reqs.empty() ||
+                (state.time_invariant.has_value() && !state.time_invariant->empty())) {
+                out << pad << "// @fsm:state name=" << state.name;
+                if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
+                    out << " invariant=\"" << *state.time_invariant << "\"";
+                }
+                if (!state.traceability_reqs.empty()) {
+                    out << " satisfies=[";
+                    for (size_t r = 0; r < state.traceability_reqs.size(); ++r) {
+                        if (r > 0)
+                            out << ", ";
+                        out << "\"" << state.traceability_reqs[r] << "\"";
+                    }
+                    out << "]";
+                }
+                out << "\n";
+            }
         }
     };
 

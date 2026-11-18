@@ -119,6 +119,14 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
                 }
                 continue;
             }
+            if (body.rfind("state", 0) == 0) {
+                std::vector<std::string> stack;
+                if (!current_parent_state.empty()) {
+                    stack.push_back(current_parent_state);
+                }
+                DirectiveParser::parse_state_directive(body, model, stack);
+                continue;
+            }
             DirectiveParser::parse_model_directive(body, model);
             continue;
         }

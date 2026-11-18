@@ -306,3 +306,52 @@ TEST(CommonActionFactoring, FusedBoundaryActions_NeverRefactoredIntoEntryOrExit)
         EXPECT_TRUE(t.transition_action.has_value());
     }
 }
+
+/**
+ * @brief Regression: `CommonActionFactoringPass` does not factor `TransitionEdgeKind::Local`
+ * transitions into composite `exit_actions` or `entry_actions` (local transitions do not exit/re-enter the composite).
+ */
+TEST(CommonActionFactoring, LocalTransitions_NotFactoredIntoCompositeEntryOrExit) {
+    FsmIr ir;
+    ir.name = "LocalActionFactoringTest";
+    ir.initial_state_id = "Active";
+
+    StateNode active("Active", "Active composite");
+    active.is_composite = true;
+    active.initial_sub_state = "SubA";
+    StateNode sub_a("SubA", "SubA", "Active");
+    StateNode sub_b("SubB", "SubB", "Active");
+    ir.states.push_back(active);
+    ir.states.push_back(sub_a);
+    ir.states.push_back(sub_b);
+
+    ActionSignature act;
+    StoreOp store_op;
+    store_op.target = LValueTarget("counter");
+    store_op.expression = "counter + 1";
+    act.instructions.emplace_back(store_op);
+
+    TransitionEdge t1("Active", "SubA", "Ev1");
+    t1.source_id = "Active";
+    t1.target_id = "SubA";
+    t1.kind = TransitionEdgeKind::Local;
+    t1.transition_action = act;
+    ir.add_transition(t1);
+
+    TransitionEdge t2("Active", "SubB", "Ev2");
+    t2.source_id = "Active";
+    t2.target_id = "SubB";
+    t2.kind = TransitionEdgeKind::Local;
+    t2.transition_action = act;
+    ir.add_transition(t2);
+
+    DiagnosticEngine diag;
+    CommonActionFactoringPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+
+    const auto* p_active = ir.find_state("Active");
+    ASSERT_NE(p_active, nullptr);
+    EXPECT_TRUE(p_active->exit_actions.empty());
+    EXPECT_TRUE(ir.transitions[0].transition_action.has_value());
+    EXPECT_TRUE(ir.transitions[1].transition_action.has_value());
+}

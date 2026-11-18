@@ -615,4 +615,39 @@ TEST(StateflowParserTest, ParsesParallelAndDecompositionIntoOrthogonalRegions) {
     EXPECT_EQ(op->orthogonal_regions[1].initial_state_id, "R2A");
 }
 
+/**
+ * @brief Verify StateflowParser marks external transitions entering a composite state with a HISTORY junction as
+ *        targeting history.
+ * @scenario Stateflow XML with composite 'Work' containing `<junction type="HISTORY"/>` and external `Paused -> Work`.
+ * @expected Transition `Paused -> Work` has `target_is_history == true` (and `target_is_deep_history == false`).
+ */
+TEST(StateflowParserTest, MarksIncomingTransitionsToHistoryCompositeAsHistoryTargets) {
+    const std::string xml = R"xml(
+<ModelInformation>
+  <Stateflow>
+    <machine name="SfHist">
+      <chart name="SfHist" initial="Paused">
+        <state id="1" name="Paused"/>
+        <state id="2" name="Work" initial="S1">
+          <junction id="10" type="HISTORY"/>
+          <state id="3" name="S1"/>
+          <state id="4" name="S2"/>
+        </state>
+        <transition src="Paused" dst="Work" labelString="RESUME"/>
+      </chart>
+    </machine>
+  </Stateflow>
+</ModelInformation>
+)xml";
+
+    StateflowParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, ir, err)) << "Error: " << err;
+
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    EXPECT_TRUE(ir.transitions[0].target_is_history);
+    EXPECT_FALSE(ir.transitions[0].target_is_deep_history);
+}
+
 }  // namespace

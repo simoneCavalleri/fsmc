@@ -748,7 +748,11 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
                                             (trans.guard ? *trans.guard : "") + "]");
     }
     if (!trans.source.empty() && trans.source_id.empty()) {
-        trans.source_id = compute_deterministic_id(trans.source);
+        if (const auto* resolved_src = model.find_state_by_name(trans.source)) {
+            trans.source_id = resolved_src->id;
+        } else {
+            trans.source_id = compute_deterministic_id(trans.source);
+        }
         if (trans.source_ids.empty()) {
             trans.source_ids.push_back(trans.source);
         }
@@ -757,7 +761,11 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
         }
     }
     if (!trans.target.empty() && trans.target_id.empty()) {
-        trans.target_id = compute_deterministic_id(trans.target);
+        if (const auto* dst_node = model.find_state_by_name(trans.target)) {
+            trans.target_id = dst_node->id;
+        } else {
+            trans.target_id = compute_deterministic_id(trans.target);
+        }
         if (trans.target_ids.empty()) {
             trans.target_ids.push_back(trans.target);
         }
@@ -1638,6 +1646,19 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
 
     if (out_ir.initial_state.empty() && !out_ir.states.empty()) {
         out_ir.initial_state = out_ir.states.front().name;
+    }
+
+    for (auto& edge : out_ir.transitions) {
+        if (!edge.source.empty()) {
+            if (const auto* src_node = out_ir.find_state_by_name(edge.source)) {
+                edge.source_id = src_node->id;
+            }
+        }
+        if (!edge.target.empty()) {
+            if (const auto* dst_node = out_ir.find_state_by_name(edge.target)) {
+                edge.target_id = dst_node->id;
+            }
+        }
     }
 
     return true;

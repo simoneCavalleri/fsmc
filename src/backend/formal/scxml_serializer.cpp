@@ -52,16 +52,30 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
     }
     out << ">\n";
 
+    auto emit_action_instructions = [&](const ActionSignature& act, const std::string& inner_pad) {
+        bool emitted_instruction = false;
+        for (const auto& inst : act.instructions) {
+            if (const auto* emit_op = std::get_if<SignalEmitOp>(&inst.op)) {
+                out << inner_pad << "<send event=\"" << escape_xml(emit_op->signal_name) << "\"/>\n";
+                emitted_instruction = true;
+            } else if (const auto* call_op = std::get_if<ActionCallOp>(&inst.op)) {
+                out << inner_pad << "<send event=\"" << escape_xml(call_op->function_name) << "\"/>\n";
+                emitted_instruction = true;
+            }
+        }
+        if (!emitted_instruction && act.assignments.empty() && !act.name.empty()) {
+            out << inner_pad << "<send event=\"" << escape_xml(act.name) << "\"/>\n";
+        }
+    };
+
     // OnEntry actions and variable assignments
     for (const auto& entry_act : state.entry_actions) {
         out << pad << "  <onentry>\n";
         for (const auto& assign : entry_act.assignments) {
-            out << pad << "    <assign location=\"" << escape_xml(assign.target.name) << "\" expr=\""
+            out << pad << "    <assign location=\"" << escape_xml(assign.target.full_path()) << "\" expr=\""
                 << escape_xml(assign.expression) << "\"/>\n";
         }
-        if (!entry_act.name.empty() && entry_act.name.rfind("entry_", 0) != 0) {
-            out << pad << "    <send event=\"" << escape_xml(entry_act.name) << "\"/>\n";
-        }
+        emit_action_instructions(entry_act, pad + "    ");
         out << pad << "  </onentry>\n";
     }
 
@@ -69,12 +83,10 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
     for (const auto& exit_act : state.exit_actions) {
         out << pad << "  <onexit>\n";
         for (const auto& assign : exit_act.assignments) {
-            out << pad << "    <assign location=\"" << escape_xml(assign.target.name) << "\" expr=\""
+            out << pad << "    <assign location=\"" << escape_xml(assign.target.full_path()) << "\" expr=\""
                 << escape_xml(assign.expression) << "\"/>\n";
         }
-        if (!exit_act.name.empty() && exit_act.name.rfind("exit_", 0) != 0) {
-            out << pad << "    <send event=\"" << escape_xml(exit_act.name) << "\"/>\n";
-        }
+        emit_action_instructions(exit_act, pad + "    ");
         out << pad << "  </onexit>\n";
     }
 
@@ -139,26 +151,31 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
             bool has_assignments =
                 (trans.condition_action.has_value() && !trans.condition_action->assignments.empty()) ||
                 (trans.transition_action.has_value() && !trans.transition_action->assignments.empty());
+            bool has_instructions =
+                (trans.condition_action.has_value() && !trans.condition_action->instructions.empty()) ||
+                (trans.transition_action.has_value() && !trans.transition_action->instructions.empty());
             std::string act_name = trans.get_action();
-            bool has_named_action = !act_name.empty() && act_name.rfind("act_", 0) != 0;
+            bool has_named_action =
+                !has_assignments && !has_instructions && !act_name.empty() && act_name.rfind("act_", 0) != 0;
 
-            if (!has_assignments && !has_named_action) {
+            if (!has_assignments && !has_instructions && !has_named_action) {
                 out << "/>\n";
             } else {
                 out << ">\n";
                 if (trans.condition_action.has_value()) {
                     for (const auto& a : trans.condition_action->assignments) {
-                        out << pad << "    <assign location=\"" << escape_xml(a.target.name) << "\" expr=\""
+                        out << pad << "    <assign location=\"" << escape_xml(a.target.full_path()) << "\" expr=\""
                             << escape_xml(a.expression) << "\"/>\n";
                     }
+                    emit_action_instructions(*trans.condition_action, pad + "    ");
                 }
                 if (trans.transition_action.has_value()) {
                     for (const auto& a : trans.transition_action->assignments) {
-                        out << pad << "    <assign location=\"" << escape_xml(a.target.name) << "\" expr=\""
+                        out << pad << "    <assign location=\"" << escape_xml(a.target.full_path()) << "\" expr=\""
                             << escape_xml(a.expression) << "\"/>\n";
                     }
-                }
-                if (has_named_action) {
+                    emit_action_instructions(*trans.transition_action, pad + "    ");
+                } else if (has_named_action) {
                     out << pad << "    <send event=\"" << escape_xml(act_name) << "\"/>\n";
                 }
                 out << pad << "  </transition>\n";

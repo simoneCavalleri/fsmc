@@ -854,4 +854,33 @@ TEST(CameoParser, ForkJoinEntryAndExitPoints_PreservedAcrossSerializerRoundtrip)
     EXPECT_EQ(parsed.find_state("Xp")->kind, StateKind::ExitPoint);
 }
 
+/**
+ * @brief Regression: `CameoSerializer` emits `trigger="when(<expr>)"` for `ChangeTrigger`
+ * transitions so `CameoXmiGraphResolver` preserves `ChangeTrigger` across Cameo XMI roundtrips.
+ * @scenario Serialize a transition with `ChangeTrigger("count > 5")` to Cameo XMI and re-parse.
+ * @expected Serialized XMI contains `trigger="when(count &gt; 5)"` and re-parsed transition holds `ChangeTrigger`.
+ */
+TEST(CameoParser, ChangeTrigger_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "CameoChangeRt";
+    ir.initial_state = "Wait";
+    ir.add_state("Wait");
+    ir.add_state("Done");
+    ir.add_variable(VariableDefinition("count", DataType::int32(), "0"));
+    TransitionEdge t("Wait", "Done", "");
+    t.trigger = ChangeTrigger("count > 5", true);
+    ir.add_transition(t);
+
+    const std::string xmi = fsm::backend::formal::CameoSerializer::serialize(ir);
+    EXPECT_NE(xmi.find("trigger=\"when(count &gt; 5)\""), std::string::npos) << xmi;
+
+    CameoXmiParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xmi, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ChangeTrigger>(parsed.transitions[0].trigger));
+    EXPECT_EQ(std::get<ChangeTrigger>(parsed.transitions[0].trigger).raw_expression, "count > 5");
+}
+
 }  // namespace

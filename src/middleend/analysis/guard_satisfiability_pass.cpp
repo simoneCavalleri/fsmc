@@ -104,6 +104,21 @@ bool GuardSatisfiabilityPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         groups[{src, evt}].push_back(&t);
     }
 
+    auto resolve_guard = [&](const std::string& g) -> std::string {
+        for (const auto& gm : ir.guards) {
+            if (gm.name == g) {
+                if (gm.normalized_expression.has_value() && !gm.normalized_expression->empty()) {
+                    return *gm.normalized_expression;
+                }
+                if (gm.raw_expression.has_value() && !gm.raw_expression->empty()) {
+                    return *gm.raw_expression;
+                }
+                break;
+            }
+        }
+        return g;
+    };
+
     for (const auto& [key, trans_list] : groups) {
         const auto& [src, evt] = key;
 
@@ -112,7 +127,7 @@ bool GuardSatisfiabilityPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             if (!t->guard.has_value() || t->guard->empty()) {
                 continue;
             }
-            const std::string& g_str = *t->guard;
+            const std::string g_str = resolve_guard(*t->guard);
             auto constraints = extract_guard_constraints(g_str);
             for (const auto& [var, ival] : constraints) {
                 if (ival.is_empty()) {
@@ -135,7 +150,8 @@ bool GuardSatisfiabilityPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 continue;
             }
 
-            auto c1 = extract_guard_constraints(*t1->guard);
+            const std::string g1 = resolve_guard(*t1->guard);
+            auto c1 = extract_guard_constraints(g1);
 
             for (std::size_t j = i + 1; j < trans_list.size(); ++j) {
                 const auto* t2 = trans_list[j];
@@ -148,14 +164,14 @@ bool GuardSatisfiabilityPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                     continue;
                 }
 
-                auto c2 = extract_guard_constraints(*t2->guard);
+                const std::string g2 = resolve_guard(*t2->guard);
+                auto c2 = extract_guard_constraints(g2);
 
                 // If identical guard strings -> always overlapping
-                if (*t1->guard == *t2->guard) {
-                    diag.report(Diagnostic::warning("W0301", "Potentially overlapping guards on transitions from '" +
-                                                                 src + "' on event '" + evt + "': guards ['" +
-                                                                 *t1->guard + "'] and ['" + *t2->guard +
-                                                                 "'] may be simultaneously satisfiable."));
+                if (g1 == g2) {
+                    diag.report(Diagnostic::warning(
+                        "W0301", "Potentially overlapping guards on transitions from '" + src + "' on event '" + evt +
+                                     "': guards ['" + g1 + "'] and ['" + g2 + "'] may be simultaneously satisfiable."));
                     continue;
                 }
 

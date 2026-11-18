@@ -809,4 +809,33 @@ TEST(SmvParser, StateReqsTimeInvariantAndParallelKind_PreservedAcrossRoundtrip) 
     EXPECT_EQ(p_ortho->kind, StateKind::Parallel);
 }
 
+/**
+ * @brief Regression: `SmvSerializer` emits `-- @fsm:choice name=...` directives for `ChoiceNode`
+ * entries so `SmvParser` preserves `choice_nodes` without turning them into regular states.
+ * @scenario Serialize an FSM with `ChoiceNode("C1")` to SMV and re-parse.
+ * @expected Re-parsed IR has `is_choice_node("C1") == true`, `!choice_nodes.empty()`, and `find_state("C1") ==
+ * nullptr`.
+ */
+TEST(SmvParser, ChoiceNode_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "SmvChoiceRt";
+    ir.initial_state = "Init";
+    ir.add_state("Init");
+    ir.add_choice_node("C1");
+    ir.add_state("High");
+    ir.add_transition(TransitionEdge("Init", "C1", "Eval"));
+    ir.add_transition(TransitionEdge("C1", "High", ""));
+
+    const std::string smv = fsm::backend::formal::SmvSerializer::serialize(ir);
+    EXPECT_NE(smv.find("-- @fsm:choice name=C1"), std::string::npos) << smv;
+
+    SmvParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err;
+    EXPECT_TRUE(parsed.is_choice_node("C1"));
+    EXPECT_FALSE(parsed.choice_nodes.empty());
+    EXPECT_EQ(parsed.find_state("C1"), nullptr);
+}
+
 }  // namespace

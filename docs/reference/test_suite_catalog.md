@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 699  
+**Total Documented Test Cases**: 700  
 
 ---
 
@@ -1272,6 +1272,9 @@
 
 #### `SmvParser.StateReqsTimeInvariantAndParallelKind_PreservedAcrossRoundtrip`
 **Test Intent**: Regression: `SmvSerializer` emits `invariant="..."`, `kind=parallel`, and `-- @fsm:req`
+
+#### `SmvParser.ChoiceNode_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `SmvSerializer` emits `-- @fsm:choice name=...` directives for `ChoiceNode`
 
 ### [`test_stateflow_parser.cpp`](../../tests/frontend/formal/test_stateflow_parser.cpp) (`tests/frontend/formal/test_stateflow_parser.cpp`)
 #### `StateflowParser.BasicStateflowChart_ParsedIntoValidFsmIr`

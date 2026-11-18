@@ -630,6 +630,13 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
     if (!action.empty() || !assignments.empty() || !instructions.empty()) {
         std::string act_name =
             !action.empty() ? sanitize_identifier(action) : ("act_" + trans.source + "_" + trans.target);
+        if (action.empty() && !event_tokens.empty() && !event_tokens[0].empty()) {
+            act_name += "_" + sanitize_identifier(event_tokens[0]);
+        }
+        if (action.empty() && std::any_of(model.actions.begin(), model.actions.end(),
+                                          [&](const auto& a) { return a.name == act_name; })) {
+            act_name += "_" + std::to_string(model.transitions.size() + 1);
+        }
         ActionSignature sig;
         sig.name = act_name;
         sig.assignments = assignments;

@@ -217,6 +217,11 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
                     std::string dst_id = id_map.count(trans.target) ? id_map[trans.target] : trans.target;
                     out << rpad << "  <transition xmi:id=\"_t" << (i + 1) << "\" source=\"" << src_id << "\" target=\""
                         << dst_id << "\"";
+                    if (trans.kind == TransitionEdgeKind::Internal) {
+                        out << " kind=\"internal\"";
+                    } else if (trans.kind == TransitionEdgeKind::Local) {
+                        out << " kind=\"local\"";
+                    }
                     if (trans.priority > 0) {
                         out << " priority=\"" << trans.priority << "\"";
                     }
@@ -285,6 +290,11 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
         std::string dst_id = id_map.count(trans.target) ? id_map[trans.target] : trans.target;
         out << "        <transition xmi:id=\"_t" << (i + 1) << "\" source=\"" << src_id << "\" target=\"" << dst_id
             << "\"";
+        if (trans.kind == TransitionEdgeKind::Internal) {
+            out << " kind=\"internal\"";
+        } else if (trans.kind == TransitionEdgeKind::Local) {
+            out << " kind=\"local\"";
+        }
         if (trans.priority > 0) {
             out << " priority=\"" << trans.priority << "\"";
         }

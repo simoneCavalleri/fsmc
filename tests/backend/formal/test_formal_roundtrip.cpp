@@ -1198,4 +1198,30 @@ TEST(FormalRoundtrip, SmvSerializer_EmitsEnumSetForEnumTypedVariables) {
     EXPECT_EQ(smv.find("m : 0..100;"), std::string::npos);
 }
 
+/**
+ * @brief Regression: `CameoSerializer` emits `kind="internal"` on internal transitions so `CameoXmiParser`
+ * preserves `TransitionEdgeKind::Internal` across roundtrips.
+ * @scenario Serialize an `FsmIr` with an internal transition on `Idle` to Cameo XMI, then re-parse.
+ * @expected Re-parsed transition has `kind == TransitionEdgeKind::Internal`.
+ */
+TEST(FormalRoundtrip, CameoSerializer_PreservesInternalTransitionKind) {
+    FsmIr ir;
+    ir.name = "CameoInternalRt";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+    TransitionEdge t("Idle", "Idle", "Ping");
+    t.kind = TransitionEdgeKind::Internal;
+    ir.add_transition(t);
+
+    const std::string xmi = CameoSerializer::serialize(ir);
+    EXPECT_NE(xmi.find("kind=\"internal\""), std::string::npos);
+
+    CameoXmiParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xmi, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 1u);
+    EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
+}
+
 }  // namespace

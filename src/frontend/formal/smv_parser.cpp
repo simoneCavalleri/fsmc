@@ -94,28 +94,49 @@ bool SmvParser::parse(std::string_view content, FsmIr& model, std::string& error
         }
 
         // Temporal logic specifications
-        if (trimmed.rfind("LTLSPEC", 0) == 0) {
-            std::string formula = trim(trimmed.substr(7));
-            if (!formula.empty() && formula.back() == ';') {
-                formula.pop_back();
+        if (trimmed.rfind("LTLSPEC", 0) == 0 || trimmed.rfind("CTLSPEC", 0) == 0 ||
+            trimmed.rfind("INVARSPEC", 0) == 0) {
+            PropertyKind kind = PropertyKind::Liveness;
+            std::string default_prefix = "ltl_spec_";
+            std::size_t kw_len = 7;
+            if (trimmed.rfind("CTLSPEC", 0) == 0) {
+                kind = PropertyKind::Safety;
+                default_prefix = "ctl_spec_";
+                kw_len = 7;
+            } else if (trimmed.rfind("INVARSPEC", 0) == 0) {
+                kind = PropertyKind::Invariant;
+                default_prefix = "invar_spec_";
+                kw_len = 9;
+            }
+            std::string rest = trim(trimmed.substr(kw_len));
+            std::string comment_name;
+            auto c_pos = rest.find("--");
+            if (c_pos != std::string::npos) {
+                comment_name = trim(rest.substr(c_pos + 2));
+                rest = trim(rest.substr(0, c_pos));
+            }
+            while (rest.empty() && std::getline(stream, line)) {
+                std::string next_trim = trim(line);
+                if (next_trim.empty() || next_trim.rfind("--", 0) == 0) {
+                    continue;
+                }
+                auto nc_pos = next_trim.find("--");
+                if (nc_pos != std::string::npos) {
+                    next_trim = trim(next_trim.substr(0, nc_pos));
+                }
+                rest = next_trim;
+            }
+            if (!rest.empty() && rest.back() == ';') {
+                rest.pop_back();
             }
             FormalProperty prop;
-            prop.name = "ltl_spec_" + std::to_string(model.properties.size() + 1);
-            prop.kind = PropertyKind::Liveness;
-            prop.raw_formula = trim(formula);
-            model.add_property(std::move(prop));
-            continue;
-        }
-        if (trimmed.rfind("INVARSPEC", 0) == 0) {
-            std::string formula = trim(trimmed.substr(9));
-            if (!formula.empty() && formula.back() == ';') {
-                formula.pop_back();
+            prop.name = !comment_name.empty() ? sanitize_identifier(comment_name)
+                                              : (default_prefix + std::to_string(model.properties.size() + 1));
+            prop.kind = kind;
+            prop.raw_formula = trim(rest);
+            if (!prop.raw_formula.empty()) {
+                model.add_property(std::move(prop));
             }
-            FormalProperty prop;
-            prop.name = "invar_spec_" + std::to_string(model.properties.size() + 1);
-            prop.kind = PropertyKind::Invariant;
-            prop.raw_formula = trim(formula);
-            model.add_property(std::move(prop));
             continue;
         }
 

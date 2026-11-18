@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 718  
+**Total Documented Test Cases**: 719  
 
 ---
 
@@ -1908,6 +1908,9 @@
 
 #### `DeadActionElimination.ActionAssignments_DeadStoresEliminated`
 **Test Intent**: Verify DeadActionEliminationPass eliminates dead stores from act.assignments.
+
+#### `DeadActionElimination.SymbolicGuardMetadata_VariablesPreservedAsLiveReads`
+**Test Intent**: Regression: DeadActionEliminationPass resolves symbolic guard names against `ir.guards`
 
 #### `RegisterLiveness.DisjointVariableLifetimes_SharesAllocatedRegisters`
 **Test Intent**: Verify RegisterLivenessPass shares hardware register allocations for variables with disjoint lifetimes.

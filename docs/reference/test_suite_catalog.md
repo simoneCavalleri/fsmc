@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 720  
+**Total Documented Test Cases**: 721  
 
 ---
 
@@ -648,6 +648,9 @@
 
 #### `McdcHarness.AvionicsModel_DriverHarnessSynthesized`
 **Test Intent**: Verify synthesis of driver harness for multi-condition avionics transition.
+
+#### `McdcHarness.SymbolicGuardMetadata_ResolvedForMcdcPairs`
+**Test Intent**: Regression: `McdcHarnessGenerator` resolves symbolic guard names via `FsmIr::guards`
 
 ---
 

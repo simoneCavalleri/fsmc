@@ -99,4 +99,30 @@ TEST(McdcHarness, AvionicsModel_DriverHarnessSynthesized) {
     EXPECT_NE(harness.find("McdcCoverage"), std::string::npos);
 }
 
+/**
+ * @brief Regression: `McdcHarnessGenerator` resolves symbolic guard names via `FsmIr::guards`
+ * so composite guards imported from formal frontends produce full MC/DC independence pairs.
+ */
+TEST(McdcHarness, SymbolicGuardMetadata_ResolvedForMcdcPairs) {
+    FsmIr model;
+    model.name = "SymbolicMcdcFSM";
+    model.add_state("Idle");
+    model.add_state("Armed");
+    model.add_guard("guard_arm_ready", "", std::optional<std::string>{"SensorOk && BatteryOk"},
+                    std::optional<std::string>{"SensorOk && BatteryOk"});
+
+    TransitionEdge t;
+    t.source = "Idle";
+    t.target = "Armed";
+    t.event = "Arm";
+    t.guard = "guard_arm_ready";
+    model.add_transition(t);
+
+    std::string harness = McdcHarnessGenerator::generate_gtest_harness(model);
+    EXPECT_EQ(harness.find("NoCompositeGuards"), std::string::npos);
+    EXPECT_NE(harness.find("SensorOk"), std::string::npos);
+    EXPECT_NE(harness.find("BatteryOk"), std::string::npos);
+    EXPECT_NE(harness.find("McdcCoverage_Trans_1_Idle_to_Armed"), std::string::npos);
+}
+
 }  // namespace

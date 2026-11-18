@@ -537,6 +537,16 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
         }
         out << " : " << sanitize_smv_ident(dst) << ";";
         std::string act = t.get_action();
+        if (t.transition_action.has_value() && !t.transition_action->assignments.empty()) {
+            act.clear();
+            for (std::size_t i = 0; i < t.transition_action->assignments.size(); ++i) {
+                if (i > 0) {
+                    act += "; ";
+                }
+                const auto& asgn = t.transition_action->assignments[i];
+                act += asgn.target.full_path() + " = " + asgn.expression;
+            }
+        }
         if (!act.empty()) {
             out << " -- action: " << act;
         }

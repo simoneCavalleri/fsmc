@@ -1252,4 +1252,38 @@ TEST(FormalRoundtrip, Sysml2Serializer_PreservesInternalTransitionKind) {
     EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
 }
 
+/**
+ * @brief Regression: `SmvSerializer` emits `-- action: <assignments>` on `next(state)` transitions
+ * when `transition_action->assignments` is non-empty, so `SmvParser` preserves variable assignments
+ * across SMV roundtrips instead of reducing them to empty stub actions.
+ * @scenario Serialize a transition with `x = 1` to SMV and re-parse with `SmvParser`.
+ * @expected Re-parsed transition action has `assignments[0].target == "x"` and `expression == "1"`.
+ */
+TEST(FormalRoundtrip, SmvSerializer_PreservesTransitionAssignmentsAcrossRoundtrip) {
+    FsmIr ir;
+    ir.name = "SmvAssignRt";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+    ir.add_state("Done");
+    ir.add_variable(VariableDefinition("x", DataType::int32(), "0"));
+    ActionSignature act("assign_x");
+    act.assignments.emplace_back(LValueTarget("x", LValueScope::Register), "1");
+    ir.add_action("assign_x");
+    TransitionEdge t("Idle", "Done", "Go", std::nullopt, act);
+    ir.add_transition(t);
+
+    const std::string smv = SmvSerializer::serialize(ir);
+    EXPECT_NE(smv.find("-- action: x = 1"), std::string::npos);
+
+    SmvParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 1u);
+    ASSERT_TRUE(parsed.transitions[0].transition_action.has_value());
+    ASSERT_EQ(parsed.transitions[0].transition_action->assignments.size(), 1u);
+    EXPECT_EQ(parsed.transitions[0].transition_action->assignments[0].target, "x");
+    EXPECT_EQ(parsed.transitions[0].transition_action->assignments[0].expression, "1");
+}
+
 }  // namespace

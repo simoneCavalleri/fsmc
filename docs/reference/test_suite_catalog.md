@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 702  
+**Total Documented Test Cases**: 703  
 
 ---
 
@@ -1197,6 +1197,10 @@
 #### `ScxmlSerializerTest.ChoiceNode_PreservedAcrossRoundtrip`
 **Test Intent**: Regression: `ScxmlSerializer` emits `kind="choice"` for `ChoiceNode` entries so
 `ScxmlParser` preserves `choice_nodes` across SCXML roundtrips.
+
+#### `ScxmlSerializerTest.MultiReqsAndSignalAttributes_PreservedAcrossRoundtrip`
+**Test Intent**: Regression: `ScxmlSerializer` and `ScxmlParser` preserve multiple `traceability_reqs`
+(`satisfies="REQ_001, REQ_002"`) and typed `SignalDefinition::attributes` across SCXML roundtrips.
 
 ### [`test_scxml_semantic_completeness.cpp`](../../tests/frontend/formal/test_scxml_semantic_completeness.cpp) (`tests/frontend/formal/test_scxml_semantic_completeness.cpp`)
 #### `ScxmlSemanticCompleteness.ParallelRegions_ParsedAsOrthogonalStates`

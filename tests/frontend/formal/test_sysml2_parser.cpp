@@ -1073,4 +1073,38 @@ state def HistMachine {
     EXPECT_TRUE(found_deep);
 }
 
+/**
+ * @brief Regression: multi-line `doc` block annotations without trailing semicolons do not bleed
+ * into the following `state def` / `state` / `transition` statement.
+ * @scenario Parse a SysML2 `package` containing a multi-line `doc` block comment followed by `state def PkgFsm`.
+ * @expected Both `Init` and `Ready` states and the `Init -> Ready` transition are preserved.
+ */
+TEST(Sysml2Parser, MultilineDocCommentBeforeStateDef_DoesNotCorruptStateParsing) {
+    const std::string sysml = R"sysml(
+package FlightPkg {
+    doc /* Multi-line
+           SysML2 doc comment */
+    state def PkgFsm {
+        entry; then Init;
+        state Init;
+        state Ready;
+        transition t1 first Init then Ready accept Boot;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+    EXPECT_EQ(model.package, "FlightPkg");
+    EXPECT_EQ(model.name, "PkgFsm");
+    EXPECT_NE(model.find_state("Init"), nullptr);
+    EXPECT_NE(model.find_state("Ready"), nullptr);
+    ASSERT_EQ(model.transitions.size(), 1u);
+    EXPECT_EQ(model.transitions[0].source, "Init");
+    EXPECT_EQ(model.transitions[0].target, "Ready");
+    EXPECT_EQ(model.transitions[0].event, "Boot");
+}
+
 }  // namespace

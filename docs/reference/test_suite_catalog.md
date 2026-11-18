@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 622  
+**Total Documented Test Cases**: 623  
 
 ---
 
@@ -1210,6 +1210,9 @@
 
 #### `Sysml2ParserTest.ParsesHistoryAndDeepHistoryStateDeclarations`
 **Test Intent**: Verify history state and deep history state declarations resolve parent history targets.
+
+#### `Sysml2Parser.MultilineDocCommentBeforeStateDef_DoesNotCorruptStateParsing`
+**Test Intent**: Regression: multi-line `doc` block annotations without trailing semicolons do not bleed
 
 ### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`

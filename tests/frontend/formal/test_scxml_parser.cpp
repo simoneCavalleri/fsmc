@@ -453,4 +453,38 @@ TEST(ScxmlParser, SingleQuotedDataString_NormalizesToDoubleQuotes) {
     EXPECT_EQ(var->initial_value, R"("hello")");
 }
 
+/**
+ * @brief Regression: Multiple SCXML transitions between the same `source` and `target` states
+ * (e.g. internal transitions for `Ping` and `Tick`) receive distinct synthetic action names
+ * so their `<assign>` operations do not collide in C++ codegen.
+ * @scenario Parse `<state id="Idle">` with two internal transitions `Ping` (`x = x + 1`) and `Tick` (`x = x + 2`).
+ * @expected `transitions[0].transition_action->name != transitions[1].transition_action->name`.
+ */
+TEST(ScxmlParser, MultipleTransitionsSameEndpoints_GenerateDistinctSyntheticActionNames) {
+    const std::string scxml = R"xml(
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Idle">
+  <datamodel>
+    <data id="x" expr="0"/>
+  </datamodel>
+  <state id="Idle">
+    <transition event="Ping" type="internal">
+      <assign location="x" expr="x + 1"/>
+    </transition>
+    <transition event="Tick">
+      <assign location="x" expr="x + 2"/>
+    </transition>
+  </state>
+</scxml>
+)xml";
+
+    ScxmlParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(scxml, ir, err)) << err;
+    ASSERT_EQ(ir.transitions.size(), 2u);
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    ASSERT_TRUE(ir.transitions[1].transition_action.has_value());
+    EXPECT_NE(ir.transitions[0].transition_action->name, ir.transitions[1].transition_action->name);
+}
+
 }  // namespace

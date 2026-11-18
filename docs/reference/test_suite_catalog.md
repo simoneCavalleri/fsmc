@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 652  
+**Total Documented Test Cases**: 653  
 
 ---
 
@@ -1082,6 +1082,10 @@
 
 #### `ScxmlParser.SingleQuotedDataString_NormalizesToDoubleQuotes`
 **Test Intent**: Regression: Single-quoted SCXML string `<data id="msg" expr="'hello'"/>` normalizes outer
+
+#### `ScxmlParser.MultipleTransitionsSameEndpoints_GenerateDistinctSyntheticActionNames`
+**Test Intent**: Regression: Multiple SCXML transitions between the same `source` and `target` states
+(e.g. internal transitions for `Ping` and `Tick`) receive distinct synthetic action names
 
 ### [`test_scxml_semantic_completeness.cpp`](../../tests/frontend/formal/test_scxml_semantic_completeness.cpp) (`tests/frontend/formal/test_scxml_semantic_completeness.cpp`)
 #### `ScxmlSemanticCompleteness.ParallelRegions_ParsedAsOrthogonalStates`

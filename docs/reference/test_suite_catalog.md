@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 649  
+**Total Documented Test Cases**: 650  
 
 ---
 
@@ -1181,6 +1181,9 @@
 
 #### `StateflowParser.MatlabNegationOperators_NormalizedToCpp`
 **Test Intent**: Regression: Stateflow MATLAB `~=` and `~` guard operators are normalized to `!=` and `!`.
+
+#### `StateflowParser.MatlabPercentCommentsInGuardAndAction_StrippedCleanly`
+**Test Intent**: Regression: `StateflowParser` strips MATLAB `%` line comments inside guard and action
 
 ### [`test_stateflow_slx_ingestion.cpp`](../../tests/frontend/formal/test_stateflow_slx_ingestion.cpp) (`tests/frontend/formal/test_stateflow_slx_ingestion.cpp`)
 #### `StateflowSlxIngestion.IngestStoredSlxContainer_ParsesModelDirectly`

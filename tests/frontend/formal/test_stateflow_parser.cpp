@@ -685,4 +685,37 @@ TEST(StateflowParser, MatlabNegationOperators_NormalizedToCpp) {
     EXPECT_TRUE(found_neq);
 }
 
+/**
+ * @brief Regression: `StateflowParser` strips MATLAB `%` line comments inside guard and action
+ * expressions so comments like `[x == 0 % check zero]` do not corrupt the guard expression.
+ * @scenario Parse Stateflow transition `Go [x == 0 % check zero] / x = 1; % done`.
+ * @expected Guard `raw_expression == "x == 0"` and action assigns `x = 1`.
+ */
+TEST(StateflowParser, MatlabPercentCommentsInGuardAndAction_StrippedCleanly) {
+    const std::string xml = R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<Stateflow>
+  <machine name="SfGComment">
+    <chart id="1" name="SfGComment">
+      <!-- @fsm:var name=x type=int init=0 -->
+      <state id="10" name="Idle"/>
+      <state id="20" name="Done"/>
+      <transition src="Idle" dst="Done" labelString="Go [x == 0 % check zero] / x = 1; % done"/>
+    </chart>
+  </machine>
+</Stateflow>
+)xml";
+
+    StateflowParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, ir, err)) << "Error: " << err;
+    ASSERT_EQ(ir.guards.size(), 1u);
+    EXPECT_EQ(ir.guards[0].raw_expression, "x == 0");
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    ASSERT_EQ(ir.transitions[0].transition_action->assignments.size(), 1u);
+    EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].target, "x");
+    EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].expression, "1");
+}
+
 }  // namespace

@@ -10,9 +10,13 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
+#include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/backend/emitter_factory.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/frontend/common/parser_factory.hpp"
@@ -229,6 +233,203 @@ TEST(GoldenPassInvariance, MiddleEndPassesPreserveGoldenInvariants) {
     ASSERT_NE(active, nullptr);
     EXPECT_EQ(active->traceability_reqs.size(), 2u);
     EXPECT_FALSE(active->exit_actions.empty() && !active->entry_actions.empty());
+}
+
+/**
+ * @brief Differential E2E test: verifies identical runtime behavior between unoptimized (-O0)
+ * and middle-end optimized (-O2) generated C++20 state machines across hierarchical, local,
+ * internal, and guarded transitions.
+ */
+TEST(GoldenDifferentialE2E, UnoptimizedVsOptimizedCpp20_ProducesIdenticalRuntimeTrace) {
+    auto build_diff_ir = [](std::string pkg) {
+        FsmIr ir;
+        ir.name = "DiffE2EFsm";
+        ir.package = std::move(pkg);
+        ir.initial_state = "Idle";
+
+        ir.add_variable(VariableDefinition("ticks", DataType::int32(), "0"));
+        ir.add_variable(VariableDefinition("flag", DataType::boolean(), "true"));
+
+        ir.add_signal(SignalDefinition("Start"));
+        ir.add_signal(SignalDefinition("Ping"));
+        ir.add_signal(SignalDefinition("Step"));
+        ir.add_signal(SignalDefinition("Reset"));
+        ir.add_signal(SignalDefinition("Stop"));
+
+        auto& idle = ir.add_state("Idle");
+        ActionSignature idle_entry("idle_entry");
+        idle_entry.assignments.emplace_back(LValueTarget("ticks"), "1", AssignmentOp::AddAssign);
+        idle.entry_actions.push_back(idle_entry);
+
+        auto& active = ir.add_state("Active");
+        active.is_composite = true;
+        active.initial_sub_state = "SubA";
+        ActionSignature act_entry("act_entry");
+        act_entry.assignments.emplace_back(LValueTarget("ticks"), "10", AssignmentOp::AddAssign);
+        active.entry_actions.push_back(act_entry);
+        ActionSignature act_exit("act_exit");
+        act_exit.assignments.emplace_back(LValueTarget("ticks"), "100", AssignmentOp::AddAssign);
+        active.exit_actions.push_back(act_exit);
+
+        auto& sub_a = ir.add_state("SubA", "Active");
+        (void)sub_a;
+        auto& sub_b = ir.add_state("SubB", "Active");
+        ActionSignature subb_entry("subb_entry");
+        subb_entry.assignments.emplace_back(LValueTarget("ticks"), "5", AssignmentOp::AddAssign);
+        sub_b.entry_actions.push_back(subb_entry);
+
+        ir.add_guard("g_flag", "", std::optional<std::string>{"flag == true"},
+                     std::optional<std::string>{"flag == true"});
+
+        TransitionEdge t1("Idle", "Active", "Start", "g_flag");
+        ir.add_transition(t1);
+
+        TransitionEdge t_int("SubA", "SubA", "Ping");
+        t_int.kind = TransitionEdgeKind::Internal;
+        ActionSignature int_act("int_act");
+        int_act.assignments.emplace_back(LValueTarget("ticks"), "2", AssignmentOp::AddAssign);
+        t_int.transition_action = int_act;
+        ir.add_transition(t_int);
+
+        TransitionEdge t_step("SubA", "SubB", "Step");
+        ir.add_transition(t_step);
+
+        TransitionEdge t_loc("Active", "SubA", "Reset");
+        t_loc.kind = TransitionEdgeKind::Local;
+        ir.add_transition(t_loc);
+
+        TransitionEdge t_stop("Active", "Idle", "Stop");
+        ir.add_transition(t_stop);
+
+        return ir;
+    };
+
+    FsmIr ir_o0 = build_diff_ir("o0");
+    FsmIr ir_o2 = build_diff_ir("o2");
+
+    DiagnosticEngine diag;
+    ConstantFoldingPass().run(ir_o2, diag);
+    DeadActionEliminationPass().run(ir_o2, diag);
+    TransitionFusionPass().run(ir_o2, diag);
+    CommonActionFactoringPass().run(ir_o2, diag);
+    BoundaryActionFusionPass().run(ir_o2, diag);
+
+    fsm::backend::cpp::GeneratorOptions opts;
+    opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
+    opts.standalone = true;
+    opts.include_stubs = true;
+
+    const std::string code_o0 = fsm::backend::cpp::CppGenerator::generate_header(ir_o0, opts);
+    const std::string code_o2 = fsm::backend::cpp::CppGenerator::generate_header(ir_o2, opts);
+
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::temp_directory_path() / "fsmc_diff_e2e_test";
+    fs::create_directories(tmp_dir);
+
+    {
+        std::ofstream f0(tmp_dir / "fsm_o0.hpp");
+        f0 << code_o0;
+        std::ofstream f2(tmp_dir / "fsm_o2.hpp");
+        f2 << code_o2;
+        std::ofstream drv(tmp_dir / "driver.cpp");
+        drv << R"cpp(
+#include "fsm_o0.hpp"
+#include "fsm_o2.hpp"
+
+            int main() {
+                o0::DiffE2EFsmRegisters reg0{0, true};
+                o2::DiffE2EFsmRegisters reg2{0, true};
+                o0::DiffE2EFsm m0(reg0);
+                o2::DiffE2EFsm m2(reg2);
+                if (reg0.ticks != reg2.ticks || m0.current_state_name() != m2.current_state_name())
+                    return 1;
+
+                m0.dispatch(o0::Start{});
+                m2.dispatch(o2::Start{});
+                if (reg0.ticks != reg2.ticks || m0.current_state_name() != m2.current_state_name())
+                    return 2;
+
+                m0.dispatch(o0::Ping{});
+                m2.dispatch(o2::Ping{});
+                if (reg0.ticks != reg2.ticks || m0.current_state_name() != m2.current_state_name())
+                    return 3;
+
+                m0.dispatch(o0::Step{});
+                m2.dispatch(o2::Step{});
+                if (reg0.ticks != reg2.ticks || m0.current_state_name() != m2.current_state_name())
+                    return 4;
+
+                m0.dispatch(o0::Reset{});
+                m2.dispatch(o2::Reset{});
+                if (reg0.ticks != reg2.ticks || m0.current_state_name() != m2.current_state_name())
+                    return 5;
+
+                m0.dispatch(o0::Stop{});
+                m2.dispatch(o2::Stop{});
+                if (reg0.ticks != reg2.ticks || m0.current_state_name() != m2.current_state_name())
+                    return 6;
+
+                return 0;
+            }
+        )cpp";
+    }
+
+    const fs::path exe = tmp_dir / "diff_runner";
+    const std::string cmd = "g++ -std=c++20 -Wall -Wextra -Werror \"" + (tmp_dir / "driver.cpp").string() + "\" -o \"" +
+                            exe.string() + "\"";
+    ASSERT_EQ(std::system(cmd.c_str()), 0) << "Compilation of differential C++20 test failed";
+    EXPECT_EQ(std::system(exe.string().c_str()), 0) << "Runtime divergence detected between -O0 and -O2";
+    fs::remove_all(tmp_dir);
+}
+
+/**
+ * @brief Property-based parser robustness test: exercises irregular whitespace, tabs,
+ * nested parentheses in guards, and underscore/digit identifiers across textual frontends.
+ */
+TEST(GoldenParserFuzz, IrregularFormattingAndNestedGuards_ParsedCleanlyWithoutCrash) {
+    struct FuzzCase {
+        std::string format;
+        std::string source;
+    };
+
+    const std::vector<FuzzCase> cases = {
+        {"sysml2", R"sysml(
+            state def   Fuzz_SysML_01   {
+                attribute   val_1 : Integer = 0;
+                attribute   val_2 : Integer = 10;
+                entry;   then   State_1_A;
+                state   State_1_A;
+                state   State_2_B;
+                transition   first   State_1_A   accept   Ev_Cmd_1   if ((val_1 >= 0) && (val_2 < 20))   then   State_2_B;
+            }
+        )sysml"},
+        {"plantuml",
+         "@startuml Fuzz_Puml_01\n[*]\t-->\tState_1_A\nState_1_A  -->  State_2_B :  Ev_Cmd_1  [((val_1 >= 0) && (val_2 "
+         "< 20))]\n@enduml\n"},
+        {"mermaid",
+         "stateDiagram-v2\n    [*]  -->  State_1_A\n    State_1_A\t-->\tState_2_B : Ev_Cmd_1 [((val_1 >= 0) && (val_2 "
+         "< 20))]\n"},
+        {"dot",
+         "digraph Fuzz_Dot_01 {\n    __start__ -> State_1_A;\n    State_1_A   ->   State_2_B   [label=\"Ev_Cmd_1 "
+         "[((val_1 >= 0) && (val_2 < 20))]\"];\n}\n"},
+        {"smv",
+         "MODULE Fuzz_Smv_01\nVAR\n  state : {State_1_A, State_2_B};\n  event : {none, Ev_Cmd_1};\n  val_1 : 0..10;\n  "
+         "val_2 : 0..20;\nASSIGN\n  init(state) := State_1_A;\n  next(state) := case\n    state = State_1_A & event = "
+         "Ev_Cmd_1 & ((val_1 >= 0) & (val_2 < 20)) : State_2_B;\n    TRUE : state;\n  esac;\n"},
+    };
+
+    for (const auto& fc : cases) {
+        auto parser = ParserFactory::create_by_format(fc.format);
+        ASSERT_NE(parser, nullptr) << fc.format;
+        FsmIr ir;
+        std::string err;
+        ASSERT_TRUE(parser->parse(fc.source, ir, err)) << fc.format << ": " << err;
+        EXPECT_NE(ir.find_state("State_1_A"), nullptr) << fc.format;
+        EXPECT_NE(ir.find_state("State_2_B"), nullptr) << fc.format;
+        ASSERT_FALSE(ir.transitions.empty()) << fc.format;
+        EXPECT_EQ(ir.transitions[0].event, "Ev_Cmd_1") << fc.format;
+        EXPECT_TRUE(ir.transitions[0].guard.has_value()) << fc.format;
+    }
 }
 
 }  // namespace

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 86  
-**Total Documented Test Cases**: 731  
+**Total Documented Test Cases**: 733  
 
 ---
 
@@ -2523,6 +2523,12 @@
 ### [`test_golden_ir_invariance.cpp`](../../tests/integration/test_golden_ir_invariance.cpp) (`tests/integration/test_golden_ir_invariance.cpp`)
 #### `GoldenPassInvariance.MiddleEndPassesPreserveGoldenInvariants`
 **Test Intent**: Verify middle-end analysis and optimization passes preserve Golden IR invariants without false positives.
+
+#### `GoldenDifferentialE2E.UnoptimizedVsOptimizedCpp20_ProducesIdenticalRuntimeTrace`
+**Test Intent**: Differential E2E test: verifies identical runtime behavior between unoptimized (-O0)
+
+#### `GoldenParserFuzz.IrregularFormattingAndNestedGuards_ParsedCleanlyWithoutCrash`
+**Test Intent**: Property-based parser robustness test: exercises irregular whitespace, tabs,
 
 ### [`test_multiformat_presets_roundtrip.cpp`](../../tests/integration/test_multiformat_presets_roundtrip.cpp) (`tests/integration/test_multiformat_presets_roundtrip.cpp`)
 #### `MultiformatPresets.Sysml2UavMission_PassesRoundtripAndStrictCompilation`

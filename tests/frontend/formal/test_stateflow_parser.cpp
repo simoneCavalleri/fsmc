@@ -718,4 +718,36 @@ TEST(StateflowParser, MatlabPercentCommentsInGuardAndAction_StrippedCleanly) {
     EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].expression, "1");
 }
 
+/**
+ * @brief Regression: Multiple Stateflow transitions between the same `source` and `target` states
+ * assigning to the same variable receive disambiguated synthetic action names (`Idle_Done_act_x`,
+ * `Idle_Done_act_x_2`) so their assignments do not collide in C++ codegen.
+ * @scenario Parse Stateflow XML with `Ev1 / x = 1` and `Ev2 / x = 2` from `Idle` to `Done`.
+ * @expected `transitions[0].transition_action->name != transitions[1].transition_action->name`.
+ */
+TEST(StateflowParser, MultipleTransitionsSameEndpoints_DisambiguateAssignmentActionNames) {
+    const std::string xml = R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<Stateflow>
+  <machine name="SfSameEp">
+    <chart id="1" name="SfSameEp">
+      <!-- @fsm:var name=x type=int init=0 -->
+      <state id="10" name="Idle"/>
+      <state id="20" name="Done"/>
+      <transition src="Idle" dst="Done" labelString="Ev1 / x = 1;"/>
+      <transition src="Idle" dst="Done" labelString="Ev2 / x = 2;"/>
+    </chart>
+  </machine>
+</Stateflow>
+)xml";
+
+    StateflowParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, ir, err)) << "Error: " << err;
+    ASSERT_EQ(ir.transitions.size(), 2u);
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    ASSERT_TRUE(ir.transitions[1].transition_action.has_value());
+    EXPECT_NE(ir.transitions[0].transition_action->name, ir.transitions[1].transition_action->name);
+}
+
 }  // namespace

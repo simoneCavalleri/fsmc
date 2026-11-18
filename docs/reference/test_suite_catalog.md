@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 655  
+**Total Documented Test Cases**: 656  
 
 ---
 
@@ -1201,6 +1201,9 @@
 
 #### `StateflowParser.MatlabPercentCommentsInGuardAndAction_StrippedCleanly`
 **Test Intent**: Regression: `StateflowParser` strips MATLAB `%` line comments inside guard and action
+
+#### `StateflowParser.MultipleTransitionsSameEndpoints_DisambiguateAssignmentActionNames`
+**Test Intent**: Regression: Multiple Stateflow transitions between the same `source` and `target` states
 
 ### [`test_stateflow_slx_ingestion.cpp`](../../tests/frontend/formal/test_stateflow_slx_ingestion.cpp) (`tests/frontend/formal/test_stateflow_slx_ingestion.cpp`)
 #### `StateflowSlxIngestion.IngestStoredSlxContainer_ParsesModelDirectly`

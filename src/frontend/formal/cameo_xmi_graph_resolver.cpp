@@ -563,6 +563,29 @@ void CameoXmiGraphResolver::process_transition(const std::shared_ptr<XmlNode>& t
         trans.target_is_deep_history = (dst_kind_it->second == StateKind::DeepHistory);
     }
     trans.event = sanitize_identifier(event_name);
+    if (!trans.event.empty()) {
+        static const std::regex time_ev_regex(R"(^(after|every)_([0-9]+)(ms|us|s|m)$)", std::regex::icase);
+        std::smatch tm;
+        if (std::regex_match(trans.event, tm, time_ev_regex)) {
+            std::string kw = tm[1].str();
+            std::transform(kw.begin(), kw.end(), kw.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            const TimeTriggerKind tkind = (kw == "every") ? TimeTriggerKind::Every : TimeTriggerKind::After;
+            const std::uint64_t val = static_cast<std::uint64_t>(std::stoull(tm[2].str()));
+            std::string u = tm[3].str();
+            std::transform(u.begin(), u.end(), u.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (u == "us") {
+                trans.trigger = TimeTrigger(tkind, val, TimeUnit::Microseconds);
+            } else if (u == "s") {
+                trans.trigger = TimeTrigger(tkind, val, TimeUnit::Seconds);
+            } else if (u == "m") {
+                trans.trigger = TimeTrigger(tkind, val, TimeUnit::Minutes);
+            } else {
+                trans.trigger = TimeTrigger(tkind, val, TimeUnit::Milliseconds);
+            }
+        }
+    }
     if (!event_name.empty()) {
         SignalDefinition sig;
         sig.name = trans.event;

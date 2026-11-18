@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 665  
+**Total Documented Test Cases**: 666  
 
 ---
 
@@ -1082,6 +1082,10 @@
 
 #### `CameoParser.MultipleTransitionsSameEndpoints_DisambiguateAssignmentActionNames`
 **Test Intent**: Regression: Multiple Cameo XMI transitions between the same `source` and `target` states
+
+#### `CameoParser.TimeTriggerAttribute_PopulatesTimeTrigger`
+**Test Intent**: Regression: `CameoXmiParser` reconstructs `TimeTrigger` when parsing `trigger="after_100ms"` /
+`trigger="every_50ms"` attributes emitted by `CameoSerializer`.
 
 ### [`test_scxml_parser.cpp`](../../tests/frontend/formal/test_scxml_parser.cpp) (`tests/frontend/formal/test_scxml_parser.cpp`)
 #### `ScxmlParser.BasicScxmlDocument_ParsedIntoValidFsmIr`

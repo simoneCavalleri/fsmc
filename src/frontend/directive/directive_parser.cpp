@@ -463,7 +463,14 @@ std::optional<VariableDefinition> DirectiveParser::parse_variable_directive(std:
     auto i_pos = str.find("init=");
     if (i_pos != std::string::npos) {
         var.initial_value = extract_quoted_or_word(str, i_pos + 5);
-    } else if (!var.type.is_primitive()) {
+        if (var.type.primitive() == ir::PrimitiveTypeKind::String) {
+            bool already_quoted =
+                var.initial_value.size() >= 2 && var.initial_value.front() == '"' && var.initial_value.back() == '"';
+            if (!already_quoted) {
+                var.initial_value = "\"" + var.initial_value + "\"";
+            }
+        }
+    } else if (!var.type.is_primitive() || var.type.primitive() == ir::PrimitiveTypeKind::String) {
         var.initial_value.clear();
     }
 

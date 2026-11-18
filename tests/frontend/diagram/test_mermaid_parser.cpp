@@ -546,4 +546,33 @@ TEST(MermaidParser, StateReqsAndTimeInvariant_PreservedAcrossSerializerRoundtrip
     EXPECT_EQ(*p_active->time_invariant, "500[ms]");
 }
 
+/**
+ * @brief Regression: `MermaidSerializer` emits `when(<expr>)` for `ChangeTrigger` transitions
+ * so `MermaidParser` preserves `ChangeTrigger` across roundtrips.
+ * @scenario Serialize a transition with `ChangeTrigger("count > 5")` to Mermaid and re-parse.
+ * @expected Serialized Mermaid contains `when(count > 5)` and re-parsed transition holds `ChangeTrigger`.
+ */
+TEST(MermaidParser, ChangeTrigger_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "MmdChangeRt";
+    ir.initial_state = "Wait";
+    ir.add_state("Wait");
+    ir.add_state("Done");
+    ir.add_variable(VariableDefinition("count", DataType::int32(), "0"));
+    TransitionEdge t("Wait", "Done", "");
+    t.trigger = ChangeTrigger("count > 5", true);
+    ir.add_transition(t);
+
+    const std::string mmd = MermaidSerializer::serialize(ir);
+    EXPECT_NE(mmd.find("Wait --> Done : when(count > 5)"), std::string::npos) << mmd;
+
+    MermaidParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(mmd, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ChangeTrigger>(parsed.transitions[0].trigger));
+    EXPECT_EQ(std::get<ChangeTrigger>(parsed.transitions[0].trigger).raw_expression, "count > 5");
+}
+
 }  // namespace

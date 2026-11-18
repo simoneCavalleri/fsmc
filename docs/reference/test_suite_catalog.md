@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 690  
+**Total Documented Test Cases**: 691  
 
 ---
 
@@ -972,6 +972,9 @@
 
 #### `MermaidParser.StateReqsAndTimeInvariant_PreservedAcrossSerializerRoundtrip`
 **Test Intent**: Regression: `MermaidSerializer` emits `%% @fsm:state` directives for `traceability_reqs`
+
+#### `MermaidParser.ChangeTrigger_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `MermaidSerializer` emits `when(<expr>)` for `ChangeTrigger` transitions
 
 ### [`test_multiline_actions.cpp`](../../tests/frontend/diagram/test_multiline_actions.cpp) (`tests/frontend/diagram/test_multiline_actions.cpp`)
 - *(Executable binary test verification)*

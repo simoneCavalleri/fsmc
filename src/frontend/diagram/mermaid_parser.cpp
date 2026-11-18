@@ -628,6 +628,7 @@ bool MermaidParser::parse_transition_line(std::string_view line, FsmIr& model, s
     // Parse Event, Guard, Action, Priority from label:
     // Format: EventName (prio=1) [GuardName] / ActionName
     std::string event_name;
+    std::string raw_event_change_expr;
     std::string raw_guard;
     std::optional<ActionSignature> parsed_action;
     std::uint32_t priority = 0;
@@ -663,10 +664,16 @@ bool MermaidParser::parse_transition_line(std::string_view line, FsmIr& model, s
             label = label.substr(0, open_bracket) + label.substr(close_bracket + 1);
         }
 
-        // Remaining is EventName
+        // Remaining is EventName (or ChangeTrigger when(...))
         const std::string evt = std::string(trim(label));
         if (!evt.empty() && evt != "Anonymous" && evt != "AnonymousEvent" && evt != "anonymous") {
-            event_name = sanitize_identifier(evt);
+            static const std::regex when_ev_regex(R"(^when\s*\((.+)\)$)", std::regex::icase);
+            std::smatch wm;
+            if (std::regex_match(evt, wm, when_ev_regex)) {
+                raw_event_change_expr = std::string(trim(wm[1].str()));
+            } else {
+                event_name = sanitize_identifier(evt);
+            }
         }
 
         if (!raw_action.empty()) {
@@ -702,7 +709,9 @@ bool MermaidParser::parse_transition_line(std::string_view line, FsmIr& model, s
     trans.source = src;
     trans.target = dst;
     trans.event = event_name;
-    if (!event_name.empty()) {
+    if (!raw_event_change_expr.empty()) {
+        trans.trigger = ChangeTrigger(raw_event_change_expr, true);
+    } else if (!event_name.empty()) {
         static const std::regex time_ev_regex(R"(^(after|every)_([0-9]+)(ms|us|s|m)$)", std::regex::icase);
         std::smatch tm;
         if (std::regex_match(event_name, tm, time_ev_regex)) {

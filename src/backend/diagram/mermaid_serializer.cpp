@@ -98,8 +98,15 @@ std::string build_label(const TransitionEdge& trans, const FsmIr& model) {
     if (trans.priority > 0) {
         label += "(prio=" + std::to_string(trans.priority) + ")";
     }
-    if (!trans.event.empty() && trans.event != "Anonymous" && trans.event != "AnonymousEvent" &&
-        trans.event != "anonymous") {
+    if (const auto* ct = std::get_if<ChangeTrigger>(&trans.trigger)) {
+        if (!ct->raw_expression.empty()) {
+            if (!label.empty()) {
+                label += " ";
+            }
+            label += "when(" + ct->raw_expression + ")";
+        }
+    } else if (!trans.event.empty() && trans.event != "Anonymous" && trans.event != "AnonymousEvent" &&
+               trans.event != "anonymous") {
         if (!label.empty()) {
             label += " ";
         }

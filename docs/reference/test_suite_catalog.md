@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 643  
+**Total Documented Test Cases**: 644  
 
 ---
 
@@ -865,6 +865,10 @@
 
 #### `DotParser.EscapedQuotesInEdgeLabel_PreservesGuardAndAction`
 **Test Intent**: Regression: Graphviz DOT `label="..."` with escaped quotes (`\"`) preserves full guard and
+
+#### `DotParser.QuotedSubgraphCluster_CreatesCompositeState`
+**Test Intent**: Regression: Graphviz DOT quoted `subgraph "cluster_Active Mode"` creates composite state
+`Active_Mode` with nested child states instead of flattening children to top-level.
 
 ### [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) (`tests/frontend/diagram/test_mermaid_parser.cpp`)
 #### `MermaidParser.BasicDiagram_ParsedIntoValidFsmIr`

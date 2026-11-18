@@ -150,14 +150,20 @@ std::string DotSerializer::serialize(const FsmIr& model) {
                 comp_label += "\\n(defer " + d_evt + ")";
             }
 
+            const bool is_parallel = (state.kind == StateKind::Parallel || !state.orthogonal_regions.empty());
+
             out << pad << "subgraph cluster_" << escape_id(state.name) << " {\n";
             out << pad << "    label=\"" << escape_label(comp_label) << "\";\n";
-            out << pad << "    style=\"rounded,filled\";\n";
+            out << pad << "    style=\"" << (is_parallel ? "rounded,dashed,filled" : "rounded,filled") << "\";\n";
             out << pad << "    fillcolor=\"" << (indent % 2 == 1 ? "#f1f5f9" : "#e2e8f0") << "\";\n";
             out << pad << "    color=\"#64748b\";\n";
-            out << pad << "    penwidth=1.5;\n\n";
+            out << pad << "    penwidth=1.5;\n";
+            if (is_parallel) {
+                out << pad << "    // @fsm:parallel\n";
+            }
+            out << "\n";
 
-            if (!state.initial_sub_state.empty()) {
+            if (!is_parallel && !state.initial_sub_state.empty()) {
                 std::string init_node = "__start_" + state.name + "__";
                 out << pad << "    " << init_node
                     << " [shape=circle, style=filled, fillcolor=\"#0f172a\", width=0.12, label=\"\"];\n";

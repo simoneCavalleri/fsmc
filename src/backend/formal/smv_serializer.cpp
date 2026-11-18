@@ -388,7 +388,46 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
     for (const auto& var : model.variables) {
         std::string vname = sanitize_smv_ident(var.name);
         known_idents.insert(vname);
-        out << "  " << vname << " : " << resolve_smv_type(var.type, var.min_value, var.max_value) << ";";
+        std::optional<int64_t> min_v = var.min_value;
+        std::optional<int64_t> max_v = var.max_value;
+        if (!min_v.has_value() || !max_v.has_value()) {
+            int64_t min_seen = 0;
+            int64_t max_seen = 100;
+            auto consider_val = [&](const std::string& s) {
+                try {
+                    std::size_t idx = 0;
+                    long long v = std::stoll(s, &idx);
+                    if (idx == s.size()) {
+                        min_seen = std::min<int64_t>(min_seen, v);
+                        max_seen = std::max<int64_t>(max_seen, v);
+                    }
+                } catch (...) {
+                }
+            };
+            consider_val(var.initial_value);
+            for (const auto& t : model.transitions) {
+                if (!t.transition_action.has_value()) {
+                    continue;
+                }
+                for (const auto& asgn : t.transition_action->assignments) {
+                    if (asgn.target.name == var.name || asgn.target == var.name) {
+                        consider_val(asgn.expression);
+                    }
+                }
+            }
+            if (min_seen < 0 && !min_v.has_value()) {
+                min_v = std::min<int64_t>(-100, min_seen);
+                if (!max_v.has_value()) {
+                    max_v = max_seen;
+                }
+            } else if (max_seen > 100 && !max_v.has_value()) {
+                if (!min_v.has_value()) {
+                    min_v = 0;
+                }
+                max_v = max_seen;
+            }
+        }
+        out << "  " << vname << " : " << resolve_smv_type(var.type, min_v, max_v) << ";";
         if (var.physical_unit.has_value()) {
             out << " -- physical unit: " << *var.physical_unit;
         }

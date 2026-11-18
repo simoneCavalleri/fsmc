@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 659  
+**Total Documented Test Cases**: 660  
 
 ---
 
@@ -714,6 +714,9 @@
 #### `FormalRoundtrip.SmvSerializer_ExpandsAtomicGuardsInsideCombinators`
 **Test Intent**: Regression: `SmvSerializer` expands atomic guard names inside C++ combinators
 (`fsm::and_<x_gt_0, y_lt_10>`) to their underlying relational expressions (`(x > 0) & (y < 10)`)
+
+#### `FormalRoundtrip.SmvSerializer_WidensRangeForNegativeInitialOrAssignedValues`
+**Test Intent**: Regression: `SmvSerializer` widens default integer range `0..100` to `-100..100` (or wider)
 
 ---
 

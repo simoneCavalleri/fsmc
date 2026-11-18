@@ -404,4 +404,34 @@ Comp --> Done : Finish
     EXPECT_EQ(sub1->parent_state, "Comp");
 }
 
+/**
+ * @brief Regression: `MermaidSerializer` emits `%% @fsm:port` directives so `in`/`out` ports survive
+ * Mermaid roundtrips.
+ * @scenario Serialize an `FsmIr` with `in` and `out` ports to Mermaid, then re-parse with `MermaidParser`.
+ * @expected Both ports (`temp_in`, `alarm_out`) are preserved with their types and directions.
+ */
+TEST(MermaidParser, Ports_RoundtripThroughDirectives) {
+    FsmIr ir;
+    ir.name = "PortMmd";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+    ir.add_port(PortDefinition("temp_in", DataType::int32(), PortDirection::In));
+    ir.add_port(PortDefinition("alarm_out", DataType::boolean(), PortDirection::Out));
+
+    const std::string mmd = MermaidSerializer::serialize(ir);
+    EXPECT_NE(mmd.find("%% @fsm:port name=temp_in"), std::string::npos);
+    EXPECT_NE(mmd.find("%% @fsm:port name=alarm_out"), std::string::npos);
+
+    MermaidParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(mmd, parsed, err)) << err;
+    const auto* p_in = parsed.find_port("temp_in");
+    const auto* p_out = parsed.find_port("alarm_out");
+    ASSERT_NE(p_in, nullptr);
+    ASSERT_NE(p_out, nullptr);
+    EXPECT_TRUE(p_in->is_in());
+    EXPECT_TRUE(p_out->is_out());
+}
+
 }  // namespace

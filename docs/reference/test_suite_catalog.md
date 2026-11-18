@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 626  
+**Total Documented Test Cases**: 627  
 
 ---
 
@@ -880,6 +880,9 @@
 
 #### `MermaidParser.CompositeStateWithAlias_PreservesHierarchyAndInitialStates`
 **Test Intent**: Regression: Mermaid composite state headers with quoted display alias (`state "Label" as Comp {`)
+
+#### `MermaidParser.Ports_RoundtripThroughDirectives`
+**Test Intent**: Regression: `MermaidSerializer` emits `%% @fsm:port` directives so `in`/`out` ports survive
 
 ### [`test_multiline_actions.cpp`](../../tests/frontend/diagram/test_multiline_actions.cpp) (`tests/frontend/diagram/test_multiline_actions.cpp`)
 - *(Executable binary test verification)*

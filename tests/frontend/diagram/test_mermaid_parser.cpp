@@ -463,4 +463,25 @@ TEST(MermaidParser, StandaloneHistoryTargetInsideComposite_ResolvesToParent) {
     EXPECT_EQ(ir.transitions[1].event, "Back");
 }
 
+/**
+ * @brief Regression: `MermaidParser` reconstructs `TimeTrigger` when parsing `after_<N>ms` /
+ * `every_<N>ms` transition labels emitted by `MermaidSerializer`.
+ * @scenario Parse Mermaid with `Busy --> Idle : after_100ms`.
+ * @expected Transition has a `TimeTrigger` with `duration_in_ms() == 100`.
+ */
+TEST(MermaidParser, TimeTriggerEventLabel_PopulatesTimeTrigger) {
+    const std::string mmd = R"mmd(stateDiagram-v2
+    [*] --> Busy
+    Busy --> Idle : after_100ms
+)mmd";
+
+    MermaidParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(mmd, ir, err)) << err;
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(ir.transitions[0].trigger));
+    EXPECT_EQ(std::get<TimeTrigger>(ir.transitions[0].trigger).duration_in_ms(), 100u);
+}
+
 }  // namespace

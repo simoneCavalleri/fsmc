@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 676  
+**Total Documented Test Cases**: 677  
 
 ---
 
@@ -1389,6 +1389,10 @@
 
 #### `Sysml2Parser.NestedSubstatesWithRootLevelTransitions_RetainParentAfterNormalizeHierarchy`
 **Test Intent**: Regression: nested substates declared inside a composite state block retain their `parent_state`
+
+#### `Sysml2Parser.SignedIntRoundtrip_PreservesSignedTypeAcrossSerializer`
+**Test Intent**: Regression: Signed `int32` variables with negative initial values survive `Sysml2Serializer` ->
+`Sysml2Parser` roundtrips as `int32_t` rather than turning into `uint32_t` (`-Wnarrowing` error in C++).
 
 ### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`

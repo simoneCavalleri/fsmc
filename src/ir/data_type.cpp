@@ -167,6 +167,7 @@ std::string DataType::to_sysml_type() const {
         case PrimitiveTypeKind::Int16:
         case PrimitiveTypeKind::Int32:
         case PrimitiveTypeKind::Int64:
+            return "int";
         case PrimitiveTypeKind::UInt8:
         case PrimitiveTypeKind::UInt16:
         case PrimitiveTypeKind::UInt32:

@@ -1184,8 +1184,8 @@ TEST(FsmcCliOptionsTest, IrSimulator_EvaluatesCompoundAstExpressionsAndStoreInst
  * @expected FsmcDriver::run with --7stage --races fails (returns 1) before OrthogonalProductPass flattens regions.
  */
 TEST(FsmcCliOptionsTest, CheckRaces_DetectsDataRaceUnder7StagePipeline) {
-    const std::string sysml_path = "/tmp/fsmc_test_races_7stage.sysml";
-    const std::string out_path = "/tmp/fsmc_test_races_7stage.hpp";
+    const std::string sysml_path = (std::filesystem::temp_directory_path() / "fsmc_test_races_7stage.sysml").string();
+    const std::string out_path = (std::filesystem::temp_directory_path() / "fsmc_test_races_7stage.hpp").string();
     {
         std::ofstream ofs(sysml_path);
         ofs << R"sysml(
@@ -1231,7 +1231,7 @@ package RacePkg {
  * @expected FsmcDriver::run returns 0 (CTL property verified on expanded product states).
  */
 TEST(FsmcCliOptionsTest, VerifyMode_ExpandsParallelStatesBeforeCtlCheck) {
-    const std::string scxml_path = "/tmp/fsmc_test_verify_par.scxml";
+    const std::string scxml_path = (std::filesystem::temp_directory_path() / "fsmc_test_verify_par.scxml").string();
     {
         std::ofstream ofs(scxml_path);
         ofs << R"xml(

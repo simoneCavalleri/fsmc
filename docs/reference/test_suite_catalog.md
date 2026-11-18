@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 661  
+**Total Documented Test Cases**: 662  
 
 ---
 
@@ -721,6 +721,9 @@
 #### `FormalRoundtrip.SmvSerializer_PreservesStateLifecycleAndDeferDirectives`
 **Test Intent**: Regression: `SmvSerializer` emits `-- @fsm:state`, `-- @fsm:entry`, `-- @fsm:exit`, and
 `-- @fsm:defer` comment directives so hierarchy, entry/exit actions, and deferred events survive
+
+#### `FormalRoundtrip.StateflowSerializer_PreservesDeferredEventsAcrossRoundtrip`
+**Test Intent**: Regression: `StateflowSerializer` and `StateflowParser` preserve `deferred_events` on states
 
 ---
 

@@ -400,6 +400,19 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
             if (exit_act.empty())
                 exit_act = child->get_attr("on_exit");
 
+            std::string defer_attr = child->get_attr("defer");
+            if (!defer_attr.empty() && s != nullptr) {
+                std::istringstream dss(defer_attr);
+                std::string dev;
+                while (std::getline(dss, dev, ',')) {
+                    std::string d_evt = sanitize_identifier(trim(dev));
+                    if (!d_evt.empty()) {
+                        model.add_event(d_evt);
+                        s->deferred_events.push_back(d_evt);
+                    }
+                }
+            }
+
             // Parse state labelString (e.g. StateName\nentry: ...\nduring: ...\nexit: ...)
             std::string state_label = child->get_attr("labelString");
             if (state_label.empty())

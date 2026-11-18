@@ -360,4 +360,35 @@ TEST(DotParser, QuotedSubgraphCluster_CreatesCompositeState) {
     EXPECT_EQ(sub_b->parent_state, "Active_Mode");
 }
 
+/**
+ * @brief Regression: Graphviz DOT node labels with unparenthesized `entry / ...`, `exit / ...`,
+ * `do / ...`, and `defer ...` lines populate state lifecycle actions and deferred events.
+ * @scenario Parse DOT state `Idle [label="Idle\nentry / x = 1; y = 2;\nexit / x = 3;\ndo / spin\ndefer Ping"];`.
+ * @expected `entry_actions`, `exit_actions`, `do_activity`, and `deferred_events` are populated on `Idle`.
+ */
+TEST(DotParser, UnparenthesizedLifecycleAndDeferInNodeLabel_PopulatedCleanly) {
+    const std::string dot_content = R"dot(digraph DotUnparenLife {
+    // @fsm:var name=x type=int init=0
+    // @fsm:var name=y type=int init=0
+    __start__ -> Idle;
+    Idle [label="Idle\nentry / x = 1; y = 2;\nexit / x = 3;\ndo / spin\ndefer Ping"];
+    Idle -> Done [label="Go"];
+}
+)dot";
+
+    DotParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    const auto* idle = ir.find_state("Idle");
+    ASSERT_NE(idle, nullptr);
+    ASSERT_EQ(idle->entry_actions.size(), 1u);
+    EXPECT_EQ(idle->entry_actions[0].assignments.size(), 2u);
+    ASSERT_EQ(idle->exit_actions.size(), 1u);
+    EXPECT_EQ(idle->exit_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(idle->do_activity, "spin");
+    ASSERT_EQ(idle->deferred_events.size(), 1u);
+    EXPECT_EQ(idle->deferred_events[0], "Ping");
+}
+
 }  // namespace

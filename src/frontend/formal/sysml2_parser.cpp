@@ -1086,13 +1086,13 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    // 11. Transitions: transition [<Name>] [first <Src>] [accept <Evt>] [if <Guard>] [do <Act>] [then <Dst>]
-    if (stmt.rfind("transition", 0) == 0 || stmt.find("accept") != std::string::npos ||
-        stmt.find("then") != std::string::npos || stmt.find("first") != std::string::npos ||
-        stmt.find("after") != std::string::npos || stmt.find("fork") != std::string::npos ||
-        stmt.find("join") != std::string::npos) {
-        if (stmt.rfind("transition", 0) == 0 && stmt.find("->") != std::string::npos &&
-            stmt.find("then") == std::string::npos && stmt.find(" to ") == std::string::npos) {
+    // 11. Transitions: [local] transition [<Name>] [first <Src>] [accept <Evt>] [if <Guard>] [do <Act>] [then <Dst>]
+    const bool starts_with_transition = (stmt.rfind("transition", 0) == 0 || stmt.rfind("local transition", 0) == 0);
+    if (starts_with_transition || stmt.find("accept") != std::string::npos || stmt.find("then") != std::string::npos ||
+        stmt.find("first") != std::string::npos || stmt.find("after") != std::string::npos ||
+        stmt.find("fork") != std::string::npos || stmt.find("join") != std::string::npos) {
+        if (starts_with_transition && stmt.find("->") != std::string::npos && stmt.find("then") == std::string::npos &&
+            stmt.find(" to ") == std::string::npos) {
             error_message =
                 "Line " + std::to_string(line_number) +
                 ": Invalid SysML v2 transition syntax ('->' is not supported; use 'transition [first <Src>] "
@@ -1154,7 +1154,9 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     std::optional<ChangeTrigger> change_trigger;
 
     // 1. Optional transition name matching
-    static const std::regex trans_name_regex(R"(^transition\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
+    static const std::regex local_prefix_regex(R"(^local\s+transition\b)", std::regex::optimize);
+    static const std::regex trans_name_regex(R"(^(?:local\s+)?transition\s+([A-Za-z_][A-Za-z0-9_]*))",
+                                             std::regex::optimize);
     std::string trans_name;
     std::smatch match;
     if (std::regex_search(stmt, match, trans_name_regex)) {
@@ -1556,8 +1558,10 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
         }
     }
 
-    // Distinguish internal from external transitions
-    if (source == target && !event.empty() && !std::regex_search(stmt, then_regex)) {
+    // Distinguish internal, local, and external transitions
+    if (std::regex_search(stmt, local_prefix_regex)) {
+        trans.kind = TransitionEdgeKind::Local;
+    } else if (source == target && !event.empty() && !std::regex_search(stmt, then_regex)) {
         trans.kind = TransitionEdgeKind::Internal;
     } else {
         trans.kind = TransitionEdgeKind::External;

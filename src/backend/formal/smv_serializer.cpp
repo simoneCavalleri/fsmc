@@ -401,6 +401,9 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
     out << "  event : {none";
     std::vector<std::string> event_names;
     for (const auto& t : model.transitions) {
+        if (std::holds_alternative<ChangeTrigger>(t.trigger) || std::holds_alternative<TimeTrigger>(t.trigger)) {
+            continue;
+        }
         std::string evt = t.event.empty() ? t.get_trigger_name() : t.event;
         if (!evt.empty() && evt != "none" && evt != "Anonymous" &&
             std::find(event_names.begin(), event_names.end(), evt) == event_names.end()) {
@@ -666,6 +669,11 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
             if (dur == 0)
                 dur = 1;
             out << " & timer_" << sanitize_smv_ident(src) << " >= " << dur;
+        } else if (std::holds_alternative<ChangeTrigger>(t.trigger)) {
+            const auto& ct = std::get<ChangeTrigger>(t.trigger);
+            if (!ct.raw_expression.empty()) {
+                out << " & (" << to_smv_predicate(ct.raw_expression) << ")";
+            }
         } else if (!evt.empty() && evt != "Anonymous" && evt != "none") {
             out << " & event = " << sanitize_smv_ident(evt);
         }
@@ -686,17 +694,29 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
             }
         }
         const bool has_kind = (t.kind == TransitionEdgeKind::Internal || t.kind == TransitionEdgeKind::Local);
-        if (has_kind || !act.empty()) {
+        std::string change_expr;
+        if (const auto* ct = std::get_if<ChangeTrigger>(&t.trigger); ct != nullptr && !ct->raw_expression.empty()) {
+            change_expr = ct->raw_expression;
+        }
+        if (has_kind || !change_expr.empty() || !act.empty()) {
             out << " --";
+            bool need_sep = false;
             if (t.kind == TransitionEdgeKind::Internal) {
                 out << " kind=internal";
+                need_sep = true;
             } else if (t.kind == TransitionEdgeKind::Local) {
                 out << " kind=local";
+                need_sep = true;
+            }
+            if (!change_expr.empty()) {
+                if (need_sep)
+                    out << " |";
+                out << " change=" << change_expr;
+                need_sep = true;
             }
             if (!act.empty()) {
-                if (has_kind) {
+                if (need_sep)
                     out << " |";
-                }
                 out << " action: " << act;
             }
         }

@@ -149,6 +149,10 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
             if (const auto* ct = std::get_if<ChangeTrigger>(&trans.trigger);
                 ct != nullptr && !ct->raw_expression.empty()) {
                 out << " event=\"when(" << escape_xml(ct->raw_expression) << ")\"";
+            } else if (const auto* tt = std::get_if<TimeTrigger>(&trans.trigger);
+                       tt != nullptr && trans.event.empty()) {
+                out << " event=\"" << (tt->kind == TimeTriggerKind::Every ? "every_" : "after_") << tt->duration_value
+                    << time_unit_to_string(tt->unit) << "\"";
             } else if (!trans.event.empty() && trans.event != "Anonymous") {
                 out << " event=\"" << escape_xml(trans.event) << "\"";
             }

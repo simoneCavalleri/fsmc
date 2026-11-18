@@ -4,8 +4,8 @@
 > To update this file, run: `cmake --build build --target generate_test_catalog` or `python3 scripts/generate_test_catalog.py`.
 
 **Total Documented Subsystems**: 12  
-**Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 730  
+**Total Test Suites & Binaries**: 86  
+**Total Documented Test Cases**: 731  
 
 ---
 
@@ -2519,6 +2519,10 @@
 
 #### `FsmcCliOptionsTest.VerifyMode_ExpandsParallelStatesBeforeCtlCheck`
 **Test Intent**: Verify --ctl / --verify expands orthogonal parallel regions even in standard pipeline mode.
+
+### [`test_golden_ir_invariance.cpp`](../../tests/integration/test_golden_ir_invariance.cpp) (`tests/integration/test_golden_ir_invariance.cpp`)
+#### `GoldenPassInvariance.MiddleEndPassesPreserveGoldenInvariants`
+**Test Intent**: Verify middle-end analysis and optimization passes preserve Golden IR invariants without false positives.
 
 ### [`test_multiformat_presets_roundtrip.cpp`](../../tests/integration/test_multiformat_presets_roundtrip.cpp) (`tests/integration/test_multiformat_presets_roundtrip.cpp`)
 #### `MultiformatPresets.Sysml2UavMission_PassesRoundtripAndStrictCompilation`

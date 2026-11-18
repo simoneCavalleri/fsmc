@@ -416,6 +416,7 @@ static std::string normalize_smv_guard_expr(std::string_view expr) {
 void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
     std::string clean_line = line;
     std::string raw_action_from_comment;
+    std::string change_expr_from_comment;
     TransitionEdgeKind parsed_kind = TransitionEdgeKind::External;
     auto comment_pos = line.find("--");
     if (comment_pos != std::string::npos) {
@@ -431,6 +432,16 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
         }
         if (act_pos != std::string::npos) {
             raw_action_from_comment = trim(comment.substr(act_pos + 7));
+        }
+        auto chg_pos = comment.find("change=");
+        if (chg_pos != std::string::npos) {
+            size_t chg_end = comment.find('|', chg_pos + 7);
+            if (act_pos != std::string::npos && act_pos > chg_pos &&
+                (chg_end == std::string::npos || act_pos < chg_end)) {
+                chg_end = act_pos;
+            }
+            change_expr_from_comment = trim(comment.substr(
+                chg_pos + 7, chg_end == std::string::npos ? std::string::npos : chg_end - (chg_pos + 7)));
         }
         clean_line = line.substr(0, comment_pos);
     }
@@ -610,13 +621,16 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
             trans.source = src;
             trans.target = target_state;
             trans.event = event_name;
-            if (timer_duration_ms.has_value()) {
+            if (!change_expr_from_comment.empty()) {
+                trans.trigger = ChangeTrigger(change_expr_from_comment, true);
+            } else if (timer_duration_ms.has_value()) {
                 trans.trigger = TimeTrigger(TimeTriggerKind::After, *timer_duration_ms, TimeUnit::Milliseconds);
                 if (trans.event.empty()) {
                     trans.event = trans.get_trigger_name();
                 }
             }
-            if (!guard_expr.empty()) {
+            if (!guard_expr.empty() && (change_expr_from_comment.empty() ||
+                                        normalize_smv_guard_expr(guard_expr) != change_expr_from_comment)) {
                 // Generate a stable guard name from the transition endpoints and index,
                 // instead of sanitizing the raw boolean expression which would mangle
                 // operator characters (e.g. "x > 0 && !y" → "x__0____y").

@@ -282,6 +282,10 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
                     if (const auto* ct = std::get_if<ChangeTrigger>(&trans.trigger);
                         ct != nullptr && !ct->raw_expression.empty()) {
                         out << " trigger=\"when(" << escape_xml(ct->raw_expression) << ")\"";
+                    } else if (const auto* tt = std::get_if<TimeTrigger>(&trans.trigger);
+                               tt != nullptr && trans.event.empty()) {
+                        out << " trigger=\"" << (tt->kind == TimeTriggerKind::Every ? "every_" : "after_")
+                            << tt->duration_value << time_unit_to_string(tt->unit) << "\"";
                     } else if (!trans.event.empty() && trans.event != "Anonymous") {
                         out << " trigger=\"" << escape_xml(trans.event) << "\"";
                     }
@@ -357,6 +361,9 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
         }
         if (const auto* ct = std::get_if<ChangeTrigger>(&trans.trigger); ct != nullptr && !ct->raw_expression.empty()) {
             out << " trigger=\"when(" << escape_xml(ct->raw_expression) << ")\"";
+        } else if (const auto* tt = std::get_if<TimeTrigger>(&trans.trigger); tt != nullptr && trans.event.empty()) {
+            out << " trigger=\"" << (tt->kind == TimeTriggerKind::Every ? "every_" : "after_") << tt->duration_value
+                << time_unit_to_string(tt->unit) << "\"";
         } else if (!trans.event.empty() && trans.event != "Anonymous") {
             out << " trigger=\"" << escape_xml(trans.event) << "\"";
         }

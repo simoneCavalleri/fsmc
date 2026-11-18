@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 620  
+**Total Documented Test Cases**: 622  
 
 ---
 
@@ -875,6 +875,9 @@
 #### `MermaidSerializerTest.ParallelStateOmitsInitialSubstateAndRoundtripsThreeRegions`
 **Test Intent**: Verify MermaidSerializer omits `[*] --> initial_sub_state` inside StateKind::Parallel blocks.
 
+#### `MermaidParser.CompositeStateWithAlias_PreservesHierarchyAndInitialStates`
+**Test Intent**: Regression: Mermaid composite state headers with quoted display alias (`state "Label" as Comp {`)
+
 ### [`test_multiline_actions.cpp`](../../tests/frontend/diagram/test_multiline_actions.cpp) (`tests/frontend/diagram/test_multiline_actions.cpp`)
 - *(Executable binary test verification)*
 
@@ -911,6 +914,9 @@
 
 #### `PlantUmlSerializerTest.ParallelStateOmitsInitialSubstateAndRoundtripsThreeRegions`
 **Test Intent**: Verify PlantUmlSerializer omits `[*] --> initial_sub_state` inside StateKind::Parallel blocks.
+
+#### `PlantUmlParser.CompositeStateWithAlias_PreservesHierarchyAndInitialStates`
+**Test Intent**: Regression: PlantUML composite state headers with quoted display alias (`state "Label" as Comp {`)
 
 ### [`test_directive_parser.cpp`](../../tests/frontend/directive/test_directive_parser.cpp) (`tests/frontend/directive/test_directive_parser.cpp`)
 #### `DirectiveParser.StateDirective_ParsesTraceabilityAndActivities`

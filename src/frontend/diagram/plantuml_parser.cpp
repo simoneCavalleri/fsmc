@@ -281,7 +281,7 @@ bool PlantUmlParser::parse(std::string_view content, FsmIr& out_model, std::stri
 
 std::string PlantUmlParser::parse_composite_state_header(std::string_view line, FsmIr& model,
                                                          const std::vector<std::string>& parent_stack) {
-    static const std::regex composite_regex(R"(state\s+([a-zA-Z0-9_]+)\s*\{)");
+    static const std::regex composite_regex(R"regex(state\s+(?:"[^"]*"\s+as\s+)?([a-zA-Z0-9_]+)\s*\{)regex");
     const std::string line_str{line};
     std::smatch match;
     if (std::regex_search(line_str, match, composite_regex)) {

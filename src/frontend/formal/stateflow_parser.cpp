@@ -845,14 +845,32 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
             trans.guard = guard_name;
         }
     }
+    auto disambiguate_action = [&](ActionSignature& sig) {
+        if (sig.assignments.empty()) {
+            return;
+        }
+        const std::string base = sig.name;
+        std::size_t suffix = 2;
+        auto has_action = [&](const std::string& n) {
+            return std::any_of(model.actions.begin(), model.actions.end(), [&](const auto& a) { return a.name == n; });
+        };
+        while (has_action(sig.name)) {
+            sig.name = base + "_" + std::to_string(suffix++);
+            sig.invocation = sig.name;
+        }
+    };
     if (!comps.condition_action.empty()) {
         std::string prefix = sanitize_identifier(src_name) + "_" + sanitize_identifier(dst_name) + "_cond";
-        trans.condition_action = build_stateflow_action(comps.condition_action, prefix);
+        ActionSignature sig = build_stateflow_action(comps.condition_action, prefix);
+        disambiguate_action(sig);
+        trans.condition_action = std::move(sig);
         model.add_action(trans.condition_action->name);
     }
     if (!comps.transition_action.empty()) {
         std::string prefix = sanitize_identifier(src_name) + "_" + sanitize_identifier(dst_name) + "_act";
-        trans.transition_action = build_stateflow_action(comps.transition_action, prefix);
+        ActionSignature sig = build_stateflow_action(comps.transition_action, prefix);
+        disambiguate_action(sig);
+        trans.transition_action = std::move(sig);
         model.add_action(trans.transition_action->name);
     }
 

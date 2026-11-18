@@ -487,4 +487,38 @@ TEST(ScxmlParser, MultipleTransitionsSameEndpoints_GenerateDistinctSyntheticActi
     EXPECT_NE(ir.transitions[0].transition_action->name, ir.transitions[1].transition_action->name);
 }
 
+/**
+ * @brief Regression: `ScxmlSerializer` must not emit a bogus `<send event="<action name>"/>` for synthesized
+ * assignment actions (entry actions and transition actions that only carry assignments).
+ * @scenario Parse SCXML with an `<onentry>` assignment and a transition `<assign>`, then re-serialize.
+ * @expected The output keeps the `<assign>` elements and contains no `<send>` element.
+ */
+TEST(ScxmlSerializerTest, AssignmentOnlyActions_DoNotEmitBogusSend) {
+    const std::string scxml = R"xml(
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Idle">
+  <datamodel>
+    <data id="x" expr="0"/>
+  </datamodel>
+  <state id="Idle">
+    <onentry>
+      <assign location="x" expr="1"/>
+    </onentry>
+    <transition event="Step" target="Done">
+      <assign location="x" expr="x + 1"/>
+    </transition>
+  </state>
+  <state id="Done"/>
+</scxml>
+)xml";
+
+    ScxmlParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(scxml, ir, err)) << err;
+
+    const std::string out = ScxmlSerializer::serialize(ir);
+    EXPECT_NE(out.find("<assign location=\"x\" expr=\"x + 1\"/>"), std::string::npos) << out;
+    EXPECT_EQ(out.find("<send"), std::string::npos) << out;
+}
+
 }  // namespace

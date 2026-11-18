@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 672  
+**Total Documented Test Cases**: 673  
 
 ---
 
@@ -1139,6 +1139,9 @@
 #### `ScxmlParser.MultipleTransitionsSameEndpoints_GenerateDistinctSyntheticActionNames`
 **Test Intent**: Regression: Multiple SCXML transitions between the same `source` and `target` states
 (e.g. internal transitions for `Ping` and `Tick`) receive distinct synthetic action names
+
+#### `ScxmlSerializerTest.AssignmentOnlyActions_DoNotEmitBogusSend`
+**Test Intent**: Regression: `ScxmlSerializer` must not emit a bogus `<send event="<action name>"/>` for synthesized
 
 ### [`test_scxml_semantic_completeness.cpp`](../../tests/frontend/formal/test_scxml_semantic_completeness.cpp) (`tests/frontend/formal/test_scxml_semantic_completeness.cpp`)
 #### `ScxmlSemanticCompleteness.ParallelRegions_ParsedAsOrthogonalStates`

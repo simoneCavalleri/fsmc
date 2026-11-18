@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 663  
+**Total Documented Test Cases**: 664  
 
 ---
 
@@ -941,6 +941,10 @@
 
 #### `MermaidParser.StandaloneHistoryTargetInsideComposite_ResolvesToParent`
 **Test Intent**: Regression: Mermaid standalone `[H]` / `[H*]` history target inside a composite state
+
+#### `MermaidParser.TimeTriggerEventLabel_PopulatesTimeTrigger`
+**Test Intent**: Regression: `MermaidParser` reconstructs `TimeTrigger` when parsing `after_<N>ms` /
+`every_<N>ms` transition labels emitted by `MermaidSerializer`.
 
 ### [`test_multiline_actions.cpp`](../../tests/frontend/diagram/test_multiline_actions.cpp) (`tests/frontend/diagram/test_multiline_actions.cpp`)
 - *(Executable binary test verification)*

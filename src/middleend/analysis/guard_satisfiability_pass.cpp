@@ -104,21 +104,6 @@ bool GuardSatisfiabilityPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         groups[{src, evt}].push_back(&t);
     }
 
-    auto resolve_guard = [&](const std::string& g) -> std::string {
-        for (const auto& gm : ir.guards) {
-            if (gm.name == g) {
-                if (gm.normalized_expression.has_value() && !gm.normalized_expression->empty()) {
-                    return *gm.normalized_expression;
-                }
-                if (gm.raw_expression.has_value() && !gm.raw_expression->empty()) {
-                    return *gm.raw_expression;
-                }
-                break;
-            }
-        }
-        return g;
-    };
-
     for (const auto& [key, trans_list] : groups) {
         const auto& [src, evt] = key;
 
@@ -127,7 +112,7 @@ bool GuardSatisfiabilityPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             if (!t->guard.has_value() || t->guard->empty()) {
                 continue;
             }
-            const std::string g_str = resolve_guard(*t->guard);
+            const std::string g_str = ir.resolve_guard_expression(*t->guard);
             auto constraints = extract_guard_constraints(g_str);
             for (const auto& [var, ival] : constraints) {
                 if (ival.is_empty()) {
@@ -150,7 +135,7 @@ bool GuardSatisfiabilityPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 continue;
             }
 
-            const std::string g1 = resolve_guard(*t1->guard);
+            const std::string g1 = ir.resolve_guard_expression(*t1->guard);
             auto c1 = extract_guard_constraints(g1);
 
             for (std::size_t j = i + 1; j < trans_list.size(); ++j) {
@@ -164,7 +149,7 @@ bool GuardSatisfiabilityPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                     continue;
                 }
 
-                const std::string g2 = resolve_guard(*t2->guard);
+                const std::string g2 = ir.resolve_guard_expression(*t2->guard);
                 auto c2 = extract_guard_constraints(g2);
 
                 // If identical guard strings -> always overlapping

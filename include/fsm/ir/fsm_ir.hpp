@@ -153,6 +153,16 @@ struct FsmIr {
     [[nodiscard]] const VariableDefinition* find_variable(std::string_view var_name) const noexcept;
 
     /**
+     * @brief Finds a registered guard metadata entry by its symbolic name.
+     */
+    [[nodiscard]] const GuardModel* find_guard(std::string_view guard_name) const noexcept;
+
+    /**
+     * @brief Resolves a guard name or inline expression to its canonical expression string.
+     */
+    [[nodiscard]] std::string resolve_guard_expression(std::string_view guard_name_or_expr) const;
+
+    /**
      * @brief Returns all registered enumeration types.
      */
     [[nodiscard]] std::vector<TypeDefinition> get_enums() const;

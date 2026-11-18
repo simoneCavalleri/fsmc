@@ -21,17 +21,7 @@ bool ConstantFoldingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             continue;
         }
 
-        std::string g = *t.guard;
-        for (const auto& gm : ir.guards) {
-            if (gm.name == g) {
-                if (gm.normalized_expression.has_value() && !gm.normalized_expression->empty()) {
-                    g = *gm.normalized_expression;
-                } else if (gm.raw_expression.has_value() && !gm.raw_expression->empty()) {
-                    g = *gm.raw_expression;
-                }
-                break;
-            }
-        }
+        std::string g = ir.resolve_guard_expression(*t.guard);
         // Trim whitespace
         while (!g.empty() && (g.front() == ' ' || g.front() == '\t'))
             g.erase(g.begin());

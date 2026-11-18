@@ -685,13 +685,16 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
                 act += asgn.target.full_path() + " = " + asgn.expression;
             }
         }
-        if (t.kind == TransitionEdgeKind::Internal || !act.empty()) {
+        const bool has_kind = (t.kind == TransitionEdgeKind::Internal || t.kind == TransitionEdgeKind::Local);
+        if (has_kind || !act.empty()) {
             out << " --";
             if (t.kind == TransitionEdgeKind::Internal) {
                 out << " kind=internal";
+            } else if (t.kind == TransitionEdgeKind::Local) {
+                out << " kind=local";
             }
             if (!act.empty()) {
-                if (t.kind == TransitionEdgeKind::Internal) {
+                if (has_kind) {
                     out << " |";
                 }
                 out << " action: " << act;

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 640  
+**Total Documented Test Cases**: 641  
 
 ---
 
@@ -968,6 +968,9 @@
 #### `DirectiveParser.VariableDirective_NonPrimitiveWithoutInitClearsDefaultZero`
 **Test Intent**: Regression: `@fsm:var` for non-primitive custom types (struct/enum) without `init=` leaves
 `initial_value` empty rather than defaulting to `"0"`.
+
+#### `GuardParser.QuotedStringWithLogicalOperators_NotSplit`
+**Test Intent**: Regression: `GuardExpressionParser` does not split on `&&`, `||`, or parentheses inside quoted
 
 ### [`test_cameo_parser.cpp`](../../tests/frontend/formal/test_cameo_parser.cpp) (`tests/frontend/formal/test_cameo_parser.cpp`)
 #### `CameoParser.BasicXmiDocument_ParsedIntoValidFsmIr`

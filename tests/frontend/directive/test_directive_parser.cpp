@@ -234,4 +234,17 @@ TEST(DirectiveParser, VariableDirective_NonPrimitiveWithoutInitClearsDefaultZero
     EXPECT_TRUE(var->initial_value.empty());
 }
 
+/**
+ * @brief Regression: `GuardExpressionParser` does not split on `&&`, `||`, or parentheses inside quoted
+ * string literals.
+ * @scenario Parse `msg == "a && b" && ready`.
+ * @expected Two atomic guards: `msg == "a && b"` and `ready`.
+ */
+TEST(GuardParser, QuotedStringWithLogicalOperators_NotSplit) {
+    auto res = GuardExpressionParser::parse(R"(msg == "a && b" && ready)");
+    ASSERT_EQ(res.atomic_guard_details.size(), 2u);
+    EXPECT_EQ(res.atomic_guard_details[0].expression, R"(msg == "a && b")");
+    EXPECT_EQ(res.atomic_guard_details[1].expression, "ready");
+}
+
 }  // namespace

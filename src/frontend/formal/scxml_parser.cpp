@@ -594,33 +594,15 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
             }
         }
     }
-    trans.event = sanitize_identifier(event);
+    std::vector<std::string> event_tokens;
     {
-        static const std::regex time_ev_regex(R"(^(after|every)_([0-9]+(?:\.[0-9]+)?)(ms|us|s|m)$)",
-                                              std::regex::optimize);
-        std::smatch tm;
-        if (std::regex_match(trans.event, tm, time_ev_regex)) {
-            const TimeTriggerKind kind = (tm[1].str() == "every") ? TimeTriggerKind::Every : TimeTriggerKind::After;
-            const std::string unit_str = tm[3].str();
-            double val = 0.0;
-            try {
-                val = std::stod(tm[2].str());
-            } catch (...) {
-                val = 0.0;
-            }
-            if (unit_str == "us") {
-                trans.trigger =
-                    TimeTrigger(kind, static_cast<std::uint64_t>(std::llround(val)), TimeUnit::Microseconds);
-            } else if (unit_str == "ms") {
-                trans.trigger =
-                    TimeTrigger(kind, static_cast<std::uint64_t>(std::llround(val)), TimeUnit::Milliseconds);
-            } else if (unit_str == "s") {
-                trans.trigger =
-                    TimeTrigger(kind, static_cast<std::uint64_t>(std::llround(val * 1000.0)), TimeUnit::Milliseconds);
-            } else if (unit_str == "m") {
-                trans.trigger =
-                    TimeTrigger(kind, static_cast<std::uint64_t>(std::llround(val * 60000.0)), TimeUnit::Milliseconds);
-            }
+        std::istringstream ev_iss(event);
+        std::string tok;
+        while (ev_iss >> tok) {
+            event_tokens.push_back(std::move(tok));
+        }
+        if (event_tokens.empty()) {
+            event_tokens.emplace_back("");
         }
     }
     if (!cond.empty()) {
@@ -671,11 +653,38 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
     if (!model.is_choice_node(trans.target)) {
         model.add_state(trans.target);
     }
-    if (!trans.event.empty()) {
-        model.add_event(trans.event);
-    }
 
-    model.add_transition(std::move(trans));
+    static const std::regex time_ev_regex(R"(^(after|every)_([0-9]+(?:\.[0-9]+)?)(ms|us|s|m)$)", std::regex::optimize);
+    for (const auto& ev_raw : event_tokens) {
+        TransitionEdge edge = trans;
+        edge.event = sanitize_identifier(ev_raw);
+        std::smatch tm;
+        if (std::regex_match(edge.event, tm, time_ev_regex)) {
+            const TimeTriggerKind kind = (tm[1].str() == "every") ? TimeTriggerKind::Every : TimeTriggerKind::After;
+            const std::string unit_str = tm[3].str();
+            double val = 0.0;
+            try {
+                val = std::stod(tm[2].str());
+            } catch (...) {
+                val = 0.0;
+            }
+            if (unit_str == "us") {
+                edge.trigger = TimeTrigger(kind, static_cast<std::uint64_t>(std::llround(val)), TimeUnit::Microseconds);
+            } else if (unit_str == "ms") {
+                edge.trigger = TimeTrigger(kind, static_cast<std::uint64_t>(std::llround(val)), TimeUnit::Milliseconds);
+            } else if (unit_str == "s") {
+                edge.trigger =
+                    TimeTrigger(kind, static_cast<std::uint64_t>(std::llround(val * 1000.0)), TimeUnit::Milliseconds);
+            } else if (unit_str == "m") {
+                edge.trigger =
+                    TimeTrigger(kind, static_cast<std::uint64_t>(std::llround(val * 60000.0)), TimeUnit::Milliseconds);
+            }
+        }
+        if (!edge.event.empty()) {
+            model.add_event(edge.event);
+        }
+        model.add_transition(std::move(edge));
+    }
 }
 
 }  // namespace fsm::frontend::formal

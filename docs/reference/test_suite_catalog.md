@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 629  
+**Total Documented Test Cases**: 630  
 
 ---
 
@@ -1021,6 +1021,10 @@
 
 #### `ScxmlSerializerTest.SerializesParallelStateAsParallelElement`
 **Test Intent**: Verify ScxmlSerializer emits `<parallel>` for StateKind::Parallel states without `initial` attribute.
+
+#### `ScxmlParser.SpaceSeparatedEvents_SplitIntoSeparateTransitions`
+**Test Intent**: Regression: W3C SCXML space-separated `event="Start Boot"` on a `<transition>` expands into separate
+`TransitionEdge` entries for each event rather than a single `Start_Boot` event.
 
 ### [`test_scxml_semantic_completeness.cpp`](../../tests/frontend/formal/test_scxml_semantic_completeness.cpp) (`tests/frontend/formal/test_scxml_semantic_completeness.cpp`)
 #### `ScxmlSemanticCompleteness.ParallelRegions_ParsedAsOrthogonalStates`

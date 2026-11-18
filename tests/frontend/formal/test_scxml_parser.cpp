@@ -400,4 +400,31 @@ TEST(ScxmlSerializerTest, SerializesParallelStateAsParallelElement) {
     EXPECT_EQ(par_parsed->orthogonal_regions.size(), 2u);
 }
 
+/**
+ * @brief Regression: W3C SCXML space-separated `event="Start Boot"` on a `<transition>` expands into separate
+ * `TransitionEdge` entries for each event rather than a single `Start_Boot` event.
+ * @scenario Parse `<transition event="Start Boot" target="Running"/>`.
+ * @expected Two transitions (`Start` and `Boot`) targeting `Running`.
+ */
+TEST(ScxmlParser, SpaceSeparatedEvents_SplitIntoSeparateTransitions) {
+    const std::string scxml = R"xml(
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Init">
+  <state id="Init">
+    <transition event="Start Boot" target="Running"/>
+  </state>
+  <state id="Running"/>
+</scxml>
+)xml";
+
+    ScxmlParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(scxml, ir, err)) << err;
+    ASSERT_EQ(ir.transitions.size(), 2u);
+    EXPECT_EQ(ir.transitions[0].event, "Start");
+    EXPECT_EQ(ir.transitions[1].event, "Boot");
+    EXPECT_EQ(ir.transitions[0].target, "Running");
+    EXPECT_EQ(ir.transitions[1].target, "Running");
+}
+
 }  // namespace

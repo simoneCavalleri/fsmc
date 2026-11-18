@@ -301,4 +301,32 @@ TEST(DotParser, QuotedNodeNames_ParsedIntoValidStatesAndTransitions) {
     EXPECT_EQ(ir.transitions[0].event, "Start");
 }
 
+/**
+ * @brief Regression: Graphviz DOT `label="..."` with escaped quotes (`\"`) preserves full guard and
+ * action expressions instead of truncating at the first escaped quote.
+ * @scenario Parse DOT edge `Idle -> Done [label="Go [msg == \"a/b\"] / msg = \"c/d\""];`.
+ * @expected Event is `Go`, guard expression is `msg == "a/b"`, and action invocation is `msg = "c/d"`.
+ */
+TEST(DotParser, EscapedQuotesInEdgeLabel_PreservesGuardAndAction) {
+    const std::string dot_content = R"dot(digraph DotEscaped {
+    // @fsm:var name=msg type=string init="a/b"
+    __start__ -> Idle;
+    Idle -> Done [label="Go [msg == \"a/b\"] / msg = \"c/d\""];
+}
+)dot";
+
+    DotParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    EXPECT_EQ(ir.transitions[0].event, "Go");
+    ASSERT_EQ(ir.guards.size(), 1u);
+    EXPECT_EQ(ir.guards[0].raw_expression, R"(msg == "a/b")");
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    ASSERT_EQ(ir.transitions[0].transition_action->assignments.size(), 1u);
+    EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].target, "msg");
+    EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].expression, R"("c/d")");
+}
+
 }  // namespace

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 642  
+**Total Documented Test Cases**: 643  
 
 ---
 
@@ -862,6 +862,9 @@
 
 #### `DotParser.QuotedNodeNames_ParsedIntoValidStatesAndTransitions`
 **Test Intent**: Regression: Graphviz DOT quoted node identifiers (`"Idle State" -> "Active State"`) are unquoted
+
+#### `DotParser.EscapedQuotesInEdgeLabel_PreservesGuardAndAction`
+**Test Intent**: Regression: Graphviz DOT `label="..."` with escaped quotes (`\"`) preserves full guard and
 
 ### [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) (`tests/frontend/diagram/test_mermaid_parser.cpp`)
 #### `MermaidParser.BasicDiagram_ParsedIntoValidFsmIr`

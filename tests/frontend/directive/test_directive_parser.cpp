@@ -247,4 +247,22 @@ TEST(GuardParser, QuotedStringWithLogicalOperators_NotSplit) {
     EXPECT_EQ(res.atomic_guard_details[1].expression, "ready");
 }
 
+/**
+ * @brief Regression: `@fsm:var` for `type=string` preserves quotes when `init=` is provided and
+ * clears the default `"0"` when `init=` is omitted.
+ * @scenario Parse `@fsm:var name=msg type=string init="a/b"` and `@fsm:var name=empty type=string`.
+ * @expected `msg` has `initial_value == "\"a/b\""`; `empty` has empty `initial_value`.
+ */
+TEST(DirectiveParser, VariableDirective_StringInitPreservesQuotesAndOmitsDefaultZero) {
+    auto with_init = DirectiveParser::parse_variable_directive(R"(var name=msg type=string init="a/b")");
+    ASSERT_TRUE(with_init.has_value());
+    EXPECT_EQ(with_init->name, "msg");
+    EXPECT_EQ(with_init->initial_value, R"("a/b")");
+
+    auto no_init = DirectiveParser::parse_variable_directive("var name=empty type=string");
+    ASSERT_TRUE(no_init.has_value());
+    EXPECT_EQ(no_init->name, "empty");
+    EXPECT_TRUE(no_init->initial_value.empty());
+}
+
 }  // namespace

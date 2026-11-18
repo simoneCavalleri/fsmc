@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 641  
+**Total Documented Test Cases**: 642  
 
 ---
 
@@ -971,6 +971,9 @@
 
 #### `GuardParser.QuotedStringWithLogicalOperators_NotSplit`
 **Test Intent**: Regression: `GuardExpressionParser` does not split on `&&`, `||`, or parentheses inside quoted
+
+#### `DirectiveParser.VariableDirective_StringInitPreservesQuotesAndOmitsDefaultZero`
+**Test Intent**: Regression: `@fsm:var` for `type=string` preserves quotes when `init=` is provided and
 
 ### [`test_cameo_parser.cpp`](../../tests/frontend/formal/test_cameo_parser.cpp) (`tests/frontend/formal/test_cameo_parser.cpp`)
 #### `CameoParser.BasicXmiDocument_ParsedIntoValidFsmIr`

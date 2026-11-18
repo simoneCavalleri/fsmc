@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 700  
+**Total Documented Test Cases**: 701  
 
 ---
 
@@ -1466,6 +1466,10 @@
 
 #### `Sysml2Parser.ChoiceNodeRoundtrip_PreservedAcrossSerializer`
 **Test Intent**: Regression: `Sysml2Serializer` emits `choice <Name>;` for `ChoiceNode` entries
+
+#### `Sysml2Parser.SendViaPortInsideActionBlocks_ProducesSignalEmitOp`
+**Test Intent**: Regression: `send <Signal>(<Payload>) via <Port>;` inside `entry action { ... }` and
+`do action { ... }` blocks produces a structured `SignalEmitOp` instruction instead of a mangled
 
 ### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`

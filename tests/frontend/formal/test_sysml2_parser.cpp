@@ -1312,4 +1312,56 @@ TEST(Sysml2Parser, ChoiceNodeRoundtrip_PreservedAcrossSerializer) {
     EXPECT_FALSE(parsed.choice_nodes.empty());
 }
 
+/**
+ * @brief Regression: `send <Signal>(<Payload>) via <Port>;` inside `entry action { ... }` and
+ * `do action { ... }` blocks produces a structured `SignalEmitOp` instruction instead of a mangled
+ * standalone call identifier (`send_Alert42_via_cmd_out`).
+ * @scenario Parse SysML v2 with `entry action { send Alert(42) via cmd_out; }` and a transition with
+ * `do action { send Ack(1) via cmd_out; }`.
+ * @expected Both the state entry action and transition action carry a `SignalEmitOp` with matching signal, port, and
+ * argument.
+ */
+TEST(Sysml2Parser, SendViaPortInsideActionBlocks_ProducesSignalEmitOp) {
+    const std::string sysml = R"sysml(
+state def BlockSendFsm {
+    out port cmd_out : Integer;
+    event def Alert;
+    event def Ack;
+    event def Go;
+    entry; then Idle;
+    state Idle {
+        entry action { send Alert(42) via cmd_out; }
+    }
+    state Done;
+    transition first Idle accept Go do action { send Ack(1) via cmd_out; } then Done;
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, ir, err)) << err;
+
+    const auto* idle = ir.find_state("Idle");
+    ASSERT_NE(idle, nullptr);
+    ASSERT_EQ(idle->entry_actions.size(), 1u);
+    ASSERT_EQ(idle->entry_actions[0].instructions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<SignalEmitOp>(idle->entry_actions[0].instructions[0].op));
+    const auto& entry_emit = std::get<SignalEmitOp>(idle->entry_actions[0].instructions[0].op);
+    EXPECT_EQ(entry_emit.signal_name, "Alert");
+    EXPECT_EQ(entry_emit.target_port, "cmd_out");
+    ASSERT_EQ(entry_emit.arguments.size(), 1u);
+    EXPECT_EQ(entry_emit.arguments[0], "42");
+
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    ASSERT_EQ(ir.transitions[0].transition_action->instructions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<SignalEmitOp>(ir.transitions[0].transition_action->instructions[0].op));
+    const auto& trans_emit = std::get<SignalEmitOp>(ir.transitions[0].transition_action->instructions[0].op);
+    EXPECT_EQ(trans_emit.signal_name, "Ack");
+    EXPECT_EQ(trans_emit.target_port, "cmd_out");
+    ASSERT_EQ(trans_emit.arguments.size(), 1u);
+    EXPECT_EQ(trans_emit.arguments[0], "1");
+}
+
 }  // namespace

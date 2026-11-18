@@ -1311,4 +1311,27 @@ TEST(FormalRoundtrip, SmvSerializer_ExpandsAtomicGuardsInsideCombinators) {
     EXPECT_EQ(smv.find("x_gt_0 : boolean"), std::string::npos);
 }
 
+/**
+ * @brief Regression: `SmvSerializer` widens default integer range `0..100` to `-100..100` (or wider)
+ * when a signed variable has a negative `initial_value` or negative assigned literal, avoiding
+ * nuXmv range errors and `W_VARIABLE_RANGE_VIOLATION` on roundtrip.
+ * @scenario Serialize an FSM with `temp` initialized to `-10` and assigned `-150` on a transition.
+ * @expected SMV output declares `temp : -150..100;`.
+ */
+TEST(FormalRoundtrip, SmvSerializer_WidensRangeForNegativeInitialOrAssignedValues) {
+    FsmIr ir;
+    ir.name = "SmvNegRange";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+    ir.add_state("Done");
+    ir.add_variable(VariableDefinition("temp", DataType::int32(), "-10"));
+    ActionSignature act("cool");
+    act.assignments.emplace_back(LValueTarget("temp", LValueScope::Register), "-150");
+    ir.add_action("cool");
+    ir.add_transition(TransitionEdge("Idle", "Done", "Freeze", std::nullopt, act));
+
+    const std::string smv = SmvSerializer::serialize(ir);
+    EXPECT_NE(smv.find("temp : -150..100;"), std::string::npos);
+}
+
 }  // namespace

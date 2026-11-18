@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 685  
+**Total Documented Test Cases**: 686  
 
 ---
 
@@ -1113,6 +1113,10 @@
 #### `CameoParser.PropertiesReqsAndTimeInvariant_PreservedAcrossSerializerRoundtrip`
 **Test Intent**: Regression: `CameoSerializer` preserves `model.properties`, `state.traceability_reqs`, and
 `state.time_invariant` across Cameo XMI roundtrips.
+
+#### `CameoParser.ForkJoinEntryAndExitPoints_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `CameoSerializer` and `CameoXmiGraphResolver` preserve `Fork`, `Join`,
+`EntryPoint`, and `ExitPoint` pseudostate `StateKind` values across XMI roundtrips.
 
 ### [`test_scxml_parser.cpp`](../../tests/frontend/formal/test_scxml_parser.cpp) (`tests/frontend/formal/test_scxml_parser.cpp`)
 #### `ScxmlParser.BasicScxmlDocument_ParsedIntoValidFsmIr`

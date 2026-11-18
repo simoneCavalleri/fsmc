@@ -818,4 +818,40 @@ TEST(CameoParser, PropertiesReqsAndTimeInvariant_PreservedAcrossSerializerRoundt
     EXPECT_EQ(*p_active->time_invariant, "500[ms]");
 }
 
+/**
+ * @brief Regression: `CameoSerializer` and `CameoXmiGraphResolver` preserve `Fork`, `Join`,
+ * `EntryPoint`, and `ExitPoint` pseudostate `StateKind` values across XMI roundtrips.
+ * @scenario Serialize an FSM with `Fork`, `Join`, `EntryPoint`, and `ExitPoint` pseudostates to Cameo XMI and re-parse.
+ * @expected Re-parsed IR preserves all four `StateKind` values.
+ */
+TEST(CameoParser, ForkJoinEntryAndExitPoints_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "CameoPseudoRt";
+    ir.initial_state = "Init";
+    ir.add_state("Init");
+    ir.add_or_get_state("Split", "", StateKind::Fork);
+    ir.add_or_get_state("Merge", "", StateKind::Join);
+    auto& comp = ir.add_state("Comp");
+    comp.is_composite = true;
+    comp.initial_sub_state = "S1";
+    ir.add_state("S1", "Comp");
+    ir.add_or_get_state("Ep", "Comp", StateKind::EntryPoint);
+    ir.add_or_get_state("Xp", "Comp", StateKind::ExitPoint);
+
+    const std::string xmi = fsm::backend::formal::CameoSerializer::serialize(ir);
+    CameoXmiParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xmi, parsed, err)) << err;
+
+    ASSERT_NE(parsed.find_state("Split"), nullptr);
+    EXPECT_EQ(parsed.find_state("Split")->kind, StateKind::Fork);
+    ASSERT_NE(parsed.find_state("Merge"), nullptr);
+    EXPECT_EQ(parsed.find_state("Merge")->kind, StateKind::Join);
+    ASSERT_NE(parsed.find_state("Ep"), nullptr);
+    EXPECT_EQ(parsed.find_state("Ep")->kind, StateKind::EntryPoint);
+    ASSERT_NE(parsed.find_state("Xp"), nullptr);
+    EXPECT_EQ(parsed.find_state("Xp")->kind, StateKind::ExitPoint);
+}
+
 }  // namespace

@@ -164,6 +164,16 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
                 << escape_xml(state.name) << "\" kind=\"exitPoint\"/>\n";
             return;
         }
+        if (state.kind == StateKind::Fork) {
+            out << pad << "<subvertex xmi:type=\"uml:Pseudostate\" xmi:id=\"" << st_id << "\" name=\""
+                << escape_xml(state.name) << "\" kind=\"fork\"/>\n";
+            return;
+        }
+        if (state.kind == StateKind::Join) {
+            out << pad << "<subvertex xmi:type=\"uml:Pseudostate\" xmi:id=\"" << st_id << "\" name=\""
+                << escape_xml(state.name) << "\" kind=\"join\"/>\n";
+            return;
+        }
 
         out << pad << "<subvertex xmi:type=\"uml:State\" xmi:id=\"" << st_id << "\" name=\"" << escape_xml(state.name)
             << "\"";

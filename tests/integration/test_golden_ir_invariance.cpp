@@ -31,8 +31,11 @@
 #include "fsm/middleend/passes/constant_folding_pass.hpp"
 #include "fsm/middleend/passes/dead_action_elimination_pass.hpp"
 #include "fsm/middleend/passes/dead_state_pruning_pass.hpp"
+#include "fsm/middleend/passes/deferred_event_lowering_pass.hpp"
 #include "fsm/middleend/passes/determinism_enforcement_pass.hpp"
+#include "fsm/middleend/passes/fork_join_lowering_pass.hpp"
 #include "fsm/middleend/passes/history_lowering_pass.hpp"
+#include "fsm/middleend/passes/orthogonal_product_pass.hpp"
 #include "fsm/middleend/passes/register_liveness_pass.hpp"
 #include "fsm/middleend/passes/state_minimization_pass.hpp"
 #include "fsm/middleend/passes/transition_fusion_pass.hpp"
@@ -611,6 +614,292 @@ TEST(GoldenParserFuzz, MalformedTruncatedAndDeeplyNestedInputs_FailGracefullyWit
             EXPECT_NO_THROW({ (void)parser->parse(payload, ir, err); }) << fmt;
         }
     }
+}
+
+/**
+ * @brief Differential E2E test for non-standalone modular runtime (`fsm/fsm.hpp`) across multiple TUs.
+ */
+TEST(GoldenDifferentialE2E, ModularNonStandaloneCpp20_MultiTuLinkageMatches) {
+    auto build_mod_ir = [](std::string pkg) {
+        FsmIr ir;
+        ir.name = "ModFsm";
+        ir.package = std::move(pkg);
+        ir.initial_state = "Idle";
+        ir.add_variable(VariableDefinition("count", DataType::int32(), "0"));
+        ir.add_signal(SignalDefinition("Go"));
+        ir.add_signal(SignalDefinition("Back"));
+
+        ir.add_state("Idle");
+        auto& run = ir.add_state("Run");
+        ActionSignature run_entry("run_entry");
+        run_entry.assignments.emplace_back(LValueTarget("count"), "10", AssignmentOp::AddAssign);
+        run.entry_actions.push_back(run_entry);
+
+        ir.add_transition(TransitionEdge("Idle", "Run", "Go"));
+        ir.add_transition(TransitionEdge("Run", "Idle", "Back"));
+        return ir;
+    };
+
+    FsmIr ir_o0 = build_mod_ir("mo0");
+    FsmIr ir_o2 = build_mod_ir("mo2");
+    DiagnosticEngine diag;
+    ConstantFoldingPass().run(ir_o2, diag);
+    DeadActionEliminationPass().run(ir_o2, diag);
+    BoundaryActionFusionPass().run(ir_o2, diag);
+
+    fsm::backend::cpp::GeneratorOptions opts;
+    opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
+    opts.standalone = false;
+    opts.runtime_header = "fsm/fsm.hpp";
+    opts.include_stubs = true;
+
+    const std::string code_o0 = fsm::backend::cpp::CppGenerator::generate_header(ir_o0, opts);
+    const std::string code_o2 = fsm::backend::cpp::CppGenerator::generate_header(ir_o2, opts);
+
+    namespace fs = std::filesystem;
+    const fs::path include_dir = fs::path(__FILE__).parent_path().parent_path().parent_path() / "include";
+    const fs::path tmp_dir = fs::temp_directory_path() / "fsmc_modular_diff_e2e_test";
+    fs::create_directories(tmp_dir);
+
+    {
+        std::ofstream f0(tmp_dir / "mod_o0.hpp");
+        f0 << code_o0;
+        std::ofstream f2(tmp_dir / "mod_o2.hpp");
+        f2 << code_o2;
+        std::ofstream tu1(tmp_dir / "tu1.cpp");
+        tu1 << R"cpp(
+#include "mod_o0.hpp"
+#include "mod_o2.hpp"
+#include <iostream>
+            int step_both() {
+                mo0::ModFsmRegisters r0{};
+                mo2::ModFsmRegisters r2{};
+                mo0::ModFsm m0(r0);
+                mo2::ModFsm m2(r2);
+                m0.dispatch(mo0::Go{});
+                m2.dispatch(mo2::Go{});
+                if (m0.current_state_name() != m2.current_state_name())
+                    return 1;
+                if (m0.registers().count != m2.registers().count || m0.registers().count != 10) {
+                    std::cerr << "m0.count=" << m0.registers().count << " m2.count=" << m2.registers().count << "\n";
+                    return 2;
+                }
+                m0.dispatch(mo0::Back{});
+                m2.dispatch(mo2::Back{});
+                if (m0.current_state_name() != m2.current_state_name())
+                    return 3;
+                return 0;
+            }
+        )cpp";
+        std::ofstream tu2(tmp_dir / "tu2.cpp");
+        tu2 << R"cpp(
+#include "mod_o0.hpp"
+#include "mod_o2.hpp"
+            int step_both();
+            int main() {
+                return step_both();
+            }
+        )cpp";
+    }
+
+    const fs::path exe = tmp_dir / "mod_diff_runner";
+    const std::string cmd = "g++ -std=c++20 -Wall -Wextra -Werror -I\"" + include_dir.string() + "\" \"" +
+                            (tmp_dir / "tu1.cpp").string() + "\" \"" + (tmp_dir / "tu2.cpp").string() + "\" -o \"" +
+                            exe.string() + "\"";
+    ASSERT_EQ(std::system(cmd.c_str()), 0) << "Compilation of modular multi-TU C++20 test failed";
+    EXPECT_EQ(std::system(exe.string().c_str()), 0) << "Runtime divergence on modular non-standalone (-O0 vs -O2)";
+    fs::remove_all(tmp_dir);
+}
+
+/**
+ * @brief Differential E2E test for Parallel orthogonal regions + OrthogonalProductPass (-O0 vs -O2).
+ */
+TEST(GoldenDifferentialE2E, ParallelAndForkJoin_UnoptimizedVsOptimizedMatches) {
+    auto build_par_ir = [](std::string pkg) {
+        FsmIr ir;
+        ir.name = "ParDiffFsm";
+        ir.package = std::move(pkg);
+        ir.initial_state = "Idle";
+        ir.add_signal(SignalDefinition("Start"));
+        ir.add_signal(SignalDefinition("Step1"));
+        ir.add_signal(SignalDefinition("Step2"));
+        ir.add_signal(SignalDefinition("Done"));
+
+        ir.add_state("Idle");
+        auto& par = ir.add_state("Par");
+        par.is_composite = true;
+        par.kind = StateKind::Parallel;
+
+        OrthogonalRegion r1;
+        r1.id = "Reg1";
+        r1.name = "Reg1";
+        r1.initial_state_id = "R1_A";
+        r1.state_ids = {"R1_A", "R1_B"};
+
+        OrthogonalRegion r2;
+        r2.id = "Reg2";
+        r2.name = "Reg2";
+        r2.initial_state_id = "R2_A";
+        r2.state_ids = {"R2_A", "R2_B"};
+
+        par.orthogonal_regions = {r1, r2};
+
+        ir.add_state("R1_A", "Reg1");
+        ir.add_state("R1_B", "Reg1");
+        ir.add_state("R2_A", "Reg2");
+        ir.add_state("R2_B", "Reg2");
+
+        ir.add_state("Finished");
+
+        ir.add_transition(TransitionEdge("Idle", "Par", "Start"));
+        ir.add_transition(TransitionEdge("R1_A", "R1_B", "Step1"));
+        ir.add_transition(TransitionEdge("R2_A", "R2_B", "Step2"));
+        ir.add_transition(TransitionEdge("Par", "Finished", "Done"));
+        return ir;
+    };
+
+    FsmIr ir_o0 = build_par_ir("po0");
+    FsmIr ir_o2 = build_par_ir("po2");
+    DiagnosticEngine diag;
+    OrthogonalProductPass().run(ir_o0, diag);
+    ForkJoinLoweringPass::run(ir_o2, diag);
+    OrthogonalProductPass().run(ir_o2, diag);
+    ConstantFoldingPass().run(ir_o2, diag);
+    DeadActionEliminationPass().run(ir_o2, diag);
+    BoundaryActionFusionPass().run(ir_o2, diag);
+
+    fsm::backend::cpp::GeneratorOptions opts;
+    opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
+    opts.standalone = true;
+    opts.include_stubs = true;
+
+    const std::string code_o0 = fsm::backend::cpp::CppGenerator::generate_header(ir_o0, opts);
+    const std::string code_o2 = fsm::backend::cpp::CppGenerator::generate_header(ir_o2, opts);
+
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::temp_directory_path() / "fsmc_par_diff_e2e_test";
+    fs::create_directories(tmp_dir);
+
+    {
+        std::ofstream f0(tmp_dir / "par_o0.hpp");
+        f0 << code_o0;
+        std::ofstream f2(tmp_dir / "par_o2.hpp");
+        f2 << code_o2;
+        std::ofstream drv(tmp_dir / "driver.cpp");
+        drv << R"cpp(
+#include "par_o0.hpp"
+#include "par_o2.hpp"
+
+            int main() {
+                po0::ParDiffFsmRegisters r0{};
+                po2::ParDiffFsmRegisters r2{};
+                po0::ParDiffFsm m0(r0);
+                po2::ParDiffFsm m2(r2);
+
+                if (m0.current_state_name() != "Idle" || m2.current_state_name() != "Idle")
+                    return 1;
+                m0.dispatch(po0::Start{});
+                m2.dispatch(po2::Start{});
+                m0.dispatch(po0::Step1{});
+                m2.dispatch(po2::Step1{});
+                m0.dispatch(po0::Step2{});
+                m2.dispatch(po2::Step2{});
+                m0.dispatch(po0::Done{});
+                m2.dispatch(po2::Done{});
+                if (m0.current_state_name() != "Finished" || m2.current_state_name() != "Finished")
+                    return 2;
+                return 0;
+            }
+        )cpp";
+    }
+
+    const fs::path exe = tmp_dir / "par_diff_runner";
+    const std::string cmd = "g++ -std=c++20 -Wall -Wextra -Werror \"" + (tmp_dir / "driver.cpp").string() + "\" -o \"" +
+                            exe.string() + "\"";
+    ASSERT_EQ(std::system(cmd.c_str()), 0) << "Compilation of Parallel differential test failed";
+    EXPECT_EQ(std::system(exe.string().c_str()), 0) << "Runtime divergence on Parallel (-O0 vs -O2)";
+    fs::remove_all(tmp_dir);
+}
+
+/**
+ * @brief Differential E2E test for Deferred events + DeferredEventLoweringPass (-O0 vs -O2).
+ */
+TEST(GoldenDifferentialE2E, DeferredEvents_UnoptimizedVsOptimizedMatches) {
+    auto build_def_ir = [](std::string pkg) {
+        FsmIr ir;
+        ir.name = "DefDiffFsm";
+        ir.package = std::move(pkg);
+        ir.initial_state = "Busy";
+        ir.add_signal(SignalDefinition("Work"));
+        ir.add_signal(SignalDefinition("Ready"));
+
+        auto& busy = ir.add_state("Busy");
+        busy.deferred_events.push_back("Work");
+        ir.add_state("Processing");
+        ir.add_state("Done");
+
+        ir.add_transition(TransitionEdge("Busy", "Processing", "Ready"));
+        ir.add_transition(TransitionEdge("Processing", "Done", "Work"));
+        return ir;
+    };
+
+    FsmIr ir_o0 = build_def_ir("do0");
+    FsmIr ir_o2 = build_def_ir("do2");
+    DiagnosticEngine diag;
+    ConstantFoldingPass().run(ir_o2, diag);
+    DeadActionEliminationPass().run(ir_o2, diag);
+    TransitionFusionPass().run(ir_o2, diag);
+    CommonActionFactoringPass().run(ir_o2, diag);
+    BoundaryActionFusionPass().run(ir_o2, diag);
+
+    fsm::backend::cpp::GeneratorOptions opts;
+    opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
+    opts.standalone = true;
+    opts.include_stubs = true;
+
+    const std::string code_o0 = fsm::backend::cpp::CppGenerator::generate_header(ir_o0, opts);
+    const std::string code_o2 = fsm::backend::cpp::CppGenerator::generate_header(ir_o2, opts);
+
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::temp_directory_path() / "fsmc_def_diff_e2e_test";
+    fs::create_directories(tmp_dir);
+
+    {
+        std::ofstream f0(tmp_dir / "def_o0.hpp");
+        f0 << code_o0;
+        std::ofstream f2(tmp_dir / "def_o2.hpp");
+        f2 << code_o2;
+        std::ofstream drv(tmp_dir / "driver.cpp");
+        drv << R"cpp(
+#include "def_o0.hpp"
+#include "def_o2.hpp"
+
+            int main() {
+                do0::DefDiffFsmRegisters r0{};
+                do2::DefDiffFsmRegisters r2{};
+                do0::DefDiffFsm m0(r0);
+                do2::DefDiffFsm m2(r2);
+
+                m0.dispatch(do0::Work{});
+                m2.dispatch(do2::Work{});
+                if (m0.current_state_name() != "Busy" || m2.current_state_name() != "Busy")
+                    return 1;
+
+                m0.dispatch(do0::Ready{});
+                m2.dispatch(do2::Ready{});
+                if (m0.current_state_name() != "Done" || m2.current_state_name() != "Done")
+                    return 2;
+                return 0;
+            }
+        )cpp";
+    }
+
+    const fs::path exe = tmp_dir / "def_diff_runner";
+    const std::string cmd = "g++ -std=c++20 -Wall -Wextra -Werror \"" + (tmp_dir / "driver.cpp").string() + "\" -o \"" +
+                            exe.string() + "\"";
+    ASSERT_EQ(std::system(cmd.c_str()), 0) << "Compilation of Deferred differential test failed";
+    EXPECT_EQ(std::system(exe.string().c_str()), 0) << "Runtime divergence on Deferred events (-O0 vs -O2)";
+    fs::remove_all(tmp_dir);
 }
 
 }  // namespace

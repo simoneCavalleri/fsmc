@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 86  
-**Total Documented Test Cases**: 736  
+**Total Documented Test Cases**: 739  
 
 ---
 
@@ -2538,6 +2538,15 @@
 
 #### `GoldenParserFuzz.MalformedTruncatedAndDeeplyNestedInputs_FailGracefullyWithoutCrash`
 **Test Intent**: Adversarial robustness test: exercises empty, truncated, unbalanced, unclosed-quote,
+
+#### `GoldenDifferentialE2E.ModularNonStandaloneCpp20_MultiTuLinkageMatches`
+**Test Intent**: Differential E2E test for non-standalone modular runtime (`fsm/fsm.hpp`) across multiple TUs.
+
+#### `GoldenDifferentialE2E.ParallelAndForkJoin_UnoptimizedVsOptimizedMatches`
+**Test Intent**: Differential E2E test for Parallel orthogonal regions + OrthogonalProductPass (-O0 vs -O2).
+
+#### `GoldenDifferentialE2E.DeferredEvents_UnoptimizedVsOptimizedMatches`
+**Test Intent**: Differential E2E test for Deferred events + DeferredEventLoweringPass (-O0 vs -O2).
 
 ### [`test_multiformat_presets_roundtrip.cpp`](../../tests/integration/test_multiformat_presets_roundtrip.cpp) (`tests/integration/test_multiformat_presets_roundtrip.cpp`)
 #### `MultiformatPresets.Sysml2UavMission_PassesRoundtripAndStrictCompilation`

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 710  
+**Total Documented Test Cases**: 711  
 
 ---
 
@@ -2069,6 +2069,9 @@
 
 #### `EfsmIntervalAnalysis.OutOfRangeVariableGuardCondition_FlagsUnsatisfiableBranch`
 **Test Intent**: Verify EFSM Interval Analysis detects unsatisfiable guard conditions across data paths.
+
+#### `FsmValidator.MultiTargetForkTransition_NoFalseUnreachableWarning`
+**Test Intent**: Regression: `FsmValidator::validate_reachability` traverses `target_ids` / `multi_target_ids`
 
 ### [`test_model_checker_temporal_logic.cpp`](../../tests/middleend/verification/test_model_checker_temporal_logic.cpp) (`tests/middleend/verification/test_model_checker_temporal_logic.cpp`)
 #### `LtlPropertyParser.BasicUnaryAndBinaryOperators_ParsesAstAndToString`

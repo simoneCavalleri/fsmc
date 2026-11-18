@@ -267,4 +267,28 @@ TEST(EfsmIntervalAnalysis, OutOfRangeVariableGuardCondition_FlagsUnsatisfiableBr
     EXPECT_TRUE(diag.has_warnings());
 }
 
+/**
+ * @brief Regression: `FsmValidator::validate_reachability` traverses `target_ids` / `multi_target_ids`
+ * on lowered fork transitions so secondary fork branch states are not falsely reported unreachable.
+ * @scenario Validate an FSM with `Init -> {RegA, RegB}` via `target_ids`.
+ * @expected Zero `Reachability` warnings are emitted.
+ */
+TEST(FsmValidator, MultiTargetForkTransition_NoFalseUnreachableWarning) {
+    FsmIr model;
+    model.name = "MultiTargetVal";
+    model.initial_state = "Init";
+    model.add_state("Init");
+    model.add_state("RegA");
+    model.add_state("RegB");
+
+    TransitionEdge fork_edge("Init", "RegA", "EvFork");
+    fork_edge.target_ids = {"RegA", "RegB"};
+    model.add_transition(std::move(fork_edge));
+
+    const auto validation = FsmValidator::validate(model);
+    for (const auto& diag : validation.diagnostics) {
+        EXPECT_NE(diag.category, "Reachability") << diag.message;
+    }
+}
+
 }  // namespace

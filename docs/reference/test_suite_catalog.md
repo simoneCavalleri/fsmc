@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 671  
+**Total Documented Test Cases**: 672  
 
 ---
 
@@ -1373,6 +1373,9 @@
 
 #### `Sysml2Parser.SignedIntType_MapsToInt32WithNegativeInit`
 **Test Intent**: Regression: SysML2 `int` maps to signed `int32_t` (not `uint32_t`), while `Integer` and `Natural`
+
+#### `Sysml2Parser.NestedSubstatesWithRootLevelTransitions_RetainParentAfterNormalizeHierarchy`
+**Test Intent**: Regression: nested substates declared inside a composite state block retain their `parent_state`
 
 ### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 637  
+**Total Documented Test Cases**: 638  
 
 ---
 
@@ -1434,6 +1434,9 @@
 #### `FsmIr.JsonDeserializer_ResolvesTransitionSourceAndTargetIdsToStateIds`
 **Test Intent**: Regression: JSON deserialization resolves `TransitionEdge::source_id` and `target_id` to the exact
 `StateNode::id` of existing states (even when state IDs were computed from hierarchical FQNs).
+
+#### `FsmIr.JsonDeserializer_MapsXStateFinalTypeToStateKindFinal`
+**Test Intent**: Regression: XState JSON `"type": "final"` maps to `StateKind::Final`.
 
 ### [`test_fsm_ir_semantic_completeness.cpp`](../../tests/ir/test_fsm_ir_semantic_completeness.cpp) (`tests/ir/test_fsm_ir_semantic_completeness.cpp`)
 #### `StateKind.TerminatePseudostate_DifferentiatedFromFinalState`

@@ -1503,4 +1503,33 @@ TEST(FsmIr, JsonDeserializer_ResolvesTransitionSourceAndTargetIdsToStateIds) {
     EXPECT_EQ(ir.transitions[0].target_id, idle->id);
 }
 
+/**
+ * @brief Regression: XState JSON `"type": "final"` maps to `StateKind::Final`.
+ * @scenario Deserialize JSON where state `Done` has `"type": "final"`.
+ * @expected `done->kind == StateKind::Final`.
+ */
+TEST(FsmIr, JsonDeserializer_MapsXStateFinalTypeToStateKindFinal) {
+    const std::string json = R"json({
+  "name": "JsonFinalType",
+  "initial_state": "Idle",
+  "states": {
+    "Idle": {
+      "on": {
+        "Finish": "Done"
+      }
+    },
+    "Done": {
+      "type": "final"
+    }
+  }
+})json";
+
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(FsmIrDeserializer::deserialize_json(json, ir, err)) << err;
+    const auto* done = ir.find_state("Done");
+    ASSERT_NE(done, nullptr);
+    EXPECT_EQ(done->kind, StateKind::Final);
+}
+
 }  // namespace

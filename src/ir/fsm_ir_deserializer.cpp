@@ -910,6 +910,9 @@ void parse_states_object(const JsonValue& states_obj, FsmIr& model, const std::s
             curr->is_composite = true;
             curr->kind = StateKind::Parallel;
         }
+        if (s_type == "final" && curr != nullptr) {
+            curr->kind = StateKind::Final;
+        }
         if (const auto* ic_val = state_data.get_child("is_composite")) {
             if (ic_val->type == JsonType::Bool && curr != nullptr) {
                 curr->is_composite = ic_val->bool_val;

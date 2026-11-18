@@ -28,6 +28,13 @@ bool SmvParser::parse(std::string_view content, FsmIr& model, std::string& error
         }
 
         // Extract model name from comment or MODULE declaration
+        if (trimmed.rfind("-- nuXmv / SMV Formal Verification Model:", 0) == 0) {
+            std::string name = trim(trimmed.substr(41));
+            if (!name.empty()) {
+                model.name = sanitize_identifier(name);
+            }
+            continue;
+        }
         if (trimmed.rfind("-- nuXmv / SMV Formal Model:", 0) == 0) {
             std::string name = trim(trimmed.substr(28));
             if (!name.empty()) {

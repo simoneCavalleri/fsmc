@@ -162,6 +162,23 @@ bool DeadActionEliminationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 if (known_vars.count(ident))
                     read_vars.insert(ident);
             }
+            for (const auto& gm : ir.guards) {
+                if (gm.name == *edge.guard) {
+                    if (gm.raw_expression.has_value()) {
+                        for (const auto& ident : extract_identifiers(*gm.raw_expression)) {
+                            if (known_vars.count(ident))
+                                read_vars.insert(ident);
+                        }
+                    }
+                    if (gm.normalized_expression.has_value()) {
+                        for (const auto& ident : extract_identifiers(*gm.normalized_expression)) {
+                            if (known_vars.count(ident))
+                                read_vars.insert(ident);
+                        }
+                    }
+                    break;
+                }
+            }
         }
         if (std::holds_alternative<ir::ChangeTrigger>(edge.trigger)) {
             const auto& ct = std::get<ir::ChangeTrigger>(edge.trigger);

@@ -242,6 +242,48 @@ TEST(DeadActionElimination, ActionAssignments_DeadStoresEliminated) {
     EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].expression, "20");
 }
 
+/**
+ * @brief Regression: DeadActionEliminationPass resolves symbolic guard names against `ir.guards`
+ * so stores to variables read only in `GuardMetadata` expressions are not falsely pruned.
+ */
+TEST(DeadActionElimination, SymbolicGuardMetadata_VariablesPreservedAsLiveReads) {
+    FsmIr ir;
+    ir.name = "GuardMetaLiveMachine";
+    ir.initial_state_id = "s1";
+
+    ir.variables.emplace_back("armed", DataType::boolean(), "false");
+
+    StateNode s1("s1", "s1");
+    ir.states.push_back(s1);
+
+    TransitionEdge edge;
+    edge.source_id = "s1";
+    edge.target_id = "s1";
+    edge.trigger = SignalTrigger("ARM");
+
+    ActionSignature act;
+    act.assignments.emplace_back(LValueTarget("armed"), "true");
+    edge.transition_action = act;
+    ir.add_transition(edge);
+
+    ir.add_guard("is_armed", "", std::optional<std::string>{"armed == true"},
+                 std::optional<std::string>{"armed == true"});
+    TransitionEdge edge2;
+    edge2.source_id = "s1";
+    edge2.target_id = "s1";
+    edge2.trigger = SignalTrigger("FIRE");
+    edge2.guard = "is_armed";
+    ir.add_transition(edge2);
+
+    DiagnosticEngine diag;
+    DeadActionEliminationPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    ASSERT_EQ(ir.transitions[0].transition_action->assignments.size(), 1u);
+    EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].target.name, "armed");
+}
+
 // ============================================================================
 // RegisterLivenessPass Tests
 // ============================================================================

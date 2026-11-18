@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 633  
+**Total Documented Test Cases**: 634  
 
 ---
 
@@ -1088,6 +1088,9 @@
 
 #### `SmvParser.BooleanInitLiterals_NormalizedToLowercase`
 **Test Intent**: Verify SmvParser normalizes SMV uppercase boolean literals TRUE/FALSE in init() assignments.
+
+#### `SmvParser.DisjunctiveEvents_ExpandedIntoSeparateTransitions`
+**Test Intent**: Regression: SMV disjunctive event clauses `(event = Go | event = Force)` and `event in {Go, Force}`
 
 ### [`test_stateflow_parser.cpp`](../../tests/frontend/formal/test_stateflow_parser.cpp) (`tests/frontend/formal/test_stateflow_parser.cpp`)
 #### `StateflowParser.BasicStateflowChart_ParsedIntoValidFsmIr`

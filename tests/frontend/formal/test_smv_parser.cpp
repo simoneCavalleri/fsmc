@@ -550,4 +550,35 @@ ASSIGN
     EXPECT_EQ(faulted->initial_value, "false");
 }
 
+/**
+ * @brief Regression: SMV disjunctive event clauses `(event = Go | event = Force)` and `event in {Go, Force}`
+ * expand into separate `TransitionEdge` entries instead of a single mangled event name.
+ * @scenario Parse SMV `next(state)` with `state = Idle & (event = Go | event = Force) : Active;`.
+ * @expected Two transitions (`Go` and `Force`) from `Idle` to `Active`.
+ */
+TEST(SmvParser, DisjunctiveEvents_ExpandedIntoSeparateTransitions) {
+    const std::string smv_content = R"(
+MODULE main
+VAR
+  state : {Idle, Active};
+  event : {none, Go, Force};
+ASSIGN
+  init(state) := Idle;
+  next(state) := case
+    state = Idle & (event = Go | event = Force) : Active;
+    TRUE : state;
+  esac;
+)";
+
+    SmvParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+    ASSERT_EQ(model.transitions.size(), 2u);
+    EXPECT_EQ(model.transitions[0].event, "Go");
+    EXPECT_EQ(model.transitions[1].event, "Force");
+    EXPECT_EQ(model.transitions[0].target, "Active");
+    EXPECT_EQ(model.transitions[1].target, "Active");
+}
+
 }  // namespace

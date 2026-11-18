@@ -8,6 +8,7 @@
 #include <string>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
+#include "fsm/backend/formal/smv_serializer.hpp"
 #include "fsm/frontend/common/parser_interface.hpp"
 #include "fsm/frontend/formal/smv_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
@@ -679,6 +680,41 @@ ASSIGN
     ASSERT_EQ(model.transitions.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<TimeTrigger>(model.transitions[0].trigger));
     EXPECT_EQ(std::get<TimeTrigger>(model.transitions[0].trigger).duration_in_ms(), 100u);
+}
+
+/**
+ * @brief Regression: `SmvSerializer` emits `-- kind=internal` on `TransitionEdgeKind::Internal`
+ * transitions so `SmvParser` preserves `Internal` kind across nuXmv/SMV roundtrips.
+ * @scenario Serialize an internal transition `Idle --Ping / x = x + 1--> Idle` to SMV and re-parse.
+ * @expected Serialized SMV contains `kind=internal` and re-parsed transition has `kind ==
+ * TransitionEdgeKind::Internal`.
+ */
+TEST(SmvParser, InternalTransition_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "SmvIntRt";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+    VariableDefinition x("x", DataType::int32(), "0");
+    ir.add_variable(x);
+
+    TransitionEdge t("Idle", "Idle", "Ping");
+    t.kind = TransitionEdgeKind::Internal;
+    ActionSignature act("inc_x");
+    act.assignments.emplace_back("x", "x + 1");
+    t.transition_action = act;
+    ir.add_transition(t);
+
+    const std::string smv = fsm::backend::formal::SmvSerializer::serialize(ir);
+    EXPECT_NE(smv.find("kind=internal"), std::string::npos) << smv;
+
+    SmvParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 1u);
+    EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
+    ASSERT_TRUE(parsed.transitions[0].transition_action.has_value());
+    EXPECT_EQ(parsed.transitions[0].transition_action->assignments.size(), 1u);
 }
 
 }  // namespace

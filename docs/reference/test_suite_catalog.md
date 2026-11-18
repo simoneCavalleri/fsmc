@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 674  
+**Total Documented Test Cases**: 675  
 
 ---
 
@@ -1214,6 +1214,9 @@
 
 #### `SmvParser.TimerCounterClause_ReconstructsTimeTriggerAndRemovesSyntheticTimerVar`
 **Test Intent**: Regression: `SmvParser` reconstructs `TimeTrigger` from `timer_<State> >= <ms>` clauses
+
+#### `SmvParser.InternalTransition_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `SmvSerializer` emits `-- kind=internal` on `TransitionEdgeKind::Internal`
 
 ### [`test_stateflow_parser.cpp`](../../tests/frontend/formal/test_stateflow_parser.cpp) (`tests/frontend/formal/test_stateflow_parser.cpp`)
 #### `StateflowParser.BasicStateflowChart_ParsedIntoValidFsmIr`

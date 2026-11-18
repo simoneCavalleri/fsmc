@@ -412,6 +412,22 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
                     }
                 }
             }
+            std::string req_attr = child->get_attr("satisfies");
+            if (!req_attr.empty() && s != nullptr) {
+                std::istringstream rss(req_attr);
+                std::string req_item;
+                while (std::getline(rss, req_item, ',')) {
+                    std::string r = std::string(trim(req_item));
+                    if (!r.empty() && std::find(s->traceability_reqs.begin(), s->traceability_reqs.end(), r) ==
+                                          s->traceability_reqs.end()) {
+                        s->traceability_reqs.push_back(r);
+                    }
+                }
+            }
+            std::string inv_attr = child->get_attr("invariant");
+            if (!inv_attr.empty() && s != nullptr) {
+                s->time_invariant = inv_attr;
+            }
 
             // Parse state labelString (e.g. StateName\nentry: ...\nduring: ...\nexit: ...)
             std::string state_label = child->get_attr("labelString");

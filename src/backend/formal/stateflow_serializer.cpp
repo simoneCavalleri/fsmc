@@ -95,6 +95,18 @@ static void emit_state(std::ostream& out, const StateNode& state, const FsmIr& m
         }
         out << " defer=\"" << escape_xml(defer_str) << "\"";
     }
+    if (!state.traceability_reqs.empty()) {
+        std::string req_str;
+        for (std::size_t i = 0; i < state.traceability_reqs.size(); ++i) {
+            if (i > 0)
+                req_str += ", ";
+            req_str += state.traceability_reqs[i];
+        }
+        out << " satisfies=\"" << escape_xml(req_str) << "\"";
+    }
+    if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
+        out << " invariant=\"" << escape_xml(state.time_invariant->raw_expression) << "\"";
+    }
 
     std::vector<const StateNode*> children;
     for (const auto& s : model.states) {
@@ -252,6 +264,19 @@ std::string StateflowSerializer::serialize(const FsmIr& model) {
         } else if (ct.is_struct()) {
             out << "    <!-- @fsm:struct " << DirectiveParser::format_struct_directive(ct) << " -->\n";
         }
+    }
+
+    // Properties
+    for (const auto& prop : model.properties) {
+        out << "    <!-- @fsm:property name=" << prop.name << " kind=" << property_kind_to_string(prop.kind)
+            << " ltl=\"" << prop.raw_formula << "\"";
+        if (!prop.traceability_req.empty()) {
+            out << " req=\"" << prop.traceability_req << "\"";
+        }
+        if (!prop.description.empty()) {
+            out << " desc=\"" << prop.description << "\"";
+        }
+        out << " -->\n";
     }
 
     out << "    <chart id=\"1\" name=\"" << escape_xml(chart_name) << "\"";

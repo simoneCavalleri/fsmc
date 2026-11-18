@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 683  
+**Total Documented Test Cases**: 684  
 
 ---
 
@@ -1287,6 +1287,9 @@
 
 #### `StateflowParser.MultipleTransitionsSameEndpoints_DisambiguateAssignmentActionNames`
 **Test Intent**: Regression: Multiple Stateflow transitions between the same `source` and `target` states
+
+#### `StateflowParser.PropertiesReqsAndTimeInvariant_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `StateflowSerializer` preserves `model.properties`, `state.traceability_reqs`,
 
 ### [`test_stateflow_slx_ingestion.cpp`](../../tests/frontend/formal/test_stateflow_slx_ingestion.cpp) (`tests/frontend/formal/test_stateflow_slx_ingestion.cpp`)
 #### `StateflowSlxIngestion.IngestStoredSlxContainer_ParsesModelDirectly`

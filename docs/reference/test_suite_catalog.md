@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 719  
+**Total Documented Test Cases**: 720  
 
 ---
 
@@ -1895,6 +1895,9 @@
 #### `StateMinimizationPassTest.DistinctTraceabilityReqs_NotMerged`
 **Test Intent**: Regression: `StateMinimizationPass` does not merge states that carry distinct
 `traceability_reqs` (`@fsm:req`), preserving requirement traceability links for RTM auditing.
+
+#### `ConstantFolding.DoActivityAndActionCallOp_PreservedDuringActionCleanup`
+**Test Intent**: Regression: `ConstantFoldingPass` keeps actions referenced by `StateNode::do_activity`
 
 ### [`test_datapath_optimizations.cpp`](../../tests/middleend/optimization/test_datapath_optimizations.cpp) (`tests/middleend/optimization/test_datapath_optimizations.cpp`)
 #### `DeadActionElimination.UnreadVariableStore_PrunedFromTransitionAction`

@@ -305,4 +305,41 @@ TEST(StateMinimizationPassTest, DistinctTraceabilityReqs_NotMerged) {
     ASSERT_NE(model.find_state("B"), nullptr);
 }
 
+/**
+ * @brief Regression: `ConstantFoldingPass` keeps actions referenced by `StateNode::do_activity`
+ * and `ActionCallOp` instructions when pruning unreferenced actions from `FsmIr::actions`.
+ * @scenario State `Active` has `do_activity = "MonitorLoop"` and `entry_actions` calling `"InitHw"` via
+ * `ActionCallOp`; run `ConstantFoldingPass`.
+ * @expected Both `"MonitorLoop"` and `"InitHw"` remain in `model.actions`.
+ */
+TEST(ConstantFolding, DoActivityAndActionCallOp_PreservedDuringActionCleanup) {
+    FsmIr model;
+    model.name = "DoActivityActionCleanup";
+    model.initial_state = "Active";
+    auto& active = model.add_state("Active");
+    active.do_activity = "MonitorLoop";
+
+    ActionSignature entry_sig("EntryWrap");
+    ActionCallOp call_op;
+    call_op.function_name = "InitHw";
+    entry_sig.instructions.emplace_back(std::move(call_op));
+    active.entry_actions.push_back(std::move(entry_sig));
+
+    model.add_action("MonitorLoop");
+    model.add_action("InitHw");
+    model.add_action("UnusedAction");
+
+    ConstantFoldingPass pass;
+    DiagnosticEngine diag;
+    EXPECT_TRUE(pass.run(model, diag));
+
+    auto has_action = [&](const std::string& name) {
+        return std::any_of(model.actions.begin(), model.actions.end(),
+                           [&](const ActionModel& a) { return a.name == name; });
+    };
+    EXPECT_TRUE(has_action("MonitorLoop"));
+    EXPECT_TRUE(has_action("InitHw"));
+    EXPECT_FALSE(has_action("UnusedAction"));
+}
+
 }  // namespace

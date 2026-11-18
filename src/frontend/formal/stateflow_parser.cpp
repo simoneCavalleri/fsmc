@@ -758,7 +758,44 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
         label = trans_node->get_attr("label");
     }
 
+    auto strip_matlab_comments = [](std::string_view input) -> std::string {
+        std::string out;
+        out.reserve(input.size());
+        char quote = '\0';
+        for (size_t i = 0; i < input.size(); ++i) {
+            char c = input[i];
+            if (quote != '\0') {
+                out.push_back(c);
+                if (c == '\\' && i + 1 < input.size()) {
+                    out.push_back(input[++i]);
+                } else if (c == quote) {
+                    quote = '\0';
+                }
+                continue;
+            }
+            if (c == '"' || c == '\'') {
+                quote = c;
+                out.push_back(c);
+                continue;
+            }
+            if (c == '%') {
+                while (i < input.size() && input[i] != '\n') {
+                    ++i;
+                }
+                if (i < input.size() && input[i] == '\n') {
+                    out.push_back('\n');
+                }
+                continue;
+            }
+            out.push_back(c);
+        }
+        return std::string{trim(out)};
+    };
+
     auto comps = parse_stateflow_label(label);
+    comps.guard = strip_matlab_comments(comps.guard);
+    comps.condition_action = strip_matlab_comments(comps.condition_action);
+    comps.transition_action = strip_matlab_comments(comps.transition_action);
 
     std::string src_name = sanitize_identifier(src.empty() ? scope : src);
     std::string dst_name = sanitize_identifier(dst.empty() ? src_name : dst);

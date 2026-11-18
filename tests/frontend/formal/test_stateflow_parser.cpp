@@ -750,4 +750,43 @@ TEST(StateflowParser, MultipleTransitionsSameEndpoints_DisambiguateAssignmentAct
     EXPECT_NE(ir.transitions[0].transition_action->name, ir.transitions[1].transition_action->name);
 }
 
+/**
+ * @brief Regression: `StateflowSerializer` preserves `model.properties`, `state.traceability_reqs`,
+ * and `state.time_invariant` across Stateflow XML roundtrips.
+ * @scenario Serialize an FSM with `FormalProperty("safe", "G (not Bad)")` and state `Active` (`REQ_001`, `500[ms]`),
+ * then re-parse with `StateflowParser`.
+ * @expected Re-parsed IR keeps the property, `traceability_reqs == {"REQ_001"}`, and `time_invariant == "500[ms]"`.
+ */
+TEST(StateflowParser, PropertiesReqsAndTimeInvariant_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "SfMetaRt";
+    ir.initial_state = "Active";
+    auto& active = ir.add_state("Active");
+    active.traceability_reqs.push_back("REQ_001");
+    active.time_invariant = "500[ms]";
+
+    FormalProperty prop;
+    prop.name = "safe";
+    prop.kind = PropertyKind::Safety;
+    prop.raw_formula = "G (not Bad)";
+    ir.add_property(prop);
+
+    const std::string xml = StateflowSerializer::serialize(ir);
+    StateflowParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+
+    ASSERT_EQ(parsed.properties.size(), 1u);
+    EXPECT_EQ(parsed.properties[0].name, "safe");
+    EXPECT_EQ(parsed.properties[0].raw_formula, "G (not Bad)");
+
+    const auto* p_active = parsed.find_state("Active");
+    ASSERT_NE(p_active, nullptr);
+    ASSERT_EQ(p_active->traceability_reqs.size(), 1u);
+    EXPECT_EQ(p_active->traceability_reqs[0], "REQ_001");
+    ASSERT_TRUE(p_active->time_invariant.has_value());
+    EXPECT_EQ(*p_active->time_invariant, "500[ms]");
+}
+
 }  // namespace

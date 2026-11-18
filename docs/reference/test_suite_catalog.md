@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 667  
+**Total Documented Test Cases**: 668  
 
 ---
 
@@ -996,6 +996,10 @@
 #### `PlantUmlParser.TimeTriggerEventLabel_PopulatesTimeTrigger`
 **Test Intent**: Regression: `PlantUmlParser` reconstructs `TimeTrigger` when parsing `after_<N>ms` /
 `every_<N>ms` transition labels emitted by `PlantUmlSerializer`.
+
+#### `PlantUmlParser.InternalTransition_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `PlantUmlSerializer` emits `State : Event / Action` for
+`TransitionEdgeKind::Internal` transitions so `PlantUmlParser` preserves `Internal` kind across roundtrips.
 
 ### [`test_directive_parser.cpp`](../../tests/frontend/directive/test_directive_parser.cpp) (`tests/frontend/directive/test_directive_parser.cpp`)
 #### `DirectiveParser.StateDirective_ParsesTraceabilityAndActivities`

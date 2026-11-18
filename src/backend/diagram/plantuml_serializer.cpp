@@ -147,12 +147,16 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
         std::string src_parent = (src_it != parent_map.end()) ? src_it->second : "";
         if (src_parent == state.name) {
             emitted_transitions.insert(i);
+            std::string label = build_label(trans, model);
+            if (trans.kind == TransitionEdgeKind::Internal && !label.empty()) {
+                out << pad << "  " << trans.source << " : " << label << "\n";
+                continue;
+            }
             std::string clean_target = trans.target;
             if (trans.target_is_history) {
                 clean_target += trans.target_is_deep_history ? "[H*]" : "[H]";
             }
             out << pad << "  " << trans.source << " --> " << clean_target;
-            std::string label = build_label(trans, model);
             if (!label.empty()) {
                 out << " : " << label;
             }
@@ -307,12 +311,16 @@ std::string PlantUmlSerializer::serialize(const FsmIr& model) {
             continue;
         }
         const auto& trans = model.transitions[i];
+        std::string label = build_label(trans, model);
+        if (trans.kind == TransitionEdgeKind::Internal && !label.empty()) {
+            out << trans.source << " : " << label << "\n";
+            continue;
+        }
         std::string clean_target = trans.target;
         if (trans.target_is_history) {
             clean_target += trans.target_is_deep_history ? "[H*]" : "[H]";
         }
         out << trans.source << " --> " << clean_target;
-        std::string label = build_label(trans, model);
         if (!label.empty()) {
             out << " : " << label;
         }

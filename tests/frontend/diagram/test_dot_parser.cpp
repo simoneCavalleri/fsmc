@@ -391,4 +391,30 @@ TEST(DotParser, UnparenthesizedLifecycleAndDeferInNodeLabel_PopulatedCleanly) {
     EXPECT_EQ(idle->deferred_events[0], "Ping");
 }
 
+/**
+ * @brief Regression: Multiple DOT transitions between the same `source` and `target` states
+ * assigning to the same variable receive disambiguated synthetic action names (`Idle_Done_act_x`,
+ * `Idle_Done_act_x_2`) so their assignments do not collide in C++ codegen.
+ * @scenario Parse DOT with `Idle -> Done [label="Ev1 / x = 1"]` and `Idle -> Done [label="Ev2 / x = 2"]`.
+ * @expected `transitions[0].transition_action->name != transitions[1].transition_action->name`.
+ */
+TEST(DotParser, MultipleTransitionsSameEndpoints_DisambiguateAssignmentActionNames) {
+    const std::string dot_content = R"dot(digraph DotSameEp {
+    // @fsm:var name=x type=int init=0
+    __start__ -> Idle;
+    Idle -> Done [label="Ev1 / x = 1"];
+    Idle -> Done [label="Ev2 / x = 2"];
+}
+)dot";
+
+    DotParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    ASSERT_EQ(ir.transitions.size(), 2u);
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    ASSERT_TRUE(ir.transitions[1].transition_action.has_value());
+    EXPECT_NE(ir.transitions[0].transition_action->name, ir.transitions[1].transition_action->name);
+}
+
 }  // namespace

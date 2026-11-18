@@ -265,6 +265,10 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
             } else {
                 out << "        accept after(" << tt->duration_value << unit_str << ")\n";
             }
+        } else if (const auto* ct = std::get_if<ir::ChangeTrigger>(&trans.trigger)) {
+            if (!ct->raw_expression.empty()) {
+                out << "        accept when (" << ct->raw_expression << ")\n";
+            }
         } else if (!trans.event.empty()) {
             out << "        accept " << trans.event << "\n";
         }

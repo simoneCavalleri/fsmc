@@ -1256,4 +1256,33 @@ TEST(Sysml2Parser, ForkAndJoinRoundtrip_PreservedAcrossSerializer) {
     EXPECT_EQ(merge->kind, StateKind::Join);
 }
 
+/**
+ * @brief Regression: `Sysml2Serializer` emits `accept when (<expr>)` for `ChangeTrigger`
+ * transitions so `Sysml2Parser` preserves `ChangeTrigger` across roundtrips.
+ * @scenario Serialize a transition with `ChangeTrigger("count > 5")` to SysML v2 and re-parse.
+ * @expected Serialized SysML2 contains `accept when (count > 5)` and re-parsed transition holds `ChangeTrigger`.
+ */
+TEST(Sysml2Parser, ChangeTriggerRoundtrip_PreservedAcrossSerializer) {
+    FsmIr ir;
+    ir.name = "ChangeTrigRt";
+    ir.initial_state = "Wait";
+    ir.add_state("Wait");
+    ir.add_state("Done");
+    ir.add_variable(VariableDefinition("count", DataType::int32(), "0"));
+    TransitionEdge t("Wait", "Done", "");
+    t.trigger = ChangeTrigger("count > 5", true);
+    ir.add_transition(t);
+
+    const std::string sysml = fsm::backend::formal::Sysml2Serializer::serialize(ir);
+    EXPECT_NE(sysml.find("accept when (count > 5)"), std::string::npos) << sysml;
+
+    Sysml2Parser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ChangeTrigger>(parsed.transitions[0].trigger));
+    EXPECT_EQ(std::get<ChangeTrigger>(parsed.transitions[0].trigger).raw_expression, "count > 5");
+}
+
 }  // namespace

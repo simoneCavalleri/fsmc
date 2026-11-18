@@ -143,6 +143,44 @@ TEST(DeferredEventLowering, DeferredEventsDeclared_LowersToBufferVariablesAndRec
     EXPECT_TRUE(exit_has_recall);
 }
 
+/**
+ * @brief Regression: `DeferredEventLoweringPass` does not attach `__recall_deferred` to
+ * `TransitionEdgeKind::Local` transitions originating on a composite state (local transitions
+ * stay inside the composite state and must not drain its deferred queue).
+ */
+TEST(DeferredEventLowering, LocalTransitionOnComposite_DoesNotAttachRecall) {
+    FsmIr ir;
+    DiagnosticEngine diag;
+
+    StateNode active("Active", "Composite state deferring EvMsg");
+    active.is_composite = true;
+    active.initial_sub_state = "SubA";
+    active.deferred_events.push_back("EvMsg");
+    ir.add_state(active);
+    ir.add_state(StateNode("SubA", "", "Active"));
+    ir.add_state(StateNode("SubB", "", "Active"));
+    ir.add_state("Idle");
+
+    TransitionEdge loc("Active", "SubB", "EvLocal");
+    loc.kind = TransitionEdgeKind::Local;
+    ir.add_transition(loc);
+
+    TransitionEdge ext("Active", "Idle", "EvExit");
+    ext.kind = TransitionEdgeKind::External;
+    ir.add_transition(ext);
+
+    EXPECT_TRUE(DeferredEventLoweringPass::run(ir, diag));
+
+    for (const auto& t : ir.transitions) {
+        if (t.event == "EvLocal") {
+            EXPECT_FALSE(t.transition_action.has_value());
+        } else if (t.event == "EvExit") {
+            ASSERT_TRUE(t.transition_action.has_value());
+            EXPECT_EQ(t.transition_action->name, "__recall_deferred");
+        }
+    }
+}
+
 // ============================================================================
 // 3. BoundaryActionFusionPass Tests
 // ============================================================================

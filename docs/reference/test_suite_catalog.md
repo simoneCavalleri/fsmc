@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 726  
+**Total Documented Test Cases**: 727  
 
 ---
 
@@ -1805,6 +1805,10 @@
 
 #### `DeferredEventLowering.DeferredEventsDeclared_LowersToBufferVariablesAndRecallTransitions`
 **Test Intent**: Verify deferred events lowering into bounded queue buffers and recall transitions.
+
+#### `DeferredEventLowering.LocalTransitionOnComposite_DoesNotAttachRecall`
+**Test Intent**: Regression: `DeferredEventLoweringPass` does not attach `__recall_deferred` to
+`TransitionEdgeKind::Local` transitions originating on a composite state (local transitions
 
 #### `BoundaryActionFusion.CrossBoundaryTransition_FusesExitAndEntryActionsInLcaOrder`
 **Test Intent**: Verify boundary action fusion concatenates exit and entry actions in Lowest Common Ancestor (LCA) order.

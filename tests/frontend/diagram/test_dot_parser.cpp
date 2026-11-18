@@ -189,4 +189,48 @@ TEST(DotParser, InlinePriorityLabel_StripsPrefixFromEventName) {
     EXPECT_EQ(ir.transitions[0].get_action(), "DisableShunts");
 }
 
+/**
+ * @brief Regression: DOT subgraphs marked with `// @fsm:parallel` or dashed style populate `StateKind::Parallel` and
+ * `orthogonal_regions`.
+ * @scenario Parse a DOT parallel cluster containing two region subgraphs.
+ * @expected Parent state has `StateKind::Parallel` and 2 `orthogonal_regions` with their initial substates.
+ */
+TEST(DotParser, ParallelCluster_PopulatesOrthogonalRegions) {
+    const std::string dot_content = R"dot(digraph ParallelDot {
+    __start__ -> Operational;
+    subgraph cluster_Operational {
+        label="Operational";
+        style="rounded,dashed,filled";
+        // @fsm:parallel
+        subgraph cluster_RegionA {
+            label="RegionA";
+            __start_RegionA__ [shape=circle, label=""];
+            __start_RegionA__ -> A1;
+            A1 -> A2 [label="NextA"];
+        }
+        subgraph cluster_RegionB {
+            label="RegionB";
+            __start_RegionB__ [shape=circle, label=""];
+            __start_RegionB__ -> B1;
+            B1 -> B2 [label="NextB"];
+        }
+    }
+}
+)dot";
+
+    DotParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+
+    const auto* op = ir.find_state("Operational");
+    ASSERT_NE(op, nullptr);
+    EXPECT_EQ(op->kind, StateKind::Parallel);
+    ASSERT_EQ(op->orthogonal_regions.size(), 2u);
+    EXPECT_EQ(op->orthogonal_regions[0].name, "RegionA");
+    EXPECT_EQ(op->orthogonal_regions[0].initial_state_id, "A1");
+    EXPECT_EQ(op->orthogonal_regions[1].name, "RegionB");
+    EXPECT_EQ(op->orthogonal_regions[1].initial_state_id, "B1");
+}
+
 }  // namespace

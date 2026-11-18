@@ -80,6 +80,12 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
 
         if (DirectiveParser::is_directive(trimmed)) {
             std::string body = DirectiveParser::extract_directive_body(trimmed);
+            if (trim_line(body) == "parallel" && !current_parent_state.empty()) {
+                if (auto* parent = model.find_state_mut(current_parent_state)) {
+                    parent->kind = StateKind::Parallel;
+                }
+                continue;
+            }
             DirectiveParser::parse_model_directive(body, model);
             continue;
         }
@@ -185,8 +191,41 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
             continue;
         }
 
+        // Check cluster style="...dashed..." inside subgraph to infer parallel state
+        static const std::regex cluster_dashed_regex(R"raw(^\s*style\s*=\s*"[^"]*dashed[^"]*")raw", std::regex::icase);
+        if (!current_parent_state.empty() && std::regex_search(trimmed, cluster_dashed_regex)) {
+            if (auto* parent = model.find_state_mut(current_parent_state)) {
+                parent->kind = StateKind::Parallel;
+            }
+            continue;
+        }
+
         // Closing brace }
         if (trimmed == "}" || trimmed == "};") {
+            if (!current_parent_state.empty()) {
+                if (auto* parent = model.find_state_mut(current_parent_state)) {
+                    if (parent->kind == StateKind::Parallel && parent->orthogonal_regions.empty()) {
+                        for (const auto& child : model.states) {
+                            if (child.parent_state != current_parent_state) {
+                                continue;
+                            }
+                            OrthogonalRegion reg;
+                            reg.id = child.name;
+                            reg.name = child.name;
+                            reg.initial_state_id = child.initial_sub_state;
+                            for (const auto& sub : model.states) {
+                                if (sub.parent_state == child.name) {
+                                    reg.state_ids.push_back(sub.name);
+                                }
+                            }
+                            if (reg.initial_state_id.empty() && !reg.state_ids.empty()) {
+                                reg.initial_state_id = reg.state_ids.front();
+                            }
+                            parent->orthogonal_regions.push_back(std::move(reg));
+                        }
+                    }
+                }
+            }
             if (!parent_stack.empty()) {
                 current_parent_state = parent_stack.back();
                 parent_stack.pop_back();

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 618  
+**Total Documented Test Cases**: 619  
 
 ---
 
@@ -839,6 +839,10 @@
 
 #### `DotParser.InlinePriorityLabel_StripsPrefixFromEventName`
 **Test Intent**: Regression: inline `(prio=N)` inside DOT edge labels is stripped from `TransitionEdge::event`.
+
+#### `DotParser.ParallelCluster_PopulatesOrthogonalRegions`
+**Test Intent**: Regression: DOT subgraphs marked with `// @fsm:parallel` or dashed style populate `StateKind::Parallel` and
+`orthogonal_regions`.
 
 ### [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) (`tests/frontend/diagram/test_mermaid_parser.cpp`)
 #### `MermaidParser.BasicDiagram_ParsedIntoValidFsmIr`

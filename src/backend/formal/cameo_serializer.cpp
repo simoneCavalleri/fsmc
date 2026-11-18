@@ -50,6 +50,18 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
     out << "<xmi:XMI xmi:version=\"2.1\" xmlns:uml=\"http://www.omg.org/spec/UML/20090901\" "
            "xmlns:xmi=\"http://schema.omg.org/spec/XMI/2.1\">\n";
     out << "  <uml:Model xmi:id=\"_m1\" name=\"" << escape_xml(model_name) << "Model\">\n";
+    // Emit declared properties
+    for (const auto& prop : model.properties) {
+        out << "    <!-- @fsm:property name=" << prop.name << " kind=" << property_kind_to_string(prop.kind)
+            << " ltl=\"" << prop.raw_formula << "\"";
+        if (!prop.traceability_req.empty()) {
+            out << " req=\"" << prop.traceability_req << "\"";
+        }
+        if (!prop.description.empty()) {
+            out << " desc=\"" << prop.description << "\"";
+        }
+        out << " -->\n";
+    }
     // Emit declared enums & structs as formal directives
     for (const auto& ct : model.custom_types) {
         if (ct.is_enum()) {
@@ -154,7 +166,14 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
         }
 
         out << pad << "<subvertex xmi:type=\"uml:State\" xmi:id=\"" << st_id << "\" name=\"" << escape_xml(state.name)
-            << "\">\n";
+            << "\"";
+        if (!state.traceability_reqs.empty()) {
+            out << " satisfies=\"" << escape_xml(state.traceability_reqs.front()) << "\"";
+        }
+        if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
+            out << " invariant=\"" << escape_xml(*state.time_invariant) << "\"";
+        }
+        out << ">\n";
 
         for (const auto& act : state.entry_actions) {
             out << pad << "  <entry xmi:type=\"uml:Activity\" name=\"" << escape_xml(format_action_for_xmi(act))

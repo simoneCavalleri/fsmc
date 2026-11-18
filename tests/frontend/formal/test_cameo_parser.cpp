@@ -779,4 +779,43 @@ TEST(CameoParser, TimeTriggerAttribute_PopulatesTimeTrigger) {
     EXPECT_EQ(std::get<TimeTrigger>(ir.transitions[0].trigger).duration_in_ms(), 100u);
 }
 
+/**
+ * @brief Regression: `CameoSerializer` preserves `model.properties`, `state.traceability_reqs`, and
+ * `state.time_invariant` across Cameo XMI roundtrips.
+ * @scenario Serialize an FSM with `FormalProperty("safe", "G (not Bad)")` and state `Active` (`REQ_001`, `500[ms]`),
+ * then re-parse with `CameoXmiParser`.
+ * @expected Re-parsed IR keeps the property, `traceability_reqs == {"REQ_001"}`, and `time_invariant == "500[ms]"`.
+ */
+TEST(CameoParser, PropertiesReqsAndTimeInvariant_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "CameoMetaRt";
+    ir.initial_state = "Active";
+    auto& active = ir.add_state("Active");
+    active.traceability_reqs.push_back("REQ_001");
+    active.time_invariant = "500[ms]";
+
+    FormalProperty prop;
+    prop.name = "safe";
+    prop.kind = PropertyKind::Safety;
+    prop.raw_formula = "G (not Bad)";
+    ir.add_property(prop);
+
+    const std::string xmi = fsm::backend::formal::CameoSerializer::serialize(ir);
+    CameoXmiParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xmi, parsed, err)) << err;
+
+    ASSERT_EQ(parsed.properties.size(), 1u);
+    EXPECT_EQ(parsed.properties[0].name, "safe");
+    EXPECT_EQ(parsed.properties[0].raw_formula, "G (not Bad)");
+
+    const auto* p_active = parsed.find_state("Active");
+    ASSERT_NE(p_active, nullptr);
+    ASSERT_EQ(p_active->traceability_reqs.size(), 1u);
+    EXPECT_EQ(p_active->traceability_reqs[0], "REQ_001");
+    ASSERT_TRUE(p_active->time_invariant.has_value());
+    EXPECT_EQ(*p_active->time_invariant, "500[ms]");
+}
+
 }  // namespace

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 681  
+**Total Documented Test Cases**: 682  
 
 ---
 
@@ -1109,6 +1109,10 @@
 #### `CameoParser.TimeTriggerAttribute_PopulatesTimeTrigger`
 **Test Intent**: Regression: `CameoXmiParser` reconstructs `TimeTrigger` when parsing `trigger="after_100ms"` /
 `trigger="every_50ms"` attributes emitted by `CameoSerializer`.
+
+#### `CameoParser.PropertiesReqsAndTimeInvariant_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `CameoSerializer` preserves `model.properties`, `state.traceability_reqs`, and
+`state.time_invariant` across Cameo XMI roundtrips.
 
 ### [`test_scxml_parser.cpp`](../../tests/frontend/formal/test_scxml_parser.cpp) (`tests/frontend/formal/test_scxml_parser.cpp`)
 #### `ScxmlParser.BasicScxmlDocument_ParsedIntoValidFsmIr`

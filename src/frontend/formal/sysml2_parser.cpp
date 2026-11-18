@@ -825,6 +825,35 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
     }
 
     // 7b. State Lifecycle Actions: entry action <Act>; / exit action <Act>;
+    auto try_parse_send_via = [&](const std::string& send_stmt, ActionSignature& out_sig) -> bool {
+        static const std::regex block_send_regex(
+            R"(^(?:do\s+)?send\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s+via\s+([A-Za-z_][A-Za-z0-9_]*)$)",
+            std::regex::optimize);
+        std::smatch sm;
+        if (!std::regex_match(send_stmt, sm, block_send_regex)) {
+            return false;
+        }
+        const std::string sig_name = sanitize_identifier(sm[1].str());
+        const std::string args_str = sm[2].matched ? trim(sm[2].str()) : "";
+        const std::string port_name = sanitize_identifier(sm[3].str());
+        if (model.find_port(port_name) == nullptr) {
+            model.ports.emplace_back(port_name, DataType{PrimitiveTypeKind::UInt32}, PortDirection::Out);
+        }
+        if (model.find_signal(sig_name) == nullptr) {
+            model.signals.emplace_back(sig_name);
+        }
+        out_sig.name = "send_" + sig_name + "_via_" + port_name;
+        out_sig.invocation = port_name + ".send(" + sig_name + (args_str.empty() ? "" : (", " + args_str)) + ")";
+        SignalEmitOp emit_op;
+        emit_op.signal_name = sig_name;
+        emit_op.target_port = port_name;
+        if (!args_str.empty()) {
+            emit_op.arguments.push_back(args_str);
+        }
+        out_sig.instructions.emplace_back(std::move(emit_op));
+        return true;
+    };
+
     auto parse_lifecycle_action_block = [&](const std::string& block_content, const std::string& explicit_name,
                                             const std::string& default_name,
                                             std::vector<ActionSignature>& target_actions) {
@@ -832,6 +861,7 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         std::stringstream ss(trimmed_block);
         std::string statement;
         std::vector<ActionAssignment> assignments;
+        std::vector<ActionSignature> send_actions;
         std::vector<std::string> standalone_calls;
 
         while (std::getline(ss, statement, ';')) {
@@ -839,7 +869,10 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
             if (statement.empty())
                 continue;
 
-            if (!try_parse_assignment_statement(statement, assignments)) {
+            ActionSignature send_sig;
+            if (try_parse_send_via(statement, send_sig)) {
+                send_actions.push_back(std::move(send_sig));
+            } else if (!try_parse_assignment_statement(statement, assignments)) {
                 std::string act_call = statement;
                 if (act_call.ends_with("()")) {
                     act_call.resize(act_call.size() - 2);
@@ -861,12 +894,17 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
             target_actions.push_back(std::move(sig));
         }
 
+        for (auto& s_act : send_actions) {
+            model.add_action(s_act.name);
+            target_actions.push_back(std::move(s_act));
+        }
+
         for (const auto& call : standalone_calls) {
             model.add_action(call);
             target_actions.emplace_back(call);
         }
 
-        if (!has_assignments && standalone_calls.empty()) {
+        if (!has_assignments && send_actions.empty() && standalone_calls.empty()) {
             std::string act_name = !explicit_name.empty() ? explicit_name : default_name;
             model.add_action(act_name);
             target_actions.emplace_back(act_name);
@@ -1253,11 +1291,38 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
                 continue;
 
             if (!try_parse_assignment_statement(statement, assignments)) {
-                // Standalone action method call
-                std::string act_call = sanitize_identifier(statement);
-                if (!act_call.empty()) {
-                    action = act_call;
-                    model.add_action(act_call);
+                static const std::regex block_send_regex(
+                    R"(^(?:do\s+)?send\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s+via\s+([A-Za-z_][A-Za-z0-9_]*)$)",
+                    std::regex::optimize);
+                std::smatch sm;
+                if (std::regex_match(statement, sm, block_send_regex)) {
+                    const std::string sig_name = sanitize_identifier(sm[1].str());
+                    const std::string args_str = sm[2].matched ? trim(sm[2].str()) : "";
+                    const std::string port_name = sanitize_identifier(sm[3].str());
+                    if (model.find_port(port_name) == nullptr) {
+                        model.ports.emplace_back(port_name, DataType{PrimitiveTypeKind::UInt32}, PortDirection::Out);
+                    }
+                    if (model.find_signal(sig_name) == nullptr) {
+                        model.signals.emplace_back(sig_name);
+                    }
+                    action = "send_" + sig_name + "_via_" + port_name;
+                    ActionSignature sig_action(
+                        action, port_name + ".send(" + sig_name + (args_str.empty() ? "" : (", " + args_str)) + ")");
+                    SignalEmitOp emit_op;
+                    emit_op.signal_name = sig_name;
+                    emit_op.target_port = port_name;
+                    if (!args_str.empty()) {
+                        emit_op.arguments.push_back(args_str);
+                    }
+                    sig_action.instructions.emplace_back(std::move(emit_op));
+                    trans_send_action = std::move(sig_action);
+                } else {
+                    // Standalone action method call
+                    std::string act_call = sanitize_identifier(statement);
+                    if (!act_call.empty()) {
+                        action = act_call;
+                        model.add_action(act_call);
+                    }
                 }
             }
         }

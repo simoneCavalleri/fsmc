@@ -50,6 +50,9 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
     if (!state.traceability_reqs.empty()) {
         out << " satisfies=\"" << escape_xml(state.traceability_reqs.front()) << "\"";
     }
+    if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
+        out << " invariant=\"" << escape_xml(*state.time_invariant) << "\"";
+    }
     out << ">\n";
 
     auto emit_action_instructions = [&](const ActionSignature& act, const std::string& inner_pad) {
@@ -221,6 +224,19 @@ std::string ScxmlSerializer::serialize(const FsmIr& model) {
             out << "/>\n";
         }
         out << "  </datamodel>\n";
+    }
+
+    // Emit declared properties
+    for (const auto& prop : model.properties) {
+        out << "  <!-- @fsm:property name=" << prop.name << " kind=" << property_kind_to_string(prop.kind) << " ltl=\""
+            << prop.raw_formula << "\"";
+        if (!prop.traceability_req.empty()) {
+            out << " req=\"" << prop.traceability_req << "\"";
+        }
+        if (!prop.description.empty()) {
+            out << " desc=\"" << prop.description << "\"";
+        }
+        out << " -->\n";
     }
 
     // Emit declared signals

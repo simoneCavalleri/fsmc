@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 656  
+**Total Documented Test Cases**: 657  
 
 ---
 
@@ -707,6 +707,9 @@
 
 #### `FormalRoundtrip.Sysml2Serializer_PreservesInternalTransitionKind`
 **Test Intent**: Regression: `Sysml2Serializer` omits `then <target>` for `TransitionEdgeKind::Internal` transitions
+
+#### `FormalRoundtrip.SmvSerializer_PreservesTransitionAssignmentsAcrossRoundtrip`
+**Test Intent**: Regression: `SmvSerializer` emits `-- action: <assignments>` on `next(state)` transitions
 
 ---
 

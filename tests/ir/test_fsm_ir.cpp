@@ -1464,4 +1464,43 @@ TEST(FsmIr, JsonDeserializer_PreservesCppGuardTypeInGuardAstForBooleanExpression
     EXPECT_EQ(ir.transitions[0].guard_ast->to_string(), "!(a_gte_10 && b_eq_0) || c_lt_5");
 }
 
+/**
+ * @brief Regression: JSON deserialization resolves `TransitionEdge::source_id` and `target_id` to the exact
+ * `StateNode::id` of existing states (even when state IDs were computed from hierarchical FQNs).
+ * @scenario Deserialize JSON where states carry custom FQN-derived `"id"` fields and `"on"` transitions reference state
+ * names.
+ * @expected `transitions[0].source_id == src->id` and `transitions[0].target_id == dst->id`.
+ */
+TEST(FsmIr, JsonDeserializer_ResolvesTransitionSourceAndTargetIdsToStateIds) {
+    const std::string json = R"json({
+  "name": "JsonIdResolution",
+  "initial_state": "Active",
+  "states": {
+    "Active": {
+      "id": "id_custom_fqn_active",
+      "time_invariant": "500[ms]",
+      "on": {
+        "Done": {
+          "target": "Idle"
+        }
+      }
+    },
+    "Idle": {
+      "id": "id_custom_fqn_idle"
+    }
+  }
+})json";
+
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(FsmIrDeserializer::deserialize_json(json, ir, err)) << err;
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    const auto* active = ir.find_state("Active");
+    const auto* idle = ir.find_state("Idle");
+    ASSERT_NE(active, nullptr);
+    ASSERT_NE(idle, nullptr);
+    EXPECT_EQ(ir.transitions[0].source_id, active->id);
+    EXPECT_EQ(ir.transitions[0].target_id, idle->id);
+}
+
 }  // namespace

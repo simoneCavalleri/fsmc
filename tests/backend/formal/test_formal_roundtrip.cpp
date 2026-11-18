@@ -1224,4 +1224,32 @@ TEST(FormalRoundtrip, CameoSerializer_PreservesInternalTransitionKind) {
     EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
 }
 
+/**
+ * @brief Regression: `Sysml2Serializer` omits `then <target>` for `TransitionEdgeKind::Internal` transitions
+ * so `Sysml2Parser` preserves `TransitionEdgeKind::Internal` across roundtrips.
+ * @scenario Serialize an `FsmIr` with an internal transition on `Idle` to SysML v2, then re-parse.
+ * @expected Re-parsed transition has `kind == TransitionEdgeKind::Internal`.
+ */
+TEST(FormalRoundtrip, Sysml2Serializer_PreservesInternalTransitionKind) {
+    FsmIr ir;
+    ir.name = "SysmlInternalRt";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+    TransitionEdge t("Idle", "Idle", "Ping");
+    t.kind = TransitionEdgeKind::Internal;
+    ir.add_transition(t);
+
+    const std::string sysml = Sysml2Serializer::serialize(ir);
+    const std::size_t trans_pos = sysml.find("transition");
+    ASSERT_NE(trans_pos, std::string::npos);
+    EXPECT_EQ(sysml.find("then Idle", trans_pos), std::string::npos);
+
+    Sysml2Parser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 1u);
+    EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
+}
+
 }  // namespace

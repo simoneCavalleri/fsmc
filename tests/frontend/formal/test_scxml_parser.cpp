@@ -427,4 +427,30 @@ TEST(ScxmlParser, SpaceSeparatedEvents_SplitIntoSeparateTransitions) {
     EXPECT_EQ(ir.transitions[1].target, "Running");
 }
 
+/**
+ * @brief Regression: Single-quoted SCXML string `<data id="msg" expr="'hello'"/>` normalizes outer
+ * single quotes to double quotes (`"\"hello\""`) so C++ codegen does not emit a multi-char character literal.
+ * @scenario Parse `<datamodel><data id="msg" expr="'hello'"/></datamodel>`.
+ * @expected `msg` variable has `type.primitive() == PrimitiveTypeKind::String` and `initial_value == "\"hello\""`.
+ */
+TEST(ScxmlParser, SingleQuotedDataString_NormalizesToDoubleQuotes) {
+    const std::string scxml = R"xml(
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Init">
+  <datamodel>
+    <data id="msg" expr="'hello'"/>
+  </datamodel>
+  <state id="Init"/>
+</scxml>
+)xml";
+
+    ScxmlParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(scxml, ir, err)) << err;
+    const auto* var = ir.find_variable("msg");
+    ASSERT_NE(var, nullptr);
+    EXPECT_EQ(var->type.primitive(), PrimitiveTypeKind::String);
+    EXPECT_EQ(var->initial_value, R"("hello")");
+}
+
 }  // namespace

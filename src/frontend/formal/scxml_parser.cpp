@@ -307,6 +307,11 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
                             } else {
                                 var.type = "uint32_t";
                             }
+                            if (var.type.primitive() == PrimitiveTypeKind::String && var.initial_value.size() >= 2 &&
+                                var.initial_value.front() == '\'' && var.initial_value.back() == '\'') {
+                                var.initial_value =
+                                    "\"" + var.initial_value.substr(1, var.initial_value.size() - 2) + "\"";
+                            }
                             model.add_variable(std::move(var));
                         }
                     }

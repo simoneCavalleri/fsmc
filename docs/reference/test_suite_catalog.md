@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 651  
+**Total Documented Test Cases**: 652  
 
 ---
 
@@ -1079,6 +1079,9 @@
 #### `ScxmlParser.SpaceSeparatedEvents_SplitIntoSeparateTransitions`
 **Test Intent**: Regression: W3C SCXML space-separated `event="Start Boot"` on a `<transition>` expands into separate
 `TransitionEdge` entries for each event rather than a single `Start_Boot` event.
+
+#### `ScxmlParser.SingleQuotedDataString_NormalizesToDoubleQuotes`
+**Test Intent**: Regression: Single-quoted SCXML string `<data id="msg" expr="'hello'"/>` normalizes outer
 
 ### [`test_scxml_semantic_completeness.cpp`](../../tests/frontend/formal/test_scxml_semantic_completeness.cpp) (`tests/frontend/formal/test_scxml_semantic_completeness.cpp`)
 #### `ScxmlSemanticCompleteness.ParallelRegions_ParsedAsOrthogonalStates`

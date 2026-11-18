@@ -78,6 +78,11 @@ ModelCheckResult ModelChecker::verify_property(const FormalProperty& prop) {
                             prop, impl.children[0],
                             impl.children[1].children.empty() ? impl.children[1] : impl.children[1].children[0]);
                     }
+                    if (impl.children[1].op == TemporalOp::Globally) {
+                        return check_persistent_response(
+                            prop, impl.children[0],
+                            impl.children[1].children.empty() ? impl.children[1] : impl.children[1].children[0]);
+                    }
                 }
             }
             // Recurrence: G (F P) (infinitely often)
@@ -579,6 +584,38 @@ ModelCheckResult ModelChecker::check_invariant(const FormalProperty& prop, const
             std::string desc = "Invariant '" + prop.raw_formula + "' evaluated to false in state '" + s_name + "'";
             auto trace = reconstruct_trace(s_name, desc);
             return {false, prop.name, prop.raw_formula, prop.kind, desc, std::move(trace)};
+        }
+    }
+    return {true, prop.name, prop.raw_formula, prop.kind, "", {}};
+}
+
+ModelCheckResult ModelChecker::check_persistent_response(const FormalProperty& prop, const PropertyAstNode& trigger,
+                                                         const PropertyAstNode& always_target) {
+    for (const auto& start_state : reachable_states_) {
+        if (!eval_predicate(trigger, start_state)) {
+            continue;
+        }
+        std::queue<std::string> q;
+        std::unordered_set<std::string> visited;
+        q.push(start_state);
+        visited.insert(start_state);
+        while (!q.empty()) {
+            std::string curr = std::move(q.front());
+            q.pop();
+            if (!eval_predicate(always_target, curr)) {
+                std::string desc = "Persistent response '" + prop.raw_formula + "' violated: after '" +
+                                   trigger.to_string() + "' in state '" + start_state + "', state '" + curr +
+                                   "' violates '" + always_target.to_string() + "'";
+                auto trace = reconstruct_trace(curr, desc);
+                return {false, prop.name, prop.raw_formula, prop.kind, desc, std::move(trace)};
+            }
+            if (auto it = adj_.find(curr); it != adj_.end()) {
+                for (const auto& edge : it->second) {
+                    if (visited.insert(edge.target).second) {
+                        q.push(edge.target);
+                    }
+                }
+            }
         }
     }
     return {true, prop.name, prop.raw_formula, prop.kind, "", {}};

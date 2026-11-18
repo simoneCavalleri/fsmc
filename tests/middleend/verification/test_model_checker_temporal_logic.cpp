@@ -596,4 +596,38 @@ TEST(ModelChecker, HierarchicalCompositeAndTerminalSinkState_VerifiesCtlInvarian
     EXPECT_NE(smv.find("TRUE : progress;"), std::string::npos);
 }
 
+TEST(ModelChecker, PersistentResponse_HoldsWhenTriggeredSubgraphAlwaysSatisfiesQ) {
+    FsmIr ir;
+    ir.name = "PersistentFaultFSM";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+    ir.add_state("FaultShutdown");
+    ir.add_transition("Idle", "FaultShutdown", SignalTrigger{"Fatal", ""});
+
+    ModelChecker checker(ir);
+    FormalProperty prop("FaultLatched", PropertyKind::Safety,
+                        "G (state == FaultShutdown -> G (state == FaultShutdown))");
+    prop.ast = LtlPropertyParser::parse("G (state == FaultShutdown -> G (state == FaultShutdown))");
+    auto res = checker.verify_property(prop);
+    EXPECT_TRUE(res.passed);
+}
+
+TEST(ModelChecker, PersistentResponse_FailsWithCounterexampleWhenSuccessorViolatesQ) {
+    FsmIr ir;
+    ir.name = "RecoverableFaultFSM";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+    ir.add_state("Fault");
+    ir.add_state("Recovered");
+    ir.add_transition("Idle", "Fault", SignalTrigger{"Trip", ""});
+    ir.add_transition("Fault", "Recovered", SignalTrigger{"Reset", ""});
+
+    ModelChecker checker(ir);
+    FormalProperty prop("FaultLatched", PropertyKind::Safety, "G (state == Fault -> G (state == Fault))");
+    prop.ast = LtlPropertyParser::parse("G (state == Fault -> G (state == Fault))");
+    auto res = checker.verify_property(prop);
+    EXPECT_FALSE(res.passed);
+    EXPECT_FALSE(res.counterexample_trace.empty());
+}
+
 }  // namespace

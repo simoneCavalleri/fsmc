@@ -417,4 +417,26 @@ TEST(DotParser, MultipleTransitionsSameEndpoints_DisambiguateAssignmentActionNam
     EXPECT_NE(ir.transitions[0].transition_action->name, ir.transitions[1].transition_action->name);
 }
 
+/**
+ * @brief Regression: `DotParser` reconstructs `TimeTrigger` when parsing `after_<N>ms` /
+ * `every_<N>ms` transition labels emitted by `DotSerializer`.
+ * @scenario Parse DOT with `Busy -> Idle [label="after_100ms"];`.
+ * @expected Transition has a `TimeTrigger` with `duration_in_ms() == 100`.
+ */
+TEST(DotParser, TimeTriggerEventLabel_PopulatesTimeTrigger) {
+    const std::string dot_content = R"dot(digraph DotTimer {
+    __start__ -> Busy;
+    Busy -> Idle [label="after_100ms"];
+}
+)dot";
+
+    DotParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(ir.transitions[0].trigger));
+    EXPECT_EQ(std::get<TimeTrigger>(ir.transitions[0].trigger).duration_in_ms(), 100u);
+}
+
 }  // namespace

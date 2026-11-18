@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 664  
+**Total Documented Test Cases**: 665  
 
 ---
 
@@ -901,6 +901,10 @@
 
 #### `DotParser.MultipleTransitionsSameEndpoints_DisambiguateAssignmentActionNames`
 **Test Intent**: Regression: Multiple DOT transitions between the same `source` and `target` states
+
+#### `DotParser.TimeTriggerEventLabel_PopulatesTimeTrigger`
+**Test Intent**: Regression: `DotParser` reconstructs `TimeTrigger` when parsing `after_<N>ms` /
+`every_<N>ms` transition labels emitted by `DotSerializer`.
 
 ### [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) (`tests/frontend/diagram/test_mermaid_parser.cpp`)
 #### `MermaidParser.BasicDiagram_ParsedIntoValidFsmIr`

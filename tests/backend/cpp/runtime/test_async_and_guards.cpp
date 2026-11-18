@@ -333,13 +333,17 @@ TEST(AsyncAndGuards, ExceptionHandler_Registration_InvokedOnFailure) {
     GuardRegisters reg;
     fsm::thread_safe_fsm<ExceptionTestTable, fsm::no_ports, fsm::no_ports, GuardRegisters> ts_sm(reg);
 
+    std::mutex msg_mtx;
+    std::condition_variable msg_cv;
     std::string caught_message;
     ts_sm.set_exception_handler([&](const std::exception_ptr& ex) {
         try {
             if (ex)
                 std::rethrow_exception(ex);
         } catch (const std::exception& e) {
+            std::lock_guard<std::mutex> lk(msg_mtx);
             caught_message = e.what();
+            msg_cv.notify_one();
         }
     });
 
@@ -349,11 +353,11 @@ TEST(AsyncAndGuards, ExceptionHandler_Registration_InvokedOnFailure) {
     ts_sm.post(EvFault{});
 
     // Wait until exception is captured
-    for (int i = 0; i < 50 && caught_message.empty(); ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    {
+        std::unique_lock<std::mutex> lk(msg_mtx);
+        msg_cv.wait_for(lk, std::chrono::milliseconds(250), [&]() { return !caught_message.empty(); });
+        EXPECT_EQ(caught_message, "Simulated hardware failure");
     }
-
-    EXPECT_EQ(caught_message, "Simulated hardware failure");
     EXPECT_NE(ts_sm.last_exception(), nullptr);
 
     ts_sm.clear_last_exception();

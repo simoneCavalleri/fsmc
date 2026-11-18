@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 635  
+**Total Documented Test Cases**: 636  
 
 ---
 
@@ -1003,6 +1003,9 @@
 
 #### `CameoXmiParser.StateEntryExitBodyAttributes_ParsedIntoAssignments`
 **Test Intent**: Regression: Cameo XMI `<entry body="x = 10;"/>` and `<exit body="y = 20;"/>` are extracted and parsed
+
+#### `CameoXmiParser.TransitionKindInternal_SetsInternalTransitionEdgeKind`
+**Test Intent**: Regression: Cameo XMI `<transition kind="internal" ...>` preserves `TransitionEdgeKind::Internal`
 
 ### [`test_scxml_parser.cpp`](../../tests/frontend/formal/test_scxml_parser.cpp) (`tests/frontend/formal/test_scxml_parser.cpp`)
 #### `ScxmlParser.BasicScxmlDocument_ParsedIntoValidFsmIr`

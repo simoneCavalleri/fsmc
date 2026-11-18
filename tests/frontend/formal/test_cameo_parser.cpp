@@ -635,4 +635,36 @@ TEST(CameoXmiParser, StateEntryExitBodyAttributes_ParsedIntoAssignments) {
     EXPECT_EQ(idle->exit_actions[0].assignments[0].expression, "20");
 }
 
+/**
+ * @brief Regression: Cameo XMI `<transition kind="internal" ...>` preserves `TransitionEdgeKind::Internal`
+ * instead of defaulting to `External`.
+ * @scenario Parse Cameo XMI with `<transition xmi:id="_t_int" kind="internal" source="_s1" target="_s1"
+ * trigger="Ping"/>`.
+ * @expected `ir.transitions[0].kind == TransitionEdgeKind::Internal`.
+ */
+TEST(CameoXmiParser, TransitionKindInternal_SetsInternalTransitionEdgeKind) {
+    const std::string xmi = R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="2.1" xmlns:uml="http://www.omg.org/spec/UML/20090901" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1">
+  <uml:Model xmi:id="_m1" name="CameoIntModel">
+    <packagedElement xmi:type="uml:StateMachine" xmi:id="_sm1" name="CameoInt">
+      <region xmi:type="uml:Region" xmi:id="_r1">
+        <subvertex xmi:type="uml:Pseudostate" xmi:id="_ps_init" kind="initial"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s1" name="Idle"/>
+        <transition xmi:id="_t0" source="_ps_init" target="_s1"/>
+        <transition xmi:id="_t_int" kind="internal" source="_s1" target="_s1" trigger="Ping"/>
+      </region>
+    </packagedElement>
+  </uml:Model>
+</xmi:XMI>
+)xml";
+
+    CameoXmiParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xmi, ir, err)) << err;
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    EXPECT_EQ(ir.transitions[0].kind, TransitionEdgeKind::Internal);
+    EXPECT_EQ(ir.transitions[0].event, "Ping");
+}
+
 }  // namespace

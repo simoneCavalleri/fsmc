@@ -548,6 +548,12 @@ void CameoXmiGraphResolver::process_transition(const std::shared_ptr<XmlNode>& t
     TransitionEdge trans;
     trans.source = src_name;
     trans.target = dst_name;
+    std::string trans_kind = trans_node->get_attr("kind");
+    if (trans_kind == "internal") {
+        trans.kind = TransitionEdgeKind::Internal;
+    } else if (trans_kind == "local") {
+        trans.kind = TransitionEdgeKind::Local;
+    }
     auto dst_kind_it = id_to_kind.find(dst_id);
     if (dst_kind_it != id_to_kind.end() &&
         (dst_kind_it->second == StateKind::ShallowHistory || dst_kind_it->second == StateKind::DeepHistory)) {

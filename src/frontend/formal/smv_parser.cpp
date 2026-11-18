@@ -390,7 +390,7 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
 
     // Parse: state = S1 & event = E1 & [guard]
     std::vector<std::string> source_states;
-    std::string event_name;
+    std::vector<std::string> event_names;
     std::string guard_expr;
 
     std::vector<std::string> clauses;
@@ -438,11 +438,53 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
             if (!s.empty()) {
                 source_states.push_back(s);
             }
+        } else if (c.rfind("event in", 0) == 0) {
+            size_t open_b = c.find('{');
+            size_t close_b = c.find('}');
+            if (open_b != std::string::npos && close_b != std::string::npos && close_b > open_b) {
+                std::string list_str = c.substr(open_b + 1, close_b - open_b - 1);
+                std::stringstream list_ss(list_str);
+                std::string item;
+                while (std::getline(list_ss, item, ',')) {
+                    std::string ev = sanitize_identifier(trim(item));
+                    if (ev != "none" && !ev.empty()) {
+                        event_names.push_back(ev);
+                    }
+                }
+            }
+        } else if (c.find('|') != std::string::npos && (c.rfind("event =", 0) == 0 || c.rfind("event=", 0) == 0)) {
+            std::stringstream or_ss(c);
+            std::string branch;
+            std::vector<std::string> parsed_evs;
+            bool all_events = true;
+            while (std::getline(or_ss, branch, '|')) {
+                std::string b = trim(branch);
+                while (b.size() >= 2 && b.front() == '(' && b.back() == ')') {
+                    b = trim(b.substr(1, b.size() - 2));
+                }
+                if (b.rfind("event =", 0) == 0 || b.rfind("event=", 0) == 0) {
+                    size_t eq = b.find('=');
+                    std::string ev = sanitize_identifier(trim(b.substr(eq + 1)));
+                    if (ev != "none" && !ev.empty()) {
+                        parsed_evs.push_back(ev);
+                    }
+                } else {
+                    all_events = false;
+                    break;
+                }
+            }
+            if (all_events && !parsed_evs.empty()) {
+                for (auto& ev : parsed_evs) {
+                    event_names.push_back(std::move(ev));
+                }
+            } else {
+                other_clauses.push_back(c);
+            }
         } else if (c.rfind("event =", 0) == 0 || c.rfind("event=", 0) == 0) {
             size_t eq = c.find('=');
             std::string ev = sanitize_identifier(trim(c.substr(eq + 1)));
             if (ev != "none" && !ev.empty()) {
-                event_name = ev;
+                event_names.push_back(ev);
             }
         } else {
             other_clauses.push_back(c);
@@ -451,7 +493,7 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
 
     // If no explicit 'event = ...', check if any clause is a boolean trigger (e.g. cmd = TRUE or sig_start)
     for (const auto& c : other_clauses) {
-        if (event_name.empty() && c.find('&') == std::string::npos && c.find('|') == std::string::npos &&
+        if (event_names.empty() && c.find('&') == std::string::npos && c.find('|') == std::string::npos &&
             (c.find("= TRUE") != std::string::npos || c.find("= true") != std::string::npos ||
              (c.find('=') == std::string::npos && c.find('<') == std::string::npos &&
               c.find('>') == std::string::npos))) {
@@ -459,7 +501,7 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
             std::string cand = trim(eq != std::string::npos ? c.substr(0, eq) : c);
             std::string cand_id = sanitize_identifier(cand);
             if (!cand_id.empty() && cand_id != "TRUE" && cand_id != "true") {
-                event_name = cand_id;
+                event_names.push_back(cand_id);
                 continue;
             }
         }
@@ -471,38 +513,45 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
     if (source_states.empty())
         return;
 
+    if (event_names.empty()) {
+        event_names.emplace_back("");
+    }
+
     for (const auto& src : source_states) {
-        TransitionEdge trans;
-        trans.source = src;
-        trans.target = target_state;
-        trans.event = event_name;
-        if (!guard_expr.empty()) {
-            // Generate a stable guard name from the transition endpoints and index,
-            // instead of sanitizing the raw boolean expression which would mangle
-            // operator characters (e.g. "x > 0 && !y" → "x__0____y").
-            std::string guard_name = "guard_" + sanitize_identifier(src) + "_to_" + sanitize_identifier(target_state) +
-                                     "_" + std::to_string(model.transitions.size() + 1);
-            const std::string norm_guard = normalize_smv_guard_expr(guard_expr);
-            model.add_guard(guard_name, "", std::optional<std::string>{norm_guard},
-                            std::optional<std::string>{norm_guard});
-            trans.guard = guard_name;
-        }
-        if (!raw_action_from_comment.empty()) {
-            const std::string prefix = "action_" + sanitize_identifier(src) + "_" + sanitize_identifier(target_state) +
-                                       (event_name.empty() ? "" : "_" + event_name) + "_" +
-                                       std::to_string(model.transitions.size() + 1);
-            if (auto assign_sig = try_parse_assignment_action(raw_action_from_comment, prefix)) {
-                model.add_action(assign_sig->name);
-                trans.transition_action = std::move(*assign_sig);
-            } else {
-                std::string act_id = sanitize_identifier(raw_action_from_comment);
-                if (!act_id.empty()) {
-                    trans.transition_action = ActionSignature(act_id);
-                    model.add_action(act_id);
+        for (const auto& event_name : event_names) {
+            TransitionEdge trans;
+            trans.source = src;
+            trans.target = target_state;
+            trans.event = event_name;
+            if (!guard_expr.empty()) {
+                // Generate a stable guard name from the transition endpoints and index,
+                // instead of sanitizing the raw boolean expression which would mangle
+                // operator characters (e.g. "x > 0 && !y" → "x__0____y").
+                std::string guard_name = "guard_" + sanitize_identifier(src) + "_to_" +
+                                         sanitize_identifier(target_state) + "_" +
+                                         std::to_string(model.transitions.size() + 1);
+                const std::string norm_guard = normalize_smv_guard_expr(guard_expr);
+                model.add_guard(guard_name, "", std::optional<std::string>{norm_guard},
+                                std::optional<std::string>{norm_guard});
+                trans.guard = guard_name;
+            }
+            if (!raw_action_from_comment.empty()) {
+                const std::string prefix =
+                    "action_" + sanitize_identifier(src) + "_" + sanitize_identifier(target_state) +
+                    (event_name.empty() ? "" : "_" + event_name) + "_" + std::to_string(model.transitions.size() + 1);
+                if (auto assign_sig = try_parse_assignment_action(raw_action_from_comment, prefix)) {
+                    model.add_action(assign_sig->name);
+                    trans.transition_action = std::move(*assign_sig);
+                } else {
+                    std::string act_id = sanitize_identifier(raw_action_from_comment);
+                    if (!act_id.empty()) {
+                        trans.transition_action = ActionSignature(act_id);
+                        model.add_action(act_id);
+                    }
                 }
             }
+            model.add_transition(trans);
         }
-        model.add_transition(trans);
     }
 }
 

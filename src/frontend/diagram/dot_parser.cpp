@@ -419,7 +419,13 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
             TransitionEdge trans;
             trans.source = src;
             trans.target = dst;
-            trans.event = sanitize_identifier(event_name);
+            static const std::regex when_ev_regex(R"(^when\s*\((.+)\)$)", std::regex::icase);
+            std::smatch wm;
+            if (!event_name.empty() && std::regex_match(event_name, wm, when_ev_regex)) {
+                trans.trigger = ChangeTrigger(trim_line(wm[1].str()), true);
+            } else {
+                trans.event = sanitize_identifier(event_name);
+            }
             if (!trans.event.empty()) {
                 static const std::regex time_ev_regex(R"(^(after|every)_([0-9]+)(ms|us|s|m)$)", std::regex::icase);
                 std::smatch tm;

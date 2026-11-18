@@ -589,4 +589,33 @@ TEST(DotParser, PseudostatesAndFinalKind_PreservedAcrossSerializerRoundtrip) {
     EXPECT_EQ(parsed.find_state("Xp")->kind, StateKind::ExitPoint);
 }
 
+/**
+ * @brief Regression: `DotSerializer` emits `when(<expr>)` for `ChangeTrigger` transitions
+ * so `DotParser` preserves `ChangeTrigger` across roundtrips.
+ * @scenario Serialize a transition with `ChangeTrigger("count > 5")` to DOT and re-parse.
+ * @expected Serialized DOT contains `when(count > 5)` and re-parsed transition holds `ChangeTrigger`.
+ */
+TEST(DotParser, ChangeTrigger_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "DotChangeRt";
+    ir.initial_state = "Wait";
+    ir.add_state("Wait");
+    ir.add_state("Done");
+    ir.add_variable(VariableDefinition("count", DataType::int32(), "0"));
+    TransitionEdge t("Wait", "Done", "");
+    t.trigger = ChangeTrigger("count > 5", true);
+    ir.add_transition(t);
+
+    const std::string dot = DotSerializer::serialize(ir);
+    EXPECT_NE(dot.find("label=\"when(count > 5)\""), std::string::npos) << dot;
+
+    DotParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(dot, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ChangeTrigger>(parsed.transitions[0].trigger));
+    EXPECT_EQ(std::get<ChangeTrigger>(parsed.transitions[0].trigger).raw_expression, "count > 5");
+}
+
 }  // namespace

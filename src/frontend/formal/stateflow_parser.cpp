@@ -775,7 +775,21 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
         trans.trigger = *comps.time_trigger;
     }
     if (!comps.guard.empty()) {
-        auto parsed = directive::GuardExpressionParser::parse(comps.guard);
+        std::string norm_guard;
+        norm_guard.reserve(comps.guard.size());
+        for (size_t gi = 0; gi < comps.guard.size(); ++gi) {
+            if (comps.guard[gi] == '~') {
+                if (gi + 1 < comps.guard.size() && comps.guard[gi + 1] == '=') {
+                    norm_guard += "!=";
+                    ++gi;
+                } else {
+                    norm_guard.push_back('!');
+                }
+            } else {
+                norm_guard.push_back(comps.guard[gi]);
+            }
+        }
+        auto parsed = directive::GuardExpressionParser::parse(norm_guard);
         if (!parsed.cpp_type.empty()) {
             trans.guard = parsed.cpp_type;
             for (const auto& detail : parsed.atomic_guard_details) {
@@ -789,8 +803,8 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
             // boolean expression (which would corrupt operator characters like >, &&, ! etc.).
             std::string guard_name = "guard_" + sanitize_identifier(src_name) + "_to_" + sanitize_identifier(dst_name) +
                                      "_" + std::to_string(model.transitions.size() + 1);
-            model.add_guard(guard_name, "", std::optional<std::string>{comps.guard},
-                            std::optional<std::string>{comps.guard});
+            model.add_guard(guard_name, "", std::optional<std::string>{norm_guard},
+                            std::optional<std::string>{norm_guard});
             trans.guard = guard_name;
         }
     }

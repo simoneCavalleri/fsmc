@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 631  
+**Total Documented Test Cases**: 632  
 
 ---
 
@@ -1126,6 +1126,9 @@
 
 #### `StateflowParserTest.MarksIncomingTransitionsToHistoryCompositeAsHistoryTargets`
 **Test Intent**: Verify StateflowParser marks external transitions entering a composite state with a HISTORY junction as
+
+#### `StateflowParser.MatlabNegationOperators_NormalizedToCpp`
+**Test Intent**: Regression: Stateflow MATLAB `~=` and `~` guard operators are normalized to `!=` and `!`.
 
 ### [`test_stateflow_slx_ingestion.cpp`](../../tests/frontend/formal/test_stateflow_slx_ingestion.cpp) (`tests/frontend/formal/test_stateflow_slx_ingestion.cpp`)
 #### `StateflowSlxIngestion.IngestStoredSlxContainer_ParsesModelDirectly`

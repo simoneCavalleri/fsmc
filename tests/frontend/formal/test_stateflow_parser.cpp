@@ -650,4 +650,39 @@ TEST(StateflowParserTest, MarksIncomingTransitionsToHistoryCompositeAsHistoryTar
     EXPECT_FALSE(ir.transitions[0].target_is_deep_history);
 }
 
+/**
+ * @brief Regression: Stateflow MATLAB `~=` and `~` guard operators are normalized to `!=` and `!`.
+ * @scenario Parse a Stateflow transition with `labelString="Go[x ~= 0 && ~fault]"`.
+ * @expected Guard atoms contain `"x != 0"` and `"fault"` negated via `fsm::not_<fault>`.
+ */
+TEST(StateflowParser, MatlabNegationOperators_NormalizedToCpp) {
+    const std::string xml = R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<Stateflow>
+  <machine name="SfMatlab">
+    <chart id="1" name="SfMatlabChart" initial="Idle">
+      <transition id="100" dst="Idle"/>
+      <state id="10" name="Idle"/>
+      <state id="11" name="Active"/>
+      <transition id="101" src="Idle" dst="Active" labelString="Go[x ~= 0 &amp;&amp; ~fault]"/>
+    </chart>
+  </machine>
+</Stateflow>
+)xml";
+
+    StateflowParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, ir, err)) << "Error: " << err;
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    ASSERT_TRUE(ir.transitions[0].guard.has_value());
+    EXPECT_NE(ir.transitions[0].guard->find("fsm::not_<fault>"), std::string::npos);
+    bool found_neq = false;
+    for (const auto& g : ir.guards) {
+        if (g.raw_expression.has_value() && *g.raw_expression == "x != 0") {
+            found_neq = true;
+        }
+    }
+    EXPECT_TRUE(found_neq);
+}
+
 }  // namespace

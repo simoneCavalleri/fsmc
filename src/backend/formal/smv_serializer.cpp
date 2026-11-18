@@ -357,11 +357,38 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
     known_idents.insert("true");
     known_idents.insert("false");
 
+    for (const auto& ct : model.custom_types) {
+        if (ct.is_enum()) {
+            for (const auto& lit : ct.literals) {
+                known_idents.insert(sanitize_smv_ident(lit.name));
+            }
+        }
+    }
+
+    auto resolve_smv_type = [&](const DataType& dt, std::optional<int64_t> min_v,
+                                std::optional<int64_t> max_v) -> std::string {
+        const std::string dt_name = dt.custom_name().empty() ? dt.to_cpp_type() : dt.custom_name();
+        for (const auto& ct : model.custom_types) {
+            if (ct.is_enum() && !ct.literals.empty() && ct.name == dt_name) {
+                std::string enum_set = "{";
+                for (std::size_t i = 0; i < ct.literals.size(); ++i) {
+                    if (i > 0) {
+                        enum_set += ", ";
+                    }
+                    enum_set += sanitize_smv_ident(ct.literals[i].name);
+                }
+                enum_set += "}";
+                return enum_set;
+            }
+        }
+        return dt.to_smv_type(min_v, max_v);
+    };
+
     // State variables & physical quantities
     for (const auto& var : model.variables) {
         std::string vname = sanitize_smv_ident(var.name);
         known_idents.insert(vname);
-        out << "  " << vname << " : " << var.type.to_smv_type(var.min_value, var.max_value) << ";";
+        out << "  " << vname << " : " << resolve_smv_type(var.type, var.min_value, var.max_value) << ";";
         if (var.physical_unit.has_value()) {
             out << " -- physical unit: " << *var.physical_unit;
         }
@@ -376,7 +403,7 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
             port.min_value.has_value() ? std::make_optional(static_cast<int64_t>(*port.min_value)) : std::nullopt;
         std::optional<int64_t> max_int =
             port.max_value.has_value() ? std::make_optional(static_cast<int64_t>(*port.max_value)) : std::nullopt;
-        out << "  " << pname << " : " << port.type.to_smv_type(min_int, max_int) << ";";
+        out << "  " << pname << " : " << resolve_smv_type(port.type, min_int, max_int) << ";";
         out << " -- port (" << port_direction_to_string(port.direction) << ")\n";
     }
 

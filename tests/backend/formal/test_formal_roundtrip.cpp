@@ -1176,4 +1176,26 @@ TEST(FormalRoundtrip, Sysml2Serializer_PreservesAssignmentBlocksAcrossRoundtrip)
     EXPECT_EQ(rt.transitions[0].transition_action->assignments[0].expression, "x * 2");
 }
 
+/**
+ * @brief Regression: `SmvSerializer` emits SMV enumeration sets (`{IdleMode, RunMode}`) for enum-typed
+ * variables and ports instead of falling back to `0..100`.
+ * @scenario Serialize an `FsmIr` containing an enum `Mode` and variable `m : Mode = IdleMode` to SMV.
+ * @expected Emitted SMV declares `m : {IdleMode, RunMode};` (not `m : 0..100;`).
+ */
+TEST(FormalRoundtrip, SmvSerializer_EmitsEnumSetForEnumTypedVariables) {
+    FsmIr ir;
+    ir.name = "EnumSmv";
+    ir.initial_state = "Init";
+    ir.add_state("Init");
+    ir.add_state("Active");
+    ir.custom_types.push_back(
+        TypeDefinition::make_enum("Mode", "uint8_t", {EnumLiteral{"IdleMode"}, EnumLiteral{"RunMode"}}));
+    ir.add_variable(VariableDefinition("m", DataType::from_string("Mode"), "IdleMode"));
+    ir.add_transition("Init", "Active", SignalTrigger{"Start", ""});
+
+    const std::string smv = SmvSerializer::serialize(ir);
+    EXPECT_NE(smv.find("m : {IdleMode, RunMode};"), std::string::npos);
+    EXPECT_EQ(smv.find("m : 0..100;"), std::string::npos);
+}
+
 }  // namespace

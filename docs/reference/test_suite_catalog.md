@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 708  
+**Total Documented Test Cases**: 709  
 
 ---
 
@@ -1758,6 +1758,9 @@
 
 #### `OrthogonalProduct.SimultaneousAssignmentActions_DoNotEmitExternalServiceCalls`
 **Test Intent**: Verify simultaneous orthogonal transitions with assignment actions preserve assignments without synthesizing
+
+#### `OrthogonalProduct.MemberDeferredEventsAndTraceabilityReqs_PropagatedToProductStates`
+**Test Intent**: Regression: `OrthogonalProductPass` propagates `deferred_events` and `traceability_reqs`
 
 ### [`test_pass_manager.cpp`](../../tests/middleend/canonicalization/test_pass_manager.cpp) (`tests/middleend/canonicalization/test_pass_manager.cpp`)
 #### `PassManager.DefaultPipelineExecution_CollectsStatisticsAndEmitsDiagnostics`

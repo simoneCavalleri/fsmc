@@ -761,4 +761,41 @@ TEST(OrthogonalProduct, SimultaneousAssignmentActions_DoNotEmitExternalServiceCa
     EXPECT_TRUE(found);
 }
 
+/**
+ * @brief Regression: `OrthogonalProductPass` propagates `deferred_events` and `traceability_reqs`
+ * from member region states to synthesized Cartesian product states.
+ * @scenario Expand parallel state `P` with `A1` (`defer Ping`, `REQ_A1`) and `B1` (`REQ_B1`).
+ * @expected Product state `P_A1_B1` keeps `Ping` in `deferred_events` and both `REQ_A1`, `REQ_B1` in
+ * `traceability_reqs`.
+ */
+TEST(OrthogonalProduct, MemberDeferredEventsAndTraceabilityReqs_PropagatedToProductStates) {
+    FsmIr model;
+    model.name = "OrthoMetaProd";
+    model.initial_state = "P";
+
+    auto& par = model.add_state("P", "", StateKind::Parallel);
+    par.is_composite = true;
+    OrthogonalRegion r1{"R1", "R1", "A1", {"A1"}, 0};
+    OrthogonalRegion r2{"R2", "R2", "B1", {"B1"}, 0};
+    par.orthogonal_regions = {r1, r2};
+
+    auto& a1 = model.add_state("A1", "R1");
+    a1.deferred_events.push_back("Ping");
+    a1.traceability_reqs.push_back("REQ_A1");
+    auto& b1 = model.add_state("B1", "R2");
+    b1.traceability_reqs.push_back("REQ_B1");
+
+    DiagnosticEngine diag;
+    OrthogonalProductPass pass;
+    ASSERT_TRUE(pass.run(model, diag));
+
+    const auto* prod = model.find_state("P_A1_B1");
+    ASSERT_NE(prod, nullptr);
+    ASSERT_EQ(prod->deferred_events.size(), 1u);
+    EXPECT_EQ(prod->deferred_events[0], "Ping");
+    ASSERT_EQ(prod->traceability_reqs.size(), 2u);
+    EXPECT_EQ(prod->traceability_reqs[0], "REQ_A1");
+    EXPECT_EQ(prod->traceability_reqs[1], "REQ_B1");
+}
+
 }  // namespace

@@ -199,6 +199,47 @@ bool RegisterLivenessPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                     trans_uses.insert(id);
                 }
             }
+            for (const auto& gm : ir.guards) {
+                if (gm.name == *edge.guard) {
+                    if (gm.raw_expression.has_value()) {
+                        for (const auto& id : extract_identifiers(*gm.raw_expression)) {
+                            if (known_vars.count(id)) {
+                                trans_uses.insert(id);
+                            }
+                        }
+                    }
+                    if (gm.normalized_expression.has_value()) {
+                        for (const auto& id : extract_identifiers(*gm.normalized_expression)) {
+                            if (known_vars.count(id)) {
+                                trans_uses.insert(id);
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+        if (const auto* ct = std::get_if<ir::ChangeTrigger>(&edge.trigger)) {
+            if (ct->predicate.has_value()) {
+                for (const auto& id : extract_identifiers(ct->predicate->to_string())) {
+                    if (known_vars.count(id)) {
+                        trans_uses.insert(id);
+                    }
+                }
+            }
+            for (const auto& id : extract_identifiers(ct->raw_expression)) {
+                if (known_vars.count(id)) {
+                    trans_uses.insert(id);
+                }
+            }
+        } else if (const auto* tt = std::get_if<ir::TimeTrigger>(&edge.trigger)) {
+            if (!tt->dynamic_expression.empty()) {
+                for (const auto& id : extract_identifiers(tt->dynamic_expression)) {
+                    if (known_vars.count(id)) {
+                        trans_uses.insert(id);
+                    }
+                }
+            }
         }
 
         // Condition actions execute before transition actions

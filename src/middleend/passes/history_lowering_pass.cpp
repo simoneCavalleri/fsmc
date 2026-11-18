@@ -134,6 +134,19 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             default_substate = target_substates.front();
         }
 
+        // Only synthesize a HistoryRestore choice node if at least one transition actually targets this history.
+        bool has_incoming_history = false;
+        for (const auto& t : ir.transitions) {
+            if (history_pseudostates_of_parent.count(t.target) > 0 ||
+                ((t.target_is_history || t.target_is_deep_history) && t.target == parent_name)) {
+                has_incoming_history = true;
+                break;
+            }
+        }
+        if (!has_incoming_history) {
+            continue;
+        }
+
         // 2. Synthesize shadow history state variable
         bool var_exists = false;
         for (const auto& v : ir.variables) {

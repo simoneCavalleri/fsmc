@@ -1164,3 +1164,34 @@ TEST(StructuralLowering, ChoiceInlining_InlinesEntryPointAndExitPointPseudostate
     EXPECT_EQ(ir.transitions[1].target, "Done");
     EXPECT_EQ(ir.transitions[1].event, "EvFinish");
 }
+
+/**
+ * @brief Verify HistoryLoweringPass does not synthesize an orphan _HistoryRestore Choice node when no transition
+ *        targets history.
+ * @scenario Composite 'Work' has `has_history = true` and substates `S1`/`S2`, but `Paused -> Work` has
+ *           `target_is_history = false`.
+ * @expected No `Work_HistoryRestore` choice state is created, avoiding ECPP004 un-inlined choice errors.
+ */
+TEST(StructuralLowering, HistoryLowering_SkipsOrphanRestoreChoiceWhenNoTransitionTargetsHistory) {
+    FsmIr ir;
+    ir.name = "NoHistTarget";
+    ir.initial_state = "Paused";
+
+    StateNode paused("Paused");
+    StateNode work("Work");
+    work.is_composite = true;
+    work.has_history = true;
+    work.initial_sub_state = "S1";
+    StateNode s1("S1", "", "Work");
+    StateNode s2("S2", "", "Work");
+    ir.states = {paused, work, s1, s2};
+
+    ir.transitions.emplace_back("Paused", "Work", "EvStart");
+    ir.transitions.emplace_back("S1", "S2", "EvNext");
+
+    DiagnosticEngine diag;
+    HistoryLoweringPass::run(ir, diag);
+
+    EXPECT_EQ(ir.find_state("Work_HistoryRestore"), nullptr);
+    EXPECT_TRUE(ir.choice_nodes.empty());
+}

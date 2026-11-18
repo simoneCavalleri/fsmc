@@ -297,6 +297,29 @@ bool StateflowParser::parse(std::string_view content, FsmIr& model, std::string&
     // Parse Stateflow elements
     parse_chart_elements(chart_node, model, "");
 
+    // In Stateflow, transitions entering a composite state that owns a HISTORY junction target its history
+    auto is_descendant_of = [&](const std::string& state_name, const std::string& ancestor_name) {
+        std::string cur = state_name;
+        for (std::size_t depth = 0; !cur.empty() && depth < model.states.size(); ++depth) {
+            if (cur == ancestor_name) {
+                return true;
+            }
+            const auto* st = model.find_state(cur);
+            cur = (st != nullptr) ? st->parent_state : "";
+        }
+        return false;
+    };
+    for (auto& t : model.transitions) {
+        if (t.target_is_history || t.target.empty()) {
+            continue;
+        }
+        const auto* tgt = model.find_state(t.target);
+        if (tgt != nullptr && tgt->has_history && !is_descendant_of(t.source, tgt->name)) {
+            t.target_is_history = true;
+            t.target_is_deep_history = tgt->has_deep_history;
+        }
+    }
+
     if (model.states.empty()) {
         error_message = "Stateflow Parser: No states found in Stateflow chart.";
         return false;

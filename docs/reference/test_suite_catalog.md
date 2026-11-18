@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 613  
+**Total Documented Test Cases**: 615  
 
 ---
 
@@ -1083,6 +1083,9 @@
 #### `StateflowParserTest.ParsesParallelAndDecompositionIntoOrthogonalRegions`
 **Test Intent**: Verify StateflowParser populates orthogonal_regions for decomposition="PARALLEL_AND" states.
 
+#### `StateflowParserTest.MarksIncomingTransitionsToHistoryCompositeAsHistoryTargets`
+**Test Intent**: Verify StateflowParser marks external transitions entering a composite state with a HISTORY junction as
+
 ### [`test_stateflow_slx_ingestion.cpp`](../../tests/frontend/formal/test_stateflow_slx_ingestion.cpp) (`tests/frontend/formal/test_stateflow_slx_ingestion.cpp`)
 #### `StateflowSlxIngestion.IngestStoredSlxContainer_ParsesModelDirectly`
 **Test Intent**: Verify direct ingestion of uncompressed (stored) Stateflow .slx container.
@@ -1524,6 +1527,9 @@
 
 #### `StructuralLowering.ChoiceInlining_InlinesEntryPointAndExitPointPseudostates`
 **Test Intent**: Verify ChoiceInliningPass inlines StateKind::EntryPoint and StateKind::ExitPoint pseudostates.
+
+#### `StructuralLowering.HistoryLowering_SkipsOrphanRestoreChoiceWhenNoTransitionTargetsHistory`
+**Test Intent**: Verify HistoryLoweringPass does not synthesize an orphan _HistoryRestore Choice node when no transition
 
 ### [`test_common_action_factoring.cpp`](../../tests/middleend/optimization/test_common_action_factoring.cpp) (`tests/middleend/optimization/test_common_action_factoring.cpp`)
 #### `CommonActionFactoring.ConvergentTransitionsIdenticalAction_FactoredIntoTargetEntry`

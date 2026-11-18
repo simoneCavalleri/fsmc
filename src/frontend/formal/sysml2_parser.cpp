@@ -751,11 +751,17 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         auto* existing = model.find_state_mut(state_name);
         if (existing != nullptr) {
             existing->parent_state = parent_name;
+            if (!parent_name.empty()) {
+                existing->pinned_parent = true;
+            }
             if (is_parallel) {
                 existing->kind = StateKind::Parallel;
             }
         } else {
             auto& st = model.add_state(state_name, parent_name);
+            if (!parent_name.empty()) {
+                st.pinned_parent = true;
+            }
             if (is_parallel) {
                 st.kind = StateKind::Parallel;
             }
@@ -1479,6 +1485,11 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     trans.target_is_deep_history = target_is_deep_history;
     trans.priority = priority;
     trans.parent_scope = state_stack.empty() ? "" : state_stack.back();
+    if (trans.parent_scope.empty() && !trans.source.empty()) {
+        if (const auto* src_st = model.find_state(trans.source); src_st != nullptr && !src_st->parent_state.empty()) {
+            trans.parent_scope = src_st->parent_state;
+        }
+    }
 
     // Distinguish internal from external transitions
     if (source == target && !event.empty() && !std::regex_search(stmt, then_regex)) {

@@ -1136,4 +1136,39 @@ state def SignedTypesFsm {
     EXPECT_EQ(u->type, "uint32_t");
 }
 
+/**
+ * @brief Regression: nested substates declared inside a composite state block retain their `parent_state`
+ * across `normalize_hierarchy()` even when referenced by root-level `transition first Sub2 ...` statements.
+ * @scenario Serialize a composite state with two substates (`Sub1`, `Sub2`) via `Sysml2Serializer`, re-parse
+ * with `Sysml2Parser`, and run `normalize_hierarchy()`.
+ * @expected Both `Sub1` and `Sub2` retain `parent_state == "Active"`.
+ */
+TEST(Sysml2Parser, NestedSubstatesWithRootLevelTransitions_RetainParentAfterNormalizeHierarchy) {
+    const std::string sysml = R"sysml(
+state def HierarchyRoundtripFsm {
+    entry; then Active;
+    state Active {
+        entry; then Sub1;
+        state Sub1;
+        state Sub2;
+    }
+    transition first Sub1 accept Step then Sub2;
+    transition first Sub2 accept Reset then Sub1;
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+    model.normalize_hierarchy();
+
+    const auto* sub1 = model.find_state("Sub1");
+    const auto* sub2 = model.find_state("Sub2");
+    ASSERT_NE(sub1, nullptr);
+    ASSERT_NE(sub2, nullptr);
+    EXPECT_EQ(sub1->parent_state, "Active");
+    EXPECT_EQ(sub2->parent_state, "Active");
+}
+
 }  // namespace

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 662  
+**Total Documented Test Cases**: 663  
 
 ---
 
@@ -984,6 +984,10 @@
 
 #### `PlantUmlParser.StandaloneHistoryTargetInsideComposite_ResolvesToParent`
 **Test Intent**: Regression: PlantUML standalone `[H]` / `[H*]` history target inside a composite state
+
+#### `PlantUmlParser.TimeTriggerEventLabel_PopulatesTimeTrigger`
+**Test Intent**: Regression: `PlantUmlParser` reconstructs `TimeTrigger` when parsing `after_<N>ms` /
+`every_<N>ms` transition labels emitted by `PlantUmlSerializer`.
 
 ### [`test_directive_parser.cpp`](../../tests/frontend/directive/test_directive_parser.cpp) (`tests/frontend/directive/test_directive_parser.cpp`)
 #### `DirectiveParser.StateDirective_ParsesTraceabilityAndActivities`

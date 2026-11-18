@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 632  
+**Total Documented Test Cases**: 633  
 
 ---
 
@@ -997,6 +997,9 @@
 #### `CameoXmiParser.TransitionEffectBodyAttribute_ParsedIntoAssignments`
 **Test Intent**: Regression: Cameo XMI `<effect body="x = 99;"/>` (and `<body>` child) is extracted and parsed into
 `ActionSignature::assignments`.
+
+#### `CameoXmiParser.StateEntryExitBodyAttributes_ParsedIntoAssignments`
+**Test Intent**: Regression: Cameo XMI `<entry body="x = 10;"/>` and `<exit body="y = 20;"/>` are extracted and parsed
 
 ### [`test_scxml_parser.cpp`](../../tests/frontend/formal/test_scxml_parser.cpp) (`tests/frontend/formal/test_scxml_parser.cpp`)
 #### `ScxmlParser.BasicScxmlDocument_ParsedIntoValidFsmIr`

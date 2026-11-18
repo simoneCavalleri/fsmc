@@ -228,11 +228,30 @@ void CameoXmiGraphResolver::process_subvertex(const std::shared_ptr<XmlNode>& ve
         model.add_state(state_name, parent_state, st_kind);
     }
 
+    auto extract_behavior_text = [](const std::shared_ptr<XmlNode>& node) -> std::string {
+        std::string txt = node->get_attr("body");
+        if (txt.empty()) {
+            for (const auto& body_node : node->find_children("body")) {
+                if (!body_node->text_content.empty()) {
+                    txt = body_node->text_content;
+                    break;
+                }
+            }
+        }
+        if (txt.empty()) {
+            txt = node->get_attr("name");
+        }
+        if (txt.empty()) {
+            txt = node->text_content;
+        }
+        return txt;
+    };
+
     // 7. Parse entry, exit, doActivity, and deferrableTrigger actions
     for (const auto& act : vertex_node->children) {
         // Entry actions
         if (act->tag == "entry" || ends_with(act->tag, ":entry")) {
-            std::string aname = act->get_attr("name");
+            std::string aname = extract_behavior_text(act);
             if (!aname.empty()) {
                 auto assign_sig = try_build_cameo_assignment_action(aname, state_name + "_entry");
                 ActionSignature sig =
@@ -244,7 +263,7 @@ void CameoXmiGraphResolver::process_subvertex(const std::shared_ptr<XmlNode>& ve
             }
             // Exit actions
         } else if (act->tag == "exit" || ends_with(act->tag, ":exit")) {
-            std::string aname = act->get_attr("name");
+            std::string aname = extract_behavior_text(act);
             if (!aname.empty()) {
                 auto assign_sig = try_build_cameo_assignment_action(aname, state_name + "_exit");
                 ActionSignature sig =
@@ -256,7 +275,7 @@ void CameoXmiGraphResolver::process_subvertex(const std::shared_ptr<XmlNode>& ve
             }
             // Ongoing state activities
         } else if (act->tag == "doActivity" || ends_with(act->tag, ":doActivity")) {
-            std::string aname = act->get_attr("name");
+            std::string aname = extract_behavior_text(act);
             if (!aname.empty()) {
                 if (auto* s = model.find_state_mut(state_name)) {
                     s->do_activity = sanitize_identifier(aname);

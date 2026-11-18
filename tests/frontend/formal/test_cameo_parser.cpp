@@ -590,4 +590,49 @@ TEST(CameoXmiParser, TransitionEffectBodyAttribute_ParsedIntoAssignments) {
     EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].expression, "99");
 }
 
+/**
+ * @brief Regression: Cameo XMI `<entry body="x = 10;"/>` and `<exit body="y = 20;"/>` are extracted and parsed
+ * into `entry_actions` and `exit_actions` assignments.
+ * @scenario Parse Cameo XMI state with `<entry xmi:type="uml:OpaqueBehavior" body="x = 10;"/>` and `<exit ... body="y =
+ * 20;"/>`.
+ * @expected `Idle->entry_actions` assigns `x = 10` and `Idle->exit_actions` assigns `y = 20`.
+ */
+TEST(CameoXmiParser, StateEntryExitBodyAttributes_ParsedIntoAssignments) {
+    const std::string xmi = R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="2.1" xmlns:uml="http://www.omg.org/spec/UML/20090901" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1">
+  <uml:Model xmi:id="_m1" name="CameoLifecycleModel">
+    <!-- @fsm:var name=x type=int32 init=0 -->
+    <!-- @fsm:var name=y type=int32 init=0 -->
+    <packagedElement xmi:type="uml:StateMachine" xmi:id="_sm1" name="CameoLifecycle">
+      <region xmi:type="uml:Region" xmi:id="_r1">
+        <subvertex xmi:type="uml:Pseudostate" xmi:id="_ps_init" kind="initial"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s1" name="Idle">
+          <entry xmi:type="uml:OpaqueBehavior" xmi:id="_en1" body="x = 10;"/>
+          <exit xmi:type="uml:OpaqueBehavior" xmi:id="_ex1" body="y = 20;"/>
+        </subvertex>
+        <subvertex xmi:type="uml:State" xmi:id="_s2" name="Done"/>
+        <transition xmi:id="_t0" source="_ps_init" target="_s1"/>
+        <transition xmi:id="_t1" source="_s1" target="_s2" trigger="Go"/>
+      </region>
+    </packagedElement>
+  </uml:Model>
+</xmi:XMI>
+)xml";
+
+    CameoXmiParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xmi, ir, err)) << err;
+    const auto* idle = ir.find_state("Idle");
+    ASSERT_NE(idle, nullptr);
+    ASSERT_EQ(idle->entry_actions.size(), 1u);
+    ASSERT_EQ(idle->entry_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(idle->entry_actions[0].assignments[0].target.name, "x");
+    EXPECT_EQ(idle->entry_actions[0].assignments[0].expression, "10");
+    ASSERT_EQ(idle->exit_actions.size(), 1u);
+    ASSERT_EQ(idle->exit_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(idle->exit_actions[0].assignments[0].target.name, "y");
+    EXPECT_EQ(idle->exit_actions[0].assignments[0].expression, "20");
+}
+
 }  // namespace

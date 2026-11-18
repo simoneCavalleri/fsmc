@@ -330,7 +330,11 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
         }
         out << "\n";
     }
-    if (!model.custom_types.empty() || !model.ports.empty() || !model.variables.empty()) {
+    if (!model.custom_types.empty() || !model.ports.empty() || !model.variables.empty() ||
+        !model.choice_nodes.empty()) {
+        for (const auto& choice : model.choice_nodes) {
+            out << "-- @fsm:choice name=" << sanitize_smv_ident(choice.name) << "\n";
+        }
         out << "\n";
     }
 

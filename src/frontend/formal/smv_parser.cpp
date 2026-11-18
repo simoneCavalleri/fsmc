@@ -78,6 +78,14 @@ bool SmvParser::parse(std::string_view content, FsmIr& model, std::string& error
                     if (auto prop = directive::DirectiveParser::parse_property_directive(body)) {
                         model.add_property(std::move(*prop));
                     }
+                } else if (body.rfind("choice", 0) == 0) {
+                    auto n_pos = body.find("name=");
+                    std::string cname =
+                        (n_pos != std::string::npos) ? extract_word_or_quoted(body, n_pos + 5) : trim(body.substr(6));
+                    cname = sanitize_identifier(cname);
+                    if (!cname.empty()) {
+                        model.add_choice_node(cname);
+                    }
                 } else if (body.rfind("state", 0) == 0) {
                     parse_state_metadata_directive(body, model);
                 } else if (body.rfind("entry", 0) == 0) {
@@ -273,7 +281,7 @@ void SmvParser::parse_enum_states(const std::string& line, FsmIr& model) {
     std::string item;
     while (std::getline(ss, item, ',')) {
         std::string st_name = sanitize_identifier(trim(item));
-        if (!st_name.empty()) {
+        if (!st_name.empty() && !model.is_choice_node(st_name)) {
             model.add_or_get_state(st_name, "");
         }
     }

@@ -596,4 +596,33 @@ TEST(ScxmlSerializerTest, PseudostatesAndFinalKind_PreservedAcrossRoundtrip) {
     EXPECT_EQ(parsed.find_state("Xp")->kind, StateKind::ExitPoint);
 }
 
+/**
+ * @brief Regression: `ScxmlSerializer` emits `event="when(<expr>)"` for `ChangeTrigger`
+ * transitions so `ScxmlParser` preserves `ChangeTrigger` across SCXML roundtrips.
+ * @scenario Serialize a transition with `ChangeTrigger("count > 5")` to SCXML and re-parse.
+ * @expected Serialized SCXML contains `event="when(count &gt; 5)"` and re-parsed transition holds `ChangeTrigger`.
+ */
+TEST(ScxmlSerializerTest, ChangeTrigger_PreservedAcrossRoundtrip) {
+    FsmIr ir;
+    ir.name = "ScxmlChangeRt";
+    ir.initial_state = "Wait";
+    ir.add_state("Wait");
+    ir.add_state("Done");
+    ir.add_variable(VariableDefinition("count", DataType::int32(), "0"));
+    TransitionEdge t("Wait", "Done", "");
+    t.trigger = ChangeTrigger("count > 5", true);
+    ir.add_transition(t);
+
+    const std::string xml = ScxmlSerializer::serialize(ir);
+    EXPECT_NE(xml.find("event=\"when(count &gt; 5)\""), std::string::npos) << xml;
+
+    ScxmlParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ChangeTrigger>(parsed.transitions[0].trigger));
+    EXPECT_EQ(std::get<ChangeTrigger>(parsed.transitions[0].trigger).raw_expression, "count > 5");
+}
+
 }  // namespace

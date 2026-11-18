@@ -606,14 +606,22 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
         }
     }
     std::vector<std::string> event_tokens;
+    std::string change_trigger_expr;
     {
-        std::istringstream ev_iss(event);
-        std::string tok;
-        while (ev_iss >> tok) {
-            event_tokens.push_back(std::move(tok));
-        }
-        if (event_tokens.empty()) {
+        static const std::regex when_ev_regex(R"(^\s*when\s*\((.+)\)\s*$)", std::regex::icase);
+        std::smatch wm;
+        if (std::regex_match(event, wm, when_ev_regex)) {
+            change_trigger_expr = std::string(trim(wm[1].str()));
             event_tokens.emplace_back("");
+        } else {
+            std::istringstream ev_iss(event);
+            std::string tok;
+            while (ev_iss >> tok) {
+                event_tokens.push_back(std::move(tok));
+            }
+            if (event_tokens.empty()) {
+                event_tokens.emplace_back("");
+            }
         }
     }
     if (!cond.empty()) {
@@ -675,7 +683,12 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
     static const std::regex time_ev_regex(R"(^(after|every)_([0-9]+(?:\.[0-9]+)?)(ms|us|s|m)$)", std::regex::optimize);
     for (const auto& ev_raw : event_tokens) {
         TransitionEdge edge = trans;
-        edge.event = sanitize_identifier(ev_raw);
+        if (!change_trigger_expr.empty()) {
+            edge.event.clear();
+            edge.trigger = ChangeTrigger(change_trigger_expr, true);
+        } else {
+            edge.event = sanitize_identifier(ev_raw);
+        }
         std::smatch tm;
         if (std::regex_match(edge.event, tm, time_ev_regex)) {
             const TimeTriggerKind kind = (tm[1].str() == "every") ? TimeTriggerKind::Every : TimeTriggerKind::After;

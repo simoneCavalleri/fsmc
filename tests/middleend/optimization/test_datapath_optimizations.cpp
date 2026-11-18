@@ -804,3 +804,68 @@ TEST(TransitionFusion, StateReferencedByFormalProperty_PreservedWithoutFusion) {
     EXPECT_NE(ir.find_state("s_verify"), nullptr);
     EXPECT_EQ(ir.states.size(), 3u);
 }
+
+/**
+ * @brief Regression: TransitionFusionPass preserves intermediate states carrying traceability requirements and
+ * retains priority, transition kind, and edge traceability_reqs on fused transitions.
+ */
+TEST(TransitionFusion, PreservesTraceabilityReqsAndEdgeMetadata) {
+    FsmIr ir;
+    ir.name = "FusionMetadataFSM";
+    ir.initial_state_id = "s_start";
+
+    ir.states.emplace_back("s_start", "s_start");
+    StateNode s_req("s_req", "s_req");
+    s_req.traceability_reqs.push_back("REQ_MID");
+    ir.states.push_back(std::move(s_req));
+    ir.states.emplace_back("s_mid", "s_mid");
+    ir.states.emplace_back("s_end", "s_end");
+
+    TransitionEdge t_keep1("s_start", "s_req", "GO1");
+    t_keep1.source_id = "s_start";
+    t_keep1.target_id = "s_req";
+    ir.add_transition(t_keep1);
+
+    TransitionEdge t_keep2("s_req", "s_end", "");
+    t_keep2.source_id = "s_req";
+    t_keep2.target_id = "s_end";
+    t_keep2.trigger = AnonymousTrigger{};
+    ir.add_transition(t_keep2);
+
+    TransitionEdge t1("s_start", "s_mid", "GO2");
+    t1.source_id = "s_start";
+    t1.target_id = "s_mid";
+    t1.priority = 3;
+    t1.kind = TransitionEdgeKind::Local;
+    t1.traceability_reqs.push_back("REQ_E1");
+    ir.add_transition(t1);
+
+    TransitionEdge t2("s_mid", "s_end", "");
+    t2.source_id = "s_mid";
+    t2.target_id = "s_end";
+    t2.trigger = AnonymousTrigger{};
+    t2.target_is_history = true;
+    t2.traceability_reqs.push_back("REQ_E2");
+    ir.add_transition(t2);
+
+    DiagnosticEngine diag;
+    TransitionFusionPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+
+    // s_req has traceability_reqs and must not be fused away
+    EXPECT_NE(ir.find_state("s_req"), nullptr);
+    // s_mid has no traceability_reqs and should be fused
+    EXPECT_EQ(ir.find_state("s_mid"), nullptr);
+
+    bool found_fused = false;
+    for (const auto& t : ir.transitions) {
+        if (t.event == "GO2") {
+            found_fused = true;
+            EXPECT_EQ(t.priority, 3u);
+            EXPECT_EQ(t.kind, TransitionEdgeKind::Local);
+            EXPECT_TRUE(t.target_is_history);
+            EXPECT_EQ(t.traceability_reqs.size(), 2u);
+        }
+    }
+    EXPECT_TRUE(found_fused);
+}

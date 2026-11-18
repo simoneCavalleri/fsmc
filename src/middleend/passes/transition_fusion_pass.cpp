@@ -160,7 +160,8 @@ bool TransitionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 (property_atoms.count(state.name) > 0) || (property_atoms.count(state.id) > 0);
 
             if (is_initial || is_composite_initial || is_referenced_in_property || !state.children_ids.empty() ||
-                state.kind == ir::StateKind::Terminate || !state.invariants.empty() ||
+                state.is_composite || state.has_history || state.has_deep_history ||
+                state.kind != ir::StateKind::Atomic || !state.traceability_reqs.empty() || !state.invariants.empty() ||
                 (state.time_invariant.has_value() && !state.time_invariant->empty()) ||
                 (state.do_activity.has_value() && !state.do_activity->empty()) || !state.deferred_events.empty()) {
                 continue;
@@ -234,6 +235,18 @@ bool TransitionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 fused.target = out_edge.target;
                 fused.trigger = in_edge.trigger;
                 fused.event = in_edge.event;
+                fused.kind = in_edge.kind;
+                fused.priority = in_edge.priority;
+                fused.parent_scope = in_edge.parent_scope;
+                fused.target_is_history = out_edge.target_is_history;
+                fused.target_is_deep_history = out_edge.target_is_deep_history;
+                fused.traceability_reqs = in_edge.traceability_reqs;
+                for (const auto& req : out_edge.traceability_reqs) {
+                    if (std::find(fused.traceability_reqs.begin(), fused.traceability_reqs.end(), req) ==
+                        fused.traceability_reqs.end()) {
+                        fused.traceability_reqs.push_back(req);
+                    }
+                }
                 if (auto fused_ast = compose_guard_asts(in_edge.guard_ast, out_edge.guard_ast); fused_ast.has_value()) {
                     fused.set_guard_ast(std::move(fused_ast));
                 } else {

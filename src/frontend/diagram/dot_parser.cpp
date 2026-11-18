@@ -73,7 +73,7 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
     };
 
     const std::regex digraph_regex(R"(^\s*(?:digraph|graph)\s+([A-Za-z0-9_]+))", std::regex::icase);
-    const std::regex subgraph_regex(R"(^\s*subgraph\s+(?:cluster_)?([A-Za-z0-9_]+)\s*\{?)", std::regex::icase);
+    const std::regex subgraph_regex(R"raw(^\s*subgraph\s+([A-Za-z0-9_]+|"[^"]*")\s*\{?)raw", std::regex::icase);
     const std::regex node_point_regex(
         R"raw(^\s*([A-Za-z0-9_]+|"[^"]*")\s*\[.*shape\s*=\s*(?:point|circle|none).*\].*)raw", std::regex::icase);
     const std::regex edge_regex(
@@ -136,7 +136,11 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
 
         // Check subgraph cluster_CompositeState {
         if (std::regex_search(trimmed, match, subgraph_regex)) {
-            std::string comp_name = sanitize_identifier(match[1].str());
+            std::string raw_sub = unquote_node(match[1].str());
+            if (raw_sub.rfind("cluster_", 0) == 0) {
+                raw_sub = raw_sub.substr(8);
+            }
+            std::string comp_name = sanitize_identifier(raw_sub);
             model.add_state(comp_name, current_parent_state);
             auto* parent_state = model.find_state_mut(comp_name);
             if (parent_state != nullptr) {

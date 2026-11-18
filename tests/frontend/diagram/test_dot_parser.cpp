@@ -329,4 +329,35 @@ TEST(DotParser, EscapedQuotesInEdgeLabel_PreservesGuardAndAction) {
     EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].expression, R"("c/d")");
 }
 
+/**
+ * @brief Regression: Graphviz DOT quoted `subgraph "cluster_Active Mode"` creates composite state
+ * `Active_Mode` with nested child states instead of flattening children to top-level.
+ * @scenario Parse DOT with `subgraph "cluster_Active Mode"` containing `"Sub A" -> "Sub B"`.
+ * @expected `Active_Mode` exists with `is_composite == true` and `Sub_A`/`Sub_B` have `parent_state == "Active_Mode"`.
+ */
+TEST(DotParser, QuotedSubgraphCluster_CreatesCompositeState) {
+    const std::string dot_content = R"dot(digraph DotQuotedCluster {
+    __start__ -> Idle;
+    subgraph "cluster_Active Mode" {
+        "Sub A" -> "Sub B" [label="Next"];
+    }
+    Idle -> "Sub A" [label="Start"];
+}
+)dot";
+
+    DotParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    const auto* active = ir.find_state("Active_Mode");
+    ASSERT_NE(active, nullptr);
+    EXPECT_TRUE(active->is_composite);
+    const auto* sub_a = ir.find_state("Sub_A");
+    ASSERT_NE(sub_a, nullptr);
+    EXPECT_EQ(sub_a->parent_state, "Active_Mode");
+    const auto* sub_b = ir.find_state("Sub_B");
+    ASSERT_NE(sub_b, nullptr);
+    EXPECT_EQ(sub_b->parent_state, "Active_Mode");
+}
+
 }  // namespace

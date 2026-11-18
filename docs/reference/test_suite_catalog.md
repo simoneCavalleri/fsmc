@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 675  
+**Total Documented Test Cases**: 676  
 
 ---
 
@@ -1217,6 +1217,10 @@
 
 #### `SmvParser.InternalTransition_PreservedAcrossSerializerRoundtrip`
 **Test Intent**: Regression: `SmvSerializer` emits `-- kind=internal` on `TransitionEdgeKind::Internal`
+
+#### `SmvParser.PortsEnumsStructsAndTypedVars_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `SmvSerializer` emits `-- @fsm:enum`, `-- @fsm:struct`, `-- @fsm:port`, and
+`-- @fsm:var` directives and `SmvParser` restores them without duplicating ports into `variables`
 
 ### [`test_stateflow_parser.cpp`](../../tests/frontend/formal/test_stateflow_parser.cpp) (`tests/frontend/formal/test_stateflow_parser.cpp`)
 #### `StateflowParser.BasicStateflowChart_ParsedIntoValidFsmIr`

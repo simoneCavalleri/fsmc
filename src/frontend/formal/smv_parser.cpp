@@ -51,6 +51,18 @@ bool SmvParser::parse(std::string_view content, FsmIr& model, std::string& error
                     if (auto var = directive::DirectiveParser::parse_variable_directive(body)) {
                         model.add_variable(std::move(*var));
                     }
+                } else if (body.rfind("port", 0) == 0) {
+                    if (auto port = directive::DirectiveParser::parse_port_directive(body)) {
+                        model.add_port(std::move(*port));
+                    }
+                } else if (body.rfind("enum", 0) == 0) {
+                    if (auto en = directive::DirectiveParser::parse_enum_directive(body)) {
+                        model.add_enum(std::move(*en));
+                    }
+                } else if (body.rfind("struct", 0) == 0) {
+                    if (auto st = directive::DirectiveParser::parse_struct_directive(body)) {
+                        model.add_struct(std::move(*st));
+                    }
                 } else if (body.rfind("signal", 0) == 0) {
                     if (auto sig = directive::DirectiveParser::parse_signal_directive(body)) {
                         model.add_signal(std::move(*sig));
@@ -293,10 +305,28 @@ void SmvParser::parse_variable_decl(const std::string& line, FsmIr& model) {
             return;  // Skip synthetic tick timers
         }
     }
+    if (model.find_port(name) != nullptr) {
+        return;  // Port already declared via @fsm:port directive
+    }
 
     std::string type_part = trim(line.substr(colon + 1));
     if (!type_part.empty() && type_part.back() == ';') {
         type_part.pop_back();
+    }
+
+    for (auto& existing : model.variables) {
+        if (existing.name == name) {
+            if (type_part.find("..") != std::string::npos && !existing.min_value.has_value() &&
+                !existing.max_value.has_value()) {
+                size_t dotdot = type_part.find("..");
+                try {
+                    existing.min_value = std::stoll(trim(type_part.substr(0, dotdot)));
+                    existing.max_value = std::stoll(trim(type_part.substr(dotdot + 2)));
+                } catch (const std::exception&) {
+                }
+            }
+            return;
+        }
     }
 
     VariableDefinition var;

@@ -717,4 +717,58 @@ TEST(SmvParser, InternalTransition_PreservedAcrossSerializerRoundtrip) {
     EXPECT_EQ(parsed.transitions[0].transition_action->assignments.size(), 1u);
 }
 
+/**
+ * @brief Regression: `SmvSerializer` emits `-- @fsm:enum`, `-- @fsm:struct`, `-- @fsm:port`, and
+ * `-- @fsm:var` directives and `SmvParser` restores them without duplicating ports into `variables`
+ * or clobbering `int32` variable types with `uint32`.
+ * @scenario Serialize an FSM with an enum, struct, `in` port, and `int32` variable (`init="-5"`), then re-parse.
+ * @expected Re-parsed IR preserves the enum, struct, port (not in `variables`), and `int32` variable with `"-5"`.
+ */
+TEST(SmvParser, PortsEnumsStructsAndTypedVars_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "SmvTypesRt";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+
+    EnumDefinition mode_enum("Mode", "uint8_t");
+    mode_enum.literals.emplace_back("OFF", 0);
+    mode_enum.literals.emplace_back("ON", 1);
+    ir.add_enum(mode_enum);
+
+    StructDefinition vec_struct("Vec");
+    vec_struct.fields.emplace_back("x", DataType::int32());
+    ir.add_struct(vec_struct);
+
+    PortDefinition cmd("cmd", DataType::custom("Mode"), PortDirection::In);
+    ir.add_port(cmd);
+
+    VariableDefinition offset("offset", DataType::int32(), "-5");
+    ir.add_variable(offset);
+
+    const std::string smv = fsm::backend::formal::SmvSerializer::serialize(ir);
+    SmvParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err;
+
+    ASSERT_NE(parsed.find_port("cmd"), nullptr);
+    EXPECT_EQ(parsed.find_variable("cmd"), nullptr);
+
+    const auto* p_offset = parsed.find_variable("offset");
+    ASSERT_NE(p_offset, nullptr);
+    EXPECT_EQ(p_offset->type, DataType::int32());
+    EXPECT_EQ(p_offset->initial_value, "-5");
+
+    bool found_enum = false;
+    bool found_struct = false;
+    for (const auto& ct : parsed.custom_types) {
+        if (ct.is_enum() && ct.name == "Mode")
+            found_enum = true;
+        if (ct.is_struct() && ct.name == "Vec")
+            found_struct = true;
+    }
+    EXPECT_TRUE(found_enum);
+    EXPECT_TRUE(found_struct);
+}
+
 }  // namespace

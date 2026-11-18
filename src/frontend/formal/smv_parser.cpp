@@ -160,6 +160,9 @@ bool SmvParser::parse(std::string_view content, FsmIr& model, std::string& error
                     for (auto& v : model.variables) {
                         if (v.name == var_name) {
                             v.initial_value = norm_init;
+                            if (norm_init.size() >= 2 && norm_init.front() == '"' && norm_init.back() == '"') {
+                                v.type = DataType::string();
+                            }
                             break;
                         }
                     }

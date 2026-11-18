@@ -733,6 +733,63 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
         }
     }
 
+    auto format_lifecycle_action = [](const ActionSignature& act) -> std::string {
+        if (!act.assignments.empty()) {
+            std::string s;
+            for (std::size_t i = 0; i < act.assignments.size(); ++i) {
+                if (i > 0) {
+                    s += "; ";
+                }
+                s += act.assignments[i].target.full_path() + " = " + act.assignments[i].expression;
+            }
+            return s;
+        }
+        return act.name;
+    };
+
+    for (const auto& s : model.states) {
+        if (!s.parent_state.empty() || s.is_composite || !s.initial_sub_state.empty() || s.has_history ||
+            s.has_deep_history || (s.do_activity.has_value() && !s.do_activity->empty())) {
+            out << "-- @fsm:state name=" << sanitize_smv_ident(s.name);
+            if (!s.parent_state.empty()) {
+                out << " parent=" << sanitize_smv_ident(s.parent_state);
+            }
+            if (s.is_composite) {
+                out << " composite=true";
+            }
+            if (!s.initial_sub_state.empty()) {
+                out << " initial=" << sanitize_smv_ident(s.initial_sub_state);
+            }
+            if (s.has_deep_history) {
+                out << " history=deep";
+            } else if (s.has_history) {
+                out << " history=shallow";
+            }
+            if (s.do_activity.has_value() && !s.do_activity->empty()) {
+                out << " do_activity=\"" << *s.do_activity << "\"";
+            }
+            out << "\n";
+        }
+        for (const auto& ea : s.entry_actions) {
+            std::string act_str = format_lifecycle_action(ea);
+            if (!act_str.empty()) {
+                out << "-- @fsm:entry state=" << sanitize_smv_ident(s.name) << " action=\"" << act_str << "\"\n";
+            }
+        }
+        for (const auto& xa : s.exit_actions) {
+            std::string act_str = format_lifecycle_action(xa);
+            if (!act_str.empty()) {
+                out << "-- @fsm:exit state=" << sanitize_smv_ident(s.name) << " action=\"" << act_str << "\"\n";
+            }
+        }
+        for (const auto& dev : s.deferred_events) {
+            if (!dev.empty()) {
+                out << "-- @fsm:defer state=" << sanitize_smv_ident(s.name) << " event=" << sanitize_smv_ident(dev)
+                    << "\n";
+            }
+        }
+    }
+
     return out.str();
 }
 

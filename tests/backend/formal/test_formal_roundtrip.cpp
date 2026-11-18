@@ -1334,4 +1334,47 @@ TEST(FormalRoundtrip, SmvSerializer_WidensRangeForNegativeInitialOrAssignedValue
     EXPECT_NE(smv.find("temp : -150..100;"), std::string::npos);
 }
 
+/**
+ * @brief Regression: `SmvSerializer` emits `-- @fsm:state`, `-- @fsm:entry`, `-- @fsm:exit`, and
+ * `-- @fsm:defer` comment directives so hierarchy, entry/exit actions, and deferred events survive
+ * SMV roundtrips through `SmvParser`.
+ * @scenario Serialize an FSM with `Idle` having `entry` (`x = 1`), `exit` (`x = 2`), `do_activity`,
+ * and `defer Ping`, then re-parse with `SmvParser`.
+ * @expected Re-parsed `Idle` preserves `entry_actions`, `exit_actions`, `do_activity`, and `deferred_events`.
+ */
+TEST(FormalRoundtrip, SmvSerializer_PreservesStateLifecycleAndDeferDirectives) {
+    FsmIr ir;
+    ir.name = "SmvLifeRt";
+    ir.initial_state = "Idle";
+    ir.add_variable(VariableDefinition("x", DataType::int32(), "0"));
+    auto& st = ir.add_state("Idle");
+    st.do_activity = "spin";
+    st.deferred_events.push_back("Ping");
+    ActionSignature ent("Idle_entry");
+    ent.assignments.emplace_back(LValueTarget("x", LValueScope::Register), "1");
+    st.entry_actions.push_back(ent);
+    ActionSignature ext("Idle_exit");
+    ext.assignments.emplace_back(LValueTarget("x", LValueScope::Register), "2");
+    st.exit_actions.push_back(ext);
+    ir.add_state("Done");
+    ir.add_transition(TransitionEdge("Idle", "Done", "Go"));
+
+    const std::string smv = SmvSerializer::serialize(ir);
+    SmvParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err;
+    const auto* idle = parsed.find_state("Idle");
+    ASSERT_NE(idle, nullptr);
+    EXPECT_EQ(idle->do_activity, "spin");
+    ASSERT_EQ(idle->deferred_events.size(), 1u);
+    EXPECT_EQ(idle->deferred_events[0], "Ping");
+    ASSERT_EQ(idle->entry_actions.size(), 1u);
+    ASSERT_EQ(idle->entry_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(idle->entry_actions[0].assignments[0].expression, "1");
+    ASSERT_EQ(idle->exit_actions.size(), 1u);
+    ASSERT_EQ(idle->exit_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(idle->exit_actions[0].assignments[0].expression, "2");
+}
+
 }  // namespace

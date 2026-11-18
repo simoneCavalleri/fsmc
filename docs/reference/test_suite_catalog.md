@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 660  
+**Total Documented Test Cases**: 661  
 
 ---
 
@@ -717,6 +717,10 @@
 
 #### `FormalRoundtrip.SmvSerializer_WidensRangeForNegativeInitialOrAssignedValues`
 **Test Intent**: Regression: `SmvSerializer` widens default integer range `0..100` to `-100..100` (or wider)
+
+#### `FormalRoundtrip.SmvSerializer_PreservesStateLifecycleAndDeferDirectives`
+**Test Intent**: Regression: `SmvSerializer` emits `-- @fsm:state`, `-- @fsm:entry`, `-- @fsm:exit`, and
+`-- @fsm:defer` comment directives so hierarchy, entry/exit actions, and deferred events survive
 
 ---
 

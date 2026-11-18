@@ -54,6 +54,11 @@ std::string build_label(const TransitionEdge& trans, const FsmIr& model) {
                 label += " ";
             label += "when(" + ct->raw_expression + ")";
         }
+    } else if (const auto* tt = std::get_if<TimeTrigger>(&trans.trigger); tt != nullptr && trans.event.empty()) {
+        if (!label.empty())
+            label += " ";
+        label += std::string(tt->kind == TimeTriggerKind::Every ? "every_" : "after_") +
+                 std::to_string(tt->duration_value) + std::string(time_unit_to_string(tt->unit));
     } else if (!trans.event.empty() && trans.event != "Anonymous") {
         if (!label.empty())
             label += " ";

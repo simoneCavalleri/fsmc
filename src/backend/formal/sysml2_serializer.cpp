@@ -208,7 +208,7 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
         if (sig.attributes.empty() && time_trigger_events.count(sig.name) > 0 && non_time_events.count(sig.name) == 0) {
             continue;
         }
-        if (sig.attributes.empty()) {
+        if (sig.attributes.empty() && sig.validators.empty()) {
             out << "    event def " << sig.name << ";\n";
         } else {
             out << "    item def " << sig.name << " {\n";
@@ -218,6 +218,9 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
                     out << " = " << attr.default_value;
                 }
                 out << ";\n";
+            }
+            for (const auto& val : sig.validators) {
+                out << "        assert constraint { " << val << " }\n";
             }
             out << "    }\n";
         }

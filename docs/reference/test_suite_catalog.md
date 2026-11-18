@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 670  
+**Total Documented Test Cases**: 671  
 
 ---
 
@@ -724,6 +724,9 @@
 
 #### `FormalRoundtrip.StateflowSerializer_PreservesDeferredEventsAcrossRoundtrip`
 **Test Intent**: Regression: `StateflowSerializer` and `StateflowParser` preserve `deferred_events` on states
+
+#### `FormalRoundtrip.StateflowSerializer_PreservesInternalTransitionKindAcrossRoundtrip`
+**Test Intent**: Regression: `StateflowSerializer` and `StateflowParser` preserve `TransitionEdgeKind::Internal`
 
 ---
 

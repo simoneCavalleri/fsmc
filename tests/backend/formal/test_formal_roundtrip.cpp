@@ -1404,4 +1404,30 @@ TEST(FormalRoundtrip, StateflowSerializer_PreservesDeferredEventsAcrossRoundtrip
     EXPECT_EQ(idle->deferred_events[1], "Pong");
 }
 
+/**
+ * @brief Regression: `StateflowSerializer` and `StateflowParser` preserve `TransitionEdgeKind::Internal`
+ * via the `type="internal"` transition attribute across Stateflow XML roundtrips.
+ * @scenario Serialize an internal transition `Busy --Ping--> Busy` to Stateflow XML and re-parse.
+ * @expected Re-parsed transition has `kind == TransitionEdgeKind::Internal`.
+ */
+TEST(FormalRoundtrip, StateflowSerializer_PreservesInternalTransitionKindAcrossRoundtrip) {
+    FsmIr ir;
+    ir.name = "SfIntRt";
+    ir.initial_state = "Busy";
+    ir.add_state("Busy");
+    TransitionEdge t("Busy", "Busy", "Ping");
+    t.kind = TransitionEdgeKind::Internal;
+    ir.add_transition(t);
+
+    const std::string xml = StateflowSerializer::serialize(ir);
+    EXPECT_NE(xml.find("type=\"internal\""), std::string::npos);
+
+    StateflowParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 1u);
+    EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
+}
+
 }  // namespace

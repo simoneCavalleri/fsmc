@@ -820,6 +820,15 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
     TransitionEdge trans;
     trans.source = src_name;
     trans.target = dst_name;
+    std::string trans_type = trans_node->get_attr("type");
+    if (trans_type.empty()) {
+        trans_type = trans_node->get_attr("kind");
+    }
+    if (trans_type == "internal" || (dst.empty() && !src.empty())) {
+        trans.kind = TransitionEdgeKind::Internal;
+    } else if (trans_type == "local") {
+        trans.kind = TransitionEdgeKind::Local;
+    }
     trans.event = sanitize_identifier(comps.event);
     if (comps.time_trigger.has_value()) {
         trans.trigger = *comps.time_trigger;

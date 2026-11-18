@@ -145,6 +145,10 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
             emitted_transitions.insert(idx);
             std::string target = trans.target;
             std::string label = build_label(trans, model);
+            if (trans.kind == TransitionEdgeKind::Internal && !label.empty()) {
+                out << pad << "    " << trans.source << " : " << label << "\n";
+                continue;
+            }
             if (target == state.name) {
                 if (!state.initial_sub_state.empty()) {
                     target = state.initial_sub_state;
@@ -368,6 +372,10 @@ std::string MermaidSerializer::serialize(const FsmIr& model) {
         const auto& trans = model.transitions[idx];
         std::string target = trans.target;
         std::string label = build_label(trans, model);
+        if (trans.kind == TransitionEdgeKind::Internal && !label.empty()) {
+            out << "    " << trans.source << " : " << label << "\n";
+            continue;
+        }
 
         // Check if source is a descendant of target
         std::string curr = trans.source;

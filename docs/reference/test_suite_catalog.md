@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 668  
+**Total Documented Test Cases**: 669  
 
 ---
 
@@ -949,6 +949,10 @@
 #### `MermaidParser.TimeTriggerEventLabel_PopulatesTimeTrigger`
 **Test Intent**: Regression: `MermaidParser` reconstructs `TimeTrigger` when parsing `after_<N>ms` /
 `every_<N>ms` transition labels emitted by `MermaidSerializer`.
+
+#### `MermaidParser.InternalTransition_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `MermaidSerializer` emits `State : Event / Action` for
+`TransitionEdgeKind::Internal` transitions so `MermaidParser` preserves `Internal` kind across roundtrips.
 
 ### [`test_multiline_actions.cpp`](../../tests/frontend/diagram/test_multiline_actions.cpp) (`tests/frontend/diagram/test_multiline_actions.cpp`)
 - *(Executable binary test verification)*

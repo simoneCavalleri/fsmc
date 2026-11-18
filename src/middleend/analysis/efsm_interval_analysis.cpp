@@ -379,6 +379,13 @@ EFSMIntervalAnalyzer::compute_state_intervals() {
                     }
                 }
             };
+            if (t.kind != TransitionEdgeKind::Internal) {
+                if (const auto* src_node = ir_.find_state(t.source)) {
+                    for (const auto& exit_act : src_node->exit_actions) {
+                        apply_action_sig(next_env, exit_act);
+                    }
+                }
+            }
             process_action_assignments(t.condition_action);
             process_action_assignments(t.transition_action);
 

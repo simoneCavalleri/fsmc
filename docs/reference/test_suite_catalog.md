@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 695  
+**Total Documented Test Cases**: 696  
 
 ---
 
@@ -1934,6 +1934,9 @@
 
 #### `EFSMIntervalAnalysisTest.PropagatesIntervalsAcrossOrthogonalRegions`
 **Test Intent**: Verify EFSMIntervalAnalyzer propagates variable intervals through orthogonal regions.
+
+#### `EFSMIntervalAnalysisTest.AppliesStateExitActionsAcrossTransitions`
+**Test Intent**: Verify EFSMIntervalAnalyzer applies source state exit_actions along non-internal transitions.
 
 ### [`test_formal_safety_passes.cpp`](../../tests/middleend/verification/test_formal_safety_passes.cpp) (`tests/middleend/verification/test_formal_safety_passes.cpp`)
 #### `LivelockAnalysis.NonZeroTimeTransitions_PassesWithoutErrors`

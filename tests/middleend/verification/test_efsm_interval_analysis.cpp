@@ -417,4 +417,38 @@ TEST(EFSMIntervalAnalysisTest, PropagatesIntervalsAcrossOrthogonalRegions) {
     }
 }
 
+/**
+ * @brief Verify EFSMIntervalAnalyzer applies source state exit_actions along non-internal transitions.
+ * @scenario Variable count=0 incremented by Idle.exit_actions (count = count + 1) when transitioning
+ * Idle -> Active, then checked by Active -> Done [count >= 1].
+ * @expected Guard 'count >= 1' is NOT falsely flagged as UnsatisfiableGuard.
+ */
+TEST(EFSMIntervalAnalysisTest, AppliesStateExitActionsAcrossTransitions) {
+    FsmIr ir;
+    ir.name = "ExitInterval";
+    ir.initial_state = "Idle";
+    ir.variables.emplace_back("count", DataType(PrimitiveTypeKind::Int32), "0");
+
+    auto& idle = ir.add_state("Idle");
+    ActionSignature exit_act("inc_on_exit");
+    exit_act.assignments.emplace_back(LValueTarget("count", LValueScope::Register), "count + 1");
+    idle.exit_actions.push_back(exit_act);
+
+    ir.add_state("Active");
+    ir.add_state("Done");
+
+    ir.add_transition(TransitionEdge("Idle", "Active", "EvStart"));
+    TransitionEdge check_t("Active", "Done", "EvFinish", "count >= 1");
+    check_t.id = "t_exit_check";
+    ir.add_transition(check_t);
+
+    EFSMIntervalAnalyzer analyzer(ir);
+    DiagnosticEngine diag;
+    auto findings = analyzer.analyze(diag);
+
+    for (const auto& f : findings) {
+        EXPECT_NE(f.transition_id, "t_exit_check");
+    }
+}
+
 }  // namespace

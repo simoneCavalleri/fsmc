@@ -613,4 +613,41 @@ ASSIGN
     EXPECT_EQ(var->initial_value, R"("hello world")");
 }
 
+/**
+ * @brief Regression: `SmvParser` parses multi-line `LTLSPEC -- <name>`, `CTLSPEC -- <name>`, and
+ * `INVARSPEC -- <name>` specifications emitted by `SmvSerializer`, extracting both the property name
+ * from the `--` comment and the formula on the following line.
+ * @scenario Parse SMV with multi-line `LTLSPEC -- liveness` and `CTLSPEC -- temp_bound`.
+ * @expected Two properties extracted with names `liveness` / `temp_bound` and their formulas.
+ */
+TEST(SmvParser, MultilineLtlAndCtlSpecsWithNameComment_ParsedCleanly) {
+    const std::string smv_content = R"(MODULE main
+VAR
+  state : {Idle, Run};
+  event : {Start};
+ASSIGN
+  init(state) := Idle;
+  next(state) := case
+    state = Idle & event = Start : Run;
+    TRUE : state;
+  esac;
+
+LTLSPEC -- liveness
+  G (state = Idle -> F (state = Run));
+
+CTLSPEC -- can_run
+  EF (state = Run);
+)";
+
+    SmvParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+    ASSERT_EQ(model.properties.size(), 2u);
+    EXPECT_EQ(model.properties[0].name, "liveness");
+    EXPECT_EQ(model.properties[0].raw_formula, "G (state = Idle -> F (state = Run))");
+    EXPECT_EQ(model.properties[1].name, "can_run");
+    EXPECT_EQ(model.properties[1].raw_formula, "EF (state = Run)");
+}
+
 }  // namespace

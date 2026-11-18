@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 657  
+**Total Documented Test Cases**: 658  
 
 ---
 
@@ -1157,6 +1157,10 @@
 
 #### `SmvParser.QuotedStringInit_InfersStringDataType`
 **Test Intent**: Regression: `SmvParser` infers `DataType::string()` when `init(var) := "..."` has a quoted
+
+#### `SmvParser.MultilineLtlAndCtlSpecsWithNameComment_ParsedCleanly`
+**Test Intent**: Regression: `SmvParser` parses multi-line `LTLSPEC -- <name>`, `CTLSPEC -- <name>`, and
+`INVARSPEC -- <name>` specifications emitted by `SmvSerializer`, extracting both the property name
 
 ### [`test_stateflow_parser.cpp`](../../tests/frontend/formal/test_stateflow_parser.cpp) (`tests/frontend/formal/test_stateflow_parser.cpp`)
 #### `StateflowParser.BasicStateflowChart_ParsedIntoValidFsmIr`

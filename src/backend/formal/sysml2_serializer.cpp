@@ -30,6 +30,10 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
         out << pad << "join " << state.name << ";\n";
         return;
     }
+    if (state.kind == StateKind::Choice) {
+        out << pad << "choice " << state.name << ";\n";
+        return;
+    }
 
     bool has_body = !state.traceability_reqs.empty() || !state.entry_actions.empty() ||
                     (state.do_activity.has_value() && !state.do_activity->empty()) || !state.exit_actions.empty() ||
@@ -241,6 +245,13 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
     for (const auto& state : model.states) {
         if (state.parent_state.empty()) {
             emit_state(out, state, model, 1);
+        }
+    }
+
+    // Emit choice pseudostates not already present in states
+    for (const auto& choice : model.choice_nodes) {
+        if (model.find_state(choice.name) == nullptr) {
+            out << "    choice " << choice.name << ";\n";
         }
     }
 

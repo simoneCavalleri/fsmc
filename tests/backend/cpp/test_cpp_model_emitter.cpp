@@ -1380,3 +1380,46 @@ TEST(CppModelEmitterTest, UnqualifiedEnumLiterals_QualifiedInInitialValuesAndExp
     EXPECT_NE(str.find("Mode m{Mode::IdleMode};"), std::string::npos);
     EXPECT_NE(str.find("reg.m = Mode::RunMode;"), std::string::npos);
 }
+
+/**
+ * @brief Regression: A guard whose normalized expression calls a function with the same name as the
+ * generated guard struct (e.g. `check_ok()`) is treated as unresolved rather than emitting `return check_ok();`
+ * which invokes the struct's own constructor and fails C++ compilation.
+ * @scenario Emit `GuardModel("check_ok", "check_ok", "check_ok()", "check_ok()")` with stubs and with `--no-stubs`.
+ * @expected Stub mode emits `return true;` with unresolved comment (never `return check_ok();`); `--no-stubs`
+ * forward-declares `struct check_ok;`.
+ */
+TEST(CppModelEmitterTest, GuardFunctionCallMatchingStructName_DoesNotEmitSelfConstructorCall) {
+    FsmIr model;
+    model.name = "GuardCallFsm";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Done");
+    model.add_event("Go");
+
+    GuardModel gm("check_ok", "check_ok", "check_ok()", "check_ok()");
+    model.guards.push_back(gm);
+    TransitionEdge t("Idle", "Done", "Go", "check_ok");
+    model.transitions.push_back(t);
+
+    {
+        std::ostringstream out;
+        GeneratorOptions opts;
+        opts.include_stubs = true;
+        CppModelEmitter::emit_model(out, model, opts);
+        const std::string str = out.str();
+        EXPECT_EQ(str.find("return check_ok();"), std::string::npos);
+        EXPECT_NE(str.find("// Unresolved guard expression: check_ok()"), std::string::npos);
+        EXPECT_NE(str.find("return true;"), std::string::npos);
+    }
+
+    {
+        std::ostringstream out;
+        GeneratorOptions opts;
+        opts.include_stubs = false;
+        CppModelEmitter::emit_model(out, model, opts);
+        const std::string str = out.str();
+        EXPECT_NE(str.find("struct check_ok;"), std::string::npos);
+        EXPECT_EQ(str.find("return check_ok();"), std::string::npos);
+    }
+}

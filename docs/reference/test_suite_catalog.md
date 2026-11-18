@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 644  
+**Total Documented Test Cases**: 645  
 
 ---
 
@@ -552,6 +552,9 @@
 
 #### `CppModelEmitterTest.UnqualifiedEnumLiterals_QualifiedInInitialValuesAndExpressions`
 **Test Intent**: Regression: bare enum literals in variable initializers and assignment/guard expressions are qualified
+
+#### `CppModelEmitterTest.GuardFunctionCallMatchingStructName_DoesNotEmitSelfConstructorCall`
+**Test Intent**: Regression: A guard whose normalized expression calls a function with the same name as the
 
 ### [`test_generated_fsm.cpp`](../../tests/backend/cpp/test_generated_fsm.cpp) (`tests/backend/cpp/test_generated_fsm.cpp`)
 - *(Executable binary test verification)*

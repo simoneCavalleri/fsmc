@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 717  
+**Total Documented Test Cases**: 718  
 
 ---
 
@@ -1938,6 +1938,9 @@
 
 #### `TransitionFusion.StateReferencedByFormalProperty_PreservedWithoutFusion`
 **Test Intent**: Verify TransitionFusionPass preserves intermediate states referenced in formal properties.
+
+#### `TransitionFusion.PreservesTraceabilityReqsAndEdgeMetadata`
+**Test Intent**: Regression: TransitionFusionPass preserves intermediate states carrying traceability requirements and
 
 ### [`test_dead_state_pruning.cpp`](../../tests/middleend/optimization/test_dead_state_pruning.cpp) (`tests/middleend/optimization/test_dead_state_pruning.cpp`)
 #### `DeadStatePruning.UnreachableSubgraphsAndContradictoryGuards_EliminatedFromIr`

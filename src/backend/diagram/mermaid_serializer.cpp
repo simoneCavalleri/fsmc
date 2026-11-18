@@ -199,6 +199,9 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
                     label = label.empty() ? "[H]" : label + " [H]";
                 }
             }
+            if (trans.kind == TransitionEdgeKind::Local) {
+                out << pad << "    %% @fsm:local\n";
+            }
             out << pad << "    " << trans.source << " --> " << target;
             if (!label.empty()) {
                 out << " : " << label;
@@ -440,6 +443,9 @@ std::string MermaidSerializer::serialize(const FsmIr& model) {
             }
         }
 
+        if (trans.kind == TransitionEdgeKind::Local) {
+            out << "    %% @fsm:local\n";
+        }
         out << "    " << trans.source << " --> " << target;
         if (!label.empty()) {
             out << " : " << label;

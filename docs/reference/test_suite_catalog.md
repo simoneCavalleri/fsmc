@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 623  
+**Total Documented Test Cases**: 624  
 
 ---
 
@@ -1213,6 +1213,9 @@
 
 #### `Sysml2Parser.MultilineDocCommentBeforeStateDef_DoesNotCorruptStateParsing`
 **Test Intent**: Regression: multi-line `doc` block annotations without trailing semicolons do not bleed
+
+#### `Sysml2Parser.SignedIntType_MapsToInt32WithNegativeInit`
+**Test Intent**: Regression: SysML2 `int` maps to signed `int32_t` (not `uint32_t`), while `Integer` and `Natural`
 
 ### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`

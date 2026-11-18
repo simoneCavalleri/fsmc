@@ -1107,4 +1107,33 @@ package FlightPkg {
     EXPECT_EQ(model.transitions[0].event, "Boot");
 }
 
+/**
+ * @brief Regression: SysML2 `int` maps to signed `int32_t` (not `uint32_t`), while `Integer` and `Natural`
+ * remain `uint32_t`.
+ * @scenario Parse `attribute offset : int = -10;` and `attribute u : Natural = 5;`.
+ * @expected `offset` has `int32_t` type with `"-10"`, and `u` has `uint32_t` type.
+ */
+TEST(Sysml2Parser, SignedIntType_MapsToInt32WithNegativeInit) {
+    const std::string sysml = R"sysml(
+state def SignedTypesFsm {
+    attribute offset : int = -10;
+    attribute u : Natural = 5;
+    entry; then S0;
+    state S0;
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+    const auto* offset = model.find_variable("offset");
+    const auto* u = model.find_variable("u");
+    ASSERT_NE(offset, nullptr);
+    ASSERT_NE(u, nullptr);
+    EXPECT_EQ(offset->type, "int32_t");
+    EXPECT_EQ(offset->initial_value, "-10");
+    EXPECT_EQ(u->type, "uint32_t");
+}
+
 }  // namespace

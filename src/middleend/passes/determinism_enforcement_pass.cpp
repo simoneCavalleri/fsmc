@@ -10,11 +10,31 @@ using namespace fsm::ir;
 using namespace fsm::diagnostic;
 
 bool DeterminismEnforcementPass::run(FsmIr& ir, DiagnosticEngine& diag) {
-    // Group transitions by (source, event)
+    auto trigger_key = [](const TransitionEdge& edge) -> std::string {
+        if (!edge.event.empty()) {
+            return "event:" + edge.event;
+        }
+        if (std::holds_alternative<SignalTrigger>(edge.trigger)) {
+            const auto& sig = std::get<SignalTrigger>(edge.trigger).signal_name;
+            if (!sig.empty()) {
+                return "event:" + sig;
+            }
+        }
+        if (std::holds_alternative<TimeTrigger>(edge.trigger)) {
+            const auto& tt = std::get<TimeTrigger>(edge.trigger);
+            return "time:" + std::to_string(static_cast<int>(tt.kind)) + ":" + std::to_string(tt.duration_in_ms());
+        }
+        if (std::holds_alternative<ChangeTrigger>(edge.trigger)) {
+            return "change:" + std::get<ChangeTrigger>(edge.trigger).raw_expression;
+        }
+        return "anonymous";
+    };
+
+    // Group transitions by (source, trigger_key)
     std::map<std::pair<std::string, std::string>, std::vector<TransitionEdge*>> groups;
     for (auto& t : ir.transitions) {
         std::string src = t.source;
-        groups[{src, t.event}].push_back(&t);
+        groups[{src, trigger_key(t)}].push_back(&t);
     }
 
     for (const auto& [key, trans_list] : groups) {

@@ -190,4 +190,32 @@ TEST(DeterminismEnforcement, ConflictingTransitionsSamePriority_EmitsDeterminism
     EXPECT_TRUE(diag.has_errors());
 }
 
+/**
+ * @brief Regression: `DeterminismEnforcementPass` distinguishes transitions with empty `event` string
+ * when their `TransitionEdge::trigger` variants differ (`SignalTrigger`, `TimeTrigger`, `ChangeTrigger`).
+ */
+TEST(DeterminismEnforcement, DistinctTriggersWithEmptyEvent_DoNotEmitFalseConflict) {
+    FsmIr model;
+    model.name = "DistinctTriggerFSM";
+
+    TransitionEdge t1;
+    t1.id = "t1";
+    t1.source = "Wait";
+    t1.target = "TimedOut";
+    t1.trigger = TimeTrigger(TimeTriggerKind::After, 100, TimeUnit::Milliseconds);
+    model.add_transition(t1);
+
+    TransitionEdge t2;
+    t2.id = "t2";
+    t2.source = "Wait";
+    t2.target = "Triggered";
+    t2.trigger = ChangeTrigger("x > 5", true);
+    model.add_transition(t2);
+
+    DiagnosticEngine diag;
+    DeterminismEnforcementPass pass;
+    pass.run(model, diag);
+    EXPECT_FALSE(diag.has_errors());
+}
+
 }  // namespace

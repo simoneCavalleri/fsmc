@@ -1171,4 +1171,30 @@ state def HierarchyRoundtripFsm {
     EXPECT_EQ(sub2->parent_state, "Active");
 }
 
+/**
+ * @brief Regression: Signed `int32` variables with negative initial values survive `Sysml2Serializer` ->
+ * `Sysml2Parser` roundtrips as `int32_t` rather than turning into `uint32_t` (`-Wnarrowing` error in C++).
+ * @scenario Serialize an FSM with `attribute count : int32_t = -2;` to SysML v2 and re-parse.
+ * @expected Serialized SysML2 uses `: int` (not `: Integer`) and re-parsed `count` has `int32` type with `"-2"`.
+ */
+TEST(Sysml2Parser, SignedIntRoundtrip_PreservesSignedTypeAcrossSerializer) {
+    FsmIr ir;
+    ir.name = "SignedRtFsm";
+    ir.initial_state = "S0";
+    ir.add_state("S0");
+    ir.add_variable(VariableDefinition("count", DataType::int32(), "-2"));
+
+    const std::string sysml = fsm::backend::formal::Sysml2Serializer::serialize(ir);
+    EXPECT_NE(sysml.find("attribute count : int = -2;"), std::string::npos) << sysml;
+
+    Sysml2Parser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err;
+    const auto* count = parsed.find_variable("count");
+    ASSERT_NE(count, nullptr);
+    EXPECT_EQ(count->type, DataType::int32());
+    EXPECT_EQ(count->initial_value, "-2");
+}
+
 }  // namespace

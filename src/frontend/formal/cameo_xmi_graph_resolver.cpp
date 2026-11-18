@@ -234,7 +234,9 @@ void CameoXmiGraphResolver::process_subvertex(const std::shared_ptr<XmlNode>& ve
     }
 
     // 6. Register regular states and choice nodes into FsmIr
-    if (st_kind != StateKind::Initial && st_kind != StateKind::Junction) {
+    if (st_kind == StateKind::Choice) {
+        model.add_choice_node(state_name);
+    } else if (st_kind != StateKind::Initial && st_kind != StateKind::Junction) {
         auto& st = model.add_state(state_name, parent_state, st_kind);
         std::string req = vertex_node->get_attr("satisfies");
         if (!req.empty() &&

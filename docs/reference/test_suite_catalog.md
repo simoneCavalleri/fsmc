@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 673  
+**Total Documented Test Cases**: 674  
 
 ---
 
@@ -911,6 +911,9 @@
 
 #### `DotParser.InternalTransition_PreservedAcrossSerializerRoundtrip`
 **Test Intent**: Regression: `DotSerializer` emits `comment="internal"` on `TransitionEdgeKind::Internal`
+
+#### `DotParser.UninitializedVarAndPortMetadata_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `DotSerializer` omits `init=` when `var.initial_value` is empty and preserves
 
 ### [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) (`tests/frontend/diagram/test_mermaid_parser.cpp`)
 #### `MermaidParser.BasicDiagram_ParsedIntoValidFsmIr`

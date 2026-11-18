@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 616  
+**Total Documented Test Cases**: 617  
 
 ---
 
@@ -1810,6 +1810,9 @@
 
 #### `DeterministicTimerManager.SingleShotAndPeriodicTimers_StepsAndExpiresDeterministically`
 **Test Intent**: Verify deterministic timer manager handles one-shot and periodic timer steps without drifting.
+
+#### `TimedInvariantsVerifierTest.DetectsTimelockEvenWhenTimeTriggerSetsEventName`
+**Test Intent**: Verify TimedInvariantsVerifierPass inspects TimeTrigger duration even when TransitionEdge::event is
 
 ### [`test_wcet_analysis.cpp`](../../tests/middleend/verification/test_wcet_analysis.cpp) (`tests/middleend/verification/test_wcet_analysis.cpp`)
 #### `WcetAnalysis.EventlessCyclicTransitions_EmitsZenoCycleError`

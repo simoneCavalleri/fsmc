@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 678  
+**Total Documented Test Cases**: 679  
 
 ---
 
@@ -962,6 +962,9 @@
 #### `MermaidParser.InternalTransition_PreservedAcrossSerializerRoundtrip`
 **Test Intent**: Regression: `MermaidSerializer` emits `State : Event / Action` for
 `TransitionEdgeKind::Internal` transitions so `MermaidParser` preserves `Internal` kind across roundtrips.
+
+#### `MermaidParser.StateReqsAndTimeInvariant_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `MermaidSerializer` emits `%% @fsm:state` directives for `traceability_reqs`
 
 ### [`test_multiline_actions.cpp`](../../tests/frontend/diagram/test_multiline_actions.cpp) (`tests/frontend/diagram/test_multiline_actions.cpp`)
 - *(Executable binary test verification)*

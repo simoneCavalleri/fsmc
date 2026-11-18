@@ -44,37 +44,53 @@ void emit_leaf_state(std::ostream& out, const StateNode& state, const std::strin
                        (state.do_activity.has_value() && !state.do_activity->empty());
     if (!has_actions) {
         out << pad << "state " << state.name << "\n";
-        return;
+    } else {
+        std::string label = "<b>" + state.name + "</b><hr/>";
+        bool first = true;
+        for (const auto& act : state.entry_actions) {
+            if (!first)
+                label += "<br/>";
+            label += "entry / " + format_action_expression(act);
+            first = false;
+        }
+        if (state.do_activity.has_value() && !state.do_activity->empty()) {
+            if (!first)
+                label += "<br/>";
+            label += "do / " + *state.do_activity;
+            first = false;
+        }
+        for (const auto& act : state.exit_actions) {
+            if (!first)
+                label += "<br/>";
+            label += "exit / " + format_action_expression(act);
+            first = false;
+        }
+        for (const auto& d_evt : state.deferred_events) {
+            if (!first)
+                label += "<br/>";
+            label += "defer " + d_evt;
+            first = false;
+        }
+
+        out << pad << "state \"" << label << "\" as " << state.name << "\n";
     }
 
-    std::string label = "<b>" + state.name + "</b><hr/>";
-    bool first = true;
-    for (const auto& act : state.entry_actions) {
-        if (!first)
-            label += "<br/>";
-        label += "entry / " + format_action_expression(act);
-        first = false;
+    if (!state.traceability_reqs.empty() || (state.time_invariant.has_value() && !state.time_invariant->empty())) {
+        out << pad << "%% @fsm:state name=" << state.name;
+        if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
+            out << " invariant=\"" << *state.time_invariant << "\"";
+        }
+        if (!state.traceability_reqs.empty()) {
+            out << " satisfies=[";
+            for (size_t r = 0; r < state.traceability_reqs.size(); ++r) {
+                if (r > 0)
+                    out << ", ";
+                out << "\"" << state.traceability_reqs[r] << "\"";
+            }
+            out << "]";
+        }
+        out << "\n";
     }
-    if (state.do_activity.has_value() && !state.do_activity->empty()) {
-        if (!first)
-            label += "<br/>";
-        label += "do / " + *state.do_activity;
-        first = false;
-    }
-    for (const auto& act : state.exit_actions) {
-        if (!first)
-            label += "<br/>";
-        label += "exit / " + format_action_expression(act);
-        first = false;
-    }
-    for (const auto& d_evt : state.deferred_events) {
-        if (!first)
-            label += "<br/>";
-        label += "defer " + d_evt;
-        first = false;
-    }
-
-    out << pad << "state \"" << label << "\" as " << state.name << "\n";
 }
 
 std::string build_label(const TransitionEdge& trans, const FsmIr& model) {
@@ -111,6 +127,23 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
                 const std::vector<size_t>& trans_order, size_t indent) {
     std::string pad(indent * 4, ' ');
     out << pad << "state " << state.name << " {\n";
+
+    if (!state.traceability_reqs.empty() || (state.time_invariant.has_value() && !state.time_invariant->empty())) {
+        out << pad << "    %% @fsm:state name=" << state.name;
+        if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
+            out << " invariant=\"" << *state.time_invariant << "\"";
+        }
+        if (!state.traceability_reqs.empty()) {
+            out << " satisfies=[";
+            for (size_t r = 0; r < state.traceability_reqs.size(); ++r) {
+                if (r > 0)
+                    out << ", ";
+                out << "\"" << state.traceability_reqs[r] << "\"";
+            }
+            out << "]";
+        }
+        out << "\n";
+    }
 
     const bool is_parallel = (state.kind == StateKind::Parallel || !state.orthogonal_regions.empty());
     if (!is_parallel && !state.initial_sub_state.empty()) {

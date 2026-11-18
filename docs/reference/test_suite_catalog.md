@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 696  
+**Total Documented Test Cases**: 697  
 
 ---
 
@@ -1452,6 +1452,9 @@
 
 #### `Sysml2Parser.ChangeTriggerRoundtrip_PreservedAcrossSerializer`
 **Test Intent**: Regression: `Sysml2Serializer` emits `accept when (<expr>)` for `ChangeTrigger`
+
+#### `Sysml2Parser.ChoiceNodeRoundtrip_PreservedAcrossSerializer`
+**Test Intent**: Regression: `Sysml2Serializer` emits `choice <Name>;` for `ChoiceNode` entries
 
 ### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`

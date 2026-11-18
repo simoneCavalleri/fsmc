@@ -815,8 +815,11 @@ void CppModelEmitter::emit_events(std::ostream& out, const FsmIr& model) {
                 }
             }
             if (!sig.attributes.empty()) {
-                out << "\n    constexpr " << event_type_name << "() = default;\n";
-                out << "\n    constexpr explicit " << event_type_name << "(";
+                const bool has_non_literal_attr = std::any_of(sig.attributes.begin(), sig.attributes.end(),
+                                                              [](const auto& attr) { return attr.type.is_string(); });
+                const std::string constexpr_kw = has_non_literal_attr ? "" : "constexpr ";
+                out << "\n    " << constexpr_kw << event_type_name << "() = default;\n";
+                out << "\n    " << constexpr_kw << "explicit " << event_type_name << "(";
                 for (std::size_t i = 0; i < sig.attributes.size(); ++i) {
                     if (i > 0)
                         out << ", ";

@@ -220,4 +220,18 @@ TEST(GuardParser, RelationalExpressions_TokenizedAndForwarded) {
     EXPECT_EQ(res2.atomic_guard_details[1].expression, "batteryLevel > 11.5");
 }
 
+/**
+ * @brief Regression: `@fsm:var` for non-primitive custom types (struct/enum) without `init=` leaves
+ * `initial_value` empty rather than defaulting to `"0"`.
+ * @scenario Parse `@fsm:var name=tel type=Telemetry`.
+ * @expected `var->initial_value` is empty.
+ */
+TEST(DirectiveParser, VariableDirective_NonPrimitiveWithoutInitClearsDefaultZero) {
+    auto var = DirectiveParser::parse_variable_directive("var name=tel type=Telemetry");
+    ASSERT_TRUE(var.has_value());
+    EXPECT_EQ(var->name, "tel");
+    EXPECT_EQ(var->type, "Telemetry");
+    EXPECT_TRUE(var->initial_value.empty());
+}
+
 }  // namespace

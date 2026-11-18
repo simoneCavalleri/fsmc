@@ -463,6 +463,8 @@ std::optional<VariableDefinition> DirectiveParser::parse_variable_directive(std:
     auto i_pos = str.find("init=");
     if (i_pos != std::string::npos) {
         var.initial_value = extract_quoted_or_word(str, i_pos + 5);
+    } else if (!var.type.is_primitive()) {
+        var.initial_value.clear();
     }
 
     auto min_pos = str.find("min=");

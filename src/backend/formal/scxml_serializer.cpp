@@ -140,7 +140,10 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
             if (trans.priority > 0) {
                 out << " priority=\"" << trans.priority << "\"";
             }
-            if (!trans.event.empty() && trans.event != "Anonymous") {
+            if (const auto* ct = std::get_if<ChangeTrigger>(&trans.trigger);
+                ct != nullptr && !ct->raw_expression.empty()) {
+                out << " event=\"when(" << escape_xml(ct->raw_expression) << ")\"";
+            } else if (!trans.event.empty() && trans.event != "Anonymous") {
                 out << " event=\"" << escape_xml(trans.event) << "\"";
             }
             if (trans.guard && !trans.guard->empty()) {

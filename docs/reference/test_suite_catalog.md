@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 636  
+**Total Documented Test Cases**: 637  
 
 ---
 
@@ -693,6 +693,9 @@
 
 #### `FormalRoundtrip.SmvSerializer_EmitsEnumSetForEnumTypedVariables`
 **Test Intent**: Regression: `SmvSerializer` emits SMV enumeration sets (`{IdleMode, RunMode}`) for enum-typed
+
+#### `FormalRoundtrip.CameoSerializer_PreservesInternalTransitionKind`
+**Test Intent**: Regression: `CameoSerializer` emits `kind="internal"` on internal transitions so `CameoXmiParser`
 
 ---
 

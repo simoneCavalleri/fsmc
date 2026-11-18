@@ -353,12 +353,45 @@ void CppModelEmitter::emit_enums(std::ostream& out, const FsmIr& model) {
 
     for (const auto& en : enums) {
         std::string enum_name = escape_cpp_keyword(en.name);
+        std::string underlying = en.underlying_type.empty() ? "uint8_t" : en.underlying_type;
+        bool has_negative = false;
+        int64_t min_val = 0;
+        int64_t max_val = 0;
+        bool has_explicit = false;
+        for (const auto& lit : en.literals) {
+            if (lit.value.has_value()) {
+                if (!has_explicit) {
+                    min_val = *lit.value;
+                    max_val = *lit.value;
+                    has_explicit = true;
+                } else {
+                    min_val = std::min(min_val, *lit.value);
+                    max_val = std::max(max_val, *lit.value);
+                }
+                if (*lit.value < 0) {
+                    has_negative = true;
+                }
+            }
+        }
+        const bool is_default_unsigned = en.underlying_type.empty() || underlying == "uint8_t" ||
+                                         underlying == "uint16_t" || underlying == "uint32_t" ||
+                                         underlying == "uint64_t" || underlying == "unsigned";
+        if (has_negative && is_default_unsigned) {
+            if (min_val >= -128 && max_val <= 127) {
+                underlying = "int8_t";
+            } else if (min_val >= -32768 && max_val <= 32767) {
+                underlying = "int16_t";
+            } else {
+                underlying = "int32_t";
+            }
+        } else if (en.underlying_type.empty() && has_explicit && max_val > 255) {
+            underlying = (max_val <= 65535) ? "uint16_t" : "uint32_t";
+        }
         out << "/**\n";
         out << " * @enum " << enum_name << "\n";
         out << " * @brief Enumeration definition for '" << en.name << "'.\n";
         out << " */\n";
-        out << "enum class " << enum_name << " : " << (en.underlying_type.empty() ? "uint8_t" : en.underlying_type)
-            << " {\n";
+        out << "enum class " << enum_name << " : " << underlying << " {\n";
         for (size_t i = 0; i < en.literals.size(); ++i) {
             const auto& lit = en.literals[i];
             out << "    " << escape_cpp_keyword(lit.name);

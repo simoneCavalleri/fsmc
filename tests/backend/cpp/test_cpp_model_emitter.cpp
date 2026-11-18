@@ -1423,3 +1423,27 @@ TEST(CppModelEmitterTest, GuardFunctionCallMatchingStructName_DoesNotEmitSelfCon
         EXPECT_EQ(str.find("return check_ok();"), std::string::npos);
     }
 }
+
+/**
+ * @brief Regression: Enum definitions with negative literal values (or values > 255) widen the default
+ * `uint8_t` underlying type to signed/wider integer types so C++ compilation does not fail with
+ * `-Wc++11-narrowing`.
+ * @scenario Emit an enum `ErrCode` with `ERR_NONE = 0` and `ERR_FAIL = -1` (default `uint8_t` underlying type).
+ * @expected Emits `enum class ErrCode : int8_t {`.
+ */
+TEST(CppModelEmitterTest, NegativeEnumLiteralValues_WidenDefaultUnsignedUnderlyingType) {
+    FsmIr model;
+    model.name = "NegEnumFsm";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+
+    TypeDefinition err_enum =
+        TypeDefinition::make_enum("ErrCode", "uint8_t", {EnumLiteral{"ERR_NONE", 0}, EnumLiteral{"ERR_FAIL", -1}});
+    model.custom_types.push_back(std::move(err_enum));
+
+    std::ostringstream out;
+    CppModelEmitter::emit_model(out, model, GeneratorOptions{});
+    const std::string str = out.str();
+    EXPECT_NE(str.find("enum class ErrCode : int8_t {"), std::string::npos);
+    EXPECT_NE(str.find("ERR_FAIL = -1"), std::string::npos);
+}

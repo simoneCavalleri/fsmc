@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 645  
+**Total Documented Test Cases**: 646  
 
 ---
 
@@ -555,6 +555,11 @@
 
 #### `CppModelEmitterTest.GuardFunctionCallMatchingStructName_DoesNotEmitSelfConstructorCall`
 **Test Intent**: Regression: A guard whose normalized expression calls a function with the same name as the
+
+#### `CppModelEmitterTest.NegativeEnumLiteralValues_WidenDefaultUnsignedUnderlyingType`
+**Test Intent**: Regression: Enum definitions with negative literal values (or values > 255) widen the default
+`uint8_t` underlying type to signed/wider integer types so C++ compilation does not fail with
+`-Wc++11-narrowing`.
 
 ### [`test_generated_fsm.cpp`](../../tests/backend/cpp/test_generated_fsm.cpp) (`tests/backend/cpp/test_generated_fsm.cpp`)
 - *(Executable binary test verification)*

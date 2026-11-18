@@ -100,10 +100,21 @@ std::vector<SysmlScannedToken> Sysml2BlockScanner::scan(std::string_view content
         // Block comment /* ... */
         if (c == '/' && idx + 1 < len && content[idx + 1] == '*') {
             size_t comment_end = content.find("*/", idx + 2);
-            if (comment_end == std::string_view::npos)
+            if (comment_end == std::string_view::npos) {
                 comment_end = len;
-            else
+            } else {
                 comment_end += 2;
+            }
+            for (size_t k = idx + 2; k < comment_end; ++k) {
+                if (content[k] == '\n') {
+                    current_line++;
+                }
+            }
+            std::string trimmed_acc = trim_str(accumulated);
+            if (trimmed_acc == "doc" || trimmed_acc == "comment" || trimmed_acc.rfind("doc ", 0) == 0 ||
+                trimmed_acc.rfind("comment ", 0) == 0) {
+                accumulated.clear();
+            }
             idx = comment_end;
             continue;
         }

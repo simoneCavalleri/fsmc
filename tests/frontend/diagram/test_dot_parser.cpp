@@ -8,9 +8,11 @@
 #include <string>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
+#include "fsm/backend/diagram/dot_serializer.hpp"
 #include "fsm/frontend/diagram/dot_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
+using namespace fsm::backend::diagram;
 using namespace fsm::frontend::diagram;
 using namespace fsm::frontend;
 using namespace fsm::backend::cpp;
@@ -437,6 +439,32 @@ TEST(DotParser, TimeTriggerEventLabel_PopulatesTimeTrigger) {
     ASSERT_EQ(ir.transitions.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<TimeTrigger>(ir.transitions[0].trigger));
     EXPECT_EQ(std::get<TimeTrigger>(ir.transitions[0].trigger).duration_in_ms(), 100u);
+}
+
+/**
+ * @brief Regression: `DotSerializer` emits `comment="internal"` on `TransitionEdgeKind::Internal`
+ * edges so `DotParser` preserves `Internal` kind across Graphviz DOT roundtrips.
+ * @scenario Serialize an internal transition `Busy --Ping--> Busy` to DOT and re-parse.
+ * @expected Re-parsed transition has `kind == TransitionEdgeKind::Internal`.
+ */
+TEST(DotParser, InternalTransition_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "DotIntRt";
+    ir.initial_state = "Busy";
+    ir.add_state("Busy");
+    TransitionEdge t("Busy", "Busy", "Ping");
+    t.kind = TransitionEdgeKind::Internal;
+    ir.add_transition(t);
+
+    const std::string dot = DotSerializer::serialize(ir);
+    EXPECT_NE(dot.find("comment=\"internal\""), std::string::npos);
+
+    DotParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(dot, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 1u);
+    EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
 }
 
 }  // namespace

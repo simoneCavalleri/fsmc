@@ -196,8 +196,18 @@ std::string DotSerializer::serialize(const FsmIr& model) {
                     emitted_transitions.insert(i);
                     out << pad << "    " << escape_id(trans.source) << " -> " << escape_id(trans.target);
                     std::string label = build_label(trans, model);
-                    if (!label.empty()) {
-                        out << " [label=\"" << escape_label(label) << "\"]";
+                    const bool is_int = (trans.kind == TransitionEdgeKind::Internal);
+                    if (!label.empty() || is_int) {
+                        out << " [";
+                        if (!label.empty()) {
+                            out << "label=\"" << escape_label(label) << "\"";
+                        }
+                        if (is_int) {
+                            if (!label.empty())
+                                out << ", ";
+                            out << "comment=\"internal\"";
+                        }
+                        out << "]";
                     }
                     out << ";\n";
                 }
@@ -239,8 +249,18 @@ std::string DotSerializer::serialize(const FsmIr& model) {
         const auto& trans = model.transitions[i];
         out << "    " << escape_id(trans.source) << " -> " << escape_id(trans.target);
         std::string label = build_label(trans, model);
-        if (!label.empty()) {
-            out << " [label=\"" << escape_label(label) << "\"]";
+        const bool is_int = (trans.kind == TransitionEdgeKind::Internal);
+        if (!label.empty() || is_int) {
+            out << " [";
+            if (!label.empty()) {
+                out << "label=\"" << escape_label(label) << "\"";
+            }
+            if (is_int) {
+                if (!label.empty())
+                    out << ", ";
+                out << "comment=\"internal\"";
+            }
+            out << "]";
         }
         out << ";\n";
     }

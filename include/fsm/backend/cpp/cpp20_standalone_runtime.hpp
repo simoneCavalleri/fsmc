@@ -5467,7 +5467,11 @@ class worker_thread_controller {
   public:
     worker_thread_controller() = default;
 
-    ~worker_thread_controller() { stop_worker(); }
+    ~worker_thread_controller() {
+        stop_worker();
+        std::unique_lock<std::mutex> lk(exit_mutex_);
+        exit_cv_.wait(lk, [this]() { return worker_loop_exited_.load(std::memory_order_acquire); });
+    }
 
     worker_thread_controller(const worker_thread_controller&) = delete;
     worker_thread_controller& operator=(const worker_thread_controller&) = delete;
@@ -5482,6 +5486,7 @@ class worker_thread_controller {
             }
             queue_.start();
             worker_running_.store(true, std::memory_order_release);
+            worker_loop_exited_.store(false, std::memory_order_release);
             worker_thread_ = std::thread([this, &fsm]() {
                 worker_thread_id_.store(std::this_thread::get_id(), std::memory_order_release);
                 worker_loop(fsm);
@@ -5551,7 +5556,17 @@ class worker_thread_controller {
         ~task_finish_guard() { queue.finish_task(); }
     };
 
+    struct loop_exit_guard {
+        worker_thread_controller& owner;
+        ~loop_exit_guard() {
+            std::lock_guard<std::mutex> lk(owner.exit_mutex_);
+            owner.worker_loop_exited_.store(true, std::memory_order_release);
+            owner.exit_cv_.notify_all();
+        }
+    };
+
     void worker_loop(FsmRef& fsm) {
+        loop_exit_guard exit_guard{*this};
         while (worker_running_.load(std::memory_order_acquire)) {
             Task task;
             if (queue_.pop_wait(task)) {
@@ -5562,6 +5577,9 @@ class worker_thread_controller {
     }
 
     mutable std::mutex lifecycle_mutex_{};
+    mutable std::mutex exit_mutex_{};
+    std::condition_variable exit_cv_{};
+    std::atomic<bool> worker_loop_exited_{true};
     async_event_queue<Task> queue_{};
     std::atomic<bool> worker_running_{false};
     std::atomic<std::thread::id> worker_thread_id_{};

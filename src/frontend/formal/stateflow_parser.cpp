@@ -845,7 +845,13 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
     } else if (trans_type == "local") {
         trans.kind = TransitionEdgeKind::Local;
     }
-    trans.event = sanitize_identifier(comps.event);
+    static const std::regex when_ev_regex(R"(^\s*when\s*\((.+)\)\s*$)", std::regex::icase);
+    std::smatch wm;
+    if (!comps.event.empty() && std::regex_match(comps.event, wm, when_ev_regex)) {
+        trans.trigger = ChangeTrigger(std::string(trim(wm[1].str())), true);
+    } else {
+        trans.event = sanitize_identifier(comps.event);
+    }
     if (comps.time_trigger.has_value()) {
         trans.trigger = *comps.time_trigger;
     }

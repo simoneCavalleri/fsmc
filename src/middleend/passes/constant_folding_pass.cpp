@@ -115,20 +115,34 @@ bool ConstantFoldingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 
     // 3. Clean up unreferenced actions
     std::unordered_set<std::string> referenced_actions;
-    for (const auto& t : ir.transitions) {
-        if (t.condition_action.has_value() && !t.condition_action->name.empty()) {
-            referenced_actions.insert(t.condition_action->name);
+    auto collect_action_sig = [&](const ActionSignature& act) {
+        if (!act.name.empty()) {
+            referenced_actions.insert(act.name);
         }
-        if (t.transition_action.has_value() && !t.transition_action->name.empty()) {
-            referenced_actions.insert(t.transition_action->name);
+        for (const auto& inst : act.instructions) {
+            if (const auto* call = std::get_if<ActionCallOp>(&inst.op);
+                call != nullptr && !call->function_name.empty()) {
+                referenced_actions.insert(call->function_name);
+            }
+        }
+    };
+    for (const auto& t : ir.transitions) {
+        if (t.condition_action.has_value()) {
+            collect_action_sig(*t.condition_action);
+        }
+        if (t.transition_action.has_value()) {
+            collect_action_sig(*t.transition_action);
         }
     }
     for (const auto& s : ir.states) {
         for (const auto& act : s.entry_actions) {
-            referenced_actions.insert(act.name);
+            collect_action_sig(act);
         }
         for (const auto& act : s.exit_actions) {
-            referenced_actions.insert(act.name);
+            collect_action_sig(act);
+        }
+        if (s.do_activity.has_value() && !s.do_activity->empty()) {
+            referenced_actions.insert(*s.do_activity);
         }
     }
 

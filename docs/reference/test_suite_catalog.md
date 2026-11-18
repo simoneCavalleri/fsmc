@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 701  
+**Total Documented Test Cases**: 702  
 
 ---
 
@@ -924,6 +924,10 @@
 
 #### `DotParser.ChangeTrigger_PreservedAcrossSerializerRoundtrip`
 **Test Intent**: Regression: `DotSerializer` emits `when(<expr>)` for `ChangeTrigger` transitions
+
+#### `DotParser.SignalAttributesAndValidator_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `DotSerializer` emits typed signal payload attributes and validators on
+`// @fsm:signal` directives so `DotParser` preserves `SignalDefinition::attributes` across roundtrips.
 
 ### [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) (`tests/frontend/diagram/test_mermaid_parser.cpp`)
 #### `MermaidParser.BasicDiagram_ParsedIntoValidFsmIr`

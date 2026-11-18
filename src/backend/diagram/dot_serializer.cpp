@@ -134,7 +134,21 @@ std::string DotSerializer::serialize(const FsmIr& model) {
         out << "\n";
     }
     for (const auto& sig : model.signals) {
-        out << "    // @fsm:signal " << sig.name << "\n";
+        if (sig.attributes.empty()) {
+            out << "    // @fsm:signal " << sig.name << "\n";
+        } else {
+            out << "    // @fsm:signal " << sig.name << "{";
+            for (size_t i = 0; i < sig.attributes.size(); ++i) {
+                if (i > 0)
+                    out << ", ";
+                out << sig.attributes[i].type << " " << sig.attributes[i].name;
+            }
+            out << "}";
+            if (!sig.validators.empty()) {
+                out << " validator=\"" << sig.validators.front() << "\"";
+            }
+            out << "\n";
+        }
     }
     for (const auto& ct : model.custom_types) {
         if (ct.is_enum()) {

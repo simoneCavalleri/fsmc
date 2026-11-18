@@ -225,7 +225,16 @@ void CameoXmiGraphResolver::process_subvertex(const std::shared_ptr<XmlNode>& ve
 
     // 6. Register regular states and choice nodes into FsmIr
     if (st_kind != StateKind::Initial && st_kind != StateKind::Junction) {
-        model.add_state(state_name, parent_state, st_kind);
+        auto& st = model.add_state(state_name, parent_state, st_kind);
+        std::string req = vertex_node->get_attr("satisfies");
+        if (!req.empty() &&
+            std::find(st.traceability_reqs.begin(), st.traceability_reqs.end(), req) == st.traceability_reqs.end()) {
+            st.traceability_reqs.push_back(req);
+        }
+        std::string inv = vertex_node->get_attr("invariant");
+        if (!inv.empty()) {
+            st.time_invariant = inv;
+        }
     }
 
     auto extract_behavior_text = [](const std::shared_ptr<XmlNode>& node) -> std::string {

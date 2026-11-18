@@ -610,8 +610,17 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
                 act += asgn.target.full_path() + " = " + asgn.expression;
             }
         }
-        if (!act.empty()) {
-            out << " -- action: " << act;
+        if (t.kind == TransitionEdgeKind::Internal || !act.empty()) {
+            out << " --";
+            if (t.kind == TransitionEdgeKind::Internal) {
+                out << " kind=internal";
+            }
+            if (!act.empty()) {
+                if (t.kind == TransitionEdgeKind::Internal) {
+                    out << " |";
+                }
+                out << " action: " << act;
+            }
         }
         out << "\n";
     }

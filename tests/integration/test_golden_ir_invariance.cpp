@@ -23,13 +23,16 @@
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/guard_satisfiability_pass.hpp"
 #include "fsm/middleend/analysis/livelock_analysis_pass.hpp"
+#include "fsm/middleend/analysis/model_checker.hpp"
 #include "fsm/middleend/analysis/priority_conflict_pass.hpp"
 #include "fsm/middleend/passes/boundary_action_fusion_pass.hpp"
+#include "fsm/middleend/passes/choice_inlining_pass.hpp"
 #include "fsm/middleend/passes/common_action_factoring_pass.hpp"
 #include "fsm/middleend/passes/constant_folding_pass.hpp"
 #include "fsm/middleend/passes/dead_action_elimination_pass.hpp"
 #include "fsm/middleend/passes/dead_state_pruning_pass.hpp"
 #include "fsm/middleend/passes/determinism_enforcement_pass.hpp"
+#include "fsm/middleend/passes/history_lowering_pass.hpp"
 #include "fsm/middleend/passes/register_liveness_pass.hpp"
 #include "fsm/middleend/passes/state_minimization_pass.hpp"
 #include "fsm/middleend/passes/transition_fusion_pass.hpp"
@@ -193,7 +196,7 @@ TEST_P(GoldenRoundtripParamTest, PreservesCoreSemanticsAcrossRoundtrip) {
 INSTANTIATE_TEST_SUITE_P(AllFormats, GoldenRoundtripParamTest,
                          ::testing::Values(std::string("json"), std::string("scxml"), std::string("cameo"),
                                            std::string("sysml2"), std::string("smv"), std::string("plantuml"),
-                                           std::string("mermaid"), std::string("dot")));
+                                           std::string("mermaid"), std::string("dot"), std::string("stateflow")));
 
 /**
  * @brief Verify middle-end analysis and optimization passes preserve Golden IR invariants without false positives.
@@ -430,6 +433,142 @@ TEST(GoldenParserFuzz, IrregularFormattingAndNestedGuards_ParsedCleanlyWithoutCr
         EXPECT_EQ(ir.transitions[0].event, "Ev_Cmd_1") << fc.format;
         EXPECT_TRUE(ir.transitions[0].guard.has_value()) << fc.format;
     }
+}
+
+/**
+ * @brief Verifies LTL/CTL ModelChecker results remain invariant before and after middle-end optimization passes.
+ */
+TEST(GoldenModelCheckerInvariance, TemporalPropertiesHoldBeforeAndAfterPasses) {
+    FsmIr ir_before = build_golden_ir();
+    FormalProperty p1("ReachCooldown", PropertyKind::Reachability, "EF(Cooldown)");
+    p1.ast = PropertyAstNode(TemporalOp::EF, {PropertyAstNode("Cooldown")});
+    ir_before.add_property(std::move(p1));
+
+    FormalProperty p2("AlwaysExitIdle", PropertyKind::Liveness, "G(Idle -> F(Active))");
+    p2.ast = PropertyAstNode(
+        TemporalOp::Globally,
+        {PropertyAstNode(TemporalOp::Implies, {PropertyAstNode("Idle"),
+                                               PropertyAstNode(TemporalOp::Finally, {PropertyAstNode("Active")})})});
+    ir_before.add_property(std::move(p2));
+
+    FsmIr ir_after = ir_before;
+    DiagnosticEngine diag;
+    ConstantFoldingPass().run(ir_after, diag);
+    DeadActionEliminationPass().run(ir_after, diag);
+    TransitionFusionPass().run(ir_after, diag);
+    CommonActionFactoringPass().run(ir_after, diag);
+    BoundaryActionFusionPass().run(ir_after, diag);
+
+    ModelChecker mc_before(ir_before);
+    ModelChecker mc_after(ir_after);
+
+    for (std::size_t i = 0; i < ir_before.properties.size(); ++i) {
+        const auto res_before = mc_before.verify_property(ir_before.properties[i]);
+        const auto res_after = mc_after.verify_property(ir_after.properties[i]);
+        EXPECT_EQ(res_before.passed, res_after.passed) << "Property: " << ir_before.properties[i].name;
+    }
+}
+
+/**
+ * @brief Differential E2E test for C++17 standalone codegen (-O0 vs -O2) with ShallowHistory.
+ */
+TEST(GoldenDifferentialE2E, HistoryAndCpp17_UnoptimizedVsOptimizedMatches) {
+    auto build_hist_ir = [](std::string pkg) {
+        FsmIr ir;
+        ir.name = "HistDiffFsm";
+        ir.package = std::move(pkg);
+        ir.initial_state = "Off";
+        ir.add_signal(SignalDefinition("PowerOn"));
+        ir.add_signal(SignalDefinition("Next"));
+        ir.add_signal(SignalDefinition("PowerOff"));
+        ir.add_signal(SignalDefinition("Resume"));
+
+        ir.add_state("Off");
+        auto& on = ir.add_state("On");
+        on.is_composite = true;
+        on.has_history = true;
+        on.initial_sub_state = "Mode1";
+        ir.add_state("Mode1", "On");
+        ir.add_state("Mode2", "On");
+
+        ir.add_transition(TransitionEdge("Off", "On", "PowerOn"));
+        ir.add_transition(TransitionEdge("Mode1", "Mode2", "Next"));
+        ir.add_transition(TransitionEdge("On", "Off", "PowerOff"));
+
+        TransitionEdge t_res("Off", "On", "Resume");
+        t_res.target_is_history = true;
+        ir.add_transition(t_res);
+        return ir;
+    };
+
+    FsmIr ir_o0 = build_hist_ir("ho0");
+    FsmIr ir_o2 = build_hist_ir("ho2");
+    DiagnosticEngine diag;
+    HistoryLoweringPass().run(ir_o2, diag);
+    ChoiceInliningPass().run(ir_o2, diag);
+    BoundaryActionFusionPass().run(ir_o2, diag);
+
+    fsm::backend::cpp::GeneratorOptions opts;
+    opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp17;
+    opts.standalone = true;
+    opts.include_stubs = true;
+
+    const std::string code_o0 = fsm::backend::cpp::CppGenerator::generate_header(ir_o0, opts);
+    const std::string code_o2 = fsm::backend::cpp::CppGenerator::generate_header(ir_o2, opts);
+
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::temp_directory_path() / "fsmc_hist_diff_e2e_test";
+    fs::create_directories(tmp_dir);
+
+    {
+        std::ofstream f0(tmp_dir / "hist_o0.hpp");
+        f0 << code_o0;
+        std::ofstream f2(tmp_dir / "hist_o2.hpp");
+        f2 << code_o2;
+        std::ofstream drv(tmp_dir / "driver.cpp");
+        drv << R"cpp(
+#include "hist_o0.hpp"
+#include "hist_o2.hpp"
+
+            int main() {
+                ho0::HistDiffFsmRegisters reg0{};
+                ho2::HistDiffFsmRegisters reg2{};
+                ho0::HistDiffFsm m0(reg0);
+                ho2::HistDiffFsm m2(reg2);
+                if (m0.current_state_name() != m2.current_state_name())
+                    return 1;
+
+                m0.dispatch(ho0::PowerOn{});
+                m2.dispatch(ho2::PowerOn{});
+                if (m0.current_state_name() != m2.current_state_name())
+                    return 2;
+
+                m0.dispatch(ho0::Next{});
+                m2.dispatch(ho2::Next{});
+                if (m0.current_state_name() != m2.current_state_name())
+                    return 3;
+
+                m0.dispatch(ho0::PowerOff{});
+                m2.dispatch(ho2::PowerOff{});
+                if (m0.current_state_name() != m2.current_state_name())
+                    return 4;
+
+                m0.dispatch(ho0::Resume{});
+                m2.dispatch(ho2::Resume{});
+                if (m0.current_state_name() != m2.current_state_name())
+                    return 5;
+
+                return 0;
+            }
+        )cpp";
+    }
+
+    const fs::path exe = tmp_dir / "hist_diff_runner";
+    const std::string cmd = "g++ -std=c++17 -Wall -Wextra -Werror \"" + (tmp_dir / "driver.cpp").string() + "\" -o \"" +
+                            exe.string() + "\"";
+    ASSERT_EQ(std::system(cmd.c_str()), 0) << "Compilation of C++17 history differential test failed";
+    EXPECT_EQ(std::system(exe.string().c_str()), 0) << "Runtime divergence on ShallowHistory (-O0 vs -O2)";
+    fs::remove_all(tmp_dir);
 }
 
 }  // namespace

@@ -17,6 +17,7 @@ bool MermaidParser::parse(std::string_view content, FsmIr& out_model, std::strin
     std::istringstream stream(std::string{content});
     std::string line;
     size_t line_num = 0;
+    bool pending_local_transition = false;
     std::vector<std::string> parent_stack;
     std::vector<size_t> scope_state_start_idx;
     std::vector<std::vector<size_t>> scope_region_splits;
@@ -82,6 +83,10 @@ bool MermaidParser::parse(std::string_view content, FsmIr& out_model, std::strin
 
         if (DirectiveParser::is_directive(trimmed)) {
             std::string body = DirectiveParser::extract_directive_body(trimmed);
+            if (body == "local") {
+                pending_local_transition = true;
+                continue;
+            }
             if (body.rfind("name", 0) == 0 || body.rfind("fsm", 0) == 0) {
                 auto eq = body.find('=');
                 if (eq != std::string::npos) {
@@ -304,8 +309,13 @@ bool MermaidParser::parse(std::string_view content, FsmIr& out_model, std::strin
 
         // Parse transitions: StateA --> StateB : Event [Guard] / Action
         if (trimmed.find("-->") != std::string_view::npos) {
+            const size_t prev_transitions = out_model.transitions.size();
             if (!parse_transition_line(trimmed, out_model, out_error, line_num, parent_stack)) {
                 return false;
+            }
+            if (pending_local_transition && out_model.transitions.size() > prev_transitions) {
+                out_model.transitions.back().kind = TransitionEdgeKind::Local;
+                pending_local_transition = false;
             }
             continue;
         }

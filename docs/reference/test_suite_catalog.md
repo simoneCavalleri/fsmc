@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 715  
+**Total Documented Test Cases**: 716  
 
 ---
 
@@ -988,6 +988,9 @@
 
 #### `MermaidParser.ChangeTrigger_PreservedAcrossSerializerRoundtrip`
 **Test Intent**: Regression: `MermaidSerializer` emits `when(<expr>)` for `ChangeTrigger` transitions
+
+#### `MermaidParser.LocalTransition_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `MermaidSerializer` and `MermaidParser` preserve `TransitionEdgeKind::Local`
 
 ### [`test_multiline_actions.cpp`](../../tests/frontend/diagram/test_multiline_actions.cpp) (`tests/frontend/diagram/test_multiline_actions.cpp`)
 - *(Executable binary test verification)*

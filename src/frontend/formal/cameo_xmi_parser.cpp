@@ -49,9 +49,12 @@ bool CameoXmiParser::parse(std::string_view content, FsmIr& model, std::string& 
     for (const auto& sig_node : signal_nodes) {
         std::string sig_name = sig_node->get_attr("name");
         if (!sig_name.empty()) {
-            SignalDefinition sig_def;
-            sig_def.name = sanitize_identifier(sig_name);
-            model.add_signal(std::move(sig_def));
+            std::string clean_name = sanitize_identifier(sig_name);
+            if (model.find_signal(clean_name) == nullptr) {
+                SignalDefinition sig_def;
+                sig_def.name = clean_name;
+                model.add_signal(std::move(sig_def));
+            }
         }
     }
 

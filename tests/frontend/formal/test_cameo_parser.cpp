@@ -908,4 +908,45 @@ TEST(CameoParser, ChoiceNode_PreservedInChoiceNodesAcrossSerializerRoundtrip) {
     EXPECT_FALSE(parsed.choice_nodes.empty());
 }
 
+/**
+ * @brief Regression: `CameoSerializer` and `CameoXmiParser` preserve multiple `traceability_reqs`
+ * (`satisfies="REQ_001, REQ_002"`) and typed `SignalDefinition::attributes` across Cameo XMI roundtrips.
+ * @scenario Serialize an FSM with `Idle` carrying `{"REQ_001", "REQ_002"}` and signal `Telemetry{uint32 val, string
+ * tag}`, then re-parse.
+ * @expected Re-parsed `Idle` has both requirements and `Telemetry` preserves both payload attributes.
+ */
+TEST(CameoParser, MultiReqsAndSignalAttributes_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "CameoSigReqRt";
+    ir.initial_state = "Idle";
+    auto& idle = ir.add_state("Idle");
+    idle.traceability_reqs = {"REQ_001", "REQ_002"};
+
+    SignalDefinition tel("Telemetry");
+    tel.attributes.emplace_back("val", DataType::uint32());
+    tel.attributes.emplace_back("tag", DataType::string());
+    tel.validators.push_back("val > 0");
+    ir.add_signal(tel);
+
+    const std::string xmi = fsm::backend::formal::CameoSerializer::serialize(ir);
+    CameoXmiParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xmi, parsed, err)) << err;
+
+    const auto* p_idle = parsed.find_state("Idle");
+    ASSERT_NE(p_idle, nullptr);
+    ASSERT_EQ(p_idle->traceability_reqs.size(), 2u);
+    EXPECT_EQ(p_idle->traceability_reqs[0], "REQ_001");
+    EXPECT_EQ(p_idle->traceability_reqs[1], "REQ_002");
+
+    const auto* p_tel = parsed.find_signal("Telemetry");
+    ASSERT_NE(p_tel, nullptr);
+    ASSERT_EQ(p_tel->attributes.size(), 2u);
+    EXPECT_EQ(p_tel->attributes[0].name, "val");
+    EXPECT_EQ(p_tel->attributes[1].name, "tag");
+    ASSERT_EQ(p_tel->validators.size(), 1u);
+    EXPECT_EQ(p_tel->validators[0], "val > 0");
+}
+
 }  // namespace

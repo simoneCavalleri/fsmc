@@ -50,6 +50,25 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
     out << "<xmi:XMI xmi:version=\"2.1\" xmlns:uml=\"http://www.omg.org/spec/UML/20090901\" "
            "xmlns:xmi=\"http://schema.omg.org/spec/XMI/2.1\">\n";
     out << "  <uml:Model xmi:id=\"_m1\" name=\"" << escape_xml(model_name) << "Model\">\n";
+    // Emit declared typed signals as formal directives
+    for (const auto& sig : model.signals) {
+        if (!sig.attributes.empty() || !sig.validators.empty()) {
+            out << "    <!-- @fsm:signal " << sig.name;
+            if (!sig.attributes.empty()) {
+                out << "{";
+                for (size_t i = 0; i < sig.attributes.size(); ++i) {
+                    if (i > 0)
+                        out << ", ";
+                    out << sig.attributes[i].type << " " << sig.attributes[i].name;
+                }
+                out << "}";
+            }
+            if (!sig.validators.empty()) {
+                out << " validator=\"" << sig.validators.front() << "\"";
+            }
+            out << " -->\n";
+        }
+    }
     // Emit declared properties
     for (const auto& prop : model.properties) {
         out << "    <!-- @fsm:property name=" << prop.name << " kind=" << property_kind_to_string(prop.kind)
@@ -178,7 +197,13 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
         out << pad << "<subvertex xmi:type=\"uml:State\" xmi:id=\"" << st_id << "\" name=\"" << escape_xml(state.name)
             << "\"";
         if (!state.traceability_reqs.empty()) {
-            out << " satisfies=\"" << escape_xml(state.traceability_reqs.front()) << "\"";
+            out << " satisfies=\"";
+            for (size_t r = 0; r < state.traceability_reqs.size(); ++r) {
+                if (r > 0)
+                    out << ", ";
+                out << escape_xml(state.traceability_reqs[r]);
+            }
+            out << "\"";
         }
         if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
             out << " invariant=\"" << escape_xml(*state.time_invariant) << "\"";

@@ -161,55 +161,68 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
                     unescaped_lbl += raw_lbl[i];
                 }
             }
+            auto extract_slash_clause = [](const std::string& item, std::string_view kw) -> std::string {
+                std::string paren_prefix = "(" + std::string(kw) + " /";
+                auto p = item.find(paren_prefix);
+                if (p != std::string::npos) {
+                    size_t start = p + paren_prefix.size();
+                    size_t end_p = item.find(')', start);
+                    return std::string(
+                        trim_line(item.substr(start, (end_p != std::string::npos ? end_p : item.size()) - start)));
+                }
+                if (item.rfind(kw, 0) == 0) {
+                    size_t pos = kw.size();
+                    while (pos < item.size() && (item[pos] == ' ' || item[pos] == '\t')) {
+                        ++pos;
+                    }
+                    if (pos < item.size() && item[pos] == '/') {
+                        return std::string(trim_line(item.substr(pos + 1)));
+                    }
+                }
+                return "";
+            };
+            auto add_lifecycle_action = [&](const std::string& raw_act, const char* suffix, bool is_entry) {
+                if (raw_act.empty()) {
+                    return;
+                }
+                auto assign_sig = ::fsm::ir::try_parse_assignment_action(raw_act, target_state + suffix);
+                ActionSignature sig =
+                    assign_sig.has_value() ? std::move(*assign_sig) : ActionSignature{sanitize_identifier(raw_act)};
+                if (!sig.name.empty()) {
+                    model.add_action(sig.name);
+                    if (auto* st = model.find_state_mut(target_state)) {
+                        if (is_entry) {
+                            st->entry_actions.push_back(std::move(sig));
+                        } else {
+                            st->exit_actions.push_back(std::move(sig));
+                        }
+                    }
+                }
+            };
             std::string item_line;
             std::istringstream lss(unescaped_lbl);
             while (std::getline(lss, item_line)) {
                 std::string clean_item = trim_line(item_line);
-                if (clean_item.find("(entry /") != std::string::npos) {
-                    size_t p = clean_item.find("(entry /");
-                    size_t end_p = clean_item.find(')', p);
-                    std::string raw_act = std::string(trim_line(
-                        clean_item.substr(p + 8, (end_p != std::string::npos ? end_p : clean_item.size()) - (p + 8))));
-                    if (!raw_act.empty()) {
-                        auto assign_sig = ::fsm::ir::try_parse_assignment_action(raw_act, target_state + "_entry");
-                        ActionSignature sig = assign_sig.has_value() ? std::move(*assign_sig)
-                                                                     : ActionSignature{sanitize_identifier(raw_act)};
-                        if (!sig.name.empty()) {
-                            model.add_action(sig.name);
-                            if (auto* st = model.find_state_mut(target_state))
-                                st->entry_actions.push_back(std::move(sig));
-                        }
-                    }
-                } else if (clean_item.find("(exit /") != std::string::npos) {
-                    size_t p = clean_item.find("(exit /");
-                    size_t end_p = clean_item.find(')', p);
-                    std::string raw_act = std::string(trim_line(
-                        clean_item.substr(p + 7, (end_p != std::string::npos ? end_p : clean_item.size()) - (p + 7))));
-                    if (!raw_act.empty()) {
-                        auto assign_sig = ::fsm::ir::try_parse_assignment_action(raw_act, target_state + "_exit");
-                        ActionSignature sig = assign_sig.has_value() ? std::move(*assign_sig)
-                                                                     : ActionSignature{sanitize_identifier(raw_act)};
-                        if (!sig.name.empty()) {
-                            model.add_action(sig.name);
-                            if (auto* st = model.find_state_mut(target_state))
-                                st->exit_actions.push_back(std::move(sig));
-                        }
-                    }
-                } else if (clean_item.find("(do /") != std::string::npos) {
-                    size_t p = clean_item.find("(do /");
-                    size_t end_p = clean_item.find(')', p);
-                    std::string act =
-                        clean_item.substr(p + 5, (end_p != std::string::npos ? end_p : clean_item.size()) - (p + 5));
-                    act = sanitize_identifier(trim_line(act));
+                if (std::string raw_act = extract_slash_clause(clean_item, "entry"); !raw_act.empty()) {
+                    add_lifecycle_action(raw_act, "_entry", true);
+                } else if (std::string raw_exit = extract_slash_clause(clean_item, "exit"); !raw_exit.empty()) {
+                    add_lifecycle_action(raw_exit, "_exit", false);
+                } else if (std::string raw_do = extract_slash_clause(clean_item, "do"); !raw_do.empty()) {
+                    std::string act = sanitize_identifier(raw_do);
                     if (!act.empty()) {
                         if (auto* st = model.find_state_mut(target_state))
                             st->do_activity = act;
                     }
-                } else if (clean_item.find("(defer ") != std::string::npos) {
-                    size_t p = clean_item.find("(defer ");
-                    size_t end_p = clean_item.find(')', p);
-                    std::string evt =
-                        clean_item.substr(p + 7, (end_p != std::string::npos ? end_p : clean_item.size()) - (p + 7));
+                } else if (clean_item.find("(defer ") != std::string::npos || clean_item.rfind("defer ", 0) == 0) {
+                    std::string evt;
+                    if (clean_item.find("(defer ") != std::string::npos) {
+                        size_t p = clean_item.find("(defer ");
+                        size_t end_p = clean_item.find(')', p);
+                        evt = clean_item.substr(p + 7,
+                                                (end_p != std::string::npos ? end_p : clean_item.size()) - (p + 7));
+                    } else {
+                        evt = clean_item.substr(6);
+                    }
                     evt = sanitize_identifier(trim_line(evt));
                     if (!evt.empty()) {
                         model.add_event(evt);

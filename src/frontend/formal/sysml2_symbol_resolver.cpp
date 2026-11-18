@@ -57,7 +57,7 @@ void Sysml2SymbolResolver::init_standard_library() {
     standard_types_ = {"Boolean",   "Integer", "Real",  "String", "Natural", "Positive",
                        "Numerical", "Complex", "Float", "Double", "Int32",   "uint32",
                        "int32",     "bool",    "int",   "float",  "double",  "string"};
-    type_map_ = {{"Boolean", "bool"},      {"bool", "bool"},          {"Integer", "uint32_t"},  {"int", "uint32_t"},
+    type_map_ = {{"Boolean", "bool"},      {"bool", "bool"},          {"Integer", "uint32_t"},  {"int", "int32_t"},
                  {"uint32", "uint32_t"},   {"Int32", "int32_t"},      {"int32", "int32_t"},     {"Natural", "uint32_t"},
                  {"Positive", "uint32_t"}, {"Real", "float"},         {"float", "float"},       {"Double", "double"},
                  {"double", "double"},     {"String", "std::string"}, {"string", "std::string"}};

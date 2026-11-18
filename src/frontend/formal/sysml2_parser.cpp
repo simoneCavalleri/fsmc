@@ -266,10 +266,10 @@ std::string Sysml2Parser::map_sysml_type_to_cpp(std::string_view sysml_type, con
     if (colon_pos != std::string::npos) {
         t = t.substr(colon_pos + 2);
     }
-    if (t == "Integer" || t == "Natural" || t == "Positive" || t == "int" || t == "uint32") {
+    if (t == "Integer" || t == "Natural" || t == "Positive" || t == "uint32") {
         return "uint32_t";
     }
-    if (t == "Int32" || t == "int32") {
+    if (t == "int" || t == "Int32" || t == "int32") {
         return "int32_t";
     }
     if (t == "Real" || t == "Float" || t == "float") {

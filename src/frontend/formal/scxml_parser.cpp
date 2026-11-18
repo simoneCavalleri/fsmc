@@ -591,7 +591,9 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
         is_history = true;
     }
 
-    bool is_internal = target_tokens.empty() || trans_node->get_attr("type") == "internal";
+    std::string trans_type_attr = trans_node->get_attr("type");
+    bool is_internal = target_tokens.empty() || trans_type_attr == "internal";
+    bool is_local = !is_internal && trans_type_attr == "local";
 
     TransitionEdge trans;
     trans.source = sanitize_identifier(src);
@@ -671,7 +673,8 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
         trans.transition_action = std::move(sig);
         model.add_action(act_name);
     }
-    trans.kind = is_internal ? TransitionEdgeKind::Internal : TransitionEdgeKind::External;
+    trans.kind = is_internal ? TransitionEdgeKind::Internal
+                             : (is_local ? TransitionEdgeKind::Local : TransitionEdgeKind::External);
 
     std::string prio_str = trans_node->get_attr("priority");
     if (!prio_str.empty()) {

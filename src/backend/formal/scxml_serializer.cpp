@@ -163,6 +163,9 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
                     out << " target=\"" << escape_xml(trans.target) << "\"";
                 }
             }
+            if (trans.kind == TransitionEdgeKind::Local) {
+                out << " type=\"local\"";
+            }
 
             bool has_assignments =
                 (trans.condition_action.has_value() && !trans.condition_action->assignments.empty()) ||

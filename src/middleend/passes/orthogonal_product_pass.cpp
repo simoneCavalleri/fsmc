@@ -216,6 +216,18 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                         node.exit_actions.push_back(act);
                     }
                 }
+                for (const auto& dev : m_node->deferred_events) {
+                    if (std::find(node.deferred_events.begin(), node.deferred_events.end(), dev) ==
+                        node.deferred_events.end()) {
+                        node.deferred_events.push_back(dev);
+                    }
+                }
+                for (const auto& req : m_node->traceability_reqs) {
+                    if (std::find(node.traceability_reqs.begin(), node.traceability_reqs.end(), req) ==
+                        node.traceability_reqs.end()) {
+                        node.traceability_reqs.push_back(req);
+                    }
+                }
             }
         }
 

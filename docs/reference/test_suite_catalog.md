@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 624  
+**Total Documented Test Cases**: 625  
 
 ---
 
@@ -549,6 +549,9 @@
 
 #### `CppModelEmitter.DisambiguatesActionCollidingWithEventAndEmitsSignalEmitOp`
 **Test Intent**: Verify CppModelEmitter disambiguates action struct names colliding with event/state names and emits
+
+#### `CppModelEmitterTest.UnqualifiedEnumLiterals_QualifiedInInitialValuesAndExpressions`
+**Test Intent**: Regression: bare enum literals in variable initializers and assignment/guard expressions are qualified
 
 ### [`test_generated_fsm.cpp`](../../tests/backend/cpp/test_generated_fsm.cpp) (`tests/backend/cpp/test_generated_fsm.cpp`)
 - *(Executable binary test verification)*

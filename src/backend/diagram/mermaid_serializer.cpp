@@ -218,6 +218,25 @@ std::string MermaidSerializer::serialize(const FsmIr& model) {
         out << "\n";
     }
 
+    // Ports
+    for (const auto& port : model.ports) {
+        out << "%% @fsm:port name=" << port.name << " type=" << port.type
+            << " dir=" << (port.is_out() ? "out" : (port.direction == PortDirection::InOut ? "inout" : "in"));
+        if (port.physical_unit.has_value()) {
+            out << " unit=\"" << *port.physical_unit << "\"";
+        }
+        if (port.min_value.has_value()) {
+            out << " min=" << *port.min_value;
+        }
+        if (port.max_value.has_value()) {
+            out << " max=" << *port.max_value;
+        }
+        if (!port.constraint.empty()) {
+            out << " constraint=\"" << port.constraint << "\"";
+        }
+        out << "\n";
+    }
+
     // Variables
     for (const auto& var : model.variables) {
         out << "%% @fsm:var name=" << var.name << " type=" << var.type;
@@ -281,7 +300,7 @@ std::string MermaidSerializer::serialize(const FsmIr& model) {
         }
     }
 
-    if (!model.properties.empty() || !model.variables.empty() || !model.signals.empty()) {
+    if (!model.properties.empty() || !model.ports.empty() || !model.variables.empty() || !model.signals.empty()) {
         out << "\n";
     }
 

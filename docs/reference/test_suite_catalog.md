@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 658  
+**Total Documented Test Cases**: 659  
 
 ---
 
@@ -710,6 +710,10 @@
 
 #### `FormalRoundtrip.SmvSerializer_PreservesTransitionAssignmentsAcrossRoundtrip`
 **Test Intent**: Regression: `SmvSerializer` emits `-- action: <assignments>` on `next(state)` transitions
+
+#### `FormalRoundtrip.SmvSerializer_ExpandsAtomicGuardsInsideCombinators`
+**Test Intent**: Regression: `SmvSerializer` expands atomic guard names inside C++ combinators
+(`fsm::and_<x_gt_0, y_lt_10>`) to their underlying relational expressions (`(x > 0) & (y < 10)`)
 
 ---
 

@@ -1286,4 +1286,29 @@ TEST(FormalRoundtrip, SmvSerializer_PreservesTransitionAssignmentsAcrossRoundtri
     EXPECT_EQ(parsed.transitions[0].transition_action->assignments[0].expression, "1");
 }
 
+/**
+ * @brief Regression: `SmvSerializer` expands atomic guard names inside C++ combinators
+ * (`fsm::and_<x_gt_0, y_lt_10>`) to their underlying relational expressions (`(x > 0) & (y < 10)`)
+ * instead of emitting synthetic guard names (`x_gt_0 : boolean`) as free boolean variables.
+ * @scenario Serialize an FSM with `fsm::and_<x_gt_0, y_lt_10>` where `x_gt_0` is `x > 0` and `y_lt_10` is `y < 10`.
+ * @expected SMV output contains `((x > 0) & (y < 10))` and does not declare `x_gt_0 : boolean`.
+ */
+TEST(FormalRoundtrip, SmvSerializer_ExpandsAtomicGuardsInsideCombinators) {
+    FsmIr ir;
+    ir.name = "SmvCombGuard";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+    ir.add_state("Done");
+    ir.add_variable(VariableDefinition("x", DataType::int32(), "5"));
+    ir.add_variable(VariableDefinition("y", DataType::int32(), "5"));
+    ir.add_guard("x_gt_0", "", "x > 0", "x > 0");
+    ir.add_guard("y_lt_10", "", "y < 10", "y < 10");
+    TransitionEdge t("Idle", "Done", "Go", "fsm::and_<x_gt_0, y_lt_10>");
+    ir.add_transition(t);
+
+    const std::string smv = SmvSerializer::serialize(ir);
+    EXPECT_NE(smv.find("((x > 0) & (y < 10))"), std::string::npos);
+    EXPECT_EQ(smv.find("x_gt_0 : boolean"), std::string::npos);
+}
+
 }  // namespace

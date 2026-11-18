@@ -415,9 +415,33 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
         auto it = std::find_if(model.guards.begin(), model.guards.end(),
                                [&guard_val](const GuardModel& gm) { return gm.name == guard_val; });
         if (it != model.guards.end() && it->raw_expression.has_value() && !it->raw_expression->empty()) {
-            return *it->raw_expression;
+            return to_smv_predicate(*it->raw_expression);
         }
-        return guard_val;  // Fallback: use as-is (may be a named guard type or inline expr)
+        // First lower C++ combinator templates (fsm::and_<g1, g2> -> (g1 & g2)) before
+        // substituting relational guard expressions that may contain '<' or '>'.
+        std::string lowered = to_smv_predicate(guard_val);
+        std::string out_expr;
+        for (std::size_t i = 0; i < lowered.size();) {
+            if (std::isalpha(static_cast<unsigned char>(lowered[i])) != 0 || lowered[i] == '_') {
+                std::size_t start = i;
+                while (i < lowered.size() &&
+                       (std::isalnum(static_cast<unsigned char>(lowered[i])) != 0 || lowered[i] == '_')) {
+                    ++i;
+                }
+                std::string tok = lowered.substr(start, i - start);
+                auto git = std::find_if(model.guards.begin(), model.guards.end(),
+                                        [&tok](const GuardModel& gm) { return gm.name == tok; });
+                if (git != model.guards.end() && git->raw_expression.has_value() && !git->raw_expression->empty() &&
+                    *git->raw_expression != tok) {
+                    out_expr += "(" + to_smv_predicate(*git->raw_expression) + ")";
+                    continue;
+                }
+                out_expr += tok;
+            } else {
+                out_expr.push_back(lowered[i++]);
+            }
+        }
+        return out_expr;
     };
 
     auto is_fallback_guard = [](const std::optional<std::string>& g) {

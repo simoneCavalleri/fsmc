@@ -281,9 +281,15 @@ std::string DotSerializer::serialize(const FsmIr& model) {
                 label += "\\n(defer " + d_evt + ")";
             }
             out << pad << escape_id(state.name) << " [label=\"" << escape_label(label) << "\"];\n";
-            if (!state.traceability_reqs.empty() ||
+            const bool emit_kind = (state.kind == StateKind::Fork || state.kind == StateKind::Join ||
+                                    state.kind == StateKind::EntryPoint || state.kind == StateKind::ExitPoint ||
+                                    state.kind == StateKind::Final);
+            if (emit_kind || !state.traceability_reqs.empty() ||
                 (state.time_invariant.has_value() && !state.time_invariant->empty())) {
                 out << pad << "// @fsm:state name=" << state.name;
+                if (emit_kind) {
+                    out << " kind=" << state_kind_to_string(state.kind);
+                }
                 if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
                     out << " invariant=\"" << *state.time_invariant << "\"";
                 }

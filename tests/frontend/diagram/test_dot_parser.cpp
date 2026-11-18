@@ -550,4 +550,43 @@ TEST(DotParser, StateReqsAndTimeInvariant_PreservedAcrossSerializerRoundtrip) {
     EXPECT_EQ(*p_active->time_invariant, "500[ms]");
 }
 
+/**
+ * @brief Regression: `DotSerializer` emits `kind=...` on `@fsm:state` directives for `Fork`,
+ * `Join`, `EntryPoint`, `ExitPoint`, and `Final` states so `DotParser` preserves them across roundtrips.
+ * @scenario Serialize an FSM with `Fork`, `Join`, `EntryPoint`, `ExitPoint`, and `Final` states, then re-parse.
+ * @expected Re-parsed IR preserves all five `StateKind` values.
+ */
+TEST(DotParser, PseudostatesAndFinalKind_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "DotPseudoRt";
+    ir.initial_state = "Init";
+    ir.add_state("Init");
+    ir.add_or_get_state("Split", "", StateKind::Fork);
+    ir.add_or_get_state("Merge", "", StateKind::Join);
+    ir.add_or_get_state("Done", "", StateKind::Final);
+    auto& comp = ir.add_state("Comp");
+    comp.is_composite = true;
+    comp.initial_sub_state = "S1";
+    ir.add_state("S1", "Comp");
+    ir.add_or_get_state("Ep", "Comp", StateKind::EntryPoint);
+    ir.add_or_get_state("Xp", "Comp", StateKind::ExitPoint);
+
+    const std::string dot = DotSerializer::serialize(ir);
+    DotParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(dot, parsed, err)) << err;
+
+    ASSERT_NE(parsed.find_state("Split"), nullptr);
+    EXPECT_EQ(parsed.find_state("Split")->kind, StateKind::Fork);
+    ASSERT_NE(parsed.find_state("Merge"), nullptr);
+    EXPECT_EQ(parsed.find_state("Merge")->kind, StateKind::Join);
+    ASSERT_NE(parsed.find_state("Done"), nullptr);
+    EXPECT_EQ(parsed.find_state("Done")->kind, StateKind::Final);
+    ASSERT_NE(parsed.find_state("Ep"), nullptr);
+    EXPECT_EQ(parsed.find_state("Ep")->kind, StateKind::EntryPoint);
+    ASSERT_NE(parsed.find_state("Xp"), nullptr);
+    EXPECT_EQ(parsed.find_state("Xp")->kind, StateKind::ExitPoint);
+}
+
 }  // namespace

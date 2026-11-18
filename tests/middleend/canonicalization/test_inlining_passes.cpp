@@ -318,4 +318,27 @@ TEST(InliningPasses, ChoiceInlining_ElseBranchHasLowerPriorityThanGuardedBranch)
     EXPECT_EQ(else_edge->priority, 0u);
 }
 
+/**
+ * @brief Regression: `ChoiceInliningPass` prunes unreachable choice pseudostates (`incoming.empty()`)
+ * and their dangling outgoing transitions so C++ backend validation does not reject with `ECPP004`.
+ * @scenario Run `ChoiceInliningPass` on a model containing an unreachable choice node `C_dead -> Dead`.
+ * @expected `C_dead` is removed from `choice_nodes` and `states`, and its dangling transition is pruned.
+ */
+TEST(InliningPasses, ChoiceInlining_PrunesUnreachableChoicePseudostates) {
+    FsmIr ir;
+    ir.name = "UnreachableChoice";
+    ir.initial_state = "Init";
+    ir.add_state("Init");
+    ir.add_state("Dead");
+    ir.add_choice_node("C_dead");
+    ir.add_transition(TransitionEdge("C_dead", "Dead", ""));
+
+    ChoiceInliningPass pass;
+    DiagnosticEngine diag;
+    ASSERT_TRUE(pass.run(ir, diag));
+    EXPECT_FALSE(ir.is_choice_node("C_dead"));
+    EXPECT_TRUE(ir.choice_nodes.empty());
+    EXPECT_TRUE(ir.transitions.empty());
+}
+
 }  // namespace

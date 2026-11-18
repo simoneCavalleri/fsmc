@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 706  
+**Total Documented Test Cases**: 707  
 
 ---
 
@@ -1709,6 +1709,9 @@
 
 #### `InliningPasses.ChoiceInlining_ElseBranchHasLowerPriorityThanGuardedBranch`
 **Test Intent**: Regression: `else` fallback branches in ChoiceInliningPass must sort after guarded branches.
+
+#### `InliningPasses.ChoiceInlining_PrunesUnreachableChoicePseudostates`
+**Test Intent**: Regression: `ChoiceInliningPass` prunes unreachable choice pseudostates (`incoming.empty()`)
 
 ### [`test_orthogonal_product.cpp`](../../tests/middleend/canonicalization/test_orthogonal_product.cpp) (`tests/middleend/canonicalization/test_orthogonal_product.cpp`)
 #### `OrthogonalProduct.ConcurrentRegions_ExpandedToCartesianProductStates`

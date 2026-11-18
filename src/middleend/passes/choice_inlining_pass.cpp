@@ -89,6 +89,32 @@ bool ChoiceInliningPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
                 }
             }
 
+            if (!has_self_loop && incoming.empty()) {
+                bool is_initial_choice = (ir.initial_state == choice_name);
+                for (const auto& s : ir.states) {
+                    if (s.initial_sub_state == choice_name) {
+                        is_initial_choice = true;
+                        break;
+                    }
+                }
+                if (!is_initial_choice) {
+                    ir.transitions.erase(
+                        std::remove_if(ir.transitions.begin(), ir.transitions.end(),
+                                       [&](const TransitionEdge& t) { return t.source == choice_name; }),
+                        ir.transitions.end());
+                    ir.states.erase(std::remove_if(ir.states.begin(), ir.states.end(),
+                                                   [&](const StateNode& s) { return s.name == choice_name; }),
+                                    ir.states.end());
+                    ir.choice_nodes.erase(
+                        std::remove_if(ir.choice_nodes.begin(), ir.choice_nodes.end(),
+                                       [&](const ChoiceNodeModel& c) { return c.name == choice_name; }),
+                        ir.choice_nodes.end());
+                    modified = true;
+                    progress = true;
+                }
+                continue;
+            }
+
             if (has_self_loop || incoming.empty() || outgoing.empty()) {
                 continue;
             }

@@ -571,4 +571,46 @@ TEST(GoldenDifferentialE2E, HistoryAndCpp17_UnoptimizedVsOptimizedMatches) {
     fs::remove_all(tmp_dir);
 }
 
+/**
+ * @brief Adversarial robustness test: exercises empty, truncated, unbalanced, unclosed-quote,
+ * and deeply nested inputs across all 9 parsers to ensure graceful handling without crashes or hangs.
+ */
+TEST(GoldenParserFuzz, MalformedTruncatedAndDeeplyNestedInputs_FailGracefullyWithoutCrash) {
+    const std::vector<std::string> formats = {"json", "scxml",    "cameo",   "sysml2",   "smv",
+                                              "dot",  "plantuml", "mermaid", "stateflow"};
+
+    std::string deep_braces;
+    for (int i = 0; i < 40; ++i) {
+        deep_braces += "state S" + std::to_string(i) + " {\n";
+    }
+    deep_braces += "state Leaf;\n";
+    for (int i = 0; i < 40; ++i) {
+        deep_braces += "}\n";
+    }
+
+    const std::vector<std::string> payloads = {
+        "",
+        "   \t\n  ",
+        "{",
+        "{\"states\": [{\"name\": \"unclosed",
+        "<scxml><state id=\"A\"><transition event=\"Go\" target=\"",
+        "@startuml\nstate Unclosed {\n  A --> B : \"unclosed_quote\n",
+        "stateDiagram-v2\n    state A {\n        A --> B : Ev [((a > 0)\n",
+        "digraph G {\n  A -> B [label=\"unclosed\n",
+        "state def Bad {\n    transition first A accept Ev if (((x > 0)) then B;\n",
+        "MODULE M\nVAR\n  state : {A, B\nASSIGN\n  next(state) := case\n",
+        deep_braces,
+    };
+
+    for (const auto& fmt : formats) {
+        auto parser = ParserFactory::create_by_format(fmt);
+        ASSERT_NE(parser, nullptr) << fmt;
+        for (const auto& payload : payloads) {
+            FsmIr ir;
+            std::string err;
+            EXPECT_NO_THROW({ (void)parser->parse(payload, ir, err); }) << fmt;
+        }
+    }
+}
+
 }  // namespace

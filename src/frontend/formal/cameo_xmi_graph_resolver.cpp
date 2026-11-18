@@ -239,9 +239,18 @@ void CameoXmiGraphResolver::process_subvertex(const std::shared_ptr<XmlNode>& ve
     } else if (st_kind != StateKind::Initial && st_kind != StateKind::Junction) {
         auto& st = model.add_state(state_name, parent_state, st_kind);
         std::string req = vertex_node->get_attr("satisfies");
-        if (!req.empty() &&
-            std::find(st.traceability_reqs.begin(), st.traceability_reqs.end(), req) == st.traceability_reqs.end()) {
-            st.traceability_reqs.push_back(req);
+        if (!req.empty()) {
+            std::istringstream rss(req);
+            std::string item;
+            while (std::getline(rss, item, ',')) {
+                auto f = item.find_first_not_of(" \t\r\n");
+                auto l = item.find_last_not_of(" \t\r\n");
+                std::string trimmed_req = (f != std::string::npos) ? item.substr(f, l - f + 1) : "";
+                if (!trimmed_req.empty() && std::find(st.traceability_reqs.begin(), st.traceability_reqs.end(),
+                                                      trimmed_req) == st.traceability_reqs.end()) {
+                    st.traceability_reqs.push_back(std::move(trimmed_req));
+                }
+            }
         }
         std::string inv = vertex_node->get_attr("invariant");
         if (!inv.empty()) {

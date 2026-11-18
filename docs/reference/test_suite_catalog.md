@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 703  
+**Total Documented Test Cases**: 704  
 
 ---
 
@@ -1141,6 +1141,10 @@
 #### `CameoParser.ChoiceNode_PreservedInChoiceNodesAcrossSerializerRoundtrip`
 **Test Intent**: Regression: `CameoXmiGraphResolver` registers `kind="choice"` pseudostates in
 `model.choice_nodes` so `ChoiceNode` entries survive Cameo XMI roundtrips.
+
+#### `CameoParser.MultiReqsAndSignalAttributes_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `CameoSerializer` and `CameoXmiParser` preserve multiple `traceability_reqs`
+(`satisfies="REQ_001, REQ_002"`) and typed `SignalDefinition::attributes` across Cameo XMI roundtrips.
 
 ### [`test_scxml_parser.cpp`](../../tests/frontend/formal/test_scxml_parser.cpp) (`tests/frontend/formal/test_scxml_parser.cpp`)
 #### `ScxmlParser.BasicScxmlDocument_ParsedIntoValidFsmIr`

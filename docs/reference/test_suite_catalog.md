@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 723  
+**Total Documented Test Cases**: 724  
 
 ---
 
@@ -1875,6 +1875,9 @@
 
 #### `CommonActionFactoring.FusedBoundaryActions_NeverRefactoredIntoEntryOrExit`
 **Test Intent**: Verify CommonActionFactoringPass skips transition actions whose name starts with "fused_".
+
+#### `CommonActionFactoring.LocalTransitions_NotFactoredIntoCompositeEntryOrExit`
+**Test Intent**: Regression: `CommonActionFactoringPass` does not factor `TransitionEdgeKind::Local`
 
 ### [`test_constant_folding_and_minimization.cpp`](../../tests/middleend/optimization/test_constant_folding_and_minimization.cpp) (`tests/middleend/optimization/test_constant_folding_and_minimization.cpp`)
 #### `ConstantFolding.TautologicalAndContradictoryGuards_EvaluatedAndPruned`

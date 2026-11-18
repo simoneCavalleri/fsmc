@@ -80,7 +80,7 @@ bool CommonActionFactoringPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
         std::vector<std::size_t> incoming_indices;
         for (std::size_t i = 0; i < ir.transitions.size(); ++i) {
             const auto& t = ir.transitions[i];
-            if (t.kind == ir::TransitionEdgeKind::Internal) {
+            if (t.kind == ir::TransitionEdgeKind::Internal || t.kind == ir::TransitionEdgeKind::Local) {
                 continue;
             }
             if (matches_state(t.target, t.target_id, state)) {
@@ -131,7 +131,7 @@ bool CommonActionFactoringPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
         std::vector<std::size_t> outgoing_indices;
         for (std::size_t i = 0; i < ir.transitions.size(); ++i) {
             const auto& t = ir.transitions[i];
-            if (t.kind == ir::TransitionEdgeKind::Internal) {
+            if (t.kind == ir::TransitionEdgeKind::Internal || t.kind == ir::TransitionEdgeKind::Local) {
                 continue;
             }
             if (matches_state(t.source, t.source_id, state)) {

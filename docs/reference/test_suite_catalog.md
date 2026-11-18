@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 679  
+**Total Documented Test Cases**: 680  
 
 ---
 
@@ -914,6 +914,9 @@
 
 #### `DotParser.UninitializedVarAndPortMetadata_PreservedAcrossSerializerRoundtrip`
 **Test Intent**: Regression: `DotSerializer` omits `init=` when `var.initial_value` is empty and preserves
+
+#### `DotParser.StateReqsAndTimeInvariant_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `DotSerializer` emits `// @fsm:state` directives for `traceability_reqs`
 
 ### [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) (`tests/frontend/diagram/test_mermaid_parser.cpp`)
 #### `MermaidParser.BasicDiagram_ParsedIntoValidFsmIr`

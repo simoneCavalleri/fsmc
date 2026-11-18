@@ -434,6 +434,9 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
     clauses.push_back(cond_part.substr(last_split));
 
     std::vector<std::string> other_clauses;
+    std::optional<std::uint64_t> timer_duration_ms;
+    std::string matched_timer_var;
+    static const std::regex timer_clause_re(R"(^(timer_[A-Za-z0-9_]+)\s*>=\s*([0-9]+)$)");
     for (const auto& raw_clause : clauses) {
         std::string c = trim(raw_clause);
         while (c.size() >= 2 && c.front() == '(' && c.back() == ')') {
@@ -511,7 +514,13 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
                 event_names.push_back(ev);
             }
         } else {
-            other_clauses.push_back(c);
+            std::smatch tm;
+            if (std::regex_match(c, tm, timer_clause_re)) {
+                matched_timer_var = tm[1].str();
+                timer_duration_ms = static_cast<std::uint64_t>(std::stoull(tm[2].str()));
+            } else {
+                other_clauses.push_back(c);
+            }
         }
     }
 
@@ -541,12 +550,24 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
         event_names.emplace_back("");
     }
 
+    if (!matched_timer_var.empty()) {
+        model.variables.erase(std::remove_if(model.variables.begin(), model.variables.end(),
+                                             [&](const VariableDefinition& v) { return v.name == matched_timer_var; }),
+                              model.variables.end());
+    }
+
     for (const auto& src : source_states) {
         for (const auto& event_name : event_names) {
             TransitionEdge trans;
             trans.source = src;
             trans.target = target_state;
             trans.event = event_name;
+            if (timer_duration_ms.has_value()) {
+                trans.trigger = TimeTrigger(TimeTriggerKind::After, *timer_duration_ms, TimeUnit::Milliseconds);
+                if (trans.event.empty()) {
+                    trans.event = trans.get_trigger_name();
+                }
+            }
             if (!guard_expr.empty()) {
                 // Generate a stable guard name from the transition endpoints and index,
                 // instead of sanitizing the raw boolean expression which would mangle

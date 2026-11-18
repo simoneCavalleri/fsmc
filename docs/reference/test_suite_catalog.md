@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 666  
+**Total Documented Test Cases**: 667  
 
 ---
 
@@ -1191,6 +1191,9 @@
 #### `SmvParser.MultilineLtlAndCtlSpecsWithNameComment_ParsedCleanly`
 **Test Intent**: Regression: `SmvParser` parses multi-line `LTLSPEC -- <name>`, `CTLSPEC -- <name>`, and
 `INVARSPEC -- <name>` specifications emitted by `SmvSerializer`, extracting both the property name
+
+#### `SmvParser.TimerCounterClause_ReconstructsTimeTriggerAndRemovesSyntheticTimerVar`
+**Test Intent**: Regression: `SmvParser` reconstructs `TimeTrigger` from `timer_<State> >= <ms>` clauses
 
 ### [`test_stateflow_parser.cpp`](../../tests/frontend/formal/test_stateflow_parser.cpp) (`tests/frontend/formal/test_stateflow_parser.cpp`)
 #### `StateflowParser.BasicStateflowChart_ParsedIntoValidFsmIr`

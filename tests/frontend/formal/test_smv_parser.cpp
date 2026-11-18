@@ -650,4 +650,35 @@ CTLSPEC -- can_run
     EXPECT_EQ(model.properties[1].raw_formula, "EF (state = Run)");
 }
 
+/**
+ * @brief Regression: `SmvParser` reconstructs `TimeTrigger` from `timer_<State> >= <ms>` clauses
+ * emitted by `SmvSerializer` and removes the synthetic `timer_<State>` counter from `model.variables`.
+ * @scenario Parse SMV with `timer_Busy : 0..100;` and `state = Busy & timer_Busy >= 100 : Idle;`.
+ * @expected Transition has `TimeTrigger` with `duration_in_ms() == 100` and `timer_Busy` is not in `variables`.
+ */
+TEST(SmvParser, TimerCounterClause_ReconstructsTimeTriggerAndRemovesSyntheticTimerVar) {
+    const std::string smv_content = R"(MODULE main
+VAR
+  state : {Busy, Idle};
+  event : {none, after_100ms};
+  timer_Busy : 0..100;
+ASSIGN
+  init(state) := Busy;
+  init(timer_Busy) := 0;
+  next(state) := case
+    state = Busy & timer_Busy >= 100 : Idle;
+    TRUE : state;
+  esac;
+)";
+
+    SmvParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+    EXPECT_EQ(model.find_variable("timer_Busy"), nullptr);
+    ASSERT_EQ(model.transitions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(model.transitions[0].trigger));
+    EXPECT_EQ(std::get<TimeTrigger>(model.transitions[0].trigger).duration_in_ms(), 100u);
+}
+
 }  // namespace

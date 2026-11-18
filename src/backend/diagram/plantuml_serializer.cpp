@@ -163,6 +163,9 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
             if (trans.target_is_history) {
                 clean_target += trans.target_is_deep_history ? "[H*]" : "[H]";
             }
+            if (trans.kind == TransitionEdgeKind::Local) {
+                out << pad << "  ' @fsm:local\n";
+            }
             out << pad << "  " << trans.source << " --> " << clean_target;
             if (!label.empty()) {
                 out << " : " << label;
@@ -326,6 +329,9 @@ std::string PlantUmlSerializer::serialize(const FsmIr& model) {
         std::string clean_target = trans.target;
         if (trans.target_is_history) {
             clean_target += trans.target_is_deep_history ? "[H*]" : "[H]";
+        }
+        if (trans.kind == TransitionEdgeKind::Local) {
+            out << "' @fsm:local\n";
         }
         out << trans.source << " --> " << clean_target;
         if (!label.empty()) {

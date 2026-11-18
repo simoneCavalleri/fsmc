@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 714  
+**Total Documented Test Cases**: 715  
 
 ---
 
@@ -1042,6 +1042,9 @@
 
 #### `PlantUmlParser.ChangeTrigger_PreservedAcrossSerializerRoundtrip`
 **Test Intent**: Regression: `PlantUmlSerializer` emits `when(<expr>)` for `ChangeTrigger` transitions
+
+#### `PlantUmlParser.LocalTransition_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `PlantUmlSerializer` and `PlantUmlParser` preserve `TransitionEdgeKind::Local`
 
 ### [`test_directive_parser.cpp`](../../tests/frontend/directive/test_directive_parser.cpp) (`tests/frontend/directive/test_directive_parser.cpp`)
 #### `DirectiveParser.StateDirective_ParsesTraceabilityAndActivities`

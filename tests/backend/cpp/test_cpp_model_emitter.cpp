@@ -1447,3 +1447,28 @@ TEST(CppModelEmitterTest, NegativeEnumLiteralValues_WidenDefaultUnsignedUnderlyi
     EXPECT_NE(str.find("enum class ErrCode : int8_t {"), std::string::npos);
     EXPECT_NE(str.find("ERR_FAIL = -1"), std::string::npos);
 }
+
+/**
+ * @brief Regression: Parameterized event structs with `std::string` (or non-primitive) payload fields
+ * omit `constexpr` on their constructors under `--std 17` so GCC/Clang do not warn with `-Winvalid-constexpr`.
+ * @scenario Emit an event `Telemetry` with `uint32_t val` and `std::string tag` under `CppStandard::Cpp17`.
+ * @expected Emits `explicit Telemetry(uint32_t val_, std::string tag_)` without `constexpr explicit`.
+ */
+TEST(CppModelEmitterTest, StringPayloadEvent_OmitsConstexprCtorInCpp17) {
+    FsmIr model;
+    model.name = "StrEventFsm";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    SignalDefinition tel("Telemetry");
+    tel.attributes.emplace_back("val", DataType::uint32());
+    tel.attributes.emplace_back("tag", DataType::string());
+    model.add_signal(tel);
+
+    GeneratorOptions opts;
+    opts.cpp_standard = CppStandard::Cpp17;
+    std::ostringstream out;
+    CppModelEmitter::emit_model(out, model, opts);
+    const std::string str = out.str();
+    EXPECT_EQ(str.find("constexpr explicit Telemetry("), std::string::npos);
+    EXPECT_NE(str.find("explicit Telemetry(uint32_t val_, std::string tag_)"), std::string::npos);
+}

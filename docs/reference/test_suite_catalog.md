@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 707  
+**Total Documented Test Cases**: 708  
 
 ---
 
@@ -560,6 +560,9 @@
 **Test Intent**: Regression: Enum definitions with negative literal values (or values > 255) widen the default
 `uint8_t` underlying type to signed/wider integer types so C++ compilation does not fail with
 `-Wc++11-narrowing`.
+
+#### `CppModelEmitterTest.StringPayloadEvent_OmitsConstexprCtorInCpp17`
+**Test Intent**: Regression: Parameterized event structs with `std::string` (or non-primitive) payload fields
 
 ### [`test_generated_fsm.cpp`](../../tests/backend/cpp/test_generated_fsm.cpp) (`tests/backend/cpp/test_generated_fsm.cpp`)
 - *(Executable binary test verification)*

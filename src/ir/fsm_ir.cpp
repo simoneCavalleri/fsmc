@@ -114,6 +114,27 @@ const VariableDefinition* FsmIr::find_variable(std::string_view var_name) const 
     return nullptr;
 }
 
+const GuardModel* FsmIr::find_guard(std::string_view guard_name) const noexcept {
+    for (const auto& gm : guards) {
+        if (gm.name == guard_name) {
+            return &gm;
+        }
+    }
+    return nullptr;
+}
+
+std::string FsmIr::resolve_guard_expression(std::string_view guard_name_or_expr) const {
+    if (const auto* gm = find_guard(guard_name_or_expr); gm != nullptr) {
+        if (gm->normalized_expression.has_value() && !gm->normalized_expression->empty()) {
+            return *gm->normalized_expression;
+        }
+        if (gm->raw_expression.has_value() && !gm->raw_expression->empty()) {
+            return *gm->raw_expression;
+        }
+    }
+    return std::string(guard_name_or_expr);
+}
+
 std::vector<TypeDefinition> FsmIr::get_enums() const {
     std::vector<TypeDefinition> res;
     for (const auto& ct : custom_types) {

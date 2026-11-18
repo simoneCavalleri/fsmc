@@ -24,22 +24,7 @@ bool WcetAnalysisPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     }
 
     auto is_microstep_transition = [&](const TransitionEdge& t) {
-        if (ir.is_choice_node(t.source)) {
-            return true;
-        }
-        if (std::holds_alternative<TimeTrigger>(t.trigger)) {
-            const auto& tt = std::get<TimeTrigger>(t.trigger);
-            return tt.duration_in_ms() == 0 && tt.duration_value == 0;
-        }
-        if (std::holds_alternative<ChangeTrigger>(t.trigger)) {
-            return false;
-        }
-        if (std::holds_alternative<SignalTrigger>(t.trigger)) {
-            if (!std::get<SignalTrigger>(t.trigger).signal_name.empty()) {
-                return false;
-            }
-        }
-        return t.event.empty() || t.event == "completion_event" || t.event == "anonymous_event";
+        return ir.is_choice_node(t.source) || t.is_zero_time_eventless();
     };
 
     for (const auto& t : ir.transitions) {

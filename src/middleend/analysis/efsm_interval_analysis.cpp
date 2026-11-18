@@ -315,13 +315,7 @@ EFSMIntervalAnalyzer::compute_state_intervals() {
             auto next_env = curr_env;
             if (t.guard.has_value() && !t.guard->empty() && *t.guard != "else" && *t.guard != "default" &&
                 *t.guard != "otherwise") {
-                std::string g_str = *t.guard;
-                for (const auto& gm : ir_.guards) {
-                    if (gm.name == g_str && gm.raw_expression.has_value()) {
-                        g_str = *gm.raw_expression;
-                        break;
-                    }
-                }
+                std::string g_str = ir_.resolve_guard_expression(*t.guard);
                 if (!has_top_level_or(g_str)) {
                     for (auto& [var_name, iv] : next_env) {
                         if (auto g_bound = parse_guard_domain(g_str, var_name);
@@ -416,13 +410,7 @@ std::vector<EFSMAnalysisFinding> EFSMIntervalAnalyzer::analyze(DiagnosticEngine&
 
         // Check guard satisfiability
         if (t.guard.has_value() && !t.guard->empty() && *t.guard != "else" && *t.guard != "default") {
-            std::string g_str = *t.guard;
-            for (const auto& gm : ir_.guards) {
-                if (gm.name == g_str && gm.raw_expression.has_value()) {
-                    g_str = *gm.raw_expression;
-                    break;
-                }
-            }
+            std::string g_str = ir_.resolve_guard_expression(*t.guard);
 
             for (const auto& [var_name, var_interval] : curr_env) {
                 auto guard_interval = parse_guard_domain(g_str, var_name);

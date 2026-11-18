@@ -15,28 +15,6 @@ namespace fsm::middleend::analysis {
 
 namespace {
 
-bool is_zero_time_transition(const ir::TransitionEdge& edge) {
-    bool is_eventless = edge.event.empty() || edge.event == "anonymous_event" || edge.event == "completion_event" ||
-                        edge.event == "AnonymousEvent" || edge.event == "anonymous";
-    if (!is_eventless) {
-        return false;
-    }
-    if (std::holds_alternative<ir::SignalTrigger>(edge.trigger)) {
-        return std::get<ir::SignalTrigger>(edge.trigger).signal_name.empty();
-    }
-    if (std::holds_alternative<ir::TimeTrigger>(edge.trigger)) {
-        const auto& tt = std::get<ir::TimeTrigger>(edge.trigger);
-        return tt.duration_in_ms() == 0 && tt.duration_value == 0;
-    }
-    if (std::holds_alternative<ir::ChangeTrigger>(edge.trigger)) {
-        return false;
-    }
-    if (std::holds_alternative<ir::AnonymousTrigger>(edge.trigger)) {
-        return true;
-    }
-    return false;
-}
-
 std::string resolve_state_id(const ir::FsmIr& ir, const std::string& id_or_name) {
     if (auto* s = ir.find_state_by_id(id_or_name)) {
         return s->id;
@@ -60,7 +38,7 @@ bool LivelockAnalysisPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     }
 
     for (const auto& edge : ir.transitions) {
-        if (!is_zero_time_transition(edge)) {
+        if (!edge.is_zero_time_eventless()) {
             continue;
         }
 

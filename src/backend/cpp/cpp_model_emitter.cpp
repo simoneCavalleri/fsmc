@@ -101,6 +101,54 @@ bool has_unresolved_identifiers(std::string_view expr) {
     return false;
 }
 
+bool has_self_constructor_call(std::string_view expr, std::string_view struct_name) {
+    if (struct_name.empty()) {
+        return false;
+    }
+    const std::size_t n = expr.size();
+    std::size_t i = 0;
+    while (i < n) {
+        if (expr[i] == '"' || expr[i] == '\'') {
+            const char quote = expr[i++];
+            while (i < n) {
+                const char c = expr[i++];
+                if (c == '\\' && i < n) {
+                    ++i;
+                } else if (c == quote) {
+                    break;
+                }
+            }
+            continue;
+        }
+        if (is_ident_start(expr[i])) {
+            const std::size_t start = i;
+            while (i < n && is_ident_char(expr[i])) {
+                ++i;
+            }
+            const std::string_view tok = expr.substr(start, i - start);
+            if (tok == struct_name) {
+                std::size_t prev = start;
+                while (prev > 0 && std::isspace(static_cast<unsigned char>(expr[prev - 1])) != 0) {
+                    --prev;
+                }
+                const bool preceded_by_access = (prev > 0 && expr[prev - 1] == '.') ||
+                                                (prev >= 2 && expr[prev - 2] == '-' && expr[prev - 1] == '>') ||
+                                                (prev >= 2 && expr[prev - 2] == ':' && expr[prev - 1] == ':');
+                std::size_t next = i;
+                while (next < n && std::isspace(static_cast<unsigned char>(expr[next])) != 0) {
+                    ++next;
+                }
+                if (!preceded_by_access && next < n && expr[next] == '(') {
+                    return true;
+                }
+            }
+            continue;
+        }
+        ++i;
+    }
+    return false;
+}
+
 std::string qualify_enum_literal(std::string_view tok, const FsmIr& model, std::string_view preferred_enum_type = "") {
     if (!preferred_enum_type.empty()) {
         for (const auto& ct : model.custom_types) {
@@ -959,7 +1007,8 @@ void CppModelEmitter::emit_guards(std::ostream& out, const FsmIr& model, const G
         bool is_domain_symbol = false;
         if (has_expr) {
             expr = qualify_expression(*guard_item.normalized_expression, model);
-            if (has_unresolved_identifiers(expr)) {
+            if (has_unresolved_identifiers(expr) ||
+                has_self_constructor_call(expr, escape_cpp_keyword(guard_item.name))) {
                 expr_unresolved = true;
             }
         } else {

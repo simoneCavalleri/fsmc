@@ -789,4 +789,33 @@ TEST(StateflowParser, PropertiesReqsAndTimeInvariant_PreservedAcrossSerializerRo
     EXPECT_EQ(*p_active->time_invariant, "500[ms]");
 }
 
+/**
+ * @brief Regression: `StateflowSerializer` emits `when(<expr>)` for `ChangeTrigger` transitions
+ * so `StateflowParser` preserves `ChangeTrigger` across Stateflow XML roundtrips.
+ * @scenario Serialize a transition with `ChangeTrigger("count > 5")` to Stateflow XML and re-parse.
+ * @expected Serialized XML contains `when(count &gt; 5)` and re-parsed transition holds `ChangeTrigger`.
+ */
+TEST(StateflowParser, ChangeTrigger_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "SfChangeRt";
+    ir.initial_state = "Wait";
+    ir.add_state("Wait");
+    ir.add_state("Done");
+    ir.add_variable(VariableDefinition("count", DataType::int32(), "0"));
+    TransitionEdge t("Wait", "Done", "");
+    t.trigger = ChangeTrigger("count > 5", true);
+    ir.add_transition(t);
+
+    const std::string xml = StateflowSerializer::serialize(ir);
+    EXPECT_NE(xml.find("labelString=\"when(count &gt; 5)\""), std::string::npos) << xml;
+
+    StateflowParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ChangeTrigger>(parsed.transitions[0].trigger));
+    EXPECT_EQ(std::get<ChangeTrigger>(parsed.transitions[0].trigger).raw_expression, "count > 5");
+}
+
 }  // namespace

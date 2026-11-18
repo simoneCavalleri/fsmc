@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 694  
+**Total Documented Test Cases**: 695  
 
 ---
 
@@ -1317,6 +1317,9 @@
 
 #### `StateflowParser.PropertiesReqsAndTimeInvariant_PreservedAcrossSerializerRoundtrip`
 **Test Intent**: Regression: `StateflowSerializer` preserves `model.properties`, `state.traceability_reqs`,
+
+#### `StateflowParser.ChangeTrigger_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `StateflowSerializer` emits `when(<expr>)` for `ChangeTrigger` transitions
 
 ### [`test_stateflow_slx_ingestion.cpp`](../../tests/frontend/formal/test_stateflow_slx_ingestion.cpp) (`tests/frontend/formal/test_stateflow_slx_ingestion.cpp`)
 #### `StateflowSlxIngestion.IngestStoredSlxContainer_ParsesModelDirectly`

@@ -149,6 +149,9 @@ static std::string format_transition_label(const TransitionEdge& trans, const Fs
         } else if (tt.kind == TimeTriggerKind::At) {
             label = "at(" + std::to_string(tt.duration_ms) + ", msec)";
         }
+    } else if (const auto* ct = std::get_if<ChangeTrigger>(&trans.trigger);
+               ct != nullptr && !ct->raw_expression.empty()) {
+        label = "when(" + ct->raw_expression + ")";
     } else if (!trans.event.empty() && trans.event != "Anonymous") {
         label = trans.event;
     }

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 669  
+**Total Documented Test Cases**: 670  
 
 ---
 
@@ -905,6 +905,9 @@
 #### `DotParser.TimeTriggerEventLabel_PopulatesTimeTrigger`
 **Test Intent**: Regression: `DotParser` reconstructs `TimeTrigger` when parsing `after_<N>ms` /
 `every_<N>ms` transition labels emitted by `DotSerializer`.
+
+#### `DotParser.InternalTransition_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `DotSerializer` emits `comment="internal"` on `TransitionEdgeKind::Internal`
 
 ### [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) (`tests/frontend/diagram/test_mermaid_parser.cpp`)
 #### `MermaidParser.BasicDiagram_ParsedIntoValidFsmIr`

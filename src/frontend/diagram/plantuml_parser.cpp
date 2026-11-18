@@ -648,6 +648,29 @@ bool PlantUmlParser::parse_transition_line(std::string_view line, FsmIr& model, 
     trans.source = src;
     trans.target = dst;
     trans.event = event_name;
+    if (!event_name.empty()) {
+        static const std::regex time_ev_regex(R"(^(after|every)_([0-9]+)(ms|us|s|m)$)", std::regex::icase);
+        std::smatch tm;
+        if (std::regex_match(event_name, tm, time_ev_regex)) {
+            std::string kw = tm[1].str();
+            std::transform(kw.begin(), kw.end(), kw.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            const TimeTriggerKind tkind = (kw == "every") ? TimeTriggerKind::Every : TimeTriggerKind::After;
+            const std::uint64_t val = static_cast<std::uint64_t>(std::stoull(tm[2].str()));
+            std::string u = tm[3].str();
+            std::transform(u.begin(), u.end(), u.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (u == "us") {
+                trans.trigger = TimeTrigger(tkind, val, TimeUnit::Microseconds);
+            } else if (u == "s") {
+                trans.trigger = TimeTrigger(tkind, val, TimeUnit::Seconds);
+            } else if (u == "m") {
+                trans.trigger = TimeTrigger(tkind, val, TimeUnit::Minutes);
+            } else {
+                trans.trigger = TimeTrigger(tkind, val, TimeUnit::Milliseconds);
+            }
+        }
+    }
     detail::apply_parsed_guard(model, trans, raw_guard, src, dst);
     if (parsed_action) {
         trans.transition_action = *parsed_action;

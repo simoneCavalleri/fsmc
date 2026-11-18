@@ -467,4 +467,26 @@ state Comp {
     EXPECT_EQ(ir.transitions[1].event, "Back");
 }
 
+/**
+ * @brief Regression: `PlantUmlParser` reconstructs `TimeTrigger` when parsing `after_<N>ms` /
+ * `every_<N>ms` transition labels emitted by `PlantUmlSerializer`.
+ * @scenario Parse PlantUML with `Busy --> Idle : after_100ms`.
+ * @expected Transition has a `TimeTrigger` with `duration_in_ms() == 100`.
+ */
+TEST(PlantUmlParser, TimeTriggerEventLabel_PopulatesTimeTrigger) {
+    const std::string puml = R"puml(@startuml
+[*] --> Busy
+Busy --> Idle : after_100ms
+@enduml
+)puml";
+
+    PlantUmlParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(puml, ir, err)) << err;
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(ir.transitions[0].trigger));
+    EXPECT_EQ(std::get<TimeTrigger>(ir.transitions[0].trigger).duration_in_ms(), 100u);
+}
+
 }  // namespace

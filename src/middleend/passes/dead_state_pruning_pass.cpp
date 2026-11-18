@@ -89,36 +89,43 @@ bool DeadStatePruningPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             }
         }
 
+        auto enqueue_target = [&](const std::string& tgt) {
+            if (tgt.empty())
+                return;
+            const auto* tn = ir.find_state_by_name(tgt);
+            if (!tn) {
+                tn = ir.find_state_by_id(tgt);
+            }
+            std::string canonical_name = (tn != nullptr) ? tn->name : tgt;
+            if (reachable.count(canonical_name) == 0) {
+                reachable.insert(canonical_name);
+                if (tn != nullptr && !tn->id.empty()) {
+                    reachable.insert(tn->id);
+                }
+                q.push(canonical_name);
+            }
+            if (tn != nullptr && !tn->id.empty() && reachable.count(tn->id) == 0) {
+                reachable.insert(tn->id);
+            }
+            if (reachable.count(tgt) == 0) {
+                reachable.insert(tgt);
+            }
+        };
+
         for (const auto& t : ir.transitions) {
-            bool matches_source = (t.source == curr || (!t.source_id.empty() && t.source_id == curr));
+            bool matches_source = (t.source == curr || (!t.source_id.empty() && t.source_id == curr) ||
+                                   std::find(t.source_ids.begin(), t.source_ids.end(), curr) != t.source_ids.end());
             if (matches_source) {
                 // Statically dead transition
                 if (t.guard.has_value() && *t.guard == "false") {
                     continue;
                 }
-                std::string target_to_push;
-                if (!t.target.empty() && reachable.count(t.target) == 0) {
-                    reachable.insert(t.target);
-                    if (!t.target_id.empty()) {
-                        reachable.insert(t.target_id);
-                    }
-                    if (const auto* tn = ir.find_state_by_name(t.target)) {
-                        if (!tn->id.empty()) {
-                            reachable.insert(tn->id);
-                        }
-                    }
-                    target_to_push = t.target;
-                } else if (!t.target_id.empty() && reachable.count(t.target_id) == 0) {
-                    reachable.insert(t.target_id);
-                    if (const auto* tn = ir.find_state_by_id(t.target_id)) {
-                        reachable.insert(tn->name);
-                        target_to_push = tn->name;
-                    } else {
-                        target_to_push = t.target_id;
-                    }
+                enqueue_target(!t.target.empty() ? t.target : t.target_id);
+                for (const auto& tid : t.target_ids) {
+                    enqueue_target(tid);
                 }
-                if (!target_to_push.empty()) {
-                    q.push(target_to_push);
+                for (const auto& tid : t.multi_target_ids) {
+                    enqueue_target(tid);
                 }
             }
         }
@@ -150,7 +157,10 @@ bool DeadStatePruningPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                                                 return true;
                                             bool src_reachable =
                                                 reachable.count(t.source) > 0 ||
-                                                (!t.source_id.empty() && reachable.count(t.source_id) > 0);
+                                                (!t.source_id.empty() && reachable.count(t.source_id) > 0) ||
+                                                std::any_of(
+                                                    t.source_ids.begin(), t.source_ids.end(),
+                                                    [&](const std::string& sid) { return reachable.count(sid) > 0; });
                                             return !src_reachable && (!t.source.empty() || !t.source_id.empty());
                                         }),
                          ir.transitions.end());

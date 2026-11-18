@@ -172,9 +172,11 @@ void CameoXmiGraphResolver::process_subvertex(const std::shared_ptr<XmlNode>& ve
     StateKind st_kind = StateKind::Atomic;
     bool is_initial = false;
 
-    // 2. Classify UML pseudostates (Initial, Choice, Junction, ShallowHistory, DeepHistory)
+    // 2. Classify UML pseudostates (Initial, Choice, Junction, ShallowHistory, DeepHistory, Fork, Join, EntryPoint,
+    // ExitPoint)
     if (type == "uml:Pseudostate" || ends_with(type, ":Pseudostate") || kind == "initial" || kind == "choice" ||
-        kind == "junction" || kind == "shallowHistory" || kind == "deepHistory") {
+        kind == "junction" || kind == "shallowHistory" || kind == "deepHistory" || kind == "fork" || kind == "join" ||
+        kind == "entryPoint" || kind == "exitPoint") {
         if (kind == "initial" || raw_name == "Initial" || raw_name == "initial") {
             st_kind = StateKind::Initial;
             is_initial = true;
@@ -186,6 +188,14 @@ void CameoXmiGraphResolver::process_subvertex(const std::shared_ptr<XmlNode>& ve
             st_kind = StateKind::ShallowHistory;
         } else if (kind == "deepHistory") {
             st_kind = StateKind::DeepHistory;
+        } else if (kind == "fork") {
+            st_kind = StateKind::Fork;
+        } else if (kind == "join") {
+            st_kind = StateKind::Join;
+        } else if (kind == "entryPoint") {
+            st_kind = StateKind::EntryPoint;
+        } else if (kind == "exitPoint") {
+            st_kind = StateKind::ExitPoint;
         }
     }
 

@@ -510,4 +510,40 @@ TEST(MermaidParser, InternalTransition_PreservedAcrossSerializerRoundtrip) {
     EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
 }
 
+/**
+ * @brief Regression: `MermaidSerializer` emits `%% @fsm:state` directives for `traceability_reqs`
+ * and `time_invariant` on both leaf and composite states so `MermaidParser` preserves them across roundtrips.
+ * @scenario Serialize an FSM with leaf state `Idle` (`REQ_001`) and composite `Active` (`500[ms]`), then re-parse.
+ * @expected Re-parsed `Idle` has `traceability_reqs == {"REQ_001"}` and `Active` has `time_invariant == "500[ms]"`.
+ */
+TEST(MermaidParser, StateReqsAndTimeInvariant_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "MmdMetaRt";
+    ir.initial_state = "Idle";
+    auto& idle = ir.add_state("Idle");
+    idle.traceability_reqs.push_back("REQ_001");
+
+    auto& active = ir.add_state("Active");
+    active.is_composite = true;
+    active.initial_sub_state = "Sub1";
+    active.time_invariant = "500[ms]";
+    ir.add_state("Sub1", "Active");
+
+    const std::string mmd = MermaidSerializer::serialize(ir);
+    MermaidParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(mmd, parsed, err)) << err;
+
+    const auto* p_idle = parsed.find_state("Idle");
+    ASSERT_NE(p_idle, nullptr);
+    ASSERT_EQ(p_idle->traceability_reqs.size(), 1u);
+    EXPECT_EQ(p_idle->traceability_reqs[0], "REQ_001");
+
+    const auto* p_active = parsed.find_state("Active");
+    ASSERT_NE(p_active, nullptr);
+    ASSERT_TRUE(p_active->time_invariant.has_value());
+    EXPECT_EQ(*p_active->time_invariant, "500[ms]");
+}
+
 }  // namespace

@@ -166,8 +166,8 @@ std::string McdcHarnessGenerator::generate_gtest_harness(const FsmIr& ir) {
         }
 
         std::string raw_guard = *t.guard;
-        std::string diag_guard = GuardExpressionParser::to_diagram_string(raw_guard);
-        auto parsed_guard = GuardExpressionParser::parse(raw_guard);
+        std::string diag_guard = GuardExpressionParser::to_diagram_string(raw_guard, ir.guards);
+        auto parsed_guard = GuardExpressionParser::parse(diag_guard);
 
         if (parsed_guard.atomic_guards.size() < 2) {
             continue;

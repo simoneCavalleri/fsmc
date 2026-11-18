@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 725  
+**Total Documented Test Cases**: 726  
 
 ---
 
@@ -2180,6 +2180,9 @@
 
 #### `WcetAnalysis.LinearEventlessChains_ComputesBoundedMicroSteps`
 **Test Intent**: Verify WcetAnalysisPass computes bounded micro-steps for terminating chains.
+
+#### `WcetAnalysis.TimedAndChangeTriggerCyclesWithEmptyEvent_NotFlaggedAsZeno`
+**Test Intent**: Regression: `WcetAnalysisPass` does not treat `TimeTrigger`, `ChangeTrigger`, or `SignalTrigger`
 
 ---
 

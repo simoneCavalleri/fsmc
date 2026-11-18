@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 724  
+**Total Documented Test Cases**: 725  
 
 ---
 
@@ -1926,6 +1926,9 @@
 
 #### `RegisterLiveness.InterferingVariableLifetimes_AllocatesDistinctRegisters`
 **Test Intent**: Verify RegisterLivenessPass assigns distinct register allocations for simultaneously interfering variables.
+
+#### `RegisterLiveness.SymbolicGuardMetadata_TracksInterferenceAcrossGuardModel`
+**Test Intent**: Regression: `RegisterLivenessPass` resolves symbolic guard names against `FsmIr::guards`
 
 #### `RegisterLiveness.ConditionActionStoreOp_TracksUseAndDefCorrectly`
 **Test Intent**: Verify RegisterLivenessPass tracks variable uses and defs inside condition_action StoreOp instructions.

@@ -393,6 +393,39 @@ TEST(RegisterLiveness, InterferingVariableLifetimes_AllocatesDistinctRegisters) 
 }
 
 /**
+ * @brief Regression: `RegisterLivenessPass` resolves symbolic guard names against `FsmIr::guards`
+ * so variables read simultaneously inside a `GuardModel` receive distinct hardware registers.
+ */
+TEST(RegisterLiveness, SymbolicGuardMetadata_TracksInterferenceAcrossGuardModel) {
+    FsmIr ir;
+    ir.name = "SymbolicGuardInterference";
+    ir.initial_state_id = "s1";
+
+    ir.variables.emplace_back("vx", DataType::int32(), "0");
+    ir.variables.emplace_back("vy", DataType::int32(), "0");
+
+    StateNode s1("s1", "s1");
+    ir.states.push_back(s1);
+
+    ir.add_guard("g_sum", "", std::optional<std::string>{"vx + vy > 10"}, std::optional<std::string>{"vx + vy > 10"});
+
+    TransitionEdge t;
+    t.source_id = "s1";
+    t.target_id = "s1";
+    t.trigger = SignalTrigger("COMPUTE");
+    t.guard = "g_sum";
+    ir.add_transition(t);
+
+    DiagnosticEngine diag;
+    RegisterLivenessPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+
+    ASSERT_TRUE(ir.variables[0].register_index.has_value());
+    ASSERT_TRUE(ir.variables[1].register_index.has_value());
+    EXPECT_NE(*ir.variables[0].register_index, *ir.variables[1].register_index);
+}
+
+/**
  * @brief Verify RegisterLivenessPass tracks variable uses and defs inside condition_action StoreOp instructions.
  */
 TEST(RegisterLiveness, ConditionActionStoreOp_TracksUseAndDefCorrectly) {

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 615  
+**Total Documented Test Cases**: 616  
 
 ---
 
@@ -1044,6 +1044,9 @@
 
 #### `SmvParser.ActionAssignmentsAndNormalizedGuards_PopulatedForNoStubs`
 **Test Intent**: Verify inline action assignments and normalized guard expressions in SMV.
+
+#### `SmvParser.BooleanInitLiterals_NormalizedToLowercase`
+**Test Intent**: Verify SmvParser normalizes SMV uppercase boolean literals TRUE/FALSE in init() assignments.
 
 ### [`test_stateflow_parser.cpp`](../../tests/frontend/formal/test_stateflow_parser.cpp) (`tests/frontend/formal/test_stateflow_parser.cpp`)
 #### `StateflowParser.BasicStateflowChart_ParsedIntoValidFsmIr`

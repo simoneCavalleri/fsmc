@@ -151,9 +151,15 @@ bool SmvParser::parse(std::string_view content, FsmIr& model, std::string& error
                     if (!init_val.empty() && init_val.back() == ';') {
                         init_val.pop_back();
                     }
+                    std::string norm_init = trim(init_val);
+                    if (norm_init == "TRUE") {
+                        norm_init = "true";
+                    } else if (norm_init == "FALSE") {
+                        norm_init = "false";
+                    }
                     for (auto& v : model.variables) {
                         if (v.name == var_name) {
-                            v.initial_value = trim(init_val);
+                            v.initial_value = norm_init;
                             break;
                         }
                     }

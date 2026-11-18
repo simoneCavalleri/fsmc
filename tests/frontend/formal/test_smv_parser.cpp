@@ -514,4 +514,40 @@ ASSIGN
     EXPECT_NE(model.guards[0].normalized_expression->find("count < 20"), std::string::npos);
 }
 
+/**
+ * @brief Verify SmvParser normalizes SMV uppercase boolean literals TRUE/FALSE in init() assignments.
+ * @scenario Parse SMV module with `init(armed) := TRUE;` and `init(faulted) := FALSE;`.
+ * @expected Variables have `initial_value` set to `"true"` and `"false"` so C++ emission compiles cleanly.
+ */
+TEST(SmvParser, BooleanInitLiterals_NormalizedToLowercase) {
+    const std::string smv_content = R"(MODULE main
+VAR
+  state : {Idle, Active};
+  event : {none, EvGo};
+  armed : boolean;
+  faulted : boolean;
+ASSIGN
+  init(state) := Idle;
+  init(armed) := TRUE;
+  init(faulted) := FALSE;
+  next(state) := case
+    state = Idle & event = EvGo : Active;
+    TRUE : state;
+  esac;
+)";
+
+    SmvParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+
+    const auto* armed = model.find_variable("armed");
+    ASSERT_NE(armed, nullptr);
+    EXPECT_EQ(armed->initial_value, "true");
+
+    const auto* faulted = model.find_variable("faulted");
+    ASSERT_NE(faulted, nullptr);
+    EXPECT_EQ(faulted->initial_value, "false");
+}
+
 }  // namespace

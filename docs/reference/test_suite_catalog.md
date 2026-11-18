@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 686  
+**Total Documented Test Cases**: 687  
 
 ---
 
@@ -1162,6 +1162,10 @@
 
 #### `ScxmlSerializerTest.PropertiesAndTimeInvariant_PreservedAcrossRoundtrip`
 **Test Intent**: Regression: `ScxmlSerializer` preserves `model.properties` (`<!-- @fsm:property ... -->`)
+
+#### `ScxmlSerializerTest.PseudostatesAndFinalKind_PreservedAcrossRoundtrip`
+**Test Intent**: Regression: `ScxmlSerializer` and `ScxmlParser` preserve `Fork`, `Join`, `EntryPoint`,
+`ExitPoint`, and `Final` state kinds across SCXML roundtrips.
 
 ### [`test_scxml_semantic_completeness.cpp`](../../tests/frontend/formal/test_scxml_semantic_completeness.cpp) (`tests/frontend/formal/test_scxml_semantic_completeness.cpp`)
 #### `ScxmlSemanticCompleteness.ParallelRegions_ParsedAsOrthogonalStates`

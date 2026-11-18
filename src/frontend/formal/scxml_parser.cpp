@@ -185,6 +185,8 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
                 kind = StateKind::Parallel;
             } else if (tag == "final" || ends_with(tag, ":final")) {
                 kind = StateKind::Final;
+            } else if (std::string kind_attr = child->get_attr("kind"); !kind_attr.empty()) {
+                kind = state_kind_from_string(kind_attr);
             }
             model.add_state(state_name, current_parent_state, kind);
 

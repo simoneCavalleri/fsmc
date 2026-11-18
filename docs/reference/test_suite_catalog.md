@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 712  
+**Total Documented Test Cases**: 713  
 
 ---
 
@@ -931,6 +931,9 @@
 #### `DotParser.SignalAttributesAndValidator_PreservedAcrossSerializerRoundtrip`
 **Test Intent**: Regression: `DotSerializer` emits typed signal payload attributes and validators on
 `// @fsm:signal` directives so `DotParser` preserves `SignalDefinition::attributes` across roundtrips.
+
+#### `DotParser.LocalTransition_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `DotSerializer` and `DotParser` preserve `TransitionEdgeKind::Local`
 
 ### [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) (`tests/frontend/diagram/test_mermaid_parser.cpp`)
 #### `MermaidParser.BasicDiagram_ParsedIntoValidFsmIr`

@@ -651,4 +651,57 @@ TEST(DotParser, SignalAttributesAndValidator_PreservedAcrossSerializerRoundtrip)
     EXPECT_EQ(p_tel->validators[0], "val > 0");
 }
 
+/**
+ * @brief Regression: `DotSerializer` and `DotParser` preserve `TransitionEdgeKind::Local`
+ * via `comment="local"` edge attributes.
+ * @scenario Serialize a composite FSM with a local self-transition and an external transition to DOT and re-parse.
+ * @expected Re-parsed local transition has `kind == TransitionEdgeKind::Local`; external remains `External`.
+ */
+TEST(DotParser, LocalTransition_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "DotLocalRt";
+    ir.initial_state = "Active";
+    StateNode active("Active");
+    active.is_composite = true;
+    active.initial_sub_state = "SubA";
+    ir.add_state(active);
+    StateNode sub_a("SubA");
+    sub_a.parent_state = "Active";
+    ir.add_state(sub_a);
+    StateNode sub_b("SubB");
+    sub_b.parent_state = "Active";
+    ir.add_state(sub_b);
+
+    TransitionEdge loc("Active", "SubB", "Reset");
+    loc.kind = TransitionEdgeKind::Local;
+    ir.add_transition(loc);
+
+    TransitionEdge ext("SubA", "SubB", "Step");
+    ext.kind = TransitionEdgeKind::External;
+    ir.add_transition(ext);
+
+    const std::string dot = DotSerializer::serialize(ir);
+    EXPECT_NE(dot.find("comment=\"local\""), std::string::npos) << dot;
+
+    DotParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(dot, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 2u);
+
+    bool found_local = false;
+    bool found_external = false;
+    for (const auto& t : parsed.transitions) {
+        if (t.event == "Reset") {
+            EXPECT_EQ(t.kind, TransitionEdgeKind::Local);
+            found_local = true;
+        } else if (t.event == "Step") {
+            EXPECT_EQ(t.kind, TransitionEdgeKind::External);
+            found_external = true;
+        }
+    }
+    EXPECT_TRUE(found_local);
+    EXPECT_TRUE(found_external);
+}
+
 }  // namespace

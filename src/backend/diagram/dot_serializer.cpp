@@ -90,10 +90,42 @@ std::string DotSerializer::serialize(const FsmIr& model) {
     }
     for (const auto& port : model.ports) {
         out << "    // @fsm:port name=" << port.name << " type=" << port.type
-            << " dir=" << (port.is_out() ? "out" : (port.direction == PortDirection::InOut ? "inout" : "in")) << "\n";
+            << " dir=" << (port.is_out() ? "out" : (port.direction == PortDirection::InOut ? "inout" : "in"));
+        if (port.physical_unit.has_value()) {
+            out << " unit=\"" << *port.physical_unit << "\"";
+        }
+        if (port.min_value.has_value()) {
+            out << " min=" << *port.min_value;
+        }
+        if (port.max_value.has_value()) {
+            out << " max=" << *port.max_value;
+        }
+        if (!port.constraint.empty()) {
+            out << " constraint=\"" << port.constraint << "\"";
+        }
+        if (!port.description.empty()) {
+            out << " desc=\"" << port.description << "\"";
+        }
+        out << "\n";
     }
     for (const auto& var : model.variables) {
-        out << "    // @fsm:var name=" << var.name << " type=" << var.type << " init=" << var.initial_value << "\n";
+        out << "    // @fsm:var name=" << var.name << " type=" << var.type;
+        if (var.physical_unit.has_value()) {
+            out << " unit=\"" << *var.physical_unit << "\"";
+        }
+        if (!var.initial_value.empty()) {
+            out << " init=" << var.initial_value;
+        }
+        if (var.min_value.has_value()) {
+            out << " min=" << *var.min_value;
+        }
+        if (var.max_value.has_value()) {
+            out << " max=" << *var.max_value;
+        }
+        if (!var.description.empty()) {
+            out << " desc=\"" << var.description << "\"";
+        }
+        out << "\n";
     }
     for (const auto& sig : model.signals) {
         out << "    // @fsm:signal " << sig.name << "\n";

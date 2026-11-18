@@ -467,4 +467,51 @@ TEST(DotParser, InternalTransition_PreservedAcrossSerializerRoundtrip) {
     EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
 }
 
+/**
+ * @brief Regression: `DotSerializer` omits `init=` when `var.initial_value` is empty and preserves
+ * port/variable metadata (`min`, `max`, `unit`, `constraint`) across DOT roundtrips.
+ * @scenario Serialize an FSM with an uninitialized `string` variable and constrained `in` port, then re-parse.
+ * @expected Serialized DOT has no `init=` on the uninitialized variable, and re-parsed IR preserves empty
+ * `initial_value`, `min_value`, `max_value`, `physical_unit`, and `constraint`.
+ */
+TEST(DotParser, UninitializedVarAndPortMetadata_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "DotMetaRt";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+
+    VariableDefinition msg;
+    msg.name = "msg";
+    msg.type = DataType::string();
+    msg.initial_value.clear();
+    msg.physical_unit = "utf8";
+    ir.add_variable(msg);
+
+    PortDefinition spd("speed", DataType::int32(), PortDirection::In);
+    spd.min_value = 0.0;
+    spd.max_value = 250.0;
+    spd.constraint = "self >= 0";
+    ir.add_port(spd);
+
+    const std::string dot = DotSerializer::serialize(ir);
+    EXPECT_EQ(dot.find("init="), std::string::npos) << dot;
+
+    DotParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(dot, parsed, err)) << err;
+
+    const auto* p_msg = parsed.find_variable("msg");
+    ASSERT_NE(p_msg, nullptr);
+    EXPECT_TRUE(p_msg->initial_value.empty());
+    ASSERT_TRUE(p_msg->physical_unit.has_value());
+    EXPECT_EQ(*p_msg->physical_unit, "utf8");
+
+    const auto* p_spd = parsed.find_port("speed");
+    ASSERT_NE(p_spd, nullptr);
+    EXPECT_EQ(p_spd->min_value, std::optional<double>(0.0));
+    EXPECT_EQ(p_spd->max_value, std::optional<double>(250.0));
+    EXPECT_EQ(p_spd->constraint, "self >= 0");
+}
+
 }  // namespace

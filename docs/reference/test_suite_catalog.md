@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 627  
+**Total Documented Test Cases**: 628  
 
 ---
 
@@ -690,6 +690,9 @@
 
 #### `FormalRoundtrip.Sysml2Serializer_PreservesAssignmentBlocksAcrossRoundtrip`
 **Test Intent**: Verify Sysml2Serializer emits assignment action blocks for entry, exit, and transitions.
+
+#### `FormalRoundtrip.SmvSerializer_EmitsEnumSetForEnumTypedVariables`
+**Test Intent**: Regression: `SmvSerializer` emits SMV enumeration sets (`{IdleMode, RunMode}`) for enum-typed
 
 ---
 

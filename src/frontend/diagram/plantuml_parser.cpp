@@ -18,6 +18,7 @@ bool PlantUmlParser::parse(std::string_view content, FsmIr& out_model, std::stri
     std::string line;
     size_t line_num = 0;
     bool in_block_comment = false;
+    bool pending_local_transition = false;
     std::vector<std::string> parent_stack;
     std::vector<size_t> scope_state_start_idx;
     std::vector<std::vector<size_t>> scope_region_splits;
@@ -77,6 +78,10 @@ bool PlantUmlParser::parse(std::string_view content, FsmIr& out_model, std::stri
 
         if (DirectiveParser::is_directive(trimmed)) {
             std::string body = DirectiveParser::extract_directive_body(trimmed);
+            if (body == "local") {
+                pending_local_transition = true;
+                continue;
+            }
             if (DirectiveParser::parse_model_directive(body, out_model)) {
                 continue;
             } else if (body.rfind("state", 0) == 0) {
@@ -257,8 +262,13 @@ bool PlantUmlParser::parse(std::string_view content, FsmIr& out_model, std::stri
 
         // Transition lines: Source --> Target or Source -> Target
         if (trimmed.find("->") != std::string_view::npos) {
+            const size_t prev_transitions = out_model.transitions.size();
             if (!parse_transition_line(trimmed, out_model, out_error, line_num, parent_stack)) {
                 return false;
+            }
+            if (pending_local_transition && out_model.transitions.size() > prev_transitions) {
+                out_model.transitions.back().kind = TransitionEdgeKind::Local;
+                pending_local_transition = false;
             }
             continue;
         }

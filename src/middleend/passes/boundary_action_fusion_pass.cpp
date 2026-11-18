@@ -91,7 +91,7 @@ bool BoundaryActionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     // that ancestor transition at runtime. Keep their exit_actions intact on the StateNode rather than fusing/clearing.
     std::unordered_set<std::string> external_sources;
     for (const auto& t : ir.transitions) {
-        if (t.kind != TransitionEdgeKind::Internal && !t.source.empty()) {
+        if (t.kind != TransitionEdgeKind::Internal && t.kind != TransitionEdgeKind::Local && !t.source.empty()) {
             external_sources.insert(t.source);
         }
     }
@@ -126,7 +126,7 @@ bool BoundaryActionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             continue;
         }
 
-        std::string lca = compute_lca(ir, t.source, t.target);
+        std::string lca = (t.kind == TransitionEdgeKind::Local) ? t.source : compute_lca(ir, t.source, t.target);
 
         // 1. Ascend from source up to LCA (excluding LCA); collect names for post-fusion clearing.
         std::vector<const StateNode*> exit_path;

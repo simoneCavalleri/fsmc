@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 709  
+**Total Documented Test Cases**: 710  
 
 ---
 
@@ -1933,6 +1933,9 @@
 
 #### `DeadStatePruning.InitialStateIdDifferentFromName_PreservesReachableStates`
 **Test Intent**: Verify reachability when initial_state_id is distinct from initial_state name.
+
+#### `DeadStatePruning.MultiTargetForkTransition_PreservesAllTargetBranches`
+**Test Intent**: Regression: `DeadStatePruningPass` traverses `target_ids` and `multi_target_ids` on
 
 ### [`test_guard_simplification.cpp`](../../tests/middleend/optimization/test_guard_simplification.cpp) (`tests/middleend/optimization/test_guard_simplification.cpp`)
 #### `GuardSimplification.AlgebraicBooleanExpressions_SimplifiedAndNormalized`

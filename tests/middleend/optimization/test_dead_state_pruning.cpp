@@ -173,4 +173,33 @@ TEST(DeadStatePruning, InitialStateIdDifferentFromName_PreservesReachableStates)
     EXPECT_EQ(model.transitions.size(), 1u);
 }
 
+/**
+ * @brief Regression: `DeadStatePruningPass` traverses `target_ids` and `multi_target_ids` on
+ * lowered fork transitions so secondary fork branch states are not falsely pruned.
+ * @scenario Model with `Init -> {RegA, RegB}` via `target_ids` and an unrelated unreachable `Dead` state.
+ * @expected `Init`, `RegA`, and `RegB` are preserved while `Dead` is pruned.
+ */
+TEST(DeadStatePruning, MultiTargetForkTransition_PreservesAllTargetBranches) {
+    FsmIr model;
+    model.name = "MultiTargetPrune";
+    model.initial_state = "Init";
+    model.add_state("Init");
+    model.add_state("RegA");
+    model.add_state("RegB");
+    model.add_state("Dead");
+
+    TransitionEdge fork_edge("Init", "RegA", "EvFork");
+    fork_edge.target_ids = {"RegA", "RegB"};
+    model.add_transition(std::move(fork_edge));
+
+    DiagnosticEngine diag;
+    DeadStatePruningPass pass(true);
+    pass.run(model, diag);
+
+    EXPECT_NE(model.find_state("Init"), nullptr);
+    EXPECT_NE(model.find_state("RegA"), nullptr);
+    EXPECT_NE(model.find_state("RegB"), nullptr);
+    EXPECT_EQ(model.find_state("Dead"), nullptr);
+}
+
 }  // namespace

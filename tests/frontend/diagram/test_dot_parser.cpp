@@ -276,4 +276,29 @@ TEST(DotParser, HistoryPseudostate_PopulatesShallowAndDeepHistory) {
     EXPECT_TRUE(deep->has_deep_history);
 }
 
+/**
+ * @brief Regression: Graphviz DOT quoted node identifiers (`"Idle State" -> "Active State"`) are unquoted
+ * and sanitized cleanly instead of failing with "No valid states or transitions extracted".
+ * @scenario Parse DOT with quoted node names on initial, attribute, and edge lines.
+ * @expected `initial_state == "Idle_State"` and transition `Idle_State -> Active_State` on `Start`.
+ */
+TEST(DotParser, QuotedNodeNames_ParsedIntoValidStatesAndTransitions) {
+    const std::string dot_content = R"dot(digraph DotQuoted {
+    __start__ -> "Idle State";
+    "Idle State" [label="Idle State"];
+    "Idle State" -> "Active State" [label="Start"];
+}
+)dot";
+
+    DotParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    EXPECT_EQ(ir.initial_state, "Idle_State");
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    EXPECT_EQ(ir.transitions[0].source, "Idle_State");
+    EXPECT_EQ(ir.transitions[0].target, "Active_State");
+    EXPECT_EQ(ir.transitions[0].event, "Start");
+}
+
 }  // namespace

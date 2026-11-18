@@ -65,11 +65,19 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
     std::map<std::string, bool> point_nodes;
 
     // Regex helpers
+    auto unquote_node = [](std::string s) -> std::string {
+        if (s.size() >= 2 && s.front() == '"' && s.back() == '"') {
+            return s.substr(1, s.size() - 2);
+        }
+        return s;
+    };
+
     const std::regex digraph_regex(R"(^\s*(?:digraph|graph)\s+([A-Za-z0-9_]+))", std::regex::icase);
     const std::regex subgraph_regex(R"(^\s*subgraph\s+(?:cluster_)?([A-Za-z0-9_]+)\s*\{?)", std::regex::icase);
-    const std::regex node_point_regex(R"(^\s*([A-Za-z0-9_]+)\s*\[.*shape\s*=\s*(?:point|circle|none).*\].*)",
-                                      std::regex::icase);
-    const std::regex edge_regex(R"(^\s*([A-Za-z0-9_\[\]\*]+)\s*(?:->|--)\s*([A-Za-z0-9_\[\]\*]+)(?:\s*\[(.*)\])?.*)");
+    const std::regex node_point_regex(
+        R"raw(^\s*([A-Za-z0-9_]+|"[^"]*")\s*\[.*shape\s*=\s*(?:point|circle|none).*\].*)raw", std::regex::icase);
+    const std::regex edge_regex(
+        R"raw(^\s*([A-Za-z0-9_\[\]\*]+|"[^"]*")\s*(?:->|--)\s*([A-Za-z0-9_\[\]\*]+|"[^"]*")(?:\s*\[(.*)\])?.*)raw");
     const std::regex label_attr_regex(R"raw(label\s*=\s*"([^"]*)")raw", std::regex::icase);
 
     while (std::getline(stream, line)) {
@@ -236,7 +244,7 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
         // Check point / initial / history node declaration (e.g. init [shape=point]; or __hist_State__ [shape=circle,
         // label="H*"];)
         if (std::regex_search(trimmed, match, node_point_regex)) {
-            std::string node_name = sanitize_identifier(match[1].str());
+            std::string node_name = sanitize_identifier(unquote_node(match[1].str()));
             if (node_name.rfind("__hist_", 0) == 0 && !current_parent_state.empty()) {
                 if (auto* parent = model.find_state_mut(current_parent_state)) {
                     parent->has_history = true;
@@ -250,9 +258,9 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
         }
 
         // Check node attributes (e.g. StateName [defer="Event1, Event2"];)
-        const std::regex node_attr_regex(R"(^\s*([A-Za-z0-9_]+)\s*\[(.*)\])", std::regex::icase);
+        const std::regex node_attr_regex(R"raw(^\s*([A-Za-z0-9_]+|"[^"]*")\s*\[(.*)\])raw", std::regex::icase);
         if (!std::regex_search(trimmed, match, edge_regex) && std::regex_search(trimmed, match, node_attr_regex)) {
-            std::string node_name = sanitize_identifier(match[1].str());
+            std::string node_name = sanitize_identifier(unquote_node(match[1].str()));
             std::string attrs = match[2].str();
 
             if (node_name == "node" || node_name == "edge" || node_name == "graph" || node_name == "digraph" ||
@@ -300,8 +308,8 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
 
         // Check edge transition S1 -> S2 [label="..."]
         if (std::regex_search(trimmed, match, edge_regex)) {
-            std::string src_raw = match[1].str();
-            std::string dst_raw = match[2].str();
+            std::string src_raw = unquote_node(match[1].str());
+            std::string dst_raw = unquote_node(match[2].str());
             std::string attrs = match[3].matched ? match[3].str() : "";
 
             std::string label_str;

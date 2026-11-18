@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 634  
+**Total Documented Test Cases**: 635  
 
 ---
 
@@ -853,6 +853,9 @@
 #### `DotParser.HistoryPseudostate_PopulatesShallowAndDeepHistory`
 **Test Intent**: Regression: DOT `__hist_<State>__` nodes with `label="H"` or `label="H*"` populate `has_history` and
 `has_deep_history` on the enclosing composite state.
+
+#### `DotParser.QuotedNodeNames_ParsedIntoValidStatesAndTransitions`
+**Test Intent**: Regression: Graphviz DOT quoted node identifiers (`"Idle State" -> "Active State"`) are unquoted
 
 ### [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) (`tests/frontend/diagram/test_mermaid_parser.cpp`)
 #### `MermaidParser.BasicDiagram_ParsedIntoValidFsmIr`

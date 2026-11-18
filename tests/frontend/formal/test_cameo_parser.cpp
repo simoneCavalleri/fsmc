@@ -747,4 +747,36 @@ TEST(CameoParser, MultipleTransitionsSameEndpoints_DisambiguateAssignmentActionN
     EXPECT_NE(ir.transitions[0].transition_action->name, ir.transitions[1].transition_action->name);
 }
 
+/**
+ * @brief Regression: `CameoXmiParser` reconstructs `TimeTrigger` when parsing `trigger="after_100ms"` /
+ * `trigger="every_50ms"` attributes emitted by `CameoSerializer`.
+ * @scenario Parse Cameo XMI with `<transition source="_s1" target="_s2" trigger="after_100ms"/>`.
+ * @expected Transition has a `TimeTrigger` with `duration_in_ms() == 100`.
+ */
+TEST(CameoParser, TimeTriggerAttribute_PopulatesTimeTrigger) {
+    const std::string xmi = R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://schema.omg.org/spec/XMI/2.1" xmlns:uml="http://schema.omg.org/spec/UML/2.0">
+  <uml:Model xmi:id="_m1" name="TimerCameo">
+    <packagedElement xmi:type="uml:StateMachine" xmi:id="_sm1" name="TimerCameo">
+      <region xmi:id="_r1" name="Region1">
+        <subvertex xmi:type="uml:Pseudostate" xmi:id="_ps_init" kind="initial"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s1" name="Busy"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s2" name="Idle"/>
+        <transition xmi:id="_t0" source="_ps_init" target="_s1"/>
+        <transition xmi:id="_t1" source="_s1" target="_s2" trigger="after_100ms"/>
+      </region>
+    </packagedElement>
+  </uml:Model>
+</xmi:XMI>
+)xml";
+
+    CameoXmiParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xmi, ir, err)) << err;
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(ir.transitions[0].trigger));
+    EXPECT_EQ(std::get<TimeTrigger>(ir.transitions[0].trigger).duration_in_ms(), 100u);
+}
+
 }  // namespace

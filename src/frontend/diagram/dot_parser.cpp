@@ -233,9 +233,18 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
             continue;
         }
 
-        // Check point / initial node declaration (e.g. init [shape=point];)
+        // Check point / initial / history node declaration (e.g. init [shape=point]; or __hist_State__ [shape=circle,
+        // label="H*"];)
         if (std::regex_search(trimmed, match, node_point_regex)) {
             std::string node_name = sanitize_identifier(match[1].str());
+            if (node_name.rfind("__hist_", 0) == 0 && !current_parent_state.empty()) {
+                if (auto* parent = model.find_state_mut(current_parent_state)) {
+                    parent->has_history = true;
+                    if (trimmed.find("label=\"H*\"") != std::string::npos) {
+                        parent->has_deep_history = true;
+                    }
+                }
+            }
             point_nodes[node_name] = true;
             continue;
         }

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 628  
+**Total Documented Test Cases**: 629  
 
 ---
 
@@ -849,6 +849,10 @@
 #### `DotParser.ParallelCluster_PopulatesOrthogonalRegions`
 **Test Intent**: Regression: DOT subgraphs marked with `// @fsm:parallel` or dashed style populate `StateKind::Parallel` and
 `orthogonal_regions`.
+
+#### `DotParser.HistoryPseudostate_PopulatesShallowAndDeepHistory`
+**Test Intent**: Regression: DOT `__hist_<State>__` nodes with `label="H"` or `label="H*"` populate `has_history` and
+`has_deep_history` on the enclosing composite state.
 
 ### [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) (`tests/frontend/diagram/test_mermaid_parser.cpp`)
 #### `MermaidParser.BasicDiagram_ParsedIntoValidFsmIr`

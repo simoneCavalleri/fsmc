@@ -233,4 +233,47 @@ TEST(DotParser, ParallelCluster_PopulatesOrthogonalRegions) {
     EXPECT_EQ(op->orthogonal_regions[1].initial_state_id, "B1");
 }
 
+/**
+ * @brief Regression: DOT `__hist_<State>__` nodes with `label="H"` or `label="H*"` populate `has_history` and
+ * `has_deep_history` on the enclosing composite state.
+ * @scenario Parse DOT subgraphs containing `__hist_Shallow__ [shape=circle, label="H"]` and
+ * `__hist_Deep__ [shape=circle, label="H*"]`.
+ * @expected `Shallow` has `has_history=true, has_deep_history=false`; `Deep` has both `true`.
+ */
+TEST(DotParser, HistoryPseudostate_PopulatesShallowAndDeepHistory) {
+    const std::string dot_content = R"dot(digraph DotHistory {
+    __start__ -> Shallow;
+    subgraph cluster_Shallow {
+        label="Shallow";
+        __start_Shallow__ [shape=circle, label=""];
+        __start_Shallow__ -> S1;
+        __hist_Shallow__ [shape=circle, label="H"];
+        S1;
+    }
+    subgraph cluster_Deep {
+        label="Deep";
+        __start_Deep__ [shape=circle, label=""];
+        __start_Deep__ -> D1;
+        __hist_Deep__ [shape=circle, label="H*"];
+        D1;
+    }
+    Shallow -> Deep [label="Switch"];
+}
+)dot";
+
+    DotParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+
+    const auto* shallow = ir.find_state("Shallow");
+    const auto* deep = ir.find_state("Deep");
+    ASSERT_NE(shallow, nullptr);
+    ASSERT_NE(deep, nullptr);
+    EXPECT_TRUE(shallow->has_history);
+    EXPECT_FALSE(shallow->has_deep_history);
+    EXPECT_TRUE(deep->has_history);
+    EXPECT_TRUE(deep->has_deep_history);
+}
+
 }  // namespace

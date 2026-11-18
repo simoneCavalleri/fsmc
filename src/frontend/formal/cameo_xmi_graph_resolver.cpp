@@ -593,6 +593,18 @@ void CameoXmiGraphResolver::process_transition(const std::shared_ptr<XmlNode>& t
     if (!action_name.empty()) {
         std::string prefix = sanitize_identifier(src_name) + "_" + sanitize_identifier(dst_name) + "_act";
         auto assign_sig = try_build_cameo_assignment_action(action_name, prefix);
+        if (assign_sig.has_value()) {
+            const std::string base = assign_sig->name;
+            std::size_t suffix = 2;
+            auto has_action = [&](const std::string& n) {
+                return std::any_of(model.actions.begin(), model.actions.end(),
+                                   [&](const auto& a) { return a.name == n; });
+            };
+            while (has_action(assign_sig->name)) {
+                assign_sig->name = base + "_" + std::to_string(suffix++);
+                assign_sig->invocation = assign_sig->name;
+            }
+        }
         trans.transition_action =
             assign_sig.has_value() ? std::move(*assign_sig) : ActionSignature(sanitize_identifier(action_name));
         model.add_action(trans.transition_action->name);

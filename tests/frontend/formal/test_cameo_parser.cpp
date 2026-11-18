@@ -705,4 +705,46 @@ TEST(CameoXmiParser, NestedTransitionInsideSubvertex_ExtractedProperly) {
     EXPECT_EQ(ir.transitions[0].event, "MySig");
 }
 
+/**
+ * @brief Regression: Multiple Cameo XMI transitions between the same `source` and `target` states
+ * assigning to the same variable receive disambiguated synthetic action names (`Idle_Done_act_x`,
+ * `Idle_Done_act_x_2`) so their assignments do not collide in C++ codegen.
+ * @scenario Parse Cameo XMI with two transitions `Idle -> Done` (`x = 1` and `x = 2`).
+ * @expected `transitions[0].transition_action->name != transitions[1].transition_action->name`.
+ */
+TEST(CameoParser, MultipleTransitionsSameEndpoints_DisambiguateAssignmentActionNames) {
+    const std::string xmi = R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://schema.omg.org/spec/XMI/2.1" xmlns:uml="http://schema.omg.org/spec/UML/2.0">
+  <uml:Model xmi:id="_m1" name="SameEpCameo">
+    <packagedElement xmi:type="uml:StateMachine" xmi:id="_sm1" name="SameEpCameo">
+      <!-- @fsm:var name=x type=int init=0 -->
+      <region xmi:id="_r1" name="Region1">
+        <subvertex xmi:type="uml:Pseudostate" xmi:id="_ps_init" kind="initial"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s1" name="Idle"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s2" name="Done"/>
+        <transition xmi:id="_t0" source="_ps_init" target="_s1"/>
+        <transition xmi:id="_t1" source="_s1" target="_s2">
+          <trigger xmi:id="_tr1" name="Ev1"/>
+          <effect xmi:type="uml:OpaqueBehavior" body="x = 1"/>
+        </transition>
+        <transition xmi:id="_t2" source="_s1" target="_s2">
+          <trigger xmi:id="_tr2" name="Ev2"/>
+          <effect xmi:type="uml:OpaqueBehavior" body="x = 2"/>
+        </transition>
+      </region>
+    </packagedElement>
+  </uml:Model>
+</xmi:XMI>
+)xml";
+
+    CameoXmiParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xmi, ir, err)) << err;
+    ASSERT_EQ(ir.transitions.size(), 2u);
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    ASSERT_TRUE(ir.transitions[1].transition_action.has_value());
+    EXPECT_NE(ir.transitions[0].transition_action->name, ir.transitions[1].transition_action->name);
+}
+
 }  // namespace

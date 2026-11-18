@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 654  
+**Total Documented Test Cases**: 655  
 
 ---
 
@@ -1050,6 +1050,9 @@
 #### `CameoXmiParser.NestedTransitionInsideSubvertex_ExtractedProperly`
 **Test Intent**: Regression: `<transition>` elements nested directly inside `<subvertex xmi:type="uml:State">`
 (common for internal/self-transitions in UML XMI) are extracted by `CameoXmiGraphResolver`.
+
+#### `CameoParser.MultipleTransitionsSameEndpoints_DisambiguateAssignmentActionNames`
+**Test Intent**: Regression: Multiple Cameo XMI transitions between the same `source` and `target` states
 
 ### [`test_scxml_parser.cpp`](../../tests/frontend/formal/test_scxml_parser.cpp) (`tests/frontend/formal/test_scxml_parser.cpp`)
 #### `ScxmlParser.BasicScxmlDocument_ParsedIntoValidFsmIr`

@@ -45,7 +45,7 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
     const std::string tag_name = is_parallel ? "parallel" : (state.kind == StateKind::Final ? "final" : "state");
     out << pad << "<" << tag_name << " id=\"" << escape_xml(state.name) << "\"";
     if (state.kind == StateKind::Fork || state.kind == StateKind::Join || state.kind == StateKind::EntryPoint ||
-        state.kind == StateKind::ExitPoint) {
+        state.kind == StateKind::ExitPoint || state.kind == StateKind::Choice) {
         out << " kind=\"" << state_kind_to_string(state.kind) << "\"";
     }
     if (!is_parallel && !state.initial_sub_state.empty()) {

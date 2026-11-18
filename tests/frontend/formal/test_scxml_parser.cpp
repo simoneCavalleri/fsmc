@@ -625,4 +625,31 @@ TEST(ScxmlSerializerTest, ChangeTrigger_PreservedAcrossRoundtrip) {
     EXPECT_EQ(std::get<ChangeTrigger>(parsed.transitions[0].trigger).raw_expression, "count > 5");
 }
 
+/**
+ * @brief Regression: `ScxmlSerializer` emits `kind="choice"` for `ChoiceNode` entries so
+ * `ScxmlParser` preserves `choice_nodes` across SCXML roundtrips.
+ * @scenario Serialize an FSM with `ChoiceNode("C1")` to SCXML and re-parse.
+ * @expected Serialized SCXML contains `kind="choice"` and re-parsed IR has `is_choice_node("C1") == true`.
+ */
+TEST(ScxmlSerializerTest, ChoiceNode_PreservedAcrossRoundtrip) {
+    FsmIr ir;
+    ir.name = "ScxmlChoiceRt";
+    ir.initial_state = "Init";
+    ir.add_state("Init");
+    ir.add_choice_node("C1");
+    ir.add_state("High");
+    ir.add_transition(TransitionEdge("Init", "C1", "Eval"));
+    ir.add_transition(TransitionEdge("C1", "High", ""));
+
+    const std::string xml = ScxmlSerializer::serialize(ir);
+    EXPECT_NE(xml.find("kind=\"Choice\""), std::string::npos) << xml;
+
+    ScxmlParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+    EXPECT_TRUE(parsed.is_choice_node("C1"));
+    EXPECT_FALSE(parsed.choice_nodes.empty());
+}
+
 }  // namespace

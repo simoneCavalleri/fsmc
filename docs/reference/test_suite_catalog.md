@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 697  
+**Total Documented Test Cases**: 698  
 
 ---
 
@@ -1185,6 +1185,10 @@
 
 #### `ScxmlSerializerTest.ChangeTrigger_PreservedAcrossRoundtrip`
 **Test Intent**: Regression: `ScxmlSerializer` emits `event="when(<expr>)"` for `ChangeTrigger`
+
+#### `ScxmlSerializerTest.ChoiceNode_PreservedAcrossRoundtrip`
+**Test Intent**: Regression: `ScxmlSerializer` emits `kind="choice"` for `ChoiceNode` entries so
+`ScxmlParser` preserves `choice_nodes` across SCXML roundtrips.
 
 ### [`test_scxml_semantic_completeness.cpp`](../../tests/frontend/formal/test_scxml_semantic_completeness.cpp) (`tests/frontend/formal/test_scxml_semantic_completeness.cpp`)
 #### `ScxmlSemanticCompleteness.ParallelRegions_ParsedAsOrthogonalStates`

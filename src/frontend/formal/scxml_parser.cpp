@@ -188,7 +188,11 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
             } else if (std::string kind_attr = child->get_attr("kind"); !kind_attr.empty()) {
                 kind = state_kind_from_string(kind_attr);
             }
-            model.add_state(state_name, current_parent_state, kind);
+            if (kind == StateKind::Choice) {
+                model.add_choice_node(state_name);
+            } else {
+                model.add_state(state_name, current_parent_state, kind);
+            }
 
             std::string sub_initial = child->get_attr("initial");
             if (!current_parent_state.empty()) {

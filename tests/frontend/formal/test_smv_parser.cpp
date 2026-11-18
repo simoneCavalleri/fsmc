@@ -769,6 +769,7 @@ TEST(SmvParser, PortsEnumsStructsAndTypedVars_PreservedAcrossSerializerRoundtrip
     }
     EXPECT_TRUE(found_enum);
     EXPECT_TRUE(found_struct);
+    EXPECT_EQ(parsed.name, "SmvTypesRt");
 }
 
 }  // namespace

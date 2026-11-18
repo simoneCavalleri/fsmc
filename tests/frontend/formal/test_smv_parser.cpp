@@ -871,4 +871,57 @@ TEST(SmvParser, SignalAttributesAndValidator_PreservedAcrossSerializerRoundtrip)
     EXPECT_EQ(p_tel->validators[0], "val > 0");
 }
 
+/**
+ * @brief Regression: `SmvSerializer` and `SmvParser` preserve `TransitionEdgeKind::Local`
+ * via `-- kind=local` transition comments.
+ * @scenario Serialize an FSM with a local transition and an external transition to SMV and re-parse.
+ * @expected Re-parsed local transition has `kind == TransitionEdgeKind::Local`; external remains `External`.
+ */
+TEST(SmvParser, LocalTransition_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "SmvLocalRt";
+    ir.initial_state = "Active";
+    StateNode active("Active");
+    active.is_composite = true;
+    active.initial_sub_state = "SubA";
+    ir.add_state(active);
+    StateNode sub_a("SubA");
+    sub_a.parent_state = "Active";
+    ir.add_state(sub_a);
+    StateNode sub_b("SubB");
+    sub_b.parent_state = "Active";
+    ir.add_state(sub_b);
+
+    TransitionEdge loc("Active", "SubB", "Reset");
+    loc.kind = TransitionEdgeKind::Local;
+    ir.add_transition(loc);
+
+    TransitionEdge ext("SubA", "SubB", "Step");
+    ext.kind = TransitionEdgeKind::External;
+    ir.add_transition(ext);
+
+    const std::string smv = fsm::backend::formal::SmvSerializer::serialize(ir);
+    EXPECT_NE(smv.find("kind=local"), std::string::npos) << smv;
+
+    SmvParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 2u);
+
+    bool found_local = false;
+    bool found_external = false;
+    for (const auto& t : parsed.transitions) {
+        if (t.event == "Reset") {
+            EXPECT_EQ(t.kind, TransitionEdgeKind::Local);
+            found_local = true;
+        } else if (t.event == "Step") {
+            EXPECT_EQ(t.kind, TransitionEdgeKind::External);
+            found_external = true;
+        }
+    }
+    EXPECT_TRUE(found_local);
+    EXPECT_TRUE(found_external);
+}
+
 }  // namespace

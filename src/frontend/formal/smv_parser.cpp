@@ -416,11 +416,15 @@ static std::string normalize_smv_guard_expr(std::string_view expr) {
 void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
     std::string clean_line = line;
     std::string raw_action_from_comment;
-    bool is_internal_transition = false;
+    TransitionEdgeKind parsed_kind = TransitionEdgeKind::External;
     auto comment_pos = line.find("--");
     if (comment_pos != std::string::npos) {
         std::string comment = line.substr(comment_pos + 2);
-        is_internal_transition = (comment.find("kind=internal") != std::string::npos);
+        if (comment.find("kind=internal") != std::string::npos) {
+            parsed_kind = TransitionEdgeKind::Internal;
+        } else if (comment.find("kind=local") != std::string::npos) {
+            parsed_kind = TransitionEdgeKind::Local;
+        }
         auto act_pos = comment.find("action:");
         if (act_pos == std::string::npos) {
             act_pos = comment.find("action=");
@@ -639,9 +643,7 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
                     }
                 }
             }
-            if (is_internal_transition) {
-                trans.kind = TransitionEdgeKind::Internal;
-            }
+            trans.kind = parsed_kind;
             model.add_transition(trans);
         }
     }

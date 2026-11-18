@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 713  
+**Total Documented Test Cases**: 714  
 
 ---
 
@@ -1300,6 +1300,9 @@
 #### `SmvParser.SignalAttributesAndValidator_PreservedAcrossSerializerRoundtrip`
 **Test Intent**: Regression: `SmvSerializer` emits `-- @fsm:signal` directives for typed payload
 `SignalDefinition::attributes` and `validators` so `SmvParser` preserves them across roundtrips.
+
+#### `SmvParser.LocalTransition_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `SmvSerializer` and `SmvParser` preserve `TransitionEdgeKind::Local`
 
 ### [`test_stateflow_parser.cpp`](../../tests/frontend/formal/test_stateflow_parser.cpp) (`tests/frontend/formal/test_stateflow_parser.cpp`)
 #### `StateflowParser.BasicStateflowChart_ParsedIntoValidFsmIr`

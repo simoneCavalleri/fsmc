@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 647  
+**Total Documented Test Cases**: 648  
 
 ---
 
@@ -914,6 +914,9 @@
 
 #### `MermaidParser.Ports_RoundtripThroughDirectives`
 **Test Intent**: Regression: `MermaidSerializer` emits `%% @fsm:port` directives so `in`/`out` ports survive
+
+#### `MermaidParser.StandaloneHistoryTargetInsideComposite_ResolvesToParent`
+**Test Intent**: Regression: Mermaid standalone `[H]` / `[H*]` history target inside a composite state
 
 ### [`test_multiline_actions.cpp`](../../tests/frontend/diagram/test_multiline_actions.cpp) (`tests/frontend/diagram/test_multiline_actions.cpp`)
 - *(Executable binary test verification)*

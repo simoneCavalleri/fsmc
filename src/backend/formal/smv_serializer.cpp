@@ -808,11 +808,16 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
     };
 
     for (const auto& s : model.states) {
-        if (!s.parent_state.empty() || s.is_composite || !s.initial_sub_state.empty() || s.has_history ||
-            s.has_deep_history || (s.do_activity.has_value() && !s.do_activity->empty())) {
+        if (!s.parent_state.empty() || s.is_composite || s.kind == StateKind::Parallel ||
+            !s.initial_sub_state.empty() || s.has_history || s.has_deep_history ||
+            (s.do_activity.has_value() && !s.do_activity->empty()) ||
+            (s.time_invariant.has_value() && !s.time_invariant->empty())) {
             out << "-- @fsm:state name=" << sanitize_smv_ident(s.name);
             if (!s.parent_state.empty()) {
                 out << " parent=" << sanitize_smv_ident(s.parent_state);
+            }
+            if (s.kind == StateKind::Parallel) {
+                out << " kind=parallel";
             }
             if (s.is_composite) {
                 out << " composite=true";
@@ -828,7 +833,15 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
             if (s.do_activity.has_value() && !s.do_activity->empty()) {
                 out << " do_activity=\"" << *s.do_activity << "\"";
             }
+            if (s.time_invariant.has_value() && !s.time_invariant->empty()) {
+                out << " invariant=\"" << *s.time_invariant << "\"";
+            }
             out << "\n";
+        }
+        for (const auto& req : s.traceability_reqs) {
+            if (!req.empty()) {
+                out << "-- @fsm:req state=" << sanitize_smv_ident(s.name) << " req=\"" << req << "\"\n";
+            }
         }
         for (const auto& ea : s.entry_actions) {
             std::string act_str = format_lifecycle_action(ea);

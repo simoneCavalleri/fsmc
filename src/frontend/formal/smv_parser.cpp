@@ -685,6 +685,11 @@ void SmvParser::parse_state_metadata_directive(const std::string& body, FsmIr& m
     if (do_pos != std::string::npos) {
         st->do_activity = extract_word_or_quoted(body, do_pos + 12);
     }
+
+    auto inv_pos = body.find("invariant=");
+    if (inv_pos != std::string::npos) {
+        st->time_invariant = extract_word_or_quoted(body, inv_pos + 10);
+    }
 }
 
 void SmvParser::parse_action_directive(const std::string& body, FsmIr& model, const std::string& type) {

@@ -772,4 +772,41 @@ TEST(SmvParser, PortsEnumsStructsAndTypedVars_PreservedAcrossSerializerRoundtrip
     EXPECT_EQ(parsed.name, "SmvTypesRt");
 }
 
+/**
+ * @brief Regression: `SmvSerializer` emits `invariant="..."`, `kind=parallel`, and `-- @fsm:req`
+ * directives so `SmvParser` preserves `time_invariant`, `StateKind::Parallel`, and `traceability_reqs`.
+ * @scenario Serialize an FSM with a parallel state and an active state carrying `REQ_001` and `500[ms]`, then re-parse.
+ * @expected Re-parsed IR keeps `StateKind::Parallel`, `traceability_reqs == {"REQ_001"}`, and `time_invariant ==
+ * "500[ms]"`.
+ */
+TEST(SmvParser, StateReqsTimeInvariantAndParallelKind_PreservedAcrossRoundtrip) {
+    FsmIr ir;
+    ir.name = "SmvStateMetaRt";
+    ir.initial_state = "Active";
+    auto& active = ir.add_state("Active");
+    active.traceability_reqs.push_back("REQ_001");
+    active.time_invariant = "500[ms]";
+
+    auto& ortho = ir.add_state("Ortho");
+    ortho.kind = StateKind::Parallel;
+    ortho.is_composite = true;
+
+    const std::string smv = fsm::backend::formal::SmvSerializer::serialize(ir);
+    SmvParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err;
+
+    const auto* p_active = parsed.find_state("Active");
+    ASSERT_NE(p_active, nullptr);
+    ASSERT_EQ(p_active->traceability_reqs.size(), 1u);
+    EXPECT_EQ(p_active->traceability_reqs[0], "REQ_001");
+    ASSERT_TRUE(p_active->time_invariant.has_value());
+    EXPECT_EQ(*p_active->time_invariant, "500[ms]");
+
+    const auto* p_ortho = parsed.find_state("Ortho");
+    ASSERT_NE(p_ortho, nullptr);
+    EXPECT_EQ(p_ortho->kind, StateKind::Parallel);
+}
+
 }  // namespace

@@ -489,4 +489,30 @@ Busy --> Idle : after_100ms
     EXPECT_EQ(std::get<TimeTrigger>(ir.transitions[0].trigger).duration_in_ms(), 100u);
 }
 
+/**
+ * @brief Regression: `PlantUmlSerializer` emits `State : Event / Action` for
+ * `TransitionEdgeKind::Internal` transitions so `PlantUmlParser` preserves `Internal` kind across roundtrips.
+ * @scenario Serialize an internal transition `Busy --Ping--> Busy` to PlantUML and re-parse.
+ * @expected Re-parsed transition has `kind == TransitionEdgeKind::Internal`.
+ */
+TEST(PlantUmlParser, InternalTransition_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "PumlIntRt";
+    ir.initial_state = "Busy";
+    ir.add_state("Busy");
+    TransitionEdge t("Busy", "Busy", "Ping");
+    t.kind = TransitionEdgeKind::Internal;
+    ir.add_transition(t);
+
+    const std::string puml = PlantUmlSerializer::serialize(ir);
+    EXPECT_NE(puml.find("Busy : Ping"), std::string::npos);
+
+    PlantUmlParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(puml, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 1u);
+    EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
+}
+
 }  // namespace

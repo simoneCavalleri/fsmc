@@ -295,19 +295,19 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
             static const std::regex prio_attr_regex(
                 R"regex(priority\s*=\s*"?(\d+)"?|(?:\[|\()(?:prio|priority)=(\d+)(?:\]|\)))regex", std::regex::icase);
             std::smatch prio_match;
-            if (std::regex_search(attrs, prio_match, prio_attr_regex)) {
-                std::string p_str = prio_match[1].matched ? prio_match[1].str() : prio_match[2].str();
-                try {
-                    priority = static_cast<std::uint32_t>(std::stoul(p_str));
-                } catch (...) {
-                }
-            } else if (std::regex_search(label_str, prio_match, prio_attr_regex)) {
+            if (std::regex_search(label_str, prio_match, prio_attr_regex)) {
                 std::string p_str = prio_match[1].matched ? prio_match[1].str() : prio_match[2].str();
                 try {
                     priority = static_cast<std::uint32_t>(std::stoul(p_str));
                 } catch (...) {
                 }
                 label_str = std::regex_replace(label_str, prio_attr_regex, "");
+            } else if (std::regex_search(attrs, prio_match, prio_attr_regex)) {
+                std::string p_str = prio_match[1].matched ? prio_match[1].str() : prio_match[2].str();
+                try {
+                    priority = static_cast<std::uint32_t>(std::stoul(p_str));
+                } catch (...) {
+                }
             }
 
             parse_label(label_str, event_name, guard_name, action_name);

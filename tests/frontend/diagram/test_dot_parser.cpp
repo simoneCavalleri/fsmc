@@ -167,4 +167,26 @@ TEST(DotParser, StateLifecycleAssignments_PopulatedInEntryAndExitActions) {
     EXPECT_EQ(ready->exit_actions[0].assignments[0].expression, "x + 1");
 }
 
+/**
+ * @brief Regression: inline `(prio=N)` inside DOT edge labels is stripped from `TransitionEdge::event`.
+ * @scenario Parse a DOT edge with `[label="(prio=5) CellsBalancedEvent / DisableShunts"]`.
+ * @expected `trans.priority == 5` and `trans.event == "CellsBalancedEvent"` (no `prio5_` prefix).
+ */
+TEST(DotParser, InlinePriorityLabel_StripsPrefixFromEventName) {
+    const std::string dot_content = R"dot(digraph DotPrio {
+    __start__ -> Active;
+    Active -> Idle [label="(prio=5) CellsBalancedEvent / DisableShunts"];
+}
+)dot";
+
+    DotParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    EXPECT_EQ(ir.transitions[0].priority, 5u);
+    EXPECT_EQ(ir.transitions[0].event, "CellsBalancedEvent");
+    EXPECT_EQ(ir.transitions[0].get_action(), "DisableShunts");
+}
+
 }  // namespace

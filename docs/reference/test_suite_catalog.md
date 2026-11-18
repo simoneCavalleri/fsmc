@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 684  
+**Total Documented Test Cases**: 685  
 
 ---
 
@@ -1416,6 +1416,9 @@
 #### `Sysml2Parser.PropertiesRoundtrip_PreservedAcrossSerializer`
 **Test Intent**: Regression: `Sysml2Serializer` emits `assert property <name> : <formula>;` for
 `model.properties` so temporal logic properties survive SysML v2 roundtrips.
+
+#### `Sysml2Parser.ForkAndJoinRoundtrip_PreservedAcrossSerializer`
+**Test Intent**: Regression: `Sysml2Serializer` emits `fork <Name>;` and `join <Name>;` for `StateKind::Fork`
 
 ### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`

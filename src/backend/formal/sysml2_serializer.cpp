@@ -22,6 +22,14 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
         out << pad << "exit point " << state.name << ";\n";
         return;
     }
+    if (state.kind == StateKind::Fork) {
+        out << pad << "fork " << state.name << ";\n";
+        return;
+    }
+    if (state.kind == StateKind::Join) {
+        out << pad << "join " << state.name << ";\n";
+        return;
+    }
 
     bool has_body = !state.traceability_reqs.empty() || !state.entry_actions.empty() ||
                     (state.do_activity.has_value() && !state.do_activity->empty()) || !state.exit_actions.empty() ||

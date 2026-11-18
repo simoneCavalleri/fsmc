@@ -1226,4 +1226,34 @@ TEST(Sysml2Parser, PropertiesRoundtrip_PreservedAcrossSerializer) {
     EXPECT_EQ(parsed.properties[0].raw_formula, "G (not (A and B))");
 }
 
+/**
+ * @brief Regression: `Sysml2Serializer` emits `fork <Name>;` and `join <Name>;` for `StateKind::Fork`
+ * and `StateKind::Join` pseudostates so `Sysml2Parser` preserves them across roundtrips.
+ * @scenario Serialize an FSM with `Fork` (`Split`) and `Join` (`Merge`) pseudostates to SysML v2 and re-parse.
+ * @expected Serialized SysML2 contains `fork Split;` and `join Merge;`, and re-parsed IR preserves their kinds.
+ */
+TEST(Sysml2Parser, ForkAndJoinRoundtrip_PreservedAcrossSerializer) {
+    FsmIr ir;
+    ir.name = "ForkJoinRtFsm";
+    ir.initial_state = "Init";
+    ir.add_state("Init");
+    ir.add_or_get_state("Split", "", StateKind::Fork);
+    ir.add_or_get_state("Merge", "", StateKind::Join);
+
+    const std::string sysml = fsm::backend::formal::Sysml2Serializer::serialize(ir);
+    EXPECT_NE(sysml.find("fork Split;"), std::string::npos) << sysml;
+    EXPECT_NE(sysml.find("join Merge;"), std::string::npos) << sysml;
+
+    Sysml2Parser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err;
+    const auto* split = parsed.find_state("Split");
+    const auto* merge = parsed.find_state("Merge");
+    ASSERT_NE(split, nullptr);
+    ASSERT_NE(merge, nullptr);
+    EXPECT_EQ(split->kind, StateKind::Fork);
+    EXPECT_EQ(merge->kind, StateKind::Join);
+}
+
 }  // namespace

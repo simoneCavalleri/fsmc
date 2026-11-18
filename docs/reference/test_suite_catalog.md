@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 689  
+**Total Documented Test Cases**: 690  
 
 ---
 
@@ -1023,6 +1023,9 @@
 #### `PlantUmlParser.InternalTransition_PreservedAcrossSerializerRoundtrip`
 **Test Intent**: Regression: `PlantUmlSerializer` emits `State : Event / Action` for
 `TransitionEdgeKind::Internal` transitions so `PlantUmlParser` preserves `Internal` kind across roundtrips.
+
+#### `PlantUmlParser.ChangeTrigger_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `PlantUmlSerializer` emits `when(<expr>)` for `ChangeTrigger` transitions
 
 ### [`test_directive_parser.cpp`](../../tests/frontend/directive/test_directive_parser.cpp) (`tests/frontend/directive/test_directive_parser.cpp`)
 #### `DirectiveParser.StateDirective_ParsesTraceabilityAndActivities`

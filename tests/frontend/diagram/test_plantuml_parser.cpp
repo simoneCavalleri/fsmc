@@ -515,4 +515,33 @@ TEST(PlantUmlParser, InternalTransition_PreservedAcrossSerializerRoundtrip) {
     EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
 }
 
+/**
+ * @brief Regression: `PlantUmlSerializer` emits `when(<expr>)` for `ChangeTrigger` transitions
+ * so `PlantUmlParser` preserves `ChangeTrigger` across roundtrips.
+ * @scenario Serialize a transition with `ChangeTrigger("count > 5")` to PlantUML and re-parse.
+ * @expected Serialized PlantUML contains `when(count > 5)` and re-parsed transition holds `ChangeTrigger`.
+ */
+TEST(PlantUmlParser, ChangeTrigger_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "PumlChangeRt";
+    ir.initial_state = "Wait";
+    ir.add_state("Wait");
+    ir.add_state("Done");
+    ir.add_variable(VariableDefinition("count", DataType::int32(), "0"));
+    TransitionEdge t("Wait", "Done", "");
+    t.trigger = ChangeTrigger("count > 5", true);
+    ir.add_transition(t);
+
+    const std::string puml = PlantUmlSerializer::serialize(ir);
+    EXPECT_NE(puml.find("Wait --> Done : when(count > 5)"), std::string::npos) << puml;
+
+    PlantUmlParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(puml, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ChangeTrigger>(parsed.transitions[0].trigger));
+    EXPECT_EQ(std::get<ChangeTrigger>(parsed.transitions[0].trigger).raw_expression, "count > 5");
+}
+
 }  // namespace

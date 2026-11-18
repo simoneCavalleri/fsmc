@@ -147,7 +147,8 @@ bool StateMinimizationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                           get_actions_sig(s.exit_actions) + "|" + s.do_activity.value_or("") + "|" +
                           (s.time_invariant.has_value() ? s.time_invariant->to_string() : "") + "|" +
                           get_invariants_sig(s.invariants) + "|" + (s.has_history ? "H" : "") + "|" +
-                          (s.has_deep_history ? "DH" : "") + "|" + get_deferred_sig(s.deferred_events) + "|" + prop_sig;
+                          (s.has_deep_history ? "DH" : "") + "|" + get_deferred_sig(s.deferred_events) + "|" +
+                          get_deferred_sig(s.traceability_reqs) + "|" + prop_sig;
 
         initial_blocks[key].push_back(s.name);
     }

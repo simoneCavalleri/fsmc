@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 705  
+**Total Documented Test Cases**: 706  
 
 ---
 
@@ -1864,6 +1864,10 @@
 
 #### `StateMinimization.ActivityAndInvariantDifferences_PreventMerger`
 **Test Intent**: Verify states with different do_activity or time invariants are kept separate.
+
+#### `StateMinimizationPassTest.DistinctTraceabilityReqs_NotMerged`
+**Test Intent**: Regression: `StateMinimizationPass` does not merge states that carry distinct
+`traceability_reqs` (`@fsm:req`), preserving requirement traceability links for RTM auditing.
 
 ### [`test_datapath_optimizations.cpp`](../../tests/middleend/optimization/test_datapath_optimizations.cpp) (`tests/middleend/optimization/test_datapath_optimizations.cpp`)
 #### `DeadActionElimination.UnreadVariableStore_PrunedFromTransitionAction`

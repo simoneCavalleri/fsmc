@@ -276,4 +276,33 @@ TEST(StateMinimization, ActivityAndInvariantDifferences_PreventMerger) {
     EXPECT_EQ(model.states.size(), 5u);
 }
 
+/**
+ * @brief Regression: `StateMinimizationPass` does not merge states that carry distinct
+ * `traceability_reqs` (`@fsm:req`), preserving requirement traceability links for RTM auditing.
+ * @scenario Two states `A` (`REQ_A`) and `B` (`REQ_B`) with identical outgoing transitions `Done -> End`.
+ * @expected Both `A` and `B` remain distinct (`states.size() == 4`).
+ */
+TEST(StateMinimizationPassTest, DistinctTraceabilityReqs_NotMerged) {
+    FsmIr model;
+    model.initial_state = "Init";
+    model.add_state("Init");
+    auto& a = model.add_state("A");
+    a.traceability_reqs.push_back("REQ_A");
+    auto& b = model.add_state("B");
+    b.traceability_reqs.push_back("REQ_B");
+    model.add_state("End");
+
+    model.add_transition(TransitionEdge("Init", "A", "GoA"));
+    model.add_transition(TransitionEdge("Init", "B", "GoB"));
+    model.add_transition(TransitionEdge("A", "End", "Done"));
+    model.add_transition(TransitionEdge("B", "End", "Done"));
+
+    StateMinimizationPass pass;
+    DiagnosticEngine diag;
+    EXPECT_FALSE(pass.run(model, diag));
+    EXPECT_EQ(model.states.size(), 4u);
+    ASSERT_NE(model.find_state("A"), nullptr);
+    ASSERT_NE(model.find_state("B"), nullptr);
+}
+
 }  // namespace

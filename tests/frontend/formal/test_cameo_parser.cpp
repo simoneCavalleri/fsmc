@@ -883,4 +883,29 @@ TEST(CameoParser, ChangeTrigger_PreservedAcrossSerializerRoundtrip) {
     EXPECT_EQ(std::get<ChangeTrigger>(parsed.transitions[0].trigger).raw_expression, "count > 5");
 }
 
+/**
+ * @brief Regression: `CameoXmiGraphResolver` registers `kind="choice"` pseudostates in
+ * `model.choice_nodes` so `ChoiceNode` entries survive Cameo XMI roundtrips.
+ * @scenario Serialize an FSM with `ChoiceNode("C1")` to Cameo XMI and re-parse.
+ * @expected Re-parsed IR has `is_choice_node("C1") == true` and `!parsed.choice_nodes.empty()`.
+ */
+TEST(CameoParser, ChoiceNode_PreservedInChoiceNodesAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "CameoChoiceRt";
+    ir.initial_state = "Init";
+    ir.add_state("Init");
+    ir.add_choice_node("C1");
+    ir.add_state("High");
+    ir.add_transition(TransitionEdge("Init", "C1", "Eval"));
+    ir.add_transition(TransitionEdge("C1", "High", ""));
+
+    const std::string xmi = fsm::backend::formal::CameoSerializer::serialize(ir);
+    CameoXmiParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xmi, parsed, err)) << err;
+    EXPECT_TRUE(parsed.is_choice_node("C1"));
+    EXPECT_FALSE(parsed.choice_nodes.empty());
+}
+
 }  // namespace

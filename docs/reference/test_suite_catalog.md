@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 698  
+**Total Documented Test Cases**: 699  
 
 ---
 
@@ -1133,6 +1133,10 @@
 
 #### `CameoParser.ChangeTrigger_PreservedAcrossSerializerRoundtrip`
 **Test Intent**: Regression: `CameoSerializer` emits `trigger="when(<expr>)"` for `ChangeTrigger`
+
+#### `CameoParser.ChoiceNode_PreservedInChoiceNodesAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `CameoXmiGraphResolver` registers `kind="choice"` pseudostates in
+`model.choice_nodes` so `ChoiceNode` entries survive Cameo XMI roundtrips.
 
 ### [`test_scxml_parser.cpp`](../../tests/frontend/formal/test_scxml_parser.cpp) (`tests/frontend/formal/test_scxml_parser.cpp`)
 #### `ScxmlParser.BasicScxmlDocument_ParsedIntoValidFsmIr`

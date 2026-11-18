@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 688  
+**Total Documented Test Cases**: 689  
 
 ---
 
@@ -1431,6 +1431,9 @@
 
 #### `Sysml2Parser.ForkAndJoinRoundtrip_PreservedAcrossSerializer`
 **Test Intent**: Regression: `Sysml2Serializer` emits `fork <Name>;` and `join <Name>;` for `StateKind::Fork`
+
+#### `Sysml2Parser.ChangeTriggerRoundtrip_PreservedAcrossSerializer`
+**Test Intent**: Regression: `Sysml2Serializer` emits `accept when (<expr>)` for `ChangeTrigger`
 
 ### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`

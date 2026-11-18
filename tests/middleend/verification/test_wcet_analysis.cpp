@@ -80,11 +80,38 @@ TEST(WcetAnalysis, LinearEventlessChains_ComputesBoundedMicroSteps) {
 
     WcetAnalysisPass pass;
     DiagnosticEngine diag;
-    bool ok = pass.run(model, diag);
-
-    EXPECT_TRUE(ok);
+    EXPECT_TRUE(pass.run(model, diag));
     EXPECT_FALSE(pass.has_zeno_cycle());
     EXPECT_EQ(pass.max_micro_steps(), 3u);
+}
+
+/**
+ * @brief Regression: `WcetAnalysisPass` does not treat `TimeTrigger`, `ChangeTrigger`, or `SignalTrigger`
+ * transitions with an empty `event` string as zero-time micro-steps (preventing false `E_ZENO_CYCLE` errors).
+ */
+TEST(WcetAnalysis, TimedAndChangeTriggerCyclesWithEmptyEvent_NotFlaggedAsZeno) {
+    FsmIr model;
+    model.name = "TimedCycleMachine";
+    model.add_state("Idle");
+    model.add_state("Active");
+
+    TransitionEdge t1;
+    t1.source = "Idle";
+    t1.target = "Active";
+    t1.trigger = TimeTrigger(TimeTriggerKind::After, 100, TimeUnit::Milliseconds);
+    model.add_transition(t1);
+
+    TransitionEdge t2;
+    t2.source = "Active";
+    t2.target = "Idle";
+    t2.trigger = ChangeTrigger("temp < 20", true);
+    model.add_transition(t2);
+
+    WcetAnalysisPass pass;
+    DiagnosticEngine diag;
+    EXPECT_TRUE(pass.run(model, diag));
+    EXPECT_FALSE(pass.has_zeno_cycle());
+    EXPECT_FALSE(diag.has_errors());
 }
 
 }  // namespace

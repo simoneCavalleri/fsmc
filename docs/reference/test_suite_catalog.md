@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 86  
-**Total Documented Test Cases**: 733  
+**Total Documented Test Cases**: 735  
 
 ---
 
@@ -2529,6 +2529,12 @@
 
 #### `GoldenParserFuzz.IrregularFormattingAndNestedGuards_ParsedCleanlyWithoutCrash`
 **Test Intent**: Property-based parser robustness test: exercises irregular whitespace, tabs,
+
+#### `GoldenModelCheckerInvariance.TemporalPropertiesHoldBeforeAndAfterPasses`
+**Test Intent**: Verifies LTL/CTL ModelChecker results remain invariant before and after middle-end optimization passes.
+
+#### `GoldenDifferentialE2E.HistoryAndCpp17_UnoptimizedVsOptimizedMatches`
+**Test Intent**: Differential E2E test for C++17 standalone codegen (-O0 vs -O2) with ShallowHistory.
 
 ### [`test_multiformat_presets_roundtrip.cpp`](../../tests/integration/test_multiformat_presets_roundtrip.cpp) (`tests/integration/test_multiformat_presets_roundtrip.cpp`)
 #### `MultiformatPresets.Sysml2UavMission_PassesRoundtripAndStrictCompilation`

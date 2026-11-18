@@ -257,6 +257,9 @@ std::string StateflowSerializer::serialize(const FsmIr& model) {
             }
             out << "}";
         }
+        if (!sig.validators.empty()) {
+            out << " validator=\"" << sig.validators.front() << "\"";
+        }
         out << " -->\n";
     }
 

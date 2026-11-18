@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 680  
+**Total Documented Test Cases**: 681  
 
 ---
 
@@ -1151,6 +1151,9 @@
 
 #### `ScxmlSerializerTest.AssignmentOnlyActions_DoNotEmitBogusSend`
 **Test Intent**: Regression: `ScxmlSerializer` must not emit a bogus `<send event="<action name>"/>` for synthesized
+
+#### `ScxmlSerializerTest.PropertiesAndTimeInvariant_PreservedAcrossRoundtrip`
+**Test Intent**: Regression: `ScxmlSerializer` preserves `model.properties` (`<!-- @fsm:property ... -->`)
 
 ### [`test_scxml_semantic_completeness.cpp`](../../tests/frontend/formal/test_scxml_semantic_completeness.cpp) (`tests/frontend/formal/test_scxml_semantic_completeness.cpp`)
 #### `ScxmlSemanticCompleteness.ParallelRegions_ParsedAsOrthogonalStates`

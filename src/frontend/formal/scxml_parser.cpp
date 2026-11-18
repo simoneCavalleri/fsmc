@@ -222,6 +222,10 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
                 if (!req.empty()) {
                     curr_state->traceability_reqs.push_back(req);
                 }
+                std::string inv = child->get_attr("invariant");
+                if (!inv.empty()) {
+                    curr_state->time_invariant = inv;
+                }
 
                 // Final states in composite parents emit completion events on entry
                 if (kind == StateKind::Final && !current_parent_state.empty()) {

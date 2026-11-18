@@ -521,4 +521,40 @@ TEST(ScxmlSerializerTest, AssignmentOnlyActions_DoNotEmitBogusSend) {
     EXPECT_EQ(out.find("<send"), std::string::npos) << out;
 }
 
+/**
+ * @brief Regression: `ScxmlSerializer` preserves `model.properties` (`<!-- @fsm:property ... -->`)
+ * and `state.time_invariant` (`invariant="..."`) across SCXML roundtrips.
+ * @scenario Serialize an FSM with `FormalProperty("safe", "G (not Bad)")` and state `Active` (`500[ms]`), then
+ * re-parse.
+ * @expected Re-parsed IR keeps the property and `Active->time_invariant == "500[ms]"`.
+ */
+TEST(ScxmlSerializerTest, PropertiesAndTimeInvariant_PreservedAcrossRoundtrip) {
+    FsmIr ir;
+    ir.name = "ScxmlPropInvRt";
+    ir.initial_state = "Active";
+    auto& active = ir.add_state("Active");
+    active.time_invariant = "500[ms]";
+
+    FormalProperty prop;
+    prop.name = "safe";
+    prop.kind = PropertyKind::Safety;
+    prop.raw_formula = "G (not Bad)";
+    ir.add_property(prop);
+
+    const std::string xml = ScxmlSerializer::serialize(ir);
+    ScxmlParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+
+    ASSERT_EQ(parsed.properties.size(), 1u);
+    EXPECT_EQ(parsed.properties[0].name, "safe");
+    EXPECT_EQ(parsed.properties[0].raw_formula, "G (not Bad)");
+
+    const auto* p_active = parsed.find_state("Active");
+    ASSERT_NE(p_active, nullptr);
+    ASSERT_TRUE(p_active->time_invariant.has_value());
+    EXPECT_EQ(*p_active->time_invariant, "500[ms]");
+}
+
 }  // namespace

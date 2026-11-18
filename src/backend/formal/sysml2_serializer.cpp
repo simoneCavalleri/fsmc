@@ -214,6 +214,16 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
         out << "\n";
     }
 
+    // Native SysML v2 Temporal Logic Properties
+    for (const auto& prop : model.properties) {
+        if (!prop.name.empty() && !prop.raw_formula.empty()) {
+            out << "    assert property " << prop.name << " : " << prop.raw_formula << ";\n";
+        }
+    }
+    if (!model.properties.empty()) {
+        out << "\n";
+    }
+
     // Initial state
     if (!model.initial_state.empty()) {
         out << "    entry; then " << model.initial_state << ";\n\n";

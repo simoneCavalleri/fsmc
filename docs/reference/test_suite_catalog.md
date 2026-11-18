@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 677  
+**Total Documented Test Cases**: 678  
 
 ---
 
@@ -1393,6 +1393,10 @@
 #### `Sysml2Parser.SignedIntRoundtrip_PreservesSignedTypeAcrossSerializer`
 **Test Intent**: Regression: Signed `int32` variables with negative initial values survive `Sysml2Serializer` ->
 `Sysml2Parser` roundtrips as `int32_t` rather than turning into `uint32_t` (`-Wnarrowing` error in C++).
+
+#### `Sysml2Parser.PropertiesRoundtrip_PreservedAcrossSerializer`
+**Test Intent**: Regression: `Sysml2Serializer` emits `assert property <name> : <formula>;` for
+`model.properties` so temporal logic properties survive SysML v2 roundtrips.
 
 ### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`

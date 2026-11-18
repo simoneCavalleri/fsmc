@@ -1197,4 +1197,33 @@ TEST(Sysml2Parser, SignedIntRoundtrip_PreservesSignedTypeAcrossSerializer) {
     EXPECT_EQ(count->initial_value, "-2");
 }
 
+/**
+ * @brief Regression: `Sysml2Serializer` emits `assert property <name> : <formula>;` for
+ * `model.properties` so temporal logic properties survive SysML v2 roundtrips.
+ * @scenario Serialize an FSM with `FormalProperty("safe", "G (not (A and B))")` to SysML v2 and re-parse.
+ * @expected Serialized SysML2 contains `assert property safe : G (not (A and B));` and re-parsed IR keeps it.
+ */
+TEST(Sysml2Parser, PropertiesRoundtrip_PreservedAcrossSerializer) {
+    FsmIr ir;
+    ir.name = "PropRtFsm";
+    ir.initial_state = "A";
+    ir.add_state("A");
+    ir.add_state("B");
+    FormalProperty prop;
+    prop.name = "safe";
+    prop.raw_formula = "G (not (A and B))";
+    ir.add_property(prop);
+
+    const std::string sysml = fsm::backend::formal::Sysml2Serializer::serialize(ir);
+    EXPECT_NE(sysml.find("assert property safe : G (not (A and B));"), std::string::npos) << sysml;
+
+    Sysml2Parser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err;
+    ASSERT_EQ(parsed.properties.size(), 1u);
+    EXPECT_EQ(parsed.properties[0].name, "safe");
+    EXPECT_EQ(parsed.properties[0].raw_formula, "G (not (A and B))");
+}
+
 }  // namespace

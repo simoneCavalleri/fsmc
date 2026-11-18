@@ -373,4 +373,35 @@ TEST(MermaidSerializerTest, ParallelStateOmitsInitialSubstateAndRoundtripsThreeR
     EXPECT_EQ(par_parsed->orthogonal_regions.size(), 3u);
 }
 
+/**
+ * @brief Regression: Mermaid composite state headers with quoted display alias (`state "Label" as Comp {`)
+ * preserve hierarchy and initial substate without overwriting root `initial_state`.
+ * @scenario Parse `[*] --> Comp` with `state "Composite Label" as Comp { [*] --> Sub1 }`.
+ * @expected `ir.initial_state == "Comp"`, `Comp->is_composite == true`, `Comp->initial_sub_state == "Sub1"`,
+ * `Sub1->parent_state == "Comp"`.
+ */
+TEST(MermaidParser, CompositeStateWithAlias_PreservesHierarchyAndInitialStates) {
+    const std::string mmd = R"mmd(stateDiagram-v2
+[*] --> Comp
+state "Composite Label" as Comp {
+    [*] --> Sub1
+    Sub1 --> Sub2 : Step
+}
+Comp --> Done : Finish
+)mmd";
+
+    MermaidParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(mmd, ir, err)) << err;
+    EXPECT_EQ(ir.initial_state, "Comp");
+    const auto* comp = ir.find_state("Comp");
+    ASSERT_NE(comp, nullptr);
+    EXPECT_TRUE(comp->is_composite);
+    EXPECT_EQ(comp->initial_sub_state, "Sub1");
+    const auto* sub1 = ir.find_state("Sub1");
+    ASSERT_NE(sub1, nullptr);
+    EXPECT_EQ(sub1->parent_state, "Comp");
+}
+
 }  // namespace

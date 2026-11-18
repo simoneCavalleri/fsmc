@@ -283,6 +283,11 @@ std::string StateflowSerializer::serialize(const FsmIr& model) {
     for (const auto& trans : model.transitions) {
         out << "      <transition id=\"" << (trans_id++) << "\" src=\"" << escape_xml(trans.source) << "\" dst=\""
             << escape_xml(trans.target) << "\"";
+        if (trans.kind == TransitionEdgeKind::Internal) {
+            out << " type=\"internal\"";
+        } else if (trans.kind == TransitionEdgeKind::Local) {
+            out << " type=\"local\"";
+        }
         std::string label = format_transition_label(trans, model);
         if (!label.empty()) {
             out << " labelString=\"" << escape_xml(label) << "\"";

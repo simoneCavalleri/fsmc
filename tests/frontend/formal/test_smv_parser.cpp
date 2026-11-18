@@ -838,4 +838,37 @@ TEST(SmvParser, ChoiceNode_PreservedAcrossSerializerRoundtrip) {
     EXPECT_EQ(parsed.find_state("C1"), nullptr);
 }
 
+/**
+ * @brief Regression: `SmvSerializer` emits `-- @fsm:signal` directives for typed payload
+ * `SignalDefinition::attributes` and `validators` so `SmvParser` preserves them across roundtrips.
+ * @scenario Serialize an FSM with signal `Telemetry{uint32 val, string tag}` and validator `val > 0`, then re-parse.
+ * @expected Re-parsed `Telemetry` preserves both payload attributes and validator.
+ */
+TEST(SmvParser, SignalAttributesAndValidator_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "SmvSigAttrRt";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+
+    SignalDefinition tel("Telemetry");
+    tel.attributes.emplace_back("val", DataType::uint32());
+    tel.attributes.emplace_back("tag", DataType::string());
+    tel.validators.push_back("val > 0");
+    ir.add_signal(tel);
+
+    const std::string smv = fsm::backend::formal::SmvSerializer::serialize(ir);
+    SmvParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err;
+
+    const auto* p_tel = parsed.find_signal("Telemetry");
+    ASSERT_NE(p_tel, nullptr);
+    ASSERT_EQ(p_tel->attributes.size(), 2u);
+    EXPECT_EQ(p_tel->attributes[0].name, "val");
+    EXPECT_EQ(p_tel->attributes[1].name, "tag");
+    ASSERT_EQ(p_tel->validators.size(), 1u);
+    EXPECT_EQ(p_tel->validators[0], "val > 0");
+}
+
 }  // namespace

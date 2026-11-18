@@ -330,11 +330,31 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
         }
         out << "\n";
     }
-    if (!model.custom_types.empty() || !model.ports.empty() || !model.variables.empty() ||
-        !model.choice_nodes.empty()) {
-        for (const auto& choice : model.choice_nodes) {
-            out << "-- @fsm:choice name=" << sanitize_smv_ident(choice.name) << "\n";
+    for (const auto& choice : model.choice_nodes) {
+        out << "-- @fsm:choice name=" << sanitize_smv_ident(choice.name) << "\n";
+    }
+    bool has_typed_signals = false;
+    for (const auto& sig : model.signals) {
+        if (!sig.attributes.empty() || !sig.validators.empty()) {
+            has_typed_signals = true;
+            out << "-- @fsm:signal " << sig.name;
+            if (!sig.attributes.empty()) {
+                out << "{";
+                for (size_t i = 0; i < sig.attributes.size(); ++i) {
+                    if (i > 0)
+                        out << ", ";
+                    out << sig.attributes[i].type << " " << sig.attributes[i].name;
+                }
+                out << "}";
+            }
+            if (!sig.validators.empty()) {
+                out << " validator=\"" << sig.validators.front() << "\"";
+            }
+            out << "\n";
         }
+    }
+    if (!model.custom_types.empty() || !model.ports.empty() || !model.variables.empty() ||
+        !model.choice_nodes.empty() || has_typed_signals) {
         out << "\n";
     }
 

@@ -300,9 +300,6 @@ void SmvParser::parse_enum_events(const std::string& line, FsmIr& model) {
         std::string ev_name = sanitize_identifier(trim(item));
         if (!ev_name.empty() && ev_name != "none") {
             model.add_event(ev_name);
-            SignalDefinition sig;
-            sig.name = ev_name;
-            model.add_signal(std::move(sig));
         }
     }
 }

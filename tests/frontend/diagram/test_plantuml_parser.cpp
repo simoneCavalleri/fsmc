@@ -438,4 +438,33 @@ Comp --> Done : Finish
     EXPECT_EQ(sub1->parent_state, "Comp");
 }
 
+/**
+ * @brief Regression: PlantUML standalone `[H]` / `[H*]` history target inside a composite state
+ * resolves to the enclosing composite state instead of failing with "invalid source or target".
+ * @scenario Parse PlantUML composite state `Comp` with `Sub2 --> [H] : Back`.
+ * @expected Transition targets `Comp` with `TransitionEdgeKind::History` and `Comp->has_history == true`.
+ */
+TEST(PlantUmlParser, StandaloneHistoryTargetInsideComposite_ResolvesToParent) {
+    const std::string puml = R"puml(@startuml
+[*] --> Comp
+state Comp {
+    [*] --> Sub1
+    Sub1 --> Sub2 : Next
+    Sub2 --> [H] : Back
+}
+@enduml
+)puml";
+
+    PlantUmlParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(puml, ir, err)) << err;
+    const auto* comp = ir.find_state("Comp");
+    ASSERT_NE(comp, nullptr);
+    EXPECT_TRUE(comp->has_history);
+    ASSERT_EQ(ir.transitions.size(), 2u);
+    EXPECT_EQ(ir.transitions[1].target, "Comp");
+    EXPECT_EQ(ir.transitions[1].event, "Back");
+}
+
 }  // namespace

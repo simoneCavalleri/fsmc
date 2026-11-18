@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 646  
+**Total Documented Test Cases**: 647  
 
 ---
 
@@ -954,6 +954,9 @@
 
 #### `PlantUmlParser.CompositeStateWithAlias_PreservesHierarchyAndInitialStates`
 **Test Intent**: Regression: PlantUML composite state headers with quoted display alias (`state "Label" as Comp {`)
+
+#### `PlantUmlParser.StandaloneHistoryTargetInsideComposite_ResolvesToParent`
+**Test Intent**: Regression: PlantUML standalone `[H]` / `[H*]` history target inside a composite state
 
 ### [`test_directive_parser.cpp`](../../tests/frontend/directive/test_directive_parser.cpp) (`tests/frontend/directive/test_directive_parser.cpp`)
 #### `DirectiveParser.StateDirective_ParsesTraceabilityAndActivities`

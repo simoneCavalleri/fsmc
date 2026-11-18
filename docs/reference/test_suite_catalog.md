@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 617  
+**Total Documented Test Cases**: 618  
 
 ---
 
@@ -836,6 +836,9 @@
 #### `DotParser.StateLifecycleAssignments_PopulatedInEntryAndExitActions`
 **Test Intent**: Regression: DOT state lifecycle assignments (`(entry / x = 10)` / `(exit / x += 1)`) populate
 `ActionSignature::assignments`.
+
+#### `DotParser.InlinePriorityLabel_StripsPrefixFromEventName`
+**Test Intent**: Regression: inline `(prio=N)` inside DOT edge labels is stripped from `TransitionEdge::event`.
 
 ### [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) (`tests/frontend/diagram/test_mermaid_parser.cpp`)
 #### `MermaidParser.BasicDiagram_ParsedIntoValidFsmIr`

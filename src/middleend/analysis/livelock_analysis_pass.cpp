@@ -64,11 +64,44 @@ bool LivelockAnalysisPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             continue;
         }
 
-        std::string src = resolve_state_id(ir, edge.source_id.empty() ? edge.source : edge.source_id);
-        std::string dst = resolve_state_id(ir, edge.target_id.empty() ? edge.target : edge.target_id);
+        std::vector<std::string> srcs;
+        for (const auto& sid : edge.multi_source_ids) {
+            std::string r = resolve_state_id(ir, sid);
+            if (!r.empty())
+                srcs.push_back(std::move(r));
+        }
+        for (const auto& sn : edge.source_ids) {
+            std::string r = resolve_state_id(ir, sn);
+            if (!r.empty() && std::find(srcs.begin(), srcs.end(), r) == srcs.end())
+                srcs.push_back(std::move(r));
+        }
+        if (srcs.empty()) {
+            std::string r = resolve_state_id(ir, edge.source_id.empty() ? edge.source : edge.source_id);
+            if (!r.empty())
+                srcs.push_back(std::move(r));
+        }
 
-        if (!src.empty() && !dst.empty()) {
-            zero_adj[src].push_back(dst);
+        std::vector<std::string> dsts;
+        for (const auto& tid : edge.multi_target_ids) {
+            std::string r = resolve_state_id(ir, tid);
+            if (!r.empty())
+                dsts.push_back(std::move(r));
+        }
+        for (const auto& tn : edge.target_ids) {
+            std::string r = resolve_state_id(ir, tn);
+            if (!r.empty() && std::find(dsts.begin(), dsts.end(), r) == dsts.end())
+                dsts.push_back(std::move(r));
+        }
+        if (dsts.empty()) {
+            std::string r = resolve_state_id(ir, edge.target_id.empty() ? edge.target : edge.target_id);
+            if (!r.empty())
+                dsts.push_back(std::move(r));
+        }
+
+        for (const auto& s : srcs) {
+            for (const auto& d : dsts) {
+                zero_adj[s].push_back(d);
+            }
         }
     }
 

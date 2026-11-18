@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 727  
+**Total Documented Test Cases**: 728  
 
 ---
 
@@ -2044,6 +2044,9 @@
 
 #### `LivelockAnalysis.ChoicePseudostatesZeroTimeLoop_DetectedAsLivelock`
 **Test Intent**: Verify LivelockAnalysisPass detects cycles confined to Choice pseudostates in choice_nodes.
+
+#### `LivelockAnalysis.ForkMultiTargetZeroTimeCycle_DetectedAsE0401`
+**Test Intent**: Regression: `LivelockAnalysisPass` traverses `target_ids` / `multi_target_ids`
 
 #### `PriorityConflict.InvertedChildPrecedenceUnderOuterFirst_EmitsPriorityConflictDiagnostic`
 **Test Intent**: Verify PriorityConflictPass detects hierarchical policy preemption violations.

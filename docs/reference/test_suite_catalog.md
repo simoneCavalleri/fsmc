@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 639  
+**Total Documented Test Cases**: 640  
 
 ---
 
@@ -696,6 +696,9 @@
 
 #### `FormalRoundtrip.CameoSerializer_PreservesInternalTransitionKind`
 **Test Intent**: Regression: `CameoSerializer` emits `kind="internal"` on internal transitions so `CameoXmiParser`
+
+#### `FormalRoundtrip.Sysml2Serializer_PreservesInternalTransitionKind`
+**Test Intent**: Regression: `Sysml2Serializer` omits `then <target>` for `TransitionEdgeKind::Internal` transitions
 
 ---
 

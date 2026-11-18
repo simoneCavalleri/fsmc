@@ -261,7 +261,11 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
                 out << "        do " << act << "\n";
             }
         }
-        out << "        then " << clean_target << ";\n";
+        if (trans.kind == TransitionEdgeKind::Internal && trans.source == trans.target && !trans.event.empty()) {
+            out << "        ;\n";
+        } else {
+            out << "        then " << clean_target << ";\n";
+        }
     }
 
     out << "}\n";

@@ -253,4 +253,45 @@ TEST(GuardSatisfiability, DistinctTriggersWithEmptyEventString_DoNotConflict) {
     EXPECT_FALSE(diag.has_warnings());
 }
 
+/**
+ * @brief Regression: `GuardSatisfiabilityPass` resolves symbolic guard names against `FsmIr::guards`
+ * so unsatisfiable (`W0302`) and overlapping (`W0301`) symbolic guards are detected.
+ */
+TEST(GuardSatisfiability, SymbolicGuardMetadata_DetectsUnsatisfiableAndOverlappingGuards) {
+    FsmIr ir;
+    ir.states.push_back(StateNode{"Idle"});
+    ir.states.push_back(StateNode{"A"});
+    ir.states.push_back(StateNode{"B"});
+
+    ir.add_guard("g_dead", "", std::optional<std::string>{"x > 10 && x < 5"},
+                 std::optional<std::string>{"x > 10 && x < 5"});
+    ir.add_guard("g_over1", "", std::optional<std::string>{"y >= 0"}, std::optional<std::string>{"y >= 0"});
+    ir.add_guard("g_over2", "", std::optional<std::string>{"y <= 10"}, std::optional<std::string>{"y <= 10"});
+
+    TransitionEdge t1("Idle", "A", "Go1", "g_dead");
+    TransitionEdge t2("Idle", "A", "Go2", "g_over1");
+    t2.priority = 1;
+    TransitionEdge t3("Idle", "B", "Go2", "g_over2");
+    t3.priority = 1;
+
+    ir.transitions.push_back(t1);
+    ir.transitions.push_back(t2);
+    ir.transitions.push_back(t3);
+
+    DiagnosticEngine diag;
+    GuardSatisfiabilityPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+
+    bool has_w0302 = false;
+    bool has_w0301 = false;
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "W0302")
+            has_w0302 = true;
+        if (d.code == "W0301")
+            has_w0301 = true;
+    }
+    EXPECT_TRUE(has_w0302);
+    EXPECT_TRUE(has_w0301);
+}
+
 }  // namespace

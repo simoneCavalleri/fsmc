@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 721  
+**Total Documented Test Cases**: 722  
 
 ---
 
@@ -2071,6 +2071,9 @@
 
 #### `GuardSatisfiability.DistinctTriggersWithEmptyEventString_DoNotConflict`
 **Test Intent**: Verify that distinct triggers (e.g. SignalTrigger vs TimeTrigger) with empty event string do not conflict.
+
+#### `GuardSatisfiability.SymbolicGuardMetadata_DetectsUnsatisfiableAndOverlappingGuards`
+**Test Intent**: Regression: `GuardSatisfiabilityPass` resolves symbolic guard names against `FsmIr::guards`
 
 ### [`test_ltl_model_checker_extended.cpp`](../../tests/middleend/verification/test_ltl_model_checker_extended.cpp) (`tests/middleend/verification/test_ltl_model_checker_extended.cpp`)
 - *(Executable binary test verification)*

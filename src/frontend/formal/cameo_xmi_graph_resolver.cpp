@@ -581,7 +581,17 @@ void CameoXmiGraphResolver::process_transition(const std::shared_ptr<XmlNode>& t
         trans.target_is_history = true;
         trans.target_is_deep_history = (dst_kind_it->second == StateKind::DeepHistory);
     }
-    trans.event = sanitize_identifier(event_name);
+    static const std::regex when_ev_regex(R"(^\s*when\s*\((.+)\)\s*$)", std::regex::icase);
+    std::smatch wm;
+    if (!event_name.empty() && std::regex_match(event_name, wm, when_ev_regex)) {
+        std::string expr = wm[1].str();
+        auto f = expr.find_first_not_of(" \t\r\n");
+        auto l = expr.find_last_not_of(" \t\r\n");
+        expr = (f != std::string::npos) ? expr.substr(f, l - f + 1) : "";
+        trans.trigger = ChangeTrigger(expr, true);
+    } else {
+        trans.event = sanitize_identifier(event_name);
+    }
     if (!trans.event.empty()) {
         static const std::regex time_ev_regex(R"(^(after|every)_([0-9]+)(ms|us|s|m)$)", std::regex::icase);
         std::smatch tm;
@@ -605,7 +615,7 @@ void CameoXmiGraphResolver::process_transition(const std::shared_ptr<XmlNode>& t
             }
         }
     }
-    if (!event_name.empty()) {
+    if (!trans.event.empty()) {
         SignalDefinition sig;
         sig.name = trans.event;
         model.add_signal(std::move(sig));

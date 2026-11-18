@@ -409,7 +409,9 @@ void CameoXmiGraphResolver::process_transitions_in_region(
 
         std::vector<std::shared_ptr<XmlNode>> sub_regions;
         for (const auto& sub_child : child->children) {
-            if (sub_child->tag == "region" || ends_with(sub_child->tag, ":region")) {
+            if (sub_child->tag == "transition" || ends_with(sub_child->tag, ":transition")) {
+                process_transition(sub_child, model, sub_state_name, id_map, id_to_name, id_to_kind);
+            } else if (sub_child->tag == "region" || ends_with(sub_child->tag, ":region")) {
                 sub_regions.push_back(sub_child);
             }
         }

@@ -667,4 +667,42 @@ TEST(CameoXmiParser, TransitionKindInternal_SetsInternalTransitionEdgeKind) {
     EXPECT_EQ(ir.transitions[0].event, "Ping");
 }
 
+/**
+ * @brief Regression: `<transition>` elements nested directly inside `<subvertex xmi:type="uml:State">`
+ * (common for internal/self-transitions in UML XMI) are extracted by `CameoXmiGraphResolver`.
+ * @scenario Parse Cameo XMI where `<transition kind="internal" source="_s1" target="_s1">` is a direct child of
+ * `<subvertex>`.
+ * @expected Internal transition on `Idle` with event `MySig` is present in `ir.transitions`.
+ */
+TEST(CameoXmiParser, NestedTransitionInsideSubvertex_ExtractedProperly) {
+    const std::string xmi = R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="2.1" xmlns:uml="http://www.omg.org/spec/UML/20090901" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1">
+  <uml:Model xmi:id="_m1" name="CameoNestedTransModel">
+    <packagedElement xmi:type="uml:Signal" xmi:id="_sig1" name="MySig"/>
+    <packagedElement xmi:type="uml:StateMachine" xmi:id="_sm1" name="CameoNestedTrans">
+      <region xmi:type="uml:Region" xmi:id="_r1">
+        <subvertex xmi:type="uml:Pseudostate" xmi:id="_ps_init" kind="initial"/>
+        <subvertex xmi:type="uml:State" xmi:id="_s1" name="Idle">
+          <transition xmi:id="_t_int" kind="internal" source="_s1" target="_s1">
+            <trigger xmi:id="_tr1" xmi:idref="_sig1"/>
+          </transition>
+        </subvertex>
+        <transition xmi:id="_t0" source="_ps_init" target="_s1"/>
+      </region>
+    </packagedElement>
+  </uml:Model>
+</xmi:XMI>
+)xml";
+
+    CameoXmiParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xmi, ir, err)) << err;
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    EXPECT_EQ(ir.transitions[0].source, "Idle");
+    EXPECT_EQ(ir.transitions[0].target, "Idle");
+    EXPECT_EQ(ir.transitions[0].kind, TransitionEdgeKind::Internal);
+    EXPECT_EQ(ir.transitions[0].event, "MySig");
+}
+
 }  // namespace

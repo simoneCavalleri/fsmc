@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 625  
+**Total Documented Test Cases**: 626  
 
 ---
 
@@ -945,6 +945,10 @@
 
 #### `GuardParser.RelationalExpressions_TokenizedAndForwarded`
 **Test Intent**: Verify GuardExpressionParser extracts atomic relational guard expressions and builds valid C++ expressions.
+
+#### `DirectiveParser.VariableDirective_NonPrimitiveWithoutInitClearsDefaultZero`
+**Test Intent**: Regression: `@fsm:var` for non-primitive custom types (struct/enum) without `init=` leaves
+`initial_value` empty rather than defaulting to `"0"`.
 
 ### [`test_cameo_parser.cpp`](../../tests/frontend/formal/test_cameo_parser.cpp) (`tests/frontend/formal/test_cameo_parser.cpp`)
 #### `CameoParser.BasicXmiDocument_ParsedIntoValidFsmIr`

@@ -581,4 +581,36 @@ ASSIGN
     EXPECT_EQ(model.transitions[1].target, "Active");
 }
 
+/**
+ * @brief Regression: `SmvParser` infers `DataType::string()` when `init(var) := "..."` has a quoted
+ * string literal, preventing invalid `uint32_t var{"..."}` in generated C++.
+ * @scenario Parse SMV with `label : 0..100;` and `init(label) := "hello world";`.
+ * @expected `label` variable has `type.primitive() == PrimitiveTypeKind::String` and `initial_value == "\"hello
+ * world\""`.
+ */
+TEST(SmvParser, QuotedStringInit_InfersStringDataType) {
+    const std::string smv_content = R"(MODULE main
+VAR
+  state : {Idle, Done};
+  event : {Go};
+  label : 0..100;
+ASSIGN
+  init(state) := Idle;
+  init(label) := "hello world";
+  next(state) := case
+    state = Idle & event = Go : Done;
+    TRUE : state;
+  esac;
+)";
+
+    SmvParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+    const auto* var = model.find_variable("label");
+    ASSERT_NE(var, nullptr);
+    EXPECT_EQ(var->type.primitive(), PrimitiveTypeKind::String);
+    EXPECT_EQ(var->initial_value, R"("hello world")");
+}
+
 }  // namespace

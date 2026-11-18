@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 648  
+**Total Documented Test Cases**: 649  
 
 ---
 
@@ -1134,6 +1134,9 @@
 
 #### `SmvParser.DisjunctiveEvents_ExpandedIntoSeparateTransitions`
 **Test Intent**: Regression: SMV disjunctive event clauses `(event = Go | event = Force)` and `event in {Go, Force}`
+
+#### `SmvParser.QuotedStringInit_InfersStringDataType`
+**Test Intent**: Regression: `SmvParser` infers `DataType::string()` when `init(var) := "..."` has a quoted
 
 ### [`test_stateflow_parser.cpp`](../../tests/frontend/formal/test_stateflow_parser.cpp) (`tests/frontend/formal/test_stateflow_parser.cpp`)
 #### `StateflowParser.BasicStateflowChart_ParsedIntoValidFsmIr`

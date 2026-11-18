@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 728  
+**Total Documented Test Cases**: 729  
 
 ---
 
@@ -2053,6 +2053,9 @@
 
 #### `PriorityConflict.ParentStateHierarchyStringName_DetectsHierarchicalPreemptionConflict`
 **Test Intent**: Verify PriorityConflictPass detects hierarchical preemption violations when hierarchy is defined via
+
+#### `PriorityConflict.EquivalentSymbolicGuardMetadata_EmitsW0402`
+**Test Intent**: Regression: `PriorityConflictPass` resolves symbolic guard names via `FsmIr::guards`
 
 #### `FsmValidator.InitialStateSpecifiedViaId_ValidatesCleanlyWithoutConstCastMutation`
 **Test Intent**: Verify FsmValidator correctly accepts initial_state_id without const_cast mutation or false warnings.

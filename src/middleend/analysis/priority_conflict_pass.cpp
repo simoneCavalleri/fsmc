@@ -99,6 +99,21 @@ bool PriorityConflictPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         state_transitions[src].push_back(&edge);
     }
 
+    auto resolve_guard = [&](const std::string& g) -> std::string {
+        for (const auto& gm : ir.guards) {
+            if (gm.name == g) {
+                if (gm.normalized_expression.has_value() && !gm.normalized_expression->empty()) {
+                    return *gm.normalized_expression;
+                }
+                if (gm.raw_expression.has_value() && !gm.raw_expression->empty()) {
+                    return *gm.raw_expression;
+                }
+                break;
+            }
+        }
+        return g;
+    };
+
     for (const auto& [state_id, edges] : state_transitions) {
         auto* state = ir.find_state_by_id(state_id);
         std::string state_name = state ? state->name : state_id;
@@ -114,7 +129,8 @@ bool PriorityConflictPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 if (k1 == k2 && !k1.empty()) {
                     // Both trigger on same event
                     bool guards_equal = (!t1->guard.has_value() && !t2->guard.has_value()) ||
-                                        (t1->guard.has_value() && t2->guard.has_value() && *t1->guard == *t2->guard);
+                                        (t1->guard.has_value() && t2->guard.has_value() &&
+                                         resolve_guard(*t1->guard) == resolve_guard(*t2->guard));
                     if (guards_equal && t1->priority == t2->priority) {
                         diag.report(diagnostic::Diagnostic::warning(
                             "W0402", "Potential priority race: state '" + state_name +

@@ -391,11 +391,12 @@ Operating --> Idle : StopCmd / PowerOff
 
 static void BM_Compiler_PlantUml_Parse(benchmark::State& state) {
     fsm::frontend::diagram::PlantUmlParser parser;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine diag;
 
     for (auto _ : state) {
         fsm::ir::FsmIr ir;
-        bool ok = parser.parse(SAMPLE_PUML, ir, err);
+        diag.clear();
+        bool ok = parser.parse(SAMPLE_PUML, ir, diag);
         benchmark::DoNotOptimize(ok);
     }
     state.SetBytesProcessed(static_cast<int64_t>(state.iterations() * SAMPLE_PUML.size()));
@@ -415,11 +416,12 @@ static const std::string SAMPLE_SYSML = R"(state def Spacecraft {
 
 static void BM_Compiler_Sysml2_Parse(benchmark::State& state) {
     fsm::frontend::formal::Sysml2Parser parser;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine diag;
 
     for (auto _ : state) {
         fsm::ir::FsmIr ir;
-        bool ok = parser.parse(SAMPLE_SYSML, ir, err);
+        diag.clear();
+        bool ok = parser.parse(SAMPLE_SYSML, ir, diag);
         benchmark::DoNotOptimize(ok);
     }
     state.SetBytesProcessed(static_cast<int64_t>(state.iterations() * SAMPLE_SYSML.size()));
@@ -433,8 +435,8 @@ BENCHMARK(BM_Compiler_Sysml2_Parse);
 static void BM_Compiler_PassManager_Pipeline(benchmark::State& state) {
     fsm::frontend::diagram::PlantUmlParser parser;
     fsm::ir::FsmIr ir_template;
-    std::string err;
-    parser.parse(SAMPLE_PUML, ir_template, err);
+    fsm::diagnostic::DiagnosticEngine parse_diag;
+    parser.parse(SAMPLE_PUML, ir_template, parse_diag);
 
     fsm::middleend::PassManager pm;
     pm.add_pass(std::make_unique<fsm::middleend::HierarchyCanonicalizationPass>());
@@ -453,8 +455,8 @@ BENCHMARK(BM_Compiler_PassManager_Pipeline);
 static void BM_Compiler_CppGenerator(benchmark::State& state) {
     fsm::frontend::diagram::PlantUmlParser parser;
     fsm::ir::FsmIr ir;
-    std::string err;
-    parser.parse(SAMPLE_PUML, ir, err);
+    fsm::diagnostic::DiagnosticEngine parse_diag;
+    parser.parse(SAMPLE_PUML, ir, parse_diag);
 
     fsm::backend::cpp::GeneratorOptions opts;
     opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;

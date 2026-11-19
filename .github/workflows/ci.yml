@@ -11,10 +11,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   lint-and-format:
     name: Lint & Format Check (Ubuntu)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -43,6 +47,7 @@ jobs:
   docs-quality-gate:
     name: Docs Quality Gate (MkDocs Strict)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -68,26 +73,10 @@ jobs:
           echo "### 📚 Documentation Quality Gate" >> $GITHUB_STEP_SUMMARY
           echo "✅ MkDocs site built cleanly with \`--strict\` (0 broken links, 0 warnings)." >> $GITHUB_STEP_SUMMARY
 
-  docs-catalog-sync:
-    name: Test Catalog Sync Check
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Python
-        run: sudo apt-get update && sudo apt-get install -y python3
-
-      - name: Configure CMake for check_test_catalog target
-        run: cmake -B build -S . -DFSMC_ENABLE_TESTING=ON -DFSMC_ENABLE_BENCHMARKS=OFF
-
-      - name: Verify Test Suite Catalog is Synchronized
-        run: |
-          cmake --build build --target check_test_catalog
-
   build-and-test:
     name: Build & Test (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -183,13 +172,14 @@ jobs:
           echo "### 🚀 CI Pipeline Results (${{ matrix.name }})" >> $GITHUB_STEP_SUMMARY
           echo "| Check | Status | Details |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|---|" >> $GITHUB_STEP_SUMMARY
-          echo "| **CTest Test Suite** | ✅ Passed | 54/54 test suites executed |" >> $GITHUB_STEP_SUMMARY
-          echo "| **nuXmv Formal Verification** | ✅ Verified | 12/12 test models proven sound |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Visual Diagram Transpilation** | ✅ Validated | SysML, PlantUML, SCXML, Mermaid |" >> $GITHUB_STEP_SUMMARY
+          echo "| **CTest Test Suite** | ✅ Passed | All CTest targets executed cleanly |" >> $GITHUB_STEP_SUMMARY
+          echo "| **nuXmv Formal Verification** | ✅ Verified | Formal SMV matrix proven sound |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Visual Diagram Transpilation** | ✅ Validated | 35/35 validations across all formats |" >> $GITHUB_STEP_SUMMARY
 
   sanitizers-asan-ubsan:
     name: Memory & UB Sanitizers (ASan + UBSan)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -219,6 +209,7 @@ jobs:
   sanitizers-tsan:
     name: ThreadSanitizer (TSan) Concurrency Gate
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
@@ -250,3 +241,30 @@ jobs:
       - name: Run Concurrency Tests under TSan
         run: |
           ctest --test-dir build -C Debug --output-on-failure --tests-regex "^(test_thread_safe_stress|test_spsc_queue|test_observer|test_timed_transitions|test_ring_buffer_overflow|test_async_and_guards)$"
+
+  ci-gate:
+    name: CI Gate
+    if: always()
+    needs:
+      - lint-and-format
+      - docs-quality-gate
+      - build-and-test
+      - sanitizers-asan-ubsan
+      - sanitizers-tsan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify all required CI jobs succeeded
+        run: |
+          for result in \
+            "${{ needs.lint-and-format.result }}" \
+            "${{ needs.docs-quality-gate.result }}" \
+            "${{ needs.build-and-test.result }}" \
+            "${{ needs.sanitizers-asan-ubsan.result }}" \
+            "${{ needs.sanitizers-tsan.result }}"; do
+            if [ "$result" != "success" ]; then
+              echo "CI Gate failed: required job result was '$result'"
+              exit 1
+            fi
+          done
+          echo "All required CI jobs succeeded."

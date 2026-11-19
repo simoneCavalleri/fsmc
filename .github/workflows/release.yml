@@ -43,11 +43,16 @@ jobs:
       - name: Configure CMake (Release Mode, Tests Disabled)
         shell: bash
         run: |
+          CMAKE_VER=$(python3 -c 'import pathlib, re; m = re.search(r"project\s*\(\s*fsmc\s+VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)", pathlib.Path("CMakeLists.txt").read_text()); print(m.group(1) if m else "")')
           TAG="${{ github.ref_name }}"
           if [ -z "$TAG" ] || [ "$TAG" = "main" ] || [ "$TAG" = "develop" ]; then
             TAG="${{ github.event.inputs.tag_name }}"
           fi
-          [ -z "$TAG" ] && TAG="v0.6.0"
+          [ -z "$TAG" ] && TAG="v${CMAKE_VER}"
+          if [ -n "$CMAKE_VER" ] && [ "${TAG#v}" != "$CMAKE_VER" ]; then
+            echo "Release tag '$TAG' does not match CMakeLists.txt version '$CMAKE_VER'"
+            exit 1
+          fi
           echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
 
           cmake -B build -S . \
@@ -66,6 +71,28 @@ jobs:
         shell: bash
         run: |
           cmake --install build --config Release --prefix pkg_dist
+
+      - name: Smoke Test Installed Binaries
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform_id }}" = "windows-x64" ]; then
+            EXT=".exe"
+          else
+            EXT=""
+          fi
+          "./pkg_dist/bin/fsmc${EXT}" --version
+          "./pkg_dist/bin/fsm-opt${EXT}" --version
+          cat << 'EOF' > smoke.sysml
+          state def SmokeFsm {
+              entry; then Idle;
+              state Idle;
+              state Active;
+              transition first Idle accept Go then Active;
+          }
+          EOF
+          "./pkg_dist/bin/fsmc${EXT}" -i smoke.sysml -o smoke_fsm.hpp --std=c++20 --standalone
+          "./pkg_dist/bin/fsm-opt${EXT}" -i smoke.sysml --verify
+          rm -f smoke.sysml smoke_fsm.hpp
 
       - name: Collect Release Tools
         shell: bash
@@ -101,21 +128,23 @@ jobs:
           path: staging_dist
           merge-multiple: true
 
-      - name: Prepare Release Tools
+      - name: Prepare Release Tools & SHA256 Checksums
         shell: bash
         run: |
           mkdir -p release_assets
           cp staging_dist/* release_assets/
+          (cd release_assets && sha256sum * > SHA256SUMS.txt)
 
       - name: Extract Release Notes from CHANGELOG.md
         id: extract_notes
         shell: bash
         run: |
+          CMAKE_VER=$(python3 -c 'import pathlib, re; m = re.search(r"project\s*\(\s*fsmc\s+VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)", pathlib.Path("CMakeLists.txt").read_text()); print(m.group(1) if m else "")')
           TAG="${{ github.ref_name }}"
           if [ -z "$TAG" ] || [ "$TAG" = "main" ] || [ "$TAG" = "develop" ]; then
             TAG="${{ github.event.inputs.tag_name }}"
           fi
-          [ -z "$TAG" ] && TAG="v0.6.0"
+          [ -z "$TAG" ] && TAG="v${CMAKE_VER}"
           VERSION="${TAG#v}"
 
           python3 - <<EOF

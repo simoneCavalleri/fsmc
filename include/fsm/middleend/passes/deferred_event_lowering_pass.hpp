@@ -17,8 +17,11 @@ using ir::FsmIr;
 
 /**
  * @class DeferredEventLoweringPass
- * @brief Lowers UML/SCXML deferred event declarations into target-agnostic internal FIFO buffers
- *        and transition recall logic, removing target runtime template dependencies.
+ * @brief Structural lowering pass that replaces UML/SCXML deferred event declarations with
+ *        explicit `__deferred_count` / `__deferred_buffer` registers and internal self-transitions.
+ *
+ * @note Intended for targets without native deferred-event queues; do not run before C++17/C++20
+ *       code generation if the runtime's native `deferred_queue_` recall behavior is required.
  */
 class DeferredEventLoweringPass {
   public:

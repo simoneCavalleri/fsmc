@@ -107,7 +107,7 @@ jobs:
           cp "pkg_dist/bin/fsm-opt${EXT}" "dist/fsm-opt-${RELEASE_TAG}-${{ matrix.platform_id }}${EXT}"
 
       - name: Upload Release Tools
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fsmc-${{ matrix.platform_id }}
           path: dist/*

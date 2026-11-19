@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 86  
-**Total Documented Test Cases**: 752  
+**Total Documented Test Cases**: 756  
 
 ---
 
@@ -133,14 +133,14 @@
 | [`test_guard_simplification.cpp`](../../tests/middleend/optimization/test_guard_simplification.cpp) | `tests/middleend/optimization/test_guard_simplification.cpp` | 2 | Unit tests for GuardSimplificationPass boolean algebra reductions. |
 | [`test_adversarial_qa.cpp`](../../tests/middleend/verification/test_adversarial_qa.cpp) | `tests/middleend/verification/test_adversarial_qa.cpp` | 0 | Adversarial, Chaos & Edge-Case QA Test Suite for fsmc. |
 | [`test_concurrency_verification.cpp`](../../tests/middleend/verification/test_concurrency_verification.cpp) | `tests/middleend/verification/test_concurrency_verification.cpp` | 5 | Unit tests for concurrency safety, data race detection, and determinism verification passes. |
-| [`test_efsm_interval_analysis.cpp`](../../tests/middleend/verification/test_efsm_interval_analysis.cpp) | `tests/middleend/verification/test_efsm_interval_analysis.cpp` | 9 | Unit tests for EFSMIntervalAnalyzer abstract interpretation and port interval contracts. |
+| [`test_efsm_interval_analysis.cpp`](../../tests/middleend/verification/test_efsm_interval_analysis.cpp) | `tests/middleend/verification/test_efsm_interval_analysis.cpp` | 10 | Unit tests for EFSMIntervalAnalyzer abstract interpretation and port interval contracts. |
 | [`test_formal_safety_passes.cpp`](../../tests/middleend/verification/test_formal_safety_passes.cpp) | `tests/middleend/verification/test_formal_safety_passes.cpp` | 12 | Unit tests for Category D Formal Safety & Analysis Passes: LivelockAnalysisPass, PriorityConflictPass, TimedInvariantsVerifierPass, EventQueueBoundPass. |
-| [`test_guard_satisfiability.cpp`](../../tests/middleend/verification/test_guard_satisfiability.cpp) | `tests/middleend/verification/test_guard_satisfiability.cpp` | 8 | Unit tests for GuardSatisfiabilityPass interval analysis, dead guards, and mutual exclusivity. |
+| [`test_guard_satisfiability.cpp`](../../tests/middleend/verification/test_guard_satisfiability.cpp) | `tests/middleend/verification/test_guard_satisfiability.cpp` | 9 | Unit tests for GuardSatisfiabilityPass interval analysis, dead guards, and mutual exclusivity. |
 | [`test_ltl_model_checker_extended.cpp`](../../tests/middleend/verification/test_ltl_model_checker_extended.cpp) | `tests/middleend/verification/test_ltl_model_checker_extended.cpp` | 0 | Unit tests for extended LTL model checking operators and EFSM interval integration. |
 | [`test_model_checker_reachability.cpp`](../../tests/middleend/verification/test_model_checker_reachability.cpp) | `tests/middleend/verification/test_model_checker_reachability.cpp` | 9 | Unit tests for FSM formal validator, graph reachability, livelock cycles, and EFSM interval analysis. |
-| [`test_model_checker_temporal_logic.cpp`](../../tests/middleend/verification/test_model_checker_temporal_logic.cpp) | `tests/middleend/verification/test_model_checker_temporal_logic.cpp` | 15 | Unit tests for LTL/CTL temporal logic parser, ModelChecker solver, and SMV formal specification generation. |
+| [`test_model_checker_temporal_logic.cpp`](../../tests/middleend/verification/test_model_checker_temporal_logic.cpp) | `tests/middleend/verification/test_model_checker_temporal_logic.cpp` | 16 | Unit tests for LTL/CTL temporal logic parser, ModelChecker solver, and SMV formal specification generation. |
 | [`test_timed_automata_verification.cpp`](../../tests/middleend/verification/test_timed_automata_verification.cpp) | `tests/middleend/verification/test_timed_automata_verification.cpp` | 4 | Unit tests for timed automata deadlock pass, SMV clock emission, and deterministic runtime timer management. |
-| [`test_wcet_analysis.cpp`](../../tests/middleend/verification/test_wcet_analysis.cpp) | `tests/middleend/verification/test_wcet_analysis.cpp` | 3 | Unit tests for WcetAnalysisPass static execution time bounding and Zeno cycle detection. |
+| [`test_wcet_analysis.cpp`](../../tests/middleend/verification/test_wcet_analysis.cpp) | `tests/middleend/verification/test_wcet_analysis.cpp` | 4 | Unit tests for WcetAnalysisPass static execution time bounding and Zeno cycle detection. |
 
 ## Integration & Build Subsystem
 

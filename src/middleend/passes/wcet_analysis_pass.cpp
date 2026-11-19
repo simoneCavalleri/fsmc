@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <map>
 #include <unordered_map>
 #include <vector>
 
@@ -14,8 +15,8 @@ bool WcetAnalysisPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     has_zeno_cycle_ = false;
     max_micro_steps_ = 0;
 
-    // Build directed adjacency list of eventless / micro-step transitions
-    std::unordered_map<std::string, std::vector<std::string>> adj;
+    // Build directed adjacency list of eventless / micro-step transitions (ordered map for deterministic diagnostics)
+    std::map<std::string, std::vector<std::string>> adj;
     for (const auto& s : ir.states) {
         adj[s.name] = {};
     }
@@ -49,26 +50,28 @@ bool WcetAnalysisPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         color[u] = 1;
         path_stack.push_back(u);
 
-        for (const auto& v : adj[u]) {
-            if (color[v] == 1) {
-                has_zeno_cycle_ = true;
-                std::string cycle_str;
-                bool in_cycle = false;
-                for (const auto& node : path_stack) {
-                    if (node == v)
-                        in_cycle = true;
-                    if (in_cycle) {
-                        if (!cycle_str.empty())
-                            cycle_str += " -> ";
-                        cycle_str += node;
+        if (auto it = adj.find(u); it != adj.end()) {
+            for (const auto& v : it->second) {
+                if (color[v] == 1) {
+                    has_zeno_cycle_ = true;
+                    std::string cycle_str;
+                    bool in_cycle = false;
+                    for (const auto& node : path_stack) {
+                        if (node == v)
+                            in_cycle = true;
+                        if (in_cycle) {
+                            if (!cycle_str.empty())
+                                cycle_str += " -> ";
+                            cycle_str += node;
+                        }
                     }
+                    cycle_str += " -> " + v;
+                    diag.report(Diagnostic::error(
+                        "E_ZENO_CYCLE",
+                        "Detected Zeno-cycle (infinite micro-step loop without time advance): " + cycle_str));
+                } else if (color[v] == 0) {
+                    dfs_cycle(v);
                 }
-                cycle_str += " -> " + v;
-                diag.report(Diagnostic::error(
-                    "E_ZENO_CYCLE",
-                    "Detected Zeno-cycle (infinite micro-step loop without time advance): " + cycle_str));
-            } else if (color[v] == 0) {
-                dfs_cycle(v);
             }
         }
 
@@ -86,12 +89,14 @@ bool WcetAnalysisPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     if (!has_zeno_cycle_) {
         std::unordered_map<std::string, std::size_t> memo;
         std::function<std::size_t(const std::string&)> get_longest = [&](const std::string& u) -> std::size_t {
-            if (memo.find(u) != memo.end()) {
-                return memo[u];
+            if (auto mit = memo.find(u); mit != memo.end()) {
+                return mit->second;
             }
             std::size_t max_child = 0;
-            for (const auto& v : adj[u]) {
-                max_child = std::max(max_child, 1 + get_longest(v));
+            if (auto it = adj.find(u); it != adj.end()) {
+                for (const auto& v : it->second) {
+                    max_child = std::max(max_child, 1 + get_longest(v));
+                }
             }
             memo[u] = max_child;
             return max_child;

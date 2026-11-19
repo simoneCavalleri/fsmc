@@ -22,9 +22,21 @@ ModelCheckResult ModelChecker::verify_property(const FormalProperty& prop) {
 
     const auto& ast = *prop.ast;
 
-    // 0. Computation Tree Logic (CTL) Operators
-    if (ast.op == TemporalOp::EX || ast.op == TemporalOp::AX || ast.op == TemporalOp::EF || ast.op == TemporalOp::AF ||
-        ast.op == TemporalOp::EG || ast.op == TemporalOp::AG || ast.op == TemporalOp::EU || ast.op == TemporalOp::AU) {
+    auto contains_ctl = [](auto& self, const PropertyAstNode& n) -> bool {
+        if (n.op == TemporalOp::EX || n.op == TemporalOp::AX || n.op == TemporalOp::EF || n.op == TemporalOp::AF ||
+            n.op == TemporalOp::EG || n.op == TemporalOp::AG || n.op == TemporalOp::EU || n.op == TemporalOp::AU) {
+            return true;
+        }
+        for (const auto& child : n.children) {
+            if (self(self, child)) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // 0. Computation Tree Logic (CTL) Operators (including negated / composite CTL formulas such as !(AG p))
+    if (contains_ctl(contains_ctl, ast)) {
         return check_ctl(prop, ast);
     }
 
@@ -505,8 +517,6 @@ bool eval_atom_predicate(
     if (s != nullptr) {
         if (s->fqn == atom || s->alias == atom)
             return true;
-        if (s->description.find(atom) != std::string::npos)
-            return true;
     }
 
     return false;
@@ -928,6 +938,13 @@ ModelCheckResult ModelChecker::check_eventually_always(const FormalProperty& pro
 std::unordered_set<std::string> ModelChecker::pre_exists(const std::unordered_set<std::string>& targets) const {
     std::unordered_set<std::string> result;
     for (const auto& [src, edges] : adj_) {
+        if (edges.empty()) {
+            // Stuttering terminal semantics (consistent with pre_all): terminal states self-stutter
+            if (targets.count(src) > 0) {
+                result.insert(src);
+            }
+            continue;
+        }
         for (const auto& edge : edges) {
             if (targets.count(edge.target) > 0) {
                 result.insert(src);
@@ -985,10 +1002,16 @@ std::unordered_set<std::string> ModelChecker::compute_sat(const PropertyAstNode&
             return sat;
         }
         case TemporalOp::Not: {
-            if (node.children.empty())
-                return {};
-            auto child_sat = compute_sat(node.children[0]);
             std::unordered_set<std::string> sat;
+            if (node.children.empty()) {
+                for (const auto& s : all_states) {
+                    if (!eval_atom_predicate(node.atom, s, ir_, state_intervals_)) {
+                        sat.insert(s);
+                    }
+                }
+                return sat;
+            }
+            auto child_sat = compute_sat(node.children[0]);
             for (const auto& s : all_states) {
                 if (child_sat.count(s) == 0) {
                     sat.insert(s);

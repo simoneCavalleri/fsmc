@@ -80,7 +80,8 @@ requirements:
     FsmIr model;
     fsm::diagnostic::DiagnosticEngine parse_diag;
     std::string err;
-    ASSERT_TRUE(diagram_parser.parse(puml_diagram, model, parse_diag)) << "Diagram error: " << parse_diag.render_to_string();
+    ASSERT_TRUE(diagram_parser.parse(puml_diagram, model, parse_diag))
+        << "Diagram error: " << parse_diag.render_to_string();
     EXPECT_EQ(model.states.size(), 3u);
     EXPECT_EQ(model.transitions.size(), 3u);
     EXPECT_TRUE(model.ports.empty());

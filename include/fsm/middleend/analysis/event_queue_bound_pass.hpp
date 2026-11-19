@@ -27,14 +27,16 @@ using ir::FsmIr;
  */
 class EventQueueBoundPass : public ::fsm::middleend::IPass {
   public:
-/**
+    /**
      * @brief Computes event queue upper bounds and annotates the model.
      * @param ir Target FsmIr to inspect and annotate.
      * @param diag Diagnostic reporting engine.
      * @return True on success.
      */
     [[nodiscard]] std::string name() const override { return "event-queue-bound"; }
-    [[nodiscard]] std::string description() const override { return "Computes static upper bounds on required runtime event queue capacity."; }
+    [[nodiscard]] std::string description() const override {
+        return "Computes static upper bounds on required runtime event queue capacity.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };

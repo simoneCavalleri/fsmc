@@ -28,14 +28,16 @@ using ir::FsmIr;
  */
 class CommonActionFactoringPass : public ::fsm::middleend::IPass {
   public:
-/**
+    /**
      * @brief Executes common action factoring on the IR model.
      * @param ir FSM IR to optimize.
      * @param diag Diagnostic engine.
      * @return True on success.
      */
     [[nodiscard]] std::string name() const override { return "common-action-factoring"; }
-    [[nodiscard]] std::string description() const override { return "Hoists common entry/exit actions across sibling transitions into state hooks."; }
+    [[nodiscard]] std::string description() const override {
+        return "Hoists common entry/exit actions across sibling transitions into state hooks.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };

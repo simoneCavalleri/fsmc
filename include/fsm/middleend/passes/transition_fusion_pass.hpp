@@ -27,14 +27,16 @@ using ir::FsmIr;
  */
 class TransitionFusionPass : public ::fsm::middleend::IPass {
   public:
-/**
+    /**
      * @brief Executes transition fusion across the IR model.
      * @param ir FSM IR to optimize.
      * @param diag Diagnostic reporting engine.
      * @return True on success.
      */
     [[nodiscard]] std::string name() const override { return "transition-fusion"; }
-    [[nodiscard]] std::string description() const override { return "Fuses consecutive anonymous transitions across pass-through states."; }
+    [[nodiscard]] std::string description() const override {
+        return "Fuses consecutive anonymous transitions across pass-through states.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };

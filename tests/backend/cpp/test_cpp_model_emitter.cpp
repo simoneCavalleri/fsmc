@@ -17,10 +17,10 @@
 #include "fsm/backend/cpp/cpp_backend_validator.hpp"
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/backend/cpp/cpp_model_emitter.hpp"
-#include "fsm/middleend/passes/choice_inlining_pass.hpp"
-#include "fsm/middleend/passes/orthogonal_product_pass.hpp"
 #include "fsm/backend/cpp/cpp_options.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/passes/choice_inlining_pass.hpp"
+#include "fsm/middleend/passes/orthogonal_product_pass.hpp"
 
 using namespace fsm::backend::cpp;
 using namespace fsm::backend;
@@ -1505,8 +1505,10 @@ TEST(CppModelEmitterTest, StringPayloadEvent_OmitsConstexprCtorInCpp17) {
 }
 
 /**
- * @brief Verify C++ codegen sanitizes malicious model names, namespaces, descriptions, and preserves declared 'f' variable.
- * @scenario Emit a model with comment-breaking description, unsafe namespace/model name, and a struct register named 'f'.
+ * @brief Verify C++ codegen sanitizes malicious model names, namespaces, descriptions, and preserves declared 'f'
+ * variable.
+ * @scenario Emit a model with comment-breaking description, unsafe namespace/model name, and a struct register named
+ * 'f'.
  * @expected Emitted header neutralizes comment/namespace injection and qualifies `f.val` as `reg.f.val`.
  */
 TEST(CppModelEmitterTest, CodegenSanitization_NeutralizesInjectionAndPreservesVariableF) {

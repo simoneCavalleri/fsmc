@@ -66,11 +66,7 @@ const std::vector<FormatDescriptor>& format_registry() {
          {".sfx", ".stateflow", ".slx"},
          FrontendKind::Formal,
          []() { return std::make_unique<StateflowParser>(); }},
-        {"smv",
-         {"nusmv", "nuxmv"},
-         {".smv"},
-         FrontendKind::Formal,
-         []() { return std::make_unique<SmvParser>(); }},
+        {"smv", {"nusmv", "nuxmv"}, {".smv"}, FrontendKind::Formal, []() { return std::make_unique<SmvParser>(); }},
         {"json", {}, {".json"}, FrontendKind::Formal, []() { return std::make_unique<JsonParser>(); }},
         {"dot", {"gv"}, {".dot", ".gv"}, FrontendKind::Diagram, []() { return std::make_unique<DotParser>(); }},
     };

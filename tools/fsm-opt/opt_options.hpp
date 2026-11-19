@@ -6,7 +6,6 @@
 #include <vector>
 
 #include "fsm/middleend/pass_interface.hpp"
-
 #include "tools/common/cli_utils.hpp"
 #include "tools/common/file_utils.hpp"
 
@@ -88,8 +87,8 @@ inline void print_available_passes() {
               << "============================================================================\n";
     std::size_t idx = 1;
     for (const auto& desc : ::fsm::middleend::PassRegistry::descriptors()) {
-        std::cout << " " << std::setw(2) << idx++ << ". " << std::left << std::setw(30) << desc.canonical_name
-                  << " [" << desc.category << "] " << desc.description << "\n";
+        std::cout << " " << std::setw(2) << idx++ << ". " << std::left << std::setw(30) << desc.canonical_name << " ["
+                  << desc.category << "] " << desc.description << "\n";
     }
     std::cout << "============================================================================\n";
 }

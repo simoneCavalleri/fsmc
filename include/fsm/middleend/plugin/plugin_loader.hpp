@@ -58,14 +58,14 @@ inline constexpr const char* kPluginAbiFingerprint =
 #endif
 
 /// Convenience macro for plugins to export the required ABI version and toolchain fingerprint symbols.
-#define FSMC_DEFINE_PLUGIN_ABI()                                                                            \
-    extern "C" {                                                                                            \
-    FSMC_PLUGIN_EXPORT std::uint32_t fsmc_plugin_abi_version() {                                            \
-        return ::fsm::middleend::plugin::kPluginAbiVersion;                                                 \
-    }                                                                                                       \
-    FSMC_PLUGIN_EXPORT const char* fsmc_plugin_abi_fingerprint() {                                          \
-        return ::fsm::middleend::plugin::kPluginAbiFingerprint;                                             \
-    }                                                                                                       \
+#define FSMC_DEFINE_PLUGIN_ABI()                                   \
+    extern "C" {                                                   \
+    FSMC_PLUGIN_EXPORT std::uint32_t fsmc_plugin_abi_version() {   \
+        return ::fsm::middleend::plugin::kPluginAbiVersion;        \
+    }                                                              \
+    FSMC_PLUGIN_EXPORT const char* fsmc_plugin_abi_fingerprint() { \
+        return ::fsm::middleend::plugin::kPluginAbiFingerprint;    \
+    }                                                              \
     }
 
 /**

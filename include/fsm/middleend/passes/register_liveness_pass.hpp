@@ -28,14 +28,16 @@ using ir::FsmIr;
  */
 class RegisterLivenessPass : public ::fsm::middleend::IPass {
   public:
-/**
+    /**
      * @brief Executes liveness analysis and assigns register indices to variables.
      * @param ir Target FsmIr.
      * @param diag Diagnostic engine.
      * @return True on success.
      */
     [[nodiscard]] std::string name() const override { return "register-liveness"; }
-    [[nodiscard]] std::string description() const override { return "Performs backward dataflow liveness analysis and interference-graph register coloring."; }
+    [[nodiscard]] std::string description() const override {
+        return "Performs backward dataflow liveness analysis and interference-graph register coloring.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };

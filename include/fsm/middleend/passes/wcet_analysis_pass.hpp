@@ -25,7 +25,7 @@ class WcetAnalysisPass : public ::fsm::middleend::IPass {
   public:
     explicit WcetAnalysisPass(std::size_t max_microstep_threshold = 100) : threshold_(max_microstep_threshold) {}
 
-[[nodiscard]] bool has_zeno_cycle() const noexcept { return has_zeno_cycle_; }
+    [[nodiscard]] bool has_zeno_cycle() const noexcept { return has_zeno_cycle_; }
     [[nodiscard]] std::size_t max_micro_steps() const noexcept { return max_micro_steps_; }
 
     /**
@@ -35,7 +35,9 @@ class WcetAnalysisPass : public ::fsm::middleend::IPass {
      * @return True if model is free of Zeno cycles within threshold, false otherwise.
      */
     [[nodiscard]] std::string name() const override { return "wcet-analysis"; }
-    [[nodiscard]] std::string description() const override { return "Computes static worst-case execution time (micro-step bound) per macro-step."; }
+    [[nodiscard]] std::string description() const override {
+        return "Computes static worst-case execution time (micro-step bound) per macro-step.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return true; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 

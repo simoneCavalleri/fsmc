@@ -651,8 +651,7 @@ class FsmcDriverImpl {
 
     static std::unique_ptr<IPass> create_submachine_pass(const FsmcOptions& opts) {
         return PassManager::create_pass_by_name(
-            "submachine-inlining", "",
-            create_filesystem_submachine_resolver(opts.input_file, opts.submachine_dir));
+            "submachine-inlining", "", create_filesystem_submachine_resolver(opts.input_file, opts.submachine_dir));
     }
 
     static int run_nuxmv_verification(const FsmcOptions& opts, const fsm::ir::FsmIr& model,
@@ -944,6 +943,5 @@ class FsmcDriverImpl {
 int FsmcDriver::run(const FsmcOptions& opts) {
     return FsmcDriverImpl::run(opts);
 }
-
 
 }  // namespace fsm::tools

@@ -9,8 +9,8 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
-#include "fsm/middleend/pass_interface.hpp"
 #include "fsm/ir/guard.hpp"
+#include "fsm/middleend/pass_interface.hpp"
 
 namespace fsm::middleend::passes {
 
@@ -24,7 +24,7 @@ using ir::GuardAstNode;
  */
 class GuardSimplificationPass : public ::fsm::middleend::IPass {
   public:
-/**
+    /**
      * @brief Simplifies a single GuardAstNode recursively.
      */
     static GuardAstNode simplify_node(const GuardAstNode& node);
@@ -36,7 +36,9 @@ class GuardSimplificationPass : public ::fsm::middleend::IPass {
      * @return True on success, false on failure.
      */
     [[nodiscard]] std::string name() const override { return "guard-simplification"; }
-    [[nodiscard]] std::string description() const override { return "Simplifies redundant boolean guard expressions and algebraic tautologies."; }
+    [[nodiscard]] std::string description() const override {
+        return "Simplifies redundant boolean guard expressions and algebraic tautologies.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };

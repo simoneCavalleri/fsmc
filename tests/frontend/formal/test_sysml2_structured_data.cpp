@@ -291,8 +291,9 @@ package RoundtripTest {
 
     // Re-parse emitted SysML v2
     FsmIr reloaded_model;
-    ASSERT_TRUE(parser.parse(emitted_sysml, reloaded_model, err)) << "Re-parse error: " << err.render_to_string() << "\nEmitted:\n"
-                                                                  << emitted_sysml;
+    ASSERT_TRUE(parser.parse(emitted_sysml, reloaded_model, err))
+        << "Re-parse error: " << err.render_to_string() << "\nEmitted:\n"
+        << emitted_sysml;
 
     // Verify roundtrip equivalence
     auto reloaded_enums = reloaded_model.get_enums();

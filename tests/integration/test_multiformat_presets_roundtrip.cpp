@@ -543,7 +543,8 @@ class MultiformatPresets : public ::testing::Test {
                 FsmIr reimported_model;
                 fsm::diagnostic::DiagnosticEngine reimport_err;
                 bool reimport_ok = reimport_parser->parse(exported, reimported_model, reimport_err);
-                EXPECT_TRUE(reimport_ok) << "[" << name << "] Re-parsing " << fmt << " export failed: " << reimport_err.render_to_string();
+                EXPECT_TRUE(reimport_ok) << "[" << name << "] Re-parsing " << fmt
+                                         << " export failed: " << reimport_err.render_to_string();
                 if (reimport_ok) {
                     EXPECT_EQ(model.states.size(), reimported_model.states.size())
                         << "[" << name << "] State count mismatch in " << fmt << " roundtrip";

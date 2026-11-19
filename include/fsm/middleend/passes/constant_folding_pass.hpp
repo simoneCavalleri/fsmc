@@ -22,14 +22,16 @@ using ir::FsmIr;
  */
 class ConstantFoldingPass : public ::fsm::middleend::IPass {
   public:
-/**
+    /**
      * @brief Evaluates static expressions and prunes dead transitions across the model.
      * @param ir Target FsmIr to optimize.
      * @param diag Diagnostic reporting engine.
      * @return True on success, false on fatal transform failure.
      */
     [[nodiscard]] std::string name() const override { return "constant-folding"; }
-    [[nodiscard]] std::string description() const override { return "Folds constant expressions and propagates compile-time known values."; }
+    [[nodiscard]] std::string description() const override {
+        return "Folds constant expressions and propagates compile-time known values.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };

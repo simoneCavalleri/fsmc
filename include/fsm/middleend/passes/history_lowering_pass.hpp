@@ -23,14 +23,16 @@ using ir::FsmIr;
  */
 class HistoryLoweringPass : public ::fsm::middleend::IPass {
   public:
-/**
+    /**
      * @brief Lowers history pseudostates in the model.
      * @param ir FSM IR to transform.
      * @param diag Diagnostic engine for warnings and errors.
      * @return True on successful transformation.
      */
     [[nodiscard]] std::string name() const override { return "history-lowering"; }
-    [[nodiscard]] std::string description() const override { return "Lowers UML shallow and deep history pseudostates into explicit register state tracking."; }
+    [[nodiscard]] std::string description() const override {
+        return "Lowers UML shallow and deep history pseudostates into explicit register state tracking.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };

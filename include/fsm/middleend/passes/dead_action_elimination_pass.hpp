@@ -28,14 +28,16 @@ using ir::FsmIr;
  */
 class DeadActionEliminationPass : public ::fsm::middleend::IPass {
   public:
-/**
+    /**
      * @brief Executes dead action elimination on the IR model.
      * @param ir FSM IR to optimize.
      * @param diag Diagnostic engine.
      * @return True on success.
      */
     [[nodiscard]] std::string name() const override { return "dead-action-elimination"; }
-    [[nodiscard]] std::string description() const override { return "Eliminates dead register writes whose values are never read on any reachable path."; }
+    [[nodiscard]] std::string description() const override {
+        return "Eliminates dead register writes whose values are never read on any reachable path.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };

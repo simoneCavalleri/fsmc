@@ -256,5 +256,4 @@ int OptDriver::run(const OptOptions& opts) {
     return OptDriverImpl::run(opts);
 }
 
-
 }  // namespace fsm::tools

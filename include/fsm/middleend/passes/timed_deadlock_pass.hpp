@@ -22,14 +22,16 @@ using ir::FsmIr;
  */
 class TimedDeadlockPass : public ::fsm::middleend::IPass {
   public:
-/**
+    /**
      * @brief Inspects timeout triggers and immediate transitions exiting the same states.
      * @param ir Read-only FsmIr model to analyze.
      * @param diag Diagnostic engine for warnings.
      * @return True if no unprioritized timeout race conflicts exist, false otherwise.
      */
     [[nodiscard]] std::string name() const override { return "timed-deadlock"; }
-    [[nodiscard]] std::string description() const override { return "Detects timed deadlocks and Zeno zero-time cycles in timed automata."; }
+    [[nodiscard]] std::string description() const override {
+        return "Detects timed deadlocks and Zeno zero-time cycles in timed automata.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return true; }
     bool run(const FsmIr& ir, DiagnosticEngine& diag) const;
     bool run(FsmIr& ir, DiagnosticEngine& diag) override { return run(static_cast<const FsmIr&>(ir), diag); }

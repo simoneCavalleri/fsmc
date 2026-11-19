@@ -29,9 +29,7 @@ struct EmitterDescriptor {
 
 const std::vector<EmitterDescriptor>& emitter_registry() {
     static const std::vector<EmitterDescriptor> kRegistry = {
-        {"ir",
-         {"json", "fsm_ir", "json_ir"},
-         [](const FsmIr& m) { return ir::FsmIrSerializer::serialize_json(m); }},
+        {"ir", {"json", "fsm_ir", "json_ir"}, [](const FsmIr& m) { return ir::FsmIrSerializer::serialize_json(m); }},
         {"plantuml", {"puml"}, [](const FsmIr& m) { return PlantUmlSerializer::serialize(m); }},
         {"mermaid", {"mmd"}, [](const FsmIr& m) { return MermaidSerializer::serialize(m); }},
         {"sysml2", {"sysml"}, [](const FsmIr& m) { return Sysml2Serializer::serialize(m); }},

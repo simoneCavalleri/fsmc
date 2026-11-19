@@ -19,7 +19,6 @@
 #include <type_traits>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
-#include "fsm/middleend/passes/orthogonal_product_pass.hpp"
 #include "fsm/backend/cpp/cpp_model_emitter.hpp"
 #include "fsm/backend/cpp/runtime/fsm.hpp"
 #include "fsm/backend/cpp/runtime/spsc_fsm.hpp"
@@ -35,6 +34,7 @@
 #include "fsm/ir/signal_definition.hpp"
 #include "fsm/middleend/passes/boundary_action_fusion_pass.hpp"
 #include "fsm/middleend/passes/choice_inlining_pass.hpp"
+#include "fsm/middleend/passes/orthogonal_product_pass.hpp"
 
 using namespace fsm::backend::cpp;
 using namespace fsm::backend;

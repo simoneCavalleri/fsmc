@@ -8,7 +8,6 @@
 
 #include "fsm/ir/guard.hpp"
 #include "fsm/ir/type_definition.hpp"
-#include "fsm/ir/guard.hpp"
 
 namespace fsm::backend::diagram {
 

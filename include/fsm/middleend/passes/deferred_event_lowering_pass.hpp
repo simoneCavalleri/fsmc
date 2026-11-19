@@ -26,14 +26,16 @@ using ir::FsmIr;
  */
 class DeferredEventLoweringPass : public ::fsm::middleend::IPass {
   public:
-/**
+    /**
      * @brief Lowers deferred events across all state nodes in the IR.
      * @param ir Target FSM IR to mutate.
      * @param diag Diagnostic engine for errors and warnings.
      * @return True if model was modified, false otherwise.
      */
     [[nodiscard]] std::string name() const override { return "deferred-event-lowering"; }
-    [[nodiscard]] std::string description() const override { return "Lowers deferred events into explicit software queue state machine transitions."; }
+    [[nodiscard]] std::string description() const override {
+        return "Lowers deferred events into explicit software queue state machine transitions.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };

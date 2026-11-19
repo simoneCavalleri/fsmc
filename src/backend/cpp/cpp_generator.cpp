@@ -47,8 +47,8 @@ std::string CppGenerator::generate_header(const FsmIr& model, const GeneratorOpt
         std::size_t pos = 0;
         while (pos < raw_ns.size()) {
             const std::size_t sep = raw_ns.find("::", pos);
-            const std::string_view part = (sep == std::string_view::npos) ? raw_ns.substr(pos)
-                                                                          : raw_ns.substr(pos, sep - pos);
+            const std::string_view part =
+                (sep == std::string_view::npos) ? raw_ns.substr(pos) : raw_ns.substr(pos, sep - pos);
             if (!part.empty()) {
                 std::string clean_part;
                 clean_part.reserve(part.size() + 1);

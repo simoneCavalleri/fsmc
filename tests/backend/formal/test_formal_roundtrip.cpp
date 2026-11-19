@@ -591,7 +591,8 @@ TEST(FormalRoundtrip, NativeLanguageAllProperties_PreservedAcrossFormats) {
     // 1. Serialize SysML v2 and reparse
     const std::string sysml_out = Sysml2Serializer::serialize(model);
     FsmIr sysml_roundtrip;
-    ASSERT_TRUE(sysml_parser.parse(sysml_out, sysml_roundtrip, err)) << "SysML v2 roundtrip error: " << err.render_to_string();
+    ASSERT_TRUE(sysml_parser.parse(sysml_out, sysml_roundtrip, err))
+        << "SysML v2 roundtrip error: " << err.render_to_string();
     EXPECT_EQ(sysml_roundtrip.variables.size(), 2u);
     EXPECT_EQ(sysml_roundtrip.signals.size(), 2u);
     EXPECT_EQ(sysml_roundtrip.states.size(), 2u);
@@ -610,7 +611,8 @@ TEST(FormalRoundtrip, NativeLanguageAllProperties_PreservedAcrossFormats) {
     const std::string scxml_out = ScxmlSerializer::serialize(model);
     ScxmlParser scxml_parser;
     FsmIr scxml_roundtrip;
-    ASSERT_TRUE(scxml_parser.parse(scxml_out, scxml_roundtrip, err)) << "SCXML roundtrip error: " << err.render_to_string();
+    ASSERT_TRUE(scxml_parser.parse(scxml_out, scxml_roundtrip, err))
+        << "SCXML roundtrip error: " << err.render_to_string();
     EXPECT_EQ(scxml_roundtrip.variables.size(), 2u);
     EXPECT_EQ(scxml_roundtrip.states.size(), 2u);
     const auto* st_scxml = scxml_roundtrip.find_state("Standby");
@@ -639,7 +641,8 @@ TEST(FormalRoundtrip, NativeLanguageAllProperties_PreservedAcrossFormats) {
     const std::string puml_out = PlantUmlSerializer::serialize(model);
     PlantUmlParser puml_parser;
     FsmIr puml_roundtrip;
-    ASSERT_TRUE(puml_parser.parse(puml_out, puml_roundtrip, err)) << "PlantUML roundtrip error: " << err.render_to_string();
+    ASSERT_TRUE(puml_parser.parse(puml_out, puml_roundtrip, err))
+        << "PlantUML roundtrip error: " << err.render_to_string();
     EXPECT_EQ(puml_roundtrip.variables.size(), 2u);
     EXPECT_EQ(puml_roundtrip.signals.size(), 2u);
     EXPECT_EQ(puml_roundtrip.states.size(), 2u);

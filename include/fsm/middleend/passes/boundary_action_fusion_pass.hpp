@@ -24,14 +24,16 @@ using ir::FsmIr;
  */
 class BoundaryActionFusionPass : public ::fsm::middleend::IPass {
   public:
-/**
+    /**
      * @brief Fuses boundary action cascades across all transition edges in the IR.
      * @param ir FSM IR model to mutate.
      * @param diag Diagnostic engine for errors and warnings.
      * @return True if actions were fused, false if no transitions required fusion.
      */
     [[nodiscard]] std::string name() const override { return "boundary-action-fusion"; }
-    [[nodiscard]] std::string description() const override { return "Fuses LCA hierarchical exit/entry boundary actions into atomic transition actions."; }
+    [[nodiscard]] std::string description() const override {
+        return "Fuses LCA hierarchical exit/entry boundary actions into atomic transition actions.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };

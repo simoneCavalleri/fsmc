@@ -29,14 +29,16 @@ using ir::FsmIr;
  */
 class LivelockAnalysisPass : public ::fsm::middleend::IPass {
   public:
-/**
+    /**
      * @brief Performs cycle detection on instantaneous transitions.
      * @param ir Target FsmIr to verify.
      * @param diag Diagnostic reporting engine.
      * @return True if no zero-time livelocks were found, false if fatal cycles exist.
      */
     [[nodiscard]] std::string name() const override { return "livelock-analysis"; }
-    [[nodiscard]] std::string description() const override { return "Detects autonomous zero-event livelock cycles in the state graph."; }
+    [[nodiscard]] std::string description() const override {
+        return "Detects autonomous zero-event livelock cycles in the state graph.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return true; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };

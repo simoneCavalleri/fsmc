@@ -34,14 +34,16 @@ class OrthogonalProductPass : public ::fsm::middleend::IPass {
     explicit OrthogonalProductPass(std::size_t max_states = DEFAULT_MAX_PRODUCT_STATES)
         : max_product_states(max_states) {}
 
-/**
+    /**
      * @brief Expands parallel states in the model into sequential product states.
      * @param ir Target FsmIr to expand.
      * @param diag Diagnostic engine for error reporting.
      * @return True on success, false on failure.
      */
     [[nodiscard]] std::string name() const override { return "orthogonal-product"; }
-    [[nodiscard]] std::string description() const override { return "Expands parallel orthogonal regions into deterministic Cartesian product states."; }
+    [[nodiscard]] std::string description() const override {
+        return "Expands parallel orthogonal regions into deterministic Cartesian product states.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 

@@ -857,8 +857,8 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
     if (!external_actions.empty() || !symbolic_guards.empty()) {
         out << "/**\n";
         out << " * @struct " << safe_model_name << "Services\n";
-        out << " * @brief External environment and hardware driver interface for '"
-            << sanitize_cpp_comment(model.name) << "'.\n";
+        out << " * @brief External environment and hardware driver interface for '" << sanitize_cpp_comment(model.name)
+            << "'.\n";
         out << " */\n";
         out << "struct " << safe_model_name << "Services {\n";
         out << "    virtual ~" << safe_model_name << "Services() = default;\n";

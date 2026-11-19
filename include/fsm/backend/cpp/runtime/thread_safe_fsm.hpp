@@ -761,8 +761,7 @@ class thread_safe_fsm {
     }
 
     template <typename Event>
-    std::optional<detail::dispatch_snapshot> execute_dispatch_under_lock(const Event& evt,
-                                                                         bool cancel_if_state_changes,
+    std::optional<detail::dispatch_snapshot> execute_dispatch_under_lock(const Event& evt, bool cancel_if_state_changes,
                                                                          std::uint64_t expected_epoch) {
         std::scoped_lock lock(dispatch_mutex_);
         if (cancel_if_state_changes && transition_epoch_.load(std::memory_order_acquire) != expected_epoch) {

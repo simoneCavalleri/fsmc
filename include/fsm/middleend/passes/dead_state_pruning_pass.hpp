@@ -24,7 +24,7 @@ class DeadStatePruningPass : public ::fsm::middleend::IPass {
   public:
     explicit DeadStatePruningPass(bool enable_pruning = true) : prune_(enable_pruning) {}
 
-void set_prune(bool enable) { prune_ = enable; }
+    void set_prune(bool enable) { prune_ = enable; }
     [[nodiscard]] bool is_prune_enabled() const noexcept { return prune_; }
 
     /**
@@ -34,7 +34,9 @@ void set_prune(bool enable) { prune_ = enable; }
      * @return True on success, false on failure.
      */
     [[nodiscard]] std::string name() const override { return "dead-state-pruning"; }
-    [[nodiscard]] std::string description() const override { return "Prunes unreachable states and dead transitions from the state graph."; }
+    [[nodiscard]] std::string description() const override {
+        return "Prunes unreachable states and dead transitions from the state graph.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 

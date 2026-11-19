@@ -9,10 +9,10 @@
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/event_queue_bound_pass.hpp"
-#include "fsm/middleend/pass_manager.hpp"
 #include "fsm/middleend/analysis/livelock_analysis_pass.hpp"
 #include "fsm/middleend/analysis/priority_conflict_pass.hpp"
 #include "fsm/middleend/analysis/timed_invariants_verifier_pass.hpp"
+#include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm;
 using namespace fsm::ir;

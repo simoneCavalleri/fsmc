@@ -22,14 +22,16 @@ using ir::FsmIr;
  */
 class DeterminismEnforcementPass : public ::fsm::middleend::IPass {
   public:
-/**
+    /**
      * @brief Sorts and validates outgoing transitions from each state according to priority contracts.
      * @param ir Target FsmIr to order.
      * @param diag Diagnostic engine for reporting ambiguity.
      * @return True on success, false on fatal determinism conflict.
      */
     [[nodiscard]] std::string name() const override { return "determinism-enforcement"; }
-    [[nodiscard]] std::string description() const override { return "Verifies transition determinism and detects overlapping nondeterministic triggers."; }
+    [[nodiscard]] std::string description() const override {
+        return "Verifies transition determinism and detects overlapping nondeterministic triggers.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return true; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };

@@ -25,14 +25,16 @@ using ir::FsmIr;
  */
 class ConnectiveJunctionChainingPass : public ::fsm::middleend::IPass {
   public:
-/**
+    /**
      * @brief Traverses acyclic connective junction paths and collapses them into direct transitions.
      * @param ir Target FsmIr to mutate.
      * @param diag Diagnostic reporting engine.
      * @return True if any junctions were chained and eliminated, false otherwise.
      */
     [[nodiscard]] std::string name() const override { return "connective-junction-chaining"; }
-    [[nodiscard]] std::string description() const override { return "Chains multi-hop connective junction paths into atomic composite transitions."; }
+    [[nodiscard]] std::string description() const override {
+        return "Chains multi-hop connective junction paths into atomic composite transitions.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };

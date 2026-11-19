@@ -186,7 +186,8 @@ TEST(FlightRecorder, SetInvariantViolationHandler_FunctionPointerOverload_IsNoex
 }
 
 /**
- * @brief Verify TraceBuffer supports concurrent single-producer writes and external reader snapshots without data races.
+ * @brief Verify TraceBuffer supports concurrent single-producer writes and external reader snapshots without data
+ * races.
  * @scenario Producer thread records 5000 entries while reader thread continuously inspects size() and last_entry().
  * @expected Completes cleanly under ThreadSanitizer with valid state names and monotonic ticks.
  */

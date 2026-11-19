@@ -29,8 +29,10 @@ using ir::FsmIr;
  */
 class SampledChangeTriggerPass : public ::fsm::middleend::IPass {
   public:
-[[nodiscard]] std::string name() const override { return "sampled-change-trigger"; }
-    [[nodiscard]] std::string description() const override { return "Lowers continuous when(...) change triggers into discrete z^-1 edge detectors."; }
+    [[nodiscard]] std::string name() const override { return "sampled-change-trigger"; }
+    [[nodiscard]] std::string description() const override {
+        return "Lowers continuous when(...) change triggers into discrete z^-1 edge detectors.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };

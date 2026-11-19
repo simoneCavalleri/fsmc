@@ -22,14 +22,16 @@ using ir::FsmIr;
  */
 class ChoiceInliningPass : public ::fsm::middleend::IPass {
   public:
-/**
+    /**
      * @brief Inlines choice pseudostates into direct transitions across the IR model.
      * @param ir Target FsmIr to mutate.
      * @param diag Diagnostic reporting engine.
      * @return True on success, false on fatal transform failure.
      */
     [[nodiscard]] std::string name() const override { return "choice-inlining"; }
-    [[nodiscard]] std::string description() const override { return "Inlines UML Choice pseudostates into guarded direct transitions."; }
+    [[nodiscard]] std::string description() const override {
+        return "Inlines UML Choice pseudostates into guarded direct transitions.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };

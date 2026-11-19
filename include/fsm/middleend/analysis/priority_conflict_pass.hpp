@@ -27,14 +27,16 @@ using ir::FsmIr;
  */
 class PriorityConflictPass : public ::fsm::middleend::IPass {
   public:
-/**
+    /**
      * @brief Executes priority conflict verification across all states.
      * @param ir Target FsmIr to verify.
      * @param diag Diagnostic reporting engine.
      * @return True if no fatal priority contradictions exist.
      */
     [[nodiscard]] std::string name() const override { return "priority-conflict-check"; }
-    [[nodiscard]] std::string description() const override { return "Detects ambiguous transition priority conflicts on shared source states and triggers."; }
+    [[nodiscard]] std::string description() const override {
+        return "Detects ambiguous transition priority conflicts on shared source states and triggers.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return true; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };

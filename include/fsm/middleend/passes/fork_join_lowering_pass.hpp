@@ -24,14 +24,16 @@ using ir::FsmIr;
  */
 class ForkJoinLoweringPass : public ::fsm::middleend::IPass {
   public:
-/**
+    /**
      * @brief Lowers fork and join pseudostates across the model.
      * @param ir FSM IR to mutate.
      * @param diag Diagnostic engine.
      * @return True if model was modified, false otherwise.
      */
     [[nodiscard]] std::string name() const override { return "fork-join-lowering"; }
-    [[nodiscard]] std::string description() const override { return "Lowers UML Fork and Join pseudostates into synchronized parallel region transitions."; }
+    [[nodiscard]] std::string description() const override {
+        return "Lowers UML Fork and Join pseudostates into synchronized parallel region transitions.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };

@@ -25,14 +25,16 @@ class PipeThroughPass : public ::fsm::middleend::IPass {
   public:
     explicit PipeThroughPass(std::string command) : command_(std::move(command)) {}
 
-/**
+    /**
      * @brief Serializes IR to JSON, pipes through child process stdout/stdin, and re-parses.
      * @param ir Target FsmIr to filter.
      * @param diag Diagnostic engine for error reporting.
      * @return True on successful process termination and valid JSON output, false otherwise.
      */
     [[nodiscard]] std::string name() const override { return "pipe-through"; }
-    [[nodiscard]] std::string description() const override { return "Pipes serialized Canonical IR JSON through an external filter command."; }
+    [[nodiscard]] std::string description() const override {
+        return "Pipes serialized Canonical IR JSON through an external filter command.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 

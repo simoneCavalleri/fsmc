@@ -50,10 +50,10 @@ bool is_valid_shared_lib_filename(const fs::path& p) {
 bool verify_abi_symbols(PluginLoader::AbiVersionFn abi_ver_fn, PluginLoader::AbiFingerprintFn abi_fp_fn,
                         const std::string& safe_path, DiagnosticEngine& diag) {
     if (abi_ver_fn == nullptr) {
-        diag.report(Diagnostic::error("E_PLUGIN_ABI",
-                                      "Plugin '" + safe_path +
-                                          "' does not export required ABI symbol 'extern \"C\" uint32_t "
-                                          "fsmc_plugin_abi_version()' (use FSMC_DEFINE_PLUGIN_ABI())"));
+        diag.report(
+            Diagnostic::error("E_PLUGIN_ABI", "Plugin '" + safe_path +
+                                                  "' does not export required ABI symbol 'extern \"C\" uint32_t "
+                                                  "fsmc_plugin_abi_version()' (use FSMC_DEFINE_PLUGIN_ABI())"));
         return false;
     }
     const std::uint32_t plugin_ver = abi_ver_fn();

@@ -65,7 +65,9 @@ std::string DiagnosticEngine::extract_line(std::string_view text, size_t line_nu
 }
 
 std::string DiagnosticEngine::render_to_string(std::string_view source_content, const SourceManager* sources) const {
-    const auto ansi = [this](const char* seq) -> const char* { return color_enabled_ ? seq : ""; };
+    const auto ansi = [this](const char* seq) -> const char* {
+        return color_enabled_ ? seq : "";
+    };
     const auto resolve_source = [source_content, sources](const SourceSpan& span) -> std::string_view {
         if (sources != nullptr && !span.file_path.empty()) {
             if (auto found = sources->get_source(span.file_path)) {

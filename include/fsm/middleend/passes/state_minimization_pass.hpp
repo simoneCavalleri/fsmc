@@ -26,14 +26,16 @@ using ir::FsmIr;
  */
 class StateMinimizationPass : public ::fsm::middleend::IPass {
   public:
-/**
+    /**
      * @brief Computes bisimulation equivalence classes and collapses redundant states.
      * @param ir Target FsmIr to minimize.
      * @param diag Diagnostic reporting engine.
      * @return True on success, false on failure.
      */
     [[nodiscard]] std::string name() const override { return "state-minimization"; }
-    [[nodiscard]] std::string description() const override { return "Minimizes equivalent states using Hopcroft/Moore DFA partition refinement."; }
+    [[nodiscard]] std::string description() const override {
+        return "Minimizes equivalent states using Hopcroft/Moore DFA partition refinement.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };

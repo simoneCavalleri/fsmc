@@ -119,16 +119,14 @@ bool SemanticValidationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                                (!t.source_id.empty() && node_names.count(t.source_id) != 0) ||
                                ir.find_state(t.source) != nullptr || ir.find_state_by_id(t.source) != nullptr;
         if (!src_found) {
-            diag.report(
-                Diagnostic::error("E0003", "Unknown source state/node in transition: '" + t.source + "'."));
+            diag.report(Diagnostic::error("E0003", "Unknown source state/node in transition: '" + t.source + "'."));
         }
         const bool tgt_found = node_names.count(t.target) != 0 ||
                                (!t.target_id.empty() && node_names.count(t.target_id) != 0) ||
                                ir.find_state(t.target) != nullptr || ir.find_state_by_id(t.target) != nullptr ||
                                t.target_is_history || t.target == "[H]" || t.target == "[H*]";
         if (!tgt_found) {
-            diag.report(
-                Diagnostic::error("E0003", "Unknown target state/node in transition: '" + t.target + "'."));
+            diag.report(Diagnostic::error("E0003", "Unknown target state/node in transition: '" + t.target + "'."));
         }
     }
 
@@ -180,8 +178,8 @@ bool ChoiceCompletenessPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         }
 
         if (outgoing.empty()) {
-            diag.report(Diagnostic::error(
-                "E0101", "Choice pseudostate '" + choice.name + "' has no outgoing branches (trap)."));
+            diag.report(Diagnostic::error("E0101",
+                                          "Choice pseudostate '" + choice.name + "' has no outgoing branches (trap)."));
             continue;
         }
 
@@ -332,9 +330,8 @@ bool ModelSafetyVerifierPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         };
 
         for (const auto& t : ir.transitions) {
-            bool matches_source =
-                (t.source == curr) || (!t.source_id.empty() && t.source_id == curr) ||
-                (std::find(t.source_ids.begin(), t.source_ids.end(), curr) != t.source_ids.end());
+            bool matches_source = (t.source == curr) || (!t.source_id.empty() && t.source_id == curr) ||
+                                  (std::find(t.source_ids.begin(), t.source_ids.end(), curr) != t.source_ids.end());
             if (!matches_source && curr_st != nullptr) {
                 matches_source =
                     (t.source == curr_st->name) || (!t.source_id.empty() && t.source_id == curr_st->id) ||
@@ -705,7 +702,6 @@ const std::vector<PassExecutionStats>& PassManager::get_stats() const noexcept {
     return stats_;
 }
 
-
 PassManager PassManager::create_validation_pipeline() {
     PassManager pm;
     pm.add_pass(std::make_unique<SemanticValidationPass>());
@@ -717,9 +713,8 @@ PassManager PassManager::create_validation_pipeline() {
     return pm;
 }
 
-std::unique_ptr<IPass> PassManager::create_pass_by_name(
-    std::string_view p_name, std::string_view pipe_cmd,
-    PassRegistry::SubmachineResolver submachine_resolver) {
+std::unique_ptr<IPass> PassManager::create_pass_by_name(std::string_view p_name, std::string_view pipe_cmd,
+                                                        PassRegistry::SubmachineResolver submachine_resolver) {
     return PassRegistry::create(p_name, pipe_cmd, std::move(submachine_resolver));
 }
 

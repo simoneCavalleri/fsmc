@@ -23,14 +23,16 @@ using ir::FsmIr;
  */
 class OrthogonalInterferencePass : public ::fsm::middleend::IPass {
   public:
-/**
+    /**
      * @brief Detects conflicting concurrent variable read/write actions across orthogonal regions.
      * @param ir Read-only FsmIr model to analyze.
      * @param diag Diagnostic reporting engine for race condition warnings.
      * @return True if model has no fatal race conflicts, false otherwise.
      */
     [[nodiscard]] std::string name() const override { return "orthogonal-interference"; }
-    [[nodiscard]] std::string description() const override { return "Detects write-write and read-write data races across parallel orthogonal regions."; }
+    [[nodiscard]] std::string description() const override {
+        return "Detects write-write and read-write data races across parallel orthogonal regions.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return true; }
     bool run(const FsmIr& ir, DiagnosticEngine& diag);
     bool run(FsmIr& ir, DiagnosticEngine& diag) override { return run(static_cast<const FsmIr&>(ir), diag); }

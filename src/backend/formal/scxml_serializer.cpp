@@ -4,7 +4,6 @@
 
 #include "fsm/ir/guard.hpp"
 #include "fsm/ir/type_definition.hpp"
-#include "fsm/ir/guard.hpp"
 
 namespace fsm::backend::formal {
 
@@ -284,8 +283,7 @@ std::string ScxmlSerializer::serialize(const FsmIr& model) {
         if (ct.is_enum()) {
             out << "  <!-- @fsm:enum " << ir::format_enum_directive(ct) << " -->\n";
         } else if (ct.is_struct()) {
-            out << "  <!-- @fsm:struct " << ir::format_struct_directive(ct)
-                << " -->\n";
+            out << "  <!-- @fsm:struct " << ir::format_struct_directive(ct) << " -->\n";
         }
     }
 

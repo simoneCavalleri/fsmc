@@ -190,8 +190,10 @@ TEST(PluginLoader, ValidationErrorsExceptionsAndValidPlugin_HandledCorrectly) {
     // 4b. Valid .so with mismatched ABI version -> E_PLUGIN_ABI
     {
         const fs::path bad_ver_so = compile_so("bad_ver", R"cpp(
-            #include <cstdint>
-            extern "C" std::uint32_t fsmc_plugin_abi_version() { return 999U; }
+#include <cstdint>
+            extern "C" std::uint32_t fsmc_plugin_abi_version() {
+                return 999U;
+            }
         )cpp");
         ASSERT_FALSE(bad_ver_so.empty());
         DiagnosticEngine diag;
@@ -202,11 +204,13 @@ TEST(PluginLoader, ValidationErrorsExceptionsAndValidPlugin_HandledCorrectly) {
     // 4c. Valid .so with mismatched ABI fingerprint -> E_PLUGIN_ABI
     {
         const fs::path bad_fp_so = compile_so("bad_fp", R"cpp(
-            #include "fsm/middleend/plugin/plugin_loader.hpp"
+#include "fsm/middleend/plugin/plugin_loader.hpp"
             extern "C" std::uint32_t fsmc_plugin_abi_version() {
                 return ::fsm::middleend::plugin::kPluginAbiVersion;
             }
-            extern "C" const char* fsmc_plugin_abi_fingerprint() { return "wrong-stl-00"; }
+            extern "C" const char* fsmc_plugin_abi_fingerprint() {
+                return "wrong-stl-00";
+            }
         )cpp");
         ASSERT_FALSE(bad_fp_so.empty());
         DiagnosticEngine diag;
@@ -217,7 +221,7 @@ TEST(PluginLoader, ValidationErrorsExceptionsAndValidPlugin_HandledCorrectly) {
     // 4d. Valid .so with ABI but without fsmc_register_passes symbol -> E_PLUGIN_SYMBOL
     {
         const fs::path no_sym_so = compile_so("no_sym", R"cpp(
-            #include "fsm/middleend/plugin/plugin_loader.hpp"
+#include "fsm/middleend/plugin/plugin_loader.hpp"
             FSMC_DEFINE_PLUGIN_ABI()
         )cpp");
         ASSERT_FALSE(no_sym_so.empty());
@@ -229,9 +233,9 @@ TEST(PluginLoader, ValidationErrorsExceptionsAndValidPlugin_HandledCorrectly) {
     // 5. Valid .so whose fsmc_register_passes adds a pass then throws std::runtime_error -> E_PLUGIN_INIT + rollback
     {
         const fs::path throw_std_so = compile_so("throw_std", R"cpp(
-            #include <memory>
-            #include <stdexcept>
-            #include "fsm/middleend/pass_manager.hpp"
+#include <memory>
+#include <stdexcept>
+#include "fsm/middleend/pass_manager.hpp"
             namespace {
             class DummyPluginPass : public fsm::middleend::IPass {
               public:
@@ -240,7 +244,7 @@ TEST(PluginLoader, ValidationErrorsExceptionsAndValidPlugin_HandledCorrectly) {
                 bool run(fsm::ir::FsmIr&, fsm::diagnostic::DiagnosticEngine&) override { return true; }
                 bool preserves_ir() const noexcept override { return true; }
             };
-            }
+            }  // namespace
             FSMC_DEFINE_PLUGIN_ABI()
             extern "C" void fsmc_register_passes(fsm::middleend::PassManager& target_pm) {
                 target_pm.add_pass(std::make_unique<DummyPluginPass>());
@@ -260,7 +264,7 @@ TEST(PluginLoader, ValidationErrorsExceptionsAndValidPlugin_HandledCorrectly) {
     // 6. Valid .so whose fsmc_register_passes throws unknown exception -> E_PLUGIN_INIT
     {
         const fs::path throw_unk_so = compile_so("throw_unk", R"cpp(
-            #include "fsm/middleend/plugin/plugin_loader.hpp"
+#include "fsm/middleend/plugin/plugin_loader.hpp"
             FSMC_DEFINE_PLUGIN_ABI()
             extern "C" void fsmc_register_passes(fsm::middleend::PassManager&) {
                 throw 123;
@@ -275,8 +279,8 @@ TEST(PluginLoader, ValidationErrorsExceptionsAndValidPlugin_HandledCorrectly) {
     // 7. Valid .so registering a real pass + versioned .so.1 + PassManager move-assignment safety
     {
         const fs::path ok_so = compile_so("ok_plugin", R"cpp(
-            #include <memory>
-            #include "fsm/middleend/pass_manager.hpp"
+#include <memory>
+#include "fsm/middleend/pass_manager.hpp"
             namespace {
             class OkPluginPass : public fsm::middleend::IPass {
               public:
@@ -285,7 +289,7 @@ TEST(PluginLoader, ValidationErrorsExceptionsAndValidPlugin_HandledCorrectly) {
                 bool run(fsm::ir::FsmIr&, fsm::diagnostic::DiagnosticEngine&) override { return true; }
                 bool preserves_ir() const noexcept override { return true; }
             };
-            }
+            }  // namespace
             FSMC_DEFINE_PLUGIN_ABI()
             extern "C" void fsmc_register_passes(fsm::middleend::PassManager& target_pm) {
                 target_pm.add_pass(std::make_unique<OkPluginPass>());

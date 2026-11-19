@@ -28,7 +28,7 @@ class SubmachineInliningPass : public ::fsm::middleend::IPass {
 
     explicit SubmachineInliningPass(SubmachineResolver resolver = nullptr) : resolver_(std::move(resolver)) {}
 
-void set_resolver(SubmachineResolver resolver) { resolver_ = std::move(resolver); }
+    void set_resolver(SubmachineResolver resolver) { resolver_ = std::move(resolver); }
 
     /**
      * @brief Traverses SubmachineRef nodes and inlines their statecharts into the parent model.
@@ -37,7 +37,9 @@ void set_resolver(SubmachineResolver resolver) { resolver_ = std::move(resolver)
      * @return True on success, false on unresolved submachines or cyclic references.
      */
     [[nodiscard]] std::string name() const override { return "submachine-inlining"; }
-    [[nodiscard]] std::string description() const override { return "Inlines referenced submachine statecharts into the host FsmIr."; }
+    [[nodiscard]] std::string description() const override {
+        return "Inlines referenced submachine statecharts into the host FsmIr.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 

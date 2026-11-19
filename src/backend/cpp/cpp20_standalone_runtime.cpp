@@ -6476,8 +6476,7 @@ class thread_safe_fsm {
     }
 
     template <typename Event>
-    std::optional<detail::dispatch_snapshot> execute_dispatch_under_lock(const Event& evt,
-                                                                         bool cancel_if_state_changes,
+    std::optional<detail::dispatch_snapshot> execute_dispatch_under_lock(const Event& evt, bool cancel_if_state_changes,
                                                                          std::uint64_t expected_epoch) {
         std::scoped_lock lock(dispatch_mutex_);
         if (cancel_if_state_changes && transition_epoch_.load(std::memory_order_acquire) != expected_epoch) {
@@ -6570,7 +6569,8 @@ namespace fsm {
  * - **Consumer (Control Task / Worker)**: Calls `process_one()`, `run_until_empty()`, `step()`, `tick()`,
  *   and consumer-only introspection (`get_history()`, `timer_manager()`).
  * - **Readers (Any Thread)**: Inspect `state_index()`, `state_name()`, `is_in()`, `state_residence_time()`,
- *   `has_invariant_violation()`, and `snapshot_registers()` via race-free atomic word snapshots (zero UB under C++20/TSan).
+ *   `has_invariant_violation()`, and `snapshot_registers()` via race-free atomic word snapshots (zero UB under
+ * C++20/TSan).
  */
 namespace detail {
 

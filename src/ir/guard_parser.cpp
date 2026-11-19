@@ -151,8 +151,8 @@ class GuardTokenizerAndParser {
         tokens_.push_back({TokenType::End, "", ""});
     }
 
-    std::optional<GuardAstNode> parse_or(std::vector<std::string>& atomic,
-                                         std::vector<AtomicGuardInfo>& atomic_details, std::size_t depth) {
+    std::optional<GuardAstNode> parse_or(std::vector<std::string>& atomic, std::vector<AtomicGuardInfo>& atomic_details,
+                                         std::size_t depth) {
         if (depth > kMaxGuardRecursionDepth) {
             error_ = true;
             return std::nullopt;

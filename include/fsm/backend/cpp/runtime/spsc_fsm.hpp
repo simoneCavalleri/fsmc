@@ -28,7 +28,8 @@ namespace fsm {
  * - **Consumer (Control Task / Worker)**: Calls `process_one()`, `run_until_empty()`, `step()`, `tick()`,
  *   and consumer-only introspection (`get_history()`, `timer_manager()`).
  * - **Readers (Any Thread)**: Inspect `state_index()`, `state_name()`, `is_in()`, `state_residence_time()`,
- *   `has_invariant_violation()`, and `snapshot_registers()` via race-free atomic word snapshots (zero UB under C++20/TSan).
+ *   `has_invariant_violation()`, and `snapshot_registers()` via race-free atomic word snapshots (zero UB under
+ * C++20/TSan).
  */
 namespace detail {
 

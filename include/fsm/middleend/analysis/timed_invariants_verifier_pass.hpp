@@ -28,14 +28,16 @@ using ir::FsmIr;
  */
 class TimedInvariantsVerifierPass : public ::fsm::middleend::IPass {
   public:
-/**
+    /**
      * @brief Executes invariant and timelock verification across all states.
      * @param ir Target FsmIr to verify.
      * @param diag Diagnostic reporting engine.
      * @return True if all timed invariants are consistent without timelocks.
      */
     [[nodiscard]] std::string name() const override { return "timed-invariants-verifier"; }
-    [[nodiscard]] std::string description() const override { return "Verifies state residence time invariants against outgoing timed transition bounds."; }
+    [[nodiscard]] std::string description() const override {
+        return "Verifies state residence time invariants against outgoing timed transition bounds.";
+    }
     [[nodiscard]] bool preserves_ir() const noexcept override { return true; }
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 86  
-**Total Documented Test Cases**: 739  
+**Total Documented Test Cases**: 743  
 
 ---
 
@@ -1737,6 +1737,12 @@
 #### `InliningPasses.ChoiceInlining_PrunesUnreachableChoicePseudostates`
 **Test Intent**: Regression: `ChoiceInliningPass` prunes unreachable choice pseudostates (`incoming.empty()`)
 
+#### `SubmachineInlining.ModularUnresolvedAndRecursive_DiagnosticsHandledGracefully`
+**Test Intent**: Verify SubmachineInliningPass in modular mode (null resolver), unresolved model, and recursive self-inlining.
+
+#### `SubmachineInlining.VariableRewritingAndNestedHierarchy_RewritesAllEntitiesCorrectly`
+**Test Intent**: Verify SubmachineInliningPass rewrites variables across ASTs, guards, actions, and nested hierarchy.
+
 ### [`test_orthogonal_product.cpp`](../../tests/middleend/canonicalization/test_orthogonal_product.cpp) (`tests/middleend/canonicalization/test_orthogonal_product.cpp`)
 #### `OrthogonalProduct.ConcurrentRegions_ExpandedToCartesianProductStates`
 **Test Intent**: Verify OrthogonalProductPass expands concurrent regions into Cartesian product states.
@@ -2216,6 +2222,12 @@
 
 #### `PluginLoader.MissingSharedObject_FailsGracefullyWithDiagnostic`
 **Test Intent**: Verify PluginLoader handles non-existent or invalid plugin files gracefully.
+
+#### `PipeThroughPass.ErrorPathsAndLargePayload_HandledGracefully`
+**Test Intent**: Verify PipeThroughPass error handling for empty command, failing exit code, invalid JSON, and >64KB payload.
+
+#### `PluginLoader.ValidationErrorsExceptionsAndValidPlugin_HandledCorrectly`
+**Test Intent**: Verify PluginLoader validation, dlopen/dlsym error handling, exception safety, and valid plugin loading.
 
 ### [`test_cli_driver_errors.cpp`](../../tests/integration/test_cli_driver_errors.cpp) (`tests/integration/test_cli_driver_errors.cpp`)
 #### `FsmcDriver.MissingInput_ReturnsNonZero`

@@ -22,6 +22,7 @@ class Cpp17StandaloneRuntime {
 #define FSMC_CPP17_RUNTIME 1
 #endif
 #include <array>
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <cstddef>
@@ -30,6 +31,7 @@ class Cpp17StandaloneRuntime {
 #include <functional>
 #include <iomanip>
 #include <iterator>
+#include <limits>
 #include <optional>
 #include <ostream>
 #include <string_view>
@@ -42,7 +44,6 @@ class Cpp17StandaloneRuntime {
         if (opts.thread_safe) {
             out << R"raw_fsm_runtime(
 // Thread-Safe System Includes
-#include <atomic>
 #include <condition_variable>
 #include <exception>
 #include <future>

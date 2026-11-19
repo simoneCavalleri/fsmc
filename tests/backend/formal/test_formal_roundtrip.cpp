@@ -104,62 +104,62 @@ void assert_ir_equivalent(const FsmIr& ir1, const FsmIr& ir2, const std::string&
 }
 
 void verify_roundtrip(const FsmIr& baseline) {
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
 
     // 1. Mermaid
     const std::string mmd = MermaidSerializer::serialize(baseline);
     MermaidParser mmd_parser;
     FsmIr mmd_ir;
-    ASSERT_TRUE(mmd_parser.parse(mmd, mmd_ir, err)) << "Mermaid parse error: " << err;
+    ASSERT_TRUE(mmd_parser.parse(mmd, mmd_ir, err)) << "Mermaid parse error: " << err.render_to_string();
     assert_ir_equivalent(baseline, mmd_ir, "Mermaid roundtrip");
 
     // 2. PlantUML
     const std::string puml = PlantUmlSerializer::serialize(baseline);
     PlantUmlParser puml_parser;
     FsmIr puml_ir;
-    ASSERT_TRUE(puml_parser.parse(puml, puml_ir, err)) << "PlantUML parse error: " << err;
+    ASSERT_TRUE(puml_parser.parse(puml, puml_ir, err)) << "PlantUML parse error: " << err.render_to_string();
     assert_ir_equivalent(baseline, puml_ir, "PlantUML roundtrip");
 
     // 3. SysML v2
     const std::string sysml = Sysml2Serializer::serialize(baseline);
     Sysml2Parser sysml_parser;
     FsmIr sysml_ir;
-    ASSERT_TRUE(sysml_parser.parse(sysml, sysml_ir, err)) << "SysML v2 parse error: " << err;
+    ASSERT_TRUE(sysml_parser.parse(sysml, sysml_ir, err)) << "SysML v2 parse error: " << err.render_to_string();
     assert_ir_equivalent(baseline, sysml_ir, "SysML v2 roundtrip");
 
     // 4. JSON Roundtrip
     const std::string json_str = fsm::ir::FsmIrSerializer::serialize_json(baseline);
     fsm::frontend::JsonParser json_parser;
     FsmIr json_ir;
-    ASSERT_TRUE(json_parser.parse(json_str, json_ir, err)) << "JSON parse error: " << err;
+    ASSERT_TRUE(json_parser.parse(json_str, json_ir, err)) << "JSON parse error: " << err.render_to_string();
     assert_ir_equivalent(baseline, json_ir, "JSON roundtrip");
 
     // 5. Graphviz DOT
     const std::string dot_str = DotSerializer::serialize(baseline);
     DotParser dot_parser;
     FsmIr dot_ir;
-    ASSERT_TRUE(dot_parser.parse(dot_str, dot_ir, err)) << "DOT parse error: " << err;
+    ASSERT_TRUE(dot_parser.parse(dot_str, dot_ir, err)) << "DOT parse error: " << err.render_to_string();
     assert_ir_equivalent(baseline, dot_ir, "DOT roundtrip");
 
     // 6. W3C SCXML
     const std::string scxml_str = ScxmlSerializer::serialize(baseline);
     ScxmlParser scxml_parser;
     FsmIr scxml_ir;
-    ASSERT_TRUE(scxml_parser.parse(scxml_str, scxml_ir, err)) << "SCXML parse error: " << err;
+    ASSERT_TRUE(scxml_parser.parse(scxml_str, scxml_ir, err)) << "SCXML parse error: " << err.render_to_string();
     assert_ir_equivalent(baseline, scxml_ir, "SCXML roundtrip");
 
     // 7. Cameo / MagicDraw OMG XMI 2.1
     const std::string xmi_str = CameoSerializer::serialize(baseline);
     CameoXmiParser xmi_parser;
     FsmIr xmi_ir;
-    ASSERT_TRUE(xmi_parser.parse(xmi_str, xmi_ir, err)) << "Cameo XMI parse error: " << err;
+    ASSERT_TRUE(xmi_parser.parse(xmi_str, xmi_ir, err)) << "Cameo XMI parse error: " << err.render_to_string();
     assert_ir_equivalent(baseline, xmi_ir, "Cameo XMI roundtrip");
 
     // 8. MathWorks Simulink Stateflow XML
     const std::string sf_str = StateflowSerializer::serialize(baseline);
     StateflowParser sf_parser;
     FsmIr sf_ir;
-    ASSERT_TRUE(sf_parser.parse(sf_str, sf_ir, err)) << "Stateflow parse error: " << err;
+    ASSERT_TRUE(sf_parser.parse(sf_str, sf_ir, err)) << "Stateflow parse error: " << err.render_to_string();
     assert_ir_equivalent(baseline, sf_ir, "Stateflow roundtrip");
 }
 
@@ -190,8 +190,8 @@ TEST(FormalRoundtrip, ConnectionManagerPreset_PreservedAcrossFormats) {
 
     PlantUmlParser parser;
     FsmIr baseline;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, baseline, err)) << "Parse error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, baseline, err)) << "Parse error: " << err.render_to_string();
     EXPECT_EQ(baseline.states.size(), 4U);
     EXPECT_EQ(baseline.transitions.size(), 11U);
 
@@ -221,8 +221,8 @@ TEST(FormalRoundtrip, AsyncMotorControllerPreset_PreservedAcrossFormats) {
 
     PlantUmlParser parser;
     FsmIr baseline;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, baseline, err)) << "Parse error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, baseline, err)) << "Parse error: " << err.render_to_string();
     EXPECT_EQ(baseline.states.size(), 5U);
     EXPECT_EQ(baseline.transitions.size(), 8U);
 
@@ -252,8 +252,8 @@ TEST(FormalRoundtrip, MissionControllerPreset_PreservedAcrossFormats) {
 
     PlantUmlParser parser;
     FsmIr baseline;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, baseline, err)) << "Parse error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, baseline, err)) << "Parse error: " << err.render_to_string();
     EXPECT_EQ(baseline.states.size(), 7U);
     EXPECT_EQ(baseline.transitions.size(), 8U);
 
@@ -284,8 +284,8 @@ TEST(FormalRoundtrip, IndustrialPressPreset_PreservedAcrossFormats) {
 
     PlantUmlParser parser;
     FsmIr baseline;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, baseline, err)) << "Parse error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, baseline, err)) << "Parse error: " << err.render_to_string();
     EXPECT_EQ(baseline.states.size(), 6U);
     EXPECT_EQ(baseline.transitions.size(), 9U);
 
@@ -317,8 +317,8 @@ TEST(FormalRoundtrip, Sysml2SpacecraftPreset_PreservedAcrossFormats) {
 
     Sysml2Parser parser;
     FsmIr baseline;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, baseline, err)) << "Parse error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, baseline, err)) << "Parse error: " << err.render_to_string();
     EXPECT_EQ(baseline.states.size(), 5U);
     EXPECT_EQ(baseline.transitions.size(), 4U);
 
@@ -369,8 +369,8 @@ TEST(FormalRoundtrip, DeepHierarchyAndDeferredEvents_PreservedAcrossFormats) {
 
     PlantUmlParser parser;
     FsmIr baseline;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, baseline, err)) << "Parse error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, baseline, err)) << "Parse error: " << err.render_to_string();
     EXPECT_EQ(baseline.states.size(), 9U);
     EXPECT_EQ(baseline.transitions.size(), 7U);
 
@@ -383,19 +383,19 @@ TEST(FormalRoundtrip, DeepHierarchyAndDeferredEvents_PreservedAcrossFormats) {
     const std::string mmd = MermaidSerializer::serialize(baseline);
     MermaidParser mmd_p;
     FsmIr mmd_ir;
-    ASSERT_TRUE(mmd_p.parse(mmd, mmd_ir, err)) << "Mermaid error: " << err;
+    ASSERT_TRUE(mmd_p.parse(mmd, mmd_ir, err)) << "Mermaid error: " << err.render_to_string();
     EXPECT_EQ(mmd_ir.states.size(), 9U);
 
     const std::string sysml = Sysml2Serializer::serialize(baseline);
     Sysml2Parser sysml_p;
     FsmIr sysml_ir;
-    ASSERT_TRUE(sysml_p.parse(sysml, sysml_ir, err)) << "SysML v2 error: " << err;
+    ASSERT_TRUE(sysml_p.parse(sysml, sysml_ir, err)) << "SysML v2 error: " << err.render_to_string();
     EXPECT_EQ(sysml_ir.states.size(), 9U);
 
     const std::string scxml = ScxmlSerializer::serialize(baseline);
     ScxmlParser scxml_p;
     FsmIr scxml_ir;
-    ASSERT_TRUE(scxml_p.parse(scxml, scxml_ir, err)) << "SCXML error: " << err;
+    ASSERT_TRUE(scxml_p.parse(scxml, scxml_ir, err)) << "SCXML error: " << err.render_to_string();
     EXPECT_EQ(scxml_ir.states.size(), 9U);
 }
 
@@ -426,8 +426,8 @@ TEST(FormalRoundtrip, ShallowAndDeepHistory_PreservedAcrossFormats) {
 
     PlantUmlParser parser;
     FsmIr baseline;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, baseline, err)) << "Parse error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, baseline, err)) << "Parse error: " << err.render_to_string();
     EXPECT_EQ(baseline.states.size(), 4U);
     EXPECT_EQ(baseline.transitions.size(), 5U);
 
@@ -449,7 +449,7 @@ TEST(FormalRoundtrip, ShallowAndDeepHistory_PreservedAcrossFormats) {
     const std::string mmd = MermaidSerializer::serialize(baseline);
     MermaidParser mmd_p;
     FsmIr mmd_ir;
-    ASSERT_TRUE(mmd_p.parse(mmd, mmd_ir, err)) << "Mermaid history error: " << err;
+    ASSERT_TRUE(mmd_p.parse(mmd, mmd_ir, err)) << "Mermaid history error: " << err.render_to_string();
     EXPECT_EQ(mmd_ir.states.size(), 4U);
     EXPECT_EQ(mmd_ir.transitions.size(), 5U);
 }
@@ -475,8 +475,8 @@ TEST(FormalRoundtrip, ComplexBooleanGuards_PreservedAcrossFormats) {
 
     PlantUmlParser parser;
     FsmIr baseline;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, baseline, err)) << "Parse error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, baseline, err)) << "Parse error: " << err.render_to_string();
     EXPECT_EQ(baseline.states.size(), 4U);
     EXPECT_EQ(baseline.transitions.size(), 6U);
 
@@ -502,7 +502,7 @@ TEST(FormalRoundtrip, ClosedLoop7HopFormatRing_PreservedAcrossFormats) {
     @enduml
     )";
 
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
 
     // Hop 1: PlantUML -> Mermaid
     PlantUmlParser puml_parser;
@@ -579,10 +579,10 @@ TEST(FormalRoundtrip, NativeLanguageAllProperties_PreservedAcrossFormats) {
     }
     )";
 
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
     Sysml2Parser sysml_parser;
     FsmIr model;
-    ASSERT_TRUE(sysml_parser.parse(sysml_in, model, err)) << "Error: " << err;
+    ASSERT_TRUE(sysml_parser.parse(sysml_in, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.variables.size(), 2u);
     EXPECT_EQ(model.signals.size(), 2u);
@@ -591,7 +591,7 @@ TEST(FormalRoundtrip, NativeLanguageAllProperties_PreservedAcrossFormats) {
     // 1. Serialize SysML v2 and reparse
     const std::string sysml_out = Sysml2Serializer::serialize(model);
     FsmIr sysml_roundtrip;
-    ASSERT_TRUE(sysml_parser.parse(sysml_out, sysml_roundtrip, err)) << "SysML v2 roundtrip error: " << err;
+    ASSERT_TRUE(sysml_parser.parse(sysml_out, sysml_roundtrip, err)) << "SysML v2 roundtrip error: " << err.render_to_string();
     EXPECT_EQ(sysml_roundtrip.variables.size(), 2u);
     EXPECT_EQ(sysml_roundtrip.signals.size(), 2u);
     EXPECT_EQ(sysml_roundtrip.states.size(), 2u);
@@ -610,7 +610,7 @@ TEST(FormalRoundtrip, NativeLanguageAllProperties_PreservedAcrossFormats) {
     const std::string scxml_out = ScxmlSerializer::serialize(model);
     ScxmlParser scxml_parser;
     FsmIr scxml_roundtrip;
-    ASSERT_TRUE(scxml_parser.parse(scxml_out, scxml_roundtrip, err)) << "SCXML roundtrip error: " << err;
+    ASSERT_TRUE(scxml_parser.parse(scxml_out, scxml_roundtrip, err)) << "SCXML roundtrip error: " << err.render_to_string();
     EXPECT_EQ(scxml_roundtrip.variables.size(), 2u);
     EXPECT_EQ(scxml_roundtrip.states.size(), 2u);
     const auto* st_scxml = scxml_roundtrip.find_state("Standby");
@@ -623,7 +623,7 @@ TEST(FormalRoundtrip, NativeLanguageAllProperties_PreservedAcrossFormats) {
     const std::string json_out = fsm::ir::FsmIrSerializer::serialize_json(model);
     fsm::frontend::JsonParser json_parser;
     FsmIr json_roundtrip;
-    ASSERT_TRUE(json_parser.parse(json_out, json_roundtrip, err)) << "JSON roundtrip error: " << err;
+    ASSERT_TRUE(json_parser.parse(json_out, json_roundtrip, err)) << "JSON roundtrip error: " << err.render_to_string();
     EXPECT_EQ(json_roundtrip.variables.size(), 2u);
     EXPECT_EQ(json_roundtrip.signals.size(), 2u);
     EXPECT_EQ(json_roundtrip.states.size(), 2u);
@@ -639,7 +639,7 @@ TEST(FormalRoundtrip, NativeLanguageAllProperties_PreservedAcrossFormats) {
     const std::string puml_out = PlantUmlSerializer::serialize(model);
     PlantUmlParser puml_parser;
     FsmIr puml_roundtrip;
-    ASSERT_TRUE(puml_parser.parse(puml_out, puml_roundtrip, err)) << "PlantUML roundtrip error: " << err;
+    ASSERT_TRUE(puml_parser.parse(puml_out, puml_roundtrip, err)) << "PlantUML roundtrip error: " << err.render_to_string();
     EXPECT_EQ(puml_roundtrip.variables.size(), 2u);
     EXPECT_EQ(puml_roundtrip.signals.size(), 2u);
     EXPECT_EQ(puml_roundtrip.states.size(), 2u);
@@ -681,8 +681,8 @@ state def SatelliteControl {
 
     Sysml2Parser sysml_parser;
     FsmIr sysml_ir;
-    std::string err;
-    ASSERT_TRUE(sysml_parser.parse(sysml_input, sysml_ir, err)) << "SysML parse error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(sysml_parser.parse(sysml_input, sysml_ir, err)) << "SysML parse error: " << err.render_to_string();
 
     EXPECT_EQ(sysml_ir.variables.size(), 2u);
     EXPECT_EQ(sysml_ir.variables[0].name, "battery_soc");
@@ -699,7 +699,7 @@ state def SatelliteControl {
     // Reparse from PlantUML
     PlantUmlParser puml_parser;
     FsmIr puml_ir;
-    ASSERT_TRUE(puml_parser.parse(puml_str, puml_ir, err)) << "PlantUML parse error: " << err;
+    ASSERT_TRUE(puml_parser.parse(puml_str, puml_ir, err)) << "PlantUML parse error: " << err.render_to_string();
 
     EXPECT_EQ(puml_ir.variables.size(), 2u);
     EXPECT_EQ(puml_ir.variables[0].name, "battery_soc");
@@ -757,8 +757,8 @@ state def SatelliteSafety {
 
     Sysml2Parser sysml_parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(sysml_parser.parse(sysml_input, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(sysml_parser.parse(sysml_input, model, err)) << "Error: " << err.render_to_string();
 
     // Verify correct state hierarchy
     const auto* booting = model.find_state("Booting");
@@ -781,7 +781,7 @@ state def SatelliteSafety {
     const std::string smv = SmvSerializer::serialize(model);
     SmvParser smv_parser;
     FsmIr smv_ir;
-    ASSERT_TRUE(smv_parser.parse(smv, smv_ir, err)) << "SMV parse error: " << err;
+    ASSERT_TRUE(smv_parser.parse(smv, smv_ir, err)) << "SMV parse error: " << err.render_to_string();
     EXPECT_EQ(smv_ir.states.size(), model.states.size());
     EXPECT_EQ(smv_ir.signals.size(), model.signals.size());
 
@@ -789,7 +789,7 @@ state def SatelliteSafety {
     const std::string mmd = MermaidSerializer::serialize(smv_ir);
     MermaidParser mmd_parser;
     FsmIr mmd_ir;
-    ASSERT_TRUE(mmd_parser.parse(mmd, mmd_ir, err)) << "Mermaid parse error: " << err;
+    ASSERT_TRUE(mmd_parser.parse(mmd, mmd_ir, err)) << "Mermaid parse error: " << err.render_to_string();
     EXPECT_EQ(mmd_ir.states.size(), model.states.size());
 }
 
@@ -821,8 +821,8 @@ package SpacecraftSubsystem {
 
     Sysml2Parser sysml_parser;
     FsmIr ir_sysml;
-    std::string err;
-    ASSERT_TRUE(sysml_parser.parse(kSysMLv2PortsModel, ir_sysml, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(sysml_parser.parse(kSysMLv2PortsModel, ir_sysml, err)) << err.render_to_string();
 
     ASSERT_EQ(ir_sysml.ports.size(), 2u);
     const auto* in_p = ir_sysml.find_port("solar_flux");
@@ -841,7 +841,7 @@ package SpacecraftSubsystem {
     std::string json_str = fsm::ir::FsmIrSerializer::serialize_json(ir_sysml);
     fsm::frontend::JsonParser json_parser;
     FsmIr ir_json;
-    ASSERT_TRUE(json_parser.parse(json_str, ir_json, err)) << err;
+    ASSERT_TRUE(json_parser.parse(json_str, ir_json, err)) << err.render_to_string();
     ASSERT_EQ(ir_json.ports.size(), 2u);
     const auto* in_json = ir_json.find_port("solar_flux");
     ASSERT_NE(in_json, nullptr);
@@ -853,7 +853,7 @@ package SpacecraftSubsystem {
     std::string puml_str = PlantUmlSerializer::serialize(ir_json);
     PlantUmlParser puml_parser;
     FsmIr ir_puml;
-    ASSERT_TRUE(puml_parser.parse(puml_str, ir_puml, err)) << err;
+    ASSERT_TRUE(puml_parser.parse(puml_str, ir_puml, err)) << err.render_to_string();
     ASSERT_EQ(ir_puml.ports.size(), 2u);
     const auto* in_puml = ir_puml.find_port("solar_flux");
     ASSERT_NE(in_puml, nullptr);
@@ -1009,8 +1009,8 @@ state def AutonomousUavMission {
 
     Sysml2Parser sysml_parser;
     FsmIr sysml_ir;
-    std::string err;
-    ASSERT_TRUE(sysml_parser.parse(kUavSysml, sysml_ir, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(sysml_parser.parse(kUavSysml, sysml_ir, err)) << err.render_to_string();
 
     EXPECT_EQ(sysml_ir.name, "AutonomousUavMission");
     EXPECT_EQ(sysml_ir.ports.size(), 5u);
@@ -1062,28 +1062,28 @@ state def AutonomousUavMission {
     std::string puml = PlantUmlSerializer::serialize(sysml_ir);
     PlantUmlParser puml_parser;
     FsmIr puml_ir;
-    ASSERT_TRUE(puml_parser.parse(puml, puml_ir, err)) << "[PlantUML] " << err;
+    ASSERT_TRUE(puml_parser.parse(puml, puml_ir, err)) << "[PlantUML] " << err.render_to_string();
     verify_uav_model(puml_ir, "PlantUML", true, true);
 
     // 2. SysML v2 Fine-Grained Roundtrip
     std::string sysml_out = Sysml2Serializer::serialize(sysml_ir);
     Sysml2Parser sysml_re_parser;
     FsmIr sysml_re_ir;
-    ASSERT_TRUE(sysml_re_parser.parse(sysml_out, sysml_re_ir, err)) << "[SysML v2] " << err;
+    ASSERT_TRUE(sysml_re_parser.parse(sysml_out, sysml_re_ir, err)) << "[SysML v2] " << err.render_to_string();
     verify_uav_model(sysml_re_ir, "SysML v2", true, true);
 
     // 3. JSON Fine-Grained Roundtrip
     const std::string json_out = fsm::ir::FsmIrSerializer::serialize_json(sysml_ir);
     fsm::frontend::JsonParser json_parser;
     FsmIr json_ir;
-    ASSERT_TRUE(json_parser.parse(json_out, json_ir, err)) << "[JSON] " << err;
+    ASSERT_TRUE(json_parser.parse(json_out, json_ir, err)) << "[JSON] " << err.render_to_string();
     verify_uav_model(json_ir, "JSON", true, true);
 
     // 4. W3C SCXML Fine-Grained Roundtrip
     std::string scxml_out = ScxmlSerializer::serialize(sysml_ir);
     ScxmlParser scxml_parser;
     FsmIr scxml_ir;
-    ASSERT_TRUE(scxml_parser.parse(scxml_out, scxml_ir, err)) << "[SCXML] " << err;
+    ASSERT_TRUE(scxml_parser.parse(scxml_out, scxml_ir, err)) << "[SCXML] " << err.render_to_string();
     verify_uav_model(scxml_ir, "SCXML", true, true);
 }
 
@@ -1157,8 +1157,8 @@ TEST(FormalRoundtrip, Sysml2Serializer_PreservesAssignmentBlocksAcrossRoundtrip)
     const std::string sysml = Sysml2Serializer::serialize(baseline);
     Sysml2Parser parser;
     FsmIr rt;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, rt, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, rt, err)) << err.render_to_string();
 
     const StateNode* rt_ready = rt.find_state("Ready");
     ASSERT_NE(rt_ready, nullptr);
@@ -1218,8 +1218,8 @@ TEST(FormalRoundtrip, CameoSerializer_PreservesInternalTransitionKind) {
 
     CameoXmiParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 1u);
     EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
 }
@@ -1246,8 +1246,8 @@ TEST(FormalRoundtrip, Sysml2Serializer_PreservesInternalTransitionKind) {
 
     Sysml2Parser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 1u);
     EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
 }
@@ -1277,8 +1277,8 @@ TEST(FormalRoundtrip, SmvSerializer_PreservesTransitionAssignmentsAcrossRoundtri
 
     SmvParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 1u);
     ASSERT_TRUE(parsed.transitions[0].transition_action.has_value());
     ASSERT_EQ(parsed.transitions[0].transition_action->assignments.size(), 1u);
@@ -1362,8 +1362,8 @@ TEST(FormalRoundtrip, SmvSerializer_PreservesStateLifecycleAndDeferDirectives) {
     const std::string smv = SmvSerializer::serialize(ir);
     SmvParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err.render_to_string();
     const auto* idle = parsed.find_state("Idle");
     ASSERT_NE(idle, nullptr);
     EXPECT_EQ(idle->do_activity, "spin");
@@ -1395,8 +1395,8 @@ TEST(FormalRoundtrip, StateflowSerializer_PreservesDeferredEventsAcrossRoundtrip
     const std::string xml = StateflowSerializer::serialize(ir);
     StateflowParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err.render_to_string();
     const auto* idle = parsed.find_state("Idle");
     ASSERT_NE(idle, nullptr);
     ASSERT_EQ(idle->deferred_events.size(), 2u);
@@ -1424,8 +1424,8 @@ TEST(FormalRoundtrip, StateflowSerializer_PreservesInternalTransitionKindAcrossR
 
     StateflowParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 1u);
     EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
 }

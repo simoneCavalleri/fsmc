@@ -25,7 +25,7 @@
 #include "fsm/frontend/common/parser_factory.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
-#include "fsm/middleend/analysis/fsm_validator.hpp"
+#include "fsm/middleend/pass_manager.hpp"
 
 namespace fs = std::filesystem;
 using namespace fsm;
@@ -511,18 +511,19 @@ class MultiformatPresets : public ::testing::Test {
 
     void run_full_pipeline(const std::string& name, const std::string& source, const std::string& format) {
         FsmIr model;
-        std::string err;
+        fsm::diagnostic::DiagnosticEngine err;
 
         // 1. Ingest
         auto parser = ParserFactory::create_by_format(format);
         ASSERT_NE(parser, nullptr) << "Failed to create parser for format: " << format;
 
         bool parsed = parser->parse(source, model, err);
-        ASSERT_TRUE(parsed) << "[" << name << "] Parse error: " << err;
+        ASSERT_TRUE(parsed) << "[" << name << "] Parse error: " << err.render_to_string();
 
         // Middle-End Validation
-        auto validation = FsmValidator::validate(model);
-        EXPECT_TRUE(validation.is_valid) << "[" << name << "] Model validation failed with errors";
+        DiagnosticEngine val_diag;
+        EXPECT_TRUE(fsm::middleend::PassManager::create_validation_pipeline().run(model, val_diag))
+            << "[" << name << "] Model validation failed with errors";
 
         // Interval analysis (must not crash or deadlock)
         DiagnosticEngine diag;
@@ -540,9 +541,9 @@ class MultiformatPresets : public ::testing::Test {
             auto reimport_parser = ParserFactory::create_by_format(fmt);
             if (reimport_parser) {
                 FsmIr reimported_model;
-                std::string reimport_err;
+                fsm::diagnostic::DiagnosticEngine reimport_err;
                 bool reimport_ok = reimport_parser->parse(exported, reimported_model, reimport_err);
-                EXPECT_TRUE(reimport_ok) << "[" << name << "] Re-parsing " << fmt << " export failed: " << reimport_err;
+                EXPECT_TRUE(reimport_ok) << "[" << name << "] Re-parsing " << fmt << " export failed: " << reimport_err.render_to_string();
                 if (reimport_ok) {
                     EXPECT_EQ(model.states.size(), reimported_model.states.size())
                         << "[" << name << "] State count mismatch in " << fmt << " roundtrip";

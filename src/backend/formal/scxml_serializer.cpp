@@ -2,7 +2,8 @@
 
 #include <sstream>
 
-#include "fsm/frontend/directive/directive_parser.hpp"
+#include "fsm/ir/guard.hpp"
+#include "fsm/ir/type_definition.hpp"
 #include "fsm/ir/guard.hpp"
 
 namespace fsm::backend::formal {
@@ -281,9 +282,9 @@ std::string ScxmlSerializer::serialize(const FsmIr& model) {
     // Emit declared custom types (enums and structs)
     for (const auto& ct : model.custom_types) {
         if (ct.is_enum()) {
-            out << "  <!-- @fsm:enum " << frontend::directive::DirectiveParser::format_enum_directive(ct) << " -->\n";
+            out << "  <!-- @fsm:enum " << ir::format_enum_directive(ct) << " -->\n";
         } else if (ct.is_struct()) {
-            out << "  <!-- @fsm:struct " << frontend::directive::DirectiveParser::format_struct_directive(ct)
+            out << "  <!-- @fsm:struct " << ir::format_struct_directive(ct)
                 << " -->\n";
         }
     }

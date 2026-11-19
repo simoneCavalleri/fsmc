@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 86  
-**Total Documented Test Cases**: 747  
+**Total Documented Test Cases**: 752  
 
 ---
 
@@ -19,7 +19,7 @@
 | [`test_context_contract.cpp`](../../tests/backend/cpp/runtime/test_context_contract.cpp) | `tests/backend/cpp/runtime/test_context_contract.cpp` | 6 | Unit test suite for domain context contracts, signal validators, and compile-time safety. |
 | [`test_deep_history_multi_level.cpp`](../../tests/backend/cpp/runtime/test_deep_history_multi_level.cpp) | `tests/backend/cpp/runtime/test_deep_history_multi_level.cpp` | 4 | Unit test suite for multi-level deep history pseudostate restoration. |
 | [`test_deferred.cpp`](../../tests/backend/cpp/runtime/test_deferred.cpp) | `tests/backend/cpp/runtime/test_deferred.cpp` | 10 | Unit test suite for deferred event queueing, capacity limits, and replay semantics. |
-| [`test_flight_recorder.cpp`](../../tests/backend/cpp/runtime/test_flight_recorder.cpp) | `tests/backend/cpp/runtime/test_flight_recorder.cpp` | 6 | Unit test suite for circular flight recorder, state history logging, and diagnostics. |
+| [`test_flight_recorder.cpp`](../../tests/backend/cpp/runtime/test_flight_recorder.cpp) | `tests/backend/cpp/runtime/test_flight_recorder.cpp` | 9 | Unit test suite for circular flight recorder, state history logging, and diagnostics. |
 | [`test_fsm.cpp`](../../tests/backend/cpp/runtime/test_fsm.cpp) | `tests/backend/cpp/runtime/test_fsm.cpp` | 8 | Unit test suite for core synchronous and thread-safe FSM runtime execution. |
 | [`test_hfsm.cpp`](../../tests/backend/cpp/runtime/test_hfsm.cpp) | `tests/backend/cpp/runtime/test_hfsm.cpp` | 2 | Unit test suite for hierarchical composite states and HFSM event dispatching. |
 | [`test_history.cpp`](../../tests/backend/cpp/runtime/test_history.cpp) | `tests/backend/cpp/runtime/test_history.cpp` | 5 | Unit test suite for shallow and deep history pseudostates in runtime. |
@@ -42,7 +42,7 @@
 | [`test_cpp17_standalone.cpp`](../../tests/backend/cpp/test_cpp17_standalone.cpp) | `tests/backend/cpp/test_cpp17_standalone.cpp` | 0 | Standalone verification executable for C++17 standalone code generation. |
 | [`test_cpp20_standalone.cpp`](../../tests/backend/cpp/test_cpp20_standalone.cpp) | `tests/backend/cpp/test_cpp20_standalone.cpp` | 0 | Standalone verification executable for C++20 standalone code generation. |
 | [`test_cpp_e2e_compiler.cpp`](../../tests/backend/cpp/test_cpp_e2e_compiler.cpp) | `tests/backend/cpp/test_cpp_e2e_compiler.cpp` | 8 | End-to-End integration and host compiler verification test suite for C++ Emitter (C++17 & C++20). |
-| [`test_cpp_model_emitter.cpp`](../../tests/backend/cpp/test_cpp_model_emitter.cpp) | `tests/backend/cpp/test_cpp_model_emitter.cpp` | 36 | Unit verification suite for C++ model emitter syntax generation. |
+| [`test_cpp_model_emitter.cpp`](../../tests/backend/cpp/test_cpp_model_emitter.cpp) | `tests/backend/cpp/test_cpp_model_emitter.cpp` | 37 | Unit verification suite for C++ model emitter syntax generation. |
 | [`test_generated_fsm.cpp`](../../tests/backend/cpp/test_generated_fsm.cpp) | `tests/backend/cpp/test_generated_fsm.cpp` | 0 | Standalone executable validating compilation and runtime dispatch of generated FSM code. |
 
 ## Diagram & Emitter Backend Subsystem
@@ -80,7 +80,7 @@
 
 | Suite File | Source Path | Test Cases | Scope Summary |
 | :--- | :--- | :---: | :--- |
-| [`test_diagnostics.cpp`](../../tests/diagnostic/test_diagnostics.cpp) | `tests/diagnostic/test_diagnostics.cpp` | 2 | Unit test suite for the compiler diagnostic engine and source caret rendering. |
+| [`test_diagnostics.cpp`](../../tests/diagnostic/test_diagnostics.cpp) | `tests/diagnostic/test_diagnostics.cpp` | 3 | Unit test suite for the compiler diagnostic engine and source caret rendering. |
 
 ## Frontend Parser Subsystem
 

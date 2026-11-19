@@ -234,18 +234,18 @@ def check_version_synchronization(repo_root: Path) -> list:
         if f"## [{current_version}]" not in changelog_content:
             errors.append(f"CHANGELOG.md is missing an entry for the current version: '## [{current_version}]'")
 
-    # 4. Check fsmc_driver.hpp and opt_driver.hpp
-    fsmc_driver = repo_root / "tools/fsmc/fsmc_driver.hpp"
+    # 4. Check fsmc_driver.cpp and opt_driver.cpp
+    fsmc_driver = repo_root / "tools/fsmc/fsmc_driver.cpp"
     if fsmc_driver.exists():
         driver_content = fsmc_driver.read_text(encoding="utf-8")
         if f"version {current_version}" not in driver_content:
-            errors.append(f"tools/fsmc/fsmc_driver.hpp version string mismatch: expected 'version {current_version}'")
+            errors.append(f"tools/fsmc/fsmc_driver.cpp version string mismatch: expected 'version {current_version}'")
 
-    opt_driver = repo_root / "tools/fsm-opt/opt_driver.hpp"
+    opt_driver = repo_root / "tools/fsm-opt/opt_driver.cpp"
     if opt_driver.exists():
         opt_content = opt_driver.read_text(encoding="utf-8")
         if f"v{current_version}" not in opt_content:
-            errors.append(f"tools/fsm-opt/opt_driver.hpp version string mismatch: expected 'v{current_version}'")
+            errors.append(f"tools/fsm-opt/opt_driver.cpp version string mismatch: expected 'v{current_version}'")
 
     # 5. Check docs references (installation.md, integration_guide.md)
     inst_doc = repo_root / "docs/getting_started/installation.md"

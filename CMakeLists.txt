@@ -87,37 +87,14 @@ target_compile_features(fsmc_runtime INTERFACE cxx_std_17)
 target_link_libraries(fsmc_runtime INTERFACE Threads::Threads)
 
 # ==============================================================================
-# Compiled Compiler Engine Target (fsmc_compiler)
+# Modular Compiled Compiler Engine Targets (Strict DAG Layering)
+#   fsmc_core      : IR + Diagnostics
+#   fsmc_frontend  : 9 Formal & Diagram Parsers -> fsmc_core
+#   fsmc_middleend : PassManager + 33 Passes + PluginLoader -> fsmc_core
+#   fsmc_backend   : C++17/20 Codegen + Formal/Diagram/RTM/MC-DC -> fsmc_core
+#   fsmc_compiler  : Aggregate INTERFACE target linking all 4 layers
 # ==============================================================================
-file(GLOB_RECURSE FSMC_COMPILER_SOURCES CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
-)
-
-add_library(fsmc_compiler STATIC ${FSMC_COMPILER_SOURCES})
-add_library(fsmc::fsmc_compiler ALIAS fsmc_compiler)
-add_library(fsmc::compiler ALIAS fsmc_compiler)
-add_library(fsmc::ir ALIAS fsmc_compiler)
-add_library(fsmc::middleend ALIAS fsmc_compiler)
-add_library(fsmc::frontend ALIAS fsmc_compiler)
-add_library(fsmc::backend ALIAS fsmc_compiler)
-
-target_include_directories(fsmc_compiler PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
-)
-
-target_compile_features(fsmc_compiler PRIVATE cxx_std_20)
-target_compile_features(fsmc_compiler INTERFACE cxx_std_17)
-target_link_libraries(fsmc_compiler PUBLIC fsmc_runtime ${CMAKE_DL_LIBS})
-
-find_package(ZLIB QUIET)
-if(ZLIB_FOUND)
-    target_link_libraries(fsmc_compiler PRIVATE ZLIB::ZLIB)
-    target_compile_definitions(fsmc_compiler PRIVATE FSMC_HAS_ZLIB=1)
-endif()
-
-# Native Precompiled Headers (PCH) in CMake 3.16+
-target_precompile_headers(fsmc_compiler PRIVATE
+set(FSMC_PCH_HEADERS
     <string>
     <string_view>
     <vector>
@@ -127,6 +104,70 @@ target_precompile_headers(fsmc_compiler PRIVATE
     <algorithm>
     <utility>
     <cstdint>
+)
+
+# 1. fsmc_core (IR + Diagnostic)
+file(GLOB_RECURSE FSMC_CORE_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/ir/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/diagnostic/*.cpp"
+)
+add_library(fsmc_core STATIC ${FSMC_CORE_SOURCES})
+add_library(fsmc::core ALIAS fsmc_core)
+add_library(fsmc::ir ALIAS fsmc_core)
+target_include_directories(fsmc_core PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+target_compile_features(fsmc_core PRIVATE cxx_std_20)
+target_compile_features(fsmc_core INTERFACE cxx_std_17)
+target_link_libraries(fsmc_core PUBLIC fsmc_runtime)
+target_precompile_headers(fsmc_core PRIVATE ${FSMC_PCH_HEADERS})
+
+# 2. fsmc_frontend (Parsers -> fsmc_core)
+file(GLOB_RECURSE FSMC_FRONTEND_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/frontend/*.cpp"
+)
+add_library(fsmc_frontend STATIC ${FSMC_FRONTEND_SOURCES})
+add_library(fsmc::frontend ALIAS fsmc_frontend)
+target_compile_features(fsmc_frontend PRIVATE cxx_std_20)
+target_link_libraries(fsmc_frontend PUBLIC fsmc_core)
+target_precompile_headers(fsmc_frontend REUSE_FROM fsmc_core)
+
+find_package(ZLIB QUIET)
+if(ZLIB_FOUND)
+    target_link_libraries(fsmc_frontend PRIVATE ZLIB::ZLIB)
+    target_compile_definitions(fsmc_frontend PRIVATE FSMC_HAS_ZLIB=1)
+endif()
+
+# 3. fsmc_middleend (Passes + Analysis + PluginLoader -> fsmc_core)
+file(GLOB_RECURSE FSMC_MIDDLEEND_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/middleend/*.cpp"
+)
+add_library(fsmc_middleend STATIC ${FSMC_MIDDLEEND_SOURCES})
+add_library(fsmc::middleend ALIAS fsmc_middleend)
+target_compile_features(fsmc_middleend PRIVATE cxx_std_20)
+target_link_libraries(fsmc_middleend PUBLIC fsmc_core PRIVATE ${CMAKE_DL_LIBS})
+target_precompile_headers(fsmc_middleend REUSE_FROM fsmc_core)
+
+# 4. fsmc_backend (Codegen + Serializers -> fsmc_core ONLY; zero frontend/middleend coupling)
+file(GLOB_RECURSE FSMC_BACKEND_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/backend/*.cpp"
+)
+add_library(fsmc_backend STATIC ${FSMC_BACKEND_SOURCES})
+add_library(fsmc::backend ALIAS fsmc_backend)
+target_compile_features(fsmc_backend PRIVATE cxx_std_20)
+target_link_libraries(fsmc_backend PUBLIC fsmc_core)
+target_precompile_headers(fsmc_backend REUSE_FROM fsmc_core)
+
+# 5. fsmc_compiler (Backward-compatible aggregate INTERFACE target)
+add_library(fsmc_compiler INTERFACE)
+add_library(fsmc::fsmc_compiler ALIAS fsmc_compiler)
+add_library(fsmc::compiler ALIAS fsmc_compiler)
+target_link_libraries(fsmc_compiler INTERFACE
+    fsmc_core
+    fsmc_frontend
+    fsmc_middleend
+    fsmc_backend
 )
 
 # Include CMake code generation helper functions
@@ -213,7 +254,7 @@ configure_package_config_file(
     INSTALL_DESTINATION lib/cmake/fsmc
 )
 
-install(TARGETS fsmc_runtime fsmc_compiler
+install(TARGETS fsmc_runtime fsmc_core fsmc_frontend fsmc_middleend fsmc_backend fsmc_compiler
     EXPORT fsmcTargets
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib

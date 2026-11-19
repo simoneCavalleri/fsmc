@@ -19,6 +19,7 @@
 #include <type_traits>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
+#include "fsm/middleend/passes/orthogonal_product_pass.hpp"
 #include "fsm/backend/cpp/cpp_model_emitter.hpp"
 #include "fsm/backend/cpp/runtime/fsm.hpp"
 #include "fsm/backend/cpp/runtime/spsc_fsm.hpp"
@@ -470,7 +471,7 @@ TEST(CppE2ECompiler, HierarchicalBoundaryActionFusion_ExecutesExactlyOnceInOrder
     // 2. Run BoundaryActionFusionPass
     // -------------------------------------------------------------------------
     DiagnosticEngine diag;
-    bool fused = BoundaryActionFusionPass::run(model, diag);
+    bool fused = BoundaryActionFusionPass{}.run(model, diag);
     ASSERT_TRUE(fused) << "BoundaryActionFusionPass must have modified the model";
 
     // Sanity: after fusion the hooks on the traversed nodes must be cleared.
@@ -532,11 +533,17 @@ int main() {
 )";
 
     auto run_standard_test = [&](const std::string& std_flag, CppStandard cpp_std, const std::string& suffix) {
+        FsmIr lowered = model;
+        fsm::diagnostic::DiagnosticEngine lower_diag;
+        fsm::middleend::passes::OrthogonalProductPass ortho_pass;
+        (void)ortho_pass.run(lowered, lower_diag);
+        ASSERT_FALSE(lower_diag.has_errors());
+
         GeneratorOptions opts;
         opts.cpp_standard = cpp_std;
         opts.standalone = true;
         opts.include_stubs = true;
-        std::string code = CppGenerator::generate_header(model, opts);
+        std::string code = CppGenerator::generate_header(lowered, opts);
 
         fs::path header_path = temp_dir / ("hier_fsm_" + suffix + ".hpp");
         {
@@ -648,11 +655,17 @@ int main() {
 )";
 
     auto run_standard_test = [&](const std::string& std_flag, CppStandard cpp_std, const std::string& suffix) {
+        FsmIr lowered = model;
+        fsm::diagnostic::DiagnosticEngine lower_diag;
+        fsm::middleend::passes::OrthogonalProductPass ortho_pass;
+        (void)ortho_pass.run(lowered, lower_diag);
+        ASSERT_FALSE(lower_diag.has_errors());
+
         GeneratorOptions opts;
         opts.cpp_standard = cpp_std;
         opts.standalone = true;
         opts.include_stubs = true;
-        std::string code = CppGenerator::generate_header(model, opts);
+        std::string code = CppGenerator::generate_header(lowered, opts);
 
         fs::path header_path = temp_dir / ("ortho_fsm_" + suffix + ".hpp");
         {
@@ -750,11 +763,17 @@ int main() {
 )";
 
     auto run_standard_test = [&](const std::string& std_flag, CppStandard cpp_std, const std::string& suffix) {
+        FsmIr lowered = model;
+        fsm::diagnostic::DiagnosticEngine lower_diag;
+        fsm::middleend::passes::OrthogonalProductPass ortho_pass;
+        (void)ortho_pass.run(lowered, lower_diag);
+        ASSERT_FALSE(lower_diag.has_errors());
+
         GeneratorOptions opts;
         opts.cpp_standard = cpp_std;
         opts.standalone = true;
         opts.include_stubs = true;
-        std::string code = CppGenerator::generate_header(model, opts);
+        std::string code = CppGenerator::generate_header(lowered, opts);
 
         fs::path header_path = temp_dir / ("timed_fsm_" + suffix + ".hpp");
         {
@@ -869,11 +888,17 @@ int main() {
 )";
 
     auto run_standard_test = [&](const std::string& std_flag, CppStandard cpp_std, const std::string& suffix) {
+        FsmIr lowered = model;
+        fsm::diagnostic::DiagnosticEngine lower_diag;
+        fsm::middleend::passes::OrthogonalProductPass ortho_pass;
+        (void)ortho_pass.run(lowered, lower_diag);
+        ASSERT_FALSE(lower_diag.has_errors());
+
         GeneratorOptions opts;
         opts.cpp_standard = cpp_std;
         opts.standalone = true;
         opts.include_stubs = true;
-        std::string code = CppGenerator::generate_header(model, opts);
+        std::string code = CppGenerator::generate_header(lowered, opts);
 
         fs::path header_path = temp_dir / ("invariant_fsm_" + suffix + ".hpp");
         {
@@ -962,11 +987,17 @@ int main() {
 )";
 
     auto run_standard_test = [&](const std::string& std_flag, CppStandard cpp_std, const std::string& suffix) {
+        FsmIr lowered = model;
+        fsm::diagnostic::DiagnosticEngine lower_diag;
+        fsm::middleend::passes::OrthogonalProductPass ortho_pass;
+        (void)ortho_pass.run(lowered, lower_diag);
+        ASSERT_FALSE(lower_diag.has_errors());
+
         GeneratorOptions opts;
         opts.cpp_standard = cpp_std;
         opts.standalone = true;
         opts.include_stubs = true;
-        std::string code = CppGenerator::generate_header(model, opts);
+        std::string code = CppGenerator::generate_header(lowered, opts);
 
         fs::path header_path = temp_dir / ("service_fsm_" + suffix + ".hpp");
         {
@@ -1167,7 +1198,7 @@ TEST(CppE2ECompilerTest, V010TypedEventsChoiceInliningInstructionsAndSpscRejecti
     model.add_transition(fsm::ir::TransitionEdge("LowMode", "Idle", "Reset"));
 
     fsm::diagnostic::DiagnosticEngine diag;
-    ASSERT_TRUE(fsm::middleend::passes::ChoiceInliningPass::run(model, diag));
+    ASSERT_TRUE(fsm::middleend::passes::ChoiceInliningPass{}.run(model, diag));
 
     const std::string driver_source = R"(
 #include "v010_fsm.hpp"
@@ -1358,9 +1389,9 @@ state def KeywordFSM {
 }
 )";
     fsm::ir::FsmIr kw_model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
     fsm::frontend::formal::Sysml2Parser sysml_parser;
-    ASSERT_TRUE(sysml_parser.parse(kw_sysml, kw_model, err)) << err;
+    ASSERT_TRUE(sysml_parser.parse(kw_sysml, kw_model, err)) << err.render_to_string();
 
     const std::string kw_driver = R"(
 #include "kw_fsm.hpp"
@@ -1425,9 +1456,9 @@ Check --> Slow : [else]
 )";
     fsm::ir::FsmIr puml_model;
     fsm::frontend::diagram::PlantUmlParser puml_parser;
-    ASSERT_TRUE(puml_parser.parse(puml_src, puml_model, err)) << err;
+    ASSERT_TRUE(puml_parser.parse(puml_src, puml_model, err)) << err.render_to_string();
     fsm::diagnostic::DiagnosticEngine diag;
-    ASSERT_TRUE(fsm::middleend::passes::ChoiceInliningPass::run(puml_model, diag));
+    ASSERT_TRUE(fsm::middleend::passes::ChoiceInliningPass{}.run(puml_model, diag));
 
     GeneratorOptions opts;
     opts.cpp_standard = CppStandard::Cpp17;

@@ -206,14 +206,13 @@ fsmc_target_sources(test_cpp20_standalone
 # ==============================================================================
 add_fsm_unit_test(test_full_7stage_pipeline DIR integration/pipeline)
 add_fsm_unit_test(test_pipeline_extensibility DIR integration/pipeline EXTRA_LIBS ${CMAKE_DL_LIBS})
-add_fsm_unit_test(test_cli_driver_errors DIR integration)
-target_include_directories(test_cli_driver_errors PRIVATE ${PROJECT_SOURCE_DIR})
+set_target_properties(test_pipeline_extensibility PROPERTIES ENABLE_EXPORTS ON)
+target_compile_definitions(test_pipeline_extensibility PRIVATE FSMC_TEST_CXX_COMPILER="${CMAKE_CXX_COMPILER}")
+add_fsm_unit_test(test_cli_driver_errors DIR integration EXTRA_LIBS fsmc_driver_lib)
 
-add_fsm_unit_test(test_fsmc_cli_options DIR integration)
-target_include_directories(test_fsmc_cli_options PRIVATE ${PROJECT_SOURCE_DIR})
+add_fsm_unit_test(test_fsmc_cli_options DIR integration EXTRA_LIBS fsmc_driver_lib)
 
-add_fsm_unit_test(test_fsm_opt_cli_options DIR integration)
-target_include_directories(test_fsm_opt_cli_options PRIVATE ${PROJECT_SOURCE_DIR})
+add_fsm_unit_test(test_fsm_opt_cli_options DIR integration EXTRA_LIBS fsmc_driver_lib)
 
 add_fsm_unit_test(test_cmake_integration DIR integration STANDARD 20)
 fsmc_target_sources(test_cmake_integration

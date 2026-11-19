@@ -148,9 +148,9 @@ TEST_P(GoldenRoundtripParamTest, PreservesCoreSemanticsAcrossRoundtrip) {
     ASSERT_FALSE(serialized.empty()) << fmt << " emitted empty output";
 
     FsmIr parsed;
-    std::string parse_err;
+    fsm::diagnostic::DiagnosticEngine parse_err;
     ASSERT_TRUE(parser->parse(serialized, parsed, parse_err))
-        << fmt << " parse error: " << parse_err << "\n--- Serialized ---\n"
+        << fmt << " parse error: " << parse_err.render_to_string() << "\n--- Serialized ---\n"
         << serialized;
 
     // 1. Core states preserved
@@ -428,8 +428,8 @@ TEST(GoldenParserFuzz, IrregularFormattingAndNestedGuards_ParsedCleanlyWithoutCr
         auto parser = ParserFactory::create_by_format(fc.format);
         ASSERT_NE(parser, nullptr) << fc.format;
         FsmIr ir;
-        std::string err;
-        ASSERT_TRUE(parser->parse(fc.source, ir, err)) << fc.format << ": " << err;
+        fsm::diagnostic::DiagnosticEngine err;
+        ASSERT_TRUE(parser->parse(fc.source, ir, err)) << fc.format << ": " << err.render_to_string();
         EXPECT_NE(ir.find_state("State_1_A"), nullptr) << fc.format;
         EXPECT_NE(ir.find_state("State_2_B"), nullptr) << fc.format;
         ASSERT_FALSE(ir.transitions.empty()) << fc.format;
@@ -610,7 +610,7 @@ TEST(GoldenParserFuzz, MalformedTruncatedAndDeeplyNestedInputs_FailGracefullyWit
         ASSERT_NE(parser, nullptr) << fmt;
         for (const auto& payload : payloads) {
             FsmIr ir;
-            std::string err;
+            fsm::diagnostic::DiagnosticEngine err;
             EXPECT_NO_THROW({ (void)parser->parse(payload, ir, err); }) << fmt;
         }
     }
@@ -762,7 +762,7 @@ TEST(GoldenDifferentialE2E, ParallelAndForkJoin_UnoptimizedVsOptimizedMatches) {
     FsmIr ir_o2 = build_par_ir("po2");
     DiagnosticEngine diag;
     OrthogonalProductPass().run(ir_o0, diag);
-    ForkJoinLoweringPass::run(ir_o2, diag);
+    ForkJoinLoweringPass{}.run(ir_o2, diag);
     OrthogonalProductPass().run(ir_o2, diag);
     ConstantFoldingPass().run(ir_o2, diag);
     DeadActionEliminationPass().run(ir_o2, diag);

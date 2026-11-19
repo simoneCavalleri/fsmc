@@ -10,15 +10,15 @@
 #include <vector>
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
+#include "fsm/ir/formal_property.hpp"
 #include "fsm/ir/fsm_ir.hpp"
-#include "fsm/middleend/analysis/model_checker.hpp"
 
 namespace fsm::backend::rtm {
 using ir::FsmIr;
 
 using ::fsm::diagnostic::Diagnostic;
 using ::fsm::diagnostic::DiagnosticEngine;
-using ::fsm::middleend::analysis::ModelCheckResult;
+using ::fsm::ir::ModelCheckResult;
 
 /**
  * @enum RtmFormat

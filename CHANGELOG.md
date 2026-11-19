@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.11.0] - 2026-11-19
+
+### Added
+- **Cross-Format Golden IR & Differential E2E Verification**:
+  - Added the Golden IR invariance test suite verifying lossless metadata and semantics preservation across all 9 modeling formats (`json`, `scxml`, `cameo`, `sysml2`, `smv`, `dot`, `plantuml`, `mermaid`, `stateflow` `.xml`/`.slx`) and middle-end passes.
+  - Added compiled differential E2E tests (`-O0` vs `-O2`) covering C++20 hierarchy/Local/Internal transitions, C++17 `ShallowHistory`, modular non-standalone multi-TU linkage (`fsm/fsm.hpp`), `Parallel` orthogonal regions (`ForkJoinLoweringPass` + `OrthogonalProductPass`), and native `Deferred` events.
+  - Added randomized property-based middle-end fuzzing in `PassManager`, adversarial malformed/truncated/deeply-nested parser fuzzing across all 9 parsers, and expanded unit coverage for `PluginLoader`, `PipeThroughPass`, `SubmachineInliningPass`, `StateTimeInvariant`, `DataType`, and `OptDriver`.
+- **CI & Sanitizer Hardening**:
+  - Added a dedicated `sanitizers-tsan` ThreadSanitizer CI job running concurrency tests (`test_thread_safe_stress`, `test_spsc_queue`, `test_observer`, `test_timed_transitions`, `test_ring_buffer_overflow`, `test_async_and_guards`).
+  - Extended `clang-tidy` CI execution across all `src/` and `tools/` translation units.
+
+### Changed
+- **Middle-End Guard & Trigger Canonicalization**:
+  - Centralized symbolic guard resolution (`resolve_transition_guard`) and canonical trigger matching helpers across middle-end analysis and optimization passes.
+  - Clarified `DeferredEventLoweringPass` as an abstract/structural lowering pass for targets without native deferred-event queues, preserving `StateNode::deferred_events` in the 7-stage C++ runtime pipeline.
+
+### Fixed
+- **C++ Runtime Concurrency (TSan)**:
+  - Eliminated a use-after-free shutdown race in `worker_thread_controller` (`include/fsm/backend/cpp/runtime/detail/worker_thread_controller.hpp`) when a worker observer invokes `stop_worker()` on itself (`exit_mutex_`, `exit_cv_`, and RAII loop-exit guard), and synchronized `ExceptionHandler_Registration_InvokedOnFailure` in `test_async_and_guards.cpp`.
+- **9-Format Parser & Serializer Roundtrip Fidelity**:
+  - Fixed `Sysml2Serializer` and `Sysml2Parser` to preserve non-default `FormalProperty` kinds (`Reachability`, `Liveness`, `Invariant`, `DeadlockFreedom`), requirement IDs, and descriptions alongside native `assert property` statements without duplicating properties.
+  - Fixed roundtrip preservation of `TimeTrigger` (`after`/`every`), `ChangeTrigger` (`when(...)`), `TransitionEdgeKind::Local` and `Internal`, `ChoiceNode`, `Fork`/`Join`/`EntryPoint`/`ExitPoint`/`Final`, `traceability_reqs`, `time_invariant`, `deferred_events`, and `SignalDefinition` attributes/validators across SCXML, Cameo XMI, SysML v2, SMV, Stateflow, PlantUML, Mermaid, DOT, and JSON.
+  - Hardened parser edge cases including quoted/escaped DOT labels and cluster names, MATLAB `%` comments and `~=`/`~` operators in Stateflow, `GuardExpressionParser` quoted logical literals, `Sysml2Parser` signed `int` / fractional `after` durations / nested substate parents, and XState JSON `"type": "final"` mapping.
+- **Middle-End Pass Correctness & C++ Codegen**:
+  - Fixed `BoundaryActionFusionPass` LCA handling for `TransitionEdgeKind::Local`, `DeferredEventLoweringPass` skipping `Local` transitions, `WcetAnalysisPass` excluding non-zero-time triggers from microstep bounds, and `LivelockAnalysisPass` / `DeadStatePruningPass` / `FsmValidator` traversing multi-endpoint `Fork`/`Join` transitions.
+  - Fixed symbolic guard resolution via `FsmIr::guards` across `PriorityConflictPass`, `GuardSatisfiabilityPass`, `DeadActionEliminationPass`, `RegisterLivenessPass`, and `McdcHarnessGenerator`.
+  - Fixed `OrthogonalProductPass` propagation of `deferred_events` / `traceability_reqs`, `ChoiceInliningPass` unreachable choice pruning, `ConstantFoldingPass` preservation of `do_activity` / `ActionCallOp`, and `CppModelEmitter` enum widening, literal qualification, non-constexpr string payload constructors, and guard functor shadowing.
+
+---
+
 ## [0.10.0] - 2026-11-13
 
 ### Added

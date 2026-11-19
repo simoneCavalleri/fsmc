@@ -12,7 +12,7 @@ Welcome to the **`fsmc` Technical Reference Hub**. This section provides complet
 | **[Runtime C++ API Reference](../runtime_api/reference.md)** | Formal reference for `fsm::fsm`, `fsm::spsc_fsm`, `fsm::thread_safe_fsm`, `fsm::config`, concepts, and traits. | Firmware, Embedded Engineers |
 | **[CMake Integration Reference](cmake_integration.md)** | Macro reference (`fsmc_target_sources`), targets, and toolchain variables. | DevOps, System Integrators |
 | **[Canonical IR AST Specification](../internals/fsm_ir_specification.md)** | Formal schema and data structures of the canonical `FsmIr` AST representation. | Compiler Contributors |
-| **[Master Test Suite Catalog](test_suite_catalog.md)** | Exhaustive traceability catalog of all 85 automated test suites (94 CTest targets). | QA, Safety Auditors |
+| **[Master Test Suite Catalog](test_suite_catalog.md)** | Exhaustive traceability catalog of all 86 automated test suites (95 CTest targets). | QA, Safety Auditors |
 
 ---
 

@@ -2570,7 +2570,7 @@
 **Test Intent**: Differential E2E test for Parallel orthogonal regions + OrthogonalProductPass (-O0 vs -O2).
 
 #### `GoldenDifferentialE2E.DeferredEvents_UnoptimizedVsOptimizedMatches`
-**Test Intent**: Differential E2E test for Deferred events + DeferredEventLoweringPass (-O0 vs -O2).
+**Test Intent**: Differential E2E test for native Deferred events across -O0 vs -O2 optimization passes.
 
 ### [`test_multiformat_presets_roundtrip.cpp`](../../tests/integration/test_multiformat_presets_roundtrip.cpp) (`tests/integration/test_multiformat_presets_roundtrip.cpp`)
 #### `MultiformatPresets.Sysml2UavMission_PassesRoundtripAndStrictCompilation`

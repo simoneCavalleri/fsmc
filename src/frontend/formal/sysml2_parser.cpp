@@ -1080,6 +1080,11 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         FormalProperty prop;
         prop.name = sanitize_identifier(match[1].str());
         prop.raw_formula = trim(match[2].str());
+        for (const auto& existing : model.properties) {
+            if (existing.name == prop.name) {
+                return true;
+            }
+        }
         prop.ast = directive::LtlPropertyParser::parse(prop.raw_formula);
         prop.id = compute_deterministic_id(prop.name + ":" + prop.raw_formula);
         model.add_property(std::move(prop));

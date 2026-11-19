@@ -232,6 +232,17 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
     // Native SysML v2 Temporal Logic Properties
     for (const auto& prop : model.properties) {
         if (!prop.name.empty() && !prop.raw_formula.empty()) {
+            if (prop.kind != PropertyKind::Safety || !prop.traceability_req.empty() || !prop.description.empty()) {
+                out << "    // @fsm:property name=" << prop.name << " kind=" << property_kind_to_string(prop.kind)
+                    << " formula=\"" << prop.raw_formula << "\"";
+                if (!prop.traceability_req.empty()) {
+                    out << " req=\"" << prop.traceability_req << "\"";
+                }
+                if (!prop.description.empty()) {
+                    out << " desc=\"" << prop.description << "\"";
+                }
+                out << "\n";
+            }
             out << "    assert property " << prop.name << " : " << prop.raw_formula << ";\n";
         }
     }

@@ -1303,7 +1303,7 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
     out << "// ============================================================================\n\n";
 
     std::set<std::string> forward_declared_actions;
-    const std::regex act_ident_re(R"([A-Za-z_][A-Za-z0-9_]*)");
+    static const std::regex act_ident_re(R"([A-Za-z_][A-Za-z0-9_]*)");
 
     for (const auto& action_item : effective_actions) {
         std::vector<ActionAssignment> assignments;

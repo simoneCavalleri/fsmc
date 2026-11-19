@@ -37,7 +37,7 @@ bool CameoXmiParser::parse_impl(std::string_view content, FsmIr& model, std::str
     // Parse @fsm directives from comments
     {
         std::string raw_str{content};
-        std::regex comment_re(R"(<!--\s*@fsm:([^\r\n]+?)\s*-->)");
+        static const std::regex comment_re(R"(<!--\s*@fsm:([^\r\n]+?)\s*-->)");
         auto begin = std::sregex_iterator(raw_str.begin(), raw_str.end(), comment_re);
         auto end = std::sregex_iterator();
         for (auto i = begin; i != end; ++i) {

@@ -27,6 +27,7 @@
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/ir/fsm_ir_deserializer.hpp"
 #include "fsm/ir/fsm_ir_serializer.hpp"
+#include "fsm/ir/numeric_parse.hpp"
 #include "fsm/ir/type_definition.hpp"
 #include "fsm/middleend/analysis/semantic_analyzer.hpp"
 #include "fsm/middleend/pass_manager.hpp"
@@ -1623,6 +1624,35 @@ TEST(ExpressionAst, EvaluateNumeric_SafeAgainstUBAndDepthOverflow) {
     }
     auto deep_ast = ExpressionAstNode::parse(deep_expr);
     EXPECT_EQ(deep_ast.kind, ExpressionKind::RawExpression);
+}
+
+/**
+ * @brief Regression (F2.3): Verify FsmIr O(1) hash state index stays coherent across direct vector mutations
+ * and verify zero-exception parse_int64 / parse_double helpers.
+ */
+TEST(FsmIr, StateHashIndexAndNumericParseHelpers) {
+    FsmIr ir;
+    ir.add_state("Alpha");
+    ir.add_state("Beta");
+    ASSERT_NE(ir.find_state("Alpha"), nullptr);
+    ASSERT_NE(ir.find_state("Beta"), nullptr);
+
+    // Direct mutation of public ir.states vector must not return stale index entries
+    ir.states.push_back(StateNode("Gamma"));
+    ASSERT_NE(ir.find_state("Gamma"), nullptr);
+    EXPECT_EQ(ir.find_state("Gamma")->name, "Gamma");
+
+    ir.states[0].name = "AlphaRenamed";
+    EXPECT_EQ(ir.find_state("Alpha"), nullptr);
+    ASSERT_NE(ir.find_state("AlphaRenamed"), nullptr);
+
+    // Zero-exception numeric parsing
+    EXPECT_EQ(parse_int64("  -42 "), std::optional<int64_t>(-42));
+    EXPECT_EQ(parse_int64("FF", 16), std::optional<int64_t>(255));
+    EXPECT_FALSE(parse_int64("12abc").has_value());
+    EXPECT_DOUBLE_EQ(parse_double(" +3.25 ").value_or(0.0), 3.25);
+    EXPECT_FALSE(parse_double("nan").has_value());
+    EXPECT_FALSE(parse_double("12.3xyz").has_value());
 }
 
 }  // namespace

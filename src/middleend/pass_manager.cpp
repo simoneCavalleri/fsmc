@@ -691,8 +691,14 @@ bool PassManager::run(FsmIr& ir, DiagnosticEngine& diag) {
         }
 
         executed_passes.insert(pass->name());
-        for (const auto& inv : pass->invalidated_analyses()) {
+        const auto invalidated = pass->invalidated_analyses();
+        for (const auto& inv : invalidated) {
             executed_passes.erase(inv);
+        }
+        if (!invalidated.empty()) {
+            analysis_manager_.invalidate(invalidated);
+        } else if (ok && !pass->preserves_ir()) {
+            analysis_manager_.invalidate_all();
         }
     }
     return !diag.has_errors();

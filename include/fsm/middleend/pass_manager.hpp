@@ -14,6 +14,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/analysis_manager.hpp"
 #include "fsm/middleend/pass_interface.hpp"
 #include "fsm/middleend/plugin/plugin_loader.hpp"
 
@@ -104,6 +105,9 @@ class PassManager {
 
     [[nodiscard]] const std::vector<PassExecutionStats>& get_stats() const noexcept;
 
+    [[nodiscard]] AnalysisManager& analysis_manager() noexcept { return analysis_manager_; }
+    [[nodiscard]] const AnalysisManager& analysis_manager() const noexcept { return analysis_manager_; }
+
     [[nodiscard]] static std::unique_ptr<IPass> create_pass_by_name(
         std::string_view pass_name, std::string_view pipe_cmd = "",
         PassRegistry::SubmachineResolver submachine_resolver = nullptr);
@@ -114,6 +118,7 @@ class PassManager {
     plugin::PluginLoader plugin_loader_;
     std::vector<std::unique_ptr<IPass>> passes_;
     std::vector<PassExecutionStats> stats_;
+    AnalysisManager analysis_manager_;
 };
 
 }  // namespace fsm::middleend

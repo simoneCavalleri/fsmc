@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 86  
-**Total Documented Test Cases**: 760  
+**Total Documented Test Cases**: 763  
 
 ---
 
@@ -115,7 +115,7 @@
 | [`test_data_definitions.cpp`](../../tests/ir/test_data_definitions.cpp) | `tests/ir/test_data_definitions.cpp` | 6 | Unit tests for IR user-defined data structures: EnumDefinition, StructDefinition, and JSON schema serialization. |
 | [`test_data_type.cpp`](../../tests/ir/test_data_type.cpp) | `tests/ir/test_data_type.cpp` | 9 | Unit tests for DataType target-agnostic type system, classification, parsing, and multi-language lowering. |
 | [`test_efsm_metamodel_extensions.cpp`](../../tests/ir/test_efsm_metamodel_extensions.cpp) | `tests/ir/test_efsm_metamodel_extensions.cpp` | 5 | Unit tests for EFSM metamodel extensions: LValueTarget, ActionAssignment, StateTimeInvariant, and ConcurrencySemantics. |
-| [`test_fsm_ir.cpp`](../../tests/ir/test_fsm_ir.cpp) | `tests/ir/test_fsm_ir.cpp` | 33 | Unit tests for core Intermediate Representation (FsmIr), state hierarchy, AST expressions, and serialization. |
+| [`test_fsm_ir.cpp`](../../tests/ir/test_fsm_ir.cpp) | `tests/ir/test_fsm_ir.cpp` | 34 | Unit tests for core Intermediate Representation (FsmIr), state hierarchy, AST expressions, and serialization. |
 | [`test_fsm_ir_semantic_completeness.cpp`](../../tests/ir/test_fsm_ir_semantic_completeness.cpp) | `tests/ir/test_fsm_ir_semantic_completeness.cpp` | 8 | Unit tests for target-agnostic FSM IR semantic completeness extensions: Terminate pseudostate, Timed Automata ClockDefinition, ActionAstNode primitive instructions, ChangeTrigger, typed transition endpoints, and ExecutionSemantics. |
 
 ## Middle-End Verification & Transformation Subsystem
@@ -123,8 +123,8 @@
 | Suite File | Source Path | Test Cases | Scope Summary |
 | :--- | :--- | :---: | :--- |
 | [`test_inlining_passes.cpp`](../../tests/middleend/canonicalization/test_inlining_passes.cpp) | `tests/middleend/canonicalization/test_inlining_passes.cpp` | 8 | Unit tests for submachine and choice pseudo-state inlining canonicalization passes. |
-| [`test_orthogonal_product.cpp`](../../tests/middleend/canonicalization/test_orthogonal_product.cpp) | `tests/middleend/canonicalization/test_orthogonal_product.cpp` | 15 | Unit tests for OrthogonalProductPass Cartesian product canonicalization. |
-| [`test_pass_manager.cpp`](../../tests/middleend/canonicalization/test_pass_manager.cpp) | `tests/middleend/canonicalization/test_pass_manager.cpp` | 6 | Unit tests for PassManager execution pipeline, pass chaining, and statistical profiling. |
+| [`test_orthogonal_product.cpp`](../../tests/middleend/canonicalization/test_orthogonal_product.cpp) | `tests/middleend/canonicalization/test_orthogonal_product.cpp` | 16 | Unit tests for OrthogonalProductPass Cartesian product canonicalization. |
+| [`test_pass_manager.cpp`](../../tests/middleend/canonicalization/test_pass_manager.cpp) | `tests/middleend/canonicalization/test_pass_manager.cpp` | 7 | Unit tests for PassManager execution pipeline, pass chaining, and statistical profiling. |
 | [`test_structural_lowering.cpp`](../../tests/middleend/canonicalization/test_structural_lowering.cpp) | `tests/middleend/canonicalization/test_structural_lowering.cpp` | 22 | Unit tests for Category A Structural Lowering Suite: HistoryLoweringPass, DeferredEventLoweringPass, BoundaryActionFusionPass, ForkJoinLoweringPass. |
 | [`test_common_action_factoring.cpp`](../../tests/middleend/optimization/test_common_action_factoring.cpp) | `tests/middleend/optimization/test_common_action_factoring.cpp` | 6 | Unit tests for CommonActionFactoringPass redundant action hoist and sink optimizations. |
 | [`test_constant_folding_and_minimization.cpp`](../../tests/middleend/optimization/test_constant_folding_and_minimization.cpp) | `tests/middleend/optimization/test_constant_folding_and_minimization.cpp` | 8 | Unit tests for ConstantFoldingPass guard evaluation and StateMinimizationPass equivalence partitioning. |

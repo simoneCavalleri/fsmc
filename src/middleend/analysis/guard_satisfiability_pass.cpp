@@ -8,6 +8,8 @@
 #include <utility>
 #include <vector>
 
+#include "fsm/ir/numeric_parse.hpp"
+
 namespace fsm::middleend::analysis {
 
 using namespace fsm::ir;
@@ -165,12 +167,11 @@ BranchConstraints extract_branch_constraints(const std::string& branch_str) {
         if (std::regex_search(clause, match, cmp_re)) {
             std::string var = match[1].str();
             std::string op = match[2].str();
-            double val = 0.0;
-            try {
-                val = std::stod(clean_number_local(match[3].str()));
-            } catch (...) {
+            auto val_opt = parse_double(clean_number_local(match[3].str()));
+            if (!val_opt.has_value()) {
                 continue;
             }
+            const double val = *val_opt;
 
             if (op == "!=") {
                 result[var].excluded_values.push_back(val);

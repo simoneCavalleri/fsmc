@@ -2,6 +2,8 @@
 
 #include <cctype>
 
+#include "fsm/ir/numeric_parse.hpp"
+
 namespace fsm::frontend {
 
 std::string XmlNode::get_attr(const std::string& name, const std::string& default_val) const {
@@ -85,16 +87,14 @@ std::string SimpleXmlParser::unescape_xml(std::string str) {
                     continue;
                 }
                 if (entity.size() >= 2 && entity[0] == '#') {
-                    std::string code_str(entity.substr(1));
-                    long long code = -1;
-                    try {
-                        if (!code_str.empty() && (code_str[0] == 'x' || code_str[0] == 'X')) {
-                            code = std::stoll(code_str.substr(1), nullptr, 16);
-                        } else if (!code_str.empty() && std::isdigit(static_cast<unsigned char>(code_str[0]))) {
-                            code = std::stoll(code_str, nullptr, 10);
-                        }
-                    } catch (...) {
+                    std::string_view code_sv = entity.substr(1);
+                    std::optional<int64_t> code_opt;
+                    if (!code_sv.empty() && (code_sv[0] == 'x' || code_sv[0] == 'X')) {
+                        code_opt = fsm::ir::parse_int64(code_sv.substr(1), 16);
+                    } else if (!code_sv.empty() && std::isdigit(static_cast<unsigned char>(code_sv[0]))) {
+                        code_opt = fsm::ir::parse_int64(code_sv, 10);
                     }
+                    const int64_t code = code_opt.value_or(-1);
                     if (code >= 0 && code <= 0x10FFFF) {
                         auto cp = static_cast<uint32_t>(code);
                         if (cp <= 0x7Fu) {

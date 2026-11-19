@@ -127,7 +127,7 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
         return false;
     }
 
-    // Check product state space explosion bound
+    // Check product state space explosion bound (overflow-safe pre-multiplication check)
     std::size_t total_product_states = 1;
     for (const auto& reg : regions) {
         if (reg.states.empty()) {
@@ -135,14 +135,13 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                 "EORTHO001", "region '" + reg.region_id + "' in parallel state '" + parent_name + "' has no states"));
             return false;
         }
-        total_product_states *= reg.states.size();
-        if (total_product_states > max_product_states) {
-            diag.report(
-                Diagnostic::error("EORTHO003", "parallel state '" + parent_name + "' Cartesian product state space (" +
-                                                   std::to_string(total_product_states) + " states) exceeds bound (" +
-                                                   std::to_string(max_product_states) + ")"));
+        if (reg.states.size() > max_product_states / total_product_states) {
+            diag.report(Diagnostic::error("EORTHO003", "parallel state '" + parent_name +
+                                                           "' Cartesian product state space exceeds bound (" +
+                                                           std::to_string(max_product_states) + ")"));
             return false;
         }
+        total_product_states *= reg.states.size();
     }
 
     // 2. Cartesian product calculation
@@ -315,8 +314,24 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                                 instructions.push_back(inst);
                             }
                         }
-                        if (t->condition_action.has_value() && !cond_action.has_value()) {
-                            cond_action = t->condition_action;
+                        if (t->condition_action.has_value()) {
+                            if (!cond_action.has_value()) {
+                                cond_action = t->condition_action;
+                            } else {
+                                if (!t->condition_action->name.empty()) {
+                                    if (!cond_action->name.empty()) {
+                                        cond_action->name += "_and_" + t->condition_action->name;
+                                    } else {
+                                        cond_action->name = t->condition_action->name;
+                                    }
+                                }
+                                for (const auto& a : t->condition_action->assignments) {
+                                    cond_action->assignments.push_back(a);
+                                }
+                                for (const auto& inst : t->condition_action->instructions) {
+                                    cond_action->instructions.push_back(inst);
+                                }
+                            }
                         }
                         for (const auto& cr : t->clock_resets) {
                             clock_resets.push_back(cr);

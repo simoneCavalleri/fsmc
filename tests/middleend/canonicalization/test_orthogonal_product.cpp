@@ -798,4 +798,60 @@ TEST(OrthogonalProduct, MemberDeferredEventsAndTraceabilityReqs_PropagatedToProd
     EXPECT_EQ(prod->traceability_reqs[1], "REQ_B1");
 }
 
+/**
+ * @brief Regression (F2.3): Verify OrthogonalProductPass combines condition_action from multiple
+ * simultaneously firing orthogonal regions instead of discarding secondary regions' condition actions.
+ */
+TEST(OrthogonalProduct, SimultaneousRegions_CombinesAllConditionActions) {
+    FsmIr model;
+    model.name = "OrthoCondAction";
+    model.initial_state = "P";
+
+    auto& par = model.add_state("P", "", StateKind::Parallel);
+    OrthogonalRegion r1;
+    r1.id = "R1";
+    r1.name = "R1";
+    r1.initial_state_id = "A1";
+    r1.state_ids = {"A1", "A2"};
+    OrthogonalRegion r2;
+    r2.id = "R2";
+    r2.name = "R2";
+    r2.initial_state_id = "B1";
+    r2.state_ids = {"B1", "B2"};
+    par.orthogonal_regions = {r1, r2};
+
+    model.add_state("A1", "R1");
+    model.add_state("A2", "R1");
+    model.add_state("B1", "R2");
+    model.add_state("B2", "R2");
+
+    TransitionEdge t1("A1", "A2", "Sync");
+    ActionSignature c1("CondAct1");
+    c1.assignments.emplace_back(LValueTarget("x"), "1");
+    t1.condition_action = c1;
+    model.add_transition(t1);
+
+    TransitionEdge t2("B1", "B2", "Sync");
+    ActionSignature c2("CondAct2");
+    c2.assignments.emplace_back(LValueTarget("y"), "2");
+    t2.condition_action = c2;
+    model.add_transition(t2);
+
+    DiagnosticEngine diag;
+    OrthogonalProductPass pass;
+    ASSERT_TRUE(pass.run(model, diag));
+
+    bool found_combined = false;
+    for (const auto& t : model.transitions) {
+        if (t.source == "P_A1_B1" && t.target == "P_A2_B2" && t.event == "Sync") {
+            ASSERT_TRUE(t.condition_action.has_value());
+            EXPECT_EQ(t.condition_action->assignments.size(), 2u);
+            EXPECT_NE(t.condition_action->name.find("CondAct1"), std::string::npos);
+            EXPECT_NE(t.condition_action->name.find("CondAct2"), std::string::npos);
+            found_combined = true;
+        }
+    }
+    EXPECT_TRUE(found_combined);
+}
+
 }  // namespace

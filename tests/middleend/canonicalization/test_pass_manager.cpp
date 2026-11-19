@@ -252,4 +252,41 @@ TEST(PassManager, RandomizedFsmIrPropertyFuzz_PreservesInvariantsWithoutCrash) {
     }
 }
 
+/**
+ * @brief Regression (F2.3): Verify AnalysisManager caches AdjacencyIndex and EFSMIntervalResult across
+ * preserving passes and invalidates them when a mutating pass executes.
+ */
+TEST(PassManager, AnalysisManager_CachesAndInvalidatesDeclaratively) {
+    FsmIr ir;
+    ir.name = "CacheTest";
+    ir.initial_state = "S0";
+    ir.variables.emplace_back("x", DataType(PrimitiveTypeKind::Int32), "0");
+    ir.add_state("S0");
+    ir.add_state("S1");
+    ir.add_transition(TransitionEdge("S0", "S1", "Go"));
+
+    PassManager pm;
+    const auto& adj1 = pm.analysis_manager().get_adjacency(ir);
+    ASSERT_EQ(adj1.outgoing.at("S0").size(), 1u);
+    EXPECT_EQ(pm.analysis_manager().adjacency_computations(), 1u);
+
+    // Repeated query returns cached result without recomputing
+    (void)pm.analysis_manager().get_adjacency(ir);
+    EXPECT_EQ(pm.analysis_manager().adjacency_computations(), 1u);
+
+    (void)pm.analysis_manager().get_efsm_intervals(ir);
+    EXPECT_EQ(pm.analysis_manager().efsm_computations(), 1u);
+
+    // Selective invalidation resets only AdjacencyIndex
+    pm.analysis_manager().invalidate({"AdjacencyIndex"});
+    EXPECT_FALSE(pm.analysis_manager().has_adjacency());
+    EXPECT_TRUE(pm.analysis_manager().has_efsm_intervals());
+
+    // Running a mutating pass invalidates all cached analyses
+    pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
+    DiagnosticEngine diag;
+    EXPECT_TRUE(pm.run(ir, diag));
+    EXPECT_FALSE(pm.analysis_manager().has_efsm_intervals());
+}
+
 }  // namespace

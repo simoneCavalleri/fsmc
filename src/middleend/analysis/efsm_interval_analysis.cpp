@@ -9,6 +9,8 @@
 #include <sstream>
 #include <unordered_set>
 
+#include "fsm/ir/numeric_parse.hpp"
+
 namespace fsm::middleend::analysis {
 
 using namespace fsm::ir;
@@ -173,26 +175,17 @@ EFSMIntervalAnalyzer::compute_state_intervals() {
     std::unordered_map<std::string, Interval> init_env;
 
     for (const auto& var : ir_.variables) {
-        if (!var.initial_value.empty()) {
-            try {
-                double val = std::stod(var.initial_value);
-                init_env[var.name] = Interval(val, val);
-            } catch (...) {
-                init_env[var.name] = Interval();
-            }
+        if (auto val = parse_double(var.initial_value); val.has_value()) {
+            init_env[var.name] = Interval(*val, *val);
         } else {
             init_env[var.name] = Interval();
         }
     }
 
     for (const auto& port : ir_.ports) {
-        if (!port.default_value.empty()) {
-            try {
-                double val = std::stod(port.default_value);
-                init_env[port.name] = Interval(val, val);
-                continue;
-            } catch (...) {
-            }
+        if (auto val = parse_double(port.default_value); val.has_value()) {
+            init_env[port.name] = Interval(*val, *val);
+            continue;
         }
         if (port.min_value.has_value() || port.max_value.has_value()) {
             double lo = port.min_value.value_or(-std::numeric_limits<double>::infinity());
@@ -728,9 +721,8 @@ std::optional<Interval> EFSMIntervalAnalyzer::parse_guard_domain(std::string_vie
                     num_len++;
                 }
                 if (has_digits) {
-                    std::string num_str(rem.substr(0, num_len));
-                    try {
-                        double c = std::stod(num_str);
+                    if (auto c_opt = parse_double(rem.substr(0, num_len)); c_opt.has_value()) {
+                        const double c = *c_opt;
                         const bool is_int_exact =
                             is_integer_symbol_in_ir(g_active_ir, var_name) && (std::floor(c) == c);
                         const double strict_step = is_int_exact ? 1.0 : 1e-6;
@@ -763,7 +755,6 @@ std::optional<Interval> EFSMIntervalAnalyzer::parse_guard_domain(std::string_vie
                                 combined_iv = combined_iv->intersect_with(clause_iv);
                             }
                         }
-                    } catch (...) {
                     }
                 }
             }

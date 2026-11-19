@@ -218,3 +218,31 @@ TEST(DataType, TypeClassificationStringFormatting_SerializesToStream) {
     ss << DataType::uint32();
     EXPECT_EQ(ss.str(), "uint32");
 }
+
+/**
+ * @brief Verify DataType primitive factories, from_string, C++/SMV formatting, and equality operators.
+ */
+TEST(DataType, AllPrimitiveConversionsAndHelpers_Covered) {
+    const std::vector<std::pair<std::string, DataType>> cases = {
+        {"bool", DataType::boolean()},    {"int8", DataType::int8()},       {"int16", DataType::int16()},
+        {"int32", DataType::int32()},     {"int64", DataType::int64()},     {"uint8", DataType::uint8()},
+        {"uint16", DataType::uint16()},   {"uint32", DataType::uint32()},   {"uint64", DataType::uint64()},
+        {"float32", DataType::float32()}, {"float64", DataType::float64()}, {"string", DataType::string()},
+    };
+
+    for (const auto& [name, expected] : cases) {
+        DataType parsed = DataType::from_string(name);
+        EXPECT_EQ(parsed, expected) << name;
+        EXPECT_FALSE(parsed.to_cpp_type().empty()) << name;
+        EXPECT_FALSE(parsed.to_smv_type().empty()) << name;
+        EXPECT_NE(parsed, DataType::custom("OtherCustomType"));
+    }
+
+    EXPECT_TRUE(DataType::boolean().is_boolean());
+    EXPECT_TRUE(DataType::int32().is_signed_integer());
+    EXPECT_TRUE(DataType::uint32().is_unsigned_integer());
+    EXPECT_TRUE(DataType::float32().is_floating_point());
+    EXPECT_TRUE(DataType::string().is_string());
+    EXPECT_TRUE(DataType::enumeration("MyEnum").is_enum());
+    EXPECT_TRUE(DataType::structure("MyStruct").is_struct());
+}

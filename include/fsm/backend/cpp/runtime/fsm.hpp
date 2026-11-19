@@ -1,7 +1,9 @@
 #pragma once
 
 #include <chrono>
+#if !defined(FSMC_FREESTANDING)
 #include <functional>
+#endif
 #include <optional>
 #include <string_view>
 #include <type_traits>
@@ -136,6 +138,7 @@ class fsm {
     // Constructors
     // ========================================================================
 
+    template <typename Srv = services_type, typename = std::enable_if_t<std::is_default_constructible_v<Srv>>>
     constexpr fsm() : current_state_(initial_state_type{}), table_(), registers_{}, services_(nullptr) {
         enter_initial_state();
     }
@@ -145,6 +148,7 @@ class fsm {
         enter_initial_state();
     }
 
+    template <typename Srv = services_type, typename = std::enable_if_t<std::is_default_constructible_v<Srv>>>
     constexpr explicit fsm(registers_type reg, Table table = Table{})
         : current_state_(initial_state_type{}),
           table_(std::move(table)),
@@ -158,8 +162,10 @@ class fsm {
         enter_initial_state();
     }
 
-    template <typename InitState, typename = std::enable_if_t<Table::template has_state<std::decay_t<InitState>> &&
-                                                              !std::is_same_v<std::decay_t<InitState>, registers_type>>>
+    template <typename InitState,
+              typename = std::enable_if_t<Table::template has_state<std::decay_t<InitState>> &&
+                                          !std::is_same_v<std::decay_t<InitState>, registers_type> &&
+                                          std::is_default_constructible_v<services_type>>>
     constexpr explicit fsm(InitState&& initial, Table table = Table{})
         : current_state_(std::forward<InitState>(initial)), table_(std::move(table)), registers_{}, services_(nullptr) {
         enter_initial_state();
@@ -553,12 +559,18 @@ class fsm {
 
     void clear_invariant_violation() noexcept { invariant_mgr_.clear_invariant_violation(); }
 
+#if !defined(FSMC_FREESTANDING)
     void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
         invariant_mgr_.set_invariant_violation_handler(std::move(handler));
     }
+#endif
 
     void set_invariant_violation_handler(void (*handler)(const invariant_violation_info&)) noexcept {
         invariant_mgr_.set_violation_handler(handler);
+    }
+
+    void set_invariant_violation_handler(void (*handler)(void*, const invariant_violation_info&), void* ctx) noexcept {
+        invariant_mgr_.set_invariant_violation_handler(handler, ctx);
     }
 
     template <typename Callable,

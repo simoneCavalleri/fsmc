@@ -41,6 +41,7 @@ template <typename Table>
 class invariant_manager<Table, true> {
   public:
     using violation_fn_ptr = void (*)(const invariant_violation_info&);
+    using violation_ctx_fn_ptr = void (*)(void*, const invariant_violation_info&);
 
     void reset() noexcept {
         residence_time_ms_ = 0;
@@ -63,17 +64,34 @@ class invariant_manager<Table, true> {
 
     void clear_invariant_violation() noexcept { last_violation_.reset(); }
 
+#if !defined(FSMC_FREESTANDING)
     void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
         violation_fn_ = nullptr;
+        violation_ctx_fn_ = nullptr;
+        violation_ctx_ = nullptr;
         violation_handler_ = std::move(handler);
     }
+#endif
 
     void set_violation_handler(violation_fn_ptr fn) noexcept {
         violation_fn_ = fn;
+        violation_ctx_fn_ = nullptr;
+        violation_ctx_ = nullptr;
+#if !defined(FSMC_FREESTANDING)
         violation_handler_ = nullptr;
+#endif
     }
 
     void set_invariant_violation_handler(violation_fn_ptr fn) noexcept { set_violation_handler(fn); }
+
+    void set_invariant_violation_handler(violation_ctx_fn_ptr fn, void* ctx) noexcept {
+        violation_fn_ = nullptr;
+        violation_ctx_fn_ = fn;
+        violation_ctx_ = ctx;
+#if !defined(FSMC_FREESTANDING)
+        violation_handler_ = nullptr;
+#endif
+    }
 
     template <typename Callable, std::enable_if_t<std::is_convertible_v<Callable, violation_fn_ptr> &&
                                                       !std::is_same_v<std::decay_t<Callable>, violation_fn_ptr>,
@@ -94,8 +112,12 @@ class invariant_manager<Table, true> {
                         last_violation_ = info;
                         if (violation_fn_ != nullptr) {
                             violation_fn_(info);
+                        } else if (violation_ctx_fn_ != nullptr) {
+                            violation_ctx_fn_(violation_ctx_, info);
+#if !defined(FSMC_FREESTANDING)
                         } else if (violation_handler_) {
                             violation_handler_(info);
+#endif
                         }
                         return false;
                     }
@@ -109,8 +131,12 @@ class invariant_manager<Table, true> {
   private:
     std::uint64_t residence_time_ms_{0};
     std::optional<invariant_violation_info> last_violation_{std::nullopt};
+#if !defined(FSMC_FREESTANDING)
     std::function<void(const invariant_violation_info&)> violation_handler_{};
+#endif
     violation_fn_ptr violation_fn_{nullptr};
+    violation_ctx_fn_ptr violation_ctx_fn_{nullptr};
+    void* violation_ctx_{nullptr};
 };
 
 // Zero-overhead empty invariant manager when NO states declare time invariants (0 bytes with [[no_unique_address]])
@@ -118,6 +144,7 @@ template <typename Table>
 class invariant_manager<Table, false> {
   public:
     using violation_fn_ptr = void (*)(const invariant_violation_info&);
+    using violation_ctx_fn_ptr = void (*)(void*, const invariant_violation_info&);
 
     constexpr void reset() noexcept {}
     constexpr void advance_time(std::uint64_t /*delta_ms*/) noexcept {}
@@ -130,9 +157,12 @@ class invariant_manager<Table, false> {
         return empty_violation;
     }
     constexpr void clear_invariant_violation() noexcept {}
+#if !defined(FSMC_FREESTANDING)
     void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> /*handler*/) noexcept {}
+#endif
     void set_violation_handler(void (* /*handler*/)(const invariant_violation_info&)) noexcept {}
     void set_invariant_violation_handler(void (* /*handler*/)(const invariant_violation_info&)) noexcept {}
+    void set_invariant_violation_handler(violation_ctx_fn_ptr /*fn*/, void* /*ctx*/) noexcept {}
 
     template <typename Callable, std::enable_if_t<std::is_convertible_v<Callable, violation_fn_ptr> &&
                                                       !std::is_same_v<std::decay_t<Callable>, violation_fn_ptr>,

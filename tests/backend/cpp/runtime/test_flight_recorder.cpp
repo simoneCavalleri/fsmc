@@ -5,7 +5,10 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <sstream>
+#include <thread>
+#include <vector>
 
 #include "fsm/backend/cpp/runtime/flight_recorder.hpp"
 #include "fsm/backend/cpp/runtime/fsm.hpp"
@@ -180,6 +183,82 @@ TEST(FlightRecorder, SetInvariantViolationHandler_FunctionPointerOverload_IsNoex
     sm.tick(60);
     EXPECT_TRUE(sm.has_invariant_violation());
     EXPECT_EQ(g_fn_ptr_violation_residence, 60u);
+}
+
+/**
+ * @brief Verify TraceBuffer supports concurrent single-producer writes and external reader snapshots without data races.
+ * @scenario Producer thread records 5000 entries while reader thread continuously inspects size() and last_entry().
+ * @expected Completes cleanly under ThreadSanitizer with valid state names and monotonic ticks.
+ */
+TEST(FlightRecorder, TraceBuffer_ConcurrentProducerAndReader_IsRaceFree) {
+    TraceBuffer<16> tb;
+    std::atomic<bool> done{false};
+
+    std::thread reader([&]() {
+        while (!done.load(std::memory_order_acquire)) {
+            const auto sz = tb.size();
+            if (sz > 0) {
+                auto entry = tb[sz - 1];
+                EXPECT_FALSE(entry.source_state.empty());
+            }
+            if (auto last = tb.last_entry(); last.has_value()) {
+                EXPECT_FALSE(last->target_state.empty());
+            }
+        }
+    });
+
+    for (std::uint64_t i = 1; i <= 5000; ++i) {
+        tb.record(i, "StateA", "EvNext", "StateB", true);
+    }
+    done.store(true, std::memory_order_release);
+    reader.join();
+
+    EXPECT_EQ(tb.size(), 16u);
+    auto last = tb.last_entry();
+    ASSERT_TRUE(last.has_value());
+    EXPECT_EQ(last->tick, 5000u);
+}
+
+/**
+ * @brief Verify cancelling a timer from an on_expired callback prevents it from firing in the same tick.
+ * @scenario Schedule two timers with identical 100ms timeout; timer 1's callback cancels timer 2.
+ * @expected Only timer 1 is dispatched during tick(100).
+ */
+TEST(FlightRecorder, DeterministicTimer_CancelOtherTimerInCallback_PreventsSameTickDispatch) {
+    deterministic_timer_manager<4> mgr;
+    EXPECT_TRUE(mgr.start_timer(1, 100));
+    EXPECT_TRUE(mgr.start_timer(2, 100));
+
+    std::vector<std::uint32_t> fired;
+    const std::size_t count = mgr.tick(100, [&](std::uint32_t id) {
+        fired.push_back(id);
+        if (id == 1) {
+            EXPECT_TRUE(mgr.cancel_timer(2));
+        }
+    });
+
+    ASSERT_EQ(fired.size(), 1u);
+    EXPECT_EQ(fired[0], 1u);
+    EXPECT_EQ(count, 1u);
+}
+
+struct NonDefaultServices {
+    int token;
+    explicit NonDefaultServices(int t) : token(t) {}
+};
+
+/**
+ * @brief Verify fsm() default constructor is SFINAE-disabled when Services is not default-constructible.
+ * @scenario Instantiate fsm type with NonDefaultServices.
+ * @expected std::is_default_constructible_v is false, preventing runtime std::terminate().
+ */
+TEST(FlightRecorder, NonDefaultConstructibleServices_DisablesDefaultFsmConstructor) {
+    using StrictFsm = ::fsm::fsm<TestTable, no_ports, no_ports, no_registers, NonDefaultServices>;
+    static_assert(!std::is_default_constructible_v<StrictFsm>,
+                  "fsm with non-default-constructible Services must not be default-constructible");
+    NonDefaultServices srv{7};
+    StrictFsm sm(srv);
+    EXPECT_TRUE(sm.is_in<StateA>());
 }
 
 }  // namespace

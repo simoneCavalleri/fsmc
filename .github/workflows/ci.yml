@@ -37,7 +37,8 @@ jobs:
 
       - name: Run Clang-Tidy
         run: |
-          clang-tidy -p build tools/fsmc/main.cpp tools/fsm-opt/main.cpp tests/backend/cpp/runtime/test_deferred.cpp tests/backend/diagram/test_diagram_export.cpp tests/backend/cpp/runtime/test_timed_transitions.cpp
+          find src tools -name '*.cpp' | sort | xargs -P2 -n4 clang-tidy -p build
+          clang-tidy -p build tests/backend/cpp/runtime/test_deferred.cpp tests/backend/diagram/test_diagram_export.cpp tests/backend/cpp/runtime/test_timed_transitions.cpp
 
   docs-quality-gate:
     name: Docs Quality Gate (MkDocs Strict)
@@ -214,3 +215,38 @@ jobs:
           ASAN_OPTIONS: "detect_leaks=1:abort_on_error=1:fast_unwind_on_malloc=0"
           UBSAN_OPTIONS: "halt_on_error=1:print_stacktrace=1"
         run: ctest --test-dir build -C Debug --output-on-failure
+
+  sanitizers-tsan:
+    name: ThreadSanitizer (TSan) Concurrency Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ runner.os }}-tsan
+
+      - name: Configure CMake with TSan (Debug)
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer -g" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread" \
+            -DFSMC_ENABLE_BENCHMARKS=OFF
+
+      - name: Build Concurrency Tests with TSan
+        run: |
+          cmake --build build --parallel 2 --target \
+            test_thread_safe_stress \
+            test_spsc_queue \
+            test_observer \
+            test_timed_transitions \
+            test_ring_buffer_overflow \
+            test_async_and_guards
+
+      - name: Run Concurrency Tests under TSan
+        run: |
+          ctest --test-dir build -C Debug --output-on-failure --tests-regex "^(test_thread_safe_stress|test_spsc_queue|test_observer|test_timed_transitions|test_ring_buffer_overflow|test_async_and_guards)$"

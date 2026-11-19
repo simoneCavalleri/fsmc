@@ -1532,4 +1532,50 @@ TEST(FsmIr, JsonDeserializer_MapsXStateFinalTypeToStateKindFinal) {
     EXPECT_EQ(done->kind, StateKind::Final);
 }
 
+/**
+ * @brief Verify StateTimeInvariant parsing, unit suffixes, equality operators, and string concatenation.
+ */
+TEST(StateNode, StateTimeInvariant_AllUnitsAndOperatorsCovered) {
+    StateTimeInvariant inv_min("clk <= 5 [min]");
+    EXPECT_EQ(inv_min.clock, "clk");
+    EXPECT_EQ(inv_min.op, TimeInvariantOp::LessEqual);
+    EXPECT_EQ(inv_min.duration, 5u);
+    EXPECT_EQ(inv_min.unit, TimeUnit::Minutes);
+
+    StateTimeInvariant inv_lt("c1 < 10 [us]");
+    EXPECT_EQ(inv_lt.op, TimeInvariantOp::LessThan);
+    EXPECT_EQ(inv_lt.duration, 10u);
+    EXPECT_EQ(inv_lt.unit, TimeUnit::Microseconds);
+
+    EXPECT_EQ(StateTimeInvariant("t <= 2 [ns]").unit, TimeUnit::Nanoseconds);
+    EXPECT_EQ(StateTimeInvariant("t <= 3 [s]").unit, TimeUnit::Seconds);
+    EXPECT_EQ(StateTimeInvariant("t <= 4 [ms]").unit, TimeUnit::Milliseconds);
+    EXPECT_EQ(StateTimeInvariant("100ms;").duration, 100u);
+    EXPECT_EQ(StateTimeInvariant("250us").unit, TimeUnit::Microseconds);
+    EXPECT_EQ(StateTimeInvariant("50ns").unit, TimeUnit::Nanoseconds);
+    EXPECT_EQ(StateTimeInvariant("7min").unit, TimeUnit::Minutes);
+    EXPECT_EQ(StateTimeInvariant("9s").unit, TimeUnit::Seconds);
+
+    StateTimeInvariant structured("stay", TimeInvariantOp::LessThan, 42, TimeUnit::Seconds);
+    EXPECT_EQ(structured.to_string(), "stay < 42s");
+    EXPECT_TRUE(structured == "stay < 42s");
+    EXPECT_TRUE("stay < 42s" == structured);
+    EXPECT_TRUE(structured == std::string("stay < 42s"));
+    EXPECT_TRUE(std::string("stay < 42s") == structured);
+    EXPECT_TRUE(structured == std::string_view("stay < 42s"));
+
+    StateTimeInvariant structured_copy("stay", TimeInvariantOp::LessThan, 42, TimeUnit::Seconds);
+    structured.raw_expression.clear();
+    structured_copy.raw_expression.clear();
+    EXPECT_EQ(structured, structured_copy);
+
+    std::ostringstream oss;
+    oss << structured;
+    EXPECT_EQ(oss.str(), "stay < 42s");
+    EXPECT_EQ(std::string("inv: ") + structured, "inv: stay < 42s");
+    EXPECT_EQ("inv: " + structured, "inv: stay < 42s");
+    EXPECT_EQ(structured + std::string(" !"), "stay < 42s !");
+    EXPECT_EQ(structured + " !", "stay < 42s !");
+}
+
 }  // namespace

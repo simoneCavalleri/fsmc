@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 86  
-**Total Documented Test Cases**: 743  
+**Total Documented Test Cases**: 744  
 
 ---
 
@@ -1688,6 +1688,9 @@
 
 #### `FsmIr.JsonDeserializer_MapsXStateFinalTypeToStateKindFinal`
 **Test Intent**: Regression: XState JSON `"type": "final"` maps to `StateKind::Final`.
+
+#### `StateNode.StateTimeInvariant_AllUnitsAndOperatorsCovered`
+**Test Intent**: Verify StateTimeInvariant parsing, unit suffixes, equality operators, and string concatenation.
 
 ### [`test_fsm_ir_semantic_completeness.cpp`](../../tests/ir/test_fsm_ir_semantic_completeness.cpp) (`tests/ir/test_fsm_ir_semantic_completeness.cpp`)
 #### `StateKind.TerminatePseudostate_DifferentiatedFromFinalState`

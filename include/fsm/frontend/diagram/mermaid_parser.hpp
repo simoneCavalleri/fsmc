@@ -30,9 +30,10 @@ class MermaidParser : public IParser {
      * @param out_error Diagnostic error message upon failure.
      * @return True if parsing succeeded, false otherwise.
      */
-    bool parse(std::string_view content, FsmIr& out_model, std::string& out_error) override;
+    bool parse(std::string_view content, FsmIr& out_model, diagnostic::DiagnosticEngine& diag) override;
 
   private:
+    bool parse_impl(std::string_view content, FsmIr& out_ir, std::string& out_error);
     static std::string parse_composite_state_header(std::string_view line, FsmIr& model,
                                                     const std::vector<std::string>& parent_stack);
 

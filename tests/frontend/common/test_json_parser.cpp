@@ -59,8 +59,8 @@ TEST(JsonParser, StandardStatechartSchema_ExtractsStatesTransitionsGuardsAndActi
 
     JsonParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(json_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.name, "JsonConnectionFSM");
     EXPECT_EQ(model.initial_state, "Disconnected");
@@ -101,8 +101,8 @@ TEST(JsonParser, NestedStatesProperty_SynthesizesCompositeHierarchy) {
 
     JsonParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(json_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.states.size(), 4u);
     const auto* inflight = model.find_state("InFlight");
@@ -135,8 +135,8 @@ TEST(JsonParser, ArrayOfTransitionsPerEventKey_CapturesMultipleConditionalBranch
 
     JsonParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(json_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.states.size(), 2U);
     EXPECT_EQ(model.transitions.size(), 2U);
@@ -169,8 +169,8 @@ TEST(JsonParser, StateDefinitionsSequence_PreservesDocumentInsertionOrder) {
 
     JsonParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(json_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << "Error: " << err.render_to_string();
 
     ASSERT_EQ(model.states.size(), 4U);
     EXPECT_EQ(model.states[0].name, "ZetaState");
@@ -218,8 +218,8 @@ TEST(JsonParser, DirectionalPortsWithIntervalBounds_PopulatesPortDefinitions) {
 
     JsonParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(json_content, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << err.render_to_string();
 
     ASSERT_EQ(model.ports.size(), 2u);
     const auto* in_p = model.find_port("sensor_in");
@@ -263,8 +263,8 @@ TEST(JsonParserTest, DeserializesXStateParallelTypeIntoOrthogonalRegions) {
 
     JsonParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(json_content, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << err.render_to_string();
 
     const StateNode* active = model.find_state("Active");
     ASSERT_NE(active, nullptr);
@@ -294,8 +294,8 @@ TEST(JsonParser, XStateActionAssignments_PopulatedInActionSignature) {
 
     JsonParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(json_content, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << err.render_to_string();
     ASSERT_EQ(model.transitions.size(), 1u);
     ASSERT_TRUE(model.transitions[0].transition_action.has_value());
     ASSERT_EQ(model.transitions[0].transition_action->assignments.size(), 1u);
@@ -327,8 +327,8 @@ TEST(JsonParser, XStateLifecycleAssignments_PopulatedInEntryAndExitActions) {
 
     JsonParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(json_content, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << err.render_to_string();
 
     const StateNode* idle = model.find_state("Idle");
     ASSERT_NE(idle, nullptr);

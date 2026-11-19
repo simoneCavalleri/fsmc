@@ -143,10 +143,10 @@ TEST(StateflowSlxIngestion, IngestStoredSlxContainer_ParsesModelDirectly) {
 
     StateflowParser parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
     bool ok = parser.parse(slx_bytes, model, err);
 
-    ASSERT_TRUE(ok) << "Parse error: " << err;
+    ASSERT_TRUE(ok) << "Parse error: " << err.render_to_string();
     EXPECT_EQ(model.name, "TransmissionController");
     EXPECT_EQ(model.initial_state, "Park");
     EXPECT_EQ(model.states.size(), 3);
@@ -167,10 +167,10 @@ TEST(StateflowSlxIngestion, IngestDeflatedSlxContainer_ParsesModelDirectly) {
 
     StateflowParser parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
     bool ok = parser.parse(slx_bytes, model, err);
 
-    ASSERT_TRUE(ok) << "Parse error: " << err;
+    ASSERT_TRUE(ok) << "Parse error: " << err.render_to_string();
     EXPECT_EQ(model.name, "TransmissionController");
     EXPECT_EQ(model.states.size(), 3);
 #else
@@ -188,10 +188,10 @@ TEST(StateflowSlxIngestion, IngestBlockdiagramXmlFallback_ParsesModelDirectly) {
 
     StateflowParser parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
     bool ok = parser.parse(slx_bytes, model, err);
 
-    ASSERT_TRUE(ok) << "Parse error: " << err;
+    ASSERT_TRUE(ok) << "Parse error: " << err.render_to_string();
     EXPECT_EQ(model.name, "TransmissionController");
     EXPECT_EQ(model.states.size(), 3);
 }
@@ -226,11 +226,11 @@ TEST(StateflowSlxIngestion, CorruptedSlxContainer_FailsGracefully) {
     std::string corrupted_zip = "PK\x03\x04_truncated_content";
     StateflowParser parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
     bool ok = parser.parse(corrupted_zip, model, err);
 
     EXPECT_FALSE(ok);
-    EXPECT_NE(err.find("Stateflow Parser:"), std::string::npos);
+    EXPECT_NE(err.render_to_string().find("Stateflow Parser:"), std::string::npos);
 }
 
 }  // namespace

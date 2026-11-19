@@ -57,7 +57,16 @@ void DotParser::parse_label(const std::string& label, std::string& out_event, st
     out_event = trim_line(work);
 }
 
-bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error_message) {
+bool DotParser::parse(std::string_view content, FsmIr& out_ir, diagnostic::DiagnosticEngine& diag) {
+    std::string err;
+    if (!parse_impl(content, out_ir, err)) {
+        report_parse_error(diag, "E_PARSE_DOT", err);
+        return false;
+    }
+    return true;
+}
+
+bool DotParser::parse_impl(std::string_view content, FsmIr& model, std::string& error_message) {
     std::istringstream stream{std::string(content)};
     std::string line;
     std::string current_parent_state;
@@ -452,8 +461,8 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
             trans.priority = priority;
             if (!guard_name.empty()) {
                 auto parsed = GuardExpressionParser::parse(guard_name);
-                if (!parsed.cpp_type.empty()) {
-                    trans.guard = parsed.cpp_type;
+                if (!parsed.canonical_expression.empty()) {
+                    trans.guard = parsed.canonical_expression;
                     for (const auto& detail : parsed.atomic_guard_details) {
                         model.add_guard(detail.name, "", detail.expression, detail.expression);
                     }

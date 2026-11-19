@@ -11,14 +11,11 @@
 #include "fsm/backend/formal/sysml2_serializer.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
-#include "fsm/middleend/analysis/fsm_validator.hpp"
 
 using namespace fsm::frontend::formal;
 using namespace fsm::frontend;
 using namespace fsm::backend::cpp;
 using namespace fsm::backend;
-using namespace fsm::middleend::analysis;
-using namespace fsm::middleend;
 using namespace fsm::ir;
 
 namespace {
@@ -54,8 +51,8 @@ TEST(Sysml2Parser, MultilineTransitions_ParsedIntoValidFsmIr) {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.name, "MissionBehavior");
     EXPECT_EQ(model.initial_state, "Standby");
@@ -91,8 +88,8 @@ TEST(Sysml2Parser, CompactTransitions_ParsedIntoValidFsmIr) {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.initial_state, "Disconnected");
     EXPECT_EQ(model.states.size(), 3u);
@@ -129,8 +126,8 @@ TEST(Sysml2Parser, CompositeStates_ParsedAndCodeGenerated) {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err.render_to_string();
 
     const auto* standby = model.find_state("Standby");
     ASSERT_NE(standby, nullptr);
@@ -191,8 +188,8 @@ TEST(Sysml2Parser, NativeAttributesAndItemDefs_CapturedInIr) {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err.render_to_string();
 
     // Check EFSM variables
     ASSERT_EQ(model.variables.size(), 3u);
@@ -262,8 +259,8 @@ TEST(Sysml2Parser, ParallelRegionsAndSubmachines_ParsedCorrectly) {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.name, "AvionicsController");
     EXPECT_EQ(model.initial_state, "Operational");
@@ -303,8 +300,8 @@ TEST(Sysml2Parser, EntryExitPointAndInvariants_CapturedInIr) {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err.render_to_string();
 
     const auto* standby = model.find_state("Standby");
     ASSERT_NE(standby, nullptr);
@@ -361,8 +358,8 @@ TEST(Sysml2Parser, ChoiceNodeComparisonGuards_ParsedCorrectly) {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err.render_to_string();
 
     // Choice node must be inlined: only real states should remain
     EXPECT_EQ(model.initial_state, "Booting");
@@ -435,8 +432,8 @@ TEST(Sysml2Parser, EfsmAssignmentActions_ParsedCorrectly) {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err.render_to_string();
 
     ASSERT_EQ(model.variables.size(), 2u);
     EXPECT_EQ(model.variables[0].name, "orbitCycleCount");
@@ -499,8 +496,8 @@ TEST(Sysml2Parser, StructuralBlockFiltering_BalancesBraces) {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.name, "CoreController");
     EXPECT_EQ(model.initial_state, "Standby");
@@ -556,8 +553,8 @@ TEST(Sysml2Parser, SendSignalViaPort_ParsedIntoActionIr) {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.name, "TelemetrySystem");
     const auto* port = model.find_port("telem_port");
@@ -597,8 +594,8 @@ TEST(Sysml2Parser, FractionalAfterDuration_ConvertedWithoutTruncation) {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 1u);
     const auto& tr = model.transitions[0];
@@ -626,8 +623,8 @@ TEST(Sysml2Parser, FractionalMillisAfterDuration_RoundedToNearest) {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 1u);
     const auto& tr = model.transitions[0];
@@ -664,8 +661,8 @@ TEST(Sysml2Parser, EntryAndExitActionBlocks_AssignmentsPopulatedInIr) {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err.render_to_string();
 
     const auto* st = model.find_state("Active");
     ASSERT_NE(st, nullptr);
@@ -707,9 +704,9 @@ package BadSyntax {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
     EXPECT_FALSE(parser.parse(sysml, model, err));
-    EXPECT_NE(err.find("->"), std::string::npos);
+    EXPECT_NE(err.render_to_string().find("->"), std::string::npos);
 }
 
 /**
@@ -732,15 +729,15 @@ package Timing {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err.render_to_string();
 
     const std::string exported = fsm::backend::formal::Sysml2Serializer::serialize(model);
     EXPECT_NE(exported.find("accept after(5000ms)"), std::string::npos);
     EXPECT_EQ(exported.find("event def after_5000ms;"), std::string::npos);
 
     FsmIr reparsed;
-    ASSERT_TRUE(parser.parse(exported, reparsed, err)) << err;
+    ASSERT_TRUE(parser.parse(exported, reparsed, err)) << err.render_to_string();
     ASSERT_EQ(reparsed.transitions.size(), 1u);
     EXPECT_TRUE(std::holds_alternative<TimeTrigger>(reparsed.transitions[0].trigger));
 }
@@ -766,8 +763,8 @@ package ChoicePkg {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err.render_to_string();
 
     const StateNode* c = model.find_state("CheckCount");
     ASSERT_NE(c, nullptr);
@@ -794,9 +791,9 @@ package WeirdNames {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
     EXPECT_FALSE(parser.parse(sysml, model, err));
-    EXPECT_NE(err.find("123Start"), std::string::npos);
+    EXPECT_NE(err.render_to_string().find("123Start"), std::string::npos);
 }
 
 /**
@@ -819,8 +816,8 @@ package ChangePkg {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<ChangeTrigger>(model.transitions[0].trigger));
@@ -846,8 +843,8 @@ package PeriodicPkg {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<TimeTrigger>(model.transitions[0].trigger));
@@ -878,8 +875,8 @@ package TrailingIfPkg {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 2u);
     EXPECT_TRUE(model.transitions[0].guard.has_value());
@@ -914,8 +911,8 @@ package HistoryDotPkg {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 2u);
     EXPECT_EQ(model.transitions[0].target, "Active");
@@ -954,8 +951,8 @@ package BareEnumPkg {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err.render_to_string();
 
     const auto* op_mode = model.find_enum("OpMode");
     ASSERT_NE(op_mode, nullptr);
@@ -994,8 +991,8 @@ package StructAssignPkg {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 1u);
     ASSERT_TRUE(model.transitions[0].transition_action.has_value());
@@ -1042,8 +1039,8 @@ state def HistMachine {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err.render_to_string();
 
     EXPECT_EQ(model.find_state("Op_Hist"), nullptr);
     EXPECT_EQ(model.find_state("DeepOp_DeepHist"), nullptr);
@@ -1095,8 +1092,8 @@ package FlightPkg {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err.render_to_string();
     EXPECT_EQ(model.package, "FlightPkg");
     EXPECT_EQ(model.name, "PkgFsm");
     EXPECT_NE(model.find_state("Init"), nullptr);
@@ -1125,8 +1122,8 @@ state def SignedTypesFsm {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err.render_to_string();
     const auto* offset = model.find_variable("offset");
     const auto* u = model.find_variable("u");
     ASSERT_NE(offset, nullptr);
@@ -1159,8 +1156,8 @@ state def HierarchyRoundtripFsm {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err.render_to_string();
     model.normalize_hierarchy();
 
     const auto* sub1 = model.find_state("Sub1");
@@ -1189,8 +1186,8 @@ TEST(Sysml2Parser, SignedIntRoundtrip_PreservesSignedTypeAcrossSerializer) {
 
     Sysml2Parser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err.render_to_string();
     const auto* count = parsed.find_variable("count");
     ASSERT_NE(count, nullptr);
     EXPECT_EQ(count->type, DataType::int32());
@@ -1219,8 +1216,8 @@ TEST(Sysml2Parser, PropertiesRoundtrip_PreservedAcrossSerializer) {
 
     Sysml2Parser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.properties.size(), 1u);
     EXPECT_EQ(parsed.properties[0].name, "safe");
     EXPECT_EQ(parsed.properties[0].raw_formula, "G (not (A and B))");
@@ -1246,8 +1243,8 @@ TEST(Sysml2Parser, ForkAndJoinRoundtrip_PreservedAcrossSerializer) {
 
     Sysml2Parser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err.render_to_string();
     const auto* split = parsed.find_state("Split");
     const auto* merge = parsed.find_state("Merge");
     ASSERT_NE(split, nullptr);
@@ -1278,8 +1275,8 @@ TEST(Sysml2Parser, ChangeTriggerRoundtrip_PreservedAcrossSerializer) {
 
     Sysml2Parser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<ChangeTrigger>(parsed.transitions[0].trigger));
     EXPECT_EQ(std::get<ChangeTrigger>(parsed.transitions[0].trigger).raw_expression, "count > 5");
@@ -1306,8 +1303,8 @@ TEST(Sysml2Parser, ChoiceNodeRoundtrip_PreservedAcrossSerializer) {
 
     Sysml2Parser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err.render_to_string();
     EXPECT_TRUE(parsed.is_choice_node("C1"));
     EXPECT_FALSE(parsed.choice_nodes.empty());
 }
@@ -1339,8 +1336,8 @@ state def BlockSendFsm {
 
     Sysml2Parser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, ir, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, ir, err)) << err.render_to_string();
 
     const auto* idle = ir.find_state("Idle");
     ASSERT_NE(idle, nullptr);
@@ -1398,8 +1395,8 @@ TEST(Sysml2Parser, LocalTransition_PreservedAcrossSerializerRoundtrip) {
 
     Sysml2Parser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 2u);
 
     bool found_local = false;

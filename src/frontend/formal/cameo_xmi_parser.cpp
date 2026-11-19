@@ -17,7 +17,16 @@ using namespace fsm::ir;
 using directive::DirectiveParser;
 using directive::GuardExpressionParser;
 
-bool CameoXmiParser::parse(std::string_view content, FsmIr& model, std::string& error_message) {
+bool CameoXmiParser::parse(std::string_view content, FsmIr& out_ir, diagnostic::DiagnosticEngine& diag) {
+    std::string err;
+    if (!parse_impl(content, out_ir, err)) {
+        report_parse_error(diag, "E_PARSE_CAMEO", err);
+        return false;
+    }
+    return true;
+}
+
+bool CameoXmiParser::parse_impl(std::string_view content, FsmIr& model, std::string& error_message) {
     std::string xml_err;
     auto root = SimpleXmlParser::parse(content, xml_err);
     if (!root) {

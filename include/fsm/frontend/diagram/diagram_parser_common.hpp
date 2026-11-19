@@ -84,8 +84,8 @@ inline void apply_parsed_guard(ir::FsmIr& model, ir::TransitionEdge& trans, std:
     }
 
     const auto parsed = directive::GuardExpressionParser::parse(trimmed_guard);
-    if (!parsed.cpp_type.empty()) {
-        trans.guard = parsed.cpp_type;
+    if (!parsed.canonical_expression.empty()) {
+        trans.guard = parsed.canonical_expression;
         for (const auto& detail : parsed.atomic_guard_details) {
             model.add_guard(detail.name, "", detail.expression, detail.expression);
         }

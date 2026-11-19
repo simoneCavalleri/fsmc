@@ -12,11 +12,10 @@
 #include "fsm/frontend/diagram/diagram_contract_combiner.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
-#include "fsm/middleend/analysis/fsm_validator.hpp"
+#include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm::frontend;
 using namespace fsm::frontend::diagram;
-using namespace fsm::middleend::analysis;
 using namespace fsm::ir;
 
 namespace {
@@ -79,8 +78,9 @@ requirements:
     // 1. Parse diagram topology
     PlantUmlParser diagram_parser;
     FsmIr model;
+    fsm::diagnostic::DiagnosticEngine parse_diag;
     std::string err;
-    ASSERT_TRUE(diagram_parser.parse(puml_diagram, model, err)) << "Diagram error: " << err;
+    ASSERT_TRUE(diagram_parser.parse(puml_diagram, model, parse_diag)) << "Diagram error: " << parse_diag.render_to_string();
     EXPECT_EQ(model.states.size(), 3u);
     EXPECT_EQ(model.transitions.size(), 3u);
     EXPECT_TRUE(model.ports.empty());
@@ -146,8 +146,8 @@ requirements:
     EXPECT_EQ(model.satisfies_reqs[1], "REQ-ROVER-002");
 
     // Model is structurally valid
-    const auto validation = FsmValidator::validate(model);
-    EXPECT_TRUE(validation.is_valid);
+    fsm::diagnostic::DiagnosticEngine diag;
+    EXPECT_TRUE(fsm::middleend::PassManager::create_validation_pipeline().run(model, diag));
 }
 
 /**
@@ -184,8 +184,9 @@ requirements:
 
     MermaidParser diagram_parser;
     FsmIr model;
+    fsm::diagnostic::DiagnosticEngine parse_diag;
     std::string err;
-    ASSERT_TRUE(diagram_parser.parse(mmd_diagram, model, err)) << err;
+    ASSERT_TRUE(diagram_parser.parse(mmd_diagram, model, parse_diag)) << parse_diag.render_to_string();
 
     CompanionManifest manifest;
     ASSERT_TRUE(CompanionManifestParser::parse(json_manifest, manifest, err)) << err;
@@ -235,8 +236,9 @@ signals:
 
     PlantUmlParser parser;
     FsmIr model;
+    fsm::diagnostic::DiagnosticEngine parse_diag;
     std::string err;
-    ASSERT_TRUE(parser.parse(puml, model, err)) << err;
+    ASSERT_TRUE(parser.parse(puml, model, parse_diag)) << parse_diag.render_to_string();
 
     CompanionManifest manifest;
     ASSERT_TRUE(CompanionManifestParser::parse(yaml, manifest, err)) << err;

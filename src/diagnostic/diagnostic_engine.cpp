@@ -1,8 +1,15 @@
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 
+#include <cstdio>
+#include <cstdlib>
 #include <sstream>
 
 namespace fsm::diagnostic {
+
+DiagnosticEngine::DiagnosticEngine() {
+    const char* no_color = std::getenv("NO_COLOR");
+    color_enabled_ = (no_color == nullptr || no_color[0] == '\0');
+}
 
 void DiagnosticEngine::report(Diagnostic diag) {
     if (diag.severity == DiagnosticSeverity::Error || diag.severity == DiagnosticSeverity::Fatal) {
@@ -34,41 +41,69 @@ void DiagnosticEngine::clear() noexcept {
 }
 
 std::string DiagnosticEngine::extract_line(std::string_view text, size_t line_num) {
-    std::istringstream stream{std::string(text)};
-    std::string line;
+    if (line_num == 0 || text.empty()) {
+        return "";
+    }
     size_t current_line = 1;
-    while (std::getline(stream, line)) {
+    size_t pos = 0;
+    while (pos <= text.size()) {
+        size_t nl = text.find('\n', pos);
         if (current_line == line_num) {
-            return line;
+            std::string_view line = (nl == std::string_view::npos) ? text.substr(pos) : text.substr(pos, nl - pos);
+            if (!line.empty() && line.back() == '\r') {
+                line.remove_suffix(1);
+            }
+            return std::string(line);
         }
+        if (nl == std::string_view::npos) {
+            break;
+        }
+        pos = nl + 1;
         ++current_line;
     }
     return "";
 }
 
-std::string DiagnosticEngine::render_to_string(std::string_view source_content) const {
+std::string DiagnosticEngine::render_to_string(std::string_view source_content, const SourceManager* sources) const {
+    const auto ansi = [this](const char* seq) -> const char* { return color_enabled_ ? seq : ""; };
+    const auto resolve_source = [source_content, sources](const SourceSpan& span) -> std::string_view {
+        if (sources != nullptr && !span.file_path.empty()) {
+            if (auto found = sources->get_source(span.file_path)) {
+                return *found;
+            }
+        }
+        return source_content;
+    };
+
+    const char* c_red = ansi("\033[1;31m");
+    const char* c_yellow = ansi("\033[1;33m");
+    const char* c_cyan = ansi("\033[1;36m");
+    const char* c_blue = ansi("\033[1;34m");
+    const char* c_bold = ansi("\033[1m");
+    const char* c_reset = ansi("\033[0m");
+
     std::ostringstream ss;
     for (const auto& diag : diagnostics_) {
         // Severity header
         switch (diag.severity) {
             case DiagnosticSeverity::Fatal:
             case DiagnosticSeverity::Error:
-                ss << "\033[1;31merror";
+                ss << c_red << "error";
                 if (!diag.code.empty())
                     ss << "[" << diag.code << "]";
-                ss << "\033[0m: " << diag.message << "\n";
+                ss << c_reset << ": " << diag.message << "\n";
                 break;
             case DiagnosticSeverity::Warning:
-                ss << "\033[1;33mwarning";
+                ss << c_yellow << "warning";
                 if (!diag.code.empty())
                     ss << "[" << diag.code << "]";
-                ss << "\033[0m: " << diag.message << "\n";
+                ss << c_reset << ": " << diag.message << "\n";
                 break;
             case DiagnosticSeverity::Note:
-                ss << "\033[1;36mnote";
+                ss << c_cyan << "note";
                 if (!diag.code.empty())
                     ss << "[" << diag.code << "]";
-                ss << "\033[0m: " << diag.message << "\n";
+                ss << c_reset << ": " << diag.message << "\n";
                 break;
         }
 
@@ -76,23 +111,24 @@ std::string DiagnosticEngine::render_to_string(std::string_view source_content) 
 
         // Location arrow
         if (diag.span.is_valid()) {
-            ss << std::string(gutter_width - 1, ' ') << "\033[1;34m-->\033[0m " << diag.span.file_path << ":"
+            ss << std::string(gutter_width - 1, ' ') << c_blue << "-->" << c_reset << " " << diag.span.file_path << ":"
                << diag.span.line << ":" << diag.span.column << "\n";
 
             // If source line is available, print context and caret
-            if (!source_content.empty()) {
-                std::string line_text = extract_line(source_content, diag.span.line);
+            std::string_view primary_src = resolve_source(diag.span);
+            if (!primary_src.empty()) {
+                std::string line_text = extract_line(primary_src, diag.span.line);
                 if (!line_text.empty()) {
-                    ss << std::string(gutter_width, ' ') << "\033[1;34m|\033[0m\n";
-                    ss << " " << diag.span.line << " \033[1;34m|\033[0m " << line_text << "\n";
-                    ss << std::string(gutter_width, ' ') << "\033[1;34m|\033[0m ";
+                    ss << std::string(gutter_width, ' ') << c_blue << "|" << c_reset << "\n";
+                    ss << " " << diag.span.line << " " << c_blue << "|" << c_reset << " " << line_text << "\n";
+                    ss << std::string(gutter_width, ' ') << c_blue << "|" << c_reset << " ";
                     size_t pad = (diag.span.column > 0) ? (diag.span.column - 1) : 0;
                     for (size_t i = 0; i < pad; ++i)
                         ss << " ";
-                    ss << "\033[1;31m^";
+                    ss << c_red << "^";
                     for (size_t i = 1; i < diag.span.length; ++i)
                         ss << "~";
-                    ss << "\033[0m\n";
+                    ss << c_reset << "\n";
                 }
             }
         }
@@ -101,46 +137,49 @@ std::string DiagnosticEngine::render_to_string(std::string_view source_content) 
         for (const auto& [sec_span, sec_label] : diag.secondary_labels) {
             const size_t sec_gutter = std::to_string(sec_span.is_valid() ? sec_span.line : 1).size() + 2;
             if (sec_span.is_valid()) {
-                ss << std::string(sec_gutter - 1, ' ') << "\033[1;34m-->\033[0m " << sec_span.file_path << ":"
+                ss << std::string(sec_gutter - 1, ' ') << c_blue << "-->" << c_reset << " " << sec_span.file_path << ":"
                    << sec_span.line << ":" << sec_span.column;
                 if (!sec_label.empty()) {
                     ss << " (" << sec_label << ")";
                 }
                 ss << "\n";
-                if (!source_content.empty()) {
-                    std::string sec_line_text = extract_line(source_content, sec_span.line);
+                std::string_view sec_src = resolve_source(sec_span);
+                if (!sec_src.empty()) {
+                    std::string sec_line_text = extract_line(sec_src, sec_span.line);
                     if (!sec_line_text.empty()) {
-                        ss << std::string(sec_gutter, ' ') << "\033[1;34m|\033[0m\n";
-                        ss << " " << sec_span.line << " \033[1;34m|\033[0m " << sec_line_text << "\n";
-                        ss << std::string(sec_gutter, ' ') << "\033[1;34m|\033[0m ";
+                        ss << std::string(sec_gutter, ' ') << c_blue << "|" << c_reset << "\n";
+                        ss << " " << sec_span.line << " " << c_blue << "|" << c_reset << " " << sec_line_text << "\n";
+                        ss << std::string(sec_gutter, ' ') << c_blue << "|" << c_reset << " ";
                         size_t pad = (sec_span.column > 0) ? (sec_span.column - 1) : 0;
                         for (size_t i = 0; i < pad; ++i)
                             ss << " ";
-                        ss << "\033[1;36m-";
+                        ss << c_cyan << "-";
                         for (size_t i = 1; i < sec_span.length; ++i)
                             ss << "-";
                         if (!sec_label.empty()) {
                             ss << " " << sec_label;
                         }
-                        ss << "\033[0m\n";
+                        ss << c_reset << "\n";
                     }
                 }
             } else if (!sec_label.empty()) {
-                ss << std::string(gutter_width, ' ') << "\033[1;34m=\033[0m \033[1mnote\033[0m: " << sec_label << "\n";
+                ss << std::string(gutter_width, ' ') << c_blue << "=" << c_reset << " " << c_bold << "note" << c_reset
+                   << ": " << sec_label << "\n";
             }
         }
 
         // Help suggestion
         if (!diag.help_suggestion.empty()) {
-            ss << std::string(gutter_width, ' ') << "\033[1;34m=\033[0m \033[1mhelp\033[0m: " << diag.help_suggestion
-               << "\n";
+            ss << std::string(gutter_width, ' ') << c_blue << "=" << c_reset << " " << c_bold << "help" << c_reset
+               << ": " << diag.help_suggestion << "\n";
         }
         ss << "\n";
     }
     return ss.str();
 }
 
-std::string DiagnosticEngine::render_to_format(DiagnosticFormat format, std::string_view source_content) const {
+std::string DiagnosticEngine::render_to_format(DiagnosticFormat format, std::string_view source_content,
+                                               const SourceManager* sources) const {
     switch (format) {
         case DiagnosticFormat::Json:
             return render_json();
@@ -148,7 +187,7 @@ std::string DiagnosticEngine::render_to_format(DiagnosticFormat format, std::str
             return render_github_actions();
         case DiagnosticFormat::Text:
         default:
-            return render_to_string(source_content);
+            return render_to_string(source_content, sources);
     }
 }
 
@@ -163,6 +202,27 @@ std::string DiagnosticEngine::render_github_actions() const {
                 out += "%0D";
             } else if (c == '\n') {
                 out += "%0A";
+            } else {
+                out += c;
+            }
+        }
+        return out;
+    };
+
+    auto escape_gh_property = [](std::string_view str) {
+        std::string out;
+        out.reserve(str.size());
+        for (char c : str) {
+            if (c == '%') {
+                out += "%25";
+            } else if (c == '\r') {
+                out += "%0D";
+            } else if (c == '\n') {
+                out += "%0A";
+            } else if (c == ':') {
+                out += "%3A";
+            } else if (c == ',') {
+                out += "%2C";
             } else {
                 out += c;
             }
@@ -190,13 +250,13 @@ std::string DiagnosticEngine::render_github_actions() const {
         ss << "::" << cmd;
         std::string params;
         if (diag.span.is_valid()) {
-            params += "file=" + escape_gh_data(diag.span.file_path) + ",line=" + std::to_string(diag.span.line) +
+            params += "file=" + escape_gh_property(diag.span.file_path) + ",line=" + std::to_string(diag.span.line) +
                       ",col=" + std::to_string(diag.span.column);
         }
         if (!diag.code.empty()) {
             if (!params.empty())
                 params += ",";
-            params += "title=" + escape_gh_data(diag.code);
+            params += "title=" + escape_gh_property(diag.code);
         }
         if (!params.empty()) {
             ss << " " << params;

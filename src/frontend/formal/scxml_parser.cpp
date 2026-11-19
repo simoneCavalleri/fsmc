@@ -17,7 +17,16 @@ using namespace fsm::ir;
 using directive::DirectiveParser;
 using directive::GuardExpressionParser;
 
-bool ScxmlParser::parse(std::string_view content, FsmIr& model, std::string& error_message) {
+bool ScxmlParser::parse(std::string_view content, FsmIr& out_ir, diagnostic::DiagnosticEngine& diag) {
+    std::string err;
+    if (!parse_impl(content, out_ir, err)) {
+        report_parse_error(diag, "E_PARSE_SCXML", err);
+        return false;
+    }
+    return true;
+}
+
+bool ScxmlParser::parse_impl(std::string_view content, FsmIr& model, std::string& error_message) {
     std::string xml_err;
     auto root = SimpleXmlParser::parse(content, xml_err);
     if (!root) {
@@ -641,8 +650,8 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
     }
     if (!cond.empty()) {
         auto parsed = directive::GuardExpressionParser::parse(cond);
-        if (!parsed.cpp_type.empty()) {
-            trans.guard = parsed.cpp_type;
+        if (!parsed.canonical_expression.empty()) {
+            trans.guard = parsed.canonical_expression;
             for (const auto& detail : parsed.atomic_guard_details) {
                 model.add_guard(detail.name, "", detail.expression, detail.expression);
             }

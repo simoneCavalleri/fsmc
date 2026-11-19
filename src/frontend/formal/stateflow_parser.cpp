@@ -234,7 +234,16 @@ bool extract_stateflow_from_slx(std::string_view zip_content, std::string& extra
 
 }  // namespace
 
-bool StateflowParser::parse(std::string_view content, FsmIr& model, std::string& error_message) {
+bool StateflowParser::parse(std::string_view content, FsmIr& out_ir, diagnostic::DiagnosticEngine& diag) {
+    std::string err;
+    if (!parse_impl(content, out_ir, err)) {
+        report_parse_error(diag, "E_PARSE_STATEFLOW", err);
+        return false;
+    }
+    return true;
+}
+
+bool StateflowParser::parse_impl(std::string_view content, FsmIr& model, std::string& error_message) {
     std::string xml_storage;
     std::string_view xml_view = content;
 
@@ -871,8 +880,8 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
             }
         }
         auto parsed = directive::GuardExpressionParser::parse(norm_guard);
-        if (!parsed.cpp_type.empty()) {
-            trans.guard = parsed.cpp_type;
+        if (!parsed.canonical_expression.empty()) {
+            trans.guard = parsed.canonical_expression;
             for (const auto& detail : parsed.atomic_guard_details) {
                 model.add_guard(detail.name, "", detail.expression, detail.expression);
             }

@@ -40,9 +40,10 @@ class CameoXmiParser : public IParser {
      * @param error_message Diagnostic error description on failure.
      * @return True if parsing succeeded, false otherwise.
      */
-    bool parse(std::string_view content, FsmIr& model, std::string& error_message) override;
+    bool parse(std::string_view content, FsmIr& model, diagnostic::DiagnosticEngine& diag) override;
 
   private:
+    bool parse_impl(std::string_view content, FsmIr& out_ir, std::string& out_error);
     static void find_signals(const std::shared_ptr<XmlNode>& node, std::vector<std::shared_ptr<XmlNode>>& out_signals);
 };
 

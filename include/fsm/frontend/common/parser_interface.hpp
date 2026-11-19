@@ -8,6 +8,7 @@
 #include <string>
 #include <string_view>
 
+#include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 namespace fsm::frontend {
@@ -61,11 +62,34 @@ class IParser {
      * @brief Ingests source content and populates the output FsmIr metamodel.
      * @param content Raw input model text or document.
      * @param[out] out_ir Destination intermediate representation.
-     * @param[out] out_error Error diagnostic description if parsing fails.
+     * @param[out] diag Diagnostic engine receiving structured errors and warnings.
      * @return True if parsing succeeded, false otherwise.
      */
-    virtual bool parse(std::string_view content, FsmIr& out_ir, std::string& out_error) = 0;
+    virtual bool parse(std::string_view content, FsmIr& out_ir, diagnostic::DiagnosticEngine& diag) = 0;
 };
+
+/**
+ * @brief Reports a parser error to a DiagnosticEngine, extracting line numbers when encoded in the message.
+ */
+inline void report_parse_error(diagnostic::DiagnosticEngine& diag, std::string_view code, std::string_view message,
+                               std::string_view file_path = "") {
+    diagnostic::SourceSpan span;
+    span.file_path = std::string(file_path);
+    // Recognize common "Line N:" or "line N" prefix for structured span reporting.
+    if (message.size() > 5 && (message.rfind("Line ", 0) == 0 || message.rfind("line ", 0) == 0)) {
+        size_t pos = 5;
+        size_t line_val = 0;
+        while (pos < message.size() && message[pos] >= '0' && message[pos] <= '9') {
+            line_val = line_val * 10 + static_cast<size_t>(message[pos] - '0');
+            ++pos;
+        }
+        if (line_val > 0) {
+            span.line = line_val;
+        }
+    }
+    diag.report(diagnostic::Diagnostic::error(
+        std::string(code), message.empty() ? "Syntax or semantic parse error" : std::string(message), std::move(span)));
+}
 
 /**
  * @brief Checks if a string view starts with a given prefix.

@@ -46,10 +46,10 @@ TEST(StateflowParser, BasicStateflowChart_ParsedIntoValidFsmIr) {
 
     StateflowParser parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
     bool ok = parser.parse(stateflow_xml, model, err);
 
-    ASSERT_TRUE(ok) << "Stateflow parse error: " << err;
+    ASSERT_TRUE(ok) << "Stateflow parse error: " << err.render_to_string();
     EXPECT_EQ(model.name, "CruiseController");
 
     // Verify states
@@ -92,10 +92,10 @@ TEST(StateflowParser, TemporalLogicTriggers_MappedToTimerEvents) {
 
     StateflowParser parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
     bool ok = parser.parse(stateflow_xml, model, err);
 
-    ASSERT_TRUE(ok) << "Stateflow parse error: " << err;
+    ASSERT_TRUE(ok) << "Stateflow parse error: " << err.render_to_string();
     ASSERT_EQ(model.transitions.size(), 2u);
 
     // Verify after(500, msec)
@@ -207,8 +207,8 @@ TEST(StateflowParser, DirectivesAndTransitions_RoundtrippedLosslessly) {
     // Parse back
     StateflowParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xml, parsed, err)) << "Stateflow parse error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << "Stateflow parse error: " << err.render_to_string();
 
     EXPECT_EQ(parsed.name, baseline.name);
     EXPECT_EQ(parsed.initial_state, baseline.initial_state);
@@ -270,8 +270,8 @@ TEST(StateflowParser, NestedBracketsAndJunctions_ParsedCorrectly) {
 
     StateflowParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.name, "NestedBracketChart");
     ASSERT_NE(model.find_state("Monitoring"), nullptr);
@@ -308,8 +308,8 @@ TEST(StateflowParser, StateActionsAndPeriodicTimers_ParsedAndSerialized) {
 
     StateflowParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err.render_to_string();
 
     // Verify Active state actions from labelString
     const auto* active_st = model.find_state("Active");
@@ -369,8 +369,8 @@ TEST(StateflowParser, FractionalDurationsAndGuardRawExpressions_Preserved) {
 
     StateflowParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 2u);
 
@@ -424,8 +424,8 @@ TEST(StateflowParser, CompositeInitialSubstate_RoundtripsViaAttributeAndInitialT
 
     StateflowParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err.render_to_string();
 
     const auto* active = model.find_state("Active");
     ASSERT_NE(active, nullptr);
@@ -435,7 +435,7 @@ TEST(StateflowParser, CompositeInitialSubstate_RoundtripsViaAttributeAndInitialT
     EXPECT_NE(serialized.find("initial=\"Idle\""), std::string::npos);
 
     FsmIr reparsed;
-    ASSERT_TRUE(parser.parse(serialized, reparsed, err)) << "Re-parse error: " << err;
+    ASSERT_TRUE(parser.parse(serialized, reparsed, err)) << "Re-parse error: " << err.render_to_string();
     const auto* reparsed_active = reparsed.find_state("Active");
     ASSERT_NE(reparsed_active, nullptr);
     EXPECT_EQ(reparsed_active->initial_sub_state, "Idle");
@@ -462,8 +462,8 @@ TEST(StateflowParser, TransitionActionAssignments_PopulatedInActionSignature) {
 
     StateflowParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 1u);
     const auto& tr = model.transitions[0];
@@ -493,8 +493,8 @@ TEST(StateflowParser, StateLifecycleAssignments_PopulatedInEntryAndExitActions) 
 
     StateflowParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err.render_to_string();
 
     const auto* s1 = model.find_state("S1");
     ASSERT_NE(s1, nullptr);
@@ -548,8 +548,8 @@ TEST(StateflowParser, RoundtripAssignmentsAndNormalizedGuards_PreservedInXml) {
     const std::string xml = StateflowSerializer::serialize(orig);
     StateflowParser parser;
     FsmIr rt;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xml, rt, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xml, rt, err)) << "Error: " << err.render_to_string();
 
     const auto* rt_ready = rt.find_state("Ready");
     ASSERT_NE(rt_ready, nullptr);
@@ -600,8 +600,8 @@ TEST(StateflowParserTest, ParsesParallelAndDecompositionIntoOrthogonalRegions) {
 
     StateflowParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xml, ir, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xml, ir, err)) << "Error: " << err.render_to_string();
 
     const auto* op = ir.find_state("Operational");
     ASSERT_NE(op, nullptr);
@@ -642,8 +642,8 @@ TEST(StateflowParserTest, MarksIncomingTransitionsToHistoryCompositeAsHistoryTar
 
     StateflowParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xml, ir, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xml, ir, err)) << "Error: " << err.render_to_string();
 
     ASSERT_EQ(ir.transitions.size(), 1u);
     EXPECT_TRUE(ir.transitions[0].target_is_history);
@@ -671,11 +671,11 @@ TEST(StateflowParser, MatlabNegationOperators_NormalizedToCpp) {
 
     StateflowParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xml, ir, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xml, ir, err)) << "Error: " << err.render_to_string();
     ASSERT_EQ(ir.transitions.size(), 1u);
     ASSERT_TRUE(ir.transitions[0].guard.has_value());
-    EXPECT_NE(ir.transitions[0].guard->find("fsm::not_<fault>"), std::string::npos);
+    EXPECT_NE(ir.transitions[0].guard->find("!fault"), std::string::npos);
     bool found_neq = false;
     for (const auto& g : ir.guards) {
         if (g.raw_expression.has_value() && *g.raw_expression == "x != 0") {
@@ -707,8 +707,8 @@ TEST(StateflowParser, MatlabPercentCommentsInGuardAndAction_StrippedCleanly) {
 
     StateflowParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xml, ir, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xml, ir, err)) << "Error: " << err.render_to_string();
     ASSERT_EQ(ir.guards.size(), 1u);
     EXPECT_EQ(ir.guards[0].raw_expression, "x == 0");
     ASSERT_EQ(ir.transitions.size(), 1u);
@@ -742,8 +742,8 @@ TEST(StateflowParser, MultipleTransitionsSameEndpoints_DisambiguateAssignmentAct
 
     StateflowParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xml, ir, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xml, ir, err)) << "Error: " << err.render_to_string();
     ASSERT_EQ(ir.transitions.size(), 2u);
     ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
     ASSERT_TRUE(ir.transitions[1].transition_action.has_value());
@@ -774,8 +774,8 @@ TEST(StateflowParser, PropertiesReqsAndTimeInvariant_PreservedAcrossSerializerRo
     const std::string xml = StateflowSerializer::serialize(ir);
     StateflowParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err.render_to_string();
 
     ASSERT_EQ(parsed.properties.size(), 1u);
     EXPECT_EQ(parsed.properties[0].name, "safe");
@@ -811,8 +811,8 @@ TEST(StateflowParser, ChangeTrigger_PreservedAcrossSerializerRoundtrip) {
 
     StateflowParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<ChangeTrigger>(parsed.transitions[0].trigger));
     EXPECT_EQ(std::get<ChangeTrigger>(parsed.transitions[0].trigger).raw_expression, "count > 5");

@@ -72,6 +72,29 @@ add_fsm_unit_test(test_spsc_fsm DIR backend/cpp/runtime)
 add_fsm_unit_test(test_policy_config DIR backend/cpp/runtime)
 add_fsm_unit_test(test_flight_recorder DIR backend/cpp/runtime)
 
+# C++17 Runtime Compatibility Matrix (pure runtime tests compiled strictly under C++17)
+add_executable(test_runtime_cpp17_suite
+    backend/cpp/runtime/test_async_and_guards.cpp
+    backend/cpp/runtime/test_flight_recorder.cpp
+    backend/cpp/runtime/test_observer.cpp
+    backend/cpp/runtime/test_policy_config.cpp
+    backend/cpp/runtime/test_ring_buffer_overflow.cpp
+    backend/cpp/runtime/test_spsc_fsm.cpp
+    backend/cpp/runtime/test_spsc_queue.cpp
+    backend/cpp/runtime/test_state_serialization.cpp
+    backend/cpp/runtime/test_thread_safe_stress.cpp
+    backend/cpp/runtime/test_timed_transitions.cpp
+    backend/cpp/runtime/test_traits_and_hooks.cpp
+)
+target_link_libraries(test_runtime_cpp17_suite PRIVATE fsmc_runtime GTest::gtest GTest::gtest_main)
+set_target_properties(test_runtime_cpp17_suite PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+add_test(NAME test_runtime_cpp17_suite COMMAND test_runtime_cpp17_suite)
+
+add_executable(test_zero_alloc_runtime_cpp17 backend/cpp/runtime/test_zero_alloc_runtime.cpp)
+target_link_libraries(test_zero_alloc_runtime_cpp17 PRIVATE fsmc_runtime GTest::gtest GTest::gtest_main)
+set_target_properties(test_zero_alloc_runtime_cpp17 PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+add_test(NAME test_zero_alloc_runtime_cpp17 COMMAND test_zero_alloc_runtime_cpp17)
+
 # ==============================================================================
 # Formal IR Tests (tests/ir/)
 # ==============================================================================
@@ -232,4 +255,18 @@ if(Python3_FOUND)
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../scripts/verify_docs.py
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..
     )
+endif()
+
+# ==============================================================================
+# Optional libFuzzer Harnesses (Clang + ASan/UBSan)
+# ==============================================================================
+option(FSMC_ENABLE_FUZZERS "Build libFuzzer targets under tests/fuzz/ (requires Clang)" OFF)
+if(FSMC_ENABLE_FUZZERS)
+    foreach(FUZZ_TARGET fuzz_all_parsers fuzz_expressions_and_guards fuzz_json_deserializer)
+        add_executable(${FUZZ_TARGET} fuzz/${FUZZ_TARGET}.cpp)
+        target_link_libraries(${FUZZ_TARGET} PRIVATE fsmc_compiler)
+        set_target_properties(${FUZZ_TARGET} PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+        target_compile_options(${FUZZ_TARGET} PRIVATE -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer)
+        target_link_options(${FUZZ_TARGET} PRIVATE -fsanitize=fuzzer,address,undefined)
+    endforeach()
 endif()

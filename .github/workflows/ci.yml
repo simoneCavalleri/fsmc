@@ -233,6 +233,8 @@ jobs:
           cmake --build build --parallel 2 --target \
             test_thread_safe_stress \
             test_spsc_queue \
+            test_spsc_fsm \
+            test_flight_recorder \
             test_observer \
             test_timed_transitions \
             test_ring_buffer_overflow \
@@ -240,7 +242,7 @@ jobs:
 
       - name: Run Concurrency Tests under TSan
         run: |
-          ctest --test-dir build -C Debug --output-on-failure --tests-regex "^(test_thread_safe_stress|test_spsc_queue|test_observer|test_timed_transitions|test_ring_buffer_overflow|test_async_and_guards)$"
+          ctest --test-dir build -C Debug --output-on-failure --tests-regex "^(test_thread_safe_stress|test_spsc_queue|test_spsc_fsm|test_flight_recorder|test_observer|test_timed_transitions|test_ring_buffer_overflow|test_async_and_guards)$"
 
   ci-gate:
     name: CI Gate

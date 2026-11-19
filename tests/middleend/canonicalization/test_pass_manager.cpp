@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "fsm/ir/fsm_ir_serializer.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm::diagnostic;
@@ -287,6 +288,66 @@ TEST(PassManager, AnalysisManager_CachesAndInvalidatesDeclaratively) {
     DiagnosticEngine diag;
     EXPECT_TRUE(pm.run(ir, diag));
     EXPECT_FALSE(pm.analysis_manager().has_efsm_intervals());
+}
+
+/**
+ * @brief Property-Based Test (F2.5): Verify cross-run determinism (byte-identical JSON),
+ * idempotency (`P(P(ir)) == P(ir)`), and IR well-formedness across randomized FSMs.
+ */
+TEST(PassManager, PropertyBased_IdempotencyDeterminismAndWellFormedness) {
+    const std::vector<std::string> events = {"EvA", "EvB", "EvC", "EvD"};
+    const std::vector<std::string> guards = {"", "x > 0", "x <= 5", "y == 1"};
+
+    for (unsigned seed = 100; seed < 120; ++seed) {
+        std::mt19937 rng(seed);
+        FsmIr base_ir;
+        base_ir.name = "PropFsm_" + std::to_string(seed);
+        base_ir.variables.emplace_back("x", DataType(PrimitiveTypeKind::Int32), "0");
+        base_ir.variables.emplace_back("y", DataType(PrimitiveTypeKind::Int32), "1");
+
+        const int num_states = 3 + static_cast<int>(rng() % 5);
+        for (int s = 0; s < num_states; ++s) {
+            base_ir.add_state("S" + std::to_string(s));
+        }
+        base_ir.initial_state = "S0";
+
+        const int num_trans = 4 + static_cast<int>(rng() % 10);
+        for (int t = 0; t < num_trans; ++t) {
+            const int src = static_cast<int>(rng() % static_cast<unsigned>(num_states));
+            const int dst = static_cast<int>(rng() % static_cast<unsigned>(num_states));
+            TransitionEdge edge("S" + std::to_string(src), "S" + std::to_string(dst), events[rng() % events.size()]);
+            const auto& g = guards[rng() % guards.size()];
+            if (!g.empty()) {
+                edge.set_guard(g);
+            }
+            base_ir.add_transition(std::move(edge));
+        }
+
+        // Run 1 & Run 2 on independent copies -> must produce byte-identical JSON (determinism)
+        FsmIr ir1 = base_ir;
+        FsmIr ir2 = base_ir;
+        DiagnosticEngine diag1;
+        DiagnosticEngine diag2;
+        auto pm1 = PassManager::create_default_pipeline();
+        auto pm2 = PassManager::create_default_pipeline();
+        (void)pm1.run(ir1, diag1);
+        (void)pm2.run(ir2, diag2);
+
+        const std::string json1 = FsmIrSerializer::serialize_json(ir1);
+        const std::string json2 = FsmIrSerializer::serialize_json(ir2);
+        EXPECT_EQ(json1, json2) << "Non-deterministic pipeline output for seed=" << seed;
+
+        // Well-formedness check after pipeline
+        std::string wf_err;
+        EXPECT_TRUE(ir1.is_well_formed(wf_err)) << "Malformed IR for seed=" << seed << ": " << wf_err;
+
+        // Idempotency check: P(P(ir)) == P(ir)
+        FsmIr ir_idem = ir1;
+        DiagnosticEngine diag_idem;
+        auto pm_idem = PassManager::create_default_pipeline();
+        (void)pm_idem.run(ir_idem, diag_idem);
+        EXPECT_EQ(FsmIrSerializer::serialize_json(ir_idem), json1) << "Non-idempotent pipeline for seed=" << seed;
+    }
 }
 
 }  // namespace

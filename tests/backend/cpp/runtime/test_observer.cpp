@@ -44,7 +44,8 @@ struct StopEvent {
 };
 
 struct PingAction {
-    void operator()(const PingEvent& /*evt*/, auto& /*state*/, auto& /*ctx*/) const {
+    template <typename State, typename Ctx>
+    void operator()(const PingEvent& /*evt*/, State& /*state*/, Ctx& /*ctx*/) const {
         // internal ping
     }
 };

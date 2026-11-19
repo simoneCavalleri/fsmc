@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 86  
-**Total Documented Test Cases**: 763  
+**Total Documented Test Cases**: 764  
 
 ---
 
@@ -124,7 +124,7 @@
 | :--- | :--- | :---: | :--- |
 | [`test_inlining_passes.cpp`](../../tests/middleend/canonicalization/test_inlining_passes.cpp) | `tests/middleend/canonicalization/test_inlining_passes.cpp` | 8 | Unit tests for submachine and choice pseudo-state inlining canonicalization passes. |
 | [`test_orthogonal_product.cpp`](../../tests/middleend/canonicalization/test_orthogonal_product.cpp) | `tests/middleend/canonicalization/test_orthogonal_product.cpp` | 16 | Unit tests for OrthogonalProductPass Cartesian product canonicalization. |
-| [`test_pass_manager.cpp`](../../tests/middleend/canonicalization/test_pass_manager.cpp) | `tests/middleend/canonicalization/test_pass_manager.cpp` | 7 | Unit tests for PassManager execution pipeline, pass chaining, and statistical profiling. |
+| [`test_pass_manager.cpp`](../../tests/middleend/canonicalization/test_pass_manager.cpp) | `tests/middleend/canonicalization/test_pass_manager.cpp` | 8 | Unit tests for PassManager execution pipeline, pass chaining, and statistical profiling. |
 | [`test_structural_lowering.cpp`](../../tests/middleend/canonicalization/test_structural_lowering.cpp) | `tests/middleend/canonicalization/test_structural_lowering.cpp` | 22 | Unit tests for Category A Structural Lowering Suite: HistoryLoweringPass, DeferredEventLoweringPass, BoundaryActionFusionPass, ForkJoinLoweringPass. |
 | [`test_common_action_factoring.cpp`](../../tests/middleend/optimization/test_common_action_factoring.cpp) | `tests/middleend/optimization/test_common_action_factoring.cpp` | 6 | Unit tests for CommonActionFactoringPass redundant action hoist and sink optimizations. |
 | [`test_constant_folding_and_minimization.cpp`](../../tests/middleend/optimization/test_constant_folding_and_minimization.cpp) | `tests/middleend/optimization/test_constant_folding_and_minimization.cpp` | 8 | Unit tests for ConstantFoldingPass guard evaluation and StateMinimizationPass equivalence partitioning. |

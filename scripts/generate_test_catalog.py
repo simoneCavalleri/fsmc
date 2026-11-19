@@ -39,6 +39,30 @@ DOC_BLOCK_PATTERN = re.compile(
 )
 
 
+FILE_DOC_PATTERN = re.compile(r"^\s*/\*\*((?:(?!\*/).)*?)\*/", re.DOTALL)
+
+
+def extract_file_brief(content: str) -> str:
+    match = FILE_DOC_PATTERN.match(content)
+    if not match:
+        return ""
+    lines = [line.strip().lstrip("*").strip() for line in match.group(1).split("\n")]
+    doc_text = "\n".join(lines).strip()
+    brief_match = re.search(
+        r"@brief\s+(.*?)(?=\n\s*@|\n\n|$)",
+        doc_text,
+        re.DOTALL | re.IGNORECASE,
+    )
+    if not brief_match:
+        return ""
+    return " ".join(brief_match.group(1).split()).strip()
+
+
+def sanitize_table_cell(text: str) -> str:
+    text = " ".join(text.split()).strip()
+    return text.replace("|", "\\|")
+
+
 def extract_test_info(content: str):
     tests = []
     for match in DOC_BLOCK_PATTERN.finditer(content):
@@ -63,11 +87,13 @@ def extract_test_info(content: str):
     return tests
 
 
-def generate_catalog(root_dir: Path, base_url: str = "") -> str:
+def generate_catalog(root_dir: Path, base_url: str = "", detailed: bool = False) -> str:
     lines = []
     lines.append("# Master Test Suite & Behavioral Verification Catalog")
     lines.append("")
-    lines.append("> **Note**: This catalog is automatically generated from the in-code `@brief Test Intent` comments across `tests/`.")
+    lines.append(
+        "> **Note**: This catalog is automatically generated from in-code file and `@brief Test Intent` Doxygen comments across `tests/` and `examples/`."
+    )
     lines.append("> To update this file, run: `cmake --build build --target generate_test_catalog` or `python3 scripts/generate_test_catalog.py`.")
     lines.append("")
 
@@ -89,9 +115,10 @@ def generate_catalog(root_dir: Path, base_url: str = "") -> str:
 
             content = file_path.read_text(encoding="utf-8")
             tests = extract_test_info(content)
+            file_brief = extract_file_brief(content)
             if tests or file_path.name.startswith("test_") or "example" in file_path.name:
                 rel_path = file_path.relative_to(root_dir)
-                files_data.append((rel_path, tests))
+                files_data.append((rel_path, file_brief, tests))
                 total_files += 1
                 total_tests += len(tests)
 
@@ -108,7 +135,24 @@ def generate_catalog(root_dir: Path, base_url: str = "") -> str:
     for subsystem_name, files in all_data:
         lines.append(f"## {subsystem_name}")
         lines.append("")
-        for rel_path, tests in files:
+        if not detailed:
+            lines.append("| Suite File | Source Path | Test Cases | Scope Summary |")
+            lines.append("| :--- | :--- | :---: | :--- |")
+            for rel_path, file_brief, tests in files:
+                posix_path = rel_path.as_posix()
+                target_url = f"{base_url.rstrip('/')}/{posix_path}" if base_url else f"../../{posix_path}"
+                summary = file_brief
+                if not summary and tests:
+                    summary = tests[0].get("brief", "")
+                if not summary:
+                    summary = "Executable end-to-end example verification"
+                lines.append(
+                    f"| [`{rel_path.name}`]({target_url}) | `{posix_path}` | {len(tests)} | {sanitize_table_cell(summary)} |"
+                )
+            lines.append("")
+            continue
+
+        for rel_path, _, tests in files:
             posix_path = rel_path.as_posix()
             target_url = f"{base_url.rstrip('/')}/{posix_path}" if base_url else f"../../{posix_path}"
             lines.append(f"### [`{rel_path.name}`]({target_url}) (`{posix_path}`)")
@@ -150,13 +194,18 @@ def main():
         default="",
         help="Optional repository blob base URL for source links (e.g. https://github.com/org/repo/blob/main).",
     )
+    parser.add_argument(
+        "--detailed",
+        action="store_true",
+        help="Include per-test-case Doxygen details instead of the compact per-suite table.",
+    )
 
     args = parser.parse_args()
 
     root_dir = Path(__file__).resolve().parent.parent
     out_file = root_dir / args.output
 
-    generated_content = generate_catalog(root_dir, base_url=args.base_url)
+    generated_content = generate_catalog(root_dir, base_url=args.base_url, detailed=args.detailed)
 
     if args.check:
         if not out_file.exists():

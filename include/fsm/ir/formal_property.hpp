@@ -89,6 +89,36 @@ enum class PropertyKind : std::uint8_t {
 [[nodiscard]] PropertyKind property_kind_from_string(std::string_view str);
 
 /**
+ * @struct CounterexampleStep
+ * @brief A single transition step in an execution trace violating a formal property.
+ */
+struct CounterexampleStep {
+    std::size_t step_index{0};    ///< Sequence number along the execution trace
+    std::string state_name;       ///< State visited during this step
+    std::string event_name;       ///< Trigger event executed
+    std::string guard_condition;  ///< Guard predicate evaluated
+    std::string description;      ///< Human-readable explanation of the step
+};
+
+/**
+ * @struct ModelCheckResult
+ * @brief Detailed outcome of formal property verification.
+ */
+struct ModelCheckResult {
+    bool passed{true};                                     ///< True if property holds globally
+    std::string property_name;                             ///< Identifier of verified property
+    std::string property_formula;                          ///< Formula specification string
+    PropertyKind kind{PropertyKind::Safety};               ///< Safety, Liveness, or Invariant
+    std::string violation_reason;                          ///< Explanation if verification failed
+    std::vector<CounterexampleStep> counterexample_trace;  ///< Diagnostic counterexample trace
+
+    /**
+     * @brief Formats the counterexample trace into a human-readable diagnostic report.
+     */
+    [[nodiscard]] std::string format_counterexample() const;
+};
+
+/**
  * @brief Formal Property specification containing raw formula, AST, and requirement traceability.
  */
 struct FormalProperty {

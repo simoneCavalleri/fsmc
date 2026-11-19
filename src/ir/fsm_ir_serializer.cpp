@@ -265,6 +265,24 @@ void emit_transition_metadata(std::ostream& out, const TransitionEdge& t, const 
         }
         out << "]";
     }
+    if (!t.skip_exit_actions.empty()) {
+        out << ",\n" << field_pad << "\"skip_exit_actions\": [";
+        for (size_t s = 0; s < t.skip_exit_actions.size(); ++s) {
+            if (s > 0)
+                out << ", ";
+            out << "\"" << escape_json(t.skip_exit_actions[s]) << "\"";
+        }
+        out << "]";
+    }
+    if (!t.skip_entry_actions.empty()) {
+        out << ",\n" << field_pad << "\"skip_entry_actions\": [";
+        for (size_t s = 0; s < t.skip_entry_actions.size(); ++s) {
+            if (s > 0)
+                out << ", ";
+            out << "\"" << escape_json(t.skip_entry_actions[s]) << "\"";
+        }
+        out << "]";
+    }
     if (t.transition_action.has_value() && !t.transition_action->assignments.empty()) {
         out << ",\n" << field_pad << "\"assignments\": ";
         emit_assignments_array(out, t.transition_action->assignments);

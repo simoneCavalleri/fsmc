@@ -28,7 +28,7 @@
 #include "fsm/ir/fsm_ir_deserializer.hpp"
 #include "fsm/ir/fsm_ir_serializer.hpp"
 #include "fsm/ir/type_definition.hpp"
-#include "fsm/middleend/analysis/fsm_validator.hpp"
+#include "fsm/middleend/analysis/semantic_analyzer.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm::ir;
@@ -1028,7 +1028,7 @@ TEST(PassManager, SemanticValidationStage_RejectsSemanticallyInvalidModels) {
  * @scenario Run FsmValidator::validate on valid and invalid state machine models.
  * @expected Returns true for valid models and false with diagnostics for invalid models.
  */
-TEST(FsmValidator, CustomTypesAndSemanticValidation_EmitsDiagnosticsOnErrors) {
+TEST(ValidationPipeline, CustomTypesAndSemanticValidation_EmitsDiagnosticsOnErrors) {
     FsmIr ir;
     ir.name = "ValidatorModel";
     ir.add_state("Active");
@@ -1037,13 +1037,13 @@ TEST(FsmValidator, CustomTypesAndSemanticValidation_EmitsDiagnosticsOnErrors) {
     // Unknown port type
     ir.ports.push_back(PortDefinition("bad_port", "InvalidNonExistentType", PortDirection::Out));
 
-    auto result = FsmValidator::validate(ir);
-    EXPECT_FALSE(result.is_valid);
-    ASSERT_FALSE(result.errors.empty());
+    DiagnosticEngine diag;
+    EXPECT_FALSE(PassManager::create_validation_pipeline().run(ir, diag));
+    EXPECT_TRUE(diag.has_errors());
 
     bool found_semantic_err = false;
-    for (const auto& err : result.errors) {
-        if (err.find("InvalidNonExistentType") != std::string::npos) {
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.message.find("InvalidNonExistentType") != std::string::npos) {
             found_semantic_err = true;
             break;
         }
@@ -1458,7 +1458,7 @@ TEST(FsmIr, JsonDeserializer_PreservesCppGuardTypeInGuardAstForBooleanExpression
     ASSERT_TRUE(FsmIrDeserializer::deserialize_json(json, ir, err)) << err;
     ASSERT_EQ(ir.transitions.size(), 1u);
     ASSERT_TRUE(ir.transitions[0].guard.has_value());
-    EXPECT_NE(ir.transitions[0].guard->find("fsm::or_<"), std::string::npos);
+    EXPECT_EQ(*ir.transitions[0].guard, "!(a_gte_10 && b_eq_0) || c_lt_5");
     ASSERT_TRUE(ir.transitions[0].guard_ast.has_value());
     EXPECT_EQ(ir.transitions[0].guard_ast->op, GuardOp::Or);
     EXPECT_EQ(ir.transitions[0].guard_ast->to_string(), "!(a_gte_10 && b_eq_0) || c_lt_5");

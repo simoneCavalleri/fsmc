@@ -324,7 +324,7 @@ TEST(OrthogonalProduct, ForkToParallelRegions_ResolvedToProductState) {
     model.add_transition(TransitionEdge("Fork1", "B1", ""));
 
     DiagnosticEngine diag;
-    ASSERT_TRUE(ForkJoinLoweringPass::run(model, diag));
+    ASSERT_TRUE(ForkJoinLoweringPass{}.run(model, diag));
     EXPECT_EQ(model.find_state("Fork1"), nullptr);
 
     OrthogonalProductPass product_pass;
@@ -390,7 +390,7 @@ TEST(OrthogonalProduct, JoinFromParallelRegions_ResolvedFromProductState) {
     model.add_transition(TransitionEdge("Join1", "Done", "EvComplete"));
 
     DiagnosticEngine diag;
-    ASSERT_TRUE(ForkJoinLoweringPass::run(model, diag));
+    ASSERT_TRUE(ForkJoinLoweringPass{}.run(model, diag));
     EXPECT_EQ(model.find_state("Join1"), nullptr);
 
     OrthogonalProductPass product_pass;
@@ -657,7 +657,7 @@ TEST(OrthogonalProduct, SkipsUnchangedRegionEntryExitActionsOnProductTransition)
     DiagnosticEngine diag;
     OrthogonalProductPass ortho_pass;
     ASSERT_TRUE(ortho_pass.run(model, diag));
-    ASSERT_TRUE(BoundaryActionFusionPass::run(model, diag));
+    ASSERT_TRUE(BoundaryActionFusionPass{}.run(model, diag));
 
     bool found = false;
     for (const auto& tr : model.transitions) {

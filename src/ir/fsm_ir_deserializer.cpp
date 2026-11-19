@@ -524,8 +524,8 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
     std::optional<GuardAstNode> parsed_guard_ast;
     if (!guard_str.empty()) {
         auto parsed = GuardExpressionParser::parse(guard_str);
-        if (!parsed.cpp_type.empty()) {
-            trans.guard = parsed.cpp_type;
+        if (!parsed.canonical_expression.empty()) {
+            trans.guard = parsed.canonical_expression;
             parsed_guard_ast = std::move(parsed.ast);
             for (const auto& detail : parsed.atomic_guard_details) {
                 model.add_guard(detail.name, "", detail.expression, detail.expression);
@@ -640,6 +640,22 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
             for (const auto& elem : tr_arr->arr_val) {
                 if (elem.is_string())
                     trans.traceability_reqs.push_back(elem.str_val);
+            }
+        }
+    }
+    if (const auto* se_arr = trans_obj.get_child("skip_exit_actions")) {
+        if (se_arr->is_array()) {
+            for (const auto& elem : se_arr->arr_val) {
+                if (elem.is_string())
+                    trans.skip_exit_actions.push_back(elem.str_val);
+            }
+        }
+    }
+    if (const auto* sen_arr = trans_obj.get_child("skip_entry_actions")) {
+        if (sen_arr->is_array()) {
+            for (const auto& elem : sen_arr->arr_val) {
+                if (elem.is_string())
+                    trans.skip_entry_actions.push_back(elem.str_val);
             }
         }
     }

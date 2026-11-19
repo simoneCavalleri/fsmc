@@ -14,14 +14,6 @@ namespace fsm::middleend::passes {
 using namespace fsm::ir;
 using namespace fsm::diagnostic;
 
-std::string OrthogonalProductPass::name() {
-    return "OrthogonalProduct";
-}
-
-std::string OrthogonalProductPass::description() {
-    return "Computes Cartesian product of orthogonal regions into sequential product states";
-}
-
 bool OrthogonalProductPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     bool modified = false;
 
@@ -335,35 +327,24 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                     }
 
                     std::string dst_product = tuple_to_name(next_tup);
+                    std::vector<std::string> skip_exit;
+                    std::vector<std::string> skip_entry;
                     if (src_product != dst_product) {
-                        std::string skip_exit;
-                        std::string skip_entry;
                         for (std::size_t idx = 0; idx < regions.size(); ++idx) {
                             if (tup[idx] == next_tup[idx]) {
                                 if (const auto* m_node = ir.find_state(tup[idx])) {
                                     for (const auto& act : m_node->exit_actions) {
                                         if (!act.name.empty()) {
-                                            if (!skip_exit.empty())
-                                                skip_exit += "\n";
-                                            skip_exit += act.name;
+                                            skip_exit.push_back(act.name);
                                         }
                                     }
                                     for (const auto& act : m_node->entry_actions) {
                                         if (!act.name.empty()) {
-                                            if (!skip_entry.empty())
-                                                skip_entry += "\n";
-                                            skip_entry += act.name;
+                                            skip_entry.push_back(act.name);
                                         }
                                     }
                                 }
                             }
-                        }
-                        if (!skip_exit.empty()) {
-                            ir.attributes["ortho_skip_exit:" + src_product + "->" + dst_product] = std::move(skip_exit);
-                        }
-                        if (!skip_entry.empty()) {
-                            ir.attributes["ortho_skip_entry:" + src_product + "->" + dst_product] =
-                                std::move(skip_entry);
                         }
                     }
                     TransitionEdge pt;
@@ -378,6 +359,8 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                     pt.priority = priority;
                     pt.clock_resets = std::move(clock_resets);
                     pt.condition_action = std::move(cond_action);
+                    pt.skip_exit_actions = std::move(skip_exit);
+                    pt.skip_entry_actions = std::move(skip_entry);
 
                     if (!guards.empty()) {
                         if (guards.size() == 1) {

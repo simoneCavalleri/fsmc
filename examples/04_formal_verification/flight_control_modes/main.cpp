@@ -26,6 +26,11 @@ struct ConcreteAvionicsServices : public FlightControlModeManagerServices {
     bool flight_director_connected{false};
     bool mechanical_backup_active{false};
 
+    // Symbolic guards are fail-closed by default (return false); the application must provide real predicates.
+    bool airspeed_valid{true};
+
+    [[nodiscard]] bool AirspeedValidGuard() const override { return airspeed_valid; }
+
     void CalibrateAirDataSensors() override {
         air_data_calibrated = true;
         std::cout << "  \033[1;32m[AVIONICS/PFC]\033[0m Pitot-static and AoA vane sensors self-calibrated (Built-In "

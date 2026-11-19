@@ -19,7 +19,12 @@ int main() {
               << "  RUNNING COMPILED GENERATED FSM TEST SUITE     \n"
               << "=================================================\n";
 
-    net_mermaid::ConnectionMermaidFSM state_machine;
+    struct TestServices : net_mermaid::ConnectionMermaidFSMServices {
+        bool HasNetworkGuard() const override { return true; }
+        bool HasValidCredentialsGuard() const override { return true; }
+    };
+    TestServices srv;
+    net_mermaid::ConnectionMermaidFSM state_machine(srv);
 
     // Initial state: Disconnected
     assert(state_machine.current_state_name() == "Disconnected");
@@ -51,7 +56,7 @@ int main() {
     assert(state_machine.is_in_state<net_mermaid::Disconnected>());
 
     // Test ThreadSafe wrapper
-    net_mermaid::ThreadSafeConnectionMermaidFSM async_machine;
+    net_mermaid::ThreadSafeConnectionMermaidFSM async_machine(srv);
     async_machine.start_worker();
     async_machine.post(net_mermaid::ConnectCmd{});
     while (!async_machine.is_in_state<net_mermaid::Connecting>()) {

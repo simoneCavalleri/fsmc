@@ -16,7 +16,12 @@ int main() {
               << "  RUNNING C++20 STANDALONE GENERATED FSM TEST    \n"
               << "=================================================\n";
 
-    net20::ConnectionFSM20 state_machine;
+    struct TestServices : net20::ConnectionFSM20Services {
+        bool HasNetworkGuard() const override { return true; }
+        bool HasValidCredentialsGuard() const override { return true; }
+    };
+    TestServices srv;
+    net20::ConnectionFSM20 state_machine(srv);
 
     assert(state_machine.current_state_name() == "Disconnected");
     assert(state_machine.is_in_state<net20::Disconnected>());
@@ -42,7 +47,7 @@ int main() {
     assert(state_machine.is_in_state<net20::Disconnected>());
 
     // Test C++20 ThreadSafe with std::jthread
-    net20::ThreadSafeConnectionFSM20 async_machine;
+    net20::ThreadSafeConnectionFSM20 async_machine(srv);
     async_machine.start_worker();
     async_machine.post(net20::ConnectCmd{});
     while (!async_machine.is_in_state<net20::Connecting>()) {

@@ -9,6 +9,25 @@
 namespace fsm::tools {
 
 /**
+ * @struct CommonCliOptions
+ * @brief Shared CLI configuration fields common to both `fsmc` and `fsm-opt`.
+ */
+struct CommonCliOptions {
+    std::string input_path;
+    std::string output_path;
+    std::string format_override = "auto";
+    std::string submachine_dir;
+    std::string diagnostic_format = "text";
+    std::string pipe_through_cmd;
+    std::vector<std::string> pass_plugins;
+    bool warnings_as_errors = false;
+    bool show_help = false;
+    bool show_version = false;
+    bool is_valid = true;
+    std::string error_message;
+};
+
+/**
  * @brief Uniformly matches a CLI flag that accepts a value via `-f <val>`, `--flag <val>`, or `--flag=<val>`.
  *
  * @param arg Current argument string view (`argv[i]`)
@@ -91,6 +110,12 @@ inline bool parse_common_compiler_arg(std::string_view arg, int& i, int argc, ch
         return true;
     }
     return false;
+}
+
+inline bool parse_common_compiler_arg(std::string_view arg, int& i, int argc, char* argv[], CommonCliOptions& opts) {
+    return parse_common_compiler_arg(arg, i, argc, argv, opts.input_path, opts.output_path, opts.format_override,
+                                     opts.submachine_dir, opts.diagnostic_format, opts.pipe_through_cmd,
+                                     opts.pass_plugins, opts.warnings_as_errors, opts.error_message);
 }
 
 }  // namespace fsm::tools

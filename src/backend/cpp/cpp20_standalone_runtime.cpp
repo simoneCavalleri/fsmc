@@ -5787,37 +5787,13 @@ class thread_safe_fsm {
     using dispatch_failure_handler = ::fsm::dispatch_failure_handler;
     using exception_handler = ::fsm::exception_handler;
 
-    thread_safe_fsm() {
-        fsm_.set_observer([this](const transition_info& info) {
-            if (diagnostics_.has_any_callback()) {
-                diagnostics_.notification_buffer().push_back(info);
-            }
-        });
-    }
+    thread_safe_fsm() { init_observer_(); }
 
-    explicit thread_safe_fsm(services_type& srv) : fsm_(srv) {
-        fsm_.set_observer([this](const transition_info& info) {
-            if (diagnostics_.has_any_callback()) {
-                diagnostics_.notification_buffer().push_back(info);
-            }
-        });
-    }
+    explicit thread_safe_fsm(services_type& srv) : fsm_(srv) { init_observer_(); }
 
-    explicit thread_safe_fsm(registers_type reg) : fsm_(std::move(reg)) {
-        fsm_.set_observer([this](const transition_info& info) {
-            if (diagnostics_.has_any_callback()) {
-                diagnostics_.notification_buffer().push_back(info);
-            }
-        });
-    }
+    explicit thread_safe_fsm(registers_type reg) : fsm_(std::move(reg)) { init_observer_(); }
 
-    thread_safe_fsm(registers_type reg, services_type& srv) : fsm_(std::move(reg), srv) {
-        fsm_.set_observer([this](const transition_info& info) {
-            if (diagnostics_.has_any_callback()) {
-                diagnostics_.notification_buffer().push_back(info);
-            }
-        });
-    }
+    thread_safe_fsm(registers_type reg, services_type& srv) : fsm_(std::move(reg), srv) { init_observer_(); }
 
     ~thread_safe_fsm() {
         stop_worker();
@@ -5831,128 +5807,62 @@ class thread_safe_fsm {
 
     // Diagnostic Callbacks
     void set_unhandled_handler(unhandled_handler handler) {
-        if (reentrancy_.is_reentrant_call()) {
-            diagnostics_.set_unhandled_handler(std::move(handler));
-            return;
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        diagnostics_.set_unhandled_handler(std::move(handler));
+        with_lock([&] { diagnostics_.set_unhandled_handler(std::move(handler)); });
     }
 
     void set_guard_rejected_handler(guard_rejected_handler handler) {
-        if (reentrancy_.is_reentrant_call()) {
-            diagnostics_.set_guard_rejected_handler(std::move(handler));
-            return;
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        diagnostics_.set_guard_rejected_handler(std::move(handler));
+        with_lock([&] { diagnostics_.set_guard_rejected_handler(std::move(handler)); });
     }
 
     void set_deferred_handler(deferred_handler handler) {
-        if (reentrancy_.is_reentrant_call()) {
-            diagnostics_.set_deferred_handler(std::move(handler));
-            return;
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        diagnostics_.set_deferred_handler(std::move(handler));
+        with_lock([&] { diagnostics_.set_deferred_handler(std::move(handler)); });
     }
 
     void set_dispatch_failure_handler(dispatch_failure_handler handler) {
-        if (reentrancy_.is_reentrant_call()) {
-            diagnostics_.set_dispatch_failure_handler(std::move(handler));
-            return;
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        diagnostics_.set_dispatch_failure_handler(std::move(handler));
+        with_lock([&] { diagnostics_.set_dispatch_failure_handler(std::move(handler)); });
     }
 
     void set_exception_handler(exception_handler handler) {
-        if (reentrancy_.is_reentrant_call()) {
-            diagnostics_.set_exception_handler(std::move(handler));
-            return;
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        diagnostics_.set_exception_handler(std::move(handler));
+        with_lock([&] { diagnostics_.set_exception_handler(std::move(handler)); });
     }
 
     template <typename Callback>
     void set_observer(Callback&& observer) {
-        if (reentrancy_.is_reentrant_call()) {
-            diagnostics_.set_user_observer(std::forward<Callback>(observer));
-            return;
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        diagnostics_.set_user_observer(std::forward<Callback>(observer));
+        with_lock([&] { diagnostics_.set_user_observer(std::forward<Callback>(observer)); });
     }
 
     void clear_observer() {
-        if (reentrancy_.is_reentrant_call()) {
-            diagnostics_.clear_user_observer();
-            return;
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        diagnostics_.clear_user_observer();
+        with_lock([&] { diagnostics_.clear_user_observer(); });
     }
 
     [[nodiscard]] std::exception_ptr last_exception() const {
-        if (reentrancy_.is_reentrant_call()) {
-            return diagnostics_.last_exception();
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        return diagnostics_.last_exception();
+        return with_lock([&] { return diagnostics_.last_exception(); });
     }
 
     void clear_last_exception() {
-        if (reentrancy_.is_reentrant_call()) {
-            diagnostics_.clear_last_exception();
-            return;
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        diagnostics_.clear_last_exception();
+        with_lock([&] { diagnostics_.clear_last_exception(); });
     }
 
     [[nodiscard]] std::uint64_t state_residence_time() const {
-        if (reentrancy_.is_reentrant_call()) {
-            return fsm_.state_residence_time();
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        return fsm_.state_residence_time();
+        return with_lock([&] { return fsm_.state_residence_time(); });
     }
 
     [[nodiscard]] bool has_invariant_violation() const {
-        if (reentrancy_.is_reentrant_call()) {
-            return fsm_.has_invariant_violation();
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        return fsm_.has_invariant_violation();
+        return with_lock([&] { return fsm_.has_invariant_violation(); });
     }
 
     [[nodiscard]] bool is_invariant_satisfied() const { return !has_invariant_violation(); }
 
     [[nodiscard]] std::optional<invariant_violation_info> last_invariant_violation() const {
-        if (reentrancy_.is_reentrant_call()) {
-            return fsm_.last_invariant_violation();
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        return fsm_.last_invariant_violation();
+        return with_lock([&] { return fsm_.last_invariant_violation(); });
     }
 
     void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
-        if (reentrancy_.is_reentrant_call()) {
-            fsm_.set_invariant_violation_handler(std::move(handler));
-            return;
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        fsm_.set_invariant_violation_handler(std::move(handler));
+        with_lock([&] { fsm_.set_invariant_violation_handler(std::move(handler)); });
     }
 
     void set_invariant_violation_handler(void (*handler)(const invariant_violation_info&)) noexcept {
-        if (reentrancy_.is_reentrant_call()) {
-            fsm_.set_invariant_violation_handler(handler);
-            return;
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        fsm_.set_invariant_violation_handler(handler);
+        with_lock([&] { fsm_.set_invariant_violation_handler(handler); });
     }
 
     template <typename Callable,
@@ -5966,99 +5876,51 @@ class thread_safe_fsm {
 
     // State & Register Access
     [[nodiscard]] registers_type snapshot_registers() const {
-        if (reentrancy_.is_reentrant_call()) {
-            return fsm_.registers();
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        return fsm_.registers();
+        return with_lock([&] { return fsm_.registers(); });
     }
 
     void update_registers(registers_type reg) {
-        if (reentrancy_.is_reentrant_call()) {
-            fsm_.registers() = std::move(reg);
-            return;
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        fsm_.registers() = std::move(reg);
+        with_lock([&] { fsm_.registers() = std::move(reg); });
     }
 
     template <typename Callable>
     auto with_registers(Callable&& fn) const {
-        if (reentrancy_.is_reentrant_call()) {
-            return fn(std::as_const(fsm_.registers()));
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        return fn(std::as_const(fsm_.registers()));
+        return with_lock([&] { return std::forward<Callable>(fn)(std::as_const(fsm_.registers())); });
     }
 
     template <typename Callable>
     auto with_registers(Callable&& fn) {
-        if (reentrancy_.is_reentrant_call()) {
-            return fn(fsm_.registers());
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        return fn(fsm_.registers());
+        return with_lock([&] { return std::forward<Callable>(fn)(fsm_.registers()); });
     }
 
     template <typename State>
     [[nodiscard]] bool is_in_state() const noexcept {
-        if (reentrancy_.is_reentrant_call()) {
-            return fsm_.template is_in_state<State>();
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        return fsm_.template is_in_state<State>();
+        return with_lock([&] { return fsm_.template is_in_state<State>(); });
     }
 
     template <typename State>
     [[nodiscard]] bool is_in() const noexcept {
-        if (reentrancy_.is_reentrant_call()) {
-            return fsm_.template is_in<State>();
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        return fsm_.template is_in<State>();
+        return with_lock([&] { return fsm_.template is_in<State>(); });
     }
 
     [[nodiscard]] bool is_in(std::string_view target_name) const noexcept {
-        if (reentrancy_.is_reentrant_call()) {
-            return fsm_.is_in(target_name);
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        return fsm_.is_in(target_name);
+        return with_lock([&] { return fsm_.is_in(target_name); });
     }
 
     void reset() {
-        if (reentrancy_.is_reentrant_call()) {
-            fsm_.reset();
-            return;
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        fsm_.reset();
+        with_lock([&] { fsm_.reset(); });
     }
 
     void reset(registers_type reg) {
-        if (reentrancy_.is_reentrant_call()) {
-            fsm_.reset(std::move(reg));
-            return;
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        fsm_.reset(std::move(reg));
+        with_lock([&] { fsm_.reset(std::move(reg)); });
     }
 
     void clear_history() noexcept {
-        if (reentrancy_.is_reentrant_call()) {
-            fsm_.clear_history();
-            return;
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        fsm_.clear_history();
+        with_lock([&] { fsm_.clear_history(); });
     }
 
     [[nodiscard]] std::string_view get_history(std::string_view parent) const {
-        if (reentrancy_.is_reentrant_call()) {
-            return fsm_.get_history(parent);
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        return fsm_.get_history(parent);
+        return with_lock([&] { return fsm_.get_history(parent); });
     }
 
     template <typename ParentState>
@@ -6067,28 +5929,15 @@ class thread_safe_fsm {
     }
 
     [[nodiscard]] std::string_view current_state_name() const {
-        if (reentrancy_.is_reentrant_call()) {
-            return fsm_.current_state_name();
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        return fsm_.current_state_name();
+        return with_lock([&] { return fsm_.current_state_name(); });
     }
 
     [[nodiscard]] std::size_t deferred_count() const noexcept {
-        if (reentrancy_.is_reentrant_call()) {
-            return fsm_.deferred_count();
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        return fsm_.deferred_count();
+        return with_lock([&] { return fsm_.deferred_count(); });
     }
 
     void clear_deferred_events() noexcept {
-        if (reentrancy_.is_reentrant_call()) {
-            fsm_.clear_deferred_events();
-            return;
-        }
-        std::scoped_lock lock(dispatch_mutex_);
-        fsm_.clear_deferred_events();
+        with_lock([&] { fsm_.clear_deferred_events(); });
     }
 
     [[nodiscard]] auto& timer_manager() noexcept { return fsm_.timer_manager(); }
@@ -6096,20 +5945,12 @@ class thread_safe_fsm {
 
     template <typename Fn>
     auto with_timer_manager(Fn&& fn) {
-        if (reentrancy_.is_reentrant_call()) {
-            return std::forward<Fn>(fn)(fsm_.timer_manager());
-        }
-        std::lock_guard<std::mutex> lock(dispatch_mutex_);
-        return std::forward<Fn>(fn)(fsm_.timer_manager());
+        return with_lock([&] { return std::forward<Fn>(fn)(fsm_.timer_manager()); });
     }
 
     template <typename Fn>
     auto with_timer_manager(Fn&& fn) const {
-        if (reentrancy_.is_reentrant_call()) {
-            return std::forward<Fn>(fn)(fsm_.timer_manager());
-        }
-        std::lock_guard<std::mutex> lock(dispatch_mutex_);
-        return std::forward<Fn>(fn)(fsm_.timer_manager());
+        return with_lock([&] { return std::forward<Fn>(fn)(fsm_.timer_manager()); });
     }
 
     template <typename Callable>
@@ -6389,12 +6230,25 @@ class thread_safe_fsm {
     void wait_until_idle() { worker_.wait_until_idle(); }
 
   private:
-    [[nodiscard]] exception_handler get_exception_handler_safe() const {
+    void init_observer_() {
+        fsm_.set_observer([this](const transition_info& info) {
+            if (diagnostics_.has_any_callback()) {
+                diagnostics_.notification_buffer().push_back(info);
+            }
+        });
+    }
+
+    template <typename Fn>
+    decltype(auto) with_lock(Fn&& fn) const {
         if (reentrancy_.is_reentrant_call()) {
-            return diagnostics_.get_exception_handler_copy();
+            return std::forward<Fn>(fn)();
         }
         std::scoped_lock lock(dispatch_mutex_);
-        return diagnostics_.get_exception_handler_copy();
+        return std::forward<Fn>(fn)();
+    }
+
+    [[nodiscard]] exception_handler get_exception_handler_safe() const {
+        return with_lock([&] { return diagnostics_.get_exception_handler_copy(); });
     }
 
     template <typename Fn>

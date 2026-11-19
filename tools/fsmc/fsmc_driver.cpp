@@ -6,6 +6,7 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -71,6 +72,33 @@ namespace {
 class FsmcDriverImpl {
   public:
     static int run(const FsmcOptions& opts) {
+        if (auto early_rc = validate_cli_and_early_exit(opts); early_rc.has_value()) {
+            return *early_rc;
+        }
+
+        std::string content;
+        fsm::ir::FsmIr model;
+        std::unique_ptr<IParser> parser;
+        bool has_sidecar = false;
+        if (!load_and_parse_model(opts, content, model, parser, has_sidecar)) {
+            return 1;
+        }
+
+        DiagnosticEngine middleend_diag;
+        DiagnosticFormat diag_fmt = parse_diagnostic_format(opts.diagnostic_format);
+        if (!run_middleend_pipeline(opts, content, model, middleend_diag, diag_fmt)) {
+            return 1;
+        }
+
+        if (auto aux_rc = handle_auxiliary_modes(opts, model, middleend_diag); aux_rc.has_value()) {
+            return *aux_rc;
+        }
+
+        return emit_cpp_target(opts, content, model, *parser, has_sidecar, diag_fmt);
+    }
+
+  private:
+    static std::optional<int> validate_cli_and_early_exit(const FsmcOptions& opts) {
         if (opts.show_help) {
             print_help("fsmc");
             return 0;
@@ -141,11 +169,16 @@ class FsmcDriverImpl {
             return 1;
         }
 
+        return std::nullopt;
+    }
+
+    static bool load_and_parse_model(const FsmcOptions& opts, std::string& content, fsm::ir::FsmIr& model,
+                                     std::unique_ptr<IParser>& parser, bool& has_sidecar) {
         std::string read_err;
-        std::string content = read_file_content(opts.input_file, read_err);
+        content = read_file_content(opts.input_file, read_err);
         if (!read_err.empty()) {
             std::cerr << "Error: " << read_err << "\n";
-            return 1;
+            return false;
         }
 
         // Auto-detect format from content if reading from stdin without explicit format
@@ -158,22 +191,21 @@ class FsmcDriverImpl {
         }
 
         // Parse input model
-        auto parser = ParserFactory::create(opts.input_file, resolved_format);
+        parser = ParserFactory::create(opts.input_file, resolved_format);
         if (!parser) {
             std::cerr << "Error: Could not instantiate parser for input: " << opts.input_file << "\n";
-            return 1;
+            return false;
         }
 
         fsm::diagnostic::SourceManager source_manager;
         source_manager.register_source(opts.input_file, content);
 
-        fsm::ir::FsmIr model;
         fsm::diagnostic::DiagnosticEngine parse_diag;
         if (!parser->parse(content, model, parse_diag)) {
             const auto parse_fmt = parse_diagnostic_format(opts.diagnostic_format);
             std::cerr << "Syntax Error in " << opts.input_file << ":\n"
                       << parse_diag.render_to_format(parse_fmt, content, &source_manager);
-            return 1;
+            return false;
         }
 
         // Check for companion sidecar manifest (--sidecar <file> or auto-discovery)
@@ -195,7 +227,7 @@ class FsmcDriverImpl {
             }
         }
 
-        bool has_sidecar = false;
+        has_sidecar = false;
         if (!sidecar_path.empty()) {
             std::string sidecar_read_err;
             std::string sidecar_content = read_file_content(sidecar_path, sidecar_read_err);
@@ -210,7 +242,7 @@ class FsmcDriverImpl {
                     if (!fsm::frontend::diagram::DiagramContractCombiner::combine(model, manifest, combine_err)) {
                         std::cerr << "Error combining companion manifest '" << sidecar_path << "': " << combine_err
                                   << "\n";
-                        return 1;
+                        return false;
                     }
                     has_sidecar = true;
                     std::cerr << "info: Loaded companion manifest: '" << sidecar_path << "'\n";
@@ -233,7 +265,7 @@ class FsmcDriverImpl {
                               << "' is a visual diagram format (" << parser->format_name()
                               << ").\nPass '--sidecar <manifest.yaml>' or '--allow-diagram' to allow code "
                                  "generation, or use '--verify' / '--export <fmt>' / '--rtm <file>'.\n";
-                    return 1;
+                    return false;
                 }
             }
         }
@@ -257,7 +289,7 @@ class FsmcDriverImpl {
                 prop.ast = std::move(parsed_ast);
             } else {
                 std::cerr << "Error: Syntax error in LTL formula: " << opts.ltl_spec << "\n";
-                return 1;
+                return false;
             }
             model.add_property(std::move(prop));
         }
@@ -269,7 +301,7 @@ class FsmcDriverImpl {
                 prop.ast = std::move(parsed_ast);
             } else {
                 std::cerr << "Error: Syntax error in CTL formula: " << opts.ctl_spec << "\n";
-                return 1;
+                return false;
             }
             model.add_property(std::move(prop));
         }
@@ -278,11 +310,11 @@ class FsmcDriverImpl {
         if (opts.req_audit) {
             perform_req_audit(model);
         }
+        return true;
+    }
 
-        // Execute Middle-End Optimization Passes
-        DiagnosticEngine middleend_diag;
-        DiagnosticFormat diag_fmt = parse_diagnostic_format(opts.diagnostic_format);
-
+    static bool run_middleend_pipeline(const FsmcOptions& opts, const std::string& content, fsm::ir::FsmIr& model,
+                                       DiagnosticEngine& middleend_diag, DiagnosticFormat diag_fmt) {
         PassManager pm;
         bool race_check_ok = true;
         if (opts.pipeline_mode == "7stage" && opts.export_diagram_format.empty()) {
@@ -351,7 +383,7 @@ class FsmcDriverImpl {
             DiagnosticEngine plugin_diag;
             if (!pm.load_plugin(plugin_path, plugin_diag)) {
                 std::cerr << plugin_diag.render_to_format(diag_fmt, content);
-                return 1;
+                return false;
             }
         }
         if (!opts.pipe_through_cmd.empty()) {
@@ -360,17 +392,21 @@ class FsmcDriverImpl {
 
         if ((!race_check_ok || !pm.run(model, middleend_diag)) && !opts.verify_mode) {
             std::cerr << middleend_diag.render_to_format(diag_fmt, content);
-            return 1;
+            return false;
         }
 
         if (opts.werror && (middleend_diag.has_warnings() || middleend_diag.has_errors()) && !opts.verify_mode) {
             std::cerr << "\n[ERROR] -Werror enabled: compilation failed due to middle-end warnings/errors:\n";
             std::cerr << middleend_diag.render_to_format(diag_fmt, content);
-            return 1;
+            return false;
         } else if (!middleend_diag.get_diagnostics().empty() && !opts.verify_mode) {
             std::cerr << middleend_diag.render_to_format(diag_fmt, content);
         }
+        return true;
+    }
 
+    static std::optional<int> handle_auxiliary_modes(const FsmcOptions& opts, const fsm::ir::FsmIr& model,
+                                                     const DiagnosticEngine& middleend_diag) {
         if (opts.simulate_mode) {
             std::string trace_content;
             if (!opts.trace_file.empty()) {
@@ -505,11 +541,15 @@ class FsmcDriverImpl {
             (!opts.rtm_output_file.empty() || !opts.emit_sidecar.empty() || !opts.emit_test_harness.empty())) {
             return 0;
         }
+        return std::nullopt;
+    }
 
+    static int emit_cpp_target(const FsmcOptions& opts, const std::string& content, fsm::ir::FsmIr& model,
+                               const IParser& parser, bool has_sidecar, DiagnosticFormat diag_fmt) {
         // Enforce untyped diagram codegen safety check before C++ generation
-        if (parser->kind() == FrontendKind::Diagram && !has_sidecar && !opts.allow_diagram_codegen) {
+        if (parser.kind() == FrontendKind::Diagram && !has_sidecar && !opts.allow_diagram_codegen) {
             std::cerr << "\n[ERROR] Direct code generation blocked: '" << opts.input_file
-                      << "' is a visual diagram format (" << parser->format_name()
+                      << "' is a visual diagram format (" << parser.format_name()
                       << ").\nPass '--sidecar <manifest.yaml>' or '--allow-diagram' to allow code "
                          "generation, or use '--verify' / '--export <fmt>' / '--rtm <file>'.\n";
             return 1;

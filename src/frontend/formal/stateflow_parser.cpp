@@ -65,7 +65,7 @@ bool decompress_entry(uint16_t method, const unsigned char* data_ptr, uint32_t c
         }
         int ret = inflate(&strm, Z_FINISH);
         inflateEnd(&strm);
-        if (ret != Z_STREAM_END && ret != Z_OK) {
+        if (ret != Z_STREAM_END) {
             err = "Stateflow Parser: Decompression failed for entry '" + filename + "'";
             return false;
         }

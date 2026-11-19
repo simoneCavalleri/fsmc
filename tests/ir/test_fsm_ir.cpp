@@ -1578,4 +1578,51 @@ TEST(StateNode, StateTimeInvariant_AllUnitsAndOperatorsCovered) {
     EXPECT_EQ(structured + " !", "stay < 42s !");
 }
 
+/**
+ * @brief Regression (F2.2): Verify ExpressionAstNode::evaluate_numeric guards against shift/modulo/NaN UB
+ * and rejects excessively nested expressions.
+ */
+TEST(ExpressionAst, EvaluateNumeric_SafeAgainstUBAndDepthOverflow) {
+    std::unordered_map<std::string, double> env;
+    env["neg"] = -1.0;
+    env["big"] = 100.0;
+    env["nan_v"] = std::numeric_limits<double>::quiet_NaN();
+    env["inf_v"] = std::numeric_limits<double>::infinity();
+
+    // Negative / out-of-range shifts must return nullopt without UB
+    auto shl_neg = ExpressionAstNode::parse("1 << neg");
+    EXPECT_FALSE(shl_neg.evaluate_numeric(env).has_value());
+
+    auto shl_big = ExpressionAstNode::parse("1 << big");
+    EXPECT_FALSE(shl_big.evaluate_numeric(env).has_value());
+
+    auto shr_big = ExpressionAstNode::parse("8 >> big");
+    EXPECT_FALSE(shr_big.evaluate_numeric(env).has_value());
+
+    // NaN / Inf in bitwise/modulo ops must return nullopt without float-to-int UB
+    auto mod_nan = ExpressionAstNode::parse("nan_v % 2");
+    EXPECT_FALSE(mod_nan.evaluate_numeric(env).has_value());
+
+    auto bit_inf = ExpressionAstNode::parse("inf_v & 3");
+    EXPECT_FALSE(bit_inf.evaluate_numeric(env).has_value());
+
+    // Valid shift still works cleanly
+    auto shl_ok = ExpressionAstNode::parse("1 << 4");
+    ASSERT_TRUE(shl_ok.evaluate_numeric(env).has_value());
+    EXPECT_DOUBLE_EQ(*shl_ok.evaluate_numeric(env), 16.0);
+
+    // Excessively deep parenthesized expression (> kMaxExprDepth) must fall back to RawExpression without stack
+    // overflow
+    std::string deep_expr;
+    for (int i = 0; i < 200; ++i) {
+        deep_expr += "(";
+    }
+    deep_expr += "1";
+    for (int i = 0; i < 200; ++i) {
+        deep_expr += ")";
+    }
+    auto deep_ast = ExpressionAstNode::parse(deep_expr);
+    EXPECT_EQ(deep_ast.kind, ExpressionKind::RawExpression);
+}
+
 }  // namespace

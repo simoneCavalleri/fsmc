@@ -270,4 +270,16 @@ TEST(ParserFactoryTest, AutoDetectsStateflowXmlOverCameoXmi) {
     std::filesystem::remove(xml_path);
 }
 
+/**
+ * @brief Regression (F2.2): Verify LexerUtils::parse_transition_label handles nested brackets in guards.
+ */
+TEST(LexerUtils, ParseTransitionLabel_HandlesNestedBracketsInGuard) {
+    auto [evt, guard, action] = LexerUtils::parse_transition_label("EvCheck [arr[0] == 1] / DoWork");
+    EXPECT_EQ(evt, "EvCheck");
+    ASSERT_TRUE(guard.has_value());
+    EXPECT_EQ(*guard, "arr[0] == 1");
+    ASSERT_TRUE(action.has_value());
+    EXPECT_EQ(*action, "DoWork");
+}
+
 }  // namespace

@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 86  
-**Total Documented Test Cases**: 756  
+**Total Documented Test Cases**: 760  
 
 ---
 
@@ -86,11 +86,11 @@
 
 | Suite File | Source Path | Test Cases | Scope Summary |
 | :--- | :--- | :---: | :--- |
-| [`test_json_parser.cpp`](../../tests/frontend/common/test_json_parser.cpp) | `tests/frontend/common/test_json_parser.cpp` | 8 | Unit tests for front-end JSON statechart parser, composite states, transitions arrays, and port constraints. |
+| [`test_json_parser.cpp`](../../tests/frontend/common/test_json_parser.cpp) | `tests/frontend/common/test_json_parser.cpp` | 9 | Unit tests for front-end JSON statechart parser, composite states, transitions arrays, and port constraints. |
 | [`test_parser_classification.cpp`](../../tests/frontend/common/test_parser_classification.cpp) | `tests/frontend/common/test_parser_classification.cpp` | 3 | Unit tests for front-end parser taxonomy and format classification (Formal vs Diagram). |
-| [`test_parser_factory_and_lexer.cpp`](../../tests/frontend/common/test_parser_factory_and_lexer.cpp) | `tests/frontend/common/test_parser_factory_and_lexer.cpp` | 8 | Unit tests for ParserFactory dynamic parser resolution and LexerUtils lexical analysis routines. |
+| [`test_parser_factory_and_lexer.cpp`](../../tests/frontend/common/test_parser_factory_and_lexer.cpp) | `tests/frontend/common/test_parser_factory_and_lexer.cpp` | 9 | Unit tests for ParserFactory dynamic parser resolution and LexerUtils lexical analysis routines. |
 | [`test_parser_negative.cpp`](../../tests/frontend/common/test_parser_negative.cpp) | `tests/frontend/common/test_parser_negative.cpp` | 6 | Negative unit tests across front-end parsers verifying rejection of malformed, empty, or corrupt inputs. |
-| [`test_xml_parser.cpp`](../../tests/frontend/common/test_xml_parser.cpp) | `tests/frontend/common/test_xml_parser.cpp` | 4 | Unit test suite for the lightweight XML parser and DOM abstraction. |
+| [`test_xml_parser.cpp`](../../tests/frontend/common/test_xml_parser.cpp) | `tests/frontend/common/test_xml_parser.cpp` | 5 | Unit test suite for the lightweight XML parser and DOM abstraction. |
 | [`test_diagram_sidecar.cpp`](../../tests/frontend/diagram/test_diagram_sidecar.cpp) | `tests/frontend/diagram/test_diagram_sidecar.cpp` | 4 | Unit test suite for the Diagram Sidecar Pattern combining diagram topology with companion manifests. |
 | [`test_dot_parser.cpp`](../../tests/frontend/diagram/test_dot_parser.cpp) | `tests/frontend/diagram/test_dot_parser.cpp` | 21 | Unit test suite for the Graphviz DOT statechart parser. |
 | [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) | `tests/frontend/diagram/test_mermaid_parser.cpp` | 18 | Unit test suite for the Mermaid stateDiagram-v2 parser and frontend dialect. |
@@ -115,7 +115,7 @@
 | [`test_data_definitions.cpp`](../../tests/ir/test_data_definitions.cpp) | `tests/ir/test_data_definitions.cpp` | 6 | Unit tests for IR user-defined data structures: EnumDefinition, StructDefinition, and JSON schema serialization. |
 | [`test_data_type.cpp`](../../tests/ir/test_data_type.cpp) | `tests/ir/test_data_type.cpp` | 9 | Unit tests for DataType target-agnostic type system, classification, parsing, and multi-language lowering. |
 | [`test_efsm_metamodel_extensions.cpp`](../../tests/ir/test_efsm_metamodel_extensions.cpp) | `tests/ir/test_efsm_metamodel_extensions.cpp` | 5 | Unit tests for EFSM metamodel extensions: LValueTarget, ActionAssignment, StateTimeInvariant, and ConcurrencySemantics. |
-| [`test_fsm_ir.cpp`](../../tests/ir/test_fsm_ir.cpp) | `tests/ir/test_fsm_ir.cpp` | 32 | Unit tests for core Intermediate Representation (FsmIr), state hierarchy, AST expressions, and serialization. |
+| [`test_fsm_ir.cpp`](../../tests/ir/test_fsm_ir.cpp) | `tests/ir/test_fsm_ir.cpp` | 33 | Unit tests for core Intermediate Representation (FsmIr), state hierarchy, AST expressions, and serialization. |
 | [`test_fsm_ir_semantic_completeness.cpp`](../../tests/ir/test_fsm_ir_semantic_completeness.cpp) | `tests/ir/test_fsm_ir_semantic_completeness.cpp` | 8 | Unit tests for target-agnostic FSM IR semantic completeness extensions: Terminate pseudostate, Timed Automata ClockDefinition, ActionAstNode primitive instructions, ChangeTrigger, typed transition endpoints, and ExecutionSemantics. |
 
 ## Middle-End Verification & Transformation Subsystem

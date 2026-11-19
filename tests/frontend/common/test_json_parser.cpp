@@ -343,4 +343,54 @@ TEST(JsonParser, XStateLifecycleAssignments_PopulatedInEntryAndExitActions) {
     EXPECT_EQ(idle->exit_actions[0].assignments[0].expression, "x + 10");
 }
 
+/**
+ * @brief Regression (F2.2): Verify SimpleJsonParser rejects trailing garbage, enforces max nesting depth,
+ * and handles deep valid nesting in O(N) time without exponential blow-up.
+ */
+TEST(JsonParser, Hardening_RejectsTrailingGarbageAndExcessiveDepthLinearly) {
+    JsonParser parser;
+
+    // 1. Trailing garbage after valid JSON root must be rejected
+    {
+        FsmIr model;
+        fsm::diagnostic::DiagnosticEngine diag;
+        EXPECT_FALSE(parser.parse(R"({"id": "M", "states": {"A": {}}} trailing)", model, diag));
+        EXPECT_TRUE(diag.has_errors());
+    }
+
+    // 2. Deep nesting exceeding kMaxJsonDepth (128) must be cleanly rejected
+    {
+        std::string deep_json;
+        for (int i = 0; i < 160; ++i) {
+            deep_json += "{\"a\":";
+        }
+        deep_json += "1";
+        for (int i = 0; i < 160; ++i) {
+            deep_json += "}";
+        }
+        FsmIr model;
+        fsm::diagnostic::DiagnosticEngine diag;
+        EXPECT_FALSE(parser.parse(deep_json, model, diag));
+        EXPECT_TRUE(diag.has_errors());
+    }
+
+    // 3. 35-level nested JSON (would OOM under O(2^35) duplication) must parse in O(N) time
+    {
+        std::string nested = R"({"id":"Deep","initial":"S0","states":{"S0":{},"S1":{}},"attributes":{"x":"1"})";
+        nested += ",\"extra\":";
+        for (int i = 0; i < 35; ++i) {
+            nested += "{\"k\":";
+        }
+        nested += "42";
+        for (int i = 0; i < 35; ++i) {
+            nested += "}";
+        }
+        nested += "}";
+        FsmIr model;
+        fsm::diagnostic::DiagnosticEngine diag;
+        EXPECT_TRUE(parser.parse(nested, model, diag)) << diag.render_to_string();
+        EXPECT_EQ(model.name, "Deep");
+    }
+}
+
 }  // namespace

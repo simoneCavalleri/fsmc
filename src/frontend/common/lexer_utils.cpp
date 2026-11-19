@@ -43,10 +43,9 @@ std::tuple<std::string, std::optional<std::string>, std::optional<std::string>> 
     if (guard_opt.has_value()) {
         guard_str = std::string(trim(*guard_opt));
         auto open_idx = rem.find('[');
-        auto close_idx = rem.find(']', open_idx);
+        auto close_idx = open_idx + 1 + guard_opt->size();
         std::string before = rem.substr(0, open_idx);
-        std::string after =
-            (close_idx != std::string::npos && close_idx + 1 < rem.size()) ? rem.substr(close_idx + 1) : "";
+        std::string after = (close_idx + 1 < rem.size()) ? rem.substr(close_idx + 1) : "";
         rem = std::string(trim(before + after));
     }
 

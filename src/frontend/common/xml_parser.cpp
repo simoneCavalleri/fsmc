@@ -349,6 +349,11 @@ std::shared_ptr<XmlNode> SimpleXmlParser::parse(std::string_view xml_text, std::
         }
 
         if (!is_self_closing) {
+            constexpr std::size_t kMaxXmlDepth = 256;
+            if (node_stack.size() >= kMaxXmlDepth) {
+                err = "Malformed XML: element nesting depth exceeded maximum limit (256)";
+                return nullptr;
+            }
             node_stack.push_back(new_node);
         }
 

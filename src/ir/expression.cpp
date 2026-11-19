@@ -1,6 +1,8 @@
 #include "fsm/ir/expression.hpp"
 
 #include <cctype>
+#include <cmath>
+#include <limits>
 #include <sstream>
 
 namespace fsm::ir {
@@ -309,7 +311,22 @@ struct Parser {
         return true;
     }
 
-    std::optional<ExpressionAstNode> parse_expression() { return parse_logical_or(); }
+    static constexpr std::size_t kMaxExprDepth = 128;
+    std::size_t depth = 0;
+
+    struct DepthGuard {
+        std::size_t& d;
+        explicit DepthGuard(std::size_t& ref) noexcept : d(ref) { ++d; }
+        ~DepthGuard() noexcept { --d; }
+    };
+
+    std::optional<ExpressionAstNode> parse_expression() {
+        if (depth >= kMaxExprDepth) {
+            return std::nullopt;
+        }
+        DepthGuard guard(depth);
+        return parse_logical_or();
+    }
 
     std::optional<ExpressionAstNode> parse_logical_or() {
         auto left = parse_logical_and();
@@ -527,6 +544,10 @@ struct Parser {
     }
 
     std::optional<ExpressionAstNode> parse_unary() {
+        if (depth >= kMaxExprDepth) {
+            return std::nullopt;
+        }
+        DepthGuard guard(depth);
         skip_ws();
         if (pos >= src.size())
             return std::nullopt;
@@ -721,11 +742,28 @@ std::optional<double> ExpressionAstNode::evaluate_numeric(const std::unordered_m
             if (!child_val.has_value()) {
                 return std::nullopt;
             }
+            auto safe_to_int64 = [](double v) -> std::optional<int64_t> {
+                if (!std::isfinite(v)) {
+                    return std::nullopt;
+                }
+                // 2^63 is exactly representable in IEEE-754 double; reject values >= 2^63 or < -2^63
+                constexpr double kMinI64 = -9223372036854775808.0;
+                constexpr double kMaxI64Exclusive = 9223372036854775808.0;
+                if (v < kMinI64 || v >= kMaxI64Exclusive) {
+                    return std::nullopt;
+                }
+                return static_cast<int64_t>(v);
+            };
             switch (op) {
                 case ExpressionOp::Negate:
                     return -(*child_val);
-                case ExpressionOp::BitwiseNot:
-                    return static_cast<double>(~static_cast<int64_t>(*child_val));
+                case ExpressionOp::BitwiseNot: {
+                    auto iv = safe_to_int64(*child_val);
+                    if (!iv.has_value()) {
+                        return std::nullopt;
+                    }
+                    return static_cast<double>(~(*iv));
+                }
                 case ExpressionOp::LogicalNot:
                     return (*child_val == 0.0) ? 1.0 : 0.0;
                 default:
@@ -769,35 +807,89 @@ std::optional<double> ExpressionAstNode::evaluate_numeric(const std::unordered_m
             if (!lhs.has_value() || !rhs.has_value()) {
                 return std::nullopt;
             }
-            switch (op) {
-                case ExpressionOp::Add:
-                    return *lhs + *rhs;
-                case ExpressionOp::Subtract:
-                    return *lhs - *rhs;
-                case ExpressionOp::Multiply:
-                    return *lhs * *rhs;
-                case ExpressionOp::Divide:
-                    if (*rhs == 0.0) {
-                        return std::nullopt;
-                    }
-                    return *lhs / *rhs;
-                case ExpressionOp::Modulo: {
-                    auto r_int = static_cast<int64_t>(*rhs);
-                    if (r_int == 0) {
-                        return std::nullopt;
-                    }
-                    return static_cast<double>(static_cast<int64_t>(*lhs) % r_int);
+            auto safe_to_int64 = [](double v) -> std::optional<int64_t> {
+                if (!std::isfinite(v)) {
+                    return std::nullopt;
                 }
-                case ExpressionOp::ShiftLeft:
-                    return static_cast<double>(static_cast<int64_t>(*lhs) << static_cast<int64_t>(*rhs));
-                case ExpressionOp::ShiftRight:
-                    return static_cast<double>(static_cast<int64_t>(*lhs) >> static_cast<int64_t>(*rhs));
-                case ExpressionOp::BitwiseAnd:
-                    return static_cast<double>(static_cast<int64_t>(*lhs) & static_cast<int64_t>(*rhs));
-                case ExpressionOp::BitwiseOr:
-                    return static_cast<double>(static_cast<int64_t>(*lhs) | static_cast<int64_t>(*rhs));
-                case ExpressionOp::BitwiseXor:
-                    return static_cast<double>(static_cast<int64_t>(*lhs) ^ static_cast<int64_t>(*rhs));
+                constexpr double kMinI64 = -9223372036854775808.0;
+                constexpr double kMaxI64Exclusive = 9223372036854775808.0;
+                if (v < kMinI64 || v >= kMaxI64Exclusive) {
+                    return std::nullopt;
+                }
+                return static_cast<int64_t>(v);
+            };
+            switch (op) {
+                case ExpressionOp::Add: {
+                    double res = *lhs + *rhs;
+                    return std::isfinite(res) ? std::optional<double>(res) : std::nullopt;
+                }
+                case ExpressionOp::Subtract: {
+                    double res = *lhs - *rhs;
+                    return std::isfinite(res) ? std::optional<double>(res) : std::nullopt;
+                }
+                case ExpressionOp::Multiply: {
+                    double res = *lhs * *rhs;
+                    return std::isfinite(res) ? std::optional<double>(res) : std::nullopt;
+                }
+                case ExpressionOp::Divide: {
+                    if (*rhs == 0.0 || !std::isfinite(*lhs) || !std::isfinite(*rhs)) {
+                        return std::nullopt;
+                    }
+                    double res = *lhs / *rhs;
+                    return std::isfinite(res) ? std::optional<double>(res) : std::nullopt;
+                }
+                case ExpressionOp::Modulo: {
+                    auto l_int = safe_to_int64(*lhs);
+                    auto r_int = safe_to_int64(*rhs);
+                    if (!l_int.has_value() || !r_int.has_value() || *r_int == 0) {
+                        return std::nullopt;
+                    }
+                    if (*l_int == std::numeric_limits<int64_t>::min() && *r_int == -1) {
+                        return std::nullopt;
+                    }
+                    return static_cast<double>(*l_int % *r_int);
+                }
+                case ExpressionOp::ShiftLeft: {
+                    auto l_int = safe_to_int64(*lhs);
+                    auto r_int = safe_to_int64(*rhs);
+                    if (!l_int.has_value() || !r_int.has_value() || *r_int < 0 || *r_int >= 64) {
+                        return std::nullopt;
+                    }
+                    const auto shifted = static_cast<uint64_t>(*l_int) << static_cast<unsigned int>(*r_int);
+                    return static_cast<double>(static_cast<int64_t>(shifted));
+                }
+                case ExpressionOp::ShiftRight: {
+                    auto l_int = safe_to_int64(*lhs);
+                    auto r_int = safe_to_int64(*rhs);
+                    if (!l_int.has_value() || !r_int.has_value() || *r_int < 0 || *r_int >= 64) {
+                        return std::nullopt;
+                    }
+                    return static_cast<double>(*l_int >> static_cast<unsigned int>(*r_int));
+                }
+                case ExpressionOp::BitwiseAnd: {
+                    auto l_int = safe_to_int64(*lhs);
+                    auto r_int = safe_to_int64(*rhs);
+                    if (!l_int.has_value() || !r_int.has_value()) {
+                        return std::nullopt;
+                    }
+                    return static_cast<double>(*l_int & *r_int);
+                }
+                case ExpressionOp::BitwiseOr: {
+                    auto l_int = safe_to_int64(*lhs);
+                    auto r_int = safe_to_int64(*rhs);
+                    if (!l_int.has_value() || !r_int.has_value()) {
+                        return std::nullopt;
+                    }
+                    return static_cast<double>(*l_int | *r_int);
+                }
+                case ExpressionOp::BitwiseXor: {
+                    auto l_int = safe_to_int64(*lhs);
+                    auto r_int = safe_to_int64(*rhs);
+                    if (!l_int.has_value() || !r_int.has_value()) {
+                        return std::nullopt;
+                    }
+                    return static_cast<double>(*l_int ^ *r_int);
+                }
                 case ExpressionOp::Equal:
                     return (*lhs == *rhs) ? 1.0 : 0.0;
                 case ExpressionOp::NotEqual:

@@ -21,8 +21,12 @@
 #endif
 #include <windows.h>
 #else
+#include <poll.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+#include <cerrno>
+#include <csignal>
 #endif
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
@@ -721,18 +725,65 @@ class FsmcDriverImpl {
             _exit(127);
         }
 
-        // Parent: read output from child pipe until EOF
+        // Parent: read output from child pipe with configurable timeout (FSMC_NUXMV_TIMEOUT_SEC, default 60s)
         close(pipe_fds[1]);
+        int timeout_sec = 60;
+        if (const char* env_timeout = std::getenv("FSMC_NUXMV_TIMEOUT_SEC"); env_timeout != nullptr) {
+            int parsed = std::atoi(env_timeout);
+            if (parsed > 0) {
+                timeout_sec = parsed;
+            }
+        }
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeout_sec);
+        bool timed_out = false;
         char out_buf[512];
-        ssize_t bytes_read = 0;
-        while ((bytes_read = read(pipe_fds[0], out_buf, sizeof(out_buf) - 1)) > 0) {
+        for (;;) {
+            auto now = std::chrono::steady_clock::now();
+            if (now >= deadline) {
+                timed_out = true;
+                break;
+            }
+            const auto remaining_ms = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
+            pollfd pfd{};
+            pfd.fd = pipe_fds[0];
+            pfd.events = POLLIN;
+            int pr = poll(&pfd, 1, static_cast<int>(std::min<long long>(remaining_ms, 1000)));
+            if (pr < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                break;
+            }
+            if (pr == 0) {
+                continue;
+            }
+            ssize_t bytes_read = read(pipe_fds[0], out_buf, sizeof(out_buf) - 1);
+            if (bytes_read < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                break;
+            }
+            if (bytes_read == 0) {
+                break;
+            }
             out_buf[bytes_read] = '\0';
             nuxmv_output += out_buf;
         }
         close(pipe_fds[0]);
 
+        if (timed_out) {
+            kill(pid, SIGKILL);
+        }
+
         int status = 0;
-        waitpid(pid, &status, 0);
+        while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+        }
+        if (timed_out) {
+            fs::remove(temp_smv_path, ec);
+            std::cerr << "[ERROR] nuXmv verification timed out after " << timeout_sec << " seconds.\n";
+            return 1;
+        }
         exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 
         if (exit_code == 127 && nuxmv_output.empty()) {

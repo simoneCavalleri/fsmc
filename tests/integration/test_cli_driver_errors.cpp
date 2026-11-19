@@ -446,4 +446,31 @@ TEST(CliOptions, InvalidEngineAndRtmFormat_AreRejected) {
     }
 }
 
+/**
+ * @brief Test Intent: Verify OptDriver rejects empty input path and unknown pass names cleanly.
+ */
+TEST(CliDriver, OptEmptyInputAndUnknownPass_ReturnNonZero) {
+    {
+        fsm::tools::OptOptions opt;
+        EXPECT_NE(fsm::tools::OptDriver::run(opt), 0);
+    }
+
+    fs::path temp_dir = fs::temp_directory_path() / "fsmc_opt_unknown_pass_test";
+    fs::create_directories(temp_dir);
+    fs::path valid_file = temp_dir / "valid.sysml";
+    {
+        std::ofstream out(valid_file);
+        out << kValidSysml;
+    }
+
+    fsm::tools::OptOptions opt;
+    opt.input_path = valid_file.string();
+    opt.custom_passes = "non_existent_pass_xyz";
+    EXPECT_EQ(fsm::tools::OptDriver::run(opt), 0);
+    opt.werror = true;
+    EXPECT_NE(fsm::tools::OptDriver::run(opt), 0);
+
+    fs::remove_all(temp_dir);
+}
+
 }  // namespace

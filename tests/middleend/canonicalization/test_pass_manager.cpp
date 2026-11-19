@@ -5,6 +5,10 @@
 
 #include <gtest/gtest.h>
 
+#include <random>
+#include <string>
+#include <vector>
+
 #include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm::diagnostic;
@@ -185,6 +189,69 @@ TEST(PassManager, SevenStagePipeline_PreservesNativeDeferredEvents) {
     ASSERT_NE(busy_after, nullptr);
     ASSERT_EQ(busy_after->deferred_events.size(), 1u);
     EXPECT_EQ(busy_after->deferred_events[0], "EvWork");
+}
+
+/**
+ * @brief Property-based fuzz test: 40 deterministic randomized hierarchical/guarded/cyclic FsmIr models
+ *        must survive the full 7-stage PassManager pipeline without crashing or losing initial_state.
+ */
+TEST(PassManager, RandomizedFsmIrPropertyFuzz_PreservesInvariantsWithoutCrash) {
+    std::mt19937 rng(0xF5C2026u);
+    for (int seed = 0; seed < 40; ++seed) {
+        FsmIr ir;
+        ir.name = "RandFsm_" + std::to_string(seed);
+        ir.initial_state = "S0";
+        ir.add_variable(VariableDefinition("x", DataType::int32(), "0"));
+        ir.add_variable(VariableDefinition("flag", DataType::boolean(), "true"));
+
+        const int num_states = 4 + static_cast<int>(rng() % 6);
+        for (int i = 0; i < num_states; ++i) {
+            StateNode st("S" + std::to_string(i));
+            if (i == 1 && (seed % 3 == 0)) {
+                st.is_composite = true;
+                st.has_history = (seed % 2 == 0);
+                st.initial_sub_state = "Sub0";
+            }
+            ir.add_state(std::move(st));
+        }
+        if (seed % 3 == 0) {
+            ir.add_state(StateNode("Sub0", "", "S1"));
+            ir.add_state(StateNode("Sub1", "", "S1"));
+        }
+
+        const std::vector<std::string> events = {"EvA", "EvB", "EvC"};
+        for (const auto& ev : events) {
+            ir.add_event(ev);
+        }
+        const std::vector<std::string> guards = {"", "true", "x > 0", "flag == true", "x >= 0 && flag"};
+
+        const int num_trans = 4 + static_cast<int>(rng() % 10);
+        for (int t = 0; t < num_trans; ++t) {
+            int src = static_cast<int>(rng() % static_cast<unsigned>(num_states));
+            int dst = static_cast<int>(rng() % static_cast<unsigned>(num_states));
+            const auto& ev = events[rng() % events.size()];
+            const auto& g = guards[rng() % guards.size()];
+            TransitionEdge edge("S" + std::to_string(src), "S" + std::to_string(dst), ev);
+            if (!g.empty()) {
+                edge.set_guard(g);
+            }
+            if (t % 4 == 0) {
+                edge.kind = TransitionEdgeKind::Internal;
+                edge.target = edge.source;
+            }
+            ActionSignature act("act_" + std::to_string(t));
+            act.assignments.emplace_back(LValueTarget("x"), "1", AssignmentOp::AddAssign);
+            edge.transition_action = act;
+            ir.add_transition(std::move(edge));
+        }
+
+        auto pm = PassManager::create_verified_7stage_pipeline(true);
+        DiagnosticEngine diag;
+        EXPECT_NO_THROW({ (void)pm.run(ir, diag); }) << "seed=" << seed;
+        EXPECT_NE(ir.find_state(ir.initial_state), nullptr) << "seed=" << seed;
+        // Second run must remain stable and not crash
+        EXPECT_NO_THROW({ (void)pm.run(ir, diag); }) << "idempotency seed=" << seed;
+    }
 }
 
 }  // namespace

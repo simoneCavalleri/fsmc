@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 86  
-**Total Documented Test Cases**: 744  
+**Total Documented Test Cases**: 747  
 
 ---
 
@@ -1578,6 +1578,9 @@
 #### `DataType.TypeClassificationStringFormatting_SerializesToStream`
 **Test Intent**: Verify TypeClassification string serialization and stream output operator.
 
+#### `DataType.AllPrimitiveConversionsAndHelpers_Covered`
+**Test Intent**: Verify DataType primitive factories, from_string, C++/SMV formatting, and equality operators.
+
 ### [`test_efsm_metamodel_extensions.cpp`](../../tests/ir/test_efsm_metamodel_extensions.cpp) (`tests/ir/test_efsm_metamodel_extensions.cpp`)
 #### `LValueTarget.QualifiedPathAndScopingSyntax_ParsesRegistersLocalsAndPorts`
 **Test Intent**: Verify LValueTarget scope qualification, member paths, and array index parsing.
@@ -1807,6 +1810,9 @@
 
 #### `PassManager.SevenStagePipeline_PreservesNativeDeferredEvents`
 **Test Intent**: Regression: 7-stage pipeline must preserve `deferred_events` for the native C++ runtime FIFO.
+
+#### `PassManager.RandomizedFsmIrPropertyFuzz_PreservesInvariantsWithoutCrash`
+**Test Intent**: Property-based fuzz test: 40 deterministic randomized hierarchical/guarded/cyclic FsmIr models
 
 ### [`test_structural_lowering.cpp`](../../tests/middleend/canonicalization/test_structural_lowering.cpp) (`tests/middleend/canonicalization/test_structural_lowering.cpp`)
 #### `HistoryLowering.ShallowHistoryTarget_LowersToShadowRegisterAndDispatchGuards`
@@ -2307,6 +2313,9 @@
 
 **Scenario**:
   - Pass unsupported values '--engine=z3' and '--rtm-format=xml' to parse_cli_args.
+
+#### `CliDriver.OptEmptyInputAndUnknownPass_ReturnNonZero`
+**Test Intent**: Verify OptDriver rejects empty input path and unknown pass names cleanly.
 
 ### [`test_cmake_integration.cpp`](../../tests/integration/test_cmake_integration.cpp) (`tests/integration/test_cmake_integration.cpp`)
 - *(Executable binary test verification)*

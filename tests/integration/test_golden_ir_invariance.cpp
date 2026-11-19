@@ -822,7 +822,7 @@ TEST(GoldenDifferentialE2E, ParallelAndForkJoin_UnoptimizedVsOptimizedMatches) {
 }
 
 /**
- * @brief Differential E2E test for Deferred events + DeferredEventLoweringPass (-O0 vs -O2).
+ * @brief Differential E2E test for native Deferred events across -O0 vs -O2 optimization passes.
  */
 TEST(GoldenDifferentialE2E, DeferredEvents_UnoptimizedVsOptimizedMatches) {
     auto build_def_ir = [](std::string pkg) {

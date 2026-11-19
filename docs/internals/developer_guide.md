@@ -45,7 +45,7 @@ fsmc/
 ├── tools/
 │   ├── fsmc/                # Primary compiler driver CLI
 │   └── fsm-opt/             # Standalone formal IR optimizer & linter CLI
-├── tests/                   # Modular GoogleTest suites (85 test suites / 94 CTest targets)
+├── tests/                   # Modular GoogleTest suites (86 test suites / 95 CTest targets)
 ├── scripts/                 # Maintenance tools (generate_standalone_runtime.py, verify_docs.py)
 └── docs/                    # MkDocs documentation source
 ```

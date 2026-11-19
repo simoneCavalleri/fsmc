@@ -9,7 +9,7 @@
 [![Release](https://img.shields.io/github/v/release/simoneCavalleri/fsmc?color=blue)](https://github.com/simoneCavalleri/fsmc/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Standards](https://img.shields.io/badge/Standards-OMG%20SysML%20v2%20%7C%20UML%202.5%20%7C%20W3C%20SCXML%20%7C%20nuXmv-orange.svg)](https://simoneCavalleri.github.io/fsmc/formal_languages/uml_reference/)
-[![Tests](https://img.shields.io/badge/Tests-85%20Suites%20%7C%2094%20CTest%20Targets-success.svg)](https://simoneCavalleri.github.io/fsmc/reference/test_suite_catalog/)
+[![Tests](https://img.shields.io/badge/Tests-86%20Suites%20%7C%2095%20CTest%20Targets-success.svg)](https://simoneCavalleri.github.io/fsmc/reference/test_suite_catalog/)
 
 **The Universal Finite State Machine Compiler, Optimization & Formal Verification Infrastructure.**  
 *Ingest, verify, optimize, transpile, and compile statecharts across 9 modeling formats into deterministic C++17/C++20 runtimes.*

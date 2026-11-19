@@ -4,7 +4,7 @@ hide:
 ---
 
 <div class="fsmc-hero" markdown="1">
-<div class="fsmc-hero__badge">v0.10.0 &middot; C++17 / C++20 &middot; Zero-Heap Runtime &middot; LTL / CTL</div>
+<div class="fsmc-hero__badge">v0.11.0 &middot; C++17 / C++20 &middot; Zero-Heap Runtime &middot; LTL / CTL</div>
 
 # Universal State Machine Compiler
 

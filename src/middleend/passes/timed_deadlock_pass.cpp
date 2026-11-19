@@ -1,5 +1,7 @@
 #include "fsm/middleend/passes/timed_deadlock_pass.hpp"
 
+#include <map>
+
 namespace fsm::middleend::passes {
 
 using namespace fsm::ir;
@@ -9,14 +11,24 @@ bool TimedDeadlockPass::run(const FsmIr& ir, DiagnosticEngine& diag) const {
     for (const auto& st : ir.states) {
         std::vector<const TransitionEdge*> timed_transitions;
         std::vector<const TransitionEdge*> immediate_transitions;
+        std::map<std::string, int> textual_timer_counts;
 
         for (const auto& trans : ir.transitions) {
             if (trans.source == st.name) {
                 if (std::holds_alternative<TimeTrigger>(trans.trigger)) {
                     timed_transitions.push_back(&trans);
+                } else if (trans.event.rfind("after_", 0) == 0 || trans.event.rfind("after(", 0) == 0) {
+                    textual_timer_counts[trans.event]++;
                 } else {
                     immediate_transitions.push_back(&trans);
                 }
+            }
+        }
+
+        for (const auto& [evt, count] : textual_timer_counts) {
+            if (count > 1) {
+                diag.report(Diagnostic::warning("W0402", "Duplicate timer transitions defined for duration '" + evt +
+                                                             "' on state '" + st.name + "'."));
             }
         }
 

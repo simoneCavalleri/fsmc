@@ -9,6 +9,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/pass_interface.hpp"
 
 namespace fsm::middleend::passes {
 
@@ -19,20 +20,18 @@ using ir::FsmIr;
  * @class DeterminismEnforcementPass
  * @brief Target-Agnostic Middle-End Pass: Enforces transition determinism and canonical priority ordering.
  */
-class DeterminismEnforcementPass {
+class DeterminismEnforcementPass : public ::fsm::middleend::IPass {
   public:
-    [[nodiscard]] static std::string name() { return "DeterminismEnforcement"; }
-    [[nodiscard]] static std::string description() {
-        return "Enforces deterministic event dispatching and applies priority-based canonical ordering";
-    }
-
-    /**
+/**
      * @brief Sorts and validates outgoing transitions from each state according to priority contracts.
      * @param ir Target FsmIr to order.
      * @param diag Diagnostic engine for reporting ambiguity.
      * @return True on success, false on fatal determinism conflict.
      */
-    bool run(FsmIr& ir, DiagnosticEngine& diag);
+    [[nodiscard]] std::string name() const override { return "determinism-enforcement"; }
+    [[nodiscard]] std::string description() const override { return "Verifies transition determinism and detects overlapping nondeterministic triggers."; }
+    [[nodiscard]] bool preserves_ir() const noexcept override { return true; }
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };
 
 }  // namespace fsm::middleend::passes

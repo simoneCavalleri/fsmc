@@ -9,6 +9,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/pass_interface.hpp"
 
 namespace fsm::middleend::passes {
 
@@ -24,20 +25,18 @@ using ir::FsmIr;
  * them into atomic transition edges. Composes guard conjunctions, chains action AST
  * instruction sequences, and merges clock resets, eliminating spurious reaction cycles.
  */
-class TransitionFusionPass {
+class TransitionFusionPass : public ::fsm::middleend::IPass {
   public:
-    [[nodiscard]] static std::string name() { return "TransitionFusion"; }
-    [[nodiscard]] static std::string description() {
-        return "Collapses transient micro-states and fuses consecutive transitions into direct edges";
-    }
-
-    /**
+/**
      * @brief Executes transition fusion across the IR model.
      * @param ir FSM IR to optimize.
      * @param diag Diagnostic reporting engine.
      * @return True on success.
      */
-    bool run(FsmIr& ir, DiagnosticEngine& diag);
+    [[nodiscard]] std::string name() const override { return "transition-fusion"; }
+    [[nodiscard]] std::string description() const override { return "Fuses consecutive anonymous transitions across pass-through states."; }
+    [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };
 
 }  // namespace fsm::middleend::passes

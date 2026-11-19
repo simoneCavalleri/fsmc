@@ -9,6 +9,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/pass_interface.hpp"
 
 namespace fsm::middleend::analysis {
 
@@ -24,20 +25,18 @@ using ir::FsmIr;
  * 2. Analyzes cascade signal emissions (SignalEmitOp) produced within single reaction cycles.
  * 3. Annotates the IR with "static_event_queue_capacity" for fixed-size static ring buffer synthesis.
  */
-class EventQueueBoundPass {
+class EventQueueBoundPass : public ::fsm::middleend::IPass {
   public:
-    [[nodiscard]] static std::string name() { return "EventQueueBoundAnalysis"; }
-    [[nodiscard]] static std::string description() {
-        return "Calculates static upper bounds for event queues to support zero-allocation execution";
-    }
-
-    /**
+/**
      * @brief Computes event queue upper bounds and annotates the model.
      * @param ir Target FsmIr to inspect and annotate.
      * @param diag Diagnostic reporting engine.
      * @return True on success.
      */
-    bool run(FsmIr& ir, DiagnosticEngine& diag);
+    [[nodiscard]] std::string name() const override { return "event-queue-bound"; }
+    [[nodiscard]] std::string description() const override { return "Computes static upper bounds on required runtime event queue capacity."; }
+    [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };
 
 }  // namespace fsm::middleend::analysis

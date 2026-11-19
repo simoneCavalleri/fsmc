@@ -9,6 +9,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/pass_interface.hpp"
 
 namespace fsm::middleend::passes {
 
@@ -22,20 +23,18 @@ using ir::FsmIr;
  * Resolves multi-hop connective junction flow diagrams (Stateflow / SysML / UML)
  * into direct compound transitions with conjoined guards and sequenced actions.
  */
-class ConnectiveJunctionChainingPass {
+class ConnectiveJunctionChainingPass : public ::fsm::middleend::IPass {
   public:
-    [[nodiscard]] static std::string name() { return "ConnectiveJunctionChaining"; }
-    [[nodiscard]] static std::string description() {
-        return "Chains multi-hop connective junction paths into direct atomic compound transitions";
-    }
-
-    /**
+/**
      * @brief Traverses acyclic connective junction paths and collapses them into direct transitions.
      * @param ir Target FsmIr to mutate.
      * @param diag Diagnostic reporting engine.
      * @return True if any junctions were chained and eliminated, false otherwise.
      */
-    static bool run(FsmIr& ir, DiagnosticEngine& diag);
+    [[nodiscard]] std::string name() const override { return "connective-junction-chaining"; }
+    [[nodiscard]] std::string description() const override { return "Chains multi-hop connective junction paths into atomic composite transitions."; }
+    [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };
 
 }  // namespace fsm::middleend::passes

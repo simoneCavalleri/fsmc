@@ -9,6 +9,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/pass_interface.hpp"
 
 namespace fsm::middleend::analysis {
 
@@ -24,20 +25,18 @@ using ir::FsmIr;
  * 2. Checks whether conflicting transitions responding to identical triggers lack explicit priorities.
  * Reports diagnostic warnings (W0402) and errors (E0402) ensuring deterministic semantics.
  */
-class PriorityConflictPass {
+class PriorityConflictPass : public ::fsm::middleend::IPass {
   public:
-    [[nodiscard]] static std::string name() { return "PriorityConflictAnalysis"; }
-    [[nodiscard]] static std::string description() {
-        return "Validates deterministic transition preemption and hierarchical priority compliance";
-    }
-
-    /**
+/**
      * @brief Executes priority conflict verification across all states.
      * @param ir Target FsmIr to verify.
      * @param diag Diagnostic reporting engine.
      * @return True if no fatal priority contradictions exist.
      */
-    bool run(FsmIr& ir, DiagnosticEngine& diag);
+    [[nodiscard]] std::string name() const override { return "priority-conflict-check"; }
+    [[nodiscard]] std::string description() const override { return "Detects ambiguous transition priority conflicts on shared source states and triggers."; }
+    [[nodiscard]] bool preserves_ir() const noexcept override { return true; }
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };
 
 }  // namespace fsm::middleend::analysis

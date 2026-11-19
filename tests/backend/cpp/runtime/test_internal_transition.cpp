@@ -11,14 +11,11 @@
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/backend/cpp/runtime/fsm.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
-#include "fsm/middleend/analysis/fsm_validator.hpp"
 
 using namespace fsm::backend::cpp;
 using namespace fsm::backend;
 using namespace fsm::frontend::diagram;
 using namespace fsm::frontend;
-using namespace fsm::middleend::analysis;
-using namespace fsm::middleend;
 using namespace fsm::ir;
 
 namespace {
@@ -88,8 +85,8 @@ TEST(InternalTransition, ParserAndCodegen_InternalTransition_PreservesSemanticsI
 
     PlantUmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err.render_to_string();
     ASSERT_EQ(model.transitions.size(), 2u);
 
     bool found_internal = false;

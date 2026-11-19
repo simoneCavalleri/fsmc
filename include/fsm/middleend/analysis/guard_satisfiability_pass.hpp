@@ -10,6 +10,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/pass_interface.hpp"
 #include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
 
 namespace fsm::middleend::analysis {
@@ -26,21 +27,18 @@ using ir::FsmIr;
  * 3. Detects overlapping guards (non-deterministic ambiguity, warning W0301).
  * 4. Detects unsatisfiable / dead guards (warning W0302).
  */
-class GuardSatisfiabilityPass {
+class GuardSatisfiabilityPass : public ::fsm::middleend::IPass {
   public:
-    [[nodiscard]] static std::string name() { return "GuardSatisfiabilityAnalysis"; }
-    [[nodiscard]] static std::string description() {
-        return "Analyzes guard expressions for satisfiability and mutual exclusivity without external solver "
-               "dependencies";
-    }
-
-    /**
+/**
      * @brief Performs satisfiability and exclusivity checks across all transition guards.
      * @param ir Target FsmIr to analyze.
      * @param diag Diagnostic engine for reporting conflicts.
      * @return True if analysis completed without fatal errors, false otherwise.
      */
-    bool run(FsmIr& ir, DiagnosticEngine& diag);
+    [[nodiscard]] std::string name() const override { return "guard-satisfiability"; }
+    [[nodiscard]] std::string description() const override { return "Verifies guard satisfiability and detects statically contradictory or shadowed guards."; }
+    [[nodiscard]] bool preserves_ir() const noexcept override { return true; }
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 
   private:
     static std::string clean_number(std::string s);

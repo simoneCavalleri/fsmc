@@ -13,8 +13,6 @@
 
 using namespace fsm::diagnostic;
 using namespace fsm::middleend;
-using namespace fsm::middleend::passes;
-using namespace fsm::middleend::analysis;
 using namespace fsm::ir;
 
 namespace {
@@ -102,14 +100,14 @@ TEST(PassManager, SampledChangeTriggerAndSubmachineWrappers_ExecuteCleanly) {
     ir.transitions.push_back(t);
 
     PassManager pm;
-    pm.add_pass(std::make_unique<SampledChangeTriggerPassWrapper>());
-    pm.add_pass(std::make_unique<SubmachineInliningPassWrapper>());
+    pm.add_pass(PassManager::create_pass_by_name("sampled-change-trigger"));
+    pm.add_pass(PassManager::create_pass_by_name("submachine-inlining"));
 
     DiagnosticEngine diag;
     EXPECT_TRUE(pm.run(ir, diag));
     EXPECT_EQ(pm.get_stats().size(), 2u);
-    EXPECT_EQ(pm.get_stats()[0].pass_name, "SampledChangeTrigger");
-    EXPECT_EQ(pm.get_stats()[1].pass_name, "SubmachineInlining");
+    EXPECT_EQ(pm.get_stats()[0].pass_name, "sampled-change-trigger");
+    EXPECT_EQ(pm.get_stats()[1].pass_name, "submachine-inlining");
     EXPECT_TRUE(std::holds_alternative<AnonymousTrigger>(ir.transitions[0].trigger));
 }
 
@@ -126,14 +124,14 @@ TEST(PassManager, NoOpTransformationWrappersReturnSuccessAndAnalyticalPreserveIr
 
     PassManager pm;
     pm.add_pass(std::make_unique<SemanticValidationPass>());
-    pm.add_pass(std::make_unique<HistoryLoweringPassWrapper>());
-    pm.add_pass(std::make_unique<ForkJoinLoweringPassWrapper>());
-    pm.add_pass(std::make_unique<DeferredEventLoweringPassWrapper>());
-    pm.add_pass(std::make_unique<BoundaryActionFusionPassWrapper>());
-    pm.add_pass(std::make_unique<OrthogonalProductPassWrapper>());
+    pm.add_pass(PassManager::create_pass_by_name("history-lowering"));
+    pm.add_pass(PassManager::create_pass_by_name("fork-join-lowering"));
+    pm.add_pass(PassManager::create_pass_by_name("deferred-event-lowering"));
+    pm.add_pass(PassManager::create_pass_by_name("boundary-action-fusion"));
+    pm.add_pass(PassManager::create_pass_by_name("orthogonal-product"));
     pm.add_pass(std::make_unique<ChoiceCompletenessPass>());
     pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
-    pm.add_pass(std::make_unique<WcetAnalysisPassWrapper>());
+    pm.add_pass(PassManager::create_pass_by_name("wcet-analysis"));
     pm.add_pass(std::make_unique<EFSMDataPathPass>(false));
 
     DiagnosticEngine diag;

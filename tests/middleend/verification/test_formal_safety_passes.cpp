@@ -9,7 +9,7 @@
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/event_queue_bound_pass.hpp"
-#include "fsm/middleend/analysis/fsm_validator.hpp"
+#include "fsm/middleend/pass_manager.hpp"
 #include "fsm/middleend/analysis/livelock_analysis_pass.hpp"
 #include "fsm/middleend/analysis/priority_conflict_pass.hpp"
 #include "fsm/middleend/analysis/timed_invariants_verifier_pass.hpp"
@@ -143,15 +143,16 @@ TEST(LivelockAnalysis, ExplicitAnonymousEventStringTransitions_DetectedAsLiveloc
     }
     EXPECT_TRUE(found_e0401);
 
-    const auto validation = FsmValidator::validate(ir);
-    bool found_validator_livelock = false;
-    for (const auto& d : validation.diagnostics) {
-        if (d.category == "Livelock" && d.severity == DiagnosticSeverity::SafetyCritical) {
-            found_validator_livelock = true;
+    DiagnosticEngine pipe_diag;
+    EXPECT_FALSE(fsm::middleend::PassManager::create_validation_pipeline().run(ir, pipe_diag));
+    bool found_pipe_livelock = false;
+    for (const auto& d : pipe_diag.get_diagnostics()) {
+        if (d.code == "E0401") {
+            found_pipe_livelock = true;
             break;
         }
     }
-    EXPECT_TRUE(found_validator_livelock);
+    EXPECT_TRUE(found_pipe_livelock);
 }
 
 /**
@@ -372,7 +373,7 @@ TEST(PriorityConflict, EquivalentSymbolicGuardMetadata_EmitsW0402) {
 /**
  * @brief Verify FsmValidator correctly accepts initial_state_id without const_cast mutation or false warnings.
  */
-TEST(FsmValidator, InitialStateSpecifiedViaId_ValidatesCleanlyWithoutConstCastMutation) {
+TEST(ValidationPipeline, InitialStateSpecifiedViaId_ValidatesCleanlyWithoutConstCastMutation) {
     FsmIr ir;
     ir.name = "IdBasedInitModel";
 
@@ -397,14 +398,14 @@ TEST(FsmValidator, InitialStateSpecifiedViaId_ValidatesCleanlyWithoutConstCastMu
     t.event = "Stop";
     ir.add_transition(t);
 
-    auto result = FsmValidator::validate(ir);
-    EXPECT_TRUE(result.is_valid);
-    EXPECT_TRUE(result.errors.empty());
+    DiagnosticEngine diag;
+    EXPECT_TRUE(fsm::middleend::PassManager::create_validation_pipeline().run(ir, diag));
+    EXPECT_FALSE(diag.has_errors());
 
     // Must NOT have warning about defaulting to first state
     bool defaulted_warning = false;
-    for (const auto& d : result.diagnostics) {
-        if (d.category == "InitialState") {
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "W0001") {
             defaulted_warning = true;
         }
     }

@@ -10,6 +10,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/pass_interface.hpp"
 
 namespace fsm::middleend::passes {
 
@@ -21,21 +22,18 @@ using ir::FsmIr;
  * @brief Lowers UML/SysML Fork (split) and Join (rendezvous) pseudostates prior to Cartesian product
  *        expansion or flat sequential synthesis.
  */
-class ForkJoinLoweringPass {
+class ForkJoinLoweringPass : public ::fsm::middleend::IPass {
   public:
-    [[nodiscard]] static std::string name() { return "ForkJoinLowering"; }
-    [[nodiscard]] static std::string description() {
-        return "Lowers Fork and Join pseudostates into parallel region activations and synchronized rendezvous "
-               "barriers";
-    }
-
-    /**
+/**
      * @brief Lowers fork and join pseudostates across the model.
      * @param ir FSM IR to mutate.
      * @param diag Diagnostic engine.
      * @return True if model was modified, false otherwise.
      */
-    static bool run(FsmIr& ir, DiagnosticEngine& diag);
+    [[nodiscard]] std::string name() const override { return "fork-join-lowering"; }
+    [[nodiscard]] std::string description() const override { return "Lowers UML Fork and Join pseudostates into synchronized parallel region transitions."; }
+    [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };
 
 }  // namespace fsm::middleend::passes

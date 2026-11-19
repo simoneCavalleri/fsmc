@@ -1,5 +1,7 @@
 #include "fsm/middleend/pass_manager.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <queue>
 #include <set>
@@ -72,74 +74,92 @@ std::string SemanticValidationPass::description() const {
 }
 
 bool SemanticValidationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
-    return ::fsm::middleend::SemanticAnalyzer::validate(ir, diag);
+    if (ir.states.empty() && ir.choice_nodes.empty()) {
+        diag.report(Diagnostic::error("E0001", "State machine does not contain any states."));
+        return false;
+    }
+
+    std::set<std::string> node_names;
+    for (const auto& s : ir.states) {
+        if (!s.name.empty()) {
+            node_names.insert(s.name);
+        }
+        if (!s.id.empty()) {
+            node_names.insert(s.id);
+        }
+    }
+    for (const auto& c : ir.choice_nodes) {
+        if (!c.name.empty()) {
+            node_names.insert(c.name);
+        }
+    }
+
+    // 1. Initial state validation
+    std::string init_st = ir.initial_state;
+    if (init_st.empty() && !ir.initial_state_id.empty()) {
+        if (const auto* s = ir.find_state_by_id(ir.initial_state_id)) {
+            init_st = s->name;
+        } else {
+            init_st = ir.initial_state_id;
+        }
+    }
+    if (init_st.empty()) {
+        if (!ir.states.empty()) {
+            diag.report(Diagnostic::warning("W0001", "No initial state '[*]' specified. Defaulting to first state: '" +
+                                                         ir.states.front().name + "'."));
+        }
+    } else if (node_names.count(init_st) == 0 && ir.find_state(init_st) == nullptr &&
+               ir.find_state_by_id(init_st) == nullptr) {
+        diag.report(Diagnostic::error("E0002", "Initial state '" + init_st + "' is not defined in the state list."));
+    }
+
+    // 2. Transition endpoint validation
+    for (const auto& t : ir.transitions) {
+        const bool src_found = node_names.count(t.source) != 0 ||
+                               (!t.source_id.empty() && node_names.count(t.source_id) != 0) ||
+                               ir.find_state(t.source) != nullptr || ir.find_state_by_id(t.source) != nullptr;
+        if (!src_found) {
+            diag.report(
+                Diagnostic::error("E0003", "Unknown source state/node in transition: '" + t.source + "'."));
+        }
+        const bool tgt_found = node_names.count(t.target) != 0 ||
+                               (!t.target_id.empty() && node_names.count(t.target_id) != 0) ||
+                               ir.find_state(t.target) != nullptr || ir.find_state_by_id(t.target) != nullptr ||
+                               t.target_is_history || t.target == "[H]" || t.target == "[H*]";
+        if (!tgt_found) {
+            diag.report(
+                Diagnostic::error("E0003", "Unknown target state/node in transition: '" + t.target + "'."));
+        }
+    }
+
+    // 3. State hierarchy acyclicity and parent existence
+    for (const auto& s : ir.states) {
+        std::set<std::string> visited;
+        visited.insert(s.name);
+        std::string curr = s.parent_state;
+        while (!curr.empty()) {
+            if (visited.count(curr) != 0) {
+                diag.report(Diagnostic::error(
+                    "E0004", "Cyclic parent-child state hierarchy detected involving state '" + curr + "'."));
+                break;
+            }
+            visited.insert(curr);
+            const auto* p = ir.find_state(curr);
+            if (p == nullptr) {
+                diag.report(Diagnostic::error(
+                    "E0005", "State '" + s.name + "' references unknown parent state '" + curr + "'."));
+                break;
+            }
+            curr = p->parent_state;
+        }
+    }
+
+    const bool sem_ok = ::fsm::middleend::SemanticAnalyzer::validate(ir, diag);
+    return sem_ok && !diag.has_errors();
 }
 
 // ============================================================================
-// Pass: GuardSimplificationPassWrapper
-// ============================================================================
-std::string GuardSimplificationPassWrapper::name() const {
-    return GuardSimplificationPass::name();
-}
 
-std::string GuardSimplificationPassWrapper::description() const {
-    return GuardSimplificationPass::description();
-}
-
-bool GuardSimplificationPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    GuardSimplificationPass pass;
-    return pass.run(ir, diag);
-}
-
-// ============================================================================
-// Pass: GuardSatisfiabilityPassWrapper
-// ============================================================================
-std::string GuardSatisfiabilityPassWrapper::name() const {
-    return GuardSatisfiabilityPass::name();
-}
-
-std::string GuardSatisfiabilityPassWrapper::description() const {
-    return GuardSatisfiabilityPass::description();
-}
-
-bool GuardSatisfiabilityPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    GuardSatisfiabilityPass pass;
-    return pass.run(ir, diag);
-}
-
-// ============================================================================
-// Pass: DeterminismEnforcementPassWrapper
-// ============================================================================
-std::string DeterminismEnforcementPassWrapper::name() const {
-    return DeterminismEnforcementPass::name();
-}
-
-std::string DeterminismEnforcementPassWrapper::description() const {
-    return DeterminismEnforcementPass::description();
-}
-
-bool DeterminismEnforcementPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    DeterminismEnforcementPass pass;
-    return pass.run(ir, diag);
-}
-
-// ============================================================================
-// Pass: OrthogonalInterferencePassWrapper
-// ============================================================================
-std::string OrthogonalInterferencePassWrapper::name() const {
-    return OrthogonalInterferencePass::name();
-}
-
-std::string OrthogonalInterferencePassWrapper::description() const {
-    return OrthogonalInterferencePass::description();
-}
-
-bool OrthogonalInterferencePassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    OrthogonalInterferencePass pass;
-    return pass.run(ir, diag);
-}
-
-// ============================================================================
 // Pass: ChoiceCompletenessPass
 // ============================================================================
 std::string ChoiceCompletenessPass::name() const {
@@ -160,17 +180,18 @@ bool ChoiceCompletenessPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         }
 
         if (outgoing.empty()) {
-            diag.report(Diagnostic::warning(
-                "W0101", "Choice pseudostate '" + choice.name + "' has no outgoing branches (trap)."));
+            diag.report(Diagnostic::error(
+                "E0101", "Choice pseudostate '" + choice.name + "' has no outgoing branches (trap)."));
             continue;
         }
 
-        bool has_unconditional = false;
+        int fallback_count = 0;
         std::set<std::string> seen_guards;
 
         for (const auto* t : outgoing) {
-            if (!t->guard.has_value() || *t->guard == "else" || *t->guard == "otherwise" || *t->guard == "default") {
-                has_unconditional = true;
+            if (!t->guard.has_value() || t->guard->empty() || *t->guard == "else" || *t->guard == "otherwise" ||
+                *t->guard == "default") {
+                ++fallback_count;
             } else {
                 if (seen_guards.count(*t->guard) != 0) {
                     diag.report(Diagnostic::warning("W0102", "Choice pseudostate '" + choice.name +
@@ -181,50 +202,21 @@ bool ChoiceCompletenessPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             }
         }
 
-        if (!has_unconditional) {
+        if (fallback_count == 0) {
             diag.report(Diagnostic::warning(
                 "W0103", "Choice pseudostate '" + choice.name +
                              "' lacks an unconditional else/default fallback branch (potential stall)."));
+        } else if (fallback_count > 1) {
+            diag.report(Diagnostic::warning(
+                "W0104", "Choice pseudostate '" + choice.name +
+                             "' has multiple unconditional else/default fallback branches (non-deterministic)."));
         }
     }
-    return true;
-}
-
-// ============================================================================
-// Pass: ChoiceInliningPassWrapper
-// ============================================================================
-std::string ChoiceInliningPassWrapper::name() const {
-    return ChoiceInliningPass::name();
-}
-
-std::string ChoiceInliningPassWrapper::description() const {
-    return ChoiceInliningPass::description();
-}
-
-bool ChoiceInliningPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    ChoiceInliningPass pass;
-    (void)pass.run(ir, diag);
     return !diag.has_errors();
 }
 
 // ============================================================================
-// Pass: ConnectiveJunctionChainingPassWrapper
-// ============================================================================
-std::string ConnectiveJunctionChainingPassWrapper::name() const {
-    return ConnectiveJunctionChainingPass::name();
-}
 
-std::string ConnectiveJunctionChainingPassWrapper::description() const {
-    return ConnectiveJunctionChainingPass::description();
-}
-
-bool ConnectiveJunctionChainingPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    ConnectiveJunctionChainingPass pass;
-    (void)pass.run(ir, diag);
-    return !diag.has_errors();
-}
-
-// ============================================================================
 // Pass: ModelSafetyVerifierPass
 // ============================================================================
 std::string ModelSafetyVerifierPass::name() const {
@@ -315,33 +307,48 @@ bool ModelSafetyVerifierPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             }
         }
 
-        // 3. Outgoing transitions
-        for (const auto& t : ir.transitions) {
-            bool matches_source = (t.source == curr || (!t.source_id.empty() && t.source_id == curr));
-            if (matches_source) {
-                std::string target_to_push;
-                if (!t.target.empty() && reachable.count(t.target) == 0) {
-                    reachable.insert(t.target);
-                    if (!t.target_id.empty()) {
-                        reachable.insert(t.target_id);
-                    }
-                    if (const auto* tn = ir.find_state_by_name(t.target)) {
-                        if (!tn->id.empty()) {
-                            reachable.insert(tn->id);
-                        }
-                    }
-                    target_to_push = t.target;
-                } else if (!t.target_id.empty() && reachable.count(t.target_id) == 0) {
-                    reachable.insert(t.target_id);
-                    if (const auto* tn = ir.find_state_by_id(t.target_id)) {
-                        reachable.insert(tn->name);
-                        target_to_push = tn->name;
-                    } else {
-                        target_to_push = t.target_id;
-                    }
+        // 3. Outgoing transitions (including multi-source/target fork transitions and parent-inherited transitions)
+        auto push_target_ref = [&](const std::string& ref) {
+            if (ref.empty()) {
+                return;
+            }
+            if (const auto* tn = ir.find_state_by_id(ref)) {
+                if (reachable.insert(tn->name).second) {
+                    queue.push(tn->name);
                 }
-                if (!target_to_push.empty()) {
-                    queue.push(target_to_push);
+                if (!tn->id.empty()) {
+                    reachable.insert(tn->id);
+                }
+            } else if (const auto* tn_name = ir.find_state_by_name(ref)) {
+                if (reachable.insert(tn_name->name).second) {
+                    queue.push(tn_name->name);
+                }
+                if (!tn_name->id.empty()) {
+                    reachable.insert(tn_name->id);
+                }
+            } else if (reachable.insert(ref).second) {
+                queue.push(ref);
+            }
+        };
+
+        for (const auto& t : ir.transitions) {
+            bool matches_source =
+                (t.source == curr) || (!t.source_id.empty() && t.source_id == curr) ||
+                (std::find(t.source_ids.begin(), t.source_ids.end(), curr) != t.source_ids.end());
+            if (!matches_source && curr_st != nullptr) {
+                matches_source =
+                    (t.source == curr_st->name) || (!t.source_id.empty() && t.source_id == curr_st->id) ||
+                    (std::find(t.source_ids.begin(), t.source_ids.end(), curr_st->name) != t.source_ids.end()) ||
+                    (!curr_st->parent_state.empty() && t.source == curr_st->parent_state);
+            }
+            if (matches_source) {
+                push_target_ref(t.target);
+                push_target_ref(t.target_id);
+                for (const auto& tid : t.target_ids) {
+                    push_target_ref(tid);
+                }
+                for (const auto& tid : t.multi_target_ids) {
+                    push_target_ref(tid);
                 }
             }
         }
@@ -355,37 +362,42 @@ bool ModelSafetyVerifierPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         }
     }
 
-    // Helper lambda: check if a state or any of its ancestors has outgoing transitions
+    // Helper lambda: check if a state or any of its ancestors/descendants has outgoing transitions to another state
     auto has_outgoing_hierarchical = [&](const StateNode& state) {
-        // Check direct outgoing
-        for (const auto& t : ir.transitions) {
-            if (t.source == state.name) {
-                return true;
-            }
-        }
-        // Check ancestors
-        std::string parent_name = state.parent_state;
-        while (!parent_name.empty()) {
+        auto has_non_self_out = [&](const std::string& st_name) {
             for (const auto& t : ir.transitions) {
-                if (t.source == parent_name) {
+                if (t.source == st_name && t.target != st_name) {
                     return true;
                 }
+            }
+            return false;
+        };
+
+        if (has_non_self_out(state.name)) {
+            return true;
+        }
+        // Check ancestors (cycle-guarded)
+        std::unordered_set<std::string> visited_anc;
+        std::string parent_name = state.parent_state;
+        while (!parent_name.empty() && visited_anc.insert(parent_name).second) {
+            if (has_non_self_out(parent_name)) {
+                return true;
             }
             const auto* p = ir.find_state(parent_name);
             parent_name = (p != nullptr) ? p->parent_state : "";
         }
-        // Check descendants (if composite)
+        // Check descendants (if composite, cycle-guarded)
+        std::unordered_set<std::string> visited_desc;
         std::queue<std::string> child_q;
+        visited_desc.insert(state.name);
         child_q.push(state.name);
         while (!child_q.empty()) {
             std::string c_curr = child_q.front();
             child_q.pop();
             for (const auto& child : ir.states) {
-                if (child.parent_state == c_curr) {
-                    for (const auto& t : ir.transitions) {
-                        if (t.source == child.name) {
-                            return true;
-                        }
+                if (child.parent_state == c_curr && visited_desc.insert(child.name).second) {
+                    if (has_non_self_out(child.name)) {
+                        return true;
                     }
                     child_q.push(child.name);
                 }
@@ -396,9 +408,21 @@ bool ModelSafetyVerifierPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 
     // Trap state (deadlock) analysis
     for (const auto& s : ir.states) {
-        if (s.kind == StateKind::Final || ir.is_choice_node(s.name) || s.is_composite ||
-            s.name.rfind("Terminal", 0) == 0 || s.name.rfind("Final", 0) == 0)
+        if (s.kind == StateKind::Final || ir.is_choice_node(s.name) || s.is_composite) {
             continue;
+        }
+        std::string lower_name = s.name;
+        std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        const bool is_intended_final =
+            (lower_name == "end" || lower_name == "final" || lower_name == "stop" || lower_name == "terminate" ||
+             lower_name == "completed" || lower_name == "done" || lower_name == "landed" ||
+             lower_name.rfind("final", 0) == 0 || lower_name.rfind("end_", 0) == 0 ||
+             (lower_name.size() >= 4 && lower_name.rfind("_end") == lower_name.size() - 4) ||
+             lower_name.find("terminal") != std::string::npos);
+        if (is_intended_final) {
+            continue;
+        }
 
         bool has_in = false;
         for (const auto& t : ir.transitions) {
@@ -420,27 +444,7 @@ bool ModelSafetyVerifierPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 }
 
 // ============================================================================
-// Pass: DeadStatePruningPassWrapper
-// ============================================================================
-DeadStatePruningPassWrapper::DeadStatePruningPassWrapper(bool enable_pruning)
-    : pass_(std::make_unique<DeadStatePruningPass>(enable_pruning)) {}
 
-DeadStatePruningPassWrapper::~DeadStatePruningPassWrapper() = default;
-
-std::string DeadStatePruningPassWrapper::name() const {
-    return DeadStatePruningPass::name();
-}
-
-std::string DeadStatePruningPassWrapper::description() const {
-    return DeadStatePruningPass::description();
-}
-
-bool DeadStatePruningPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    (void)pass_->run(ir, diag);
-    return !diag.has_errors();
-}
-
-// ============================================================================
 // Pass: ModelCheckingPass
 // ============================================================================
 std::string ModelCheckingPass::name() const {
@@ -475,22 +479,7 @@ bool ModelCheckingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 }
 
 // ============================================================================
-// Pass: TimedDeadlockPassWrapper
-// ============================================================================
-std::string TimedDeadlockPassWrapper::name() const {
-    return TimedDeadlockPass::name();
-}
 
-std::string TimedDeadlockPassWrapper::description() const {
-    return TimedDeadlockPass::description();
-}
-
-bool TimedDeadlockPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    TimedDeadlockPass pass;
-    return pass.run(ir, diag);
-}
-
-// ============================================================================
 // Pass: EFSMDataPathPass
 // ============================================================================
 EFSMDataPathPass::EFSMDataPathPass(bool prune_dead_transitions) : prune_dead_transitions_(prune_dead_transitions) {}
@@ -539,274 +528,6 @@ bool EFSMDataPathPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 }
 
 // ============================================================================
-// Pass: OrthogonalProductPassWrapper
-// ============================================================================
-std::string OrthogonalProductPassWrapper::name() const {
-    return OrthogonalProductPass::name();
-}
-
-std::string OrthogonalProductPassWrapper::description() const {
-    return OrthogonalProductPass::description();
-}
-
-bool OrthogonalProductPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    OrthogonalProductPass pass;
-    (void)pass.run(ir, diag);
-    return !diag.has_errors();
-}
-
-// ============================================================================
-// Pass: WcetAnalysisPassWrapper
-// ============================================================================
-WcetAnalysisPassWrapper::WcetAnalysisPassWrapper(std::size_t max_microstep_threshold)
-    : pass_(std::make_unique<WcetAnalysisPass>(max_microstep_threshold)) {}
-
-WcetAnalysisPassWrapper::~WcetAnalysisPassWrapper() = default;
-
-std::string WcetAnalysisPassWrapper::name() const {
-    return WcetAnalysisPass::name();
-}
-
-std::string WcetAnalysisPassWrapper::description() const {
-    return WcetAnalysisPass::description();
-}
-
-bool WcetAnalysisPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    return pass_->run(ir, diag);
-}
-
-// ============================================================================
-// Pass: ConstantFoldingPassWrapper
-// ============================================================================
-std::string ConstantFoldingPassWrapper::name() const {
-    return ConstantFoldingPass::name();
-}
-
-std::string ConstantFoldingPassWrapper::description() const {
-    return ConstantFoldingPass::description();
-}
-
-bool ConstantFoldingPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    ConstantFoldingPass pass;
-    (void)pass.run(ir, diag);
-    return !diag.has_errors();
-}
-
-// ============================================================================
-// Pass: StateMinimizationPassWrapper
-// ============================================================================
-std::string StateMinimizationPassWrapper::name() const {
-    return StateMinimizationPass::name();
-}
-
-std::string StateMinimizationPassWrapper::description() const {
-    return StateMinimizationPass::description();
-}
-
-bool StateMinimizationPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    StateMinimizationPass pass;
-    (void)pass.run(ir, diag);
-    return !diag.has_errors();
-}
-
-// ============================================================================
-// Pass: PipeThroughPassWrapper
-// ============================================================================
-PipeThroughPassWrapper::PipeThroughPassWrapper(std::string cmd)
-    : pass_(std::make_unique<PipeThroughPass>(std::move(cmd))) {}
-
-PipeThroughPassWrapper::~PipeThroughPassWrapper() = default;
-
-std::string PipeThroughPassWrapper::name() const {
-    return PipeThroughPass::name();
-}
-
-std::string PipeThroughPassWrapper::description() const {
-    return PipeThroughPass::description();
-}
-
-bool PipeThroughPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    return pass_->run(ir, diag);
-}
-
-// ============================================================================
-// Structural Lowering Pass Wrappers
-// ============================================================================
-
-std::string ForkJoinLoweringPassWrapper::name() const {
-    return ForkJoinLoweringPass::name();
-}
-std::string ForkJoinLoweringPassWrapper::description() const {
-    return ForkJoinLoweringPass::description();
-}
-bool ForkJoinLoweringPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    ForkJoinLoweringPass pass;
-    (void)pass.run(ir, diag);
-    return !diag.has_errors();
-}
-
-std::string HistoryLoweringPassWrapper::name() const {
-    return HistoryLoweringPass::name();
-}
-std::string HistoryLoweringPassWrapper::description() const {
-    return HistoryLoweringPass::description();
-}
-bool HistoryLoweringPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    HistoryLoweringPass pass;
-    (void)pass.run(ir, diag);
-    return !diag.has_errors();
-}
-
-std::string DeferredEventLoweringPassWrapper::name() const {
-    return DeferredEventLoweringPass::name();
-}
-std::string DeferredEventLoweringPassWrapper::description() const {
-    return DeferredEventLoweringPass::description();
-}
-bool DeferredEventLoweringPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    DeferredEventLoweringPass pass;
-    (void)pass.run(ir, diag);
-    return !diag.has_errors();
-}
-
-std::string BoundaryActionFusionPassWrapper::name() const {
-    return BoundaryActionFusionPass::name();
-}
-std::string BoundaryActionFusionPassWrapper::description() const {
-    return BoundaryActionFusionPass::description();
-}
-bool BoundaryActionFusionPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    BoundaryActionFusionPass pass;
-    (void)pass.run(ir, diag);
-    return !diag.has_errors();
-}
-
-std::string SampledChangeTriggerPassWrapper::name() const {
-    return SampledChangeTriggerPass::name();
-}
-std::string SampledChangeTriggerPassWrapper::description() const {
-    return SampledChangeTriggerPass::description();
-}
-bool SampledChangeTriggerPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    SampledChangeTriggerPass pass;
-    (void)pass.run(ir, diag);
-    return !diag.has_errors();
-}
-
-SubmachineInliningPassWrapper::SubmachineInliningPassWrapper(SubmachineResolver resolver)
-    : resolver_(std::move(resolver)) {}
-
-std::string SubmachineInliningPassWrapper::name() const {
-    return SubmachineInliningPass::name();
-}
-std::string SubmachineInliningPassWrapper::description() const {
-    return SubmachineInliningPass::description();
-}
-bool SubmachineInliningPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    SubmachineInliningPass pass(resolver_);
-    (void)pass.run(ir, diag);
-    return !diag.has_errors();
-}
-
-// ============================================================================
-// Data-Path Optimization Wrappers
-// ============================================================================
-
-std::string DeadActionEliminationPassWrapper::name() const {
-    return DeadActionEliminationPass::name();
-}
-std::string DeadActionEliminationPassWrapper::description() const {
-    return DeadActionEliminationPass::description();
-}
-bool DeadActionEliminationPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    DeadActionEliminationPass pass;
-    (void)pass.run(ir, diag);
-    return !diag.has_errors();
-}
-
-std::string RegisterLivenessPassWrapper::name() const {
-    return RegisterLivenessPass::name();
-}
-std::string RegisterLivenessPassWrapper::description() const {
-    return RegisterLivenessPass::description();
-}
-bool RegisterLivenessPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    RegisterLivenessPass pass;
-    (void)pass.run(ir, diag);
-    return !diag.has_errors();
-}
-
-std::string TransitionFusionPassWrapper::name() const {
-    return TransitionFusionPass::name();
-}
-std::string TransitionFusionPassWrapper::description() const {
-    return TransitionFusionPass::description();
-}
-bool TransitionFusionPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    TransitionFusionPass pass;
-    (void)pass.run(ir, diag);
-    return !diag.has_errors();
-}
-
-std::string CommonActionFactoringPassWrapper::name() const {
-    return CommonActionFactoringPass::name();
-}
-std::string CommonActionFactoringPassWrapper::description() const {
-    return CommonActionFactoringPass::description();
-}
-bool CommonActionFactoringPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    CommonActionFactoringPass pass;
-    (void)pass.run(ir, diag);
-    return !diag.has_errors();
-}
-
-// ============================================================================
-// Formal Verification Wrappers
-// ============================================================================
-
-std::string LivelockAnalysisPassWrapper::name() const {
-    return LivelockAnalysisPass::name();
-}
-std::string LivelockAnalysisPassWrapper::description() const {
-    return LivelockAnalysisPass::description();
-}
-bool LivelockAnalysisPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    LivelockAnalysisPass pass;
-    return pass.run(ir, diag);
-}
-
-std::string PriorityConflictPassWrapper::name() const {
-    return PriorityConflictPass::name();
-}
-std::string PriorityConflictPassWrapper::description() const {
-    return PriorityConflictPass::description();
-}
-bool PriorityConflictPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    PriorityConflictPass pass;
-    return pass.run(ir, diag);
-}
-
-std::string TimedInvariantsVerifierPassWrapper::name() const {
-    return TimedInvariantsVerifierPass::name();
-}
-std::string TimedInvariantsVerifierPassWrapper::description() const {
-    return TimedInvariantsVerifierPass::description();
-}
-bool TimedInvariantsVerifierPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    TimedInvariantsVerifierPass pass;
-    return pass.run(ir, diag);
-}
-
-std::string EventQueueBoundPassWrapper::name() const {
-    return EventQueueBoundPass::name();
-}
-std::string EventQueueBoundPassWrapper::description() const {
-    return EventQueueBoundPass::description();
-}
-bool EventQueueBoundPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    EventQueueBoundPass pass;
-    return pass.run(ir, diag);
-}
 
 // ============================================================================
 // PassManager: Pipeline Coordinator
@@ -816,22 +537,42 @@ PassManager::~PassManager() {
     passes_.clear();
 }
 PassManager::PassManager(PassManager&&) noexcept = default;
-PassManager& PassManager::operator=(PassManager&&) noexcept = default;
+PassManager& PassManager::operator=(PassManager&& other) noexcept {
+    if (this != &other) {
+        // Destroy passes BEFORE unloading old plugin handles to prevent use-after-dlclose.
+        passes_.clear();
+        plugin_loader_ = std::move(other.plugin_loader_);
+        passes_ = std::move(other.passes_);
+        stats_ = std::move(other.stats_);
+    }
+    return *this;
+}
+
+std::size_t PassManager::pass_count() const noexcept {
+    return passes_.size();
+}
+
+void PassManager::truncate_passes(std::size_t count) noexcept {
+    if (count < passes_.size()) {
+        passes_.resize(count);
+    }
+}
 
 PassManager PassManager::create_default_pipeline() {
     PassManager pm;
     pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
     pm.add_pass(std::make_unique<SemanticValidationPass>());
-    pm.add_pass(std::make_unique<GuardSimplificationPassWrapper>());
-    pm.add_pass(std::make_unique<DeterminismEnforcementPassWrapper>());
-    pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
+    pm.add_pass(std::make_unique<GuardSimplificationPass>());
+    pm.add_pass(std::make_unique<DeterminismEnforcementPass>());
+    pm.add_pass(std::make_unique<OrthogonalInterferencePass>());
     pm.add_pass(std::make_unique<ChoiceCompletenessPass>());
-    pm.add_pass(std::make_unique<ConnectiveJunctionChainingPassWrapper>());
-    pm.add_pass(std::make_unique<ChoiceInliningPassWrapper>());
-    pm.add_pass(std::make_unique<SampledChangeTriggerPassWrapper>());
-    pm.add_pass(std::make_unique<TimedDeadlockPassWrapper>());
+    pm.add_pass(std::make_unique<ConnectiveJunctionChainingPass>());
+    pm.add_pass(std::make_unique<ChoiceInliningPass>());
+    pm.add_pass(std::make_unique<SampledChangeTriggerPass>());
+    pm.add_pass(std::make_unique<TimedDeadlockPass>());
+    pm.add_pass(std::make_unique<LivelockAnalysisPass>());
     pm.add_pass(std::make_unique<EFSMDataPathPass>());
-    pm.add_pass(std::make_unique<GuardSatisfiabilityPassWrapper>());
+    pm.add_pass(std::make_unique<GuardSatisfiabilityPass>());
     pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
     pm.add_pass(std::make_unique<ModelCheckingPass>());
     return pm;
@@ -841,24 +582,25 @@ PassManager PassManager::create_optimizing_pipeline(bool prune_dead_states, bool
     PassManager pm;
     pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
     pm.add_pass(std::make_unique<SemanticValidationPass>());
-    pm.add_pass(std::make_unique<GuardSimplificationPassWrapper>());
-    pm.add_pass(std::make_unique<ConstantFoldingPassWrapper>());
-    pm.add_pass(std::make_unique<DeterminismEnforcementPassWrapper>());
-    pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
+    pm.add_pass(std::make_unique<GuardSimplificationPass>());
+    pm.add_pass(std::make_unique<ConstantFoldingPass>());
+    pm.add_pass(std::make_unique<DeterminismEnforcementPass>());
+    pm.add_pass(std::make_unique<OrthogonalInterferencePass>());
     if (prune_dead_states) {
-        pm.add_pass(std::make_unique<DeadStatePruningPassWrapper>(true));
+        pm.add_pass(std::make_unique<DeadStatePruningPass>(true));
     }
     if (minimize_states) {
-        pm.add_pass(std::make_unique<StateMinimizationPassWrapper>());
+        pm.add_pass(std::make_unique<StateMinimizationPass>());
     }
     pm.add_pass(std::make_unique<ChoiceCompletenessPass>());
-    pm.add_pass(std::make_unique<ConnectiveJunctionChainingPassWrapper>());
-    pm.add_pass(std::make_unique<ChoiceInliningPassWrapper>());
-    pm.add_pass(std::make_unique<SampledChangeTriggerPassWrapper>());
-    pm.add_pass(std::make_unique<TimedDeadlockPassWrapper>());
-    pm.add_pass(std::make_unique<WcetAnalysisPassWrapper>());
+    pm.add_pass(std::make_unique<ConnectiveJunctionChainingPass>());
+    pm.add_pass(std::make_unique<ChoiceInliningPass>());
+    pm.add_pass(std::make_unique<SampledChangeTriggerPass>());
+    pm.add_pass(std::make_unique<TimedDeadlockPass>());
+    pm.add_pass(std::make_unique<LivelockAnalysisPass>());
+    pm.add_pass(std::make_unique<WcetAnalysisPass>());
     pm.add_pass(std::make_unique<EFSMDataPathPass>(true));
-    pm.add_pass(std::make_unique<GuardSatisfiabilityPassWrapper>());
+    pm.add_pass(std::make_unique<GuardSatisfiabilityPass>());
     pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
     pm.add_pass(std::make_unique<ModelCheckingPass>());
     return pm;
@@ -869,47 +611,47 @@ PassManager PassManager::create_verified_7stage_pipeline(bool optimize) {
     // Stage 1: Frontend Canonicalization & Syntax Desugaring
     pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
     pm.add_pass(std::make_unique<SemanticValidationPass>());
-    pm.add_pass(std::make_unique<GuardSimplificationPassWrapper>());
+    pm.add_pass(std::make_unique<GuardSimplificationPass>());
 
     // Stage 2: Structural Lowering Suite
-    pm.add_pass(std::make_unique<ForkJoinLoweringPassWrapper>());
-    pm.add_pass(std::make_unique<HistoryLoweringPassWrapper>());
-    pm.add_pass(std::make_unique<EventQueueBoundPassWrapper>());
-    pm.add_pass(std::make_unique<OrthogonalProductPassWrapper>());
-    pm.add_pass(std::make_unique<ConnectiveJunctionChainingPassWrapper>());
-    pm.add_pass(std::make_unique<ChoiceInliningPassWrapper>());
-    pm.add_pass(std::make_unique<BoundaryActionFusionPassWrapper>());
-    pm.add_pass(std::make_unique<SampledChangeTriggerPassWrapper>());
+    pm.add_pass(std::make_unique<ForkJoinLoweringPass>());
+    pm.add_pass(std::make_unique<HistoryLoweringPass>());
+    pm.add_pass(std::make_unique<EventQueueBoundPass>());
+    pm.add_pass(std::make_unique<OrthogonalProductPass>());
+    pm.add_pass(std::make_unique<ConnectiveJunctionChainingPass>());
+    pm.add_pass(std::make_unique<ChoiceInliningPass>());
+    pm.add_pass(std::make_unique<BoundaryActionFusionPass>());
+    pm.add_pass(std::make_unique<SampledChangeTriggerPass>());
 
     // Stage 3: Formal Invariant & Safety Verification
-    pm.add_pass(std::make_unique<LivelockAnalysisPassWrapper>());
-    pm.add_pass(std::make_unique<PriorityConflictPassWrapper>());
-    pm.add_pass(std::make_unique<TimedInvariantsVerifierPassWrapper>());
-    pm.add_pass(std::make_unique<GuardSatisfiabilityPassWrapper>());
+    pm.add_pass(std::make_unique<LivelockAnalysisPass>());
+    pm.add_pass(std::make_unique<PriorityConflictPass>());
+    pm.add_pass(std::make_unique<TimedInvariantsVerifierPass>());
+    pm.add_pass(std::make_unique<GuardSatisfiabilityPass>());
 
     // Stage 4: Symbolic Model Checking
-    pm.add_pass(std::make_unique<TimedDeadlockPassWrapper>());
+    pm.add_pass(std::make_unique<TimedDeadlockPass>());
     pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
     pm.add_pass(std::make_unique<ModelCheckingPass>());
 
     // Stage 5: Optimization & Minimization
     if (optimize) {
-        pm.add_pass(std::make_unique<ConstantFoldingPassWrapper>());
-        pm.add_pass(std::make_unique<DeadStatePruningPassWrapper>(true));
-        pm.add_pass(std::make_unique<DeadActionEliminationPassWrapper>());
-        pm.add_pass(std::make_unique<CommonActionFactoringPassWrapper>());
-        pm.add_pass(std::make_unique<TransitionFusionPassWrapper>());
+        pm.add_pass(std::make_unique<ConstantFoldingPass>());
+        pm.add_pass(std::make_unique<DeadStatePruningPass>(true));
+        pm.add_pass(std::make_unique<DeadActionEliminationPass>());
+        pm.add_pass(std::make_unique<CommonActionFactoringPass>());
+        pm.add_pass(std::make_unique<TransitionFusionPass>());
     }
 
     // Stage 6: Data-Path Optimization & Register Allocation
     pm.add_pass(std::make_unique<EFSMDataPathPass>(optimize));
     if (optimize) {
-        pm.add_pass(std::make_unique<RegisterLivenessPassWrapper>());
+        pm.add_pass(std::make_unique<RegisterLivenessPass>());
     }
 
     // Stage 7: Backend Preparation & Code Emitter Handoff
-    pm.add_pass(std::make_unique<DeterminismEnforcementPassWrapper>());
-    pm.add_pass(std::make_unique<WcetAnalysisPassWrapper>());
+    pm.add_pass(std::make_unique<DeterminismEnforcementPass>());
+    pm.add_pass(std::make_unique<WcetAnalysisPass>());
 
     return pm;
 }
@@ -963,145 +705,26 @@ const std::vector<PassExecutionStats>& PassManager::get_stats() const noexcept {
     return stats_;
 }
 
+
+PassManager PassManager::create_validation_pipeline() {
+    PassManager pm;
+    pm.add_pass(std::make_unique<SemanticValidationPass>());
+    pm.add_pass(std::make_unique<ChoiceCompletenessPass>());
+    pm.add_pass(std::make_unique<LivelockAnalysisPass>());
+    pm.add_pass(std::make_unique<DeterminismEnforcementPass>());
+    pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
+    pm.add_pass(std::make_unique<TimedDeadlockPass>());
+    return pm;
+}
+
 std::unique_ptr<IPass> PassManager::create_pass_by_name(
     std::string_view p_name, std::string_view pipe_cmd,
-    SubmachineInliningPassWrapper::SubmachineResolver submachine_resolver) {
-    if (p_name == "canonicalize" || p_name == "hierarchy-canonicalization" || p_name == "HierarchyCanonicalization") {
-        return std::make_unique<HierarchyCanonicalizationPass>();
-    }
-    if (p_name == "semantic-validation" || p_name == "SemanticValidation") {
-        return std::make_unique<SemanticValidationPass>();
-    }
-    if (p_name == "guard-simplification") {
-        return std::make_unique<GuardSimplificationPassWrapper>();
-    }
-    if (p_name == "determinism" || p_name == "determinism-enforcement") {
-        return std::make_unique<DeterminismEnforcementPassWrapper>();
-    }
-    if (p_name == "race-check" || p_name == "orthogonal-interference") {
-        return std::make_unique<OrthogonalInterferencePassWrapper>();
-    }
-    if (p_name == "dead-state-pruning") {
-        return std::make_unique<DeadStatePruningPassWrapper>(true);
-    }
-    if (p_name == "choice-completeness" || p_name == "ChoiceCompleteness") {
-        return std::make_unique<ChoiceCompletenessPass>();
-    }
-    if (p_name == "choice-inlining") {
-        return std::make_unique<ChoiceInliningPassWrapper>();
-    }
-    if (p_name == "timed-deadlock") {
-        return std::make_unique<TimedDeadlockPassWrapper>();
-    }
-    if (p_name == "efsm-data-path" || p_name == "EFSMDataPath") {
-        return std::make_unique<EFSMDataPathPass>();
-    }
-    if (p_name == "safety-verifier" || p_name == "ModelSafetyVerifier") {
-        return std::make_unique<ModelSafetyVerifierPass>();
-    }
-    if (p_name == "model-checking" || p_name == "ModelCheckingPass") {
-        return std::make_unique<ModelCheckingPass>();
-    }
-    if (p_name == "orthogonal-product") {
-        return std::make_unique<OrthogonalProductPassWrapper>();
-    }
-    if (p_name == "wcet-analysis") {
-        return std::make_unique<WcetAnalysisPassWrapper>();
-    }
-    if (p_name == "constant-folding") {
-        return std::make_unique<ConstantFoldingPassWrapper>();
-    }
-    if (p_name == "state-minimization") {
-        return std::make_unique<StateMinimizationPassWrapper>();
-    }
-    if (p_name == "guard-satisfiability") {
-        return std::make_unique<GuardSatisfiabilityPassWrapper>();
-    }
-    if (p_name == "fork-join-lowering") {
-        return std::make_unique<ForkJoinLoweringPassWrapper>();
-    }
-    if (p_name == "history-lowering") {
-        return std::make_unique<HistoryLoweringPassWrapper>();
-    }
-    if (p_name == "deferred-event-lowering") {
-        return std::make_unique<DeferredEventLoweringPassWrapper>();
-    }
-    if (p_name == "boundary-action-fusion") {
-        return std::make_unique<BoundaryActionFusionPassWrapper>();
-    }
-    if (p_name == "dead-action-elimination") {
-        return std::make_unique<DeadActionEliminationPassWrapper>();
-    }
-    if (p_name == "register-liveness") {
-        return std::make_unique<RegisterLivenessPassWrapper>();
-    }
-    if (p_name == "transition-fusion") {
-        return std::make_unique<TransitionFusionPassWrapper>();
-    }
-    if (p_name == "common-action-factoring") {
-        return std::make_unique<CommonActionFactoringPassWrapper>();
-    }
-    if (p_name == "livelock-analysis") {
-        return std::make_unique<LivelockAnalysisPassWrapper>();
-    }
-    if (p_name == "priority-conflict-check") {
-        return std::make_unique<PriorityConflictPassWrapper>();
-    }
-    if (p_name == "timed-invariants-verifier") {
-        return std::make_unique<TimedInvariantsVerifierPassWrapper>();
-    }
-    if (p_name == "event-queue-bound") {
-        return std::make_unique<EventQueueBoundPassWrapper>();
-    }
-    if (p_name == "inline-submachines" || p_name == "submachine-inlining") {
-        return std::make_unique<SubmachineInliningPassWrapper>(std::move(submachine_resolver));
-    }
-    if (p_name == "sampled-change-trigger" || p_name == "sampled-change-triggers") {
-        return std::make_unique<SampledChangeTriggerPassWrapper>();
-    }
-    if (p_name == "connective-junction-chaining") {
-        return std::make_unique<ConnectiveJunctionChainingPassWrapper>();
-    }
-    if (p_name == "pipe-through") {
-        return std::make_unique<PipeThroughPassWrapper>(std::string(pipe_cmd));
-    }
-    return nullptr;
+    PassRegistry::SubmachineResolver submachine_resolver) {
+    return PassRegistry::create(p_name, pipe_cmd, std::move(submachine_resolver));
 }
 
 std::vector<std::string_view> PassManager::registered_pass_names() {
-    return {"hierarchy-canonicalization",
-            "semantic-validation",
-            "guard-simplification",
-            "determinism-enforcement",
-            "orthogonal-interference",
-            "dead-state-pruning",
-            "choice-completeness",
-            "choice-inlining",
-            "timed-deadlock",
-            "efsm-data-path",
-            "safety-verifier",
-            "model-checking",
-            "orthogonal-product",
-            "wcet-analysis",
-            "constant-folding",
-            "state-minimization",
-            "guard-satisfiability",
-            "fork-join-lowering",
-            "history-lowering",
-            "deferred-event-lowering",
-            "boundary-action-fusion",
-            "dead-action-elimination",
-            "register-liveness",
-            "transition-fusion",
-            "common-action-factoring",
-            "livelock-analysis",
-            "priority-conflict-check",
-            "timed-invariants-verifier",
-            "event-queue-bound",
-            "submachine-inlining",
-            "sampled-change-trigger",
-            "connective-junction-chaining",
-            "pipe-through"};
+    return PassRegistry::registered_names();
 }
 
 }  // namespace fsm::middleend

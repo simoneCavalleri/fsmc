@@ -9,29 +9,6 @@ namespace fsm::middleend::analysis {
 using namespace fsm::ir;
 using namespace fsm::diagnostic;
 
-std::string ModelCheckResult::format_counterexample() const {
-    if (passed || counterexample_trace.empty()) {
-        return "";
-    }
-    std::ostringstream ss;
-    ss << "Counterexample execution trace:\n";
-    for (const auto& step : counterexample_trace) {
-        ss << "    Step " << step.step_index << ": State '" << step.state_name << "'";
-        if (!step.event_name.empty()) {
-            ss << " --[" << step.event_name;
-            if (!step.guard_condition.empty()) {
-                ss << " if " << step.guard_condition;
-            }
-            ss << "]-->";
-        }
-        if (!step.description.empty()) {
-            ss << " (" << step.description << ")";
-        }
-        ss << "\n";
-    }
-    return ss.str();
-}
-
 ModelChecker::ModelChecker(const FsmIr& ir) : ir_(ir) {
     build_graph();
     EFSMIntervalAnalyzer analyzer(ir_);

@@ -9,6 +9,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/pass_interface.hpp"
 
 namespace fsm::middleend::passes {
 
@@ -25,20 +26,18 @@ using ir::FsmIr;
  * enabling physical register reuse in hardware synthesis (VHDL/Verilog) and minimizing
  * memory footprint in embedded targets (C/Rust/Ada).
  */
-class RegisterLivenessPass {
+class RegisterLivenessPass : public ::fsm::middleend::IPass {
   public:
-    [[nodiscard]] static std::string name() { return "RegisterLiveness"; }
-    [[nodiscard]] static std::string description() {
-        return "Performs variable live-range analysis and minimizes hardware registers via graph coloring";
-    }
-
-    /**
+/**
      * @brief Executes liveness analysis and assigns register indices to variables.
      * @param ir Target FsmIr.
      * @param diag Diagnostic engine.
      * @return True on success.
      */
-    bool run(FsmIr& ir, DiagnosticEngine& diag);
+    [[nodiscard]] std::string name() const override { return "register-liveness"; }
+    [[nodiscard]] std::string description() const override { return "Performs backward dataflow liveness analysis and interference-graph register coloring."; }
+    [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };
 
 }  // namespace fsm::middleend::passes

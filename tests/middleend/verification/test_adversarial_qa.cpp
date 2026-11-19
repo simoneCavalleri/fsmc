@@ -17,9 +17,9 @@
 #include "fsm/frontend/common/parser_interface.hpp"
 #include "fsm/ir/action.hpp"
 #include "fsm/ir/fsm_ir.hpp"
-#include "fsm/middleend/analysis/fsm_validator.hpp"
 #include "fsm/middleend/analysis/guard_satisfiability_pass.hpp"
 #include "fsm/middleend/analysis/semantic_analyzer.hpp"
+#include "fsm/middleend/pass_manager.hpp"
 #include "fsm/middleend/passes/boundary_action_fusion_pass.hpp"
 
 using namespace fsm;
@@ -54,12 +54,13 @@ TEST(AdversarialQA, HierarchicalOrphanSubState_DetectedAsUnreachable) {
     ir.transitions.emplace_back("SubRunning", "SubRunning", "Tick");
     ir.transitions.emplace_back("SubOrphan", "SubRunning", "Recover");
 
-    const auto validation = FsmValidator::validate(ir);
+    DiagnosticEngine diag;
+    fsm::middleend::PassManager::create_validation_pipeline().run(ir, diag);
 
     // SubOrphan MUST be warned as unreachable
     bool found_orphan_warning = false;
-    for (const auto& w : validation.warnings) {
-        if (w.find("SubOrphan") != std::string::npos && w.find("unreachable") != std::string::npos) {
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.message.find("SubOrphan") != std::string::npos && d.message.find("unreachable") != std::string::npos) {
             found_orphan_warning = true;
             break;
         }
@@ -86,11 +87,12 @@ TEST(AdversarialQA, TrapStateNamedPending_DetectedAsDeadlock) {
 
     ir.transitions.emplace_back("Init", "Pending", "StartWork");
 
-    const auto validation = FsmValidator::validate(ir);
+    DiagnosticEngine diag;
+    fsm::middleend::PassManager::create_validation_pipeline().run(ir, diag);
 
     bool found_deadlock_warning = false;
-    for (const auto& w : validation.warnings) {
-        if (w.find("Pending") != std::string::npos && w.find("deadlock") != std::string::npos) {
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.message.find("Pending") != std::string::npos && d.message.find("deadlock") != std::string::npos) {
             found_deadlock_warning = true;
             break;
         }
@@ -113,11 +115,12 @@ TEST(AdversarialQA, StateKindFinalNamedSuccess_NotReportedAsDeadlock) {
 
     ir.transitions.emplace_back("Init", "Success", "Finish");
 
-    const auto validation = FsmValidator::validate(ir);
+    DiagnosticEngine diag;
+    fsm::middleend::PassManager::create_validation_pipeline().run(ir, diag);
 
     bool has_deadlock_on_success = false;
-    for (const auto& w : validation.warnings) {
-        if (w.find("Success") != std::string::npos && w.find("deadlock") != std::string::npos) {
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.message.find("Success") != std::string::npos && d.message.find("deadlock") != std::string::npos) {
             has_deadlock_on_success = true;
             break;
         }
@@ -127,7 +130,7 @@ TEST(AdversarialQA, StateKindFinalNamedSuccess_NotReportedAsDeadlock) {
 }
 
 // ============================================================================
-// 3. TriggerVariant vs FsmValidator Synchronization
+// 3. TriggerVariant vs ValidationPipeline Synchronization
 // ============================================================================
 
 TEST(AdversarialQA, DiscreteSignalCycleWithTriggerVariant_NotReportedAsLivelock) {
@@ -144,11 +147,12 @@ TEST(AdversarialQA, DiscreteSignalCycleWithTriggerVariant_NotReportedAsLivelock)
     ir.add_transition("StateA", "StateB", SignalTrigger("PING"));
     ir.add_transition("StateB", "StateA", SignalTrigger("PONG"));
 
-    const auto validation = FsmValidator::validate(ir);
+    DiagnosticEngine diag;
+    fsm::middleend::PassManager::create_validation_pipeline().run(ir, diag);
 
     bool found_livelock = false;
-    for (const auto& diag : validation.diagnostics) {
-        if (diag.category == "Livelock") {
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "E0401") {
             found_livelock = true;
             break;
         }
@@ -172,11 +176,12 @@ TEST(AdversarialQA, NonDeterministicConflict_DetectedWithTriggerVariant) {
     ir.add_transition("Idle", "Active1", SignalTrigger("GO"));
     ir.add_transition("Idle", "Active2", SignalTrigger("GO"));
 
-    const auto validation = FsmValidator::validate(ir);
+    DiagnosticEngine diag;
+    fsm::middleend::PassManager::create_validation_pipeline().run(ir, diag);
 
     bool found_determinism_conflict = false;
-    for (const auto& diag : validation.diagnostics) {
-        if (diag.category == "Determinism") {
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "W_NONDETERMINISTIC_CONFLICT") {
             found_determinism_conflict = true;
             break;
         }
@@ -189,7 +194,7 @@ TEST(AdversarialQA, NonDeterministicConflict_DetectedWithTriggerVariant) {
 // 4. Choice Pseudostate: Single Guarded Branch Stall Prevention
 // ============================================================================
 
-TEST(AdversarialQA, ChoicePseudostate_SingleGuardedBranchWithoutElse_EmitsSafetyCritical) {
+TEST(AdversarialQA, ChoicePseudostate_SingleGuardedBranchWithoutElse_EmitsWarning) {
     FsmIr ir;
     ir.name = "ChoiceSingleBranchModel";
     ir.initial_state = "Init";
@@ -210,16 +215,17 @@ TEST(AdversarialQA, ChoicePseudostate_SingleGuardedBranchWithoutElse_EmitsSafety
     t_choice.guard = "velocity > 100";
     ir.transitions.push_back(t_choice);
 
-    const auto validation = FsmValidator::validate(ir);
+    DiagnosticEngine diag;
+    fsm::middleend::PassManager::create_validation_pipeline().run(ir, diag);
 
-    bool found_choice_safety_critical = false;
-    for (const auto& diag : validation.diagnostics) {
-        if (diag.category == "Choice" && diag.severity == DiagnosticSeverity::SafetyCritical) {
-            found_choice_safety_critical = true;
+    bool found_choice_warning = false;
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "W0103") {
+            found_choice_warning = true;
             break;
         }
     }
-    EXPECT_TRUE(found_choice_safety_critical)
+    EXPECT_TRUE(found_choice_warning)
         << "Validator failed to report potential stall on Choice node with single guarded branch and no fallback!";
 }
 
@@ -277,11 +283,11 @@ TEST(AdversarialQA, CircularAncestry_DetectedByValidatorAndPassDoesNotHang) {
 
     ir.transitions.emplace_back("StateA", "StateB", "EV_STEP");
 
-    const auto validation = FsmValidator::validate(ir);
-    EXPECT_FALSE(validation.is_valid);
+    DiagnosticEngine val_diag;
+    EXPECT_FALSE(fsm::middleend::PassManager::create_validation_pipeline().run(ir, val_diag));
     bool found_hierarchy_error = false;
-    for (const auto& err : validation.errors) {
-        if (err.find("Cyclic parent-child state hierarchy detected") != std::string::npos) {
+    for (const auto& d : val_diag.get_diagnostics()) {
+        if (d.message.find("Cyclic parent-child state hierarchy detected") != std::string::npos) {
             found_hierarchy_error = true;
             break;
         }

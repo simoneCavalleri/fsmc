@@ -9,6 +9,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/pass_interface.hpp"
 
 namespace fsm::middleend::passes {
 
@@ -25,20 +26,18 @@ using ir::FsmIr;
  * 3. Identity assignments (x = x).
  * Eliminates redundant operations, reducing target memory footprint and synthesis area.
  */
-class DeadActionEliminationPass {
+class DeadActionEliminationPass : public ::fsm::middleend::IPass {
   public:
-    [[nodiscard]] static std::string name() { return "DeadActionElimination"; }
-    [[nodiscard]] static std::string description() {
-        return "Eliminates dead variable writes, identity assignments, and unread action operations";
-    }
-
-    /**
+/**
      * @brief Executes dead action elimination on the IR model.
      * @param ir FSM IR to optimize.
      * @param diag Diagnostic engine.
      * @return True on success.
      */
-    bool run(FsmIr& ir, DiagnosticEngine& diag);
+    [[nodiscard]] std::string name() const override { return "dead-action-elimination"; }
+    [[nodiscard]] std::string description() const override { return "Eliminates dead register writes whose values are never read on any reachable path."; }
+    [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };
 
 }  // namespace fsm::middleend::passes

@@ -112,7 +112,7 @@ bool GuardSatisfiabilityPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             if (!t->guard.has_value() || t->guard->empty()) {
                 continue;
             }
-            const std::string& g_str = *t->guard;
+            const std::string g_str = ir.resolve_guard_expression(*t->guard);
             auto constraints = extract_guard_constraints(g_str);
             for (const auto& [var, ival] : constraints) {
                 if (ival.is_empty()) {
@@ -135,7 +135,8 @@ bool GuardSatisfiabilityPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 continue;
             }
 
-            auto c1 = extract_guard_constraints(*t1->guard);
+            const std::string g1 = ir.resolve_guard_expression(*t1->guard);
+            auto c1 = extract_guard_constraints(g1);
 
             for (std::size_t j = i + 1; j < trans_list.size(); ++j) {
                 const auto* t2 = trans_list[j];
@@ -148,14 +149,14 @@ bool GuardSatisfiabilityPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                     continue;
                 }
 
-                auto c2 = extract_guard_constraints(*t2->guard);
+                const std::string g2 = ir.resolve_guard_expression(*t2->guard);
+                auto c2 = extract_guard_constraints(g2);
 
                 // If identical guard strings -> always overlapping
-                if (*t1->guard == *t2->guard) {
-                    diag.report(Diagnostic::warning("W0301", "Potentially overlapping guards on transitions from '" +
-                                                                 src + "' on event '" + evt + "': guards ['" +
-                                                                 *t1->guard + "'] and ['" + *t2->guard +
-                                                                 "'] may be simultaneously satisfiable."));
+                if (g1 == g2) {
+                    diag.report(Diagnostic::warning(
+                        "W0301", "Potentially overlapping guards on transitions from '" + src + "' on event '" + evt +
+                                     "': guards ['" + g1 + "'] and ['" + g2 + "'] may be simultaneously satisfiable."));
                     continue;
                 }
 

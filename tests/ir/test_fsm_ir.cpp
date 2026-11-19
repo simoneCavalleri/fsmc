@@ -749,6 +749,40 @@ TEST(ExpressionAstNode, AlgebraicArithmeticAndBooleanExpressions_ParsesPrecedenc
 }
 
 /**
+ * @brief Verify ExpressionAstNode::parse handles relational, equality, logical, and payload expressions.
+ * @scenario Parse compound boolean/relational expression with textual and symbolic operators and payload references.
+ * @expected AST preserves operator precedence, EventParamRef nodes, and collects referenced identifiers.
+ */
+TEST(ExpressionAstNode, RelationalAndLogicalExpressions_ParsesPrecedenceAndReferences) {
+    auto ast = ExpressionAstNode::parse("payload.speed >= 10 && in.temp < 80 || not reg.fault == true");
+    ASSERT_EQ(ast.kind, ExpressionKind::BinaryOp);
+    EXPECT_EQ(ast.op, ExpressionOp::LogicalOr);
+    ASSERT_EQ(ast.children.size(), 2u);
+
+    const auto& lhs_and = ast.children[0];
+    EXPECT_EQ(lhs_and.kind, ExpressionKind::BinaryOp);
+    EXPECT_EQ(lhs_and.op, ExpressionOp::LogicalAnd);
+    ASSERT_EQ(lhs_and.children.size(), 2u);
+    EXPECT_EQ(lhs_and.children[0].op, ExpressionOp::GreaterEqual);
+    EXPECT_EQ(lhs_and.children[0].children[0].kind, ExpressionKind::EventParamRef);
+    EXPECT_EQ(lhs_and.children[0].children[0].symbol, "speed");
+    EXPECT_EQ(lhs_and.children[1].op, ExpressionOp::LessThan);
+    EXPECT_EQ(lhs_and.children[1].children[0].kind, ExpressionKind::PortRef);
+    EXPECT_EQ(lhs_and.children[1].children[0].symbol, "temp");
+
+    const auto& rhs_eq = ast.children[1];
+    EXPECT_EQ(rhs_eq.kind, ExpressionKind::BinaryOp);
+    EXPECT_EQ(rhs_eq.op, ExpressionOp::Equal);
+
+    std::vector<std::string> refs;
+    ast.collect_references(refs);
+    ASSERT_EQ(refs.size(), 3u);
+    EXPECT_EQ(refs[0], "speed");
+    EXPECT_EQ(refs[1], "temp");
+    EXPECT_EQ(refs[2], "fault");
+}
+
+/**
  * @brief Verify ActionAssignment with compound assignment operators and expression ASTs.
  * @scenario Assignments with AddAssign, SubAssign, and MulAssign with parsed AST expressions.
  * @expected Assignment structures preserve operator kinds and target identifiers.
@@ -1301,6 +1335,247 @@ TEST(FsmIr, CanonicalTransitionPriority_EnforcesAscendingEvaluationOrder) {
     EXPECT_EQ(edges[2].target, "S4");
     EXPECT_EQ(edges[3].priority, 0u);
     EXPECT_EQ(edges[3].target, "S1");
+}
+
+/**
+ * @brief Verify ExpressionAstNode numeric and boolean evaluation and lossless JSON roundtrip of instructions, clocks,
+ * and choice nodes.
+ * @scenario Evaluate algebraic and boolean ASTs against a symbol environment, and roundtrip an FsmIr with instructions,
+ * clocks, and choice nodes through JSON.
+ * @expected Evaluation produces exact numeric/boolean results (or nullopt on divide-by-zero/unknowns), and JSON
+ * deserialization restores instructions, clocks, and choice nodes.
+ */
+TEST(FsmIr, ExpressionEvaluationAndLosslessJsonRoundtrip_PreservesInstructionsClocksAndChoices) {
+    std::unordered_map<std::string, double> env = {
+        {"x", 10.0},
+        {"y", 4.0},
+        {"sensor", 25.5},
+        {"flag", 1.0},
+    };
+
+    auto expr_arith = ExpressionAstNode::parse("(x + y) * 2 - in.sensor");
+    auto val_arith = expr_arith.evaluate_numeric(env);
+    ASSERT_TRUE(val_arith.has_value());
+    EXPECT_DOUBLE_EQ(*val_arith, 2.5);
+
+    auto expr_div_zero = ExpressionAstNode::parse("x / (y - 4)");
+    EXPECT_FALSE(expr_div_zero.evaluate_numeric(env).has_value());
+
+    auto expr_unknown = ExpressionAstNode::parse("x + missing_var");
+    EXPECT_FALSE(expr_unknown.evaluate_numeric(env).has_value());
+
+    auto expr_bool = ExpressionAstNode::parse("x > y && (in.sensor >= 20.0 || missing_var > 0)");
+    auto val_bool = expr_bool.evaluate_boolean(env);
+    ASSERT_TRUE(val_bool.has_value());
+    EXPECT_TRUE(*val_bool);
+
+    // Lossless JSON serialization of instructions, clocks, and choice_nodes
+    FsmIr ir;
+    ir.name = "LosslessRoundtripMachine";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+    ir.add_state("Active");
+    ir.clocks.emplace_back("clk_dwell", TimeUnit::Milliseconds, "State dwell clock");
+    ir.add_choice_node("CheckSensor");
+
+    ActionSignature act("ComplexEffect", "run_effect()");
+    StoreOp store_op;
+    store_op.target = LValueTarget("counter", LValueScope::Register);
+    store_op.op = AssignmentOp::AddAssign;
+    store_op.expression = "1";
+    act.instructions.emplace_back(store_op, "Increment counter");
+
+    PortWriteOp pw_op;
+    pw_op.port_name = "tx_bus";
+    pw_op.expression = "42";
+    act.instructions.emplace_back(pw_op, "Write bus");
+
+    PortReadOp pr_op;
+    pr_op.port_name = "rx_bus";
+    pr_op.destination = LValueTarget("rx_val", LValueScope::Local);
+    act.instructions.emplace_back(pr_op, "Read bus");
+
+    SignalEmitOp se_op;
+    se_op.signal_name = "EvDone";
+    se_op.arguments = {"1", "2"};
+    se_op.target_port = "out_port";
+    act.instructions.emplace_back(se_op, "Emit completion");
+
+    ActionCallOp ac_op;
+    ac_op.function_name = "calibrate";
+    ac_op.arguments = {"x"};
+    ac_op.read_set = {"x"};
+    ac_op.write_set = {"cal"};
+    act.instructions.emplace_back(ac_op, "Call calibration");
+
+    TransitionEdge edge("Idle", "Active", "EvGo");
+    edge.transition_action = act;
+    ir.add_transition(std::move(edge));
+
+    std::string json = FsmIrSerializer::serialize_json(ir);
+    EXPECT_NE(json.find("\"clocks\": ["), std::string::npos);
+    EXPECT_NE(json.find("\"choice_nodes\": ["), std::string::npos);
+    EXPECT_NE(json.find("\"instructions\": ["), std::string::npos);
+
+    FsmIr restored;
+    std::string err;
+    ASSERT_TRUE(FsmIrDeserializer::deserialize_json(json, restored, err)) << err;
+    ASSERT_EQ(restored.clocks.size(), 1u);
+    EXPECT_EQ(restored.clocks[0].name, "clk_dwell");
+    EXPECT_EQ(restored.clocks[0].resolution, TimeUnit::Milliseconds);
+    EXPECT_TRUE(restored.is_choice_node("CheckSensor"));
+    ASSERT_EQ(restored.transitions.size(), 1u);
+    ASSERT_TRUE(restored.transitions[0].transition_action.has_value());
+    EXPECT_EQ(restored.transitions[0].transition_action->instructions, act.instructions);
+}
+
+/**
+ * @brief Verify FsmIrDeserializer keeps parsed C++ guard type in guard_ast when JSON contains readable boolean guards.
+ * @scenario Deserialize JSON transition with `"guard": "!(a_gte_10 && b_eq_0) || c_lt_5"` and matching `"guard_ast"`.
+ * @expected Both `guard` and `guard_ast->expression` hold the C++ template guard (`::fsm::or_<...>`), not raw
+ * operators.
+ */
+TEST(FsmIr, JsonDeserializer_PreservesCppGuardTypeInGuardAstForBooleanExpressions) {
+    const std::string json = R"json({
+  "name": "JsonGuardAst",
+  "initial_state": "S0",
+  "states": {
+    "S0": {
+      "on": {
+        "EvTest": {
+          "target": "Pass",
+          "guard": "!(a_gte_10 && b_eq_0) || c_lt_5",
+          "guard_ast": "!(a_gte_10 && b_eq_0) || c_lt_5"
+        }
+      }
+    },
+    "Pass": {}
+  }
+})json";
+
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(FsmIrDeserializer::deserialize_json(json, ir, err)) << err;
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    ASSERT_TRUE(ir.transitions[0].guard.has_value());
+    EXPECT_NE(ir.transitions[0].guard->find("fsm::or_<"), std::string::npos);
+    ASSERT_TRUE(ir.transitions[0].guard_ast.has_value());
+    EXPECT_EQ(ir.transitions[0].guard_ast->op, GuardOp::Or);
+    EXPECT_EQ(ir.transitions[0].guard_ast->to_string(), "!(a_gte_10 && b_eq_0) || c_lt_5");
+}
+
+/**
+ * @brief Regression: JSON deserialization resolves `TransitionEdge::source_id` and `target_id` to the exact
+ * `StateNode::id` of existing states (even when state IDs were computed from hierarchical FQNs).
+ * @scenario Deserialize JSON where states carry custom FQN-derived `"id"` fields and `"on"` transitions reference state
+ * names.
+ * @expected `transitions[0].source_id == src->id` and `transitions[0].target_id == dst->id`.
+ */
+TEST(FsmIr, JsonDeserializer_ResolvesTransitionSourceAndTargetIdsToStateIds) {
+    const std::string json = R"json({
+  "name": "JsonIdResolution",
+  "initial_state": "Active",
+  "states": {
+    "Active": {
+      "id": "id_custom_fqn_active",
+      "time_invariant": "500[ms]",
+      "on": {
+        "Done": {
+          "target": "Idle"
+        }
+      }
+    },
+    "Idle": {
+      "id": "id_custom_fqn_idle"
+    }
+  }
+})json";
+
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(FsmIrDeserializer::deserialize_json(json, ir, err)) << err;
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    const auto* active = ir.find_state("Active");
+    const auto* idle = ir.find_state("Idle");
+    ASSERT_NE(active, nullptr);
+    ASSERT_NE(idle, nullptr);
+    EXPECT_EQ(ir.transitions[0].source_id, active->id);
+    EXPECT_EQ(ir.transitions[0].target_id, idle->id);
+}
+
+/**
+ * @brief Regression: XState JSON `"type": "final"` maps to `StateKind::Final`.
+ * @scenario Deserialize JSON where state `Done` has `"type": "final"`.
+ * @expected `done->kind == StateKind::Final`.
+ */
+TEST(FsmIr, JsonDeserializer_MapsXStateFinalTypeToStateKindFinal) {
+    const std::string json = R"json({
+  "name": "JsonFinalType",
+  "initial_state": "Idle",
+  "states": {
+    "Idle": {
+      "on": {
+        "Finish": "Done"
+      }
+    },
+    "Done": {
+      "type": "final"
+    }
+  }
+})json";
+
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(FsmIrDeserializer::deserialize_json(json, ir, err)) << err;
+    const auto* done = ir.find_state("Done");
+    ASSERT_NE(done, nullptr);
+    EXPECT_EQ(done->kind, StateKind::Final);
+}
+
+/**
+ * @brief Verify StateTimeInvariant parsing, unit suffixes, equality operators, and string concatenation.
+ */
+TEST(StateNode, StateTimeInvariant_AllUnitsAndOperatorsCovered) {
+    StateTimeInvariant inv_min("clk <= 5 [min]");
+    EXPECT_EQ(inv_min.clock, "clk");
+    EXPECT_EQ(inv_min.op, TimeInvariantOp::LessEqual);
+    EXPECT_EQ(inv_min.duration, 5u);
+    EXPECT_EQ(inv_min.unit, TimeUnit::Minutes);
+
+    StateTimeInvariant inv_lt("c1 < 10 [us]");
+    EXPECT_EQ(inv_lt.op, TimeInvariantOp::LessThan);
+    EXPECT_EQ(inv_lt.duration, 10u);
+    EXPECT_EQ(inv_lt.unit, TimeUnit::Microseconds);
+
+    EXPECT_EQ(StateTimeInvariant("t <= 2 [ns]").unit, TimeUnit::Nanoseconds);
+    EXPECT_EQ(StateTimeInvariant("t <= 3 [s]").unit, TimeUnit::Seconds);
+    EXPECT_EQ(StateTimeInvariant("t <= 4 [ms]").unit, TimeUnit::Milliseconds);
+    EXPECT_EQ(StateTimeInvariant("100ms;").duration, 100u);
+    EXPECT_EQ(StateTimeInvariant("250us").unit, TimeUnit::Microseconds);
+    EXPECT_EQ(StateTimeInvariant("50ns").unit, TimeUnit::Nanoseconds);
+    EXPECT_EQ(StateTimeInvariant("7min").unit, TimeUnit::Minutes);
+    EXPECT_EQ(StateTimeInvariant("9s").unit, TimeUnit::Seconds);
+
+    StateTimeInvariant structured("stay", TimeInvariantOp::LessThan, 42, TimeUnit::Seconds);
+    EXPECT_EQ(structured.to_string(), "stay < 42s");
+    EXPECT_TRUE(structured == "stay < 42s");
+    EXPECT_TRUE("stay < 42s" == structured);
+    EXPECT_TRUE(structured == std::string("stay < 42s"));
+    EXPECT_TRUE(std::string("stay < 42s") == structured);
+    EXPECT_TRUE(structured == std::string_view("stay < 42s"));
+
+    StateTimeInvariant structured_copy("stay", TimeInvariantOp::LessThan, 42, TimeUnit::Seconds);
+    structured.raw_expression.clear();
+    structured_copy.raw_expression.clear();
+    EXPECT_EQ(structured, structured_copy);
+
+    std::ostringstream oss;
+    oss << structured;
+    EXPECT_EQ(oss.str(), "stay < 42s");
+    EXPECT_EQ(std::string("inv: ") + structured, "inv: stay < 42s");
+    EXPECT_EQ("inv: " + structured, "inv: stay < 42s");
+    EXPECT_EQ(structured + std::string(" !"), "stay < 42s !");
+    EXPECT_EQ(structured + " !", "stay < 42s !");
 }
 
 }  // namespace

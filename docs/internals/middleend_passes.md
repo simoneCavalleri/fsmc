@@ -77,7 +77,7 @@ flowchart TD
 * **What it does**: Lowers shallow history `[H]` and deep history `[H*]` pseudostates into shadow state register memory.
 
 #### 6. `deferred-event-lowering` (`DeferredEventLoweringPass`)
-* **What it does**: Lowers deferred event declarations into static bounded FIFO queues with automated cascade replay upon state exit.
+* **What it does**: Structural lowering pass that replaces deferred event declarations with `__deferred_count` / `__deferred_buffer` instrumentation, internal self-transitions, and exit-edge reset hooks for targets without native deferred-event queues. (The 7-stage C++ pipeline preserves `StateNode::deferred_events` natively for the C++17/C++20 runtime `deferred_queue_`.)
 
 #### 7. `boundary-action-fusion` (`BoundaryActionFusionPass`)
 * **What it does**: Flattens hierarchical transition boundaries into Lowest Common Ancestor (LCA) sequences: source exit path $\to$ transition action $\to$ target entry path. Clears lowered state hooks to eliminate duplicate action executions.

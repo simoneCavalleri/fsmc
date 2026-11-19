@@ -9,6 +9,7 @@
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/passes/boundary_action_fusion_pass.hpp"
+#include "fsm/middleend/passes/choice_inlining_pass.hpp"
 #include "fsm/middleend/passes/connective_junction_chaining_pass.hpp"
 #include "fsm/middleend/passes/deferred_event_lowering_pass.hpp"
 #include "fsm/middleend/passes/fork_join_lowering_pass.hpp"
@@ -140,6 +141,44 @@ TEST(DeferredEventLowering, DeferredEventsDeclared_LowersToBufferVariablesAndRec
         }
     }
     EXPECT_TRUE(exit_has_recall);
+}
+
+/**
+ * @brief Regression: `DeferredEventLoweringPass` does not attach `__recall_deferred` to
+ * `TransitionEdgeKind::Local` transitions originating on a composite state (local transitions
+ * stay inside the composite state and must not drain its deferred queue).
+ */
+TEST(DeferredEventLowering, LocalTransitionOnComposite_DoesNotAttachRecall) {
+    FsmIr ir;
+    DiagnosticEngine diag;
+
+    StateNode active("Active", "Composite state deferring EvMsg");
+    active.is_composite = true;
+    active.initial_sub_state = "SubA";
+    active.deferred_events.push_back("EvMsg");
+    ir.add_state(active);
+    ir.add_state(StateNode("SubA", "", "Active"));
+    ir.add_state(StateNode("SubB", "", "Active"));
+    ir.add_state("Idle");
+
+    TransitionEdge loc("Active", "SubB", "EvLocal");
+    loc.kind = TransitionEdgeKind::Local;
+    ir.add_transition(loc);
+
+    TransitionEdge ext("Active", "Idle", "EvExit");
+    ext.kind = TransitionEdgeKind::External;
+    ir.add_transition(ext);
+
+    EXPECT_TRUE(DeferredEventLoweringPass::run(ir, diag));
+
+    for (const auto& t : ir.transitions) {
+        if (t.event == "EvLocal") {
+            EXPECT_FALSE(t.transition_action.has_value());
+        } else if (t.event == "EvExit") {
+            ASSERT_TRUE(t.transition_action.has_value());
+            EXPECT_EQ(t.transition_action->name, "__recall_deferred");
+        }
+    }
 }
 
 // ============================================================================
@@ -308,6 +347,81 @@ TEST(BoundaryActionFusion, CrossBoundaryTransition_ClearsHooksOnFusedNodes) {
 }
 
 /**
+ * @brief Verify that BoundaryActionFusionPass does not duplicate entry actions kept on initial states.
+ * @scenario Run BoundaryActionFusionPass on a machine whose initial state has an entry assignment and an incoming
+ * transition from another state.
+ * @expected The initial state keeps its entry_actions for runtime startup, and the incoming transition does not fuse a
+ * duplicate copy of that entry action.
+ */
+TEST(StructuralLowering, BoundaryActionFusion_DoesNotDuplicateInitialStateEntryHook) {
+    FsmIr ir;
+    ir.name = "InitEntryNoDup";
+    ir.initial_state = "Step1";
+    ir.add_variable(VariableDefinition("count", DataType{PrimitiveTypeKind::Int32}, "0"));
+
+    StateNode s1("Step1");
+    ActionSignature s1_entry("Step1_entry");
+    s1_entry.assignments.emplace_back(LValueTarget("count"), "count + 1");
+    s1.entry_actions.push_back(std::move(s1_entry));
+
+    StateNode s2("Step2");
+    ir.states.push_back(std::move(s1));
+    ir.states.push_back(std::move(s2));
+
+    ir.transitions.emplace_back("Step1", "Step2", "NEXT");
+    ir.transitions.emplace_back("Step2", "Step1", "BACK");
+
+    DiagnosticEngine diag;
+    const bool modified = BoundaryActionFusionPass::run(ir, diag);
+    EXPECT_FALSE(modified);
+
+    const StateNode* s1_after = ir.find_state("Step1");
+    ASSERT_NE(s1_after, nullptr);
+    ASSERT_EQ(s1_after->entry_actions.size(), 1u);
+    EXPECT_FALSE(ir.transitions[1].transition_action.has_value());
+}
+
+/**
+ * @brief Verify BoundaryActionFusionPass preserves descendant exit_actions when an ancestor has an external exit.
+ * @scenario Composite 'Outer' has child 'Leaf1' and 'Leaf2' (with exit_actions) and an outgoing transition
+ * `Outer -> Paused`.
+ * @expected `Leaf2::exit_actions` is preserved on the StateNode so `Outer -> Paused` executes it via runtime `on_exit`.
+ */
+TEST(StructuralLowering, BoundaryActionFusion_PreservesDescendantExitActionsWhenAncestorHasExternalExit) {
+    FsmIr ir;
+    ir.name = "AncestorExit";
+    ir.initial_state = "Outer";
+
+    StateNode outer("Outer");
+    outer.is_composite = true;
+    outer.initial_sub_state = "Leaf1";
+
+    StateNode leaf1("Leaf1", "", "Outer");
+    StateNode leaf2("Leaf2", "", "Outer");
+    leaf2.exit_actions.emplace_back("__record_history_Leaf2");
+
+    StateNode paused("Paused");
+
+    ir.states.push_back(std::move(outer));
+    ir.states.push_back(std::move(leaf1));
+    ir.states.push_back(std::move(leaf2));
+    ir.states.push_back(std::move(paused));
+
+    ir.transitions.emplace_back("Leaf1", "Leaf2", "NEXT");
+    ir.transitions.emplace_back("Leaf2", "Leaf1", "NEXT");
+    ir.transitions.emplace_back("Outer", "Paused", "PAUSE");
+
+    DiagnosticEngine diag;
+    BoundaryActionFusionPass::run(ir, diag);
+
+    const StateNode* leaf2_after = ir.find_state("Leaf2");
+    ASSERT_NE(leaf2_after, nullptr);
+    ASSERT_EQ(leaf2_after->exit_actions.size(), 1u);
+    EXPECT_EQ(leaf2_after->exit_actions[0].name, "__record_history_Leaf2");
+    EXPECT_FALSE(ir.transitions[1].transition_action.has_value());
+}
+
+/**
  * @brief Verify that BoundaryActionFusionPass does not modify internal transitions.
  * @scenario State 'A' has both an internal self-transition (on EvInternal) and an exit action.
  * @expected The internal transition is left unchanged; no fusion is attempted on it.
@@ -413,6 +527,60 @@ TEST(BoundaryActionFusion, MultipleOutgoingTransitions_BothFuseBoundaryActionsWi
     EXPECT_EQ(std::get<StoreOp>(ir.transitions[1].transition_action->instructions[1].op).expression, "exit_A");
 }
 
+/**
+ * @brief Regression: `BoundaryActionFusionPass` preserves composite exit/entry semantics on
+ * `TransitionEdgeKind::Local` transitions by setting LCA to the composite source (so composite
+ * `exit_actions` and `entry_actions` are NOT fused/executed, only descendant `entry_actions`).
+ */
+TEST(BoundaryActionFusion, LocalTransitionOnComposite_DoesNotFuseCompositeExitOrEntry) {
+    FsmIr ir;
+    DiagnosticEngine diag;
+
+    StateNode active("Active");
+    active.is_composite = true;
+    active.initial_sub_state = "SubA";
+    ActionSignature act_exit("exit_Active");
+    StoreOp op_exit;
+    op_exit.expression = "exit_Active";
+    act_exit.instructions.emplace_back(op_exit);
+    active.exit_actions.push_back(act_exit);
+
+    ActionSignature act_entry("entry_Active");
+    StoreOp op_entry;
+    op_entry.expression = "entry_Active";
+    act_entry.instructions.emplace_back(op_entry);
+    active.entry_actions.push_back(act_entry);
+
+    StateNode sub_a("SubA", "", "Active");
+    StateNode sub_b("SubB", "", "Active");
+    ActionSignature subb_entry("entry_SubB");
+    StoreOp op_subb;
+    op_subb.expression = "entry_SubB";
+    subb_entry.instructions.emplace_back(op_subb);
+    sub_b.entry_actions.push_back(subb_entry);
+
+    ir.add_state(active);
+    ir.add_state(sub_a);
+    ir.add_state(sub_b);
+
+    TransitionEdge loc("Active", "SubB", "EvReset");
+    loc.kind = TransitionEdgeKind::Local;
+    ir.add_transition(loc);
+
+    EXPECT_TRUE(BoundaryActionFusionPass::run(ir, diag));
+
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    const auto& insts = ir.transitions[0].transition_action->instructions;
+    ASSERT_EQ(insts.size(), 1u);
+    EXPECT_EQ(std::get<StoreOp>(insts[0].op).expression, "entry_SubB");
+
+    const auto* p_active = ir.find_state("Active");
+    ASSERT_NE(p_active, nullptr);
+    EXPECT_FALSE(p_active->exit_actions.empty());
+    EXPECT_FALSE(p_active->entry_actions.empty());
+}
+
 // ============================================================================
 // 4. ForkJoinLoweringPass Tests
 // ============================================================================
@@ -511,9 +679,17 @@ TEST(SampledChangeTrigger, RisingEdgeTrigger_LowersToShadowRegisterAndEdgeGuard)
     ASSERT_EQ(ir.transitions.size(), 1U);
     EXPECT_TRUE(std::holds_alternative<AnonymousTrigger>(ir.transitions[0].trigger));
 
-    // 2. Guard contains edge detection
+    // 2. Guard references registered edge-detection GuardModel
     ASSERT_TRUE(ir.transitions[0].guard.has_value());
-    EXPECT_NE(ir.transitions[0].guard->find("(!__change_Monitoring_0_prev && (temp > 100))"), std::string::npos);
+    EXPECT_EQ(*ir.transitions[0].guard, "__change_Monitoring_0_prev_edge");
+    bool found_edge_guard = false;
+    for (const auto& gm : ir.guards) {
+        if (gm.name == "__change_Monitoring_0_prev_edge" && gm.raw_expression.has_value() &&
+            gm.raw_expression->find("(!__change_Monitoring_0_prev && (temp > 100))") != std::string::npos) {
+            found_edge_guard = true;
+        }
+    }
+    EXPECT_TRUE(found_edge_guard);
 
     // 3. Shadow register allocated in variables
     const auto* shadow = ir.find_variable("__change_Monitoring_0_prev");
@@ -548,7 +724,15 @@ TEST(SampledChangeTrigger, FallingEdgeTrigger_SynthesizesHighToLowDetector) {
     EXPECT_TRUE(res);
 
     ASSERT_TRUE(ir.transitions[0].guard.has_value());
-    EXPECT_NE(ir.transitions[0].guard->find("(__change_Running_0_prev && !(is_active))"), std::string::npos);
+    EXPECT_EQ(*ir.transitions[0].guard, "__change_Running_0_prev_edge");
+    bool found_falling_guard = false;
+    for (const auto& gm : ir.guards) {
+        if (gm.name == "__change_Running_0_prev_edge" && gm.raw_expression.has_value() &&
+            gm.raw_expression->find("(__change_Running_0_prev && !(is_active))") != std::string::npos) {
+            found_falling_guard = true;
+        }
+    }
+    EXPECT_TRUE(found_falling_guard);
 }
 
 TEST(SampledChangeTrigger, NoChangeTriggers_ReturnsFalse) {
@@ -813,4 +997,293 @@ TEST(ForkJoinLowering, BranchActionsAndClockResets_PreservedInLoweredTransitions
     ASSERT_EQ(lowered.clock_resets.size(), 2u);
     EXPECT_EQ(lowered.clock_resets[0], "clk_a");
     EXPECT_EQ(lowered.clock_resets[1], "clk_b");
+}
+
+/**
+ * @brief Verify HistoryLoweringPass pins _HistoryRestore parent_state across normalize_hierarchy().
+ * @scenario Run HistoryLoweringPass on a composite state with history, then invoke normalize_hierarchy().
+ * @expected Synthesized _HistoryRestore choice node retains parent_state and pinned_parent == true.
+ */
+TEST(StructuralLowering, HistoryLowering_PinsParentAcrossNormalizeHierarchy) {
+    FsmIr ir;
+    ir.name = "HistoryPinModel";
+    ir.initial_state = "Outer";
+
+    StateNode outer("Outer");
+    outer.is_composite = true;
+    outer.initial_sub_state = "SubA";
+    outer.has_history = true;
+    ir.states.push_back(outer);
+
+    ir.add_state("SubA", "Outer");
+    ir.add_state("SubB", "Outer");
+    ir.add_state("Outside");
+    ir.add_transition(TransitionEdge("SubA", "SubB", "EvStep"));
+    ir.add_transition(TransitionEdge("Outer", "Outside", "EvExit"));
+    TransitionEdge restore_t("Outside", "Outer", "EvResume");
+    restore_t.target_is_history = true;
+    ir.add_transition(restore_t);
+
+    DiagnosticEngine diag;
+    EXPECT_TRUE(HistoryLoweringPass::run(ir, diag));
+    ir.normalize_hierarchy();
+
+    const StateNode* restore_node = ir.find_state("Outer_HistoryRestore");
+    ASSERT_NE(restore_node, nullptr);
+    EXPECT_TRUE(restore_node->pinned_parent);
+    EXPECT_EQ(restore_node->parent_state, "Outer");
+}
+
+/**
+ * @brief Verify ForkJoinLoweringPass preserves incoming Join branch guards and events.
+ * @scenario Join pseudo-state Join1 with incoming edges from A1 (guard g_a, event EvSync) and B1 (guard g_b),
+ *           and outgoing edge Join1 -> Done (no event, guard g_out).
+ * @expected Lowered transition preserves event EvSync, source_ids {A1, B1}, and combined guard (g_out && g_a && g_b).
+ */
+TEST(ForkJoinLowering, JoinBranchGuardsAndEvent_PreservedInLoweredTransitions) {
+    FsmIr ir;
+    DiagnosticEngine diag;
+
+    ir.add_state("A1");
+    ir.add_state("B1");
+    StateNode join_node("Join1");
+    join_node.kind = StateKind::Join;
+    ir.states.push_back(join_node);
+    ir.add_state("Done");
+
+    TransitionEdge in_a("A1", "Join1", "EvSync", "g_a");
+    TransitionEdge in_b("B1", "Join1", "", "g_b");
+    TransitionEdge out_j("Join1", "Done", "", "g_out");
+
+    ir.transitions.push_back(in_a);
+    ir.transitions.push_back(in_b);
+    ir.transitions.push_back(out_j);
+
+    ASSERT_TRUE(ForkJoinLoweringPass::run(ir, diag));
+    EXPECT_EQ(ir.find_state("Join1"), nullptr);
+    ASSERT_EQ(ir.transitions.size(), 1u);
+
+    const auto& lowered = ir.transitions[0];
+    EXPECT_EQ(lowered.target, "Done");
+    EXPECT_EQ(lowered.source_ids.size(), 2u);
+    EXPECT_EQ(lowered.event, "EvSync");
+    ASSERT_TRUE(lowered.guard.has_value());
+    EXPECT_NE(lowered.guard->find("g_out"), std::string::npos);
+    EXPECT_NE(lowered.guard->find("g_a"), std::string::npos);
+    EXPECT_NE(lowered.guard->find("g_b"), std::string::npos);
+}
+
+/**
+ * @brief Verify FsmIr::operator== compares clocks, guards, actions, choice_nodes, bindings, and execution_semantics.
+ * @scenario Two identical FsmIr instances modified one field at a time.
+ * @expected Inequality detected for each of the newly compared fields.
+ */
+TEST(StructuralLoweringTest, FsmIrEqualityComparesAllFields) {
+    FsmIr a;
+    a.name = "EqModel";
+    a.initial_state = "Idle";
+    FsmIr b = a;
+    EXPECT_EQ(a, b);
+
+    b.execution_semantics.preemption_priority = HierarchicalPriority::InnerFirst;
+    EXPECT_NE(a, b);
+    b = a;
+
+    b.clocks.push_back(ClockDefinition("clk"));
+    EXPECT_NE(a, b);
+    b = a;
+
+    GuardModel gm;
+    gm.name = "g1";
+    gm.raw_expression = "x > 0";
+    b.guards.push_back(gm);
+    EXPECT_NE(a, b);
+    b = a;
+
+    ActionModel am;
+    am.name = "act1";
+    b.actions.push_back(am);
+    EXPECT_NE(a, b);
+    b = a;
+
+    ChoiceNodeModel cm;
+    cm.name = "c1";
+    b.choice_nodes.push_back(cm);
+    EXPECT_NE(a, b);
+    b = a;
+
+    b.bindings.push_back(BindingConnector("dst_port", "src_port"));
+    EXPECT_NE(a, b);
+}
+
+/**
+ * @brief Verify HistoryLoweringPass emits valid C++ guard identifiers and prioritized fallback branches.
+ * @scenario Composite state Active with substates Step1/Step2 and history target Active[H].
+ * @expected History branches use identifier guard names (__hist_Active_is_Step1) with priority 1 and fallback has
+ * priority 2.
+ */
+TEST(HistoryLowering, EmitsValidGuardIdentifiersAndPrioritizedFallback) {
+    FsmIr ir;
+    ir.name = "HistGuardTest";
+    ir.initial_state = "Paused";
+
+    StateNode paused("Paused");
+    StateNode active("Active");
+    active.is_composite = true;
+    active.has_history = true;
+    active.initial_sub_state = "Step1";
+    StateNode step1("Step1", "", "Active");
+    StateNode step2("Step2", "", "Active");
+    ir.states = {paused, active, step1, step2};
+
+    TransitionEdge t("Paused", "Active", "EvResume");
+    t.target_is_history = true;
+    ir.transitions.push_back(t);
+
+    DiagnosticEngine diag;
+    ASSERT_TRUE(HistoryLoweringPass::run(ir, diag));
+
+    bool found_step1_branch = false;
+    bool found_fallback = false;
+    for (const auto& tr : ir.transitions) {
+        if (tr.source == "Active_HistoryRestore" && tr.target == "Step1" && tr.guard == "__hist_Active_is_Step1") {
+            found_step1_branch = true;
+            EXPECT_EQ(tr.priority, 1u);
+        }
+        if (tr.source == "Active_HistoryRestore" && tr.guard == "else") {
+            found_fallback = true;
+            EXPECT_EQ(tr.priority, 2u);
+        }
+    }
+    EXPECT_TRUE(found_step1_branch);
+    EXPECT_TRUE(found_fallback);
+    for (const auto& g : ir.guards) {
+        EXPECT_NE(g.name, "Step1");
+    }
+}
+
+/**
+ * @brief Verify Deep History lowering only attaches exit history recording to leaf states, not intermediate composites.
+ * @scenario 3-level hierarchy Outer -> Inner -> {LeafA, LeafB} with transition Off -> Outer[H*].
+ * @expected Inner does NOT get __record_history_Inner; LeafA and LeafB do, and default fallback targets LeafA.
+ */
+TEST(HistoryLowering, DeepHistoryOnlyRecordsLeafSubstates) {
+    FsmIr ir;
+    ir.name = "DeepHistLeafTest";
+    ir.initial_state = "Off";
+
+    StateNode off("Off");
+    StateNode outer("Outer");
+    outer.is_composite = true;
+    outer.has_history = true;
+    outer.has_deep_history = true;
+    outer.initial_sub_state = "Inner";
+
+    StateNode inner("Inner", "", "Outer");
+    inner.is_composite = true;
+    inner.initial_sub_state = "LeafA";
+
+    StateNode leaf_a("LeafA", "", "Inner");
+    StateNode leaf_b("LeafB", "", "Inner");
+    ir.states = {off, outer, inner, leaf_a, leaf_b};
+
+    TransitionEdge t("Off", "Outer", "EvResume");
+    t.target_is_history = true;
+    t.target_is_deep_history = true;
+    ir.transitions.push_back(t);
+
+    DiagnosticEngine diag;
+    ASSERT_TRUE(HistoryLoweringPass::run(ir, diag));
+
+    const StateNode* inner_after = ir.find_state("Inner");
+    ASSERT_NE(inner_after, nullptr);
+    EXPECT_TRUE(inner_after->exit_actions.empty());
+
+    const StateNode* leaf_b_after = ir.find_state("LeafB");
+    ASSERT_NE(leaf_b_after, nullptr);
+    EXPECT_FALSE(leaf_b_after->exit_actions.empty());
+
+    bool found_fallback_to_leaf_a = false;
+    for (const auto& tr : ir.transitions) {
+        if (tr.source == "Outer_HistoryRestore" && tr.guard == "else" && tr.target == "LeafA") {
+            found_fallback_to_leaf_a = true;
+        }
+    }
+    EXPECT_TRUE(found_fallback_to_leaf_a);
+}
+
+/**
+ * @brief Verify ChoiceInliningPass inlines StateKind::EntryPoint and StateKind::ExitPoint pseudostates.
+ * @scenario Composite 'Active' has EntryPoint 'Ingress' (`Idle -> Ingress -> Sub2`) and ExitPoint 'Egress'
+ *           (`Sub2 -> Egress -> Done`).
+ * @expected `Ingress` and `Egress` are inlined and removed, producing direct transitions `Idle -> Sub2` and
+ *           `Sub2 -> Done`.
+ */
+TEST(StructuralLowering, ChoiceInlining_InlinesEntryPointAndExitPointPseudostates) {
+    FsmIr ir;
+    ir.name = "EntryExitInline";
+    ir.initial_state = "Idle";
+
+    StateNode idle("Idle");
+    StateNode done("Done");
+    StateNode active("Active");
+    active.is_composite = true;
+    active.initial_sub_state = "Sub1";
+    StateNode sub1("Sub1", "", "Active");
+    StateNode sub2("Sub2", "", "Active");
+    StateNode ingress("Ingress", "", "Active");
+    ingress.kind = StateKind::EntryPoint;
+    StateNode egress("Egress", "", "Active");
+    egress.kind = StateKind::ExitPoint;
+
+    ir.states = {idle, done, active, sub1, sub2, ingress, egress};
+    ir.transitions.emplace_back("Idle", "Ingress", "EvEnter");
+    ir.transitions.emplace_back("Ingress", "Sub2", "");
+    ir.transitions.emplace_back("Sub2", "Egress", "EvFinish");
+    ir.transitions.emplace_back("Egress", "Done", "");
+
+    DiagnosticEngine diag;
+    ASSERT_TRUE(ChoiceInliningPass::run(ir, diag));
+
+    EXPECT_EQ(ir.find_state("Ingress"), nullptr);
+    EXPECT_EQ(ir.find_state("Egress"), nullptr);
+
+    ASSERT_EQ(ir.transitions.size(), 2u);
+    EXPECT_EQ(ir.transitions[0].source, "Idle");
+    EXPECT_EQ(ir.transitions[0].target, "Sub2");
+    EXPECT_EQ(ir.transitions[0].event, "EvEnter");
+    EXPECT_EQ(ir.transitions[1].source, "Sub2");
+    EXPECT_EQ(ir.transitions[1].target, "Done");
+    EXPECT_EQ(ir.transitions[1].event, "EvFinish");
+}
+
+/**
+ * @brief Verify HistoryLoweringPass does not synthesize an orphan _HistoryRestore Choice node when no transition
+ *        targets history.
+ * @scenario Composite 'Work' has `has_history = true` and substates `S1`/`S2`, but `Paused -> Work` has
+ *           `target_is_history = false`.
+ * @expected No `Work_HistoryRestore` choice state is created, avoiding ECPP004 un-inlined choice errors.
+ */
+TEST(StructuralLowering, HistoryLowering_SkipsOrphanRestoreChoiceWhenNoTransitionTargetsHistory) {
+    FsmIr ir;
+    ir.name = "NoHistTarget";
+    ir.initial_state = "Paused";
+
+    StateNode paused("Paused");
+    StateNode work("Work");
+    work.is_composite = true;
+    work.has_history = true;
+    work.initial_sub_state = "S1";
+    StateNode s1("S1", "", "Work");
+    StateNode s2("S2", "", "Work");
+    ir.states = {paused, work, s1, s2};
+
+    ir.transitions.emplace_back("Paused", "Work", "EvStart");
+    ir.transitions.emplace_back("S1", "S2", "EvNext");
+
+    DiagnosticEngine diag;
+    HistoryLoweringPass::run(ir, diag);
+
+    EXPECT_EQ(ir.find_state("Work_HistoryRestore"), nullptr);
+    EXPECT_TRUE(ir.choice_nodes.empty());
 }

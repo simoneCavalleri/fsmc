@@ -10,11 +10,13 @@
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/ir/trigger.hpp"
+#include "fsm/middleend/analysis/timed_invariants_verifier_pass.hpp"
 #include "fsm/middleend/passes/timed_deadlock_pass.hpp"
 
 using namespace fsm;
 using namespace fsm::diagnostic;
 using namespace fsm::middleend;
+using namespace fsm::middleend::analysis;
 using namespace fsm::middleend::passes;
 using namespace fsm::backend;
 using namespace fsm::backend::formal;
@@ -129,4 +131,38 @@ TEST(DeterministicTimerManager, SingleShotAndPeriodicTimers_StepsAndExpiresDeter
 
     // Timer 102 was periodic, so it stays active
     EXPECT_TRUE(mgr.is_timer_active(102));
+}
+
+/**
+ * @brief Verify TimedInvariantsVerifierPass inspects TimeTrigger duration even when TransitionEdge::event is
+ *        populated (e.g., "after_500ms").
+ * @scenario State 'Wait' has stay <= 100ms and sole outgoing transition with TimeTrigger(500ms) and
+ * event="after_500ms".
+ * @expected TimedInvariantsVerifierPass returns false and emits E0403 timelock diagnostic.
+ */
+TEST(TimedInvariantsVerifierTest, DetectsTimelockEvenWhenTimeTriggerSetsEventName) {
+    FsmIr ir;
+    ir.name = "TimelockEventName";
+    ir.initial_state = "Wait";
+
+    StateNode wait_st("Wait");
+    wait_st.time_invariant = "100[ms]";
+    ir.states.push_back(wait_st);
+    ir.states.emplace_back("Done");
+
+    TransitionEdge t("Wait", "Done", "after_500ms");
+    t.trigger = TimeTrigger(TimeTriggerKind::After, 500, TimeUnit::Milliseconds);
+    ir.transitions.push_back(std::move(t));
+
+    DiagnosticEngine diag;
+    TimedInvariantsVerifierPass pass;
+    EXPECT_FALSE(pass.run(ir, diag));
+    bool found_e0403 = false;
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "E0403") {
+            found_e0403 = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_e0403);
 }

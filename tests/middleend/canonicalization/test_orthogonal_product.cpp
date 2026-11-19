@@ -9,6 +9,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/passes/boundary_action_fusion_pass.hpp"
 #include "fsm/middleend/passes/fork_join_lowering_pass.hpp"
 #include "fsm/middleend/passes/orthogonal_product_pass.hpp"
 
@@ -558,6 +559,243 @@ TEST(OrthogonalProduct, ExternalEntryIntoSubState_ActivatesInitialStatesInOtherR
         }
     }
     EXPECT_TRUE(found);
+}
+
+/**
+ * @brief Verify internal self-loops in orthogonal regions remain Internal transitions in product states.
+ * @scenario Lower deferred events inside an orthogonal region before OrthogonalProductPass.
+ * @expected Generated self-loop in product state retains TransitionEdgeKind::Internal.
+ */
+TEST(OrthogonalProduct, InternalSelfLoopInRegion_RemainsInternalInProduct) {
+    FsmIr model;
+    model.name = "DeferredProductModel";
+
+    auto& par = model.add_state("P", "", StateKind::Parallel);
+    OrthogonalRegion r1;
+    r1.id = "R1";
+    r1.name = "R1";
+    r1.initial_state_id = "X";
+    r1.state_ids = {"X", "Y"};
+
+    OrthogonalRegion r2;
+    r2.id = "R2";
+    r2.name = "R2";
+    r2.initial_state_id = "A";
+    r2.state_ids = {"A", "B"};
+
+    par.orthogonal_regions = {r1, r2};
+    model.add_state("X", "R1");
+    model.add_state("Y", "R1");
+    model.add_state("A", "R2");
+    model.add_state("B", "R2");
+
+    TransitionEdge internal_loop("X", "X", "EvDefer", std::nullopt, std::nullopt, "", TransitionEdgeKind::Internal);
+    model.add_transition(internal_loop);
+
+    OrthogonalProductPass pass;
+    DiagnosticEngine diag;
+    ASSERT_TRUE(pass.run(model, diag));
+
+    bool found_internal = false;
+    for (const auto& t : model.transitions) {
+        if (t.source == "P_X_A" && t.target == "P_X_A" && t.event == "EvDefer") {
+            EXPECT_EQ(t.kind, TransitionEdgeKind::Internal);
+            found_internal = true;
+        }
+    }
+    EXPECT_TRUE(found_internal);
+}
+
+/**
+ * @brief Verify BoundaryActionFusionPass skips unchanged orthogonal region entry/exit hooks.
+ * @scenario Parallel state P with region R1 (A1 -> A2 on EvA) and region R2 (B1 with enter_b1/exit_b1).
+ * @expected Transition P_A1_B1 -> P_A2_B1 executes exit_a1 and enter_a2, but NOT exit_b1 or enter_b1.
+ */
+TEST(OrthogonalProduct, SkipsUnchangedRegionEntryExitActionsOnProductTransition) {
+    FsmIr model;
+    model.name = "OrthoSkipHooksTest";
+    model.initial_state = "P";
+
+    auto& par = model.add_state("P", "", StateKind::Parallel);
+    OrthogonalRegion r1;
+    r1.id = "R1";
+    r1.name = "R1";
+    r1.initial_state_id = "A1";
+    r1.state_ids = {"A1", "A2"};
+
+    OrthogonalRegion r2;
+    r2.id = "R2";
+    r2.name = "R2";
+    r2.initial_state_id = "B1";
+    r2.state_ids = {"B1"};
+
+    par.orthogonal_regions = {r1, r2};
+
+    auto make_store_act = [](const std::string& name) {
+        ActionSignature sig(name);
+        StoreOp op;
+        op.expression = name;
+        sig.instructions.emplace_back(op);
+        return sig;
+    };
+
+    auto& a1 = model.add_state("A1", "R1");
+    a1.entry_actions = {make_store_act("enter_a1")};
+    a1.exit_actions = {make_store_act("exit_a1")};
+
+    auto& a2 = model.add_state("A2", "R1");
+    a2.entry_actions = {make_store_act("enter_a2")};
+    a2.exit_actions = {make_store_act("exit_a2")};
+
+    auto& b1 = model.add_state("B1", "R2");
+    b1.entry_actions = {make_store_act("enter_b1")};
+    b1.exit_actions = {make_store_act("exit_b1")};
+
+    TransitionEdge t("A1", "A2", "EvA", std::nullopt, make_store_act("act_a"));
+    model.add_transition(t);
+
+    DiagnosticEngine diag;
+    OrthogonalProductPass ortho_pass;
+    ASSERT_TRUE(ortho_pass.run(model, diag));
+    ASSERT_TRUE(BoundaryActionFusionPass::run(model, diag));
+
+    bool found = false;
+    for (const auto& tr : model.transitions) {
+        if (tr.source == "P_A1_B1" && tr.target == "P_A2_B1" && tr.event == "EvA") {
+            found = true;
+            ASSERT_TRUE(tr.transition_action.has_value());
+            ASSERT_EQ(tr.transition_action->instructions.size(), 3u);
+            EXPECT_EQ(std::get<StoreOp>(tr.transition_action->instructions[0].op).expression, "exit_a1");
+            EXPECT_EQ(std::get<StoreOp>(tr.transition_action->instructions[1].op).expression, "act_a");
+            EXPECT_EQ(std::get<StoreOp>(tr.transition_action->instructions[2].op).expression, "enter_a2");
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+/**
+ * @brief Verify simultaneous orthogonal transitions combine actions with valid C++ identifier and single guard without
+ * extra parens.
+ * @scenario Parallel state P with R1 (A1 -> A2 on EvGo [g1] / act1) and R2 (B1 -> B2 on EvGo / act2).
+ * @expected Combined action name is 'act1_and_act2' with 2 ActionCallOps and guard is 'g1' (no wrapping parens).
+ */
+TEST(OrthogonalProduct, SimultaneousTransitionsSanitizeCombinedActionAndSingleGuard) {
+    FsmIr model;
+    model.name = "SimulOrthoTest";
+    model.initial_state = "P";
+
+    auto& par = model.add_state("P", "", StateKind::Parallel);
+    OrthogonalRegion r1{"R1", "R1", "A1", {"A1", "A2"}, 0};
+    OrthogonalRegion r2{"R2", "R2", "B1", {"B1", "B2"}, 0};
+    par.orthogonal_regions = {r1, r2};
+
+    model.add_state("A1", "R1");
+    model.add_state("A2", "R1");
+    model.add_state("B1", "R2");
+    model.add_state("B2", "R2");
+
+    model.add_transition(TransitionEdge("A1", "A2", "EvGo", "g1", ActionSignature("act1")));
+    model.add_transition(TransitionEdge("B1", "B2", "EvGo", std::nullopt, ActionSignature("act2")));
+
+    DiagnosticEngine diag;
+    OrthogonalProductPass pass;
+    ASSERT_TRUE(pass.run(model, diag));
+
+    bool found = false;
+    for (const auto& tr : model.transitions) {
+        if (tr.source == "P_A1_B1" && tr.target == "P_A2_B2" && tr.event == "EvGo") {
+            found = true;
+            ASSERT_TRUE(tr.guard.has_value());
+            EXPECT_EQ(*tr.guard, "g1");
+            ASSERT_TRUE(tr.transition_action.has_value());
+            EXPECT_EQ(tr.transition_action->name, "act1_and_act2");
+            ASSERT_EQ(tr.transition_action->instructions.size(), 2u);
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+/**
+ * @brief Verify simultaneous orthogonal transitions with assignment actions preserve assignments without synthesizing
+ * external service calls.
+ * @scenario Expand parallel regions where both transitions execute assignments on the same event.
+ * @expected Combined product transition retains both assignments and keeps instructions empty.
+ */
+TEST(OrthogonalProduct, SimultaneousAssignmentActions_DoNotEmitExternalServiceCalls) {
+    FsmIr model;
+    model.name = "OrthoAssign";
+    auto& par = model.add_state("P");
+    par.kind = StateKind::Parallel;
+    OrthogonalRegion r1{"R1", "R1", "A1", {"A1", "A2"}, 0};
+    OrthogonalRegion r2{"R2", "R2", "B1", {"B1", "B2"}, 0};
+    par.orthogonal_regions = {r1, r2};
+
+    model.add_state("A1", "R1");
+    model.add_state("A2", "R1");
+    model.add_state("B1", "R2");
+    model.add_state("B2", "R2");
+    model.add_variable(VariableDefinition("hits", DataType{PrimitiveTypeKind::Int32}, "0"));
+
+    ActionSignature a1("inc_1");
+    a1.assignments.emplace_back(LValueTarget("hits"), "hits + 1");
+    ActionSignature a2("inc_10");
+    a2.assignments.emplace_back(LValueTarget("hits"), "hits + 10");
+
+    model.add_transition(TransitionEdge("A1", "A2", "GO", std::nullopt, std::move(a1)));
+    model.add_transition(TransitionEdge("B1", "B2", "GO", std::nullopt, std::move(a2)));
+
+    DiagnosticEngine diag;
+    OrthogonalProductPass pass;
+    ASSERT_TRUE(pass.run(model, diag));
+
+    bool found = false;
+    for (const auto& tr : model.transitions) {
+        if (tr.source == "P_A1_B1" && tr.target == "P_A2_B2" && tr.event == "GO") {
+            found = true;
+            ASSERT_TRUE(tr.transition_action.has_value());
+            EXPECT_EQ(tr.transition_action->name, "inc_1_and_inc_10");
+            EXPECT_EQ(tr.transition_action->assignments.size(), 2u);
+            EXPECT_TRUE(tr.transition_action->instructions.empty());
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+/**
+ * @brief Regression: `OrthogonalProductPass` propagates `deferred_events` and `traceability_reqs`
+ * from member region states to synthesized Cartesian product states.
+ * @scenario Expand parallel state `P` with `A1` (`defer Ping`, `REQ_A1`) and `B1` (`REQ_B1`).
+ * @expected Product state `P_A1_B1` keeps `Ping` in `deferred_events` and both `REQ_A1`, `REQ_B1` in
+ * `traceability_reqs`.
+ */
+TEST(OrthogonalProduct, MemberDeferredEventsAndTraceabilityReqs_PropagatedToProductStates) {
+    FsmIr model;
+    model.name = "OrthoMetaProd";
+    model.initial_state = "P";
+
+    auto& par = model.add_state("P", "", StateKind::Parallel);
+    par.is_composite = true;
+    OrthogonalRegion r1{"R1", "R1", "A1", {"A1"}, 0};
+    OrthogonalRegion r2{"R2", "R2", "B1", {"B1"}, 0};
+    par.orthogonal_regions = {r1, r2};
+
+    auto& a1 = model.add_state("A1", "R1");
+    a1.deferred_events.push_back("Ping");
+    a1.traceability_reqs.push_back("REQ_A1");
+    auto& b1 = model.add_state("B1", "R2");
+    b1.traceability_reqs.push_back("REQ_B1");
+
+    DiagnosticEngine diag;
+    OrthogonalProductPass pass;
+    ASSERT_TRUE(pass.run(model, diag));
+
+    const auto* prod = model.find_state("P_A1_B1");
+    ASSERT_NE(prod, nullptr);
+    ASSERT_EQ(prod->deferred_events.size(), 1u);
+    EXPECT_EQ(prod->deferred_events[0], "Ping");
+    ASSERT_EQ(prod->traceability_reqs.size(), 2u);
+    EXPECT_EQ(prod->traceability_reqs[0], "REQ_A1");
+    EXPECT_EQ(prod->traceability_reqs[1], "REQ_B1");
 }
 
 }  // namespace

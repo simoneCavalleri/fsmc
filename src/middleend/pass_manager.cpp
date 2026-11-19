@@ -203,7 +203,8 @@ std::string ChoiceInliningPassWrapper::description() const {
 
 bool ChoiceInliningPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     ChoiceInliningPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 // ============================================================================
@@ -219,7 +220,8 @@ std::string ConnectiveJunctionChainingPassWrapper::description() const {
 
 bool ConnectiveJunctionChainingPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     ConnectiveJunctionChainingPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 // ============================================================================
@@ -434,7 +436,8 @@ std::string DeadStatePruningPassWrapper::description() const {
 }
 
 bool DeadStatePruningPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
-    return pass_->run(ir, diag);
+    (void)pass_->run(ir, diag);
+    return !diag.has_errors();
 }
 
 // ============================================================================
@@ -548,7 +551,8 @@ std::string OrthogonalProductPassWrapper::description() const {
 
 bool OrthogonalProductPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     OrthogonalProductPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 // ============================================================================
@@ -584,7 +588,8 @@ std::string ConstantFoldingPassWrapper::description() const {
 
 bool ConstantFoldingPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     ConstantFoldingPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 // ============================================================================
@@ -600,7 +605,8 @@ std::string StateMinimizationPassWrapper::description() const {
 
 bool StateMinimizationPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     StateMinimizationPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 // ============================================================================
@@ -635,7 +641,8 @@ std::string ForkJoinLoweringPassWrapper::description() const {
 }
 bool ForkJoinLoweringPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     ForkJoinLoweringPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 std::string HistoryLoweringPassWrapper::name() const {
@@ -646,7 +653,8 @@ std::string HistoryLoweringPassWrapper::description() const {
 }
 bool HistoryLoweringPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     HistoryLoweringPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 std::string DeferredEventLoweringPassWrapper::name() const {
@@ -657,7 +665,8 @@ std::string DeferredEventLoweringPassWrapper::description() const {
 }
 bool DeferredEventLoweringPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     DeferredEventLoweringPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 std::string BoundaryActionFusionPassWrapper::name() const {
@@ -668,7 +677,8 @@ std::string BoundaryActionFusionPassWrapper::description() const {
 }
 bool BoundaryActionFusionPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     BoundaryActionFusionPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 std::string SampledChangeTriggerPassWrapper::name() const {
@@ -679,7 +689,8 @@ std::string SampledChangeTriggerPassWrapper::description() const {
 }
 bool SampledChangeTriggerPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     SampledChangeTriggerPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 SubmachineInliningPassWrapper::SubmachineInliningPassWrapper(SubmachineResolver resolver)
@@ -693,7 +704,8 @@ std::string SubmachineInliningPassWrapper::description() const {
 }
 bool SubmachineInliningPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     SubmachineInliningPass pass(resolver_);
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 // ============================================================================
@@ -708,7 +720,8 @@ std::string DeadActionEliminationPassWrapper::description() const {
 }
 bool DeadActionEliminationPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     DeadActionEliminationPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 std::string RegisterLivenessPassWrapper::name() const {
@@ -719,7 +732,8 @@ std::string RegisterLivenessPassWrapper::description() const {
 }
 bool RegisterLivenessPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     RegisterLivenessPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 std::string TransitionFusionPassWrapper::name() const {
@@ -730,7 +744,8 @@ std::string TransitionFusionPassWrapper::description() const {
 }
 bool TransitionFusionPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     TransitionFusionPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 std::string CommonActionFactoringPassWrapper::name() const {
@@ -741,7 +756,8 @@ std::string CommonActionFactoringPassWrapper::description() const {
 }
 bool CommonActionFactoringPassWrapper::run(FsmIr& ir, DiagnosticEngine& diag) {
     CommonActionFactoringPass pass;
-    return pass.run(ir, diag);
+    (void)pass.run(ir, diag);
+    return !diag.has_errors();
 }
 
 // ============================================================================
@@ -859,11 +875,10 @@ PassManager PassManager::create_verified_7stage_pipeline(bool optimize) {
     pm.add_pass(std::make_unique<ForkJoinLoweringPassWrapper>());
     pm.add_pass(std::make_unique<HistoryLoweringPassWrapper>());
     pm.add_pass(std::make_unique<EventQueueBoundPassWrapper>());
-    pm.add_pass(std::make_unique<DeferredEventLoweringPassWrapper>());
     pm.add_pass(std::make_unique<OrthogonalProductPassWrapper>());
-    pm.add_pass(std::make_unique<BoundaryActionFusionPassWrapper>());
     pm.add_pass(std::make_unique<ConnectiveJunctionChainingPassWrapper>());
     pm.add_pass(std::make_unique<ChoiceInliningPassWrapper>());
+    pm.add_pass(std::make_unique<BoundaryActionFusionPassWrapper>());
     pm.add_pass(std::make_unique<SampledChangeTriggerPassWrapper>());
 
     // Stage 3: Formal Invariant & Safety Verification
@@ -946,6 +961,147 @@ bool PassManager::run(FsmIr& ir, DiagnosticEngine& diag) {
 
 const std::vector<PassExecutionStats>& PassManager::get_stats() const noexcept {
     return stats_;
+}
+
+std::unique_ptr<IPass> PassManager::create_pass_by_name(
+    std::string_view p_name, std::string_view pipe_cmd,
+    SubmachineInliningPassWrapper::SubmachineResolver submachine_resolver) {
+    if (p_name == "canonicalize" || p_name == "hierarchy-canonicalization" || p_name == "HierarchyCanonicalization") {
+        return std::make_unique<HierarchyCanonicalizationPass>();
+    }
+    if (p_name == "semantic-validation" || p_name == "SemanticValidation") {
+        return std::make_unique<SemanticValidationPass>();
+    }
+    if (p_name == "guard-simplification") {
+        return std::make_unique<GuardSimplificationPassWrapper>();
+    }
+    if (p_name == "determinism" || p_name == "determinism-enforcement") {
+        return std::make_unique<DeterminismEnforcementPassWrapper>();
+    }
+    if (p_name == "race-check" || p_name == "orthogonal-interference") {
+        return std::make_unique<OrthogonalInterferencePassWrapper>();
+    }
+    if (p_name == "dead-state-pruning") {
+        return std::make_unique<DeadStatePruningPassWrapper>(true);
+    }
+    if (p_name == "choice-completeness" || p_name == "ChoiceCompleteness") {
+        return std::make_unique<ChoiceCompletenessPass>();
+    }
+    if (p_name == "choice-inlining") {
+        return std::make_unique<ChoiceInliningPassWrapper>();
+    }
+    if (p_name == "timed-deadlock") {
+        return std::make_unique<TimedDeadlockPassWrapper>();
+    }
+    if (p_name == "efsm-data-path" || p_name == "EFSMDataPath") {
+        return std::make_unique<EFSMDataPathPass>();
+    }
+    if (p_name == "safety-verifier" || p_name == "ModelSafetyVerifier") {
+        return std::make_unique<ModelSafetyVerifierPass>();
+    }
+    if (p_name == "model-checking" || p_name == "ModelCheckingPass") {
+        return std::make_unique<ModelCheckingPass>();
+    }
+    if (p_name == "orthogonal-product") {
+        return std::make_unique<OrthogonalProductPassWrapper>();
+    }
+    if (p_name == "wcet-analysis") {
+        return std::make_unique<WcetAnalysisPassWrapper>();
+    }
+    if (p_name == "constant-folding") {
+        return std::make_unique<ConstantFoldingPassWrapper>();
+    }
+    if (p_name == "state-minimization") {
+        return std::make_unique<StateMinimizationPassWrapper>();
+    }
+    if (p_name == "guard-satisfiability") {
+        return std::make_unique<GuardSatisfiabilityPassWrapper>();
+    }
+    if (p_name == "fork-join-lowering") {
+        return std::make_unique<ForkJoinLoweringPassWrapper>();
+    }
+    if (p_name == "history-lowering") {
+        return std::make_unique<HistoryLoweringPassWrapper>();
+    }
+    if (p_name == "deferred-event-lowering") {
+        return std::make_unique<DeferredEventLoweringPassWrapper>();
+    }
+    if (p_name == "boundary-action-fusion") {
+        return std::make_unique<BoundaryActionFusionPassWrapper>();
+    }
+    if (p_name == "dead-action-elimination") {
+        return std::make_unique<DeadActionEliminationPassWrapper>();
+    }
+    if (p_name == "register-liveness") {
+        return std::make_unique<RegisterLivenessPassWrapper>();
+    }
+    if (p_name == "transition-fusion") {
+        return std::make_unique<TransitionFusionPassWrapper>();
+    }
+    if (p_name == "common-action-factoring") {
+        return std::make_unique<CommonActionFactoringPassWrapper>();
+    }
+    if (p_name == "livelock-analysis") {
+        return std::make_unique<LivelockAnalysisPassWrapper>();
+    }
+    if (p_name == "priority-conflict-check") {
+        return std::make_unique<PriorityConflictPassWrapper>();
+    }
+    if (p_name == "timed-invariants-verifier") {
+        return std::make_unique<TimedInvariantsVerifierPassWrapper>();
+    }
+    if (p_name == "event-queue-bound") {
+        return std::make_unique<EventQueueBoundPassWrapper>();
+    }
+    if (p_name == "inline-submachines" || p_name == "submachine-inlining") {
+        return std::make_unique<SubmachineInliningPassWrapper>(std::move(submachine_resolver));
+    }
+    if (p_name == "sampled-change-trigger" || p_name == "sampled-change-triggers") {
+        return std::make_unique<SampledChangeTriggerPassWrapper>();
+    }
+    if (p_name == "connective-junction-chaining") {
+        return std::make_unique<ConnectiveJunctionChainingPassWrapper>();
+    }
+    if (p_name == "pipe-through") {
+        return std::make_unique<PipeThroughPassWrapper>(std::string(pipe_cmd));
+    }
+    return nullptr;
+}
+
+std::vector<std::string_view> PassManager::registered_pass_names() {
+    return {"hierarchy-canonicalization",
+            "semantic-validation",
+            "guard-simplification",
+            "determinism-enforcement",
+            "orthogonal-interference",
+            "dead-state-pruning",
+            "choice-completeness",
+            "choice-inlining",
+            "timed-deadlock",
+            "efsm-data-path",
+            "safety-verifier",
+            "model-checking",
+            "orthogonal-product",
+            "wcet-analysis",
+            "constant-folding",
+            "state-minimization",
+            "guard-satisfiability",
+            "fork-join-lowering",
+            "history-lowering",
+            "deferred-event-lowering",
+            "boundary-action-fusion",
+            "dead-action-elimination",
+            "register-liveness",
+            "transition-fusion",
+            "common-action-factoring",
+            "livelock-analysis",
+            "priority-conflict-check",
+            "timed-invariants-verifier",
+            "event-queue-bound",
+            "submachine-inlining",
+            "sampled-change-trigger",
+            "connective-junction-chaining",
+            "pipe-through"};
 }
 
 }  // namespace fsm::middleend

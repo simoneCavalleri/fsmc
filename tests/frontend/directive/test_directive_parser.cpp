@@ -207,12 +207,62 @@ TEST(GuardParser, RelationalExpressions_TokenizedAndForwarded) {
     EXPECT_EQ(res.atomic_guard_details[1].name, "faultCount_lt_3");
     EXPECT_EQ(res.atomic_guard_details[1].expression, "faultCount < 3");
     EXPECT_NE(res.cpp_type.find("fsm::and_<canBusHealthy, faultCount_lt_3>"), std::string::npos);
+    ASSERT_TRUE(res.ast.has_value());
+    EXPECT_EQ(res.ast->op, GuardOp::And);
+    ASSERT_EQ(res.ast->children.size(), 2u);
+    EXPECT_EQ(res.ast->children[0].expression, "canBusHealthy");
+    EXPECT_EQ(res.ast->children[1].expression, "faultCount_lt_3");
 
     auto res2 = GuardExpressionParser::parse("(keyInserted and batteryLevel > 11.5)");
     ASSERT_EQ(res2.atomic_guard_details.size(), 2u);
     EXPECT_EQ(res2.atomic_guard_details[0].name, "keyInserted");
     EXPECT_EQ(res2.atomic_guard_details[1].name, "batteryLevel_gt_11_5");
     EXPECT_EQ(res2.atomic_guard_details[1].expression, "batteryLevel > 11.5");
+}
+
+/**
+ * @brief Regression: `@fsm:var` for non-primitive custom types (struct/enum) without `init=` leaves
+ * `initial_value` empty rather than defaulting to `"0"`.
+ * @scenario Parse `@fsm:var name=tel type=Telemetry`.
+ * @expected `var->initial_value` is empty.
+ */
+TEST(DirectiveParser, VariableDirective_NonPrimitiveWithoutInitClearsDefaultZero) {
+    auto var = DirectiveParser::parse_variable_directive("var name=tel type=Telemetry");
+    ASSERT_TRUE(var.has_value());
+    EXPECT_EQ(var->name, "tel");
+    EXPECT_EQ(var->type, "Telemetry");
+    EXPECT_TRUE(var->initial_value.empty());
+}
+
+/**
+ * @brief Regression: `GuardExpressionParser` does not split on `&&`, `||`, or parentheses inside quoted
+ * string literals.
+ * @scenario Parse `msg == "a && b" && ready`.
+ * @expected Two atomic guards: `msg == "a && b"` and `ready`.
+ */
+TEST(GuardParser, QuotedStringWithLogicalOperators_NotSplit) {
+    auto res = GuardExpressionParser::parse(R"(msg == "a && b" && ready)");
+    ASSERT_EQ(res.atomic_guard_details.size(), 2u);
+    EXPECT_EQ(res.atomic_guard_details[0].expression, R"(msg == "a && b")");
+    EXPECT_EQ(res.atomic_guard_details[1].expression, "ready");
+}
+
+/**
+ * @brief Regression: `@fsm:var` for `type=string` preserves quotes when `init=` is provided and
+ * clears the default `"0"` when `init=` is omitted.
+ * @scenario Parse `@fsm:var name=msg type=string init="a/b"` and `@fsm:var name=empty type=string`.
+ * @expected `msg` has `initial_value == "\"a/b\""`; `empty` has empty `initial_value`.
+ */
+TEST(DirectiveParser, VariableDirective_StringInitPreservesQuotesAndOmitsDefaultZero) {
+    auto with_init = DirectiveParser::parse_variable_directive(R"(var name=msg type=string init="a/b")");
+    ASSERT_TRUE(with_init.has_value());
+    EXPECT_EQ(with_init->name, "msg");
+    EXPECT_EQ(with_init->initial_value, R"("a/b")");
+
+    auto no_init = DirectiveParser::parse_variable_directive("var name=empty type=string");
+    ASSERT_TRUE(no_init.has_value());
+    EXPECT_EQ(no_init->name, "empty");
+    EXPECT_TRUE(no_init->initial_value.empty());
 }
 
 }  // namespace

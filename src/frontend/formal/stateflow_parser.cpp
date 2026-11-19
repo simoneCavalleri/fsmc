@@ -284,7 +284,7 @@ bool StateflowParser::parse(std::string_view content, FsmIr& model, std::string&
     // Parse @fsm directives from XML comments
     {
         std::string raw_str{content};
-        std::regex comment_re(R"(<!--\s*@fsm:([^\r\n-]+?)\s*-->)");
+        std::regex comment_re(R"(<!--\s*@fsm:([^\r\n]+?)\s*-->)");
         auto begin = std::sregex_iterator(raw_str.begin(), raw_str.end(), comment_re);
         auto end = std::sregex_iterator();
         for (auto i = begin; i != end; ++i) {
@@ -296,6 +296,29 @@ bool StateflowParser::parse(std::string_view content, FsmIr& model, std::string&
 
     // Parse Stateflow elements
     parse_chart_elements(chart_node, model, "");
+
+    // In Stateflow, transitions entering a composite state that owns a HISTORY junction target its history
+    auto is_descendant_of = [&](const std::string& state_name, const std::string& ancestor_name) {
+        std::string cur = state_name;
+        for (std::size_t depth = 0; !cur.empty() && depth < model.states.size(); ++depth) {
+            if (cur == ancestor_name) {
+                return true;
+            }
+            const auto* st = model.find_state(cur);
+            cur = (st != nullptr) ? st->parent_state : "";
+        }
+        return false;
+    };
+    for (auto& t : model.transitions) {
+        if (t.target_is_history || t.target.empty()) {
+            continue;
+        }
+        const auto* tgt = model.find_state(t.target);
+        if (tgt != nullptr && tgt->has_history && !is_descendant_of(t.source, tgt->name)) {
+            t.target_is_history = true;
+            t.target_is_deep_history = tgt->has_deep_history;
+        }
+    }
 
     if (model.states.empty()) {
         error_message = "Stateflow Parser: No states found in Stateflow chart.";
@@ -322,6 +345,8 @@ std::shared_ptr<XmlNode> StateflowParser::find_element_recursive(const std::shar
     }
     return nullptr;
 }
+
+static ActionSignature build_stateflow_action(std::string_view raw_action, const std::string& fallback_prefix);
 
 void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node, FsmIr& model,
                                            const std::string& parent_state) {
@@ -351,6 +376,10 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
             }
 
             auto* s = model.find_state_mut(st_name);
+            std::string initial_sub = child->get_attr("initial");
+            if (s != nullptr && !initial_sub.empty()) {
+                s->initial_sub_state = sanitize_identifier(initial_sub);
+            }
 
             // Parse entry, during, exit attributes
             std::string entry_act = child->get_attr("entry");
@@ -370,6 +399,35 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
                 exit_act = child->get_attr("ex");
             if (exit_act.empty())
                 exit_act = child->get_attr("on_exit");
+
+            std::string defer_attr = child->get_attr("defer");
+            if (!defer_attr.empty() && s != nullptr) {
+                std::istringstream dss(defer_attr);
+                std::string dev;
+                while (std::getline(dss, dev, ',')) {
+                    std::string d_evt = sanitize_identifier(trim(dev));
+                    if (!d_evt.empty()) {
+                        model.add_event(d_evt);
+                        s->deferred_events.push_back(d_evt);
+                    }
+                }
+            }
+            std::string req_attr = child->get_attr("satisfies");
+            if (!req_attr.empty() && s != nullptr) {
+                std::istringstream rss(req_attr);
+                std::string req_item;
+                while (std::getline(rss, req_item, ',')) {
+                    std::string r = std::string(trim(req_item));
+                    if (!r.empty() && std::find(s->traceability_reqs.begin(), s->traceability_reqs.end(), r) ==
+                                          s->traceability_reqs.end()) {
+                        s->traceability_reqs.push_back(r);
+                    }
+                }
+            }
+            std::string inv_attr = child->get_attr("invariant");
+            if (!inv_attr.empty() && s != nullptr) {
+                s->time_invariant = inv_attr;
+            }
 
             // Parse state labelString (e.g. StateName\nentry: ...\nduring: ...\nexit: ...)
             std::string state_label = child->get_attr("labelString");
@@ -416,37 +474,61 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
             }
 
             if (s != nullptr) {
-                if (!entry_act.empty()) {
-                    std::istringstream iss(entry_act);
+                auto append_lifecycle_actions = [&](const std::string& raw_list, const std::string& suffix,
+                                                    std::vector<ActionSignature>& target) {
+                    if (raw_list.empty()) {
+                        return;
+                    }
+                    std::istringstream iss(raw_list);
                     std::string part;
                     while (std::getline(iss, part, ';')) {
                         std::string a = std::string(trim(part));
                         if (!a.empty()) {
-                            std::string aname = sanitize_identifier(a);
-                            model.add_action(aname);
-                            s->entry_actions.emplace_back(aname);
+                            ActionSignature sig = build_stateflow_action(a, st_name + suffix);
+                            model.add_action(sig.name);
+                            target.push_back(std::move(sig));
                         }
                     }
-                }
+                };
+                append_lifecycle_actions(entry_act, "_entry", s->entry_actions);
                 if (!during_act.empty()) {
                     s->do_activity = sanitize_identifier(during_act);
                 }
-                if (!exit_act.empty()) {
-                    std::istringstream iss(exit_act);
-                    std::string part;
-                    while (std::getline(iss, part, ';')) {
-                        std::string a = std::string(trim(part));
-                        if (!a.empty()) {
-                            std::string aname = sanitize_identifier(a);
-                            model.add_action(aname);
-                            s->exit_actions.emplace_back(aname);
-                        }
-                    }
-                }
+                append_lifecycle_actions(exit_act, "_exit", s->exit_actions);
             }
 
             // Recursively parse child states and transitions
             parse_chart_elements(child, model, st_name);
+
+            // Populate orthogonal_regions for PARALLEL_AND states after children are parsed
+            if (auto* par_st = model.find_state_mut(st_name);
+                par_st != nullptr && par_st->kind == StateKind::Parallel) {
+                par_st->is_composite = true;
+                par_st->initial_sub_state.clear();
+                auto is_pseudo = [](const StateNode& sn) {
+                    return sn.kind == StateKind::Junction || sn.kind == StateKind::Choice ||
+                           sn.kind == StateKind::Fork || sn.kind == StateKind::Join ||
+                           sn.kind == StateKind::EntryPoint || sn.kind == StateKind::ExitPoint;
+                };
+                for (const auto& reg_node : model.states) {
+                    if (reg_node.parent_state != st_name || is_pseudo(reg_node)) {
+                        continue;
+                    }
+                    OrthogonalRegion reg;
+                    reg.id = reg_node.name;
+                    reg.name = reg_node.name;
+                    reg.initial_state_id = reg_node.initial_sub_state;
+                    for (const auto& leaf : model.states) {
+                        if (leaf.parent_state == reg_node.name && !is_pseudo(leaf)) {
+                            reg.state_ids.push_back(leaf.name);
+                            if (reg.initial_state_id.empty()) {
+                                reg.initial_state_id = leaf.name;
+                            }
+                        }
+                    }
+                    par_st->orthogonal_regions.push_back(std::move(reg));
+                }
+            }
         } else if (child->tag == "junction" || child->tag == "Junction") {
             std::string jtype = child->get_attr("type");
             std::string jid = child->get_attr("SSID");
@@ -623,6 +705,66 @@ StateflowParser::StateflowLabelComponents StateflowParser::parse_stateflow_label
     return res;
 }
 
+static ActionSignature build_stateflow_action(std::string_view raw_action, const std::string& fallback_prefix) {
+    static const std::regex assign_regex(
+        R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*(=|\+=|-=|\*=|\/=)\s*(.+)$)",
+        std::regex::optimize);
+    static const std::regex inc_regex(
+        R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*(\+\+|--)$)",
+        std::regex::optimize);
+
+    std::vector<ActionAssignment> assignments;
+    std::string raw_str(raw_action);
+    std::stringstream ss(raw_str);
+    std::string stmt;
+    while (std::getline(ss, stmt, ';')) {
+        size_t first = stmt.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos) {
+            continue;
+        }
+        size_t last = stmt.find_last_not_of(" \t\r\n");
+        std::string trimmed = stmt.substr(first, last - first + 1);
+        std::smatch m;
+        if (std::regex_match(trimmed, m, assign_regex)) {
+            std::string scope_prefix = m[1].str();
+            std::string var_path = m[2].str();
+            std::string op = m[3].str();
+            std::string rhs = m[4].str();
+            size_t rfirst = rhs.find_first_not_of(" \t\r\n");
+            size_t rlast = rhs.find_last_not_of(" \t\r\n");
+            if (rfirst != std::string::npos) {
+                rhs = rhs.substr(rfirst, rlast - rfirst + 1);
+            }
+            LValueTarget tgt(scope_prefix + var_path);
+            if (op == "=") {
+                assignments.push_back({tgt, rhs});
+            } else if (op == "+=") {
+                assignments.push_back({tgt, var_path + " + " + rhs});
+            } else if (op == "-=") {
+                assignments.push_back({tgt, var_path + " - " + rhs});
+            } else if (op == "*=") {
+                assignments.push_back({tgt, var_path + " * (" + rhs + ")"});
+            } else if (op == "/=") {
+                assignments.push_back({tgt, var_path + " / (" + rhs + ")"});
+            }
+        } else if (std::regex_match(trimmed, m, inc_regex)) {
+            std::string scope_prefix = m[1].str();
+            std::string var_path = m[2].str();
+            std::string op = m[3].str();
+            LValueTarget tgt(scope_prefix + var_path);
+            assignments.push_back({tgt, op == "++" ? (var_path + " + 1") : (var_path + " - 1")});
+        }
+    }
+
+    if (!assignments.empty()) {
+        std::string name = fallback_prefix + "_" + sanitize_identifier(assignments.front().target.name);
+        ActionSignature sig(std::move(name));
+        sig.assignments = std::move(assignments);
+        return sig;
+    }
+    return ActionSignature(sanitize_identifier(raw_action));
+}
+
 void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>& trans_node, FsmIr& model,
                                                  const std::string& scope) {
     std::string src = trans_node->get_attr("src");
@@ -630,6 +772,12 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
     if (src.empty() && !dst.empty()) {
         if (scope.empty() && model.initial_state.empty()) {
             model.initial_state = sanitize_identifier(dst);
+        } else if (!scope.empty()) {
+            if (auto* parent = model.find_state_mut(scope)) {
+                if (parent->initial_sub_state.empty()) {
+                    parent->initial_sub_state = sanitize_identifier(dst);
+                }
+            }
         }
         return;
     }
@@ -639,7 +787,44 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
         label = trans_node->get_attr("label");
     }
 
+    auto strip_matlab_comments = [](std::string_view input) -> std::string {
+        std::string out;
+        out.reserve(input.size());
+        char quote = '\0';
+        for (size_t i = 0; i < input.size(); ++i) {
+            char c = input[i];
+            if (quote != '\0') {
+                out.push_back(c);
+                if (c == '\\' && i + 1 < input.size()) {
+                    out.push_back(input[++i]);
+                } else if (c == quote) {
+                    quote = '\0';
+                }
+                continue;
+            }
+            if (c == '"' || c == '\'') {
+                quote = c;
+                out.push_back(c);
+                continue;
+            }
+            if (c == '%') {
+                while (i < input.size() && input[i] != '\n') {
+                    ++i;
+                }
+                if (i < input.size() && input[i] == '\n') {
+                    out.push_back('\n');
+                }
+                continue;
+            }
+            out.push_back(c);
+        }
+        return std::string{trim(out)};
+    };
+
     auto comps = parse_stateflow_label(label);
+    comps.guard = strip_matlab_comments(comps.guard);
+    comps.condition_action = strip_matlab_comments(comps.condition_action);
+    comps.transition_action = strip_matlab_comments(comps.transition_action);
 
     std::string src_name = sanitize_identifier(src.empty() ? scope : src);
     std::string dst_name = sanitize_identifier(dst.empty() ? src_name : dst);
@@ -651,16 +836,45 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
     TransitionEdge trans;
     trans.source = src_name;
     trans.target = dst_name;
-    trans.event = sanitize_identifier(comps.event);
+    std::string trans_type = trans_node->get_attr("type");
+    if (trans_type.empty()) {
+        trans_type = trans_node->get_attr("kind");
+    }
+    if (trans_type == "internal" || (dst.empty() && !src.empty())) {
+        trans.kind = TransitionEdgeKind::Internal;
+    } else if (trans_type == "local") {
+        trans.kind = TransitionEdgeKind::Local;
+    }
+    static const std::regex when_ev_regex(R"(^\s*when\s*\((.+)\)\s*$)", std::regex::icase);
+    std::smatch wm;
+    if (!comps.event.empty() && std::regex_match(comps.event, wm, when_ev_regex)) {
+        trans.trigger = ChangeTrigger(std::string(trim(wm[1].str())), true);
+    } else {
+        trans.event = sanitize_identifier(comps.event);
+    }
     if (comps.time_trigger.has_value()) {
         trans.trigger = *comps.time_trigger;
     }
     if (!comps.guard.empty()) {
-        auto parsed = directive::GuardExpressionParser::parse(comps.guard);
+        std::string norm_guard;
+        norm_guard.reserve(comps.guard.size());
+        for (size_t gi = 0; gi < comps.guard.size(); ++gi) {
+            if (comps.guard[gi] == '~') {
+                if (gi + 1 < comps.guard.size() && comps.guard[gi + 1] == '=') {
+                    norm_guard += "!=";
+                    ++gi;
+                } else {
+                    norm_guard.push_back('!');
+                }
+            } else {
+                norm_guard.push_back(comps.guard[gi]);
+            }
+        }
+        auto parsed = directive::GuardExpressionParser::parse(norm_guard);
         if (!parsed.cpp_type.empty()) {
             trans.guard = parsed.cpp_type;
             for (const auto& detail : parsed.atomic_guard_details) {
-                model.add_guard(detail.name, "", detail.expression, std::nullopt);
+                model.add_guard(detail.name, "", detail.expression, detail.expression);
             }
             for (const auto& a : parsed.atomic_guards) {
                 model.add_guard(a);
@@ -670,16 +884,37 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
             // boolean expression (which would corrupt operator characters like >, &&, ! etc.).
             std::string guard_name = "guard_" + sanitize_identifier(src_name) + "_to_" + sanitize_identifier(dst_name) +
                                      "_" + std::to_string(model.transitions.size() + 1);
-            model.add_guard(guard_name, "", std::optional<std::string>{comps.guard}, std::nullopt);
+            model.add_guard(guard_name, "", std::optional<std::string>{norm_guard},
+                            std::optional<std::string>{norm_guard});
             trans.guard = guard_name;
         }
     }
+    auto disambiguate_action = [&](ActionSignature& sig) {
+        if (sig.assignments.empty()) {
+            return;
+        }
+        const std::string base = sig.name;
+        std::size_t suffix = 2;
+        auto has_action = [&](const std::string& n) {
+            return std::any_of(model.actions.begin(), model.actions.end(), [&](const auto& a) { return a.name == n; });
+        };
+        while (has_action(sig.name)) {
+            sig.name = base + "_" + std::to_string(suffix++);
+            sig.invocation = sig.name;
+        }
+    };
     if (!comps.condition_action.empty()) {
-        trans.condition_action = ActionSignature(sanitize_identifier(comps.condition_action));
+        std::string prefix = sanitize_identifier(src_name) + "_" + sanitize_identifier(dst_name) + "_cond";
+        ActionSignature sig = build_stateflow_action(comps.condition_action, prefix);
+        disambiguate_action(sig);
+        trans.condition_action = std::move(sig);
         model.add_action(trans.condition_action->name);
     }
     if (!comps.transition_action.empty()) {
-        trans.transition_action = ActionSignature(sanitize_identifier(comps.transition_action));
+        std::string prefix = sanitize_identifier(src_name) + "_" + sanitize_identifier(dst_name) + "_act";
+        ActionSignature sig = build_stateflow_action(comps.transition_action, prefix);
+        disambiguate_action(sig);
+        trans.transition_action = std::move(sig);
         model.add_action(trans.transition_action->name);
     }
 

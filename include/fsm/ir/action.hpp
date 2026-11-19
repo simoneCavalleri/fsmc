@@ -343,6 +343,19 @@ struct ActionModel {
         : name(std::move(action_name)), description(std::move(action_desc)) {}
 
     bool operator<(const ActionModel& other) const noexcept { return name < other.name; }
+    bool operator==(const ActionModel& other) const noexcept = default;
 };
+
+/**
+ * @brief Parses semicolon-separated variable assignment statements into an ActionSignature.
+ * @return Populated ActionSignature if at least one assignment/increment statement is matched; std::nullopt otherwise.
+ */
+std::optional<ActionSignature> try_parse_assignment_action(std::string_view raw_action,
+                                                           const std::string& fallback_prefix);
+
+/**
+ * @brief Formats an ActionSignature into assignment expressions if present, or falls back to its action name.
+ */
+std::string format_action_expression(const ActionSignature& act);
 
 }  // namespace fsm::ir

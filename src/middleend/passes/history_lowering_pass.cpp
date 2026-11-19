@@ -100,7 +100,8 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 is_target = (s.parent_state == parent_name);
             }
 
-            if (is_target && s.kind != StateKind::ShallowHistory && s.kind != StateKind::DeepHistory) {
+            if (is_target && s.kind != StateKind::ShallowHistory && s.kind != StateKind::DeepHistory &&
+                (!is_deep || !s.is_composite)) {
                 if (std::find(target_substates.begin(), target_substates.end(), s.name) == target_substates.end()) {
                     target_substates.push_back(s.name);
                 }
@@ -112,14 +113,38 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 
                 ActionSignature exit_sig("__record_history_" + s.name);
                 exit_sig.instructions.emplace_back(store, "Record active substate on exit");
-                exit_sig.assignments.emplace_back(store.target, store.expression);
                 s.exit_actions.push_back(std::move(exit_sig));
                 modified = true;
             }
         }
 
+        if (is_deep && !default_substate.empty()) {
+            std::unordered_set<std::string> visited_def;
+            while (visited_def.insert(default_substate).second) {
+                const auto* def_node = ir.find_state(default_substate);
+                if (def_node != nullptr && def_node->is_composite && !def_node->initial_sub_state.empty()) {
+                    default_substate = def_node->initial_sub_state;
+                } else {
+                    break;
+                }
+            }
+        }
+
         if (default_substate.empty() && !target_substates.empty()) {
             default_substate = target_substates.front();
+        }
+
+        // Only synthesize a HistoryRestore choice node if at least one transition actually targets this history.
+        bool has_incoming_history = false;
+        for (const auto& t : ir.transitions) {
+            if (history_pseudostates_of_parent.count(t.target) > 0 ||
+                ((t.target_is_history || t.target_is_deep_history) && t.target == parent_name)) {
+                has_incoming_history = true;
+                break;
+            }
+        }
+        if (!has_incoming_history) {
+            continue;
         }
 
         // 2. Synthesize shadow history state variable
@@ -144,20 +169,24 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         std::string restore_choice_name = parent_name + "_HistoryRestore";
         StateNode restore_node(restore_choice_name, "Choice branch restoring recorded history substate", parent_name);
         restore_node.kind = StateKind::Choice;
+        // Preserve parent membership across normalize_hierarchy() even before choice inlining.
+        restore_node.pinned_parent = true;
         ir.states.push_back(std::move(restore_node));
         ir.choice_nodes.emplace_back(restore_choice_name);
 
         // Add restore branch transitions from choice to each substate
         for (const auto& sub_name : target_substates) {
-            std::string grd = history_var_name + " == \"" + sub_name + "\"";
-            TransitionEdge branch(restore_choice_name, sub_name, "", grd, std::nullopt, "Restore branch to " + sub_name,
-                                  TransitionEdgeKind::External, 0);
+            std::string grd_name = "__hist_" + parent_name + "_is_" + sub_name;
+            std::string grd_expr = history_var_name + " == \"" + sub_name + "\"";
+            ir.add_guard(grd_name, "History restore predicate for " + sub_name, grd_expr, grd_expr);
+            TransitionEdge branch(restore_choice_name, sub_name, "", grd_name, std::nullopt,
+                                  "Restore branch to " + sub_name, TransitionEdgeKind::External, 1);
             ir.transitions.push_back(std::move(branch));
         }
 
-        // Add default/else fallback branch
+        // Add default/else fallback branch with lower priority (2) than guarded branches (1)
         TransitionEdge fallback(restore_choice_name, default_substate, "", "else", std::nullopt,
-                                "Default history restore fallback", TransitionEdgeKind::External, 0);
+                                "Default history restore fallback", TransitionEdgeKind::External, 2);
         ir.transitions.push_back(std::move(fallback));
 
         // 5. Retarget incoming transitions pointing to history to the restore choice node

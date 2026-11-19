@@ -275,4 +275,248 @@ TEST(ChoiceInlining, CombinedGuards_ProduceTargetAgnosticGuardAst) {
     EXPECT_EQ(combined.guard.value_or("").find("fsm::and_"), std::string::npos);
 }
 
+/**
+ * @brief Regression: `else` fallback branches in ChoiceInliningPass must sort after guarded branches.
+ * @scenario Inline a choice node with a guarded branch to `Working` and an `else` branch to `ErrorState`.
+ * @expected The guarded branch receives higher priority (smaller non-zero priority) than the `else` fallback.
+ */
+TEST(InliningPasses, ChoiceInlining_ElseBranchHasLowerPriorityThanGuardedBranch) {
+    FsmIr ir;
+    ir.name = "ChoiceElsePrio";
+    ir.initial_state = "Working";
+    ir.add_state("Working");
+    ir.add_state("ErrorState");
+    ir.add_state("Decide", "", StateKind::Choice);
+    ir.add_event("EvCheck");
+
+    ir.add_transition(TransitionEdge("Working", "Decide", "EvCheck"));
+    TransitionEdge t_ok("Decide", "Working", "");
+    t_ok.set_guard("sensor_ok_eq_true");
+    ir.add_transition(std::move(t_ok));
+
+    TransitionEdge t_else("Decide", "ErrorState", "");
+    t_else.set_guard("else");
+    ir.add_transition(std::move(t_else));
+
+    ChoiceInliningPass pass;
+    DiagnosticEngine diag;
+    ASSERT_TRUE(pass.run(ir, diag));
+    ASSERT_EQ(ir.transitions.size(), 2u);
+
+    const TransitionEdge* guarded_edge = nullptr;
+    const TransitionEdge* else_edge = nullptr;
+    for (const auto& t : ir.transitions) {
+        if (t.target == "Working") {
+            guarded_edge = &t;
+        } else if (t.target == "ErrorState") {
+            else_edge = &t;
+        }
+    }
+    ASSERT_NE(guarded_edge, nullptr);
+    ASSERT_NE(else_edge, nullptr);
+    EXPECT_GT(guarded_edge->priority, 0u);
+    EXPECT_EQ(else_edge->priority, 0u);
+}
+
+/**
+ * @brief Regression: `ChoiceInliningPass` prunes unreachable choice pseudostates (`incoming.empty()`)
+ * and their dangling outgoing transitions so C++ backend validation does not reject with `ECPP004`.
+ * @scenario Run `ChoiceInliningPass` on a model containing an unreachable choice node `C_dead -> Dead`.
+ * @expected `C_dead` is removed from `choice_nodes` and `states`, and its dangling transition is pruned.
+ */
+TEST(InliningPasses, ChoiceInlining_PrunesUnreachableChoicePseudostates) {
+    FsmIr ir;
+    ir.name = "UnreachableChoice";
+    ir.initial_state = "Init";
+    ir.add_state("Init");
+    ir.add_state("Dead");
+    ir.add_choice_node("C_dead");
+    ir.add_transition(TransitionEdge("C_dead", "Dead", ""));
+
+    ChoiceInliningPass pass;
+    DiagnosticEngine diag;
+    ASSERT_TRUE(pass.run(ir, diag));
+    EXPECT_FALSE(ir.is_choice_node("C_dead"));
+    EXPECT_TRUE(ir.choice_nodes.empty());
+    EXPECT_TRUE(ir.transitions.empty());
+}
+
+/**
+ * @brief Verify SubmachineInliningPass in modular mode (null resolver), unresolved model, and recursive self-inlining.
+ */
+TEST(SubmachineInlining, ModularUnresolvedAndRecursive_DiagnosticsHandledGracefully) {
+    // 1. No resolver -> modular info diagnostic, submachine ref preserved
+    {
+        FsmIr ir;
+        ir.name = "HostModular";
+        auto& st = ir.add_or_get_state("SubHost", "", StateKind::Composite);
+        st.submachine = SubmachineRef("ExternalFsm", "ext.sysml");
+
+        SubmachineInliningPass modular_pass;
+        DiagnosticEngine diag;
+        EXPECT_TRUE(modular_pass.run(ir, diag));
+        EXPECT_FALSE(diag.has_errors());
+        EXPECT_TRUE(ir.find_state("SubHost")->submachine.has_value());
+    }
+
+    // 2. Resolver returns nullptr -> W_SUBMACHINE_NOT_FOUND
+    {
+        FsmIr ir;
+        ir.name = "HostMissing";
+        auto& st = ir.add_or_get_state("MissingHost", "", StateKind::Composite);
+        st.submachine = SubmachineRef("UnknownFsm", "missing.sysml");
+
+        SubmachineInliningPass pass([](const std::string&) -> const FsmIr* { return nullptr; });
+        DiagnosticEngine diag;
+        EXPECT_TRUE(pass.run(ir, diag));
+        EXPECT_FALSE(diag.has_errors());
+        EXPECT_TRUE(ir.find_state("MissingHost")->submachine.has_value());
+    }
+
+    // 3. Recursive self-inlining -> E_SUBMACHINE_RECURSIVE
+    {
+        FsmIr ir;
+        ir.name = "SelfMachine";
+        auto& st = ir.add_or_get_state("Loop", "", StateKind::Composite);
+        st.submachine = SubmachineRef("SelfMachine", "self.sysml");
+
+        SubmachineInliningPass pass([&](const std::string&) -> const FsmIr* { return &ir; });
+        DiagnosticEngine diag;
+        EXPECT_TRUE(pass.run(ir, diag));
+        EXPECT_TRUE(diag.has_errors());
+    }
+}
+
+/**
+ * @brief Verify SubmachineInliningPass rewrites variables across ASTs, guards, actions, and nested hierarchy.
+ */
+TEST(SubmachineInlining, VariableRewritingAndNestedHierarchy_RewritesAllEntitiesCorrectly) {
+    FsmIr sub;
+    sub.name = "RichSub";
+    sub.initial_state = "Outer";
+
+    VariableDefinition v_cnt;
+    v_cnt.name = "cnt";
+    v_cnt.type = "int32_t";
+    v_cnt.initial_value = "0";
+    sub.variables.push_back(v_cnt);
+
+    PortDefinition out_port;
+    out_port.name = "out_p";
+    out_port.type = DataType::int32();
+    out_port.direction = PortDirection::Out;
+    sub.ports.push_back(out_port);
+    sub.signals.emplace_back("DoneSig");
+    sub.clocks.emplace_back("sub_clk");
+    TypeDefinition sub_cfg;
+    sub_cfg.name = "SubCfg";
+    sub.add_type(sub_cfg);
+    sub.add_guard("g_cnt", "cnt check", std::string("cnt > 0 && obj.cnt == 0 && \"cnt\""), std::string("cnt > 0"));
+
+    {
+        auto& outer = sub.add_or_get_state("Outer", "", StateKind::Composite);
+        outer.initial_sub_state = "Inner";
+    }
+    sub.add_or_get_state("Inner", "Outer");
+    sub.add_or_get_state("ExitNode", "");
+
+    ExpressionAstNode raw_ast;
+    raw_ast.kind = ExpressionKind::RawExpression;
+    raw_ast.symbol = "cnt + 1";
+    ExpressionAstNode var_ast;
+    var_ast.kind = ExpressionKind::VariableRef;
+    var_ast.symbol = "cnt";
+
+    // Entry/exit actions with StoreOp, PortWriteOp, PortReadOp, SignalEmitOp, ActionCallOp, ExpressionAstNode
+    ActionSignature entry_act("sub_entry");
+    entry_act.invocation = "log(cnt)";
+    entry_act.assignments.emplace_back(LValueTarget("cnt"), "cnt + 1", AssignmentOp::Assign);
+    entry_act.assignments.back().expr_ast = raw_ast;
+    StoreOp st_op;
+    st_op.target = LValueTarget("cnt");
+    st_op.expression = "cnt + 2";
+    st_op.expr_ast = var_ast;
+    entry_act.instructions.emplace_back(st_op);
+    PortWriteOp pw_op;
+    pw_op.port_name = "out_p";
+    pw_op.expression = "cnt";
+    pw_op.expr_ast = var_ast;
+    entry_act.instructions.emplace_back(pw_op);
+    PortReadOp pr_op;
+    pr_op.destination = LValueTarget("cnt");
+    entry_act.instructions.emplace_back(pr_op);
+    SignalEmitOp sig_op;
+    sig_op.signal_name = "DoneSig";
+    sig_op.arguments.push_back("cnt");
+    entry_act.instructions.emplace_back(sig_op);
+    ActionCallOp call_op;
+    call_op.function_name = "helper";
+    call_op.arguments.push_back("cnt");
+    entry_act.instructions.emplace_back(call_op);
+    auto* outer_ptr = sub.find_state_mut("Outer");
+    auto* exit_ptr = sub.find_state_mut("ExitNode");
+    ASSERT_NE(outer_ptr, nullptr);
+    ASSERT_NE(exit_ptr, nullptr);
+    outer_ptr->entry_actions.push_back(entry_act);
+    exit_ptr->exit_actions.push_back(entry_act);
+
+    GuardAstNode inv;
+    inv.expression = "cnt >= 0";
+    outer_ptr->invariants.push_back(inv);
+
+    TransitionEdge sub_t("Inner", "ExitNode", "DoneSig");
+    sub_t.set_guard("cnt > 0");
+    sub_t.transition_action = entry_act;
+    sub_t.condition_action = entry_act;
+    sub.add_transition(sub_t);
+
+    FsmIr host;
+    host.name = "RichHost";
+    host.initial_state = "Idle";
+    host.add_state("Idle");
+    host.add_state("Finished");
+
+    auto& call_st = host.add_or_get_state("Sub", "", StateKind::Composite);
+    SubmachineRef ref("RichSub", "rich.sysml");
+    ref.port_mappings.emplace_back("Outer", "ExitNode");
+    call_st.submachine = ref;
+    host.add_transition("Idle", "Outer", SignalTrigger{"Start", ""});
+    host.add_transition("ExitNode", "Finished", SignalTrigger{"Complete", ""});
+
+    SubmachineInliningPass pass([&](const std::string& n) -> const FsmIr* { return n == "RichSub" ? &sub : nullptr; });
+    DiagnosticEngine diag;
+    ASSERT_TRUE(pass.run(host, diag));
+    EXPECT_FALSE(diag.has_errors());
+
+    EXPECT_NE(host.find_variable("Sub_cnt"), nullptr);
+    EXPECT_NE(host.find_port("out_p"), nullptr);
+    EXPECT_NE(host.find_signal("DoneSig"), nullptr);
+    EXPECT_FALSE(host.clocks.empty());
+    EXPECT_TRUE(host.has_type("SubCfg"));
+
+    const auto* inlined_outer = host.find_state("Sub_Outer");
+    ASSERT_NE(inlined_outer, nullptr);
+    EXPECT_EQ(inlined_outer->initial_sub_state, "Sub_Inner");
+    ASSERT_FALSE(inlined_outer->entry_actions.empty());
+    EXPECT_EQ(inlined_outer->entry_actions[0].invocation, "log(Sub_cnt)");
+    EXPECT_EQ(inlined_outer->entry_actions[0].assignments[0].target.name, "Sub_cnt");
+    EXPECT_EQ(inlined_outer->entry_actions[0].assignments[0].expression, "Sub_cnt + 1");
+    ASSERT_FALSE(inlined_outer->invariants.empty());
+    EXPECT_EQ(inlined_outer->invariants[0].expression, "Sub_cnt >= 0");
+
+    // Verify port remapping on host transitions
+    bool found_entry_remap = false;
+    bool found_exit_remap = false;
+    for (const auto& t : host.transitions) {
+        if (t.source == "Idle" && t.target == "Sub_Outer") {
+            found_entry_remap = true;
+        }
+        if (t.source == "Sub_ExitNode" && t.target == "Finished") {
+            found_exit_remap = true;
+        }
+    }
+    EXPECT_TRUE(found_entry_remap);
+    EXPECT_TRUE(found_exit_remap);
+}
+
 }  // namespace

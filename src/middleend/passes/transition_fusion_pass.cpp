@@ -6,12 +6,41 @@
 #include "fsm/middleend/passes/transition_fusion_pass.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace fsm::middleend::passes {
 
 namespace {
+
+void collect_identifiers_from_text(std::string_view text, std::unordered_set<std::string>& out) {
+    std::string current;
+    for (char c : text) {
+        if (std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_') {
+            current.push_back(c);
+        } else {
+            if (!current.empty() && std::isdigit(static_cast<unsigned char>(current[0])) == 0) {
+                out.insert(current);
+            }
+            current.clear();
+        }
+    }
+    if (!current.empty() && std::isdigit(static_cast<unsigned char>(current[0])) == 0) {
+        out.insert(current);
+    }
+}
+
+void collect_property_atoms(const ir::PropertyAstNode& node, std::unordered_set<std::string>& out) {
+    if (node.op == ir::TemporalOp::Atom && !node.atom.empty()) {
+        out.insert(node.atom);
+        collect_identifiers_from_text(node.atom, out);
+    }
+    for (const auto& child : node.children) {
+        collect_property_atoms(child, out);
+    }
+}
 
 bool is_immediate_trigger(const ir::TriggerVariant& trigger) {
     if (std::holds_alternative<ir::AnonymousTrigger>(trigger)) {
@@ -97,6 +126,14 @@ bool TransitionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     bool overall_fused = false;
     bool iterate = true;
 
+    std::unordered_set<std::string> property_atoms;
+    for (const auto& prop : ir.properties) {
+        collect_identifiers_from_text(prop.raw_formula, property_atoms);
+        if (prop.ast.has_value()) {
+            collect_property_atoms(*prop.ast, property_atoms);
+        }
+    }
+
     while (iterate) {
         iterate = false;
 
@@ -104,7 +141,7 @@ bool TransitionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             const auto& state = *state_it;
 
             // Cannot fuse initial state, composite initial sub-state, terminate state, state with children,
-            // or states with do_activity/deferred_events
+            // states referenced by formal verification properties, or states with do_activity/deferred_events
             bool is_initial =
                 (!ir.initial_state.empty() && (state.name == ir.initial_state || state.id == ir.initial_state)) ||
                 (!ir.initial_state_id.empty() &&
@@ -119,8 +156,12 @@ bool TransitionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 }
             }
 
-            if (is_initial || is_composite_initial || !state.children_ids.empty() ||
-                state.kind == ir::StateKind::Terminate || !state.invariants.empty() ||
+            bool is_referenced_in_property =
+                (property_atoms.count(state.name) > 0) || (property_atoms.count(state.id) > 0);
+
+            if (is_initial || is_composite_initial || is_referenced_in_property || !state.children_ids.empty() ||
+                state.is_composite || state.has_history || state.has_deep_history ||
+                state.kind != ir::StateKind::Atomic || !state.traceability_reqs.empty() || !state.invariants.empty() ||
                 (state.time_invariant.has_value() && !state.time_invariant->empty()) ||
                 (state.do_activity.has_value() && !state.do_activity->empty()) || !state.deferred_events.empty()) {
                 continue;
@@ -194,6 +235,18 @@ bool TransitionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 fused.target = out_edge.target;
                 fused.trigger = in_edge.trigger;
                 fused.event = in_edge.event;
+                fused.kind = in_edge.kind;
+                fused.priority = in_edge.priority;
+                fused.parent_scope = in_edge.parent_scope;
+                fused.target_is_history = out_edge.target_is_history;
+                fused.target_is_deep_history = out_edge.target_is_deep_history;
+                fused.traceability_reqs = in_edge.traceability_reqs;
+                for (const auto& req : out_edge.traceability_reqs) {
+                    if (std::find(fused.traceability_reqs.begin(), fused.traceability_reqs.end(), req) ==
+                        fused.traceability_reqs.end()) {
+                        fused.traceability_reqs.push_back(req);
+                    }
+                }
                 if (auto fused_ast = compose_guard_asts(in_edge.guard_ast, out_edge.guard_ast); fused_ast.has_value()) {
                     fused.set_guard_ast(std::move(fused_ast));
                 } else {

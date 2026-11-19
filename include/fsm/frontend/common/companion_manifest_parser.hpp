@@ -68,7 +68,10 @@ struct CompanionAction {
  */
 struct CompanionProperty {
     std::string name;     ///< Property identifier
+    std::string kind;     ///< Property kind (Safety, Liveness, Reachability, Invariant, DeadlockFreedom)
     std::string formula;  ///< Temporal logic formula (LTL/CTL)
+    std::string req;      ///< Optional traceability requirement ID
+    std::string desc;     ///< Optional human-readable description
 };
 
 /**

@@ -55,16 +55,12 @@ struct type_list_cat<List1, List2, Rest...> {
 template <typename... Lists>
 using type_list_cat_t = typename type_list_cat<Lists...>::type;
 
-// Check if type_list contains T
+// Check if type_list contains T (O(1) recursion depth via C++17 fold expression)
 template <typename T, typename List>
 struct type_list_contains;
 
-template <typename T>
-struct type_list_contains<T, type_list<>> : std::false_type {};
-
-template <typename T, typename Head, typename... Tail>
-struct type_list_contains<T, type_list<Head, Tail...>>
-    : std::conditional_t<std::is_same_v<T, Head>, std::true_type, type_list_contains<T, type_list<Tail...>>> {};
+template <typename T, typename... Ts>
+struct type_list_contains<T, type_list<Ts...>> : std::bool_constant<(std::is_same_v<T, Ts> || ...)> {};
 
 template <typename T, typename List>
 inline constexpr bool type_list_contains_v = type_list_contains<T, List>::value;

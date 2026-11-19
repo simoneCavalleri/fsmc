@@ -153,6 +153,16 @@ struct FsmIr {
     [[nodiscard]] const VariableDefinition* find_variable(std::string_view var_name) const noexcept;
 
     /**
+     * @brief Finds a registered guard metadata entry by its symbolic name.
+     */
+    [[nodiscard]] const GuardModel* find_guard(std::string_view guard_name) const noexcept;
+
+    /**
+     * @brief Resolves a guard name or inline expression to its canonical expression string.
+     */
+    [[nodiscard]] std::string resolve_guard_expression(std::string_view guard_name_or_expr) const;
+
+    /**
      * @brief Returns all registered enumeration types.
      */
     [[nodiscard]] std::vector<TypeDefinition> get_enums() const;
@@ -332,9 +342,12 @@ struct FsmIr {
     bool operator==(const FsmIr& other) const noexcept {
         return name == other.name && package == other.package && initial_state == other.initial_state &&
                initial_state_id == other.initial_state_id && concurrency == other.concurrency &&
-               satisfies_reqs == other.satisfies_reqs && attributes == other.attributes && states == other.states &&
-               transitions == other.transitions && ports == other.ports && signals == other.signals &&
-               variables == other.variables && custom_types == other.custom_types && properties == other.properties;
+               execution_semantics == other.execution_semantics && satisfies_reqs == other.satisfies_reqs &&
+               attributes == other.attributes && states == other.states && transitions == other.transitions &&
+               ports == other.ports && signals == other.signals && clocks == other.clocks &&
+               variables == other.variables && custom_types == other.custom_types && properties == other.properties &&
+               guards == other.guards && actions == other.actions && choice_nodes == other.choice_nodes &&
+               bindings == other.bindings;
     }
 };
 

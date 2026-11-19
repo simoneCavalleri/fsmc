@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "tools/common/cli_utils.hpp"
 #include "tools/common/file_utils.hpp"
 
 namespace fsm::tools {
@@ -136,59 +137,26 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
             opts.list_passes = true;
             return opts;
         }
-        if (arg == "-i" || arg == "--input") {
-            if (i + 1 >= argc) {
+        if (parse_common_compiler_arg(arg, i, argc, argv, opts.input_path, opts.output_path, opts.format_override,
+                                      opts.submachine_dir, opts.diagnostic_format, opts.pipe_through_cmd,
+                                      opts.pass_plugins, opts.werror, opts.error_message)) {
+            if (!opts.error_message.empty()) {
                 opts.is_valid = false;
-                opts.error_message = "Missing argument for option: " + std::string(arg);
                 return opts;
             }
-            opts.input_path = argv[++i];
-        } else if (arg.starts_with("--input=")) {
-            opts.input_path = std::string(arg.substr(8));
-        } else if (arg == "-o" || arg == "--output") {
-            if (i + 1 >= argc) {
+            continue;
+        }
+        if (match_opt_value(arg, i, argc, argv, "-p", "--passes", opts.custom_passes, opts.error_message)) {
+            if (!opts.error_message.empty()) {
                 opts.is_valid = false;
-                opts.error_message = "Missing argument for option: " + std::string(arg);
                 return opts;
             }
-            opts.output_path = argv[++i];
-        } else if (arg.starts_with("--output=")) {
-            opts.output_path = std::string(arg.substr(9));
-        } else if (arg == "--format") {
-            if (i + 1 >= argc) {
-                opts.is_valid = false;
-                opts.error_message = "Missing argument for option: " + std::string(arg);
-                return opts;
-            }
-            opts.format_override = argv[++i];
-        } else if (arg.starts_with("--format=")) {
-            opts.format_override = std::string(arg.substr(9));
-        } else if (arg == "--passes" || arg == "-p") {
-            if (i + 1 >= argc) {
-                opts.is_valid = false;
-                opts.error_message = "Missing argument for option: " + std::string(arg);
-                return opts;
-            }
-            opts.custom_passes = argv[++i];
-        } else if (arg.starts_with("--passes=")) {
-            opts.custom_passes = std::string(arg.substr(9));
-        } else if (arg == "--submachine-dir") {
-            if (i + 1 >= argc) {
-                opts.is_valid = false;
-                opts.error_message = "Missing argument for option: " + std::string(arg);
-                return opts;
-            }
-            opts.submachine_dir = argv[++i];
-        } else if (arg.starts_with("--submachine-dir=")) {
-            opts.submachine_dir = std::string(arg.substr(17));
         } else if (arg == "--prune-dead") {
             opts.prune_dead = true;
         } else if (arg == "--print-before-all") {
             opts.print_before_all = true;
         } else if (arg == "--print-after-all") {
             opts.print_after_all = true;
-        } else if (arg == "-Werror") {
-            opts.werror = true;
         } else if (arg == "--metrics" || arg == "--stats") {
             opts.show_metrics = true;
         } else if (arg == "--emit-ir") {
@@ -221,49 +189,10 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
         } else if (arg == "--emit-stateflow" || arg == "--emit-sfx" || arg == "--emit-simulink") {
             opts.emit_format = "stateflow";
             opts.emit_explicit = true;
-        } else if (arg == "--diagnostic-format") {
-            if (i + 1 >= argc) {
-                opts.is_valid = false;
-                opts.error_message = "Missing argument for option: " + std::string(arg);
-                return opts;
-            }
-            opts.diagnostic_format = argv[++i];
-            if (!is_valid_diagnostic_format(opts.diagnostic_format)) {
-                opts.is_valid = false;
-                opts.error_message = "Invalid diagnostic format '" + opts.diagnostic_format +
-                                     "'. Supported formats: text, json, github.";
-                return opts;
-            }
-        } else if (arg.starts_with("--diagnostic-format=")) {
-            opts.diagnostic_format = arg.substr(20);
-            if (!is_valid_diagnostic_format(opts.diagnostic_format)) {
-                opts.is_valid = false;
-                opts.error_message = "Invalid diagnostic format '" + opts.diagnostic_format +
-                                     "'. Supported formats: text, json, github.";
-                return opts;
-            }
         } else if (arg == "--profile") {
             opts.profile = true;
         } else if (arg == "--verify" || arg == "--check") {
             opts.verify_only = true;
-        } else if (arg == "--pipe-through") {
-            if (i + 1 >= argc) {
-                opts.is_valid = false;
-                opts.error_message = "Missing argument for option: " + std::string(arg);
-                return opts;
-            }
-            opts.pipe_through_cmd = argv[++i];
-        } else if (arg.rfind("--pipe-through=", 0) == 0) {
-            opts.pipe_through_cmd = std::string(arg.substr(15));
-        } else if (arg == "--load-pass-plugin") {
-            if (i + 1 >= argc) {
-                opts.is_valid = false;
-                opts.error_message = "Missing argument for option: " + std::string(arg);
-                return opts;
-            }
-            opts.pass_plugins.push_back(argv[++i]);
-        } else if (arg.rfind("--load-pass-plugin=", 0) == 0) {
-            opts.pass_plugins.push_back(std::string(arg.substr(19)));
         } else if (!arg.starts_with("-") || arg == "-") {
             if (opts.input_path.empty()) {
                 opts.input_path = arg;

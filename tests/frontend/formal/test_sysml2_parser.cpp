@@ -8,6 +8,7 @@
 #include <string>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
+#include "fsm/backend/formal/sysml2_serializer.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/fsm_validator.hpp"
@@ -685,6 +686,735 @@ TEST(Sysml2Parser, EntryAndExitActionBlocks_AssignmentsPopulatedInIr) {
     ASSERT_EQ(exit_act.assignments.size(), 1u);
     EXPECT_EQ(exit_act.assignments[0].target.name, "counter");
     EXPECT_EQ(exit_act.assignments[0].expression, "counter + 1");
+}
+
+/**
+ * @brief Verify invalid 'transition Src -> Dst' syntax is rejected with a clear syntax error.
+ * @scenario SysML v2 model containing 'transition A -> B accept Ev;'.
+ * @expected Sysml2Parser::parse returns false with diagnostic mentioning '->'.
+ */
+TEST(Sysml2ParserTest, RejectsArrowTransitionSyntaxWithDiagnostic) {
+    const std::string sysml = R"sysml(
+package BadSyntax {
+    state def M {
+        entry; then A;
+        state A;
+        state B;
+        transition A -> B accept Ev;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    EXPECT_FALSE(parser.parse(sysml, model, err));
+    EXPECT_NE(err.find("->"), std::string::npos);
+}
+
+/**
+ * @brief Verify Sysml2Serializer preserves TimeTrigger as 'accept after(...)' without synthetic event def.
+ * @scenario SysML v2 model with 'transition first Hovering accept after(5000ms) then Landing;'.
+ * @expected Serialized SysML v2 contains 'accept after(5000ms)', omits 'event def after_5000ms;', and re-parses as
+ * TimeTrigger.
+ */
+TEST(Sysml2ParserTest, RoundTripsTimeTriggerWithoutSyntheticSignal) {
+    const std::string sysml = R"sysml(
+package Timing {
+    state def Drone {
+        entry; then Hovering;
+        state Hovering;
+        state Landing;
+        transition first Hovering accept after(5000ms) then Landing;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+
+    const std::string exported = fsm::backend::formal::Sysml2Serializer::serialize(model);
+    EXPECT_NE(exported.find("accept after(5000ms)"), std::string::npos);
+    EXPECT_EQ(exported.find("event def after_5000ms;"), std::string::npos);
+
+    FsmIr reparsed;
+    ASSERT_TRUE(parser.parse(exported, reparsed, err)) << err;
+    ASSERT_EQ(reparsed.transitions.size(), 1u);
+    EXPECT_TRUE(std::holds_alternative<TimeTrigger>(reparsed.transitions[0].trigger));
+}
+
+/**
+ * @brief Verify Sysml2Parser recognizes standalone 'choice <Name>;' declarations as Choice pseudostates.
+ * @scenario SysML v2 model declaring 'choice CheckCount;'.
+ * @expected CheckCount has StateKind::Choice and is registered in model.choice_nodes.
+ */
+TEST(Sysml2ParserTest, RecognizesChoiceKeywordDeclaration) {
+    const std::string sysml = R"sysml(
+package ChoicePkg {
+    state def M {
+        entry; then A;
+        state A;
+        state B;
+        choice CheckCount;
+        transition first A accept EvGo then CheckCount;
+        transition first CheckCount if ok then B;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+
+    const StateNode* c = model.find_state("CheckCount");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->kind, StateKind::Choice);
+    EXPECT_TRUE(model.is_choice_node("CheckCount"));
+}
+
+/**
+ * @brief Verify Sysml2Parser rejects state identifiers starting with a digit with a clear diagnostic.
+ * @scenario SysML v2 model containing 'state 123Start;'.
+ * @expected Sysml2Parser::parse returns false with diagnostic mentioning '123Start'.
+ */
+TEST(Sysml2ParserTest, RejectsDigitLeadingIdentifierWithDiagnostic) {
+    const std::string sysml = R"sysml(
+package WeirdNames {
+    state def M {
+        entry; then 123Start;
+        state 123Start;
+        state End;
+        transition first 123Start accept Ev1 then End;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    EXPECT_FALSE(parser.parse(sysml, model, err));
+    EXPECT_NE(err.find("123Start"), std::string::npos);
+}
+
+/**
+ * @brief Verify Sysml2Parser parses 'accept when(<expr>)' as a ChangeTrigger rather than a signal named 'when'.
+ * @scenario SysML v2 transition 'transition first Normal accept when(temp > 100) then Alarm;'.
+ * @expected Transition trigger holds ChangeTrigger with raw_expression 'temp > 100'.
+ */
+TEST(Sysml2ParserTest, ParsesAcceptWhenAsChangeTrigger) {
+    const std::string sysml = R"sysml(
+package ChangePkg {
+    state def TempMonitor {
+        attribute temp : Int32 = 25;
+        entry; then Normal;
+        state Normal;
+        state Alarm;
+        transition first Normal accept when(temp > 100) then Alarm;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+
+    ASSERT_EQ(model.transitions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ChangeTrigger>(model.transitions[0].trigger));
+    const auto& ct = std::get<ChangeTrigger>(model.transitions[0].trigger);
+    EXPECT_EQ(ct.raw_expression, "temp > 100");
+}
+
+/**
+ * @brief Verify Sysml2Parser parses 'accept every(<dur><unit>)' as a periodic TimeTrigger.
+ * @scenario SysML v2 transition 'transition first Active accept every(100ms) then Active;'.
+ * @expected Transition trigger holds TimeTrigger with kind=TimeTriggerKind::Every and duration_ms=100.
+ */
+TEST(Sysml2ParserTest, ParsesAcceptEveryAsPeriodicTimeTrigger) {
+    const std::string sysml = R"sysml(
+package PeriodicPkg {
+    state def Heartbeat {
+        entry; then Active;
+        state Active;
+        transition first Active accept every(100ms) then Active;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+
+    ASSERT_EQ(model.transitions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(model.transitions[0].trigger));
+    const auto& tt = std::get<TimeTrigger>(model.transitions[0].trigger);
+    EXPECT_EQ(tt.kind, TimeTriggerKind::Every);
+    EXPECT_EQ(tt.duration_in_ms(), 100u);
+}
+
+/**
+ * @brief Regression: `if <guard>` at the end of a SysML2 transition statement (after `then <target>`) must parse.
+ * @scenario Parse choice transitions `transition t_ok first Decide then Working if sensor_ok == true;`.
+ * @expected Both the boolean guard and the `else` guard are captured on the transitions.
+ */
+TEST(Sysml2ParserTest, ParsesTrailingIfGuardAfterThenClause) {
+    const std::string sysml = R"sysml(
+package TrailingIfPkg {
+    state def Checker {
+        in port sensor_ok : bool = true;
+        entry; then Working;
+        state Working;
+        state ErrorState;
+        choice Decide;
+        transition t_ok first Decide then Working if sensor_ok == true;
+        transition t_err first Decide then ErrorState if else;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+
+    ASSERT_EQ(model.transitions.size(), 2u);
+    EXPECT_TRUE(model.transitions[0].guard.has_value());
+    EXPECT_EQ(*model.transitions[0].guard, "sensor_ok_eq_true");
+    EXPECT_TRUE(model.transitions[1].guard.has_value());
+    EXPECT_EQ(*model.transitions[1].guard, "else");
+}
+
+/**
+ * @brief Regression: dot-notation history targets (`State.H` and `State.H*`) must set history flags.
+ * @scenario Parse SysML2 transitions targeting `Active.H` and `Active.H*`.
+ * @expected Target state is `Active`, `target_is_history` is true, and `Active.H*` sets `target_is_deep_history`.
+ */
+TEST(Sysml2ParserTest, ParsesDotNotationHistoryTargets) {
+    const std::string sysml = R"sysml(
+package HistoryDotPkg {
+    state def Machine {
+        event def EvResumeShallow;
+        event def EvResumeDeep;
+        entry; then Paused;
+        state Active {
+            entry; then Step1;
+            state Step1;
+        }
+        state Paused {
+            transition t1 first Paused then Active.H accept EvResumeShallow;
+            transition t2 first Paused then Active.H* accept EvResumeDeep;
+        }
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+
+    ASSERT_EQ(model.transitions.size(), 2u);
+    EXPECT_EQ(model.transitions[0].target, "Active");
+    EXPECT_TRUE(model.transitions[0].target_is_history);
+    EXPECT_FALSE(model.transitions[0].target_is_deep_history);
+
+    EXPECT_EQ(model.transitions[1].target, "Active");
+    EXPECT_TRUE(model.transitions[1].target_is_history);
+    EXPECT_TRUE(model.transitions[1].target_is_deep_history);
+
+    const auto* active = model.find_state("Active");
+    ASSERT_NE(active, nullptr);
+    EXPECT_TRUE(active->has_history);
+    EXPECT_TRUE(active->has_deep_history);
+}
+
+/**
+ * @brief Regression: bare enum literals without repeating `enum` inside `enum def` must be parsed.
+ * @scenario Parse `enum def OpMode { Boot; Auto = 2; Manual; }` inside a SysML2 state def.
+ * @expected `OpMode` contains all three `EnumLiteral` entries with `Auto` having value `2`.
+ */
+TEST(Sysml2ParserTest, ParsesBareEnumLiteralsInsideEnumDef) {
+    const std::string sysml = R"sysml(
+package BareEnumPkg {
+    state def SystemCtrl {
+        enum def OpMode {
+            Boot;
+            Auto = 2;
+            Manual;
+        }
+        entry; then Init;
+        state Init;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+
+    const auto* op_mode = model.find_enum("OpMode");
+    ASSERT_NE(op_mode, nullptr);
+    ASSERT_EQ(op_mode->literals.size(), 3u);
+    EXPECT_EQ(op_mode->literals[0].name, "Boot");
+    EXPECT_EQ(op_mode->literals[1].name, "Auto");
+    ASSERT_TRUE(op_mode->literals[1].value.has_value());
+    EXPECT_EQ(*op_mode->literals[1].value, 2);
+    EXPECT_EQ(op_mode->literals[2].name, "Manual");
+}
+
+/**
+ * @brief Regression: struct member lvalues (`pos.x = 2.5`) in SysML2 action blocks preserve `member_path`.
+ * @scenario Parse `do action { pos.x = 2.5; pos.y += 1.0; }` on a transition where `pos` is a struct variable.
+ * @expected `assignments` captures `target.name == "pos"` and `target.member_path == {"x"}` / `{"y"}`.
+ */
+TEST(Sysml2ParserTest, ParsesStructMemberAssignmentsInActions) {
+    const std::string sysml = R"sysml(
+package StructAssignPkg {
+    state def Mover {
+        struct def Vec2 {
+            attribute x : float32 = 0.0;
+            attribute y : float32 = 0.0;
+        }
+        attribute pos : Vec2;
+        event def EvStep;
+        entry; then Idle;
+        state Idle {
+            transition t1 first Idle then Moving accept EvStep
+                do action { pos.x = 2.5; pos.y += 1.0; };
+        }
+        state Moving;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+
+    ASSERT_EQ(model.transitions.size(), 1u);
+    ASSERT_TRUE(model.transitions[0].transition_action.has_value());
+    const auto& assigns = model.transitions[0].transition_action->assignments;
+    ASSERT_EQ(assigns.size(), 2u);
+    EXPECT_EQ(assigns[0].target.name, "pos");
+    ASSERT_EQ(assigns[0].target.member_path.size(), 1u);
+    EXPECT_EQ(assigns[0].target.member_path[0], "x");
+    EXPECT_EQ(assigns[0].expression, "2.5");
+    EXPECT_EQ(assigns[1].target.name, "pos");
+    ASSERT_EQ(assigns[1].target.member_path.size(), 1u);
+    EXPECT_EQ(assigns[1].target.member_path[0], "y");
+    EXPECT_EQ(assigns[1].expression, "pos.y + 1.0");
+}
+
+/**
+ * @brief Verify history state and deep history state declarations resolve parent history targets.
+ * @scenario Parse SysML v2 with `history state Hist;` and `deep history state DeepHist;` referenced via dot notation.
+ * @expected Transitions target the parent composite state with `has_history`/`has_deep_history` set, without phantom
+ * states.
+ */
+TEST(Sysml2ParserTest, ParsesHistoryAndDeepHistoryStateDeclarations) {
+    const std::string sysml = R"sysml(
+state def HistMachine {
+    entry; then Op;
+    state Op {
+        entry; then S1;
+        history state Hist;
+        state S1;
+        transition from Op accept EvPause then Paused;
+    }
+    state DeepOp {
+        entry; then D1;
+        deep history state DeepHist;
+        state D1;
+        transition from DeepOp accept EvPause then Paused;
+    }
+    state Paused {
+        transition from Paused accept EvResumeOp then Op.Hist;
+        transition from Paused accept EvResumeDeep then DeepOp.DeepHist;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+
+    EXPECT_EQ(model.find_state("Op_Hist"), nullptr);
+    EXPECT_EQ(model.find_state("DeepOp_DeepHist"), nullptr);
+
+    const StateNode* op = model.find_state("Op");
+    ASSERT_NE(op, nullptr);
+    EXPECT_TRUE(op->has_history);
+    EXPECT_FALSE(op->has_deep_history);
+
+    const StateNode* deep_op = model.find_state("DeepOp");
+    ASSERT_NE(deep_op, nullptr);
+    EXPECT_TRUE(deep_op->has_history);
+    EXPECT_TRUE(deep_op->has_deep_history);
+
+    bool found_op = false;
+    bool found_deep = false;
+    for (const auto& t : model.transitions) {
+        if (t.event == "EvResumeOp") {
+            EXPECT_EQ(t.target, "Op");
+            found_op = true;
+        } else if (t.event == "EvResumeDeep") {
+            EXPECT_EQ(t.target, "DeepOp");
+            found_deep = true;
+        }
+    }
+    EXPECT_TRUE(found_op);
+    EXPECT_TRUE(found_deep);
+}
+
+/**
+ * @brief Regression: multi-line `doc` block annotations without trailing semicolons do not bleed
+ * into the following `state def` / `state` / `transition` statement.
+ * @scenario Parse a SysML2 `package` containing a multi-line `doc` block comment followed by `state def PkgFsm`.
+ * @expected Both `Init` and `Ready` states and the `Init -> Ready` transition are preserved.
+ */
+TEST(Sysml2Parser, MultilineDocCommentBeforeStateDef_DoesNotCorruptStateParsing) {
+    const std::string sysml = R"sysml(
+package FlightPkg {
+    doc /* Multi-line
+           SysML2 doc comment */
+    state def PkgFsm {
+        entry; then Init;
+        state Init;
+        state Ready;
+        transition t1 first Init then Ready accept Boot;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+    EXPECT_EQ(model.package, "FlightPkg");
+    EXPECT_EQ(model.name, "PkgFsm");
+    EXPECT_NE(model.find_state("Init"), nullptr);
+    EXPECT_NE(model.find_state("Ready"), nullptr);
+    ASSERT_EQ(model.transitions.size(), 1u);
+    EXPECT_EQ(model.transitions[0].source, "Init");
+    EXPECT_EQ(model.transitions[0].target, "Ready");
+    EXPECT_EQ(model.transitions[0].event, "Boot");
+}
+
+/**
+ * @brief Regression: SysML2 `int` maps to signed `int32_t` (not `uint32_t`), while `Integer` and `Natural`
+ * remain `uint32_t`.
+ * @scenario Parse `attribute offset : int = -10;` and `attribute u : Natural = 5;`.
+ * @expected `offset` has `int32_t` type with `"-10"`, and `u` has `uint32_t` type.
+ */
+TEST(Sysml2Parser, SignedIntType_MapsToInt32WithNegativeInit) {
+    const std::string sysml = R"sysml(
+state def SignedTypesFsm {
+    attribute offset : int = -10;
+    attribute u : Natural = 5;
+    entry; then S0;
+    state S0;
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+    const auto* offset = model.find_variable("offset");
+    const auto* u = model.find_variable("u");
+    ASSERT_NE(offset, nullptr);
+    ASSERT_NE(u, nullptr);
+    EXPECT_EQ(offset->type, "int32_t");
+    EXPECT_EQ(offset->initial_value, "-10");
+    EXPECT_EQ(u->type, "uint32_t");
+}
+
+/**
+ * @brief Regression: nested substates declared inside a composite state block retain their `parent_state`
+ * across `normalize_hierarchy()` even when referenced by root-level `transition first Sub2 ...` statements.
+ * @scenario Serialize a composite state with two substates (`Sub1`, `Sub2`) via `Sysml2Serializer`, re-parse
+ * with `Sysml2Parser`, and run `normalize_hierarchy()`.
+ * @expected Both `Sub1` and `Sub2` retain `parent_state == "Active"`.
+ */
+TEST(Sysml2Parser, NestedSubstatesWithRootLevelTransitions_RetainParentAfterNormalizeHierarchy) {
+    const std::string sysml = R"sysml(
+state def HierarchyRoundtripFsm {
+    entry; then Active;
+    state Active {
+        entry; then Sub1;
+        state Sub1;
+        state Sub2;
+    }
+    transition first Sub1 accept Step then Sub2;
+    transition first Sub2 accept Reset then Sub1;
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err;
+    model.normalize_hierarchy();
+
+    const auto* sub1 = model.find_state("Sub1");
+    const auto* sub2 = model.find_state("Sub2");
+    ASSERT_NE(sub1, nullptr);
+    ASSERT_NE(sub2, nullptr);
+    EXPECT_EQ(sub1->parent_state, "Active");
+    EXPECT_EQ(sub2->parent_state, "Active");
+}
+
+/**
+ * @brief Regression: Signed `int32` variables with negative initial values survive `Sysml2Serializer` ->
+ * `Sysml2Parser` roundtrips as `int32_t` rather than turning into `uint32_t` (`-Wnarrowing` error in C++).
+ * @scenario Serialize an FSM with `attribute count : int32_t = -2;` to SysML v2 and re-parse.
+ * @expected Serialized SysML2 uses `: int` (not `: Integer`) and re-parsed `count` has `int32` type with `"-2"`.
+ */
+TEST(Sysml2Parser, SignedIntRoundtrip_PreservesSignedTypeAcrossSerializer) {
+    FsmIr ir;
+    ir.name = "SignedRtFsm";
+    ir.initial_state = "S0";
+    ir.add_state("S0");
+    ir.add_variable(VariableDefinition("count", DataType::int32(), "-2"));
+
+    const std::string sysml = fsm::backend::formal::Sysml2Serializer::serialize(ir);
+    EXPECT_NE(sysml.find("attribute count : int = -2;"), std::string::npos) << sysml;
+
+    Sysml2Parser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err;
+    const auto* count = parsed.find_variable("count");
+    ASSERT_NE(count, nullptr);
+    EXPECT_EQ(count->type, DataType::int32());
+    EXPECT_EQ(count->initial_value, "-2");
+}
+
+/**
+ * @brief Regression: `Sysml2Serializer` emits `assert property <name> : <formula>;` for
+ * `model.properties` so temporal logic properties survive SysML v2 roundtrips.
+ * @scenario Serialize an FSM with `FormalProperty("safe", "G (not (A and B))")` to SysML v2 and re-parse.
+ * @expected Serialized SysML2 contains `assert property safe : G (not (A and B));` and re-parsed IR keeps it.
+ */
+TEST(Sysml2Parser, PropertiesRoundtrip_PreservedAcrossSerializer) {
+    FsmIr ir;
+    ir.name = "PropRtFsm";
+    ir.initial_state = "A";
+    ir.add_state("A");
+    ir.add_state("B");
+    FormalProperty prop;
+    prop.name = "safe";
+    prop.raw_formula = "G (not (A and B))";
+    ir.add_property(prop);
+
+    const std::string sysml = fsm::backend::formal::Sysml2Serializer::serialize(ir);
+    EXPECT_NE(sysml.find("assert property safe : G (not (A and B));"), std::string::npos) << sysml;
+
+    Sysml2Parser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err;
+    ASSERT_EQ(parsed.properties.size(), 1u);
+    EXPECT_EQ(parsed.properties[0].name, "safe");
+    EXPECT_EQ(parsed.properties[0].raw_formula, "G (not (A and B))");
+}
+
+/**
+ * @brief Regression: `Sysml2Serializer` emits `fork <Name>;` and `join <Name>;` for `StateKind::Fork`
+ * and `StateKind::Join` pseudostates so `Sysml2Parser` preserves them across roundtrips.
+ * @scenario Serialize an FSM with `Fork` (`Split`) and `Join` (`Merge`) pseudostates to SysML v2 and re-parse.
+ * @expected Serialized SysML2 contains `fork Split;` and `join Merge;`, and re-parsed IR preserves their kinds.
+ */
+TEST(Sysml2Parser, ForkAndJoinRoundtrip_PreservedAcrossSerializer) {
+    FsmIr ir;
+    ir.name = "ForkJoinRtFsm";
+    ir.initial_state = "Init";
+    ir.add_state("Init");
+    ir.add_or_get_state("Split", "", StateKind::Fork);
+    ir.add_or_get_state("Merge", "", StateKind::Join);
+
+    const std::string sysml = fsm::backend::formal::Sysml2Serializer::serialize(ir);
+    EXPECT_NE(sysml.find("fork Split;"), std::string::npos) << sysml;
+    EXPECT_NE(sysml.find("join Merge;"), std::string::npos) << sysml;
+
+    Sysml2Parser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err;
+    const auto* split = parsed.find_state("Split");
+    const auto* merge = parsed.find_state("Merge");
+    ASSERT_NE(split, nullptr);
+    ASSERT_NE(merge, nullptr);
+    EXPECT_EQ(split->kind, StateKind::Fork);
+    EXPECT_EQ(merge->kind, StateKind::Join);
+}
+
+/**
+ * @brief Regression: `Sysml2Serializer` emits `accept when (<expr>)` for `ChangeTrigger`
+ * transitions so `Sysml2Parser` preserves `ChangeTrigger` across roundtrips.
+ * @scenario Serialize a transition with `ChangeTrigger("count > 5")` to SysML v2 and re-parse.
+ * @expected Serialized SysML2 contains `accept when (count > 5)` and re-parsed transition holds `ChangeTrigger`.
+ */
+TEST(Sysml2Parser, ChangeTriggerRoundtrip_PreservedAcrossSerializer) {
+    FsmIr ir;
+    ir.name = "ChangeTrigRt";
+    ir.initial_state = "Wait";
+    ir.add_state("Wait");
+    ir.add_state("Done");
+    ir.add_variable(VariableDefinition("count", DataType::int32(), "0"));
+    TransitionEdge t("Wait", "Done", "");
+    t.trigger = ChangeTrigger("count > 5", true);
+    ir.add_transition(t);
+
+    const std::string sysml = fsm::backend::formal::Sysml2Serializer::serialize(ir);
+    EXPECT_NE(sysml.find("accept when (count > 5)"), std::string::npos) << sysml;
+
+    Sysml2Parser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ChangeTrigger>(parsed.transitions[0].trigger));
+    EXPECT_EQ(std::get<ChangeTrigger>(parsed.transitions[0].trigger).raw_expression, "count > 5");
+}
+
+/**
+ * @brief Regression: `Sysml2Serializer` emits `choice <Name>;` for `ChoiceNode` entries
+ * so `Sysml2Parser` preserves `choice_nodes` across SysML v2 roundtrips.
+ * @scenario Serialize an FSM with `ChoiceNode("C1")` to SysML v2 and re-parse.
+ * @expected Serialized SysML2 contains `choice C1;` and re-parsed IR has `is_choice_node("C1") == true`.
+ */
+TEST(Sysml2Parser, ChoiceNodeRoundtrip_PreservedAcrossSerializer) {
+    FsmIr ir;
+    ir.name = "ChoiceRtFsm";
+    ir.initial_state = "Init";
+    ir.add_state("Init");
+    ir.add_choice_node("C1");
+    ir.add_state("High");
+    ir.add_transition(TransitionEdge("Init", "C1", "Eval"));
+    ir.add_transition(TransitionEdge("C1", "High", ""));
+
+    const std::string sysml = fsm::backend::formal::Sysml2Serializer::serialize(ir);
+    EXPECT_NE(sysml.find("choice C1;"), std::string::npos) << sysml;
+
+    Sysml2Parser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err;
+    EXPECT_TRUE(parsed.is_choice_node("C1"));
+    EXPECT_FALSE(parsed.choice_nodes.empty());
+}
+
+/**
+ * @brief Regression: `send <Signal>(<Payload>) via <Port>;` inside `entry action { ... }` and
+ * `do action { ... }` blocks produces a structured `SignalEmitOp` instruction instead of a mangled
+ * standalone call identifier (`send_Alert42_via_cmd_out`).
+ * @scenario Parse SysML v2 with `entry action { send Alert(42) via cmd_out; }` and a transition with
+ * `do action { send Ack(1) via cmd_out; }`.
+ * @expected Both the state entry action and transition action carry a `SignalEmitOp` with matching signal, port, and
+ * argument.
+ */
+TEST(Sysml2Parser, SendViaPortInsideActionBlocks_ProducesSignalEmitOp) {
+    const std::string sysml = R"sysml(
+state def BlockSendFsm {
+    out port cmd_out : Integer;
+    event def Alert;
+    event def Ack;
+    event def Go;
+    entry; then Idle;
+    state Idle {
+        entry action { send Alert(42) via cmd_out; }
+    }
+    state Done;
+    transition first Idle accept Go do action { send Ack(1) via cmd_out; } then Done;
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, ir, err)) << err;
+
+    const auto* idle = ir.find_state("Idle");
+    ASSERT_NE(idle, nullptr);
+    ASSERT_EQ(idle->entry_actions.size(), 1u);
+    ASSERT_EQ(idle->entry_actions[0].instructions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<SignalEmitOp>(idle->entry_actions[0].instructions[0].op));
+    const auto& entry_emit = std::get<SignalEmitOp>(idle->entry_actions[0].instructions[0].op);
+    EXPECT_EQ(entry_emit.signal_name, "Alert");
+    EXPECT_EQ(entry_emit.target_port, "cmd_out");
+    ASSERT_EQ(entry_emit.arguments.size(), 1u);
+    EXPECT_EQ(entry_emit.arguments[0], "42");
+
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    ASSERT_EQ(ir.transitions[0].transition_action->instructions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<SignalEmitOp>(ir.transitions[0].transition_action->instructions[0].op));
+    const auto& trans_emit = std::get<SignalEmitOp>(ir.transitions[0].transition_action->instructions[0].op);
+    EXPECT_EQ(trans_emit.signal_name, "Ack");
+    EXPECT_EQ(trans_emit.target_port, "cmd_out");
+    ASSERT_EQ(trans_emit.arguments.size(), 1u);
+    EXPECT_EQ(trans_emit.arguments[0], "1");
+}
+
+/**
+ * @brief Regression: `Sysml2Serializer` and `Sysml2Parser` preserve `TransitionEdgeKind::Local`
+ * via `local transition` syntax.
+ * @scenario Serialize a composite FSM with a local transition and an external transition to SysML2 and re-parse.
+ * @expected Re-parsed local transition has `kind == TransitionEdgeKind::Local`; external remains `External`.
+ */
+TEST(Sysml2Parser, LocalTransition_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "SysmlLocalRt";
+    ir.initial_state = "Active";
+    StateNode active("Active");
+    active.is_composite = true;
+    active.initial_sub_state = "SubA";
+    ir.add_state(active);
+    StateNode sub_a("SubA");
+    sub_a.parent_state = "Active";
+    ir.add_state(sub_a);
+    StateNode sub_b("SubB");
+    sub_b.parent_state = "Active";
+    ir.add_state(sub_b);
+
+    TransitionEdge loc("Active", "SubB", "Reset");
+    loc.kind = TransitionEdgeKind::Local;
+    ir.add_transition(loc);
+
+    TransitionEdge ext("SubA", "SubB", "Step");
+    ext.kind = TransitionEdgeKind::External;
+    ir.add_transition(ext);
+
+    const std::string sysml = fsm::backend::formal::Sysml2Serializer::serialize(ir);
+    EXPECT_NE(sysml.find("local transition"), std::string::npos) << sysml;
+
+    Sysml2Parser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 2u);
+
+    bool found_local = false;
+    bool found_external = false;
+    for (const auto& t : parsed.transitions) {
+        if (t.event == "Reset") {
+            EXPECT_EQ(t.kind, TransitionEdgeKind::Local);
+            found_local = true;
+        } else if (t.event == "Step") {
+            EXPECT_EQ(t.kind, TransitionEdgeKind::External);
+            found_external = true;
+        }
+    }
+    EXPECT_TRUE(found_local);
+    EXPECT_TRUE(found_external);
 }
 
 }  // namespace

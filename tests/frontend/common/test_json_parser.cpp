@@ -238,4 +238,109 @@ TEST(JsonParser, DirectionalPortsWithIntervalBounds_PopulatesPortDefinitions) {
     EXPECT_DOUBLE_EQ(out_p->max_value.value_or(0.0), 200.0);
 }
 
+/**
+ * @brief Verify JsonParser / FsmIrDeserializer converts XState "type": "parallel" into StateKind::Parallel and
+ * orthogonal_regions.
+ * @scenario XState JSON state Active with "type": "parallel" and two child region states Reg1, Reg2.
+ * @expected Active has StateKind::Parallel and 2 orthogonal_regions with Reg1 and Reg2.
+ */
+TEST(JsonParserTest, DeserializesXStateParallelTypeIntoOrthogonalRegions) {
+    const std::string json_content = R"json(
+{
+  "id": "ParJson",
+  "initial": "Active",
+  "states": {
+    "Active": {
+      "type": "parallel",
+      "states": {
+        "Reg1": { "initial": "A1", "states": { "A1": { "on": { "NEXT": "A2" } }, "A2": {} } },
+        "Reg2": { "initial": "B1", "states": { "B1": { "on": { "SYNC": "B2" } }, "B2": {} } }
+      }
+    }
+  }
+}
+)json";
+
+    JsonParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << err;
+
+    const StateNode* active = model.find_state("Active");
+    ASSERT_NE(active, nullptr);
+    EXPECT_EQ(active->kind, StateKind::Parallel);
+    ASSERT_EQ(active->orthogonal_regions.size(), 2u);
+}
+
+/**
+ * @brief Regression: XState JSON transition action strings with assignments (`"x = 42"`) populate `assignments`.
+ * @scenario Parse an XState JSON machine with `"actions": ["x = 42"]` on a transition.
+ * @expected `transition_action->assignments` contains `x = 42`.
+ */
+TEST(JsonParser, XStateActionAssignments_PopulatedInActionSignature) {
+    const std::string json_content = R"json({
+  "id": "JsonAssign",
+  "initial": "Idle",
+  "context": { "x": 0 },
+  "states": {
+    "Idle": {
+      "on": {
+        "EvGo": { "target": "Done", "cond": "x == 0", "actions": ["x = 42"] }
+      }
+    },
+    "Done": {}
+  }
+})json";
+
+    JsonParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << err;
+    ASSERT_EQ(model.transitions.size(), 1u);
+    ASSERT_TRUE(model.transitions[0].transition_action.has_value());
+    ASSERT_EQ(model.transitions[0].transition_action->assignments.size(), 1u);
+    EXPECT_EQ(model.transitions[0].transition_action->assignments[0].target.name, "x");
+    EXPECT_EQ(model.transitions[0].transition_action->assignments[0].expression, "42");
+}
+
+/**
+ * @brief Regression: XState JSON `entry` and `exit` string assignments populate `ActionSignature::assignments`.
+ * @scenario Parse an XState JSON statechart with `"entry": ["x = 1"]` and `"exit": ["x += 10"]`.
+ * @expected `entry_actions` and `exit_actions` contain structured `ActionAssignment` entries.
+ */
+TEST(JsonParser, XStateLifecycleAssignments_PopulatedInEntryAndExitActions) {
+    const std::string json_content = R"json({
+  "id": "JsonLife",
+  "initial": "Idle",
+  "context": { "x": 0 },
+  "states": {
+    "Idle": {
+      "entry": ["x = 1"],
+      "exit": ["x += 10"],
+      "on": { "EvGo": "Done" }
+    },
+    "Done": {
+      "entry": ["x += 100"]
+    }
+  }
+})json";
+
+    JsonParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << err;
+
+    const StateNode* idle = model.find_state("Idle");
+    ASSERT_NE(idle, nullptr);
+    ASSERT_EQ(idle->entry_actions.size(), 1u);
+    ASSERT_EQ(idle->entry_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(idle->entry_actions[0].assignments[0].target.name, "x");
+    EXPECT_EQ(idle->entry_actions[0].assignments[0].expression, "1");
+
+    ASSERT_EQ(idle->exit_actions.size(), 1u);
+    ASSERT_EQ(idle->exit_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(idle->exit_actions[0].assignments[0].target.name, "x");
+    EXPECT_EQ(idle->exit_actions[0].assignments[0].expression, "x + 10");
+}
+
 }  // namespace

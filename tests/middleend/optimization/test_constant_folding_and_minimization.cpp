@@ -63,6 +63,34 @@ TEST(ConstantFolding, TautologicalAndContradictoryGuards_EvaluatedAndPruned) {
 }
 
 /**
+ * @brief Verify ConstantFoldingPass resolves symbolic guard names via FsmIr::guards.
+ * @scenario Transitions reference symbolic GuardModel names (`g_taut`, `g_contra`, `false_`) backed by constant
+ * expressions (`5 > 2`, `2 > 5`, `false`).
+ * @expected Contradictory transitions are pruned and tautological transition becomes unguarded.
+ */
+TEST(ConstantFolding, NamedGuardModels_ResolvedAndFolded) {
+    FsmIr model;
+    model.name = "NamedConstGuardModel";
+    model.add_state("S1");
+    model.add_state("S2");
+    model.add_guard("g_taut", "", std::optional<std::string>{"5 > 2"}, std::optional<std::string>{"5 > 2"});
+    model.add_guard("g_contra", "", std::optional<std::string>{"2 > 5"}, std::optional<std::string>{"2 > 5"});
+    model.add_guard("false_", "", std::optional<std::string>{"false"}, std::optional<std::string>{"false"});
+
+    model.add_transition(TransitionEdge("S1", "S2", "EvTaut", "g_taut"));
+    model.add_transition(TransitionEdge("S1", "S2", "EvContra", "g_contra"));
+    model.add_transition(TransitionEdge("S1", "S2", "EvFalseKw", "false_"));
+
+    ConstantFoldingPass pass;
+    DiagnosticEngine diag;
+    ASSERT_TRUE(pass.run(model, diag));
+
+    ASSERT_EQ(model.transitions.size(), 1u);
+    EXPECT_EQ(model.transitions[0].event, "EvTaut");
+    EXPECT_FALSE(model.transitions[0].guard.has_value());
+}
+
+/**
  * @brief Verify StateMinimizationPass merges behaviorally equivalent states.
  * @scenario States Equiv1 and Equiv2 transition to Target on identical event 'Step' with identical guards/actions.
  * @expected Equiv1 and Equiv2 merged into a single representative state, minimizing state count.
@@ -246,6 +274,72 @@ TEST(StateMinimization, ActivityAndInvariantDifferences_PreventMerger) {
 
     EXPECT_FALSE(ok);
     EXPECT_EQ(model.states.size(), 5u);
+}
+
+/**
+ * @brief Regression: `StateMinimizationPass` does not merge states that carry distinct
+ * `traceability_reqs` (`@fsm:req`), preserving requirement traceability links for RTM auditing.
+ * @scenario Two states `A` (`REQ_A`) and `B` (`REQ_B`) with identical outgoing transitions `Done -> End`.
+ * @expected Both `A` and `B` remain distinct (`states.size() == 4`).
+ */
+TEST(StateMinimizationPassTest, DistinctTraceabilityReqs_NotMerged) {
+    FsmIr model;
+    model.initial_state = "Init";
+    model.add_state("Init");
+    auto& a = model.add_state("A");
+    a.traceability_reqs.push_back("REQ_A");
+    auto& b = model.add_state("B");
+    b.traceability_reqs.push_back("REQ_B");
+    model.add_state("End");
+
+    model.add_transition(TransitionEdge("Init", "A", "GoA"));
+    model.add_transition(TransitionEdge("Init", "B", "GoB"));
+    model.add_transition(TransitionEdge("A", "End", "Done"));
+    model.add_transition(TransitionEdge("B", "End", "Done"));
+
+    StateMinimizationPass pass;
+    DiagnosticEngine diag;
+    EXPECT_FALSE(pass.run(model, diag));
+    EXPECT_EQ(model.states.size(), 4u);
+    ASSERT_NE(model.find_state("A"), nullptr);
+    ASSERT_NE(model.find_state("B"), nullptr);
+}
+
+/**
+ * @brief Regression: `ConstantFoldingPass` keeps actions referenced by `StateNode::do_activity`
+ * and `ActionCallOp` instructions when pruning unreferenced actions from `FsmIr::actions`.
+ * @scenario State `Active` has `do_activity = "MonitorLoop"` and `entry_actions` calling `"InitHw"` via
+ * `ActionCallOp`; run `ConstantFoldingPass`.
+ * @expected Both `"MonitorLoop"` and `"InitHw"` remain in `model.actions`.
+ */
+TEST(ConstantFolding, DoActivityAndActionCallOp_PreservedDuringActionCleanup) {
+    FsmIr model;
+    model.name = "DoActivityActionCleanup";
+    model.initial_state = "Active";
+    auto& active = model.add_state("Active");
+    active.do_activity = "MonitorLoop";
+
+    ActionSignature entry_sig("EntryWrap");
+    ActionCallOp call_op;
+    call_op.function_name = "InitHw";
+    entry_sig.instructions.emplace_back(std::move(call_op));
+    active.entry_actions.push_back(std::move(entry_sig));
+
+    model.add_action("MonitorLoop");
+    model.add_action("InitHw");
+    model.add_action("UnusedAction");
+
+    ConstantFoldingPass pass;
+    DiagnosticEngine diag;
+    EXPECT_TRUE(pass.run(model, diag));
+
+    auto has_action = [&](const std::string& name) {
+        return std::any_of(model.actions.begin(), model.actions.end(),
+                           [&](const ActionModel& a) { return a.name == name; });
+    };
+    EXPECT_TRUE(has_action("MonitorLoop"));
+    EXPECT_TRUE(has_action("InitHw"));
+    EXPECT_FALSE(has_action("UnusedAction"));
 }
 
 }  // namespace

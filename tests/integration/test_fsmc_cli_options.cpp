@@ -24,6 +24,8 @@
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir_deserializer.hpp"
 #include "fsm/ir/fsm_ir_serializer.hpp"
+#include "tools/common/cli_utils.hpp"
+#include "tools/fsm-opt/opt_options.hpp"
 #include "tools/fsmc/fsmc_driver.hpp"
 #include "tools/fsmc/fsmc_options.hpp"
 
@@ -1089,6 +1091,174 @@ package DroneControl {
         }
     }
     EXPECT_TRUE(found_expr);
+}
+
+TEST(FsmcCliOptionsTest, SharedCommonCompilerArgHelper_ParsesFlagsUniformlyAcrossTools) {
+    char p[] = "fsmc";
+    char in_eq[] = "--input=in_model.sysml";
+    char out_eq[] = "--output=out_model.hpp";
+    char diag_eq[] = "--diagnostic-format=json";
+    char sub_eq[] = "--submachine-dir=/tmp/submachines";
+    char fmt_eq[] = "--format=sysml2";
+    char pipe_eq[] = "--pipe-through=cat";
+    char plug_eq[] = "--load-pass-plugin=my_plugin.so";
+    char werr[] = "-Werror";
+
+    char* argv[] = {p, in_eq, out_eq, diag_eq, sub_eq, fmt_eq, pipe_eq, plug_eq, werr};
+    int argc = 9;
+
+    const auto fsmc_opts = fsm::tools::parse_cli_args(argc, argv);
+    EXPECT_TRUE(fsmc_opts.is_valid);
+    EXPECT_EQ(fsmc_opts.input_file, "in_model.sysml");
+    EXPECT_EQ(fsmc_opts.output_file, "out_model.hpp");
+    EXPECT_EQ(fsmc_opts.diagnostic_format, "json");
+    EXPECT_EQ(fsmc_opts.submachine_dir, "/tmp/submachines");
+    EXPECT_EQ(fsmc_opts.format, "sysml2");
+    EXPECT_EQ(fsmc_opts.pipe_through_cmd, "cat");
+    ASSERT_EQ(fsmc_opts.pass_plugins.size(), 1u);
+    EXPECT_EQ(fsmc_opts.pass_plugins[0], "my_plugin.so");
+    EXPECT_TRUE(fsmc_opts.werror);
+
+    const auto opt_opts = fsm::tools::parse_opt_args(argc, argv);
+    EXPECT_TRUE(opt_opts.is_valid);
+    EXPECT_EQ(opt_opts.input_path, "in_model.sysml");
+    EXPECT_EQ(opt_opts.output_path, "out_model.hpp");
+    EXPECT_EQ(opt_opts.diagnostic_format, "json");
+    EXPECT_EQ(opt_opts.submachine_dir, "/tmp/submachines");
+    EXPECT_EQ(opt_opts.format_override, "sysml2");
+    EXPECT_EQ(opt_opts.pipe_through_cmd, "cat");
+    ASSERT_EQ(opt_opts.pass_plugins.size(), 1u);
+    EXPECT_EQ(opt_opts.pass_plugins[0], "my_plugin.so");
+    EXPECT_TRUE(opt_opts.werror);
+}
+
+TEST(FsmcCliOptionsTest, IrSimulator_EvaluatesCompoundAstExpressionsAndStoreInstructions) {
+    fsm::ir::FsmIr model;
+    model.name = "AstSimModel";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Counting");
+    model.add_state("Done");
+
+    fsm::ir::VariableDefinition count_var;
+    count_var.name = "count";
+    count_var.type = fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::Int32};
+    count_var.initial_value = "2";
+    model.add_variable(std::move(count_var));
+
+    fsm::ir::SignalDefinition tick_sig("Tick");
+    tick_sig.attributes.emplace_back("step", fsm::ir::DataType{fsm::ir::PrimitiveTypeKind::Int32}, "1");
+    model.add_signal(tick_sig);
+
+    fsm::ir::TransitionEdge t1("Idle", "Counting", "Tick");
+    fsm::ir::ActionSignature act1("compute_count");
+    act1.assignments.emplace_back(fsm::ir::LValueTarget("count", fsm::ir::LValueScope::Register), "count + 2 * step",
+                                  fsm::ir::AssignmentOp::Assign);
+    fsm::ir::StoreOp store_op;
+    store_op.target = fsm::ir::LValueTarget("count", fsm::ir::LValueScope::Register);
+    store_op.op = fsm::ir::AssignmentOp::MulAssign;
+    store_op.expression = "3";
+    act1.instructions.emplace_back(store_op);
+
+    fsm::ir::PortWriteOp port_write;
+    port_write.port_name = "status_out";
+    port_write.expression = "count + 1";
+    act1.instructions.emplace_back(port_write);
+    t1.set_transition_action(act1);
+    model.add_transition(t1);
+
+    fsm::ir::TransitionEdge t2("Counting", "Done", "Tick");
+    t2.set_guard("(count + 2) * 2 >= 50 && status_out == 25");
+    model.add_transition(t2);
+
+    std::ostringstream sim_out;
+    std::string trace = "Tick step=3\nTick step=1\n";
+    std::string final_state = fsm::tools::IrSimulator::simulate_trace(model, trace, sim_out);
+    EXPECT_EQ(final_state, "Done");
+    EXPECT_EQ(sim_out.str().find("[symbolic-guard]"), std::string::npos);
+}
+
+/**
+ * @brief Verify --races detects concurrent data races even when --7stage pipeline is active.
+ * @scenario SysML v2 model with parallel regions RegA and RegB concurrently writing shared_counter on EvTick.
+ * @expected FsmcDriver::run with --7stage --races fails (returns 1) before OrthogonalProductPass flattens regions.
+ */
+TEST(FsmcCliOptionsTest, CheckRaces_DetectsDataRaceUnder7StagePipeline) {
+    const std::string sysml_path = (std::filesystem::temp_directory_path() / "fsmc_test_races_7stage.sysml").string();
+    const std::string out_path = (std::filesystem::temp_directory_path() / "fsmc_test_races_7stage.hpp").string();
+    {
+        std::ofstream ofs(sysml_path);
+        ofs << R"sysml(
+package RacePkg {
+    state def RaceFsm {
+        attribute shared_counter : UInt32 = 0;
+        entry; then Par;
+        parallel state Par {
+            state RegA {
+                entry; then A1;
+                state A1;
+                state A2;
+                transition first A1 accept EvTick do { shared_counter = shared_counter + 1; } then A2;
+            }
+            state RegB {
+                entry; then B1;
+                state B1;
+                state B2;
+                transition first B1 accept EvTick do { shared_counter = shared_counter + 2; } then B2;
+            }
+        }
+    }
+}
+)sysml";
+    }
+
+    fsm::tools::FsmcOptions opts;
+    opts.input_file = sysml_path;
+    opts.output_file = out_path;
+    opts.pipeline_mode = "7stage";
+    opts.check_races = true;
+
+    const int rc = fsm::tools::FsmcDriver::run(opts);
+    EXPECT_EQ(rc, 1);
+
+    std::filesystem::remove(sysml_path);
+    std::filesystem::remove(out_path);
+}
+
+/**
+ * @brief Verify --ctl / --verify expands orthogonal parallel regions even in standard pipeline mode.
+ * @scenario SCXML <parallel id="Par"> model checked with ctl_property = "EF Par_R1B_R2B" without --7stage.
+ * @expected FsmcDriver::run returns 0 (CTL property verified on expanded product states).
+ */
+TEST(FsmcCliOptionsTest, VerifyMode_ExpandsParallelStatesBeforeCtlCheck) {
+    const std::string scxml_path = (std::filesystem::temp_directory_path() / "fsmc_test_verify_par.scxml").string();
+    {
+        std::ofstream ofs(scxml_path);
+        ofs << R"xml(
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Par">
+  <parallel id="Par">
+    <state id="Reg1" initial="R1A">
+      <state id="R1A"><transition event="go" target="R1B"/></state>
+      <state id="R1B"/>
+    </state>
+    <state id="Reg2" initial="R2A">
+      <state id="R2A"><transition event="sync" target="R2B"/></state>
+      <state id="R2B"/>
+    </state>
+  </parallel>
+</scxml>
+)xml";
+    }
+
+    fsm::tools::FsmcOptions opts;
+    opts.input_file = scxml_path;
+    opts.verify_mode = true;
+    opts.ctl_spec = "EF Par_R1B_R2B";
+
+    const int rc = fsm::tools::FsmcDriver::run(opts);
+    EXPECT_EQ(rc, 0);
+
+    std::filesystem::remove(scxml_path);
 }
 
 }  // namespace

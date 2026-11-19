@@ -95,6 +95,7 @@ class SemanticValidationPass : public IPass {
     [[nodiscard]] std::string name() const override;
     [[nodiscard]] std::string description() const override;
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
+    [[nodiscard]] bool preserves_ir() const noexcept override { return true; }
 };
 
 class GuardSimplificationPassWrapper : public IPass {
@@ -109,6 +110,7 @@ class GuardSatisfiabilityPassWrapper : public IPass {
     [[nodiscard]] std::string name() const override;
     [[nodiscard]] std::string description() const override;
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
+    [[nodiscard]] bool preserves_ir() const noexcept override { return true; }
 };
 
 class DeterminismEnforcementPassWrapper : public IPass {
@@ -123,6 +125,7 @@ class OrthogonalInterferencePassWrapper : public IPass {
     [[nodiscard]] std::string name() const override;
     [[nodiscard]] std::string description() const override;
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
+    [[nodiscard]] bool preserves_ir() const noexcept override { return true; }
 };
 
 class ChoiceCompletenessPass : public IPass {
@@ -130,6 +133,7 @@ class ChoiceCompletenessPass : public IPass {
     [[nodiscard]] std::string name() const override;
     [[nodiscard]] std::string description() const override;
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
+    [[nodiscard]] bool preserves_ir() const noexcept override { return true; }
 };
 
 class ChoiceInliningPassWrapper : public IPass {
@@ -151,6 +155,7 @@ class ModelSafetyVerifierPass : public IPass {
     [[nodiscard]] std::string name() const override;
     [[nodiscard]] std::string description() const override;
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
+    [[nodiscard]] bool preserves_ir() const noexcept override { return true; }
 };
 
 class DeadStatePruningPassWrapper : public IPass {
@@ -173,6 +178,7 @@ class ModelCheckingPass : public IPass {
     [[nodiscard]] std::string name() const override;
     [[nodiscard]] std::string description() const override;
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
+    [[nodiscard]] bool preserves_ir() const noexcept override { return true; }
 };
 
 class TimedDeadlockPassWrapper : public IPass {
@@ -180,6 +186,7 @@ class TimedDeadlockPassWrapper : public IPass {
     [[nodiscard]] std::string name() const override;
     [[nodiscard]] std::string description() const override;
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
+    [[nodiscard]] bool preserves_ir() const noexcept override { return true; }
 };
 
 class EFSMDataPathPass : public IPass {
@@ -188,6 +195,7 @@ class EFSMDataPathPass : public IPass {
     [[nodiscard]] std::string name() const override;
     [[nodiscard]] std::string description() const override;
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
+    [[nodiscard]] bool preserves_ir() const noexcept override { return !prune_dead_transitions_; }
 
   private:
     bool prune_dead_transitions_{false};
@@ -210,6 +218,7 @@ class WcetAnalysisPassWrapper : public IPass {
     [[nodiscard]] std::string name() const override;
     [[nodiscard]] std::string description() const override;
     bool run(FsmIr& ir, DiagnosticEngine& diag) override;
+    [[nodiscard]] bool preserves_ir() const noexcept override { return true; }
 
   private:
     std::unique_ptr<passes::WcetAnalysisPass> pass_;
@@ -420,6 +429,22 @@ class PassManager {
      * @brief Retrieves timing and mutation telemetry from the most recent run.
      */
     [[nodiscard]] const std::vector<PassExecutionStats>& get_stats() const noexcept;
+
+    /**
+     * @brief Instantiates a registered built-in pass by its canonical CLI name or alias.
+     * @param pass_name Canonical pass identifier (e.g., "guard-simplification", "history-lowering").
+     * @param pipe_cmd Optional shell command when pass_name == "pipe-through".
+     * @param submachine_resolver Optional resolver callback when pass_name is "inline-submachines".
+     * @return Unique pointer to the instantiated IPass, or nullptr if unrecognized.
+     */
+    [[nodiscard]] static std::unique_ptr<IPass> create_pass_by_name(
+        std::string_view pass_name, std::string_view pipe_cmd = "",
+        SubmachineInliningPassWrapper::SubmachineResolver submachine_resolver = nullptr);
+
+    /**
+     * @brief Returns the canonical CLI names of all built-in passes registered in the middle-end.
+     */
+    [[nodiscard]] static std::vector<std::string_view> registered_pass_names();
 
   private:
     plugin::PluginLoader plugin_loader_;

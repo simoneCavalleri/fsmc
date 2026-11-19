@@ -12,6 +12,7 @@
 #include <dlfcn.h>
 #endif
 
+#include <exception>
 #include <filesystem>
 
 #include "fsm/middleend/pass_manager.hpp"
@@ -72,7 +73,19 @@ bool PluginLoader::load_plugin(const std::string& plugin_path, PassManager& pm, 
     }
 
     auto reg_fn = reinterpret_cast<RegisterPassesFn>(reg_sym);
-    reg_fn(pm);
+    try {
+        reg_fn(pm);
+    } catch (const std::exception& ex) {
+        diag.report(
+            Diagnostic::error("E_PLUGIN_INIT", "Plugin '" + safe_path + "' threw during registration: " + ex.what()));
+        FreeLibrary(handle);
+        return false;
+    } catch (...) {
+        diag.report(Diagnostic::error("E_PLUGIN_INIT",
+                                      "Plugin '" + safe_path + "' threw an unknown exception during registration"));
+        FreeLibrary(handle);
+        return false;
+    }
 
     handles_.push_back(reinterpret_cast<void*>(handle));
     diag.report(
@@ -102,7 +115,19 @@ bool PluginLoader::load_plugin(const std::string& plugin_path, PassManager& pm, 
     }
 
     auto reg_fn = reinterpret_cast<RegisterPassesFn>(reg_sym);
-    reg_fn(pm);
+    try {
+        reg_fn(pm);
+    } catch (const std::exception& ex) {
+        diag.report(
+            Diagnostic::error("E_PLUGIN_INIT", "Plugin '" + safe_path + "' threw during registration: " + ex.what()));
+        dlclose(handle);
+        return false;
+    } catch (...) {
+        diag.report(Diagnostic::error("E_PLUGIN_INIT",
+                                      "Plugin '" + safe_path + "' threw an unknown exception during registration"));
+        dlclose(handle);
+        return false;
+    }
 
     handles_.push_back(handle);
     diag.report(

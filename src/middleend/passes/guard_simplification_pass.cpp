@@ -28,11 +28,94 @@ bool are_complementary(const GuardAstNode& a, const GuardAstNode& b) {
     return false;
 }
 
+bool is_true_literal(const GuardAstNode& n) {
+    return n.op == GuardOp::None && (n.expression == "true" || n.expression == "true_");
+}
+
+bool is_false_literal(const GuardAstNode& n) {
+    return n.op == GuardOp::None && (n.expression == "false" || n.expression == "false_");
+}
+
+std::string_view trim_sv(std::string_view sv) {
+    while (!sv.empty() && (sv.front() == ' ' || sv.front() == '\t')) {
+        sv.remove_prefix(1);
+    }
+    while (!sv.empty() && (sv.back() == ' ' || sv.back() == '\t')) {
+        sv.remove_suffix(1);
+    }
+    return sv;
+}
+
+GuardAstNode parse_cpp_guard_ast(std::string_view raw) {
+    raw = trim_sv(raw);
+    auto parse_children = [](std::string_view inner) {
+        std::vector<GuardAstNode> children;
+        int angle_depth = 0;
+        int paren_depth = 0;
+        std::size_t start = 0;
+        for (std::size_t i = 0; i < inner.size(); ++i) {
+            const char c = inner[i];
+            if (c == '<') {
+                ++angle_depth;
+            } else if (c == '>' && angle_depth > 0) {
+                --angle_depth;
+            } else if (c == '(') {
+                ++paren_depth;
+            } else if (c == ')' && paren_depth > 0) {
+                --paren_depth;
+            } else if (c == ',' && angle_depth == 0 && paren_depth == 0) {
+                children.push_back(parse_cpp_guard_ast(inner.substr(start, i - start)));
+                start = i + 1;
+            }
+        }
+        if (start <= inner.size()) {
+            std::string_view last = trim_sv(inner.substr(start));
+            if (!last.empty()) {
+                children.push_back(parse_cpp_guard_ast(last));
+            }
+        }
+        return children;
+    };
+
+    if (raw.size() > 10 && raw.substr(0, 9) == "fsm::not<" && raw.back() == '>') {
+        // Handle optional legacy form
+        return GuardAstNode(GuardOp::Not, parse_children(raw.substr(9, raw.size() - 10)));
+    }
+    if (raw.size() > 11 && raw.substr(0, 10) == "fsm::not_<" && raw.back() == '>') {
+        return GuardAstNode(GuardOp::Not, parse_children(raw.substr(10, raw.size() - 11)));
+    }
+    if (raw.size() > 11 && raw.substr(0, 10) == "fsm::and_<" && raw.back() == '>') {
+        return GuardAstNode(GuardOp::And, parse_children(raw.substr(10, raw.size() - 11)));
+    }
+    if (raw.size() > 10 && raw.substr(0, 9) == "fsm::or_<" && raw.back() == '>') {
+        return GuardAstNode(GuardOp::Or, parse_children(raw.substr(9, raw.size() - 10)));
+    }
+    return GuardAstNode(std::string(raw));
+}
+
 }  // namespace
 
 GuardAstNode GuardSimplificationPass::simplify_node(const GuardAstNode& node) {
-    // Base case: atomic expression
+    // Base case: atomic expression (re-parse if it encodes a compound fsm::and_/or_/not_ type)
     if (node.op == GuardOp::None) {
+        if (node.expression.rfind("fsm::", 0) == 0) {
+            GuardAstNode parsed = parse_cpp_guard_ast(node.expression);
+            if (parsed.op != GuardOp::None) {
+                return simplify_node(parsed);
+            }
+        } else if (node.expression.find('&') != std::string::npos || node.expression.find('|') != std::string::npos ||
+                   node.expression.find('!') != std::string::npos || node.expression.find('(') != std::string::npos) {
+            auto parsed = GuardExpressionParser::parse(node.expression);
+            if (parsed.ast.has_value() && parsed.ast->op != GuardOp::None) {
+                return simplify_node(*parsed.ast);
+            }
+        }
+        if (is_true_literal(node)) {
+            return GuardAstNode("true");
+        }
+        if (is_false_literal(node)) {
+            return GuardAstNode("false");
+        }
         return node;
     }
 
@@ -54,12 +137,10 @@ GuardAstNode GuardSimplificationPass::simplify_node(const GuardAstNode& node) {
             return child.children[0];
         }
         // !(true) -> false, !(false) -> true
-        if (child.op == GuardOp::None) {
-            if (child.expression == "true")
-                return GuardAstNode("false");
-            if (child.expression == "false")
-                return GuardAstNode("true");
-        }
+        if (is_true_literal(child))
+            return GuardAstNode("false");
+        if (is_false_literal(child))
+            return GuardAstNode("true");
         return GuardAstNode(GuardOp::Not, {child});
     }
 
@@ -83,11 +164,11 @@ GuardAstNode GuardSimplificationPass::simplify_node(const GuardAstNode& node) {
     if (node.op == GuardOp::And) {
         for (const auto& item : flattened) {
             // If any child is "false", whole AND is false
-            if (item.op == GuardOp::None && item.expression == "false") {
+            if (is_false_literal(item)) {
                 return GuardAstNode("false");
             }
             // Skip "true" in AND
-            if (item.op == GuardOp::None && item.expression == "true") {
+            if (is_true_literal(item)) {
                 continue;
             }
             // Complementary check (A && !A -> false)
@@ -113,11 +194,11 @@ GuardAstNode GuardSimplificationPass::simplify_node(const GuardAstNode& node) {
     if (node.op == GuardOp::Or) {
         for (const auto& item : flattened) {
             // If any child is "true", whole OR is true
-            if (item.op == GuardOp::None && item.expression == "true") {
+            if (is_true_literal(item)) {
                 return GuardAstNode("true");
             }
             // Skip "false" in OR
-            if (item.op == GuardOp::None && item.expression == "false") {
+            if (is_false_literal(item)) {
                 continue;
             }
             // Complementary check (A || !A -> true)

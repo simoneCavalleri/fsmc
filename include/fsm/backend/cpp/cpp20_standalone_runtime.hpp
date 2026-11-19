@@ -19,53 +19,7 @@ namespace fsm::backend::cpp {
 
 class Cpp20StandaloneRuntime {
   public:
-    static void emit(std::ostream& out, const GeneratorOptions& opts) {
-        out << R"raw_fsm_runtime(
-// Core System Includes
-#include <array>
-#include <cassert>
-#include <chrono>
-#include <concepts>
-#include <cstddef>
-#include <cstdint>
-#include <cstring>
-#include <functional>
-#include <iomanip>
-#include <iterator>
-#include <optional>
-#include <ostream>
-#include <span>
-#include <string_view>
-#include <tuple>
-#include <type_traits>
-#include <utility>
-#include <variant>
-)raw_fsm_runtime";
-
-        if (opts.thread_safe) {
-            out << R"raw_fsm_runtime(
-// Thread-Safe System Includes
-#include <atomic>
-#include <condition_variable>
-#include <exception>
-#include <future>
-#include <memory>
-#include <mutex>
-#include <new>
-#include <queue>
-#include <string>
-#include <thread>
-#include <vector>
-)raw_fsm_runtime";
-        }
-
-        out << R"raw_fsm_runtime(
-
-// ============================================================================
-// Core Runtime (C++20)
-// ============================================================================
-)raw_fsm_runtime";
-
+    static void emit_core_body(std::ostream& out) {
         out << R"raw_fsm_runtime(
 // --- Begin: traits/type_list.hpp ---
 #if defined(__has_cpp_attribute)
@@ -118,16 +72,12 @@ struct type_list_cat<List1, List2, Rest...> {
 template <typename... Lists>
 using type_list_cat_t = typename type_list_cat<Lists...>::type;
 
-// Check if type_list contains T
+// Check if type_list contains T (O(1) recursion depth via C++17 fold expression)
 template <typename T, typename List>
 struct type_list_contains;
 
-template <typename T>
-struct type_list_contains<T, type_list<>> : std::false_type {};
-
-template <typename T, typename Head, typename... Tail>
-struct type_list_contains<T, type_list<Head, Tail...>>
-    : std::conditional_t<std::is_same_v<T, Head>, std::true_type, type_list_contains<T, type_list<Tail...>>> {};
+template <typename T, typename... Ts>
+struct type_list_contains<T, type_list<Ts...>> : std::bool_constant<(std::is_same_v<T, Ts> || ...)> {};
 
 template <typename T, typename List>
 inline constexpr bool type_list_contains_v = type_list_contains<T, List>::value;
@@ -2326,10 +2276,13 @@ class TraceBuffer {
      * @brief Formats human-readable flight recorder dump table to output stream.
      */
     void dump(std::ostream& os) const {
+        constexpr std::string_view kSeparator =
+            "--------------------------------------------------------------------------------------------";
+        static_assert(kSeparator.size() == 92);
         os << "=== FSM Flight Recorder Audit Trace (" << count_ << "/" << Capacity << " entries) ===\n";
         os << std::left << std::setw(10) << "TICK" << std::setw(25) << "SOURCE" << std::setw(25) << "EVENT"
            << std::setw(25) << "TARGET" << "STATUS\n";
-        os << std::string(92, '-') << "\n";
+        os << kSeparator << "\n";
 
         for (std::size_t i = 0; i < count_; ++i) {
             const auto& entry = (*this)[i];
@@ -2361,8 +2314,7 @@ class flight_recorder_observer {
     }
 
     void operator()(const transition_info& info) const noexcept {
-        const_cast<TraceBuffer<Capacity>&>(recorder_).record(current_tick_, info.source, info.event, info.target,
-                                                             info.status == dispatch_status::success);
+        recorder_.record(current_tick_, info.source, info.event, info.target, info.status == dispatch_status::success);
     }
 
     template <typename State, typename Event>
@@ -2378,7 +2330,7 @@ class flight_recorder_observer {
 
   private:
     std::uint64_t current_tick_{0};
-    TraceBuffer<Capacity> recorder_{};
+    mutable TraceBuffer<Capacity> recorder_{};
 };
 
 }  // namespace fsm
@@ -3093,6 +3045,8 @@ class invariant_manager;
 template <typename Table>
 class invariant_manager<Table, true> {
   public:
+    using violation_fn_ptr = void (*)(const invariant_violation_info&);
+
     void reset() noexcept {
         residence_time_ms_ = 0;
         last_violation_.reset();
@@ -3115,7 +3069,22 @@ class invariant_manager<Table, true> {
     void clear_invariant_violation() noexcept { last_violation_.reset(); }
 
     void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
+        violation_fn_ = nullptr;
         violation_handler_ = std::move(handler);
+    }
+
+    void set_violation_handler(violation_fn_ptr fn) noexcept {
+        violation_fn_ = fn;
+        violation_handler_ = nullptr;
+    }
+
+    void set_invariant_violation_handler(violation_fn_ptr fn) noexcept { set_violation_handler(fn); }
+
+    template <typename Callable, std::enable_if_t<std::is_convertible_v<Callable, violation_fn_ptr> &&
+                                                      !std::is_same_v<std::decay_t<Callable>, violation_fn_ptr>,
+                                                  int> = 0>
+    void set_invariant_violation_handler(Callable&& handler) noexcept {
+        set_violation_handler(static_cast<violation_fn_ptr>(std::forward<Callable>(handler)));
     }
 
     template <typename CurrentStateVariant>
@@ -3128,7 +3097,9 @@ class invariant_manager<Table, true> {
                         invariant_violation_info info{::fsm::get_state_name(st), residence_time_ms_,
                                                       state_max_stay_ms_v<S>};
                         last_violation_ = info;
-                        if (violation_handler_) {
+                        if (violation_fn_ != nullptr) {
+                            violation_fn_(info);
+                        } else if (violation_handler_) {
                             violation_handler_(info);
                         }
                         return false;
@@ -3144,12 +3115,15 @@ class invariant_manager<Table, true> {
     std::uint64_t residence_time_ms_{0};
     std::optional<invariant_violation_info> last_violation_{std::nullopt};
     std::function<void(const invariant_violation_info&)> violation_handler_{};
+    violation_fn_ptr violation_fn_{nullptr};
 };
 
 // Zero-overhead empty invariant manager when NO states declare time invariants (0 bytes with [[no_unique_address]])
 template <typename Table>
 class invariant_manager<Table, false> {
   public:
+    using violation_fn_ptr = void (*)(const invariant_violation_info&);
+
     constexpr void reset() noexcept {}
     constexpr void advance_time(std::uint64_t /*delta_ms*/) noexcept {}
     constexpr void set_residence_time(std::uint64_t /*ms*/) noexcept {}
@@ -3162,6 +3136,13 @@ class invariant_manager<Table, false> {
     }
     constexpr void clear_invariant_violation() noexcept {}
     void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> /*handler*/) noexcept {}
+    void set_violation_handler(void (* /*handler*/)(const invariant_violation_info&)) noexcept {}
+    void set_invariant_violation_handler(void (* /*handler*/)(const invariant_violation_info&)) noexcept {}
+
+    template <typename Callable, std::enable_if_t<std::is_convertible_v<Callable, violation_fn_ptr> &&
+                                                      !std::is_same_v<std::decay_t<Callable>, violation_fn_ptr>,
+                                                  int> = 0>
+    void set_invariant_violation_handler(Callable&& /*handler*/) noexcept {}
 
     template <typename CurrentStateVariant>
     constexpr bool check_invariants(const CurrentStateVariant& /*state_var*/) const noexcept {
@@ -3281,13 +3262,25 @@ constexpr void call_initial_hierarchical_on_enter(Target& target_state, const In
     call_on_enter(target_state, anonymous_event{}, in, out, reg, srv);
 }
 
+template <typename T>
+struct row_type_tag {
+    using type = T;
+};
+
+template <typename RowType, typename CurrentSrc, typename Event>
+inline constexpr bool is_row_applicable_v =
+    (std::is_same_v<CurrentSrc, typename RowType::source> || is_substate_of_v<CurrentSrc, typename RowType::source>) &&
+    (std::is_same_v<std::decay_t<Event>, typename RowType::event> ||
+     (std::is_same_v<std::decay_t<Event>, anonymous_event> &&
+      std::is_same_v<typename RowType::event, anonymous_event>));
+
 template <typename Table, typename CurrentSrc, typename Event, typename In, typename Out, typename Registers,
           typename Services, typename FsmInstance, typename ObserverCallback, typename RecordHistoryFn,
-          std::size_t... Indices>
+          typename... RowTypes>
 dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event& event, const In& in, Out& out,
                                               Registers& registers_, Services* services_, FsmInstance& fsm_inst,
                                               const ObserverCallback& observer_, RecordHistoryFn&& record_history_fn,
-                                              std::index_sequence<Indices...> /*indices*/) {
+                                              type_list<RowTypes...> /*rows*/) {
     constexpr bool has_observer = !std::is_same_v<std::decay_t<ObserverCallback>, no_observer>;
 
     Services& srv = (services_ != nullptr) ? *services_ : fsm_inst.resolve_services();
@@ -3296,16 +3289,11 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
     std::optional<transition_trace> executed_trace = std::nullopt;
     std::optional<transition_trace> last_rejected_trace = std::nullopt;
 
-    auto try_index = [&](auto idx_constant) -> bool {
-        constexpr std::size_t Index = decltype(idx_constant)::value;
-        using RowType = std::tuple_element_t<Index, decltype(Table::rows)>;
+    auto try_row = [&](auto row_tag) -> bool {
+        using RowType = typename decltype(row_tag)::type;
         using TransSrc = typename RowType::source;
-        using TransEvt = typename RowType::event;
 
-        if constexpr ((std::is_same_v<CurrentSrc, TransSrc> || is_substate_of_v<CurrentSrc, TransSrc>) &&
-                      (std::is_same_v<std::decay_t<Event>, TransEvt> ||
-                       (std::is_same_v<std::decay_t<Event>, anonymous_event> &&
-                        std::is_same_v<TransEvt, anonymous_event>))) {
+        if constexpr (is_row_applicable_v<RowType, CurrentSrc, Event>) {
             using Guard = typename RowType::guard_type;
             using Action = typename RowType::action_type;
             using TransDst = typename RowType::target;
@@ -3392,7 +3380,7 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
         return false;
     };
 
-    bool executed = (try_index(std::integral_constant<std::size_t, Indices>{}) || ...);
+    bool executed = (try_row(row_type_tag<RowTypes>{}) || ...);
     if (executed) {
         return dispatch_result{dispatch_status::success, executed_trace};
     }
@@ -3402,6 +3390,18 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
     return dispatch_result{
         dispatch_status::unhandled,
         transition_trace{get_state_name(src_state), {}, get_event_name(event), {}, {}, transition_kind::external}};
+}
+
+template <typename Table, typename CurrentSrc, typename Event, typename In, typename Out, typename Registers,
+          typename Services, typename FsmInstance, typename ObserverCallback, typename RecordHistoryFn,
+          std::size_t... Indices>
+dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event& event, const In& in, Out& out,
+                                              Registers& registers_, Services* services_, FsmInstance& fsm_inst,
+                                              const ObserverCallback& observer_, RecordHistoryFn&& record_history_fn,
+                                              std::index_sequence<Indices...> /*indices*/) {
+    return execute_transition_from_ports<Table, CurrentSrc>(src_state, event, in, out, registers_, services_, fsm_inst,
+                                                            observer_, std::forward<RecordHistoryFn>(record_history_fn),
+                                                            typename Table::transitions_list{});
 }
 
 }  // namespace fsm::detail
@@ -4053,7 +4053,7 @@ class fsm {
                 };
                 return detail::execute_transition_from_ports<Table, CurrentSrc>(
                     src_state, event, in, out, this->registers_, &srv, *this, this->observer_, record_fn,
-                    std::make_index_sequence<std::tuple_size_v<decltype(this->table_.rows)>>{});
+                    typename Table::transitions_list{});
             },
             current_state_);
     }
@@ -4280,6 +4280,19 @@ class fsm {
         invariant_mgr_.set_invariant_violation_handler(std::move(handler));
     }
 
+    void set_invariant_violation_handler(void (*handler)(const invariant_violation_info&)) noexcept {
+        invariant_mgr_.set_violation_handler(handler);
+    }
+
+    template <typename Callable,
+              std::enable_if_t<std::is_convertible_v<Callable, void (*)(const invariant_violation_info&)> &&
+                                   !std::is_same_v<std::decay_t<Callable>, void (*)(const invariant_violation_info&)>,
+                               int> = 0>
+    void set_invariant_violation_handler(Callable&& handler) noexcept {
+        invariant_mgr_.set_violation_handler(
+            static_cast<void (*)(const invariant_violation_info&)>(std::forward<Callable>(handler)));
+    }
+
     bool check_invariants() { return invariant_mgr_.check_invariants(current_state_); }
 
     /**
@@ -4465,7 +4478,7 @@ class fsm {
             if (static_cast<std::size_t>(end - curr) < plen) {
                 return false;
             }
-            std::string_view parent_sv(reinterpret_cast<const char*>(curr), plen);
+            std::string_view parent_sv(static_cast<const char*>(static_cast<const void*>(curr)), plen);
             if (!resolve_static_state_name(parent_sv).has_value()) {
                 return false;
             }
@@ -4480,7 +4493,7 @@ class fsm {
             if (static_cast<std::size_t>(end - curr) < slen) {
                 return false;
             }
-            std::string_view substate_sv(reinterpret_cast<const char*>(curr), slen);
+            std::string_view substate_sv(static_cast<const char*>(static_cast<const void*>(curr)), slen);
             if (!resolve_static_state_name(substate_sv).has_value()) {
                 return false;
             }
@@ -4513,13 +4526,13 @@ class fsm {
             std::uint16_t plen = 0;
             std::memcpy(&plen, curr, sizeof(plen));
             curr += sizeof(plen);
-            std::string_view parent_sv(reinterpret_cast<const char*>(curr), plen);
+            std::string_view parent_sv(static_cast<const char*>(static_cast<const void*>(curr)), plen);
             curr += plen;
 
             std::uint16_t slen = 0;
             std::memcpy(&slen, curr, sizeof(slen));
             curr += sizeof(slen);
-            std::string_view substate_sv(reinterpret_cast<const char*>(curr), slen);
+            std::string_view substate_sv(static_cast<const char*>(static_cast<const void*>(curr)), slen);
             curr += slen;
 
             auto static_parent = resolve_static_state_name(parent_sv);
@@ -4782,16 +4795,10 @@ using make_fsm = fsm<config<Table, Policies...>>;
 
 // --- End: detail/fsm_policy_adapter.hpp ---
 )raw_fsm_runtime";
+    }
 
-        if (opts.thread_safe) {
-            out << R"raw_fsm_runtime(
-
-// ============================================================================
-// Thread-Safe & Asynchronous Runtime (C++20)
-// ============================================================================
-)raw_fsm_runtime";
-
-            out << R"raw_fsm_runtime(
+    static void emit_thread_body(std::ostream& out) {
+        out << R"raw_fsm_runtime(
 // --- Begin: spsc_ring_buffer.hpp ---
 namespace fsm {
 
@@ -4932,7 +4939,7 @@ class spsc_ring_buffer {
 // --- End: spsc_ring_buffer.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: static_ring_buffer.hpp ---
 namespace fsm {
 
@@ -5051,7 +5058,7 @@ class static_ring_buffer {
 // --- End: static_ring_buffer.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: async_types.hpp ---
 namespace fsm {
 
@@ -5077,7 +5084,7 @@ struct timed_event {
 // --- End: async_types.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: async_event_queue.hpp ---
 namespace fsm {
 
@@ -5245,7 +5252,7 @@ class async_event_queue {
 // --- End: async_event_queue.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: detail/reentrancy_tracker.hpp ---
 namespace fsm::detail {
 
@@ -5286,7 +5293,7 @@ class reentrancy_tracker {
 // --- End: detail/reentrancy_tracker.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: detail/notification_dispatcher.hpp ---
 namespace fsm::detail {
 
@@ -5309,11 +5316,15 @@ inline void handle_exception_outside_lock(std::exception_ptr ex, const exception
         last_exception = ex;
     }
     if (handler) {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
         try {
             handler(ex);
         } catch (...) {
             // Suppress secondary exceptions thrown from handler
         }
+#else
+        handler(ex);
+#endif
     }
 }
 
@@ -5322,38 +5333,60 @@ inline void invoke_notifications_outside_lock(const Event& evt, const dispatch_s
                                               std::exception_ptr& last_exception, std::mutex& mutex) {
     if (snap.observer_h) {
         for (const auto& info : snap.notifications) {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
             try {
                 snap.observer_h(info);
             } catch (...) {
                 handle_exception_outside_lock(std::current_exception(), snap.exception_h, last_exception, mutex);
             }
+#else
+            (void)last_exception;
+            (void)mutex;
+            snap.observer_h(info);
+#endif
         }
     }
     if (snap.result.is_unhandled() && snap.unhandled_h) {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
         try {
             snap.unhandled_h(get_event_name(evt), snap.state_name);
         } catch (...) {
             handle_exception_outside_lock(std::current_exception(), snap.exception_h, last_exception, mutex);
         }
+#else
+        snap.unhandled_h(get_event_name(evt), snap.state_name);
+#endif
     } else if (snap.result.is_guard_rejected() && snap.guard_rejected_h) {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
         try {
             snap.guard_rejected_h(get_event_name(evt), snap.state_name);
         } catch (...) {
             handle_exception_outside_lock(std::current_exception(), snap.exception_h, last_exception, mutex);
         }
+#else
+        snap.guard_rejected_h(get_event_name(evt), snap.state_name);
+#endif
     } else if (snap.result.is_deferred() && snap.deferred_h) {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
         try {
             snap.deferred_h(get_event_name(evt), snap.state_name);
         } catch (...) {
             handle_exception_outside_lock(std::current_exception(), snap.exception_h, last_exception, mutex);
         }
+#else
+        snap.deferred_h(get_event_name(evt), snap.state_name);
+#endif
     }
     if (!snap.result.is_ok() && snap.failure_h) {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
         try {
             snap.failure_h(get_event_name(evt), snap.state_name, snap.result.status);
         } catch (...) {
             handle_exception_outside_lock(std::current_exception(), snap.exception_h, last_exception, mutex);
         }
+#else
+        snap.failure_h(get_event_name(evt), snap.state_name, snap.result.status);
+#endif
     }
 }
 
@@ -5362,7 +5395,7 @@ inline void invoke_notifications_outside_lock(const Event& evt, const dispatch_s
 // --- End: detail/notification_dispatcher.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: detail/diagnostic_handlers.hpp ---
 namespace fsm::detail {
 
@@ -5380,6 +5413,12 @@ class diagnostic_handler_manager {
     void set_exception_handler(exception_handler h) { exception_handler_ = std::move(h); }
     void set_user_observer(observer_fn obs) { user_observer_ = std::move(obs); }
     void clear_user_observer() { user_observer_ = nullptr; }
+
+    [[nodiscard]] bool has_any_callback() const noexcept {
+        return static_cast<bool>(unhandled_handler_) || static_cast<bool>(guard_rejected_handler_) ||
+               static_cast<bool>(deferred_handler_) || static_cast<bool>(failure_handler_) ||
+               static_cast<bool>(exception_handler_) || static_cast<bool>(user_observer_);
+    }
 
     [[nodiscard]] exception_handler get_exception_handler_copy() const { return exception_handler_; }
 
@@ -5416,7 +5455,7 @@ class diagnostic_handler_manager {
 // --- End: detail/diagnostic_handlers.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: detail/worker_thread_controller.hpp ---
 namespace fsm::detail {
 
@@ -5428,7 +5467,11 @@ class worker_thread_controller {
   public:
     worker_thread_controller() = default;
 
-    ~worker_thread_controller() { stop_worker(); }
+    ~worker_thread_controller() {
+        stop_worker();
+        std::unique_lock<std::mutex> lk(exit_mutex_);
+        exit_cv_.wait(lk, [this]() { return worker_loop_exited_.load(std::memory_order_acquire); });
+    }
 
     worker_thread_controller(const worker_thread_controller&) = delete;
     worker_thread_controller& operator=(const worker_thread_controller&) = delete;
@@ -5443,6 +5486,7 @@ class worker_thread_controller {
             }
             queue_.start();
             worker_running_.store(true, std::memory_order_release);
+            worker_loop_exited_.store(false, std::memory_order_release);
             worker_thread_ = std::thread([this, &fsm]() {
                 worker_thread_id_.store(std::this_thread::get_id(), std::memory_order_release);
                 worker_loop(fsm);
@@ -5512,7 +5556,17 @@ class worker_thread_controller {
         ~task_finish_guard() { queue.finish_task(); }
     };
 
+    struct loop_exit_guard {
+        worker_thread_controller& owner;
+        ~loop_exit_guard() {
+            std::lock_guard<std::mutex> lk(owner.exit_mutex_);
+            owner.worker_loop_exited_.store(true, std::memory_order_release);
+            owner.exit_cv_.notify_all();
+        }
+    };
+
     void worker_loop(FsmRef& fsm) {
+        loop_exit_guard exit_guard{*this};
         while (worker_running_.load(std::memory_order_acquire)) {
             Task task;
             if (queue_.pop_wait(task)) {
@@ -5523,6 +5577,9 @@ class worker_thread_controller {
     }
 
     mutable std::mutex lifecycle_mutex_{};
+    mutable std::mutex exit_mutex_{};
+    std::condition_variable exit_cv_{};
+    std::atomic<bool> worker_loop_exited_{true};
     async_event_queue<Task> queue_{};
     std::atomic<bool> worker_running_{false};
     std::atomic<std::thread::id> worker_thread_id_{};
@@ -5534,7 +5591,7 @@ class worker_thread_controller {
 // --- End: detail/worker_thread_controller.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: thread_safe_fsm.hpp ---
 namespace fsm {
 
@@ -5587,19 +5644,35 @@ class thread_safe_fsm {
     using exception_handler = ::fsm::exception_handler;
 
     thread_safe_fsm() {
-        fsm_.set_observer([this](const transition_info& info) { diagnostics_.notification_buffer().push_back(info); });
+        fsm_.set_observer([this](const transition_info& info) {
+            if (diagnostics_.has_any_callback()) {
+                diagnostics_.notification_buffer().push_back(info);
+            }
+        });
     }
 
     explicit thread_safe_fsm(services_type& srv) : fsm_(srv) {
-        fsm_.set_observer([this](const transition_info& info) { diagnostics_.notification_buffer().push_back(info); });
+        fsm_.set_observer([this](const transition_info& info) {
+            if (diagnostics_.has_any_callback()) {
+                diagnostics_.notification_buffer().push_back(info);
+            }
+        });
     }
 
     explicit thread_safe_fsm(registers_type reg) : fsm_(std::move(reg)) {
-        fsm_.set_observer([this](const transition_info& info) { diagnostics_.notification_buffer().push_back(info); });
+        fsm_.set_observer([this](const transition_info& info) {
+            if (diagnostics_.has_any_callback()) {
+                diagnostics_.notification_buffer().push_back(info);
+            }
+        });
     }
 
     thread_safe_fsm(registers_type reg, services_type& srv) : fsm_(std::move(reg), srv) {
-        fsm_.set_observer([this](const transition_info& info) { diagnostics_.notification_buffer().push_back(info); });
+        fsm_.set_observer([this](const transition_info& info) {
+            if (diagnostics_.has_any_callback()) {
+                diagnostics_.notification_buffer().push_back(info);
+            }
+        });
     }
 
     ~thread_safe_fsm() {
@@ -5727,6 +5800,24 @@ class thread_safe_fsm {
         }
         std::scoped_lock lock(dispatch_mutex_);
         fsm_.set_invariant_violation_handler(std::move(handler));
+    }
+
+    void set_invariant_violation_handler(void (*handler)(const invariant_violation_info&)) noexcept {
+        if (reentrancy_.is_reentrant_call()) {
+            fsm_.set_invariant_violation_handler(handler);
+            return;
+        }
+        std::scoped_lock lock(dispatch_mutex_);
+        fsm_.set_invariant_violation_handler(handler);
+    }
+
+    template <typename Callable,
+              std::enable_if_t<std::is_convertible_v<Callable, void (*)(const invariant_violation_info&)> &&
+                                   !std::is_same_v<std::decay_t<Callable>, void (*)(const invariant_violation_info&)>,
+                               int> = 0>
+    void set_invariant_violation_handler(Callable&& handler) noexcept {
+        set_invariant_violation_handler(
+            static_cast<void (*)(const invariant_violation_info&)>(std::forward<Callable>(handler)));
     }
 
     // State & Register Access
@@ -5859,6 +5950,24 @@ class thread_safe_fsm {
     [[nodiscard]] auto& timer_manager() noexcept { return fsm_.timer_manager(); }
     [[nodiscard]] const auto& timer_manager() const noexcept { return fsm_.timer_manager(); }
 
+    template <typename Fn>
+    auto with_timer_manager(Fn&& fn) {
+        if (reentrancy_.is_reentrant_call()) {
+            return std::forward<Fn>(fn)(fsm_.timer_manager());
+        }
+        std::lock_guard<std::mutex> lock(dispatch_mutex_);
+        return std::forward<Fn>(fn)(fsm_.timer_manager());
+    }
+
+    template <typename Fn>
+    auto with_timer_manager(Fn&& fn) const {
+        if (reentrancy_.is_reentrant_call()) {
+            return std::forward<Fn>(fn)(fsm_.timer_manager());
+        }
+        std::lock_guard<std::mutex> lock(dispatch_mutex_);
+        return std::forward<Fn>(fn)(fsm_.timer_manager());
+    }
+
     template <typename Callable>
     auto with_state(Callable&& fn) const {
         if (reentrancy_.is_reentrant_call()) {
@@ -5902,7 +6011,7 @@ class thread_safe_fsm {
             return queue_reentrant_event(event);
         }
         auto snap = execute_dispatch_under_lock(event);
-        detail::invoke_notifications_outside_lock(event, snap, diagnostics_.last_exception_ref(), dispatch_mutex_);
+        notify_after_dispatch(event, snap);
         drain_reentrant_queue_if_outermost();
         return snap.result;
     }
@@ -5913,19 +6022,21 @@ class thread_safe_fsm {
     template <typename Event>
     dispatch_result send(const Event& event, const in_ports_type& in, out_ports_type& out) {
         if (reentrancy_.is_reentrant_call()) {
-            return queue_reentrant_event(event);
+            worker_.push([event, in](fsm_type& machine) {
+                out_ports_type dummy_out{};
+                (void)machine.dispatch(event, in, dummy_out);
+            });
+            return dispatch_result{dispatch_status::deferred, std::nullopt};
         }
         detail::dispatch_snapshot snap;
         {
             std::scoped_lock lock(dispatch_mutex_);
             detail::reentrancy_tracker::depth_guard depth_guard(reentrancy_);
             diagnostics_.notification_buffer().clear();
-            snap.result = fsm_.dispatch(event, in, out);
-            snap.state_name = std::string(fsm_.current_state_name());
-            snap.notifications = std::move(diagnostics_.notification_buffer());
-            diagnostics_.populate_snapshot_handlers(snap);
+            auto res = fsm_.dispatch(event, in, out);
+            snap = capture_dispatch_snapshot(res);
         }
-        detail::invoke_notifications_outside_lock(event, snap, diagnostics_.last_exception_ref(), dispatch_mutex_);
+        notify_after_dispatch(event, snap);
         drain_reentrant_queue_if_outermost();
         return snap.result;
     }
@@ -6007,15 +6118,20 @@ class thread_safe_fsm {
             start_worker();
         }
         auto task = [this, evt = std::move(event), cb = std::forward<Callback>(callback)](fsm_type&) mutable {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
             try {
                 auto snap = execute_dispatch_under_lock(evt);
-                detail::invoke_notifications_outside_lock(evt, snap, diagnostics_.last_exception_ref(),
-                                                          dispatch_mutex_);
+                notify_after_dispatch(evt, snap);
                 cb(snap.result);
             } catch (...) {
                 detail::handle_exception_outside_lock(std::current_exception(), get_exception_handler_safe(),
                                                       diagnostics_.last_exception_ref(), dispatch_mutex_);
             }
+#else
+            auto snap = execute_dispatch_under_lock(evt);
+            notify_after_dispatch(evt, snap);
+            cb(snap.result);
+#endif
         };
         worker_.push(std::move(task));
     }
@@ -6028,16 +6144,21 @@ class thread_safe_fsm {
         auto promise = std::make_shared<std::promise<dispatch_result>>();
         auto future = promise->get_future();
         auto task = [this, evt = std::move(event), p = promise](fsm_type&) mutable {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
             try {
                 auto snap = execute_dispatch_under_lock(evt);
-                detail::invoke_notifications_outside_lock(evt, snap, diagnostics_.last_exception_ref(),
-                                                          dispatch_mutex_);
+                notify_after_dispatch(evt, snap);
                 p->set_value(snap.result);
             } catch (...) {
                 p->set_exception(std::current_exception());
                 detail::handle_exception_outside_lock(std::current_exception(), get_exception_handler_safe(),
                                                       diagnostics_.last_exception_ref(), dispatch_mutex_);
             }
+#else
+            auto snap = execute_dispatch_under_lock(evt);
+            notify_after_dispatch(evt, snap);
+            p->set_value(snap.result);
+#endif
         };
         worker_.push(std::move(task));
         return future;
@@ -6051,17 +6172,24 @@ class thread_safe_fsm {
         auto deadline = std::chrono::steady_clock::now() + delay;
         const auto scheduled_state = cancel_if_state_changes ? current_state_index() : static_cast<std::size_t>(-1);
         auto task = [this, evt = std::move(event), scheduled_state, cancel_if_state_changes](fsm_type&) {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
             try {
                 if (cancel_if_state_changes && current_state_index() != scheduled_state) {
                     return;  // Invalidate stale timeout
                 }
                 auto snap = execute_dispatch_under_lock(evt);
-                detail::invoke_notifications_outside_lock(evt, snap, diagnostics_.last_exception_ref(),
-                                                          dispatch_mutex_);
+                notify_after_dispatch(evt, snap);
             } catch (...) {
                 detail::handle_exception_outside_lock(std::current_exception(), get_exception_handler_safe(),
                                                       diagnostics_.last_exception_ref(), dispatch_mutex_);
             }
+#else
+            if (cancel_if_state_changes && current_state_index() != scheduled_state) {
+                return;  // Invalidate stale timeout
+            }
+            auto snap = execute_dispatch_under_lock(evt);
+            notify_after_dispatch(evt, snap);
+#endif
         };
         worker_.push_timed(deadline, std::move(task));
     }
@@ -6074,14 +6202,18 @@ class thread_safe_fsm {
     template <typename Event>
     void enqueue(Event event) {
         auto task = [this, evt = std::move(event)](fsm_type&) {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
             try {
                 auto snap = execute_dispatch_under_lock(evt);
-                detail::invoke_notifications_outside_lock(evt, snap, diagnostics_.last_exception_ref(),
-                                                          dispatch_mutex_);
+                notify_after_dispatch(evt, snap);
             } catch (...) {
                 detail::handle_exception_outside_lock(std::current_exception(), get_exception_handler_safe(),
                                                       diagnostics_.last_exception_ref(), dispatch_mutex_);
             }
+#else
+            auto snap = execute_dispatch_under_lock(evt);
+            notify_after_dispatch(evt, snap);
+#endif
         };
         worker_.push(std::move(task));
     }
@@ -6147,25 +6279,40 @@ class thread_safe_fsm {
         }
     }
 
-    template <typename Event>
-    detail::dispatch_snapshot execute_dispatch_under_lock(const Event& evt) {
-        if (reentrancy_.is_reentrant_call()) {
-            detail::dispatch_snapshot snap;
-            snap.result = queue_reentrant_event(evt);
-            snap.state_name = std::string(fsm_.current_state_name());
-            diagnostics_.populate_snapshot_handlers(snap);
+    detail::dispatch_snapshot capture_dispatch_snapshot(dispatch_result result) {
+        if (!diagnostics_.has_any_callback() && diagnostics_.notification_buffer().empty()) {
+            detail::dispatch_snapshot snap{};
+            snap.result = result;
             return snap;
         }
-
-        detail::dispatch_snapshot snap;
-        std::scoped_lock lock(dispatch_mutex_);
-        detail::reentrancy_tracker::depth_guard depth_guard(reentrancy_);
-        diagnostics_.notification_buffer().clear();
-        snap.result = fsm_.dispatch(evt);
+        detail::dispatch_snapshot snap{};
+        snap.result = result;
         snap.state_name = std::string(fsm_.current_state_name());
         snap.notifications = std::move(diagnostics_.notification_buffer());
         diagnostics_.populate_snapshot_handlers(snap);
         return snap;
+    }
+
+    template <typename Event>
+    void notify_after_dispatch(const Event& evt, const detail::dispatch_snapshot& snap) {
+        if (!snap.observer_h && !snap.unhandled_h && !snap.guard_rejected_h && !snap.deferred_h && !snap.failure_h &&
+            !snap.exception_h && snap.notifications.empty()) {
+            return;
+        }
+        detail::invoke_notifications_outside_lock(evt, snap, diagnostics_.last_exception_ref(), dispatch_mutex_);
+    }
+
+    template <typename Event>
+    detail::dispatch_snapshot execute_dispatch_under_lock(const Event& evt) {
+        if (reentrancy_.is_reentrant_call()) {
+            return capture_dispatch_snapshot(queue_reentrant_event(evt));
+        }
+
+        std::scoped_lock lock(dispatch_mutex_);
+        detail::reentrancy_tracker::depth_guard depth_guard(reentrancy_);
+        diagnostics_.notification_buffer().clear();
+        auto res = fsm_.dispatch(evt);
+        return capture_dispatch_snapshot(res);
     }
 
     mutable std::mutex dispatch_mutex_;
@@ -6180,7 +6327,7 @@ class thread_safe_fsm {
 // --- End: thread_safe_fsm.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: detail/thread_safe_policy_adapter.hpp ---
 namespace fsm {
 
@@ -6213,8 +6360,12 @@ using make_thread_safe_fsm = thread_safe_fsm<config<Table, Policies...>>;
 // --- End: detail/thread_safe_policy_adapter.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: spsc_fsm.hpp ---
+#if !defined(FSMC_FREESTANDING)
+#endif
+
+
 namespace fsm {
 
 /**
@@ -6593,9 +6744,11 @@ class spsc_fsm {
     struct mutation_guard {
         explicit mutation_guard(spsc_fsm& owner) noexcept : owner_(owner) {
             owner_.seq_.fetch_add(1, std::memory_order_acq_rel);
+            std::atomic_thread_fence(std::memory_order_release);
         }
         ~mutation_guard() noexcept {
             owner_.state_index_.store(owner_.fsm_.get_current_state_variant().index(), std::memory_order_release);
+            std::atomic_thread_fence(std::memory_order_release);
             owner_.seq_.fetch_add(1, std::memory_order_release);
         }
         mutation_guard(const mutation_guard&) = delete;
@@ -6613,7 +6766,11 @@ class spsc_fsm {
         do {
             s0 = seq_.load(std::memory_order_acquire);
             while (s0 & 1U) {
+#if !defined(FSMC_FREESTANDING)
                 std::this_thread::yield();
+#else
+                (void)0;
+#endif
                 s0 = seq_.load(std::memory_order_acquire);
             }
             result = fn();
@@ -6633,7 +6790,7 @@ class spsc_fsm {
 // --- End: spsc_fsm.hpp ---
 )raw_fsm_runtime";
 
-            out << R"raw_fsm_runtime(
+        out << R"raw_fsm_runtime(
 // --- Begin: detail/spsc_policy_adapter.hpp ---
 namespace fsm {
 
@@ -6667,6 +6824,66 @@ using make_spsc_fsm = spsc_fsm<config<Table, Policies...>>;
 
 // --- End: detail/spsc_policy_adapter.hpp ---
 )raw_fsm_runtime";
+    }
+
+    static void emit(std::ostream& out, const GeneratorOptions& opts) {
+        out << R"raw_fsm_runtime(
+// Core System Includes
+#include <array>
+#include <cassert>
+#include <chrono>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <functional>
+#include <iomanip>
+#include <iterator>
+#include <optional>
+#include <ostream>
+#include <span>
+#include <string_view>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <variant>
+)raw_fsm_runtime";
+
+        if (opts.thread_safe) {
+            out << R"raw_fsm_runtime(
+// Thread-Safe System Includes
+#include <atomic>
+#include <condition_variable>
+#include <exception>
+#include <future>
+#include <memory>
+#include <mutex>
+#include <new>
+#include <queue>
+#include <string>
+#include <thread>
+#include <vector>
+)raw_fsm_runtime";
+        }
+
+        out << R"raw_fsm_runtime(
+
+// ============================================================================
+// Core Runtime (C++20)
+// ============================================================================
+)raw_fsm_runtime";
+
+        emit_core_body(out);
+
+        if (opts.thread_safe) {
+            out << R"raw_fsm_runtime(
+
+// ============================================================================
+// Thread-Safe & Asynchronous Runtime (C++20)
+// ============================================================================
+)raw_fsm_runtime";
+
+            emit_thread_body(out);
         }
     }
 };

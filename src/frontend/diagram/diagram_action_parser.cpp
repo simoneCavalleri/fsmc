@@ -208,9 +208,20 @@ ir::ActionSignature DiagramActionParser::parse_action_block(std::string_view raw
 
     if (!sig.assignments.empty()) {
         if (sig.assignments.size() == 1 && call_names.empty()) {
-            sig.name = "assign_" + sig.assignments[0].target.name;
+            std::string raw_target = sig.assignments[0].target.name;
+            for (char& ch : raw_target) {
+                if (ch == '.') {
+                    ch = '_';
+                }
+            }
+            const std::string target_id = sanitize_id(raw_target);
+            if (!fallback_name.empty()) {
+                sig.name = sanitize_id(fallback_name) + "_" + target_id;
+            } else {
+                sig.name = "assign_" + target_id;
+            }
         } else {
-            sig.name = fallback_name.empty() ? "action_composite" : fallback_name;
+            sig.name = fallback_name.empty() ? "action_composite" : sanitize_id(fallback_name);
         }
     } else if (!call_names.empty()) {
         sig.name = call_names.front();

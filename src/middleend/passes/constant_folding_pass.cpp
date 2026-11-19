@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <regex>
+#include <unordered_map>
 #include <unordered_set>
+
+#include "fsm/ir/expression.hpp"
 
 namespace fsm::middleend::passes {
 
@@ -18,12 +21,17 @@ bool ConstantFoldingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             continue;
         }
 
-        std::string g = *t.guard;
+        std::string g = ir.resolve_guard_expression(*t.guard);
         // Trim whitespace
         while (!g.empty() && (g.front() == ' ' || g.front() == '\t'))
             g.erase(g.begin());
         while (!g.empty() && (g.back() == ' ' || g.back() == '\t'))
             g.pop_back();
+        if (g == "true_") {
+            g = "true";
+        } else if (g == "false_") {
+            g = "false";
+        }
 
         // Constant evaluation patterns
         if (g == "true" || g == "1" || g == "1 == 1" || g == "0 == 0" || g == "!false" || g == "!0") {
@@ -61,6 +69,23 @@ bool ConstantFoldingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                     t.set_guard("false");
                 }
                 modified = true;
+            } else {
+                auto ast = ExpressionAstNode::parse(g);
+                if (ast.kind != ExpressionKind::RawExpression) {
+                    std::vector<std::string> refs;
+                    ast.collect_references(refs);
+                    if (refs.empty()) {
+                        const std::unordered_map<std::string, double> empty_env;
+                        if (auto val = ast.evaluate_boolean(empty_env); val.has_value()) {
+                            if (*val) {
+                                t.set_guard(std::nullopt);
+                            } else {
+                                t.set_guard("false");
+                            }
+                            modified = true;
+                        }
+                    }
+                }
             }
         }
     }
@@ -80,20 +105,34 @@ bool ConstantFoldingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 
     // 3. Clean up unreferenced actions
     std::unordered_set<std::string> referenced_actions;
-    for (const auto& t : ir.transitions) {
-        if (t.condition_action.has_value() && !t.condition_action->name.empty()) {
-            referenced_actions.insert(t.condition_action->name);
+    auto collect_action_sig = [&](const ActionSignature& act) {
+        if (!act.name.empty()) {
+            referenced_actions.insert(act.name);
         }
-        if (t.transition_action.has_value() && !t.transition_action->name.empty()) {
-            referenced_actions.insert(t.transition_action->name);
+        for (const auto& inst : act.instructions) {
+            if (const auto* call = std::get_if<ActionCallOp>(&inst.op);
+                call != nullptr && !call->function_name.empty()) {
+                referenced_actions.insert(call->function_name);
+            }
+        }
+    };
+    for (const auto& t : ir.transitions) {
+        if (t.condition_action.has_value()) {
+            collect_action_sig(*t.condition_action);
+        }
+        if (t.transition_action.has_value()) {
+            collect_action_sig(*t.transition_action);
         }
     }
     for (const auto& s : ir.states) {
         for (const auto& act : s.entry_actions) {
-            referenced_actions.insert(act.name);
+            collect_action_sig(act);
         }
         for (const auto& act : s.exit_actions) {
-            referenced_actions.insert(act.name);
+            collect_action_sig(act);
+        }
+        if (s.do_activity.has_value() && !s.do_activity->empty()) {
+            referenced_actions.insert(*s.do_activity);
         }
     }
 

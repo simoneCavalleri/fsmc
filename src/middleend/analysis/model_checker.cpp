@@ -78,6 +78,11 @@ ModelCheckResult ModelChecker::verify_property(const FormalProperty& prop) {
                             prop, impl.children[0],
                             impl.children[1].children.empty() ? impl.children[1] : impl.children[1].children[0]);
                     }
+                    if (impl.children[1].op == TemporalOp::Globally) {
+                        return check_persistent_response(
+                            prop, impl.children[0],
+                            impl.children[1].children.empty() ? impl.children[1] : impl.children[1].children[0]);
+                    }
                 }
             }
             // Recurrence: G (F P) (infinitely often)
@@ -153,6 +158,12 @@ void ModelChecker::build_graph() {
         return "";
     };
 
+    for (const auto& s : ir_.states) {
+        if (!s.name.empty()) {
+            adj_[s.name];
+        }
+    }
+
     for (const auto& t : ir_.transitions) {
         std::string src = resolve_name(t.source, t.source_id);
         std::string dst = resolve_name(t.target, t.target_id);
@@ -162,6 +173,63 @@ void ModelChecker::build_graph() {
             edge.event = t.event.empty() ? t.get_trigger_name() : t.event;
             edge.guard = t.guard.has_value() ? *t.guard : "";
             adj_[src].push_back(edge);
+            adj_[dst];
+        }
+    }
+
+    // Inherit outgoing transitions from ancestor composite states for child substates
+    for (const auto& s : ir_.states) {
+        if (s.name.empty() || s.parent_state.empty()) {
+            continue;
+        }
+        std::string curr_parent = s.parent_state;
+        std::unordered_set<std::string> visited_parents;
+        while (!curr_parent.empty() && visited_parents.insert(curr_parent).second) {
+            auto it_p = adj_.find(curr_parent);
+            if (it_p != adj_.end()) {
+                auto& sub_edges = adj_[s.name];
+                for (const auto& p_edge : it_p->second) {
+                    if (p_edge.event == "enter_composite") {
+                        continue;
+                    }
+                    bool exists = false;
+                    for (const auto& existing : sub_edges) {
+                        if (existing.target == p_edge.target && existing.event == p_edge.event &&
+                            existing.guard == p_edge.guard) {
+                            exists = true;
+                            break;
+                        }
+                    }
+                    if (!exists) {
+                        sub_edges.push_back(p_edge);
+                    }
+                }
+            }
+            const auto* p_node = ir_.find_state(curr_parent);
+            curr_parent = (p_node != nullptr) ? p_node->parent_state : "";
+        }
+    }
+
+    // Add initial substate entry transitions for composite states
+    for (const auto& s : ir_.states) {
+        if (s.name.empty() || s.initial_sub_state.empty()) {
+            continue;
+        }
+        std::string init_sub = resolve_name(s.initial_sub_state, s.initial_sub_state);
+        if (init_sub.empty()) {
+            continue;
+        }
+        auto& edges = adj_[s.name];
+        bool has_entry = false;
+        for (const auto& edge : edges) {
+            if (edge.target == init_sub) {
+                has_entry = true;
+                break;
+            }
+        }
+        if (!has_entry) {
+            edges.push_back(GraphEdge{init_sub, "enter_composite", ""});
+            adj_[init_sub];
         }
     }
 
@@ -521,6 +589,38 @@ ModelCheckResult ModelChecker::check_invariant(const FormalProperty& prop, const
     return {true, prop.name, prop.raw_formula, prop.kind, "", {}};
 }
 
+ModelCheckResult ModelChecker::check_persistent_response(const FormalProperty& prop, const PropertyAstNode& trigger,
+                                                         const PropertyAstNode& always_target) {
+    for (const auto& start_state : reachable_states_) {
+        if (!eval_predicate(trigger, start_state)) {
+            continue;
+        }
+        std::queue<std::string> q;
+        std::unordered_set<std::string> visited;
+        q.push(start_state);
+        visited.insert(start_state);
+        while (!q.empty()) {
+            std::string curr = std::move(q.front());
+            q.pop();
+            if (!eval_predicate(always_target, curr)) {
+                std::string desc = "Persistent response '" + prop.raw_formula + "' violated: after '" +
+                                   trigger.to_string() + "' in state '" + start_state + "', state '" + curr +
+                                   "' violates '" + always_target.to_string() + "'";
+                auto trace = reconstruct_trace(curr, desc);
+                return {false, prop.name, prop.raw_formula, prop.kind, desc, std::move(trace)};
+            }
+            if (auto it = adj_.find(curr); it != adj_.end()) {
+                for (const auto& edge : it->second) {
+                    if (visited.insert(edge.target).second) {
+                        q.push(edge.target);
+                    }
+                }
+            }
+        }
+    }
+    return {true, prop.name, prop.raw_formula, prop.kind, "", {}};
+}
+
 std::unordered_set<std::string> ModelChecker::compute_af(const PropertyAstNode& target) const {
     // Least fixpoint of AF: states satisfying target, plus states with at least one successor
     // whose successors are all already in the set.
@@ -865,6 +965,9 @@ std::unordered_set<std::string> ModelChecker::pre_all(const std::unordered_set<s
     std::unordered_set<std::string> result;
     for (const auto& [src, edges] : adj_) {
         if (edges.empty()) {
+            if (targets.count(src) > 0) {
+                result.insert(src);
+            }
             continue;
         }
         bool all_match = true;

@@ -5,6 +5,9 @@
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
+#include <fstream>
+
 #include "fsm/frontend/common/json_parser.hpp"
 #include "fsm/frontend/common/lexer_utils.hpp"
 #include "fsm/frontend/common/parser_factory.hpp"
@@ -231,6 +234,28 @@ TEST(LexerUtils, ReservedKeywords_EscapesCppKeywordsWithUnderscore) {
     EXPECT_EQ(sanitize_identifier("void"), "void_");
     EXPECT_EQ(sanitize_identifier("Active"), "Active");
     EXPECT_EQ(sanitize_identifier("Sensor-01"), "Sensor_01");
+}
+
+/**
+ * @brief Verify ParserFactory::create inspects .xml file contents to distinguish Stateflow XML from Cameo XMI.
+ * @scenario A .xml file containing <Stateflow><machine><chart .../></machine></Stateflow>.
+ * @expected ParserFactory::create returns StateflowParser (format_name() == "stateflow").
+ */
+TEST(ParserFactoryTest, AutoDetectsStateflowXmlOverCameoXmi) {
+    const std::string xml_path =
+        (std::filesystem::temp_directory_path() / "fsmc_test_stateflow_autodetect.xml").string();
+    {
+        std::ofstream ofs(xml_path);
+        ofs << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+               "<Stateflow><machine name=\"M\"><chart id=\"1\" name=\"C\" initial=\"A\">"
+               "<state id=\"10\" name=\"A\"/></chart></machine></Stateflow>\n";
+    }
+
+    auto parser = ParserFactory::create(xml_path);
+    ASSERT_NE(parser, nullptr);
+    EXPECT_EQ(parser->format_name(), "stateflow");
+
+    std::filesystem::remove(xml_path);
 }
 
 }  // namespace

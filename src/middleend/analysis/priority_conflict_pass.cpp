@@ -14,29 +14,6 @@ namespace fsm::middleend::analysis {
 
 namespace {
 
-std::string get_trigger_key(const ir::TransitionEdge& edge) {
-    if (!edge.event.empty()) {
-        return "event:" + edge.event;
-    }
-    if (std::holds_alternative<ir::SignalTrigger>(edge.trigger)) {
-        const auto& sig = std::get<ir::SignalTrigger>(edge.trigger).signal_name;
-        if (!sig.empty()) {
-            return "event:" + sig;
-        }
-    }
-    if (std::holds_alternative<ir::TimeTrigger>(edge.trigger)) {
-        const auto& tt = std::get<ir::TimeTrigger>(edge.trigger);
-        return "time:" + std::to_string(tt.duration_in_ms());
-    }
-    if (std::holds_alternative<ir::ChangeTrigger>(edge.trigger)) {
-        return "change:" + std::get<ir::ChangeTrigger>(edge.trigger).raw_expression;
-    }
-    if (std::holds_alternative<ir::AnonymousTrigger>(edge.trigger)) {
-        return "anonymous";
-    }
-    return "unknown";
-}
-
 bool is_ancestor_of(const ir::FsmIr& ir, const std::string& parent_id, const std::string& child_id) {
     const auto* child = ir.find_state_by_id(child_id);
     if (!child)
@@ -108,13 +85,15 @@ bool PriorityConflictPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 const auto* t1 = edges[i];
                 const auto* t2 = edges[j];
 
-                std::string k1 = get_trigger_key(*t1);
-                std::string k2 = get_trigger_key(*t2);
+                std::string k1 = t1->canonical_trigger_key();
+                std::string k2 = t2->canonical_trigger_key();
 
                 if (k1 == k2 && !k1.empty()) {
                     // Both trigger on same event
-                    bool guards_equal = (!t1->guard.has_value() && !t2->guard.has_value()) ||
-                                        (t1->guard.has_value() && t2->guard.has_value() && *t1->guard == *t2->guard);
+                    bool guards_equal =
+                        (!t1->guard.has_value() && !t2->guard.has_value()) ||
+                        (t1->guard.has_value() && t2->guard.has_value() &&
+                         ir.resolve_guard_expression(*t1->guard) == ir.resolve_guard_expression(*t2->guard));
                     if (guards_equal && t1->priority == t2->priority) {
                         diag.report(diagnostic::Diagnostic::warning(
                             "W0402", "Potential priority race: state '" + state_name +
@@ -145,8 +124,8 @@ bool PriorityConflictPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 
             if (is_ancestor_of(ir, src1, src2)) {
                 // src1 is ancestor (parent) of src2 (child)
-                std::string k1 = get_trigger_key(t1);
-                std::string k2 = get_trigger_key(t2);
+                std::string k1 = t1.canonical_trigger_key();
+                std::string k2 = t2.canonical_trigger_key();
 
                 if (k1 == k2 && !k1.empty()) {
                     // Preemption conflict check

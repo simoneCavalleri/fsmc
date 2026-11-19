@@ -156,6 +156,7 @@ bool SubmachineInliningPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 
     std::vector<StateNode> inlined_states;
     std::vector<TransitionEdge> inlined_transitions;
+    bool inlined_any = false;
 
     for (auto& st : ir.states) {
         if (!st.submachine.has_value()) {
@@ -187,6 +188,7 @@ bool SubmachineInliningPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 
         st.is_composite = true;
         st.kind = StateKind::Composite;
+        inlined_any = true;
 
         // Map submachine variables first so we can rewrite references in states and transitions
         std::map<std::string, std::string> var_map;
@@ -196,6 +198,56 @@ bool SubmachineInliningPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             var_map[var.name] = cloned_var.name;
             if (ir.find_variable(cloned_var.name) == nullptr) {
                 ir.variables.push_back(std::move(cloned_var));
+            }
+        }
+
+        // Merge missing ports, signals, clocks, custom_types, and guards from submachine
+        for (const auto& port : sub_model->ports) {
+            if (ir.find_port(port.name) == nullptr) {
+                ir.ports.push_back(port);
+            }
+        }
+        for (const auto& sig : sub_model->signals) {
+            if (ir.find_signal(sig.name) == nullptr) {
+                ir.signals.push_back(sig);
+            }
+        }
+        for (const auto& clk : sub_model->clocks) {
+            bool exists = false;
+            for (const auto& existing : ir.clocks) {
+                if (existing.name == clk.name) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                ir.clocks.push_back(clk);
+            }
+        }
+        for (const auto& ct : sub_model->custom_types) {
+            if (!ir.has_type(ct.name)) {
+                ir.add_type(ct);
+            }
+        }
+        for (const auto& grd : sub_model->guards) {
+            std::string g_name = rewrite_identifiers(grd.name, var_map);
+            std::optional<std::string> raw_expr = grd.raw_expression;
+            if (raw_expr.has_value()) {
+                raw_expr = rewrite_identifiers(*raw_expr, var_map);
+            }
+            std::optional<std::string> norm_expr = grd.normalized_expression;
+            if (norm_expr.has_value()) {
+                norm_expr = rewrite_identifiers(*norm_expr, var_map);
+            }
+            bool exists = false;
+            for (const auto& existing : ir.guards) {
+                if (existing.name == g_name) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                ir.add_guard(g_name, grd.description, std::move(raw_expr), std::move(norm_expr));
             }
         }
 
@@ -419,6 +471,11 @@ bool SubmachineInliningPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     }
     for (auto& t : inlined_transitions) {
         ir.transitions.push_back(std::move(t));
+    }
+
+    if (inlined_any) {
+        ir.normalize_hierarchy();
+        ir.canonicalize();
     }
 
     return true;

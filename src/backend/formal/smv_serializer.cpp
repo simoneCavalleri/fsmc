@@ -8,6 +8,7 @@
 #include <set>
 #include <sstream>
 
+#include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
 
 namespace fsm::backend::formal {
@@ -283,6 +284,80 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
     out << "-- Generated automatically by fsmc (https://github.com/simoneCavalleri/fsmc)\n";
     out << "-- ============================================================================\n\n";
 
+    for (const auto& ct : model.custom_types) {
+        if (ct.is_enum()) {
+            out << "-- @fsm:enum " << frontend::directive::DirectiveParser::format_enum_directive(ct) << "\n";
+        } else if (ct.is_struct()) {
+            out << "-- @fsm:struct " << frontend::directive::DirectiveParser::format_struct_directive(ct) << "\n";
+        }
+    }
+    for (const auto& port : model.ports) {
+        out << "-- @fsm:port name=" << port.name << " type=" << port.type
+            << " dir=" << (port.is_out() ? "out" : (port.direction == PortDirection::InOut ? "inout" : "in"));
+        if (port.physical_unit.has_value()) {
+            out << " unit=\"" << *port.physical_unit << "\"";
+        }
+        if (port.min_value.has_value()) {
+            out << " min=" << *port.min_value;
+        }
+        if (port.max_value.has_value()) {
+            out << " max=" << *port.max_value;
+        }
+        if (!port.constraint.empty()) {
+            out << " constraint=\"" << port.constraint << "\"";
+        }
+        if (!port.description.empty()) {
+            out << " desc=\"" << port.description << "\"";
+        }
+        out << "\n";
+    }
+    for (const auto& var : model.variables) {
+        out << "-- @fsm:var name=" << var.name << " type=" << var.type;
+        if (var.physical_unit.has_value()) {
+            out << " unit=\"" << *var.physical_unit << "\"";
+        }
+        if (!var.initial_value.empty()) {
+            out << " init=" << var.initial_value;
+        }
+        if (var.min_value.has_value()) {
+            out << " min=" << *var.min_value;
+        }
+        if (var.max_value.has_value()) {
+            out << " max=" << *var.max_value;
+        }
+        if (!var.description.empty()) {
+            out << " desc=\"" << var.description << "\"";
+        }
+        out << "\n";
+    }
+    for (const auto& choice : model.choice_nodes) {
+        out << "-- @fsm:choice name=" << sanitize_smv_ident(choice.name) << "\n";
+    }
+    bool has_typed_signals = false;
+    for (const auto& sig : model.signals) {
+        if (!sig.attributes.empty() || !sig.validators.empty()) {
+            has_typed_signals = true;
+            out << "-- @fsm:signal " << sig.name;
+            if (!sig.attributes.empty()) {
+                out << "{";
+                for (size_t i = 0; i < sig.attributes.size(); ++i) {
+                    if (i > 0)
+                        out << ", ";
+                    out << sig.attributes[i].type << " " << sig.attributes[i].name;
+                }
+                out << "}";
+            }
+            if (!sig.validators.empty()) {
+                out << " validator=\"" << sig.validators.front() << "\"";
+            }
+            out << "\n";
+        }
+    }
+    if (!model.custom_types.empty() || !model.ports.empty() || !model.variables.empty() ||
+        !model.choice_nodes.empty() || has_typed_signals) {
+        out << "\n";
+    }
+
     out << "MODULE main\n\n";
 
     // 1. VAR declarations
@@ -326,6 +401,9 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
     out << "  event : {none";
     std::vector<std::string> event_names;
     for (const auto& t : model.transitions) {
+        if (std::holds_alternative<ChangeTrigger>(t.trigger) || std::holds_alternative<TimeTrigger>(t.trigger)) {
+            continue;
+        }
         std::string evt = t.event.empty() ? t.get_trigger_name() : t.event;
         if (!evt.empty() && evt != "none" && evt != "Anonymous" &&
             std::find(event_names.begin(), event_names.end(), evt) == event_names.end()) {
@@ -357,11 +435,77 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
     known_idents.insert("true");
     known_idents.insert("false");
 
+    for (const auto& ct : model.custom_types) {
+        if (ct.is_enum()) {
+            for (const auto& lit : ct.literals) {
+                known_idents.insert(sanitize_smv_ident(lit.name));
+            }
+        }
+    }
+
+    auto resolve_smv_type = [&](const DataType& dt, std::optional<int64_t> min_v,
+                                std::optional<int64_t> max_v) -> std::string {
+        const std::string dt_name = dt.custom_name().empty() ? dt.to_cpp_type() : dt.custom_name();
+        for (const auto& ct : model.custom_types) {
+            if (ct.is_enum() && !ct.literals.empty() && ct.name == dt_name) {
+                std::string enum_set = "{";
+                for (std::size_t i = 0; i < ct.literals.size(); ++i) {
+                    if (i > 0) {
+                        enum_set += ", ";
+                    }
+                    enum_set += sanitize_smv_ident(ct.literals[i].name);
+                }
+                enum_set += "}";
+                return enum_set;
+            }
+        }
+        return dt.to_smv_type(min_v, max_v);
+    };
+
     // State variables & physical quantities
     for (const auto& var : model.variables) {
         std::string vname = sanitize_smv_ident(var.name);
         known_idents.insert(vname);
-        out << "  " << vname << " : " << var.type.to_smv_type(var.min_value, var.max_value) << ";";
+        std::optional<int64_t> min_v = var.min_value;
+        std::optional<int64_t> max_v = var.max_value;
+        if (!min_v.has_value() || !max_v.has_value()) {
+            int64_t min_seen = 0;
+            int64_t max_seen = 100;
+            auto consider_val = [&](const std::string& s) {
+                try {
+                    std::size_t idx = 0;
+                    long long v = std::stoll(s, &idx);
+                    if (idx == s.size()) {
+                        min_seen = std::min<int64_t>(min_seen, v);
+                        max_seen = std::max<int64_t>(max_seen, v);
+                    }
+                } catch (...) {
+                }
+            };
+            consider_val(var.initial_value);
+            for (const auto& t : model.transitions) {
+                if (!t.transition_action.has_value()) {
+                    continue;
+                }
+                for (const auto& asgn : t.transition_action->assignments) {
+                    if (asgn.target.name == var.name || asgn.target == var.name) {
+                        consider_val(asgn.expression);
+                    }
+                }
+            }
+            if (min_seen < 0 && !min_v.has_value()) {
+                min_v = std::min<int64_t>(-100, min_seen);
+                if (!max_v.has_value()) {
+                    max_v = max_seen;
+                }
+            } else if (max_seen > 100 && !max_v.has_value()) {
+                if (!min_v.has_value()) {
+                    min_v = 0;
+                }
+                max_v = max_seen;
+            }
+        }
+        out << "  " << vname << " : " << resolve_smv_type(var.type, min_v, max_v) << ";";
         if (var.physical_unit.has_value()) {
             out << " -- physical unit: " << *var.physical_unit;
         }
@@ -376,7 +520,7 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
             port.min_value.has_value() ? std::make_optional(static_cast<int64_t>(*port.min_value)) : std::nullopt;
         std::optional<int64_t> max_int =
             port.max_value.has_value() ? std::make_optional(static_cast<int64_t>(*port.max_value)) : std::nullopt;
-        out << "  " << pname << " : " << port.type.to_smv_type(min_int, max_int) << ";";
+        out << "  " << pname << " : " << resolve_smv_type(port.type, min_int, max_int) << ";";
         out << " -- port (" << port_direction_to_string(port.direction) << ")\n";
     }
 
@@ -388,9 +532,33 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
         auto it = std::find_if(model.guards.begin(), model.guards.end(),
                                [&guard_val](const GuardModel& gm) { return gm.name == guard_val; });
         if (it != model.guards.end() && it->raw_expression.has_value() && !it->raw_expression->empty()) {
-            return *it->raw_expression;
+            return to_smv_predicate(*it->raw_expression);
         }
-        return guard_val;  // Fallback: use as-is (may be a named guard type or inline expr)
+        // First lower C++ combinator templates (fsm::and_<g1, g2> -> (g1 & g2)) before
+        // substituting relational guard expressions that may contain '<' or '>'.
+        std::string lowered = to_smv_predicate(guard_val);
+        std::string out_expr;
+        for (std::size_t i = 0; i < lowered.size();) {
+            if (std::isalpha(static_cast<unsigned char>(lowered[i])) != 0 || lowered[i] == '_') {
+                std::size_t start = i;
+                while (i < lowered.size() &&
+                       (std::isalnum(static_cast<unsigned char>(lowered[i])) != 0 || lowered[i] == '_')) {
+                    ++i;
+                }
+                std::string tok = lowered.substr(start, i - start);
+                auto git = std::find_if(model.guards.begin(), model.guards.end(),
+                                        [&tok](const GuardModel& gm) { return gm.name == tok; });
+                if (git != model.guards.end() && git->raw_expression.has_value() && !git->raw_expression->empty() &&
+                    *git->raw_expression != tok) {
+                    out_expr += "(" + to_smv_predicate(*git->raw_expression) + ")";
+                    continue;
+                }
+                out_expr += tok;
+            } else {
+                out_expr.push_back(lowered[i++]);
+            }
+        }
+        return out_expr;
     };
 
     auto is_fallback_guard = [](const std::optional<std::string>& g) {
@@ -501,6 +669,11 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
             if (dur == 0)
                 dur = 1;
             out << " & timer_" << sanitize_smv_ident(src) << " >= " << dur;
+        } else if (std::holds_alternative<ChangeTrigger>(t.trigger)) {
+            const auto& ct = std::get<ChangeTrigger>(t.trigger);
+            if (!ct.raw_expression.empty()) {
+                out << " & (" << to_smv_predicate(ct.raw_expression) << ")";
+            }
         } else if (!evt.empty() && evt != "Anonymous" && evt != "none") {
             out << " & event = " << sanitize_smv_ident(evt);
         }
@@ -510,13 +683,111 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
         }
         out << " : " << sanitize_smv_ident(dst) << ";";
         std::string act = t.get_action();
-        if (!act.empty()) {
-            out << " -- action: " << act;
+        if (t.transition_action.has_value() && !t.transition_action->assignments.empty()) {
+            act.clear();
+            for (std::size_t i = 0; i < t.transition_action->assignments.size(); ++i) {
+                if (i > 0) {
+                    act += "; ";
+                }
+                const auto& asgn = t.transition_action->assignments[i];
+                act += asgn.target.full_path() + " = " + asgn.expression;
+            }
+        }
+        const bool has_kind = (t.kind == TransitionEdgeKind::Internal || t.kind == TransitionEdgeKind::Local);
+        std::string change_expr;
+        if (const auto* ct = std::get_if<ChangeTrigger>(&t.trigger); ct != nullptr && !ct->raw_expression.empty()) {
+            change_expr = ct->raw_expression;
+        }
+        if (has_kind || !change_expr.empty() || !act.empty()) {
+            out << " --";
+            bool need_sep = false;
+            if (t.kind == TransitionEdgeKind::Internal) {
+                out << " kind=internal";
+                need_sep = true;
+            } else if (t.kind == TransitionEdgeKind::Local) {
+                out << " kind=local";
+                need_sep = true;
+            }
+            if (!change_expr.empty()) {
+                if (need_sep)
+                    out << " |";
+                out << " change=" << change_expr;
+                need_sep = true;
+            }
+            if (!act.empty()) {
+                if (need_sep)
+                    out << " |";
+                out << " action: " << act;
+            }
         }
         out << "\n";
     }
     out << "    TRUE : state;\n";
     out << "  esac;\n\n";
+
+    // Data-path variable evolution: next(var) := case ... esac;
+    for (const auto& var : model.variables) {
+        if (var.type.is_string()) {
+            continue;
+        }
+        bool has_assign = false;
+        for (const auto& t : sorted_transitions) {
+            if (t.source.empty() || t.target.empty() || !t.transition_action.has_value()) {
+                continue;
+            }
+            for (const auto& assign : t.transition_action->assignments) {
+                if ((assign.target.name == var.name || assign.target == var.name) &&
+                    assign.op == AssignmentOp::Assign && !assign.expression.empty()) {
+                    has_assign = true;
+                    break;
+                }
+            }
+            if (has_assign) {
+                break;
+            }
+        }
+        if (!has_assign) {
+            continue;
+        }
+
+        std::string vname = sanitize_smv_ident(var.name);
+        out << "  next(" << vname << ") := case\n";
+        for (const auto& t : sorted_transitions) {
+            if (t.source.empty() || t.target.empty() || !t.transition_action.has_value()) {
+                continue;
+            }
+            const ActionAssignment* matched_assign = nullptr;
+            for (const auto& assign : t.transition_action->assignments) {
+                if ((assign.target.name == var.name || assign.target == var.name) &&
+                    assign.op == AssignmentOp::Assign && !assign.expression.empty()) {
+                    matched_assign = &assign;
+                }
+            }
+            if (matched_assign == nullptr) {
+                continue;
+            }
+
+            const std::string& src = t.source;
+            std::string evt = t.event.empty() ? t.get_trigger_name() : t.event;
+            out << "    state = " << sanitize_smv_ident(src);
+            if (std::holds_alternative<TimeTrigger>(t.trigger)) {
+                const auto& tt = std::get<TimeTrigger>(t.trigger);
+                std::uint64_t dur = tt.duration_in_ms();
+                if (dur == 0)
+                    dur = 1;
+                out << " & timer_" << sanitize_smv_ident(src) << " >= " << dur;
+            } else if (!evt.empty() && evt != "Anonymous" && evt != "none") {
+                out << " & event = " << sanitize_smv_ident(evt);
+            }
+            if (!is_fallback_guard(t.guard)) {
+                std::string guard_str = to_smv_predicate(resolve_guard_expr(*t.guard));
+                out << " & (" << guard_str << ")";
+            }
+            out << " : " << to_smv_predicate(matched_assign->expression) << ";\n";
+        }
+        out << "    TRUE : " << vname << ";\n";
+        out << "  esac;\n\n";
+    }
 
     // 3. Formal Properties (LTLSPEC & INVARSPEC)
     if (!model.properties.empty()) {
@@ -565,6 +836,76 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
             } else {
                 out << "LTLSPEC -- " << prop_name << "\n";
                 out << "  " << smv_formula << ";\n\n";
+            }
+        }
+    }
+
+    auto format_lifecycle_action = [](const ActionSignature& act) -> std::string {
+        if (!act.assignments.empty()) {
+            std::string s;
+            for (std::size_t i = 0; i < act.assignments.size(); ++i) {
+                if (i > 0) {
+                    s += "; ";
+                }
+                s += act.assignments[i].target.full_path() + " = " + act.assignments[i].expression;
+            }
+            return s;
+        }
+        return act.name;
+    };
+
+    for (const auto& s : model.states) {
+        if (!s.parent_state.empty() || s.is_composite || s.kind == StateKind::Parallel ||
+            !s.initial_sub_state.empty() || s.has_history || s.has_deep_history ||
+            (s.do_activity.has_value() && !s.do_activity->empty()) ||
+            (s.time_invariant.has_value() && !s.time_invariant->empty())) {
+            out << "-- @fsm:state name=" << sanitize_smv_ident(s.name);
+            if (!s.parent_state.empty()) {
+                out << " parent=" << sanitize_smv_ident(s.parent_state);
+            }
+            if (s.kind == StateKind::Parallel) {
+                out << " kind=parallel";
+            }
+            if (s.is_composite) {
+                out << " composite=true";
+            }
+            if (!s.initial_sub_state.empty()) {
+                out << " initial=" << sanitize_smv_ident(s.initial_sub_state);
+            }
+            if (s.has_deep_history) {
+                out << " history=deep";
+            } else if (s.has_history) {
+                out << " history=shallow";
+            }
+            if (s.do_activity.has_value() && !s.do_activity->empty()) {
+                out << " do_activity=\"" << *s.do_activity << "\"";
+            }
+            if (s.time_invariant.has_value() && !s.time_invariant->empty()) {
+                out << " invariant=\"" << *s.time_invariant << "\"";
+            }
+            out << "\n";
+        }
+        for (const auto& req : s.traceability_reqs) {
+            if (!req.empty()) {
+                out << "-- @fsm:req state=" << sanitize_smv_ident(s.name) << " req=\"" << req << "\"\n";
+            }
+        }
+        for (const auto& ea : s.entry_actions) {
+            std::string act_str = format_lifecycle_action(ea);
+            if (!act_str.empty()) {
+                out << "-- @fsm:entry state=" << sanitize_smv_ident(s.name) << " action=\"" << act_str << "\"\n";
+            }
+        }
+        for (const auto& xa : s.exit_actions) {
+            std::string act_str = format_lifecycle_action(xa);
+            if (!act_str.empty()) {
+                out << "-- @fsm:exit state=" << sanitize_smv_ident(s.name) << " action=\"" << act_str << "\"\n";
+            }
+        }
+        for (const auto& dev : s.deferred_events) {
+            if (!dev.empty()) {
+                out << "-- @fsm:defer state=" << sanitize_smv_ident(s.name) << " event=" << sanitize_smv_ident(dev)
+                    << "\n";
             }
         }
     }

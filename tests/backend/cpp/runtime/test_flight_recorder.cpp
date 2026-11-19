@@ -75,6 +75,9 @@ TEST(FlightRecorder, ChronologicalIndexing_Dump_ReturnsOrderedTraceEntries) {
     tb.dump(ss);
     std::string dump_str = ss.str();
     EXPECT_NE(dump_str.find("FSM Flight Recorder Audit Trace"), std::string::npos);
+    EXPECT_NE(
+        dump_str.find("--------------------------------------------------------------------------------------------\n"),
+        std::string::npos);
     EXPECT_NE(dump_str.find("TrackingLock"), std::string::npos);
 }
 
@@ -120,6 +123,63 @@ TEST(FlightRecorder, DeterministicTimer_StepTick_RecordsTickEventsInHistory) {
     std::size_t exp2 = sm.tick(std::chrono::milliseconds(60));
     EXPECT_EQ(exp2, 1u);
     EXPECT_FALSE(sm.timer_manager().is_timer_active(1));
+}
+
+/**
+ * @brief Verify const flight_recorder_observer safely records transitions via mutable TraceBuffer.
+ * @scenario Invoke a const-qualified flight_recorder_observer instance on transition_info events.
+ * @expected Trace entry is recorded cleanly without const_cast undefined behavior.
+ */
+TEST(FlightRecorder, ConstFlightRecorderObserver_RecordsWithoutUndefinedBehavior) {
+    const flight_recorder_observer<8> observer(42);
+    observer(transition_info{"StateA", "StateB", "EvGo", dispatch_status::success});
+
+    ASSERT_EQ(observer.recorder().size(), 1u);
+    EXPECT_EQ(observer.recorder()[0].tick, 42u);
+    EXPECT_EQ(observer.recorder()[0].source_state, "StateA");
+    EXPECT_EQ(observer.recorder()[0].target_state, "StateB");
+    EXPECT_EQ(observer.recorder()[0].event_name, "EvGo");
+    EXPECT_TRUE(observer.recorder()[0].transition_taken);
+
+    std::ostringstream ss;
+    observer.dump(ss);
+    const std::string out = ss.str();
+    EXPECT_NE(
+        out.find("--------------------------------------------------------------------------------------------\n"),
+        std::string::npos);
+    EXPECT_NE(out.find("StateA"), std::string::npos);
+    EXPECT_NE(out.find("EvGo"), std::string::npos);
+    EXPECT_NE(out.find("StateB"), std::string::npos);
+    EXPECT_NE(out.find("TAKEN"), std::string::npos);
+}
+
+struct BoundedFlightState {
+    static constexpr std::string_view name = "BoundedFlightState";
+    static constexpr std::uint64_t max_stay_duration_ms = 50;
+};
+
+using BoundedFlightTable = transition_table<row<BoundedFlightState, EvNext, StateB>>;
+
+static std::uint64_t g_fn_ptr_violation_residence = 0;
+void record_violation_fn(const invariant_violation_info& info) {
+    g_fn_ptr_violation_residence = info.residence_time_ms;
+}
+
+/**
+ * @brief Verify function-pointer overload of set_invariant_violation_handler is noexcept and invokes callback.
+ * @scenario Register a raw function pointer via set_invariant_violation_handler and exceed state max_stay_duration_ms.
+ * @expected Function pointer is invoked with the violation info without std::function heap allocation.
+ */
+TEST(FlightRecorder, SetInvariantViolationHandler_FunctionPointerOverload_IsNoexceptAndInvoked) {
+    ::fsm::fsm<BoundedFlightTable> sm;
+    g_fn_ptr_violation_residence = 0;
+
+    static_assert(noexcept(sm.set_invariant_violation_handler(&record_violation_fn)));
+    sm.set_invariant_violation_handler(&record_violation_fn);
+
+    sm.tick(60);
+    EXPECT_TRUE(sm.has_invariant_violation());
+    EXPECT_EQ(g_fn_ptr_violation_residence, 60u);
 }
 
 }  // namespace

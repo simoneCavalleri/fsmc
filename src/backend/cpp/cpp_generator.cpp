@@ -103,11 +103,18 @@ std::string CppGenerator::generate_header(const FsmIr& model, const GeneratorOpt
     out << "#pragma once\n\n";
 
     if (options.standalone) {
+        out << "#include <cstdint>\n";
+        out << "#include <iostream>\n";
+        out << "#include <string>\n";
+        out << "#include <string_view>\n\n";
+        out << "#ifndef FSMC_EMBEDDED_RUNTIME_INCLUDED\n";
+        out << "#define FSMC_EMBEDDED_RUNTIME_INCLUDED\n";
         if (options.cpp_standard == CppStandard::Cpp20) {
             Cpp20StandaloneRuntime::emit(out, options);
         } else {
             Cpp17StandaloneRuntime::emit(out, options);
         }
+        out << "#endif // FSMC_EMBEDDED_RUNTIME_INCLUDED\n\n";
     } else {
         std::string header_include = options.runtime_header;
         if (header_include.empty()) {

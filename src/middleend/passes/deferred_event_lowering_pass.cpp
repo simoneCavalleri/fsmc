@@ -82,7 +82,8 @@ bool DeferredEventLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 
         // On state exit: synthesize recall trigger on outgoing transitions leaving this state
         for (auto& t : ir.transitions) {
-            if (t.source == s.name && t.target != s.name && t.kind != TransitionEdgeKind::Internal) {
+            if (t.source == s.name && t.target != s.name && t.kind != TransitionEdgeKind::Internal &&
+                t.kind != TransitionEdgeKind::Local) {
                 ActionSignature recall_act("__recall_deferred");
                 StoreOp rst_store;
                 rst_store.target = LValueTarget("__deferred_count", LValueScope::Register);

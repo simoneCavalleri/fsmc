@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-#include "fsm/frontend/directive/guard_parser.hpp"
+#include "fsm/ir/guard.hpp"
 
 namespace fsm::ir {
 
@@ -77,10 +77,72 @@ void emit_assignments_array(std::ostream& out, const std::vector<ActionAssignmen
     out << "]";
 }
 
+void emit_string_array(std::ostream& out, const std::vector<std::string>& items) {
+    out << "[";
+    for (size_t i = 0; i < items.size(); ++i) {
+        if (i > 0)
+            out << ", ";
+        out << "\"" << escape_json(items[i]) << "\"";
+    }
+    out << "]";
+}
+
+void emit_instructions_array(std::ostream& out, const std::vector<ActionAstNode>& instructions) {
+    out << "[";
+    for (size_t i = 0; i < instructions.size(); ++i) {
+        if (i > 0)
+            out << ", ";
+        const auto& inst = instructions[i];
+        out << "{";
+        if (const auto* store = std::get_if<StoreOp>(&inst.op)) {
+            out << "\"kind\": \"store\", \"description\": \"" << escape_json(inst.description) << "\", \"target\": \""
+                << escape_json(store->target.full_path()) << "\", \"scope\": \""
+                << lvalue_scope_to_string(store->target.scope) << "\", \"op\": \"" << assignment_op_to_string(store->op)
+                << "\", \"expression\": \"" << escape_json(store->expression) << "\"";
+            if (store->expr_ast.has_value()) {
+                out << ", \"has_expr_ast\": true";
+            }
+        } else if (const auto* pw = std::get_if<PortWriteOp>(&inst.op)) {
+            out << "\"kind\": \"port_write\", \"description\": \"" << escape_json(inst.description)
+                << "\", \"port_name\": \"" << escape_json(pw->port_name) << "\", \"expression\": \""
+                << escape_json(pw->expression) << "\", \"is_latched\": " << (pw->is_latched ? "true" : "false");
+            if (pw->expr_ast.has_value()) {
+                out << ", \"has_expr_ast\": true";
+            }
+        } else if (const auto* pr = std::get_if<PortReadOp>(&inst.op)) {
+            out << "\"kind\": \"port_read\", \"description\": \"" << escape_json(inst.description)
+                << "\", \"port_name\": \"" << escape_json(pr->port_name) << "\", \"destination\": \""
+                << escape_json(pr->destination.full_path()) << "\", \"scope\": \""
+                << lvalue_scope_to_string(pr->destination.scope) << "\"";
+        } else if (const auto* se = std::get_if<SignalEmitOp>(&inst.op)) {
+            out << "\"kind\": \"signal_emit\", \"description\": \"" << escape_json(inst.description)
+                << "\", \"signal_name\": \"" << escape_json(se->signal_name) << "\", \"arguments\": ";
+            emit_string_array(out, se->arguments);
+            if (se->target_port.has_value()) {
+                out << ", \"target_port\": \"" << escape_json(*se->target_port) << "\"";
+            }
+        } else if (const auto* ac = std::get_if<ActionCallOp>(&inst.op)) {
+            out << "\"kind\": \"action_call\", \"description\": \"" << escape_json(inst.description)
+                << "\", \"function_name\": \"" << escape_json(ac->function_name) << "\", \"arguments\": ";
+            emit_string_array(out, ac->arguments);
+            out << ", \"read_set\": ";
+            emit_string_array(out, ac->read_set);
+            out << ", \"write_set\": ";
+            emit_string_array(out, ac->write_set);
+        }
+        out << "}";
+    }
+    out << "]";
+}
+
 void emit_action_signature_object(std::ostream& out, const ActionSignature& act) {
     out << "{\"name\": \"" << escape_json(act.name) << "\", \"invocation\": \"" << escape_json(act.invocation)
         << "\", \"accepts_event\": " << (act.accepts_event ? "true" : "false") << ", \"assignments\": ";
     emit_assignments_array(out, act.assignments);
+    if (!act.instructions.empty()) {
+        out << ", \"instructions\": ";
+        emit_instructions_array(out, act.instructions);
+    }
     out << "}";
 }
 
@@ -103,7 +165,7 @@ void emit_transition_metadata(std::ostream& out, const TransitionEdge& t, const 
         out << ",\n" << field_pad << "\"description\": \"" << escape_json(t.description) << "\"";
     }
     if (t.guard && !t.guard->empty()) {
-        std::string diag_guard = frontend::directive::GuardExpressionParser::to_diagram_string(*t.guard);
+        std::string diag_guard = GuardExpressionParser::to_diagram_string(*t.guard);
         out << ",\n" << field_pad << "\"guard\": \"" << escape_json(diag_guard) << "\"";
         if (*t.guard != diag_guard && t.guard->find("fsm::") == std::string::npos) {
             out << ",\n" << field_pad << "\"raw_guard\": \"" << escape_json(*t.guard) << "\"";
@@ -893,6 +955,35 @@ std::string FsmIrSerializer::serialize_json(const FsmIr& ir, int indent_spaces) 
                 out << ",";
             }
             out << "\n";
+        }
+        out << "  ],\n";
+    }
+
+    // Clocks
+    if (!ir.clocks.empty()) {
+        out << "  \"clocks\": [\n";
+        for (size_t c = 0; c < ir.clocks.size(); ++c) {
+            const auto& clk = ir.clocks[c];
+            out << "    {\n";
+            out << "      \"name\": \"" << escape_json(clk.name) << "\",\n";
+            out << "      \"id\": \"" << escape_json(clk.id) << "\",\n";
+            out << "      \"resolution\": \"" << time_unit_to_string(clk.resolution) << "\",\n";
+            out << "      \"initial_value\": 0";
+            if (!clk.description.empty()) {
+                out << ",\n      \"description\": \"" << escape_json(clk.description) << "\"";
+            }
+            out << "\n    }" << (c + 1 < ir.clocks.size() ? "," : "") << "\n";
+        }
+        out << "  ],\n";
+    }
+
+    // Choice Nodes
+    if (!ir.choice_nodes.empty()) {
+        out << "  \"choice_nodes\": [\n";
+        for (size_t c = 0; c < ir.choice_nodes.size(); ++c) {
+            const auto& cn = ir.choice_nodes[c];
+            out << "    {\"name\": \"" << escape_json(cn.name) << "\"}" << (c + 1 < ir.choice_nodes.size() ? "," : "")
+                << "\n";
         }
         out << "  ],\n";
     }

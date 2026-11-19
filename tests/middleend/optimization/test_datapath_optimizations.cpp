@@ -242,6 +242,48 @@ TEST(DeadActionElimination, ActionAssignments_DeadStoresEliminated) {
     EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].expression, "20");
 }
 
+/**
+ * @brief Regression: DeadActionEliminationPass resolves symbolic guard names against `ir.guards`
+ * so stores to variables read only in `GuardMetadata` expressions are not falsely pruned.
+ */
+TEST(DeadActionElimination, SymbolicGuardMetadata_VariablesPreservedAsLiveReads) {
+    FsmIr ir;
+    ir.name = "GuardMetaLiveMachine";
+    ir.initial_state_id = "s1";
+
+    ir.variables.emplace_back("armed", DataType::boolean(), "false");
+
+    StateNode s1("s1", "s1");
+    ir.states.push_back(s1);
+
+    TransitionEdge edge;
+    edge.source_id = "s1";
+    edge.target_id = "s1";
+    edge.trigger = SignalTrigger("ARM");
+
+    ActionSignature act;
+    act.assignments.emplace_back(LValueTarget("armed"), "true");
+    edge.transition_action = act;
+    ir.add_transition(edge);
+
+    ir.add_guard("is_armed", "", std::optional<std::string>{"armed == true"},
+                 std::optional<std::string>{"armed == true"});
+    TransitionEdge edge2;
+    edge2.source_id = "s1";
+    edge2.target_id = "s1";
+    edge2.trigger = SignalTrigger("FIRE");
+    edge2.guard = "is_armed";
+    ir.add_transition(edge2);
+
+    DiagnosticEngine diag;
+    DeadActionEliminationPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    ASSERT_EQ(ir.transitions[0].transition_action->assignments.size(), 1u);
+    EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].target.name, "armed");
+}
+
 // ============================================================================
 // RegisterLivenessPass Tests
 // ============================================================================
@@ -347,6 +389,105 @@ TEST(RegisterLiveness, InterferingVariableLifetimes_AllocatesDistinctRegisters) 
     ASSERT_TRUE(ir.variables[1].register_index.has_value());
 
     // Because vx and vy interfere, they MUST receive different registers!
+    EXPECT_NE(*ir.variables[0].register_index, *ir.variables[1].register_index);
+}
+
+/**
+ * @brief Regression: `RegisterLivenessPass` resolves symbolic guard names against `FsmIr::guards`
+ * so variables read simultaneously inside a `GuardModel` receive distinct hardware registers.
+ */
+TEST(RegisterLiveness, SymbolicGuardMetadata_TracksInterferenceAcrossGuardModel) {
+    FsmIr ir;
+    ir.name = "SymbolicGuardInterference";
+    ir.initial_state_id = "s1";
+
+    ir.variables.emplace_back("vx", DataType::int32(), "0");
+    ir.variables.emplace_back("vy", DataType::int32(), "0");
+
+    StateNode s1("s1", "s1");
+    ir.states.push_back(s1);
+
+    ir.add_guard("g_sum", "", std::optional<std::string>{"vx + vy > 10"}, std::optional<std::string>{"vx + vy > 10"});
+
+    TransitionEdge t;
+    t.source_id = "s1";
+    t.target_id = "s1";
+    t.trigger = SignalTrigger("COMPUTE");
+    t.guard = "g_sum";
+    ir.add_transition(t);
+
+    DiagnosticEngine diag;
+    RegisterLivenessPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+
+    ASSERT_TRUE(ir.variables[0].register_index.has_value());
+    ASSERT_TRUE(ir.variables[1].register_index.has_value());
+    EXPECT_NE(*ir.variables[0].register_index, *ir.variables[1].register_index);
+}
+
+/**
+ * @brief Verify RegisterLivenessPass tracks variable uses and defs inside condition_action StoreOp instructions.
+ */
+TEST(RegisterLiveness, ConditionActionStoreOp_TracksUseAndDefCorrectly) {
+    FsmIr ir;
+    ir.name = "ConditionActionLivenessMachine";
+    ir.initial_state_id = "s1";
+
+    ir.variables.emplace_back("v_cond", DataType::int32(), "0");
+    ir.variables.emplace_back("v_trans", DataType::int32(), "0");
+
+    StateNode s1("s1", "s1");
+    StateNode s2("s2", "s2");
+    ir.states.push_back(s1);
+    ir.states.push_back(s2);
+
+    // s1 -> s2 defines both v_cond and v_trans
+    TransitionEdge t1;
+    t1.source_id = "s1";
+    t1.target_id = "s2";
+    t1.trigger = SignalTrigger("INIT_VARS");
+    ActionSignature init_act;
+    StoreOp st1;
+    st1.target = LValueTarget("v_cond");
+    st1.expression = "10";
+    init_act.instructions.emplace_back(st1);
+    StoreOp st2;
+    st2.target = LValueTarget("v_trans");
+    st2.expression = "20";
+    init_act.instructions.emplace_back(st2);
+    t1.transition_action = init_act;
+    ir.add_transition(t1);
+
+    // s2 -> s1 reads v_cond in condition_action and v_trans in transition_action
+    TransitionEdge t2;
+    t2.source_id = "s2";
+    t2.target_id = "s1";
+    t2.trigger = SignalTrigger("STEP");
+
+    ActionSignature cond_act;
+    StoreOp cond_st;
+    cond_st.target = LValueTarget("v_cond");
+    cond_st.op = AssignmentOp::AddAssign;
+    cond_st.expression = "1";
+    cond_act.instructions.emplace_back(cond_st);
+    t2.condition_action = cond_act;
+
+    ActionSignature trans_act;
+    StoreOp trans_st;
+    trans_st.target = LValueTarget("v_trans");
+    trans_st.op = AssignmentOp::AddAssign;
+    trans_st.expression = "v_cond";
+    trans_act.instructions.emplace_back(trans_st);
+    t2.transition_action = trans_act;
+    ir.add_transition(t2);
+
+    DiagnosticEngine diag;
+    RegisterLivenessPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+
+    ASSERT_TRUE(ir.variables[0].register_index.has_value());
+    ASSERT_TRUE(ir.variables[1].register_index.has_value());
+    // Both v_cond and v_trans are live across s2 into t2, so they must get distinct registers
     EXPECT_NE(*ir.variables[0].register_index, *ir.variables[1].register_index);
 }
 
@@ -702,4 +843,104 @@ TEST(CommonActionFactoring, InitialStateWithIncomingEdges_PreservesInitialStateS
     EXPECT_TRUE(s->entry_actions.empty());
     EXPECT_TRUE(ir.transitions[0].transition_action.has_value());
     EXPECT_TRUE(ir.transitions[1].transition_action.has_value());
+}
+
+/**
+ * @brief Verify TransitionFusionPass preserves intermediate states referenced in formal properties.
+ */
+TEST(TransitionFusion, StateReferencedByFormalProperty_PreservedWithoutFusion) {
+    FsmIr ir;
+    ir.name = "PropertyPreservedFusionFSM";
+    ir.initial_state_id = "s_start";
+
+    ir.states.emplace_back("s_start", "s_start");
+    ir.states.emplace_back("s_verify", "s_verify");
+    ir.states.emplace_back("s_end", "s_end");
+
+    TransitionEdge t1;
+    t1.source_id = "s_start";
+    t1.target_id = "s_verify";
+    t1.trigger = SignalTrigger("GO");
+    ir.add_transition(t1);
+
+    TransitionEdge t2;
+    t2.source_id = "s_verify";
+    t2.target_id = "s_end";
+    t2.trigger = AnonymousTrigger{};
+    ir.add_transition(t2);
+
+    ir.add_property(FormalProperty("VerifyReached", PropertyKind::Reachability, "F(s_verify)"));
+
+    DiagnosticEngine diag;
+    TransitionFusionPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+
+    // s_verify is referenced in ir.properties and must NOT be fused away
+    EXPECT_NE(ir.find_state("s_verify"), nullptr);
+    EXPECT_EQ(ir.states.size(), 3u);
+}
+
+/**
+ * @brief Regression: TransitionFusionPass preserves intermediate states carrying traceability requirements and
+ * retains priority, transition kind, and edge traceability_reqs on fused transitions.
+ */
+TEST(TransitionFusion, PreservesTraceabilityReqsAndEdgeMetadata) {
+    FsmIr ir;
+    ir.name = "FusionMetadataFSM";
+    ir.initial_state_id = "s_start";
+
+    ir.states.emplace_back("s_start", "s_start");
+    StateNode s_req("s_req", "s_req");
+    s_req.traceability_reqs.push_back("REQ_MID");
+    ir.states.push_back(std::move(s_req));
+    ir.states.emplace_back("s_mid", "s_mid");
+    ir.states.emplace_back("s_end", "s_end");
+
+    TransitionEdge t_keep1("s_start", "s_req", "GO1");
+    t_keep1.source_id = "s_start";
+    t_keep1.target_id = "s_req";
+    ir.add_transition(t_keep1);
+
+    TransitionEdge t_keep2("s_req", "s_end", "");
+    t_keep2.source_id = "s_req";
+    t_keep2.target_id = "s_end";
+    t_keep2.trigger = AnonymousTrigger{};
+    ir.add_transition(t_keep2);
+
+    TransitionEdge t1("s_start", "s_mid", "GO2");
+    t1.source_id = "s_start";
+    t1.target_id = "s_mid";
+    t1.priority = 3;
+    t1.kind = TransitionEdgeKind::Local;
+    t1.traceability_reqs.push_back("REQ_E1");
+    ir.add_transition(t1);
+
+    TransitionEdge t2("s_mid", "s_end", "");
+    t2.source_id = "s_mid";
+    t2.target_id = "s_end";
+    t2.trigger = AnonymousTrigger{};
+    t2.target_is_history = true;
+    t2.traceability_reqs.push_back("REQ_E2");
+    ir.add_transition(t2);
+
+    DiagnosticEngine diag;
+    TransitionFusionPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+
+    // s_req has traceability_reqs and must not be fused away
+    EXPECT_NE(ir.find_state("s_req"), nullptr);
+    // s_mid has no traceability_reqs and should be fused
+    EXPECT_EQ(ir.find_state("s_mid"), nullptr);
+
+    bool found_fused = false;
+    for (const auto& t : ir.transitions) {
+        if (t.event == "GO2") {
+            found_fused = true;
+            EXPECT_EQ(t.priority, 3u);
+            EXPECT_EQ(t.kind, TransitionEdgeKind::Local);
+            EXPECT_TRUE(t.target_is_history);
+            EXPECT_EQ(t.traceability_reqs.size(), 2u);
+        }
+    }
+    EXPECT_TRUE(found_fused);
 }

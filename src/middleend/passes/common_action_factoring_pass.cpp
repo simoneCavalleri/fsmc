@@ -80,7 +80,7 @@ bool CommonActionFactoringPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
         std::vector<std::size_t> incoming_indices;
         for (std::size_t i = 0; i < ir.transitions.size(); ++i) {
             const auto& t = ir.transitions[i];
-            if (t.kind == ir::TransitionEdgeKind::Internal) {
+            if (t.kind == ir::TransitionEdgeKind::Internal || t.kind == ir::TransitionEdgeKind::Local) {
                 continue;
             }
             if (matches_state(t.target, t.target_id, state)) {
@@ -92,7 +92,8 @@ bool CommonActionFactoringPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
             bool all_have_action = true;
             for (std::size_t idx : incoming_indices) {
                 const auto& t = ir.transitions[idx];
-                if (!t.transition_action.has_value() || t.transition_action->empty()) {
+                if (!t.transition_action.has_value() || t.transition_action->empty() ||
+                    t.transition_action->name.rfind("fused_", 0) == 0) {
                     all_have_action = false;
                     break;
                 }
@@ -130,7 +131,7 @@ bool CommonActionFactoringPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
         std::vector<std::size_t> outgoing_indices;
         for (std::size_t i = 0; i < ir.transitions.size(); ++i) {
             const auto& t = ir.transitions[i];
-            if (t.kind == ir::TransitionEdgeKind::Internal) {
+            if (t.kind == ir::TransitionEdgeKind::Internal || t.kind == ir::TransitionEdgeKind::Local) {
                 continue;
             }
             if (matches_state(t.source, t.source_id, state)) {
@@ -142,7 +143,8 @@ bool CommonActionFactoringPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
             bool all_have_action = true;
             for (std::size_t idx : outgoing_indices) {
                 const auto& t = ir.transitions[idx];
-                if (!t.transition_action.has_value() || t.transition_action->empty()) {
+                if (!t.transition_action.has_value() || t.transition_action->empty() ||
+                    t.transition_action->name.rfind("fused_", 0) == 0) {
                     all_have_action = false;
                     break;
                 }

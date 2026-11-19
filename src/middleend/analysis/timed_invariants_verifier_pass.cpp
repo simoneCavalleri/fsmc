@@ -64,25 +64,23 @@ bool TimedInvariantsVerifierPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         bool can_exit_before_timelock = false;
 
         for (const auto* edge : outgoing) {
-            if (!edge->event.empty()) {
-                can_exit_before_timelock = true;  // External event could arrive in time
-                break;
-            } else if (std::holds_alternative<ir::SignalTrigger>(edge->trigger)) {
-                if (!std::get<ir::SignalTrigger>(edge->trigger).signal_name.empty()) {
-                    can_exit_before_timelock = true;  // External event could arrive in time
-                    break;
-                }
-            } else if (std::holds_alternative<ir::AnonymousTrigger>(edge->trigger)) {
-                can_exit_before_timelock = true;  // Immediate transition
-                break;
-            } else if (std::holds_alternative<ir::TimeTrigger>(edge->trigger)) {
+            if (std::holds_alternative<ir::TimeTrigger>(edge->trigger)) {
                 const auto& tt = std::get<ir::TimeTrigger>(edge->trigger);
                 if (tt.duration_in_ms() <= max_stay_ms) {
                     can_exit_before_timelock = true;
                     break;
                 }
-            } else if (std::holds_alternative<ir::ChangeTrigger>(edge->trigger)) {
+            } else if (std::holds_alternative<ir::ChangeTrigger>(edge->trigger) ||
+                       std::holds_alternative<ir::AnonymousTrigger>(edge->trigger)) {
                 can_exit_before_timelock = true;
+                break;
+            } else if (std::holds_alternative<ir::SignalTrigger>(edge->trigger)) {
+                if (!std::get<ir::SignalTrigger>(edge->trigger).signal_name.empty() || !edge->event.empty()) {
+                    can_exit_before_timelock = true;  // External event could arrive in time
+                    break;
+                }
+            } else if (!edge->event.empty()) {
+                can_exit_before_timelock = true;  // External event could arrive in time
                 break;
             }
         }

@@ -199,6 +199,36 @@ TEST(LivelockAnalysis, ChoicePseudostatesZeroTimeLoop_DetectedAsLivelock) {
     EXPECT_TRUE(found_e0401);
 }
 
+/**
+ * @brief Regression: `LivelockAnalysisPass` traverses `target_ids` / `multi_target_ids`
+ * so zero-time cycles passing through lowered Fork/Join multi-endpoint transitions are detected.
+ */
+TEST(LivelockAnalysis, ForkMultiTargetZeroTimeCycle_DetectedAsE0401) {
+    FsmIr ir;
+    ir.name = "ForkZenoModel";
+    ir.add_state("A");
+    ir.add_state("B");
+    ir.add_state("C");
+
+    TransitionEdge t1;
+    t1.source = "A";
+    t1.target = "B";
+    t1.target_ids = {"B", "C"};
+    t1.trigger = AnonymousTrigger{};
+    ir.add_transition(t1);
+
+    TransitionEdge t2;
+    t2.source = "C";
+    t2.target = "A";
+    t2.trigger = AnonymousTrigger{};
+    ir.add_transition(t2);
+
+    DiagnosticEngine diag;
+    LivelockAnalysisPass pass;
+    EXPECT_FALSE(pass.run(ir, diag));
+    EXPECT_TRUE(diag.has_errors());
+}
+
 // ============================================================================
 // PriorityConflictPass Tests
 // ============================================================================
@@ -302,6 +332,41 @@ TEST(PriorityConflict, ParentStateHierarchyStringName_DetectsHierarchicalPreempt
             found_e0402 = true;
     }
     EXPECT_TRUE(found_e0402);
+}
+
+/**
+ * @brief Regression: `PriorityConflictPass` resolves symbolic guard names via `FsmIr::guards`
+ * so peer transitions with distinct guard names backed by identical expressions emit `W0402`.
+ */
+TEST(PriorityConflict, EquivalentSymbolicGuardMetadata_EmitsW0402) {
+    FsmIr ir;
+    ir.name = "SymbolicPriorityConflictModel";
+    ir.add_state("Idle");
+    ir.add_state("A");
+    ir.add_state("B");
+    ir.add_guard("g_sym_1", "", std::optional<std::string>{"x > 5"}, std::optional<std::string>{"x > 5"});
+    ir.add_guard("g_sym_2", "", std::optional<std::string>{"x > 5"}, std::optional<std::string>{"x > 5"});
+
+    TransitionEdge t1("Idle", "A", "Go", "g_sym_1");
+    t1.priority = 1;
+    TransitionEdge t2("Idle", "B", "Go", "g_sym_2");
+    t2.priority = 1;
+    ir.add_transition(t1);
+    ir.add_transition(t2);
+
+    DiagnosticEngine diag;
+    PriorityConflictPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+    EXPECT_TRUE(diag.has_warnings());
+
+    bool found_w0402 = false;
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "W0402") {
+            found_w0402 = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_w0402);
 }
 
 /**

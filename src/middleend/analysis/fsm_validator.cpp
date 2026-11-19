@@ -280,11 +280,15 @@ void FsmValidator::validate_reachability(const FsmIr& model, ValidationResult& r
 
         for (const auto& transition_item : model.transitions) {
             bool src_matches = (transition_item.source == current) ||
-                               (!transition_item.source_id.empty() && transition_item.source_id == current);
+                               (!transition_item.source_id.empty() && transition_item.source_id == current) ||
+                               std::find(transition_item.source_ids.begin(), transition_item.source_ids.end(),
+                                         current) != transition_item.source_ids.end();
             if (st_node != nullptr && !transition_item.source_id.empty() && transition_item.source_id == st_node->id) {
                 src_matches = true;
             }
-            if (st_node != nullptr && transition_item.source == st_node->name) {
+            if (st_node != nullptr && (transition_item.source == st_node->name ||
+                                       std::find(transition_item.source_ids.begin(), transition_item.source_ids.end(),
+                                                 st_node->name) != transition_item.source_ids.end())) {
                 src_matches = true;
             }
 
@@ -293,6 +297,20 @@ void FsmValidator::validate_reachability(const FsmIr& model, ValidationResult& r
                 if (!transition_item.target_id.empty()) {
                     if (const auto* tgt_node = model.find_state_by_id(transition_item.target_id)) {
                         mark_reachable(tgt_node->name);
+                    }
+                }
+                for (const auto& tid : transition_item.target_ids) {
+                    if (const auto* tgt_node = model.find_state_by_id(tid)) {
+                        mark_reachable(tgt_node->name);
+                    } else {
+                        mark_reachable(tid);
+                    }
+                }
+                for (const auto& tid : transition_item.multi_target_ids) {
+                    if (const auto* tgt_node = model.find_state_by_id(tid)) {
+                        mark_reachable(tgt_node->name);
+                    } else {
+                        mark_reachable(tid);
                     }
                 }
             }

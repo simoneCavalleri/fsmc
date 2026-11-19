@@ -1127,4 +1127,307 @@ TEST(FormalRoundtrip, UniversalDataDefinitions_PreservedAcrossFormats) {
     verify_roundtrip(baseline);
 }
 
+/**
+ * @brief Verify Sysml2Serializer emits assignment action blocks for entry, exit, and transitions.
+ * @scenario Serialize an FsmIr with entry, exit, and transition assignments to SysML v2, then re-parse it.
+ * @expected The re-parsed FsmIr retains all assignment targets and expressions.
+ */
+TEST(FormalRoundtrip, Sysml2Serializer_PreservesAssignmentBlocksAcrossRoundtrip) {
+    FsmIr baseline;
+    baseline.name = "SysmlAssignRt";
+    baseline.initial_state = "Ready";
+    baseline.add_variable(VariableDefinition("x", DataType{PrimitiveTypeKind::Int32}, "0"));
+
+    StateNode ready("Ready");
+    ActionSignature entry_act("Ready_entry_x");
+    entry_act.assignments.emplace_back(LValueTarget("x"), "10");
+    ready.entry_actions.push_back(std::move(entry_act));
+
+    ActionSignature exit_act("Ready_exit_x");
+    exit_act.assignments.emplace_back(LValueTarget("x"), "x + 1");
+    ready.exit_actions.push_back(std::move(exit_act));
+
+    baseline.states.push_back(std::move(ready));
+    baseline.states.emplace_back("Running");
+
+    ActionSignature tr_act("tr_x");
+    tr_act.assignments.emplace_back(LValueTarget("x"), "x * 2");
+    baseline.transitions.emplace_back("Ready", "Running", "GO", std::nullopt, std::move(tr_act));
+
+    const std::string sysml = Sysml2Serializer::serialize(baseline);
+    Sysml2Parser parser;
+    FsmIr rt;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, rt, err)) << err;
+
+    const StateNode* rt_ready = rt.find_state("Ready");
+    ASSERT_NE(rt_ready, nullptr);
+    ASSERT_EQ(rt_ready->entry_actions.size(), 1u);
+    ASSERT_EQ(rt_ready->entry_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(rt_ready->entry_actions[0].assignments[0].expression, "10");
+
+    ASSERT_EQ(rt_ready->exit_actions.size(), 1u);
+    ASSERT_EQ(rt_ready->exit_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(rt_ready->exit_actions[0].assignments[0].expression, "x + 1");
+
+    ASSERT_EQ(rt.transitions.size(), 1u);
+    ASSERT_TRUE(rt.transitions[0].transition_action.has_value());
+    ASSERT_EQ(rt.transitions[0].transition_action->assignments.size(), 1u);
+    EXPECT_EQ(rt.transitions[0].transition_action->assignments[0].expression, "x * 2");
+}
+
+/**
+ * @brief Regression: `SmvSerializer` emits SMV enumeration sets (`{IdleMode, RunMode}`) for enum-typed
+ * variables and ports instead of falling back to `0..100`.
+ * @scenario Serialize an `FsmIr` containing an enum `Mode` and variable `m : Mode = IdleMode` to SMV.
+ * @expected Emitted SMV declares `m : {IdleMode, RunMode};` (not `m : 0..100;`).
+ */
+TEST(FormalRoundtrip, SmvSerializer_EmitsEnumSetForEnumTypedVariables) {
+    FsmIr ir;
+    ir.name = "EnumSmv";
+    ir.initial_state = "Init";
+    ir.add_state("Init");
+    ir.add_state("Active");
+    ir.custom_types.push_back(
+        TypeDefinition::make_enum("Mode", "uint8_t", {EnumLiteral{"IdleMode"}, EnumLiteral{"RunMode"}}));
+    ir.add_variable(VariableDefinition("m", DataType::from_string("Mode"), "IdleMode"));
+    ir.add_transition("Init", "Active", SignalTrigger{"Start", ""});
+
+    const std::string smv = SmvSerializer::serialize(ir);
+    EXPECT_NE(smv.find("m : {IdleMode, RunMode};"), std::string::npos);
+    EXPECT_EQ(smv.find("m : 0..100;"), std::string::npos);
+}
+
+/**
+ * @brief Regression: `CameoSerializer` emits `kind="internal"` on internal transitions so `CameoXmiParser`
+ * preserves `TransitionEdgeKind::Internal` across roundtrips.
+ * @scenario Serialize an `FsmIr` with an internal transition on `Idle` to Cameo XMI, then re-parse.
+ * @expected Re-parsed transition has `kind == TransitionEdgeKind::Internal`.
+ */
+TEST(FormalRoundtrip, CameoSerializer_PreservesInternalTransitionKind) {
+    FsmIr ir;
+    ir.name = "CameoInternalRt";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+    TransitionEdge t("Idle", "Idle", "Ping");
+    t.kind = TransitionEdgeKind::Internal;
+    ir.add_transition(t);
+
+    const std::string xmi = CameoSerializer::serialize(ir);
+    EXPECT_NE(xmi.find("kind=\"internal\""), std::string::npos);
+
+    CameoXmiParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xmi, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 1u);
+    EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
+}
+
+/**
+ * @brief Regression: `Sysml2Serializer` omits `then <target>` for `TransitionEdgeKind::Internal` transitions
+ * so `Sysml2Parser` preserves `TransitionEdgeKind::Internal` across roundtrips.
+ * @scenario Serialize an `FsmIr` with an internal transition on `Idle` to SysML v2, then re-parse.
+ * @expected Re-parsed transition has `kind == TransitionEdgeKind::Internal`.
+ */
+TEST(FormalRoundtrip, Sysml2Serializer_PreservesInternalTransitionKind) {
+    FsmIr ir;
+    ir.name = "SysmlInternalRt";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+    TransitionEdge t("Idle", "Idle", "Ping");
+    t.kind = TransitionEdgeKind::Internal;
+    ir.add_transition(t);
+
+    const std::string sysml = Sysml2Serializer::serialize(ir);
+    const std::size_t trans_pos = sysml.find("transition");
+    ASSERT_NE(trans_pos, std::string::npos);
+    EXPECT_EQ(sysml.find("then Idle", trans_pos), std::string::npos);
+
+    Sysml2Parser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sysml, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 1u);
+    EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
+}
+
+/**
+ * @brief Regression: `SmvSerializer` emits `-- action: <assignments>` on `next(state)` transitions
+ * when `transition_action->assignments` is non-empty, so `SmvParser` preserves variable assignments
+ * across SMV roundtrips instead of reducing them to empty stub actions.
+ * @scenario Serialize a transition with `x = 1` to SMV and re-parse with `SmvParser`.
+ * @expected Re-parsed transition action has `assignments[0].target == "x"` and `expression == "1"`.
+ */
+TEST(FormalRoundtrip, SmvSerializer_PreservesTransitionAssignmentsAcrossRoundtrip) {
+    FsmIr ir;
+    ir.name = "SmvAssignRt";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+    ir.add_state("Done");
+    ir.add_variable(VariableDefinition("x", DataType::int32(), "0"));
+    ActionSignature act("assign_x");
+    act.assignments.emplace_back(LValueTarget("x", LValueScope::Register), "1");
+    ir.add_action("assign_x");
+    TransitionEdge t("Idle", "Done", "Go", std::nullopt, act);
+    ir.add_transition(t);
+
+    const std::string smv = SmvSerializer::serialize(ir);
+    EXPECT_NE(smv.find("-- action: x = 1"), std::string::npos);
+
+    SmvParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 1u);
+    ASSERT_TRUE(parsed.transitions[0].transition_action.has_value());
+    ASSERT_EQ(parsed.transitions[0].transition_action->assignments.size(), 1u);
+    EXPECT_EQ(parsed.transitions[0].transition_action->assignments[0].target, "x");
+    EXPECT_EQ(parsed.transitions[0].transition_action->assignments[0].expression, "1");
+}
+
+/**
+ * @brief Regression: `SmvSerializer` expands atomic guard names inside C++ combinators
+ * (`fsm::and_<x_gt_0, y_lt_10>`) to their underlying relational expressions (`(x > 0) & (y < 10)`)
+ * instead of emitting synthetic guard names (`x_gt_0 : boolean`) as free boolean variables.
+ * @scenario Serialize an FSM with `fsm::and_<x_gt_0, y_lt_10>` where `x_gt_0` is `x > 0` and `y_lt_10` is `y < 10`.
+ * @expected SMV output contains `((x > 0) & (y < 10))` and does not declare `x_gt_0 : boolean`.
+ */
+TEST(FormalRoundtrip, SmvSerializer_ExpandsAtomicGuardsInsideCombinators) {
+    FsmIr ir;
+    ir.name = "SmvCombGuard";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+    ir.add_state("Done");
+    ir.add_variable(VariableDefinition("x", DataType::int32(), "5"));
+    ir.add_variable(VariableDefinition("y", DataType::int32(), "5"));
+    ir.add_guard("x_gt_0", "", "x > 0", "x > 0");
+    ir.add_guard("y_lt_10", "", "y < 10", "y < 10");
+    TransitionEdge t("Idle", "Done", "Go", "fsm::and_<x_gt_0, y_lt_10>");
+    ir.add_transition(t);
+
+    const std::string smv = SmvSerializer::serialize(ir);
+    EXPECT_NE(smv.find("((x > 0) & (y < 10))"), std::string::npos);
+    EXPECT_EQ(smv.find("x_gt_0 : boolean"), std::string::npos);
+}
+
+/**
+ * @brief Regression: `SmvSerializer` widens default integer range `0..100` to `-100..100` (or wider)
+ * when a signed variable has a negative `initial_value` or negative assigned literal, avoiding
+ * nuXmv range errors and `W_VARIABLE_RANGE_VIOLATION` on roundtrip.
+ * @scenario Serialize an FSM with `temp` initialized to `-10` and assigned `-150` on a transition.
+ * @expected SMV output declares `temp : -150..100;`.
+ */
+TEST(FormalRoundtrip, SmvSerializer_WidensRangeForNegativeInitialOrAssignedValues) {
+    FsmIr ir;
+    ir.name = "SmvNegRange";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+    ir.add_state("Done");
+    ir.add_variable(VariableDefinition("temp", DataType::int32(), "-10"));
+    ActionSignature act("cool");
+    act.assignments.emplace_back(LValueTarget("temp", LValueScope::Register), "-150");
+    ir.add_action("cool");
+    ir.add_transition(TransitionEdge("Idle", "Done", "Freeze", std::nullopt, act));
+
+    const std::string smv = SmvSerializer::serialize(ir);
+    EXPECT_NE(smv.find("temp : -150..100;"), std::string::npos);
+}
+
+/**
+ * @brief Regression: `SmvSerializer` emits `-- @fsm:state`, `-- @fsm:entry`, `-- @fsm:exit`, and
+ * `-- @fsm:defer` comment directives so hierarchy, entry/exit actions, and deferred events survive
+ * SMV roundtrips through `SmvParser`.
+ * @scenario Serialize an FSM with `Idle` having `entry` (`x = 1`), `exit` (`x = 2`), `do_activity`,
+ * and `defer Ping`, then re-parse with `SmvParser`.
+ * @expected Re-parsed `Idle` preserves `entry_actions`, `exit_actions`, `do_activity`, and `deferred_events`.
+ */
+TEST(FormalRoundtrip, SmvSerializer_PreservesStateLifecycleAndDeferDirectives) {
+    FsmIr ir;
+    ir.name = "SmvLifeRt";
+    ir.initial_state = "Idle";
+    ir.add_variable(VariableDefinition("x", DataType::int32(), "0"));
+    auto& st = ir.add_state("Idle");
+    st.do_activity = "spin";
+    st.deferred_events.push_back("Ping");
+    ActionSignature ent("Idle_entry");
+    ent.assignments.emplace_back(LValueTarget("x", LValueScope::Register), "1");
+    st.entry_actions.push_back(ent);
+    ActionSignature ext("Idle_exit");
+    ext.assignments.emplace_back(LValueTarget("x", LValueScope::Register), "2");
+    st.exit_actions.push_back(ext);
+    ir.add_state("Done");
+    ir.add_transition(TransitionEdge("Idle", "Done", "Go"));
+
+    const std::string smv = SmvSerializer::serialize(ir);
+    SmvParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err;
+    const auto* idle = parsed.find_state("Idle");
+    ASSERT_NE(idle, nullptr);
+    EXPECT_EQ(idle->do_activity, "spin");
+    ASSERT_EQ(idle->deferred_events.size(), 1u);
+    EXPECT_EQ(idle->deferred_events[0], "Ping");
+    ASSERT_EQ(idle->entry_actions.size(), 1u);
+    ASSERT_EQ(idle->entry_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(idle->entry_actions[0].assignments[0].expression, "1");
+    ASSERT_EQ(idle->exit_actions.size(), 1u);
+    ASSERT_EQ(idle->exit_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(idle->exit_actions[0].assignments[0].expression, "2");
+}
+
+/**
+ * @brief Regression: `StateflowSerializer` and `StateflowParser` preserve `deferred_events` on states
+ * via the `defer="..."` state attribute across Stateflow XML roundtrips.
+ * @scenario Serialize an FSM with `Idle` deferring `Ping` and `Pong` to Stateflow XML and re-parse.
+ * @expected Re-parsed `Idle` state has `deferred_events == {"Ping", "Pong"}`.
+ */
+TEST(FormalRoundtrip, StateflowSerializer_PreservesDeferredEventsAcrossRoundtrip) {
+    FsmIr ir;
+    ir.name = "SfDeferRt";
+    ir.initial_state = "Idle";
+    auto& st = ir.add_state("Idle");
+    st.deferred_events = {"Ping", "Pong"};
+    ir.add_state("Done");
+    ir.add_transition(TransitionEdge("Idle", "Done", "Go"));
+
+    const std::string xml = StateflowSerializer::serialize(ir);
+    StateflowParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+    const auto* idle = parsed.find_state("Idle");
+    ASSERT_NE(idle, nullptr);
+    ASSERT_EQ(idle->deferred_events.size(), 2u);
+    EXPECT_EQ(idle->deferred_events[0], "Ping");
+    EXPECT_EQ(idle->deferred_events[1], "Pong");
+}
+
+/**
+ * @brief Regression: `StateflowSerializer` and `StateflowParser` preserve `TransitionEdgeKind::Internal`
+ * via the `type="internal"` transition attribute across Stateflow XML roundtrips.
+ * @scenario Serialize an internal transition `Busy --Ping--> Busy` to Stateflow XML and re-parse.
+ * @expected Re-parsed transition has `kind == TransitionEdgeKind::Internal`.
+ */
+TEST(FormalRoundtrip, StateflowSerializer_PreservesInternalTransitionKindAcrossRoundtrip) {
+    FsmIr ir;
+    ir.name = "SfIntRt";
+    ir.initial_state = "Busy";
+    ir.add_state("Busy");
+    TransitionEdge t("Busy", "Busy", "Ping");
+    t.kind = TransitionEdgeKind::Internal;
+    ir.add_transition(t);
+
+    const std::string xml = StateflowSerializer::serialize(ir);
+    EXPECT_NE(xml.find("type=\"internal\""), std::string::npos);
+
+    StateflowParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 1u);
+    EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
+}
+
 }  // namespace

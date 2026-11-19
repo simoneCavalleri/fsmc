@@ -49,6 +49,7 @@ bool ForkJoinLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         // Collect all target states of the fork
         std::vector<std::string> target_states;
         std::vector<std::string> target_ids;
+        std::vector<std::string> fork_branch_guards;
         std::vector<ActionAssignment> fork_branch_assignments;
         std::vector<ActionAstNode> fork_branch_instructions;
         std::vector<std::string> fork_branch_resets;
@@ -56,6 +57,9 @@ bool ForkJoinLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         for (const auto& out : outgoing) {
             target_states.push_back(out.target);
             target_ids.push_back(out.target_id.empty() ? compute_deterministic_id(out.target) : out.target_id);
+            if (out.guard.has_value() && !out.guard->empty()) {
+                fork_branch_guards.push_back(*out.guard);
+            }
 
             if (out.condition_action.has_value()) {
                 for (const auto& a : out.condition_action->assignments) {
@@ -105,6 +109,17 @@ bool ForkJoinLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                     in->clock_resets.push_back(cr);
                 }
             }
+            if (!fork_branch_guards.empty()) {
+                std::string combined = in->guard.value_or("");
+                for (const auto& bg : fork_branch_guards) {
+                    if (combined.empty()) {
+                        combined = bg;
+                    } else {
+                        combined = "(" + combined + ") && (" + bg + ")";
+                    }
+                }
+                in->set_guard(combined);
+            }
             modified = true;
         }
 
@@ -136,6 +151,9 @@ bool ForkJoinLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 
         std::vector<std::string> source_states;
         std::vector<std::string> source_ids;
+        std::vector<std::string> join_branch_guards;
+        std::string join_branch_event;
+        std::optional<TriggerVariant> join_branch_trigger;
         std::vector<ActionAssignment> join_branch_assignments;
         std::vector<ActionAstNode> join_branch_instructions;
         std::vector<std::string> join_branch_resets;
@@ -143,6 +161,13 @@ bool ForkJoinLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         for (const auto& in : incoming) {
             source_states.push_back(in.source);
             source_ids.push_back(in.source_id.empty() ? compute_deterministic_id(in.source) : in.source_id);
+            if (in.guard.has_value() && !in.guard->empty()) {
+                join_branch_guards.push_back(*in.guard);
+            }
+            if (join_branch_event.empty() && !in.event.empty()) {
+                join_branch_event = in.event;
+                join_branch_trigger = in.trigger;
+            }
 
             if (in.condition_action.has_value()) {
                 for (const auto& a : in.condition_action->assignments) {
@@ -200,6 +225,26 @@ bool ForkJoinLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 if (std::find(out->clock_resets.begin(), out->clock_resets.end(), cr) == out->clock_resets.end()) {
                     out->clock_resets.push_back(cr);
                 }
+            }
+            if (out->event.empty() && !join_branch_event.empty()) {
+                out->event = join_branch_event;
+                if (join_branch_trigger.has_value()) {
+                    out->trigger = *join_branch_trigger;
+                }
+            }
+            if (!join_branch_guards.empty()) {
+                std::string combined;
+                for (const auto& bg : join_branch_guards) {
+                    if (combined.empty()) {
+                        combined = bg;
+                    } else {
+                        combined = "(" + combined + ") && (" + bg + ")";
+                    }
+                }
+                if (out->guard.has_value() && !out->guard->empty()) {
+                    combined = "(" + combined + ") && (" + *out->guard + ")";
+                }
+                out->set_guard(combined);
             }
             modified = true;
         }

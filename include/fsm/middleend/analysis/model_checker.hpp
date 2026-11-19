@@ -115,6 +115,8 @@ class ModelChecker {
                                          const PropertyAstNode& next_target);
     ModelCheckResult check_infinitely_often(const FormalProperty& prop, const PropertyAstNode& target);
     ModelCheckResult check_eventually_always(const FormalProperty& prop, const PropertyAstNode& target);
+    ModelCheckResult check_persistent_response(const FormalProperty& prop, const PropertyAstNode& trigger,
+                                               const PropertyAstNode& always_target);
 
     [[nodiscard]] std::unordered_set<std::string> pre_exists(const std::unordered_set<std::string>& targets) const;
     [[nodiscard]] std::unordered_set<std::string> pre_all(const std::unordered_set<std::string>& targets) const;

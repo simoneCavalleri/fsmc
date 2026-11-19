@@ -68,6 +68,43 @@ bool BoundaryActionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         }
     };
 
+    auto is_initial_entry_kept = [&ir](const StateNode* s) -> bool {
+        if (s == nullptr) {
+            return false;
+        }
+        const bool is_machine_initial =
+            (!ir.initial_state.empty() && (s->name == ir.initial_state || s->id == ir.initial_state)) ||
+            (!ir.initial_state_id.empty() && (s->name == ir.initial_state_id || s->id == ir.initial_state_id));
+        if (is_machine_initial) {
+            return true;
+        }
+        for (const auto& other_s : ir.states) {
+            if (!other_s.initial_sub_state.empty() &&
+                (other_s.initial_sub_state == s->name || other_s.initial_sub_state == s->id)) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // If an ancestor composite state has an outgoing external transition, descendant states may be exited via
+    // that ancestor transition at runtime. Keep their exit_actions intact on the StateNode rather than fusing/clearing.
+    std::unordered_set<std::string> external_sources;
+    for (const auto& t : ir.transitions) {
+        if (t.kind != TransitionEdgeKind::Internal && t.kind != TransitionEdgeKind::Local && !t.source.empty()) {
+            external_sources.insert(t.source);
+        }
+    }
+    for (const auto& s : ir.states) {
+        auto ancestors = get_ancestor_chain(ir, s.name);
+        for (std::size_t i = 1; i < ancestors.size(); ++i) {
+            if (external_sources.count(ancestors[i]) != 0) {
+                states_unfused_exit.insert(s.name);
+                break;
+            }
+        }
+    }
+
     for (auto& t : ir.transitions) {
         if (t.kind == TransitionEdgeKind::Internal) {
             continue;
@@ -89,7 +126,7 @@ bool BoundaryActionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             continue;
         }
 
-        std::string lca = compute_lca(ir, t.source, t.target);
+        std::string lca = (t.kind == TransitionEdgeKind::Local) ? t.source : compute_lca(ir, t.source, t.target);
 
         // 1. Ascend from source up to LCA (excluding LCA); collect names for post-fusion clearing.
         std::vector<const StateNode*> exit_path;
@@ -128,14 +165,14 @@ bool BoundaryActionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         // Check if any exit or entry actions exist along the path
         bool has_boundary_actions = false;
         for (const auto* s : exit_path) {
-            if (!s->exit_actions.empty()) {
+            if (!s->exit_actions.empty() && states_unfused_exit.count(s->name) == 0) {
                 has_boundary_actions = true;
                 break;
             }
         }
         if (!has_boundary_actions) {
             for (const auto* s : entry_path) {
-                if (!s->entry_actions.empty()) {
+                if (!s->entry_actions.empty() && !is_initial_entry_kept(s)) {
                     has_boundary_actions = true;
                     break;
                 }
@@ -146,13 +183,40 @@ bool BoundaryActionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             continue;
         }
 
+        auto parse_skip_set = [&](const std::string& attr_key) {
+            std::unordered_set<std::string> res;
+            auto it = ir.attributes.find(attr_key);
+            if (it != ir.attributes.end()) {
+                std::size_t start = 0;
+                while (start < it->second.size()) {
+                    std::size_t nl = it->second.find('\n', start);
+                    if (nl == std::string::npos) {
+                        res.insert(it->second.substr(start));
+                        break;
+                    }
+                    res.insert(it->second.substr(start, nl - start));
+                    start = nl + 1;
+                }
+            }
+            return res;
+        };
+        const auto skip_exit = parse_skip_set("ortho_skip_exit:" + t.source + "->" + t.target);
+        const auto skip_entry = parse_skip_set("ortho_skip_entry:" + t.source + "->" + t.target);
+
         // 3. Synthesize atomic fused action
         ActionSignature fused_act(t.transition_action.has_value() ? t.transition_action->name
                                                                   : "fused_" + t.source + "_to_" + t.target);
 
-        // Append exit actions (in ascending leaf-to-LCA order)
+        // Append exit actions (in ascending leaf-to-LCA order), skipping unchanged orthogonal region actions
+        // and descendant states whose exit_actions must remain on StateNode for ancestor exits.
         for (const auto* s : exit_path) {
+            if (states_unfused_exit.count(s->name) != 0) {
+                continue;
+            }
             for (const auto& act : s->exit_actions) {
+                if (!act.name.empty() && skip_exit.count(act.name) != 0) {
+                    continue;
+                }
                 append_action_to_fused(fused_act, act);
             }
         }
@@ -162,14 +226,23 @@ bool BoundaryActionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             append_action_to_fused(fused_act, *t.transition_action);
         }
 
-        // Append entry actions (in descending LCA-to-target order)
+        // Append entry actions (in descending LCA-to-target order), skipping unchanged orthogonal region actions
+        // and initial states whose on_enter hook must stay intact for runtime startup.
         for (const auto* s : entry_path) {
+            if (is_initial_entry_kept(s)) {
+                continue;
+            }
             for (const auto& act : s->entry_actions) {
+                if (!act.name.empty() && skip_entry.count(act.name) != 0) {
+                    continue;
+                }
                 append_action_to_fused(fused_act, act);
             }
         }
 
-        t.transition_action = std::move(fused_act);
+        if (!fused_act.instructions.empty() || !fused_act.assignments.empty() || t.transition_action.has_value()) {
+            t.transition_action = std::move(fused_act);
+        }
 
         for (const auto& name : exit_path_names) {
             states_cleared_exit.insert(name);
@@ -198,20 +271,7 @@ bool BoundaryActionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             continue;
         }
         if (auto* mutable_s = ir.find_state_mut(name)) {
-            const bool is_machine_initial =
-                (!ir.initial_state.empty() &&
-                 (mutable_s->name == ir.initial_state || mutable_s->id == ir.initial_state)) ||
-                (!ir.initial_state_id.empty() &&
-                 (mutable_s->name == ir.initial_state_id || mutable_s->id == ir.initial_state_id));
-            bool is_composite_initial = false;
-            for (const auto& other_s : ir.states) {
-                if (!other_s.initial_sub_state.empty() &&
-                    (other_s.initial_sub_state == mutable_s->name || other_s.initial_sub_state == mutable_s->id)) {
-                    is_composite_initial = true;
-                    break;
-                }
-            }
-            if (!is_machine_initial && !is_composite_initial) {
+            if (!is_initial_entry_kept(mutable_s)) {
                 mutable_s->entry_actions.clear();
             }
         }

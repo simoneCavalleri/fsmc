@@ -1,16 +1,49 @@
 #include "fsm/middleend/passes/state_minimization_pass.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <map>
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace fsm::middleend::passes {
 
 using namespace fsm::ir;
 using namespace fsm::diagnostic;
+
+namespace {
+
+void collect_identifiers_from_text(std::string_view text, std::unordered_set<std::string>& out) {
+    std::string current;
+    for (char c : text) {
+        if (std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_') {
+            current.push_back(c);
+        } else {
+            if (!current.empty() && std::isdigit(static_cast<unsigned char>(current[0])) == 0) {
+                out.insert(current);
+            }
+            current.clear();
+        }
+    }
+    if (!current.empty() && std::isdigit(static_cast<unsigned char>(current[0])) == 0) {
+        out.insert(current);
+    }
+}
+
+void collect_property_atoms(const PropertyAstNode& node, std::unordered_set<std::string>& out) {
+    if (node.op == TemporalOp::Atom && !node.atom.empty()) {
+        out.insert(node.atom);
+        collect_identifiers_from_text(node.atom, out);
+    }
+    for (const auto& child : node.children) {
+        collect_property_atoms(child, out);
+    }
+}
+
+}  // namespace
 
 bool StateMinimizationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     if (ir.states.size() <= 1) {
@@ -91,6 +124,14 @@ bool StateMinimizationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         return s;
     };
 
+    std::unordered_set<std::string> property_atoms;
+    for (const auto& prop : ir.properties) {
+        collect_identifiers_from_text(prop.raw_formula, property_atoms);
+        if (prop.ast.has_value()) {
+            collect_property_atoms(*prop.ast, property_atoms);
+        }
+    }
+
     std::map<std::string, std::vector<std::string>> initial_blocks;
     for (const auto& s : ir.states) {
         if (ir.is_choice_node(s.name) || s.is_composite || !s.children_ids.empty()) {
@@ -100,12 +141,14 @@ bool StateMinimizationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         }
 
         bool is_init = (s.name == init_st || s.id == init_st);
+        std::string prop_sig = (property_atoms.count(s.name) > 0 || property_atoms.count(s.id) > 0) ? s.name : "";
         std::string key = std::to_string(static_cast<int>(s.kind)) + "|" + (is_init ? "INIT" : "NORM") + "|" +
                           s.parent_state + "|" + get_actions_sig(s.entry_actions) + "|" +
                           get_actions_sig(s.exit_actions) + "|" + s.do_activity.value_or("") + "|" +
                           (s.time_invariant.has_value() ? s.time_invariant->to_string() : "") + "|" +
                           get_invariants_sig(s.invariants) + "|" + (s.has_history ? "H" : "") + "|" +
-                          (s.has_deep_history ? "DH" : "") + "|" + get_deferred_sig(s.deferred_events);
+                          (s.has_deep_history ? "DH" : "") + "|" + get_deferred_sig(s.deferred_events) + "|" +
+                          get_deferred_sig(s.traceability_reqs) + "|" + prop_sig;
 
         initial_blocks[key].push_back(s.name);
     }

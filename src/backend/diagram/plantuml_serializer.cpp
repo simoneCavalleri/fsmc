@@ -5,13 +5,13 @@
 #include <sstream>
 
 #include "fsm/frontend/directive/directive_parser.hpp"
-#include "fsm/frontend/directive/guard_parser.hpp"
+#include "fsm/ir/guard.hpp"
 
 namespace fsm::backend::diagram {
 
 using namespace fsm::ir;
 using frontend::directive::DirectiveParser;
-using frontend::directive::GuardExpressionParser;
+using ir::GuardExpressionParser;
 
 namespace {
 
@@ -40,25 +40,38 @@ void emit_leaf_state(std::ostream& out, const StateNode& state, const std::strin
         out << pad << state.name << " : invariant " << *state.time_invariant << "\n";
     }
     for (const auto& act : state.entry_actions) {
-        out << pad << state.name << " : entry / " << act.name << "\n";
+        out << pad << state.name << " : entry / " << format_action_expression(act) << "\n";
     }
     if (state.do_activity.has_value() && !state.do_activity->empty()) {
         out << pad << state.name << " : do / " << *state.do_activity << "\n";
     }
     for (const auto& act : state.exit_actions) {
-        out << pad << state.name << " : exit / " << act.name << "\n";
+        out << pad << state.name << " : exit / " << format_action_expression(act) << "\n";
     }
     for (const auto& d_evt : state.deferred_events) {
         out << pad << state.name << " : defer " << d_evt << "\n";
     }
 }
 
-std::string build_label(const TransitionEdge& trans) {
+std::string build_label(const TransitionEdge& trans, const FsmIr& model) {
     std::string label;
     if (trans.priority > 0) {
         label += "(prio=" + std::to_string(trans.priority) + ")";
     }
-    if (!trans.event.empty()) {
+    if (const auto* ct = std::get_if<ChangeTrigger>(&trans.trigger)) {
+        if (!ct->raw_expression.empty()) {
+            if (!label.empty()) {
+                label += " ";
+            }
+            label += "when(" + ct->raw_expression + ")";
+        }
+    } else if (const auto* tt = std::get_if<TimeTrigger>(&trans.trigger); tt != nullptr && trans.event.empty()) {
+        if (!label.empty()) {
+            label += " ";
+        }
+        label += std::string(tt->kind == TimeTriggerKind::Every ? "every_" : "after_") +
+                 std::to_string(tt->duration_value) + std::string(time_unit_to_string(tt->unit));
+    } else if (!trans.event.empty()) {
         if (!label.empty()) {
             label += " ";
         }
@@ -68,9 +81,10 @@ std::string build_label(const TransitionEdge& trans) {
         if (!label.empty()) {
             label += " ";
         }
-        label += "[" + GuardExpressionParser::to_diagram_string(*trans.guard) + "]";
+        label += "[" + GuardExpressionParser::to_diagram_string(*trans.guard, model.guards) + "]";
     }
-    std::string act = trans.get_action();
+    std::string act =
+        trans.transition_action.has_value() ? format_action_expression(*trans.transition_action) : trans.get_action();
     if (!act.empty()) {
         if (!label.empty()) {
             label += " ";
@@ -96,7 +110,8 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
         out << "]\n";
     }
 
-    if (!state.initial_sub_state.empty()) {
+    const bool is_parallel = (state.kind == StateKind::Parallel || !state.orthogonal_regions.empty());
+    if (!is_parallel && !state.initial_sub_state.empty()) {
         out << pad << "  [*] --> " << state.initial_sub_state << "\n";
     }
     if (state.has_history || state.has_deep_history) {
@@ -107,26 +122,31 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
         out << pad << "  " << state.name << " : invariant " << *state.time_invariant << "\n";
     }
     for (const auto& act : state.entry_actions) {
-        out << pad << "  " << state.name << " : entry / " << act.name << "\n";
+        out << pad << "  " << state.name << " : entry / " << format_action_expression(act) << "\n";
     }
     if (state.do_activity.has_value() && !state.do_activity->empty()) {
         out << pad << "  " << state.name << " : do / " << *state.do_activity << "\n";
     }
     for (const auto& act : state.exit_actions) {
-        out << pad << "  " << state.name << " : exit / " << act.name << "\n";
+        out << pad << "  " << state.name << " : exit / " << format_action_expression(act) << "\n";
     }
     for (const auto& d_evt : state.deferred_events) {
         out << pad << "  " << state.name << " : defer " << d_evt << "\n";
     }
 
     // Child states in declaration order
+    size_t emitted_children = 0;
     for (const auto& child : model.states) {
         if (child.parent_state == state.name) {
+            if (is_parallel && emitted_children > 0) {
+                out << pad << "  --\n";
+            }
             if (child.is_composite) {
                 emit_state(out, child, model, parent_map, emitted_transitions, indent + 1);
             } else {
                 emit_leaf_state(out, child, pad + "  ");
             }
+            ++emitted_children;
         }
     }
 
@@ -140,12 +160,19 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
         std::string src_parent = (src_it != parent_map.end()) ? src_it->second : "";
         if (src_parent == state.name) {
             emitted_transitions.insert(i);
+            std::string label = build_label(trans, model);
+            if (trans.kind == TransitionEdgeKind::Internal && !label.empty()) {
+                out << pad << "  " << trans.source << " : " << label << "\n";
+                continue;
+            }
             std::string clean_target = trans.target;
             if (trans.target_is_history) {
                 clean_target += trans.target_is_deep_history ? "[H*]" : "[H]";
             }
+            if (trans.kind == TransitionEdgeKind::Local) {
+                out << pad << "  ' @fsm:local\n";
+            }
             out << pad << "  " << trans.source << " --> " << clean_target;
-            std::string label = build_label(trans);
             if (!label.empty()) {
                 out << " : " << label;
             }
@@ -300,12 +327,19 @@ std::string PlantUmlSerializer::serialize(const FsmIr& model) {
             continue;
         }
         const auto& trans = model.transitions[i];
+        std::string label = build_label(trans, model);
+        if (trans.kind == TransitionEdgeKind::Internal && !label.empty()) {
+            out << trans.source << " : " << label << "\n";
+            continue;
+        }
         std::string clean_target = trans.target;
         if (trans.target_is_history) {
             clean_target += trans.target_is_deep_history ? "[H*]" : "[H]";
         }
+        if (trans.kind == TransitionEdgeKind::Local) {
+            out << "' @fsm:local\n";
+        }
         out << trans.source << " --> " << clean_target;
-        std::string label = build_label(trans);
         if (!label.empty()) {
             out << " : " << label;
         }

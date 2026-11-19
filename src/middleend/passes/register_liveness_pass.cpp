@@ -41,83 +41,79 @@ std::unordered_set<std::string> extract_identifiers(std::string_view text) {
     return idents;
 }
 
-void collect_reads_from_action(const ir::ActionSignature& act, const std::unordered_set<std::string>& known_vars,
-                               std::unordered_set<std::string>& out_reads) {
+template <typename SetType>
+void collect_action_use_def(const ir::ActionSignature& act, const std::unordered_set<std::string>& known_vars,
+                            SetType& use, SetType& def) {
     for (const auto& inst : act.instructions) {
-        if (std::holds_alternative<ir::StoreOp>(inst.op)) {
-            const auto& op = std::get<ir::StoreOp>(inst.op);
-            for (const auto& id : extract_identifiers(op.expression)) {
-                if (known_vars.count(id))
-                    out_reads.insert(id);
+        if (const auto* st = std::get_if<ir::StoreOp>(&inst.op)) {
+            if (st->op != ir::AssignmentOp::Assign && known_vars.count(st->target.name) &&
+                def.count(st->target.name) == 0) {
+                use.insert(st->target.name);
             }
-            if (op.op != ir::AssignmentOp::Assign && known_vars.count(op.target.name)) {
-                out_reads.insert(op.target.name);
-            }
-        } else if (std::holds_alternative<ir::PortWriteOp>(inst.op)) {
-            for (const auto& id : extract_identifiers(std::get<ir::PortWriteOp>(inst.op).expression)) {
-                if (known_vars.count(id))
-                    out_reads.insert(id);
-            }
-        } else if (std::holds_alternative<ir::SignalEmitOp>(inst.op)) {
-            const auto& op = std::get<ir::SignalEmitOp>(inst.op);
-            for (const auto& arg : op.arguments) {
-                for (const auto& id : extract_identifiers(arg)) {
-                    if (known_vars.count(id))
-                        out_reads.insert(id);
+            for (const auto& id : extract_identifiers(st->expression)) {
+                if (known_vars.count(id) && def.count(id) == 0) {
+                    use.insert(id);
                 }
             }
-        } else if (std::holds_alternative<ir::ActionCallOp>(inst.op)) {
-            const auto& op = std::get<ir::ActionCallOp>(inst.op);
-            for (const auto& r : op.read_set) {
-                if (known_vars.count(r))
-                    out_reads.insert(r);
+            if (st->op == ir::AssignmentOp::Assign && st->target.member_path.empty() &&
+                !st->target.constant_index.has_value() && known_vars.count(st->target.name) &&
+                use.count(st->target.name) == 0) {
+                def.insert(st->target.name);
             }
-            for (const auto& arg : op.arguments) {
+        } else if (const auto* pw = std::get_if<ir::PortWriteOp>(&inst.op)) {
+            for (const auto& id : extract_identifiers(pw->expression)) {
+                if (known_vars.count(id) && def.count(id) == 0) {
+                    use.insert(id);
+                }
+            }
+        } else if (const auto* pr = std::get_if<ir::PortReadOp>(&inst.op)) {
+            if (!pr->destination.name.empty() && pr->destination.member_path.empty() &&
+                !pr->destination.constant_index.has_value() && known_vars.count(pr->destination.name) &&
+                use.count(pr->destination.name) == 0) {
+                def.insert(pr->destination.name);
+            }
+        } else if (const auto* se = std::get_if<ir::SignalEmitOp>(&inst.op)) {
+            for (const auto& arg : se->arguments) {
                 for (const auto& id : extract_identifiers(arg)) {
-                    if (known_vars.count(id))
-                        out_reads.insert(id);
+                    if (known_vars.count(id) && def.count(id) == 0) {
+                        use.insert(id);
+                    }
+                }
+            }
+        } else if (const auto* ac = std::get_if<ir::ActionCallOp>(&inst.op)) {
+            for (const auto& r : ac->read_set) {
+                if (known_vars.count(r) && def.count(r) == 0) {
+                    use.insert(r);
+                }
+            }
+            for (const auto& arg : ac->arguments) {
+                for (const auto& id : extract_identifiers(arg)) {
+                    if (known_vars.count(id) && def.count(id) == 0) {
+                        use.insert(id);
+                    }
+                }
+            }
+            for (const auto& w : ac->write_set) {
+                if (known_vars.count(w) && use.count(w) == 0) {
+                    def.insert(w);
                 }
             }
         }
     }
     for (const auto& assign : act.assignments) {
+        if (assign.op != ir::AssignmentOp::Assign && known_vars.count(assign.target.name) &&
+            def.count(assign.target.name) == 0) {
+            use.insert(assign.target.name);
+        }
         for (const auto& id : extract_identifiers(assign.expression)) {
-            if (known_vars.count(id))
-                out_reads.insert(id);
-        }
-        if (assign.op != ir::AssignmentOp::Assign && known_vars.count(assign.target.name)) {
-            out_reads.insert(assign.target.name);
-        }
-    }
-}
-
-void collect_writes_from_action(const ir::ActionSignature& act, const std::unordered_set<std::string>& known_vars,
-                                std::unordered_set<std::string>& out_writes) {
-    for (const auto& inst : act.instructions) {
-        if (std::holds_alternative<ir::StoreOp>(inst.op)) {
-            const auto& op = std::get<ir::StoreOp>(inst.op);
-            if (op.op == ir::AssignmentOp::Assign && op.target.member_path.empty() &&
-                !op.target.constant_index.has_value() && known_vars.count(op.target.name)) {
-                out_writes.insert(op.target.name);
-            }
-        } else if (std::holds_alternative<ir::PortReadOp>(inst.op)) {
-            const auto& op = std::get<ir::PortReadOp>(inst.op);
-            if (op.destination.member_path.empty() && !op.destination.constant_index.has_value() &&
-                known_vars.count(op.destination.name)) {
-                out_writes.insert(op.destination.name);
-            }
-        } else if (std::holds_alternative<ir::ActionCallOp>(inst.op)) {
-            const auto& op = std::get<ir::ActionCallOp>(inst.op);
-            for (const auto& w : op.write_set) {
-                if (known_vars.count(w))
-                    out_writes.insert(w);
+            if (known_vars.count(id) && def.count(id) == 0) {
+                use.insert(id);
             }
         }
-    }
-    for (const auto& assign : act.assignments) {
         if (assign.op == ir::AssignmentOp::Assign && assign.target.member_path.empty() &&
-            !assign.target.constant_index.has_value() && known_vars.count(assign.target.name)) {
-            out_writes.insert(assign.target.name);
+            !assign.target.constant_index.has_value() && known_vars.count(assign.target.name) &&
+            use.count(assign.target.name) == 0) {
+            def.insert(assign.target.name);
         }
     }
 }
@@ -149,20 +145,7 @@ bool RegisterLivenessPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         // State entry actions execute first upon entering the state:
         // track reads that occur before an unconditional write vs writes that occur before any read.
         for (const auto& act : state.entry_actions) {
-            std::unordered_set<std::string> act_reads;
-            collect_reads_from_action(act, known_vars, act_reads);
-            for (const auto& r : act_reads) {
-                if (state_defs[state.id].count(r) == 0) {
-                    state_uses[state.id].insert(r);
-                }
-            }
-            std::unordered_set<std::string> act_writes;
-            collect_writes_from_action(act, known_vars, act_writes);
-            for (const auto& w : act_writes) {
-                if (state_uses[state.id].count(w) == 0) {
-                    state_defs[state.id].insert(w);
-                }
-            }
+            collect_action_use_def(act, known_vars, state_uses[state.id], state_defs[state.id]);
         }
 
         // Invariants use variables while in the state
@@ -175,13 +158,7 @@ bool RegisterLivenessPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 
         // State exit actions
         for (const auto& act : state.exit_actions) {
-            std::unordered_set<std::string> exit_reads;
-            collect_reads_from_action(act, known_vars, exit_reads);
-            for (const auto& r : exit_reads) {
-                if (state_defs[state.id].count(r) == 0) {
-                    state_uses[state.id].insert(r);
-                }
-            }
+            collect_action_use_def(act, known_vars, state_uses[state.id], state_defs[state.id]);
         }
     }
 
@@ -222,23 +199,58 @@ bool RegisterLivenessPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                     trans_uses.insert(id);
                 }
             }
+            for (const auto& gm : ir.guards) {
+                if (gm.name == *edge.guard) {
+                    if (gm.raw_expression.has_value()) {
+                        for (const auto& id : extract_identifiers(*gm.raw_expression)) {
+                            if (known_vars.count(id)) {
+                                trans_uses.insert(id);
+                            }
+                        }
+                    }
+                    if (gm.normalized_expression.has_value()) {
+                        for (const auto& id : extract_identifiers(*gm.normalized_expression)) {
+                            if (known_vars.count(id)) {
+                                trans_uses.insert(id);
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+        if (const auto* ct = std::get_if<ir::ChangeTrigger>(&edge.trigger)) {
+            if (ct->predicate.has_value()) {
+                for (const auto& id : extract_identifiers(ct->predicate->to_string())) {
+                    if (known_vars.count(id)) {
+                        trans_uses.insert(id);
+                    }
+                }
+            }
+            for (const auto& id : extract_identifiers(ct->raw_expression)) {
+                if (known_vars.count(id)) {
+                    trans_uses.insert(id);
+                }
+            }
+        } else if (const auto* tt = std::get_if<ir::TimeTrigger>(&edge.trigger)) {
+            if (!tt->dynamic_expression.empty()) {
+                for (const auto& id : extract_identifiers(tt->dynamic_expression)) {
+                    if (known_vars.count(id)) {
+                        trans_uses.insert(id);
+                    }
+                }
+            }
+        }
+
+        // Condition actions execute before transition actions
+        std::set<std::string> edge_defs;
+        if (edge.condition_action.has_value()) {
+            collect_action_use_def(*edge.condition_action, known_vars, trans_uses, edge_defs);
         }
 
         // Transition actions
-        std::set<std::string> edge_defs;
-        if (edge.transition_action) {
-            std::unordered_set<std::string> act_reads;
-            collect_reads_from_action(*edge.transition_action, known_vars, act_reads);
-            for (const auto& r : act_reads) {
-                trans_uses.insert(r);
-            }
-            std::unordered_set<std::string> act_writes;
-            collect_writes_from_action(*edge.transition_action, known_vars, act_writes);
-            for (const auto& w : act_writes) {
-                if (act_reads.count(w) == 0) {
-                    edge_defs.insert(w);
-                }
-            }
+        if (edge.transition_action.has_value()) {
+            collect_action_use_def(*edge.transition_action, known_vars, trans_uses, edge_defs);
         }
 
         edges.push_back({src_id, dst_id, std::move(trans_uses), std::move(edge_defs)});

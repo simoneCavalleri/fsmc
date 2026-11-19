@@ -24,13 +24,7 @@ bool WcetAnalysisPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     }
 
     auto is_microstep_transition = [&](const TransitionEdge& t) {
-        if (t.event.empty() || t.event == "completion_event" || t.event == "anonymous_event") {
-            return true;
-        }
-        if (ir.is_choice_node(t.source)) {
-            return true;
-        }
-        return false;
+        return ir.is_choice_node(t.source) || t.is_zero_time_eventless();
     };
 
     for (const auto& t : ir.transitions) {

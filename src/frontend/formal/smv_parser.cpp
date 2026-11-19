@@ -28,6 +28,13 @@ bool SmvParser::parse(std::string_view content, FsmIr& model, std::string& error
         }
 
         // Extract model name from comment or MODULE declaration
+        if (trimmed.rfind("-- nuXmv / SMV Formal Verification Model:", 0) == 0) {
+            std::string name = trim(trimmed.substr(41));
+            if (!name.empty()) {
+                model.name = sanitize_identifier(name);
+            }
+            continue;
+        }
         if (trimmed.rfind("-- nuXmv / SMV Formal Model:", 0) == 0) {
             std::string name = trim(trimmed.substr(28));
             if (!name.empty()) {
@@ -51,6 +58,18 @@ bool SmvParser::parse(std::string_view content, FsmIr& model, std::string& error
                     if (auto var = directive::DirectiveParser::parse_variable_directive(body)) {
                         model.add_variable(std::move(*var));
                     }
+                } else if (body.rfind("port", 0) == 0) {
+                    if (auto port = directive::DirectiveParser::parse_port_directive(body)) {
+                        model.add_port(std::move(*port));
+                    }
+                } else if (body.rfind("enum", 0) == 0) {
+                    if (auto en = directive::DirectiveParser::parse_enum_directive(body)) {
+                        model.add_enum(std::move(*en));
+                    }
+                } else if (body.rfind("struct", 0) == 0) {
+                    if (auto st = directive::DirectiveParser::parse_struct_directive(body)) {
+                        model.add_struct(std::move(*st));
+                    }
                 } else if (body.rfind("signal", 0) == 0) {
                     if (auto sig = directive::DirectiveParser::parse_signal_directive(body)) {
                         model.add_signal(std::move(*sig));
@@ -58,6 +77,14 @@ bool SmvParser::parse(std::string_view content, FsmIr& model, std::string& error
                 } else if (body.rfind("property", 0) == 0) {
                     if (auto prop = directive::DirectiveParser::parse_property_directive(body)) {
                         model.add_property(std::move(*prop));
+                    }
+                } else if (body.rfind("choice", 0) == 0) {
+                    auto n_pos = body.find("name=");
+                    std::string cname =
+                        (n_pos != std::string::npos) ? extract_word_or_quoted(body, n_pos + 5) : trim(body.substr(6));
+                    cname = sanitize_identifier(cname);
+                    if (!cname.empty()) {
+                        model.add_choice_node(cname);
                     }
                 } else if (body.rfind("state", 0) == 0) {
                     parse_state_metadata_directive(body, model);
@@ -94,28 +121,49 @@ bool SmvParser::parse(std::string_view content, FsmIr& model, std::string& error
         }
 
         // Temporal logic specifications
-        if (trimmed.rfind("LTLSPEC", 0) == 0) {
-            std::string formula = trim(trimmed.substr(7));
-            if (!formula.empty() && formula.back() == ';') {
-                formula.pop_back();
+        if (trimmed.rfind("LTLSPEC", 0) == 0 || trimmed.rfind("CTLSPEC", 0) == 0 ||
+            trimmed.rfind("INVARSPEC", 0) == 0) {
+            PropertyKind kind = PropertyKind::Liveness;
+            std::string default_prefix = "ltl_spec_";
+            std::size_t kw_len = 7;
+            if (trimmed.rfind("CTLSPEC", 0) == 0) {
+                kind = PropertyKind::Safety;
+                default_prefix = "ctl_spec_";
+                kw_len = 7;
+            } else if (trimmed.rfind("INVARSPEC", 0) == 0) {
+                kind = PropertyKind::Invariant;
+                default_prefix = "invar_spec_";
+                kw_len = 9;
+            }
+            std::string rest = trim(trimmed.substr(kw_len));
+            std::string comment_name;
+            auto c_pos = rest.find("--");
+            if (c_pos != std::string::npos) {
+                comment_name = trim(rest.substr(c_pos + 2));
+                rest = trim(rest.substr(0, c_pos));
+            }
+            while (rest.empty() && std::getline(stream, line)) {
+                std::string next_trim = trim(line);
+                if (next_trim.empty() || next_trim.rfind("--", 0) == 0) {
+                    continue;
+                }
+                auto nc_pos = next_trim.find("--");
+                if (nc_pos != std::string::npos) {
+                    next_trim = trim(next_trim.substr(0, nc_pos));
+                }
+                rest = next_trim;
+            }
+            if (!rest.empty() && rest.back() == ';') {
+                rest.pop_back();
             }
             FormalProperty prop;
-            prop.name = "ltl_spec_" + std::to_string(model.properties.size() + 1);
-            prop.kind = PropertyKind::Liveness;
-            prop.raw_formula = trim(formula);
-            model.add_property(std::move(prop));
-            continue;
-        }
-        if (trimmed.rfind("INVARSPEC", 0) == 0) {
-            std::string formula = trim(trimmed.substr(9));
-            if (!formula.empty() && formula.back() == ';') {
-                formula.pop_back();
+            prop.name = !comment_name.empty() ? sanitize_identifier(comment_name)
+                                              : (default_prefix + std::to_string(model.properties.size() + 1));
+            prop.kind = kind;
+            prop.raw_formula = trim(rest);
+            if (!prop.raw_formula.empty()) {
+                model.add_property(std::move(prop));
             }
-            FormalProperty prop;
-            prop.name = "invar_spec_" + std::to_string(model.properties.size() + 1);
-            prop.kind = PropertyKind::Invariant;
-            prop.raw_formula = trim(formula);
-            model.add_property(std::move(prop));
             continue;
         }
 
@@ -151,9 +199,18 @@ bool SmvParser::parse(std::string_view content, FsmIr& model, std::string& error
                     if (!init_val.empty() && init_val.back() == ';') {
                         init_val.pop_back();
                     }
+                    std::string norm_init = trim(init_val);
+                    if (norm_init == "TRUE") {
+                        norm_init = "true";
+                    } else if (norm_init == "FALSE") {
+                        norm_init = "false";
+                    }
                     for (auto& v : model.variables) {
                         if (v.name == var_name) {
-                            v.initial_value = trim(init_val);
+                            v.initial_value = norm_init;
+                            if (norm_init.size() >= 2 && norm_init.front() == '"' && norm_init.back() == '"') {
+                                v.type = DataType::string();
+                            }
                             break;
                         }
                     }
@@ -164,14 +221,26 @@ bool SmvParser::parse(std::string_view content, FsmIr& model, std::string& error
 
         // 3. ASSIGN next(state) := case transitions
         if (current_section == Section::AssignNextState) {
-            if (!case_accumulator.empty()) {
-                case_accumulator += " ";
+            std::string line_code = trimmed;
+            std::string line_comment;
+            if (auto cpos = trimmed.find("--"); cpos != std::string::npos) {
+                line_code = trim(trimmed.substr(0, cpos));
+                line_comment = trimmed.substr(cpos);
             }
-            case_accumulator += trimmed;
+            if (!line_code.empty()) {
+                if (!case_accumulator.empty()) {
+                    case_accumulator += " ";
+                }
+                case_accumulator += line_code;
+            }
             size_t semi_pos = case_accumulator.find(';');
             while (semi_pos != std::string::npos) {
                 std::string stmt = trim(case_accumulator.substr(0, semi_pos + 1));
                 case_accumulator = trim(case_accumulator.substr(semi_pos + 1));
+                if (case_accumulator.empty() && !line_comment.empty()) {
+                    stmt += " " + line_comment;
+                    line_comment.clear();
+                }
                 if (stmt.find("TRUE :") == std::string::npos && stmt.find("TRUE:") == std::string::npos) {
                     parse_transition_case(stmt, model);
                 }
@@ -212,7 +281,7 @@ void SmvParser::parse_enum_states(const std::string& line, FsmIr& model) {
     std::string item;
     while (std::getline(ss, item, ',')) {
         std::string st_name = sanitize_identifier(trim(item));
-        if (!st_name.empty()) {
+        if (!st_name.empty() && !model.is_choice_node(st_name)) {
             model.add_or_get_state(st_name, "");
         }
     }
@@ -231,9 +300,6 @@ void SmvParser::parse_enum_events(const std::string& line, FsmIr& model) {
         std::string ev_name = sanitize_identifier(trim(item));
         if (!ev_name.empty() && ev_name != "none") {
             model.add_event(ev_name);
-            SignalDefinition sig;
-            sig.name = ev_name;
-            model.add_signal(std::move(sig));
         }
     }
 }
@@ -251,10 +317,28 @@ void SmvParser::parse_variable_decl(const std::string& line, FsmIr& model) {
             return;  // Skip synthetic tick timers
         }
     }
+    if (model.find_port(name) != nullptr) {
+        return;  // Port already declared via @fsm:port directive
+    }
 
     std::string type_part = trim(line.substr(colon + 1));
     if (!type_part.empty() && type_part.back() == ';') {
         type_part.pop_back();
+    }
+
+    for (auto& existing : model.variables) {
+        if (existing.name == name) {
+            if (type_part.find("..") != std::string::npos && !existing.min_value.has_value() &&
+                !existing.max_value.has_value()) {
+                size_t dotdot = type_part.find("..");
+                try {
+                    existing.min_value = std::stoll(trim(type_part.substr(0, dotdot)));
+                    existing.max_value = std::stoll(trim(type_part.substr(dotdot + 2)));
+                } catch (const std::exception&) {
+                }
+            }
+            return;
+        }
     }
 
     VariableDefinition var;
@@ -279,18 +363,85 @@ void SmvParser::parse_variable_decl(const std::string& line, FsmIr& model) {
     model.add_variable(std::move(var));
 }
 
+static std::string normalize_smv_guard_expr(std::string_view expr) {
+    std::string out;
+    out.reserve(expr.size() + 8);
+    for (size_t i = 0; i < expr.size(); ++i) {
+        char ch = expr[i];
+        if (ch == '=') {
+            char prev = (i > 0) ? expr[i - 1] : '\0';
+            char next = (i + 1 < expr.size()) ? expr[i + 1] : '\0';
+            if (prev != '!' && prev != '<' && prev != '>' && prev != '=' && prev != ':' && next != '=') {
+                out += "==";
+            } else {
+                out.push_back(ch);
+            }
+        } else if (ch == '&') {
+            char prev = (i > 0) ? expr[i - 1] : '\0';
+            char next = (i + 1 < expr.size()) ? expr[i + 1] : '\0';
+            if (prev != '&' && next != '&') {
+                out += "&&";
+            } else {
+                out.push_back(ch);
+            }
+        } else if (ch == '|') {
+            char prev = (i > 0) ? expr[i - 1] : '\0';
+            char next = (i + 1 < expr.size()) ? expr[i + 1] : '\0';
+            if (prev != '|' && next != '|') {
+                out += "||";
+            } else {
+                out.push_back(ch);
+            }
+        } else if (std::isalpha(static_cast<unsigned char>(ch)) != 0 || ch == '_') {
+            size_t start = i;
+            while (i < expr.size() && (std::isalnum(static_cast<unsigned char>(expr[i])) != 0 || expr[i] == '_')) {
+                ++i;
+            }
+            std::string_view tok = expr.substr(start, i - start);
+            if (tok == "TRUE") {
+                out += "true";
+            } else if (tok == "FALSE") {
+                out += "false";
+            } else {
+                out.append(tok);
+            }
+            --i;
+        } else {
+            out.push_back(ch);
+        }
+    }
+    return out;
+}
+
 void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
     std::string clean_line = line;
-    std::string action_from_comment;
+    std::string raw_action_from_comment;
+    std::string change_expr_from_comment;
+    TransitionEdgeKind parsed_kind = TransitionEdgeKind::External;
     auto comment_pos = line.find("--");
     if (comment_pos != std::string::npos) {
         std::string comment = line.substr(comment_pos + 2);
+        if (comment.find("kind=internal") != std::string::npos) {
+            parsed_kind = TransitionEdgeKind::Internal;
+        } else if (comment.find("kind=local") != std::string::npos) {
+            parsed_kind = TransitionEdgeKind::Local;
+        }
         auto act_pos = comment.find("action:");
         if (act_pos == std::string::npos) {
             act_pos = comment.find("action=");
         }
         if (act_pos != std::string::npos) {
-            action_from_comment = sanitize_identifier(trim(comment.substr(act_pos + 7)));
+            raw_action_from_comment = trim(comment.substr(act_pos + 7));
+        }
+        auto chg_pos = comment.find("change=");
+        if (chg_pos != std::string::npos) {
+            size_t chg_end = comment.find('|', chg_pos + 7);
+            if (act_pos != std::string::npos && act_pos > chg_pos &&
+                (chg_end == std::string::npos || act_pos < chg_end)) {
+                chg_end = act_pos;
+            }
+            change_expr_from_comment = trim(comment.substr(
+                chg_pos + 7, chg_end == std::string::npos ? std::string::npos : chg_end - (chg_pos + 7)));
         }
         clean_line = line.substr(0, comment_pos);
     }
@@ -322,7 +473,7 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
 
     // Parse: state = S1 & event = E1 & [guard]
     std::vector<std::string> source_states;
-    std::string event_name;
+    std::vector<std::string> event_names;
     std::string guard_expr;
 
     std::vector<std::string> clauses;
@@ -342,6 +493,9 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
     clauses.push_back(cond_part.substr(last_split));
 
     std::vector<std::string> other_clauses;
+    std::optional<std::uint64_t> timer_duration_ms;
+    std::string matched_timer_var;
+    static const std::regex timer_clause_re(R"(^(timer_[A-Za-z0-9_]+)\s*>=\s*([0-9]+)$)");
     for (const auto& raw_clause : clauses) {
         std::string c = trim(raw_clause);
         while (c.size() >= 2 && c.front() == '(' && c.back() == ')') {
@@ -370,20 +524,68 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
             if (!s.empty()) {
                 source_states.push_back(s);
             }
+        } else if (c.rfind("event in", 0) == 0) {
+            size_t open_b = c.find('{');
+            size_t close_b = c.find('}');
+            if (open_b != std::string::npos && close_b != std::string::npos && close_b > open_b) {
+                std::string list_str = c.substr(open_b + 1, close_b - open_b - 1);
+                std::stringstream list_ss(list_str);
+                std::string item;
+                while (std::getline(list_ss, item, ',')) {
+                    std::string ev = sanitize_identifier(trim(item));
+                    if (ev != "none" && !ev.empty()) {
+                        event_names.push_back(ev);
+                    }
+                }
+            }
+        } else if (c.find('|') != std::string::npos && (c.rfind("event =", 0) == 0 || c.rfind("event=", 0) == 0)) {
+            std::stringstream or_ss(c);
+            std::string branch;
+            std::vector<std::string> parsed_evs;
+            bool all_events = true;
+            while (std::getline(or_ss, branch, '|')) {
+                std::string b = trim(branch);
+                while (b.size() >= 2 && b.front() == '(' && b.back() == ')') {
+                    b = trim(b.substr(1, b.size() - 2));
+                }
+                if (b.rfind("event =", 0) == 0 || b.rfind("event=", 0) == 0) {
+                    size_t eq = b.find('=');
+                    std::string ev = sanitize_identifier(trim(b.substr(eq + 1)));
+                    if (ev != "none" && !ev.empty()) {
+                        parsed_evs.push_back(ev);
+                    }
+                } else {
+                    all_events = false;
+                    break;
+                }
+            }
+            if (all_events && !parsed_evs.empty()) {
+                for (auto& ev : parsed_evs) {
+                    event_names.push_back(std::move(ev));
+                }
+            } else {
+                other_clauses.push_back(c);
+            }
         } else if (c.rfind("event =", 0) == 0 || c.rfind("event=", 0) == 0) {
             size_t eq = c.find('=');
             std::string ev = sanitize_identifier(trim(c.substr(eq + 1)));
             if (ev != "none" && !ev.empty()) {
-                event_name = ev;
+                event_names.push_back(ev);
             }
         } else {
-            other_clauses.push_back(c);
+            std::smatch tm;
+            if (std::regex_match(c, tm, timer_clause_re)) {
+                matched_timer_var = tm[1].str();
+                timer_duration_ms = static_cast<std::uint64_t>(std::stoull(tm[2].str()));
+            } else {
+                other_clauses.push_back(c);
+            }
         }
     }
 
     // If no explicit 'event = ...', check if any clause is a boolean trigger (e.g. cmd = TRUE or sig_start)
     for (const auto& c : other_clauses) {
-        if (event_name.empty() && c.find('&') == std::string::npos && c.find('|') == std::string::npos &&
+        if (event_names.empty() && c.find('&') == std::string::npos && c.find('|') == std::string::npos &&
             (c.find("= TRUE") != std::string::npos || c.find("= true") != std::string::npos ||
              (c.find('=') == std::string::npos && c.find('<') == std::string::npos &&
               c.find('>') == std::string::npos))) {
@@ -391,7 +593,7 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
             std::string cand = trim(eq != std::string::npos ? c.substr(0, eq) : c);
             std::string cand_id = sanitize_identifier(cand);
             if (!cand_id.empty() && cand_id != "TRUE" && cand_id != "true") {
-                event_name = cand_id;
+                event_names.push_back(cand_id);
                 continue;
             }
         }
@@ -403,25 +605,61 @@ void SmvParser::parse_transition_case(const std::string& line, FsmIr& model) {
     if (source_states.empty())
         return;
 
+    if (event_names.empty()) {
+        event_names.emplace_back("");
+    }
+
+    if (!matched_timer_var.empty()) {
+        model.variables.erase(std::remove_if(model.variables.begin(), model.variables.end(),
+                                             [&](const VariableDefinition& v) { return v.name == matched_timer_var; }),
+                              model.variables.end());
+    }
+
     for (const auto& src : source_states) {
-        TransitionEdge trans;
-        trans.source = src;
-        trans.target = target_state;
-        trans.event = event_name;
-        if (!guard_expr.empty()) {
-            // Generate a stable guard name from the transition endpoints and index,
-            // instead of sanitizing the raw boolean expression which would mangle
-            // operator characters (e.g. "x > 0 && !y" → "x__0____y").
-            std::string guard_name = "guard_" + sanitize_identifier(src) + "_to_" + sanitize_identifier(target_state) +
-                                     "_" + std::to_string(model.transitions.size() + 1);
-            model.add_guard(guard_name, "", std::optional<std::string>{guard_expr}, std::nullopt);
-            trans.guard = guard_name;
+        for (const auto& event_name : event_names) {
+            TransitionEdge trans;
+            trans.source = src;
+            trans.target = target_state;
+            trans.event = event_name;
+            if (!change_expr_from_comment.empty()) {
+                trans.trigger = ChangeTrigger(change_expr_from_comment, true);
+            } else if (timer_duration_ms.has_value()) {
+                trans.trigger = TimeTrigger(TimeTriggerKind::After, *timer_duration_ms, TimeUnit::Milliseconds);
+                if (trans.event.empty()) {
+                    trans.event = trans.get_trigger_name();
+                }
+            }
+            if (!guard_expr.empty() && (change_expr_from_comment.empty() ||
+                                        normalize_smv_guard_expr(guard_expr) != change_expr_from_comment)) {
+                // Generate a stable guard name from the transition endpoints and index,
+                // instead of sanitizing the raw boolean expression which would mangle
+                // operator characters (e.g. "x > 0 && !y" → "x__0____y").
+                std::string guard_name = "guard_" + sanitize_identifier(src) + "_to_" +
+                                         sanitize_identifier(target_state) + "_" +
+                                         std::to_string(model.transitions.size() + 1);
+                const std::string norm_guard = normalize_smv_guard_expr(guard_expr);
+                model.add_guard(guard_name, "", std::optional<std::string>{norm_guard},
+                                std::optional<std::string>{norm_guard});
+                trans.guard = guard_name;
+            }
+            if (!raw_action_from_comment.empty()) {
+                const std::string prefix =
+                    "action_" + sanitize_identifier(src) + "_" + sanitize_identifier(target_state) +
+                    (event_name.empty() ? "" : "_" + event_name) + "_" + std::to_string(model.transitions.size() + 1);
+                if (auto assign_sig = try_parse_assignment_action(raw_action_from_comment, prefix)) {
+                    model.add_action(assign_sig->name);
+                    trans.transition_action = std::move(*assign_sig);
+                } else {
+                    std::string act_id = sanitize_identifier(raw_action_from_comment);
+                    if (!act_id.empty()) {
+                        trans.transition_action = ActionSignature(act_id);
+                        model.add_action(act_id);
+                    }
+                }
+            }
+            trans.kind = parsed_kind;
+            model.add_transition(trans);
         }
-        if (!action_from_comment.empty()) {
-            trans.transition_action = ActionSignature(action_from_comment);
-            model.add_action(action_from_comment);
-        }
-        model.add_transition(trans);
     }
 }
 
@@ -468,6 +706,11 @@ void SmvParser::parse_state_metadata_directive(const std::string& body, FsmIr& m
     if (do_pos != std::string::npos) {
         st->do_activity = extract_word_or_quoted(body, do_pos + 12);
     }
+
+    auto inv_pos = body.find("invariant=");
+    if (inv_pos != std::string::npos) {
+        st->time_invariant = extract_word_or_quoted(body, inv_pos + 10);
+    }
 }
 
 void SmvParser::parse_action_directive(const std::string& body, FsmIr& model, const std::string& type) {
@@ -487,12 +730,16 @@ void SmvParser::parse_action_directive(const std::string& body, FsmIr& model, co
         st = &new_st;
     }
 
-    if (type == "entry") {
-        st->entry_actions.emplace_back(act_name);
-    } else if (type == "exit") {
-        st->exit_actions.emplace_back(act_name);
+    ActionSignature act_sig(sanitize_identifier(act_name));
+    if (auto assign_sig = try_parse_assignment_action(act_name, sanitize_identifier(st_name) + "_" + type)) {
+        act_sig = std::move(*assign_sig);
     }
-    model.add_action(act_name);
+    if (type == "entry") {
+        st->entry_actions.push_back(act_sig);
+    } else if (type == "exit") {
+        st->exit_actions.push_back(act_sig);
+    }
+    model.add_action(act_sig.name);
 }
 
 void SmvParser::parse_defer_directive(const std::string& body, FsmIr& model) {

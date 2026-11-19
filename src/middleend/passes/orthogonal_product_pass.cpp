@@ -7,6 +7,8 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "fsm/ir/identifier_utils.hpp"
+
 namespace fsm::middleend::passes {
 
 using namespace fsm::ir;
@@ -198,20 +200,32 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
         // is required for the runtime is_substate_of check.
         node.pinned_parent = true;
 
-        // Combine entry and exit actions from active member states (deduplicated)
+        // Combine entry and exit actions from active member states (deduplicated by full signature)
         for (const auto& member : tup) {
             const auto* m_node = ir.find_state(member);
             if (m_node != nullptr) {
                 for (const auto& act : m_node->entry_actions) {
                     if (std::none_of(node.entry_actions.begin(), node.entry_actions.end(),
-                                     [&](const auto& existing) { return existing.name == act.name; })) {
+                                     [&](const auto& existing) { return existing == act; })) {
                         node.entry_actions.push_back(act);
                     }
                 }
                 for (const auto& act : m_node->exit_actions) {
                     if (std::none_of(node.exit_actions.begin(), node.exit_actions.end(),
-                                     [&](const auto& existing) { return existing.name == act.name; })) {
+                                     [&](const auto& existing) { return existing == act; })) {
                         node.exit_actions.push_back(act);
+                    }
+                }
+                for (const auto& dev : m_node->deferred_events) {
+                    if (std::find(node.deferred_events.begin(), node.deferred_events.end(), dev) ==
+                        node.deferred_events.end()) {
+                        node.deferred_events.push_back(dev);
+                    }
+                }
+                for (const auto& req : m_node->traceability_reqs) {
+                    if (std::find(node.traceability_reqs.begin(), node.traceability_reqs.end(), req) ==
+                        node.traceability_reqs.end()) {
+                        node.traceability_reqs.push_back(req);
                     }
                 }
             }
@@ -272,16 +286,23 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                     std::vector<std::string> next_tup = tup;
                     std::vector<std::string> guards;
                     std::vector<std::string> actions;
+                    std::vector<std::string> external_action_calls;
                     std::vector<ActionAssignment> assignments;
                     std::vector<ActionAstNode> instructions;
                     std::optional<ActionSignature> cond_action;
                     std::vector<std::string> clock_resets;
                     std::uint32_t priority = 0;
+                    bool any_chosen = false;
+                    bool all_internal = true;
 
                     for (std::size_t idx = 0; idx < regions.size(); ++idx) {
                         const auto* t = chosen_transitions[idx];
                         if (t == nullptr) {
                             continue;
+                        }
+                        any_chosen = true;
+                        if (t->kind != TransitionEdgeKind::Internal) {
+                            all_internal = false;
                         }
                         next_tup[idx] = t->target;
                         if (t->guard.has_value() && !t->guard->empty()) {
@@ -290,6 +311,10 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                         if (t->transition_action.has_value()) {
                             if (!t->transition_action->name.empty()) {
                                 actions.push_back(t->transition_action->name);
+                                if (t->transition_action->assignments.empty() &&
+                                    t->transition_action->instructions.empty()) {
+                                    external_action_calls.push_back(t->transition_action->name);
+                                }
                             }
                             for (const auto& a : t->transition_action->assignments) {
                                 assignments.push_back(a);
@@ -310,6 +335,37 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                     }
 
                     std::string dst_product = tuple_to_name(next_tup);
+                    if (src_product != dst_product) {
+                        std::string skip_exit;
+                        std::string skip_entry;
+                        for (std::size_t idx = 0; idx < regions.size(); ++idx) {
+                            if (tup[idx] == next_tup[idx]) {
+                                if (const auto* m_node = ir.find_state(tup[idx])) {
+                                    for (const auto& act : m_node->exit_actions) {
+                                        if (!act.name.empty()) {
+                                            if (!skip_exit.empty())
+                                                skip_exit += "\n";
+                                            skip_exit += act.name;
+                                        }
+                                    }
+                                    for (const auto& act : m_node->entry_actions) {
+                                        if (!act.name.empty()) {
+                                            if (!skip_entry.empty())
+                                                skip_entry += "\n";
+                                            skip_entry += act.name;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (!skip_exit.empty()) {
+                            ir.attributes["ortho_skip_exit:" + src_product + "->" + dst_product] = std::move(skip_exit);
+                        }
+                        if (!skip_entry.empty()) {
+                            ir.attributes["ortho_skip_entry:" + src_product + "->" + dst_product] =
+                                std::move(skip_entry);
+                        }
+                    }
                     TransitionEdge pt;
                     pt.source = src_product;
                     pt.source_id = compute_deterministic_id(src_product);
@@ -317,13 +373,15 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                     pt.target_id = compute_deterministic_id(dst_product);
                     pt.event = ev;
                     pt.trigger = SignalTrigger(ev);
+                    pt.kind = (any_chosen && all_internal && src_product == dst_product) ? TransitionEdgeKind::Internal
+                                                                                         : TransitionEdgeKind::External;
                     pt.priority = priority;
                     pt.clock_resets = std::move(clock_resets);
                     pt.condition_action = std::move(cond_action);
 
                     if (!guards.empty()) {
                         if (guards.size() == 1) {
-                            pt.set_guard("(" + guards[0] + ")");
+                            pt.set_guard(guards[0]);
                         } else {
                             std::string combined_guard;
                             for (std::size_t i = 0; i < guards.size(); ++i) {
@@ -338,8 +396,15 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                         std::string combined_act;
                         for (std::size_t i = 0; i < actions.size(); ++i) {
                             if (i > 0)
-                                combined_act += "; ";
-                            combined_act += actions[i];
+                                combined_act += "_and_";
+                            combined_act += sanitize_identifier(actions[i]);
+                        }
+                        if (actions.size() > 1 && !external_action_calls.empty()) {
+                            for (const auto& act_name : external_action_calls) {
+                                ActionCallOp call_op;
+                                call_op.function_name = act_name;
+                                instructions.emplace_back(std::move(call_op));
+                            }
                         }
                         ActionSignature sig;
                         sig.name = combined_act.empty() ? ("act_" + src_product + "_" + dst_product) : combined_act;

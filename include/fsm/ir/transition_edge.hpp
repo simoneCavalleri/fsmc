@@ -56,6 +56,7 @@ struct TransitionEdge {
     bool target_is_deep_history{false};                     ///< True if pointing to a deep history state [H*]
     std::string parent_scope;                               ///< Enclosing composite state scope
     std::vector<std::string> traceability_reqs;             ///< Traceability requirement tags (e.g. "REQ-TRANS-01")
+    std::uint32_t source_line{0};  ///< 1-based source line number for diagnostics (0 = unknown)
 
     TransitionEdge() = default;
 
@@ -206,6 +207,49 @@ struct TransitionEdge {
             return "when(" + c.raw_expression + ")";
         }
         return "";
+    }
+
+    /**
+     * @brief Returns a canonical grouping key distinguishing event, signal, time, change, and anonymous triggers.
+     */
+    [[nodiscard]] std::string canonical_trigger_key() const {
+        if (!event.empty()) {
+            return "event:" + event;
+        }
+        if (std::holds_alternative<SignalTrigger>(trigger)) {
+            const auto& sig = std::get<SignalTrigger>(trigger).signal_name;
+            if (!sig.empty()) {
+                return "event:" + sig;
+            }
+        }
+        if (std::holds_alternative<TimeTrigger>(trigger)) {
+            const auto& tt = std::get<TimeTrigger>(trigger);
+            return "time:" + std::to_string(static_cast<int>(tt.kind)) + ":" + std::to_string(tt.duration_in_ms());
+        }
+        if (std::holds_alternative<ChangeTrigger>(trigger)) {
+            return "change:" + std::get<ChangeTrigger>(trigger).raw_expression;
+        }
+        return "anonymous";
+    }
+
+    /**
+     * @brief Checks whether this transition is an immediate zero-time eventless/completion edge.
+     */
+    [[nodiscard]] bool is_zero_time_eventless() const noexcept {
+        if (std::holds_alternative<TimeTrigger>(trigger)) {
+            const auto& tt = std::get<TimeTrigger>(trigger);
+            return tt.duration_in_ms() == 0 && tt.duration_value == 0;
+        }
+        if (std::holds_alternative<ChangeTrigger>(trigger)) {
+            return false;
+        }
+        if (std::holds_alternative<SignalTrigger>(trigger)) {
+            if (!std::get<SignalTrigger>(trigger).signal_name.empty()) {
+                return false;
+            }
+        }
+        return event.empty() || event == "anonymous_event" || event == "completion_event" ||
+               event == "AnonymousEvent" || event == "anonymous";
     }
 
     /**

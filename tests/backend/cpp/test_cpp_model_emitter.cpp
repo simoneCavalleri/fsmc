@@ -1074,3 +1074,401 @@ TEST(CppModelEmitterTest, SignalEmitOp_DoesNotEmitUnusedServicesParameter) {
     EXPECT_NE(str.find("Services& /*srv*/)"), std::string::npos);
     EXPECT_NE(str.find("// emit signal: EvDone"), std::string::npos);
 }
+
+/**
+ * @brief Verify actions using ActionCallOp omit overloads lacking Services& srv, and unresolved guards fall back
+ * cleanly.
+ * @scenario Model with ActionCallOp, an undeclared-symbol guard, and a state named identically to the FSM model.
+ * @expected Generated C++ omits 3/4-arg action overloads without Services&, emits compilable fallback for unresolved
+ *           guard, and disambiguates the FSM type alias with 'Fsm' suffix.
+ */
+TEST(CppModelEmitterTest, ActionCallOpOmitsNoServiceOverloadsAndDisambiguatesModelName) {
+    FsmIr model;
+    model.name = "Par";
+    model.initial_state = "Par";
+    model.add_state("Par");
+    model.add_state("Done");
+    model.add_event("EvGo");
+
+    ActionSignature act("run_seq");
+    ActionCallOp call_op;
+    call_op.function_name = "do_step";
+    act.instructions.emplace_back(call_op);
+
+    model.add_guard("undeclared_gt_0", "", "undeclared_var > 0", "undeclared_var > 0");
+    TransitionEdge trans("Par", "Done", "EvGo", "undeclared_gt_0", act);
+    model.transitions.push_back(trans);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = true;
+    CppModelEmitter::emit_model(out, model, opts);
+    std::string str = out.str();
+
+    // Action functor must not emit non-Services overloads when srv is referenced
+    EXPECT_EQ(str.find("void operator()(const InPorts& /*in*/, OutPorts& /*out*/, Registers& /*reg*/) const"),
+              std::string::npos);
+    EXPECT_EQ(str.find("void operator()(const Event& /*cmd*/, const InPorts& /*in*/, OutPorts& /*out*/, Registers& "
+                       "/*reg*/) const"),
+              std::string::npos);
+    EXPECT_NE(str.find("Services& srv) const"), std::string::npos);
+
+    // Unresolved guard expression falls back to compilable stub
+    EXPECT_NE(str.find("// Unresolved guard expression: undeclared_var > 0"), std::string::npos);
+
+    // Model alias collides with state 'Par', so it is disambiguated as 'ParFsm'
+    EXPECT_NE(str.find("using ParFsm = ::fsm::make_fsm<"), std::string::npos);
+}
+
+/**
+ * @brief Verify standalone C++ generation wraps the embedded runtime in FSMC_EMBEDDED_RUNTIME_INCLUDED guard.
+ * @scenario Generate standalone C++17 code via CppGenerator::generate.
+ * @expected Output contains #ifndef/#define/#endif FSMC_EMBEDDED_RUNTIME_INCLUDED so multiple standalone headers can
+ * coexist.
+ */
+TEST(CppModelEmitterTest, StandaloneHeaderWrapsEmbeddedRuntimeInIncludeGuard) {
+    FsmIr model;
+    model.name = "GuardDemo";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+
+    GeneratorOptions opts;
+    opts.standalone = true;
+    opts.cpp_standard = CppStandard::Cpp17;
+    const std::string code = CppGenerator::generate_header(model, opts);
+
+    EXPECT_NE(code.find("#ifndef FSMC_EMBEDDED_RUNTIME_INCLUDED"), std::string::npos);
+    EXPECT_NE(code.find("#define FSMC_EMBEDDED_RUNTIME_INCLUDED"), std::string::npos);
+    EXPECT_NE(code.find("#endif // FSMC_EMBEDDED_RUNTIME_INCLUDED"), std::string::npos);
+}
+
+/**
+ * @brief Verify --no-stubs defers lifecycle action instantiation via dependent template parameters.
+ * @scenario State with entry, exit, and do_activity emitted with include_stubs=false.
+ * @expected Lifecycle hooks use dependent Act0 template parameters so incomplete forward-declared actions compile.
+ */
+TEST(CppModelEmitterTest, NoStubsDefersLifecycleActionInstantiationViaDependentTemplate) {
+    FsmIr model;
+    model.name = "NoStubsDemo";
+    model.initial_state = "Idle";
+    auto& idle = model.add_state("Idle");
+    idle.entry_actions.emplace_back("on_idle_enter");
+    idle.exit_actions.emplace_back("on_idle_exit");
+    idle.do_activity = "on_idle_do";
+    model.add_action("on_idle_enter");
+    model.add_action("on_idle_exit");
+    model.add_action("on_idle_do");
+
+    GeneratorOptions opts;
+    opts.include_stubs = false;
+    std::ostringstream out;
+    CppModelEmitter::emit_model(out, model, opts);
+    const std::string str = out.str();
+
+    EXPECT_NE(str.find("typename Act0 = on_idle_enter"), std::string::npos);
+    EXPECT_NE(str.find("typename Act0 = on_idle_exit"), std::string::npos);
+    EXPECT_NE(str.find("typename Act0 = on_idle_do"), std::string::npos);
+    EXPECT_NE(str.find("auto entry_action_0 = Act0{};"), std::string::npos);
+    EXPECT_NE(str.find("auto exit_action_0 = Act0{};"), std::string::npos);
+    EXPECT_NE(str.find("auto activity = Act0{};"), std::string::npos);
+}
+
+/**
+ * @brief Regression: bare signal payload attributes in guards and action assignments qualify to `cmd.<attr>`.
+ * @scenario Emit a model with signal `SetSpeed` carrying `target_rpm`, a guard `target_rpm > 100`,
+ *           and a transition action assigning `rpm = target_rpm`.
+ * @expected Both guard and action qualify `target_rpm` as `cmd.target_rpm` and omit eventless overloads.
+ */
+TEST(CppModelEmitterTest, SignalPayloadAttribute_QualifiedInGuardsAndActions) {
+    FsmIr model;
+    model.name = "MotorCtrl";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Running");
+
+    VariableDefinition rpm_var;
+    rpm_var.name = "rpm";
+    rpm_var.type = DataType{PrimitiveTypeKind::UInt32};
+    rpm_var.initial_value = "0";
+    model.add_variable(std::move(rpm_var));
+
+    SignalDefinition sig("SetSpeed");
+    sig.attributes.emplace_back("target_rpm", DataType{PrimitiveTypeKind::UInt32}, "0");
+    model.add_signal(sig);
+
+    model.guards.emplace_back("ValidSpeed", "ValidSpeed", "target_rpm > 100", "target_rpm > 100");
+
+    ActionSignature act("SetRpm");
+    act.assignments.push_back(ActionAssignment{"rpm", "target_rpm"});
+
+    TransitionEdge trans("Idle", "Running", "SetSpeed");
+    trans.set_guard("ValidSpeed");
+    trans.transition_action = act;
+    model.transitions.push_back(trans);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = true;
+    CppModelEmitter::emit_model(out, model, opts);
+    const std::string str = out.str();
+
+    EXPECT_NE(str.find("return cmd.target_rpm > 100;"), std::string::npos);
+    EXPECT_NE(str.find("reg.rpm = cmd.target_rpm;"), std::string::npos);
+    EXPECT_EQ(str.find("operator()(const InPorts& in, const Registers& reg) const noexcept"), std::string::npos);
+    EXPECT_EQ(str.find("operator()(const InPorts& /*in*/, OutPorts& /*out*/, Registers& reg) const"),
+              std::string::npos);
+}
+
+/**
+ * @brief Regression: `--no-stubs` (`include_stubs = false`) still emits synthesized guards and assignment actions
+ *        while forward-declaring unresolved external guards and service-stub actions.
+ * @scenario Emit a model with an inline port guard `ok == true`, an assignment action `x = 42`, and external
+ *           custom symbols `ExternalGuard` / `ExternalAction` under `include_stubs = false`.
+ * @expected `ok_eq_true` and `SetX` are emitted as complete structs; `ExternalGuard` and `ExternalAction` are
+ *           forward-declared only.
+ */
+TEST(CppModelEmitterTest, NoStubsEmitsSynthesizedGuardsAndAssignmentsWhileDeferringExternalStubs) {
+    FsmIr model;
+    model.name = "MixedNoStubs";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Done");
+    PortDefinition ok_port;
+    ok_port.name = "ok";
+    ok_port.type = DataType{PrimitiveTypeKind::Boolean};
+    ok_port.direction = PortDirection::In;
+    model.ports.push_back(std::move(ok_port));
+    VariableDefinition x_var;
+    x_var.name = "x";
+    x_var.type = DataType{PrimitiveTypeKind::UInt32};
+    x_var.initial_value = "0";
+    model.add_variable(std::move(x_var));
+
+    model.guards.emplace_back("ok_eq_true", "ok_eq_true", "ok == true", "ok == true");
+    model.guards.emplace_back("ExternalGuard", "ExternalGuard");
+
+    ActionSignature set_x("SetX");
+    set_x.assignments.push_back(ActionAssignment{"x", "42"});
+    model.add_action("SetX");
+    model.add_action("ExternalAction");
+
+    TransitionEdge t1("Idle", "Done", "EvGo");
+    t1.set_guard("ok_eq_true");
+    t1.transition_action = set_x;
+    model.transitions.push_back(t1);
+
+    TransitionEdge t2("Done", "Idle", "EvReset");
+    t2.set_guard("ExternalGuard");
+    t2.set_action("ExternalAction");
+    model.transitions.push_back(t2);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = false;
+    CppModelEmitter::emit_model(out, model, opts);
+    const std::string str = out.str();
+
+    EXPECT_NE(str.find("struct ok_eq_true {"), std::string::npos);
+    EXPECT_NE(str.find("return in.ok == true;"), std::string::npos);
+    EXPECT_NE(str.find("struct SetX {"), std::string::npos);
+    EXPECT_NE(str.find("reg.x = 42;"), std::string::npos);
+    EXPECT_NE(str.find("struct ExternalGuard;"), std::string::npos);
+    EXPECT_EQ(str.find("struct ExternalGuard {"), std::string::npos);
+    EXPECT_NE(str.find("struct ExternalAction;"), std::string::npos);
+    EXPECT_EQ(str.find("struct ExternalAction {"), std::string::npos);
+}
+
+/**
+ * @brief Verify CppModelEmitter lowers target-agnostic infix boolean guards in IR to C++ template combinators.
+ * @scenario Transition has `t.guard = "!(a_ok && b_ok) || c_ok"` without `fsm::` prefix.
+ * @expected Emitted transition table contains `::fsm::or_<::fsm::not_<::fsm::and_<a_ok, b_ok>>, c_ok>`.
+ */
+TEST(CppModelEmitter, LowersTargetAgnosticInfixBooleanGuardsToCppCombinators) {
+    FsmIr model;
+    model.name = "InfixGuardFsm";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Done");
+    model.add_event("EvGo");
+    model.add_guard("a_ok");
+    model.add_guard("b_ok");
+    model.add_guard("c_ok");
+
+    TransitionEdge t("Idle", "Done", "EvGo");
+    t.guard = "!(a_ok && b_ok) || c_ok";
+    model.transitions.push_back(t);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = false;
+    CppModelEmitter::emit_model(out, model, opts);
+    const std::string str = out.str();
+
+    EXPECT_NE(str.find("fsm::or_<fsm::not_<fsm::and_<a_ok, b_ok>>, c_ok>"), std::string::npos);
+}
+
+/**
+ * @brief Verify CppModelEmitter disambiguates action struct names colliding with event/state names and emits
+ *        valid functors for pure SignalEmitOp actions.
+ * @scenario Transition Idle -> Step1 emits internal signal 'EvNext' which is also a trigger on Step1 -> Step2.
+ * @expected Action struct is emitted as 'EvNext_action' (no struct redefinition) with 'emit signal: EvNext'.
+ */
+TEST(CppModelEmitter, DisambiguatesActionCollidingWithEventAndEmitsSignalEmitOp) {
+    FsmIr model;
+    model.name = "SignalEmitCollisionFsm";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Step1");
+    model.add_state("Step2");
+    model.add_event("EvGo");
+    model.add_event("EvNext");
+
+    ActionSignature emit_act("EvNext");
+    emit_act.instructions.emplace_back(SignalEmitOp{"EvNext", {}, std::nullopt});
+    model.add_action("EvNext");
+
+    TransitionEdge t1("Idle", "Step1", "EvGo", std::nullopt, emit_act);
+    TransitionEdge t2("Step1", "Step2", "EvNext");
+    model.transitions.push_back(t1);
+    model.transitions.push_back(t2);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = false;
+    CppModelEmitter::emit_model(out, model, opts);
+    const std::string str = out.str();
+
+    EXPECT_NE(str.find("struct EvNext {"), std::string::npos);
+    EXPECT_NE(str.find("struct EvNext_action {"), std::string::npos);
+    EXPECT_NE(str.find("// emit signal: EvNext"), std::string::npos);
+    EXPECT_NE(str.find("::then<EvNext_action>"), std::string::npos);
+}
+
+/**
+ * @brief Regression: bare enum literals in variable initializers and assignment/guard expressions are qualified
+ * with `EnumName::Literal` so `enum class` C++ code compiles without undeclared-identifier errors.
+ * @scenario Emit C++ for a model with `enum class Mode { IdleMode, RunMode }`, `m = IdleMode`, and `m = RunMode`.
+ * @expected Emits `Mode m{Mode::IdleMode};` and `reg.m = Mode::RunMode;`.
+ */
+TEST(CppModelEmitterTest, UnqualifiedEnumLiterals_QualifiedInInitialValuesAndExpressions) {
+    FsmIr model;
+    model.name = "EnumQualFsm";
+    model.initial_state = "Init";
+
+    TypeDefinition mode_enum =
+        TypeDefinition::make_enum("Mode", "uint8_t", {EnumLiteral{"IdleMode"}, EnumLiteral{"RunMode"}});
+    model.custom_types.push_back(std::move(mode_enum));
+
+    VariableDefinition var("m", DataType::from_string("Mode"), "IdleMode");
+    model.add_variable(var);
+
+    model.add_state("Init");
+    model.add_state("Active");
+    model.add_event("Start");
+
+    ActionSignature act("SetRunMode");
+    act.assignments.emplace_back(LValueTarget("m", LValueScope::Register), "RunMode");
+    model.add_action("SetRunMode");
+    model.transitions.emplace_back("Init", "Active", "Start", std::nullopt, act);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    opts.include_stubs = false;
+    CppModelEmitter::emit_model(out, model, opts);
+    const std::string str = out.str();
+
+    EXPECT_NE(str.find("Mode m{Mode::IdleMode};"), std::string::npos);
+    EXPECT_NE(str.find("reg.m = Mode::RunMode;"), std::string::npos);
+}
+
+/**
+ * @brief Regression: A guard whose normalized expression calls a function with the same name as the
+ * generated guard struct (e.g. `check_ok()`) is treated as unresolved rather than emitting `return check_ok();`
+ * which invokes the struct's own constructor and fails C++ compilation.
+ * @scenario Emit `GuardModel("check_ok", "check_ok", "check_ok()", "check_ok()")` with stubs and with `--no-stubs`.
+ * @expected Stub mode emits `return true;` with unresolved comment (never `return check_ok();`); `--no-stubs`
+ * forward-declares `struct check_ok;`.
+ */
+TEST(CppModelEmitterTest, GuardFunctionCallMatchingStructName_DoesNotEmitSelfConstructorCall) {
+    FsmIr model;
+    model.name = "GuardCallFsm";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Done");
+    model.add_event("Go");
+
+    GuardModel gm("check_ok", "check_ok", "check_ok()", "check_ok()");
+    model.guards.push_back(gm);
+    TransitionEdge t("Idle", "Done", "Go", "check_ok");
+    model.transitions.push_back(t);
+
+    {
+        std::ostringstream out;
+        GeneratorOptions opts;
+        opts.include_stubs = true;
+        CppModelEmitter::emit_model(out, model, opts);
+        const std::string str = out.str();
+        EXPECT_EQ(str.find("return check_ok();"), std::string::npos);
+        EXPECT_NE(str.find("// Unresolved guard expression: check_ok()"), std::string::npos);
+        EXPECT_NE(str.find("return true;"), std::string::npos);
+    }
+
+    {
+        std::ostringstream out;
+        GeneratorOptions opts;
+        opts.include_stubs = false;
+        CppModelEmitter::emit_model(out, model, opts);
+        const std::string str = out.str();
+        EXPECT_NE(str.find("struct check_ok;"), std::string::npos);
+        EXPECT_EQ(str.find("return check_ok();"), std::string::npos);
+    }
+}
+
+/**
+ * @brief Regression: Enum definitions with negative literal values (or values > 255) widen the default
+ * `uint8_t` underlying type to signed/wider integer types so C++ compilation does not fail with
+ * `-Wc++11-narrowing`.
+ * @scenario Emit an enum `ErrCode` with `ERR_NONE = 0` and `ERR_FAIL = -1` (default `uint8_t` underlying type).
+ * @expected Emits `enum class ErrCode : int8_t {`.
+ */
+TEST(CppModelEmitterTest, NegativeEnumLiteralValues_WidenDefaultUnsignedUnderlyingType) {
+    FsmIr model;
+    model.name = "NegEnumFsm";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+
+    TypeDefinition err_enum =
+        TypeDefinition::make_enum("ErrCode", "uint8_t", {EnumLiteral{"ERR_NONE", 0}, EnumLiteral{"ERR_FAIL", -1}});
+    model.custom_types.push_back(std::move(err_enum));
+
+    std::ostringstream out;
+    CppModelEmitter::emit_model(out, model, GeneratorOptions{});
+    const std::string str = out.str();
+    EXPECT_NE(str.find("enum class ErrCode : int8_t {"), std::string::npos);
+    EXPECT_NE(str.find("ERR_FAIL = -1"), std::string::npos);
+}
+
+/**
+ * @brief Regression: Parameterized event structs with `std::string` (or non-primitive) payload fields
+ * omit `constexpr` on their constructors under `--std 17` so GCC/Clang do not warn with `-Winvalid-constexpr`.
+ * @scenario Emit an event `Telemetry` with `uint32_t val` and `std::string tag` under `CppStandard::Cpp17`.
+ * @expected Emits `explicit Telemetry(uint32_t val_, std::string tag_)` without `constexpr explicit`.
+ */
+TEST(CppModelEmitterTest, StringPayloadEvent_OmitsConstexprCtorInCpp17) {
+    FsmIr model;
+    model.name = "StrEventFsm";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    SignalDefinition tel("Telemetry");
+    tel.attributes.emplace_back("val", DataType::uint32());
+    tel.attributes.emplace_back("tag", DataType::string());
+    model.add_signal(tel);
+
+    GeneratorOptions opts;
+    opts.cpp_standard = CppStandard::Cpp17;
+    std::ostringstream out;
+    CppModelEmitter::emit_model(out, model, opts);
+    const std::string str = out.str();
+    EXPECT_EQ(str.find("constexpr explicit Telemetry("), std::string::npos);
+    EXPECT_NE(str.find("explicit Telemetry(uint32_t val_, std::string tag_)"), std::string::npos);
+}

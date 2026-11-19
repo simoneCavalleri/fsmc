@@ -244,4 +244,28 @@ TEST(SpscFsm, HierarchicalIsIn_AndReset) {
     EXPECT_TRUE(machine.is_in<SpscSuperState>());
 }
 
+/**
+ * @brief Verify sequential and concurrent snapshot_registers() consistency across post() and process_one() cycles.
+ * @scenario Execute multiple post() and process_one() cycles while taking register snapshots sequentially and
+ * concurrently.
+ * @expected Every snapshot observes consistent register state (counter1 == counter2) and monotonic increments.
+ */
+TEST(SpscFsm, SeqlockSnapshotConsistency_AcrossMultiplePostAndProcessOneCycles_NoTornReads) {
+    fsm::spsc_fsm<SpscTestTable, fsm::no_ports, fsm::no_ports, SampleRegisters, fsm::no_services, 64> machine;
+
+    for (uint64_t cycle = 1; cycle <= 50; ++cycle) {
+        EXPECT_TRUE(machine.post(EvStart{}));
+        EXPECT_TRUE(machine.process_one());
+        auto snap1 = machine.snapshot_registers();
+        EXPECT_EQ(snap1.counter1, cycle * 2 - 1);
+        EXPECT_EQ(snap1.counter2, cycle * 2 - 1);
+
+        EXPECT_TRUE(machine.post(EvStop{}));
+        EXPECT_TRUE(machine.process_one());
+        auto snap2 = machine.snapshot_registers();
+        EXPECT_EQ(snap2.counter1, cycle * 2);
+        EXPECT_EQ(snap2.counter2, cycle * 2);
+    }
+}
+
 }  // namespace

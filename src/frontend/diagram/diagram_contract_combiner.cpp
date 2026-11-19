@@ -76,7 +76,12 @@ bool DiagramContractCombiner::combine(ir::FsmIr& model, const CompanionManifest&
     for (const auto& prop : manifest.properties) {
         ir::FormalProperty fp;
         fp.name = prop.name;
+        if (!prop.kind.empty()) {
+            fp.kind = ir::property_kind_from_string(prop.kind);
+        }
         fp.raw_formula = prop.formula;
+        fp.traceability_req = prop.req;
+        fp.description = prop.desc;
         fp.ast = directive::LtlPropertyParser::parse(prop.formula);
         fp.id = ir::compute_deterministic_id(prop.name + ":" + prop.formula);
         model.add_property(std::move(fp));

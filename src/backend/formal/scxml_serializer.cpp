@@ -3,7 +3,7 @@
 #include <sstream>
 
 #include "fsm/frontend/directive/directive_parser.hpp"
-#include "fsm/frontend/directive/guard_parser.hpp"
+#include "fsm/ir/guard.hpp"
 
 namespace fsm::backend::formal {
 
@@ -41,25 +41,54 @@ std::string escape_xml(const std::string& input) {
 
 void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, size_t indent) {
     std::string pad(indent, ' ');
-    out << pad << "<state id=\"" << escape_xml(state.name) << "\"";
-    if (!state.initial_sub_state.empty()) {
+    const bool is_parallel = (state.kind == StateKind::Parallel || !state.orthogonal_regions.empty());
+    const std::string tag_name = is_parallel ? "parallel" : (state.kind == StateKind::Final ? "final" : "state");
+    out << pad << "<" << tag_name << " id=\"" << escape_xml(state.name) << "\"";
+    if (state.kind == StateKind::Fork || state.kind == StateKind::Join || state.kind == StateKind::EntryPoint ||
+        state.kind == StateKind::ExitPoint || state.kind == StateKind::Choice) {
+        out << " kind=\"" << state_kind_to_string(state.kind) << "\"";
+    }
+    if (!is_parallel && !state.initial_sub_state.empty()) {
         out << " initial=\"" << escape_xml(state.initial_sub_state) << "\"";
     }
     if (!state.traceability_reqs.empty()) {
-        out << " satisfies=\"" << escape_xml(state.traceability_reqs.front()) << "\"";
+        out << " satisfies=\"";
+        for (size_t r = 0; r < state.traceability_reqs.size(); ++r) {
+            if (r > 0)
+                out << ", ";
+            out << escape_xml(state.traceability_reqs[r]);
+        }
+        out << "\"";
+    }
+    if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
+        out << " invariant=\"" << escape_xml(*state.time_invariant) << "\"";
     }
     out << ">\n";
+
+    auto emit_action_instructions = [&](const ActionSignature& act, const std::string& inner_pad) {
+        bool emitted_instruction = false;
+        for (const auto& inst : act.instructions) {
+            if (const auto* emit_op = std::get_if<SignalEmitOp>(&inst.op)) {
+                out << inner_pad << "<send event=\"" << escape_xml(emit_op->signal_name) << "\"/>\n";
+                emitted_instruction = true;
+            } else if (const auto* call_op = std::get_if<ActionCallOp>(&inst.op)) {
+                out << inner_pad << "<send event=\"" << escape_xml(call_op->function_name) << "\"/>\n";
+                emitted_instruction = true;
+            }
+        }
+        if (!emitted_instruction && act.assignments.empty() && !act.name.empty()) {
+            out << inner_pad << "<send event=\"" << escape_xml(act.name) << "\"/>\n";
+        }
+    };
 
     // OnEntry actions and variable assignments
     for (const auto& entry_act : state.entry_actions) {
         out << pad << "  <onentry>\n";
         for (const auto& assign : entry_act.assignments) {
-            out << pad << "    <assign location=\"" << escape_xml(assign.target.name) << "\" expr=\""
+            out << pad << "    <assign location=\"" << escape_xml(assign.target.full_path()) << "\" expr=\""
                 << escape_xml(assign.expression) << "\"/>\n";
         }
-        if (!entry_act.name.empty() && entry_act.name.rfind("entry_", 0) != 0) {
-            out << pad << "    <send event=\"" << escape_xml(entry_act.name) << "\"/>\n";
-        }
+        emit_action_instructions(entry_act, pad + "    ");
         out << pad << "  </onentry>\n";
     }
 
@@ -67,12 +96,10 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
     for (const auto& exit_act : state.exit_actions) {
         out << pad << "  <onexit>\n";
         for (const auto& assign : exit_act.assignments) {
-            out << pad << "    <assign location=\"" << escape_xml(assign.target.name) << "\" expr=\""
+            out << pad << "    <assign location=\"" << escape_xml(assign.target.full_path()) << "\" expr=\""
                 << escape_xml(assign.expression) << "\"/>\n";
         }
-        if (!exit_act.name.empty() && exit_act.name.rfind("exit_", 0) != 0) {
-            out << pad << "    <send event=\"" << escape_xml(exit_act.name) << "\"/>\n";
-        }
+        emit_action_instructions(exit_act, pad + "    ");
         out << pad << "  </onexit>\n";
     }
 
@@ -119,12 +146,18 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
             if (trans.priority > 0) {
                 out << " priority=\"" << trans.priority << "\"";
             }
-            if (!trans.event.empty() && trans.event != "Anonymous") {
+            if (const auto* ct = std::get_if<ChangeTrigger>(&trans.trigger);
+                ct != nullptr && !ct->raw_expression.empty()) {
+                out << " event=\"when(" << escape_xml(ct->raw_expression) << ")\"";
+            } else if (const auto* tt = std::get_if<TimeTrigger>(&trans.trigger);
+                       tt != nullptr && trans.event.empty()) {
+                out << " event=\"" << (tt->kind == TimeTriggerKind::Every ? "every_" : "after_") << tt->duration_value
+                    << time_unit_to_string(tt->unit) << "\"";
+            } else if (!trans.event.empty() && trans.event != "Anonymous") {
                 out << " event=\"" << escape_xml(trans.event) << "\"";
             }
             if (trans.guard && !trans.guard->empty()) {
-                std::string readable_guard =
-                    frontend::directive::GuardExpressionParser::to_diagram_string(*trans.guard, model.guards);
+                std::string readable_guard = ir::GuardExpressionParser::to_diagram_string(*trans.guard, model.guards);
                 out << " cond=\"" << escape_xml(readable_guard) << "\"";
             }
             if (!trans.target.empty() && trans.kind != TransitionEdgeKind::Internal) {
@@ -134,30 +167,38 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
                     out << " target=\"" << escape_xml(trans.target) << "\"";
                 }
             }
+            if (trans.kind == TransitionEdgeKind::Local) {
+                out << " type=\"local\"";
+            }
 
             bool has_assignments =
                 (trans.condition_action.has_value() && !trans.condition_action->assignments.empty()) ||
                 (trans.transition_action.has_value() && !trans.transition_action->assignments.empty());
+            bool has_instructions =
+                (trans.condition_action.has_value() && !trans.condition_action->instructions.empty()) ||
+                (trans.transition_action.has_value() && !trans.transition_action->instructions.empty());
             std::string act_name = trans.get_action();
-            bool has_named_action = !act_name.empty() && act_name.rfind("act_", 0) != 0;
+            bool has_named_action =
+                !has_assignments && !has_instructions && !act_name.empty() && act_name.rfind("act_", 0) != 0;
 
-            if (!has_assignments && !has_named_action) {
+            if (!has_assignments && !has_instructions && !has_named_action) {
                 out << "/>\n";
             } else {
                 out << ">\n";
                 if (trans.condition_action.has_value()) {
                     for (const auto& a : trans.condition_action->assignments) {
-                        out << pad << "    <assign location=\"" << escape_xml(a.target.name) << "\" expr=\""
+                        out << pad << "    <assign location=\"" << escape_xml(a.target.full_path()) << "\" expr=\""
                             << escape_xml(a.expression) << "\"/>\n";
                     }
+                    emit_action_instructions(*trans.condition_action, pad + "    ");
                 }
                 if (trans.transition_action.has_value()) {
                     for (const auto& a : trans.transition_action->assignments) {
-                        out << pad << "    <assign location=\"" << escape_xml(a.target.name) << "\" expr=\""
+                        out << pad << "    <assign location=\"" << escape_xml(a.target.full_path()) << "\" expr=\""
                             << escape_xml(a.expression) << "\"/>\n";
                     }
-                }
-                if (has_named_action) {
+                    emit_action_instructions(*trans.transition_action, pad + "    ");
+                } else if (has_named_action) {
                     out << pad << "    <send event=\"" << escape_xml(act_name) << "\"/>\n";
                 }
                 out << pad << "  </transition>\n";
@@ -165,7 +206,7 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
         }
     }
 
-    out << pad << "</state>\n";
+    out << pad << "</" << tag_name << ">\n";
 }
 
 }  // namespace
@@ -205,9 +246,36 @@ std::string ScxmlSerializer::serialize(const FsmIr& model) {
         out << "  </datamodel>\n";
     }
 
+    // Emit declared properties
+    for (const auto& prop : model.properties) {
+        out << "  <!-- @fsm:property name=" << prop.name << " kind=" << property_kind_to_string(prop.kind) << " ltl=\""
+            << prop.raw_formula << "\"";
+        if (!prop.traceability_req.empty()) {
+            out << " req=\"" << prop.traceability_req << "\"";
+        }
+        if (!prop.description.empty()) {
+            out << " desc=\"" << prop.description << "\"";
+        }
+        out << " -->\n";
+    }
+
     // Emit declared signals
     for (const auto& sig : model.signals) {
-        out << "  <!-- @fsm:signal " << sig.name << " -->\n";
+        if (sig.attributes.empty()) {
+            out << "  <!-- @fsm:signal " << sig.name << " -->\n";
+        } else {
+            out << "  <!-- @fsm:signal " << sig.name << "{";
+            for (size_t i = 0; i < sig.attributes.size(); ++i) {
+                if (i > 0)
+                    out << ", ";
+                out << sig.attributes[i].type << " " << sig.attributes[i].name;
+            }
+            out << "}";
+            if (!sig.validators.empty()) {
+                out << " validator=\"" << sig.validators.front() << "\"";
+            }
+            out << " -->\n";
+        }
     }
 
     // Emit declared custom types (enums and structs)

@@ -1,8 +1,9 @@
 #include "fsm/backend/formal/sysml2_serializer.hpp"
 
+#include <set>
 #include <sstream>
 
-#include "fsm/frontend/directive/guard_parser.hpp"
+#include "fsm/ir/guard.hpp"
 
 namespace fsm::backend::formal {
 
@@ -19,6 +20,18 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
     }
     if (state.kind == StateKind::ExitPoint) {
         out << pad << "exit point " << state.name << ";\n";
+        return;
+    }
+    if (state.kind == StateKind::Fork) {
+        out << pad << "fork " << state.name << ";\n";
+        return;
+    }
+    if (state.kind == StateKind::Join) {
+        out << pad << "join " << state.name << ";\n";
+        return;
+    }
+    if (state.kind == StateKind::Choice) {
+        out << pad << "choice " << state.name << ";\n";
         return;
     }
 
@@ -56,7 +69,11 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
 
     // Entry Actions
     for (const auto& act : state.entry_actions) {
-        out << pad << "    entry action " << act.name << ";\n";
+        if (!act.assignments.empty()) {
+            out << pad << "    entry action { " << fsm::ir::format_action_expression(act) << "; }\n";
+        } else {
+            out << pad << "    entry action " << act.name << ";\n";
+        }
     }
 
     // Do Activity
@@ -66,7 +83,11 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
 
     // Exit Actions
     for (const auto& act : state.exit_actions) {
-        out << pad << "    exit action " << act.name << ";\n";
+        if (!act.assignments.empty()) {
+            out << pad << "    exit action { " << fsm::ir::format_action_expression(act) << "; }\n";
+        } else {
+            out << pad << "    exit action " << act.name << ";\n";
+        }
     }
 
     // Deferred Events
@@ -169,9 +190,25 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
         out << "\n";
     }
 
+    // Collect synthetic event names used solely by TimeTriggers so we don't emit redundant event defs
+    std::set<std::string> time_trigger_events;
+    std::set<std::string> non_time_events;
+    for (const auto& trans : model.transitions) {
+        if (std::holds_alternative<ir::TimeTrigger>(trans.trigger)) {
+            if (!trans.event.empty()) {
+                time_trigger_events.insert(trans.event);
+            }
+        } else if (!trans.event.empty()) {
+            non_time_events.insert(trans.event);
+        }
+    }
+
     // Native SysML v2 Signals & Item Definitions
     for (const auto& sig : model.signals) {
-        if (sig.attributes.empty()) {
+        if (sig.attributes.empty() && time_trigger_events.count(sig.name) > 0 && non_time_events.count(sig.name) == 0) {
+            continue;
+        }
+        if (sig.attributes.empty() && sig.validators.empty()) {
             out << "    event def " << sig.name << ";\n";
         } else {
             out << "    item def " << sig.name << " {\n";
@@ -182,10 +219,34 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
                 }
                 out << ";\n";
             }
+            for (const auto& val : sig.validators) {
+                out << "        assert constraint { " << val << " }\n";
+            }
             out << "    }\n";
         }
     }
     if (!model.signals.empty()) {
+        out << "\n";
+    }
+
+    // Native SysML v2 Temporal Logic Properties
+    for (const auto& prop : model.properties) {
+        if (!prop.name.empty() && !prop.raw_formula.empty()) {
+            if (prop.kind != PropertyKind::Safety || !prop.traceability_req.empty() || !prop.description.empty()) {
+                out << "    // @fsm:property name=" << prop.name << " kind=" << property_kind_to_string(prop.kind)
+                    << " formula=\"" << prop.raw_formula << "\"";
+                if (!prop.traceability_req.empty()) {
+                    out << " req=\"" << prop.traceability_req << "\"";
+                }
+                if (!prop.description.empty()) {
+                    out << " desc=\"" << prop.description << "\"";
+                }
+                out << "\n";
+            }
+            out << "    assert property " << prop.name << " : " << prop.raw_formula << ";\n";
+        }
+    }
+    if (!model.properties.empty()) {
         out << "\n";
     }
 
@@ -201,6 +262,13 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
         }
     }
 
+    // Emit choice pseudostates not already present in states
+    for (const auto& choice : model.choice_nodes) {
+        if (model.find_state(choice.name) == nullptr) {
+            out << "    choice " << choice.name << ";\n";
+        }
+    }
+
     // Emit transitions
     out << "\n";
     for (const auto& trans : model.transitions) {
@@ -208,23 +276,43 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
         if (trans.target_is_history) {
             clean_target += trans.target_is_deep_history ? "[H*]" : "[H]";
         }
-        out << "    transition\n";
+        out << (trans.kind == TransitionEdgeKind::Local ? "    local transition\n" : "    transition\n");
         if (trans.priority > 0) {
             out << "        priority " << trans.priority << "\n";
         }
         out << "        first " << trans.source << "\n";
-        if (!trans.event.empty()) {
+        if (const auto* tt = std::get_if<ir::TimeTrigger>(&trans.trigger)) {
+            const std::string_view unit_str = ir::time_unit_to_string(tt->unit);
+            if (tt->kind == ir::TimeTriggerKind::Every) {
+                out << "        accept every(" << tt->duration_value << unit_str << ")\n";
+            } else if (tt->kind == ir::TimeTriggerKind::At) {
+                out << "        accept at(" << tt->duration_value << unit_str << ")\n";
+            } else {
+                out << "        accept after(" << tt->duration_value << unit_str << ")\n";
+            }
+        } else if (const auto* ct = std::get_if<ir::ChangeTrigger>(&trans.trigger)) {
+            if (!ct->raw_expression.empty()) {
+                out << "        accept when (" << ct->raw_expression << ")\n";
+            }
+        } else if (!trans.event.empty()) {
             out << "        accept " << trans.event << "\n";
         }
         if (trans.guard && !trans.guard->empty()) {
-            out << "        if "
-                << frontend::directive::GuardExpressionParser::to_diagram_string(*trans.guard, model.guards) << "\n";
+            out << "        if " << ir::GuardExpressionParser::to_diagram_string(*trans.guard, model.guards) << "\n";
         }
-        std::string act = trans.get_action();
-        if (!act.empty()) {
-            out << "        do " << act << "\n";
+        if (trans.transition_action.has_value() && !trans.transition_action->assignments.empty()) {
+            out << "        do action { " << fsm::ir::format_action_expression(*trans.transition_action) << "; }\n";
+        } else {
+            std::string act = trans.get_action();
+            if (!act.empty()) {
+                out << "        do " << act << "\n";
+            }
         }
-        out << "        then " << clean_target << ";\n";
+        if (trans.kind == TransitionEdgeKind::Internal && trans.source == trans.target && !trans.event.empty()) {
+            out << "        ;\n";
+        } else {
+            out << "        then " << clean_target << ";\n";
+        }
     }
 
     out << "}\n";

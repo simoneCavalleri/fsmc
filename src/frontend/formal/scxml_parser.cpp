@@ -1,6 +1,7 @@
 #include "fsm/frontend/formal/scxml_parser.hpp"
 
 #include <cctype>
+#include <cmath>
 #include <functional>
 #include <map>
 #include <regex>
@@ -59,7 +60,7 @@ bool ScxmlParser::parse(std::string_view content, FsmIr& model, std::string& err
     // Parse @fsm directives from comments
     {
         std::string raw_str{content};
-        std::regex comment_re(R"(<!--\s*@fsm:([^\r\n-]+?)\s*-->)");
+        std::regex comment_re(R"(<!--\s*@fsm:([^\r\n]+?)\s*-->)");
         auto begin = std::sregex_iterator(raw_str.begin(), raw_str.end(), comment_re);
         auto end = std::sregex_iterator();
         for (auto i = begin; i != end; ++i) {
@@ -184,8 +185,14 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
                 kind = StateKind::Parallel;
             } else if (tag == "final" || ends_with(tag, ":final")) {
                 kind = StateKind::Final;
+            } else if (std::string kind_attr = child->get_attr("kind"); !kind_attr.empty()) {
+                kind = state_kind_from_string(kind_attr);
             }
-            model.add_state(state_name, current_parent_state, kind);
+            if (kind == StateKind::Choice) {
+                model.add_choice_node(state_name);
+            } else {
+                model.add_state(state_name, current_parent_state, kind);
+            }
 
             std::string sub_initial = child->get_attr("initial");
             if (!current_parent_state.empty()) {
@@ -193,12 +200,13 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
                 if (parent != nullptr) {
                     parent->is_composite = true;
                     if (parent->kind == StateKind::Parallel) {
-                        // Register parallel child as an orthogonal region root
+                        // Register parallel child as an orthogonal region root;
+                        // leave state_ids empty so OrthogonalProductPass discovers nested substates
+                        // (or falls back to the region itself if it is an atomic leaf region).
                         OrthogonalRegion reg;
                         reg.id = state_name;
                         reg.name = state_name;
                         reg.initial_state_id = sub_initial.empty() ? state_name : sanitize_identifier(sub_initial);
-                        reg.state_ids.push_back(state_name);
                         parent->orthogonal_regions.push_back(std::move(reg));
                     } else if (parent->initial_sub_state.empty()) {
                         parent->initial_sub_state = state_name;
@@ -218,7 +226,20 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
                     req = child->get_attr("req");
                 }
                 if (!req.empty()) {
-                    curr_state->traceability_reqs.push_back(req);
+                    std::istringstream rss(req);
+                    std::string item;
+                    while (std::getline(rss, item, ',')) {
+                        std::string trimmed_req = std::string(trim(item));
+                        if (!trimmed_req.empty() &&
+                            std::find(curr_state->traceability_reqs.begin(), curr_state->traceability_reqs.end(),
+                                      trimmed_req) == curr_state->traceability_reqs.end()) {
+                            curr_state->traceability_reqs.push_back(std::move(trimmed_req));
+                        }
+                    }
+                }
+                std::string inv = child->get_attr("invariant");
+                if (!inv.empty()) {
+                    curr_state->time_invariant = inv;
                 }
 
                 // Final states in composite parents emit completion events on entry
@@ -304,6 +325,11 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
                                 var.type = "int32_t";
                             } else {
                                 var.type = "uint32_t";
+                            }
+                            if (var.type.primitive() == PrimitiveTypeKind::String && var.initial_value.size() >= 2 &&
+                                var.initial_value.front() == '\'' && var.initial_value.back() == '\'') {
+                                var.initial_value =
+                                    "\"" + var.initial_value.substr(1, var.initial_value.size() - 2) + "\"";
                             }
                             model.add_variable(std::move(var));
                         }
@@ -565,7 +591,9 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
         is_history = true;
     }
 
-    bool is_internal = target_tokens.empty() || trans_node->get_attr("type") == "internal";
+    std::string trans_type_attr = trans_node->get_attr("type");
+    bool is_internal = target_tokens.empty() || trans_type_attr == "internal";
+    bool is_local = !is_internal && trans_type_attr == "local";
 
     TransitionEdge trans;
     trans.source = sanitize_identifier(src);
@@ -592,13 +620,31 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
             }
         }
     }
-    trans.event = sanitize_identifier(event);
+    std::vector<std::string> event_tokens;
+    std::string change_trigger_expr;
+    {
+        static const std::regex when_ev_regex(R"(^\s*when\s*\((.+)\)\s*$)", std::regex::icase);
+        std::smatch wm;
+        if (std::regex_match(event, wm, when_ev_regex)) {
+            change_trigger_expr = std::string(trim(wm[1].str()));
+            event_tokens.emplace_back("");
+        } else {
+            std::istringstream ev_iss(event);
+            std::string tok;
+            while (ev_iss >> tok) {
+                event_tokens.push_back(std::move(tok));
+            }
+            if (event_tokens.empty()) {
+                event_tokens.emplace_back("");
+            }
+        }
+    }
     if (!cond.empty()) {
         auto parsed = directive::GuardExpressionParser::parse(cond);
         if (!parsed.cpp_type.empty()) {
             trans.guard = parsed.cpp_type;
             for (const auto& detail : parsed.atomic_guard_details) {
-                model.add_guard(detail.name, "", detail.expression, std::nullopt);
+                model.add_guard(detail.name, "", detail.expression, detail.expression);
             }
             for (const auto& atomic : parsed.atomic_guards) {
                 model.add_guard(atomic);
@@ -606,13 +652,20 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
         } else {
             std::string guard_name = "guard_" + sanitize_identifier(src) + "_to_" + sanitize_identifier(dst) + "_" +
                                      std::to_string(model.transitions.size() + 1);
-            model.add_guard(guard_name, "", std::optional<std::string>{cond}, std::nullopt);
+            model.add_guard(guard_name, "", std::optional<std::string>{cond}, std::optional<std::string>{cond});
             trans.guard = guard_name;
         }
     }
     if (!action.empty() || !assignments.empty() || !instructions.empty()) {
         std::string act_name =
             !action.empty() ? sanitize_identifier(action) : ("act_" + trans.source + "_" + trans.target);
+        if (action.empty() && !event_tokens.empty() && !event_tokens[0].empty()) {
+            act_name += "_" + sanitize_identifier(event_tokens[0]);
+        }
+        if (action.empty() && std::any_of(model.actions.begin(), model.actions.end(),
+                                          [&](const auto& a) { return a.name == act_name; })) {
+            act_name += "_" + std::to_string(model.transitions.size() + 1);
+        }
         ActionSignature sig;
         sig.name = act_name;
         sig.assignments = assignments;
@@ -620,7 +673,8 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
         trans.transition_action = std::move(sig);
         model.add_action(act_name);
     }
-    trans.kind = is_internal ? TransitionEdgeKind::Internal : TransitionEdgeKind::External;
+    trans.kind = is_internal ? TransitionEdgeKind::Internal
+                             : (is_local ? TransitionEdgeKind::Local : TransitionEdgeKind::External);
 
     std::string prio_str = trans_node->get_attr("priority");
     if (!prio_str.empty()) {
@@ -641,11 +695,43 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
     if (!model.is_choice_node(trans.target)) {
         model.add_state(trans.target);
     }
-    if (!trans.event.empty()) {
-        model.add_event(trans.event);
-    }
 
-    model.add_transition(std::move(trans));
+    static const std::regex time_ev_regex(R"(^(after|every)_([0-9]+(?:\.[0-9]+)?)(ms|us|s|m)$)", std::regex::optimize);
+    for (const auto& ev_raw : event_tokens) {
+        TransitionEdge edge = trans;
+        if (!change_trigger_expr.empty()) {
+            edge.event.clear();
+            edge.trigger = ChangeTrigger(change_trigger_expr, true);
+        } else {
+            edge.event = sanitize_identifier(ev_raw);
+        }
+        std::smatch tm;
+        if (std::regex_match(edge.event, tm, time_ev_regex)) {
+            const TimeTriggerKind kind = (tm[1].str() == "every") ? TimeTriggerKind::Every : TimeTriggerKind::After;
+            const std::string unit_str = tm[3].str();
+            double val = 0.0;
+            try {
+                val = std::stod(tm[2].str());
+            } catch (...) {
+                val = 0.0;
+            }
+            if (unit_str == "us") {
+                edge.trigger = TimeTrigger(kind, static_cast<std::uint64_t>(std::llround(val)), TimeUnit::Microseconds);
+            } else if (unit_str == "ms") {
+                edge.trigger = TimeTrigger(kind, static_cast<std::uint64_t>(std::llround(val)), TimeUnit::Milliseconds);
+            } else if (unit_str == "s") {
+                edge.trigger =
+                    TimeTrigger(kind, static_cast<std::uint64_t>(std::llround(val * 1000.0)), TimeUnit::Milliseconds);
+            } else if (unit_str == "m") {
+                edge.trigger =
+                    TimeTrigger(kind, static_cast<std::uint64_t>(std::llround(val * 60000.0)), TimeUnit::Milliseconds);
+            }
+        }
+        if (!edge.event.empty()) {
+            model.add_event(edge.event);
+        }
+        model.add_transition(std::move(edge));
+    }
 }
 
 }  // namespace fsm::frontend::formal

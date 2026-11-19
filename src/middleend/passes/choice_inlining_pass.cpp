@@ -54,7 +54,8 @@ bool ChoiceInliningPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
         }
     }
     for (const auto& s : ir.states) {
-        if (s.kind == StateKind::Choice || s.kind == StateKind::Junction) {
+        if (s.kind == StateKind::Choice || s.kind == StateKind::Junction || s.kind == StateKind::EntryPoint ||
+            s.kind == StateKind::ExitPoint) {
             if (std::find(choice_names.begin(), choice_names.end(), s.name) == choice_names.end()) {
                 choice_names.push_back(s.name);
             }
@@ -88,11 +89,40 @@ bool ChoiceInliningPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
                 }
             }
 
+            if (!has_self_loop && incoming.empty()) {
+                bool is_initial_choice = (ir.initial_state == choice_name);
+                for (const auto& s : ir.states) {
+                    if (s.initial_sub_state == choice_name) {
+                        is_initial_choice = true;
+                        break;
+                    }
+                }
+                if (!is_initial_choice) {
+                    ir.transitions.erase(
+                        std::remove_if(ir.transitions.begin(), ir.transitions.end(),
+                                       [&](const TransitionEdge& t) { return t.source == choice_name; }),
+                        ir.transitions.end());
+                    ir.states.erase(std::remove_if(ir.states.begin(), ir.states.end(),
+                                                   [&](const StateNode& s) { return s.name == choice_name; }),
+                                    ir.states.end());
+                    ir.choice_nodes.erase(
+                        std::remove_if(ir.choice_nodes.begin(), ir.choice_nodes.end(),
+                                       [&](const ChoiceNodeModel& c) { return c.name == choice_name; }),
+                        ir.choice_nodes.end());
+                    modified = true;
+                    progress = true;
+                }
+                continue;
+            }
+
             if (has_self_loop || incoming.empty() || outgoing.empty()) {
                 continue;
             }
 
             // Generate composite transitions
+            const bool has_guarded_sibling = std::any_of(outgoing.begin(), outgoing.end(), [](const TransitionEdge& o) {
+                return extract_non_else_guard_ast(o).has_value();
+            });
             std::vector<TransitionEdge> inlined_edges;
             for (const auto& in : incoming) {
                 for (const auto& out : outgoing) {
@@ -112,7 +142,20 @@ bool ChoiceInliningPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
                     composite.target_is_history = out.target_is_history;
                     composite.target_is_deep_history = out.target_is_deep_history;
                     composite.kind = TransitionEdgeKind::External;
-                    composite.priority = (out.priority > 0) ? out.priority : in.priority;
+
+                    const bool out_has_guard = extract_non_else_guard_ast(out).has_value();
+                    if (out.priority > 0) {
+                        composite.priority = out.priority;
+                    } else if (has_guarded_sibling) {
+                        if (out_has_guard) {
+                            composite.priority = (in.priority > 0) ? in.priority : 1;
+                        } else {
+                            // `else` / unguarded fallback must always evaluate after guarded siblings.
+                            composite.priority = (in.priority > 0) ? (in.priority + 1) : 0;
+                        }
+                    } else {
+                        composite.priority = in.priority;
+                    }
 
                     // Combine Guards as target-agnostic GuardAstNode
                     auto combined_guard =

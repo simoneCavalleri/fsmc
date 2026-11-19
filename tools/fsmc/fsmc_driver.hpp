@@ -72,7 +72,7 @@ class FsmcDriver {
         }
 
         if (opts.show_version) {
-            std::cout << "fsmc version 0.10.0 (Universal State Machine Compiler & Optimization Infrastructure)\n";
+            std::cout << "fsmc version 0.11.0 (Universal State Machine Compiler & Optimization Infrastructure)\n";
             return 0;
         }
 
@@ -221,8 +221,8 @@ class FsmcDriver {
                     opts.emit_test_harness.empty()) {
                     std::cerr << "\n[ERROR] Direct code generation blocked: '" << opts.input_file
                               << "' is a visual diagram format (" << parser->format_name()
-                              << ").\nPass '--sidecar <manifest.yaml>' or '--allow-diagram-codegen' to allow code "
-                                 "generation, or use '--verify' / '--export <fmt>' / '--rtm-output <file>'.\n";
+                              << ").\nPass '--sidecar <manifest.yaml>' or '--allow-diagram' to allow code "
+                                 "generation, or use '--verify' / '--export <fmt>' / '--rtm <file>'.\n";
                     return 1;
                 }
             }
@@ -274,18 +274,17 @@ class FsmcDriver {
         DiagnosticFormat diag_fmt = parse_diagnostic_format(opts.diagnostic_format);
 
         PassManager pm;
+        bool race_check_ok = true;
         if (opts.pipeline_mode == "7stage" && opts.export_diagram_format.empty()) {
             if (opts.inline_submachines) {
                 create_submachine_pass(opts)->run(model, middleend_diag);
             }
+            if (opts.check_races) {
+                OrthogonalInterferencePassWrapper race_pass;
+                race_check_ok = race_pass.run(model, middleend_diag);
+            }
             const bool optimize_7stage = opts.opt_level > 0 && (opts.opt_level >= 2 || opts.prune_dead_states);
             pm = PassManager::create_verified_7stage_pipeline(optimize_7stage);
-            if (opts.inline_submachines) {
-                pm.add_pass(create_submachine_pass(opts));
-            }
-            if (opts.check_races) {
-                pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
-            }
         } else {
             if (opts.export_diagram_format.empty() || opts.opt_level > 0) {
                 pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
@@ -296,11 +295,11 @@ class FsmcDriver {
             if (opts.strict_determinism) {
                 pm.add_pass(std::make_unique<DeterminismEnforcementPassWrapper>());
             }
-            if (opts.check_races) {
-                pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
-            }
             if (opts.inline_submachines) {
                 pm.add_pass(create_submachine_pass(opts));
+            }
+            if (opts.check_races) {
+                pm.add_pass(std::make_unique<OrthogonalInterferencePassWrapper>());
             }
             if (opts.opt_level > 0) {
                 if (opts.prune_dead_states || opts.opt_level >= 2) {
@@ -325,6 +324,11 @@ class FsmcDriver {
                 pm.add_pass(std::make_unique<TimedInvariantsVerifierPassWrapper>());
                 pm.add_pass(std::make_unique<EventQueueBoundPassWrapper>());
                 pm.add_pass(std::make_unique<WcetAnalysisPassWrapper>());
+                if (opts.verify_mode) {
+                    pm.add_pass(std::make_unique<HistoryLoweringPassWrapper>());
+                    pm.add_pass(std::make_unique<ForkJoinLoweringPassWrapper>());
+                    pm.add_pass(std::make_unique<OrthogonalProductPassWrapper>());
+                }
                 if (opts.verify_mode || opts.export_diagram_format.empty()) {
                     pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
                     if (!opts.verify_mode) {
@@ -345,7 +349,7 @@ class FsmcDriver {
             pm.add_pass(std::make_unique<PipeThroughPassWrapper>(opts.pipe_through_cmd));
         }
 
-        if (!pm.run(model, middleend_diag) && !opts.verify_mode) {
+        if ((!race_check_ok || !pm.run(model, middleend_diag)) && !opts.verify_mode) {
             std::cerr << middleend_diag.render_to_format(diag_fmt, content);
             return 1;
         }
@@ -419,6 +423,10 @@ class FsmcDriver {
         }
 
         if (opts.verify_mode) {
+            if (!opts.output_file.empty()) {
+                std::cerr << "note: '-o " << opts.output_file
+                          << "' is ignored in '--verify' mode (verification does not emit code).\n";
+            }
             if (opts.verify_engine == "nuxmv" || (opts.verify_engine == "auto" && is_nuxmv_available())) {
                 return run_nuxmv_verification(opts, model, validation);
             }
@@ -553,8 +561,8 @@ class FsmcDriver {
         if (parser->kind() == FrontendKind::Diagram && !has_sidecar && !opts.allow_diagram_codegen) {
             std::cerr << "\n[ERROR] Direct code generation blocked: '" << opts.input_file
                       << "' is a visual diagram format (" << parser->format_name()
-                      << ").\nPass '--sidecar <manifest.yaml>' or '--allow-diagram-codegen' to allow code "
-                         "generation, or use '--verify' / '--export <fmt>' / '--rtm-output <file>'.\n";
+                      << ").\nPass '--sidecar <manifest.yaml>' or '--allow-diagram' to allow code "
+                         "generation, or use '--verify' / '--export <fmt>' / '--rtm <file>'.\n";
             return 1;
         }
 

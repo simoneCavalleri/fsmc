@@ -10,17 +10,20 @@ using namespace fsm::ir;
 using namespace fsm::diagnostic;
 
 bool DeterminismEnforcementPass::run(FsmIr& ir, DiagnosticEngine& diag) {
-    // Group transitions by (source, event)
+    // Group transitions by (source, canonical_trigger_key)
     std::map<std::pair<std::string, std::string>, std::vector<TransitionEdge*>> groups;
     for (auto& t : ir.transitions) {
         std::string src = t.source;
-        groups[{src, t.event}].push_back(&t);
+        groups[{src, t.canonical_trigger_key()}].push_back(&t);
     }
 
     for (const auto& [key, trans_list] : groups) {
         const auto& [src, evt] = key;
         if (trans_list.size() <= 1)
             continue;
+        if (const auto* src_node = ir.find_state(src); src_node != nullptr && src_node->kind == StateKind::Fork) {
+            continue;
+        }
 
         // Count unconditional transitions (no guard)
         std::size_t unconditional_count = 0;

@@ -33,11 +33,15 @@ inline void handle_exception_outside_lock(std::exception_ptr ex, const exception
         last_exception = ex;
     }
     if (handler) {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
         try {
             handler(ex);
         } catch (...) {
             // Suppress secondary exceptions thrown from handler
         }
+#else
+        handler(ex);
+#endif
     }
 }
 
@@ -46,38 +50,60 @@ inline void invoke_notifications_outside_lock(const Event& evt, const dispatch_s
                                               std::exception_ptr& last_exception, std::mutex& mutex) {
     if (snap.observer_h) {
         for (const auto& info : snap.notifications) {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
             try {
                 snap.observer_h(info);
             } catch (...) {
                 handle_exception_outside_lock(std::current_exception(), snap.exception_h, last_exception, mutex);
             }
+#else
+            (void)last_exception;
+            (void)mutex;
+            snap.observer_h(info);
+#endif
         }
     }
     if (snap.result.is_unhandled() && snap.unhandled_h) {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
         try {
             snap.unhandled_h(get_event_name(evt), snap.state_name);
         } catch (...) {
             handle_exception_outside_lock(std::current_exception(), snap.exception_h, last_exception, mutex);
         }
+#else
+        snap.unhandled_h(get_event_name(evt), snap.state_name);
+#endif
     } else if (snap.result.is_guard_rejected() && snap.guard_rejected_h) {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
         try {
             snap.guard_rejected_h(get_event_name(evt), snap.state_name);
         } catch (...) {
             handle_exception_outside_lock(std::current_exception(), snap.exception_h, last_exception, mutex);
         }
+#else
+        snap.guard_rejected_h(get_event_name(evt), snap.state_name);
+#endif
     } else if (snap.result.is_deferred() && snap.deferred_h) {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
         try {
             snap.deferred_h(get_event_name(evt), snap.state_name);
         } catch (...) {
             handle_exception_outside_lock(std::current_exception(), snap.exception_h, last_exception, mutex);
         }
+#else
+        snap.deferred_h(get_event_name(evt), snap.state_name);
+#endif
     }
     if (!snap.result.is_ok() && snap.failure_h) {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
         try {
             snap.failure_h(get_event_name(evt), snap.state_name, snap.result.status);
         } catch (...) {
             handle_exception_outside_lock(std::current_exception(), snap.exception_h, last_exception, mutex);
         }
+#else
+        snap.failure_h(get_event_name(evt), snap.state_name, snap.result.status);
+#endif
     }
 }
 

@@ -1,6 +1,8 @@
 #include "fsm/ir/action.hpp"
 
 #include <cctype>
+#include <regex>
+#include <sstream>
 
 namespace fsm::ir {
 
@@ -141,6 +143,87 @@ ActionAssignment ActionAssignment::parse(std::string_view statement) {
         }
     }
     return ActionAssignment(LValueTarget(statement), "");
+}
+
+std::optional<ActionSignature> try_parse_assignment_action(std::string_view raw_action,
+                                                           const std::string& fallback_prefix) {
+    static const std::regex assign_regex(
+        R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*(=|\+=|-=|\*=|\/=)\s*(.+)$)",
+        std::regex::optimize);
+    static const std::regex inc_regex(
+        R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*(\+\+|--)$)",
+        std::regex::optimize);
+
+    std::vector<ActionAssignment> assignments;
+    std::string raw_str(raw_action);
+    std::stringstream ss(raw_str);
+    std::string stmt;
+    while (std::getline(ss, stmt, ';')) {
+        size_t first = stmt.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos) {
+            continue;
+        }
+        size_t last = stmt.find_last_not_of(" \t\r\n");
+        std::string trimmed = stmt.substr(first, last - first + 1);
+        std::smatch m;
+        if (std::regex_match(trimmed, m, assign_regex)) {
+            std::string scope_prefix = m[1].str();
+            std::string var_path = m[2].str();
+            std::string op = m[3].str();
+            std::string rhs = m[4].str();
+            size_t rfirst = rhs.find_first_not_of(" \t\r\n");
+            size_t rlast = rhs.find_last_not_of(" \t\r\n");
+            if (rfirst != std::string::npos) {
+                rhs = rhs.substr(rfirst, rlast - rfirst + 1);
+            }
+            LValueTarget tgt(scope_prefix + var_path);
+            if (op == "=") {
+                assignments.push_back({tgt, rhs});
+            } else if (op == "+=") {
+                assignments.push_back({tgt, var_path + " + " + rhs});
+            } else if (op == "-=") {
+                assignments.push_back({tgt, var_path + " - " + rhs});
+            } else if (op == "*=") {
+                assignments.push_back({tgt, var_path + " * (" + rhs + ")"});
+            } else if (op == "/=") {
+                assignments.push_back({tgt, var_path + " / (" + rhs + ")"});
+            }
+        } else if (std::regex_match(trimmed, m, inc_regex)) {
+            std::string scope_prefix = m[1].str();
+            std::string var_path = m[2].str();
+            std::string op = m[3].str();
+            LValueTarget tgt(scope_prefix + var_path);
+            assignments.push_back({tgt, op == "++" ? (var_path + " + 1") : (var_path + " - 1")});
+        }
+    }
+
+    if (assignments.empty()) {
+        return std::nullopt;
+    }
+    std::string target_id = assignments.front().target.name;
+    for (char& ch : target_id) {
+        if (std::isalnum(static_cast<unsigned char>(ch)) == 0 && ch != '_') {
+            ch = '_';
+        }
+    }
+    ActionSignature sig(fallback_prefix + "_" + target_id);
+    sig.assignments = std::move(assignments);
+    return sig;
+}
+
+std::string format_action_expression(const ActionSignature& act) {
+    if (!act.assignments.empty()) {
+        std::string expr;
+        for (std::size_t i = 0; i < act.assignments.size(); ++i) {
+            if (i > 0) {
+                expr += "; ";
+            }
+            const auto& a = act.assignments[i];
+            expr += a.target.full_path() + " " + std::string(assignment_op_to_string(a.op)) + " " + a.expression;
+        }
+        return expr;
+    }
+    return act.name;
 }
 
 }  // namespace fsm::ir

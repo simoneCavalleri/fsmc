@@ -4,6 +4,7 @@
 #include <sstream>
 
 #include "fsm/frontend/diagram/diagram_action_parser.hpp"
+#include "fsm/frontend/diagram/diagram_parser_common.hpp"
 #include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
 
@@ -11,14 +12,17 @@ namespace fsm::frontend::diagram {
 
 using namespace fsm::ir;
 using directive::DirectiveParser;
-using directive::GuardExpressionParser;
 
 bool PlantUmlParser::parse(std::string_view content, FsmIr& out_model, std::string& out_error) {
     std::istringstream stream(std::string{content});
     std::string line;
     size_t line_num = 0;
     bool in_block_comment = false;
+    bool pending_local_transition = false;
     std::vector<std::string> parent_stack;
+    std::vector<size_t> scope_state_start_idx;
+    std::vector<std::vector<size_t>> scope_region_splits;
+    std::vector<bool> scope_is_parallel;
     std::string multiline_buffer;
     int multiline_brace_imbalance = 0;
 
@@ -74,6 +78,10 @@ bool PlantUmlParser::parse(std::string_view content, FsmIr& out_model, std::stri
 
         if (DirectiveParser::is_directive(trimmed)) {
             std::string body = DirectiveParser::extract_directive_body(trimmed);
+            if (body == "local") {
+                pending_local_transition = true;
+                continue;
+            }
             if (DirectiveParser::parse_model_directive(body, out_model)) {
                 continue;
             } else if (body.rfind("state", 0) == 0) {
@@ -145,10 +153,79 @@ bool PlantUmlParser::parse(std::string_view content, FsmIr& out_model, std::stri
             continue;
         }
 
+        // Orthogonal region separator: -- or ||
+        if ((trimmed == "--" || trimmed == "||") && !parent_stack.empty()) {
+            scope_is_parallel.back() = true;
+            scope_region_splits.back().push_back(out_model.states.size());
+            continue;
+        }
+
         // Block closing: }
         if (trimmed == "}") {
             if (!parent_stack.empty()) {
+                const std::string closing_parent = parent_stack.back();
+                const size_t start_idx = scope_state_start_idx.back();
+                const auto splits = scope_region_splits.back();
+                const bool is_par = scope_is_parallel.back();
                 parent_stack.pop_back();
+                scope_state_start_idx.pop_back();
+                scope_region_splits.pop_back();
+                scope_is_parallel.pop_back();
+
+                if (is_par) {
+                    std::vector<std::pair<size_t, size_t>> ranges;
+                    size_t prev = start_idx;
+                    for (size_t sp : splits) {
+                        ranges.emplace_back(prev, sp);
+                        prev = sp;
+                    }
+                    ranges.emplace_back(prev, out_model.states.size());
+
+                    std::vector<OrthogonalRegion> regions;
+                    for (size_t r_idx = 0; r_idx < ranges.size(); ++r_idx) {
+                        const auto [r_begin, r_end] = ranges[r_idx];
+                        std::vector<std::string> direct_children;
+                        for (size_t si = r_begin; si < r_end && si < out_model.states.size(); ++si) {
+                            if (out_model.states[si].parent_state == closing_parent) {
+                                direct_children.push_back(out_model.states[si].name);
+                            }
+                        }
+                        if (direct_children.empty()) {
+                            continue;
+                        }
+                        if (direct_children.size() == 1) {
+                            const auto* child = out_model.find_state(direct_children[0]);
+                            if (child != nullptr && child->is_composite) {
+                                OrthogonalRegion reg;
+                                reg.id = child->name;
+                                reg.name = child->name;
+                                reg.initial_state_id = child->initial_sub_state;
+                                regions.push_back(std::move(reg));
+                                continue;
+                            }
+                        }
+                        OrthogonalRegion reg;
+                        reg.id = closing_parent + "_Region" + std::to_string(r_idx + 1);
+                        reg.name = reg.id;
+                        reg.initial_state_id = direct_children.front();
+                        reg.state_ids = std::move(direct_children);
+                        regions.push_back(std::move(reg));
+                    }
+                    if (auto* parent = out_model.find_state_mut(closing_parent)) {
+                        parent->kind = StateKind::Parallel;
+                        parent->is_composite = true;
+                        parent->orthogonal_regions = std::move(regions);
+                        for (const auto& reg : parent->orthogonal_regions) {
+                            for (auto& st : out_model.states) {
+                                if (st.parent_state == reg.id || st.parent_state == reg.name ||
+                                    std::find(reg.state_ids.begin(), reg.state_ids.end(), st.name) !=
+                                        reg.state_ids.end()) {
+                                    st.pinned_parent = true;
+                                }
+                            }
+                        }
+                    }
+                }
             }
             continue;
         }
@@ -164,6 +241,9 @@ bool PlantUmlParser::parse(std::string_view content, FsmIr& out_model, std::stri
             const std::string parent_name = parse_composite_state_header(trimmed, out_model, parent_stack);
             if (!parent_name.empty()) {
                 parent_stack.push_back(parent_name);
+                scope_state_start_idx.push_back(out_model.states.size());
+                scope_region_splits.emplace_back();
+                scope_is_parallel.push_back(false);
             }
             continue;
         }
@@ -182,8 +262,13 @@ bool PlantUmlParser::parse(std::string_view content, FsmIr& out_model, std::stri
 
         // Transition lines: Source --> Target or Source -> Target
         if (trimmed.find("->") != std::string_view::npos) {
+            const size_t prev_transitions = out_model.transitions.size();
             if (!parse_transition_line(trimmed, out_model, out_error, line_num, parent_stack)) {
                 return false;
+            }
+            if (pending_local_transition && out_model.transitions.size() > prev_transitions) {
+                out_model.transitions.back().kind = TransitionEdgeKind::Local;
+                pending_local_transition = false;
             }
             continue;
         }
@@ -206,7 +291,7 @@ bool PlantUmlParser::parse(std::string_view content, FsmIr& out_model, std::stri
 
 std::string PlantUmlParser::parse_composite_state_header(std::string_view line, FsmIr& model,
                                                          const std::vector<std::string>& parent_stack) {
-    static const std::regex composite_regex(R"(state\s+([a-zA-Z0-9_]+)\s*\{)");
+    static const std::regex composite_regex(R"regex(state\s+(?:"[^"]*"\s+as\s+)?([a-zA-Z0-9_]+)\s*\{)regex");
     const std::string line_str{line};
     std::smatch match;
     if (std::regex_search(line_str, match, composite_regex)) {
@@ -343,33 +428,18 @@ void PlantUmlParser::parse_internal_transition(std::string_view line, FsmIr& mod
         return;
     }
 
-    std::optional<ActionSignature> parsed_action;
+    std::string raw_action;
     const auto slash_pos = DiagramActionParser::find_action_slash(label);
     if (slash_pos != std::string::npos) {
-        const std::string act = std::string(trim(label.substr(slash_pos + 1)));
-        if (!act.empty()) {
-            parsed_action = DiagramActionParser::parse_action_block(act, "action_" + state_name);
-        }
+        raw_action = std::string(trim(label.substr(slash_pos + 1)));
         label = label.substr(0, slash_pos);
     }
 
-    std::optional<std::string> guard_name;
-    const auto open_bracket = label.find('[');
-    const auto close_bracket = label.find(']', open_bracket);
-    if (open_bracket != std::string::npos && close_bracket != std::string::npos) {
-        const std::string grd = std::string(trim(label.substr(open_bracket + 1, close_bracket - open_bracket - 1)));
-        if (!grd.empty()) {
-            auto parsed = GuardExpressionParser::parse(grd);
-            if (!parsed.cpp_type.empty()) {
-                guard_name = parsed.cpp_type;
-                for (const auto& detail : parsed.atomic_guard_details) {
-                    model.add_guard(detail.name, "", detail.expression, detail.expression);
-                }
-                for (const auto& atomic : parsed.atomic_guards) {
-                    model.add_guard(atomic);
-                }
-            }
-        }
+    std::string raw_guard;
+    std::size_t open_bracket = std::string::npos;
+    std::size_t close_bracket = std::string::npos;
+    if (detail::extract_balanced_square_brackets(label, open_bracket, close_bracket)) {
+        raw_guard = std::string(trim(label.substr(open_bracket + 1, close_bracket - open_bracket - 1)));
         label = label.substr(0, open_bracket) + label.substr(close_bracket + 1);
     }
 
@@ -377,6 +447,18 @@ void PlantUmlParser::parse_internal_transition(std::string_view line, FsmIr& mod
     const std::string event_name = sanitize_identifier(raw_event);
     if (event_name.empty()) {
         return;
+    }
+
+    std::optional<ActionSignature> parsed_action;
+    if (!raw_action.empty()) {
+        std::string fallback = "action_" + state_name + "_" + event_name;
+        if (raw_event == "entry" || event_name == "entry") {
+            fallback = "entry_" + state_name;
+        } else if (raw_event == "exit" || event_name == "exit") {
+            fallback = "exit_" + state_name;
+        }
+        parsed_action = DiagramActionParser::parse_action_block(raw_action, fallback);
+        detail::disambiguate_synthesized_action(model, *parsed_action);
     }
 
     model.add_state(state_name, parent_for_state);
@@ -412,7 +494,7 @@ void PlantUmlParser::parse_internal_transition(std::string_view line, FsmIr& mod
     trans.source = state_name;
     trans.target = state_name;
     trans.event = event_name;
-    trans.guard = guard_name;
+    detail::apply_parsed_guard(model, trans, raw_guard, state_name, state_name);
     if (parsed_action) {
         trans.transition_action = *parsed_action;
     }
@@ -484,6 +566,9 @@ bool PlantUmlParser::parse_transition_line(std::string_view line, FsmIr& model, 
     }
 
     std::string dst = sanitize_identifier(dst_raw);
+    if (is_history && dst.empty() && !current_parent.empty()) {
+        dst = current_parent;
+    }
 
     // Check for final state State -> [*]
     if (dst_part == "[*]") {
@@ -499,7 +584,8 @@ bool PlantUmlParser::parse_transition_line(std::string_view line, FsmIr& model, 
     // Parse Event, Guard, Action, Priority from label:
     // Format: EventName (prio=1) [GuardName] / ActionName
     std::string event_name;
-    std::optional<std::string> guard_name;
+    std::string raw_event_change_expr;
+    std::string raw_guard;
     std::optional<ActionSignature> parsed_action;
     std::uint32_t priority = 0;
 
@@ -519,43 +605,37 @@ bool PlantUmlParser::parse_transition_line(std::string_view line, FsmIr& model, 
         }
 
         // Check for Action: / ActionName
+        std::string raw_action;
         const auto slash_pos = DiagramActionParser::find_action_slash(label);
         if (slash_pos != std::string::npos) {
-            const std::string act = std::string(trim(label.substr(slash_pos + 1)));
-            if (!act.empty()) {
-                parsed_action = DiagramActionParser::parse_action_block(act, "action_" + src + "_" + dst);
-            }
+            raw_action = std::string(trim(label.substr(slash_pos + 1)));
             label = label.substr(0, slash_pos);
         }
 
         // Check for Guard: [GuardName]
-        const auto open_bracket = label.find('[');
-        const auto close_bracket = label.find(']');
-        if (open_bracket != std::string::npos && close_bracket != std::string::npos && close_bracket > open_bracket) {
-            std::string raw_guard = label.substr(open_bracket + 1, close_bracket - open_bracket - 1);
-            auto parsed = GuardExpressionParser::parse(raw_guard);
-            if (!parsed.cpp_type.empty()) {
-                guard_name = parsed.cpp_type;
-                for (const auto& detail : parsed.atomic_guard_details) {
-                    model.add_guard(detail.name, "", detail.expression, detail.expression);
-                }
-                for (const auto& atomic : parsed.atomic_guards) {
-                    model.add_guard(atomic);
-                }
-            } else {
-                std::string g = std::string(trim(raw_guard));
-                if (!g.empty()) {
-                    guard_name = sanitize_identifier(g);
-                    model.add_guard(*guard_name);
-                }
-            }
+        std::size_t open_bracket = std::string::npos;
+        std::size_t close_bracket = std::string::npos;
+        if (detail::extract_balanced_square_brackets(label, open_bracket, close_bracket)) {
+            raw_guard = std::string(trim(label.substr(open_bracket + 1, close_bracket - open_bracket - 1)));
             label = label.substr(0, open_bracket) + label.substr(close_bracket + 1);
         }
 
-        // Remaining is EventName
+        // Remaining is EventName (or ChangeTrigger when(...))
         const std::string evt = std::string(trim(label));
         if (!evt.empty()) {
-            event_name = sanitize_identifier(evt);
+            static const std::regex when_ev_regex(R"(^when\s*\((.+)\)$)", std::regex::icase);
+            std::smatch wm;
+            if (std::regex_match(evt, wm, when_ev_regex)) {
+                raw_event_change_expr = std::string(trim(wm[1].str()));
+            } else {
+                event_name = sanitize_identifier(evt);
+            }
+        }
+
+        if (!raw_action.empty()) {
+            const std::string fallback = "action_" + src + "_" + dst + (event_name.empty() ? "" : "_" + event_name);
+            parsed_action = DiagramActionParser::parse_action_block(raw_action, fallback);
+            detail::disambiguate_synthesized_action(model, *parsed_action);
         }
     }
 
@@ -585,7 +665,32 @@ bool PlantUmlParser::parse_transition_line(std::string_view line, FsmIr& model, 
     trans.source = src;
     trans.target = dst;
     trans.event = event_name;
-    trans.guard = guard_name;
+    if (!raw_event_change_expr.empty()) {
+        trans.trigger = ChangeTrigger(raw_event_change_expr, true);
+    } else if (!event_name.empty()) {
+        static const std::regex time_ev_regex(R"(^(after|every)_([0-9]+)(ms|us|s|m)$)", std::regex::icase);
+        std::smatch tm;
+        if (std::regex_match(event_name, tm, time_ev_regex)) {
+            std::string kw = tm[1].str();
+            std::transform(kw.begin(), kw.end(), kw.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            const TimeTriggerKind tkind = (kw == "every") ? TimeTriggerKind::Every : TimeTriggerKind::After;
+            const std::uint64_t val = static_cast<std::uint64_t>(std::stoull(tm[2].str()));
+            std::string u = tm[3].str();
+            std::transform(u.begin(), u.end(), u.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (u == "us") {
+                trans.trigger = TimeTrigger(tkind, val, TimeUnit::Microseconds);
+            } else if (u == "s") {
+                trans.trigger = TimeTrigger(tkind, val, TimeUnit::Seconds);
+            } else if (u == "m") {
+                trans.trigger = TimeTrigger(tkind, val, TimeUnit::Minutes);
+            } else {
+                trans.trigger = TimeTrigger(tkind, val, TimeUnit::Milliseconds);
+            }
+        }
+    }
+    detail::apply_parsed_guard(model, trans, raw_guard, src, dst);
     if (parsed_action) {
         trans.transition_action = *parsed_action;
     }

@@ -5,6 +5,10 @@
 
 #include <gtest/gtest.h>
 
+#include <random>
+#include <string>
+#include <vector>
+
 #include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm::diagnostic;
@@ -107,6 +111,147 @@ TEST(PassManager, SampledChangeTriggerAndSubmachineWrappers_ExecuteCleanly) {
     EXPECT_EQ(pm.get_stats()[0].pass_name, "SampledChangeTrigger");
     EXPECT_EQ(pm.get_stats()[1].pass_name, "SubmachineInlining");
     EXPECT_TRUE(std::holds_alternative<AnonymousTrigger>(ir.transitions[0].trigger));
+}
+
+/**
+ * @brief Verify no-op transformation wrappers satisfy IPass::run() contract and analysis passes preserve IR.
+ * @scenario Run lowering/optimization wrappers on a minimal IR with no matching constructs alongside analysis passes.
+ * @expected Transformation wrappers return true (not fatal failure) and analysis stats mark modified_ir == false.
+ */
+TEST(PassManager, NoOpTransformationWrappersReturnSuccessAndAnalyticalPreserveIr) {
+    FsmIr ir;
+    ir.name = "MinimalPassManagerIr";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+
+    PassManager pm;
+    pm.add_pass(std::make_unique<SemanticValidationPass>());
+    pm.add_pass(std::make_unique<HistoryLoweringPassWrapper>());
+    pm.add_pass(std::make_unique<ForkJoinLoweringPassWrapper>());
+    pm.add_pass(std::make_unique<DeferredEventLoweringPassWrapper>());
+    pm.add_pass(std::make_unique<BoundaryActionFusionPassWrapper>());
+    pm.add_pass(std::make_unique<OrthogonalProductPassWrapper>());
+    pm.add_pass(std::make_unique<ChoiceCompletenessPass>());
+    pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
+    pm.add_pass(std::make_unique<WcetAnalysisPassWrapper>());
+    pm.add_pass(std::make_unique<EFSMDataPathPass>(false));
+
+    DiagnosticEngine diag;
+    EXPECT_TRUE(pm.run(ir, diag));
+    ASSERT_EQ(pm.get_stats().size(), 10u);
+    EXPECT_FALSE(pm.get_stats()[0].modified_ir);
+    EXPECT_FALSE(pm.get_stats()[6].modified_ir);
+    EXPECT_FALSE(pm.get_stats()[7].modified_ir);
+    EXPECT_FALSE(pm.get_stats()[8].modified_ir);
+    EXPECT_FALSE(pm.get_stats()[9].modified_ir);
+}
+
+/**
+ * @brief Verify PassManager central registry instantiates all registered built-in passes.
+ * @scenario Iterate over PassManager::registered_pass_names() and call create_pass_by_name().
+ * @expected Every registered pass name resolves to a valid IPass instance, and unknown names return nullptr.
+ */
+TEST(PassManager, CentralPassRegistry_InstantiatesAllRegisteredPasses) {
+    auto names = PassManager::registered_pass_names();
+    EXPECT_GE(names.size(), 28u);
+    for (std::string_view name : names) {
+        auto pass = PassManager::create_pass_by_name(name, "cat");
+        ASSERT_NE(pass, nullptr) << "Failed to instantiate registered pass: " << name;
+        EXPECT_FALSE(pass->name().empty());
+    }
+    EXPECT_EQ(PassManager::create_pass_by_name("non-existent-pass-xyz"), nullptr);
+}
+
+/**
+ * @brief Regression: 7-stage pipeline must preserve `deferred_events` for the native C++ runtime FIFO.
+ * @scenario Run `PassManager::create_verified_7stage_pipeline(true)` on a model with `Busy` deferring `EvWork`.
+ * @expected `Busy->deferred_events` still contains `EvWork` so the runtime can enqueue and recall it.
+ */
+TEST(PassManager, SevenStagePipeline_PreservesNativeDeferredEvents) {
+    FsmIr ir;
+    ir.name = "DeferredNative";
+    ir.initial_state = "Busy";
+    StateNode busy("Busy");
+    busy.deferred_events.push_back("EvWork");
+    ir.add_state(std::move(busy));
+    ir.add_state("Ready");
+    ir.add_state("Processing");
+    ir.add_event("EvDone");
+    ir.add_event("EvWork");
+    ir.add_transition(TransitionEdge("Busy", "Ready", "EvDone"));
+    ir.add_transition(TransitionEdge("Ready", "Processing", "EvWork"));
+
+    auto pm = PassManager::create_verified_7stage_pipeline(true);
+    DiagnosticEngine diag;
+    ASSERT_TRUE(pm.run(ir, diag));
+
+    const auto* busy_after = ir.find_state("Busy");
+    ASSERT_NE(busy_after, nullptr);
+    ASSERT_EQ(busy_after->deferred_events.size(), 1u);
+    EXPECT_EQ(busy_after->deferred_events[0], "EvWork");
+}
+
+/**
+ * @brief Property-based fuzz test: 40 deterministic randomized hierarchical/guarded/cyclic FsmIr models
+ *        must survive the full 7-stage PassManager pipeline without crashing or losing initial_state.
+ */
+TEST(PassManager, RandomizedFsmIrPropertyFuzz_PreservesInvariantsWithoutCrash) {
+    std::mt19937 rng(0xF5C2026u);
+    for (int seed = 0; seed < 40; ++seed) {
+        FsmIr ir;
+        ir.name = "RandFsm_" + std::to_string(seed);
+        ir.initial_state = "S0";
+        ir.add_variable(VariableDefinition("x", DataType::int32(), "0"));
+        ir.add_variable(VariableDefinition("flag", DataType::boolean(), "true"));
+
+        const int num_states = 4 + static_cast<int>(rng() % 6);
+        for (int i = 0; i < num_states; ++i) {
+            StateNode st("S" + std::to_string(i));
+            if (i == 1 && (seed % 3 == 0)) {
+                st.is_composite = true;
+                st.has_history = (seed % 2 == 0);
+                st.initial_sub_state = "Sub0";
+            }
+            ir.add_state(std::move(st));
+        }
+        if (seed % 3 == 0) {
+            ir.add_state(StateNode("Sub0", "", "S1"));
+            ir.add_state(StateNode("Sub1", "", "S1"));
+        }
+
+        const std::vector<std::string> events = {"EvA", "EvB", "EvC"};
+        for (const auto& ev : events) {
+            ir.add_event(ev);
+        }
+        const std::vector<std::string> guards = {"", "true", "x > 0", "flag == true", "x >= 0 && flag"};
+
+        const int num_trans = 4 + static_cast<int>(rng() % 10);
+        for (int t = 0; t < num_trans; ++t) {
+            int src = static_cast<int>(rng() % static_cast<unsigned>(num_states));
+            int dst = static_cast<int>(rng() % static_cast<unsigned>(num_states));
+            const auto& ev = events[rng() % events.size()];
+            const auto& g = guards[rng() % guards.size()];
+            TransitionEdge edge("S" + std::to_string(src), "S" + std::to_string(dst), ev);
+            if (!g.empty()) {
+                edge.set_guard(g);
+            }
+            if (t % 4 == 0) {
+                edge.kind = TransitionEdgeKind::Internal;
+                edge.target = edge.source;
+            }
+            ActionSignature act("act_" + std::to_string(t));
+            act.assignments.emplace_back(LValueTarget("x"), "1", AssignmentOp::AddAssign);
+            edge.transition_action = act;
+            ir.add_transition(std::move(edge));
+        }
+
+        auto pm = PassManager::create_verified_7stage_pipeline(true);
+        DiagnosticEngine diag;
+        EXPECT_NO_THROW({ (void)pm.run(ir, diag); }) << "seed=" << seed;
+        EXPECT_NE(ir.find_state(ir.initial_state), nullptr) << "seed=" << seed;
+        // Second run must remain stable and not crash
+        EXPECT_NO_THROW({ (void)pm.run(ir, diag); }) << "idempotency seed=" << seed;
+    }
 }
 
 }  // namespace

@@ -59,7 +59,8 @@ class Sysml2Parser : public IParser {
                                   SysmlBlockKind& out_kind, Sysml2SymbolResolver& symbol_resolver);
 
     static bool parse_transition_statement(const std::string& stmt, FsmIr& model,
-                                           const std::vector<std::string>& state_stack);
+                                           const std::vector<std::string>& state_stack,
+                                           const Sysml2SymbolResolver* symbol_resolver = nullptr);
 };
 
 }  // namespace fsm::frontend::formal

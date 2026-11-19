@@ -266,10 +266,10 @@ std::string Sysml2Parser::map_sysml_type_to_cpp(std::string_view sysml_type, con
     if (colon_pos != std::string::npos) {
         t = t.substr(colon_pos + 2);
     }
-    if (t == "Integer" || t == "Natural" || t == "Positive" || t == "int" || t == "uint32") {
+    if (t == "Integer" || t == "Natural" || t == "Positive" || t == "uint32") {
         return "uint32_t";
     }
-    if (t == "Int32" || t == "int32") {
+    if (t == "int" || t == "Int32" || t == "int32") {
         return "int32_t";
     }
     if (t == "Real" || t == "Float" || t == "float") {
@@ -303,14 +303,78 @@ std::string Sysml2Parser::to_pascal_case(const std::string& str) {
     return res.empty() ? "Custom" : res;
 }
 
+static bool try_parse_assignment_statement(const std::string& statement, std::vector<ActionAssignment>& assignments) {
+    static const std::regex assign_regex(
+        R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*(=|\+=|-=|\*=|\/=)\s*(.+)$)",
+        std::regex::optimize);
+    static const std::regex inc_regex(
+        R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*(\+\+|--)$)",
+        std::regex::optimize);
+
+    auto trim_ws = [](std::string_view sv) -> std::string {
+        size_t first = sv.find_first_not_of(" \t\r\n");
+        if (first == std::string_view::npos) {
+            return "";
+        }
+        size_t last = sv.find_last_not_of(" \t\r\n");
+        return std::string(sv.substr(first, last - first + 1));
+    };
+
+    auto sanitize_dotted_path = [](const std::string& path) -> std::string {
+        std::string res;
+        std::size_t start = 0;
+        while (start <= path.size()) {
+            const std::size_t dot = path.find('.', start);
+            if (!res.empty()) {
+                res.push_back('.');
+            }
+            if (dot == std::string::npos) {
+                res += sanitize_identifier(path.substr(start));
+                break;
+            }
+            res += sanitize_identifier(path.substr(start, dot - start));
+            start = dot + 1;
+        }
+        return res;
+    };
+
+    std::smatch assign_match;
+    if (std::regex_match(statement, assign_match, assign_regex)) {
+        std::string scope_prefix = assign_match[1].str();
+        std::string var_path = sanitize_dotted_path(assign_match[2].str());
+        std::string op = assign_match[3].str();
+        std::string rhs = trim_ws(assign_match[4].str());
+        LValueTarget tgt(scope_prefix + var_path);
+        if (op == "=") {
+            assignments.push_back({tgt, rhs});
+        } else if (op == "+=") {
+            assignments.push_back({tgt, var_path + " + " + rhs});
+        } else if (op == "-=") {
+            assignments.push_back({tgt, var_path + " - " + rhs});
+        } else if (op == "*=") {
+            assignments.push_back({tgt, var_path + " * (" + rhs + ")"});
+        } else if (op == "/=") {
+            assignments.push_back({tgt, var_path + " / (" + rhs + ")"});
+        }
+        return true;
+    }
+    if (std::regex_match(statement, assign_match, inc_regex)) {
+        std::string scope_prefix = assign_match[1].str();
+        std::string var_path = sanitize_dotted_path(assign_match[2].str());
+        std::string op = assign_match[3].str();
+        LValueTarget tgt(scope_prefix + var_path);
+        assignments.push_back({tgt, (op == "++") ? (var_path + " + 1") : (var_path + " - 1")});
+        return true;
+    }
+    return false;
+}
+
 bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, std::vector<std::string>& state_stack,
                                      std::vector<std::string>& package_stack,
                                      std::vector<std::size_t>& package_push_counts, std::string& current_item_def,
                                      std::string& current_enum_def, std::string& current_struct_def,
                                      std::string& error_message, size_t line_number, bool is_block_open,
                                      SysmlBlockKind& out_kind, Sysml2SymbolResolver& symbol_resolver) {
-    (void)error_message;
-    (void)line_number;
     const std::string stmt = normalize_whitespace(raw_stmt);
     out_kind = SysmlBlockKind::ActionBlock;
     if (stmt.empty()) {
@@ -413,11 +477,14 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    // 2a-2. Enum Literal: enum <LitName> [ = <val> ]
-    static const std::regex enum_lit_regex(R"(^enum\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*=\s*(-?\d+))?)",
+    // 2a-2. Enum Literal: [enum] <LitName> [ = <val> ]
+    static const std::regex enum_lit_regex(R"(^(?:enum\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*=\s*(-?\d+))?$)",
                                            std::regex::optimize);
-    if (!current_enum_def.empty() && std::regex_search(stmt, match, enum_lit_regex)) {
+    if (!current_enum_def.empty() && std::regex_match(stmt, match, enum_lit_regex)) {
         const std::string lit_name = sanitize_identifier(match[1].str());
+        if (lit_name == "doc" || lit_name == "comment" || lit_name == "attribute") {
+            return true;
+        }
         std::optional<int64_t> val = std::nullopt;
         if (match[2].matched) {
             try {
@@ -625,8 +692,8 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    // 4c. Decide / Decision pseudostate node: decide <ChoiceName>;
-    static const std::regex decide_regex(R"(^decide\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
+    // 4c. Decide / Decision / Choice pseudostate node: decide <ChoiceName>; or choice <ChoiceName>;
+    static const std::regex decide_regex(R"(^(?:decide|choice)\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
     if (std::regex_search(stmt, match, decide_regex)) {
         const std::string choice_name = sanitize_identifier(match[1].str());
         const std::string parent_name = state_stack.empty() ? "" : state_stack.back();
@@ -647,7 +714,34 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
+    // 4d. History pseudostate declaration: [deep|shallow] history state <HistName>;
+    static const std::regex history_state_decl_regex(
+        R"(^(?:(deep|shallow)\s+)?history\s+state\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
+    if (std::regex_search(stmt, match, history_state_decl_regex)) {
+        const bool is_deep = match[1].matched && match[1].str() == "deep";
+        const std::string hist_name = sanitize_identifier(match[2].str());
+        const std::string parent_name = state_stack.empty() ? "" : state_stack.back();
+        if (!parent_name.empty()) {
+            if (auto* pst = model.find_state_mut(parent_name)) {
+                pst->has_history = true;
+                if (is_deep) {
+                    pst->has_deep_history = true;
+                }
+            }
+            symbol_resolver.register_history_pseudostate(parent_name + "." + hist_name, parent_name, is_deep);
+            symbol_resolver.register_history_pseudostate(hist_name, parent_name, is_deep);
+        }
+        return true;
+    }
+
     // 5. state <Name> (composite or leaf, optional parallel)
+    static const std::regex digit_state_decl_regex(R"(^(?:parallel\s+)?state\s+([0-9][A-Za-z0-9_]*))",
+                                                   std::regex::optimize);
+    if (std::regex_search(stmt, match, digit_state_decl_regex)) {
+        error_message =
+            "Invalid SysML v2 state identifier '" + match[1].str() + "': identifiers cannot start with a digit";
+        return false;
+    }
     static const std::regex state_decl_regex(R"(^(parallel\s+)?state\s+([A-Za-z_][A-Za-z0-9_]*))",
                                              std::regex::optimize);
     if (std::regex_search(stmt, match, state_decl_regex)) {
@@ -657,11 +751,17 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         auto* existing = model.find_state_mut(state_name);
         if (existing != nullptr) {
             existing->parent_state = parent_name;
+            if (!parent_name.empty()) {
+                existing->pinned_parent = true;
+            }
             if (is_parallel) {
                 existing->kind = StateKind::Parallel;
             }
         } else {
             auto& st = model.add_state(state_name, parent_name);
+            if (!parent_name.empty()) {
+                st.pinned_parent = true;
+            }
             if (is_parallel) {
                 st.kind = StateKind::Parallel;
             }
@@ -725,6 +825,35 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
     }
 
     // 7b. State Lifecycle Actions: entry action <Act>; / exit action <Act>;
+    auto try_parse_send_via = [&](const std::string& send_stmt, ActionSignature& out_sig) -> bool {
+        static const std::regex block_send_regex(
+            R"(^(?:do\s+)?send\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s+via\s+([A-Za-z_][A-Za-z0-9_]*)$)",
+            std::regex::optimize);
+        std::smatch sm;
+        if (!std::regex_match(send_stmt, sm, block_send_regex)) {
+            return false;
+        }
+        const std::string sig_name = sanitize_identifier(sm[1].str());
+        const std::string args_str = sm[2].matched ? trim(sm[2].str()) : "";
+        const std::string port_name = sanitize_identifier(sm[3].str());
+        if (model.find_port(port_name) == nullptr) {
+            model.ports.emplace_back(port_name, DataType{PrimitiveTypeKind::UInt32}, PortDirection::Out);
+        }
+        if (model.find_signal(sig_name) == nullptr) {
+            model.signals.emplace_back(sig_name);
+        }
+        out_sig.name = "send_" + sig_name + "_via_" + port_name;
+        out_sig.invocation = port_name + ".send(" + sig_name + (args_str.empty() ? "" : (", " + args_str)) + ")";
+        SignalEmitOp emit_op;
+        emit_op.signal_name = sig_name;
+        emit_op.target_port = port_name;
+        if (!args_str.empty()) {
+            emit_op.arguments.push_back(args_str);
+        }
+        out_sig.instructions.emplace_back(std::move(emit_op));
+        return true;
+    };
+
     auto parse_lifecycle_action_block = [&](const std::string& block_content, const std::string& explicit_name,
                                             const std::string& default_name,
                                             std::vector<ActionSignature>& target_actions) {
@@ -732,49 +861,18 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         std::stringstream ss(trimmed_block);
         std::string statement;
         std::vector<ActionAssignment> assignments;
+        std::vector<ActionSignature> send_actions;
         std::vector<std::string> standalone_calls;
-
-        static const std::regex assign_regex(
-            R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(=|\+=|-=|\*=|\/=)\s*(.+)$)",
-            std::regex::optimize);
-        static const std::regex inc_regex(
-            R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(\+\+|--)$)",
-            std::regex::optimize);
 
         while (std::getline(ss, statement, ';')) {
             statement = trim(statement);
             if (statement.empty())
                 continue;
 
-            std::smatch assign_match;
-            if (std::regex_match(statement, assign_match, assign_regex)) {
-                std::string scope_prefix = assign_match[1].str();
-                std::string var = sanitize_identifier(assign_match[2].str());
-                std::string op = assign_match[3].str();
-                std::string rhs = trim(assign_match[4].str());
-                LValueTarget tgt(scope_prefix + var);
-                if (op == "=") {
-                    assignments.push_back({tgt, rhs});
-                } else if (op == "+=") {
-                    assignments.push_back({tgt, var + " + " + rhs});
-                } else if (op == "-=") {
-                    assignments.push_back({tgt, var + " - " + rhs});
-                } else if (op == "*=") {
-                    assignments.push_back({tgt, var + " * (" + rhs + ")"});
-                } else if (op == "/=") {
-                    assignments.push_back({tgt, var + " / (" + rhs + ")"});
-                }
-            } else if (std::regex_match(statement, assign_match, inc_regex)) {
-                std::string scope_prefix = assign_match[1].str();
-                std::string var = sanitize_identifier(assign_match[2].str());
-                std::string op = assign_match[3].str();
-                LValueTarget tgt(scope_prefix + var);
-                if (op == "++") {
-                    assignments.push_back({tgt, var + " + 1"});
-                } else {
-                    assignments.push_back({tgt, var + " - 1"});
-                }
-            } else {
+            ActionSignature send_sig;
+            if (try_parse_send_via(statement, send_sig)) {
+                send_actions.push_back(std::move(send_sig));
+            } else if (!try_parse_assignment_statement(statement, assignments)) {
                 std::string act_call = statement;
                 if (act_call.ends_with("()")) {
                     act_call.resize(act_call.size() - 2);
@@ -796,12 +894,17 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
             target_actions.push_back(std::move(sig));
         }
 
+        for (auto& s_act : send_actions) {
+            model.add_action(s_act.name);
+            target_actions.push_back(std::move(s_act));
+        }
+
         for (const auto& call : standalone_calls) {
             model.add_action(call);
             target_actions.emplace_back(call);
         }
 
-        if (!has_assignments && standalone_calls.empty()) {
+        if (!has_assignments && send_actions.empty() && standalone_calls.empty()) {
             std::string act_name = !explicit_name.empty() ? explicit_name : default_name;
             model.add_action(act_name);
             target_actions.emplace_back(act_name);
@@ -977,18 +1080,46 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         FormalProperty prop;
         prop.name = sanitize_identifier(match[1].str());
         prop.raw_formula = trim(match[2].str());
+        for (const auto& existing : model.properties) {
+            if (existing.name == prop.name) {
+                return true;
+            }
+        }
         prop.ast = directive::LtlPropertyParser::parse(prop.raw_formula);
         prop.id = compute_deterministic_id(prop.name + ":" + prop.raw_formula);
         model.add_property(std::move(prop));
         return true;
     }
 
-    // 11. Transitions: transition [<Name>] [first <Src>] [accept <Evt>] [if <Guard>] [do <Act>] [then <Dst>]
-    if (stmt.rfind("transition", 0) == 0 || stmt.find("accept") != std::string::npos ||
-        stmt.find("then") != std::string::npos || stmt.find("first") != std::string::npos ||
-        stmt.find("after") != std::string::npos || stmt.find("fork") != std::string::npos ||
-        stmt.find("join") != std::string::npos) {
-        return parse_transition_statement(stmt, model, state_stack);
+    // 11. Transitions: [local] transition [<Name>] [first <Src>] [accept <Evt>] [if <Guard>] [do <Act>] [then <Dst>]
+    const bool starts_with_transition = (stmt.rfind("transition", 0) == 0 || stmt.rfind("local transition", 0) == 0);
+    if (starts_with_transition || stmt.find("accept") != std::string::npos || stmt.find("then") != std::string::npos ||
+        stmt.find("first") != std::string::npos || stmt.find("after") != std::string::npos ||
+        stmt.find("fork") != std::string::npos || stmt.find("join") != std::string::npos) {
+        if (starts_with_transition && stmt.find("->") != std::string::npos && stmt.find("then") == std::string::npos &&
+            stmt.find(" to ") == std::string::npos) {
+            error_message =
+                "Line " + std::to_string(line_number) +
+                ": Invalid SysML v2 transition syntax ('->' is not supported; use 'transition [first <Src>] "
+                "[accept <Evt>] then <Dst>')";
+            return false;
+        }
+        static const std::regex digit_endpoint_regex(R"(\b(?:first|from|then|to)\s+([0-9][A-Za-z0-9_]*))",
+                                                     std::regex::optimize);
+        std::smatch digit_match;
+        if (std::regex_search(stmt, digit_match, digit_endpoint_regex)) {
+            error_message = "Line " + std::to_string(line_number) + ": Invalid SysML v2 state identifier '" +
+                            digit_match[1].str() + "': identifiers cannot start with a digit";
+            return false;
+        }
+        if (!parse_transition_statement(stmt, model, state_stack, &symbol_resolver)) {
+            if (!error_message.empty() && line_number > 0 && error_message.find("line ") == std::string::npos &&
+                error_message.find("Line ") == std::string::npos) {
+                error_message = "Line " + std::to_string(line_number) + ": " + error_message;
+            }
+            return false;
+        }
+        return true;
     }
 
     return true;
@@ -1016,7 +1147,8 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
  * @return True if parsing succeeded.
  */
 bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& model,
-                                              const std::vector<std::string>& state_stack) {
+                                              const std::vector<std::string>& state_stack,
+                                              const Sysml2SymbolResolver* symbol_resolver) {
     std::string source;
     std::string target;
     std::string event;
@@ -1024,9 +1156,12 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     std::string action;
     std::uint32_t priority = 0;
     std::optional<TimeTrigger> time_trigger;
+    std::optional<ChangeTrigger> change_trigger;
 
     // 1. Optional transition name matching
-    static const std::regex trans_name_regex(R"(^transition\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
+    static const std::regex local_prefix_regex(R"(^local\s+transition\b)", std::regex::optimize);
+    static const std::regex trans_name_regex(R"(^(?:local\s+)?transition\s+([A-Za-z_][A-Za-z0-9_]*))",
+                                             std::regex::optimize);
     std::string trans_name;
     std::smatch match;
     if (std::regex_search(stmt, match, trans_name_regex)) {
@@ -1053,15 +1188,19 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     static const std::regex after_regex(
         R"(\b(?:accept\s+)?after\s*(?:\(\s*(\d+(?:\.\d+)?)\s*(?:\[(?:SI::|ISQ::)?([A-Za-z]+)\]|([A-Za-z]+))?\s*\)|(\d+(?:\.\d+)?)\s*(?:\[(?:SI::|ISQ::)?([A-Za-z]+)\]|([A-Za-z]+))?))",
         std::regex::optimize);
+    static const std::regex every_regex(
+        R"(\b(?:accept\s+)?every\s*(?:\(\s*(\d+(?:\.\d+)?)\s*(?:\[(?:SI::|ISQ::)?([A-Za-z]+)\]|([A-Za-z]+))?\s*\)|(\d+(?:\.\d+)?)\s*(?:\[(?:SI::|ISQ::)?([A-Za-z]+)\]|([A-Za-z]+))?))",
+        std::regex::optimize);
     static const std::regex at_regex(R"(\b(?:accept\s+)?at\s*(?:\(\s*([^)]+)\s*\)|([A-Za-z0-9_:]+)))",
                                      std::regex::optimize);
+    static const std::regex change_when_regex(R"(\b(?:accept\s+)?when\s*\(([^)]+)\))", std::regex::optimize);
     static const std::regex accept_regex(
         R"(\b(?:accept|when)\s+(?:([A-Za-z_][A-Za-z0-9_]*)\s*:\s*)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
-    static const std::regex if_regex(R"(\bif\s+([^;]+?)(?=\s+(?:do\b|then\b|to\b|;|$)))", std::regex::optimize);
+    static const std::regex if_regex(R"(\bif\s+([^;]+?)(?=\s+(?:do\b|then\b|to\b)|;|$))", std::regex::optimize);
     static const std::regex do_block_regex(R"(\bdo\s*(?:action\s+)?(?:([A-Za-z_][A-Za-z0-9_]*)\s*)?\{([^}]+)\})",
                                            std::regex::optimize);
     static const std::regex do_regex(R"(\bdo\s+(?:action\s+)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
-    static const std::regex then_regex(R"(\b(?:then|to)\s+([A-Za-z_][A-Za-z0-9_\[\]\*]*))", std::regex::optimize);
+    static const std::regex then_regex(R"(\b(?:then|to)\s+([A-Za-z_][A-Za-z0-9_.\[\]\*]*))", std::regex::optimize);
 
     // 3. Source state detection (explicit 'first/from <State>' or inherited from parent scope)
     if (std::regex_search(stmt, match, first_regex)) {
@@ -1070,41 +1209,52 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
         source = state_stack.back();
     }
 
-    // 4. Trigger resolution: Time triggers (after, at) or Event triggers (accept, when)
-    if (std::regex_search(stmt, match, after_regex)) {
-        std::string val_str = match[1].matched ? match[1].str() : match[4].str();
-        std::string unit_str = match[2].matched   ? match[2].str()
-                               : match[3].matched ? match[3].str()
-                               : match[5].matched ? match[5].str()
-                               : match[6].matched ? match[6].str()
-                                                  : "ms";
+    auto parse_duration_ms_match = [](const std::smatch& m) -> uint64_t {
+        std::string val_str = m[1].matched ? m[1].str() : m[4].str();
+        std::string unit_str = m[2].matched   ? m[2].str()
+                               : m[3].matched ? m[3].str()
+                               : m[5].matched ? m[5].str()
+                               : m[6].matched ? m[6].str()
+                                              : "ms";
         double raw_val = 0.0;
         try {
             raw_val = std::stod(val_str);
         } catch (const std::exception&) {
             raw_val = 1.0;
         }
-        // Apply unit multiplier to raw_val BEFORE converting to integer milliseconds.
-        // Without this, fractional values like `after 1.5 s` would be truncated to
-        // raw_val=1.5 -> 1 ms instead of the correct 1500 ms.
-        double duration_ms_f = raw_val;  // default: already in milliseconds
+        double duration_ms_f = raw_val;
         if (unit_str == "s" || unit_str == "sec" || unit_str == "seconds") {
             duration_ms_f = raw_val * 1000.0;
         } else if (unit_str == "min") {
             duration_ms_f = raw_val * 60000.0;
         } else if (unit_str == "h") {
             duration_ms_f = raw_val * 3600000.0;
+        } else if (unit_str == "us" || unit_str == "usec" || unit_str == "microseconds") {
+            duration_ms_f = raw_val / 1000.0;
+        } else if (unit_str == "ns" || unit_str == "nsec" || unit_str == "nanoseconds") {
+            duration_ms_f = raw_val / 1000000.0;
         }
-        uint64_t duration_ms = static_cast<uint64_t>(duration_ms_f + 0.5);  // round to nearest ms
-        if (duration_ms == 0)
-            duration_ms = 1;
+        uint64_t duration_ms = static_cast<uint64_t>(duration_ms_f + 0.5);
+        return duration_ms == 0 ? 1 : duration_ms;
+    };
+
+    // 4. Trigger resolution: Time triggers (after, every, at) or Event triggers (accept, when)
+    if (std::regex_search(stmt, match, after_regex)) {
+        const uint64_t duration_ms = parse_duration_ms_match(match);
         time_trigger = TimeTrigger(TimeTriggerKind::After, duration_ms, TimeUnit::Milliseconds);
         event = "after_" + std::to_string(duration_ms) + "ms";
+    } else if (std::regex_search(stmt, match, every_regex)) {
+        const uint64_t duration_ms = parse_duration_ms_match(match);
+        time_trigger = TimeTrigger(TimeTriggerKind::Every, duration_ms, TimeUnit::Milliseconds);
+        event = "every_" + std::to_string(duration_ms) + "ms";
     } else if (std::regex_search(stmt, match, at_regex)) {
         std::string at_target = match[1].matched ? match[1].str() : match[2].str();
         time_trigger = TimeTrigger(TimeTriggerKind::At, 0, TimeUnit::Milliseconds);
         time_trigger->dynamic_expression = trim(at_target);
         event = "at_" + sanitize_identifier(at_target);
+    } else if (std::regex_search(stmt, match, change_when_regex)) {
+        change_trigger = ChangeTrigger(trim(match[1].str()), true);
+        event.clear();
     } else if (std::regex_search(stmt, match, accept_regex)) {
         event = sanitize_identifier(match[2].str());
     }
@@ -1147,48 +1297,39 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
             if (statement.empty())
                 continue;
 
-            static const std::regex assign_regex(
-                R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(=|\+=|-=|\*=|\/=)\s*(.+)$)",
-                std::regex::optimize);
-            static const std::regex inc_regex(
-                R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(\+\+|--)$)",
-                std::regex::optimize);
-            std::smatch assign_match;
-            if (std::regex_match(statement, assign_match, assign_regex)) {
-                // Variable assignment or compound assignment op
-                std::string scope_prefix = assign_match[1].str();
-                std::string var = sanitize_identifier(assign_match[2].str());
-                std::string op = assign_match[3].str();
-                std::string rhs = trim(assign_match[4].str());
-                LValueTarget tgt(scope_prefix + var);
-                if (op == "=") {
-                    assignments.push_back({tgt, rhs});
-                } else if (op == "+=") {
-                    assignments.push_back({tgt, var + " + " + rhs});
-                } else if (op == "-=") {
-                    assignments.push_back({tgt, var + " - " + rhs});
-                } else if (op == "*=") {
-                    assignments.push_back({tgt, var + " * (" + rhs + ")"});
-                } else if (op == "/=") {
-                    assignments.push_back({tgt, var + " / (" + rhs + ")"});
-                }
-            } else if (std::regex_match(statement, assign_match, inc_regex)) {
-                // Increment or decrement shorthand (++ or --)
-                std::string scope_prefix = assign_match[1].str();
-                std::string var = sanitize_identifier(assign_match[2].str());
-                std::string op = assign_match[3].str();
-                LValueTarget tgt(scope_prefix + var);
-                if (op == "++") {
-                    assignments.push_back({tgt, var + " + 1"});
+            if (!try_parse_assignment_statement(statement, assignments)) {
+                static const std::regex block_send_regex(
+                    R"(^(?:do\s+)?send\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s+via\s+([A-Za-z_][A-Za-z0-9_]*)$)",
+                    std::regex::optimize);
+                std::smatch sm;
+                if (std::regex_match(statement, sm, block_send_regex)) {
+                    const std::string sig_name = sanitize_identifier(sm[1].str());
+                    const std::string args_str = sm[2].matched ? trim(sm[2].str()) : "";
+                    const std::string port_name = sanitize_identifier(sm[3].str());
+                    if (model.find_port(port_name) == nullptr) {
+                        model.ports.emplace_back(port_name, DataType{PrimitiveTypeKind::UInt32}, PortDirection::Out);
+                    }
+                    if (model.find_signal(sig_name) == nullptr) {
+                        model.signals.emplace_back(sig_name);
+                    }
+                    action = "send_" + sig_name + "_via_" + port_name;
+                    ActionSignature sig_action(
+                        action, port_name + ".send(" + sig_name + (args_str.empty() ? "" : (", " + args_str)) + ")");
+                    SignalEmitOp emit_op;
+                    emit_op.signal_name = sig_name;
+                    emit_op.target_port = port_name;
+                    if (!args_str.empty()) {
+                        emit_op.arguments.push_back(args_str);
+                    }
+                    sig_action.instructions.emplace_back(std::move(emit_op));
+                    trans_send_action = std::move(sig_action);
                 } else {
-                    assignments.push_back({tgt, var + " - 1"});
-                }
-            } else {
-                // Standalone action method call
-                std::string act_call = sanitize_identifier(statement);
-                if (!act_call.empty()) {
-                    action = act_call;
-                    model.add_action(act_call);
+                    // Standalone action method call
+                    std::string act_call = sanitize_identifier(statement);
+                    if (!act_call.empty()) {
+                        action = act_call;
+                        model.add_action(act_call);
+                    }
                 }
             }
         }
@@ -1212,6 +1353,24 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
                 action = to_pascal_case(trans_name) + "Action";
             } else {
                 action = "update_state_vars";
+            }
+            if (explicit_action_name.empty()) {
+                auto has_action = [&](const std::string& candidate) {
+                    for (const auto& existing : model.actions) {
+                        if (existing.name == candidate) {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+                if (has_action(action)) {
+                    const std::string base = action;
+                    std::size_t suffix = 2;
+                    while (has_action(base + "_" + std::to_string(suffix))) {
+                        ++suffix;
+                    }
+                    action = base + "_" + std::to_string(suffix);
+                }
             }
             model.add_action(action);
         }
@@ -1244,19 +1403,32 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
         action = sanitize_identifier(match[1].str());
     }
 
-    // 7. Target state and History pseudostate detection ([H] or [H*])
+    // 7. Target state and History pseudostate detection ([H], [H*], .H, .H*)
     bool target_is_history = false;
     bool target_is_deep_history = false;
 
     if (std::regex_search(stmt, match, then_regex)) {
         const std::string raw_target = match[1].str();
-        if (raw_target.find("[H*]") != std::string::npos || raw_target.find("[deep_history]") != std::string::npos) {
+        auto ends_with = [](const std::string& s, const std::string& suffix) {
+            return s.size() >= suffix.size() && s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
+        };
+        if (const auto* hist =
+                symbol_resolver != nullptr ? symbol_resolver->find_history_pseudostate(raw_target) : nullptr) {
+            target = hist->parent_state;
+            target_is_history = true;
+            target_is_deep_history = hist->is_deep;
+        } else if (raw_target.find("[H*]") != std::string::npos ||
+                   raw_target.find("[deep_history]") != std::string::npos || ends_with(raw_target, ".H*") ||
+                   ends_with(raw_target, ".deep_history")) {
             target_is_deep_history = true;
             target_is_history = true;
-            target = sanitize_identifier(raw_target.substr(0, raw_target.find('[')));
-        } else if (raw_target.find("[H]") != std::string::npos || raw_target.find("[history]") != std::string::npos) {
+            const auto pos = raw_target.find_first_of("[.");
+            target = sanitize_identifier(raw_target.substr(0, pos));
+        } else if (raw_target.find("[H]") != std::string::npos || raw_target.find("[history]") != std::string::npos ||
+                   ends_with(raw_target, ".H") || ends_with(raw_target, ".history")) {
             target_is_history = true;
-            target = sanitize_identifier(raw_target.substr(0, raw_target.find('[')));
+            const auto pos = raw_target.find_first_of("[.");
+            target = sanitize_identifier(raw_target.substr(0, pos));
         } else {
             target = sanitize_identifier(raw_target);
         }
@@ -1365,6 +1537,8 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     trans.event = event;
     if (time_trigger.has_value()) {
         trans.trigger = *time_trigger;
+    } else if (change_trigger.has_value()) {
+        trans.trigger = *change_trigger;
     }
     if (!guard.empty()) {
         trans.set_guard(guard);
@@ -1383,9 +1557,16 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     trans.target_is_deep_history = target_is_deep_history;
     trans.priority = priority;
     trans.parent_scope = state_stack.empty() ? "" : state_stack.back();
+    if (trans.parent_scope.empty() && !trans.source.empty()) {
+        if (const auto* src_st = model.find_state(trans.source); src_st != nullptr && !src_st->parent_state.empty()) {
+            trans.parent_scope = src_st->parent_state;
+        }
+    }
 
-    // Distinguish internal from external transitions
-    if (source == target && !event.empty() && !std::regex_search(stmt, then_regex)) {
+    // Distinguish internal, local, and external transitions
+    if (std::regex_search(stmt, local_prefix_regex)) {
+        trans.kind = TransitionEdgeKind::Local;
+    } else if (source == target && !event.empty() && !std::regex_search(stmt, then_regex)) {
         trans.kind = TransitionEdgeKind::Internal;
     } else {
         trans.kind = TransitionEdgeKind::External;

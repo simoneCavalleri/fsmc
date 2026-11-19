@@ -7,13 +7,13 @@
 #include <sstream>
 
 #include "fsm/frontend/directive/directive_parser.hpp"
-#include "fsm/frontend/directive/guard_parser.hpp"
+#include "fsm/ir/guard.hpp"
 
 namespace fsm::backend::diagram {
 
 using namespace fsm::ir;
 using frontend::directive::DirectiveParser;
-using frontend::directive::GuardExpressionParser;
+using ir::GuardExpressionParser;
 
 namespace {
 
@@ -43,12 +43,23 @@ std::string escape_label(const std::string& input) {
     return res;
 }
 
-std::string build_label(const TransitionEdge& trans) {
+std::string build_label(const TransitionEdge& trans, const FsmIr& model) {
     std::string label;
     if (trans.priority > 0) {
         label += "(prio=" + std::to_string(trans.priority) + ")";
     }
-    if (!trans.event.empty() && trans.event != "Anonymous") {
+    if (const auto* ct = std::get_if<ChangeTrigger>(&trans.trigger)) {
+        if (!ct->raw_expression.empty()) {
+            if (!label.empty())
+                label += " ";
+            label += "when(" + ct->raw_expression + ")";
+        }
+    } else if (const auto* tt = std::get_if<TimeTrigger>(&trans.trigger); tt != nullptr && trans.event.empty()) {
+        if (!label.empty())
+            label += " ";
+        label += std::string(tt->kind == TimeTriggerKind::Every ? "every_" : "after_") +
+                 std::to_string(tt->duration_value) + std::string(time_unit_to_string(tt->unit));
+    } else if (!trans.event.empty() && trans.event != "Anonymous") {
         if (!label.empty())
             label += " ";
         label += trans.event;
@@ -56,9 +67,10 @@ std::string build_label(const TransitionEdge& trans) {
     if (trans.guard && !trans.guard->empty()) {
         if (!label.empty())
             label += " ";
-        label += "[" + GuardExpressionParser::to_diagram_string(*trans.guard) + "]";
+        label += "[" + GuardExpressionParser::to_diagram_string(*trans.guard, model.guards) + "]";
     }
-    std::string act = trans.get_action();
+    std::string act =
+        trans.transition_action.has_value() ? format_action_expression(*trans.transition_action) : trans.get_action();
     if (!act.empty()) {
         if (!label.empty())
             label += " ";
@@ -89,13 +101,59 @@ std::string DotSerializer::serialize(const FsmIr& model) {
     }
     for (const auto& port : model.ports) {
         out << "    // @fsm:port name=" << port.name << " type=" << port.type
-            << " dir=" << (port.is_out() ? "out" : (port.direction == PortDirection::InOut ? "inout" : "in")) << "\n";
+            << " dir=" << (port.is_out() ? "out" : (port.direction == PortDirection::InOut ? "inout" : "in"));
+        if (port.physical_unit.has_value()) {
+            out << " unit=\"" << *port.physical_unit << "\"";
+        }
+        if (port.min_value.has_value()) {
+            out << " min=" << *port.min_value;
+        }
+        if (port.max_value.has_value()) {
+            out << " max=" << *port.max_value;
+        }
+        if (!port.constraint.empty()) {
+            out << " constraint=\"" << port.constraint << "\"";
+        }
+        if (!port.description.empty()) {
+            out << " desc=\"" << port.description << "\"";
+        }
+        out << "\n";
     }
     for (const auto& var : model.variables) {
-        out << "    // @fsm:var name=" << var.name << " type=" << var.type << " init=" << var.initial_value << "\n";
+        out << "    // @fsm:var name=" << var.name << " type=" << var.type;
+        if (var.physical_unit.has_value()) {
+            out << " unit=\"" << *var.physical_unit << "\"";
+        }
+        if (!var.initial_value.empty()) {
+            out << " init=" << var.initial_value;
+        }
+        if (var.min_value.has_value()) {
+            out << " min=" << *var.min_value;
+        }
+        if (var.max_value.has_value()) {
+            out << " max=" << *var.max_value;
+        }
+        if (!var.description.empty()) {
+            out << " desc=\"" << var.description << "\"";
+        }
+        out << "\n";
     }
     for (const auto& sig : model.signals) {
-        out << "    // @fsm:signal " << sig.name << "\n";
+        if (sig.attributes.empty()) {
+            out << "    // @fsm:signal " << sig.name << "\n";
+        } else {
+            out << "    // @fsm:signal " << sig.name << "{";
+            for (size_t i = 0; i < sig.attributes.size(); ++i) {
+                if (i > 0)
+                    out << ", ";
+                out << sig.attributes[i].type << " " << sig.attributes[i].name;
+            }
+            out << "}";
+            if (!sig.validators.empty()) {
+                out << " validator=\"" << sig.validators.front() << "\"";
+            }
+            out << "\n";
+        }
     }
     for (const auto& ct : model.custom_types) {
         if (ct.is_enum()) {
@@ -137,26 +195,49 @@ std::string DotSerializer::serialize(const FsmIr& model) {
         if (state.is_composite) {
             std::string comp_label = state.name;
             for (const auto& act : state.entry_actions) {
-                comp_label += "\\n(entry / " + act.name + ")";
+                comp_label += "\\n(entry / " + format_action_expression(act) + ")";
             }
             if (state.do_activity.has_value() && !state.do_activity->empty()) {
                 comp_label += "\\n(do / " + *state.do_activity + ")";
             }
             for (const auto& act : state.exit_actions) {
-                comp_label += "\\n(exit / " + act.name + ")";
+                comp_label += "\\n(exit / " + format_action_expression(act) + ")";
             }
             for (const auto& d_evt : state.deferred_events) {
                 comp_label += "\\n(defer " + d_evt + ")";
             }
 
+            const bool is_parallel = (state.kind == StateKind::Parallel || !state.orthogonal_regions.empty());
+
             out << pad << "subgraph cluster_" << escape_id(state.name) << " {\n";
             out << pad << "    label=\"" << escape_label(comp_label) << "\";\n";
-            out << pad << "    style=\"rounded,filled\";\n";
+            out << pad << "    style=\"" << (is_parallel ? "rounded,dashed,filled" : "rounded,filled") << "\";\n";
             out << pad << "    fillcolor=\"" << (indent % 2 == 1 ? "#f1f5f9" : "#e2e8f0") << "\";\n";
             out << pad << "    color=\"#64748b\";\n";
-            out << pad << "    penwidth=1.5;\n\n";
+            out << pad << "    penwidth=1.5;\n";
+            if (is_parallel) {
+                out << pad << "    // @fsm:parallel\n";
+            }
+            if (!state.traceability_reqs.empty() ||
+                (state.time_invariant.has_value() && !state.time_invariant->empty())) {
+                out << pad << "    // @fsm:state name=" << state.name;
+                if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
+                    out << " invariant=\"" << *state.time_invariant << "\"";
+                }
+                if (!state.traceability_reqs.empty()) {
+                    out << " satisfies=[";
+                    for (size_t r = 0; r < state.traceability_reqs.size(); ++r) {
+                        if (r > 0)
+                            out << ", ";
+                        out << "\"" << state.traceability_reqs[r] << "\"";
+                    }
+                    out << "]";
+                }
+                out << "\n";
+            }
+            out << "\n";
 
-            if (!state.initial_sub_state.empty()) {
+            if (!is_parallel && !state.initial_sub_state.empty()) {
                 std::string init_node = "__start_" + state.name + "__";
                 out << pad << "    " << init_node
                     << " [shape=circle, style=filled, fillcolor=\"#0f172a\", width=0.12, label=\"\"];\n";
@@ -188,9 +269,24 @@ std::string DotSerializer::serialize(const FsmIr& model) {
                 if (p_src == state.name) {
                     emitted_transitions.insert(i);
                     out << pad << "    " << escape_id(trans.source) << " -> " << escape_id(trans.target);
-                    std::string label = build_label(trans);
-                    if (!label.empty()) {
-                        out << " [label=\"" << escape_label(label) << "\"]";
+                    std::string label = build_label(trans, model);
+                    const char* kind_comment = nullptr;
+                    if (trans.kind == TransitionEdgeKind::Internal) {
+                        kind_comment = "internal";
+                    } else if (trans.kind == TransitionEdgeKind::Local) {
+                        kind_comment = "local";
+                    }
+                    if (!label.empty() || kind_comment != nullptr) {
+                        out << " [";
+                        if (!label.empty()) {
+                            out << "label=\"" << escape_label(label) << "\"";
+                        }
+                        if (kind_comment != nullptr) {
+                            if (!label.empty())
+                                out << ", ";
+                            out << "comment=\"" << kind_comment << "\"";
+                        }
+                        out << "]";
                     }
                     out << ";\n";
                 }
@@ -203,18 +299,41 @@ std::string DotSerializer::serialize(const FsmIr& model) {
                 label += "\\n(stay <= " + *state.time_invariant + ")";
             }
             for (const auto& act : state.entry_actions) {
-                label += "\\n(entry / " + act.name + ")";
+                label += "\\n(entry / " + format_action_expression(act) + ")";
             }
             if (state.do_activity.has_value() && !state.do_activity->empty()) {
                 label += "\\n(do / " + *state.do_activity + ")";
             }
             for (const auto& act : state.exit_actions) {
-                label += "\\n(exit / " + act.name + ")";
+                label += "\\n(exit / " + format_action_expression(act) + ")";
             }
             for (const auto& d_evt : state.deferred_events) {
                 label += "\\n(defer " + d_evt + ")";
             }
             out << pad << escape_id(state.name) << " [label=\"" << escape_label(label) << "\"];\n";
+            const bool emit_kind = (state.kind == StateKind::Fork || state.kind == StateKind::Join ||
+                                    state.kind == StateKind::EntryPoint || state.kind == StateKind::ExitPoint ||
+                                    state.kind == StateKind::Final);
+            if (emit_kind || !state.traceability_reqs.empty() ||
+                (state.time_invariant.has_value() && !state.time_invariant->empty())) {
+                out << pad << "// @fsm:state name=" << state.name;
+                if (emit_kind) {
+                    out << " kind=" << state_kind_to_string(state.kind);
+                }
+                if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
+                    out << " invariant=\"" << *state.time_invariant << "\"";
+                }
+                if (!state.traceability_reqs.empty()) {
+                    out << " satisfies=[";
+                    for (size_t r = 0; r < state.traceability_reqs.size(); ++r) {
+                        if (r > 0)
+                            out << ", ";
+                        out << "\"" << state.traceability_reqs[r] << "\"";
+                    }
+                    out << "]";
+                }
+                out << "\n";
+            }
         }
     };
 
@@ -231,9 +350,24 @@ std::string DotSerializer::serialize(const FsmIr& model) {
             continue;
         const auto& trans = model.transitions[i];
         out << "    " << escape_id(trans.source) << " -> " << escape_id(trans.target);
-        std::string label = build_label(trans);
-        if (!label.empty()) {
-            out << " [label=\"" << escape_label(label) << "\"]";
+        std::string label = build_label(trans, model);
+        const char* kind_comment = nullptr;
+        if (trans.kind == TransitionEdgeKind::Internal) {
+            kind_comment = "internal";
+        } else if (trans.kind == TransitionEdgeKind::Local) {
+            kind_comment = "local";
+        }
+        if (!label.empty() || kind_comment != nullptr) {
+            out << " [";
+            if (!label.empty()) {
+                out << "label=\"" << escape_label(label) << "\"";
+            }
+            if (kind_comment != nullptr) {
+                if (!label.empty())
+                    out << ", ";
+                out << "comment=\"" << kind_comment << "\"";
+            }
+            out << "]";
         }
         out << ";\n";
     }

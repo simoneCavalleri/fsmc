@@ -402,4 +402,420 @@ TEST(StateflowParser, FractionalDurationsAndGuardRawExpressions_Preserved) {
     EXPECT_NE(xml.find("temp &gt;= 180.5"), std::string::npos);
 }
 
+/**
+ * @brief Regression: composite state initial_substate is preserved by StateflowParser and StateflowSerializer.
+ * @scenario Parse a Stateflow chart with a composite state using `<transition dst="..."/>` and `initial="..."`,
+ *           then serialize and re-parse it.
+ * @expected Both forms populate `initial_substate` on the composite StateNode and survive roundtrip serialization.
+ */
+TEST(StateflowParser, CompositeInitialSubstate_RoundtripsViaAttributeAndInitialTransition) {
+    const std::string sf_xml = R"(
+        <Stateflow>
+            <chart id="1" name="CompositeInitChart" initial="Off">
+                <state id="10" name="Off"/>
+                <state id="20" name="Active">
+                    <transition id="100" dst="Idle"/>
+                    <state id="21" name="Idle"/>
+                    <state id="22" name="Running"/>
+                </state>
+            </chart>
+        </Stateflow>
+    )";
+
+    StateflowParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err;
+
+    const auto* active = model.find_state("Active");
+    ASSERT_NE(active, nullptr);
+    EXPECT_EQ(active->initial_sub_state, "Idle");
+
+    const std::string serialized = StateflowSerializer::serialize(model);
+    EXPECT_NE(serialized.find("initial=\"Idle\""), std::string::npos);
+
+    FsmIr reparsed;
+    ASSERT_TRUE(parser.parse(serialized, reparsed, err)) << "Re-parse error: " << err;
+    const auto* reparsed_active = reparsed.find_state("Active");
+    ASSERT_NE(reparsed_active, nullptr);
+    EXPECT_EQ(reparsed_active->initial_sub_state, "Idle");
+}
+
+/**
+ * @brief Regression: Stateflow transition action blocks with variable assignments populate
+ * `ActionSignature::assignments`.
+ * @scenario Parse a Stateflow transition with `labelString="EvGo [a &gt; 0 &amp;&amp; b &lt; 10] / { x = a; y += 1 }"`.
+ * @expected `transition_action->assignments` contains `x = a` and `y = y + 1` rather than sanitizing `x = a` as a
+ *           service call name.
+ */
+TEST(StateflowParser, TransitionActionAssignments_PopulatedInActionSignature) {
+    const std::string sf_xml = R"(
+        <Stateflow>
+            <chart id="1" name="SfAssignChart" initial="Idle">
+                <state id="10" name="Idle"/>
+                <state id="20" name="Done"/>
+                <transition src="Idle" dst="Done"
+                    labelString="EvGo [a &gt; 0 &amp;&amp; b &lt; 10] / { x = a; y += 1 }"/>
+            </chart>
+        </Stateflow>
+    )";
+
+    StateflowParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err;
+
+    ASSERT_EQ(model.transitions.size(), 1u);
+    const auto& tr = model.transitions[0];
+    ASSERT_TRUE(tr.transition_action.has_value());
+    ASSERT_EQ(tr.transition_action->assignments.size(), 2u);
+    EXPECT_EQ(tr.transition_action->assignments[0].target.name, "x");
+    EXPECT_EQ(tr.transition_action->assignments[0].expression, "a");
+    EXPECT_EQ(tr.transition_action->assignments[1].target.name, "y");
+    EXPECT_EQ(tr.transition_action->assignments[1].expression, "y + 1");
+}
+
+/**
+ * @brief Regression: Stateflow state `entry` / `exit` attributes with variable assignments populate `assignments`.
+ * @scenario Parse a Stateflow chart with `entry="x = 10" exit="x = 20"` on `S1` and `entry="x += 5"` on `S2`.
+ * @expected Both `entry_actions` and `exit_actions` contain structured `ActionAssignment` entries.
+ */
+TEST(StateflowParser, StateLifecycleAssignments_PopulatedInEntryAndExitActions) {
+    const std::string sf_xml = R"(
+        <Stateflow>
+            <chart id="1" name="SfStateAssign" initial="S1">
+                <state id="10" name="S1" entry="x = 10" exit="x = 20"/>
+                <state id="20" name="S2" entry="x += 5"/>
+                <transition src="S1" dst="S2" labelString="EvNext"/>
+            </chart>
+        </Stateflow>
+    )";
+
+    StateflowParser parser;
+    FsmIr model;
+    std::string err;
+    ASSERT_TRUE(parser.parse(sf_xml, model, err)) << "Error: " << err;
+
+    const auto* s1 = model.find_state("S1");
+    ASSERT_NE(s1, nullptr);
+    ASSERT_EQ(s1->entry_actions.size(), 1u);
+    ASSERT_EQ(s1->entry_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(s1->entry_actions[0].assignments[0].target.name, "x");
+    EXPECT_EQ(s1->entry_actions[0].assignments[0].expression, "10");
+
+    ASSERT_EQ(s1->exit_actions.size(), 1u);
+    ASSERT_EQ(s1->exit_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(s1->exit_actions[0].assignments[0].target.name, "x");
+    EXPECT_EQ(s1->exit_actions[0].assignments[0].expression, "20");
+
+    const auto* s2 = model.find_state("S2");
+    ASSERT_NE(s2, nullptr);
+    ASSERT_EQ(s2->entry_actions.size(), 1u);
+    ASSERT_EQ(s2->entry_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(s2->entry_actions[0].assignments[0].target.name, "x");
+    EXPECT_EQ(s2->entry_actions[0].assignments[0].expression, "x + 5");
+}
+
+/**
+ * @brief Verify StateflowSerializer and StateflowParser preserve assignments and normalized guards on roundtrip.
+ * @scenario Serialize an FsmIr with entry/exit/transition assignments and a guard, then re-parse the XML.
+ * @expected All assignment expressions and guard normalized_expression values survive the roundtrip.
+ */
+TEST(StateflowParser, RoundtripAssignmentsAndNormalizedGuards_PreservedInXml) {
+    FsmIr orig;
+    orig.name = "SfRt";
+    orig.initial_state = "Ready";
+    orig.add_variable(VariableDefinition("x", DataType{PrimitiveTypeKind::Int32}, "0"));
+
+    StateNode ready("Ready");
+    ActionSignature entry_act("Ready_entry_x");
+    entry_act.assignments.emplace_back(LValueTarget("x"), "10");
+    ready.entry_actions.push_back(std::move(entry_act));
+
+    ActionSignature exit_act("Ready_exit_x");
+    exit_act.assignments.emplace_back(LValueTarget("x"), "x + 1");
+    ready.exit_actions.push_back(std::move(exit_act));
+
+    StateNode running("Running");
+    orig.states.push_back(std::move(ready));
+    orig.states.push_back(std::move(running));
+
+    orig.add_guard("x_gte_10", "", std::optional<std::string>{"x >= 10"}, std::optional<std::string>{"x >= 10"});
+    ActionSignature tr_act("tr_x");
+    tr_act.assignments.emplace_back(LValueTarget("x"), "x * 2");
+    orig.transitions.emplace_back("Ready", "Running", "START", "x_gte_10", std::move(tr_act));
+
+    const std::string xml = StateflowSerializer::serialize(orig);
+    StateflowParser parser;
+    FsmIr rt;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, rt, err)) << "Error: " << err;
+
+    const auto* rt_ready = rt.find_state("Ready");
+    ASSERT_NE(rt_ready, nullptr);
+    ASSERT_EQ(rt_ready->entry_actions.size(), 1u);
+    ASSERT_EQ(rt_ready->entry_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(rt_ready->entry_actions[0].assignments[0].expression, "10");
+
+    ASSERT_EQ(rt_ready->exit_actions.size(), 1u);
+    ASSERT_EQ(rt_ready->exit_actions[0].assignments.size(), 1u);
+    EXPECT_EQ(rt_ready->exit_actions[0].assignments[0].expression, "x + 1");
+
+    ASSERT_EQ(rt.transitions.size(), 1u);
+    ASSERT_TRUE(rt.transitions[0].transition_action.has_value());
+    ASSERT_EQ(rt.transitions[0].transition_action->assignments.size(), 1u);
+    EXPECT_EQ(rt.transitions[0].transition_action->assignments[0].expression, "x * 2");
+
+    ASSERT_FALSE(rt.guards.empty());
+    ASSERT_TRUE(rt.guards[0].normalized_expression.has_value());
+    EXPECT_EQ(*rt.guards[0].normalized_expression, "x >= 10");
+}
+
+/**
+ * @brief Verify StateflowParser populates orthogonal_regions for decomposition="PARALLEL_AND" states.
+ * @scenario Stateflow XML with parallel state 'Operational' containing two child region states Reg1 and Reg2.
+ * @expected 'Operational' has StateKind::Parallel, empty initial_sub_state, and 2 orthogonal_regions.
+ */
+TEST(StateflowParserTest, ParsesParallelAndDecompositionIntoOrthogonalRegions) {
+    const std::string xml = R"xml(
+<ModelInformation>
+  <Stateflow>
+    <machine name="ParSf">
+      <chart name="ParSf" initial="Operational">
+        <state id="1" name="Operational" decomposition="PARALLEL_AND">
+          <state id="2" name="Reg1" initial="R1A">
+            <state id="3" name="R1A"/>
+            <state id="4" name="R1B"/>
+          </state>
+          <state id="5" name="Reg2" initial="R2A">
+            <state id="6" name="R2A"/>
+            <state id="7" name="R2B"/>
+          </state>
+        </state>
+      </chart>
+    </machine>
+  </Stateflow>
+</ModelInformation>
+)xml";
+
+    StateflowParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, ir, err)) << "Error: " << err;
+
+    const auto* op = ir.find_state("Operational");
+    ASSERT_NE(op, nullptr);
+    EXPECT_EQ(op->kind, StateKind::Parallel);
+    EXPECT_TRUE(op->is_composite);
+    EXPECT_TRUE(op->initial_sub_state.empty());
+    ASSERT_EQ(op->orthogonal_regions.size(), 2u);
+    EXPECT_EQ(op->orthogonal_regions[0].name, "Reg1");
+    EXPECT_EQ(op->orthogonal_regions[0].initial_state_id, "R1A");
+    EXPECT_EQ(op->orthogonal_regions[1].name, "Reg2");
+    EXPECT_EQ(op->orthogonal_regions[1].initial_state_id, "R2A");
+}
+
+/**
+ * @brief Verify StateflowParser marks external transitions entering a composite state with a HISTORY junction as
+ *        targeting history.
+ * @scenario Stateflow XML with composite 'Work' containing `<junction type="HISTORY"/>` and external `Paused -> Work`.
+ * @expected Transition `Paused -> Work` has `target_is_history == true` (and `target_is_deep_history == false`).
+ */
+TEST(StateflowParserTest, MarksIncomingTransitionsToHistoryCompositeAsHistoryTargets) {
+    const std::string xml = R"xml(
+<ModelInformation>
+  <Stateflow>
+    <machine name="SfHist">
+      <chart name="SfHist" initial="Paused">
+        <state id="1" name="Paused"/>
+        <state id="2" name="Work" initial="S1">
+          <junction id="10" type="HISTORY"/>
+          <state id="3" name="S1"/>
+          <state id="4" name="S2"/>
+        </state>
+        <transition src="Paused" dst="Work" labelString="RESUME"/>
+      </chart>
+    </machine>
+  </Stateflow>
+</ModelInformation>
+)xml";
+
+    StateflowParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, ir, err)) << "Error: " << err;
+
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    EXPECT_TRUE(ir.transitions[0].target_is_history);
+    EXPECT_FALSE(ir.transitions[0].target_is_deep_history);
+}
+
+/**
+ * @brief Regression: Stateflow MATLAB `~=` and `~` guard operators are normalized to `!=` and `!`.
+ * @scenario Parse a Stateflow transition with `labelString="Go[x ~= 0 && ~fault]"`.
+ * @expected Guard atoms contain `"x != 0"` and `"fault"` negated via `fsm::not_<fault>`.
+ */
+TEST(StateflowParser, MatlabNegationOperators_NormalizedToCpp) {
+    const std::string xml = R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<Stateflow>
+  <machine name="SfMatlab">
+    <chart id="1" name="SfMatlabChart" initial="Idle">
+      <transition id="100" dst="Idle"/>
+      <state id="10" name="Idle"/>
+      <state id="11" name="Active"/>
+      <transition id="101" src="Idle" dst="Active" labelString="Go[x ~= 0 &amp;&amp; ~fault]"/>
+    </chart>
+  </machine>
+</Stateflow>
+)xml";
+
+    StateflowParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, ir, err)) << "Error: " << err;
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    ASSERT_TRUE(ir.transitions[0].guard.has_value());
+    EXPECT_NE(ir.transitions[0].guard->find("fsm::not_<fault>"), std::string::npos);
+    bool found_neq = false;
+    for (const auto& g : ir.guards) {
+        if (g.raw_expression.has_value() && *g.raw_expression == "x != 0") {
+            found_neq = true;
+        }
+    }
+    EXPECT_TRUE(found_neq);
+}
+
+/**
+ * @brief Regression: `StateflowParser` strips MATLAB `%` line comments inside guard and action
+ * expressions so comments like `[x == 0 % check zero]` do not corrupt the guard expression.
+ * @scenario Parse Stateflow transition `Go [x == 0 % check zero] / x = 1; % done`.
+ * @expected Guard `raw_expression == "x == 0"` and action assigns `x = 1`.
+ */
+TEST(StateflowParser, MatlabPercentCommentsInGuardAndAction_StrippedCleanly) {
+    const std::string xml = R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<Stateflow>
+  <machine name="SfGComment">
+    <chart id="1" name="SfGComment">
+      <!-- @fsm:var name=x type=int init=0 -->
+      <state id="10" name="Idle"/>
+      <state id="20" name="Done"/>
+      <transition src="Idle" dst="Done" labelString="Go [x == 0 % check zero] / x = 1; % done"/>
+    </chart>
+  </machine>
+</Stateflow>
+)xml";
+
+    StateflowParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, ir, err)) << "Error: " << err;
+    ASSERT_EQ(ir.guards.size(), 1u);
+    EXPECT_EQ(ir.guards[0].raw_expression, "x == 0");
+    ASSERT_EQ(ir.transitions.size(), 1u);
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    ASSERT_EQ(ir.transitions[0].transition_action->assignments.size(), 1u);
+    EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].target, "x");
+    EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].expression, "1");
+}
+
+/**
+ * @brief Regression: Multiple Stateflow transitions between the same `source` and `target` states
+ * assigning to the same variable receive disambiguated synthetic action names (`Idle_Done_act_x`,
+ * `Idle_Done_act_x_2`) so their assignments do not collide in C++ codegen.
+ * @scenario Parse Stateflow XML with `Ev1 / x = 1` and `Ev2 / x = 2` from `Idle` to `Done`.
+ * @expected `transitions[0].transition_action->name != transitions[1].transition_action->name`.
+ */
+TEST(StateflowParser, MultipleTransitionsSameEndpoints_DisambiguateAssignmentActionNames) {
+    const std::string xml = R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<Stateflow>
+  <machine name="SfSameEp">
+    <chart id="1" name="SfSameEp">
+      <!-- @fsm:var name=x type=int init=0 -->
+      <state id="10" name="Idle"/>
+      <state id="20" name="Done"/>
+      <transition src="Idle" dst="Done" labelString="Ev1 / x = 1;"/>
+      <transition src="Idle" dst="Done" labelString="Ev2 / x = 2;"/>
+    </chart>
+  </machine>
+</Stateflow>
+)xml";
+
+    StateflowParser parser;
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, ir, err)) << "Error: " << err;
+    ASSERT_EQ(ir.transitions.size(), 2u);
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    ASSERT_TRUE(ir.transitions[1].transition_action.has_value());
+    EXPECT_NE(ir.transitions[0].transition_action->name, ir.transitions[1].transition_action->name);
+}
+
+/**
+ * @brief Regression: `StateflowSerializer` preserves `model.properties`, `state.traceability_reqs`,
+ * and `state.time_invariant` across Stateflow XML roundtrips.
+ * @scenario Serialize an FSM with `FormalProperty("safe", "G (not Bad)")` and state `Active` (`REQ_001`, `500[ms]`),
+ * then re-parse with `StateflowParser`.
+ * @expected Re-parsed IR keeps the property, `traceability_reqs == {"REQ_001"}`, and `time_invariant == "500[ms]"`.
+ */
+TEST(StateflowParser, PropertiesReqsAndTimeInvariant_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "SfMetaRt";
+    ir.initial_state = "Active";
+    auto& active = ir.add_state("Active");
+    active.traceability_reqs.push_back("REQ_001");
+    active.time_invariant = "500[ms]";
+
+    FormalProperty prop;
+    prop.name = "safe";
+    prop.kind = PropertyKind::Safety;
+    prop.raw_formula = "G (not Bad)";
+    ir.add_property(prop);
+
+    const std::string xml = StateflowSerializer::serialize(ir);
+    StateflowParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+
+    ASSERT_EQ(parsed.properties.size(), 1u);
+    EXPECT_EQ(parsed.properties[0].name, "safe");
+    EXPECT_EQ(parsed.properties[0].raw_formula, "G (not Bad)");
+
+    const auto* p_active = parsed.find_state("Active");
+    ASSERT_NE(p_active, nullptr);
+    ASSERT_EQ(p_active->traceability_reqs.size(), 1u);
+    EXPECT_EQ(p_active->traceability_reqs[0], "REQ_001");
+    ASSERT_TRUE(p_active->time_invariant.has_value());
+    EXPECT_EQ(*p_active->time_invariant, "500[ms]");
+}
+
+/**
+ * @brief Regression: `StateflowSerializer` emits `when(<expr>)` for `ChangeTrigger` transitions
+ * so `StateflowParser` preserves `ChangeTrigger` across Stateflow XML roundtrips.
+ * @scenario Serialize a transition with `ChangeTrigger("count > 5")` to Stateflow XML and re-parse.
+ * @expected Serialized XML contains `when(count &gt; 5)` and re-parsed transition holds `ChangeTrigger`.
+ */
+TEST(StateflowParser, ChangeTrigger_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "SfChangeRt";
+    ir.initial_state = "Wait";
+    ir.add_state("Wait");
+    ir.add_state("Done");
+    ir.add_variable(VariableDefinition("count", DataType::int32(), "0"));
+    TransitionEdge t("Wait", "Done", "");
+    t.trigger = ChangeTrigger("count > 5", true);
+    ir.add_transition(t);
+
+    const std::string xml = StateflowSerializer::serialize(ir);
+    EXPECT_NE(xml.find("labelString=\"when(count &gt; 5)\""), std::string::npos) << xml;
+
+    StateflowParser parser;
+    FsmIr parsed;
+    std::string err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+    ASSERT_EQ(parsed.transitions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ChangeTrigger>(parsed.transitions[0].trigger));
+    EXPECT_EQ(std::get<ChangeTrigger>(parsed.transitions[0].trigger).raw_expression, "count > 5");
+}
+
 }  // namespace

@@ -65,12 +65,45 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
     std::map<std::string, bool> point_nodes;
 
     // Regex helpers
+    auto unquote_node = [](std::string s) -> std::string {
+        if (s.size() >= 2 && s.front() == '"' && s.back() == '"') {
+            return s.substr(1, s.size() - 2);
+        }
+        return s;
+    };
+
     const std::regex digraph_regex(R"(^\s*(?:digraph|graph)\s+([A-Za-z0-9_]+))", std::regex::icase);
-    const std::regex subgraph_regex(R"(^\s*subgraph\s+(?:cluster_)?([A-Za-z0-9_]+)\s*\{?)", std::regex::icase);
-    const std::regex node_point_regex(R"(^\s*([A-Za-z0-9_]+)\s*\[.*shape\s*=\s*(?:point|circle|none).*\].*)",
-                                      std::regex::icase);
-    const std::regex edge_regex(R"(^\s*([A-Za-z0-9_\[\]\*]+)\s*(?:->|--)\s*([A-Za-z0-9_\[\]\*]+)(?:\s*\[(.*)\])?.*)");
-    const std::regex label_attr_regex(R"raw(label\s*=\s*"([^"]*)")raw", std::regex::icase);
+    const std::regex subgraph_regex(R"raw(^\s*subgraph\s+([A-Za-z0-9_]+|"[^"]*")\s*\{?)raw", std::regex::icase);
+    const std::regex node_point_regex(
+        R"raw(^\s*([A-Za-z0-9_]+|"[^"]*")\s*\[.*shape\s*=\s*(?:point|circle|none).*\].*)raw", std::regex::icase);
+    const std::regex edge_regex(
+        R"raw(^\s*([A-Za-z0-9_\[\]\*]+|"[^"]*")\s*(?:->|--)\s*([A-Za-z0-9_\[\]\*]+|"[^"]*")(?:\s*\[(.*)\])?.*)raw");
+    const std::regex label_prefix_regex(R"raw(label\s*=\s*")raw", std::regex::icase);
+    auto extract_label_attr = [&label_prefix_regex](const std::string& input, std::string& out) -> bool {
+        std::smatch m;
+        if (!std::regex_search(input, m, label_prefix_regex)) {
+            return false;
+        }
+        std::size_t pos = static_cast<std::size_t>(m.position() + m.length());
+        out.clear();
+        while (pos < input.size()) {
+            char c = input[pos];
+            if (c == '\\' && pos + 1 < input.size()) {
+                char next = input[pos + 1];
+                if (next == '"' || next == '\\') {
+                    out.push_back(next);
+                    pos += 2;
+                    continue;
+                }
+            }
+            if (c == '"') {
+                return true;
+            }
+            out.push_back(c);
+            ++pos;
+        }
+        return true;
+    };
 
     while (std::getline(stream, line)) {
         std::string trimmed = trim_line(line);
@@ -80,6 +113,20 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
 
         if (DirectiveParser::is_directive(trimmed)) {
             std::string body = DirectiveParser::extract_directive_body(trimmed);
+            if (trim_line(body) == "parallel" && !current_parent_state.empty()) {
+                if (auto* parent = model.find_state_mut(current_parent_state)) {
+                    parent->kind = StateKind::Parallel;
+                }
+                continue;
+            }
+            if (body.rfind("state", 0) == 0) {
+                std::vector<std::string> stack;
+                if (!current_parent_state.empty()) {
+                    stack.push_back(current_parent_state);
+                }
+                DirectiveParser::parse_state_directive(body, model, stack);
+                continue;
+            }
             DirectiveParser::parse_model_directive(body, model);
             continue;
         }
@@ -97,7 +144,11 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
 
         // Check subgraph cluster_CompositeState {
         if (std::regex_search(trimmed, match, subgraph_regex)) {
-            std::string comp_name = sanitize_identifier(match[1].str());
+            std::string raw_sub = unquote_node(match[1].str());
+            if (raw_sub.rfind("cluster_", 0) == 0) {
+                raw_sub = raw_sub.substr(8);
+            }
+            std::string comp_name = sanitize_identifier(raw_sub);
             model.add_state(comp_name, current_parent_state);
             auto* parent_state = model.find_state_mut(comp_name);
             if (parent_state != nullptr) {
@@ -118,47 +169,68 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
                     unescaped_lbl += raw_lbl[i];
                 }
             }
+            auto extract_slash_clause = [](const std::string& item, std::string_view kw) -> std::string {
+                std::string paren_prefix = "(" + std::string(kw) + " /";
+                auto p = item.find(paren_prefix);
+                if (p != std::string::npos) {
+                    size_t start = p + paren_prefix.size();
+                    size_t end_p = item.find(')', start);
+                    return std::string(
+                        trim_line(item.substr(start, (end_p != std::string::npos ? end_p : item.size()) - start)));
+                }
+                if (item.rfind(kw, 0) == 0) {
+                    size_t pos = kw.size();
+                    while (pos < item.size() && (item[pos] == ' ' || item[pos] == '\t')) {
+                        ++pos;
+                    }
+                    if (pos < item.size() && item[pos] == '/') {
+                        return std::string(trim_line(item.substr(pos + 1)));
+                    }
+                }
+                return "";
+            };
+            auto add_lifecycle_action = [&](const std::string& raw_act, const char* suffix, bool is_entry) {
+                if (raw_act.empty()) {
+                    return;
+                }
+                auto assign_sig = ::fsm::ir::try_parse_assignment_action(raw_act, target_state + suffix);
+                ActionSignature sig =
+                    assign_sig.has_value() ? std::move(*assign_sig) : ActionSignature{sanitize_identifier(raw_act)};
+                if (!sig.name.empty()) {
+                    model.add_action(sig.name);
+                    if (auto* st = model.find_state_mut(target_state)) {
+                        if (is_entry) {
+                            st->entry_actions.push_back(std::move(sig));
+                        } else {
+                            st->exit_actions.push_back(std::move(sig));
+                        }
+                    }
+                }
+            };
             std::string item_line;
             std::istringstream lss(unescaped_lbl);
             while (std::getline(lss, item_line)) {
                 std::string clean_item = trim_line(item_line);
-                if (clean_item.find("(entry /") != std::string::npos) {
-                    size_t p = clean_item.find("(entry /");
-                    size_t end_p = clean_item.find(')', p);
-                    std::string act =
-                        clean_item.substr(p + 8, (end_p != std::string::npos ? end_p : clean_item.size()) - (p + 8));
-                    act = sanitize_identifier(trim_line(act));
-                    if (!act.empty()) {
-                        model.add_action(act);
-                        if (auto* st = model.find_state_mut(target_state))
-                            st->entry_actions.push_back(ActionSignature{act});
-                    }
-                } else if (clean_item.find("(exit /") != std::string::npos) {
-                    size_t p = clean_item.find("(exit /");
-                    size_t end_p = clean_item.find(')', p);
-                    std::string act =
-                        clean_item.substr(p + 7, (end_p != std::string::npos ? end_p : clean_item.size()) - (p + 7));
-                    act = sanitize_identifier(trim_line(act));
-                    if (!act.empty()) {
-                        model.add_action(act);
-                        if (auto* st = model.find_state_mut(target_state))
-                            st->exit_actions.push_back(ActionSignature{act});
-                    }
-                } else if (clean_item.find("(do /") != std::string::npos) {
-                    size_t p = clean_item.find("(do /");
-                    size_t end_p = clean_item.find(')', p);
-                    std::string act =
-                        clean_item.substr(p + 5, (end_p != std::string::npos ? end_p : clean_item.size()) - (p + 5));
-                    act = sanitize_identifier(trim_line(act));
+                if (std::string raw_act = extract_slash_clause(clean_item, "entry"); !raw_act.empty()) {
+                    add_lifecycle_action(raw_act, "_entry", true);
+                } else if (std::string raw_exit = extract_slash_clause(clean_item, "exit"); !raw_exit.empty()) {
+                    add_lifecycle_action(raw_exit, "_exit", false);
+                } else if (std::string raw_do = extract_slash_clause(clean_item, "do"); !raw_do.empty()) {
+                    std::string act = sanitize_identifier(raw_do);
                     if (!act.empty()) {
                         if (auto* st = model.find_state_mut(target_state))
                             st->do_activity = act;
                     }
-                } else if (clean_item.find("(defer ") != std::string::npos) {
-                    size_t p = clean_item.find("(defer ");
-                    size_t end_p = clean_item.find(')', p);
-                    std::string evt =
-                        clean_item.substr(p + 7, (end_p != std::string::npos ? end_p : clean_item.size()) - (p + 7));
+                } else if (clean_item.find("(defer ") != std::string::npos || clean_item.rfind("defer ", 0) == 0) {
+                    std::string evt;
+                    if (clean_item.find("(defer ") != std::string::npos) {
+                        size_t p = clean_item.find("(defer ");
+                        size_t end_p = clean_item.find(')', p);
+                        evt = clean_item.substr(p + 7,
+                                                (end_p != std::string::npos ? end_p : clean_item.size()) - (p + 7));
+                    } else {
+                        evt = clean_item.substr(6);
+                    }
                     evt = sanitize_identifier(trim_line(evt));
                     if (!evt.empty()) {
                         model.add_event(evt);
@@ -170,15 +242,50 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
         };
 
         // Check cluster label inside subgraph: label = "..." or label="...";
-        const std::regex cluster_label_regex(R"raw(^\s*label\s*=\s*"([^"]*)")raw", std::regex::icase);
-        if (!current_parent_state.empty() && std::regex_search(trimmed, match, cluster_label_regex)) {
-            std::string lbl_content = match[1].str();
-            parse_label_actions(lbl_content, current_parent_state);
+        if (!current_parent_state.empty()) {
+            const std::regex cluster_label_prefix(R"raw(^\s*label\s*=\s*")raw", std::regex::icase);
+            std::string lbl_content;
+            if (std::regex_search(trimmed, cluster_label_prefix) && extract_label_attr(trimmed, lbl_content)) {
+                parse_label_actions(lbl_content, current_parent_state);
+                continue;
+            }
+        }
+
+        // Check cluster style="...dashed..." inside subgraph to infer parallel state
+        static const std::regex cluster_dashed_regex(R"raw(^\s*style\s*=\s*"[^"]*dashed[^"]*")raw", std::regex::icase);
+        if (!current_parent_state.empty() && std::regex_search(trimmed, cluster_dashed_regex)) {
+            if (auto* parent = model.find_state_mut(current_parent_state)) {
+                parent->kind = StateKind::Parallel;
+            }
             continue;
         }
 
         // Closing brace }
         if (trimmed == "}" || trimmed == "};") {
+            if (!current_parent_state.empty()) {
+                if (auto* parent = model.find_state_mut(current_parent_state)) {
+                    if (parent->kind == StateKind::Parallel && parent->orthogonal_regions.empty()) {
+                        for (const auto& child : model.states) {
+                            if (child.parent_state != current_parent_state) {
+                                continue;
+                            }
+                            OrthogonalRegion reg;
+                            reg.id = child.name;
+                            reg.name = child.name;
+                            reg.initial_state_id = child.initial_sub_state;
+                            for (const auto& sub : model.states) {
+                                if (sub.parent_state == child.name) {
+                                    reg.state_ids.push_back(sub.name);
+                                }
+                            }
+                            if (reg.initial_state_id.empty() && !reg.state_ids.empty()) {
+                                reg.initial_state_id = reg.state_ids.front();
+                            }
+                            parent->orthogonal_regions.push_back(std::move(reg));
+                        }
+                    }
+                }
+            }
             if (!parent_stack.empty()) {
                 current_parent_state = parent_stack.back();
                 parent_stack.pop_back();
@@ -186,17 +293,26 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
             continue;
         }
 
-        // Check point / initial node declaration (e.g. init [shape=point];)
+        // Check point / initial / history node declaration (e.g. init [shape=point]; or __hist_State__ [shape=circle,
+        // label="H*"];)
         if (std::regex_search(trimmed, match, node_point_regex)) {
-            std::string node_name = sanitize_identifier(match[1].str());
+            std::string node_name = sanitize_identifier(unquote_node(match[1].str()));
+            if (node_name.rfind("__hist_", 0) == 0 && !current_parent_state.empty()) {
+                if (auto* parent = model.find_state_mut(current_parent_state)) {
+                    parent->has_history = true;
+                    if (trimmed.find("label=\"H*\"") != std::string::npos) {
+                        parent->has_deep_history = true;
+                    }
+                }
+            }
             point_nodes[node_name] = true;
             continue;
         }
 
         // Check node attributes (e.g. StateName [defer="Event1, Event2"];)
-        const std::regex node_attr_regex(R"(^\s*([A-Za-z0-9_]+)\s*\[(.*)\])", std::regex::icase);
+        const std::regex node_attr_regex(R"raw(^\s*([A-Za-z0-9_]+|"[^"]*")\s*\[(.*)\])raw", std::regex::icase);
         if (!std::regex_search(trimmed, match, edge_regex) && std::regex_search(trimmed, match, node_attr_regex)) {
-            std::string node_name = sanitize_identifier(match[1].str());
+            std::string node_name = sanitize_identifier(unquote_node(match[1].str()));
             std::string attrs = match[2].str();
 
             if (node_name == "node" || node_name == "edge" || node_name == "graph" || node_name == "digraph" ||
@@ -217,9 +333,8 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
             model.add_state(node_name, current_parent_state);
 
             // Check label for actions / activities / defers
-            std::smatch lbl_match;
-            if (std::regex_search(attrs, lbl_match, label_attr_regex)) {
-                std::string lbl_content = lbl_match[1].str();
+            std::string lbl_content;
+            if (extract_label_attr(attrs, lbl_content)) {
                 parse_label_actions(lbl_content, node_name);
             }
 
@@ -244,21 +359,20 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
 
         // Check edge transition S1 -> S2 [label="..."]
         if (std::regex_search(trimmed, match, edge_regex)) {
-            std::string src_raw = match[1].str();
-            std::string dst_raw = match[2].str();
+            std::string src_raw = unquote_node(match[1].str());
+            std::string dst_raw = unquote_node(match[2].str());
             std::string attrs = match[3].matched ? match[3].str() : "";
 
             std::string label_str;
-            std::smatch label_match;
-            if (std::regex_search(attrs, label_match, label_attr_regex)) {
-                label_str = label_match[1].str();
-            } else if (!attrs.empty() && attrs.find('=') == std::string::npos) {
+            if (!extract_label_attr(attrs, label_str) && !attrs.empty() && attrs.find('=') == std::string::npos) {
                 label_str = attrs;
             }
 
             // Is initial transition?
-            if (point_nodes.count(src_raw) != 0 || src_raw.rfind("__start", 0) == 0 || src_raw == "[*]" ||
-                src_raw == "__start__" || src_raw == "start" || src_raw == "init" || src_raw == "initial") {
+            if (point_nodes.count(src_raw) != 0 || src_raw.rfind("__start", 0) == 0 ||
+                src_raw.rfind("initial_", 0) == 0 || src_raw.rfind("init_", 0) == 0 ||
+                src_raw.rfind("start_", 0) == 0 || src_raw == "[*]" || src_raw == "__start__" || src_raw == "start" ||
+                src_raw == "init" || src_raw == "initial") {
                 std::string init_target = sanitize_identifier(dst_raw);
                 if (current_parent_state.empty()) {
                     model.initial_state = init_target;
@@ -285,19 +399,19 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
             static const std::regex prio_attr_regex(
                 R"regex(priority\s*=\s*"?(\d+)"?|(?:\[|\()(?:prio|priority)=(\d+)(?:\]|\)))regex", std::regex::icase);
             std::smatch prio_match;
-            if (std::regex_search(attrs, prio_match, prio_attr_regex)) {
-                std::string p_str = prio_match[1].matched ? prio_match[1].str() : prio_match[2].str();
-                try {
-                    priority = static_cast<std::uint32_t>(std::stoul(p_str));
-                } catch (...) {
-                }
-            } else if (std::regex_search(label_str, prio_match, prio_attr_regex)) {
+            if (std::regex_search(label_str, prio_match, prio_attr_regex)) {
                 std::string p_str = prio_match[1].matched ? prio_match[1].str() : prio_match[2].str();
                 try {
                     priority = static_cast<std::uint32_t>(std::stoul(p_str));
                 } catch (...) {
                 }
                 label_str = std::regex_replace(label_str, prio_attr_regex, "");
+            } else if (std::regex_search(attrs, prio_match, prio_attr_regex)) {
+                std::string p_str = prio_match[1].matched ? prio_match[1].str() : prio_match[2].str();
+                try {
+                    priority = static_cast<std::uint32_t>(std::stoul(p_str));
+                } catch (...) {
+                }
             }
 
             parse_label(label_str, event_name, guard_name, action_name);
@@ -305,7 +419,36 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
             TransitionEdge trans;
             trans.source = src;
             trans.target = dst;
-            trans.event = sanitize_identifier(event_name);
+            static const std::regex when_ev_regex(R"(^when\s*\((.+)\)$)", std::regex::icase);
+            std::smatch wm;
+            if (!event_name.empty() && std::regex_match(event_name, wm, when_ev_regex)) {
+                trans.trigger = ChangeTrigger(trim_line(wm[1].str()), true);
+            } else {
+                trans.event = sanitize_identifier(event_name);
+            }
+            if (!trans.event.empty()) {
+                static const std::regex time_ev_regex(R"(^(after|every)_([0-9]+)(ms|us|s|m)$)", std::regex::icase);
+                std::smatch tm;
+                if (std::regex_match(trans.event, tm, time_ev_regex)) {
+                    std::string kw = tm[1].str();
+                    std::transform(kw.begin(), kw.end(), kw.begin(),
+                                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                    const TimeTriggerKind tkind = (kw == "every") ? TimeTriggerKind::Every : TimeTriggerKind::After;
+                    const std::uint64_t val = static_cast<std::uint64_t>(std::stoull(tm[2].str()));
+                    std::string u = tm[3].str();
+                    std::transform(u.begin(), u.end(), u.begin(),
+                                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                    if (u == "us") {
+                        trans.trigger = TimeTrigger(tkind, val, TimeUnit::Microseconds);
+                    } else if (u == "s") {
+                        trans.trigger = TimeTrigger(tkind, val, TimeUnit::Seconds);
+                    } else if (u == "m") {
+                        trans.trigger = TimeTrigger(tkind, val, TimeUnit::Minutes);
+                    } else {
+                        trans.trigger = TimeTrigger(tkind, val, TimeUnit::Milliseconds);
+                    }
+                }
+            }
             trans.priority = priority;
             if (!guard_name.empty()) {
                 auto parsed = GuardExpressionParser::parse(guard_name);
@@ -320,11 +463,32 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
                 }
             }
             if (!action_name.empty()) {
-                trans.transition_action = ActionSignature(sanitize_identifier(action_name));
+                std::string prefix = sanitize_identifier(src) + "_" + sanitize_identifier(dst) + "_act";
+                auto assign_sig = ::fsm::ir::try_parse_assignment_action(action_name, prefix);
+                if (assign_sig.has_value()) {
+                    const std::string base = assign_sig->name;
+                    std::size_t suffix = 2;
+                    auto has_action = [&](const std::string& n) {
+                        return std::any_of(model.actions.begin(), model.actions.end(),
+                                           [&](const auto& a) { return a.name == n; });
+                    };
+                    while (has_action(assign_sig->name)) {
+                        assign_sig->name = base + "_" + std::to_string(suffix++);
+                        assign_sig->invocation = assign_sig->name;
+                    }
+                }
+                trans.transition_action =
+                    assign_sig.has_value() ? std::move(*assign_sig) : ActionSignature(sanitize_identifier(action_name));
                 model.add_action(trans.transition_action->name);
             }
-            trans.kind = (src == dst && attrs.find("internal") != std::string::npos) ? TransitionEdgeKind::Internal
-                                                                                     : TransitionEdgeKind::External;
+            if (src == dst && attrs.find("internal") != std::string::npos) {
+                trans.kind = TransitionEdgeKind::Internal;
+            } else if (attrs.find("comment=\"local\"") != std::string::npos ||
+                       attrs.find("comment=local") != std::string::npos) {
+                trans.kind = TransitionEdgeKind::Local;
+            } else {
+                trans.kind = TransitionEdgeKind::External;
+            }
 
             model.add_state(src, current_parent_state);
             model.add_state(dst, current_parent_state);

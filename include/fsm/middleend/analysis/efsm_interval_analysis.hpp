@@ -52,7 +52,11 @@ struct Interval {
         return Interval((std::min)(lo, other.lo), (std::max)(hi, other.hi));
     }
 
-    [[nodiscard]] constexpr Interval add(double k) const noexcept { return Interval(lo + k, hi + k); }
+    [[nodiscard]] constexpr Interval add(double k) const noexcept {
+        if (is_empty())
+            return *this;
+        return Interval(lo + k, hi + k);
+    }
 
     [[nodiscard]] constexpr Interval add(const Interval& other) const noexcept {
         if (is_empty() || other.is_empty())
@@ -60,7 +64,11 @@ struct Interval {
         return Interval(lo + other.lo, hi + other.hi);
     }
 
-    [[nodiscard]] constexpr Interval sub(double k) const noexcept { return Interval(lo - k, hi - k); }
+    [[nodiscard]] constexpr Interval sub(double k) const noexcept {
+        if (is_empty())
+            return *this;
+        return Interval(lo - k, hi - k);
+    }
 
     [[nodiscard]] constexpr Interval sub(const Interval& other) const noexcept {
         if (is_empty() || other.is_empty())
@@ -72,17 +80,17 @@ struct Interval {
         if (is_empty())
             return *this;
         if (k >= 0)
-            return Interval(lo * k, hi * k);
-        return Interval(hi * k, lo * k);
+            return Interval(safe_mul(lo, k), safe_mul(hi, k));
+        return Interval(safe_mul(hi, k), safe_mul(lo, k));
     }
 
     [[nodiscard]] constexpr Interval mul(const Interval& other) const noexcept {
         if (is_empty() || other.is_empty())
             return Interval(1, 0);
-        double p1 = lo * other.lo;
-        double p2 = lo * other.hi;
-        double p3 = hi * other.lo;
-        double p4 = hi * other.hi;
+        double p1 = safe_mul(lo, other.lo);
+        double p2 = safe_mul(lo, other.hi);
+        double p3 = safe_mul(hi, other.lo);
+        double p4 = safe_mul(hi, other.hi);
         double min_p = (std::min)({p1, p2, p3, p4});
         double max_p = (std::max)({p1, p2, p3, p4});
         return Interval(min_p, max_p);
@@ -90,7 +98,7 @@ struct Interval {
 
     [[nodiscard]] constexpr Interval div(double k) const noexcept {
         if (is_empty() || k == 0.0)
-            return Interval();
+            return is_empty() ? *this : Interval();
         if (k > 0)
             return Interval(lo / k, hi / k);
         return Interval(hi / k, lo / k);
@@ -109,10 +117,31 @@ struct Interval {
     [[nodiscard]] std::string to_string() const;
 
     bool operator==(const Interval& other) const noexcept {
-        return (is_empty() && other.is_empty()) || (std::abs(lo - other.lo) < 1e-9 && std::abs(hi - other.hi) < 1e-9);
+        if (is_empty() && other.is_empty())
+            return true;
+        if (is_empty() != other.is_empty())
+            return false;
+        return bounds_equal(lo, other.lo) && bounds_equal(hi, other.hi);
     }
 
     bool operator!=(const Interval& other) const noexcept { return !(*this == other); }
+
+  private:
+    static constexpr double safe_mul(double a, double b) noexcept {
+        // Avoid IEEE-754 0.0 * (+/-inf) -> NaN during abstract interval multiplication.
+        if (a == 0.0 || b == 0.0)
+            return 0.0;
+        return a * b;
+    }
+
+    static bool bounds_equal(double a, double b) noexcept {
+        // Handle (+/-)inf == (+/-)inf before computing abs(a - b), which yields NaN for infinities.
+        if (a == b)
+            return true;
+        if (!std::isfinite(a) || !std::isfinite(b))
+            return false;
+        return std::abs(a - b) < 1e-9;
+    }
 };
 
 enum class EFSMFindingKind { UnsatisfiableGuard, PortRangeViolation, VariableRangeViolation };

@@ -95,10 +95,13 @@ class TraceBuffer {
      * @brief Formats human-readable flight recorder dump table to output stream.
      */
     void dump(std::ostream& os) const {
+        constexpr std::string_view kSeparator =
+            "--------------------------------------------------------------------------------------------";
+        static_assert(kSeparator.size() == 92);
         os << "=== FSM Flight Recorder Audit Trace (" << count_ << "/" << Capacity << " entries) ===\n";
         os << std::left << std::setw(10) << "TICK" << std::setw(25) << "SOURCE" << std::setw(25) << "EVENT"
            << std::setw(25) << "TARGET" << "STATUS\n";
-        os << std::string(92, '-') << "\n";
+        os << kSeparator << "\n";
 
         for (std::size_t i = 0; i < count_; ++i) {
             const auto& entry = (*this)[i];
@@ -130,8 +133,7 @@ class flight_recorder_observer {
     }
 
     void operator()(const transition_info& info) const noexcept {
-        const_cast<TraceBuffer<Capacity>&>(recorder_).record(current_tick_, info.source, info.event, info.target,
-                                                             info.status == dispatch_status::success);
+        recorder_.record(current_tick_, info.source, info.event, info.target, info.status == dispatch_status::success);
     }
 
     template <typename State, typename Event>
@@ -147,7 +149,7 @@ class flight_recorder_observer {
 
   private:
     std::uint64_t current_tick_{0};
-    TraceBuffer<Capacity> recorder_{};
+    mutable TraceBuffer<Capacity> recorder_{};
 };
 
 }  // namespace fsm

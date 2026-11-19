@@ -64,6 +64,11 @@ struct PropertyAstNode {
      */
     [[nodiscard]] std::string to_string() const;
 
+    /**
+     * @brief Parses a temporal logic (LTL/CTL) formula string into a structured PropertyAstNode.
+     */
+    [[nodiscard]] static std::optional<PropertyAstNode> parse(std::string_view raw_formula);
+
     bool operator==(const PropertyAstNode& other) const noexcept {
         return op == other.op && atom == other.atom && children == other.children;
     }
@@ -94,6 +99,7 @@ struct FormalProperty {
     std::string raw_formula;                  ///< Source formula string
     std::optional<PropertyAstNode> ast;       ///< Parsed temporal logic AST
     std::string traceability_req;             ///< Traceability requirement tag (e.g. "REQ-SAFE-01")
+    std::uint32_t source_line{0};             ///< 1-based source line number for diagnostics (0 = unknown)
 
     FormalProperty() = default;
     FormalProperty(std::string prop_name, PropertyKind prop_kind, std::string formula, std::string desc = "",

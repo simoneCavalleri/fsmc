@@ -4,8 +4,8 @@
 > To update this file, run: `cmake --build build --target generate_test_catalog` or `python3 scripts/generate_test_catalog.py`.
 
 **Total Documented Subsystems**: 12  
-**Total Test Suites & Binaries**: 85  
-**Total Documented Test Cases**: 520  
+**Total Test Suites & Binaries**: 86  
+**Total Documented Test Cases**: 747  
 
 ---
 
@@ -147,6 +147,12 @@
 #### `FlightRecorder.DeterministicTimer_StepTick_RecordsTickEventsInHistory`
 **Test Intent**: Verify recording of deterministic timer ticks in flight recorder.
 
+#### `FlightRecorder.ConstFlightRecorderObserver_RecordsWithoutUndefinedBehavior`
+**Test Intent**: Verify const flight_recorder_observer safely records transitions via mutable TraceBuffer.
+
+#### `FlightRecorder.SetInvariantViolationHandler_FunctionPointerOverload_IsNoexceptAndInvoked`
+**Test Intent**: Verify function-pointer overload of set_invariant_violation_handler is noexcept and invokes callback.
+
 ### [`test_fsm.cpp`](../../tests/backend/cpp/runtime/test_fsm.cpp) (`tests/backend/cpp/runtime/test_fsm.cpp`)
 #### `FsmCore.BasicTransitions_EventDispatch_UpdatesCurrentState`
 **Test Intent**: Verify basic synchronous transitions and runtime state introspection.
@@ -263,6 +269,9 @@
 #### `SpscFsm.HierarchicalIsIn_AndReset`
 **Test Intent**: Verify hierarchical is_in and reset functionality in SPSC FSM.
 
+#### `SpscFsm.SeqlockSnapshotConsistency_AcrossMultiplePostAndProcessOneCycles_NoTornReads`
+**Test Intent**: Verify sequential and concurrent snapshot_registers() consistency across post() and process_one() cycles.
+
 ### [`test_spsc_queue.cpp`](../../tests/backend/cpp/runtime/test_spsc_queue.cpp) (`tests/backend/cpp/runtime/test_spsc_queue.cpp`)
 #### `SpscRingBuffer.SingleThreadOps_PushAndPop_OperatesCorrectly`
 **Test Intent**: Verify single-thread push, pop, empty, and full operations on SPSC ring buffer.
@@ -291,6 +300,12 @@
 
 #### `ThreadSafeFsm.HierarchicalIsIn_AndReset`
 **Test Intent**: Verify hierarchical is_in and reset functionality in thread_safe_fsm.
+
+#### `ThreadSafeFsm.WithTimerManagerAndReentrantSendWithPorts_PreservesInPorts`
+**Test Intent**: Verify with_timer_manager() thread-safe access and reentrant send(event, in, out) preserving in-port values.
+
+#### `ThreadSafeFsm.SendFastPath_WithAndWithoutDiagnosticCallbacks_DispatchesCorrectly`
+**Test Intent**: Verify synchronous send() zero-allocation fast-path without callbacks and notification path with callbacks.
 
 ### [`test_timed_transitions.cpp`](../../tests/backend/cpp/runtime/test_timed_transitions.cpp) (`tests/backend/cpp/runtime/test_timed_transitions.cpp`)
 #### `TimedTransitions.SyncTimedEvent_Dispatch_TransitionsAfterDuration`
@@ -514,6 +529,41 @@
 #### `CppModelEmitter.ReservedCppKeywords_EscapedInEmittedTypesAndTransitionTable`
 **Test Intent**: Regression BUG-02: C++ reserved keywords used as state, event, or action names
 
+#### `CppModelEmitterTest.ActionCallOpOmitsNoServiceOverloadsAndDisambiguatesModelName`
+**Test Intent**: Verify actions using ActionCallOp omit overloads lacking Services& srv, and unresolved guards fall back
+
+#### `CppModelEmitterTest.StandaloneHeaderWrapsEmbeddedRuntimeInIncludeGuard`
+**Test Intent**: Verify standalone C++ generation wraps the embedded runtime in FSMC_EMBEDDED_RUNTIME_INCLUDED guard.
+
+#### `CppModelEmitterTest.NoStubsDefersLifecycleActionInstantiationViaDependentTemplate`
+**Test Intent**: Verify --no-stubs defers lifecycle action instantiation via dependent template parameters.
+
+#### `CppModelEmitterTest.SignalPayloadAttribute_QualifiedInGuardsAndActions`
+**Test Intent**: Regression: bare signal payload attributes in guards and action assignments qualify to `cmd.<attr>`.
+
+#### `CppModelEmitterTest.NoStubsEmitsSynthesizedGuardsAndAssignmentsWhileDeferringExternalStubs`
+**Test Intent**: Regression: `--no-stubs` (`include_stubs = false`) still emits synthesized guards and assignment actions
+
+#### `CppModelEmitter.LowersTargetAgnosticInfixBooleanGuardsToCppCombinators`
+**Test Intent**: Verify CppModelEmitter lowers target-agnostic infix boolean guards in IR to C++ template combinators.
+
+#### `CppModelEmitter.DisambiguatesActionCollidingWithEventAndEmitsSignalEmitOp`
+**Test Intent**: Verify CppModelEmitter disambiguates action struct names colliding with event/state names and emits
+
+#### `CppModelEmitterTest.UnqualifiedEnumLiterals_QualifiedInInitialValuesAndExpressions`
+**Test Intent**: Regression: bare enum literals in variable initializers and assignment/guard expressions are qualified
+
+#### `CppModelEmitterTest.GuardFunctionCallMatchingStructName_DoesNotEmitSelfConstructorCall`
+**Test Intent**: Regression: A guard whose normalized expression calls a function with the same name as the
+
+#### `CppModelEmitterTest.NegativeEnumLiteralValues_WidenDefaultUnsignedUnderlyingType`
+**Test Intent**: Regression: Enum definitions with negative literal values (or values > 255) widen the default
+`uint8_t` underlying type to signed/wider integer types so C++ compilation does not fail with
+`-Wc++11-narrowing`.
+
+#### `CppModelEmitterTest.StringPayloadEvent_OmitsConstexprCtorInCpp17`
+**Test Intent**: Regression: Parameterized event structs with `std::string` (or non-primitive) payload fields
+
 ### [`test_generated_fsm.cpp`](../../tests/backend/cpp/test_generated_fsm.cpp) (`tests/backend/cpp/test_generated_fsm.cpp`)
 - *(Executable binary test verification)*
 
@@ -565,6 +615,12 @@
 #### `DiagramExport.PlantUml_DeepHistoryPseudostate_EmittedCorrectly`
 **Test Intent**: Verify PlantUmlSerializer emits [H*] when a composite state has has_deep_history=true.
 
+#### `DiagramExport.PlantUmlAndMermaid_ParallelState_EmitsOrthogonalSeparator`
+**Test Intent**: Verify PlantUmlSerializer and MermaidSerializer emit '--' separators between parallel regions.
+
+#### `DiagramExport.AssignmentActionsAndReadableGuards_EmittedAcrossDotPlantUmlMermaid`
+**Test Intent**: Verify DOT, PlantUML, and Mermaid serializers emit assignment expressions and readable guards.
+
 ---
 
 ## Multi-Format Emitter & Factory Subsystem
@@ -575,6 +631,9 @@
 
 #### `EmitterFactory.CanonicalModel_EmittedAcrossAllRegisteredFormats`
 **Test Intent**: Verify emission across all supported formats via factory dispatcher.
+
+#### `EmitterFactory.FormatDiscoveryAndCppTargetEmission_SupportedAndSynthesized`
+**Test Intent**: Verify EmitterFactory format discovery and C++ target code emission.
 
 ---
 
@@ -589,6 +648,9 @@
 
 #### `McdcHarness.AvionicsModel_DriverHarnessSynthesized`
 **Test Intent**: Verify synthesis of driver harness for multi-condition avionics transition.
+
+#### `McdcHarness.SymbolicGuardMetadata_ResolvedForMcdcPairs`
+**Test Intent**: Regression: `McdcHarnessGenerator` resolves symbolic guard names via `FsmIr::guards`
 
 ---
 
@@ -640,6 +702,38 @@
 #### `FormalRoundtrip.UniversalDataDefinitions_PreservedAcrossFormats`
 **Test Intent**: Verify universal lossless roundtrip of enum and struct definitions across all formats.
 
+#### `FormalRoundtrip.Sysml2Serializer_PreservesAssignmentBlocksAcrossRoundtrip`
+**Test Intent**: Verify Sysml2Serializer emits assignment action blocks for entry, exit, and transitions.
+
+#### `FormalRoundtrip.SmvSerializer_EmitsEnumSetForEnumTypedVariables`
+**Test Intent**: Regression: `SmvSerializer` emits SMV enumeration sets (`{IdleMode, RunMode}`) for enum-typed
+
+#### `FormalRoundtrip.CameoSerializer_PreservesInternalTransitionKind`
+**Test Intent**: Regression: `CameoSerializer` emits `kind="internal"` on internal transitions so `CameoXmiParser`
+
+#### `FormalRoundtrip.Sysml2Serializer_PreservesInternalTransitionKind`
+**Test Intent**: Regression: `Sysml2Serializer` omits `then <target>` for `TransitionEdgeKind::Internal` transitions
+
+#### `FormalRoundtrip.SmvSerializer_PreservesTransitionAssignmentsAcrossRoundtrip`
+**Test Intent**: Regression: `SmvSerializer` emits `-- action: <assignments>` on `next(state)` transitions
+
+#### `FormalRoundtrip.SmvSerializer_ExpandsAtomicGuardsInsideCombinators`
+**Test Intent**: Regression: `SmvSerializer` expands atomic guard names inside C++ combinators
+(`fsm::and_<x_gt_0, y_lt_10>`) to their underlying relational expressions (`(x > 0) & (y < 10)`)
+
+#### `FormalRoundtrip.SmvSerializer_WidensRangeForNegativeInitialOrAssignedValues`
+**Test Intent**: Regression: `SmvSerializer` widens default integer range `0..100` to `-100..100` (or wider)
+
+#### `FormalRoundtrip.SmvSerializer_PreservesStateLifecycleAndDeferDirectives`
+**Test Intent**: Regression: `SmvSerializer` emits `-- @fsm:state`, `-- @fsm:entry`, `-- @fsm:exit`, and
+`-- @fsm:defer` comment directives so hierarchy, entry/exit actions, and deferred events survive
+
+#### `FormalRoundtrip.StateflowSerializer_PreservesDeferredEventsAcrossRoundtrip`
+**Test Intent**: Regression: `StateflowSerializer` and `StateflowParser` preserve `deferred_events` on states
+
+#### `FormalRoundtrip.StateflowSerializer_PreservesInternalTransitionKindAcrossRoundtrip`
+**Test Intent**: Regression: `StateflowSerializer` and `StateflowParser` preserve `TransitionEdgeKind::Internal`
+
 ---
 
 ## Requirements Traceability (RTM) Subsystem
@@ -682,6 +776,15 @@
 #### `JsonParser.DirectionalPortsWithIntervalBounds_PopulatesPortDefinitions`
 **Test Intent**: Verify parsing of typed ports and range constraints in JSON schema.
 
+#### `JsonParserTest.DeserializesXStateParallelTypeIntoOrthogonalRegions`
+**Test Intent**: Verify JsonParser / FsmIrDeserializer converts XState "type": "parallel" into StateKind::Parallel and
+
+#### `JsonParser.XStateActionAssignments_PopulatedInActionSignature`
+**Test Intent**: Regression: XState JSON transition action strings with assignments (`"x = 42"`) populate `assignments`.
+
+#### `JsonParser.XStateLifecycleAssignments_PopulatedInEntryAndExitActions`
+**Test Intent**: Regression: XState JSON `entry` and `exit` string assignments populate `ActionSignature::assignments`.
+
 ### [`test_parser_classification.cpp`](../../tests/frontend/common/test_parser_classification.cpp) (`tests/frontend/common/test_parser_classification.cpp`)
 #### `FrontendClassification.FormalParsers_ReportsFormalFrontendKind`
 **Test Intent**: Verify formal parser implementations report FrontendKind::Formal and canonical format tokens.
@@ -713,6 +816,9 @@
 
 #### `LexerUtils.ReservedKeywords_EscapesCppKeywordsWithUnderscore`
 **Test Intent**: Verify C++ reserved keyword detection and identifier escaping utilities.
+
+#### `ParserFactoryTest.AutoDetectsStateflowXmlOverCameoXmi`
+**Test Intent**: Verify ParserFactory::create inspects .xml file contents to distinguish Stateflow XML from Cameo XMI.
 
 ### [`test_parser_negative.cpp`](../../tests/frontend/common/test_parser_negative.cpp) (`tests/frontend/common/test_parser_negative.cpp`)
 #### `PlantUmlParser.EmptyAndCorruptedInputStreams_RejectsWithInformativeDiagnostic`
@@ -756,12 +862,81 @@
 #### `DiagramSidecar.CompanionManifest_WithCustomTypes_PopulatesModelCustomTypes`
 **Test Intent**: Verify companion manifest with custom_types registers TypeDefinition in model.
 
+#### `DiagramSidecar.PreservesPropertyKindReqAndDescAcrossSidecarRoundtrip`
+**Test Intent**: Verify CompanionManifestEmitter, CompanionManifestParser, and DiagramContractCombiner preserve property kind,
+
 ### [`test_dot_parser.cpp`](../../tests/frontend/diagram/test_dot_parser.cpp) (`tests/frontend/diagram/test_dot_parser.cpp`)
 #### `DotParser.BasicDotDigraph_ParsedIntoValidFsmIr`
 **Test Intent**: Verify Graphviz DOT graph parsing with transition labels and initial pseudostate.
 
 #### `DotParser.ClusterSubgraph_ParsedAsCompositeState`
 **Test Intent**: Verify DOT subgraph cluster parsing into hierarchical composite states.
+
+#### `DotParser.ScopedInitialIdentifiers_PopulateInitialSubstateWithoutPointShape`
+**Test Intent**: Regression: scoped initial node names (e.g. `initial_Active`) inside cluster subgraphs set
+`initial_sub_state` without requiring an explicit `[shape=point]` node declaration.
+
+#### `DotParser.TransitionActionAssignments_PopulatedInActionSignature`
+**Test Intent**: Regression: DOT transition action assignments (`/ x = 42`) populate `ActionSignature::assignments`.
+
+#### `DotParser.StateLifecycleAssignments_PopulatedInEntryAndExitActions`
+**Test Intent**: Regression: DOT state lifecycle assignments (`(entry / x = 10)` / `(exit / x += 1)`) populate
+`ActionSignature::assignments`.
+
+#### `DotParser.InlinePriorityLabel_StripsPrefixFromEventName`
+**Test Intent**: Regression: inline `(prio=N)` inside DOT edge labels is stripped from `TransitionEdge::event`.
+
+#### `DotParser.ParallelCluster_PopulatesOrthogonalRegions`
+**Test Intent**: Regression: DOT subgraphs marked with `// @fsm:parallel` or dashed style populate `StateKind::Parallel` and
+`orthogonal_regions`.
+
+#### `DotParser.HistoryPseudostate_PopulatesShallowAndDeepHistory`
+**Test Intent**: Regression: DOT `__hist_<State>__` nodes with `label="H"` or `label="H*"` populate `has_history` and
+`has_deep_history` on the enclosing composite state.
+
+#### `DotParser.QuotedNodeNames_ParsedIntoValidStatesAndTransitions`
+**Test Intent**: Regression: Graphviz DOT quoted node identifiers (`"Idle State" -> "Active State"`) are unquoted
+
+#### `DotParser.EscapedQuotesInEdgeLabel_PreservesGuardAndAction`
+**Test Intent**: Regression: Graphviz DOT `label="..."` with escaped quotes (`\"`) preserves full guard and
+
+#### `DotParser.QuotedSubgraphCluster_CreatesCompositeState`
+**Test Intent**: Regression: Graphviz DOT quoted `subgraph "cluster_Active Mode"` creates composite state
+`Active_Mode` with nested child states instead of flattening children to top-level.
+
+#### `DotParser.UnparenthesizedLifecycleAndDeferInNodeLabel_PopulatedCleanly`
+**Test Intent**: Regression: Graphviz DOT node labels with unparenthesized `entry / ...`, `exit / ...`,
+`do / ...`, and `defer ...` lines populate state lifecycle actions and deferred events.
+
+#### `DotParser.MultipleTransitionsSameEndpoints_DisambiguateAssignmentActionNames`
+**Test Intent**: Regression: Multiple DOT transitions between the same `source` and `target` states
+
+#### `DotParser.TimeTriggerEventLabel_PopulatesTimeTrigger`
+**Test Intent**: Regression: `DotParser` reconstructs `TimeTrigger` when parsing `after_<N>ms` /
+`every_<N>ms` transition labels emitted by `DotSerializer`.
+
+#### `DotParser.InternalTransition_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `DotSerializer` emits `comment="internal"` on `TransitionEdgeKind::Internal`
+
+#### `DotParser.UninitializedVarAndPortMetadata_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `DotSerializer` omits `init=` when `var.initial_value` is empty and preserves
+
+#### `DotParser.StateReqsAndTimeInvariant_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `DotSerializer` emits `// @fsm:state` directives for `traceability_reqs`
+
+#### `DotParser.PseudostatesAndFinalKind_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `DotSerializer` emits `kind=...` on `@fsm:state` directives for `Fork`,
+`Join`, `EntryPoint`, `ExitPoint`, and `Final` states so `DotParser` preserves them across roundtrips.
+
+#### `DotParser.ChangeTrigger_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `DotSerializer` emits `when(<expr>)` for `ChangeTrigger` transitions
+
+#### `DotParser.SignalAttributesAndValidator_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `DotSerializer` emits typed signal payload attributes and validators on
+`// @fsm:signal` directives so `DotParser` preserves `SignalDefinition::attributes` across roundtrips.
+
+#### `DotParser.LocalTransition_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `DotSerializer` and `DotParser` preserve `TransitionEdgeKind::Local`
 
 ### [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) (`tests/frontend/diagram/test_mermaid_parser.cpp`)
 #### `MermaidParser.BasicDiagram_ParsedIntoValidFsmIr`
@@ -778,6 +953,47 @@
 
 #### `MermaidParser.PortDirectives_ParsedWithAttributesAndConstraints`
 **Test Intent**: Verify Mermaid parsing of @fsm:port directives into FsmIr.
+
+#### `MermaidParser.NestedSquareBracketsInGuard_PreservesRawExpressionDetails`
+**Test Intent**: Verify Mermaid parsing of nested square brackets in transition guards and atomic_guard_details preservation.
+
+#### `MermaidParserTest.OrthogonalSeparatorCreatesParallelRegions`
+**Test Intent**: Verify MermaidParser recognizes '--' orthogonal region separator inside composite states.
+
+#### `MermaidParserTest.ForkJoinWithExternalTransitionsPreservesRegionHierarchy`
+**Test Intent**: Verify Mermaid states inside orthogonal regions keep pinned_parent when referenced by root Fork/Join
+
+#### `MermaidParser.DistinctAssignmentActionNames_AcrossLifecycleAndTransitions`
+**Test Intent**: Verify synthesized assignment action names do not collide across entry, exit, and transitions.
+
+#### `MermaidSerializerTest.ParallelStateOmitsInitialSubstateAndRoundtripsThreeRegions`
+**Test Intent**: Verify MermaidSerializer omits `[*] --> initial_sub_state` inside StateKind::Parallel blocks.
+
+#### `MermaidParser.CompositeStateWithAlias_PreservesHierarchyAndInitialStates`
+**Test Intent**: Regression: Mermaid composite state headers with quoted display alias (`state "Label" as Comp {`)
+
+#### `MermaidParser.Ports_RoundtripThroughDirectives`
+**Test Intent**: Regression: `MermaidSerializer` emits `%% @fsm:port` directives so `in`/`out` ports survive
+
+#### `MermaidParser.StandaloneHistoryTargetInsideComposite_ResolvesToParent`
+**Test Intent**: Regression: Mermaid standalone `[H]` / `[H*]` history target inside a composite state
+
+#### `MermaidParser.TimeTriggerEventLabel_PopulatesTimeTrigger`
+**Test Intent**: Regression: `MermaidParser` reconstructs `TimeTrigger` when parsing `after_<N>ms` /
+`every_<N>ms` transition labels emitted by `MermaidSerializer`.
+
+#### `MermaidParser.InternalTransition_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `MermaidSerializer` emits `State : Event / Action` for
+`TransitionEdgeKind::Internal` transitions so `MermaidParser` preserves `Internal` kind across roundtrips.
+
+#### `MermaidParser.StateReqsAndTimeInvariant_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `MermaidSerializer` emits `%% @fsm:state` directives for `traceability_reqs`
+
+#### `MermaidParser.ChangeTrigger_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `MermaidSerializer` emits `when(<expr>)` for `ChangeTrigger` transitions
+
+#### `MermaidParser.LocalTransition_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `MermaidSerializer` and `MermaidParser` preserve `TransitionEdgeKind::Local`
 
 ### [`test_multiline_actions.cpp`](../../tests/frontend/diagram/test_multiline_actions.cpp) (`tests/frontend/diagram/test_multiline_actions.cpp`)
 - *(Executable binary test verification)*
@@ -804,6 +1020,38 @@
 #### `PlantUmlParser.GuardWithDivisionOperator_PreservedAndNotTreatedAsAction`
 **Test Intent**: Verify that division operators '/' inside guards are not mistaken for action delimiters.
 
+#### `PlantUmlParserTest.OrthogonalSeparatorCreatesParallelRegions`
+**Test Intent**: Verify PlantUML '--' orthogonal region separator populates StateKind::Parallel and orthogonal_regions.
+
+#### `PlantUmlParserTest.ForkJoinWithExternalTransitionsPreservesRegionHierarchy`
+**Test Intent**: Verify PlantUML states inside regions keep pinned_parent when referenced by root-level Fork/Join transitions.
+
+#### `PlantUmlParser.DistinctAssignmentActionNames_AcrossLifecycleAndTransitions`
+**Test Intent**: Verify synthesized assignment action names do not collide across entry, exit, and transitions.
+
+#### `PlantUmlSerializerTest.ParallelStateOmitsInitialSubstateAndRoundtripsThreeRegions`
+**Test Intent**: Verify PlantUmlSerializer omits `[*] --> initial_sub_state` inside StateKind::Parallel blocks.
+
+#### `PlantUmlParser.CompositeStateWithAlias_PreservesHierarchyAndInitialStates`
+**Test Intent**: Regression: PlantUML composite state headers with quoted display alias (`state "Label" as Comp {`)
+
+#### `PlantUmlParser.StandaloneHistoryTargetInsideComposite_ResolvesToParent`
+**Test Intent**: Regression: PlantUML standalone `[H]` / `[H*]` history target inside a composite state
+
+#### `PlantUmlParser.TimeTriggerEventLabel_PopulatesTimeTrigger`
+**Test Intent**: Regression: `PlantUmlParser` reconstructs `TimeTrigger` when parsing `after_<N>ms` /
+`every_<N>ms` transition labels emitted by `PlantUmlSerializer`.
+
+#### `PlantUmlParser.InternalTransition_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `PlantUmlSerializer` emits `State : Event / Action` for
+`TransitionEdgeKind::Internal` transitions so `PlantUmlParser` preserves `Internal` kind across roundtrips.
+
+#### `PlantUmlParser.ChangeTrigger_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `PlantUmlSerializer` emits `when(<expr>)` for `ChangeTrigger` transitions
+
+#### `PlantUmlParser.LocalTransition_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `PlantUmlSerializer` and `PlantUmlParser` preserve `TransitionEdgeKind::Local`
+
 ### [`test_directive_parser.cpp`](../../tests/frontend/directive/test_directive_parser.cpp) (`tests/frontend/directive/test_directive_parser.cpp`)
 #### `DirectiveParser.StateDirective_ParsesTraceabilityAndActivities`
 **Test Intent**: Verify '@fsm:state' directive parsing for traceability requirements and history metadata.
@@ -829,6 +1077,16 @@
 #### `GuardParser.RelationalExpressions_TokenizedAndForwarded`
 **Test Intent**: Verify GuardExpressionParser extracts atomic relational guard expressions and builds valid C++ expressions.
 
+#### `DirectiveParser.VariableDirective_NonPrimitiveWithoutInitClearsDefaultZero`
+**Test Intent**: Regression: `@fsm:var` for non-primitive custom types (struct/enum) without `init=` leaves
+`initial_value` empty rather than defaulting to `"0"`.
+
+#### `GuardParser.QuotedStringWithLogicalOperators_NotSplit`
+**Test Intent**: Regression: `GuardExpressionParser` does not split on `&&`, `||`, or parentheses inside quoted
+
+#### `DirectiveParser.VariableDirective_StringInitPreservesQuotesAndOmitsDefaultZero`
+**Test Intent**: Regression: `@fsm:var` for `type=string` preserves quotes when `init=` is provided and
+
 ### [`test_cameo_parser.cpp`](../../tests/frontend/formal/test_cameo_parser.cpp) (`tests/frontend/formal/test_cameo_parser.cpp`)
 #### `CameoParser.BasicXmiDocument_ParsedIntoValidFsmIr`
 **Test Intent**: Verify Cameo OMG XMI 2.x standard XML document parsing.
@@ -851,6 +1109,58 @@
 #### `CameoParser.CrossReferencedTriggersAndSysmlProfiles_ResolvedCorrectly`
 **Test Intent**: Verify two-pass resolution of cross-referenced Signal events and SysML profile stereotypes.
 
+#### `CameoParser.ParallelOrthogonalRegions_ParsedAndRoundtripped`
+**Test Intent**: Regression: Cameo XMI states with multiple `<region>` children parse as `StateKind::Parallel` and roundtrip.
+
+#### `CameoParser.GuardExpressionsAndEffectAssignments_PreservedInIr`
+**Test Intent**: Regression: Cameo XMI guards preserve `normalized_expression` and `effect` assignments populate `assignments`.
+
+#### `CameoParser.RoundtripVariablesAndAssignmentActions_PreservedInXmi`
+**Test Intent**: Verify CameoSerializer preserves variables, ports, and assignment actions across XMI roundtrip.
+
+#### `CameoParserTest.ResolvesForwardReferencedSiblingTargetsInsideCompositeRegions`
+**Test Intent**: Verify CameoXmiParser resolves transition targets declared later in sibling/outer regions.
+
+#### `CameoXmiParser.TransitionEffectBodyAttribute_ParsedIntoAssignments`
+**Test Intent**: Regression: Cameo XMI `<effect body="x = 99;"/>` (and `<body>` child) is extracted and parsed into
+`ActionSignature::assignments`.
+
+#### `CameoXmiParser.StateEntryExitBodyAttributes_ParsedIntoAssignments`
+**Test Intent**: Regression: Cameo XMI `<entry body="x = 10;"/>` and `<exit body="y = 20;"/>` are extracted and parsed
+
+#### `CameoXmiParser.TransitionKindInternal_SetsInternalTransitionEdgeKind`
+**Test Intent**: Regression: Cameo XMI `<transition kind="internal" ...>` preserves `TransitionEdgeKind::Internal`
+
+#### `CameoXmiParser.NestedTransitionInsideSubvertex_ExtractedProperly`
+**Test Intent**: Regression: `<transition>` elements nested directly inside `<subvertex xmi:type="uml:State">`
+(common for internal/self-transitions in UML XMI) are extracted by `CameoXmiGraphResolver`.
+
+#### `CameoParser.MultipleTransitionsSameEndpoints_DisambiguateAssignmentActionNames`
+**Test Intent**: Regression: Multiple Cameo XMI transitions between the same `source` and `target` states
+
+#### `CameoParser.TimeTriggerAttribute_PopulatesTimeTrigger`
+**Test Intent**: Regression: `CameoXmiParser` reconstructs `TimeTrigger` when parsing `trigger="after_100ms"` /
+`trigger="every_50ms"` attributes emitted by `CameoSerializer`.
+
+#### `CameoParser.PropertiesReqsAndTimeInvariant_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `CameoSerializer` preserves `model.properties`, `state.traceability_reqs`, and
+`state.time_invariant` across Cameo XMI roundtrips.
+
+#### `CameoParser.ForkJoinEntryAndExitPoints_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `CameoSerializer` and `CameoXmiGraphResolver` preserve `Fork`, `Join`,
+`EntryPoint`, and `ExitPoint` pseudostate `StateKind` values across XMI roundtrips.
+
+#### `CameoParser.ChangeTrigger_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `CameoSerializer` emits `trigger="when(<expr>)"` for `ChangeTrigger`
+
+#### `CameoParser.ChoiceNode_PreservedInChoiceNodesAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `CameoXmiGraphResolver` registers `kind="choice"` pseudostates in
+`model.choice_nodes` so `ChoiceNode` entries survive Cameo XMI roundtrips.
+
+#### `CameoParser.MultiReqsAndSignalAttributes_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `CameoSerializer` and `CameoXmiParser` preserve multiple `traceability_reqs`
+(`satisfies="REQ_001, REQ_002"`) and typed `SignalDefinition::attributes` across Cameo XMI roundtrips.
+
 ### [`test_scxml_parser.cpp`](../../tests/frontend/formal/test_scxml_parser.cpp) (`tests/frontend/formal/test_scxml_parser.cpp`)
 #### `ScxmlParser.BasicScxmlDocument_ParsedIntoValidFsmIr`
 **Test Intent**: Verify W3C SCXML document parsing with internal transitions.
@@ -869,6 +1179,50 @@
 
 #### `ScxmlParserTest.InfersDataModelVariableTypesFromExpr`
 **Test Intent**: Verify SCXML <data> type inference when 'type' attribute is omitted.
+
+#### `ScxmlParserTest.ParallelRegionsLeaveStateIdsEmptyForSubstateDiscovery`
+**Test Intent**: Verify SCXML <parallel> registers orthogonal regions without putting region IDs into state_ids.
+
+#### `ScxmlParserTest.ParsesAfterAndEveryTimeTriggerEvents`
+**Test Intent**: Verify SCXML time-trigger event names (after_50ms, every_2s) populate TransitionEdge::trigger.
+
+#### `ScxmlSerializerTest.SerializesParallelStateAsParallelElement`
+**Test Intent**: Verify ScxmlSerializer emits `<parallel>` for StateKind::Parallel states without `initial` attribute.
+
+#### `ScxmlParser.SpaceSeparatedEvents_SplitIntoSeparateTransitions`
+**Test Intent**: Regression: W3C SCXML space-separated `event="Start Boot"` on a `<transition>` expands into separate
+`TransitionEdge` entries for each event rather than a single `Start_Boot` event.
+
+#### `ScxmlParser.SingleQuotedDataString_NormalizesToDoubleQuotes`
+**Test Intent**: Regression: Single-quoted SCXML string `<data id="msg" expr="'hello'"/>` normalizes outer
+
+#### `ScxmlParser.MultipleTransitionsSameEndpoints_GenerateDistinctSyntheticActionNames`
+**Test Intent**: Regression: Multiple SCXML transitions between the same `source` and `target` states
+(e.g. internal transitions for `Ping` and `Tick`) receive distinct synthetic action names
+
+#### `ScxmlSerializerTest.AssignmentOnlyActions_DoNotEmitBogusSend`
+**Test Intent**: Regression: `ScxmlSerializer` must not emit a bogus `<send event="<action name>"/>` for synthesized
+
+#### `ScxmlSerializerTest.PropertiesAndTimeInvariant_PreservedAcrossRoundtrip`
+**Test Intent**: Regression: `ScxmlSerializer` preserves `model.properties` (`<!-- @fsm:property ... -->`)
+
+#### `ScxmlSerializerTest.PseudostatesAndFinalKind_PreservedAcrossRoundtrip`
+**Test Intent**: Regression: `ScxmlSerializer` and `ScxmlParser` preserve `Fork`, `Join`, `EntryPoint`,
+`ExitPoint`, and `Final` state kinds across SCXML roundtrips.
+
+#### `ScxmlSerializerTest.ChangeTrigger_PreservedAcrossRoundtrip`
+**Test Intent**: Regression: `ScxmlSerializer` emits `event="when(<expr>)"` for `ChangeTrigger`
+
+#### `ScxmlSerializerTest.ChoiceNode_PreservedAcrossRoundtrip`
+**Test Intent**: Regression: `ScxmlSerializer` emits `kind="choice"` for `ChoiceNode` entries so
+`ScxmlParser` preserves `choice_nodes` across SCXML roundtrips.
+
+#### `ScxmlSerializerTest.MultiReqsAndSignalAttributes_PreservedAcrossRoundtrip`
+**Test Intent**: Regression: `ScxmlSerializer` and `ScxmlParser` preserve multiple `traceability_reqs`
+(`satisfies="REQ_001, REQ_002"`) and typed `SignalDefinition::attributes` across SCXML roundtrips.
+
+#### `ScxmlSerializerTest.LocalTransition_PreservedAcrossRoundtrip`
+**Test Intent**: Regression: `ScxmlSerializer` emits `type="local"` on `TransitionEdgeKind::Local`
 
 ### [`test_scxml_semantic_completeness.cpp`](../../tests/frontend/formal/test_scxml_semantic_completeness.cpp) (`tests/frontend/formal/test_scxml_semantic_completeness.cpp`)
 #### `ScxmlSemanticCompleteness.ParallelRegions_ParsedAsOrthogonalStates`
@@ -914,6 +1268,51 @@
 #### `SmvParser.NestedParenthesesInCondition_NotSplitPrematurely`
 **Test Intent**: Verify SMV condition splitting preserves nested parentheses containing '&'.
 
+#### `SmvParser.InlineActionCommentsDoNotDropSubsequentTransitions`
+**Test Intent**: Regression: inline `-- action:` comments after `;` must not swallow the next case branch.
+
+#### `SmvParser.EqualityAndBooleanLiterals_NormalizedToCppSyntax`
+**Test Intent**: Regression: SMV equality `=` and `TRUE`/`FALSE` literals in guards are normalized for C++ / semantic passes.
+
+#### `SmvParser.ActionAssignmentsAndNormalizedGuards_PopulatedForNoStubs`
+**Test Intent**: Verify inline action assignments and normalized guard expressions in SMV.
+
+#### `SmvParser.BooleanInitLiterals_NormalizedToLowercase`
+**Test Intent**: Verify SmvParser normalizes SMV uppercase boolean literals TRUE/FALSE in init() assignments.
+
+#### `SmvParser.DisjunctiveEvents_ExpandedIntoSeparateTransitions`
+**Test Intent**: Regression: SMV disjunctive event clauses `(event = Go | event = Force)` and `event in {Go, Force}`
+
+#### `SmvParser.QuotedStringInit_InfersStringDataType`
+**Test Intent**: Regression: `SmvParser` infers `DataType::string()` when `init(var) := "..."` has a quoted
+
+#### `SmvParser.MultilineLtlAndCtlSpecsWithNameComment_ParsedCleanly`
+**Test Intent**: Regression: `SmvParser` parses multi-line `LTLSPEC -- <name>`, `CTLSPEC -- <name>`, and
+`INVARSPEC -- <name>` specifications emitted by `SmvSerializer`, extracting both the property name
+
+#### `SmvParser.TimerCounterClause_ReconstructsTimeTriggerAndRemovesSyntheticTimerVar`
+**Test Intent**: Regression: `SmvParser` reconstructs `TimeTrigger` from `timer_<State> >= <ms>` clauses
+
+#### `SmvParser.InternalTransition_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `SmvSerializer` emits `-- kind=internal` on `TransitionEdgeKind::Internal`
+
+#### `SmvParser.PortsEnumsStructsAndTypedVars_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `SmvSerializer` emits `-- @fsm:enum`, `-- @fsm:struct`, `-- @fsm:port`, and
+`-- @fsm:var` directives and `SmvParser` restores them without duplicating ports into `variables`
+
+#### `SmvParser.StateReqsTimeInvariantAndParallelKind_PreservedAcrossRoundtrip`
+**Test Intent**: Regression: `SmvSerializer` emits `invariant="..."`, `kind=parallel`, and `-- @fsm:req`
+
+#### `SmvParser.ChoiceNode_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `SmvSerializer` emits `-- @fsm:choice name=...` directives for `ChoiceNode`
+
+#### `SmvParser.SignalAttributesAndValidator_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `SmvSerializer` emits `-- @fsm:signal` directives for typed payload
+`SignalDefinition::attributes` and `validators` so `SmvParser` preserves them across roundtrips.
+
+#### `SmvParser.LocalTransition_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `SmvSerializer` and `SmvParser` preserve `TransitionEdgeKind::Local`
+
 ### [`test_stateflow_parser.cpp`](../../tests/frontend/formal/test_stateflow_parser.cpp) (`tests/frontend/formal/test_stateflow_parser.cpp`)
 #### `StateflowParser.BasicStateflowChart_ParsedIntoValidFsmIr`
 **Test Intent**: Verify basic Stateflow chart syntax ingestion and transition parsing.
@@ -935,6 +1334,40 @@
 
 #### `StateflowParser.FractionalDurationsAndGuardRawExpressions_Preserved`
 **Test Intent**: Verify Stateflow fractional time duration parsing and guard expression preservation.
+
+#### `StateflowParser.CompositeInitialSubstate_RoundtripsViaAttributeAndInitialTransition`
+**Test Intent**: Regression: composite state initial_substate is preserved by StateflowParser and StateflowSerializer.
+
+#### `StateflowParser.TransitionActionAssignments_PopulatedInActionSignature`
+**Test Intent**: Regression: Stateflow transition action blocks with variable assignments populate
+`ActionSignature::assignments`.
+
+#### `StateflowParser.StateLifecycleAssignments_PopulatedInEntryAndExitActions`
+**Test Intent**: Regression: Stateflow state `entry` / `exit` attributes with variable assignments populate `assignments`.
+
+#### `StateflowParser.RoundtripAssignmentsAndNormalizedGuards_PreservedInXml`
+**Test Intent**: Verify StateflowSerializer and StateflowParser preserve assignments and normalized guards on roundtrip.
+
+#### `StateflowParserTest.ParsesParallelAndDecompositionIntoOrthogonalRegions`
+**Test Intent**: Verify StateflowParser populates orthogonal_regions for decomposition="PARALLEL_AND" states.
+
+#### `StateflowParserTest.MarksIncomingTransitionsToHistoryCompositeAsHistoryTargets`
+**Test Intent**: Verify StateflowParser marks external transitions entering a composite state with a HISTORY junction as
+
+#### `StateflowParser.MatlabNegationOperators_NormalizedToCpp`
+**Test Intent**: Regression: Stateflow MATLAB `~=` and `~` guard operators are normalized to `!=` and `!`.
+
+#### `StateflowParser.MatlabPercentCommentsInGuardAndAction_StrippedCleanly`
+**Test Intent**: Regression: `StateflowParser` strips MATLAB `%` line comments inside guard and action
+
+#### `StateflowParser.MultipleTransitionsSameEndpoints_DisambiguateAssignmentActionNames`
+**Test Intent**: Regression: Multiple Stateflow transitions between the same `source` and `target` states
+
+#### `StateflowParser.PropertiesReqsAndTimeInvariant_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `StateflowSerializer` preserves `model.properties`, `state.traceability_reqs`,
+
+#### `StateflowParser.ChangeTrigger_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `StateflowSerializer` emits `when(<expr>)` for `ChangeTrigger` transitions
 
 ### [`test_stateflow_slx_ingestion.cpp`](../../tests/frontend/formal/test_stateflow_slx_ingestion.cpp) (`tests/frontend/formal/test_stateflow_slx_ingestion.cpp`)
 #### `StateflowSlxIngestion.IngestStoredSlxContainer_ParsesModelDirectly`
@@ -1012,6 +1445,72 @@
 #### `Sysml2Parser.EntryAndExitActionBlocks_AssignmentsPopulatedInIr`
 **Test Intent**: Regression BUG-01: SysML v2 entry and exit action blocks must parse assignments.
 
+#### `Sysml2ParserTest.RejectsArrowTransitionSyntaxWithDiagnostic`
+**Test Intent**: Verify invalid 'transition Src -> Dst' syntax is rejected with a clear syntax error.
+
+#### `Sysml2ParserTest.RoundTripsTimeTriggerWithoutSyntheticSignal`
+**Test Intent**: Verify Sysml2Serializer preserves TimeTrigger as 'accept after(...)' without synthetic event def.
+
+#### `Sysml2ParserTest.RecognizesChoiceKeywordDeclaration`
+**Test Intent**: Verify Sysml2Parser recognizes standalone 'choice <Name>;' declarations as Choice pseudostates.
+
+#### `Sysml2ParserTest.RejectsDigitLeadingIdentifierWithDiagnostic`
+**Test Intent**: Verify Sysml2Parser rejects state identifiers starting with a digit with a clear diagnostic.
+
+#### `Sysml2ParserTest.ParsesAcceptWhenAsChangeTrigger`
+**Test Intent**: Verify Sysml2Parser parses 'accept when(<expr>)' as a ChangeTrigger rather than a signal named 'when'.
+
+#### `Sysml2ParserTest.ParsesAcceptEveryAsPeriodicTimeTrigger`
+**Test Intent**: Verify Sysml2Parser parses 'accept every(<dur><unit>)' as a periodic TimeTrigger.
+
+#### `Sysml2ParserTest.ParsesTrailingIfGuardAfterThenClause`
+**Test Intent**: Regression: `if <guard>` at the end of a SysML2 transition statement (after `then <target>`) must parse.
+
+#### `Sysml2ParserTest.ParsesDotNotationHistoryTargets`
+**Test Intent**: Regression: dot-notation history targets (`State.H` and `State.H*`) must set history flags.
+
+#### `Sysml2ParserTest.ParsesBareEnumLiteralsInsideEnumDef`
+**Test Intent**: Regression: bare enum literals without repeating `enum` inside `enum def` must be parsed.
+
+#### `Sysml2ParserTest.ParsesStructMemberAssignmentsInActions`
+**Test Intent**: Regression: struct member lvalues (`pos.x = 2.5`) in SysML2 action blocks preserve `member_path`.
+
+#### `Sysml2ParserTest.ParsesHistoryAndDeepHistoryStateDeclarations`
+**Test Intent**: Verify history state and deep history state declarations resolve parent history targets.
+
+#### `Sysml2Parser.MultilineDocCommentBeforeStateDef_DoesNotCorruptStateParsing`
+**Test Intent**: Regression: multi-line `doc` block annotations without trailing semicolons do not bleed
+
+#### `Sysml2Parser.SignedIntType_MapsToInt32WithNegativeInit`
+**Test Intent**: Regression: SysML2 `int` maps to signed `int32_t` (not `uint32_t`), while `Integer` and `Natural`
+
+#### `Sysml2Parser.NestedSubstatesWithRootLevelTransitions_RetainParentAfterNormalizeHierarchy`
+**Test Intent**: Regression: nested substates declared inside a composite state block retain their `parent_state`
+
+#### `Sysml2Parser.SignedIntRoundtrip_PreservesSignedTypeAcrossSerializer`
+**Test Intent**: Regression: Signed `int32` variables with negative initial values survive `Sysml2Serializer` ->
+`Sysml2Parser` roundtrips as `int32_t` rather than turning into `uint32_t` (`-Wnarrowing` error in C++).
+
+#### `Sysml2Parser.PropertiesRoundtrip_PreservedAcrossSerializer`
+**Test Intent**: Regression: `Sysml2Serializer` emits `assert property <name> : <formula>;` for
+`model.properties` so temporal logic properties survive SysML v2 roundtrips.
+
+#### `Sysml2Parser.ForkAndJoinRoundtrip_PreservedAcrossSerializer`
+**Test Intent**: Regression: `Sysml2Serializer` emits `fork <Name>;` and `join <Name>;` for `StateKind::Fork`
+
+#### `Sysml2Parser.ChangeTriggerRoundtrip_PreservedAcrossSerializer`
+**Test Intent**: Regression: `Sysml2Serializer` emits `accept when (<expr>)` for `ChangeTrigger`
+
+#### `Sysml2Parser.ChoiceNodeRoundtrip_PreservedAcrossSerializer`
+**Test Intent**: Regression: `Sysml2Serializer` emits `choice <Name>;` for `ChoiceNode` entries
+
+#### `Sysml2Parser.SendViaPortInsideActionBlocks_ProducesSignalEmitOp`
+**Test Intent**: Regression: `send <Signal>(<Payload>) via <Port>;` inside `entry action { ... }` and
+`do action { ... }` blocks produces a structured `SignalEmitOp` instruction instead of a mangled
+
+#### `Sysml2Parser.LocalTransition_PreservedAcrossSerializerRoundtrip`
+**Test Intent**: Regression: `Sysml2Serializer` and `Sysml2Parser` preserve `TransitionEdgeKind::Local`
+
 ### [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) (`tests/frontend/formal/test_sysml2_structured_data.cpp`)
 #### `Sysml2StructuredData.EnumDefinitions_ParsedIntoIrTypes`
 **Test Intent**: Verify SysML v2 enum definition parsing into FsmIr data types.
@@ -1027,6 +1526,9 @@
 
 #### `Sysml2StructuredData.FullModel_RoundtrippedLosslessly`
 **Test Intent**: Verify lossless roundtrip serialization of SysML v2 models with structured data.
+
+#### `Sysml2StructuredData.TimeTriggers_SubMillisecondUnitsConvertToMs`
+**Test Intent**: Verify Sysml2Parser converts sub-millisecond time trigger units (`us`, `ns`) to milliseconds.
 
 ---
 
@@ -1075,6 +1577,9 @@
 
 #### `DataType.TypeClassificationStringFormatting_SerializesToStream`
 **Test Intent**: Verify TypeClassification string serialization and stream output operator.
+
+#### `DataType.AllPrimitiveConversionsAndHelpers_Covered`
+**Test Intent**: Verify DataType primitive factories, from_string, C++/SMV formatting, and equality operators.
 
 ### [`test_efsm_metamodel_extensions.cpp`](../../tests/ir/test_efsm_metamodel_extensions.cpp) (`tests/ir/test_efsm_metamodel_extensions.cpp`)
 #### `LValueTarget.QualifiedPathAndScopingSyntax_ParsesRegistersLocalsAndPorts`
@@ -1135,6 +1640,9 @@
 #### `ExpressionAstNode.AlgebraicArithmeticAndBooleanExpressions_ParsesPrecedenceCorrectly`
 **Test Intent**: Verify ExpressionAstNode::parse string expression parser.
 
+#### `ExpressionAstNode.RelationalAndLogicalExpressions_ParsesPrecedenceAndReferences`
+**Test Intent**: Verify ExpressionAstNode::parse handles relational, equality, logical, and payload expressions.
+
 #### `ActionAssignment.AssignmentOperatorsAndExpressionAst_ExtractsCompoundAssignments`
 **Test Intent**: Verify ActionAssignment with compound assignment operators and expression ASTs.
 
@@ -1170,6 +1678,22 @@
 
 #### `FsmIr.CanonicalTransitionPriority_EnforcesAscendingEvaluationOrder`
 **Test Intent**: Verify canonical transition sorting enforces strict ascending priority ordering.
+
+#### `FsmIr.ExpressionEvaluationAndLosslessJsonRoundtrip_PreservesInstructionsClocksAndChoices`
+**Test Intent**: Verify ExpressionAstNode numeric and boolean evaluation and lossless JSON roundtrip of instructions, clocks,
+
+#### `FsmIr.JsonDeserializer_PreservesCppGuardTypeInGuardAstForBooleanExpressions`
+**Test Intent**: Verify FsmIrDeserializer keeps parsed C++ guard type in guard_ast when JSON contains readable boolean guards.
+
+#### `FsmIr.JsonDeserializer_ResolvesTransitionSourceAndTargetIdsToStateIds`
+**Test Intent**: Regression: JSON deserialization resolves `TransitionEdge::source_id` and `target_id` to the exact
+`StateNode::id` of existing states (even when state IDs were computed from hierarchical FQNs).
+
+#### `FsmIr.JsonDeserializer_MapsXStateFinalTypeToStateKindFinal`
+**Test Intent**: Regression: XState JSON `"type": "final"` maps to `StateKind::Final`.
+
+#### `StateNode.StateTimeInvariant_AllUnitsAndOperatorsCovered`
+**Test Intent**: Verify StateTimeInvariant parsing, unit suffixes, equality operators, and string concatenation.
 
 ### [`test_fsm_ir_semantic_completeness.cpp`](../../tests/ir/test_fsm_ir_semantic_completeness.cpp) (`tests/ir/test_fsm_ir_semantic_completeness.cpp`)
 #### `StateKind.TerminatePseudostate_DifferentiatedFromFinalState`
@@ -1213,6 +1737,18 @@
 #### `ChoiceInlining.SelfTransitionThroughChoice_PreservesExternalKind`
 **Test Intent**: Verify that a transition through a choice node returning to the source state
 
+#### `InliningPasses.ChoiceInlining_ElseBranchHasLowerPriorityThanGuardedBranch`
+**Test Intent**: Regression: `else` fallback branches in ChoiceInliningPass must sort after guarded branches.
+
+#### `InliningPasses.ChoiceInlining_PrunesUnreachableChoicePseudostates`
+**Test Intent**: Regression: `ChoiceInliningPass` prunes unreachable choice pseudostates (`incoming.empty()`)
+
+#### `SubmachineInlining.ModularUnresolvedAndRecursive_DiagnosticsHandledGracefully`
+**Test Intent**: Verify SubmachineInliningPass in modular mode (null resolver), unresolved model, and recursive self-inlining.
+
+#### `SubmachineInlining.VariableRewritingAndNestedHierarchy_RewritesAllEntitiesCorrectly`
+**Test Intent**: Verify SubmachineInliningPass rewrites variables across ASTs, guards, actions, and nested hierarchy.
+
 ### [`test_orthogonal_product.cpp`](../../tests/middleend/canonicalization/test_orthogonal_product.cpp) (`tests/middleend/canonicalization/test_orthogonal_product.cpp`)
 #### `OrthogonalProduct.ConcurrentRegions_ExpandedToCartesianProductStates`
 **Test Intent**: Verify OrthogonalProductPass expands concurrent regions into Cartesian product states.
@@ -1244,12 +1780,39 @@
 #### `OrthogonalProduct.ExternalEntryIntoSubState_ActivatesInitialStatesInOtherRegions`
 **Test Intent**: External transition entering a sub-state must activate initial states in all other regions.
 
+#### `OrthogonalProduct.InternalSelfLoopInRegion_RemainsInternalInProduct`
+**Test Intent**: Verify internal self-loops in orthogonal regions remain Internal transitions in product states.
+
+#### `OrthogonalProduct.SkipsUnchangedRegionEntryExitActionsOnProductTransition`
+**Test Intent**: Verify BoundaryActionFusionPass skips unchanged orthogonal region entry/exit hooks.
+
+#### `OrthogonalProduct.SimultaneousTransitionsSanitizeCombinedActionAndSingleGuard`
+**Test Intent**: Verify simultaneous orthogonal transitions combine actions with valid C++ identifier and single guard without
+
+#### `OrthogonalProduct.SimultaneousAssignmentActions_DoNotEmitExternalServiceCalls`
+**Test Intent**: Verify simultaneous orthogonal transitions with assignment actions preserve assignments without synthesizing
+
+#### `OrthogonalProduct.MemberDeferredEventsAndTraceabilityReqs_PropagatedToProductStates`
+**Test Intent**: Regression: `OrthogonalProductPass` propagates `deferred_events` and `traceability_reqs`
+
 ### [`test_pass_manager.cpp`](../../tests/middleend/canonicalization/test_pass_manager.cpp) (`tests/middleend/canonicalization/test_pass_manager.cpp`)
 #### `PassManager.DefaultPipelineExecution_CollectsStatisticsAndEmitsDiagnostics`
 **Test Intent**: Verify PassManager default optimization and analysis pipeline execution.
 
 #### `PassManager.CustomPassRegistration_ModifiesIrAndRecordsExecutionStats`
 **Test Intent**: Verify custom pass registration and extension in PassManager.
+
+#### `PassManager.NoOpTransformationWrappersReturnSuccessAndAnalyticalPreserveIr`
+**Test Intent**: Verify no-op transformation wrappers satisfy IPass::run() contract and analysis passes preserve IR.
+
+#### `PassManager.CentralPassRegistry_InstantiatesAllRegisteredPasses`
+**Test Intent**: Verify PassManager central registry instantiates all registered built-in passes.
+
+#### `PassManager.SevenStagePipeline_PreservesNativeDeferredEvents`
+**Test Intent**: Regression: 7-stage pipeline must preserve `deferred_events` for the native C++ runtime FIFO.
+
+#### `PassManager.RandomizedFsmIrPropertyFuzz_PreservesInvariantsWithoutCrash`
+**Test Intent**: Property-based fuzz test: 40 deterministic randomized hierarchical/guarded/cyclic FsmIr models
 
 ### [`test_structural_lowering.cpp`](../../tests/middleend/canonicalization/test_structural_lowering.cpp) (`tests/middleend/canonicalization/test_structural_lowering.cpp`)
 #### `HistoryLowering.ShallowHistoryTarget_LowersToShadowRegisterAndDispatchGuards`
@@ -1258,17 +1821,32 @@
 #### `DeferredEventLowering.DeferredEventsDeclared_LowersToBufferVariablesAndRecallTransitions`
 **Test Intent**: Verify deferred events lowering into bounded queue buffers and recall transitions.
 
+#### `DeferredEventLowering.LocalTransitionOnComposite_DoesNotAttachRecall`
+**Test Intent**: Regression: `DeferredEventLoweringPass` does not attach `__recall_deferred` to
+`TransitionEdgeKind::Local` transitions originating on a composite state (local transitions
+
 #### `BoundaryActionFusion.CrossBoundaryTransition_FusesExitAndEntryActionsInLcaOrder`
 **Test Intent**: Verify boundary action fusion concatenates exit and entry actions in Lowest Common Ancestor (LCA) order.
 
 #### `BoundaryActionFusion.CrossBoundaryTransition_ClearsHooksOnFusedNodes`
 **Test Intent**: Verify that BoundaryActionFusionPass clears entry/exit hooks on traversed StateNodes.
 
+#### `StructuralLowering.BoundaryActionFusion_DoesNotDuplicateInitialStateEntryHook`
+**Test Intent**: Verify that BoundaryActionFusionPass does not duplicate entry actions kept on initial states.
+
+#### `StructuralLowering.BoundaryActionFusion_PreservesDescendantExitActionsWhenAncestorHasExternalExit`
+**Test Intent**: Verify BoundaryActionFusionPass preserves descendant exit_actions when an ancestor has an external exit.
+
 #### `BoundaryActionFusion.InternalTransition_NotModifiedByPass`
 **Test Intent**: Verify that BoundaryActionFusionPass does not modify internal transitions.
 
 #### `BoundaryActionFusion.MultipleOutgoingTransitions_BothFuseBoundaryActionsWithoutPrematureClearing`
 **Test Intent**: Verify that multiple outgoing transitions from the same state both fuse boundary actions.
+
+#### `BoundaryActionFusion.LocalTransitionOnComposite_DoesNotFuseCompositeExitOrEntry`
+**Test Intent**: Regression: `BoundaryActionFusionPass` preserves composite exit/entry semantics on
+`TransitionEdgeKind::Local` transitions by setting LCA to the composite source (so composite
+`exit_actions` and `entry_actions` are NOT fused/executed, only descendant `entry_actions`).
 
 #### `ForkJoinLowering.ForkAndJoinPseudostates_LowersToMultiSourceMultiTargetTransitions`
 **Test Intent**: Verify fork and join pseudostates lowering into multi-target and multi-source transition edges.
@@ -1285,6 +1863,27 @@
 #### `ForkJoinLowering.BranchActionsAndClockResets_PreservedInLoweredTransitions`
 **Test Intent**: Verify that ForkJoinLoweringPass preserves branch actions and clock resets when lowering Fork and Join.
 
+#### `StructuralLowering.HistoryLowering_PinsParentAcrossNormalizeHierarchy`
+**Test Intent**: Verify HistoryLoweringPass pins _HistoryRestore parent_state across normalize_hierarchy().
+
+#### `ForkJoinLowering.JoinBranchGuardsAndEvent_PreservedInLoweredTransitions`
+**Test Intent**: Verify ForkJoinLoweringPass preserves incoming Join branch guards and events.
+
+#### `StructuralLoweringTest.FsmIrEqualityComparesAllFields`
+**Test Intent**: Verify FsmIr::operator== compares clocks, guards, actions, choice_nodes, bindings, and execution_semantics.
+
+#### `HistoryLowering.EmitsValidGuardIdentifiersAndPrioritizedFallback`
+**Test Intent**: Verify HistoryLoweringPass emits valid C++ guard identifiers and prioritized fallback branches.
+
+#### `HistoryLowering.DeepHistoryOnlyRecordsLeafSubstates`
+**Test Intent**: Verify Deep History lowering only attaches exit history recording to leaf states, not intermediate composites.
+
+#### `StructuralLowering.ChoiceInlining_InlinesEntryPointAndExitPointPseudostates`
+**Test Intent**: Verify ChoiceInliningPass inlines StateKind::EntryPoint and StateKind::ExitPoint pseudostates.
+
+#### `StructuralLowering.HistoryLowering_SkipsOrphanRestoreChoiceWhenNoTransitionTargetsHistory`
+**Test Intent**: Verify HistoryLoweringPass does not synthesize an orphan _HistoryRestore Choice node when no transition
+
 ### [`test_common_action_factoring.cpp`](../../tests/middleend/optimization/test_common_action_factoring.cpp) (`tests/middleend/optimization/test_common_action_factoring.cpp`)
 #### `CommonActionFactoring.ConvergentTransitionsIdenticalAction_FactoredIntoTargetEntry`
 **Test Intent**: Verify factoring of common transition actions on convergent edges into target state entry actions.
@@ -1298,9 +1897,18 @@
 #### `CommonActionFactoring.CompositeInitialSubstate_PreservedWithoutFactoringIntoEntry`
 **Test Intent**: Verify that convergent transitions into a composite state's initial substate are not factored into entry.
 
+#### `CommonActionFactoring.FusedBoundaryActions_NeverRefactoredIntoEntryOrExit`
+**Test Intent**: Verify CommonActionFactoringPass skips transition actions whose name starts with "fused_".
+
+#### `CommonActionFactoring.LocalTransitions_NotFactoredIntoCompositeEntryOrExit`
+**Test Intent**: Regression: `CommonActionFactoringPass` does not factor `TransitionEdgeKind::Local`
+
 ### [`test_constant_folding_and_minimization.cpp`](../../tests/middleend/optimization/test_constant_folding_and_minimization.cpp) (`tests/middleend/optimization/test_constant_folding_and_minimization.cpp`)
 #### `ConstantFolding.TautologicalAndContradictoryGuards_EvaluatedAndPruned`
 **Test Intent**: Verify ConstantFoldingPass folds tautological guards and eliminates false transitions.
+
+#### `ConstantFolding.NamedGuardModels_ResolvedAndFolded`
+**Test Intent**: Verify ConstantFoldingPass resolves symbolic guard names via FsmIr::guards.
 
 #### `StateMinimization.BehaviorallyEquivalentStates_MergedIntoCanonicalRepresentative`
 **Test Intent**: Verify StateMinimizationPass merges behaviorally equivalent states.
@@ -1313,6 +1921,13 @@
 
 #### `StateMinimization.ActivityAndInvariantDifferences_PreventMerger`
 **Test Intent**: Verify states with different do_activity or time invariants are kept separate.
+
+#### `StateMinimizationPassTest.DistinctTraceabilityReqs_NotMerged`
+**Test Intent**: Regression: `StateMinimizationPass` does not merge states that carry distinct
+`traceability_reqs` (`@fsm:req`), preserving requirement traceability links for RTM auditing.
+
+#### `ConstantFolding.DoActivityAndActionCallOp_PreservedDuringActionCleanup`
+**Test Intent**: Regression: `ConstantFoldingPass` keeps actions referenced by `StateNode::do_activity`
 
 ### [`test_datapath_optimizations.cpp`](../../tests/middleend/optimization/test_datapath_optimizations.cpp) (`tests/middleend/optimization/test_datapath_optimizations.cpp`)
 #### `DeadActionElimination.UnreadVariableStore_PrunedFromTransitionAction`
@@ -1327,11 +1942,20 @@
 #### `DeadActionElimination.ActionAssignments_DeadStoresEliminated`
 **Test Intent**: Verify DeadActionEliminationPass eliminates dead stores from act.assignments.
 
+#### `DeadActionElimination.SymbolicGuardMetadata_VariablesPreservedAsLiveReads`
+**Test Intent**: Regression: DeadActionEliminationPass resolves symbolic guard names against `ir.guards`
+
 #### `RegisterLiveness.DisjointVariableLifetimes_SharesAllocatedRegisters`
 **Test Intent**: Verify RegisterLivenessPass shares hardware register allocations for variables with disjoint lifetimes.
 
 #### `RegisterLiveness.InterferingVariableLifetimes_AllocatesDistinctRegisters`
 **Test Intent**: Verify RegisterLivenessPass assigns distinct register allocations for simultaneously interfering variables.
+
+#### `RegisterLiveness.SymbolicGuardMetadata_TracksInterferenceAcrossGuardModel`
+**Test Intent**: Regression: `RegisterLivenessPass` resolves symbolic guard names against `FsmIr::guards`
+
+#### `RegisterLiveness.ConditionActionStoreOp_TracksUseAndDefCorrectly`
+**Test Intent**: Verify RegisterLivenessPass tracks variable uses and defs inside condition_action StoreOp instructions.
 
 #### `TransitionFusion.TransientIntermediateState_FusesTransitionsAndBypassesState`
 **Test Intent**: Verify TransitionFusionPass fuses transient intermediate states and concatenates guards and actions.
@@ -1351,6 +1975,12 @@
 #### `CommonActionFactoring.InitialStateWithIncomingEdges_PreservesInitialStateSemantics`
 **Test Intent**: Verify CommonActionFactoringPass avoids hoisting into initial state entry actions to protect reset semantics.
 
+#### `TransitionFusion.StateReferencedByFormalProperty_PreservedWithoutFusion`
+**Test Intent**: Verify TransitionFusionPass preserves intermediate states referenced in formal properties.
+
+#### `TransitionFusion.PreservesTraceabilityReqsAndEdgeMetadata`
+**Test Intent**: Regression: TransitionFusionPass preserves intermediate states carrying traceability requirements and
+
 ### [`test_dead_state_pruning.cpp`](../../tests/middleend/optimization/test_dead_state_pruning.cpp) (`tests/middleend/optimization/test_dead_state_pruning.cpp`)
 #### `DeadStatePruning.UnreachableSubgraphsAndContradictoryGuards_EliminatedFromIr`
 **Test Intent**: Verify DeadStatePruningPass removes unreachable states and dead transitions.
@@ -1364,9 +1994,15 @@
 #### `DeadStatePruning.InitialStateIdDifferentFromName_PreservesReachableStates`
 **Test Intent**: Verify reachability when initial_state_id is distinct from initial_state name.
 
+#### `DeadStatePruning.MultiTargetForkTransition_PreservesAllTargetBranches`
+**Test Intent**: Regression: `DeadStatePruningPass` traverses `target_ids` and `multi_target_ids` on
+
 ### [`test_guard_simplification.cpp`](../../tests/middleend/optimization/test_guard_simplification.cpp) (`tests/middleend/optimization/test_guard_simplification.cpp`)
 #### `GuardSimplification.AlgebraicBooleanExpressions_SimplifiedAndNormalized`
 **Test Intent**: Verify algebraic boolean simplifications (double negation, constant folding, idempotency).
+
+#### `GuardSimplification.SerializedCppGuardTypesAndBoolKeywords_Simplified`
+**Test Intent**: Verify GuardSimplificationPass simplifies serialized `fsm::and_/or_/not_` guard strings and `true_`/`false_`
 
 ### [`test_adversarial_qa.cpp`](../../tests/middleend/verification/test_adversarial_qa.cpp) (`tests/middleend/verification/test_adversarial_qa.cpp`)
 - *(Executable binary test verification)*
@@ -1375,11 +2011,17 @@
 #### `OrthogonalInterference.ConcurrentConflictingVariableWrites_EmitsDataRaceError`
 **Test Intent**: Verify OrthogonalInterferencePass detects concurrent data races in parallel (AND) states.
 
+#### `OrthogonalInterference.EmptyRegionStateIds_DiscoveredViaParentStateAndEntryActions`
+**Test Intent**: Verify OrthogonalInterferencePass discovers member states via parent_state when state_ids is empty.
+
 #### `DeterminismEnforcement.MultipleTransitionsFromSameSource_SortedByAscendingPriority`
 **Test Intent**: Verify DeterminismEnforcementPass canonical priority sorting and collision detection.
 
 #### `DeterminismEnforcement.ConflictingTransitionsSamePriority_EmitsDeterminismError`
 **Test Intent**: Verify determinism enforcement detects non-deterministic collisions on identical-priority branches.
+
+#### `DeterminismEnforcement.DistinctTriggersWithEmptyEvent_DoNotEmitFalseConflict`
+**Test Intent**: Regression: `DeterminismEnforcementPass` distinguishes transitions with empty `event` string
 
 ### [`test_efsm_interval_analysis.cpp`](../../tests/middleend/verification/test_efsm_interval_analysis.cpp) (`tests/middleend/verification/test_efsm_interval_analysis.cpp`)
 #### `EfsmIntervalAnalysis.CompliantPortBounds_PassesWithoutErrors`
@@ -1390,6 +2032,24 @@
 
 #### `EfsmIntervalAnalysis.GuardOutsidePortDomain_EmitsUnsatisfiableDiagnostic`
 **Test Intent**: Verify EFSM interval analyzer detects unsatisfiable guards over bounded InPorts.
+
+#### `EFSMIntervalAnalysis.IntervalEqualityAndZeroTimesInfinity_SoundWithoutNaN`
+**Test Intent**: Verify Interval equality with infinities and 0 * inf multiplication do not produce NaN.
+
+#### `EFSMIntervalAnalysis.IntegerStrictInequality_DetectsUnsatisfiableAdjacentBounds`
+**Test Intent**: Verify integer strict inequality interval analysis detects unsatisfiable adjacent integer bounds.
+
+#### `EFSMIntervalAnalysisTest.PropagatesIntervalsAcrossCompositeHierarchy`
+**Test Intent**: Verify EFSMIntervalAnalyzer propagates variable updates across composite state hierarchy.
+
+#### `EFSMIntervalAnalysisTest.AppliesStateEntryActionsToStateEnvironment`
+**Test Intent**: Verify EFSMIntervalAnalyzer applies state entry_actions before checking outgoing guards.
+
+#### `EFSMIntervalAnalysisTest.PropagatesIntervalsAcrossOrthogonalRegions`
+**Test Intent**: Verify EFSMIntervalAnalyzer propagates variable intervals through orthogonal regions.
+
+#### `EFSMIntervalAnalysisTest.AppliesStateExitActionsAcrossTransitions`
+**Test Intent**: Verify EFSMIntervalAnalyzer applies source state exit_actions along non-internal transitions.
 
 ### [`test_formal_safety_passes.cpp`](../../tests/middleend/verification/test_formal_safety_passes.cpp) (`tests/middleend/verification/test_formal_safety_passes.cpp`)
 #### `LivelockAnalysis.NonZeroTimeTransitions_PassesWithoutErrors`
@@ -1405,11 +2065,17 @@
 #### `LivelockAnalysis.ChoicePseudostatesZeroTimeLoop_DetectedAsLivelock`
 **Test Intent**: Verify LivelockAnalysisPass detects cycles confined to Choice pseudostates in choice_nodes.
 
+#### `LivelockAnalysis.ForkMultiTargetZeroTimeCycle_DetectedAsE0401`
+**Test Intent**: Regression: `LivelockAnalysisPass` traverses `target_ids` / `multi_target_ids`
+
 #### `PriorityConflict.InvertedChildPrecedenceUnderOuterFirst_EmitsPriorityConflictDiagnostic`
 **Test Intent**: Verify PriorityConflictPass detects hierarchical policy preemption violations.
 
 #### `PriorityConflict.ParentStateHierarchyStringName_DetectsHierarchicalPreemptionConflict`
 **Test Intent**: Verify PriorityConflictPass detects hierarchical preemption violations when hierarchy is defined via
+
+#### `PriorityConflict.EquivalentSymbolicGuardMetadata_EmitsW0402`
+**Test Intent**: Regression: `PriorityConflictPass` resolves symbolic guard names via `FsmIr::guards`
 
 #### `FsmValidator.InitialStateSpecifiedViaId_ValidatesCleanlyWithoutConstCastMutation`
 **Test Intent**: Verify FsmValidator correctly accepts initial_state_id without const_cast mutation or false warnings.
@@ -1445,6 +2111,9 @@
 #### `GuardSatisfiability.DistinctTriggersWithEmptyEventString_DoNotConflict`
 **Test Intent**: Verify that distinct triggers (e.g. SignalTrigger vs TimeTrigger) with empty event string do not conflict.
 
+#### `GuardSatisfiability.SymbolicGuardMetadata_DetectsUnsatisfiableAndOverlappingGuards`
+**Test Intent**: Regression: `GuardSatisfiabilityPass` resolves symbolic guard names against `FsmIr::guards`
+
 ### [`test_ltl_model_checker_extended.cpp`](../../tests/middleend/verification/test_ltl_model_checker_extended.cpp) (`tests/middleend/verification/test_ltl_model_checker_extended.cpp`)
 - *(Executable binary test verification)*
 
@@ -1472,6 +2141,9 @@
 
 #### `EfsmIntervalAnalysis.OutOfRangeVariableGuardCondition_FlagsUnsatisfiableBranch`
 **Test Intent**: Verify EFSM Interval Analysis detects unsatisfiable guard conditions across data paths.
+
+#### `FsmValidator.MultiTargetForkTransition_NoFalseUnreachableWarning`
+**Test Intent**: Regression: `FsmValidator::validate_reachability` traverses `target_ids` / `multi_target_ids`
 
 ### [`test_model_checker_temporal_logic.cpp`](../../tests/middleend/verification/test_model_checker_temporal_logic.cpp) (`tests/middleend/verification/test_model_checker_temporal_logic.cpp`)
 #### `LtlPropertyParser.BasicUnaryAndBinaryOperators_ParsesAstAndToString`
@@ -1516,6 +2188,9 @@
 #### `EFSMDataPathPass.UnsatisfiableGuard_PrunesDeadTransitionWhenOptimizationEnabled`
 **Test Intent**: Verify EFSMDataPathPass dead transition pruning based on unsatisfiable guard intervals.
 
+#### `ModelChecker.HierarchicalCompositeAndTerminalSinkState_VerifiesCtlInvariantsAndSmvNextVar`
+**Test Intent**: Verify CTL AG invariant and AF reachability across hierarchical composite states and terminal sink states.
+
 ### [`test_timed_automata_verification.cpp`](../../tests/middleend/verification/test_timed_automata_verification.cpp) (`tests/middleend/verification/test_timed_automata_verification.cpp`)
 #### `TimedDeadlockPass.RacingTimeoutAndEventSamePriority_EmitsAmbiguityWarning`
 **Test Intent**: Verify TimedDeadlockPass flags racing timeouts without explicit priority differentiation.
@@ -1526,12 +2201,18 @@
 #### `DeterministicTimerManager.SingleShotAndPeriodicTimers_StepsAndExpiresDeterministically`
 **Test Intent**: Verify deterministic timer manager handles one-shot and periodic timer steps without drifting.
 
+#### `TimedInvariantsVerifierTest.DetectsTimelockEvenWhenTimeTriggerSetsEventName`
+**Test Intent**: Verify TimedInvariantsVerifierPass inspects TimeTrigger duration even when TransitionEdge::event is
+
 ### [`test_wcet_analysis.cpp`](../../tests/middleend/verification/test_wcet_analysis.cpp) (`tests/middleend/verification/test_wcet_analysis.cpp`)
 #### `WcetAnalysis.EventlessCyclicTransitions_EmitsZenoCycleError`
 **Test Intent**: Verify WcetAnalysisPass detects infinite zero-time Zeno cycles.
 
 #### `WcetAnalysis.LinearEventlessChains_ComputesBoundedMicroSteps`
 **Test Intent**: Verify WcetAnalysisPass computes bounded micro-steps for terminating chains.
+
+#### `WcetAnalysis.TimedAndChangeTriggerCyclesWithEmptyEvent_NotFlaggedAsZeno`
+**Test Intent**: Regression: `WcetAnalysisPass` does not treat `TimeTrigger`, `ChangeTrigger`, or `SignalTrigger`
 
 ---
 
@@ -1550,6 +2231,12 @@
 
 #### `PluginLoader.MissingSharedObject_FailsGracefullyWithDiagnostic`
 **Test Intent**: Verify PluginLoader handles non-existent or invalid plugin files gracefully.
+
+#### `PipeThroughPass.ErrorPathsAndLargePayload_HandledGracefully`
+**Test Intent**: Verify PipeThroughPass error handling for empty command, failing exit code, invalid JSON, and >64KB payload.
+
+#### `PluginLoader.ValidationErrorsExceptionsAndValidPlugin_HandledCorrectly`
+**Test Intent**: Verify PluginLoader validation, dlopen/dlsym error handling, exception safety, and valid plugin loading.
 
 ### [`test_cli_driver_errors.cpp`](../../tests/integration/test_cli_driver_errors.cpp) (`tests/integration/test_cli_driver_errors.cpp`)
 #### `FsmcDriver.MissingInput_ReturnsNonZero`
@@ -1626,6 +2313,9 @@
 
 **Scenario**:
   - Pass unsupported values '--engine=z3' and '--rtm-format=xml' to parse_cli_args.
+
+#### `CliDriver.OptEmptyInputAndUnknownPass_ReturnNonZero`
+**Test Intent**: Verify OptDriver rejects empty input path and unknown pass names cleanly.
 
 ### [`test_cmake_integration.cpp`](../../tests/integration/test_cmake_integration.cpp) (`tests/integration/test_cmake_integration.cpp`)
 - *(Executable binary test verification)*
@@ -1847,6 +2537,40 @@
 
 **Scenario**:
   - Parse CLI flags for simulation/CEX export, run trace simulation on a PlantUML model, and verify CEX
+
+#### `FsmcCliOptionsTest.CheckRaces_DetectsDataRaceUnder7StagePipeline`
+**Test Intent**: Verify --races detects concurrent data races even when --7stage pipeline is active.
+
+#### `FsmcCliOptionsTest.VerifyMode_ExpandsParallelStatesBeforeCtlCheck`
+**Test Intent**: Verify --ctl / --verify expands orthogonal parallel regions even in standard pipeline mode.
+
+### [`test_golden_ir_invariance.cpp`](../../tests/integration/test_golden_ir_invariance.cpp) (`tests/integration/test_golden_ir_invariance.cpp`)
+#### `GoldenPassInvariance.MiddleEndPassesPreserveGoldenInvariants`
+**Test Intent**: Verify middle-end analysis and optimization passes preserve Golden IR invariants without false positives.
+
+#### `GoldenDifferentialE2E.UnoptimizedVsOptimizedCpp20_ProducesIdenticalRuntimeTrace`
+**Test Intent**: Differential E2E test: verifies identical runtime behavior between unoptimized (-O0)
+
+#### `GoldenParserFuzz.IrregularFormattingAndNestedGuards_ParsedCleanlyWithoutCrash`
+**Test Intent**: Property-based parser robustness test: exercises irregular whitespace, tabs,
+
+#### `GoldenModelCheckerInvariance.TemporalPropertiesHoldBeforeAndAfterPasses`
+**Test Intent**: Verifies LTL/CTL ModelChecker results remain invariant before and after middle-end optimization passes.
+
+#### `GoldenDifferentialE2E.HistoryAndCpp17_UnoptimizedVsOptimizedMatches`
+**Test Intent**: Differential E2E test for C++17 standalone codegen (-O0 vs -O2) with ShallowHistory.
+
+#### `GoldenParserFuzz.MalformedTruncatedAndDeeplyNestedInputs_FailGracefullyWithoutCrash`
+**Test Intent**: Adversarial robustness test: exercises empty, truncated, unbalanced, unclosed-quote,
+
+#### `GoldenDifferentialE2E.ModularNonStandaloneCpp20_MultiTuLinkageMatches`
+**Test Intent**: Differential E2E test for non-standalone modular runtime (`fsm/fsm.hpp`) across multiple TUs.
+
+#### `GoldenDifferentialE2E.ParallelAndForkJoin_UnoptimizedVsOptimizedMatches`
+**Test Intent**: Differential E2E test for Parallel orthogonal regions + OrthogonalProductPass (-O0 vs -O2).
+
+#### `GoldenDifferentialE2E.DeferredEvents_UnoptimizedVsOptimizedMatches`
+**Test Intent**: Differential E2E test for native Deferred events across -O0 vs -O2 optimization passes.
 
 ### [`test_multiformat_presets_roundtrip.cpp`](../../tests/integration/test_multiformat_presets_roundtrip.cpp) (`tests/integration/test_multiformat_presets_roundtrip.cpp`)
 #### `MultiformatPresets.Sysml2UavMission_PassesRoundtripAndStrictCompilation`

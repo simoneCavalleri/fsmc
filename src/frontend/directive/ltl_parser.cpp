@@ -469,13 +469,21 @@ class LtlTokenizerAndParser {
 }  // namespace
 
 std::optional<PropertyAstNode> LtlPropertyParser::parse(std::string_view raw_formula) {
-    std::string expr = std::string(trim(raw_formula));
+    return ir::PropertyAstNode::parse(raw_formula);
+}
+
+}  // namespace fsm::frontend::directive
+
+namespace fsm::ir {
+
+std::optional<PropertyAstNode> PropertyAstNode::parse(std::string_view raw_formula) {
+    std::string expr = std::string(frontend::trim(raw_formula));
     if (expr.empty()) {
         return std::nullopt;
     }
 
-    LtlTokenizerAndParser parser(expr);
+    frontend::directive::LtlTokenizerAndParser parser(expr);
     return parser.parse_formula();
 }
 
-}  // namespace fsm::frontend::directive
+}  // namespace fsm::ir

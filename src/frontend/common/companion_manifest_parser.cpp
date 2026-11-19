@@ -582,8 +582,14 @@ void parse_properties_section(const std::vector<LineInfo>& lines, size_t& idx, s
         k = unquote(k);
         if (k == "name") {
             current.name = unquote(v);
+        } else if (k == "kind") {
+            current.kind = unquote(v);
         } else if (k == "formula" || k == "ltl" || k == "ctl") {
             current.formula = unquote(v);
+        } else if (k == "req" || k == "traceability_req") {
+            current.req = unquote(v);
+        } else if (k == "desc" || k == "description") {
+            current.desc = unquote(v);
         }
         idx++;
     }

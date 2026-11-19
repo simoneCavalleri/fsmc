@@ -5,13 +5,13 @@
 #include <variant>
 
 #include "fsm/frontend/directive/directive_parser.hpp"
-#include "fsm/frontend/directive/guard_parser.hpp"
+#include "fsm/ir/guard.hpp"
 
 namespace fsm::backend::formal {
 
 using namespace fsm::ir;
 using frontend::directive::DirectiveParser;
-using frontend::directive::GuardExpressionParser;
+using ir::GuardExpressionParser;
 
 static std::string escape_xml(std::string_view input) {
     std::string res;
@@ -41,18 +41,36 @@ static std::string escape_xml(std::string_view input) {
     return res;
 }
 
+static std::string format_action_for_stateflow(const ActionSignature& act) {
+    if (!act.assignments.empty()) {
+        std::string expr;
+        for (std::size_t i = 0; i < act.assignments.size(); ++i) {
+            if (i > 0) {
+                expr += "; ";
+            }
+            const auto& a = act.assignments[i];
+            expr += a.target.full_path() + " " + std::string(assignment_op_to_string(a.op)) + " " + a.expression;
+        }
+        return expr;
+    }
+    return act.name;
+}
+
 static void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, size_t indent, size_t& state_id) {
     std::string pad(indent * 2, ' ');
     out << pad << "<state id=\"" << (state_id++) << "\" name=\"" << escape_xml(state.name) << "\"";
     if (state.kind == StateKind::Parallel) {
         out << " decomposition=\"PARALLEL_AND\"";
     }
+    if (!state.initial_sub_state.empty()) {
+        out << " initial=\"" << escape_xml(state.initial_sub_state) << "\"";
+    }
     if (!state.entry_actions.empty()) {
         std::string entry_str;
         for (const auto& act : state.entry_actions) {
             if (!entry_str.empty())
                 entry_str += "; ";
-            entry_str += act.name;
+            entry_str += format_action_for_stateflow(act);
         }
         out << " entry=\"" << escape_xml(entry_str) << "\"";
     }
@@ -64,9 +82,30 @@ static void emit_state(std::ostream& out, const StateNode& state, const FsmIr& m
         for (const auto& act : state.exit_actions) {
             if (!exit_str.empty())
                 exit_str += "; ";
-            exit_str += act.name;
+            exit_str += format_action_for_stateflow(act);
         }
         out << " exit=\"" << escape_xml(exit_str) << "\"";
+    }
+    if (!state.deferred_events.empty()) {
+        std::string defer_str;
+        for (std::size_t i = 0; i < state.deferred_events.size(); ++i) {
+            if (i > 0)
+                defer_str += ", ";
+            defer_str += state.deferred_events[i];
+        }
+        out << " defer=\"" << escape_xml(defer_str) << "\"";
+    }
+    if (!state.traceability_reqs.empty()) {
+        std::string req_str;
+        for (std::size_t i = 0; i < state.traceability_reqs.size(); ++i) {
+            if (i > 0)
+                req_str += ", ";
+            req_str += state.traceability_reqs[i];
+        }
+        out << " satisfies=\"" << escape_xml(req_str) << "\"";
+    }
+    if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
+        out << " invariant=\"" << escape_xml(state.time_invariant->raw_expression) << "\"";
     }
 
     std::vector<const StateNode*> children;
@@ -110,6 +149,9 @@ static std::string format_transition_label(const TransitionEdge& trans, const Fs
         } else if (tt.kind == TimeTriggerKind::At) {
             label = "at(" + std::to_string(tt.duration_ms) + ", msec)";
         }
+    } else if (const auto* ct = std::get_if<ChangeTrigger>(&trans.trigger);
+               ct != nullptr && !ct->raw_expression.empty()) {
+        label = "when(" + ct->raw_expression + ")";
     } else if (!trans.event.empty() && trans.event != "Anonymous") {
         label = trans.event;
     }
@@ -126,14 +168,14 @@ static std::string format_transition_label(const TransitionEdge& trans, const Fs
         if (!label.empty()) {
             label += " ";
         }
-        label += "{ " + trans.condition_action->name + " }";
+        label += "{ " + format_action_for_stateflow(*trans.condition_action) + " }";
     }
 
     if (trans.transition_action.has_value() && !trans.transition_action->name.empty()) {
         if (!label.empty()) {
             label += " ";
         }
-        label += "/ { " + trans.transition_action->name + " }";
+        label += "/ { " + format_action_for_stateflow(*trans.transition_action) + " }";
     }
 
     return label;
@@ -215,6 +257,9 @@ std::string StateflowSerializer::serialize(const FsmIr& model) {
             }
             out << "}";
         }
+        if (!sig.validators.empty()) {
+            out << " validator=\"" << sig.validators.front() << "\"";
+        }
         out << " -->\n";
     }
 
@@ -225,6 +270,19 @@ std::string StateflowSerializer::serialize(const FsmIr& model) {
         } else if (ct.is_struct()) {
             out << "    <!-- @fsm:struct " << DirectiveParser::format_struct_directive(ct) << " -->\n";
         }
+    }
+
+    // Properties
+    for (const auto& prop : model.properties) {
+        out << "    <!-- @fsm:property name=" << prop.name << " kind=" << property_kind_to_string(prop.kind)
+            << " ltl=\"" << prop.raw_formula << "\"";
+        if (!prop.traceability_req.empty()) {
+            out << " req=\"" << prop.traceability_req << "\"";
+        }
+        if (!prop.description.empty()) {
+            out << " desc=\"" << prop.description << "\"";
+        }
+        out << " -->\n";
     }
 
     out << "    <chart id=\"1\" name=\"" << escape_xml(chart_name) << "\"";
@@ -256,6 +314,11 @@ std::string StateflowSerializer::serialize(const FsmIr& model) {
     for (const auto& trans : model.transitions) {
         out << "      <transition id=\"" << (trans_id++) << "\" src=\"" << escape_xml(trans.source) << "\" dst=\""
             << escape_xml(trans.target) << "\"";
+        if (trans.kind == TransitionEdgeKind::Internal) {
+            out << " type=\"internal\"";
+        } else if (trans.kind == TransitionEdgeKind::Local) {
+            out << " type=\"local\"";
+        }
         std::string label = format_transition_label(trans, model);
         if (!label.empty()) {
             out << " labelString=\"" << escape_xml(label) << "\"";

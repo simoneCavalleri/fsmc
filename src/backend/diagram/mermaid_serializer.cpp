@@ -8,13 +8,13 @@
 #include <sstream>
 
 #include "fsm/frontend/directive/directive_parser.hpp"
-#include "fsm/frontend/directive/guard_parser.hpp"
+#include "fsm/ir/guard.hpp"
 
 namespace fsm::backend::diagram {
 
 using namespace fsm::ir;
 using frontend::directive::DirectiveParser;
-using frontend::directive::GuardExpressionParser;
+using ir::GuardExpressionParser;
 
 namespace {
 
@@ -44,46 +44,75 @@ void emit_leaf_state(std::ostream& out, const StateNode& state, const std::strin
                        (state.do_activity.has_value() && !state.do_activity->empty());
     if (!has_actions) {
         out << pad << "state " << state.name << "\n";
-        return;
+    } else {
+        std::string label = "<b>" + state.name + "</b><hr/>";
+        bool first = true;
+        for (const auto& act : state.entry_actions) {
+            if (!first)
+                label += "<br/>";
+            label += "entry / " + format_action_expression(act);
+            first = false;
+        }
+        if (state.do_activity.has_value() && !state.do_activity->empty()) {
+            if (!first)
+                label += "<br/>";
+            label += "do / " + *state.do_activity;
+            first = false;
+        }
+        for (const auto& act : state.exit_actions) {
+            if (!first)
+                label += "<br/>";
+            label += "exit / " + format_action_expression(act);
+            first = false;
+        }
+        for (const auto& d_evt : state.deferred_events) {
+            if (!first)
+                label += "<br/>";
+            label += "defer " + d_evt;
+            first = false;
+        }
+
+        out << pad << "state \"" << label << "\" as " << state.name << "\n";
     }
 
-    std::string label = "<b>" + state.name + "</b><hr/>";
-    bool first = true;
-    for (const auto& act : state.entry_actions) {
-        if (!first)
-            label += "<br/>";
-        label += "entry / " + act.name;
-        first = false;
+    if (!state.traceability_reqs.empty() || (state.time_invariant.has_value() && !state.time_invariant->empty())) {
+        out << pad << "%% @fsm:state name=" << state.name;
+        if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
+            out << " invariant=\"" << *state.time_invariant << "\"";
+        }
+        if (!state.traceability_reqs.empty()) {
+            out << " satisfies=[";
+            for (size_t r = 0; r < state.traceability_reqs.size(); ++r) {
+                if (r > 0)
+                    out << ", ";
+                out << "\"" << state.traceability_reqs[r] << "\"";
+            }
+            out << "]";
+        }
+        out << "\n";
     }
-    if (state.do_activity.has_value() && !state.do_activity->empty()) {
-        if (!first)
-            label += "<br/>";
-        label += "do / " + *state.do_activity;
-        first = false;
-    }
-    for (const auto& act : state.exit_actions) {
-        if (!first)
-            label += "<br/>";
-        label += "exit / " + act.name;
-        first = false;
-    }
-    for (const auto& d_evt : state.deferred_events) {
-        if (!first)
-            label += "<br/>";
-        label += "defer " + d_evt;
-        first = false;
-    }
-
-    out << pad << "state \"" << label << "\" as " << state.name << "\n";
 }
 
-std::string build_label(const TransitionEdge& trans) {
+std::string build_label(const TransitionEdge& trans, const FsmIr& model) {
     std::string label;
     if (trans.priority > 0) {
         label += "(prio=" + std::to_string(trans.priority) + ")";
     }
-    if (!trans.event.empty() && trans.event != "Anonymous" && trans.event != "AnonymousEvent" &&
-        trans.event != "anonymous") {
+    if (const auto* ct = std::get_if<ChangeTrigger>(&trans.trigger)) {
+        if (!ct->raw_expression.empty()) {
+            if (!label.empty()) {
+                label += " ";
+            }
+            label += "when(" + ct->raw_expression + ")";
+        }
+    } else if (const auto* tt = std::get_if<TimeTrigger>(&trans.trigger); tt != nullptr && trans.event.empty()) {
+        if (!label.empty()) {
+            label += " ";
+        }
+        label += std::string(tt->kind == TimeTriggerKind::Every ? "every_" : "after_") +
+                 std::to_string(tt->duration_value) + std::string(time_unit_to_string(tt->unit));
+    } else if (!trans.event.empty() && trans.event != "Anonymous" && trans.event != "AnonymousEvent" &&
+               trans.event != "anonymous") {
         if (!label.empty()) {
             label += " ";
         }
@@ -93,9 +122,10 @@ std::string build_label(const TransitionEdge& trans) {
         if (!label.empty()) {
             label += " ";
         }
-        label += "[" + GuardExpressionParser::to_diagram_string(*trans.guard) + "]";
+        label += "[" + GuardExpressionParser::to_diagram_string(*trans.guard, model.guards) + "]";
     }
-    std::string act = trans.get_action();
+    std::string act =
+        trans.transition_action.has_value() ? format_action_expression(*trans.transition_action) : trans.get_action();
     if (!act.empty()) {
         if (!label.empty()) {
             label += " ";
@@ -111,18 +141,41 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
     std::string pad(indent * 4, ' ');
     out << pad << "state " << state.name << " {\n";
 
-    if (!state.initial_sub_state.empty()) {
+    if (!state.traceability_reqs.empty() || (state.time_invariant.has_value() && !state.time_invariant->empty())) {
+        out << pad << "    %% @fsm:state name=" << state.name;
+        if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
+            out << " invariant=\"" << *state.time_invariant << "\"";
+        }
+        if (!state.traceability_reqs.empty()) {
+            out << " satisfies=[";
+            for (size_t r = 0; r < state.traceability_reqs.size(); ++r) {
+                if (r > 0)
+                    out << ", ";
+                out << "\"" << state.traceability_reqs[r] << "\"";
+            }
+            out << "]";
+        }
+        out << "\n";
+    }
+
+    const bool is_parallel = (state.kind == StateKind::Parallel || !state.orthogonal_regions.empty());
+    if (!is_parallel && !state.initial_sub_state.empty()) {
         out << pad << "    [*] --> " << state.initial_sub_state << "\n";
     }
 
     // Emit child states in declaration order
+    size_t emitted_children = 0;
     for (const auto& child : model.states) {
         if (child.parent_state == state.name) {
+            if (is_parallel && emitted_children > 0) {
+                out << pad << "    --\n";
+            }
             if (child.is_composite) {
                 emit_state(out, child, model, parent_map, emitted_transitions, trans_order, indent + 1);
             } else {
                 emit_leaf_state(out, child, pad + "    ");
             }
+            ++emitted_children;
         }
     }
 
@@ -137,7 +190,11 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
         if (src_parent == state.name) {
             emitted_transitions.insert(idx);
             std::string target = trans.target;
-            std::string label = build_label(trans);
+            std::string label = build_label(trans, model);
+            if (trans.kind == TransitionEdgeKind::Internal && !label.empty()) {
+                out << pad << "    " << trans.source << " : " << label << "\n";
+                continue;
+            }
             if (target == state.name) {
                 if (!state.initial_sub_state.empty()) {
                     target = state.initial_sub_state;
@@ -147,6 +204,9 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
                 if (trans.target_is_history && label.find("[H]") == std::string::npos) {
                     label = label.empty() ? "[H]" : label + " [H]";
                 }
+            }
+            if (trans.kind == TransitionEdgeKind::Local) {
+                out << pad << "    %% @fsm:local\n";
             }
             out << pad << "    " << trans.source << " --> " << target;
             if (!label.empty()) {
@@ -167,7 +227,7 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
         for (const auto& act : state.entry_actions) {
             if (!note_content.empty())
                 note_content += ", ";
-            note_content += "entry / " + act.name;
+            note_content += "entry / " + format_action_expression(act);
         }
         if (state.do_activity.has_value() && !state.do_activity->empty()) {
             if (!note_content.empty())
@@ -177,7 +237,7 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
         for (const auto& act : state.exit_actions) {
             if (!note_content.empty())
                 note_content += ", ";
-            note_content += "exit / " + act.name;
+            note_content += "exit / " + format_action_expression(act);
         }
         for (const auto& d_evt : state.deferred_events) {
             if (!note_content.empty())
@@ -207,6 +267,25 @@ std::string MermaidSerializer::serialize(const FsmIr& model) {
         }
         if (!prop.description.empty()) {
             out << " desc=\"" << prop.description << "\"";
+        }
+        out << "\n";
+    }
+
+    // Ports
+    for (const auto& port : model.ports) {
+        out << "%% @fsm:port name=" << port.name << " type=" << port.type
+            << " dir=" << (port.is_out() ? "out" : (port.direction == PortDirection::InOut ? "inout" : "in"));
+        if (port.physical_unit.has_value()) {
+            out << " unit=\"" << *port.physical_unit << "\"";
+        }
+        if (port.min_value.has_value()) {
+            out << " min=" << *port.min_value;
+        }
+        if (port.max_value.has_value()) {
+            out << " max=" << *port.max_value;
+        }
+        if (!port.constraint.empty()) {
+            out << " constraint=\"" << port.constraint << "\"";
         }
         out << "\n";
     }
@@ -274,7 +353,7 @@ std::string MermaidSerializer::serialize(const FsmIr& model) {
         }
     }
 
-    if (!model.properties.empty() || !model.variables.empty() || !model.signals.empty()) {
+    if (!model.properties.empty() || !model.ports.empty() || !model.variables.empty() || !model.signals.empty()) {
         out << "\n";
     }
 
@@ -341,7 +420,11 @@ std::string MermaidSerializer::serialize(const FsmIr& model) {
         }
         const auto& trans = model.transitions[idx];
         std::string target = trans.target;
-        std::string label = build_label(trans);
+        std::string label = build_label(trans, model);
+        if (trans.kind == TransitionEdgeKind::Internal && !label.empty()) {
+            out << "    " << trans.source << " : " << label << "\n";
+            continue;
+        }
 
         // Check if source is a descendant of target
         std::string curr = trans.source;
@@ -366,6 +449,9 @@ std::string MermaidSerializer::serialize(const FsmIr& model) {
             }
         }
 
+        if (trans.kind == TransitionEdgeKind::Local) {
+            out << "    %% @fsm:local\n";
+        }
         out << "    " << trans.source << " --> " << target;
         if (!label.empty()) {
             out << " : " << label;

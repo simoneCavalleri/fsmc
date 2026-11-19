@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -61,7 +62,19 @@ enum class ExpressionOp : std::uint8_t {
     ShiftRight,  ///< Shift right (>>)
     BitwiseAnd,  ///< Bitwise AND (&)
     BitwiseOr,   ///< Bitwise OR (|)
-    BitwiseXor   ///< Bitwise XOR (^)
+    BitwiseXor,  ///< Bitwise XOR (^)
+
+    // Binary Relational & Equality Operators
+    Equal,         ///< Equality (==)
+    NotEqual,      ///< Inequality (!=)
+    LessThan,      ///< Less than (<)
+    LessEqual,     ///< Less than or equal (<=)
+    GreaterThan,   ///< Greater than (>)
+    GreaterEqual,  ///< Greater than or equal (>=)
+
+    // Binary Logical Operators
+    LogicalAnd,  ///< Logical conjunction (&&)
+    LogicalOr    ///< Logical disjunction (||)
 };
 
 [[nodiscard]] std::string_view expression_kind_to_string(ExpressionKind kind) noexcept;
@@ -186,6 +199,21 @@ struct ExpressionAstNode {
      * @return Root ExpressionAstNode of the parsed expression.
      */
     static ExpressionAstNode parse(std::string_view text);
+
+    /**
+     * @brief Collects all variable, port, and event parameter reference symbols in pre-order.
+     */
+    void collect_references(std::vector<std::string>& out) const;
+
+    /**
+     * @brief Evaluates the expression AST to a numeric value under the given symbol environment.
+     */
+    [[nodiscard]] std::optional<double> evaluate_numeric(const std::unordered_map<std::string, double>& env) const;
+
+    /**
+     * @brief Evaluates the expression AST to a boolean value under the given symbol environment.
+     */
+    [[nodiscard]] std::optional<bool> evaluate_boolean(const std::unordered_map<std::string, double>& env) const;
 
     bool operator==(const ExpressionAstNode& other) const noexcept;
 };

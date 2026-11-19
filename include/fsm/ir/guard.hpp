@@ -107,6 +107,38 @@ struct GuardModel {
           normalized_expression(std::move(norm_expr)) {}
 
     bool operator<(const GuardModel& other) const noexcept { return name < other.name; }
+    bool operator==(const GuardModel& other) const noexcept = default;
+};
+
+/**
+ * @struct AtomicGuardInfo
+ * @brief Decomposed atomic condition identifier with its underlying expression.
+ */
+struct AtomicGuardInfo {
+    std::string name;
+    std::string expression;
+};
+
+/**
+ * @struct ParsedGuardResult
+ * @brief Analysis payload for a parsed transition guard condition.
+ */
+struct ParsedGuardResult {
+    std::string cpp_type;                               ///< Target C++ boolean/predicate type signature
+    std::vector<std::string> atomic_guards;             ///< Decomposed atomic condition identifiers
+    std::vector<AtomicGuardInfo> atomic_guard_details;  ///< Decomposed atomic guards with expressions
+    std::optional<GuardAstNode> ast = std::nullopt;     ///< Target-agnostic structured guard AST
+};
+
+/**
+ * @class GuardExpressionParser
+ * @brief Canonical IR guard condition parser and normalizer for diagrams and code generation.
+ */
+class GuardExpressionParser {
+  public:
+    static std::string to_diagram_string(std::string_view raw_expr);
+    static std::string to_diagram_string(std::string_view raw_expr, const std::vector<GuardModel>& guards);
+    static ParsedGuardResult parse(std::string_view raw_expr);
 };
 
 }  // namespace fsm::ir

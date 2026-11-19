@@ -28,6 +28,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,7 +40,11 @@ jobs:
 
       - name: Install MkDocs & Material Theme
         run: |
-          pip install mkdocs mkdocs-material pymdown-extensions
+          pip install mkdocs mkdocs-material pymdown-extensions pyyaml
+
+      - name: Verify Documentation Integrity
+        run: |
+          python3 scripts/verify_docs.py
 
       - name: Build MkDocs Site
         run: |

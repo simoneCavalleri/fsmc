@@ -330,7 +330,7 @@ class fsm {
                 };
                 return detail::execute_transition_from_ports<Table, CurrentSrc>(
                     src_state, event, in, out, this->registers_, &srv, *this, this->observer_, record_fn,
-                    std::make_index_sequence<std::tuple_size_v<decltype(this->table_.rows)>>{});
+                    typename Table::transitions_list{});
             },
             current_state_);
     }
@@ -557,6 +557,19 @@ class fsm {
         invariant_mgr_.set_invariant_violation_handler(std::move(handler));
     }
 
+    void set_invariant_violation_handler(void (*handler)(const invariant_violation_info&)) noexcept {
+        invariant_mgr_.set_violation_handler(handler);
+    }
+
+    template <typename Callable,
+              std::enable_if_t<std::is_convertible_v<Callable, void (*)(const invariant_violation_info&)> &&
+                                   !std::is_same_v<std::decay_t<Callable>, void (*)(const invariant_violation_info&)>,
+                               int> = 0>
+    void set_invariant_violation_handler(Callable&& handler) noexcept {
+        invariant_mgr_.set_violation_handler(
+            static_cast<void (*)(const invariant_violation_info&)>(std::forward<Callable>(handler)));
+    }
+
     bool check_invariants() { return invariant_mgr_.check_invariants(current_state_); }
 
     /**
@@ -742,7 +755,7 @@ class fsm {
             if (static_cast<std::size_t>(end - curr) < plen) {
                 return false;
             }
-            std::string_view parent_sv(reinterpret_cast<const char*>(curr), plen);
+            std::string_view parent_sv(static_cast<const char*>(static_cast<const void*>(curr)), plen);
             if (!resolve_static_state_name(parent_sv).has_value()) {
                 return false;
             }
@@ -757,7 +770,7 @@ class fsm {
             if (static_cast<std::size_t>(end - curr) < slen) {
                 return false;
             }
-            std::string_view substate_sv(reinterpret_cast<const char*>(curr), slen);
+            std::string_view substate_sv(static_cast<const char*>(static_cast<const void*>(curr)), slen);
             if (!resolve_static_state_name(substate_sv).has_value()) {
                 return false;
             }
@@ -790,13 +803,13 @@ class fsm {
             std::uint16_t plen = 0;
             std::memcpy(&plen, curr, sizeof(plen));
             curr += sizeof(plen);
-            std::string_view parent_sv(reinterpret_cast<const char*>(curr), plen);
+            std::string_view parent_sv(static_cast<const char*>(static_cast<const void*>(curr)), plen);
             curr += plen;
 
             std::uint16_t slen = 0;
             std::memcpy(&slen, curr, sizeof(slen));
             curr += sizeof(slen);
-            std::string_view substate_sv(reinterpret_cast<const char*>(curr), slen);
+            std::string_view substate_sv(static_cast<const char*>(static_cast<const void*>(curr)), slen);
             curr += slen;
 
             auto static_parent = resolve_static_state_name(parent_sv);

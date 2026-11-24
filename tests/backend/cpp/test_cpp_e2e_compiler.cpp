@@ -1562,3 +1562,81 @@ TEST(CppE2ECompilerTest, KeywordVariableAndPortInGuardCompiles) {
     EXPECT_EQ(std::system(exe.c_str()), 0);
     fs::remove_all(temp_dir);
 }
+
+/**
+ * @brief Verify --freestanding generated headers compile cleanly under -fno-exceptions -fno-rtti with zero heap allocs.
+ * @scenario Generate standalone freestanding C++17 and C++20 headers, compile with -fno-exceptions -fno-rtti -Werror.
+ * @expected Both standards compile cleanly, execute transitions accurately, and trigger zero calls to operator new.
+ */
+TEST(CppE2ECompilerTest, FreestandingMode_CompilesWithNoExceptionsNoRttiAndZeroAlloc) {
+    fsm::ir::FsmIr model;
+    model.name = "BareMetalFsm";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Active");
+    model.add_event("Start");
+    model.add_event("Stop");
+    model.add_variable(fsm::ir::VariableDefinition("ticks", fsm::ir::DataType::int32(), "0"));
+    model.add_guard("can_start", "", "ticks == 0", "ticks == 0");
+
+    fsm::ir::TransitionEdge t1("Idle", "Active", "Start", "can_start");
+    fsm::ir::ActionSignature act1("inc_ticks");
+    act1.assignments.push_back(fsm::ir::ActionAssignment{fsm::ir::LValueTarget{"ticks", fsm::ir::LValueScope::Register},
+                                                         "1", fsm::ir::AssignmentOp::AddAssign});
+    t1.transition_action = act1;
+    model.transitions.push_back(t1);
+    model.transitions.emplace_back("Active", "Idle", "Stop");
+
+    fs::path temp_dir = fs::temp_directory_path() / "fsmc_e2e_freestanding_test";
+    fs::create_directories(temp_dir);
+
+    auto run_std = [&](const std::string& std_flag, CppStandard cpp_std, const std::string& suffix) {
+        GeneratorOptions opts;
+        opts.cpp_standard = cpp_std;
+        opts.standalone = true;
+        opts.freestanding = true;
+        opts.target_namespace = "baremetal";
+        const std::string code = CppGenerator::generate_header(model, opts);
+
+        EXPECT_EQ(code.find("#include <iostream>"), std::string::npos);
+        EXPECT_EQ(code.find("#include <string>"), std::string::npos);
+        EXPECT_EQ(code.find("#include <functional>"), std::string::npos);
+
+        fs::path hdr = temp_dir / ("baremetal_" + suffix + ".hpp");
+        fs::path drv = temp_dir / ("driver_" + suffix + ".cpp");
+        {
+            std::ofstream out(hdr);
+            out << code;
+        }
+        {
+            std::ofstream out(drv);
+            out << "#include <cstdlib>\n"
+                << "#include <new>\n"
+                << "void* operator new(std::size_t) { std::abort(); }\n"
+                << "void* operator new[](std::size_t) { std::abort(); }\n"
+                << "void operator delete(void*) noexcept {}\n"
+                << "void operator delete(void*, std::size_t) noexcept {}\n"
+                << "#include \"" << hdr.filename().string() << "\"\n"
+                << "int main() {\n"
+                << "    using namespace baremetal;\n"
+                << "    BareMetalFsm sm;\n"
+                << "    if (!sm.is_in<Idle>()) return 1;\n"
+                << "    auto r1 = sm.dispatch(Start{});\n"
+                << "    if (!r1.is_success() || !sm.is_in<Active>() || sm.registers().ticks != 1) return 2;\n"
+                << "    auto r2 = sm.dispatch(Stop{});\n"
+                << "    if (!r2.is_success() || !sm.is_in<Idle>()) return 3;\n"
+                << "    return 0;\n"
+                << "}\n";
+        }
+        std::string exe = (temp_dir / ("runner_" + suffix)).string();
+        std::string compile_cmd = "g++ " + std_flag + " -fno-exceptions -fno-rtti -Wall -Wextra -Werror -pedantic -I" +
+                                  temp_dir.string() + " " + drv.string() + " -o " + exe;
+        ASSERT_EQ(std::system(compile_cmd.c_str()), 0) << "[" << suffix << "] Freestanding compilation failed";
+        EXPECT_EQ(std::system(exe.c_str()), 0) << "[" << suffix << "] Freestanding execution failed";
+    };
+
+    run_std("-std=c++17", CppStandard::Cpp17, "cpp17");
+    run_std("-std=c++20", CppStandard::Cpp20, "cpp20");
+
+    fs::remove_all(temp_dir);
+}

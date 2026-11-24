@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#if !defined(FSMC_FREESTANDING)
 #include <functional>
+#endif
 #include <optional>
 #include <string_view>
 #include <type_traits>

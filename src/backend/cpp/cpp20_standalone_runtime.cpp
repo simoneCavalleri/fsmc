@@ -1253,6 +1253,10 @@ namespace fsm {
 
     out << R"raw_fsm_runtime(
 // --- Begin: traits/observer_traits.hpp ---
+#if !defined(FSMC_FREESTANDING)
+#endif
+
+
 namespace fsm {
 
 // ============================================================================
@@ -1265,6 +1269,7 @@ struct no_observer {
     constexpr void operator()(const Info&) const noexcept {}
 };
 
+#if !defined(FSMC_FREESTANDING)
 // Dynamic observer policy for runtime lambda / function registration
 struct dynamic_observer {
     using callback_type = std::function<void(const transition_info&)>;
@@ -1283,15 +1288,18 @@ struct dynamic_observer {
         }
     }
 };
+#endif
 
 template <typename T>
 struct is_dynamic_observer : std::false_type {};
 
+#if !defined(FSMC_FREESTANDING)
 template <>
 struct is_dynamic_observer<dynamic_observer> : std::true_type {};
 
 template <>
 struct is_dynamic_observer<std::function<void(const transition_info&)>> : std::true_type {};
+#endif
 
 template <typename T>
 inline constexpr bool is_dynamic_observer_v = is_dynamic_observer<T>::value;
@@ -3101,6 +3109,10 @@ class deferred_manager<Table, DeferredCapacity, false> {
 
     out << R"raw_fsm_runtime(
 // --- Begin: detail/invariant_manager.hpp ---
+#if !defined(FSMC_FREESTANDING)
+#endif
+
+
 namespace fsm {
 
 namespace detail {
@@ -4234,17 +4246,22 @@ class fsm {
     // Observer management
     template <typename Callback>
     void set_observer(Callback observer) {
+#if !defined(FSMC_FREESTANDING)
         if constexpr (std::is_same_v<observer_type, dynamic_observer>) {
             observer_.callback = std::move(observer);
-        } else if constexpr (!std::is_same_v<observer_type, no_observer>) {
+        } else
+#endif
+            if constexpr (!std::is_same_v<observer_type, no_observer>) {
             observer_ = std::move(observer);
         }
     }
 
     void clear_observer() noexcept {
+#if !defined(FSMC_FREESTANDING)
         if constexpr (std::is_same_v<observer_type, dynamic_observer>) {
             observer_.callback = nullptr;
         }
+#endif
     }
 
     [[nodiscard]] const observer_type& observer() const noexcept { return observer_; }
@@ -4854,6 +4871,7 @@ class fsm {
     FSMC_NO_UNIQUE_ADDRESS detail::invariant_manager<Table, has_invariants> invariant_mgr_{};
 };
 
+#if !defined(FSMC_FREESTANDING)
 template <typename Table, typename InPorts = no_ports, typename OutPorts = no_ports, typename Registers = no_registers,
           typename Services = no_services, typename InitialState = typename Table::initial_state,
           std::size_t DeferredCapacity = 16,
@@ -4863,6 +4881,7 @@ template <typename Table, typename InPorts = no_ports, typename OutPorts = no_po
                    : 0)>
 using dynamic_fsm =
     fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, dynamic_observer, DeferredCapacity, TimerCapacity>;
+#endif
 
 template <typename Table, std::size_t MaxTimers = 8>
 using timed_fsm = fsm<Table, no_ports, no_ports, no_registers, no_services, typename Table::initial_state, no_observer,
@@ -6924,12 +6943,10 @@ void Cpp20StandaloneRuntime::emit(std::ostream& out, const GeneratorOptions& opt
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <functional>
 #include <iomanip>
 #include <iterator>
 #include <limits>
 #include <optional>
-#include <ostream>
 #include <span>
 #include <string_view>
 #include <tuple>
@@ -6938,7 +6955,17 @@ void Cpp20StandaloneRuntime::emit(std::ostream& out, const GeneratorOptions& opt
 #include <variant>
 )raw_fsm_runtime";
 
-    if (opts.thread_safe) {
+    if (!opts.freestanding) {
+        out << R"raw_fsm_runtime(
+// Hosted STL Includes (omitted in --freestanding mode)
+#if !defined(FSMC_FREESTANDING)
+#include <functional>
+#include <ostream>
+#endif
+)raw_fsm_runtime";
+    }
+
+    if (opts.thread_safe && !opts.freestanding) {
         out << R"raw_fsm_runtime(
 // Thread-Safe System Includes
 #include <condition_variable>
@@ -6963,7 +6990,7 @@ void Cpp20StandaloneRuntime::emit(std::ostream& out, const GeneratorOptions& opt
 
     emit_core_body(out);
 
-    if (opts.thread_safe) {
+    if (opts.thread_safe && !opts.freestanding) {
         out << R"raw_fsm_runtime(
 
 // ============================================================================

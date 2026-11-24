@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 86  
-**Total Documented Test Cases**: 764  
+**Total Documented Test Cases**: 766  
 
 ---
 
@@ -41,8 +41,8 @@
 | :--- | :--- | :---: | :--- |
 | [`test_cpp17_standalone.cpp`](../../tests/backend/cpp/test_cpp17_standalone.cpp) | `tests/backend/cpp/test_cpp17_standalone.cpp` | 0 | Standalone verification executable for C++17 standalone code generation. |
 | [`test_cpp20_standalone.cpp`](../../tests/backend/cpp/test_cpp20_standalone.cpp) | `tests/backend/cpp/test_cpp20_standalone.cpp` | 0 | Standalone verification executable for C++20 standalone code generation. |
-| [`test_cpp_e2e_compiler.cpp`](../../tests/backend/cpp/test_cpp_e2e_compiler.cpp) | `tests/backend/cpp/test_cpp_e2e_compiler.cpp` | 8 | End-to-End integration and host compiler verification test suite for C++ Emitter (C++17 & C++20). |
-| [`test_cpp_model_emitter.cpp`](../../tests/backend/cpp/test_cpp_model_emitter.cpp) | `tests/backend/cpp/test_cpp_model_emitter.cpp` | 37 | Unit verification suite for C++ model emitter syntax generation. |
+| [`test_cpp_e2e_compiler.cpp`](../../tests/backend/cpp/test_cpp_e2e_compiler.cpp) | `tests/backend/cpp/test_cpp_e2e_compiler.cpp` | 9 | End-to-End integration and host compiler verification test suite for C++ Emitter (C++17 & C++20). |
+| [`test_cpp_model_emitter.cpp`](../../tests/backend/cpp/test_cpp_model_emitter.cpp) | `tests/backend/cpp/test_cpp_model_emitter.cpp` | 38 | Unit verification suite for C++ model emitter syntax generation. |
 | [`test_generated_fsm.cpp`](../../tests/backend/cpp/test_generated_fsm.cpp) | `tests/backend/cpp/test_generated_fsm.cpp` | 0 | Standalone executable validating compilation and runtime dispatch of generated FSM code. |
 
 ## Diagram & Emitter Backend Subsystem

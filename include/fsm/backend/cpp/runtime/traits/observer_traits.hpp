@@ -1,6 +1,8 @@
 #pragma once
 
+#if !defined(FSMC_FREESTANDING)
 #include <functional>
+#endif
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -21,6 +23,7 @@ struct no_observer {
     constexpr void operator()(const Info&) const noexcept {}
 };
 
+#if !defined(FSMC_FREESTANDING)
 // Dynamic observer policy for runtime lambda / function registration
 struct dynamic_observer {
     using callback_type = std::function<void(const transition_info&)>;
@@ -39,15 +42,18 @@ struct dynamic_observer {
         }
     }
 };
+#endif
 
 template <typename T>
 struct is_dynamic_observer : std::false_type {};
 
+#if !defined(FSMC_FREESTANDING)
 template <>
 struct is_dynamic_observer<dynamic_observer> : std::true_type {};
 
 template <>
 struct is_dynamic_observer<std::function<void(const transition_info&)>> : std::true_type {};
+#endif
 
 template <typename T>
 inline constexpr bool is_dynamic_observer_v = is_dynamic_observer<T>::value;

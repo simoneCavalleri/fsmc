@@ -7,4 +7,6 @@
 
 #include "fsm/backend/cpp/runtime/fsm.hpp"
 #include "fsm/backend/cpp/runtime/spsc_fsm.hpp"
+#if !defined(FSMC_FREESTANDING)
 #include "fsm/backend/cpp/runtime/thread_safe_fsm.hpp"
+#endif

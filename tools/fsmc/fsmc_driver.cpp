@@ -575,6 +575,7 @@ class FsmcDriverImpl {
         gen_opts.standalone = opts.standalone;
         gen_opts.include_stubs = opts.include_stubs;
         gen_opts.thread_safe = opts.thread_safe;
+        gen_opts.freestanding = opts.freestanding;
         gen_opts.target_namespace = opts.ns_name;
         gen_opts.runtime_header = opts.runtime_header;
 

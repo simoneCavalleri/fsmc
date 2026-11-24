@@ -39,6 +39,7 @@ struct FsmcOptions {
     bool cpp17_specified = false;
     bool cpp20_specified = false;
     bool thread_safe = true;
+    bool freestanding = false;
     bool include_stubs = true;
     std::string runtime_header = "fsm.hpp";  // --modular=<hdr> or --runtime-header <hdr>
     bool verify_mode = false;
@@ -108,6 +109,7 @@ inline void print_help(const char* prog_name) {
            "\"fsm.hpp\")\n"
         << "  --export-runtime <dir>       Export the standalone FSM runtime library headers to directory\n"
         << "  --no-thread-safe             Do not generate thread_safe_fsm asynchronous wrapper\n"
+        << "  --freestanding               Emit zero-STL freestanding C++ header (-fno-exceptions -fno-rtti safe)\n"
         << "  --no-stubs                   Do not emit default stub functors for actions and guards\n"
         << "  --allow-diagram              Allow C++ code generation from visual diagram formats (PlantUML, "
            "Mermaid)\n\n"
@@ -454,6 +456,9 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
 
             // 12. Code generation threading and stub generation switches
         } else if (arg == "--no-thread-safe") {
+            opts.thread_safe = false;
+        } else if (arg == "--freestanding") {
+            opts.freestanding = true;
             opts.thread_safe = false;
         } else if (arg == "--no-stubs") {
             opts.include_stubs = false;

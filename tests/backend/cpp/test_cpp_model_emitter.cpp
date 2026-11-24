@@ -626,7 +626,7 @@ TEST(CppModelEmitter, FluentFactoryAliases_EmittedCorrectly) {
     EXPECT_NE(str.find("::fsm::with_ports<DeviceControllerInPorts, DeviceControllerOutPorts>"), std::string::npos);
     EXPECT_NE(str.find("::fsm::with_registers<DeviceControllerRegisters>"), std::string::npos);
     EXPECT_NE(str.find("::fsm::with_services<DeviceControllerServices>"), std::string::npos);
-    EXPECT_NE(str.find("::fsm::with_observer<::fsm::dynamic_observer>"), std::string::npos);
+    EXPECT_NE(str.find("::fsm::with_observer<::fsm::no_observer>"), std::string::npos);
 
     EXPECT_NE(str.find("using ThreadSafeDeviceController = ::fsm::make_thread_safe_fsm<"), std::string::npos);
     EXPECT_NE(str.find("using SpscDeviceController = ::fsm::make_spsc_fsm<"), std::string::npos);
@@ -1540,4 +1540,41 @@ TEST(CppModelEmitterTest, CodegenSanitization_NeutralizesInjectionAndPreservesVa
     EXPECT_NE(code.find("return reg.f.val > 0;"), std::string::npos);
     // Register-referencing guard must NOT emit a fake 1-arg operator()(const InPorts&) returning true
     EXPECT_EQ(code.find("return true;"), std::string::npos);
+}
+
+/**
+ * @brief Verify default clean header omits <iostream> and dynamic_observer, and --freestanding omits all hosted STL.
+ * @scenario Generate default and freestanding standalone C++17/C++20 headers from a sample FsmIr.
+ * @expected Default header omits <iostream> and uses no_observer; freestanding header defines FSMC_FREESTANDING and
+ *           omits <iostream>, <string>, <functional>, <mutex>, <thread>, dynamic_observer, and ThreadSafe alias.
+ */
+TEST(CppModelEmitterTest, FreestandingAndCleanDefault_OmitsHostedStlAndDynamicObserver) {
+    auto model = create_sample_ir();
+
+    // 1. Default standalone C++20 header must omit <iostream> and use no_observer on primary alias
+    GeneratorOptions default_opts;
+    default_opts.cpp_standard = CppStandard::Cpp20;
+    default_opts.standalone = true;
+    const std::string default_code = CppGenerator::generate_header(model, default_opts);
+    EXPECT_EQ(default_code.find("#include <iostream>"), std::string::npos);
+    EXPECT_NE(default_code.find("::fsm::with_observer<::fsm::no_observer>"), std::string::npos);
+
+    // 2. Freestanding standalone C++17 and C++20 headers must omit all hosted STL headers and ThreadSafe wrappers
+    for (auto std_ver : {CppStandard::Cpp17, CppStandard::Cpp20}) {
+        GeneratorOptions fs_opts;
+        fs_opts.cpp_standard = std_ver;
+        fs_opts.standalone = true;
+        fs_opts.freestanding = true;
+        fs_opts.thread_safe = true;  // must be overridden to false by freestanding
+        const std::string fs_code = CppGenerator::generate_header(model, fs_opts);
+
+        EXPECT_NE(fs_code.find("#define FSMC_FREESTANDING 1"), std::string::npos);
+        EXPECT_EQ(fs_code.find("#include <iostream>"), std::string::npos);
+        EXPECT_EQ(fs_code.find("#include <string>"), std::string::npos);
+        EXPECT_EQ(fs_code.find("#include <functional>"), std::string::npos);
+        EXPECT_EQ(fs_code.find("#include <mutex>"), std::string::npos);
+        EXPECT_EQ(fs_code.find("#include <thread>"), std::string::npos);
+        EXPECT_EQ(fs_code.find("using ThreadSafeDeviceController"), std::string::npos);
+        EXPECT_NE(fs_code.find("::fsm::with_observer<::fsm::no_observer>"), std::string::npos);
+    }
 }

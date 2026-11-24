@@ -17,7 +17,7 @@
 # ==============================================================================
 
 function(fsmc_target_sources TARGET_NAME)
-    set(options STANDALONE MODULAR NO_THREAD_SAFE NO_STUBS ALLOW_DIAGRAM_CODEGEN)
+    set(options STANDALONE MODULAR NO_THREAD_SAFE NO_STUBS ALLOW_DIAGRAM_CODEGEN FREESTANDING)
     set(oneValueArgs NAME STANDARD NAMESPACE OUTPUT_DIR FORMAT TARGET_LANG RUNTIME_HEADER)
     set(multiValueArgs DIAGRAMS)
 
@@ -97,6 +97,10 @@ function(fsmc_target_sources TARGET_NAME)
 
         if(FSM_ARG_NO_THREAD_SAFE)
             list(APPEND CLI_ARGS --no-thread-safe)
+        endif()
+
+        if(FSM_ARG_FREESTANDING)
+            list(APPEND CLI_ARGS --freestanding)
         endif()
 
         if(FSM_ARG_NO_STUBS)

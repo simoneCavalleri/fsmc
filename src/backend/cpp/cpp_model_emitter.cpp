@@ -1947,10 +1947,10 @@ void CppModelEmitter::emit_fsm_aliases(std::ostream& out, const FsmIr& model, co
     out << "    ::fsm::with_ports<" << safe_model_name << "InPorts, " << safe_model_name << "OutPorts>,\n";
     out << "    ::fsm::with_registers<" << safe_model_name << "Registers>,\n";
     out << "    ::fsm::with_services<" << safe_model_name << "Services>,\n";
-    out << "    ::fsm::with_observer<::fsm::dynamic_observer>\n";
+    out << "    ::fsm::with_observer<::fsm::no_observer>\n";
     out << ">;\n\n";
 
-    if (options.thread_safe) {
+    if (options.thread_safe && !options.freestanding) {
         out << "/**\n";
         out << " * @typedef ThreadSafe" << safe_model_name << "\n";
         out << " * @brief Thread-Safe Active Object State Machine for '" << sanitize_cpp_comment(model.name) << "'.\n";

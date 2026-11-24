@@ -4,7 +4,7 @@
 > To update this file, run: `cmake --build build --target generate_test_catalog` or `python3 scripts/generate_test_catalog.py`.
 
 **Total Documented Subsystems**: 12  
-**Total Test Suites & Binaries**: 90  
+**Total Test Suites & Binaries**: 91  
 **Total Documented Test Cases**: 779  
 
 ---
@@ -39,6 +39,7 @@
 
 | Suite File | Source Path | Test Cases | Scope Summary |
 | :--- | :--- | :---: | :--- |
+| [`test_c_abi_zero_alloc.cpp`](../../tests/backend/cpp/test_c_abi_zero_alloc.cpp) | `tests/backend/cpp/test_c_abi_zero_alloc.cpp` | 0 | Tests for pure C99 zero-allocation ABI generation (*_c.h + *_c.cpp) over the unified C++17 FSM backend. |
 | [`test_cpp17_standalone.cpp`](../../tests/backend/cpp/test_cpp17_standalone.cpp) | `tests/backend/cpp/test_cpp17_standalone.cpp` | 0 | Standalone verification executable for C++17 standalone code generation. |
 | [`test_cpp20_standalone.cpp`](../../tests/backend/cpp/test_cpp20_standalone.cpp) | `tests/backend/cpp/test_cpp20_standalone.cpp` | 0 | Standalone verification executable for C++20 standalone code generation. |
 | [`test_cpp_e2e_compiler.cpp`](../../tests/backend/cpp/test_cpp_e2e_compiler.cpp) | `tests/backend/cpp/test_cpp_e2e_compiler.cpp` | 9 | End-to-End integration and host compiler verification test suite for C++ Emitter (C++17 & C++20). |

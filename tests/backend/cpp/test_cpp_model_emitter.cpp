@@ -511,7 +511,6 @@ TEST(CppModelEmitter, TransitionTable_EmittedWithPriorityOrdering) {
 
     std::ostringstream out;
     GeneratorOptions opts;
-    opts.cpp_standard = CppStandard::Cpp20;
     CppModelEmitter::emit_transition_table(out, model, opts);
     std::string str = out.str();
 
@@ -1165,7 +1164,6 @@ TEST(CppModelEmitterTest, StandaloneHeaderWrapsEmbeddedRuntimeInIncludeGuard) {
 
     GeneratorOptions opts;
     opts.standalone = true;
-    opts.cpp_standard = CppStandard::Cpp17;
     const std::string code = CppGenerator::generate_header(model, opts);
 
     EXPECT_NE(code.find("#ifndef FSMC_EMBEDDED_RUNTIME_INCLUDED"), std::string::npos);
@@ -1496,7 +1494,6 @@ TEST(CppModelEmitterTest, StringPayloadEvent_OmitsConstexprCtorInCpp17) {
     model.add_signal(tel);
 
     GeneratorOptions opts;
-    opts.cpp_standard = CppStandard::Cpp17;
     std::ostringstream out;
     CppModelEmitter::emit_model(out, model, opts);
     const std::string str = out.str();
@@ -1553,16 +1550,14 @@ TEST(CppModelEmitterTest, FreestandingAndCleanDefault_OmitsHostedStlAndDynamicOb
 
     // 1. Default standalone C++20 header must omit <iostream> and use no_observer on primary alias
     GeneratorOptions default_opts;
-    default_opts.cpp_standard = CppStandard::Cpp20;
     default_opts.standalone = true;
     const std::string default_code = CppGenerator::generate_header(model, default_opts);
     EXPECT_EQ(default_code.find("#include <iostream>"), std::string::npos);
     EXPECT_NE(default_code.find("::fsm::with_observer<::fsm::no_observer>"), std::string::npos);
 
-    // 2. Freestanding standalone C++17 and C++20 headers must omit all hosted STL headers and ThreadSafe wrappers
-    for (auto std_ver : {CppStandard::Cpp17, CppStandard::Cpp20}) {
+    // 2. Freestanding standalone header must omit all hosted STL headers and ThreadSafe wrappers
+    {
         GeneratorOptions fs_opts;
-        fs_opts.cpp_standard = std_ver;
         fs_opts.standalone = true;
         fs_opts.freestanding = true;
         fs_opts.thread_safe = true;  // must be overridden to false by freestanding

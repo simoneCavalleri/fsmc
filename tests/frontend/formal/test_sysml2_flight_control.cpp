@@ -273,7 +273,6 @@ TEST(Sysml2FlightControl, CppCodeGeneration_ProducesCompilableHeader) {
 
     std::ostringstream ss;
     GeneratorOptions opts;
-    opts.cpp_standard = CppStandard::Cpp20;
     opts.include_stubs = true;
     CppModelEmitter::emit_model(ss, model, opts);
 

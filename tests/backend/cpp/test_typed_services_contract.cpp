@@ -165,7 +165,6 @@ TEST(TypedServicesContractTest, CompileTimeServicesContract_AcceptsValidAndRejec
     fs::create_directories(temp_dir);
 
     GeneratorOptions opts;
-    opts.cpp_standard = CppStandard::Cpp17;
     opts.standalone = true;
     opts.freestanding = true;
     opts.target_namespace = "ctrl";

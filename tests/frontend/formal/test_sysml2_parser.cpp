@@ -139,7 +139,6 @@ TEST(Sysml2Parser, CompositeStates_ParsedAndCodeGenerated) {
     EXPECT_EQ(diag->parent_state, "Standby");
 
     GeneratorOptions opts;
-    opts.cpp_standard = CppStandard::Cpp20;
     opts.standalone = true;
 
     const std::string code = CppGenerator::generate_header(model, opts);

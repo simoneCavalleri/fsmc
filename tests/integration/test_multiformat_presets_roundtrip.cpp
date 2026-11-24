@@ -566,7 +566,6 @@ class MultiformatPresets : public ::testing::Test {
         }
 
         GeneratorOptions opts20;
-        opts20.cpp_standard = CppStandard::Cpp20;
         opts20.standalone = true;
         opts20.include_stubs = true;
         opts20.thread_safe = true;
@@ -583,7 +582,6 @@ class MultiformatPresets : public ::testing::Test {
             << "[" << name << "] C++20 compilation failed with -Wall -Wextra -Werror -pedantic -Wconversion";
 
         GeneratorOptions opts17;
-        opts17.cpp_standard = CppStandard::Cpp17;
         opts17.standalone = true;
         opts17.include_stubs = true;
         opts17.thread_safe = true;

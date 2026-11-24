@@ -2,9 +2,9 @@
 """
 generate_standalone_runtime.py - Standalone Runtime Bundler for fsmc
 
-This script automatically generates standalone single-header runtimes
-(cpp17_standalone_runtime.hpp and cpp20_standalone_runtime.hpp) directly
-from the canonical modular runtime headers in include/fsm/backend/cpp/runtime/.
+This script automatically generates the unified C++17+ standalone single-header runtime
+(include/fsm/backend/cpp/cpp_standalone_runtime.hpp and src/backend/cpp/cpp_standalone_runtime.cpp)
+directly from the canonical modular runtime headers in include/fsm/backend/cpp/runtime/.
 
 Usage:
     python3 scripts/generate_standalone_runtime.py [--check] [--root <path>]
@@ -170,7 +170,7 @@ def generate_emitter_header(class_name, standard_name, core_incs, core_chunks, t
 
 #include <ostream>
 
-#include "fsm/backend/cpp/cpp20_standalone_runtime.hpp"
+#include "fsm/backend/cpp/cpp_standalone_runtime.hpp"
 #include "fsm/backend/cpp/cpp_options.hpp"
 
 namespace fsm::backend::cpp {{
@@ -285,7 +285,7 @@ using cpp::{class_name};
 // Target: {standard_name} Standalone Runtime Emitter (Compiled Implementation)
 // ============================================================================
 
-#include "fsm/backend/cpp/cpp20_standalone_runtime.hpp"
+#include "fsm/backend/cpp/cpp_standalone_runtime.hpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -361,31 +361,21 @@ def main():
     core_incs, core_chunks = bundle_files(runtime_dir, CORE_FILES)
     thread_incs, thread_chunks = bundle_files(runtime_dir, THREAD_FILES)
 
-    # 1. C++20 Standalone Runtime (header declarations + compiled .cpp body)
-    cpp20_hdr, cpp20_src = generate_emitter_header(
-        "Cpp20StandaloneRuntime", "C++20",
-        core_incs, core_chunks,
-        thread_incs, thread_chunks
+    # Unified C++17+ Standalone Runtime (compiles cleanly in C++17, C++20, and C++23)
+    # Exclude C++20-only system headers so the unified runtime works everywhere from C++17 up.
+    unified_core_incs = [i for i in core_incs if i not in ("concepts", "span")]
+    unified_thread_incs = [i for i in thread_incs if i not in ("concepts", "span", "stop_token")]
+    cpp_hdr, cpp_src = generate_emitter_header(
+        "CppStandaloneRuntime", "C++17",
+        unified_core_incs, core_chunks,
+        unified_thread_incs, thread_chunks
     )
-    cpp20_path = os.path.join(backend_cpp_dir, "cpp20_standalone_runtime.hpp")
-    cpp20_src_path = os.path.join(backend_cpp_src_dir, "cpp20_standalone_runtime.cpp")
-
-    # 2. C++17 Standalone Runtime
-    # For C++17, remove C++20 specific headers like <concepts> and <span>
-    cpp17_core_incs = [i for i in core_incs if i not in ("concepts", "span")]
-    cpp17_thread_incs = [i for i in thread_incs if i not in ("concepts", "span", "stop_token")]
-    cpp17_code = generate_emitter_header(
-        "Cpp17StandaloneRuntime", "C++17",
-        cpp17_core_incs, core_chunks,
-        cpp17_thread_incs, thread_chunks,
-        delegate_body_to="Cpp20StandaloneRuntime"
-    )
-    cpp17_path = os.path.join(backend_cpp_dir, "cpp17_standalone_runtime.hpp")
+    cpp_hdr_path = os.path.join(backend_cpp_dir, "cpp_standalone_runtime.hpp")
+    cpp_src_path = os.path.join(backend_cpp_src_dir, "cpp_standalone_runtime.cpp")
 
     files_to_write = [
-        (cpp17_path, cpp17_code),
-        (cpp20_path, cpp20_hdr),
-        (cpp20_src_path, cpp20_src),
+        (cpp_hdr_path, cpp_hdr),
+        (cpp_src_path, cpp_src),
     ]
 
     is_out_of_date = False

@@ -126,7 +126,6 @@ TEST(SplitPortsAndExternalPods, SplitBundle_PortsHeaderHasZeroFsmRuntimeDependen
     FsmIr model = build_charger_ir();
 
     GeneratorOptions opts;
-    opts.cpp_standard = CppStandard::Cpp17;
     opts.standalone = true;
     opts.thread_safe = false;
 
@@ -185,7 +184,6 @@ TEST(SplitPortsAndExternalPods, E2E_HalIncludesOnlyPortsAndMultiFsmSharesExterna
 
     // 2. Emit split bundles for ChargerFsm and DriveFsm
     GeneratorOptions opts;
-    opts.cpp_standard = CppStandard::Cpp17;
     opts.standalone = true;
     opts.thread_safe = false;
 

@@ -195,37 +195,35 @@ add_fsm_unit_test(test_mcdc_harness DIR backend/verification)
 add_fsm_unit_test(test_cpp_model_emitter DIR backend/cpp)
 add_fsm_unit_test(test_typed_services_contract DIR backend/cpp STANDARD 20)
 add_fsm_unit_test(test_split_ports_and_external_pods DIR backend/cpp STANDARD 20)
+add_fsm_unit_test(test_c_abi_zero_alloc DIR backend/cpp STANDARD 20)
 add_fsm_unit_test(test_cpp_e2e_compiler DIR backend/cpp STANDARD 20)
 add_fsm_unit_test(test_state_serialization DIR backend/cpp/runtime STANDARD 20)
 
-# Compiled Generated FSM (Modular C++20)
+# Compiled Generated FSM (Modular)
 add_fsm_unit_test(test_generated_fsm DIR backend/cpp)
 fsmc_target_sources(test_generated_fsm
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/../examples/01_basic_patterns/network_protocol/connection.mmd
     NAME ConnectionMermaidFSM
-    STANDARD 20
     NAMESPACE net_mermaid
     MODULAR
     ALLOW_DIAGRAM_CODEGEN
 )
 
-# C++17 Standalone Output
+# Unified C++17 Output compiled under C++17
 add_fsm_unit_test(test_cpp17_standalone DIR backend/cpp STANDARD 17)
 fsmc_target_sources(test_cpp17_standalone
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/../examples/01_basic_patterns/network_protocol/connection.puml
     NAME ConnectionFSM17
-    STANDARD 17
     STANDALONE
     NAMESPACE net17
     ALLOW_DIAGRAM_CODEGEN
 )
 
-# C++20 Standalone Output
+# Unified C++17 Output compiled under C++20
 add_fsm_unit_test(test_cpp20_standalone DIR backend/cpp STANDARD 20)
 fsmc_target_sources(test_cpp20_standalone
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/../examples/01_basic_patterns/network_protocol/connection.puml
     NAME ConnectionFSM20
-    STANDARD 20
     STANDALONE
     NAMESPACE net20
     ALLOW_DIAGRAM_CODEGEN
@@ -248,7 +246,6 @@ add_fsm_unit_test(test_cmake_integration DIR integration STANDARD 20)
 fsmc_target_sources(test_cmake_integration
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/../examples/01_basic_patterns/network_protocol/connection.mmd
     NAME ConnectionFSM
-    STANDARD 20
     STANDALONE
     NAMESPACE net_cmake
     ALLOW_DIAGRAM_CODEGEN

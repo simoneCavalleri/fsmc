@@ -109,11 +109,11 @@ TEST(CliOptions, MissingOptionArgument_ReportsClearDiagnosticAndFails) {
     }
     {
         char p[] = "fsmc";
-        char opt[] = "--std";
+        char opt[] = "--runtime-header";
         char* argv[] = {p, opt};
         const auto opts = fsm::tools::parse_cli_args(2, argv);
         EXPECT_FALSE(opts.is_valid);
-        EXPECT_NE(opts.error_message.find("Missing argument for option: --std"), std::string::npos);
+        EXPECT_NE(opts.error_message.find("Missing argument for option: --runtime-header"), std::string::npos);
         EXPECT_EQ(fsm::tools::FsmcDriver::run(opts), 1);
     }
 

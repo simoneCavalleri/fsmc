@@ -20,7 +20,6 @@ set_target_properties(network_protocol_example PROPERTIES CXX_STANDARD 20 CXX_ST
 fsmc_target_sources(network_protocol_example
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/01_basic_patterns/network_protocol/connection.sysml
     NAME ConnectionFSM
-    STANDARD 20
     NAMESPACE net
     NO_STUBS
 )
@@ -36,7 +35,6 @@ set_target_properties(robotic_arm_example PROPERTIES CXX_STANDARD 20 CXX_STANDAR
 fsmc_target_sources(robotic_arm_example
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/02_advanced_semantics/robotic_arm_sequencer/robotic_arm.puml
     NAME RoboticArmFSM
-    STANDARD 20
     NAMESPACE robotics
     ALLOW_DIAGRAM_CODEGEN
 )
@@ -52,7 +50,6 @@ set_target_properties(automotive_bms_example PROPERTIES CXX_STANDARD 20 CXX_STAN
 fsmc_target_sources(automotive_bms_example
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/03_concurrency_and_timing/automotive_bms/bms.sysml
     NAME BatteryManagementSystem
-    STANDARD 20
     NAMESPACE automotive
 )
 add_test(NAME automotive_bms_example COMMAND automotive_bms_example)
@@ -67,7 +64,6 @@ set_target_properties(flight_control_modes_example PROPERTIES CXX_STANDARD 20 CX
 fsmc_target_sources(flight_control_modes_example
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/04_formal_verification/flight_control_modes/fms.sysml
     NAME FlightControlModeManager
-    STANDARD 20
     NAMESPACE avionics
 )
 add_test(NAME flight_control_modes_example COMMAND flight_control_modes_example)
@@ -105,7 +101,6 @@ set_target_properties(sensor_pipeline_example PROPERTIES CXX_STANDARD 20 CXX_STA
 fsmc_target_sources(sensor_pipeline_example
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/05_custom_toolchain/plugin_and_pipeline/sensor_pipeline.sysml
     NAME SensorPipelineController
-    STANDARD 20
     NAMESPACE sensing
 )
 add_test(NAME sensor_pipeline_example COMMAND sensor_pipeline_example)
@@ -120,7 +115,6 @@ set_target_properties(stateflow_digital_twin_ecu_example PROPERTIES CXX_STANDARD
 fsmc_target_sources(stateflow_digital_twin_ecu_example
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/06_stateflow_digital_twin_ecu/ecu.sfx
     NAME EcuEngineFSM
-    STANDARD 20
     NAMESPACE automotive::ecu
 )
 add_test(NAME stateflow_digital_twin_ecu_example COMMAND stateflow_digital_twin_ecu_example)

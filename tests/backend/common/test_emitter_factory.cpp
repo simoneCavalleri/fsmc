@@ -105,7 +105,7 @@ TEST(EmitterFactory, FormatDiscoveryAndCppTargetEmission_SupportedAndSynthesized
     EXPECT_TRUE(EmitterFactory::is_supported_format("cpp"));
     EXPECT_TRUE(EmitterFactory::is_supported_format("c++"));
     EXPECT_TRUE(EmitterFactory::is_supported_format("c++17"));
-    EXPECT_TRUE(EmitterFactory::is_supported_format("c++20"));
+    EXPECT_FALSE(EmitterFactory::is_supported_format("c++20"));
     EXPECT_TRUE(EmitterFactory::is_supported_format("plantuml"));
     EXPECT_TRUE(EmitterFactory::is_supported_format("mermaid"));
     EXPECT_TRUE(EmitterFactory::is_supported_format("sysml2"));

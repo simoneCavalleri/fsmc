@@ -87,9 +87,8 @@ TEST(DifferentialSemantics, EfsmGuardsActionsAndRegisters_MatchCpp17AndCpp20) {
     fs::path temp_dir = fs::temp_directory_path() / "fsmc_diff_semantics_test";
     fs::create_directories(temp_dir);
 
-    auto verify_cpp_std = [&](CppStandard std_ver, const std::string& std_flag, const std::string& suffix) {
+    auto verify_cpp_std = [&](const std::string& std_flag, const std::string& suffix) {
         GeneratorOptions opts;
-        opts.cpp_standard = std_ver;
         opts.standalone = true;
         opts.freestanding = true;
         opts.target_namespace = "diff_ns";
@@ -140,8 +139,8 @@ TEST(DifferentialSemantics, EfsmGuardsActionsAndRegisters_MatchCpp17AndCpp20) {
             << "cycles mismatch for " << suffix;
     };
 
-    verify_cpp_std(CppStandard::Cpp17, "-std=c++17", "cpp17");
-    verify_cpp_std(CppStandard::Cpp20, "-std=c++20", "cpp20");
+    verify_cpp_std("-std=c++17", "cpp17");
+    verify_cpp_std("-std=c++20", "cpp20");
 
     fs::remove_all(temp_dir);
 }

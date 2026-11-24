@@ -17,8 +17,8 @@
 # ==============================================================================
 
 function(fsmc_target_sources TARGET_NAME)
-    set(options STANDALONE MODULAR NO_THREAD_SAFE NO_STUBS ALLOW_DIAGRAM_CODEGEN FREESTANDING)
-    set(oneValueArgs NAME STANDARD NAMESPACE OUTPUT_DIR FORMAT TARGET_LANG RUNTIME_HEADER)
+    set(options STANDALONE MODULAR NO_THREAD_SAFE NO_STUBS ALLOW_DIAGRAM_CODEGEN FREESTANDING EMIT_C_ABI)
+    set(oneValueArgs NAME NAMESPACE OUTPUT_DIR FORMAT TARGET_LANG RUNTIME_HEADER)
     set(multiValueArgs DIAGRAMS)
 
     cmake_parse_arguments(FSM_ARG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
@@ -73,10 +73,6 @@ function(fsmc_target_sources TARGET_NAME)
             list(APPEND CLI_ARGS --name "${FSM_ARG_NAME}")
         endif()
 
-        if(FSM_ARG_STANDARD)
-            list(APPEND CLI_ARGS --std "${FSM_ARG_STANDARD}")
-        endif()
-
         if(FSM_ARG_NAMESPACE)
             list(APPEND CLI_ARGS --namespace "${FSM_ARG_NAMESPACE}")
         endif()
@@ -107,26 +103,29 @@ function(fsmc_target_sources TARGET_NAME)
             list(APPEND CLI_ARGS --no-stubs)
         endif()
 
-        if(FSM_ARG_STANDALONE)
-            add_custom_command(
-                OUTPUT "${OUTPUT_HEADER}"
-                COMMAND ${FSMC_EXE} ${CLI_ARGS}
-                DEPENDS "${DIAGRAM_ABS}" ${FSMC_DEP}
-                COMMENT "Generating standalone C++ FSM header from ${DIAGRAM_ABS}"
-                VERBATIM
-            )
-            list(APPEND GENERATED_HEADERS "${OUTPUT_HEADER}")
-        else()
-            set(OUTPUT_PORTS_HEADER "${FSM_ARG_OUTPUT_DIR}/${DIAGRAM_NAME}_ports.hpp")
-            add_custom_command(
-                OUTPUT "${OUTPUT_HEADER}" "${OUTPUT_PORTS_HEADER}"
-                COMMAND ${FSMC_EXE} ${CLI_ARGS}
-                DEPENDS "${DIAGRAM_ABS}" ${FSMC_DEP}
-                COMMENT "Generating split C++ FSM headers (*_ports.hpp + *_fsm.hpp) from ${DIAGRAM_ABS}"
-                VERBATIM
-            )
-            list(APPEND GENERATED_HEADERS "${OUTPUT_HEADER}" "${OUTPUT_PORTS_HEADER}")
+        if(FSM_ARG_EMIT_C_ABI)
+            list(APPEND CLI_ARGS --emit-c-abi)
         endif()
+
+        set(CMD_OUTPUTS "${OUTPUT_HEADER}")
+        if(NOT FSM_ARG_STANDALONE)
+            set(OUTPUT_PORTS_HEADER "${FSM_ARG_OUTPUT_DIR}/${DIAGRAM_NAME}_ports.hpp")
+            list(APPEND CMD_OUTPUTS "${OUTPUT_PORTS_HEADER}")
+        endif()
+        if(FSM_ARG_EMIT_C_ABI)
+            set(OUTPUT_C_HEADER "${FSM_ARG_OUTPUT_DIR}/${DIAGRAM_NAME}_c.h")
+            set(OUTPUT_C_SOURCE "${FSM_ARG_OUTPUT_DIR}/${DIAGRAM_NAME}_c.cpp")
+            list(APPEND CMD_OUTPUTS "${OUTPUT_C_HEADER}" "${OUTPUT_C_SOURCE}")
+        endif()
+
+        add_custom_command(
+            OUTPUT ${CMD_OUTPUTS}
+            COMMAND ${FSMC_EXE} ${CLI_ARGS}
+            DEPENDS "${DIAGRAM_ABS}" ${FSMC_DEP}
+            COMMENT "Generating C++17 FSM artifacts from ${DIAGRAM_ABS}"
+            VERBATIM
+        )
+        list(APPEND GENERATED_HEADERS ${CMD_OUTPUTS})
     endforeach()
 
     target_sources(${TARGET_NAME} PRIVATE ${GENERATED_HEADERS})

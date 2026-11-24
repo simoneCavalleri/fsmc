@@ -18,13 +18,12 @@ namespace fsm::backend::cpp {
 class RuntimeExporter {
   public:
     /**
-     * @brief Writes out the unified single-header runtime to the specified path.
-     * @param output_file_path Target file path for the standalone runtime.
-     * @param standard Target C++ standard dialect (C++17 or C++20).
+     * @brief Writes out the unified single-header C++17+ runtime to the specified path.
+     * @param output_file_path Target file path or directory for the standalone runtime.
      * @param out_error Diagnostic error message if export fails.
      * @return True on success, false otherwise.
      */
-    static bool export_runtime(const std::string& output_file_path, CppStandard standard, std::string& out_error);
+    static bool export_runtime(const std::string& output_file_path, std::string& out_error);
 };
 
 }  // namespace fsm::backend::cpp

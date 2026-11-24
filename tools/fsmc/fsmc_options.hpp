@@ -22,7 +22,6 @@ struct FsmcOptions {
     std::string format = "auto";
     std::string sidecar_file;
     std::string submachine_dir;
-    fsm::backend::cpp::CppStandard cpp_standard = fsm::backend::cpp::CppStandard::Cpp17;
     int opt_level = 1;                       // -O0, -O1, -O2
     std::string pipeline_mode = "standard";  // --pipeline=7stage|standard
     bool prune_dead_states = false;          // --prune-dead-states
@@ -36,8 +35,7 @@ struct FsmcOptions {
     bool standalone = true;
     bool standalone_specified = false;
     bool modular_specified = false;
-    bool cpp17_specified = false;
-    bool cpp20_specified = false;
+    bool emit_c_abi = false;  // --emit-c-abi
     bool thread_safe = true;
     bool freestanding = false;
     bool include_stubs = true;
@@ -70,7 +68,7 @@ inline void print_help(const char* prog_name) {
         << "       " << prog_name << " [OPTIONS] <model_file>\n"
         << "       " << prog_name << " -i <model_file> -e <format> -o <out_file>\n"
         << "       " << prog_name << " -i <model_file> -V / --verify\n"
-        << "       " << prog_name << " --export-runtime <dir> [--std 17|20]\n\n"
+        << "       " << prog_name << " --export-runtime <dir>\n\n"
         << "Input & Output Options:\n"
         << "  -i, --input <file>           Input model file (.sysml, .slx, .puml, .mmd, .xmi, .scxml, .json, .dot)\n"
         << "  -o, --output <file>          Output generated code or exported diagram file (default: stdout)\n"
@@ -100,11 +98,10 @@ inline void print_help(const char* prog_name) {
         << "  --rtm <file>                 Export Requirement Traceability Matrix to file\n"
         << "  --rtm-format <json|md>       Requirement Traceability Matrix format ('json' or 'markdown')\n"
         << "  --harness <file>             Synthesize GoogleTest MC/DC test harness to file\n\n"
-        << "C++ Backend Options (--target cpp):\n"
-        << "  --std <17|20>                Target C++ standard: '17' or '20' (default: 17)\n"
-        << "  --c++17, --c++20             Target C++ standard shorthands\n"
+        << "C++17 & C ABI Backend Options (--target cpp):\n"
         << "  --standalone                 Generate a single self-contained header instead of split *_ports.hpp + "
            "*_fsm.hpp\n"
+        << "  --emit-c-abi                 Also emit pure C99 zero-allocation ABI wrapper (*_c.h + *_c.cpp)\n"
         << "  --modular[=<hdr>]            Generate FSM header only, including external runtime header (default: "
            "\"fsm.hpp\")\n"
         << "  --runtime-header <hdr>       Custom runtime header path included when --modular is active (default: "
@@ -337,46 +334,9 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
 
-            // 9. C++ language dialect configuration (--std, --c++17, --c++20)
-        } else if (arg == "--std") {
-            if (idx + 1 >= argc) {
-                opts.is_valid = false;
-                opts.error_message = "Missing argument for option: " + arg;
-                return opts;
-            }
-            const std::string std_val = argv[++idx];
-            if (std_val == "17" || std_val == "c++17" || std_val == "C++17") {
-                opts.cpp17_specified = true;
-                opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp17;
-            } else if (std_val == "20" || std_val == "c++20" || std_val == "C++20") {
-                opts.cpp20_specified = true;
-                opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
-            } else {
-                opts.is_valid = false;
-                opts.error_message = "Unsupported C++ standard: " + std_val + " (expected 17 or 20)";
-                return opts;
-            }
-        } else if (arg.rfind("--std=", 0) == 0) {
-            const std::string std_val = arg.substr(6);
-            if (std_val == "17" || std_val == "c++17" || std_val == "C++17") {
-                opts.cpp17_specified = true;
-                opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp17;
-            } else if (std_val == "20" || std_val == "c++20" || std_val == "C++20") {
-                opts.cpp20_specified = true;
-                opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
-            } else {
-                opts.is_valid = false;
-                opts.error_message = "Unsupported C++ standard: " + std_val + " (expected 17 or 20)";
-                return opts;
-            }
-        } else if (arg == "--c++17" || arg == "-std=c++17") {
-            opts.cpp17_specified = true;
-            opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp17;
-        } else if (arg == "--c++20" || arg == "-std=c++20") {
-            opts.cpp20_specified = true;
-            opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
-
-            // 10. Runtime packaging mode (standalone single-header vs modular)
+            // 9. Runtime packaging mode (standalone single-header vs modular) & C ABI emission
+        } else if (arg == "--emit-c-abi") {
+            opts.emit_c_abi = true;
         } else if (arg == "--standalone") {
             opts.standalone_specified = true;
             opts.standalone = true;

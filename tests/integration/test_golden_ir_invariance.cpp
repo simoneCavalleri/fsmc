@@ -321,7 +321,6 @@ TEST(GoldenDifferentialE2E, UnoptimizedVsOptimizedCpp20_ProducesIdenticalRuntime
     BoundaryActionFusionPass().run(ir_o2, diag);
 
     fsm::backend::cpp::GeneratorOptions opts;
-    opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
     opts.standalone = true;
     opts.include_stubs = true;
 
@@ -512,7 +511,6 @@ TEST(GoldenDifferentialE2E, HistoryAndCpp17_UnoptimizedVsOptimizedMatches) {
     BoundaryActionFusionPass().run(ir_o2, diag);
 
     fsm::backend::cpp::GeneratorOptions opts;
-    opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp17;
     opts.standalone = true;
     opts.include_stubs = true;
 
@@ -648,7 +646,6 @@ TEST(GoldenDifferentialE2E, ModularNonStandaloneCpp20_MultiTuLinkageMatches) {
     BoundaryActionFusionPass().run(ir_o2, diag);
 
     fsm::backend::cpp::GeneratorOptions opts;
-    opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
     opts.standalone = false;
     opts.runtime_header = "fsm/fsm.hpp";
     opts.include_stubs = true;
@@ -769,7 +766,6 @@ TEST(GoldenDifferentialE2E, ParallelAndForkJoin_UnoptimizedVsOptimizedMatches) {
     BoundaryActionFusionPass().run(ir_o2, diag);
 
     fsm::backend::cpp::GeneratorOptions opts;
-    opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
     opts.standalone = true;
     opts.include_stubs = true;
 
@@ -853,7 +849,6 @@ TEST(GoldenDifferentialE2E, DeferredEvents_UnoptimizedVsOptimizedMatches) {
     BoundaryActionFusionPass().run(ir_o2, diag);
 
     fsm::backend::cpp::GeneratorOptions opts;
-    opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
     opts.standalone = true;
     opts.include_stubs = true;
 

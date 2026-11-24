@@ -30,6 +30,7 @@
 #include <csignal>
 #endif
 
+#include "fsm/backend/cpp/c_abi_generator.hpp"
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/backend/cpp/runtime_exporter.hpp"
 #include "fsm/backend/diagram/companion_manifest_emitter.hpp"
@@ -145,18 +146,10 @@ class FsmcDriverImpl {
                 return 1;
             }
         }
-        if (opts.cpp17_specified && opts.cpp20_specified) {
-            std::cerr << "warning[W0103]: Conflicting C++ standard options specified; prioritizing C++"
-                      << (opts.cpp_standard == fsm::backend::cpp::CppStandard::Cpp20 ? "20" : "17") << ".\n";
-            if (opts.werror) {
-                return 1;
-            }
-        }
-
         // Export standalone runtime if requested
         if (!opts.export_runtime_dir.empty()) {
             std::string err;
-            if (!RuntimeExporter::export_runtime(opts.export_runtime_dir, opts.cpp_standard, err)) {
+            if (!RuntimeExporter::export_runtime(opts.export_runtime_dir, err)) {
                 std::cerr << "Error: " << err << "\n";
                 return 1;
             }
@@ -578,9 +571,8 @@ class FsmcDriverImpl {
             }
         }
 
-        // Generate C++ code
+        // Generate C++17 code
         GeneratorOptions gen_opts;
-        gen_opts.cpp_standard = opts.cpp_standard;
         gen_opts.standalone = opts.standalone;
         gen_opts.include_stubs = opts.include_stubs;
         gen_opts.thread_safe = opts.thread_safe;
@@ -590,15 +582,14 @@ class FsmcDriverImpl {
 
         if (!opts.output_file.empty() && !is_stdout_path(opts.output_file)) {
             const bool use_split = !opts.standalone_specified;
-            const std::string std_label = (opts.cpp_standard == CppStandard::Cpp20) ? "C++20" : "C++17";
+            const fs::path fsm_path(opts.output_file);
+            std::string stem = fsm_path.stem().string();
+            const std::string ext = fsm_path.extension().string();
+            if (stem.size() > 4 && stem.compare(stem.size() - 4, 4, "_fsm") == 0) {
+                stem.erase(stem.size() - 4);
+            }
 
             if (use_split) {
-                const fs::path fsm_path(opts.output_file);
-                std::string stem = fsm_path.stem().string();
-                const std::string ext = fsm_path.extension().string();
-                if (stem.size() > 4 && stem.compare(stem.size() - 4, 4, "_fsm") == 0) {
-                    stem.erase(stem.size() - 4);
-                }
                 const fs::path ports_path = fsm_path.parent_path() / (stem + "_ports" + (ext.empty() ? ".hpp" : ext));
                 const std::string ports_inc = ports_path.filename().string();
 
@@ -619,7 +610,7 @@ class FsmcDriverImpl {
                     std::cerr << "Error: " << write_err << "\n";
                     return 1;
                 }
-                std::cout << "[SUCCESS] " << std_label << " (Split" << (opts.standalone ? "" : " + Modular")
+                std::cout << "[SUCCESS] C++17 (Split" << (opts.standalone ? "" : " + Modular")
                           << ") generated successfully:\n"
                           << "  - Ports: " << ports_path.string() << "\n"
                           << "  - FSM:   " << opts.output_file << "\n"
@@ -642,13 +633,35 @@ class FsmcDriverImpl {
                     std::cerr << "Error: " << write_err << "\n";
                     return 1;
                 }
-                std::cout << "[SUCCESS] " << std_label << " (" << (opts.standalone ? "Standalone" : "Modular")
+                std::cout << "[SUCCESS] C++17 (" << (opts.standalone ? "Standalone" : "Modular")
                           << ") generated successfully to: " << opts.output_file << "\n"
                           << "  - States: " << model.states.size() << "\n"
                           << "  - Events: " << model.signals.size() << "\n"
                           << "  - Transitions: " << model.transitions.size() << "\n"
                           << "  - Guards: " << model.guards.size() << "\n"
                           << "  - Actions: " << model.actions.size() << "\n";
+            }
+
+            if (opts.emit_c_abi) {
+                const fs::path c_hdr_path = fsm_path.parent_path() / (stem + "_c.h");
+                const fs::path c_src_path = fsm_path.parent_path() / (stem + "_c.cpp");
+                GeneratedCAbiBundle c_bundle;
+                try {
+                    c_bundle = CAbiGenerator::generate(model, gen_opts, fsm_path.filename().string(),
+                                                       c_hdr_path.filename().string());
+                } catch (const std::exception& ex) {
+                    std::cerr << "Error: C ABI generator rejected the model: " << ex.what() << "\n";
+                    return 1;
+                }
+                std::string write_err;
+                if (!write_file_content(c_hdr_path.string(), c_bundle.header, write_err) ||
+                    !write_file_content(c_src_path.string(), c_bundle.source, write_err)) {
+                    std::cerr << "Error: " << write_err << "\n";
+                    return 1;
+                }
+                std::cout << "[SUCCESS] C99 ABI generated successfully:\n"
+                          << "  - Header: " << c_hdr_path.string() << "\n"
+                          << "  - Bridge: " << c_src_path.string() << "\n";
             }
         } else {
             std::string generated_code;

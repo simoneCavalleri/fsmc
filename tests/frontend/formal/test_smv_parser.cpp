@@ -172,7 +172,6 @@ ASSIGN
     ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err.render_to_string();
 
     GeneratorOptions opts;
-    opts.cpp_standard = CppStandard::Cpp20;
     opts.standalone = true;
     const std::string header = CppGenerator::generate_header(model, opts);
     EXPECT_FALSE(header.empty());

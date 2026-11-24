@@ -819,4 +819,102 @@ TEST(StateflowParser, ChangeTrigger_PreservedAcrossSerializerRoundtrip) {
     EXPECT_EQ(std::get<ChangeTrigger>(parsed.transitions[0].trigger).raw_expression, "count > 5");
 }
 
+/**
+ * @brief Verify StateflowParser ingests native MathWorks simulink/stateflow.xml without any @fsm comments.
+ * @scenario Parse standard <Stateflow><machine><Children><chart><Children> XML with <state SSID>, <P
+ * Name="labelString">, SSID-referenced <transition><src>/<dst>, <junction> HISTORY_JUNCTION, and <data>
+ * INPUT_DATA/OUTPUT_DATA/LOCAL_DATA.
+ * @expected Chart name, initial state, hierarchy, transitions, history flag, ports, and variables are all extracted.
+ */
+TEST(StateflowParser, ParsesNativeMathWorksStateflowXmlWithoutFsmComments) {
+    const std::string native_sf_xml = R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<Stateflow>
+  <machine id="1">
+    <P Name="name">BrakeCtrlMachine</P>
+    <Children>
+      <chart id="2">
+        <P Name="name">BrakeController</P>
+        <P Name="decomposition">CLUSTER_CHART</P>
+        <Children>
+          <state SSID="10">
+            <P Name="labelString">Idle&#10;entry: pressure_cmd = 0</P>
+            <P Name="decomposition">CLUSTER_STATE</P>
+          </state>
+          <state SSID="11">
+            <P Name="labelString">Engaged</P>
+            <P Name="decomposition">CLUSTER_STATE</P>
+            <Children>
+              <junction SSID="12">
+                <P Name="type">HISTORY_JUNCTION</P>
+              </junction>
+              <state SSID="13">
+                <P Name="labelString">Holding</P>
+                <P Name="decomposition">CLUSTER_STATE</P>
+              </state>
+              <transition SSID="14">
+                <dst><P Name="SSID">13</P></dst>
+              </transition>
+            </Children>
+          </state>
+          <data SSID="20" name="pedal_force">
+            <P Name="scope">INPUT_DATA</P>
+            <P Name="dataType">int32</P>
+          </data>
+          <data SSID="21" name="pressure_cmd">
+            <P Name="scope">OUTPUT_DATA</P>
+            <P Name="dataType">uint32</P>
+          </data>
+          <data SSID="22" name="cycle_cnt">
+            <P Name="scope">LOCAL_DATA</P>
+            <P Name="dataType">uint32</P>
+          </data>
+          <transition SSID="30">
+            <dst><P Name="SSID">10</P></dst>
+          </transition>
+          <transition SSID="31">
+            <P Name="labelString">EvPress [pedal_force &gt; 10] / { cycle_cnt = cycle_cnt + 1 }</P>
+            <src><P Name="SSID">10</P></src>
+            <dst><P Name="SSID">11</P></dst>
+          </transition>
+        </Children>
+      </chart>
+    </Children>
+  </machine>
+</Stateflow>
+)xml";
+
+    StateflowParser parser;
+    FsmIr model;
+    fsm::diagnostic::DiagnosticEngine diag;
+    ASSERT_TRUE(parser.parse(native_sf_xml, model, diag)) << diag.render_to_string();
+
+    EXPECT_EQ(model.name, "BrakeController");
+    EXPECT_EQ(model.initial_state, "Idle");
+    ASSERT_NE(model.find_state("Idle"), nullptr);
+    const auto* engaged = model.find_state("Engaged");
+    ASSERT_NE(engaged, nullptr);
+    EXPECT_TRUE(engaged->has_history);
+    EXPECT_EQ(engaged->initial_sub_state, "Holding");
+
+    const auto* p_in = model.find_port("pedal_force");
+    ASSERT_NE(p_in, nullptr);
+    EXPECT_TRUE(p_in->is_in());
+    EXPECT_EQ(p_in->type.to_cpp_type(), "int32_t");
+
+    const auto* p_out = model.find_port("pressure_cmd");
+    ASSERT_NE(p_out, nullptr);
+    EXPECT_TRUE(p_out->is_out());
+    EXPECT_EQ(p_out->type.to_cpp_type(), "uint32_t");
+
+    const auto* var_local = model.find_variable("cycle_cnt");
+    ASSERT_NE(var_local, nullptr);
+    EXPECT_EQ(var_local->type.to_cpp_type(), "uint32_t");
+
+    ASSERT_EQ(model.transitions.size(), 1u);
+    EXPECT_EQ(model.transitions[0].source, "Idle");
+    EXPECT_EQ(model.transitions[0].target, "Engaged");
+    EXPECT_EQ(model.transitions[0].event, "EvPress");
+    EXPECT_TRUE(model.transitions[0].target_is_history);
+}
+
 }  // namespace

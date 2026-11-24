@@ -1258,4 +1258,54 @@ TEST(FsmcCliOptionsTest, VerifyMode_ExpandsParallelStatesBeforeCtlCheck) {
     std::filesystem::remove(scxml_path);
 }
 
+/**
+ * @brief Verify --target c99 CLI option generates native pure-C99 header/source and manifest with target="c99",
+ * and rejects unsupported targets cleanly.
+ * @scenario Invoke parse_cli_args + FsmcDriver::run with --target c99 --emit-manifest on a SysML v2 model, then test
+ * --target unknown_lang.
+ * @expected Both .h and .c files plus manifest with "target": "c99" are emitted; invalid target fails parsing.
+ */
+TEST_F(FsmcOptionsTest, TargetC99_EmitsPureC99HeaderSourceAndManifest_AndRejectsInvalidTarget) {
+    fs::path out_h = test_dir_ / "c99_cli_out.h";
+    fs::path out_c = test_dir_ / "c99_cli_out.c";
+    fs::path out_manifest = test_dir_ / "c99_cli_out.manifest.json";
+
+    // 1. Valid --target c99 --emit-manifest
+    {
+        char p[] = "fsmc";
+        char i_opt[] = "-i";
+        std::string in_str = model_file_;
+        char o_opt[] = "-o";
+        std::string out_str = out_h.string();
+        char t_opt[] = "--target";
+        char t_val[] = "c99";
+        char m_opt[] = "--emit-manifest";
+
+        char* argv[] = {p, i_opt, in_str.data(), o_opt, out_str.data(), t_opt, t_val, m_opt};
+        const auto opts = fsm::tools::parse_cli_args(8, argv);
+        ASSERT_TRUE(opts.is_valid) << opts.error_message;
+        EXPECT_EQ(opts.target_lang, "c99");
+        EXPECT_EQ(fsm::tools::FsmcDriver::run(opts), 0);
+
+        EXPECT_TRUE(fs::exists(out_h));
+        EXPECT_TRUE(fs::exists(out_c));
+        EXPECT_TRUE(fs::exists(out_manifest));
+
+        std::ifstream mfs(out_manifest);
+        std::string mcontent((std::istreambuf_iterator<char>(mfs)), std::istreambuf_iterator<char>());
+        EXPECT_NE(mcontent.find("\"target\": \"c99\""), std::string::npos);
+    }
+
+    // 2. Unsupported target must be rejected
+    {
+        char p[] = "fsmc";
+        char i_opt[] = "-i";
+        std::string in_str = model_file_;
+        char t_opt[] = "--target=unknown_lang";
+        char* argv[] = {p, i_opt, in_str.data(), t_opt};
+        const auto opts = fsm::tools::parse_cli_args(4, argv);
+        EXPECT_FALSE(opts.is_valid);
+    }
+}
+
 }  // namespace

@@ -10,12 +10,11 @@
 
 #include "fsm/backend/diagram/mermaid_serializer.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
-#include "fsm/middleend/analysis/fsm_validator.hpp"
+#include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm::backend::diagram;
 using namespace fsm::frontend::diagram;
 using namespace fsm::frontend;
-using namespace fsm::middleend::analysis;
 using namespace fsm::middleend;
 using namespace fsm::ir;
 
@@ -39,8 +38,8 @@ TEST(MermaidParser, BasicDiagram_ParsedIntoValidFsmIr) {
 
     MermaidParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.initial_state, "Idle");
     EXPECT_EQ(model.states.size(), 3u);
@@ -49,9 +48,9 @@ TEST(MermaidParser, BasicDiagram_ParsedIntoValidFsmIr) {
     EXPECT_EQ(model.actions.size(), 2u);
     EXPECT_EQ(model.transitions.size(), 4u);
 
-    const auto validation = FsmValidator::validate(model);
-    EXPECT_TRUE(validation.is_valid);
-    EXPECT_TRUE(validation.errors.empty());
+    fsm::diagnostic::DiagnosticEngine diag;
+    EXPECT_TRUE(fsm::middleend::PassManager::create_validation_pipeline().run(model, diag));
+    EXPECT_FALSE(diag.has_errors());
 }
 
 /**
@@ -75,8 +74,8 @@ TEST(MermaidParser, CommentsNotesAndHierarchy_ParsedCorrectly) {
 
     MermaidParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.initial_state, "SuperState");
     ASSERT_NE(model.find_state("SuperState"), nullptr);
@@ -98,7 +97,7 @@ TEST(MermaidParser, CommentsNotesAndHierarchy_ParsedCorrectly) {
 TEST(MermaidParser, EmptyInput_GracefullyRejected) {
     MermaidParser mmd_parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
 
     EXPECT_FALSE(mmd_parser.parse("   \n\t ", model, err));
 }
@@ -120,8 +119,8 @@ TEST(MermaidParser, EntryExitPointAndPriority_CapturedInIr) {
 
     MermaidParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err.render_to_string();
 
     const auto* ep = model.find_state("ep");
     ASSERT_NE(ep, nullptr);
@@ -151,8 +150,8 @@ TEST(MermaidParser, PortDirectives_ParsedWithAttributesAndConstraints) {
 
     MermaidParser mmd_parser;
     FsmIr mmd_model;
-    std::string err;
-    ASSERT_TRUE(mmd_parser.parse(mmd, mmd_model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(mmd_parser.parse(mmd, mmd_model, err)) << err.render_to_string();
 
     ASSERT_EQ(mmd_model.ports.size(), 1u);
     const auto* v_in = mmd_model.find_port("voltage_in");
@@ -176,13 +175,13 @@ TEST(MermaidParser, NestedSquareBracketsInGuard_PreservesRawExpressionDetails) {
 
     MermaidParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 1u);
     EXPECT_EQ(model.transitions[0].event, "EvGo");
     ASSERT_TRUE(model.transitions[0].guard.has_value());
-    EXPECT_NE(model.transitions[0].guard->find("fsm::and_<"), std::string::npos);
+    EXPECT_NE(model.transitions[0].guard->find(" && "), std::string::npos);
 
     ASSERT_EQ(model.guards.size(), 2u);
     bool found_array_expr = false;
@@ -223,8 +222,8 @@ stateDiagram-v2
 
     MermaidParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, model, err)) << err.render_to_string();
 
     const StateNode* active = model.find_state("Active");
     ASSERT_NE(active, nullptr);
@@ -269,8 +268,8 @@ stateDiagram-v2
 
     MermaidParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, model, err)) << err.render_to_string();
 
     const StateNode* a2 = model.find_state("A2");
     const StateNode* b2 = model.find_state("B2");
@@ -297,8 +296,8 @@ stateDiagram-v2
 
     MermaidParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, model, err)) << err.render_to_string();
 
     const StateNode* ready = model.find_state("Ready");
     ASSERT_NE(ready, nullptr);
@@ -365,8 +364,8 @@ TEST(MermaidSerializerTest, ParallelStateOmitsInitialSubstateAndRoundtripsThreeR
 
     MermaidParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, parsed, err)) << err.render_to_string();
     const auto* par_parsed = parsed.find_state("Par");
     ASSERT_NE(par_parsed, nullptr);
     EXPECT_EQ(par_parsed->kind, StateKind::Parallel);
@@ -392,8 +391,8 @@ Comp --> Done : Finish
 
     MermaidParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, ir, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, ir, err)) << err.render_to_string();
     EXPECT_EQ(ir.initial_state, "Comp");
     const auto* comp = ir.find_state("Comp");
     ASSERT_NE(comp, nullptr);
@@ -424,8 +423,8 @@ TEST(MermaidParser, Ports_RoundtripThroughDirectives) {
 
     MermaidParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, parsed, err)) << err.render_to_string();
     const auto* p_in = parsed.find_port("temp_in");
     const auto* p_out = parsed.find_port("alarm_out");
     ASSERT_NE(p_in, nullptr);
@@ -452,8 +451,8 @@ TEST(MermaidParser, StandaloneHistoryTargetInsideComposite_ResolvesToParent) {
 
     MermaidParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, ir, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, ir, err)) << err.render_to_string();
     const auto* comp = ir.find_state("Comp");
     ASSERT_NE(comp, nullptr);
     EXPECT_TRUE(comp->has_history);
@@ -477,8 +476,8 @@ TEST(MermaidParser, TimeTriggerEventLabel_PopulatesTimeTrigger) {
 
     MermaidParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, ir, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, ir, err)) << err.render_to_string();
     ASSERT_EQ(ir.transitions.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<TimeTrigger>(ir.transitions[0].trigger));
     EXPECT_EQ(std::get<TimeTrigger>(ir.transitions[0].trigger).duration_in_ms(), 100u);
@@ -504,8 +503,8 @@ TEST(MermaidParser, InternalTransition_PreservedAcrossSerializerRoundtrip) {
 
     MermaidParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 1u);
     EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
 }
@@ -532,8 +531,8 @@ TEST(MermaidParser, StateReqsAndTimeInvariant_PreservedAcrossSerializerRoundtrip
     const std::string mmd = MermaidSerializer::serialize(ir);
     MermaidParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, parsed, err)) << err.render_to_string();
 
     const auto* p_idle = parsed.find_state("Idle");
     ASSERT_NE(p_idle, nullptr);
@@ -568,8 +567,8 @@ TEST(MermaidParser, ChangeTrigger_PreservedAcrossSerializerRoundtrip) {
 
     MermaidParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<ChangeTrigger>(parsed.transitions[0].trigger));
     EXPECT_EQ(std::get<ChangeTrigger>(parsed.transitions[0].trigger).raw_expression, "count > 5");
@@ -609,8 +608,8 @@ TEST(MermaidParser, LocalTransition_PreservedAcrossSerializerRoundtrip) {
 
     MermaidParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 2u);
 
     bool found_local = false;

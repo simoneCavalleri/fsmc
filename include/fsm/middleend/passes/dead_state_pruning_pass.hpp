@@ -9,6 +9,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/pass_interface.hpp"
 
 namespace fsm::middleend::passes {
 
@@ -19,14 +20,9 @@ using ir::FsmIr;
  * @class DeadStatePruningPass
  * @brief Target-Agnostic Middle-End Pass: Dead State Elimination & Dead Transition Pruning.
  */
-class DeadStatePruningPass {
+class DeadStatePruningPass : public ::fsm::middleend::IPass {
   public:
     explicit DeadStatePruningPass(bool enable_pruning = true) : prune_(enable_pruning) {}
-
-    [[nodiscard]] static std::string name() { return "DeadStatePruning"; }
-    [[nodiscard]] static std::string description() {
-        return "Removes unreachable states and statically dead transitions from the IR graph";
-    }
 
     void set_prune(bool enable) { prune_ = enable; }
     [[nodiscard]] bool is_prune_enabled() const noexcept { return prune_; }
@@ -37,7 +33,12 @@ class DeadStatePruningPass {
      * @param diag Diagnostic reporting engine.
      * @return True on success, false on failure.
      */
-    bool run(FsmIr& ir, DiagnosticEngine& diag);
+    [[nodiscard]] std::string name() const override { return "dead-state-pruning"; }
+    [[nodiscard]] std::string description() const override {
+        return "Prunes unreachable states and dead transitions from the state graph.";
+    }
+    [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 
   private:
     bool prune_{true};

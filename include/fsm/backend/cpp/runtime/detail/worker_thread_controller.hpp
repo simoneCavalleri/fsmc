@@ -21,9 +21,12 @@ class worker_thread_controller {
     worker_thread_controller() = default;
 
     ~worker_thread_controller() {
+        const bool on_worker = (std::this_thread::get_id() == worker_thread_id_.load(std::memory_order_acquire));
         stop_worker();
-        std::unique_lock<std::mutex> lk(exit_mutex_);
-        exit_cv_.wait(lk, [this]() { return worker_loop_exited_.load(std::memory_order_acquire); });
+        if (!on_worker) {
+            std::unique_lock<std::mutex> lk(exit_mutex_);
+            exit_cv_.wait(lk, [this]() { return worker_loop_exited_.load(std::memory_order_acquire); });
+        }
     }
 
     worker_thread_controller(const worker_thread_controller&) = delete;
@@ -49,17 +52,26 @@ class worker_thread_controller {
     }
 
     void stop_worker() {
-        std::unique_lock lock(lifecycle_mutex_);
-        if (worker_running_.exchange(false, std::memory_order_acq_rel)) {
-            queue_.stop();
-            if (worker_thread_.joinable()) {
-                if (std::this_thread::get_id() != worker_thread_id_.load(std::memory_order_acquire)) {
-                    worker_thread_.join();
-                } else {
-                    worker_thread_.detach();
+        std::thread thread_to_join;
+        bool should_join = false;
+        {
+            std::unique_lock lock(lifecycle_mutex_);
+            if (worker_running_.exchange(false, std::memory_order_acq_rel)) {
+                queue_.stop();
+                if (worker_thread_.joinable()) {
+                    if (std::this_thread::get_id() != worker_thread_id_.load(std::memory_order_acquire)) {
+                        thread_to_join = std::move(worker_thread_);
+                        should_join = true;
+                    } else {
+                        worker_thread_.detach();
+                    }
                 }
+                worker_thread_id_.store(std::thread::id{}, std::memory_order_release);
             }
-            worker_thread_id_.store(std::thread::id{}, std::memory_order_release);
+        }
+        // Join outside lifecycle_mutex_ to prevent deadlock if a worker task calls start_worker()/stop_worker().
+        if (should_join && thread_to_join.joinable()) {
+            thread_to_join.join();
         }
     }
 

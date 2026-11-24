@@ -183,25 +183,8 @@ bool BoundaryActionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             continue;
         }
 
-        auto parse_skip_set = [&](const std::string& attr_key) {
-            std::unordered_set<std::string> res;
-            auto it = ir.attributes.find(attr_key);
-            if (it != ir.attributes.end()) {
-                std::size_t start = 0;
-                while (start < it->second.size()) {
-                    std::size_t nl = it->second.find('\n', start);
-                    if (nl == std::string::npos) {
-                        res.insert(it->second.substr(start));
-                        break;
-                    }
-                    res.insert(it->second.substr(start, nl - start));
-                    start = nl + 1;
-                }
-            }
-            return res;
-        };
-        const auto skip_exit = parse_skip_set("ortho_skip_exit:" + t.source + "->" + t.target);
-        const auto skip_entry = parse_skip_set("ortho_skip_entry:" + t.source + "->" + t.target);
+        const std::unordered_set<std::string> skip_exit(t.skip_exit_actions.begin(), t.skip_exit_actions.end());
+        const std::unordered_set<std::string> skip_entry(t.skip_entry_actions.begin(), t.skip_entry_actions.end());
 
         // 3. Synthesize atomic fused action
         ActionSignature fused_act(t.transition_action.has_value() ? t.transition_action->name

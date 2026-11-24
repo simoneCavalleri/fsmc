@@ -10,6 +10,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/pass_interface.hpp"
 
 namespace fsm::middleend::passes {
 
@@ -20,14 +21,9 @@ using ir::FsmIr;
  * @class WcetAnalysisPass
  * @brief Formal Middle-End Pass: Worst-Case Execution Time (WCET) & Zeno-Cycle Analysis.
  */
-class WcetAnalysisPass {
+class WcetAnalysisPass : public ::fsm::middleend::IPass {
   public:
     explicit WcetAnalysisPass(std::size_t max_microstep_threshold = 100) : threshold_(max_microstep_threshold) {}
-
-    [[nodiscard]] static std::string name() { return "WcetAnalysis"; }
-    [[nodiscard]] static std::string description() {
-        return "Analyzes micro-step execution chains and detects zero-time Zeno-cycles";
-    }
 
     [[nodiscard]] bool has_zeno_cycle() const noexcept { return has_zeno_cycle_; }
     [[nodiscard]] std::size_t max_micro_steps() const noexcept { return max_micro_steps_; }
@@ -38,7 +34,12 @@ class WcetAnalysisPass {
      * @param diag Diagnostic engine for Zeno loop errors.
      * @return True if model is free of Zeno cycles within threshold, false otherwise.
      */
-    bool run(FsmIr& ir, DiagnosticEngine& diag);
+    [[nodiscard]] std::string name() const override { return "wcet-analysis"; }
+    [[nodiscard]] std::string description() const override {
+        return "Computes static worst-case execution time (micro-step bound) per macro-step.";
+    }
+    [[nodiscard]] bool preserves_ir() const noexcept override { return true; }
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 
   private:
     std::size_t threshold_{100};

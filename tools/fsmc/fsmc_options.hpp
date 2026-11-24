@@ -39,6 +39,7 @@ struct FsmcOptions {
     bool cpp17_specified = false;
     bool cpp20_specified = false;
     bool thread_safe = true;
+    bool freestanding = false;
     bool include_stubs = true;
     std::string runtime_header = "fsm.hpp";  // --modular=<hdr> or --runtime-header <hdr>
     bool verify_mode = false;
@@ -51,6 +52,7 @@ struct FsmcOptions {
     std::string emit_sidecar;                // --emit-sidecar <file>
     bool simulate_mode = false;              // --simulate
     std::string trace_file;                  // --trace <file.json>
+    std::string trace_out_file;              // --trace-out <file.json>
     std::string export_cex_gtest;            // --export-cex-gtest <file.cpp>
     std::string diagnostic_format = "text";  // --diagnostic-format <text|json|github>
     bool show_help = false;
@@ -108,6 +110,7 @@ inline void print_help(const char* prog_name) {
            "\"fsm.hpp\")\n"
         << "  --export-runtime <dir>       Export the standalone FSM runtime library headers to directory\n"
         << "  --no-thread-safe             Do not generate thread_safe_fsm asynchronous wrapper\n"
+        << "  --freestanding               Emit zero-STL freestanding C++ header (-fno-exceptions -fno-rtti safe)\n"
         << "  --no-stubs                   Do not emit default stub functors for actions and guards\n"
         << "  --allow-diagram              Allow C++ code generation from visual diagram formats (PlantUML, "
            "Mermaid)\n\n"
@@ -120,6 +123,7 @@ inline void print_help(const char* prog_name) {
         << "  --ctl <formula>              Verify custom Computation Tree Logic specification\n"
         << "  --simulate                   Simulate event trace directly on FsmIr (with --trace or stdin)\n"
         << "  --trace <file>               JSON/line event trace file for --simulate\n"
+        << "  --trace-out <file>           Write structured JSON simulation trace report to file\n"
         << "  --export-cex-gtest <file>    Export formal verification counterexample to GoogleTest C++\n"
         << "  --diagnostic-format <fmt>    Diagnostic output format: 'text', 'json', or 'github'\n\n"
         << "General Options:\n"
@@ -455,6 +459,9 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             // 12. Code generation threading and stub generation switches
         } else if (arg == "--no-thread-safe") {
             opts.thread_safe = false;
+        } else if (arg == "--freestanding") {
+            opts.freestanding = true;
+            opts.thread_safe = false;
         } else if (arg == "--no-stubs") {
             opts.include_stubs = false;
         } else if (arg == "--allow-diagram" || arg == "--diagram-codegen" || arg == "--allow-diagram-codegen") {
@@ -498,6 +505,17 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
         } else if (arg.rfind("--trace=", 0) == 0) {
             opts.simulate_mode = true;
             opts.trace_file = arg.substr(8);
+        } else if (arg == "--trace-out") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
+            opts.simulate_mode = true;
+            opts.trace_out_file = argv[++idx];
+        } else if (arg.rfind("--trace-out=", 0) == 0) {
+            opts.simulate_mode = true;
+            opts.trace_out_file = arg.substr(12);
         } else if (arg == "--export-cex-gtest") {
             if (idx + 1 >= argc) {
                 opts.is_valid = false;

@@ -110,4 +110,21 @@ TEST(XmlParser, NamespacePrefixedTags_ResolvedAgnostically) {
     EXPECT_EQ(sm->get_attr("type"), "uml:StateMachine");
 }
 
+/**
+ * @brief Regression (F2.2): Verify SimpleXmlParser rejects element nesting beyond kMaxXmlDepth (256).
+ */
+TEST(SimpleXmlParser, ExcessiveNestingDepth_RejectedCleanly) {
+    std::string deep_xml;
+    for (int i = 0; i < 300; ++i) {
+        deep_xml += "<a>";
+    }
+    for (int i = 0; i < 300; ++i) {
+        deep_xml += "</a>";
+    }
+    std::string err;
+    auto node = SimpleXmlParser::parse(deep_xml, err);
+    EXPECT_EQ(node, nullptr);
+    EXPECT_FALSE(err.empty());
+}
+
 }  // namespace

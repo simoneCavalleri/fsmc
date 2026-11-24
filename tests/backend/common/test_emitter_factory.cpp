@@ -5,8 +5,11 @@
 
 #include <gtest/gtest.h>
 
+#include "fsm/backend/codegen_backend.hpp"
 #include "fsm/backend/emitter_factory.hpp"
+#include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/pass_manager.hpp"
 
 namespace {
 
@@ -123,6 +126,103 @@ TEST(EmitterFactory, FormatDiscoveryAndCppTargetEmission_SupportedAndSynthesized
     const std::string cpp17_out = EmitterFactory::emit(model, "c++17");
     EXPECT_FALSE(cpp17_out.empty());
     EXPECT_NE(cpp17_out.find("FormatTestFSM"), std::string::npos);
+}
+
+namespace {
+class MockC99BareMetalBackend final : public fsm::backend::ICodegenBackend {
+  public:
+    [[nodiscard]] std::string_view id() const noexcept override { return "c99"; }
+    [[nodiscard]] fsm::ir::TargetCapabilities capabilities() const noexcept override {
+        return fsm::ir::TargetCapabilities::c99_baremetal();
+    }
+    [[nodiscard]] std::string emit(const fsm::ir::FsmIr& ir,
+                                   fsm::diagnostic::DiagnosticEngine& /*diag*/) const override {
+        std::string code = "/* C99 flat FSM: " + ir.name + " */\nenum State { ";
+        for (const auto& s : ir.states) {
+            code += s.name + ", ";
+        }
+        code += "};\n";
+        return code;
+    }
+};
+
+class MockRustNoStdBackend final : public fsm::backend::ICodegenBackend {
+  public:
+    [[nodiscard]] std::string_view id() const noexcept override { return "rust"; }
+    [[nodiscard]] fsm::ir::TargetCapabilities capabilities() const noexcept override {
+        return fsm::ir::TargetCapabilities::rust_no_std();
+    }
+    [[nodiscard]] std::string emit(const fsm::ir::FsmIr& ir,
+                                   fsm::diagnostic::DiagnosticEngine& /*diag*/) const override {
+        return "#![no_std]\npub enum " + ir.name + "State {}\n";
+    }
+};
+}  // namespace
+
+/**
+ * @brief Verify ICodegenBackend and TargetCapabilities-driven dynamic lowering for C++20, C99, and Rust no_std.
+ * @scenario Run PassManager::create_lowering_pipeline(backend.capabilities()) for CppCodegenBackend,
+ *           MockC99BareMetalBackend, and MockRustNoStdBackend on an IR with deferred events.
+ * @expected C++20 preserves deferred events natively; C99 and Rust no_std dynamically schedule
+ * DeferredEventLoweringPass and emit valid lowered output; C99 schedules ChoiceInliningPass whereas Rust no_std skips
+ * it.
+ */
+TEST(EmitterFactoryTest, ICodegenBackend_TargetCapabilitiesDrivenLowering) {
+    using namespace fsm::backend;
+    using namespace fsm::middleend;
+
+    // Build IR with deferred event
+    FsmIr base_ir;
+    base_ir.name = "TelemetryFsm";
+    base_ir.initial_state = "Busy";
+    StateNode busy("Busy");
+    busy.deferred_events.push_back("EvConfig");
+    base_ir.add_state(busy);
+    base_ir.add_state("Ready");
+    base_ir.add_transition(TransitionEdge("Busy", "Ready", "EvDone"));
+    base_ir.add_transition(TransitionEdge("Ready", "Busy", "EvConfig"));
+
+    // 1. C++20 backend preserves deferred events natively
+    CppCodegenBackend cpp_backend;
+    EXPECT_EQ(cpp_backend.id(), "cpp17");
+    EXPECT_TRUE(cpp_backend.capabilities().supports_deferred);
+    EXPECT_TRUE(cpp_backend.capabilities().supports_history);
+    EXPECT_TRUE(cpp_backend.capabilities().supports_choice);
+    EXPECT_FALSE(cpp_backend.capabilities().supports_orthogonal);
+
+    FsmIr cpp_ir = base_ir;
+    auto cpp_pm = PassManager::create_lowering_pipeline(cpp_backend.capabilities());
+    fsm::diagnostic::DiagnosticEngine cpp_diag;
+    EXPECT_TRUE(cpp_pm.run(cpp_ir, cpp_diag));
+    const auto* busy_cpp = cpp_ir.find_state("Busy");
+    ASSERT_NE(busy_cpp, nullptr);
+    EXPECT_FALSE(busy_cpp->deferred_events.empty());
+    EXPECT_FALSE(cpp_backend.emit(cpp_ir, cpp_diag).empty());
+
+    // 2. Mock C99 bare-metal backend lowers deferred events and schedules choice inlining
+    MockC99BareMetalBackend c99_backend;
+    EXPECT_FALSE(c99_backend.capabilities().supports_deferred);
+    EXPECT_FALSE(c99_backend.capabilities().supports_choice);
+    FsmIr c99_ir = base_ir;
+    auto c99_pm = PassManager::create_lowering_pipeline(c99_backend.capabilities());
+    fsm::diagnostic::DiagnosticEngine c99_diag;
+    EXPECT_TRUE(c99_pm.run(c99_ir, c99_diag));
+    const auto* busy_c99 = c99_ir.find_state("Busy");
+    ASSERT_NE(busy_c99, nullptr);
+    EXPECT_TRUE(busy_c99->deferred_events.empty());
+    const std::string c99_code = c99_backend.emit(c99_ir, c99_diag);
+    EXPECT_NE(c99_code.find("C99 flat FSM: TelemetryFsm"), std::string::npos);
+
+    // 3. Mock Rust no_std backend supports choice natively (fewer passes than C99) but lowers deferred events
+    MockRustNoStdBackend rust_backend;
+    EXPECT_TRUE(rust_backend.capabilities().supports_choice);
+    EXPECT_FALSE(rust_backend.capabilities().supports_deferred);
+    auto rust_pm = PassManager::create_lowering_pipeline(rust_backend.capabilities());
+    EXPECT_LT(rust_pm.pass_count(), c99_pm.pass_count());
+    FsmIr rust_ir = base_ir;
+    fsm::diagnostic::DiagnosticEngine rust_diag;
+    EXPECT_TRUE(rust_pm.run(rust_ir, rust_diag));
+    EXPECT_NE(rust_backend.emit(rust_ir, rust_diag).find("#![no_std]"), std::string::npos);
 }
 
 }  // namespace

@@ -41,8 +41,8 @@ TEST(DotParser, BasicDotDigraph_ParsedIntoValidFsmIr) {
 
     DotParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(ir.name, "DotConnectionFSM");
     EXPECT_EQ(ir.initial_state_id, "Disconnected");
@@ -73,8 +73,8 @@ TEST(DotParser, ClusterSubgraph_ParsedAsCompositeState) {
 
     DotParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(ir.states.size(), 4u);
     const auto* inflight = ir.find_state("InFlight");
@@ -102,8 +102,8 @@ TEST(DotParser, ScopedInitialIdentifiers_PopulateInitialSubstateWithoutPointShap
 
     DotParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(ir.initial_state, "Active");
     EXPECT_EQ(ir.find_state("initial_Active"), nullptr);
@@ -127,8 +127,8 @@ TEST(DotParser, TransitionActionAssignments_PopulatedInActionSignature) {
 
     DotParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err.render_to_string();
     ASSERT_EQ(ir.transitions.size(), 1u);
     ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
     ASSERT_EQ(ir.transitions[0].transition_action->assignments.size(), 1u);
@@ -153,8 +153,8 @@ TEST(DotParser, StateLifecycleAssignments_PopulatedInEntryAndExitActions) {
 
     DotParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err.render_to_string();
 
     const auto* ready = ir.find_state("Ready");
     ASSERT_NE(ready, nullptr);
@@ -183,8 +183,8 @@ TEST(DotParser, InlinePriorityLabel_StripsPrefixFromEventName) {
 
     DotParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err.render_to_string();
     ASSERT_EQ(ir.transitions.size(), 1u);
     EXPECT_EQ(ir.transitions[0].priority, 5u);
     EXPECT_EQ(ir.transitions[0].event, "CellsBalancedEvent");
@@ -222,8 +222,8 @@ TEST(DotParser, ParallelCluster_PopulatesOrthogonalRegions) {
 
     DotParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err.render_to_string();
 
     const auto* op = ir.find_state("Operational");
     ASSERT_NE(op, nullptr);
@@ -265,8 +265,8 @@ TEST(DotParser, HistoryPseudostate_PopulatesShallowAndDeepHistory) {
 
     DotParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err.render_to_string();
 
     const auto* shallow = ir.find_state("Shallow");
     const auto* deep = ir.find_state("Deep");
@@ -294,8 +294,8 @@ TEST(DotParser, QuotedNodeNames_ParsedIntoValidStatesAndTransitions) {
 
     DotParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err.render_to_string();
     EXPECT_EQ(ir.initial_state, "Idle_State");
     ASSERT_EQ(ir.transitions.size(), 1u);
     EXPECT_EQ(ir.transitions[0].source, "Idle_State");
@@ -319,8 +319,8 @@ TEST(DotParser, EscapedQuotesInEdgeLabel_PreservesGuardAndAction) {
 
     DotParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err.render_to_string();
     ASSERT_EQ(ir.transitions.size(), 1u);
     EXPECT_EQ(ir.transitions[0].event, "Go");
     ASSERT_EQ(ir.guards.size(), 1u);
@@ -349,8 +349,8 @@ TEST(DotParser, QuotedSubgraphCluster_CreatesCompositeState) {
 
     DotParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err.render_to_string();
     const auto* active = ir.find_state("Active_Mode");
     ASSERT_NE(active, nullptr);
     EXPECT_TRUE(active->is_composite);
@@ -380,8 +380,8 @@ TEST(DotParser, UnparenthesizedLifecycleAndDeferInNodeLabel_PopulatedCleanly) {
 
     DotParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err.render_to_string();
     const auto* idle = ir.find_state("Idle");
     ASSERT_NE(idle, nullptr);
     ASSERT_EQ(idle->entry_actions.size(), 1u);
@@ -411,8 +411,8 @@ TEST(DotParser, MultipleTransitionsSameEndpoints_DisambiguateAssignmentActionNam
 
     DotParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err.render_to_string();
     ASSERT_EQ(ir.transitions.size(), 2u);
     ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
     ASSERT_TRUE(ir.transitions[1].transition_action.has_value());
@@ -434,8 +434,8 @@ TEST(DotParser, TimeTriggerEventLabel_PopulatesTimeTrigger) {
 
     DotParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot_content, ir, err)) << "Error: " << err.render_to_string();
     ASSERT_EQ(ir.transitions.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<TimeTrigger>(ir.transitions[0].trigger));
     EXPECT_EQ(std::get<TimeTrigger>(ir.transitions[0].trigger).duration_in_ms(), 100u);
@@ -461,8 +461,8 @@ TEST(DotParser, InternalTransition_PreservedAcrossSerializerRoundtrip) {
 
     DotParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 1u);
     EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
 }
@@ -498,8 +498,8 @@ TEST(DotParser, UninitializedVarAndPortMetadata_PreservedAcrossSerializerRoundtr
 
     DotParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot, parsed, err)) << err.render_to_string();
 
     const auto* p_msg = parsed.find_variable("msg");
     ASSERT_NE(p_msg, nullptr);
@@ -536,8 +536,8 @@ TEST(DotParser, StateReqsAndTimeInvariant_PreservedAcrossSerializerRoundtrip) {
     const std::string dot = DotSerializer::serialize(ir);
     DotParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot, parsed, err)) << err.render_to_string();
 
     const auto* p_idle = parsed.find_state("Idle");
     ASSERT_NE(p_idle, nullptr);
@@ -574,8 +574,8 @@ TEST(DotParser, PseudostatesAndFinalKind_PreservedAcrossSerializerRoundtrip) {
     const std::string dot = DotSerializer::serialize(ir);
     DotParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot, parsed, err)) << err.render_to_string();
 
     ASSERT_NE(parsed.find_state("Split"), nullptr);
     EXPECT_EQ(parsed.find_state("Split")->kind, StateKind::Fork);
@@ -611,8 +611,8 @@ TEST(DotParser, ChangeTrigger_PreservedAcrossSerializerRoundtrip) {
 
     DotParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<ChangeTrigger>(parsed.transitions[0].trigger));
     EXPECT_EQ(std::get<ChangeTrigger>(parsed.transitions[0].trigger).raw_expression, "count > 5");
@@ -639,8 +639,8 @@ TEST(DotParser, SignalAttributesAndValidator_PreservedAcrossSerializerRoundtrip)
     const std::string dot = DotSerializer::serialize(ir);
     DotParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot, parsed, err)) << err.render_to_string();
 
     const auto* p_tel = parsed.find_signal("Telemetry");
     ASSERT_NE(p_tel, nullptr);
@@ -685,8 +685,8 @@ TEST(DotParser, LocalTransition_PreservedAcrossSerializerRoundtrip) {
 
     DotParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 2u);
 
     bool found_local = false;

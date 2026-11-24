@@ -630,4 +630,37 @@ TEST(ModelChecker, PersistentResponse_FailsWithCounterexampleWhenSuccessorViolat
     EXPECT_FALSE(res.counterexample_trace.empty());
 }
 
+/**
+ * @brief Regression (F2.1): Verify ModelChecker does not match state descriptions as atomic propositions,
+ * supports negated top-level CTL (`!(AG ...)`), and maintains `AG p -> EG p` on terminal states.
+ */
+TEST(ModelChecker, DescriptionNoFalseMatch_NegatedCtlAndTerminalEG) {
+    FsmIr ir;
+    ir.name = "SoundnessModel";
+    ir.initial_state = "Idle";
+
+    StateNode idle("Idle", "Waiting for Fault recovery");  // description mentions "Fault"!
+    StateNode done("Done", "Terminal safe state");
+    ir.states.push_back(idle);
+    ir.states.push_back(done);
+    ir.add_transition("Idle", "Done", SignalTrigger{"Finish", ""});
+
+    ModelChecker checker(ir);
+
+    // 1. AG (!Fault) must pass even though Idle.description contains "Fault"
+    FormalProperty prop_ag("NoFault", PropertyKind::Safety, "AG (!Fault)");
+    prop_ag.ast = LtlPropertyParser::parse("AG (!Fault)");
+    EXPECT_TRUE(checker.verify_property(prop_ag).passed);
+
+    // 2. EG (!Fault) must ALSO pass on terminal state Done (AG p -> EG p)
+    FormalProperty prop_eg("ExistsAlwaysSafe", PropertyKind::Safety, "EG (!Fault)");
+    prop_eg.ast = LtlPropertyParser::parse("EG (!Fault)");
+    EXPECT_TRUE(checker.verify_property(prop_eg).passed);
+
+    // 3. Negated top-level CTL: !(AG Idle) must pass (since Idle transitions to Done)
+    FormalProperty prop_not_ag("NotAlwaysIdle", PropertyKind::Liveness, "!(AG Idle)");
+    prop_not_ag.ast = LtlPropertyParser::parse("!(AG Idle)");
+    EXPECT_TRUE(checker.verify_property(prop_not_ag).passed);
+}
+
 }  // namespace

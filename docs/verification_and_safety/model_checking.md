@@ -65,8 +65,9 @@ fsmc -i examples/01_basic_patterns/network_protocol/connection.sysml --verify
 | `--ltl` | `"<formula>"` | Injects an ad-hoc LTL formula for verification on the input model. | `""` |
 | `--ctl` | `"<formula>"` | Injects an ad-hoc CTL formula for verification on the input model. | `""` |
 | `--export-cex-gtest` | `<file>` | Exports counterexample traces from violated LTL/CTL properties into a compilable GoogleTest C++ unit test. | None |
-| `--simulate` | *(flag)* | Simulates an event trace directly on canonical `FsmIr` (`IrSimulator`) with validator enforcement. | `false` |
+| `--simulate` | *(flag)* | Simulates an event trace directly on canonical `FsmIr` (`IrSimulator`) with HFSM LCA, history, deferred recall, and validator enforcement. | `false` |
 | `--trace` | `<file>` | JSON array (`[{"event": "..."}]`) or line-based event trace input for `--simulate` (defaults to stdin). | `stdin` |
+| `--trace-out` | `<file>` | Writes a structured JSON trace report (states, LCA entry/exit, executed actions, registers) from `--simulate`. | None |
 
 ### Passing Verification Report
 

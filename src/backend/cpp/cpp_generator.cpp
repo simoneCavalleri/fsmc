@@ -1,5 +1,6 @@
 #include "fsm/backend/cpp/cpp_generator.hpp"
 
+#include <cctype>
 #include <sstream>
 #include <stdexcept>
 
@@ -8,78 +9,11 @@
 #include "fsm/backend/cpp/cpp_backend_validator.hpp"
 #include "fsm/backend/cpp/cpp_model_emitter.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
-#include "fsm/middleend/passes/choice_inlining_pass.hpp"
-#include "fsm/middleend/passes/connective_junction_chaining_pass.hpp"
-#include "fsm/middleend/passes/fork_join_lowering_pass.hpp"
-#include "fsm/middleend/passes/orthogonal_product_pass.hpp"
 
 namespace fsm::backend::cpp {
 
 std::string CppGenerator::generate_header(const FsmIr& model, const GeneratorOptions& options) {
     FsmIr processed_model = model;
-
-    bool has_junctions = false;
-    for (const auto& state : processed_model.states) {
-        if (state.kind == ir::StateKind::Junction) {
-            has_junctions = true;
-            break;
-        }
-    }
-    if (has_junctions) {
-        diagnostic::DiagnosticEngine diag;
-        middleend::passes::ConnectiveJunctionChainingPass junction_pass;
-        junction_pass.run(processed_model, diag);
-        if (diag.has_errors()) {
-            throw std::invalid_argument(diag.render_to_string());
-        }
-    }
-
-    bool has_choice_structure = !processed_model.choice_nodes.empty();
-    for (const auto& state : processed_model.states) {
-        if (state.kind == ir::StateKind::Choice || state.kind == ir::StateKind::Junction) {
-            has_choice_structure = true;
-            break;
-        }
-    }
-    if (has_choice_structure) {
-        diagnostic::DiagnosticEngine diag;
-        middleend::passes::ChoiceInliningPass choice_pass;
-        choice_pass.run(processed_model, diag);
-        if (diag.has_errors()) {
-            throw std::invalid_argument(diag.render_to_string());
-        }
-    }
-
-    bool has_fork_join = false;
-    for (const auto& state : processed_model.states) {
-        if (state.kind == ir::StateKind::Fork || state.kind == ir::StateKind::Join) {
-            has_fork_join = true;
-            break;
-        }
-    }
-    if (has_fork_join) {
-        diagnostic::DiagnosticEngine diag;
-        middleend::passes::ForkJoinLoweringPass fork_join_pass;
-        fork_join_pass.run(processed_model, diag);
-        if (diag.has_errors()) {
-            throw std::invalid_argument(diag.render_to_string());
-        }
-    }
-
-    bool has_parallel_structure = false;
-    for (const auto& state : processed_model.states) {
-        has_parallel_structure =
-            has_parallel_structure || state.kind == ir::StateKind::Parallel || !state.orthogonal_regions.empty();
-    }
-    if (has_parallel_structure) {
-        diagnostic::DiagnosticEngine diag;
-        middleend::passes::OrthogonalProductPass product_pass;
-        product_pass.run(processed_model, diag);
-        if (diag.has_errors()) {
-            throw std::invalid_argument(diag.render_to_string());
-        }
-    }
-
     processed_model.canonicalize();
 
     diagnostic::DiagnosticEngine backend_diagnostics;
@@ -89,34 +23,103 @@ std::string CppGenerator::generate_header(const FsmIr& model, const GeneratorOpt
 
     std::ostringstream out;
 
+    auto sanitize_comment = [](std::string_view text) -> std::string {
+        std::string res;
+        res.reserve(text.size());
+        for (std::size_t i = 0; i < text.size(); ++i) {
+            if (text[i] == '*' && i + 1 < text.size() && text[i + 1] == '/') {
+                res += "* /";
+                ++i;
+            } else if (text[i] == '\r' || text[i] == '\n') {
+                res.push_back(' ');
+            } else {
+                res.push_back(text[i]);
+            }
+        }
+        return res;
+    };
+
+    auto sanitize_namespace = [](std::string_view raw_ns) -> std::string {
+        if (raw_ns.empty()) {
+            return {};
+        }
+        std::string res;
+        std::size_t pos = 0;
+        while (pos < raw_ns.size()) {
+            const std::size_t sep = raw_ns.find("::", pos);
+            const std::string_view part =
+                (sep == std::string_view::npos) ? raw_ns.substr(pos) : raw_ns.substr(pos, sep - pos);
+            if (!part.empty()) {
+                std::string clean_part;
+                clean_part.reserve(part.size() + 1);
+                for (char ch : part) {
+                    const unsigned char uch = static_cast<unsigned char>(ch);
+                    if (std::isalnum(uch) != 0 || ch == '_') {
+                        clean_part.push_back(ch);
+                    } else {
+                        clean_part.push_back('_');
+                    }
+                }
+                if (!clean_part.empty() && std::isdigit(static_cast<unsigned char>(clean_part.front())) != 0) {
+                    clean_part.insert(clean_part.begin(), '_');
+                }
+                if (!res.empty()) {
+                    res += "::";
+                }
+                res += clean_part;
+            }
+            if (sep == std::string_view::npos) {
+                break;
+            }
+            pos = sep + 2;
+        }
+        return res;
+    };
+
     std::string std_str = (options.cpp_standard == CppStandard::Cpp20) ? "C++20" : "C++17";
+    const std::string safe_model_comment = sanitize_comment(processed_model.name);
+
+    GeneratorOptions effective_opts = options;
+    if (effective_opts.freestanding) {
+        effective_opts.thread_safe = false;
+    }
 
     out << "/**\n";
-    out << " * @file " << processed_model.name << ".hpp\n";
-    out << " * @brief Auto-generated State Machine definition for '" << processed_model.name << "'\n";
+    out << " * @file " << safe_model_comment << ".hpp\n";
+    out << " * @brief Auto-generated State Machine definition for '" << safe_model_comment << "'\n";
     out << " * @note Generated by fsmc (Finite State Machine Compiler). Target standard: " << std_str << ".\n";
-    if (options.standalone) {
+    if (effective_opts.standalone) {
         out << " * @note Mode: Standalone Self-Contained Header (Zero External Dependencies)\n";
+    }
+    if (effective_opts.freestanding) {
+        out << " * @note Profile: Freestanding / Zero-STL (-fno-exceptions -fno-rtti compatible)\n";
     }
     out << " */\n\n";
 
     out << "#pragma once\n\n";
 
-    if (options.standalone) {
+    if (effective_opts.freestanding) {
+        out << "#ifndef FSMC_FREESTANDING\n";
+        out << "#define FSMC_FREESTANDING 1\n";
+        out << "#endif\n\n";
+    }
+
+    if (effective_opts.standalone) {
         out << "#include <cstdint>\n";
-        out << "#include <iostream>\n";
-        out << "#include <string>\n";
+        if (!effective_opts.freestanding) {
+            out << "#include <string>\n";
+        }
         out << "#include <string_view>\n\n";
         out << "#ifndef FSMC_EMBEDDED_RUNTIME_INCLUDED\n";
         out << "#define FSMC_EMBEDDED_RUNTIME_INCLUDED\n";
-        if (options.cpp_standard == CppStandard::Cpp20) {
-            Cpp20StandaloneRuntime::emit(out, options);
+        if (effective_opts.cpp_standard == CppStandard::Cpp20) {
+            Cpp20StandaloneRuntime::emit(out, effective_opts);
         } else {
-            Cpp17StandaloneRuntime::emit(out, options);
+            Cpp17StandaloneRuntime::emit(out, effective_opts);
         }
         out << "#endif // FSMC_EMBEDDED_RUNTIME_INCLUDED\n\n";
     } else {
-        std::string header_include = options.runtime_header;
+        std::string header_include = effective_opts.runtime_header;
         if (header_include.empty()) {
             header_include = "fsm.hpp";
         }
@@ -125,20 +128,21 @@ std::string CppGenerator::generate_header(const FsmIr& model, const GeneratorOpt
         } else {
             out << "#include \"" << header_include << "\"\n";
         }
-        out << "#include <string_view>\n";
-        out << "#include <iostream>\n\n";
+        out << "#include <cstdint>\n";
+        out << "#include <string_view>\n\n";
     }
 
-    std::string effective_ns = options.target_namespace;
+    std::string effective_ns = effective_opts.target_namespace;
     if (effective_ns.empty()) {
         effective_ns = !processed_model.package.empty() ? processed_model.package : "fsm_generated";
     }
+    effective_ns = sanitize_namespace(effective_ns);
 
     if (!effective_ns.empty()) {
         out << "namespace " << effective_ns << " {\n\n";
     }
 
-    CppModelEmitter::emit_model(out, processed_model, options);
+    CppModelEmitter::emit_model(out, processed_model, effective_opts);
 
     if (!effective_ns.empty()) {
         out << "\n} // namespace " << effective_ns << "\n";

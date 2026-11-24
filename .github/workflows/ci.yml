@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install LLVM Tools & Python
         run: |
@@ -35,9 +35,10 @@ jobs:
         run: |
           cmake -B build -S . -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DFSMC_ENABLE_BENCHMARKS=ON
 
-      - name: Verify Standalone Runtime Synchronization (SSOT)
+      - name: Verify Standalone Runtime & Test Catalog Synchronization (SSOT)
         run: |
           cmake --build build --target check_standalone_runtime
+          cmake --build build --target check_test_catalog
 
       - name: Run Clang-Tidy
         run: |
@@ -49,10 +50,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.x'
 
@@ -102,7 +103,7 @@ jobs:
             os: macos-latest
             cc: clang
             cxx: clang++
-            werror: OFF
+            werror: ON
 
           # Windows MSVC 2022
           - name: Windows (MSVC 2022)
@@ -110,7 +111,7 @@ jobs:
             werror: OFF
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Ccache (Compiler Acceleration)
         uses: hendrikmuhs/ccache-action@v1.2
@@ -150,6 +151,33 @@ jobs:
         run: |
           ctest --test-dir build -C Release --output-on-failure
 
+      - name: Verify SDK Install & find_package(fsmc) Consumer
+        if: runner.os == 'Linux' && matrix.name == 'Linux (GCC 13)'
+        run: |
+          cmake --install build --prefix /tmp/fsmc_sdk_install
+          mkdir -p /tmp/fsmc_consumer
+          cat << 'EOF' > /tmp/fsmc_consumer/CMakeLists.txt
+          cmake_minimum_required(VERSION 3.16)
+          project(fsmc_consumer_test LANGUAGES CXX)
+          set(CMAKE_CXX_STANDARD 20)
+          find_package(fsmc REQUIRED)
+          add_executable(consumer_app main.cpp)
+          target_link_libraries(consumer_app PRIVATE fsmc::runtime fsmc::compiler)
+          EOF
+          cat << 'EOF' > /tmp/fsmc_consumer/main.cpp
+          #include "fsm/backend/cpp/runtime/fsm.hpp"
+          #include "fsm/ir/fsm_ir.hpp"
+          int main() {
+              fsm::ir::FsmIr ir;
+              ir.name = "ConsumerSmoke";
+              return ir.name == "ConsumerSmoke" ? 0 : 1;
+          }
+          EOF
+          cmake -B /tmp/fsmc_consumer/build -S /tmp/fsmc_consumer -DCMAKE_PREFIX_PATH=/tmp/fsmc_sdk_install
+          cmake --build /tmp/fsmc_consumer/build
+          /tmp/fsmc_consumer/build/consumer_app
+          rm -rf /tmp/fsmc_consumer /tmp/fsmc_sdk_install
+
       - name: Verify Visual Diagram Renderings (All Formats)
         if: runner.os == 'Linux' && matrix.name == 'Linux (GCC 13)'
         run: |
@@ -181,7 +209,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Ccache
         uses: hendrikmuhs/ccache-action@v1.2
@@ -211,7 +239,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Ccache
         uses: hendrikmuhs/ccache-action@v1.2
@@ -233,6 +261,8 @@ jobs:
           cmake --build build --parallel 2 --target \
             test_thread_safe_stress \
             test_spsc_queue \
+            test_spsc_fsm \
+            test_flight_recorder \
             test_observer \
             test_timed_transitions \
             test_ring_buffer_overflow \
@@ -240,7 +270,7 @@ jobs:
 
       - name: Run Concurrency Tests under TSan
         run: |
-          ctest --test-dir build -C Debug --output-on-failure --tests-regex "^(test_thread_safe_stress|test_spsc_queue|test_observer|test_timed_transitions|test_ring_buffer_overflow|test_async_and_guards)$"
+          ctest --test-dir build -C Debug --output-on-failure --tests-regex "^(test_thread_safe_stress|test_spsc_queue|test_spsc_fsm|test_flight_recorder|test_observer|test_timed_transitions|test_ring_buffer_overflow|test_async_and_guards)$"
 
   ci-gate:
     name: CI Gate

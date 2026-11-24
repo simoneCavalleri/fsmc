@@ -9,6 +9,8 @@
 #include <sstream>
 #include <unordered_set>
 
+#include "fsm/ir/numeric_parse.hpp"
+
 namespace fsm::middleend::analysis {
 
 using namespace fsm::ir;
@@ -173,26 +175,17 @@ EFSMIntervalAnalyzer::compute_state_intervals() {
     std::unordered_map<std::string, Interval> init_env;
 
     for (const auto& var : ir_.variables) {
-        if (!var.initial_value.empty()) {
-            try {
-                double val = std::stod(var.initial_value);
-                init_env[var.name] = Interval(val, val);
-            } catch (...) {
-                init_env[var.name] = Interval();
-            }
+        if (auto val = parse_double(var.initial_value); val.has_value()) {
+            init_env[var.name] = Interval(*val, *val);
         } else {
             init_env[var.name] = Interval();
         }
     }
 
     for (const auto& port : ir_.ports) {
-        if (!port.default_value.empty()) {
-            try {
-                double val = std::stod(port.default_value);
-                init_env[port.name] = Interval(val, val);
-                continue;
-            } catch (...) {
-            }
+        if (auto val = parse_double(port.default_value); val.has_value()) {
+            init_env[port.name] = Interval(*val, *val);
+            continue;
         }
         if (port.min_value.has_value() || port.max_value.has_value()) {
             double lo = port.min_value.value_or(-std::numeric_limits<double>::infinity());
@@ -408,11 +401,19 @@ std::vector<EFSMAnalysisFinding> EFSMIntervalAnalyzer::analyze(DiagnosticEngine&
         }
         const auto& curr_env = it_curr->second;
 
-        // Check guard satisfiability
+        // Check guard satisfiability (sorted variable iteration for deterministic diagnostics)
         if (t.guard.has_value() && !t.guard->empty() && *t.guard != "else" && *t.guard != "default") {
             std::string g_str = ir_.resolve_guard_expression(*t.guard);
 
-            for (const auto& [var_name, var_interval] : curr_env) {
+            std::vector<std::string> sorted_vars;
+            sorted_vars.reserve(curr_env.size());
+            for (const auto& [vn, _] : curr_env) {
+                sorted_vars.push_back(vn);
+            }
+            std::sort(sorted_vars.begin(), sorted_vars.end());
+
+            for (const auto& var_name : sorted_vars) {
+                const auto& var_interval = curr_env.at(var_name);
                 auto guard_interval = parse_guard_domain(g_str, var_name);
                 if (guard_interval.has_value()) {
                     auto intersection = var_interval.intersect_with(*guard_interval);
@@ -567,17 +568,84 @@ std::optional<Interval> EFSMIntervalAnalyzer::parse_guard_domain(std::string_vie
                 prefix_ok = true;
             }
 
-            // Check if preceded by '!' outside prefix
+            // Check if preceded by direct '!' or enclosed in a negated parenthesized group "!(...)"
             if (prefix_ok) {
+                // 1. Check direct unary '!' immediately before optional qualifier (e.g. "!in.x > 5")
                 size_t p_scan = found;
-                while (p_scan > 0 &&
-                       (expr[p_scan - 1] == ' ' || expr[p_scan - 1] == '\t' || expr[p_scan - 1] == '(' ||
-                        expr[p_scan - 1] == '.' || std::isalpha(static_cast<unsigned char>(expr[p_scan - 1])))) {
-                    if (expr[p_scan - 1] == '!') {
-                        is_negated = true;
+                while (p_scan > 0 && (expr[p_scan - 1] == ' ' || expr[p_scan - 1] == '\t' || expr[p_scan - 1] == '.' ||
+                                      std::isalpha(static_cast<unsigned char>(expr[p_scan - 1])))) {
+                    p_scan--;
+                }
+                size_t bang_count = 0;
+                while (p_scan > 0 && expr[p_scan - 1] == '!') {
+                    if (p_scan < expr.size() && expr[p_scan] == '=') {
                         break;
                     }
+                    ++bang_count;
                     p_scan--;
+                    while (p_scan > 0 && (expr[p_scan - 1] == ' ' || expr[p_scan - 1] == '\t')) {
+                        p_scan--;
+                    }
+                }
+                if ((bang_count % 2) == 1) {
+                    is_negated = !is_negated;
+                }
+
+                // 2. Walk enclosing parentheses to handle both "!(x > 5)" and compound "!(x > 5 && y > 5)"
+                int balance = 0;
+                for (size_t k = found; k > 0; --k) {
+                    const char ch = expr[k - 1];
+                    if (ch == ')') {
+                        ++balance;
+                    } else if (ch == '(') {
+                        if (balance > 0) {
+                            --balance;
+                        } else {
+                            // expr[k - 1] is an enclosing '(' for 'found'
+                            size_t before_paren = k - 1;
+                            while (before_paren > 0 &&
+                                   (expr[before_paren - 1] == ' ' || expr[before_paren - 1] == '\t')) {
+                                before_paren--;
+                            }
+                            size_t p_bangs = 0;
+                            while (before_paren > 0 && expr[before_paren - 1] == '!') {
+                                if (before_paren < expr.size() && expr[before_paren] == '=') {
+                                    break;
+                                }
+                                ++p_bangs;
+                                before_paren--;
+                                while (before_paren > 0 &&
+                                       (expr[before_paren - 1] == ' ' || expr[before_paren - 1] == '\t')) {
+                                    before_paren--;
+                                }
+                            }
+                            if ((p_bangs % 2) == 1) {
+                                // Check whether this negated parenthesized group is compound (contains && or ||)
+                                bool compound_negation = false;
+                                int d = 0;
+                                for (size_t m = k - 1; m < expr.size(); ++m) {
+                                    if (expr[m] == '(') {
+                                        ++d;
+                                    } else if (expr[m] == ')') {
+                                        --d;
+                                        if (d == 0) {
+                                            break;
+                                        }
+                                    } else if (d == 1 && m + 1 < expr.size() &&
+                                               ((expr[m] == '&' && expr[m + 1] == '&') ||
+                                                (expr[m] == '|' && expr[m + 1] == '|'))) {
+                                        compound_negation = true;
+                                        break;
+                                    }
+                                }
+                                if (compound_negation) {
+                                    prefix_ok = false;
+                                    break;
+                                }
+                                is_negated = !is_negated;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -653,9 +721,8 @@ std::optional<Interval> EFSMIntervalAnalyzer::parse_guard_domain(std::string_vie
                     num_len++;
                 }
                 if (has_digits) {
-                    std::string num_str(rem.substr(0, num_len));
-                    try {
-                        double c = std::stod(num_str);
+                    if (auto c_opt = parse_double(rem.substr(0, num_len)); c_opt.has_value()) {
+                        const double c = *c_opt;
                         const bool is_int_exact =
                             is_integer_symbol_in_ir(g_active_ir, var_name) && (std::floor(c) == c);
                         const double strict_step = is_int_exact ? 1.0 : 1e-6;
@@ -688,7 +755,6 @@ std::optional<Interval> EFSMIntervalAnalyzer::parse_guard_domain(std::string_vie
                                 combined_iv = combined_iv->intersect_with(clause_iv);
                             }
                         }
-                    } catch (...) {
                     }
                 }
             }
@@ -782,7 +848,7 @@ void EFSMIntervalAnalyzer::apply_assignment(std::unordered_map<std::string, Inte
         }
     }
 
-    std::regex sub_re(R"((?:(?:in|reg|out)\.)?([a-zA-Z0-9_]+)\s*-\s*([+-]?\d+(?:\.\d+)?[fFuUlL]*))");
+    static const std::regex sub_re(R"((?:(?:in|reg|out)\.)?([a-zA-Z0-9_]+)\s*-\s*([+-]?\d+(?:\.\d+)?[fFuUlL]*))");
     if (std::regex_search(expr, match, sub_re)) {
         std::string matched_var = match[1].str();
         double k = std::stod(clean_number_literal(match[2].str()));
@@ -806,7 +872,7 @@ void EFSMIntervalAnalyzer::apply_assignment(std::unordered_map<std::string, Inte
         }
     }
 
-    std::regex div_re(R"((?:(?:in|reg|out)\.)?([a-zA-Z0-9_]+)\s*/\s*([+-]?\d+(?:\.\d+)?[fFuUlL]*))");
+    static const std::regex div_re(R"((?:(?:in|reg|out)\.)?([a-zA-Z0-9_]+)\s*/\s*([+-]?\d+(?:\.\d+)?[fFuUlL]*))");
     if (std::regex_search(expr, match, div_re)) {
         std::string matched_var = match[1].str();
         double k = std::stod(clean_number_literal(match[2].str()));

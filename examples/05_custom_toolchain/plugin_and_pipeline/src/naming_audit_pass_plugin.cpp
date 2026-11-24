@@ -58,13 +58,12 @@ class NamingAuditPass : public fsm::middleend::IPass {
 
 }  // namespace fsm::custom
 
-// Plugin entry point symbol loaded via dlopen/dlsym by PluginLoader
+// Plugin entry point symbols loaded via dlopen/dlsym by PluginLoader
+FSMC_DEFINE_PLUGIN_ABI()
+
 extern "C" {
 
-#if defined(_WIN32)
-__declspec(dllexport)
-#endif
-void fsmc_register_passes(fsm::middleend::PassManager& pm) {
+FSMC_PLUGIN_EXPORT void fsmc_register_passes(fsm::middleend::PassManager& pm) {
     pm.add_pass(std::make_unique<fsm::custom::NamingAuditPass>());
 }
 

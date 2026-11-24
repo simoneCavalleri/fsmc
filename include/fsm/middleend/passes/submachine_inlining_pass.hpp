@@ -11,6 +11,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/pass_interface.hpp"
 
 namespace fsm::middleend::passes {
 
@@ -21,16 +22,11 @@ using ir::FsmIr;
  * @class SubmachineInliningPass
  * @brief Target-Agnostic Middle-End Pass: Splicing and inlining of modular Submachine Statecharts.
  */
-class SubmachineInliningPass {
+class SubmachineInliningPass : public ::fsm::middleend::IPass {
   public:
     using SubmachineResolver = std::function<const FsmIr*(const std::string& submachine_name)>;
 
     explicit SubmachineInliningPass(SubmachineResolver resolver = nullptr) : resolver_(std::move(resolver)) {}
-
-    [[nodiscard]] static std::string name() { return "SubmachineInlining"; }
-    [[nodiscard]] static std::string description() {
-        return "Resolves and inlines modular submachine statecharts into parent composite states";
-    }
 
     void set_resolver(SubmachineResolver resolver) { resolver_ = std::move(resolver); }
 
@@ -40,7 +36,12 @@ class SubmachineInliningPass {
      * @param diag Diagnostic engine for reporting missing submachines.
      * @return True on success, false on unresolved submachines or cyclic references.
      */
-    bool run(FsmIr& ir, DiagnosticEngine& diag);
+    [[nodiscard]] std::string name() const override { return "submachine-inlining"; }
+    [[nodiscard]] std::string description() const override {
+        return "Inlines referenced submachine statecharts into the host FsmIr.";
+    }
+    [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 
   private:
     SubmachineResolver resolver_;

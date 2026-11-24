@@ -17,6 +17,7 @@
 #include "fsm/frontend/formal/cameo_xmi_parser.hpp"
 #include "fsm/frontend/formal/scxml_parser.hpp"
 #include "fsm/frontend/formal/smv_parser.hpp"
+#include "fsm/frontend/formal/stateflow_parser.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 
 namespace {
@@ -124,6 +125,17 @@ TEST(ParserFactory, ExplicitFormatOverride_OverridesFileExtensionConvention) {
 
     auto formats = ParserFactory::supported_formats();
     EXPECT_GE(formats.size(), 7u);
+
+    // Case-insensitive alias lookups (regression for previously unreachable magicdraw/simulink aliases)
+    EXPECT_NE(dynamic_cast<CameoXmiParser*>(ParserFactory::create_by_format("magicdraw").get()), nullptr);
+    EXPECT_NE(dynamic_cast<CameoXmiParser*>(ParserFactory::create_by_format("MagicDraw").get()), nullptr);
+    EXPECT_NE(dynamic_cast<StateflowParser*>(ParserFactory::create_by_format("simulink").get()), nullptr);
+    EXPECT_NE(dynamic_cast<StateflowParser*>(ParserFactory::create_by_format("Simulink").get()), nullptr);
+
+    // Content sniffing: XML with "attribute " inside must NOT be misclassified as SysML v2
+    const std::string scxml_with_attr =
+        "<?xml version=\"1.0\"?>\n<!-- attribute foo -->\n<scxml xmlns=\"http://www.w3.org/2005/07/scxml\"></scxml>";
+    EXPECT_EQ(ParserFactory::detect_format_from_content(scxml_with_attr), "scxml");
 }
 
 // ============================================================================
@@ -256,6 +268,18 @@ TEST(ParserFactoryTest, AutoDetectsStateflowXmlOverCameoXmi) {
     EXPECT_EQ(parser->format_name(), "stateflow");
 
     std::filesystem::remove(xml_path);
+}
+
+/**
+ * @brief Regression (F2.2): Verify LexerUtils::parse_transition_label handles nested brackets in guards.
+ */
+TEST(LexerUtils, ParseTransitionLabel_HandlesNestedBracketsInGuard) {
+    auto [evt, guard, action] = LexerUtils::parse_transition_label("EvCheck [arr[0] == 1] / DoWork");
+    EXPECT_EQ(evt, "EvCheck");
+    ASSERT_TRUE(guard.has_value());
+    EXPECT_EQ(*guard, "arr[0] == 1");
+    ASSERT_TRUE(action.has_value());
+    EXPECT_EQ(*action, "DoWork");
 }
 
 }  // namespace

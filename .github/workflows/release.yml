@@ -33,10 +33,11 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
+        if: runner.os != 'Windows'
         with:
           key: ${{ matrix.os }}-release
 
@@ -94,7 +95,7 @@ jobs:
           "./pkg_dist/bin/fsm-opt${EXT}" -i smoke.sysml --verify
           rm -f smoke.sysml smoke_fsm.hpp
 
-      - name: Collect Release Tools
+      - name: Collect Release Tools & Full SDK Archive
         shell: bash
         run: |
           mkdir -p dist
@@ -105,6 +106,12 @@ jobs:
           fi
           cp "pkg_dist/bin/fsmc${EXT}" "dist/fsmc-${RELEASE_TAG}-${{ matrix.platform_id }}${EXT}"
           cp "pkg_dist/bin/fsm-opt${EXT}" "dist/fsm-opt-${RELEASE_TAG}-${{ matrix.platform_id }}${EXT}"
+          SDK_NAME="fsmc-sdk-${RELEASE_TAG}-${{ matrix.platform_id }}"
+          if [ "${{ matrix.platform_id }}" = "windows-x64" ]; then
+            python3 -c "import shutil; shutil.make_archive('dist/${SDK_NAME}', 'zip', 'pkg_dist')"
+          else
+            tar -czf "dist/${SDK_NAME}.tar.gz" -C pkg_dist .
+          fi
 
       - name: Upload Release Tools
         uses: actions/upload-artifact@v4
@@ -120,10 +127,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download all platform artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: staging_dist
           merge-multiple: true
@@ -170,7 +177,7 @@ jobs:
           cat RELEASE_NOTES.md
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           body_path: RELEASE_NOTES.md
           files: release_assets/*

@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -28,38 +29,57 @@ struct JsonValue {
     double num_val = 0.0;
     std::string str_val;
     std::vector<JsonValue> arr_val;
-    std::map<std::string, JsonValue> obj_val;
-    std::vector<std::pair<std::string, JsonValue>> obj_members;
+    std::vector<std::string> obj_keys;
+    std::vector<JsonValue> obj_values;
+    std::unordered_map<std::string, std::size_t> obj_index;
 
+    void set_member(std::string key, JsonValue val);
     [[nodiscard]] bool is_string() const { return type == JsonType::String; }
     [[nodiscard]] bool is_object() const { return type == JsonType::Object; }
     [[nodiscard]] bool is_array() const { return type == JsonType::Array; }
     [[nodiscard]] bool is_number() const { return type == JsonType::Number; }
-
-    [[nodiscard]] std::string get_string(const std::string& key, const std::string& default_val = "") const {
-        if (!is_object())
-            return default_val;
-        auto it = obj_val.find(key);
-        return (it != obj_val.end() && it->second.is_string()) ? it->second.str_val : default_val;
-    }
-
-    [[nodiscard]] double get_number(const std::string& key, double default_val = 0.0) const {
-        if (!is_object())
-            return default_val;
-        auto it = obj_val.find(key);
-        return (it != obj_val.end() && it->second.type == JsonType::Number) ? it->second.num_val : default_val;
-    }
-
-    [[nodiscard]] const JsonValue* get_child(const std::string& key) const {
-        if (!is_object())
-            return nullptr;
-        auto it = obj_val.find(key);
-        return (it != obj_val.end()) ? &it->second : nullptr;
-    }
+    [[nodiscard]] std::string get_string(const std::string& key, const std::string& default_val = "") const;
+    [[nodiscard]] double get_number(const std::string& key, double default_val = 0.0) const;
+    [[nodiscard]] const JsonValue* get_child(const std::string& key) const;
 };
+
+inline void JsonValue::set_member(std::string key, JsonValue val) {
+    if (auto it = obj_index.find(key); it != obj_index.end()) {
+        obj_values[it->second] = std::move(val);
+        return;
+    }
+    const std::size_t idx = obj_keys.size();
+    obj_index.emplace(key, idx);
+    obj_keys.push_back(std::move(key));
+    obj_values.push_back(std::move(val));
+}
+
+inline std::string JsonValue::get_string(const std::string& key, const std::string& default_val) const {
+    if (!is_object())
+        return default_val;
+    auto it = obj_index.find(key);
+    return (it != obj_index.end() && obj_values[it->second].is_string()) ? obj_values[it->second].str_val : default_val;
+}
+
+inline double JsonValue::get_number(const std::string& key, double default_val) const {
+    if (!is_object())
+        return default_val;
+    auto it = obj_index.find(key);
+    return (it != obj_index.end() && obj_values[it->second].type == JsonType::Number) ? obj_values[it->second].num_val
+                                                                                      : default_val;
+}
+
+inline const JsonValue* JsonValue::get_child(const std::string& key) const {
+    if (!is_object())
+        return nullptr;
+    auto it = obj_index.find(key);
+    return (it != obj_index.end()) ? &obj_values[it->second] : nullptr;
+}
 
 class SimpleJsonParser {
   public:
+    static constexpr std::size_t kMaxJsonDepth = 128;
+
     static bool parse(std::string_view text, JsonValue& out_val, std::string& err) {
         size_t idx = 0;
         skip_ws(text, idx);
@@ -67,7 +87,15 @@ class SimpleJsonParser {
             err = "Empty JSON input";
             return false;
         }
-        return parse_value(text, idx, out_val, err);
+        if (!parse_value(text, idx, out_val, err, 0)) {
+            return false;
+        }
+        skip_ws(text, idx);
+        if (idx < text.size()) {
+            err = "Unexpected trailing characters after JSON root value";
+            return false;
+        }
+        return true;
     }
 
   private:
@@ -77,7 +105,12 @@ class SimpleJsonParser {
         }
     }
 
-    static bool parse_value(std::string_view text, size_t& idx, JsonValue& out_val, std::string& err) {
+    static bool parse_value(std::string_view text, size_t& idx, JsonValue& out_val, std::string& err,
+                            std::size_t depth) {
+        if (depth > kMaxJsonDepth) {
+            err = "JSON nesting depth exceeded maximum limit (" + std::to_string(kMaxJsonDepth) + ")";
+            return false;
+        }
         skip_ws(text, idx);
         if (idx >= text.size()) {
             err = "Unexpected end of input while expecting value";
@@ -85,9 +118,9 @@ class SimpleJsonParser {
         }
         char c = text[idx];
         if (c == '{')
-            return parse_object(text, idx, out_val, err);
+            return parse_object(text, idx, out_val, err, depth + 1);
         if (c == '[')
-            return parse_array(text, idx, out_val, err);
+            return parse_array(text, idx, out_val, err, depth + 1);
         if (c == '"')
             return parse_string(text, idx, out_val, err);
         if (c == 't' || c == 'f')
@@ -100,11 +133,13 @@ class SimpleJsonParser {
         return false;
     }
 
-    static bool parse_object(std::string_view text, size_t& idx, JsonValue& out_val, std::string& err) {
+    static bool parse_object(std::string_view text, size_t& idx, JsonValue& out_val, std::string& err,
+                             std::size_t depth) {
         ++idx;  // skip '{'
         out_val.type = JsonType::Object;
-        out_val.obj_val.clear();
-        out_val.obj_members.clear();
+        out_val.obj_keys.clear();
+        out_val.obj_values.clear();
+        out_val.obj_index.clear();
         while (idx < text.size()) {
             skip_ws(text, idx);
             if (idx >= text.size()) {
@@ -129,10 +164,9 @@ class SimpleJsonParser {
             }
             ++idx;
             JsonValue member_val;
-            if (!parse_value(text, idx, member_val, err))
+            if (!parse_value(text, idx, member_val, err, depth))
                 return false;
-            out_val.obj_val[key_val.str_val] = member_val;
-            out_val.obj_members.emplace_back(key_val.str_val, std::move(member_val));
+            out_val.set_member(std::move(key_val.str_val), std::move(member_val));
             skip_ws(text, idx);
             if (idx < text.size() && text[idx] == ',') {
                 ++idx;
@@ -148,7 +182,8 @@ class SimpleJsonParser {
         return false;
     }
 
-    static bool parse_array(std::string_view text, size_t& idx, JsonValue& out_val, std::string& err) {
+    static bool parse_array(std::string_view text, size_t& idx, JsonValue& out_val, std::string& err,
+                            std::size_t depth) {
         ++idx;  // skip '['
         out_val.type = JsonType::Array;
         out_val.arr_val.clear();
@@ -163,7 +198,7 @@ class SimpleJsonParser {
                 return true;
             }
             JsonValue elem;
-            if (!parse_value(text, idx, elem, err))
+            if (!parse_value(text, idx, elem, err, depth))
                 return false;
             out_val.arr_val.push_back(std::move(elem));
             skip_ws(text, idx);
@@ -524,8 +559,8 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
     std::optional<GuardAstNode> parsed_guard_ast;
     if (!guard_str.empty()) {
         auto parsed = GuardExpressionParser::parse(guard_str);
-        if (!parsed.cpp_type.empty()) {
-            trans.guard = parsed.cpp_type;
+        if (!parsed.canonical_expression.empty()) {
+            trans.guard = parsed.canonical_expression;
             parsed_guard_ast = std::move(parsed.ast);
             for (const auto& detail : parsed.atomic_guard_details) {
                 model.add_guard(detail.name, "", detail.expression, detail.expression);
@@ -640,6 +675,22 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
             for (const auto& elem : tr_arr->arr_val) {
                 if (elem.is_string())
                     trans.traceability_reqs.push_back(elem.str_val);
+            }
+        }
+    }
+    if (const auto* se_arr = trans_obj.get_child("skip_exit_actions")) {
+        if (se_arr->is_array()) {
+            for (const auto& elem : se_arr->arr_val) {
+                if (elem.is_string())
+                    trans.skip_exit_actions.push_back(elem.str_val);
+            }
+        }
+    }
+    if (const auto* sen_arr = trans_obj.get_child("skip_entry_actions")) {
+        if (sen_arr->is_array()) {
+            for (const auto& elem : sen_arr->arr_val) {
+                if (elem.is_string())
+                    trans.skip_entry_actions.push_back(elem.str_val);
             }
         }
     }
@@ -777,13 +828,15 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
 }
 
 void parse_on_transitions(const JsonValue& on_obj, const std::string& source_state, FsmIr& model) {
-    for (const auto& [evt_key, trans_val] : on_obj.obj_members) {
+    for (std::size_t i = 0; i < on_obj.obj_keys.size(); ++i) {
+        const auto& evt_key = on_obj.obj_keys[i];
+        const auto& trans_val = on_obj.obj_values[i];
         if (trans_val.is_object()) {
             parse_single_transition_object(trans_val, source_state, evt_key, model);
         } else if (trans_val.is_string()) {
             JsonValue fake_obj;
             fake_obj.type = JsonType::Object;
-            fake_obj.obj_val["target"] = trans_val;
+            fake_obj.set_member("target", trans_val);
             parse_single_transition_object(fake_obj, source_state, evt_key, model);
         } else if (trans_val.is_array()) {
             for (const auto& elem : trans_val.arr_val) {
@@ -792,7 +845,7 @@ void parse_on_transitions(const JsonValue& on_obj, const std::string& source_sta
                 } else if (elem.is_string()) {
                     JsonValue fake_obj;
                     fake_obj.type = JsonType::Object;
-                    fake_obj.obj_val["target"] = elem;
+                    fake_obj.set_member("target", elem);
                     parse_single_transition_object(fake_obj, source_state, evt_key, model);
                 }
             }
@@ -801,7 +854,9 @@ void parse_on_transitions(const JsonValue& on_obj, const std::string& source_sta
 }
 
 void parse_states_object(const JsonValue& states_obj, FsmIr& model, const std::string& current_parent) {
-    for (const auto& [state_key, state_data] : states_obj.obj_members) {
+    for (std::size_t i = 0; i < states_obj.obj_keys.size(); ++i) {
+        const auto& state_key = states_obj.obj_keys[i];
+        const auto& state_data = states_obj.obj_values[i];
         const std::string state_name = sanitize_identifier(state_key);
         auto& node = model.add_state(state_name, current_parent);
         node.parent_state = current_parent;
@@ -1042,7 +1097,9 @@ void parse_states_object(const JsonValue& states_obj, FsmIr& model, const std::s
         // Parse after (time triggers)
         const auto* after_obj = state_data.get_child("after");
         if (after_obj != nullptr && after_obj->is_object()) {
-            for (const auto& [delay_str, target_val] : after_obj->obj_members) {
+            for (std::size_t a_idx = 0; a_idx < after_obj->obj_keys.size(); ++a_idx) {
+                const auto& delay_str = after_obj->obj_keys[a_idx];
+                const auto& target_val = after_obj->obj_values[a_idx];
                 TransitionEdge t;
                 t.source = state_name;
                 if (target_val.is_string()) {
@@ -1069,7 +1126,7 @@ void parse_states_object(const JsonValue& states_obj, FsmIr& model, const std::s
             } else if (always_val->is_string()) {
                 JsonValue fake_obj;
                 fake_obj.type = JsonType::Object;
-                fake_obj.obj_val["target"] = *always_val;
+                fake_obj.set_member("target", *always_val);
                 parse_single_transition_object(fake_obj, state_name, "always", model);
             } else if (always_val->is_array()) {
                 for (const auto& elem : always_val->arr_val) {
@@ -1078,7 +1135,7 @@ void parse_states_object(const JsonValue& states_obj, FsmIr& model, const std::s
                     } else if (elem.is_string()) {
                         JsonValue fake_obj;
                         fake_obj.type = JsonType::Object;
-                        fake_obj.obj_val["target"] = elem;
+                        fake_obj.set_member("target", elem);
                         parse_single_transition_object(fake_obj, state_name, "always", model);
                     }
                 }
@@ -1163,7 +1220,9 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
 
     const auto* attrs_obj = root.get_child("attributes");
     if (attrs_obj != nullptr && attrs_obj->is_object()) {
-        for (const auto& [k, v] : attrs_obj->obj_val) {
+        for (std::size_t i = 0; i < attrs_obj->obj_keys.size(); ++i) {
+            const auto& k = attrs_obj->obj_keys[i];
+            const auto& v = attrs_obj->obj_values[i];
             if (v.is_string()) {
                 out_ir.attributes[k] = v.str_val;
             }
@@ -1234,7 +1293,9 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
     // XState-style "context": { "var": initial_value, ... }
     const auto* ctx_obj = root.get_child("context");
     if (ctx_obj != nullptr && ctx_obj->is_object()) {
-        for (const auto& [raw_name, val] : ctx_obj->obj_members) {
+        for (std::size_t i = 0; i < ctx_obj->obj_keys.size(); ++i) {
+            const auto& raw_name = ctx_obj->obj_keys[i];
+            const auto& val = ctx_obj->obj_values[i];
             std::string name = sanitize_identifier(raw_name);
             if (name.empty() || out_ir.find_variable(name) != nullptr) {
                 continue;

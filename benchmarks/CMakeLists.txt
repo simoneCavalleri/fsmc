@@ -22,7 +22,10 @@ endif()
 # 1. Google Benchmark Suite & Zero-Overhead Verification Target
 add_executable(fsmc_bench benchmarks.cpp)
 add_executable(benchmark_dispatch ALIAS fsmc_bench)
-target_link_libraries(fsmc_bench PRIVATE fsmc_compiler benchmark::benchmark Threads::Threads)
+target_link_libraries(fsmc_bench PRIVATE fsmc_compiler fsmc_project_options benchmark::benchmark)
+if(NOT EMSCRIPTEN)
+    target_link_libraries(fsmc_bench PRIVATE Threads::Threads)
+endif()
 set_target_properties(fsmc_bench PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
 # Apply optimization flags
@@ -35,6 +38,6 @@ endif()
 # Register Zero-Heap-Allocation quality gate in CTest
 if(FSMC_ENABLE_TESTING)
     add_test(NAME test_zero_alloc_benchmark_gate
-        COMMAND fsmc_bench --benchmark_filter=BM_Dispatch_.* --benchmark_min_time=0.01s
+        COMMAND fsmc_bench "--benchmark_filter=^(BM_Dispatch_|BM_Runtime_SpscQueue_SingleThread|BM_Runtime_StaticRingBuffer|BM_Runtime_SpscFSM_)" --benchmark_min_time=0.01s
     )
 endif()

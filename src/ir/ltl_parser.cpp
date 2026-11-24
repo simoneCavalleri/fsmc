@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-#include "fsm/frontend/common/parser_interface.hpp"
+#include "fsm/ir/identifier_utils.hpp"
 
 namespace fsm::frontend::directive {
 
@@ -260,7 +260,7 @@ class LtlTokenizerAndParser {
             }
 
             std::string raw_word(src_.substr(start, pos_ - start));
-            std::string word = std::string(trim(raw_word));
+            std::string word = std::string(trim_whitespace(raw_word));
             if (word == "AND" || word == "and") {
                 tokens_.push_back({TokenType::And, "&&"});
             } else if (word == "OR" || word == "or") {
@@ -301,6 +301,11 @@ class LtlTokenizerAndParser {
     }
 
     PropertyAstNode parse_implication() {
+        if (depth_ >= kMaxLtlDepth) {
+            error_ = true;
+            return PropertyAstNode("");
+        }
+        DepthGuard guard(depth_);
         PropertyAstNode left = parse_or();
         if (current().type == TokenType::Implies) {
             advance();
@@ -350,6 +355,11 @@ class LtlTokenizerAndParser {
     }
 
     PropertyAstNode parse_unary() {
+        if (depth_ >= kMaxLtlDepth) {
+            error_ = true;
+            return PropertyAstNode("");
+        }
+        DepthGuard guard(depth_);
         if (current().type == TokenType::Globally) {
             advance();
             PropertyAstNode sub = parse_unary();
@@ -459,10 +469,19 @@ class LtlTokenizerAndParser {
         }
     }
 
+    static constexpr std::size_t kMaxLtlDepth = 128;
+
+    struct DepthGuard {
+        std::size_t& d;
+        explicit DepthGuard(std::size_t& ref) noexcept : d(ref) { ++d; }
+        ~DepthGuard() noexcept { --d; }
+    };
+
     std::string_view src_;
     size_t pos_{0};
     std::vector<Token> tokens_;
     size_t token_idx_{0};
+    size_t depth_{0};
     bool error_{false};
 };
 
@@ -477,7 +496,7 @@ std::optional<PropertyAstNode> LtlPropertyParser::parse(std::string_view raw_for
 namespace fsm::ir {
 
 std::optional<PropertyAstNode> PropertyAstNode::parse(std::string_view raw_formula) {
-    std::string expr = std::string(frontend::trim(raw_formula));
+    std::string expr = std::string(trim_whitespace(raw_formula));
     if (expr.empty()) {
         return std::nullopt;
     }

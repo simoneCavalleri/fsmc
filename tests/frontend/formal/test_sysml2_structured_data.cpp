@@ -46,10 +46,10 @@ package Avionics {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
     bool success = parser.parse(sysml_src, model, err);
 
-    ASSERT_TRUE(success) << "Parser error: " << err;
+    ASSERT_TRUE(success) << "Parser error: " << err.render_to_string();
     ASSERT_EQ(model.get_enums().size(), 2u);
 
     // Verify FmsOperatingMode
@@ -107,10 +107,10 @@ package Navigation {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
     bool success = parser.parse(sysml_src, model, err);
 
-    ASSERT_TRUE(success) << "Parser error: " << err;
+    ASSERT_TRUE(success) << "Parser error: " << err.render_to_string();
     ASSERT_EQ(model.get_structs().size(), 2u);
 
     // Verify FlightPlanWaypoint
@@ -172,10 +172,10 @@ package TimedMission {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
     bool success = parser.parse(sysml_src, model, err);
 
-    ASSERT_TRUE(success) << "Parser error: " << err;
+    ASSERT_TRUE(success) << "Parser error: " << err.render_to_string();
     ASSERT_EQ(model.transitions.size(), 3u);
 
     // Verify t1 (after 500 ms)
@@ -231,10 +231,10 @@ package Topology {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
     bool success = parser.parse(sysml_src, model, err);
 
-    ASSERT_TRUE(success) << "Parser error: " << err;
+    ASSERT_TRUE(success) << "Parser error: " << err.render_to_string();
 
     const auto* ingress = model.find_state("Ingress");
     ASSERT_NE(ingress, nullptr);
@@ -281,8 +281,8 @@ package RoundtripTest {
 
     Sysml2Parser parser;
     FsmIr original_model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml_src, original_model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_src, original_model, err)) << "Error: " << err.render_to_string();
 
     // Serialize to SysML v2
     std::string emitted_sysml = Sysml2Serializer::serialize(original_model);
@@ -291,8 +291,9 @@ package RoundtripTest {
 
     // Re-parse emitted SysML v2
     FsmIr reloaded_model;
-    ASSERT_TRUE(parser.parse(emitted_sysml, reloaded_model, err)) << "Re-parse error: " << err << "\nEmitted:\n"
-                                                                  << emitted_sysml;
+    ASSERT_TRUE(parser.parse(emitted_sysml, reloaded_model, err))
+        << "Re-parse error: " << err.render_to_string() << "\nEmitted:\n"
+        << emitted_sysml;
 
     // Verify roundtrip equivalence
     auto reloaded_enums = reloaded_model.get_enums();
@@ -330,8 +331,8 @@ state def SubMsTimers {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml_src, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_src, model, err)) << "Error: " << err.render_to_string();
     ASSERT_EQ(model.transitions.size(), 3u);
 
     EXPECT_EQ(std::get<TimeTrigger>(model.transitions[0].trigger).duration_in_ms(), 2u);

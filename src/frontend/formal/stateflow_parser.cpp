@@ -65,7 +65,7 @@ bool decompress_entry(uint16_t method, const unsigned char* data_ptr, uint32_t c
         }
         int ret = inflate(&strm, Z_FINISH);
         inflateEnd(&strm);
-        if (ret != Z_STREAM_END && ret != Z_OK) {
+        if (ret != Z_STREAM_END) {
             err = "Stateflow Parser: Decompression failed for entry '" + filename + "'";
             return false;
         }
@@ -234,7 +234,16 @@ bool extract_stateflow_from_slx(std::string_view zip_content, std::string& extra
 
 }  // namespace
 
-bool StateflowParser::parse(std::string_view content, FsmIr& model, std::string& error_message) {
+bool StateflowParser::parse(std::string_view content, FsmIr& out_ir, diagnostic::DiagnosticEngine& diag) {
+    std::string err;
+    if (!parse_impl(content, out_ir, err)) {
+        report_parse_error(diag, "E_PARSE_STATEFLOW", err);
+        return false;
+    }
+    return true;
+}
+
+bool StateflowParser::parse_impl(std::string_view content, FsmIr& model, std::string& error_message) {
     std::string xml_storage;
     std::string_view xml_view = content;
 
@@ -284,7 +293,7 @@ bool StateflowParser::parse(std::string_view content, FsmIr& model, std::string&
     // Parse @fsm directives from XML comments
     {
         std::string raw_str{content};
-        std::regex comment_re(R"(<!--\s*@fsm:([^\r\n]+?)\s*-->)");
+        static const std::regex comment_re(R"(<!--\s*@fsm:([^\r\n]+?)\s*-->)");
         auto begin = std::sregex_iterator(raw_str.begin(), raw_str.end(), comment_re);
         auto end = std::sregex_iterator();
         for (auto i = begin; i != end; ++i) {
@@ -871,8 +880,8 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
             }
         }
         auto parsed = directive::GuardExpressionParser::parse(norm_guard);
-        if (!parsed.cpp_type.empty()) {
-            trans.guard = parsed.cpp_type;
+        if (!parsed.canonical_expression.empty()) {
+            trans.guard = parsed.canonical_expression;
             for (const auto& detail : parsed.atomic_guard_details) {
                 model.add_guard(detail.name, "", detail.expression, detail.expression);
             }

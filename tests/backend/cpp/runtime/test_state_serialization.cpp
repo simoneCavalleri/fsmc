@@ -129,6 +129,7 @@ TEST(StateSerialization, BasicState_TransitionsAndRestoresActiveState) {
     EXPECT_EQ(machine2.registers().cycle_count, 150u);
 }
 
+#if __cplusplus >= 202002L
 TEST(StateSerialization, StdSpanApi_SerializesAndRestoresCorrectly) {
     MotorFSM fsm_src;
     (void)fsm_src.dispatch(StartEvt{});
@@ -156,6 +157,7 @@ TEST(StateSerialization, StdSpanApi_SerializesAndRestoresCorrectly) {
     EXPECT_TRUE(fsm_dst.is_in_state<Paused>());
     EXPECT_EQ(fsm_dst.registers().speed_rpm, 1200);
 }
+#endif
 
 // ============================================================================
 // 2. Timers and Residence Time Preservation

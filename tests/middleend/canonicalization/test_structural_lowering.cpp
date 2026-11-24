@@ -54,7 +54,7 @@ TEST(HistoryLowering, ShallowHistoryTarget_LowersToShadowRegisterAndDispatchGuar
     t_enter.target_is_history = true;
     ir.transitions.push_back(t_enter);
 
-    bool res = HistoryLoweringPass::run(ir, diag);
+    bool res = HistoryLoweringPass{}.run(ir, diag);
     EXPECT_TRUE(res);
 
     // 1. History pseudostate pruned
@@ -106,7 +106,7 @@ TEST(DeferredEventLowering, DeferredEventsDeclared_LowersToBufferVariablesAndRec
     TransitionEdge t_exit("Busy", "Idle", "EvFinish");
     ir.transitions.push_back(t_exit);
 
-    bool res = DeferredEventLoweringPass::run(ir, diag);
+    bool res = DeferredEventLoweringPass{}.run(ir, diag);
     EXPECT_TRUE(res);
 
     // 1. Deferred events cleared from state node
@@ -169,7 +169,7 @@ TEST(DeferredEventLowering, LocalTransitionOnComposite_DoesNotAttachRecall) {
     ext.kind = TransitionEdgeKind::External;
     ir.add_transition(ext);
 
-    EXPECT_TRUE(DeferredEventLoweringPass::run(ir, diag));
+    EXPECT_TRUE(DeferredEventLoweringPass{}.run(ir, diag));
 
     for (const auto& t : ir.transitions) {
         if (t.event == "EvLocal") {
@@ -247,7 +247,7 @@ TEST(BoundaryActionFusion, CrossBoundaryTransition_FusesExitAndEntryActionsInLca
     TransitionEdge cross_edge("SubA", "SubB", "EvJump", std::nullopt, trans_act);
     ir.transitions.push_back(cross_edge);
 
-    bool res = BoundaryActionFusionPass::run(ir, diag);
+    bool res = BoundaryActionFusionPass{}.run(ir, diag);
     EXPECT_TRUE(res);
 
     // Assert that the transition action has exactly 5 fused instructions in order:
@@ -317,7 +317,7 @@ TEST(BoundaryActionFusion, CrossBoundaryTransition_ClearsHooksOnFusedNodes) {
     TransitionEdge cross_edge("SubA", "SubB", "EvJump");
     ir.transitions.push_back(cross_edge);
 
-    bool res = BoundaryActionFusionPass::run(ir, diag);
+    bool res = BoundaryActionFusionPass{}.run(ir, diag);
     ASSERT_TRUE(res);
 
     // After fusion the hooks on traversed nodes must be cleared.
@@ -372,7 +372,7 @@ TEST(StructuralLowering, BoundaryActionFusion_DoesNotDuplicateInitialStateEntryH
     ir.transitions.emplace_back("Step2", "Step1", "BACK");
 
     DiagnosticEngine diag;
-    const bool modified = BoundaryActionFusionPass::run(ir, diag);
+    const bool modified = BoundaryActionFusionPass{}.run(ir, diag);
     EXPECT_FALSE(modified);
 
     const StateNode* s1_after = ir.find_state("Step1");
@@ -412,7 +412,7 @@ TEST(StructuralLowering, BoundaryActionFusion_PreservesDescendantExitActionsWhen
     ir.transitions.emplace_back("Outer", "Paused", "PAUSE");
 
     DiagnosticEngine diag;
-    BoundaryActionFusionPass::run(ir, diag);
+    BoundaryActionFusionPass{}.run(ir, diag);
 
     const StateNode* leaf2_after = ir.find_state("Leaf2");
     ASSERT_NE(leaf2_after, nullptr);
@@ -447,7 +447,7 @@ TEST(BoundaryActionFusion, InternalTransition_NotModifiedByPass) {
     internal_t.kind = TransitionEdgeKind::Internal;
     ir.transitions.push_back(internal_t);
 
-    bool res = BoundaryActionFusionPass::run(ir, diag);
+    bool res = BoundaryActionFusionPass{}.run(ir, diag);
 
     // The pass returns false: no external transition with boundary actions was found.
     EXPECT_FALSE(res) << "No external cross-boundary transition exists; pass must be a no-op";
@@ -510,7 +510,7 @@ TEST(BoundaryActionFusion, MultipleOutgoingTransitions_BothFuseBoundaryActionsWi
     ir.transitions.push_back(t1);
     ir.transitions.push_back(t2);
 
-    bool res = BoundaryActionFusionPass::run(ir, diag);
+    bool res = BoundaryActionFusionPass{}.run(ir, diag);
     EXPECT_TRUE(res);
 
     ASSERT_EQ(ir.transitions.size(), 2U);
@@ -567,7 +567,7 @@ TEST(BoundaryActionFusion, LocalTransitionOnComposite_DoesNotFuseCompositeExitOr
     loc.kind = TransitionEdgeKind::Local;
     ir.add_transition(loc);
 
-    EXPECT_TRUE(BoundaryActionFusionPass::run(ir, diag));
+    EXPECT_TRUE(BoundaryActionFusionPass{}.run(ir, diag));
 
     ASSERT_EQ(ir.transitions.size(), 1u);
     ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
@@ -621,7 +621,7 @@ TEST(ForkJoinLowering, ForkAndJoinPseudostates_LowersToMultiSourceMultiTargetTra
     ir.transitions.emplace_back("RegionB", "Join1", "EvB");
     ir.transitions.emplace_back("Join1", "Done", "");
 
-    bool res = ForkJoinLoweringPass::run(ir, diag);
+    bool res = ForkJoinLoweringPass{}.run(ir, diag);
     EXPECT_TRUE(res);
 
     // 1. Fork and Join state nodes pruned
@@ -775,7 +775,7 @@ TEST(ConnectiveJunctionChaining, MultiHopChain_FusesIntoCompoundTransition) {
     TransitionEdge t3("J2", "StateB", "", "y > 0", ActionSignature("ta1"));
     ir.transitions.push_back(t3);
 
-    bool res = ConnectiveJunctionChainingPass::run(ir, diag);
+    bool res = ConnectiveJunctionChainingPass{}.run(ir, diag);
     EXPECT_TRUE(res);
     EXPECT_FALSE(diag.has_errors());
 
@@ -818,7 +818,7 @@ TEST(ConnectiveJunctionChaining, BranchingJunctions_CreatesMultipleCompositeTran
     ir.transitions.push_back(t_ok);
     ir.transitions.push_back(t_err);
 
-    bool res = ConnectiveJunctionChainingPass::run(ir, diag);
+    bool res = ConnectiveJunctionChainingPass{}.run(ir, diag);
     EXPECT_TRUE(res);
     EXPECT_FALSE(diag.has_errors());
 
@@ -856,7 +856,7 @@ TEST(ConnectiveJunctionChaining, CyclicJunctions_ReportsDiagnosticError) {
     ir.transitions.push_back(TransitionEdge("J2", "J1", ""));  // Cycle!
     ir.transitions.push_back(TransitionEdge("J2", "StateB", ""));
 
-    bool res = ConnectiveJunctionChainingPass::run(ir, diag);
+    bool res = ConnectiveJunctionChainingPass{}.run(ir, diag);
     EXPECT_FALSE(res);
     EXPECT_TRUE(diag.has_errors());
     EXPECT_EQ(diag.get_diagnostics()[0].code, "EJUNC001");
@@ -879,7 +879,7 @@ TEST(ConnectiveJunctionChaining, SelfTransitionThroughJunction_PreservesExternal
     ir.transitions.push_back(t_in);
     ir.transitions.push_back(t_out);
 
-    bool res = ConnectiveJunctionChainingPass::run(ir, diag);
+    bool res = ConnectiveJunctionChainingPass{}.run(ir, diag);
     EXPECT_TRUE(res);
     EXPECT_FALSE(diag.has_errors());
 
@@ -924,7 +924,7 @@ TEST(ConnectiveJunctionChaining, ActionInstructionsAndInvocations_PreservedAcros
     ir.transitions.push_back(t1);
     ir.transitions.push_back(t2);
 
-    bool res = ConnectiveJunctionChainingPass::run(ir, diag);
+    bool res = ConnectiveJunctionChainingPass{}.run(ir, diag);
     EXPECT_TRUE(res);
     EXPECT_FALSE(diag.has_errors());
 
@@ -979,7 +979,7 @@ TEST(ForkJoinLowering, BranchActionsAndClockResets_PreservedInLoweredTransitions
     ir.transitions.push_back(t_branch_a);
     ir.transitions.push_back(t_branch_b);
 
-    bool res = ForkJoinLoweringPass::run(ir, diag);
+    bool res = ForkJoinLoweringPass{}.run(ir, diag);
     EXPECT_TRUE(res);
 
     EXPECT_EQ(ir.find_state("Fork1"), nullptr);
@@ -1025,7 +1025,7 @@ TEST(StructuralLowering, HistoryLowering_PinsParentAcrossNormalizeHierarchy) {
     ir.add_transition(restore_t);
 
     DiagnosticEngine diag;
-    EXPECT_TRUE(HistoryLoweringPass::run(ir, diag));
+    EXPECT_TRUE(HistoryLoweringPass{}.run(ir, diag));
     ir.normalize_hierarchy();
 
     const StateNode* restore_node = ir.find_state("Outer_HistoryRestore");
@@ -1059,7 +1059,7 @@ TEST(ForkJoinLowering, JoinBranchGuardsAndEvent_PreservedInLoweredTransitions) {
     ir.transitions.push_back(in_b);
     ir.transitions.push_back(out_j);
 
-    ASSERT_TRUE(ForkJoinLoweringPass::run(ir, diag));
+    ASSERT_TRUE(ForkJoinLoweringPass{}.run(ir, diag));
     EXPECT_EQ(ir.find_state("Join1"), nullptr);
     ASSERT_EQ(ir.transitions.size(), 1u);
 
@@ -1141,7 +1141,7 @@ TEST(HistoryLowering, EmitsValidGuardIdentifiersAndPrioritizedFallback) {
     ir.transitions.push_back(t);
 
     DiagnosticEngine diag;
-    ASSERT_TRUE(HistoryLoweringPass::run(ir, diag));
+    ASSERT_TRUE(HistoryLoweringPass{}.run(ir, diag));
 
     bool found_step1_branch = false;
     bool found_fallback = false;
@@ -1193,7 +1193,7 @@ TEST(HistoryLowering, DeepHistoryOnlyRecordsLeafSubstates) {
     ir.transitions.push_back(t);
 
     DiagnosticEngine diag;
-    ASSERT_TRUE(HistoryLoweringPass::run(ir, diag));
+    ASSERT_TRUE(HistoryLoweringPass{}.run(ir, diag));
 
     const StateNode* inner_after = ir.find_state("Inner");
     ASSERT_NE(inner_after, nullptr);
@@ -1243,7 +1243,7 @@ TEST(StructuralLowering, ChoiceInlining_InlinesEntryPointAndExitPointPseudostate
     ir.transitions.emplace_back("Egress", "Done", "");
 
     DiagnosticEngine diag;
-    ASSERT_TRUE(ChoiceInliningPass::run(ir, diag));
+    ASSERT_TRUE(ChoiceInliningPass{}.run(ir, diag));
 
     EXPECT_EQ(ir.find_state("Ingress"), nullptr);
     EXPECT_EQ(ir.find_state("Egress"), nullptr);
@@ -1282,7 +1282,7 @@ TEST(StructuralLowering, HistoryLowering_SkipsOrphanRestoreChoiceWhenNoTransitio
     ir.transitions.emplace_back("S1", "S2", "EvNext");
 
     DiagnosticEngine diag;
-    HistoryLoweringPass::run(ir, diag);
+    HistoryLoweringPass{}.run(ir, diag);
 
     EXPECT_EQ(ir.find_state("Work_HistoryRestore"), nullptr);
     EXPECT_TRUE(ir.choice_nodes.empty());

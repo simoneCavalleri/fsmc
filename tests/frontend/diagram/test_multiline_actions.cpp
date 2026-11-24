@@ -36,8 +36,8 @@ TEST(MultilineActions, PlantUml_MultilineEntryAndExitActionBracedAssignments) {
 
     PlantUmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err.render_to_string();
 
     auto* st = model.find_state("Active");
     ASSERT_NE(st, nullptr);
@@ -74,8 +74,8 @@ TEST(MultilineActions, PlantUml_TransitionWithCompositeActions) {
 
     PlantUmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 1u);
     auto it = std::find_if(model.transitions.begin(), model.transitions.end(),
@@ -109,8 +109,8 @@ TEST(MultilineActions, PlantUml_InlineSingleLineCompositeAction) {
 
     PlantUmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err.render_to_string();
 
     auto* st = model.find_state("Active");
     ASSERT_NE(st, nullptr);
@@ -135,8 +135,8 @@ TEST(MultilineActions, Mermaid_MultilineEntryAction) {
 
     MermaidParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mermaid_diagram, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mermaid_diagram, model, err)) << "Error: " << err.render_to_string();
 
     auto* st = model.find_state("Active");
     ASSERT_NE(st, nullptr);
@@ -159,8 +159,8 @@ TEST(MultilineActions, Mermaid_TransitionWithCompositeAction) {
 
     MermaidParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mermaid_diagram, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mermaid_diagram, model, err)) << "Error: " << err.render_to_string();
 
     auto it = std::find_if(model.transitions.begin(), model.transitions.end(),
                            [](const auto& t) { return t.source == "Idle" && t.target == "Working"; });
@@ -189,8 +189,8 @@ TEST(MultilineActions, Mermaid_StateDescriptionBracedAction) {
 
     MermaidParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mermaid_diagram, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mermaid_diagram, model, err)) << "Error: " << err.render_to_string();
 
     auto* st = model.find_state("Active");
     ASSERT_NE(st, nullptr);
@@ -231,8 +231,8 @@ TEST(MultilineActions, Mermaid_GuardWithDivisionOperator_PreservedAndNotTreatedA
 
     MermaidParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mermaid_diagram, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mermaid_diagram, model, err)) << "Error: " << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 2u);
 

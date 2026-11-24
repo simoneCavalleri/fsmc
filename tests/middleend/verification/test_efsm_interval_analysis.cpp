@@ -451,4 +451,47 @@ TEST(EFSMIntervalAnalysisTest, AppliesStateExitActionsAcrossTransitions) {
     }
 }
 
+/**
+ * @brief Regression (F2.1): Verify negated guard domain `!(x > 5)` is properly inverted to `x <= 5`
+ * and compound negations `!(x > 5 && y > 5)` are handled conservatively.
+ */
+TEST(EFSMIntervalAnalysisTest, NegatedGuardDomain_ProperlyInvertsComparisonAndHandlesCompoundNegation) {
+    FsmIr ir;
+    ir.name = "NegatedGuardModel";
+    ir.initial_state = "Init";
+    ir.variables.emplace_back("x", DataType(PrimitiveTypeKind::Int32), "10");
+    ir.variables.emplace_back("y", DataType(PrimitiveTypeKind::Int32), "0");
+
+    ir.add_state("Init");
+    ir.add_state("DeadTarget");
+    ir.add_state("LiveTarget");
+
+    // With x == 10, "!(x > 5)" means "x <= 5", which is unsatisfiable!
+    TransitionEdge t_dead("Init", "DeadTarget", "EvCheck", "!(x > 5)");
+    t_dead.id = "t_neg_dead";
+    ir.add_transition(t_dead);
+
+    // With x == 10, y == 0, "!(x > 5 && y > 5)" IS satisfiable (since y <= 5): must NOT be falsely flagged!
+    TransitionEdge t_live("Init", "LiveTarget", "EvCompound", "!(x > 5 && y > 5)");
+    t_live.id = "t_neg_live";
+    ir.add_transition(t_live);
+
+    EFSMIntervalAnalyzer analyzer(ir);
+    DiagnosticEngine diag;
+    auto findings = analyzer.analyze(diag);
+
+    bool found_dead = false;
+    bool false_live = false;
+    for (const auto& f : findings) {
+        if (f.transition_id == "t_neg_dead" && f.kind == EFSMFindingKind::UnsatisfiableGuard) {
+            found_dead = true;
+        }
+        if (f.transition_id == "t_neg_live") {
+            false_live = true;
+        }
+    }
+    EXPECT_TRUE(found_dead);
+    EXPECT_FALSE(false_live);
+}
+
 }  // namespace

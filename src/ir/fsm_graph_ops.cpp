@@ -257,9 +257,6 @@ void FsmGraphOps::canonicalize(FsmIr& ir) {
     // Sort ports by name
     std::sort(ir.ports.begin(), ir.ports.end(),
               [](const PortDefinition& a, const PortDefinition& b) { return a.name < b.name; });
-    // Sort signals by name
-    std::sort(ir.signals.begin(), ir.signals.end(),
-              [](const SignalDefinition& a, const SignalDefinition& b) { return a.name < b.name; });
     // Sort variables by name
     std::sort(ir.variables.begin(), ir.variables.end(),
               [](const VariableDefinition& a, const VariableDefinition& b) { return a.name < b.name; });
@@ -269,8 +266,10 @@ void FsmGraphOps::canonicalize(FsmIr& ir) {
     // Sort properties by name
     std::sort(ir.properties.begin(), ir.properties.end(),
               [](const FormalProperty& a, const FormalProperty& b) { return a.name < b.name; });
-    // Synchronize interfaces (guards and actions)
+    // Synchronize interfaces (guards, actions, signals) then sort deterministically
     sync_interfaces(ir);
+    std::sort(ir.signals.begin(), ir.signals.end(),
+              [](const SignalDefinition& a, const SignalDefinition& b) { return a.name < b.name; });
     std::sort(ir.guards.begin(), ir.guards.end(),
               [](const GuardModel& a, const GuardModel& b) { return a.name < b.name; });
     std::sort(ir.actions.begin(), ir.actions.end(),

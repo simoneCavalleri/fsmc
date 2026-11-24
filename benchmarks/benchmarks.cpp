@@ -307,24 +307,45 @@ static void BM_Runtime_SpscQueue_SingleThread_PushPop(benchmark::State& state) {
     uint64_t val = 42;
     uint64_t out = 0;
 
+    g_heap_allocations.store(0, std::memory_order_relaxed);
+    g_heap_bytes_allocated.store(0, std::memory_order_relaxed);
+    g_tracking_enabled.store(true, std::memory_order_release);
     for (auto _ : state) {
         queue.push(val);
         queue.pop(out);
         benchmark::DoNotOptimize(out);
     }
+    g_tracking_enabled.store(false, std::memory_order_release);
     state.SetItemsProcessed(state.iterations());
+    state.counters["HeapAllocs"] = benchmark::Counter(static_cast<double>(g_heap_allocations.load()));
 }
 BENCHMARK(BM_Runtime_SpscQueue_SingleThread_PushPop);
 
-// True inter-thread lock-free handoff across 2 CPU cores
-static void BM_Runtime_SpscQueue_TwoThreads_Handoff(benchmark::State& state) {
-    static fsm::spsc_ring_buffer<uint64_t, 4096> queue;
+// True inter-thread lock-free handoff across 2 CPU cores (fresh queue per repetition)
+class SpscHandoffFixture : public benchmark::Fixture {
+  public:
+    void SetUp(const benchmark::State& state) override {
+        if (state.thread_index() == 0) {
+            queue_ = std::make_unique<fsm::spsc_ring_buffer<uint64_t, 4096>>();
+        }
+    }
 
+    void TearDown(const benchmark::State& state) override {
+        if (state.thread_index() == 0) {
+            queue_.reset();
+        }
+    }
+
+  protected:
+    std::unique_ptr<fsm::spsc_ring_buffer<uint64_t, 4096>> queue_;
+};
+
+BENCHMARK_DEFINE_F(SpscHandoffFixture, TwoThreads_Handoff)(benchmark::State& state) {
     if (state.thread_index() == 0) {
         // Producer thread
         uint64_t val = 42;
         for (auto _ : state) {
-            while (!queue.push(val)) {
+            while (!queue_->push(val)) {
                 // busy spin
             }
         }
@@ -332,7 +353,7 @@ static void BM_Runtime_SpscQueue_TwoThreads_Handoff(benchmark::State& state) {
         // Consumer thread
         uint64_t out = 0;
         for (auto _ : state) {
-            while (!queue.pop(out)) {
+            while (!queue_->pop(out)) {
                 // busy spin
             }
             benchmark::DoNotOptimize(out);
@@ -340,19 +361,24 @@ static void BM_Runtime_SpscQueue_TwoThreads_Handoff(benchmark::State& state) {
     }
     state.SetItemsProcessed(state.iterations());
 }
-BENCHMARK(BM_Runtime_SpscQueue_TwoThreads_Handoff)->Threads(2)->UseRealTime();
+BENCHMARK_REGISTER_F(SpscHandoffFixture, TwoThreads_Handoff)->Threads(2)->UseRealTime();
 
 // Static ring buffer for hard real-time / ISR environments
 static void BM_Runtime_StaticRingBuffer_PushPop(benchmark::State& state) {
     fsm::static_ring_buffer<uint64_t, 512> ring;
     uint64_t val = 99;
 
+    g_heap_allocations.store(0, std::memory_order_relaxed);
+    g_heap_bytes_allocated.store(0, std::memory_order_relaxed);
+    g_tracking_enabled.store(true, std::memory_order_release);
     for (auto _ : state) {
         ring.push(val);
         auto popped = ring.pop();
         benchmark::DoNotOptimize(popped);
     }
+    g_tracking_enabled.store(false, std::memory_order_release);
     state.SetItemsProcessed(state.iterations());
+    state.counters["HeapAllocs"] = benchmark::Counter(static_cast<double>(g_heap_allocations.load()));
 }
 BENCHMARK(BM_Runtime_StaticRingBuffer_PushPop);
 
@@ -360,6 +386,9 @@ BENCHMARK(BM_Runtime_StaticRingBuffer_PushPop);
 static void BM_Runtime_SpscFSM_PostAndProcess(benchmark::State& state) {
     bench::BenchSpscFSM fsm;
 
+    g_heap_allocations.store(0, std::memory_order_relaxed);
+    g_heap_bytes_allocated.store(0, std::memory_order_relaxed);
+    g_tracking_enabled.store(true, std::memory_order_release);
     for (auto _ : state) {
         bool p1 = fsm.post(bench::Event1{});
         bool r1 = fsm.process_one();
@@ -370,7 +399,9 @@ static void BM_Runtime_SpscFSM_PostAndProcess(benchmark::State& state) {
         benchmark::DoNotOptimize(p2);
         benchmark::DoNotOptimize(r2);
     }
+    g_tracking_enabled.store(false, std::memory_order_release);
     state.SetItemsProcessed(state.iterations() * 2);
+    state.counters["HeapAllocs"] = benchmark::Counter(static_cast<double>(g_heap_allocations.load()));
 }
 BENCHMARK(BM_Runtime_SpscFSM_PostAndProcess);
 
@@ -391,11 +422,12 @@ Operating --> Idle : StopCmd / PowerOff
 
 static void BM_Compiler_PlantUml_Parse(benchmark::State& state) {
     fsm::frontend::diagram::PlantUmlParser parser;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine diag;
 
     for (auto _ : state) {
         fsm::ir::FsmIr ir;
-        bool ok = parser.parse(SAMPLE_PUML, ir, err);
+        diag.clear();
+        bool ok = parser.parse(SAMPLE_PUML, ir, diag);
         benchmark::DoNotOptimize(ok);
     }
     state.SetBytesProcessed(static_cast<int64_t>(state.iterations() * SAMPLE_PUML.size()));
@@ -415,11 +447,12 @@ static const std::string SAMPLE_SYSML = R"(state def Spacecraft {
 
 static void BM_Compiler_Sysml2_Parse(benchmark::State& state) {
     fsm::frontend::formal::Sysml2Parser parser;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine diag;
 
     for (auto _ : state) {
         fsm::ir::FsmIr ir;
-        bool ok = parser.parse(SAMPLE_SYSML, ir, err);
+        diag.clear();
+        bool ok = parser.parse(SAMPLE_SYSML, ir, diag);
         benchmark::DoNotOptimize(ok);
     }
     state.SetBytesProcessed(static_cast<int64_t>(state.iterations() * SAMPLE_SYSML.size()));
@@ -433,8 +466,8 @@ BENCHMARK(BM_Compiler_Sysml2_Parse);
 static void BM_Compiler_PassManager_Pipeline(benchmark::State& state) {
     fsm::frontend::diagram::PlantUmlParser parser;
     fsm::ir::FsmIr ir_template;
-    std::string err;
-    parser.parse(SAMPLE_PUML, ir_template, err);
+    fsm::diagnostic::DiagnosticEngine parse_diag;
+    parser.parse(SAMPLE_PUML, ir_template, parse_diag);
 
     fsm::middleend::PassManager pm;
     pm.add_pass(std::make_unique<fsm::middleend::HierarchyCanonicalizationPass>());
@@ -453,8 +486,8 @@ BENCHMARK(BM_Compiler_PassManager_Pipeline);
 static void BM_Compiler_CppGenerator(benchmark::State& state) {
     fsm::frontend::diagram::PlantUmlParser parser;
     fsm::ir::FsmIr ir;
-    std::string err;
-    parser.parse(SAMPLE_PUML, ir, err);
+    fsm::diagnostic::DiagnosticEngine parse_diag;
+    parser.parse(SAMPLE_PUML, ir, parse_diag);
 
     fsm::backend::cpp::GeneratorOptions opts;
     opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
@@ -466,6 +499,78 @@ static void BM_Compiler_CppGenerator(benchmark::State& state) {
     }
 }
 BENCHMARK(BM_Compiler_CppGenerator);
+
+// ============================================================================
+// 6. Scaling Benchmarks (50 / 200 / 500 States)
+// ============================================================================
+
+static fsm::ir::FsmIr make_scaled_ir(int num_states) {
+    fsm::ir::FsmIr ir;
+    ir.name = "ScaledFsm_" + std::to_string(num_states);
+    ir.initial_state = "S0";
+
+    for (int i = 0; i < num_states; ++i) {
+        fsm::ir::StateNode st;
+        st.name = "S" + std::to_string(i);
+        st.fqn = st.name;
+        ir.add_state(std::move(st));
+    }
+
+    for (int i = 0; i < num_states; ++i) {
+        fsm::ir::TransitionEdge t_next;
+        t_next.source = "S" + std::to_string(i);
+        t_next.target = "S" + std::to_string((i + 1) % num_states);
+        t_next.event = "Step";
+        t_next.set_action("on_step");
+        ir.transitions.push_back(std::move(t_next));
+
+        if (i % 5 == 0) {
+            fsm::ir::TransitionEdge t_reset;
+            t_reset.source = "S" + std::to_string(i);
+            t_reset.target = "S0";
+            t_reset.event = "Reset";
+            t_reset.guard = "is_ready";
+            ir.transitions.push_back(std::move(t_reset));
+        }
+    }
+    ir.canonicalize();
+    return ir;
+}
+
+static void BM_Compiler_Scale_Pipeline(benchmark::State& state) {
+    const int n_states = static_cast<int>(state.range(0));
+    const fsm::ir::FsmIr ir_template = make_scaled_ir(n_states);
+
+    fsm::middleend::PassManager pm;
+    pm.add_pass(std::make_unique<fsm::middleend::HierarchyCanonicalizationPass>());
+    pm.add_pass(std::make_unique<fsm::middleend::ChoiceCompletenessPass>());
+    pm.add_pass(std::make_unique<fsm::middleend::ModelSafetyVerifierPass>());
+
+    for (auto _ : state) {
+        fsm::ir::FsmIr ir = ir_template;
+        fsm::diagnostic::DiagnosticEngine diag;
+        bool ok = pm.run(ir, diag);
+        benchmark::DoNotOptimize(ok);
+    }
+    state.SetItemsProcessed(state.iterations() * n_states);
+}
+BENCHMARK(BM_Compiler_Scale_Pipeline)->Arg(50)->Arg(200)->Arg(500);
+
+static void BM_Compiler_Scale_CppGenerator(benchmark::State& state) {
+    const int n_states = static_cast<int>(state.range(0));
+    const fsm::ir::FsmIr ir = make_scaled_ir(n_states);
+
+    fsm::backend::cpp::GeneratorOptions opts;
+    opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
+    opts.standalone = false;
+
+    for (auto _ : state) {
+        std::string code = fsm::backend::cpp::CppGenerator::generate_header(ir, opts);
+        benchmark::DoNotOptimize(code);
+    }
+    state.SetItemsProcessed(state.iterations() * n_states);
+}
+BENCHMARK(BM_Compiler_Scale_CppGenerator)->Arg(50)->Arg(200)->Arg(500);
 
 // ============================================================================
 // Custom Benchmark Main with Static Footprint Analysis

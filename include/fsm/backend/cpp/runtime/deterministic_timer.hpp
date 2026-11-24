@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string_view>
 
@@ -80,16 +81,26 @@ class deterministic_timer_manager {
     }
 
     /**
-     * @brief Cancels an active timer by ID.
+     * @brief Cancels an active timer by ID (including timers already queued for dispatch in the current tick).
      */
     constexpr bool cancel_timer(std::uint32_t timer_id) noexcept {
+        bool cancelled = false;
         for (auto& entry : timers_) {
             if (entry.active && entry.timer_id == timer_id) {
                 entry.active = false;
-                return true;
+                cancelled = true;
+                break;
             }
         }
-        return false;
+        if (in_tick_) {
+            for (std::size_t i = 0; i < pending_expired_count_; ++i) {
+                if (pending_expired_valid_[i] && pending_expired_ids_[i] == timer_id) {
+                    pending_expired_valid_[i] = false;
+                    cancelled = true;
+                }
+            }
+        }
+        return cancelled;
     }
 
     /**
@@ -100,6 +111,9 @@ class deterministic_timer_manager {
         for (auto& entry : timers_) {
             entry.active = false;
             entry.elapsed_ms = 0;
+        }
+        for (std::size_t i = 0; i < pending_expired_count_; ++i) {
+            pending_expired_valid_[i] = false;
         }
     }
 
@@ -124,17 +138,23 @@ class deterministic_timer_manager {
      */
     template <typename Callback>
     std::size_t tick(std::uint64_t delta_ms, Callback on_expired) {
-        std::array<std::uint32_t, MaxTimers> expired_ids{};
         std::size_t expired_count = 0;
         const auto start_gen = generation_;
+        constexpr std::uint64_t kMaxU64 = (std::numeric_limits<std::uint64_t>::max)();
 
         for (auto& entry : timers_) {
             if (!entry.active) {
                 continue;
             }
-            entry.elapsed_ms += delta_ms;
+            if (delta_ms > (kMaxU64 - entry.elapsed_ms)) {
+                entry.elapsed_ms = kMaxU64;
+            } else {
+                entry.elapsed_ms += delta_ms;
+            }
             if (entry.elapsed_ms >= entry.interval_ms) {
-                expired_ids[expired_count++] = entry.timer_id;
+                pending_expired_ids_[expired_count] = entry.timer_id;
+                pending_expired_valid_[expired_count] = true;
+                ++expired_count;
                 if (entry.periodic) {
                     entry.elapsed_ms = (entry.interval_ms > 0) ? (entry.elapsed_ms % entry.interval_ms) : 0;
                 } else {
@@ -143,6 +163,18 @@ class deterministic_timer_manager {
             }
         }
 
+        struct tick_scope_guard {
+            deterministic_timer_manager& owner;
+            ~tick_scope_guard() noexcept {
+                owner.in_tick_ = false;
+                owner.pending_expired_count_ = 0;
+            }
+        };
+
+        pending_expired_count_ = expired_count;
+        in_tick_ = true;
+        tick_scope_guard scope_guard{*this};
+
         std::size_t dispatched = 0;
         for (std::size_t i = 0; i < expired_count; ++i) {
             if (generation_ != start_gen) {
@@ -150,7 +182,10 @@ class deterministic_timer_manager {
                 // Remaining expired timers from the previous state are obsolete.
                 break;
             }
-            on_expired(expired_ids[i]);
+            if (!pending_expired_valid_[i]) {
+                continue;  // Cancelled by an earlier callback in this same tick.
+            }
+            on_expired(pending_expired_ids_[i]);
             ++dispatched;
         }
         return dispatched;
@@ -185,6 +220,10 @@ class deterministic_timer_manager {
 
   private:
     std::array<timer_entry, MaxTimers> timers_{};
+    std::array<std::uint32_t, MaxTimers> pending_expired_ids_{};
+    std::array<bool, MaxTimers> pending_expired_valid_{};
+    std::size_t pending_expired_count_{0};
+    bool in_tick_{false};
     std::uint32_t generation_{0};
 };
 

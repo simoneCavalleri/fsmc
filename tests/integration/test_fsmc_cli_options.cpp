@@ -24,10 +24,12 @@
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir_deserializer.hpp"
 #include "fsm/ir/fsm_ir_serializer.hpp"
+#include "fsm/middleend/analysis/model_checker.hpp"
 #include "tools/common/cli_utils.hpp"
 #include "tools/fsm-opt/opt_options.hpp"
 #include "tools/fsmc/fsmc_driver.hpp"
 #include "tools/fsmc/fsmc_options.hpp"
+#include "tools/fsmc/ir_simulator.hpp"
 
 namespace fs = std::filesystem;
 
@@ -1039,9 +1041,9 @@ package DroneControl {
 }
 )";
     fsm::ir::FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine diag;
     fsm::frontend::formal::Sysml2Parser parser;
-    ASSERT_TRUE(parser.parse(sysml_src, model, err)) << err;
+    ASSERT_TRUE(parser.parse(sysml_src, model, diag)) << diag.render_to_string();
 
     const auto* sig = model.find_signal("SetSpeedCmd");
     ASSERT_NE(sig, nullptr);
@@ -1073,13 +1075,14 @@ package DroneControl {
 }
 )";
     fsm::ir::FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine diag;
     fsm::frontend::formal::Sysml2Parser parser;
-    ASSERT_TRUE(parser.parse(sysml_src, model, err)) << err;
+    ASSERT_TRUE(parser.parse(sysml_src, model, diag)) << diag.render_to_string();
     ASSERT_FALSE(model.guards.empty());
 
     std::string json_ir = fsm::ir::FsmIrSerializer::serialize_json(model);
     fsm::ir::FsmIr reloaded;
+    std::string err;
     ASSERT_TRUE(fsm::ir::FsmIrDeserializer::deserialize_json(json_ir, reloaded, err)) << err;
     ASSERT_FALSE(reloaded.guards.empty());
 

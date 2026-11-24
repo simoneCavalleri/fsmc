@@ -15,12 +15,11 @@
 #include "fsm/frontend/formal/scxml_parser.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
-#include "fsm/middleend/analysis/fsm_validator.hpp"
+#include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm::frontend;
 using namespace fsm::frontend::diagram;
 using namespace fsm::frontend::formal;
-using namespace fsm::middleend::analysis;
 using namespace fsm::middleend;
 using namespace fsm::ir;
 
@@ -34,18 +33,18 @@ namespace {
 TEST(PlantUmlParser, EmptyAndCorruptedInputStreams_RejectsWithInformativeDiagnostic) {
     PlantUmlParser parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
 
     // 1. Completely empty or whitespace
     EXPECT_FALSE(parser.parse("", model, err));
-    EXPECT_FALSE(err.empty());
+    EXPECT_FALSE(!err.has_errors());
 
     EXPECT_FALSE(parser.parse("   \n\t  \n  ", model, err));
-    EXPECT_FALSE(err.empty());
+    EXPECT_FALSE(!err.has_errors());
 
     // 2. Only @startuml / @enduml with no states
     EXPECT_FALSE(parser.parse("@startuml\n@enduml", model, err));
-    EXPECT_FALSE(err.empty());
+    EXPECT_FALSE(!err.has_errors());
 
     // 3. Corrupted syntax
     EXPECT_FALSE(parser.parse("THIS IS NOT A VALID DIAGRAM AT ALL 12345", model, err));
@@ -59,7 +58,7 @@ TEST(PlantUmlParser, EmptyAndCorruptedInputStreams_RejectsWithInformativeDiagnos
 TEST(MermaidParser, MissingStatesAndMalformedArrows_RejectsParseCleanly) {
     MermaidParser parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
 
     // 1. Empty input
     EXPECT_FALSE(parser.parse("", model, err));
@@ -78,7 +77,7 @@ TEST(MermaidParser, MissingStatesAndMalformedArrows_RejectsParseCleanly) {
  */
 TEST(XmlFrontend, UnclosedTagsAndNonXmlStrings_FailsGracefullyWithoutThrowing) {
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
 
     // 1. Cameo XMI corrupt XML
     CameoXmiParser cameo_parser;
@@ -99,11 +98,11 @@ TEST(XmlFrontend, UnclosedTagsAndNonXmlStrings_FailsGracefullyWithoutThrowing) {
 TEST(JsonParser, MalformedSyntaxAndEmptyStateObjects_RejectsWithErrors) {
     JsonParser parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
 
     // 1. Invalid JSON syntax
     EXPECT_FALSE(parser.parse("{ states: { unquoted_key: 123 ", model, err));
-    EXPECT_FALSE(err.empty());
+    EXPECT_FALSE(!err.has_errors());
 
     // 2. Valid JSON but wrong data type (e.g. integer or array at root)
     EXPECT_FALSE(parser.parse("[1, 2, 3]", model, err));
@@ -121,7 +120,7 @@ TEST(JsonParser, MalformedSyntaxAndEmptyStateObjects_RejectsWithErrors) {
 TEST(Sysml2Parser, EmptyStateMachineDefinitions_RejectsGracefully) {
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
 
     EXPECT_FALSE(parser.parse("", model, err));
     EXPECT_FALSE(parser.parse("state def EmptySM { }", model, err));
@@ -149,10 +148,10 @@ TEST(FsmValidator, DisconnectedSubgraphsAndTrapStates_EmitsSemanticWarningDiagno
     t1.event = "FallIn";
     model.add_transition(t1);
 
-    auto result = FsmValidator::validate(model);
-    EXPECT_TRUE(result.is_valid);  // Syntactically valid, has semantic warnings
-    EXPECT_FALSE(result.warnings.empty());
-    EXPECT_GE(result.diagnostics.size(), 2u);
+    fsm::diagnostic::DiagnosticEngine diag;
+    EXPECT_TRUE(fsm::middleend::PassManager::create_validation_pipeline().run(model, diag));
+    EXPECT_TRUE(diag.has_warnings());
+    EXPECT_GE(diag.get_diagnostics().size(), 2u);
 }
 
 }  // namespace

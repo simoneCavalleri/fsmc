@@ -1,9 +1,11 @@
 #pragma once
 
+#include <iomanip>
 #include <iostream>
 #include <string>
 #include <vector>
 
+#include "fsm/middleend/pass_interface.hpp"
 #include "tools/common/cli_utils.hpp"
 #include "tools/common/file_utils.hpp"
 
@@ -20,6 +22,8 @@ struct OptOptions {
     std::string diagnostic_format = "text";
     bool profile = false;
     bool verify_only = false;
+    bool verify_ir = false;
+    bool dump_pipeline = false;
     bool show_metrics = false;
     bool prune_dead = false;
     bool print_before_all = false;
@@ -49,6 +53,8 @@ inline void print_opt_help(const char* prog_name) {
         << "IR Optimization & Pass Pipeline:\n"
         << "  --passes=<p1,p2,...>      Execute customized comma-separated pass pipeline\n"
         << "  --list-passes             List all available Middle-End passes and exit\n"
+        << "  --dump-pipeline           Print scheduled pass pipeline DAG, prerequisites, and invalidations\n"
+        << "  --verify-ir               Verify FsmGraphOps::is_well_formed(ir) after every pass\n"
         << "  --prune-dead              Enable dead state and dead transition pruning pass\n"
         << "  --print-before-all        Print IR JSON before running passes\n"
         << "  --print-after-all         Print IR JSON after running passes\n"
@@ -80,44 +86,15 @@ inline void print_opt_help(const char* prog_name) {
 }
 
 inline void print_available_passes() {
-    std::cout
-        << "============================================================================\n"
-        << " Registered Target-Agnostic Middle-End Passes in fsmc\n"
-        << "============================================================================\n"
-        << " 1. canonicalize          - Normalizes state hierarchy, FQNs, and sorts canonically\n"
-        << " 2. guard-simplification  - Bottom-up boolean algebra reduction (!(!A)->A, A&&true->A)\n"
-        << " 3. determinism           - Enforces deterministic event dispatch and priority ordering\n"
-        << " 4. race-check            - Static data-race analysis on parallel orthogonal variables\n"
-        << " 5. inline-submachines    - Splicing and inlining of modular SubmachineRef statecharts\n"
-        << " 6. dead-state-pruning    - Physical elimination of unreachable states and dead branches\n"
-        << " 7. choice-completeness   - Verifies choice pseudostate branch exhaustiveness\n"
-        << " 8. choice-inlining       - Collapses choice/junction nodes into composite transitions\n"
-        << " 9. timed-deadlock        - Detects temporal deadlock traps and timer invariant conflicts\n"
-        << " 10. efsm-data-path       - Abstract interpretation for unreachable data paths/dead guards\n"
-        << " 11. safety-verifier      - Graph reachability, deadlock traps, and livelock cycle check\n"
-        << " 12. model-checking       - Formal verification of temporal LTL/CTL formulas\n"
-        << " 13. orthogonal-product   - Cartesian product expansion of parallel orthogonal regions\n"
-        << " 14. wcet-analysis        - Analyzes micro-step execution chains and detects Zeno-cycles\n"
-        << " 15. constant-folding     - Folds constant guard conditions and prunes dead transitions\n"
-        << " 16. state-minimization   - DFA state minimization via Hopcroft/Moore partitioning\n"
-        << " 17. guard-satisfiability - SMT-based or domain-based guard unsatisfiability analysis\n"
-        << " 18. fork-join-lowering   - Lowers fork splits and join rendezvous barriers\n"
-        << " 19. history-lowering     - Lowers shallow and deep history to shadow registers\n"
-        << " 20. deferred-event-lowering - Lowers deferred events into bounded FIFO buffers\n"
-        << " 21. boundary-action-fusion - Flattens LCA boundary cascades into linear action sequences\n"
-        << " 22. dead-action-elimination - Dead store elimination (DSE) across datapath variables\n"
-        << " 23. register-liveness    - Liveness analysis and variable interference graph\n"
-        << " 24. transition-fusion    - Fuses deterministic zero-time microsteps into macro-transitions\n"
-        << " 25. common-action-factoring - Factors identical actions across convergent/divergent edges\n"
-        << " 26. livelock-analysis    - Detects non-progressive internal cycles\n"
-        << " 27. priority-conflict-check - Verifies hierarchical preemption determinism\n"
-        << " 28. timed-invariants-verifier - Formally verifies clock invariants vs outgoing deadlines\n"
-        << " 29. event-queue-bound    - Computes static upper bound on event queue depth\n"
-        << " 30. pipe-through         - Filters and transforms IR via external Unix command\n"
-        << " 31. sampled-change-trigger - Desugars sampled change triggers into shadow registers\n"
-        << " 32. connective-junction-chaining - Chains multi-hop connective junction paths into atomic transitions\n"
-        << " 33. semantic-validation  - Validates variable/port targets, type resolution, and algebraic assignments\n"
-        << "============================================================================\n";
+    std::cout << "============================================================================\n"
+              << " Registered Target-Agnostic Middle-End Passes in fsmc\n"
+              << "============================================================================\n";
+    std::size_t idx = 1;
+    for (const auto& desc : ::fsm::middleend::PassRegistry::descriptors()) {
+        std::cout << " " << std::setw(2) << idx++ << ". " << std::left << std::setw(30) << desc.canonical_name << " ["
+                  << desc.category << "] " << desc.description << "\n";
+    }
+    std::cout << "============================================================================\n";
 }
 
 inline OptOptions parse_opt_args(int argc, char* argv[]) {
@@ -191,6 +168,10 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
             opts.emit_explicit = true;
         } else if (arg == "--profile") {
             opts.profile = true;
+        } else if (arg == "--dump-pipeline") {
+            opts.dump_pipeline = true;
+        } else if (arg == "--verify-ir") {
+            opts.verify_ir = true;
         } else if (arg == "--verify" || arg == "--check") {
             opts.verify_only = true;
         } else if (!arg.starts_with("-") || arg == "-") {

@@ -9,6 +9,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/pass_interface.hpp"
 
 namespace fsm::middleend::analysis {
 
@@ -25,20 +26,20 @@ using ir::FsmIr;
  * 3. Detects temporal deadlocks (timelocks) where C < D, rendering the state inescapable.
  * Reports safety-critical errors (E0403) to prevent unrecoverable temporal lockups in RTOS and FPGA logic.
  */
-class TimedInvariantsVerifierPass {
+class TimedInvariantsVerifierPass : public ::fsm::middleend::IPass {
   public:
-    [[nodiscard]] static std::string name() { return "TimedInvariantsVerifier"; }
-    [[nodiscard]] static std::string description() {
-        return "Verifies Timed Automata state permanence invariants and detects temporal deadlocks (timelocks)";
-    }
-
     /**
      * @brief Executes invariant and timelock verification across all states.
      * @param ir Target FsmIr to verify.
      * @param diag Diagnostic reporting engine.
      * @return True if all timed invariants are consistent without timelocks.
      */
-    bool run(FsmIr& ir, DiagnosticEngine& diag);
+    [[nodiscard]] std::string name() const override { return "timed-invariants-verifier"; }
+    [[nodiscard]] std::string description() const override {
+        return "Verifies state residence time invariants against outgoing timed transition bounds.";
+    }
+    [[nodiscard]] bool preserves_ir() const noexcept override { return true; }
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };
 
 }  // namespace fsm::middleend::analysis

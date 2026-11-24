@@ -25,6 +25,13 @@ struct ConcreteRoboticServices : public RoboticArmFSMServices {
     bool offsets_calibrated{false};
     int toolpath_pass{0};
 
+    // Symbolic guards are fail-closed by default (return false); the application must provide real predicates.
+    bool payload_within_limits{true};
+    bool interlock_cleared{true};
+
+    [[nodiscard]] bool PayloadWeightValidGuard() const override { return payload_within_limits; }
+    [[nodiscard]] bool SafetyInterlockClearedGuard() const override { return interlock_cleared; }
+
     void InitializeServosAction() override {
         servos_powered = true;
         brakes_engaged = false;

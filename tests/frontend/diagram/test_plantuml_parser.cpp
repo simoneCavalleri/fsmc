@@ -10,12 +10,11 @@
 
 #include "fsm/backend/diagram/plantuml_serializer.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
-#include "fsm/middleend/analysis/fsm_validator.hpp"
+#include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm::backend::diagram;
 using namespace fsm::frontend::diagram;
 using namespace fsm::frontend;
-using namespace fsm::middleend::analysis;
 using namespace fsm::middleend;
 using namespace fsm::ir;
 
@@ -37,8 +36,8 @@ TEST(PlantUmlParser, BasicDiagram_ParsedIntoValidFsmIr) {
 
     PlantUmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.initial_state, "Standby");
     EXPECT_EQ(model.states.size(), 2u);
@@ -47,8 +46,8 @@ TEST(PlantUmlParser, BasicDiagram_ParsedIntoValidFsmIr) {
     EXPECT_EQ(model.actions.size(), 2u);
     EXPECT_EQ(model.transitions.size(), 2u);
 
-    const auto validation = FsmValidator::validate(model);
-    EXPECT_TRUE(validation.is_valid);
+    fsm::diagnostic::DiagnosticEngine diag;
+    EXPECT_TRUE(fsm::middleend::PassManager::create_validation_pipeline().run(model, diag));
 }
 
 /**
@@ -76,8 +75,8 @@ TEST(PlantUmlParser, CommentsAndCompositeHierarchy_ParsedCorrectly) {
 
     PlantUmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.initial_state, "Operational");
     ASSERT_NE(model.find_state("Operational"), nullptr);
@@ -96,9 +95,9 @@ TEST(PlantUmlParser, UndefinedTargetState_DetectedByValidator) {
     model.add_state("Idle");
     model.transitions.emplace_back("Idle", "UnknownTarget", "MyEvent", std::nullopt, std::nullopt, "");
 
-    const auto validation = FsmValidator::validate(model);
-    EXPECT_FALSE(validation.is_valid);
-    EXPECT_FALSE(validation.errors.empty());
+    fsm::diagnostic::DiagnosticEngine diag;
+    EXPECT_FALSE(fsm::middleend::PassManager::create_validation_pipeline().run(model, diag));
+    EXPECT_TRUE(diag.has_errors());
 }
 
 /**
@@ -109,7 +108,7 @@ TEST(PlantUmlParser, UndefinedTargetState_DetectedByValidator) {
 TEST(PlantUmlParser, EmptyInput_GracefullyRejected) {
     PlantUmlParser puml_parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
 
     EXPECT_FALSE(puml_parser.parse("", model, err));
 }
@@ -136,8 +135,8 @@ TEST(PlantUmlParser, EntryExitPointPriorityAndInvariant_CapturedInIr) {
 
     PlantUmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err.render_to_string();
 
     const auto* ep = model.find_state("ep");
     ASSERT_NE(ep, nullptr);
@@ -174,8 +173,8 @@ TEST(PlantUmlParser, PortDirectives_ParsedWithAttributesAndConstraints) {
 
     PlantUmlParser puml_parser;
     FsmIr puml_model;
-    std::string err;
-    ASSERT_TRUE(puml_parser.parse(puml, puml_model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(puml_parser.parse(puml, puml_model, err)) << err.render_to_string();
 
     ASSERT_EQ(puml_model.ports.size(), 2u);
     const auto* in_p = puml_model.find_port("sensor_temp");
@@ -205,8 +204,8 @@ TEST(PlantUmlParser, GuardWithDivisionOperator_PreservedAndNotTreatedAsAction) {
 
     PlantUmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 2u);
 
@@ -255,8 +254,8 @@ state Active {
 
     PlantUmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << err.render_to_string();
 
     const StateNode* active = model.find_state("Active");
     ASSERT_NE(active, nullptr);
@@ -301,8 +300,8 @@ J --> Finished
 
     PlantUmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << err.render_to_string();
 
     const StateNode* a2 = model.find_state("A2");
     const StateNode* b2 = model.find_state("B2");
@@ -330,8 +329,8 @@ Ready --> Running : FAST / x = 99
 
     PlantUmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << err.render_to_string();
 
     const StateNode* ready = model.find_state("Ready");
     ASSERT_NE(ready, nullptr);
@@ -398,8 +397,8 @@ TEST(PlantUmlSerializerTest, ParallelStateOmitsInitialSubstateAndRoundtripsThree
 
     PlantUmlParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, parsed, err)) << err.render_to_string();
     const auto* par_parsed = parsed.find_state("Par");
     ASSERT_NE(par_parsed, nullptr);
     EXPECT_EQ(par_parsed->kind, StateKind::Parallel);
@@ -426,8 +425,8 @@ Comp --> Done : Finish
 
     PlantUmlParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, ir, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, ir, err)) << err.render_to_string();
     EXPECT_EQ(ir.initial_state, "Comp");
     const auto* comp = ir.find_state("Comp");
     ASSERT_NE(comp, nullptr);
@@ -457,8 +456,8 @@ state Comp {
 
     PlantUmlParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, ir, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, ir, err)) << err.render_to_string();
     const auto* comp = ir.find_state("Comp");
     ASSERT_NE(comp, nullptr);
     EXPECT_TRUE(comp->has_history);
@@ -482,8 +481,8 @@ Busy --> Idle : after_100ms
 
     PlantUmlParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, ir, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, ir, err)) << err.render_to_string();
     ASSERT_EQ(ir.transitions.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<TimeTrigger>(ir.transitions[0].trigger));
     EXPECT_EQ(std::get<TimeTrigger>(ir.transitions[0].trigger).duration_in_ms(), 100u);
@@ -509,8 +508,8 @@ TEST(PlantUmlParser, InternalTransition_PreservedAcrossSerializerRoundtrip) {
 
     PlantUmlParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 1u);
     EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
 }
@@ -537,8 +536,8 @@ TEST(PlantUmlParser, ChangeTrigger_PreservedAcrossSerializerRoundtrip) {
 
     PlantUmlParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<ChangeTrigger>(parsed.transitions[0].trigger));
     EXPECT_EQ(std::get<ChangeTrigger>(parsed.transitions[0].trigger).raw_expression, "count > 5");
@@ -578,8 +577,8 @@ TEST(PlantUmlParser, LocalTransition_PreservedAcrossSerializerRoundtrip) {
 
     PlantUmlParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 2u);
 
     bool found_local = false;

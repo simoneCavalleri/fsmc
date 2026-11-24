@@ -10,6 +10,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/pass_interface.hpp"
 
 namespace fsm::middleend::passes {
 
@@ -25,7 +26,7 @@ using ir::StateNode;
  * into an equivalent sequential hierarchical state space, eliminating runtime concurrency
  * and multi-threaded synchronization requirements.
  */
-class OrthogonalProductPass {
+class OrthogonalProductPass : public ::fsm::middleend::IPass {
   public:
     static constexpr std::size_t DEFAULT_MAX_PRODUCT_STATES = 1024;
     std::size_t max_product_states{DEFAULT_MAX_PRODUCT_STATES};
@@ -33,16 +34,18 @@ class OrthogonalProductPass {
     explicit OrthogonalProductPass(std::size_t max_states = DEFAULT_MAX_PRODUCT_STATES)
         : max_product_states(max_states) {}
 
-    [[nodiscard]] static std::string name();
-    [[nodiscard]] static std::string description();
-
     /**
      * @brief Expands parallel states in the model into sequential product states.
      * @param ir Target FsmIr to expand.
      * @param diag Diagnostic engine for error reporting.
      * @return True on success, false on failure.
      */
-    bool run(FsmIr& ir, DiagnosticEngine& diag);
+    [[nodiscard]] std::string name() const override { return "orthogonal-product"; }
+    [[nodiscard]] std::string description() const override {
+        return "Expands parallel orthogonal regions into deterministic Cartesian product states.";
+    }
+    [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 
   private:
     struct RegionInfo {

@@ -12,7 +12,16 @@ namespace fsm::frontend::formal {
 using namespace fsm::ir;
 using directive::DirectiveParser;
 
-bool SmvParser::parse(std::string_view content, FsmIr& model, std::string& error_message) {
+bool SmvParser::parse(std::string_view content, FsmIr& out_ir, diagnostic::DiagnosticEngine& diag) {
+    std::string err;
+    if (!parse_impl(content, out_ir, err)) {
+        report_parse_error(diag, "E_PARSE_SMV", err);
+        return false;
+    }
+    return true;
+}
+
+bool SmvParser::parse_impl(std::string_view content, FsmIr& model, std::string& error_message) {
     std::string content_str(content);
     std::istringstream stream(content_str);
     std::string line;

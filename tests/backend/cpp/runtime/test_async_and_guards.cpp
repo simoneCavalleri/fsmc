@@ -217,7 +217,8 @@ TEST(AsyncAndGuards, ThreadSafeFsm_PostAsyncAndHandlers_FuturesResolved) {
 // ============================================================================
 
 struct ThrowingAction {
-    void operator()(const auto& /*evt*/, auto& /*src*/, auto& /*dst*/, auto& /*ctx*/) const {
+    template <typename Evt, typename Src, typename Dst, typename Ctx>
+    void operator()(const Evt& /*evt*/, Src& /*src*/, Dst& /*dst*/, Ctx& /*ctx*/) const {
         throw std::runtime_error("Simulated hardware failure");
     }
 };

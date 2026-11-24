@@ -6,8 +6,10 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -80,11 +82,43 @@ struct Diagnostic {
 };
 
 /**
+ * @class SourceManager
+ * @brief Registry mapping source file paths to their text contents for multi-file diagnostics.
+ */
+class SourceManager {
+  public:
+    void register_source(std::string file_path, std::string content) {
+        sources_[std::move(file_path)] = std::move(content);
+    }
+
+    [[nodiscard]] std::optional<std::string_view> get_source(std::string_view file_path) const noexcept {
+        auto it = sources_.find(std::string(file_path));
+        if (it == sources_.end()) {
+            return std::nullopt;
+        }
+        return std::string_view(it->second);
+    }
+
+    void clear() noexcept { sources_.clear(); }
+
+  private:
+    std::unordered_map<std::string, std::string> sources_;
+};
+
+/**
  * @class DiagnosticEngine
  * @brief Rich Diagnostic Engine providing colored terminal output with Rust/Clang-style carets.
  */
 class DiagnosticEngine {
   public:
+    DiagnosticEngine();
+
+    /**
+     * @brief Enables or disables ANSI color escape sequences in text output (defaults to respecting NO_COLOR).
+     */
+    void set_color_enabled(bool enabled) noexcept { color_enabled_ = enabled; }
+    [[nodiscard]] bool is_color_enabled() const noexcept { return color_enabled_; }
+
     /**
      * @brief Records a diagnostic into the collection.
      */
@@ -111,14 +145,16 @@ class DiagnosticEngine {
     void clear() noexcept;
 
     /**
-     * @brief Renders all collected diagnostics into formatted ANSI color strings with visual carets.
+     * @brief Renders all collected diagnostics into formatted strings with visual carets.
      */
-    [[nodiscard]] std::string render_to_string(std::string_view source_content = "") const;
+    [[nodiscard]] std::string render_to_string(std::string_view source_content = "",
+                                               const SourceManager* sources = nullptr) const;
 
     /**
      * @brief Renders all collected diagnostics according to the specified DiagnosticFormat.
      */
-    [[nodiscard]] std::string render_to_format(DiagnosticFormat format, std::string_view source_content = "") const;
+    [[nodiscard]] std::string render_to_format(DiagnosticFormat format, std::string_view source_content = "",
+                                               const SourceManager* sources = nullptr) const;
 
     /**
      * @brief Renders diagnostics as GitHub Actions workflow commands (::error/::warning/::notice).
@@ -135,6 +171,7 @@ class DiagnosticEngine {
 
     std::vector<Diagnostic> diagnostics_;
     bool has_errors_{false};
+    bool color_enabled_{true};
 };
 
 }  // namespace fsm::diagnostic

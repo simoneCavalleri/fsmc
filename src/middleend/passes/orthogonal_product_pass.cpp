@@ -14,14 +14,6 @@ namespace fsm::middleend::passes {
 using namespace fsm::ir;
 using namespace fsm::diagnostic;
 
-std::string OrthogonalProductPass::name() {
-    return "OrthogonalProduct";
-}
-
-std::string OrthogonalProductPass::description() {
-    return "Computes Cartesian product of orthogonal regions into sequential product states";
-}
-
 bool OrthogonalProductPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     bool modified = false;
 
@@ -135,7 +127,7 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
         return false;
     }
 
-    // Check product state space explosion bound
+    // Check product state space explosion bound (overflow-safe pre-multiplication check)
     std::size_t total_product_states = 1;
     for (const auto& reg : regions) {
         if (reg.states.empty()) {
@@ -143,14 +135,13 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                 "EORTHO001", "region '" + reg.region_id + "' in parallel state '" + parent_name + "' has no states"));
             return false;
         }
-        total_product_states *= reg.states.size();
-        if (total_product_states > max_product_states) {
-            diag.report(
-                Diagnostic::error("EORTHO003", "parallel state '" + parent_name + "' Cartesian product state space (" +
-                                                   std::to_string(total_product_states) + " states) exceeds bound (" +
-                                                   std::to_string(max_product_states) + ")"));
+        if (reg.states.size() > max_product_states / total_product_states) {
+            diag.report(Diagnostic::error("EORTHO003", "parallel state '" + parent_name +
+                                                           "' Cartesian product state space exceeds bound (" +
+                                                           std::to_string(max_product_states) + ")"));
             return false;
         }
+        total_product_states *= reg.states.size();
     }
 
     // 2. Cartesian product calculation
@@ -323,8 +314,24 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                                 instructions.push_back(inst);
                             }
                         }
-                        if (t->condition_action.has_value() && !cond_action.has_value()) {
-                            cond_action = t->condition_action;
+                        if (t->condition_action.has_value()) {
+                            if (!cond_action.has_value()) {
+                                cond_action = t->condition_action;
+                            } else {
+                                if (!t->condition_action->name.empty()) {
+                                    if (!cond_action->name.empty()) {
+                                        cond_action->name += "_and_" + t->condition_action->name;
+                                    } else {
+                                        cond_action->name = t->condition_action->name;
+                                    }
+                                }
+                                for (const auto& a : t->condition_action->assignments) {
+                                    cond_action->assignments.push_back(a);
+                                }
+                                for (const auto& inst : t->condition_action->instructions) {
+                                    cond_action->instructions.push_back(inst);
+                                }
+                            }
                         }
                         for (const auto& cr : t->clock_resets) {
                             clock_resets.push_back(cr);
@@ -335,35 +342,24 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                     }
 
                     std::string dst_product = tuple_to_name(next_tup);
+                    std::vector<std::string> skip_exit;
+                    std::vector<std::string> skip_entry;
                     if (src_product != dst_product) {
-                        std::string skip_exit;
-                        std::string skip_entry;
                         for (std::size_t idx = 0; idx < regions.size(); ++idx) {
                             if (tup[idx] == next_tup[idx]) {
                                 if (const auto* m_node = ir.find_state(tup[idx])) {
                                     for (const auto& act : m_node->exit_actions) {
                                         if (!act.name.empty()) {
-                                            if (!skip_exit.empty())
-                                                skip_exit += "\n";
-                                            skip_exit += act.name;
+                                            skip_exit.push_back(act.name);
                                         }
                                     }
                                     for (const auto& act : m_node->entry_actions) {
                                         if (!act.name.empty()) {
-                                            if (!skip_entry.empty())
-                                                skip_entry += "\n";
-                                            skip_entry += act.name;
+                                            skip_entry.push_back(act.name);
                                         }
                                     }
                                 }
                             }
-                        }
-                        if (!skip_exit.empty()) {
-                            ir.attributes["ortho_skip_exit:" + src_product + "->" + dst_product] = std::move(skip_exit);
-                        }
-                        if (!skip_entry.empty()) {
-                            ir.attributes["ortho_skip_entry:" + src_product + "->" + dst_product] =
-                                std::move(skip_entry);
                         }
                     }
                     TransitionEdge pt;
@@ -378,6 +374,8 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                     pt.priority = priority;
                     pt.clock_resets = std::move(clock_resets);
                     pt.condition_action = std::move(cond_action);
+                    pt.skip_exit_actions = std::move(skip_exit);
+                    pt.skip_entry_actions = std::move(skip_entry);
 
                     if (!guards.empty()) {
                         if (guards.size() == 1) {

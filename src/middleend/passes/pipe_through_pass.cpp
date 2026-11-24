@@ -10,6 +10,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <cerrno>
+#include <csignal>
 #include <thread>
 #endif
 
@@ -129,13 +131,26 @@ bool PipeThroughPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     close(in_pipe[0]);
     close(out_pipe[1]);
 
-    // Write input JSON to child stdin asynchronously so payloads > 64 KB do not deadlock pipe buffers
+    // Write input JSON to child stdin asynchronously so payloads > 64 KB do not deadlock pipe buffers.
+    // Block SIGPIPE in the writer thread so an early child exit yields EPIPE instead of killing the host process.
     std::thread writer([&input_json, write_fd = in_pipe[1]]() {
+        sigset_t sigpipe_set;
+        sigemptyset(&sigpipe_set);
+        sigaddset(&sigpipe_set, SIGPIPE);
+        pthread_sigmask(SIG_BLOCK, &sigpipe_set, nullptr);
+
         size_t written = 0;
         while (written < input_json.size()) {
             ssize_t n = write(write_fd, input_json.data() + written, input_json.size() - written);
-            if (n <= 0)
+            if (n < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
                 break;
+            }
+            if (n == 0) {
+                break;
+            }
             written += static_cast<size_t>(n);
         }
         close(write_fd);
@@ -144,15 +159,25 @@ bool PipeThroughPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     // Read output JSON from child stdout
     std::string output_json;
     std::array<char, 4096> buf;
-    ssize_t n_read = 0;
-    while ((n_read = read(out_pipe[0], buf.data(), buf.size())) > 0) {
+    for (;;) {
+        ssize_t n_read = read(out_pipe[0], buf.data(), buf.size());
+        if (n_read < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            break;
+        }
+        if (n_read == 0) {
+            break;
+        }
         output_json.append(buf.data(), static_cast<size_t>(n_read));
     }
     close(out_pipe[0]);
     writer.join();
 
     int status = 0;
-    waitpid(pid, &status, 0);
+    while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+    }
 
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
         diag.report(Diagnostic::error("E_PIPE_EXEC", "External command '" + command_ + "' failed with exit code: " +

@@ -255,8 +255,8 @@ inline std::function<const fsm::ir::FsmIr*(const std::string&)> create_filesyste
                     auto sub_parser = fsm::frontend::ParserFactory::create(candidate.string(), "auto");
                     if (sub_parser) {
                         fsm::ir::FsmIr sub_ir;
-                        std::string sub_err;
-                        if (sub_parser->parse(sub_content, sub_ir, sub_err)) {
+                        fsm::diagnostic::DiagnosticEngine sub_diag;
+                        if (sub_parser->parse(sub_content, sub_ir, sub_diag)) {
                             if (sub_ir.name.empty() || sub_ir.name == "Fsm" || sub_ir.name == "MyStateMachine") {
                                 sub_ir.name = sub_name;
                             }

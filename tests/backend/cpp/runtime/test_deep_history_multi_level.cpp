@@ -49,8 +49,8 @@ Emergency --> Operating[H*] : ResumeDeepCmd
 
     PlantUmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err.render_to_string();
 
     // Check hierarchy depth
     ASSERT_NE(model.find_state("Operating"), nullptr);

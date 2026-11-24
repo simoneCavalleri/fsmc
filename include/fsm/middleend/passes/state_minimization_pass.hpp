@@ -9,6 +9,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/pass_interface.hpp"
 
 namespace fsm::middleend::passes {
 
@@ -23,20 +24,20 @@ using ir::FsmIr;
  * behaviors, entry/exit actions, and hierarchical parent contexts, significantly reducing
  * ROM lookup table size for embedded targets.
  */
-class StateMinimizationPass {
+class StateMinimizationPass : public ::fsm::middleend::IPass {
   public:
-    [[nodiscard]] static std::string name() { return "StateMinimization"; }
-    [[nodiscard]] static std::string description() {
-        return "Minimizes state count by merging behaviorally equivalent states";
-    }
-
     /**
      * @brief Computes bisimulation equivalence classes and collapses redundant states.
      * @param ir Target FsmIr to minimize.
      * @param diag Diagnostic reporting engine.
      * @return True on success, false on failure.
      */
-    bool run(FsmIr& ir, DiagnosticEngine& diag);
+    [[nodiscard]] std::string name() const override { return "state-minimization"; }
+    [[nodiscard]] std::string description() const override {
+        return "Minimizes equivalent states using Hopcroft/Moore DFA partition refinement.";
+    }
+    [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };
 
 }  // namespace fsm::middleend::passes

@@ -58,8 +58,8 @@ TEST(ScxmlParser, BasicScxmlDocument_ParsedIntoValidFsmIr) {
 
     ScxmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(scxml_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(scxml_content, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.name, "ScxmlConnectionFSM");
     EXPECT_EQ(model.initial_state, "Disconnected");
@@ -111,8 +111,8 @@ TEST(ScxmlParser, IndustrialPressSnippet_ParsedIntoValidFsmIr) {
 
     ScxmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(scxml_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(scxml_content, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.states.size(), 6U);
     EXPECT_EQ(model.transitions.size(), 9U);
@@ -141,8 +141,8 @@ TEST(ScxmlParser, AttributePermutationsAndSelfClosingStates_ParsedCorrectly) {
 
     ScxmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(scxml_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(scxml_content, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.states.size(), 3U);
     EXPECT_EQ(model.transitions.size(), 3U);
@@ -180,8 +180,8 @@ TEST(ScxmlParser, NativeDatamodelAndLifecycleHooks_CapturedInIr) {
 
     ScxmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(scxml_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(scxml_content, model, err)) << "Error: " << err.render_to_string();
 
     // Check datamodel variables
     ASSERT_EQ(model.variables.size(), 2u);
@@ -223,8 +223,8 @@ TEST(ScxmlParser, RawBooleanConditions_PreservedInGuardsAndSerialized) {
 
     ScxmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(scxml_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(scxml_content, model, err)) << "Error: " << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 1u);
     ASSERT_TRUE(model.transitions[0].guard.has_value());
@@ -266,8 +266,8 @@ TEST(ScxmlParserTest, InfersDataModelVariableTypesFromExpr) {
 
     ScxmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(scxml_content, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(scxml_content, model, err)) << err.render_to_string();
 
     const auto* active = model.find_variable("active");
     ASSERT_NE(active, nullptr);
@@ -309,8 +309,8 @@ TEST(ScxmlParserTest, ParallelRegionsLeaveStateIdsEmptyForSubstateDiscovery) {
 
     ScxmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(scxml_content, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(scxml_content, model, err)) << err.render_to_string();
 
     const StateNode* par = model.find_state("Par");
     ASSERT_NE(par, nullptr);
@@ -340,8 +340,8 @@ TEST(ScxmlParserTest, ParsesAfterAndEveryTimeTriggerEvents) {
 
     ScxmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(scxml_content, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(scxml_content, model, err)) << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 2u);
     ASSERT_TRUE(std::holds_alternative<TimeTrigger>(model.transitions[0].trigger));
@@ -392,8 +392,8 @@ TEST(ScxmlSerializerTest, SerializesParallelStateAsParallelElement) {
 
     ScxmlParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err.render_to_string();
     const auto* par_parsed = parsed.find_state("Par");
     ASSERT_NE(par_parsed, nullptr);
     EXPECT_EQ(par_parsed->kind, StateKind::Parallel);
@@ -418,8 +418,8 @@ TEST(ScxmlParser, SpaceSeparatedEvents_SplitIntoSeparateTransitions) {
 
     ScxmlParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(scxml, ir, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(scxml, ir, err)) << err.render_to_string();
     ASSERT_EQ(ir.transitions.size(), 2u);
     EXPECT_EQ(ir.transitions[0].event, "Start");
     EXPECT_EQ(ir.transitions[1].event, "Boot");
@@ -445,8 +445,8 @@ TEST(ScxmlParser, SingleQuotedDataString_NormalizesToDoubleQuotes) {
 
     ScxmlParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(scxml, ir, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(scxml, ir, err)) << err.render_to_string();
     const auto* var = ir.find_variable("msg");
     ASSERT_NE(var, nullptr);
     EXPECT_EQ(var->type.primitive(), PrimitiveTypeKind::String);
@@ -479,8 +479,8 @@ TEST(ScxmlParser, MultipleTransitionsSameEndpoints_GenerateDistinctSyntheticActi
 
     ScxmlParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(scxml, ir, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(scxml, ir, err)) << err.render_to_string();
     ASSERT_EQ(ir.transitions.size(), 2u);
     ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
     ASSERT_TRUE(ir.transitions[1].transition_action.has_value());
@@ -513,8 +513,8 @@ TEST(ScxmlSerializerTest, AssignmentOnlyActions_DoNotEmitBogusSend) {
 
     ScxmlParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(scxml, ir, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(scxml, ir, err)) << err.render_to_string();
 
     const std::string out = ScxmlSerializer::serialize(ir);
     EXPECT_NE(out.find("<assign location=\"x\" expr=\"x + 1\"/>"), std::string::npos) << out;
@@ -544,8 +544,8 @@ TEST(ScxmlSerializerTest, PropertiesAndTimeInvariant_PreservedAcrossRoundtrip) {
     const std::string xml = ScxmlSerializer::serialize(ir);
     ScxmlParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err.render_to_string();
 
     ASSERT_EQ(parsed.properties.size(), 1u);
     EXPECT_EQ(parsed.properties[0].name, "safe");
@@ -581,8 +581,8 @@ TEST(ScxmlSerializerTest, PseudostatesAndFinalKind_PreservedAcrossRoundtrip) {
     const std::string xml = ScxmlSerializer::serialize(ir);
     ScxmlParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err.render_to_string();
 
     ASSERT_NE(parsed.find_state("Split"), nullptr);
     EXPECT_EQ(parsed.find_state("Split")->kind, StateKind::Fork);
@@ -618,8 +618,8 @@ TEST(ScxmlSerializerTest, ChangeTrigger_PreservedAcrossRoundtrip) {
 
     ScxmlParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<ChangeTrigger>(parsed.transitions[0].trigger));
     EXPECT_EQ(std::get<ChangeTrigger>(parsed.transitions[0].trigger).raw_expression, "count > 5");
@@ -646,8 +646,8 @@ TEST(ScxmlSerializerTest, ChoiceNode_PreservedAcrossRoundtrip) {
 
     ScxmlParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err.render_to_string();
     EXPECT_TRUE(parsed.is_choice_node("C1"));
     EXPECT_FALSE(parsed.choice_nodes.empty());
 }
@@ -675,8 +675,8 @@ TEST(ScxmlSerializerTest, MultiReqsAndSignalAttributes_PreservedAcrossRoundtrip)
     const std::string xml = ScxmlSerializer::serialize(ir);
     ScxmlParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err.render_to_string();
 
     const auto* p_idle = parsed.find_state("Idle");
     ASSERT_NE(p_idle, nullptr);
@@ -717,8 +717,8 @@ TEST(ScxmlSerializerTest, LocalTransition_PreservedAcrossRoundtrip) {
 
     ScxmlParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 1u);
     EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Local);
 }

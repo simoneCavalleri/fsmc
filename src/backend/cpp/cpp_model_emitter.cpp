@@ -8,6 +8,7 @@
 #include <regex>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <string_view>
 #include <unordered_set>
 #include <vector>
@@ -26,6 +27,75 @@ bool is_ident_start(char c) noexcept {
 
 bool is_ident_char(char c) noexcept {
     return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_';
+}
+
+std::string escape_cpp_string_literal(std::string_view text) {
+    std::string out;
+    out.reserve(text.size() + 4);
+    for (unsigned char ch : text) {
+        switch (ch) {
+            case '\\':
+                out += "\\\\";
+                break;
+            case '"':
+                out += "\\\"";
+                break;
+            case '\n':
+                out += "\\n";
+                break;
+            case '\r':
+                out += "\\r";
+                break;
+            case '\t':
+                out += "\\t";
+                break;
+            default:
+                if (ch < 0x20U) {
+                    static constexpr char kHex[] = "0123456789abcdef";
+                    out += "\\x";
+                    out.push_back(kHex[(ch >> 4U) & 0xFU]);
+                    out.push_back(kHex[ch & 0xFU]);
+                } else {
+                    out.push_back(static_cast<char>(ch));
+                }
+                break;
+        }
+    }
+    return out;
+}
+
+std::string sanitize_cpp_comment(std::string_view text) {
+    std::string out;
+    out.reserve(text.size());
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == '*' && i + 1 < text.size() && text[i + 1] == '/') {
+            out += "* /";
+            ++i;
+        } else if (text[i] == '\r' || text[i] == '\n') {
+            out.push_back(' ');
+        } else {
+            out.push_back(text[i]);
+        }
+    }
+    return out;
+}
+
+std::string sanitize_cpp_model_name(std::string_view raw_name) {
+    std::string out;
+    out.reserve(raw_name.size() + 2);
+    for (char ch : raw_name) {
+        if (is_ident_char(ch)) {
+            out.push_back(ch);
+        } else {
+            out.push_back('_');
+        }
+    }
+    if (out.empty()) {
+        out = "Fsm";
+    } else if (std::isdigit(static_cast<unsigned char>(out.front())) != 0) {
+        out.insert(out.begin(), '_');
+    }
+    return escape_cpp_keyword(out);
 }
 
 std::string resolve_action_cpp_name(const std::string& raw_name, const FsmIr& model) {
@@ -226,13 +296,6 @@ std::string qualify_expression(std::string expr, const FsmIr& model) {
             bool followed_by_dot = (next < n && expr[next] == '.');
 
             if (!preceded_by_member_or_scope && !followed_by_scope) {
-                if (followed_by_dot &&
-                    (tok == "f" || tok == "cmd" || tok == "event" || tok == "sig" || tok == "ev" || tok == "payload" ||
-                     std::any_of(model.signals.begin(), model.signals.end(),
-                                 [&](const SignalDefinition& sig) { return sig.name == tok; }))) {
-                    out += "cmd";
-                    continue;
-                }
                 const std::string escaped_tok = escape_cpp_keyword(tok);
                 if (model.find_variable(tok) != nullptr ||
                     (escaped_tok != tok && model.find_variable(escaped_tok) != nullptr)) {
@@ -252,6 +315,13 @@ std::string qualify_expression(std::string expr, const FsmIr& model) {
                         out += "out." + escaped_tok;
                         continue;
                     }
+                }
+                if (followed_by_dot &&
+                    (tok == "cmd" || tok == "event" || tok == "payload" || tok == "sig" || tok == "ev" || tok == "f" ||
+                     std::any_of(model.signals.begin(), model.signals.end(),
+                                 [&](const SignalDefinition& sig) { return sig.name == tok; }))) {
+                    out += "cmd";
+                    continue;
                 }
                 bool is_signal_attr = false;
                 for (const auto& sig : model.signals) {
@@ -402,7 +472,7 @@ void CppModelEmitter::emit_enums(std::ostream& out, const FsmIr& model) {
                 out << ",";
             }
             if (!lit.description.empty()) {
-                out << " // " << lit.description;
+                out << " // " << sanitize_cpp_comment(lit.description);
             }
             out << "\n";
         }
@@ -435,7 +505,7 @@ void CppModelEmitter::emit_structs(std::ostream& out, const FsmIr& model) {
         out << "/**\n";
         out << " * @struct " << st_name << "\n";
         if (!st.description.empty()) {
-            out << " * @brief " << st.description << "\n";
+            out << " * @brief " << sanitize_cpp_comment(st.description) << "\n";
         } else {
             out << " * @brief Structured datatype '" << st.name << "'.\n";
         }
@@ -456,7 +526,7 @@ void CppModelEmitter::emit_structs(std::ostream& out, const FsmIr& model) {
             }
             out << ";";
             if (!field.description.empty()) {
-                out << " // " << field.description;
+                out << " // " << sanitize_cpp_comment(field.description);
             }
             out << "\n";
         }
@@ -491,6 +561,9 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
     out << "// Partitioned I/O Ports, Internal Registers & Environment Services\n";
     out << "// ============================================================================\n\n";
 
+    const std::string safe_model_name = sanitize_cpp_model_name(model.name);
+    const std::string safe_model_comment = sanitize_cpp_comment(model.name);
+
     // 1. InPorts
     bool has_in_ports = false;
     for (const auto& port : model.ports) {
@@ -501,10 +574,10 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
     }
     if (has_in_ports) {
         out << "/**\n";
-        out << " * @struct " << model.name << "InPorts\n";
-        out << " * @brief Immutable input sensor snapshot for '" << model.name << "'.\n";
+        out << " * @struct " << safe_model_name << "InPorts\n";
+        out << " * @brief Immutable input sensor snapshot for '" << safe_model_comment << "'.\n";
         out << " */\n";
-        out << "struct " << model.name << "InPorts {\n";
+        out << "struct " << safe_model_name << "InPorts {\n";
         for (const auto& port : model.ports) {
             if (port.is_in()) {
                 std::string pname = escape_cpp_keyword(port.name);
@@ -565,8 +638,8 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
         out << "    }\n";
         out << "};\n\n";
     } else {
-        out << "/** @typedef " << model.name << "InPorts\n * @brief Empty input ports sentinel. */\n";
-        out << "using " << model.name << "InPorts = ::fsm::no_ports;\n\n";
+        out << "/** @typedef " << safe_model_name << "InPorts\n * @brief Empty input ports sentinel. */\n";
+        out << "using " << safe_model_name << "InPorts = ::fsm::no_ports;\n\n";
     }
 
     // 2. OutPorts
@@ -579,10 +652,10 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
     }
     if (has_out_ports) {
         out << "/**\n";
-        out << " * @struct " << model.name << "OutPorts\n";
-        out << " * @brief Actuator output command write buffer for '" << model.name << "'.\n";
+        out << " * @struct " << safe_model_name << "OutPorts\n";
+        out << " * @brief Actuator output command write buffer for '" << safe_model_comment << "'.\n";
         out << " */\n";
-        out << "struct " << model.name << "OutPorts {\n";
+        out << "struct " << safe_model_name << "OutPorts {\n";
         for (const auto& port : model.ports) {
             if (port.is_out()) {
                 std::string pname = escape_cpp_keyword(port.name);
@@ -644,17 +717,17 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
         out << "    }\n";
         out << "};\n\n";
     } else {
-        out << "/** @typedef " << model.name << "OutPorts\n * @brief Empty output ports sentinel. */\n";
-        out << "using " << model.name << "OutPorts = ::fsm::no_ports;\n\n";
+        out << "/** @typedef " << safe_model_name << "OutPorts\n * @brief Empty output ports sentinel. */\n";
+        out << "using " << safe_model_name << "OutPorts = ::fsm::no_ports;\n\n";
     }
 
     // 3. Registers (State machine internal memory)
     if (!model.variables.empty()) {
         out << "/**\n";
-        out << " * @struct " << model.name << "Registers\n";
-        out << " * @brief Persistent internal datapath memory for '" << model.name << "'.\n";
+        out << " * @struct " << safe_model_name << "Registers\n";
+        out << " * @brief Persistent internal datapath memory for '" << safe_model_comment << "'.\n";
         out << " */\n";
-        out << "struct " << model.name << "Registers {\n";
+        out << "struct " << safe_model_name << "Registers {\n";
         for (const auto& var : model.variables) {
             out << "    " << var.type.to_cpp_type() << " " << escape_cpp_keyword(var.name);
             if (!var.initial_value.empty()) {
@@ -663,14 +736,14 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
             }
             out << ";";
             if (!var.description.empty()) {
-                out << " // " << var.description;
+                out << " // " << sanitize_cpp_comment(var.description);
             }
             out << "\n";
         }
         out << "};\n\n";
     } else {
-        out << "/** @typedef " << model.name << "Registers\n * @brief Empty registers sentinel. */\n";
-        out << "using " << model.name << "Registers = ::fsm::no_registers;\n\n";
+        out << "/** @typedef " << safe_model_name << "Registers\n * @brief Empty registers sentinel. */\n";
+        out << "using " << safe_model_name << "Registers = ::fsm::no_registers;\n\n";
     }
 
     // 4. Services Interface
@@ -751,20 +824,56 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
         }
     }
 
-    if (!external_actions.empty()) {
+    std::vector<std::string> symbolic_guards;
+    std::unordered_set<std::string> seen_symbolic_guards;
+    for (const auto& guard_item : model.guards) {
+        if (guard_item.name == "else" || guard_item.name == "default" ||
+            guard_item.name.find("::") != std::string::npos || guard_item.name.find('<') != std::string::npos ||
+            guard_item.name.find('>') != std::string::npos || guard_item.name.find(' ') != std::string::npos ||
+            guard_item.name.find('&') != std::string::npos || guard_item.name.find('|') != std::string::npos ||
+            guard_item.name.find('!') != std::string::npos) {
+            continue;
+        }
+        const std::string guard_struct_name = escape_cpp_keyword(guard_item.name);
+        const bool has_expr = guard_item.normalized_expression.has_value() &&
+                              !guard_item.normalized_expression->empty() &&
+                              *guard_item.normalized_expression != guard_item.name &&
+                              (guard_item.name != (*guard_item.normalized_expression + "Guard"));
+        bool is_domain_symbol = false;
+        bool is_self_call_predicate = false;
+        if (has_expr) {
+            const std::string expr = qualify_expression(*guard_item.normalized_expression, model);
+            is_self_call_predicate = has_self_constructor_call(expr, guard_struct_name);
+        } else {
+            is_domain_symbol =
+                (model.find_port(guard_item.name) != nullptr || model.find_variable(guard_item.name) != nullptr);
+        }
+        if (((!has_expr && !is_domain_symbol) || is_self_call_predicate) &&
+            seen_symbolic_guards.insert(guard_struct_name).second) {
+            symbolic_guards.push_back(guard_struct_name);
+        }
+    }
+
+    if (!external_actions.empty() || !symbolic_guards.empty()) {
         out << "/**\n";
-        out << " * @struct " << model.name << "Services\n";
-        out << " * @brief External environment and hardware driver interface for '" << model.name << "'.\n";
+        out << " * @struct " << safe_model_name << "Services\n";
+        out << " * @brief External environment and hardware driver interface for '" << sanitize_cpp_comment(model.name)
+            << "'.\n";
         out << " */\n";
-        out << "struct " << model.name << "Services {\n";
-        out << "    virtual ~" << model.name << "Services() = default;\n";
+        out << "struct " << safe_model_name << "Services {\n";
+        out << "    virtual ~" << safe_model_name << "Services() = default;\n";
         for (const auto& act_name : external_actions) {
             out << "    virtual void " << escape_cpp_keyword(act_name) << "() {}\n";
         }
+        for (const auto& g_name : symbolic_guards) {
+            if (seen_external_actions.find(g_name) == seen_external_actions.end()) {
+                out << "    [[nodiscard]] virtual bool " << g_name << "() const { return false; }\n";
+            }
+        }
         out << "};\n\n";
     } else {
-        out << "/** @typedef " << model.name << "Services\n * @brief Empty services sentinel. */\n";
-        out << "using " << model.name << "Services = ::fsm::no_services;\n\n";
+        out << "/** @typedef " << safe_model_name << "Services\n * @brief Empty services sentinel. */\n";
+        out << "using " << safe_model_name << "Services = ::fsm::no_services;\n\n";
     }
 }
 
@@ -907,19 +1016,21 @@ void CppModelEmitter::emit_states(std::ostream& out, const FsmIr& model, const G
         std::string state_struct_name = escape_cpp_keyword(state_item.name);
         out << "/**\n";
         out << " * @struct " << state_struct_name << "\n";
-        out << " * @brief State representation for '" << state_item.name << "'.\n";
+        out << " * @brief State representation for '" << sanitize_cpp_comment(state_item.name) << "'.\n";
         if (!state_item.description.empty()) {
-            out << " * @details " << state_item.description << "\n";
+            out << " * @details " << sanitize_cpp_comment(state_item.description) << "\n";
         }
         for (const auto& req : state_item.traceability_reqs) {
-            out << " * @trace " << req << "\n";
-            out << " * @satisfies " << req << "\n";
+            out << " * @trace " << sanitize_cpp_comment(req) << "\n";
+            out << " * @satisfies " << sanitize_cpp_comment(req) << "\n";
         }
         out << " */\n";
         out << "struct " << state_struct_name << " {\n";
-        out << "    static constexpr std::string_view name = \"" << state_item.name << "\";\n";
+        out << "    static constexpr std::string_view name = \"" << escape_cpp_string_literal(state_item.name)
+            << "\";\n";
         if (!state_item.parent_state.empty()) {
-            out << "    static constexpr std::string_view parent = \"" << state_item.parent_state << "\";\n";
+            out << "    static constexpr std::string_view parent = \""
+                << escape_cpp_string_literal(state_item.parent_state) << "\";\n";
             out << "    using parent_type = " << escape_cpp_keyword(state_item.parent_state) << ";\n";
         }
         if (!state_item.deferred_events.empty()) {
@@ -998,7 +1109,7 @@ void CppModelEmitter::emit_states(std::ostream& out, const FsmIr& model, const G
         }
 
         if (!state_item.description.empty()) {
-            out << "    // Description: " << state_item.description << "\n";
+            out << "    // Description: " << sanitize_cpp_comment(state_item.description) << "\n";
         }
         out << "};\n\n";
     }
@@ -1014,7 +1125,7 @@ void CppModelEmitter::emit_guards(std::ostream& out, const FsmIr& model, const G
     out << "// ============================================================================\n\n";
 
     std::set<std::string> forward_declared_guards;
-    const std::regex ident_re(R"([A-Za-z_][A-Za-z0-9_]*)");
+    static const std::regex ident_re(R"([A-Za-z_][A-Za-z0-9_]*)");
 
     for (const auto& guard_item : model.guards) {
         if (guard_item.name == "else" || guard_item.name == "default" ||
@@ -1034,55 +1145,75 @@ void CppModelEmitter::emit_guards(std::ostream& out, const FsmIr& model, const G
             }
             continue;
         }
+        const std::string guard_struct_name = escape_cpp_keyword(guard_item.name);
         const bool has_expr = guard_item.normalized_expression.has_value() &&
                               !guard_item.normalized_expression->empty() &&
                               *guard_item.normalized_expression != guard_item.name &&
                               (guard_item.name != (*guard_item.normalized_expression + "Guard"));
         std::string expr;
         bool expr_unresolved = false;
+        bool is_self_call_predicate = false;
         bool is_domain_symbol = false;
         if (has_expr) {
             expr = qualify_expression(*guard_item.normalized_expression, model);
-            if (has_unresolved_identifiers(expr) ||
-                has_self_constructor_call(expr, escape_cpp_keyword(guard_item.name))) {
+            is_self_call_predicate = has_self_constructor_call(expr, guard_struct_name);
+            if (is_self_call_predicate || has_unresolved_identifiers(expr)) {
                 expr_unresolved = true;
             }
         } else {
             const auto* p = model.find_port(guard_item.name);
             const auto* v = model.find_variable(guard_item.name);
             if (p != nullptr && p->is_in()) {
-                expr = "in." + escape_cpp_keyword(guard_item.name);
+                expr = "in." + guard_struct_name;
                 is_domain_symbol = true;
             } else if (p != nullptr && p->is_out()) {
-                expr = "out." + escape_cpp_keyword(guard_item.name);
+                expr = "out." + guard_struct_name;
                 is_domain_symbol = true;
             } else if (v != nullptr) {
-                expr = "reg." + escape_cpp_keyword(guard_item.name);
+                expr = "reg." + guard_struct_name;
                 is_domain_symbol = true;
-            } else {
-                expr = "true";
             }
         }
+
         const bool has_model_impl = (has_expr && !expr_unresolved) || is_domain_symbol;
+        const bool is_symbolic_service_guard = (!has_expr && !is_domain_symbol) || is_self_call_predicate;
+
         if (!options.include_stubs && !has_model_impl) {
             forward_declared_guards.insert(guard_item.name);
             continue;
         }
-        const std::string eval_expr = expr_unresolved ? "true" : expr;
-        bool references_event = !expr_unresolved && has_member_access_prefix(eval_expr, {"cmd", "event", "payload"});
-        bool references_reg = !expr_unresolved && has_member_access_prefix(eval_expr, {"reg"});
-        std::string non_event_expr = references_event ? "true" : eval_expr;
-        std::string in_only_expr = (references_event || references_reg) ? "true" : eval_expr;
 
-        std::string guard_struct_name = escape_cpp_keyword(guard_item.name);
+        // Fail-closed (ADR-08): when synthesizing stubs, an expression with unresolved identifiers must fail.
+        if (has_expr && expr_unresolved && !is_self_call_predicate) {
+            throw std::invalid_argument("ECPP011: Unresolved identifier in guard expression '" + guard_item.name +
+                                        "': " + expr);
+        }
+
         out << "/**\n";
         out << " * @struct " << guard_struct_name << "\n";
-        out << " * @brief Transition guard predicate for '" << guard_item.name << "'.\n";
-        if (has_expr) {
-            out << " * @note Evaluates: `" << expr << "`\n";
+        out << " * @brief Transition guard predicate for '" << sanitize_cpp_comment(guard_item.name) << "'.\n";
+        if (has_model_impl) {
+            out << " * @note Evaluates: `" << sanitize_cpp_comment(expr) << "`\n";
+        } else {
+            out << " * @note Symbolic predicate delegated to Services::" << guard_struct_name << "()\n";
         }
         out << " */\n";
         out << "struct " << guard_struct_name << " {\n";
+
+        if (is_symbolic_service_guard) {
+            out << "    // Symbolic predicate delegated to Services (fail-closed default if unimplemented)\n";
+            out << "    template <typename Event, typename SrcState, typename InPorts, typename Registers, "
+                   "typename Services, typename Fsm>\n";
+            out << "    [[nodiscard]] constexpr bool operator()(const Event& /*cmd*/, const SrcState& /*src*/, const "
+                   "InPorts& /*in*/, const Registers& /*reg*/, Services& srv, const Fsm& /*fsm*/) const {\n";
+            out << "        return srv." << guard_struct_name << "();\n";
+            out << "    }\n";
+            out << "};\n\n";
+            continue;
+        }
+
+        const bool references_event = has_member_access_prefix(expr, {"cmd", "event", "payload"});
+        const bool references_reg = has_member_access_prefix(expr, {"reg"});
 
         out << "    // Domain guard evaluation (InPorts, Registers, Event payload)\n";
         if (!references_event) {
@@ -1090,10 +1221,7 @@ void CppModelEmitter::emit_guards(std::ostream& out, const FsmIr& model, const G
             out << "    [[nodiscard]] constexpr bool operator()(const InPorts& in, const Registers& reg) const "
                    "noexcept {\n";
             out << "        (void)in; (void)reg;\n";
-            if (expr_unresolved) {
-                out << "        // Unresolved guard expression: " << expr << "\n";
-            }
-            out << "        return " << non_event_expr << ";\n";
+            out << "        return " << expr << ";\n";
             out << "    }\n\n";
         }
 
@@ -1101,20 +1229,14 @@ void CppModelEmitter::emit_guards(std::ostream& out, const FsmIr& model, const G
         out << "    [[nodiscard]] constexpr bool operator()(const Event& cmd, const InPorts& in, const "
                "Registers& reg) const noexcept {\n";
         out << "        (void)cmd; (void)in; (void)reg;\n";
-        if (expr_unresolved) {
-            out << "        // Unresolved guard expression: " << expr << "\n";
-        }
-        out << "        return " << eval_expr << ";\n";
+        out << "        return " << expr << ";\n";
         out << "    }\n\n";
 
-        if (!references_event) {
+        if (!references_event && !references_reg) {
             out << "    template <typename InPorts>\n";
             out << "    [[nodiscard]] constexpr bool operator()(const InPorts& in) const noexcept {\n";
             out << "        (void)in;\n";
-            if (expr_unresolved) {
-                out << "        // Unresolved guard expression: " << expr << "\n";
-            }
-            out << "        return " << in_only_expr << ";\n";
+            out << "        return " << expr << ";\n";
             out << "    }\n\n";
         }
 
@@ -1123,10 +1245,7 @@ void CppModelEmitter::emit_guards(std::ostream& out, const FsmIr& model, const G
         out << "    [[nodiscard]] constexpr bool operator()(const Event& cmd, const SrcState& /*src*/, const "
                "InPorts& in, const Registers& reg, Services& /*srv*/, const Fsm& /*fsm*/) const noexcept {\n";
         out << "        (void)cmd; (void)in; (void)reg;\n";
-        if (expr_unresolved) {
-            out << "        // Unresolved guard expression: " << expr << "\n";
-        }
-        out << "        return " << eval_expr << ";\n";
+        out << "        return " << expr << ";\n";
         out << "    }\n";
         out << "};\n\n";
     }
@@ -1184,7 +1303,7 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
     out << "// ============================================================================\n\n";
 
     std::set<std::string> forward_declared_actions;
-    const std::regex act_ident_re(R"([A-Za-z_][A-Za-z0-9_]*)");
+    static const std::regex act_ident_re(R"([A-Za-z_][A-Za-z0-9_]*)");
 
     for (const auto& action_item : effective_actions) {
         std::vector<ActionAssignment> assignments;
@@ -1524,7 +1643,7 @@ void CppModelEmitter::emit_transition_table(std::ostream& out, const FsmIr& mode
     out << "// Transition Table\n";
     out << "// ============================================================================\n\n";
 
-    std::string table_type_name = model.name + "Table";
+    std::string table_type_name = sanitize_cpp_model_name(model.name) + "Table";
 
     auto find_state_by_name = [&](const std::string& name) -> const StateNode* {
         for (const auto& s : model.states) {
@@ -1609,7 +1728,7 @@ void CppModelEmitter::emit_transition_table(std::ostream& out, const FsmIr& mode
 
     out << "/**\n";
     out << " * @typedef " << table_type_name << "\n";
-    out << " * @brief Static transition table specification for '" << model.name << "'.\n";
+    out << " * @brief Static transition table specification for '" << sanitize_cpp_comment(model.name) << "'.\n";
     out << " */\n";
     out << "using " << table_type_name << " = ::fsm::transition_table<";
 
@@ -1711,8 +1830,10 @@ void CppModelEmitter::emit_transition_table(std::ostream& out, const FsmIr& mode
                    (guard_type.find('&') != std::string::npos || guard_type.find('|') != std::string::npos ||
                     guard_type.find('!') != std::string::npos || guard_type.find('(') != std::string::npos)) {
             auto parsed = ir::GuardExpressionParser::parse(guard_type);
-            if (!parsed.cpp_type.empty()) {
-                guard_type = std::move(parsed.cpp_type);
+            if (parsed.ast.has_value()) {
+                if (auto ast_type = render_cpp_guard_type(render_cpp_guard_type, *parsed.ast); ast_type.has_value()) {
+                    guard_type = std::move(*ast_type);
+                }
             }
         }
 
@@ -1772,7 +1893,8 @@ void CppModelEmitter::emit_fsm_aliases(std::ostream& out, const FsmIr& model, co
     out << "// State Machine Type Aliases\n";
     out << "// ============================================================================\n\n";
 
-    std::string table_type_name = model.name + "Table";
+    const std::string safe_model_name = sanitize_cpp_model_name(model.name);
+    std::string table_type_name = safe_model_name + "Table";
 
     auto find_state_by_name = [&](const std::string& name) -> const StateNode* {
         for (const auto& s : model.states) {
@@ -1783,7 +1905,11 @@ void CppModelEmitter::emit_fsm_aliases(std::ostream& out, const FsmIr& model, co
         return nullptr;
     };
 
+    std::unordered_set<std::string> visited_initial_states;
     auto find_initial_leaf_substate = [&](auto& self, const std::string& state_name) -> std::string {
+        if (!visited_initial_states.insert(state_name).second) {
+            return state_name;
+        }
         const auto* s = find_state_by_name(state_name);
         if (s != nullptr && s->is_composite && !s->initial_sub_state.empty()) {
             return self(self, s->initial_sub_state);
@@ -1804,58 +1930,66 @@ void CppModelEmitter::emit_fsm_aliases(std::ostream& out, const FsmIr& model, co
         init_state = escape_cpp_keyword(init_state);
     }
 
-    const std::string fsm_alias_name = (model.find_state(model.name) != nullptr) ? (model.name + "Fsm") : model.name;
+    const std::string fsm_alias_name =
+        (model.find_state(safe_model_name) != nullptr) ? (safe_model_name + "Fsm") : safe_model_name;
     out << "/**\n";
     out << " * @typedef " << fsm_alias_name << "\n";
-    out << " * @brief Primary Synchronous Core State Machine instance for '" << model.name << "' on caller stack.\n";
+    out << " * @brief Primary Synchronous Core State Machine instance for '" << sanitize_cpp_comment(model.name)
+        << "' on caller stack.\n";
     for (const auto& req : model.satisfies_reqs) {
-        out << " * @trace " << req << "\n";
-        out << " * @satisfies " << req << "\n";
+        out << " * @trace " << sanitize_cpp_comment(req) << "\n";
+        out << " * @satisfies " << sanitize_cpp_comment(req) << "\n";
     }
     out << " */\n";
     out << "using " << fsm_alias_name << " = ::fsm::make_fsm<\n";
     out << "    " << table_type_name << ",\n";
     out << "    ::fsm::with_initial_state<" << init_state << ">,\n";
-    out << "    ::fsm::with_ports<" << model.name << "InPorts, " << model.name << "OutPorts>,\n";
-    out << "    ::fsm::with_registers<" << model.name << "Registers>,\n";
-    out << "    ::fsm::with_services<" << model.name << "Services>,\n";
-    out << "    ::fsm::with_observer<::fsm::dynamic_observer>\n";
+    out << "    ::fsm::with_ports<" << safe_model_name << "InPorts, " << safe_model_name << "OutPorts>,\n";
+    out << "    ::fsm::with_registers<" << safe_model_name << "Registers>,\n";
+    out << "    ::fsm::with_services<" << safe_model_name << "Services>,\n";
+    out << "    ::fsm::with_observer<::fsm::no_observer>\n";
     out << ">;\n\n";
 
-    if (options.thread_safe) {
+    if (options.thread_safe && !options.freestanding) {
         out << "/**\n";
-        out << " * @typedef ThreadSafe" << model.name << "\n";
-        out << " * @brief Thread-Safe Active Object State Machine for '" << model.name << "'.\n";
+        out << " * @typedef ThreadSafe" << safe_model_name << "\n";
+        out << " * @brief Thread-Safe Active Object State Machine for '" << sanitize_cpp_comment(model.name) << "'.\n";
         out << " */\n";
-        out << "using ThreadSafe" << model.name << " = ::fsm::make_thread_safe_fsm<\n";
+        out << "using ThreadSafe" << safe_model_name << " = ::fsm::make_thread_safe_fsm<\n";
         out << "    " << table_type_name << ",\n";
         out << "    ::fsm::with_initial_state<" << init_state << ">,\n";
-        out << "    ::fsm::with_ports<" << model.name << "InPorts, " << model.name << "OutPorts>,\n";
-        out << "    ::fsm::with_registers<" << model.name << "Registers>,\n";
-        out << "    ::fsm::with_services<" << model.name << "Services>\n";
+        out << "    ::fsm::with_ports<" << safe_model_name << "InPorts, " << safe_model_name << "OutPorts>,\n";
+        out << "    ::fsm::with_registers<" << safe_model_name << "Registers>,\n";
+        out << "    ::fsm::with_services<" << safe_model_name << "Services>\n";
         out << ">;\n\n";
 
         bool registers_trivially_copyable = true;
         const auto structs = model.get_structs();
-        auto is_type_trivially_copyable = [&](auto& self, const DataType& type) -> bool {
+        auto is_type_trivially_copyable = [&](auto& self, const DataType& type,
+                                              std::unordered_set<std::string>& visited_structs) -> bool {
             if (type.is_string()) {
                 return false;
             }
             if (type.is_struct()) {
+                if (!visited_structs.insert(type.custom_name()).second) {
+                    return false;
+                }
                 for (const auto& st : structs) {
                     if (st.name == type.custom_name()) {
                         for (const auto& f : st.fields) {
-                            if (!self(self, f.type)) {
+                            if (!self(self, f.type, visited_structs)) {
                                 return false;
                             }
                         }
                     }
                 }
+                visited_structs.erase(type.custom_name());
             }
             return true;
         };
         for (const auto& var : model.variables) {
-            if (!is_type_trivially_copyable(is_type_trivially_copyable, var.type)) {
+            std::unordered_set<std::string> visited_structs;
+            if (!is_type_trivially_copyable(is_type_trivially_copyable, var.type, visited_structs)) {
                 registers_trivially_copyable = false;
                 break;
             }
@@ -1863,7 +1997,8 @@ void CppModelEmitter::emit_fsm_aliases(std::ostream& out, const FsmIr& model, co
         bool events_trivially_copyable = true;
         for (const auto& sig : model.signals) {
             for (const auto& attr : sig.attributes) {
-                if (!is_type_trivially_copyable(is_type_trivially_copyable, attr.type)) {
+                std::unordered_set<std::string> visited_structs;
+                if (!is_type_trivially_copyable(is_type_trivially_copyable, attr.type, visited_structs)) {
                     events_trivially_copyable = false;
                     break;
                 }
@@ -1875,15 +2010,16 @@ void CppModelEmitter::emit_fsm_aliases(std::ostream& out, const FsmIr& model, co
 
         if (registers_trivially_copyable && events_trivially_copyable) {
             out << "/**\n";
-            out << " * @typedef Spsc" << model.name << "\n";
-            out << " * @brief Lock-Free Single-Producer Single-Consumer State Machine for '" << model.name << "'.\n";
+            out << " * @typedef Spsc" << safe_model_name << "\n";
+            out << " * @brief Lock-Free Single-Producer Single-Consumer State Machine for '"
+                << sanitize_cpp_comment(model.name) << "'.\n";
             out << " */\n";
-            out << "using Spsc" << model.name << " = ::fsm::make_spsc_fsm<\n";
+            out << "using Spsc" << safe_model_name << " = ::fsm::make_spsc_fsm<\n";
             out << "    " << table_type_name << ",\n";
             out << "    ::fsm::with_initial_state<" << init_state << ">,\n";
-            out << "    ::fsm::with_ports<" << model.name << "InPorts, " << model.name << "OutPorts>,\n";
-            out << "    ::fsm::with_registers<" << model.name << "Registers>,\n";
-            out << "    ::fsm::with_services<" << model.name << "Services>,\n";
+            out << "    ::fsm::with_ports<" << safe_model_name << "InPorts, " << safe_model_name << "OutPorts>,\n";
+            out << "    ::fsm::with_registers<" << safe_model_name << "Registers>,\n";
+            out << "    ::fsm::with_services<" << safe_model_name << "Services>,\n";
             out << "    ::fsm::with_queue_capacity<64>\n";
             out << ">;\n";
         }

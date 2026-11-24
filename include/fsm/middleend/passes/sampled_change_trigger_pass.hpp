@@ -9,6 +9,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/pass_interface.hpp"
 
 namespace fsm::middleend::passes {
 
@@ -26,14 +27,14 @@ using ir::FsmIr;
  * 3. Appends an action effect resetting/updating `__change_<id>_prev = (pred)`.
  * 4. Replaces the trigger with an anonymous/spontaneous sampled trigger.
  */
-class SampledChangeTriggerPass {
+class SampledChangeTriggerPass : public ::fsm::middleend::IPass {
   public:
-    [[nodiscard]] static std::string name() { return "SampledChangeTrigger"; }
-    [[nodiscard]] static std::string description() {
-        return "Lowers continuous change triggers (when) into discrete sampled edge detectors";
+    [[nodiscard]] std::string name() const override { return "sampled-change-trigger"; }
+    [[nodiscard]] std::string description() const override {
+        return "Lowers continuous when(...) change triggers into discrete z^-1 edge detectors.";
     }
-
-    bool run(FsmIr& ir, DiagnosticEngine& diag);
+    [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };
 
 }  // namespace fsm::middleend::passes

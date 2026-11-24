@@ -31,7 +31,16 @@ using directive::GuardExpressionParser;
  * @param error_message Diagnostic error message if parsing fails.
  * @return True if parsing and IR construction succeeded, false otherwise.
  */
-bool Sysml2Parser::parse(std::string_view content, FsmIr& model, std::string& error_message) {
+bool Sysml2Parser::parse(std::string_view content, FsmIr& out_ir, diagnostic::DiagnosticEngine& diag) {
+    std::string err;
+    if (!parse_impl(content, out_ir, err)) {
+        report_parse_error(diag, "E_PARSE_SYSML2", err);
+        return false;
+    }
+    return true;
+}
+
+bool Sysml2Parser::parse_impl(std::string_view content, FsmIr& model, std::string& error_message) {
     Sysml2SymbolResolver symbol_resolver;
 
     // Step 1: Lexical analysis and block token scanning
@@ -1263,8 +1272,8 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     if (std::regex_search(stmt, match, if_regex)) {
         const std::string raw_guard_expr = trim(match[1].str());
         auto parsed = directive::GuardExpressionParser::parse(raw_guard_expr);
-        if (!parsed.cpp_type.empty()) {
-            guard = parsed.cpp_type;
+        if (!parsed.canonical_expression.empty()) {
+            guard = parsed.canonical_expression;
             for (const auto& detail : parsed.atomic_guard_details) {
                 model.add_guard(detail.name, "", detail.expression, detail.expression);
             }

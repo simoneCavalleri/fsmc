@@ -59,8 +59,8 @@ TEST(JsonParser, StandardStatechartSchema_ExtractsStatesTransitionsGuardsAndActi
 
     JsonParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(json_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.name, "JsonConnectionFSM");
     EXPECT_EQ(model.initial_state, "Disconnected");
@@ -101,8 +101,8 @@ TEST(JsonParser, NestedStatesProperty_SynthesizesCompositeHierarchy) {
 
     JsonParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(json_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.states.size(), 4u);
     const auto* inflight = model.find_state("InFlight");
@@ -135,8 +135,8 @@ TEST(JsonParser, ArrayOfTransitionsPerEventKey_CapturesMultipleConditionalBranch
 
     JsonParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(json_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.states.size(), 2U);
     EXPECT_EQ(model.transitions.size(), 2U);
@@ -169,8 +169,8 @@ TEST(JsonParser, StateDefinitionsSequence_PreservesDocumentInsertionOrder) {
 
     JsonParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(json_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << "Error: " << err.render_to_string();
 
     ASSERT_EQ(model.states.size(), 4U);
     EXPECT_EQ(model.states[0].name, "ZetaState");
@@ -218,8 +218,8 @@ TEST(JsonParser, DirectionalPortsWithIntervalBounds_PopulatesPortDefinitions) {
 
     JsonParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(json_content, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << err.render_to_string();
 
     ASSERT_EQ(model.ports.size(), 2u);
     const auto* in_p = model.find_port("sensor_in");
@@ -263,8 +263,8 @@ TEST(JsonParserTest, DeserializesXStateParallelTypeIntoOrthogonalRegions) {
 
     JsonParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(json_content, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << err.render_to_string();
 
     const StateNode* active = model.find_state("Active");
     ASSERT_NE(active, nullptr);
@@ -294,8 +294,8 @@ TEST(JsonParser, XStateActionAssignments_PopulatedInActionSignature) {
 
     JsonParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(json_content, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << err.render_to_string();
     ASSERT_EQ(model.transitions.size(), 1u);
     ASSERT_TRUE(model.transitions[0].transition_action.has_value());
     ASSERT_EQ(model.transitions[0].transition_action->assignments.size(), 1u);
@@ -327,8 +327,8 @@ TEST(JsonParser, XStateLifecycleAssignments_PopulatedInEntryAndExitActions) {
 
     JsonParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(json_content, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(json_content, model, err)) << err.render_to_string();
 
     const StateNode* idle = model.find_state("Idle");
     ASSERT_NE(idle, nullptr);
@@ -341,6 +341,56 @@ TEST(JsonParser, XStateLifecycleAssignments_PopulatedInEntryAndExitActions) {
     ASSERT_EQ(idle->exit_actions[0].assignments.size(), 1u);
     EXPECT_EQ(idle->exit_actions[0].assignments[0].target.name, "x");
     EXPECT_EQ(idle->exit_actions[0].assignments[0].expression, "x + 10");
+}
+
+/**
+ * @brief Regression (F2.2): Verify SimpleJsonParser rejects trailing garbage, enforces max nesting depth,
+ * and handles deep valid nesting in O(N) time without exponential blow-up.
+ */
+TEST(JsonParser, Hardening_RejectsTrailingGarbageAndExcessiveDepthLinearly) {
+    JsonParser parser;
+
+    // 1. Trailing garbage after valid JSON root must be rejected
+    {
+        FsmIr model;
+        fsm::diagnostic::DiagnosticEngine diag;
+        EXPECT_FALSE(parser.parse(R"({"id": "M", "states": {"A": {}}} trailing)", model, diag));
+        EXPECT_TRUE(diag.has_errors());
+    }
+
+    // 2. Deep nesting exceeding kMaxJsonDepth (128) must be cleanly rejected
+    {
+        std::string deep_json;
+        for (int i = 0; i < 160; ++i) {
+            deep_json += "{\"a\":";
+        }
+        deep_json += "1";
+        for (int i = 0; i < 160; ++i) {
+            deep_json += "}";
+        }
+        FsmIr model;
+        fsm::diagnostic::DiagnosticEngine diag;
+        EXPECT_FALSE(parser.parse(deep_json, model, diag));
+        EXPECT_TRUE(diag.has_errors());
+    }
+
+    // 3. 35-level nested JSON (would OOM under O(2^35) duplication) must parse in O(N) time
+    {
+        std::string nested = R"({"id":"Deep","initial":"S0","states":{"S0":{},"S1":{}},"attributes":{"x":"1"})";
+        nested += ",\"extra\":";
+        for (int i = 0; i < 35; ++i) {
+            nested += "{\"k\":";
+        }
+        nested += "42";
+        for (int i = 0; i < 35; ++i) {
+            nested += "}";
+        }
+        nested += "}";
+        FsmIr model;
+        fsm::diagnostic::DiagnosticEngine diag;
+        EXPECT_TRUE(parser.parse(nested, model, diag)) << diag.render_to_string();
+        EXPECT_EQ(model.name, "Deep");
+    }
 }
 
 }  // namespace

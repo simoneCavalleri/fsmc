@@ -11,11 +11,10 @@
 #include "fsm/backend/formal/sysml2_serializer.hpp"
 #include "fsm/frontend/formal/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
-#include "fsm/middleend/analysis/fsm_validator.hpp"
+#include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm::backend::formal;
 using namespace fsm::frontend::formal;
-using namespace fsm::middleend::analysis;
 using namespace fsm::ir;
 
 namespace {
@@ -32,8 +31,8 @@ TEST(Sysml2AdvancedConstructs, QualifiedPackage_ParsedIntoModelPackage) {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.package, "Aerospace::Navigation");
     EXPECT_EQ(model.name, "Autopilot");
@@ -56,8 +55,8 @@ TEST(Sysml2AdvancedConstructs, NestedPackage_ConcatenatesHierarchy) {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.package, "Spacecraft::Propulsion::ThrustController");
     EXPECT_EQ(model.name, "MainEngine");
@@ -82,8 +81,8 @@ TEST(Sysml2AdvancedConstructs, BindingConnectors_PopulatesBindingsAndPortBoundTo
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.package, "Telemetry");
     EXPECT_EQ(model.name, "SensorHub");
@@ -126,8 +125,8 @@ TEST(Sysml2AdvancedConstructs, ForkCompositeTransition_ParsesMultipleTargets) {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.name, "ParallelExecution");
     ASSERT_EQ(model.transitions.size(), 1u);
@@ -159,8 +158,8 @@ TEST(Sysml2AdvancedConstructs, JoinCompositeTransition_ParsesMultipleSources) {
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.name, "ParallelExecution");
     ASSERT_EQ(model.transitions.size(), 1u);
@@ -213,8 +212,8 @@ TEST(Sysml2AdvancedConstructs, ParallelStateAndSlashActions_RoundtrippedLossless
 
     Sysml2Parser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_text, model, err)) << "Error: " << err.render_to_string();
 
     // Verify Shutdown actions
     const auto* shutdown_st = model.find_state("Shutdown");
@@ -230,9 +229,9 @@ TEST(Sysml2AdvancedConstructs, ParallelStateAndSlashActions_RoundtrippedLossless
     EXPECT_EQ(op_st->kind, StateKind::Parallel);
 
     // Initial validation must pass
-    auto val1 = FsmValidator::validate(model);
-    EXPECT_TRUE(val1.is_valid);
-    EXPECT_TRUE(val1.errors.empty());
+    fsm::diagnostic::DiagnosticEngine val1_diag;
+    EXPECT_TRUE(fsm::middleend::PassManager::create_validation_pipeline().run(model, val1_diag));
+    EXPECT_FALSE(val1_diag.has_errors());
 
     // Roundtrip serialize to SysML v2
     std::string exported_sysml = Sysml2Serializer::serialize(model);
@@ -242,20 +241,20 @@ TEST(Sysml2AdvancedConstructs, ParallelStateAndSlashActions_RoundtrippedLossless
 
     // Parse exported model back
     FsmIr roundtrip_model;
-    ASSERT_TRUE(parser.parse(exported_sysml, roundtrip_model, err)) << "Parse back error: " << err;
+    ASSERT_TRUE(parser.parse(exported_sysml, roundtrip_model, err)) << "Parse back error: " << err.render_to_string();
 
     const auto* rt_op = roundtrip_model.find_state("Operational");
     ASSERT_NE(rt_op, nullptr);
     EXPECT_EQ(rt_op->kind, StateKind::Parallel);
 
     // Validating the roundtripped model must NOT produce reachability warnings on parallel regions!
-    auto val2 = FsmValidator::validate(roundtrip_model);
-    EXPECT_TRUE(val2.is_valid);
-    EXPECT_TRUE(val2.errors.empty());
+    fsm::diagnostic::DiagnosticEngine val2_diag;
+    EXPECT_TRUE(fsm::middleend::PassManager::create_validation_pipeline().run(roundtrip_model, val2_diag));
+    EXPECT_FALSE(val2_diag.has_errors());
 
     bool has_reachability_warning = false;
-    for (const auto& w : val2.warnings) {
-        if (w.find("unreachable") != std::string::npos) {
+    for (const auto& d : val2_diag.get_diagnostics()) {
+        if (d.message.find("unreachable") != std::string::npos) {
             has_reachability_warning = true;
         }
     }

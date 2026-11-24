@@ -47,8 +47,8 @@ ASSIGN
 
     SmvParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.name, "ConnectionControllerFSM");
     EXPECT_EQ(model.initial_state, "Disconnected");
@@ -89,8 +89,8 @@ ASSIGN
 
     SmvParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.name, "TrafficLight");
     EXPECT_EQ(model.initial_state, "Red");
@@ -135,8 +135,8 @@ INVARSPEC !(state = Critical & event = SensorAlert);
 
     SmvParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.properties.size(), 2u);
     EXPECT_EQ(model.properties[0].kind, PropertyKind::Liveness);
@@ -168,8 +168,8 @@ ASSIGN
 
     SmvParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err.render_to_string();
 
     GeneratorOptions opts;
     opts.cpp_standard = CppStandard::Cpp20;
@@ -189,9 +189,9 @@ ASSIGN
 TEST(SmvParser, MalformedSmv_RejectionDiagnosticsReported) {
     SmvParser parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
     EXPECT_FALSE(parser.parse("", model, err));
-    EXPECT_FALSE(err.empty());
+    EXPECT_FALSE(!err.has_errors());
 }
 
 /**
@@ -224,8 +224,8 @@ ASSIGN
 
     SmvParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.name, "ProtocolEngine");
     EXPECT_EQ(model.initial_state, "Standby");
@@ -286,8 +286,8 @@ ASSIGN
 
     SmvParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 2u);
 
@@ -337,8 +337,8 @@ ASSIGN
 
     SmvParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 2u);
     EXPECT_EQ(model.transitions[0].source, "Idle");
@@ -371,8 +371,8 @@ ASSIGN
 
     SmvParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 1u);
     const auto& t = model.transitions[0];
@@ -414,8 +414,8 @@ ASSIGN
 
     SmvParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 3u);
     EXPECT_EQ(model.transitions[0].source, "Preflight");
@@ -454,8 +454,8 @@ ASSIGN
 
     SmvParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err.render_to_string();
     ASSERT_EQ(model.transitions.size(), 1u);
     ASSERT_FALSE(model.guards.empty());
     ASSERT_TRUE(model.guards[0].raw_expression.has_value());
@@ -488,8 +488,8 @@ ASSIGN
 
     SmvParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err.render_to_string();
 
     const StateNode* idle = model.find_state("Idle");
     ASSERT_NE(idle, nullptr);
@@ -539,8 +539,8 @@ ASSIGN
 
     SmvParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err.render_to_string();
 
     const auto* armed = model.find_variable("armed");
     ASSERT_NE(armed, nullptr);
@@ -573,8 +573,8 @@ ASSIGN
 
     SmvParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err.render_to_string();
     ASSERT_EQ(model.transitions.size(), 2u);
     EXPECT_EQ(model.transitions[0].event, "Go");
     EXPECT_EQ(model.transitions[1].event, "Force");
@@ -606,8 +606,8 @@ ASSIGN
 
     SmvParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err.render_to_string();
     const auto* var = model.find_variable("label");
     ASSERT_NE(var, nullptr);
     EXPECT_EQ(var->type.primitive(), PrimitiveTypeKind::String);
@@ -642,8 +642,8 @@ CTLSPEC -- can_run
 
     SmvParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err.render_to_string();
     ASSERT_EQ(model.properties.size(), 2u);
     EXPECT_EQ(model.properties[0].name, "liveness");
     EXPECT_EQ(model.properties[0].raw_formula, "G (state = Idle -> F (state = Run))");
@@ -674,8 +674,8 @@ ASSIGN
 
     SmvParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << "Error: " << err.render_to_string();
     EXPECT_EQ(model.find_variable("timer_Busy"), nullptr);
     ASSERT_EQ(model.transitions.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<TimeTrigger>(model.transitions[0].trigger));
@@ -709,8 +709,8 @@ TEST(SmvParser, InternalTransition_PreservedAcrossSerializerRoundtrip) {
 
     SmvParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 1u);
     EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
     ASSERT_TRUE(parsed.transitions[0].transition_action.has_value());
@@ -748,8 +748,8 @@ TEST(SmvParser, PortsEnumsStructsAndTypedVars_PreservedAcrossSerializerRoundtrip
     const std::string smv = fsm::backend::formal::SmvSerializer::serialize(ir);
     SmvParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err.render_to_string();
 
     ASSERT_NE(parsed.find_port("cmd"), nullptr);
     EXPECT_EQ(parsed.find_variable("cmd"), nullptr);
@@ -794,8 +794,8 @@ TEST(SmvParser, StateReqsTimeInvariantAndParallelKind_PreservedAcrossRoundtrip) 
     const std::string smv = fsm::backend::formal::SmvSerializer::serialize(ir);
     SmvParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err.render_to_string();
 
     const auto* p_active = parsed.find_state("Active");
     ASSERT_NE(p_active, nullptr);
@@ -831,8 +831,8 @@ TEST(SmvParser, ChoiceNode_PreservedAcrossSerializerRoundtrip) {
 
     SmvParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err.render_to_string();
     EXPECT_TRUE(parsed.is_choice_node("C1"));
     EXPECT_FALSE(parsed.choice_nodes.empty());
     EXPECT_EQ(parsed.find_state("C1"), nullptr);
@@ -859,8 +859,8 @@ TEST(SmvParser, SignalAttributesAndValidator_PreservedAcrossSerializerRoundtrip)
     const std::string smv = fsm::backend::formal::SmvSerializer::serialize(ir);
     SmvParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err.render_to_string();
 
     const auto* p_tel = parsed.find_signal("Telemetry");
     ASSERT_NE(p_tel, nullptr);
@@ -905,8 +905,8 @@ TEST(SmvParser, LocalTransition_PreservedAcrossSerializerRoundtrip) {
 
     SmvParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 2u);
 
     bool found_local = false;

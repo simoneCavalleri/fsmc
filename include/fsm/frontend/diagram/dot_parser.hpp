@@ -29,9 +29,10 @@ class DotParser : public IParser {
      * @param error_message Output diagnostic message upon parsing failure.
      * @return True if parsed successfully, false otherwise.
      */
-    bool parse(std::string_view content, FsmIr& model, std::string& error_message) override;
+    bool parse(std::string_view content, FsmIr& model, diagnostic::DiagnosticEngine& diag) override;
 
   private:
+    bool parse_impl(std::string_view content, FsmIr& out_ir, std::string& out_error);
     static std::string trim_line(std::string_view line_sv);
     static void parse_label(const std::string& label, std::string& out_event, std::string& out_guard,
                             std::string& out_action);

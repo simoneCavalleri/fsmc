@@ -10,7 +10,7 @@
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
 #include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
-#include "fsm/middleend/analysis/fsm_validator.hpp"
+#include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm::frontend;
 using namespace fsm::frontend::diagram;
@@ -26,7 +26,7 @@ namespace {
  * @scenario Standard sequential FSM (Idle -> Running -> Paused/Stopped -> [*]).
  * @expected Validation reports model is valid with zero errors or safety warnings.
  */
-TEST(FsmValidator, SoundStateHierarchy_PassesValidationWithoutErrors) {
+TEST(ValidationPipeline, SoundStateHierarchy_PassesValidationWithoutErrors) {
     const std::string mmd = R"(
     stateDiagram-v2
         [*] --> Idle
@@ -39,20 +39,20 @@ TEST(FsmValidator, SoundStateHierarchy_PassesValidationWithoutErrors) {
 
     MermaidParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err.render_to_string();
 
-    const auto validation = FsmValidator::validate(model);
-    EXPECT_TRUE(validation.is_valid);
-    EXPECT_TRUE(validation.errors.empty());
+    DiagnosticEngine diag;
+    EXPECT_TRUE(PassManager::create_validation_pipeline().run(model, diag));
+    EXPECT_FALSE(diag.has_errors());
 }
 
 /**
  * @brief Verify model checker detection of livelock cycles with no exit transitions.
  * @scenario Autonomous circular loop StateA -> StateB -> StateC -> StateA with no external egress.
- * @expected Validator logs SafetyCritical diagnostic under category 'Livelock'.
+ * @expected Validation pipeline logs livelock error diagnostic (E0401).
  */
-TEST(FsmValidator, AutonomousClosedCycle_EmitsLivelockDiagnostic) {
+TEST(ValidationPipeline, AutonomousClosedCycle_EmitsLivelockDiagnostic) {
     const std::string mmd = R"(
     stateDiagram-v2
         [*] --> StateA
@@ -63,13 +63,14 @@ TEST(FsmValidator, AutonomousClosedCycle_EmitsLivelockDiagnostic) {
 
     MermaidParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err.render_to_string();
 
-    const auto validation = FsmValidator::validate(model);
+    DiagnosticEngine diag;
+    EXPECT_FALSE(PassManager::create_validation_pipeline().run(model, diag));
     bool found_livelock = false;
-    for (const auto& diag : validation.diagnostics) {
-        if (diag.category == "Livelock" && diag.severity == DiagnosticSeverity::SafetyCritical) {
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "E0401") {
             found_livelock = true;
             break;
         }
@@ -80,9 +81,9 @@ TEST(FsmValidator, AutonomousClosedCycle_EmitsLivelockDiagnostic) {
 /**
  * @brief Verify model checker detects Choice nodes lacking an unconditional fallback branch.
  * @scenario Choice pseudostate branching on [IsFast] and [IsSlow] without a default fallback.
- * @expected Validator emits SafetyCritical diagnostic under category 'Choice'.
+ * @expected Validation pipeline emits W0103 diagnostic.
  */
-TEST(FsmValidator, ChoicePseudostateMissingDefaultFallback_EmitsSafetyCriticalDiagnostic) {
+TEST(ValidationPipeline, ChoicePseudostateMissingDefaultFallback_EmitsWarningDiagnostic) {
     const std::string puml = R"(
     @startuml
     [*] --> DecisionPoint
@@ -94,13 +95,14 @@ TEST(FsmValidator, ChoicePseudostateMissingDefaultFallback_EmitsSafetyCriticalDi
 
     PlantUmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err.render_to_string();
 
-    const auto validation = FsmValidator::validate(model);
+    DiagnosticEngine diag;
+    PassManager::create_validation_pipeline().run(model, diag);
     bool found_choice_warning = false;
-    for (const auto& diag : validation.diagnostics) {
-        if (diag.category == "Choice" && diag.severity == DiagnosticSeverity::SafetyCritical) {
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "W0103") {
             found_choice_warning = true;
             break;
         }
@@ -111,9 +113,9 @@ TEST(FsmValidator, ChoicePseudostateMissingDefaultFallback_EmitsSafetyCriticalDi
 /**
  * @brief Verify model checker detects duplicate/conflicting guard conditions on Choice branches.
  * @scenario Choice pseudostate with two branches having identical guard '[IsFast]'.
- * @expected Validator emits warning diagnostic under category 'Choice' flagging ambiguity.
+ * @expected Validation pipeline emits W0102 warning diagnostic flagging ambiguity.
  */
-TEST(FsmValidator, ChoiceBranchesIdenticalGuards_EmitsAmbiguityWarning) {
+TEST(ValidationPipeline, ChoiceBranchesIdenticalGuards_EmitsAmbiguityWarning) {
     const std::string puml = R"(
     @startuml
     [*] --> DecisionPoint
@@ -126,13 +128,14 @@ TEST(FsmValidator, ChoiceBranchesIdenticalGuards_EmitsAmbiguityWarning) {
 
     PlantUmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err.render_to_string();
 
-    const auto validation = FsmValidator::validate(model);
+    DiagnosticEngine diag;
+    PassManager::create_validation_pipeline().run(model, diag);
     bool found_dup_guard = false;
-    for (const auto& diag : validation.diagnostics) {
-        if (diag.category == "Choice" && diag.severity == DiagnosticSeverity::Warning) {
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "W0102" && d.severity == DiagnosticSeverity::Warning) {
             found_dup_guard = true;
             break;
         }
@@ -143,9 +146,9 @@ TEST(FsmValidator, ChoiceBranchesIdenticalGuards_EmitsAmbiguityWarning) {
 /**
  * @brief Verify model checker detects deadlock/trap states having no outgoing transitions.
  * @scenario Active state transitions to 'TrapState', which has 0 outgoing transitions and is not marked Final.
- * @expected Validator emits warning diagnostic under category 'Deadlock'.
+ * @expected Validation pipeline emits W0202 warning diagnostic.
  */
-TEST(FsmValidator, UnhandledTerminalState_EmitsDeadlockTrapWarning) {
+TEST(ValidationPipeline, UnhandledTerminalState_EmitsDeadlockTrapWarning) {
     const std::string mmd = R"(
     stateDiagram-v2
         [*] --> Active
@@ -154,13 +157,14 @@ TEST(FsmValidator, UnhandledTerminalState_EmitsDeadlockTrapWarning) {
 
     MermaidParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err.render_to_string();
 
-    const auto validation = FsmValidator::validate(model);
+    DiagnosticEngine diag;
+    PassManager::create_validation_pipeline().run(model, diag);
     bool found_deadlock_warning = false;
-    for (const auto& diag : validation.diagnostics) {
-        if (diag.category == "Deadlock" && diag.severity == DiagnosticSeverity::Warning) {
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "W0202" && d.severity == DiagnosticSeverity::Warning) {
             found_deadlock_warning = true;
             break;
         }
@@ -171,9 +175,9 @@ TEST(FsmValidator, UnhandledTerminalState_EmitsDeadlockTrapWarning) {
 /**
  * @brief Verify model checker detects non-deterministic transition conflicts for identical events.
  * @scenario State 'Idle' has two unconditional transitions triggered by identical event 'StartCmd'.
- * @expected Validator emits SafetyCritical diagnostic under category 'Determinism'.
+ * @expected Validation pipeline emits SafetyCritical diagnostic (W_NONDETERMINISTIC_CONFLICT).
  */
-TEST(FsmValidator, ConflictingTransitionsSameEventAndPriority_EmitsDeterminismError) {
+TEST(ValidationPipeline, ConflictingTransitionsSameEventAndPriority_EmitsDeterminismError) {
     const std::string mmd = R"(
     stateDiagram-v2
         [*] --> Idle
@@ -183,13 +187,14 @@ TEST(FsmValidator, ConflictingTransitionsSameEventAndPriority_EmitsDeterminismEr
 
     MermaidParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err.render_to_string();
 
-    const auto validation = FsmValidator::validate(model);
+    DiagnosticEngine diag;
+    PassManager::create_validation_pipeline().run(model, diag);
     bool found_conflict = false;
-    for (const auto& diag : validation.diagnostics) {
-        if (diag.category == "Determinism" && diag.severity == DiagnosticSeverity::SafetyCritical) {
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "W_NONDETERMINISTIC_CONFLICT" && d.severity == DiagnosticSeverity::SafetyCritical) {
             found_conflict = true;
             break;
         }
@@ -200,9 +205,9 @@ TEST(FsmValidator, ConflictingTransitionsSameEventAndPriority_EmitsDeterminismEr
 /**
  * @brief Verify model checker detects duplicate timer transitions originating from the same state.
  * @scenario State 'Active' has two timer transitions with identical duration 'after_500ms'.
- * @expected Validator emits warning diagnostic under category 'TimedTransition'.
+ * @expected Validation pipeline emits W0402 warning diagnostic.
  */
-TEST(FsmValidator, DuplicateTimerTransitionsSameState_EmitsWarning) {
+TEST(ValidationPipeline, DuplicateTimerTransitionsSameState_EmitsWarning) {
     const std::string mmd = R"(
     stateDiagram-v2
         [*] --> Active
@@ -212,13 +217,14 @@ TEST(FsmValidator, DuplicateTimerTransitionsSameState_EmitsWarning) {
 
     MermaidParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err.render_to_string();
 
-    const auto validation = FsmValidator::validate(model);
+    DiagnosticEngine diag;
+    PassManager::create_validation_pipeline().run(model, diag);
     bool found_timer_warning = false;
-    for (const auto& diag : validation.diagnostics) {
-        if (diag.category == "TimedTransition" && diag.severity == DiagnosticSeverity::Warning) {
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "W0402" && d.severity == DiagnosticSeverity::Warning) {
             found_timer_warning = true;
             break;
         }
@@ -273,7 +279,7 @@ TEST(EfsmIntervalAnalysis, OutOfRangeVariableGuardCondition_FlagsUnsatisfiableBr
  * @scenario Validate an FSM with `Init -> {RegA, RegB}` via `target_ids`.
  * @expected Zero `Reachability` warnings are emitted.
  */
-TEST(FsmValidator, MultiTargetForkTransition_NoFalseUnreachableWarning) {
+TEST(ValidationPipeline, MultiTargetForkTransition_NoFalseUnreachableWarning) {
     FsmIr model;
     model.name = "MultiTargetVal";
     model.initial_state = "Init";
@@ -285,9 +291,10 @@ TEST(FsmValidator, MultiTargetForkTransition_NoFalseUnreachableWarning) {
     fork_edge.target_ids = {"RegA", "RegB"};
     model.add_transition(std::move(fork_edge));
 
-    const auto validation = FsmValidator::validate(model);
-    for (const auto& diag : validation.diagnostics) {
-        EXPECT_NE(diag.category, "Reachability") << diag.message;
+    DiagnosticEngine diag;
+    PassManager::create_validation_pipeline().run(model, diag);
+    for (const auto& d : diag.get_diagnostics()) {
+        EXPECT_NE(d.code, "W0201") << d.message;
     }
 }
 

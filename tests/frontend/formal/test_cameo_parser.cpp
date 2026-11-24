@@ -12,7 +12,6 @@
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/frontend/formal/cameo_xmi_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
-#include "fsm/middleend/analysis/fsm_validator.hpp"
 #include "fsm/middleend/passes/choice_inlining_pass.hpp"
 
 using namespace fsm::frontend::formal;
@@ -20,8 +19,6 @@ using namespace fsm::frontend;
 using namespace fsm::backend::cpp;
 using namespace fsm::backend;
 using namespace fsm::diagnostic;
-using namespace fsm::middleend::analysis;
-using namespace fsm::middleend;
 using namespace fsm::middleend::passes;
 using namespace fsm::ir;
 
@@ -65,8 +62,8 @@ TEST(CameoParser, BasicXmiDocument_ParsedIntoValidFsmIr) {
 
     CameoXmiParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi_content, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.name, "DeviceProtocolFSM");
     EXPECT_EQ(model.initial_state, "Disconnected");
@@ -125,8 +122,8 @@ TEST(CameoParser, CompositeAndChoicePseudostates_ParsedIntoValidFsmIr) {
 
     CameoXmiParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi_content, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.name, "SpacecraftMissionFSM");
     EXPECT_TRUE(model.is_choice_node("ClearanceChoice"));
@@ -137,7 +134,7 @@ TEST(CameoParser, CompositeAndChoicePseudostates_ParsedIntoValidFsmIr) {
 
     // Choice pseudostates must be inlined before C++ emission (as the real pipeline does).
     DiagnosticEngine diag;
-    ASSERT_TRUE(ChoiceInliningPass::run(model, diag)) << "ChoiceInliningPass failed: " << diag.render_to_string();
+    ASSERT_TRUE(ChoiceInliningPass{}.run(model, diag)) << "ChoiceInliningPass failed: " << diag.render_to_string();
     EXPECT_FALSE(model.is_choice_node("ClearanceChoice")) << "ClearanceChoice should have been removed by inlining";
 
     GeneratorOptions opts;
@@ -176,8 +173,8 @@ TEST(CameoParser, AttributeStyleEffectsAndActions_ParsedIntoValidFsmIr) {
 
     CameoXmiParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi_content, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.states.size(), 2U);
     EXPECT_EQ(model.transitions.size(), 2U);
@@ -215,8 +212,8 @@ TEST(CameoParser, NativeEntryExitAndDoActivity_CapturedInStateNode) {
 
     CameoXmiParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi_content, model, err)) << "Error: " << err.render_to_string();
 
     const auto* flight = model.find_state("Flight");
     ASSERT_NE(flight, nullptr);
@@ -256,8 +253,8 @@ TEST(CameoParser, XmlEntitiesInNamesAndGuards_DecodedCorrectly) {
 
     CameoXmiParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi_content, model, err)) << "Error: " << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 1u);
     EXPECT_EQ(model.transitions[0].event, "A__B_Event");
@@ -288,8 +285,8 @@ TEST(CameoParser, HistoryAndJunctionPseudostates_PreservedInIr) {
 
     CameoXmiParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi_content, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.states.size(), 1u);
     EXPECT_EQ(model.initial_state, "ActiveState");
@@ -334,8 +331,8 @@ TEST(CameoParser, CrossReferencedTriggersAndSysmlProfiles_ResolvedCorrectly) {
 
     CameoXmiParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi_content, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi_content, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.name, "SafetyFSM");
     EXPECT_EQ(model.initial_state, "NormalMode");
@@ -393,8 +390,8 @@ TEST(CameoParser, ParallelOrthogonalRegions_ParsedAndRoundtripped) {
 
     CameoXmiParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi_content, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi_content, model, err)) << err.render_to_string();
 
     const auto* running = model.find_state("Running");
     ASSERT_NE(running, nullptr);
@@ -415,7 +412,7 @@ TEST(CameoParser, ParallelOrthogonalRegions_ParsedAndRoundtripped) {
 
     const std::string exported = fsm::backend::formal::CameoSerializer::serialize(model);
     FsmIr reparsed;
-    ASSERT_TRUE(parser.parse(exported, reparsed, err)) << err;
+    ASSERT_TRUE(parser.parse(exported, reparsed, err)) << err.render_to_string();
     const auto* reparsed_running = reparsed.find_state("Running");
     ASSERT_NE(reparsed_running, nullptr);
     EXPECT_EQ(reparsed_running->kind, StateKind::Parallel);
@@ -444,8 +441,8 @@ TEST(CameoParser, GuardExpressionsAndEffectAssignments_PreservedInIr) {
 
     CameoXmiParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi_content, model, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi_content, model, err)) << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 1u);
     const auto& tr = model.transitions[0];
@@ -493,8 +490,8 @@ TEST(CameoParser, RoundtripVariablesAndAssignmentActions_PreservedInXmi) {
     const std::string xmi = fsm::backend::formal::CameoSerializer::serialize(orig);
     CameoXmiParser parser;
     FsmIr rt;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi, rt, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi, rt, err)) << err.render_to_string();
 
     ASSERT_NE(rt.find_variable("x"), nullptr);
     ASSERT_NE(rt.find_port("limit"), nullptr);
@@ -545,8 +542,8 @@ TEST(CameoParserTest, ResolvesForwardReferencedSiblingTargetsInsideCompositeRegi
 
     CameoXmiParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi, ir, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi, ir, err)) << err.render_to_string();
 
     ASSERT_EQ(ir.transitions.size(), 1u);
     EXPECT_EQ(ir.transitions[0].source, "Idle");
@@ -581,8 +578,8 @@ TEST(CameoXmiParser, TransitionEffectBodyAttribute_ParsedIntoAssignments) {
 
     CameoXmiParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi, ir, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi, ir, err)) << err.render_to_string();
     ASSERT_EQ(ir.transitions.size(), 1u);
     ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
     ASSERT_EQ(ir.transitions[0].transition_action->assignments.size(), 1u);
@@ -621,8 +618,8 @@ TEST(CameoXmiParser, StateEntryExitBodyAttributes_ParsedIntoAssignments) {
 
     CameoXmiParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi, ir, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi, ir, err)) << err.render_to_string();
     const auto* idle = ir.find_state("Idle");
     ASSERT_NE(idle, nullptr);
     ASSERT_EQ(idle->entry_actions.size(), 1u);
@@ -660,8 +657,8 @@ TEST(CameoXmiParser, TransitionKindInternal_SetsInternalTransitionEdgeKind) {
 
     CameoXmiParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi, ir, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi, ir, err)) << err.render_to_string();
     ASSERT_EQ(ir.transitions.size(), 1u);
     EXPECT_EQ(ir.transitions[0].kind, TransitionEdgeKind::Internal);
     EXPECT_EQ(ir.transitions[0].event, "Ping");
@@ -696,8 +693,8 @@ TEST(CameoXmiParser, NestedTransitionInsideSubvertex_ExtractedProperly) {
 
     CameoXmiParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi, ir, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi, ir, err)) << err.render_to_string();
     ASSERT_EQ(ir.transitions.size(), 1u);
     EXPECT_EQ(ir.transitions[0].source, "Idle");
     EXPECT_EQ(ir.transitions[0].target, "Idle");
@@ -739,8 +736,8 @@ TEST(CameoParser, MultipleTransitionsSameEndpoints_DisambiguateAssignmentActionN
 
     CameoXmiParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi, ir, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi, ir, err)) << err.render_to_string();
     ASSERT_EQ(ir.transitions.size(), 2u);
     ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
     ASSERT_TRUE(ir.transitions[1].transition_action.has_value());
@@ -772,8 +769,8 @@ TEST(CameoParser, TimeTriggerAttribute_PopulatesTimeTrigger) {
 
     CameoXmiParser parser;
     FsmIr ir;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi, ir, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi, ir, err)) << err.render_to_string();
     ASSERT_EQ(ir.transitions.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<TimeTrigger>(ir.transitions[0].trigger));
     EXPECT_EQ(std::get<TimeTrigger>(ir.transitions[0].trigger).duration_in_ms(), 100u);
@@ -803,8 +800,8 @@ TEST(CameoParser, PropertiesReqsAndTimeInvariant_PreservedAcrossSerializerRoundt
     const std::string xmi = fsm::backend::formal::CameoSerializer::serialize(ir);
     CameoXmiParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi, parsed, err)) << err.render_to_string();
 
     ASSERT_EQ(parsed.properties.size(), 1u);
     EXPECT_EQ(parsed.properties[0].name, "safe");
@@ -841,8 +838,8 @@ TEST(CameoParser, ForkJoinEntryAndExitPoints_PreservedAcrossSerializerRoundtrip)
     const std::string xmi = fsm::backend::formal::CameoSerializer::serialize(ir);
     CameoXmiParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi, parsed, err)) << err.render_to_string();
 
     ASSERT_NE(parsed.find_state("Split"), nullptr);
     EXPECT_EQ(parsed.find_state("Split")->kind, StateKind::Fork);
@@ -876,8 +873,8 @@ TEST(CameoParser, ChangeTrigger_PreservedAcrossSerializerRoundtrip) {
 
     CameoXmiParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<ChangeTrigger>(parsed.transitions[0].trigger));
     EXPECT_EQ(std::get<ChangeTrigger>(parsed.transitions[0].trigger).raw_expression, "count > 5");
@@ -902,8 +899,8 @@ TEST(CameoParser, ChoiceNode_PreservedInChoiceNodesAcrossSerializerRoundtrip) {
     const std::string xmi = fsm::backend::formal::CameoSerializer::serialize(ir);
     CameoXmiParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi, parsed, err)) << err.render_to_string();
     EXPECT_TRUE(parsed.is_choice_node("C1"));
     EXPECT_FALSE(parsed.choice_nodes.empty());
 }
@@ -931,8 +928,8 @@ TEST(CameoParser, MultiReqsAndSignalAttributes_PreservedAcrossSerializerRoundtri
     const std::string xmi = fsm::backend::formal::CameoSerializer::serialize(ir);
     CameoXmiParser parser;
     FsmIr parsed;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi, parsed, err)) << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi, parsed, err)) << err.render_to_string();
 
     const auto* p_idle = parsed.find_state("Idle");
     ASSERT_NE(p_idle, nullptr);

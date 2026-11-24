@@ -21,6 +21,42 @@ using namespace fsm::ir;
 
 namespace {
 
+std::string resolve_external_cpp_symbol(std::string_view symbol) {
+    if (symbol.empty()) {
+        return {};
+    }
+    if (symbol.find("::") != std::string_view::npos) {
+        return std::string(symbol);
+    }
+    std::string out = "::";
+    out.reserve(symbol.size() + 4);
+    for (char c : symbol) {
+        if (c == '.') {
+            out += "::";
+        } else {
+            out.push_back(c);
+        }
+    }
+    return out;
+}
+
+std::string resolve_external_cpp_include(std::string_view module_path) {
+    if (module_path.empty()) {
+        return {};
+    }
+    if (module_path.front() == '<' || module_path.front() == '"') {
+        return std::string(module_path);
+    }
+    const auto ends_with = [](std::string_view s, std::string_view suffix) {
+        return s.size() >= suffix.size() && s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
+    };
+    if (ends_with(module_path, ".hpp") || ends_with(module_path, ".h") || ends_with(module_path, ".hh") ||
+        ends_with(module_path, ".hxx")) {
+        return "\"" + std::string(module_path) + "\"";
+    }
+    return "\"" + std::string(module_path) + ".hpp\"";
+}
+
 bool is_ident_start(char c) noexcept {
     return std::isalpha(static_cast<unsigned char>(c)) != 0 || c == '_';
 }
@@ -425,7 +461,7 @@ void CppModelEmitter::emit_enums(std::ostream& out, const FsmIr& model) {
         std::string enum_name = escape_cpp_keyword(en.name);
         if (en.is_external()) {
             out << "/** @brief External enumeration alias for '" << sanitize_cpp_comment(en.name) << "'. */\n";
-            out << "using " << enum_name << " = " << en.external_binding->qualified_name << ";\n\n";
+            out << "using " << enum_name << " = " << resolve_external_cpp_symbol(en.external_ref->symbol) << ";\n\n";
             continue;
         }
         std::string underlying = en.underlying_type.empty() ? "uint8_t" : en.underlying_type;
@@ -509,7 +545,7 @@ void CppModelEmitter::emit_structs(std::ostream& out, const FsmIr& model) {
         std::string st_name = escape_cpp_keyword(st.name);
         if (st.is_external()) {
             out << "/** @brief External POD type alias for '" << sanitize_cpp_comment(st.name) << "'. */\n";
-            out << "using " << st_name << " = " << st.external_binding->qualified_name << ";\n\n";
+            out << "using " << st_name << " = " << resolve_external_cpp_symbol(st.external_ref->symbol) << ";\n\n";
             continue;
         }
         out << "/**\n";
@@ -2145,21 +2181,17 @@ void CppModelEmitter::emit_fsm_aliases(std::ostream& out, const FsmIr& model, co
 }
 
 void CppModelEmitter::emit_external_includes(std::ostream& out, const FsmIr& model) {
-    std::set<std::string> headers;
+    std::set<std::string> includes;
     for (const auto& td : model.custom_types) {
-        if (td.external_binding.has_value() && !td.external_binding->header.empty()) {
-            headers.insert(td.external_binding->header);
+        if (td.external_ref.has_value() && !td.external_ref->module.empty()) {
+            includes.insert(resolve_external_cpp_include(td.external_ref->module));
         }
     }
-    if (headers.empty()) {
+    if (includes.empty()) {
         return;
     }
-    for (const auto& hdr : headers) {
-        if (hdr.front() == '<' || hdr.front() == '"') {
-            out << "#include " << hdr << "\n";
-        } else {
-            out << "#include \"" << hdr << "\"\n";
-        }
+    for (const auto& inc : includes) {
+        out << "#include " << inc << "\n";
     }
     out << "\n";
 }

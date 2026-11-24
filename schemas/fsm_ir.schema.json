@@ -90,8 +90,15 @@
           "underlying_type": { "type": "string" },
           "description": { "type": "string" },
           "is_datatype": { "type": "boolean" },
-          "external_header": { "type": "string" },
-          "external_qualified_name": { "type": "string" },
+          "external_ref": {
+            "type": "object",
+            "required": ["module", "symbol"],
+            "additionalProperties": false,
+            "properties": {
+              "module": { "type": "string", "minLength": 1 },
+              "symbol": { "type": "string", "minLength": 1 }
+            }
+          },
           "literals": { "type": "array", "items": { "type": "object" } },
           "fields": { "type": "array", "items": { "type": "object" } }
         }

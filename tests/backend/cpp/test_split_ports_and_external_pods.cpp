@@ -45,9 +45,9 @@ FsmIr build_charger_ir() {
     ir.initial_state = "Idle";
     ir.package = "charger_pkg";
 
-    ir.add_type(TypeDefinition::make_external("BatteryStatus", "shared_types.hpp", "::shared::BatteryStatus",
-                                              TypeKind::Struct, "Shared BMS telemetry POD"));
-    ir.add_type(TypeDefinition::make_external("PowerMode", "shared_types.hpp", "::shared::PowerMode", TypeKind::Enum,
+    ir.add_type(TypeDefinition::make_external("BatteryStatus", "shared_types", "shared.BatteryStatus", TypeKind::Struct,
+                                              "Shared BMS telemetry POD"));
+    ir.add_type(TypeDefinition::make_external("PowerMode", "shared_types", "shared.PowerMode", TypeKind::Enum,
                                               "Shared power mode enum"));
 
     ir.add_state("Idle");
@@ -70,8 +70,8 @@ FsmIr build_drive_ir() {
     ir.initial_state = "Standby";
     ir.package = "drive_pkg";
 
-    ir.add_type(TypeDefinition::make_external("BatteryStatus", "shared_types.hpp", "::shared::BatteryStatus",
-                                              TypeKind::Struct, "Shared BMS telemetry POD"));
+    ir.add_type(TypeDefinition::make_external("BatteryStatus", "shared_types", "shared.BatteryStatus", TypeKind::Struct,
+                                              "Shared BMS telemetry POD"));
 
     ir.add_state("Standby");
     ir.add_state("Driving");
@@ -94,9 +94,10 @@ TEST(SplitPortsAndExternalPods, ExternalTypeBinding_IrJsonRoundTrip_IsLossless) 
     original.canonicalize();
 
     const std::string json1 = FsmIrSerializer::serialize_json(original);
-    EXPECT_NE(json1.find("\"external_header\": \"shared_types.hpp\""), std::string::npos);
-    EXPECT_NE(json1.find("\"external_qualified_name\": \"::shared::BatteryStatus\""), std::string::npos);
-    EXPECT_NE(json1.find("\"external_qualified_name\": \"::shared::PowerMode\""), std::string::npos);
+    EXPECT_NE(json1.find("\"external_ref\": { \"module\": \"shared_types\", \"symbol\": \"shared.BatteryStatus\" }"),
+              std::string::npos);
+    EXPECT_NE(json1.find("\"external_ref\": { \"module\": \"shared_types\", \"symbol\": \"shared.PowerMode\" }"),
+              std::string::npos);
 
     FsmIr parsed;
     std::string err;
@@ -108,14 +109,14 @@ TEST(SplitPortsAndExternalPods, ExternalTypeBinding_IrJsonRoundTrip_IsLossless) 
     const auto* batt_td = parsed.find_type("BatteryStatus");
     ASSERT_NE(batt_td, nullptr);
     ASSERT_TRUE(batt_td->is_external());
-    EXPECT_EQ(batt_td->external_binding->header, "shared_types.hpp");
-    EXPECT_EQ(batt_td->external_binding->qualified_name, "::shared::BatteryStatus");
+    EXPECT_EQ(batt_td->external_ref->module, "shared_types");
+    EXPECT_EQ(batt_td->external_ref->symbol, "shared.BatteryStatus");
 
     const auto* mode_td = parsed.find_type("PowerMode");
     ASSERT_NE(mode_td, nullptr);
     ASSERT_TRUE(mode_td->is_external());
-    EXPECT_EQ(mode_td->external_binding->header, "shared_types.hpp");
-    EXPECT_EQ(mode_td->external_binding->qualified_name, "::shared::PowerMode");
+    EXPECT_EQ(mode_td->external_ref->module, "shared_types");
+    EXPECT_EQ(mode_td->external_ref->symbol, "shared.PowerMode");
 
     const std::string json2 = FsmIrSerializer::serialize_json(parsed);
     EXPECT_EQ(json1, json2);

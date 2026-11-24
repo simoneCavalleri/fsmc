@@ -1688,10 +1688,12 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
                 if (const auto* dt_val = t_val.get_child("is_datatype")) {
                     td.is_datatype = (dt_val->type == JsonType::Bool && dt_val->bool_val);
                 }
-                const std::string ext_hdr = t_val.get_string("external_header");
-                const std::string ext_qual = t_val.get_string("external_qualified_name");
-                if (!ext_hdr.empty() || !ext_qual.empty()) {
-                    td.external_binding = ExternalTypeBinding{ext_hdr, ext_qual.empty() ? td.name : ext_qual};
+                if (const auto* ext_ref = t_val.get_child("external_ref"); ext_ref != nullptr && ext_ref->is_object()) {
+                    const std::string ext_mod = ext_ref->get_string("module");
+                    const std::string ext_sym = ext_ref->get_string("symbol");
+                    if (!ext_mod.empty() || !ext_sym.empty()) {
+                        td.external_ref = ExternalTypeRef{ext_mod, ext_sym.empty() ? td.name : ext_sym};
+                    }
                 }
                 const auto* lits_arr = t_val.get_child("literals");
                 if (lits_arr != nullptr && lits_arr->is_array()) {

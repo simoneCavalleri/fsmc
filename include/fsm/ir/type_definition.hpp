@@ -55,14 +55,18 @@ enum class TypeKind : std::uint8_t {
 }
 
 /**
- * @brief External header binding for POD/struct/enum types defined outside fsmc-generated code.
+ * @brief Language-agnostic reference to a type defined in an external module/contract.
+ *
+ * Uses canonical dot-separated qualified symbols (e.g. "shared.BatteryStatus") and an abstract
+ * module identifier (e.g. "shared_types" or "shared_types.hpp"). Target backends lower this
+ * reference into target-specific imports/includes and qualified identifiers.
  */
-struct ExternalTypeBinding {
-    std::string header;          ///< Header path to include (e.g. "shared_types.hpp" or "<pkg/types.hpp>")
-    std::string qualified_name;  ///< Fully-qualified C++ type name (e.g. "::shared::BatteryStatus")
+struct ExternalTypeRef {
+    std::string module;  ///< Abstract external module/contract path (e.g. "shared_types")
+    std::string symbol;  ///< Language-agnostic qualified symbol (e.g. "shared.BatteryStatus")
 
-    bool operator==(const ExternalTypeBinding& other) const noexcept {
-        return header == other.header && qualified_name == other.qualified_name;
+    bool operator==(const ExternalTypeRef& other) const noexcept {
+        return module == other.module && symbol == other.symbol;
     }
 };
 
@@ -73,17 +77,17 @@ struct ExternalTypeBinding {
  * - Enum: holds `underlying_type` and `literals`.
  * - Struct: holds `fields` and `is_datatype`.
  * - Alias: holds `underlying_type` (the target aliased type).
- * - External: when `external_binding` is set, references an externally defined POD/enum header.
+ * - External: when `external_ref` is set, references an externally defined type contract.
  */
 struct TypeDefinition {
-    std::string name;                                     ///< Type identifier (e.g. "NavigationMode", "Waypoint")
-    TypeKind kind{TypeKind::Struct};                      ///< Kind of user type (Enum, Struct, Alias)
-    std::string underlying_type;                          ///< Integer type for Enum, or target type for Alias
-    bool is_datatype{false};                              ///< For Struct: true if declared as value datatype
-    std::vector<StructField> fields;                      ///< Struct fields (for Struct kind)
-    std::vector<EnumLiteral> literals;                    ///< Symbolic literals (for Enum kind)
-    std::string description;                              ///< Documentation or MBSE annotation
-    std::optional<ExternalTypeBinding> external_binding;  ///< External header/type binding if defined outside fsmc
+    std::string name;                             ///< Type identifier (e.g. "NavigationMode", "Waypoint")
+    TypeKind kind{TypeKind::Struct};              ///< Kind of user type (Enum, Struct, Alias)
+    std::string underlying_type;                  ///< Integer type for Enum, or target type for Alias
+    bool is_datatype{false};                      ///< For Struct: true if declared as value datatype
+    std::vector<StructField> fields;              ///< Struct fields (for Struct kind)
+    std::vector<EnumLiteral> literals;            ///< Symbolic literals (for Enum kind)
+    std::string description;                      ///< Documentation or MBSE annotation
+    std::optional<ExternalTypeRef> external_ref;  ///< External module/symbol ref if defined outside fsmc
 
     TypeDefinition() = default;
 
@@ -148,10 +152,10 @@ struct TypeDefinition {
         return TypeDefinition(std::move(name), TypeKind::Alias, std::move(target_type), false, std::move(desc));
     }
 
-    static TypeDefinition make_external(std::string name, std::string header, std::string qualified_name,
+    static TypeDefinition make_external(std::string name, std::string module, std::string symbol,
                                         TypeKind type_kind = TypeKind::Struct, std::string desc = "") {
         TypeDefinition td(std::move(name), type_kind, "", false, std::move(desc));
-        td.external_binding = ExternalTypeBinding{std::move(header), std::move(qualified_name)};
+        td.external_ref = ExternalTypeRef{std::move(module), std::move(symbol)};
         return td;
     }
 
@@ -162,7 +166,7 @@ struct TypeDefinition {
     [[nodiscard]] constexpr bool is_alias() const noexcept { return kind == TypeKind::Alias; }
 
     [[nodiscard]] bool is_external() const noexcept {
-        return external_binding.has_value() && !external_binding->qualified_name.empty();
+        return external_ref.has_value() && !external_ref->symbol.empty();
     }
 
     // --- Field Lookups & Mutations (Struct) ---
@@ -240,7 +244,7 @@ struct TypeDefinition {
     bool operator==(const TypeDefinition& other) const noexcept {
         return name == other.name && kind == other.kind && underlying_type == other.underlying_type &&
                is_datatype == other.is_datatype && fields == other.fields && literals == other.literals &&
-               description == other.description && external_binding == other.external_binding;
+               description == other.description && external_ref == other.external_ref;
     }
 };
 

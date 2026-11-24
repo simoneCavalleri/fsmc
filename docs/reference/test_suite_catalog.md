@@ -4,8 +4,8 @@
 > To update this file, run: `cmake --build build --target generate_test_catalog` or `python3 scripts/generate_test_catalog.py`.
 
 **Total Documented Subsystems**: 12  
-**Total Test Suites & Binaries**: 86  
-**Total Documented Test Cases**: 767  
+**Total Test Suites & Binaries**: 87  
+**Total Documented Test Cases**: 770  
 
 ---
 
@@ -150,6 +150,7 @@
 | [`test_pipeline_extensibility.cpp`](../../tests/integration/pipeline/test_pipeline_extensibility.cpp) | `tests/integration/pipeline/test_pipeline_extensibility.cpp` | 4 | Integration tests for pipeline extensibility, external Unix pipe filters, and dynamic plugin loading. |
 | [`test_cli_driver_errors.cpp`](../../tests/integration/test_cli_driver_errors.cpp) | `tests/integration/test_cli_driver_errors.cpp` | 14 | Comprehensive regression tests for controlled fsmc and fsm-opt driver failure contracts. |
 | [`test_cmake_integration.cpp`](../../tests/integration/test_cmake_integration.cpp) | `tests/integration/test_cmake_integration.cpp` | 0 | Integration test verifying the `fsm_target_sources` CMake build-system macro. |
+| [`test_differential_semantics.cpp`](../../tests/integration/test_differential_semantics.cpp) | `tests/integration/test_differential_semantics.cpp` | 3 | Differential verification suite comparing IrSimulator (reference oracle) against generated C++17 and C++20 FSMs. |
 | [`test_fsm_opt_cli_options.cpp`](../../tests/integration/test_fsm_opt_cli_options.cpp) | `tests/integration/test_fsm_opt_cli_options.cpp` | 12 | Comprehensive verification suite for all fsm-opt command-line options. |
 | [`test_fsmc_cli_options.cpp`](../../tests/integration/test_fsmc_cli_options.cpp) | `tests/integration/test_fsmc_cli_options.cpp` | 25 | Comprehensive verification suite for all fsmc command-line options. |
 | [`test_golden_ir_invariance.cpp`](../../tests/integration/test_golden_ir_invariance.cpp) | `tests/integration/test_golden_ir_invariance.cpp` | 9 | Golden IR cross-format roundtrip and middle-end pass invariance test suite. |

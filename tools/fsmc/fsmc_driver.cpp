@@ -421,7 +421,16 @@ class FsmcDriverImpl {
                 ss << std::cin.rdbuf();
                 trace_content = ss.str();
             }
-            IrSimulator::simulate_trace(model, trace_content, std::cout);
+            SimulationOptions sim_opts;
+            sim_opts.strict_guards = opts.strict_determinism;
+            auto report = IrSimulator::simulate_detailed(model, trace_content, std::cout, sim_opts);
+            if (!opts.trace_out_file.empty()) {
+                std::string write_err;
+                if (!write_file_content(opts.trace_out_file, report.to_json(), write_err)) {
+                    std::cerr << "Error: " << write_err << "\n";
+                    return 1;
+                }
+            }
             return 0;
         }
 

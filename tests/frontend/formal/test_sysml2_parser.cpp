@@ -732,8 +732,8 @@ package Timing {
     ASSERT_TRUE(parser.parse(sysml, model, err)) << err.render_to_string();
 
     const std::string exported = fsm::backend::formal::Sysml2Serializer::serialize(model);
-    EXPECT_NE(exported.find("accept after(5000ms)"), std::string::npos);
-    EXPECT_EQ(exported.find("event def after_5000ms;"), std::string::npos);
+    EXPECT_NE(exported.find("accept after 5000 [ms]"), std::string::npos);
+    EXPECT_EQ(exported.find("item def after_5000ms;"), std::string::npos);
 
     FsmIr reparsed;
     ASSERT_TRUE(parser.parse(exported, reparsed, err)) << err.render_to_string();
@@ -1181,7 +1181,7 @@ TEST(Sysml2Parser, SignedIntRoundtrip_PreservesSignedTypeAcrossSerializer) {
     ir.add_variable(VariableDefinition("count", DataType::int32(), "-2"));
 
     const std::string sysml = fsm::backend::formal::Sysml2Serializer::serialize(ir);
-    EXPECT_NE(sysml.find("attribute count : int = -2;"), std::string::npos) << sysml;
+    EXPECT_NE(sysml.find("attribute count : int := -2;"), std::string::npos) << sysml;
 
     Sysml2Parser parser;
     FsmIr parsed;

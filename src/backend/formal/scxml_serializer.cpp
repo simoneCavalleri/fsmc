@@ -46,13 +46,13 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
     out << pad << "<" << tag_name << " id=\"" << escape_xml(state.name) << "\"";
     if (state.kind == StateKind::Fork || state.kind == StateKind::Join || state.kind == StateKind::EntryPoint ||
         state.kind == StateKind::ExitPoint || state.kind == StateKind::Choice) {
-        out << " kind=\"" << state_kind_to_string(state.kind) << "\"";
+        out << " fsm:kind=\"" << state_kind_to_string(state.kind) << "\"";
     }
     if (!is_parallel && !state.initial_sub_state.empty()) {
         out << " initial=\"" << escape_xml(state.initial_sub_state) << "\"";
     }
     if (!state.traceability_reqs.empty()) {
-        out << " satisfies=\"";
+        out << " fsm:satisfies=\"";
         for (size_t r = 0; r < state.traceability_reqs.size(); ++r) {
             if (r > 0)
                 out << ", ";
@@ -61,7 +61,7 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
         out << "\"";
     }
     if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
-        out << " invariant=\"" << escape_xml(*state.time_invariant) << "\"";
+        out << " fsm:invariant=\"" << escape_xml(*state.time_invariant) << "\"";
     }
     out << ">\n";
 
@@ -127,9 +127,9 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
             << (state_has_deep_history ? "deep" : "shallow") << "\"/>\n";
     }
 
-    // Deferred events
+    // Deferred events (namespaced extension outside W3C SCXML 1.0 core)
     for (const auto& d_evt : state.deferred_events) {
-        out << pad << "  <defer event=\"" << escape_xml(d_evt) << "\"/>\n";
+        out << pad << "  <fsm:defer event=\"" << escape_xml(d_evt) << "\"/>\n";
     }
 
     // Child states if composite
@@ -144,7 +144,7 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
         if (trans.source == state.name) {
             out << pad << "  <transition";
             if (trans.priority > 0) {
-                out << " priority=\"" << trans.priority << "\"";
+                out << " fsm:priority=\"" << trans.priority << "\"";
             }
             if (const auto* ct = std::get_if<ChangeTrigger>(&trans.trigger);
                 ct != nullptr && !ct->raw_expression.empty()) {
@@ -214,24 +214,26 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
 std::string ScxmlSerializer::serialize(const FsmIr& model) {
     std::ostringstream out;
     out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
-    out << "<scxml xmlns=\"http://www.w3.org/2005/07/scxml\" version=\"1.0\" initial=\"" << model.initial_state
-        << "\" name=\"" << (model.name.empty() ? "GeneratedFSM" : model.name) << "\">\n";
+    out << "<scxml xmlns=\"http://www.w3.org/2005/07/scxml\" "
+           "xmlns:fsm=\"https://github.com/simoneCavalleri/fsmc/scxml\" "
+           "version=\"1.0\" initial=\""
+        << model.initial_state << "\" name=\"" << (model.name.empty() ? "GeneratedFSM" : model.name) << "\">\n";
 
-    // Native SCXML Datamodel
+    // Native SCXML Datamodel (W3C <data id="..." expr="..."/> + fsm:* metadata attributes)
     if (!model.variables.empty() || !model.ports.empty()) {
         out << "  <datamodel>\n";
         for (const auto& port : model.ports) {
-            out << "    <data id=\"" << escape_xml(port.name) << "\" type=\""
-                << escape_xml(port.type.to_canonical_string()) << "\" port=\"true\" dir=\""
+            out << "    <data id=\"" << escape_xml(port.name) << "\" fsm:type=\""
+                << escape_xml(port.type.to_canonical_string()) << "\" fsm:port=\"true\" fsm:dir=\""
                 << (port.is_out() ? "out" : (port.direction == PortDirection::InOut ? "inout" : "in")) << "\"";
             if (port.min_value.has_value()) {
-                out << " min=\"" << *port.min_value << "\"";
+                out << " fsm:min=\"" << *port.min_value << "\"";
             }
             if (port.max_value.has_value()) {
-                out << " max=\"" << *port.max_value << "\"";
+                out << " fsm:max=\"" << *port.max_value << "\"";
             }
             if (!port.constraint.empty()) {
-                out << " constraint=\"" << escape_xml(port.constraint) << "\"";
+                out << " fsm:constraint=\"" << escape_xml(port.constraint) << "\"";
             }
             out << "/>\n";
         }
@@ -240,7 +242,7 @@ std::string ScxmlSerializer::serialize(const FsmIr& model) {
             if (!var.initial_value.empty()) {
                 out << " expr=\"" << escape_xml(var.initial_value) << "\"";
             }
-            out << " type=\"" << escape_xml(var.type.to_canonical_string()) << "\"";
+            out << " fsm:type=\"" << escape_xml(var.type.to_canonical_string()) << "\"";
             out << "/>\n";
         }
         out << "  </datamodel>\n";

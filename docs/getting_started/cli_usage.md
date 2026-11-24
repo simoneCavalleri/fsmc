@@ -61,8 +61,9 @@ fsmc --export-runtime <directory_or_file> [--std 17|20]
 | `-Werror` | Treat all compiler diagnostics and middle-end warnings as fatal errors. | `false` |
 | `--strict, --strict-determinism` | Fail compilation on non-deterministic branch collisions or unprioritized triggers. | `false` |
 | `--races, --check-races` | Perform static data-race analysis across parallel orthogonal regions. | `false` |
-| `--simulate` | Simulate event trace directly on `FsmIr` with validator checks (reads `--trace` or stdin). | `false` |
+| `--simulate` | Simulate event trace directly on `FsmIr` (HFSM LCA, history, deferred recall, validator checks; reads `--trace` or stdin). | `false` |
 | `--trace <file>` | JSON or line-based event trace input file consumed by `--simulate`. | `stdin` |
+| `--trace-out <file>` | Export structured JSON simulation trace report (states, actions, registers) from `--simulate`. | None |
 | `--export-cex-gtest <file>` | Export formal verification counterexample traces to a compilable GoogleTest C++ file. | None |
 | `--harness, --emit-test-harness <file>` | Synthesize a standalone GoogleTest C++ harness verifying MC/DC condition coverage. | None |
 | `--req-audit` | Print Requirement Traceability Matrix (from `satisfy requirement` / `@fsm:state satisfies`) to terminal before code generation. | `false` |
@@ -79,6 +80,7 @@ fsmc --export-runtime <directory_or_file> [--std 17|20]
 | `--runtime-header <hdr>` | Explicit runtime header path included when `--modular` is active (e.g. `<fsm/fsm.hpp>` or `"custom/fsm.hpp"`). | `"fsm.hpp"` |
 | `--export-runtime <dir\|file>` | Export standalone runtime library headers (`fsm.hpp`) to the specified directory or explicit file path. | None |
 | `--no-thread-safe` | Disable generation of the `thread_safe_fsm` asynchronous wrapper. | `false` |
+| `--freestanding` | Emit zero-STL freestanding C++17/C++20 header (`FSMC_FREESTANDING`, no `<iostream>`/`<string>`/`<functional>`, `-fno-exceptions -fno-rtti` safe). | `false` |
 | `--no-stubs` | Do not emit default stub functors for actions and guards. | `false` |
 | `--allow-diagram, --allow-diagram-codegen` | Allow C++ generation from informal visual diagram formats (alias: `--diagram-codegen`). | `false` |
 
@@ -119,6 +121,8 @@ fsm-opt [OPTIONS] <input_model>
 | :--- | :--- | :--- |
 | `-p, --passes=<p1,p2,...>` | Execute a custom comma-separated list of middle-end passes. | Standard pipeline |
 | `--list-passes` | List all available registered Middle-End passes and exit. | - |
+| `--dump-pipeline` | Print scheduled pass pipeline DAG, prerequisites, and invalidated analyses. | `false` |
+| `--verify-ir` | Verify `FsmGraphOps::is_well_formed(ir)` after every pass (`E_IR_VERIFY` on violation). | `false` |
 | `--prune-dead` | Enable dead state and dead transition pruning pass. | `false` |
 | `--pipe-through <cmd>` | Stream canonical JSON IR through an external Unix filter/tool and re-read stdout. | None |
 | `--load-pass-plugin <path>` | Dynamically load a C++ shared library (`.so`) implementing custom `fsm::IPass` transformations. | None |

@@ -39,6 +39,7 @@
 #include "fsm/middleend/passes/submachine_inlining_pass.hpp"
 #include "fsm/middleend/passes/timed_deadlock_pass.hpp"
 #include "fsm/middleend/passes/transition_fusion_pass.hpp"
+#include "fsm/middleend/passes/verify_ir_integrity_pass.hpp"
 #include "fsm/middleend/passes/wcet_analysis_pass.hpp"
 
 namespace fsm::middleend {
@@ -470,7 +471,21 @@ bool ModelCheckingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             if (!trace_str.empty()) {
                 msg += "\n" + trace_str;
             }
-            diag.report(Diagnostic::error("E_MODEL_CHECK_VIOLATION", msg));
+            SourceSpan span;
+            if (auto it = ir.attributes.find("source_file"); it != ir.attributes.end() && !it->second.empty()) {
+                span.file_path = it->second;
+                span.line = 1;
+                span.column = 1;
+            }
+            Diagnostic d = Diagnostic::error("E_MODEL_CHECK_VIOLATION", msg, span);
+            for (std::size_t idx = 0; idx < res.counterexample_trace.size(); ++idx) {
+                const auto& step = res.counterexample_trace[idx];
+                const std::string next_st =
+                    (idx + 1 < res.counterexample_trace.size()) ? res.counterexample_trace[idx + 1].state_name : "";
+                d.counterexample.push_back(diagnostic::DiagnosticCounterexampleStep{step.step_index, step.state_name,
+                                                                                    step.event_name, next_st});
+            }
+            diag.report(std::move(d));
         }
     }
 
@@ -560,6 +575,7 @@ void PassManager::truncate_passes(std::size_t count) noexcept {
 PassManager PassManager::create_default_pipeline() {
     PassManager pm;
     pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
+    pm.add_pass(std::make_unique<VerifyIrIntegrityPass>());
     pm.add_pass(std::make_unique<SemanticValidationPass>());
     pm.add_pass(std::make_unique<GuardSimplificationPass>());
     pm.add_pass(std::make_unique<DeterminismEnforcementPass>());
@@ -580,6 +596,7 @@ PassManager PassManager::create_default_pipeline() {
 PassManager PassManager::create_optimizing_pipeline(bool prune_dead_states, bool minimize_states) {
     PassManager pm;
     pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
+    pm.add_pass(std::make_unique<VerifyIrIntegrityPass>());
     pm.add_pass(std::make_unique<SemanticValidationPass>());
     pm.add_pass(std::make_unique<GuardSimplificationPass>());
     pm.add_pass(std::make_unique<ConstantFoldingPass>());
@@ -607,8 +624,9 @@ PassManager PassManager::create_optimizing_pipeline(bool prune_dead_states, bool
 
 PassManager PassManager::create_verified_7stage_pipeline(bool optimize) {
     PassManager pm;
-    // Stage 1: Frontend Canonicalization & Syntax Desugaring
+    // Stage 1: Frontend Canonicalization & Integrity Gate
     pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
+    pm.add_pass(std::make_unique<VerifyIrIntegrityPass>());
     pm.add_pass(std::make_unique<SemanticValidationPass>());
     pm.add_pass(std::make_unique<GuardSimplificationPass>());
 
@@ -789,6 +807,7 @@ std::string PassManager::dump_pipeline() const {
 
 PassManager PassManager::create_validation_pipeline() {
     PassManager pm;
+    pm.add_pass(std::make_unique<VerifyIrIntegrityPass>());
     pm.add_pass(std::make_unique<SemanticValidationPass>());
     pm.add_pass(std::make_unique<ChoiceCompletenessPass>());
     pm.add_pass(std::make_unique<LivelockAnalysisPass>());

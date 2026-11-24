@@ -30,11 +30,13 @@
 #include <csignal>
 #endif
 
+#include "fsm/backend/cpp/c_abi_generator.hpp"
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/backend/cpp/runtime_exporter.hpp"
 #include "fsm/backend/diagram/companion_manifest_emitter.hpp"
 #include "fsm/backend/emitter_factory.hpp"
 #include "fsm/backend/formal/smv_serializer.hpp"
+#include "fsm/backend/manifest_emitter.hpp"
 #include "fsm/backend/rtm/rtm_emitter.hpp"
 #include "fsm/backend/verification/mcdc_harness_generator.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
@@ -44,6 +46,7 @@
 #include "fsm/frontend/diagram/diagram_contract_combiner.hpp"
 #include "fsm/frontend/directive/ltl_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/analysis/event_queue_bound_pass.hpp"
 #include "fsm/middleend/analysis/model_checker.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 #include "fsm/middleend/passes/dead_state_pruning_pass.hpp"
@@ -51,6 +54,7 @@
 #include "fsm/middleend/passes/guard_simplification_pass.hpp"
 #include "fsm/middleend/passes/orthogonal_interference_pass.hpp"
 #include "fsm/middleend/passes/submachine_inlining_pass.hpp"
+#include "fsm/middleend/passes/wcet_analysis_pass.hpp"
 #include "tools/common/file_utils.hpp"
 #include "tools/fsmc/fsmc_options.hpp"
 
@@ -105,7 +109,7 @@ class FsmcDriverImpl {
         }
 
         if (opts.show_version) {
-            std::cout << "fsmc version 0.12.0 (Universal State Machine Compiler & Optimization Infrastructure)\n";
+            std::cout << "fsmc version 0.13.0 (Universal State Machine Compiler & Optimization Infrastructure)\n";
             return 0;
         }
 
@@ -145,18 +149,10 @@ class FsmcDriverImpl {
                 return 1;
             }
         }
-        if (opts.cpp17_specified && opts.cpp20_specified) {
-            std::cerr << "warning[W0103]: Conflicting C++ standard options specified; prioritizing C++"
-                      << (opts.cpp_standard == fsm::backend::cpp::CppStandard::Cpp20 ? "20" : "17") << ".\n";
-            if (opts.werror) {
-                return 1;
-            }
-        }
-
         // Export standalone runtime if requested
         if (!opts.export_runtime_dir.empty()) {
             std::string err;
-            if (!RuntimeExporter::export_runtime(opts.export_runtime_dir, opts.cpp_standard, err)) {
+            if (!RuntimeExporter::export_runtime(opts.export_runtime_dir, err)) {
                 std::cerr << "Error: " << err << "\n";
                 return 1;
             }
@@ -578,9 +574,8 @@ class FsmcDriverImpl {
             }
         }
 
-        // Generate C++ code
+        // Generate C++17 code
         GeneratorOptions gen_opts;
-        gen_opts.cpp_standard = opts.cpp_standard;
         gen_opts.standalone = opts.standalone;
         gen_opts.include_stubs = opts.include_stubs;
         gen_opts.thread_safe = opts.thread_safe;
@@ -588,29 +583,138 @@ class FsmcDriverImpl {
         gen_opts.target_namespace = opts.ns_name;
         gen_opts.runtime_header = opts.runtime_header;
 
-        std::string generated_code;
-        try {
-            generated_code = CppGenerator::generate_header(model, gen_opts);
-        } catch (const std::exception& ex) {
-            std::cerr << "Error: C++ backend rejected the model: " << ex.what() << "\n";
-            return 1;
-        }
-
         if (!opts.output_file.empty() && !is_stdout_path(opts.output_file)) {
-            std::string write_err;
-            if (!write_file_content(opts.output_file, generated_code, write_err)) {
-                std::cerr << "Error: " << write_err << "\n";
+            const bool use_split = !opts.standalone_specified;
+            const fs::path fsm_path(opts.output_file);
+            std::string stem = fsm_path.stem().string();
+            const std::string ext = fsm_path.extension().string();
+            if (stem.size() > 4 && stem.compare(stem.size() - 4, 4, "_fsm") == 0) {
+                stem.erase(stem.size() - 4);
+            }
+
+            ManifestArtifacts manifest_artifacts;
+            manifest_artifacts.standalone = !use_split;
+            manifest_artifacts.fsm_header = fsm_path.filename().string();
+
+            if (use_split) {
+                const fs::path ports_path = fsm_path.parent_path() / (stem + "_ports" + (ext.empty() ? ".hpp" : ext));
+                const std::string ports_inc = ports_path.filename().string();
+                manifest_artifacts.ports_header = ports_inc;
+
+                GeneratedCppBundle bundle;
+                try {
+                    bundle = CppGenerator::generate_bundle(model, gen_opts, ports_inc);
+                } catch (const std::exception& ex) {
+                    std::cerr << "Error: C++ backend rejected the model: " << ex.what() << "\n";
+                    return 1;
+                }
+
+                std::string write_err;
+                if (!write_file_content(ports_path.string(), bundle.ports_header, write_err)) {
+                    std::cerr << "Error: " << write_err << "\n";
+                    return 1;
+                }
+                if (!write_file_content(opts.output_file, bundle.fsm_header, write_err)) {
+                    std::cerr << "Error: " << write_err << "\n";
+                    return 1;
+                }
+                std::cout << "[SUCCESS] C++17 (Split" << (opts.standalone ? "" : " + Modular")
+                          << ") generated successfully:\n"
+                          << "  - Ports: " << ports_path.string() << "\n"
+                          << "  - FSM:   " << opts.output_file << "\n"
+                          << "  - States: " << model.states.size() << "\n"
+                          << "  - Events: " << model.signals.size() << "\n"
+                          << "  - Transitions: " << model.transitions.size() << "\n"
+                          << "  - Guards: " << model.guards.size() << "\n"
+                          << "  - Actions: " << model.actions.size() << "\n";
+            } else {
+                std::string generated_code;
+                try {
+                    generated_code = CppGenerator::generate_header(model, gen_opts);
+                } catch (const std::exception& ex) {
+                    std::cerr << "Error: C++ backend rejected the model: " << ex.what() << "\n";
+                    return 1;
+                }
+
+                std::string write_err;
+                if (!write_file_content(opts.output_file, generated_code, write_err)) {
+                    std::cerr << "Error: " << write_err << "\n";
+                    return 1;
+                }
+                std::cout << "[SUCCESS] C++17 (" << (opts.standalone ? "Standalone" : "Modular")
+                          << ") generated successfully to: " << opts.output_file << "\n"
+                          << "  - States: " << model.states.size() << "\n"
+                          << "  - Events: " << model.signals.size() << "\n"
+                          << "  - Transitions: " << model.transitions.size() << "\n"
+                          << "  - Guards: " << model.guards.size() << "\n"
+                          << "  - Actions: " << model.actions.size() << "\n";
+            }
+
+            if (opts.emit_c_abi) {
+                const fs::path c_hdr_path = fsm_path.parent_path() / (stem + "_c.h");
+                const fs::path c_src_path = fsm_path.parent_path() / (stem + "_c.cpp");
+                GeneratedCAbiBundle c_bundle;
+                try {
+                    c_bundle = CAbiGenerator::generate(model, gen_opts, fsm_path.filename().string(),
+                                                       c_hdr_path.filename().string());
+                } catch (const std::exception& ex) {
+                    std::cerr << "Error: C ABI generator rejected the model: " << ex.what() << "\n";
+                    return 1;
+                }
+                std::string write_err;
+                if (!write_file_content(c_hdr_path.string(), c_bundle.header, write_err) ||
+                    !write_file_content(c_src_path.string(), c_bundle.source, write_err)) {
+                    std::cerr << "Error: " << write_err << "\n";
+                    return 1;
+                }
+                manifest_artifacts.c_header = c_hdr_path.filename().string();
+                manifest_artifacts.c_source = c_src_path.filename().string();
+                std::cout << "[SUCCESS] C99 ABI generated successfully:\n"
+                          << "  - Header: " << c_hdr_path.string() << "\n"
+                          << "  - Bridge: " << c_src_path.string() << "\n";
+            }
+
+            if (opts.emit_manifest) {
+                const fs::path manifest_path = opts.emit_manifest_file.empty()
+                                                   ? (fsm_path.parent_path() / (stem + ".manifest.json"))
+                                                   : fs::path(opts.emit_manifest_file);
+                ManifestVerificationSummary ver_summary;
+                ver_summary.verified = true;
+                ver_summary.properties_checked = model.properties.size();
+
+                ir::FsmIr analysis_copy = model;
+                diagnostic::DiagnosticEngine sched_diag;
+                middleend::passes::WcetAnalysisPass wcet_pass;
+                wcet_pass.run(analysis_copy, sched_diag);
+                ver_summary.wcet_max_microsteps = wcet_pass.max_micro_steps();
+                ver_summary.zeno_free = !wcet_pass.has_zeno_cycle();
+
+                middleend::analysis::EventQueueBoundPass queue_pass;
+                queue_pass.run(analysis_copy, sched_diag);
+                if (auto it = analysis_copy.attributes.find("static_event_queue_capacity");
+                    it != analysis_copy.attributes.end()) {
+                    try {
+                        ver_summary.max_event_queue_bound = static_cast<std::size_t>(std::stoull(it->second));
+                    } catch (...) {
+                    }
+                }
+
+                const std::string manifest_json = ManifestEmitter::emit_json(model, manifest_artifacts, ver_summary);
+                std::string write_err;
+                if (!write_file_content(manifest_path.string(), manifest_json, write_err)) {
+                    std::cerr << "Error: " << write_err << "\n";
+                    return 1;
+                }
+                std::cout << "[SUCCESS] System manifest generated successfully to: " << manifest_path.string() << "\n";
+            }
+        } else {
+            std::string generated_code;
+            try {
+                generated_code = CppGenerator::generate_header(model, gen_opts);
+            } catch (const std::exception& ex) {
+                std::cerr << "Error: C++ backend rejected the model: " << ex.what() << "\n";
                 return 1;
             }
-            const std::string std_label = (opts.cpp_standard == CppStandard::Cpp20) ? "C++20" : "C++17";
-            std::cout << "[SUCCESS] " << std_label << " (" << (opts.standalone ? "Standalone" : "Modular")
-                      << ") generated successfully to: " << opts.output_file << "\n"
-                      << "  - States: " << model.states.size() << "\n"
-                      << "  - Events: " << model.signals.size() << "\n"
-                      << "  - Transitions: " << model.transitions.size() << "\n"
-                      << "  - Guards: " << model.guards.size() << "\n"
-                      << "  - Actions: " << model.actions.size() << "\n";
-        } else {
             std::cout << generated_code;
         }
 

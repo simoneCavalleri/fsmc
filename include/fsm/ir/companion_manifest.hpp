@@ -63,8 +63,24 @@ struct CompanionTypeField {
 struct CompanionCustomType {
     std::string name;
     std::string kind = "struct";
+    std::string external_module;
+    std::string external_symbol;
     std::vector<CompanionTypeField> fields;
     std::vector<std::string> enum_literals;
+};
+
+struct CompanionServiceParam {
+    std::string name;
+    std::string type = "int32_t";
+};
+
+struct CompanionService {
+    std::string name;
+    std::string return_type = "void";
+    bool is_pure = false;
+    bool is_noexcept = true;
+    std::string desc;
+    std::vector<CompanionServiceParam> params;
 };
 
 struct CompanionManifest {
@@ -75,6 +91,7 @@ struct CompanionManifest {
     std::vector<CompanionPort> ports;
     std::vector<CompanionVariable> variables;
     std::vector<CompanionSignal> signals;
+    std::vector<CompanionService> services;
     std::unordered_map<std::string, std::string> invariants;
     std::vector<CompanionProperty> properties;
     std::vector<CompanionAction> actions;

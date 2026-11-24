@@ -54,13 +54,10 @@ class CppCodegenBackend final : public ICodegenBackend {
   public:
     explicit CppCodegenBackend(cpp::GeneratorOptions options = {}) : options_(std::move(options)) {}
 
-    [[nodiscard]] std::string_view id() const noexcept override {
-        return options_.cpp_standard == cpp::CppStandard::Cpp20 ? "cpp20" : "cpp17";
-    }
+    [[nodiscard]] std::string_view id() const noexcept override { return "cpp17"; }
 
     [[nodiscard]] ir::TargetCapabilities capabilities() const noexcept override {
-        return options_.cpp_standard == cpp::CppStandard::Cpp20 ? ir::TargetCapabilities::cpp20()
-                                                                : ir::TargetCapabilities::cpp17();
+        return ir::TargetCapabilities::cpp17();
     }
 
     [[nodiscard]] std::string emit(const ir::FsmIr& ir, diagnostic::DiagnosticEngine& diag) const override {

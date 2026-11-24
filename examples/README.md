@@ -42,6 +42,8 @@ examples/
 │   └── plugin_and_pipeline/            (External Unix filter via stdin/stdout, dynamic C++ pass plugin)
 ├── 06_stateflow_digital_twin_ecu/      --> Automotive ECU Digital Twin (MathWorks Stateflow)
 │   └── main.cpp                        (Connective junction chaining, zero-heap snapshot recorder rollback)
+├── 07_modular_toolchain_c_abi/         --> Modular Toolchain & Pure C99 ABI (ir-json + Split Ports + C99)
+│   └── main.cpp / hal_driver.cpp / c_client.c (ir-json ingestion, HAL *_ports.hpp isolation, C99 services callback, SHA-256)
 ├── CMakeLists.txt                 --> Master build integration for all example targets
 └── run_all_examples.sh            --> Automated end-to-end CI/CLI test runner
 ```
@@ -59,6 +61,7 @@ examples/
 | [`04_formal_verification/flight_control_modes`](04_formal_verification/flight_control_modes/) | **Aerospace (DO-178C Level A)**<br>Fly-By-Wire Flight Computer | Formal LTL/CTL temporal logic specifications (`@fsm:property`), DO-178C requirement traceability audit (`--req-audit`), automated RTM matrix export, nuXmv SMV model checking. | `model-checking`<br>`safety-verifier`<br>`guard-simplification` | `fsmc fms.sysml --verify --req-audit --rtm-output rtm.json`<br>`flight_control_modes_example` |
 | [`05_custom_toolchain/plugin_and_pipeline`](05_custom_toolchain/plugin_and_pipeline/) | **Embedded DSP Sensing**<br>Sensor Acquisition Pipeline | External Unix filter pipelines (`--pipe-through`), dynamic runtime C++ middle-end pass plugins (`--load-pass-plugin`), typed MBSE contracts. | `pipe-through`<br>`naming-audit` (Plugin)<br>`timed-invariants-verifier` | `fsm-opt sensor_pipeline.sysml --load-pass-plugin=... --pipe-through=...`<br>`sensor_pipeline_example` |
 | [`06_stateflow_digital_twin_ecu`](06_stateflow_digital_twin_ecu/) | **Automotive ECU & Digital Twin**<br>Stateflow Engine Control | Simulink Stateflow XML (`.sfx`) chart ingestion, multi-hop connective flow junctions, zero-heap time-travel snapshot recorder (`fsm::snapshot_recorder<16, 512>`), microsecond telemetry and rollback. | `connective-junction-chaining`<br>`fsm::snapshot_recorder`<br>`fsm::seq_` dual action | `fsm-opt ecu.sfx --passes=connective-junction-chaining --emit-ir`<br>`stateflow_digital_twin_ecu_example` |
+| [`07_modular_toolchain_c_abi`](07_modular_toolchain_c_abi/) | **Modular MBSE Toolchain & C99 FFI**<br>Thermal PID Controller | Direct canonical `ir-json` ingestion (`.ir.json`), split `*_ports.hpp` HAL isolation (zero `fsm.hpp` dependency), zero-vtable C++17 `ServicesContract`, strict C99 client (`c_client.c`) with callback `services_t`, and cross-artifact `ir_sha256` attestation. | `verify-ir-integrity`<br>`ServicesContract`<br>`--emit-c-abi`<br>`constexpr IrSha256` | `fsmc --input-format=ir-json -i thermal_controller.ir.json -o thermal_controller_fsm.hpp --emit-c-abi`<br>`modular_toolchain_c_abi_example` |
 
 ---
 

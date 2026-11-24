@@ -41,7 +41,6 @@ fsmc_target_sources(my_app
         models/spacecraft.sysml
         models/mission.puml
     NAME MissionFSM
-    STANDARD 20
     STANDALONE
     NAMESPACE avionics
     NO_STUBS
@@ -74,7 +73,6 @@ target_link_libraries(my_app PRIVATE fsmc::fsmc_runtime)
 
 fsmc_target_sources(my_app
     DIAGRAMS models/connection.mmd
-    STANDARD 20
     STANDALONE
 )
 ```
@@ -96,10 +94,10 @@ For the full signature and every parameter (`NAME`, `STANDARD`, `NAMESPACE`, `NO
 ## 4. C/C++ Package Managers
 
 === "Conan 2.0"
-    After exporting `fsmc` to your local Conan cache (`conan create . --version 0.12.0`), reference it in `conanfile.txt`:
+    After exporting `fsmc` to your local Conan cache (`conan create . --version 0.13.0`), reference it in `conanfile.txt`:
     ```ini
     [requires]
-    fsmc/0.12.0
+    fsmc/0.13.0
 
     [generators]
     CMakeDeps
@@ -131,7 +129,7 @@ GEN_HDR = $(GEN_DIR)/uav_mission_fsm.hpp
 
 $(GEN_HDR): $(MODEL)
 	@mkdir -p $(GEN_DIR)
-	fsmc -i $< -o $(GEN_HDR) --target cpp --std 20 --standalone
+	fsmc -i $< -o $(GEN_HDR) --target cpp --standalone
 ```
 
 Drop the generated single-header artifact directly into your firmware sources—it requires no external libraries, dynamic linkers, or third-party dependencies.

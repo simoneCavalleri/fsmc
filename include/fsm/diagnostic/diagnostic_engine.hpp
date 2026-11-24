@@ -49,6 +49,27 @@ struct SourceSpan {
 };
 
 /**
+ * @struct DiagnosticCounterexampleStep
+ * @brief Single step in a formal verification counterexample trace attached to a diagnostic.
+ */
+struct DiagnosticCounterexampleStep {
+    size_t step{0};
+    std::string state;
+    std::string event;
+    std::string next_state;
+};
+
+/**
+ * @struct SuggestedFix
+ * @brief Machine-applicable source edit suggestion for automated tooling and AI agents.
+ */
+struct SuggestedFix {
+    std::string description;
+    SourceSpan span;
+    std::string replacement;
+};
+
+/**
  * @struct Diagnostic
  * @brief Diagnostic report containing severity, error code, location, and actionable suggestions.
  */
@@ -59,25 +80,31 @@ struct Diagnostic {
     SourceSpan span;                                         ///< Primary source location span
     std::string help_suggestion;                             ///< Actionable fix advice
     std::vector<std::pair<SourceSpan, std::string>> secondary_labels;  ///< Additional reference locations
+    std::vector<DiagnosticCounterexampleStep> counterexample;          ///< Optional formal counterexample trace
+    std::vector<SuggestedFix> suggested_fixes;                         ///< Optional structured code fixes
 
     static Diagnostic error(std::string code, std::string message, SourceSpan span = {}) {
-        return Diagnostic{DiagnosticSeverity::Error, std::move(code), std::move(message), std::move(span), "", {}};
+        return Diagnostic{
+            DiagnosticSeverity::Error, std::move(code), std::move(message), std::move(span), "", {}, {}, {}};
     }
 
     static Diagnostic safety_critical(std::string code, std::string message, SourceSpan span = {}) {
-        return Diagnostic{DiagnosticSeverity::Fatal, std::move(code), std::move(message), std::move(span), "", {}};
+        return Diagnostic{
+            DiagnosticSeverity::Fatal, std::move(code), std::move(message), std::move(span), "", {}, {}, {}};
     }
 
     static Diagnostic warning(std::string code, std::string message, SourceSpan span = {}) {
-        return Diagnostic{DiagnosticSeverity::Warning, std::move(code), std::move(message), std::move(span), "", {}};
+        return Diagnostic{
+            DiagnosticSeverity::Warning, std::move(code), std::move(message), std::move(span), "", {}, {}, {}};
     }
 
     static Diagnostic info(std::string code, std::string message, SourceSpan span = {}) {
-        return Diagnostic{DiagnosticSeverity::Note, std::move(code), std::move(message), std::move(span), "", {}};
+        return Diagnostic{
+            DiagnosticSeverity::Note, std::move(code), std::move(message), std::move(span), "", {}, {}, {}};
     }
 
     static Diagnostic note(std::string message, SourceSpan span = {}) {
-        return Diagnostic{DiagnosticSeverity::Note, "", std::move(message), std::move(span), "", {}};
+        return Diagnostic{DiagnosticSeverity::Note, "", std::move(message), std::move(span), "", {}, {}, {}};
     }
 };
 

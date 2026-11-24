@@ -171,10 +171,28 @@ echo -e "${YELLOW}Executing built target: stateflow_digital_twin_ecu_example...$
 "$(find_binary stateflow_digital_twin_ecu_example)" > /dev/null
 success "stateflow_digital_twin_ecu_example executed with 100% assertions passed"
 
-print_header "ALL 7 ENGINEERING SHOWCASES SUCCESSFULLY VALIDATED (100% OK)"
+# ------------------------------------------------------------------------------
+# Module 07: Modular Toolchain (ir-json, Split Ports, Zero-Vtable Services & Pure C99 ABI)
+# ------------------------------------------------------------------------------
+print_header "[MODULE 07] Modular Toolchain: ir-json, Split Ports & Pure C99 ABI"
+TMP_MOD07_DIR="$(mktemp -d)"
+trap 'rm -rf "${TMP_MOD07_DIR}"' EXIT
+echo -e "${YELLOW}Compiling thermal_controller.ir.json with --emit-c-abi and --emit-manifest...${NC}"
+"${FSMC}" --input-format=ir-json -i "${SCRIPT_DIR}/07_modular_toolchain_c_abi/thermal_controller.ir.json" \
+    -o "${TMP_MOD07_DIR}/thermal_controller_fsm.hpp" --emit-c-abi --emit-manifest > /dev/null
+[[ -f "${TMP_MOD07_DIR}/thermal_controller_ports.hpp" ]]
+[[ -f "${TMP_MOD07_DIR}/thermal_controller_fsm.hpp" ]]
+[[ -f "${TMP_MOD07_DIR}/thermal_controller_c.h" ]]
+[[ -f "${TMP_MOD07_DIR}/thermal_controller_c.cpp" ]]
+[[ -f "${TMP_MOD07_DIR}/thermal_controller.manifest.json" ]]
+success "thermal_controller.ir.json split headers, C99 ABI, and manifest emitted OK"
+
+echo -e "${YELLOW}Executing built target: modular_toolchain_c_abi_example...${NC}"
+"$(find_binary modular_toolchain_c_abi_example)" > /dev/null
+success "modular_toolchain_c_abi_example executed with 100% assertions passed"
 
 # ------------------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------------------
-print_header "ALL 7 FSMC EXAMPLES VERIFIED SUCCESSFULLY (100% PASS RATE)"
+print_header "ALL 8 FSMC EXAMPLES VERIFIED SUCCESSFULLY (100% PASS RATE)"
 echo -e "${GREEN}All models, formal properties, optimization passes, and executable harnesses are valid.${NC}\n"

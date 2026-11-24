@@ -378,7 +378,7 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
                         if (act.name.empty()) {
                             act.name = s_expr;
                         }
-                        act.instructions.push_back(ActionCallOp{s_expr, {}, {}, {}});
+                        act.instructions.push_back(ActionCallOp{s_expr, {}, {}, {}, std::nullopt});
                         model.add_action(s_expr);
                     }
                 }
@@ -430,7 +430,7 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
                         if (act.name.empty()) {
                             act.name = s_expr;
                         }
-                        act.instructions.push_back(ActionCallOp{s_expr, {}, {}, {}});
+                        act.instructions.push_back(ActionCallOp{s_expr, {}, {}, {}, std::nullopt});
                         model.add_action(s_expr);
                     }
                 }
@@ -561,7 +561,7 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
                 if (action.empty()) {
                     action = s_expr;
                 }
-                instructions.push_back(ActionCallOp{s_expr, {}, {}, {}});
+                instructions.push_back(ActionCallOp{s_expr, {}, {}, {}, std::nullopt});
                 model.add_action(s_expr);
             }
         }

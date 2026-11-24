@@ -72,7 +72,6 @@ Emergency --> Operating[H*] : ResumeDeepCmd
 
     // Generate C++ code and verify compilation syntax
     GeneratorOptions opts;
-    opts.cpp_standard = CppStandard::Cpp20;
     std::string code = CppGenerator::generate_header(model, opts);
     EXPECT_FALSE(code.empty());
     EXPECT_NE(code.find("fsm::history_is<Operating, Level4Calibrating>"), std::string::npos);

@@ -42,16 +42,16 @@ Use `fsmc` to emit either a standalone single-file header or a modular header pa
 === "Standalone Header (Single-FSM)"
     ```bash
     # Self-contained C++20 header with embedded zero-allocation runtime
-    fsmc -i connection.sysml -o connection_fsm.hpp --target cpp --std 20 --standalone --namespace conn --name ConnectionManager
+    fsmc -i connection.sysml -o connection_fsm.hpp --target cpp --standalone --namespace conn --name ConnectionManager
     ```
 
 === "Modular Headers (Multi-FSM Projects)"
     ```bash
     # 1. Export runtime headers once into your project include path
-    fsmc --export-runtime ./include/ --std 20
+    fsmc --export-runtime ./include/
 
     # 2. Generate a lightweight FSM header referencing the shared runtime
-    fsmc -i connection.sysml -o connection_fsm.hpp --target cpp --std 20 --modular --namespace conn --name ConnectionManager
+    fsmc -i connection.sysml -o connection_fsm.hpp --target cpp --modular --namespace conn --name ConnectionManager
 
     # Or specify a custom runtime header include path
     fsmc -i connection.sysml -o connection_fsm.hpp --modular="<fsm/fsm.hpp>" --namespace conn --name ConnectionManager
@@ -164,7 +164,6 @@ target_link_libraries(my_app PRIVATE fsmc::runtime)
 fsmc_target_sources(my_app
     DIAGRAMS models/connection.sysml
     NAME ConnectionManager
-    STANDARD 20
     STANDALONE
     NAMESPACE conn
 )

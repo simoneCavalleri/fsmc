@@ -15,7 +15,7 @@ fsmc -i <input_model> [OPTIONS]
 fsmc [OPTIONS] <input_model>
 fsmc -i <input_model> --export <format> -o <output_diagram>
 fsmc -i <input_model> --verify
-fsmc --export-runtime <directory_or_file> [--std 17|20]
+fsmc --export-runtime <directory_or_file>
 ```
 
 !!! note "Option Syntax Convention"
@@ -26,12 +26,12 @@ fsmc --export-runtime <directory_or_file> [--std 17|20]
 #### Input and Output Options
 | Flag | Description | Default |
 | :--- | :--- | :--- |
-| `-i, --input <file>` | Path to input model file (`.sysml`, `.slx`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, `.dot`), or `-` / `/dev/stdin` for standard input. | Positional argument |
-| `-o, --output <file>` | Path to output generated code or exported diagram file, or `-` / `/dev/stdout` for standard output. | `stdout` |
-| `-t, --target, --lang <lang>` | Target code generator backend: `cpp` (default). | `cpp` |
+| `-i, --input <file>` | Path to input model file (`.ir.json`, `.sysml`, `.slx`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, `.dot`), or `-` / `/dev/stdin` for standard input. | Positional argument |
+| `-o, --output <file>` | Path to output generated code (default split: `<stem>_ports.hpp` + `<stem>_fsm.hpp`) or exported diagram file, or `-` / `/dev/stdout` for standard output. | `stdout` |
+| `-t, --target, --lang <lang>` | Target code generator backend: `cpp` (unified C++17, compiles under C++17/20/23). | `cpp` |
 | `-n, --name <name>` | Generated state machine class/struct name. | Inferred from filename or `MyFSM` |
 | `-N, --ns, --namespace, --package <ns>` | Generated namespace / package enclosing the state machine types. | `fsm_generated` |
-| `--format <fmt>` | Override input parser format: `sysml2`, `stateflow`, `plantuml`, `mermaid`, `cameo`, `scxml`, `json`, `dot`, `auto`. | `auto` |
+| `--format, --input-format <fmt>` | Override input parser format: `ir-json` (strict canonical `FsmIr` v1.0), `sysml2`, `stateflow`, `plantuml`, `mermaid`, `cameo`, `scxml`, `xstate-json`/`json`, `dot`, `auto`. | `auto` |
 | `-e, --export <fmt>` | Export diagram or formal model to: `mermaid`, `plantuml`, `sysml2`, `stateflow`, `json`, `dot`, `scxml`, `cameo`, `smv`. | None |
 | `-s, --sidecar <file>` | Explicit companion manifest file (`.fsm.yaml`, `.fsm.json`) for diagram ingestion and external property attachment. | None |
 | `--emit-sidecar <file>` | Emit companion sidecar manifest (`.fsm.yaml`) alongside exported visual diagrams. | None |
@@ -70,24 +70,24 @@ fsmc --export-runtime <directory_or_file> [--std 17|20]
 | `--rtm, --rtm-output <file>` | Export Requirement Traceability Matrix report to a file. | None |
 | `--rtm-format <json\|md\|markdown>` | Format for Requirement Traceability Matrix export (`markdown` or `json`). | Inferred from file extension |
 
-#### C++ Backend Options (`--target cpp`)
+#### C++17 & C99 ABI Backend Options (`--target cpp`)
 | Flag | Description | Default |
 | :--- | :--- | :--- |
-| `--std <17\|20>` | Target C++ standard (`17` or `20`). | `17` |
-| `--c++17, --c++20` | Shortcut aliases for C++17 / C++20 (`-std=c++17` / `-std=c++20` also accepted). | `17` |
-| `--standalone` | Emit self-contained header with embedded zero-alloc runtime (0 external dependencies). | `true` |
+| `--standalone` | Emit a single self-contained header instead of the default split `<stem>_ports.hpp` + `<stem>_fsm.hpp` pair. | `false` (split on file output) |
+| `--emit-c-abi` | Also emit pure C99 zero-allocation ABI wrapper (`<stem>_c.h` + `<stem>_c.cpp`) with static aligned storage, C callback `services_t`, and `<prefix>_ir_sha256()`. | `false` |
+| `--emit-manifest[=<file>]` | Emit machine-readable `<stem>.manifest.json` (`schemas/fsm_manifest.schema.json`) with cross-artifact `ir_sha256`, ports, registers, events, services, external types, requirements, and real-time `scheduling` bounds (`wcet_max_microsteps`, `max_event_queue_bound`, `zeno_free`). | `false` |
 | `--modular[=<hdr>]` | Emit lightweight header that includes external runtime header (default: `"fsm.hpp"`, matching `--export-runtime`). | `false` |
 | `--runtime-header <hdr>` | Explicit runtime header path included when `--modular` is active (e.g. `<fsm/fsm.hpp>` or `"custom/fsm.hpp"`). | `"fsm.hpp"` |
-| `--export-runtime <dir\|file>` | Export standalone runtime library headers (`fsm.hpp`) to the specified directory or explicit file path. | None |
+| `--export-runtime <dir\|file>` | Export the unified C++17+ standalone runtime header (`fsm.hpp`) to the specified directory or explicit file path. | None |
 | `--no-thread-safe` | Disable generation of the `thread_safe_fsm` asynchronous wrapper. | `false` |
-| `--freestanding` | Emit zero-STL freestanding C++17/C++20 header (`FSMC_FREESTANDING`, no `<iostream>`/`<string>`/`<functional>`, `-fno-exceptions -fno-rtti` safe). | `false` |
+| `--freestanding` | Emit zero-STL freestanding C++17 header (`FSMC_FREESTANDING`, no `<iostream>`/`<string>`/`<functional>`, `-fno-exceptions -fno-rtti` safe). | `false` |
 | `--no-stubs` | Do not emit default stub functors for actions and guards. | `false` |
 | `--allow-diagram, --allow-diagram-codegen` | Allow C++ generation from informal visual diagram formats (alias: `--diagram-codegen`). | `false` |
 
 #### General Options
 | Flag | Description | Default |
 | :--- | :--- | :--- |
-| `--diagnostic-format <fmt>` | Set diagnostic renderer output format: `text` (standard compiler style), `json` (machine readable), `github` (GitHub Actions `::warning` / `::error` annotations). | `text` |
+| `--diagnostics, --diagnostic-format <fmt>` | Set diagnostic renderer output format: `text` (standard compiler style), `json` (machine-readable with `counterexample` and `suggested_fixes`), `github` (GitHub Actions annotations). | `text` |
 | `-h, --help` | Show command-line help message and exit. | - |
 | `-v, --version` | Show version information and exit. | - |
 
@@ -111,9 +111,9 @@ fsm-opt [OPTIONS] <input_model>
 #### Input and Output Options
 | Flag | Description | Default |
 | :--- | :--- | :--- |
-| `-i, --input <file>` | Input model or IR file (`.sysml`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, `.dot`, `.xml`). | Positional argument |
+| `-i, --input <file>` | Input model or IR file (`.ir.json`, `.sysml`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, `.dot`, `.xml`). | Positional argument |
 | `-o, --output <file>` | Output file path for transformed IR or emitted model. | `stdout` |
-| `--format <fmt>` | Override parser format (`sysml2`, `plantuml`, `mermaid`, `cameo`, `scxml`, `json`, `dot`, `stateflow`). | `auto` |
+| `--format, --input-format <fmt>` | Override parser format (`ir-json`, `sysml2`, `plantuml`, `mermaid`, `cameo`, `scxml`, `xstate-json`/`json`, `dot`, `stateflow`). | `auto` |
 | `--submachine-dir <dir>` | Search directory for external submachine diagram files referenced in models. | Current directory |
 
 #### Pass Pipeline and Optimization
@@ -128,7 +128,7 @@ fsm-opt [OPTIONS] <input_model>
 | `--load-pass-plugin <path>` | Dynamically load a C++ shared library (`.so`) implementing custom `fsm::IPass` transformations. | None |
 | `--print-before-all` | Dump IR state in JSON format before executing pass pipeline. | `false` |
 | `--print-after-all` | Dump IR state in JSON format after executing pass pipeline. | `false` |
-| `--diagnostic-format <fmt>` | Set diagnostic output format (`text`, `json`, `github`). | `text` |
+| `--diagnostics, --diagnostic-format <fmt>` | Set diagnostic output format (`text`, `json`, `github`). | `text` |
 | `-Werror` | Treat all diagnostic warnings and errors as fatal (informational notes are preserved). | `false` |
 
 #### IR Serialization and Formal Emission
@@ -162,7 +162,7 @@ fsm-opt [OPTIONS] <input_model>
 
 ## 3. Middle-End Optimization Passes Catalogue
 
-The `fsmc` middle-end provides **33 registered passes** (executable via `fsm-opt --passes=...` or configured by compiler optimization levels `-O0`, `-O1`, `-O2` and `--7stage`):
+The `fsmc` middle-end provides **34 registered passes** (executable via `fsm-opt --passes=...` or configured by compiler optimization levels `-O0`, `-O1`, `-O2` and `--7stage`):
 
 1. **`canonicalize`**: Normalizes state hierarchy, fully qualified names (`FQN`), and sorts nodes and transitions into deterministic order.
 2. **`guard-simplification`**: Bottom-up boolean algebra reduction (`not(not A) => A`, `A and true => A`, `A and false => false`).

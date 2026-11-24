@@ -74,7 +74,7 @@ To export state machine diagrams from Cameo Systems Modeler for compilation with
 fsmc -i mission_export.xmi --verify
 
 # Generate standalone C++20 header directly from Cameo XMI
-fsmc -i mission_export.xmi -o mission_fsm.hpp --std 20 --namespace mission
+fsmc -i mission_export.xmi -o mission_fsm.hpp --namespace mission
 
 # Transpile Cameo XMI into canonical SysML v2 syntax
 fsmc -i mission_export.xmi --export sysml2 -o mission.sysml

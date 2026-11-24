@@ -4,11 +4,11 @@ hide:
 ---
 
 <div class="fsmc-hero" markdown="1">
-<div class="fsmc-hero__badge">v0.11.0 &middot; C++17 / C++20 &middot; Zero-Heap Runtime &middot; LTL / CTL</div>
+<div class="fsmc-hero__badge">v0.13.0 &middot; C++17 &amp; Pure C99 ABI &middot; Canonical ir-json &middot; LTL / CTL</div>
 
 # Universal State Machine Compiler
 
-**`fsmc`** bridges Model-Based Systems Engineering (**OMG SysML v2**, **MathWorks Stateflow**, **W3C SCXML**, **Cameo XMI**, **nuXmv SMV**) and visual diagrams with formal verification and zero-allocation C++ execution runtimes—unified through the canonical **`FsmIr`** intermediate representation.
+**`fsmc`** is the deterministic, zero-dependency compiler core for modular MBSE toolchains—bridging **OMG SysML v2**, **MathWorks Stateflow**, **W3C SCXML**, **Cameo XMI**, **nuXmv SMV**, visual diagrams, and direct canonical **`ir-json` (v1.0)** ingestion with formal verification, split C++17 headers, zero-allocation C99 ABI bridges, and SHA-256 attested system manifests.
 
 <div class="fsmc-hero__actions" markdown="1">
 [Quickstart Guide](getting_started/quickstart.md){ .md-button .md-button--primary }
@@ -38,19 +38,19 @@ hide:
 
     [:octicons-arrow-right-24: Verification & Safety](verification_and_safety/index.md)
 
--   :material-memory:{ .lg .middle } **Zero-Heap C++17 / C++20 Runtime**
+-   :material-memory:{ .lg .middle } **Unified C++17 & Pure C99 ABI**
 
     ---
 
-    Compile-time transition tables with strict 4-domain isolation (`InPorts`, `OutPorts`, `Registers`, `Services`), zero virtual dispatch on hot paths, synchronous, lock-free SPSC, and thread-safe modes.
+    Split `*_ports.hpp` (zero `fsm.hpp` dependency) + `*_fsm.hpp` by default, zero-vtable `ServicesContract`, language-agnostic `external_ref` PODs, and `--emit-c-abi` for strict C99 / Rust / Python FFI.
 
     [:octicons-arrow-right-24: C++ Runtime Backend](runtime_api/index.md)
 
--   :material-cogs:{ .lg .middle } **33 Middle-End Compiler Passes**
+-   :material-cogs:{ .lg .middle } **34 Middle-End Compiler Passes**
 
     ---
 
-    Run deterministic optimization, orthogonal product flattening, connective junction chaining, submachine inlining, dynamic C++ plugins, and Unix filter pipelines via `fsm-opt`.
+    Mandatory `verify-ir-integrity` gate, deterministic optimization, orthogonal product flattening, connective junction chaining, submachine inlining, dynamic C++ plugins, and `--diagnostics=json`.
 
     [:octicons-arrow-right-24: Middle-End Passes](internals/middleend_passes.md)
 
@@ -63,7 +63,7 @@ hide:
 ```mermaid
 flowchart TB
     Frontend["<b>1. Frontend Ingestion (9 Formats)</b><br/>SysML v2 · Stateflow · Cameo XMI · SCXML · SMV · JSON · PlantUML · Mermaid · DOT"]
-    IR["<b>2. Canonical FsmIr & 33 Middle-End Passes</b><br/>Guard Simplification · EFSM Interval Analysis · LTL / CTL Model Checking · Plugins"]
+    IR["<b>2. Canonical FsmIr & 34 Middle-End Passes</b><br/>verify-ir-integrity · Guard Simplification · EFSM Intervals · LTL / CTL · Plugins"]
     Backend["<b>3. Backend Emission</b><br/>C++17 / C++20 Zero-Heap Headers · Format Transpilation · RTM · MC/DC Tests"]
 
     Frontend --> IR --> Backend
@@ -73,7 +73,7 @@ flowchart TB
 
 1. **Frontend Ingestion**: Parses statechart models from 9 formats (OMG SysML v2, W3C SCXML, MathWorks Stateflow XML / SLX, Cameo XMI 2.1, nuXmv SMV, PlantUML, Mermaid, Graphviz DOT, and Canonical JSON) into the unified `FsmIr` AST.
 2. **Middle-End Analysis & Formal Verification**:
-    - **Pass Optimization & Analysis Pipeline**: Orchestrated by **`fsmc`** and **`fsm-opt`**, registering 33 transformation passes (28 in the verified 7-stage pipeline, plus `-O1`/`-O2` optimizations, dynamic C++ plugins, and `--pipe-through` filters) covering dead-state pruning, determinism enforcement, guard simplification, constant folding, Cartesian orthogonal product flattening, WCET / Zeno-cycle checks, submachine inlining, sampled change triggers, and connective junction chaining.
+    - **Pass Optimization & Analysis Pipeline**: Orchestrated by **`fsmc`** and **`fsm-opt`**, registering 34 transformation passes (29 in the verified 7-stage pipeline starting with `verify-ir-integrity`, plus `-O1`/`-O2` optimizations, dynamic C++ plugins, and `--pipe-through` filters) covering dead-state pruning, determinism enforcement, guard simplification, constant folding, Cartesian orthogonal product flattening, WCET / Zeno-cycle checks, submachine inlining, sampled change triggers, and connective junction chaining.
     - **Extensibility**: Unix filter pipeline (`--pipe-through <cmd>`) streaming JSON AST over stdin/stdout, and dynamic runtime C++ pass plugin loading (`--load-pass-plugin <path.so>`).
     - **EFSM Invariant & Guard Analysis**: Evaluates datapath contracts, range constraints, and guard satisfiability via static abstract interpretation over interval lattices with formal Widening ($\nabla$) and dead transition pruning.
     - **Symbolic Model Checking**: Proves temporal safety and liveness formulas specified in Linear Temporal Logic (LTL) and Computation Tree Logic (CTL) natively via fixed-point evaluation and exports to nuXmv / SMV.
@@ -92,7 +92,7 @@ flowchart TB
 | :--- | :--- | :--- |
 | **Universal Transpilation** | Ingest any supported format across 9 MBSE, formal, and visual notations, and export to any target format (including Stateflow XML). | [Modeling Languages](formal_languages/index.md) |
 | **Formal Model Checking (LTL & CTL)** | Prove temporal safety properties (LTL/CTL) natively via fixed-point evaluation and abstract interpretation without external dependencies. | [Verification & Safety](verification_and_safety/index.md) |
-| **Middle-End Passes & Optimizer (`fsm-opt`)** | 33 registered passes (28 across the 7-stage verified pipeline), connective junction chaining, dead-state pruning, Cartesian product flattening, WCET bounds, Unix filters (`--pipe-through`), and C++ plugins. | [Middle-End Passes](internals/middleend_passes.md) |
+| **Middle-End Passes & Optimizer (`fsm-opt`)** | 34 registered passes (29 across the 7-stage verified pipeline including `verify-ir-integrity`), connective junction chaining, dead-state pruning, Cartesian product flattening, WCET bounds, Unix filters (`--pipe-through`), and C++ plugins. | [Middle-End Passes](internals/middleend_passes.md) |
 | **Safety & Test Synthesis (MC/DC)** | Synthesize GoogleTest suites certifying Modified Condition / Decision Coverage for DO-178C / ISO 26262 compliance. | [MC/DC Synthesis](verification_and_safety/mcdc_synthesis.md) |
 | **Partitioned Memory Model** | Replaces unstructured context objects with 4 segregated domains: `InPorts`, `OutPorts`, `Registers`, and `Services`. | [Core Concepts](concepts/index.md) |
 | **Deterministic Execution** | C++ reference backend operates with 0 bytes heap allocation, 0 virtual tables, deterministic timer (`tick(dt)`), continuous `do_activity`, and $O(1)$ dispatch time. | [Memory & Real-Time](runtime_api/memory_and_realtime.md) |
@@ -103,8 +103,8 @@ flowchart TB
 ## Core Workflow at a Glance
 
 ```bash
-# 1. Formally verify structural soundness and temporal invariants (LTL / CTL)
-fsmc -i mission.sysml --verify --export-cex-gtest mission_cex_test.cpp
+# 1. Formally verify structural soundness and temporal invariants (with JSON diagnostics)
+fsmc -i mission.sysml --verify --diagnostics=json --export-cex-gtest mission_cex_test.cpp
 
 # 2. Simulate an event trace directly on canonical IR before codegen
 fsmc -i mission.sysml --simulate --trace trace.json
@@ -112,8 +112,8 @@ fsmc -i mission.sysml --simulate --trace trace.json
 # 3. Export Requirement Traceability Matrix or MC/DC GoogleTest harness
 fsmc -i mission.sysml --rtm-output rtm_matrix.md --harness mission_mcdc_test.cpp
 
-# 4. Compile to a standalone zero-heap C++20 header (C++17 also supported)
-fsmc -i mission.sysml -o mission_fsm.hpp --std 20 --standalone --namespace mission
+# 4. Compile to split C++17 headers (mission_ports.hpp + mission_fsm.hpp), C99 ABI, and manifest
+fsmc -i mission.sysml -o mission_fsm.hpp --namespace mission --emit-c-abi --emit-manifest
 ```
 
 In your C++ application, interact strictly through the segregated 4-domain boundary (`InPorts`, `OutPorts`, `Registers`, `Services`):
@@ -145,7 +145,7 @@ Ready to get started? Follow the **[Quickstart Tutorial](getting_started/quickst
 4. **[Modeling & Verification](formal_languages/index.md)**: Language guides (SysML v2, Stateflow, Cameo XMI, SCXML, SMV, PlantUML, Mermaid, DOT) and [Verification Guides](verification_and_safety/index.md).
 5. **[C++ Runtime Backend](runtime_api/index.md)**: Synchronous `fsm`, lock-free `spsc_fsm`, async `thread_safe_fsm`, flight recorder, and snapshot replay.
 6. **[Technical Reference](reference/index.md)**: CLI options, C++ runtime API reference, CMake macros, and test suite catalog.
-7. **[Compiler Internals](internals/index.md)**: Pipeline architecture, `FsmIr` schema, 33 middle-end passes, and developer recipes.
+7. **[Compiler Internals](internals/index.md)**: Pipeline architecture, `FsmIr` schema, 34 middle-end passes, and developer recipes.
 
 ---
 

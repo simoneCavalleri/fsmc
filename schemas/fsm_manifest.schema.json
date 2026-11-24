@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/simoneCavalleri/fsmc/schemas/fsm_manifest.schema.json",
+  "title": "fsmc System Manifest Schema (v1.0)",
+  "description": "Machine-readable contract manifest emitted alongside generated FSM code for multi-FSM orchestrators, build systems, and AI agents.",
+  "type": "object",
+  "required": [
+    "manifest_schema_version",
+    "compiler_version",
+    "fsm_name",
+    "ir_sha256",
+    "artifacts",
+    "states",
+    "ports",
+    "registers",
+    "events",
+    "services",
+    "external_types",
+    "requirements",
+    "scheduling",
+    "verification"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "manifest_schema_version": { "type": "string", "const": "1.0" },
+    "compiler_version": { "type": "string", "minLength": 1 },
+    "fsm_name": { "type": "string", "minLength": 1 },
+    "package": { "type": "string" },
+    "ir_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "initial_state": { "type": "string" },
+    "artifacts": {
+      "type": "object",
+      "required": ["standalone", "ports_header", "fsm_header", "c_header", "c_source"],
+      "properties": {
+        "standalone": { "type": "boolean" },
+        "ports_header": { "type": "string" },
+        "fsm_header": { "type": "string" },
+        "c_header": { "type": "string" },
+        "c_source": { "type": "string" }
+      }
+    },
+    "states": { "type": "array", "items": { "type": "string" } },
+    "ports": { "type": "array", "items": { "type": "object" } },
+    "registers": { "type": "array", "items": { "type": "object" } },
+    "events": { "type": "array", "items": { "type": "object" } },
+    "services": { "type": "array", "items": { "type": "object" } },
+    "external_types": { "type": "array", "items": { "type": "object" } },
+    "requirements": { "type": "array", "items": { "type": "string" } },
+    "scheduling": {
+      "type": "object",
+      "required": ["wcet_max_microsteps", "max_event_queue_bound", "zeno_free"],
+      "additionalProperties": false,
+      "properties": {
+        "wcet_max_microsteps": { "type": "integer", "minimum": 0 },
+        "max_event_queue_bound": { "type": "integer", "minimum": 2 },
+        "zeno_free": { "type": "boolean" }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "required": ["verified", "errors", "warnings", "properties_checked"],
+      "properties": {
+        "verified": { "type": "boolean" },
+        "errors": { "type": "integer", "minimum": 0 },
+        "warnings": { "type": "integer", "minimum": 0 },
+        "properties_checked": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

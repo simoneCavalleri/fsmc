@@ -138,7 +138,6 @@ TEST(CameoParser, CompositeAndChoicePseudostates_ParsedIntoValidFsmIr) {
     EXPECT_FALSE(model.is_choice_node("ClearanceChoice")) << "ClearanceChoice should have been removed by inlining";
 
     GeneratorOptions opts;
-    opts.cpp_standard = CppStandard::Cpp20;
     opts.standalone = true;
 
     const std::string code = CppGenerator::generate_header(model, opts);

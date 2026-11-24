@@ -101,7 +101,6 @@ TEST(InternalTransition, ParserAndCodegen_InternalTransition_PreservesSemanticsI
     EXPECT_TRUE(found_internal);
 
     GeneratorOptions opts;
-    opts.cpp_standard = CppStandard::Cpp20;
     const std::string code = CppGenerator::generate_header(model, opts);
     EXPECT_NE(code.find("fsm::internal_row<Idle, Ping>::then<ResetWatchdog>"), std::string::npos);
 }

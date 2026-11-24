@@ -173,9 +173,38 @@ state Operational {
 
 ---
 
+### 8. External Type Bindings (`@fsm:external_type`)
+Binds a port or signal type name to an externally defined POD `struct` or `enum` (using language-agnostic `module` + `symbol` references) so `fsmc` emits `#include` + `using` aliases instead of regenerating duplicate structs:
+
+```text
+@fsm:external_type name=<Ident> module="<module_path>" symbol="<pkg.Symbol>" [kind=struct|enum] [desc="<description>"]
+```
+
+*Example:*
+```plantuml
+' @fsm:external_type name=BatteryStatus module="shared/battery_types.hpp" symbol="shared.BatteryStatus" kind=struct
+```
+
+---
+
+### 9. Typed Service Contracts (`@fsm:service`)
+Declares an external callable service validated at compile time by `<Model>ServicesContract<Srv>` (C++17 zero-vtable) and exposed as `<prefix>_services_t` callbacks in the C99 ABI:
+
+```text
+@fsm:service <name>(<p1>: <type1>, <p2>: <type2>) -> <return_type> [pure=true|false] [noexcept=true|false] [desc="<description>"]
+```
+
+*Example:*
+```plantuml
+' @fsm:service compute_pwm(temp_c: int32_t) -> int32_t pure=true noexcept=true desc="Pure PID control law"
+' @fsm:service name=log_fault params=[code:uint32_t] return=void pure=false
+```
+
+---
+
 ## 4. End-to-End Example: Roundtrip & C++ Code Generation
 
-The following example demonstrates how directives enable a PlantUML diagram to generate strongly typed C++20 code and transpile losslessly into Mermaid:
+The following example demonstrates how directives enable a PlantUML diagram to generate strongly typed C++17 code and transpile losslessly into Mermaid:
 
 === "PlantUML with Directives (`uav_control.puml`)"
     ```plantuml
@@ -219,7 +248,7 @@ The following example demonstrates how directives enable a PlantUML diagram to g
         InFlight --> Landed: EvTouchdown / out.thrust_cmd = 0.0
     ```
 
-=== "Generated C++20 Header (`uav_fsm.hpp`)"
+=== "Generated C++17 Header (`uav_fsm.hpp`)"
     ```cpp
     #pragma once
     #include <cstdint>
@@ -270,7 +299,7 @@ fsmc -i architecture.mmd -o architecture_fsm.hpp
 # Pass '--allow-diagram-codegen' to allow heuristic code generation, or use '--verify' / '--export <fmt>'.
 
 # Compiling with explicit guardrail flag:
-fsmc -i uav_control.puml -o uav_fsm.hpp --std 20 --allow-diagram-codegen
+fsmc -i uav_control.puml -o uav_fsm.hpp --allow-diagram-codegen
 ```
 
 Transpilation between diagram formats (e.g. `--export mermaid`, `--export scxml`, `--export smv`) does not require the flag and operates directly on any diagram input.
@@ -292,6 +321,11 @@ Example companion sidecar (`flight_control.fsm.yaml`):
 ```yaml
 package: aerospace::guidance
 name: FlightControlFSM
+types:
+  - name: ImuSample
+    kind: struct
+    module: "hal/imu_types.hpp"
+    symbol: "hal.ImuSample"
 ports:
   - name: altitude_m
     type: float
@@ -303,10 +337,18 @@ ports:
     direction: out
     min: 0.0
     max: 100.0
-registers:
+services:
+  - name: compute_throttle
+    return_type: float
+    pure: true
+    noexcept: true
+    params:
+      - name: altitude_m
+        type: float
+variables:
   - name: waypoints_completed
     type: uint32_t
-    init: 0
+    initial: "0"
 properties:
   - name: NeverNegativeAltitude
     formula: "G (altitude_m >= 0.0)"

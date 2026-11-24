@@ -401,6 +401,10 @@ void parse_types_section(const std::vector<LineInfo>& lines, size_t& idx, std::v
             current.name = unquote(v);
         } else if (k == "kind") {
             current.kind = unquote(v);
+        } else if (k == "external_module" || k == "module") {
+            current.external_module = unquote(v);
+        } else if (k == "external_symbol" || k == "symbol") {
+            current.external_symbol = unquote(v);
         }
         idx++;
     }
@@ -664,6 +668,138 @@ void parse_requirements_section(const std::vector<LineInfo>& lines, size_t& idx,
     }
 }
 
+void parse_services_section(const std::vector<LineInfo>& lines, size_t& idx, std::vector<CompanionService>& services) {
+    CompanionService current;
+    bool has_current = false;
+    bool in_params = false;
+    CompanionServiceParam current_param;
+    bool has_current_param = false;
+
+    while (idx < lines.size() && lines[idx].indent > 0) {
+        const auto& line = lines[idx];
+        std::string text = line.text;
+
+        if (text == "]" || text == "],") {
+            if (in_params) {
+                if (has_current_param) {
+                    current.params.push_back(std::move(current_param));
+                    current_param = CompanionServiceParam{};
+                    has_current_param = false;
+                }
+                in_params = false;
+                idx++;
+                continue;
+            }
+        }
+
+        if (text == "}" || text == "},") {
+            if (has_current_param) {
+                current.params.push_back(std::move(current_param));
+                current_param = CompanionServiceParam{};
+                has_current_param = false;
+                idx++;
+                continue;
+            }
+            if (has_current) {
+                services.push_back(std::move(current));
+                current = CompanionService{};
+                has_current = false;
+                in_params = false;
+                idx++;
+                continue;
+            }
+        }
+
+        if (text.rfind("- ", 0) == 0 && line.indent <= 4) {
+            if (has_current_param) {
+                current.params.push_back(std::move(current_param));
+                current_param = CompanionServiceParam{};
+                has_current_param = false;
+            }
+            if (has_current) {
+                services.push_back(std::move(current));
+                current = CompanionService{};
+            }
+            has_current = true;
+            in_params = false;
+            text = trim(text.substr(2));
+        } else if (text == "{" && !in_params) {
+            if (has_current) {
+                services.push_back(std::move(current));
+                current = CompanionService{};
+            }
+            has_current = true;
+            idx++;
+            continue;
+        }
+
+        auto [k, v] = split_key_value(text);
+        k = unquote(k);
+        if (k == "params" || k == "parameters") {
+            in_params = true;
+            idx++;
+            continue;
+        }
+
+        if (in_params) {
+            if (text == "{") {
+                if (has_current_param) {
+                    current.params.push_back(std::move(current_param));
+                    current_param = CompanionServiceParam{};
+                }
+                has_current_param = true;
+                idx++;
+                continue;
+            }
+            if (text.rfind("- ", 0) == 0) {
+                if (has_current_param) {
+                    current.params.push_back(std::move(current_param));
+                    current_param = CompanionServiceParam{};
+                }
+                has_current_param = true;
+                text = trim(text.substr(2));
+                auto [pk, pv] = split_key_value(text);
+                pk = unquote(pk);
+                if (pk == "name") {
+                    current_param.name = unquote(pv);
+                } else if (pk == "type") {
+                    current_param.type = unquote(pv);
+                }
+            } else if (k == "name") {
+                current_param.name = unquote(v);
+                has_current_param = true;
+            } else if (k == "type") {
+                current_param.type = unquote(v);
+                has_current_param = true;
+            }
+            idx++;
+            continue;
+        }
+
+        if (k == "name") {
+            current.name = unquote(v);
+        } else if (k == "return_type" || k == "return") {
+            current.return_type = unquote(v);
+        } else if (k == "pure") {
+            const std::string b = unquote(v);
+            current.is_pure = (b == "true" || b == "1");
+        } else if (k == "noexcept") {
+            const std::string b = unquote(v);
+            current.is_noexcept = (b == "true" || b == "1");
+        } else if (k == "desc" || k == "description") {
+            current.desc = unquote(v);
+        }
+        idx++;
+    }
+
+    if (has_current_param) {
+        current.params.push_back(std::move(current_param));
+    }
+    if (has_current) {
+        services.push_back(std::move(current));
+    }
+}
+
 }  // namespace
 
 bool CompanionManifestParser::parse(std::string_view content, CompanionManifest& manifest, std::string& error_message) {
@@ -714,6 +850,9 @@ bool CompanionManifestParser::parse(std::string_view content, CompanionManifest&
         } else if (key == "signals" || key == "events") {
             idx++;
             parse_signals_section(lines, idx, manifest.signals);
+        } else if (key == "services") {
+            idx++;
+            parse_services_section(lines, idx, manifest.services);
         } else if (key == "invariants" || key == "durations") {
             idx++;
             parse_invariants_section(lines, idx, manifest.invariants);

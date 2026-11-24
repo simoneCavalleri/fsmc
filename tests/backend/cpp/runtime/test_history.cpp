@@ -111,7 +111,6 @@ TEST(HistoryPseudostate, HistoryCodegen_HistoryTable_EmittedInGeneratedHeader) {
     ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err.render_to_string();
 
     GeneratorOptions opts;
-    opts.cpp_standard = CppStandard::Cpp20;
     std::string code = CppGenerator::generate_header(model, opts);
 
     // Verify parent is generated on substates

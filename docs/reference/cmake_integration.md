@@ -24,12 +24,12 @@ fsmc_target_sources(
     <TargetName>
     DIAGRAMS <diagram1> [<diagram2>...]
     [NAME <GeneratedFSMClassName>]
-    [STANDARD <17|20>]
     [NAMESPACE <NamespaceName>]
     [OUTPUT_DIR <OutputDirectory>]
     [RUNTIME_HEADER <HeaderPath>]
     [STANDALONE]
     [MODULAR]
+    [EMIT_C_ABI]
     [NO_THREAD_SAFE]
     [FREESTANDING]
     [NO_STUBS]
@@ -42,20 +42,20 @@ fsmc_target_sources(
 ### Argument Reference
 | Parameter | Type | Description |
 | :--- | :--- | :--- |
-| `<TargetName>` | Target | The CMake target (executable or library) receiving the generated header. |
-| `DIAGRAMS` | Files | List of input statechart files (`.sysml`, `.slx`, `.sfx`, `.xmi`, `.scxml`, `.smv`, `.json`, `.puml`, `.mmd`, `.dot`). |
+| `<TargetName>` | Target | The CMake target (executable or library) receiving the generated headers/sources. |
+| `DIAGRAMS` | Files | List of input statechart files (`.ir.json`, `.sysml`, `.slx`, `.sfx`, `.xmi`, `.scxml`, `.smv`, `.json`, `.puml`, `.mmd`, `.dot`). |
 | `NAME` | String | Name of the generated C++ class (e.g. `UavMissionFSM`). |
-| `STANDARD` | Integer | C++ standard version (`17` or `20`). Default: `17`. |
 | `NAMESPACE` | String | C++ namespace to enclose generated types. Default: `fsm_generated`. |
-| `OUTPUT_DIR` | Path | Output directory for generated headers (default: `${CMAKE_CURRENT_BINARY_DIR}/generated_${TARGET_NAME}`). |
-| `STANDALONE` | Flag | Generate self-contained header with embedded zero-alloc runtime. |
+| `OUTPUT_DIR` | Path | Output directory for generated artifacts (default: `${CMAKE_CURRENT_BINARY_DIR}/generated_${TARGET_NAME}`). |
+| `STANDALONE` | Flag | Emit a single self-contained `<stem>_fsm.hpp` instead of the default split `<stem>_ports.hpp` + `<stem>_fsm.hpp` pair. |
 | `MODULAR` | Flag | Generate header that includes external runtime header (default: `"fsm.hpp"`, matching `--export-runtime`). |
+| `EMIT_C_ABI` | Flag | Also emit pure C99 zero-allocation ABI wrapper (`<stem>_c.h` + `<stem>_c.cpp`) and add `<stem>_c.cpp` to `<TargetName>`. |
 | `RUNTIME_HEADER` | String | Custom runtime header path included in modular mode (e.g. `"fsm.hpp"`, `"<fsm/fsm.hpp>"`). |
 | `NO_THREAD_SAFE` | Flag | Disable generation of the `thread_safe_fsm` asynchronous wrapper. |
-| `FREESTANDING` | Flag | Emit zero-STL freestanding header (`--freestanding`, `-fno-exceptions -fno-rtti` compatible). |
+| `FREESTANDING` | Flag | Emit zero-STL freestanding C++17 header (`--freestanding`, `-fno-exceptions -fno-rtti` compatible). |
 | `NO_STUBS` | Flag | Disable generation of default stubs for custom actions and guards. |
 | `ALLOW_DIAGRAM_CODEGEN` | Flag | Explicitly opt in to C++ codegen from informal diagram formats (`.puml`, `.mmd`, `.dot`). |
-| `FORMAT` | String | Override input model format parser (`sysml2`, `plantuml`, `mermaid`, etc.). |
+| `FORMAT` | String | Override input model format parser (`ir-json`, `sysml2`, `plantuml`, `mermaid`, etc.). |
 | `TARGET_LANG` | String | Target code generator language (`cpp`). |
 
 !!! tip "Cross-Compilation (`FSMC_HOST_EXECUTABLE`)"
@@ -83,11 +83,10 @@ FetchContent_MakeAvailable(fsmc)
 add_executable(avionics_app src/main.cpp src/sensors.cpp)
 target_link_libraries(avionics_app PRIVATE fsmc_runtime)
 
-# Generate header from SysML v2 model
+# Generate split C++17 headers (flight_control_ports.hpp + flight_control_fsm.hpp) from SysML v2
 fsmc_target_sources(avionics_app
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/models/flight_control.sysml
     NAME FlightControlFSM
-    STANDARD 20
     NAMESPACE avionics
 )
 ```

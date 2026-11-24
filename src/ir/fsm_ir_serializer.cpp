@@ -125,6 +125,10 @@ void emit_instructions_array(std::ostream& out, const std::vector<ActionAstNode>
             out << "\"kind\": \"action_call\", \"description\": \"" << escape_json(inst.description)
                 << "\", \"function_name\": \"" << escape_json(ac->function_name) << "\", \"arguments\": ";
             emit_string_array(out, ac->arguments);
+            if (ac->result_target.has_value() && !ac->result_target->empty()) {
+                out << ", \"result_target\": \"" << escape_json(ac->result_target->full_path())
+                    << "\", \"result_scope\": \"" << lvalue_scope_to_string(ac->result_target->scope) << "\"";
+            }
             out << ", \"read_set\": ";
             emit_string_array(out, ac->read_set);
             out << ", \"write_set\": ";
@@ -975,6 +979,33 @@ std::string FsmIrSerializer::serialize_json(const FsmIr& ir, int indent_spaces) 
                 out << ",";
             }
             out << "\n";
+        }
+        out << "  ],\n";
+    }
+
+    // Typed Services (sys-math / HAL)
+    if (!ir.services.empty()) {
+        out << "  \"services\": [\n";
+        for (size_t s = 0; s < ir.services.size(); ++s) {
+            const auto& svc = ir.services[s];
+            out << "    {\n";
+            out << "      \"name\": \"" << escape_json(svc.name) << "\",\n";
+            out << "      \"return_type\": \""
+                << escape_json(svc.is_void_return() ? "void" : svc.return_type.to_canonical_string()) << "\",\n";
+            out << "      \"pure\": " << (svc.is_pure ? "true" : "false") << ",\n";
+            out << "      \"noexcept\": " << (svc.is_noexcept ? "true" : "false") << ",\n";
+            out << "      \"params\": [";
+            for (size_t pi = 0; pi < svc.parameters.size(); ++pi) {
+                if (pi > 0)
+                    out << ", ";
+                out << "{\"name\": \"" << escape_json(svc.parameters[pi].name) << "\", \"type\": \""
+                    << escape_json(svc.parameters[pi].type.to_canonical_string()) << "\"}";
+            }
+            out << "]";
+            if (!svc.description.empty()) {
+                out << ",\n      \"description\": \"" << escape_json(svc.description) << "\"";
+            }
+            out << "\n    }" << (s + 1 < ir.services.size() ? "," : "") << "\n";
         }
         out << "  ],\n";
     }

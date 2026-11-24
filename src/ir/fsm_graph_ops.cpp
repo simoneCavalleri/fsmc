@@ -258,6 +258,9 @@ void FsmGraphOps::canonicalize(FsmIr& ir) {
     // Sort properties by name
     std::sort(ir.properties.begin(), ir.properties.end(),
               [](const FormalProperty& a, const FormalProperty& b) { return a.name < b.name; });
+    // Sort typed service signatures by name
+    std::sort(ir.services.begin(), ir.services.end(),
+              [](const ServiceMethodSignature& a, const ServiceMethodSignature& b) { return a.name < b.name; });
     // Synchronize interfaces (guards, actions, signals) then sort deterministically
     sync_interfaces(ir);
     std::sort(ir.signals.begin(), ir.signals.end(),

@@ -488,6 +488,19 @@ ActionSignature parse_action_signature_object(const JsonValue& act_val) {
                     ActionCallOp op;
                     op.function_name = i_val.get_string("function_name");
                     op.arguments = parse_str_vec(i_val.get_child("arguments"));
+                    const std::string res_tgt = i_val.get_string("result_target");
+                    if (!res_tgt.empty()) {
+                        LValueTarget tgt(res_tgt);
+                        const std::string res_scope = i_val.get_string("result_scope");
+                        if (res_scope == "OutPort") {
+                            tgt.scope = LValueScope::OutPort;
+                        } else if (res_scope == "Register") {
+                            tgt.scope = LValueScope::Register;
+                        } else if (res_scope == "Local") {
+                            tgt.scope = LValueScope::Local;
+                        }
+                        op.result_target = std::move(tgt);
+                    }
                     op.read_set = parse_str_vec(i_val.get_child("read_set"));
                     op.write_set = parse_str_vec(i_val.get_child("write_set"));
                     sig.instructions.emplace_back(std::move(op), std::move(desc));
@@ -1482,6 +1495,42 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
     }
 
     // Clocks
+    const auto* services_arr = root.get_child("services");
+    if (services_arr != nullptr && services_arr->is_array()) {
+        for (const auto& s_val : services_arr->arr_val) {
+            if (!s_val.is_object()) {
+                continue;
+            }
+            ServiceMethodSignature svc;
+            svc.name = sanitize_identifier(s_val.get_string("name"));
+            const std::string ret_str = s_val.get_string("return_type", "void");
+            svc.return_type =
+                (ret_str.empty() || ret_str == "void") ? DataType(PrimitiveTypeKind::Void) : DataType(ret_str);
+            if (const auto* pure_c = s_val.get_child("pure"); pure_c != nullptr && pure_c->type == JsonType::Bool) {
+                svc.is_pure = pure_c->bool_val;
+            }
+            if (const auto* ne_c = s_val.get_child("noexcept"); ne_c != nullptr && ne_c->type == JsonType::Bool) {
+                svc.is_noexcept = ne_c->bool_val;
+            }
+            svc.description = s_val.get_string("description");
+            if (const auto* params_arr = s_val.get_child("params"); params_arr != nullptr && params_arr->is_array()) {
+                for (const auto& p_val : params_arr->arr_val) {
+                    if (!p_val.is_object()) {
+                        continue;
+                    }
+                    const std::string pname = sanitize_identifier(p_val.get_string("name"));
+                    const std::string ptype = p_val.get_string("type", "int32_t");
+                    if (!pname.empty()) {
+                        svc.parameters.emplace_back(pname, DataType(ptype));
+                    }
+                }
+            }
+            if (!svc.name.empty()) {
+                out_ir.add_service(std::move(svc));
+            }
+        }
+    }
+
     const auto* clocks_arr = root.get_child("clocks");
     if (clocks_arr != nullptr && clocks_arr->is_array()) {
         for (const auto& c_val : clocks_arr->arr_val) {

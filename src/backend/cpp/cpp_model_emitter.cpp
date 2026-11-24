@@ -854,7 +854,8 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
         }
     }
 
-    if (!external_actions.empty() || !symbolic_guards.empty()) {
+    if (!model.services.empty() || !external_actions.empty() || !symbolic_guards.empty()) {
+        std::unordered_set<std::string> emitted_typed_services;
         out << "/**\n";
         out << " * @struct " << safe_model_name << "Services\n";
         out << " * @brief External environment and hardware driver interface for '" << sanitize_cpp_comment(model.name)
@@ -862,15 +863,94 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
         out << " */\n";
         out << "struct " << safe_model_name << "Services {\n";
         out << "    virtual ~" << safe_model_name << "Services() = default;\n";
+        for (const auto& svc : model.services) {
+            const std::string m_name = escape_cpp_keyword(svc.name);
+            emitted_typed_services.insert(svc.name);
+            const std::string ret_cpp = svc.is_void_return() ? "void" : svc.return_type.to_cpp_type();
+            out << "    ";
+            if (!svc.is_void_return()) {
+                out << "[[nodiscard]] ";
+            }
+            out << "virtual " << ret_cpp << " " << m_name << "(";
+            for (std::size_t pi = 0; pi < svc.parameters.size(); ++pi) {
+                if (pi > 0)
+                    out << ", ";
+                out << svc.parameters[pi].type.to_cpp_type() << " /*" << escape_cpp_keyword(svc.parameters[pi].name)
+                    << "*/";
+            }
+            out << ")";
+            if (svc.is_noexcept) {
+                out << " noexcept";
+            }
+            if (svc.is_void_return()) {
+                out << " {}\n";
+            } else {
+                out << " { return " << ret_cpp << "{}; }\n";
+            }
+        }
         for (const auto& act_name : external_actions) {
-            out << "    virtual void " << escape_cpp_keyword(act_name) << "() {}\n";
+            if (emitted_typed_services.find(act_name) == emitted_typed_services.end()) {
+                out << "    virtual void " << escape_cpp_keyword(act_name) << "() {}\n";
+            }
         }
         for (const auto& g_name : symbolic_guards) {
-            if (seen_external_actions.find(g_name) == seen_external_actions.end()) {
+            if (seen_external_actions.find(g_name) == seen_external_actions.end() &&
+                emitted_typed_services.find(g_name) == emitted_typed_services.end()) {
                 out << "    [[nodiscard]] virtual bool " << g_name << "() const { return false; }\n";
             }
         }
         out << "};\n\n";
+
+        if (!model.services.empty()) {
+            out << "namespace detail {\n";
+            for (const auto& svc : model.services) {
+                const std::string m_name = escape_cpp_keyword(svc.name);
+                const std::string trait_name = "has_service_" + safe_model_name + "_" + m_name;
+                std::string arg_declvals;
+                for (std::size_t pi = 0; pi < svc.parameters.size(); ++pi) {
+                    if (pi > 0)
+                        arg_declvals += ", ";
+                    arg_declvals += "std::declval<" + svc.parameters[pi].type.to_cpp_type() + ">()";
+                }
+                out << "template <typename Srv, typename = void>\n";
+                out << "struct " << trait_name << " : std::false_type {};\n";
+                out << "template <typename Srv>\n";
+                if (svc.is_void_return()) {
+                    out << "struct " << trait_name << "<Srv, std::void_t<decltype(std::declval<Srv&>()." << m_name
+                        << "(" << arg_declvals << "))>> : std::true_type {};\n";
+                } else {
+                    const std::string ret_cpp = svc.return_type.to_cpp_type();
+                    out << "struct " << trait_name
+                        << "<Srv, std::enable_if_t<std::is_convertible_v<decltype(std::declval<Srv&>()." << m_name
+                        << "(" << arg_declvals << ")), " << ret_cpp << ">>> : std::true_type {};\n";
+                }
+            }
+            out << "}  // namespace detail\n\n";
+
+            out << "/**\n";
+            out << " * @struct " << safe_model_name << "ServicesContract\n";
+            out << " * @brief Zero-vtable C++17 compile-time contract validator for user-injected Services.\n";
+            out << " */\n";
+            out << "template <typename Srv>\n";
+            out << "struct " << safe_model_name << "ServicesContract {\n";
+            for (const auto& svc : model.services) {
+                const std::string m_name = escape_cpp_keyword(svc.name);
+                const std::string trait_name = "detail::has_service_" + safe_model_name + "_" + m_name;
+                const std::string ret_cpp = svc.is_void_return() ? "void" : svc.return_type.to_cpp_type();
+                std::string sig_str = ret_cpp + " " + m_name + "(";
+                for (std::size_t pi = 0; pi < svc.parameters.size(); ++pi) {
+                    if (pi > 0)
+                        sig_str += ", ";
+                    sig_str += svc.parameters[pi].type.to_cpp_type() + " " + svc.parameters[pi].name;
+                }
+                sig_str += ")";
+                out << "    static_assert(" << trait_name << "<Srv>::value,\n";
+                out << "                  \"Services type must implement '" << escape_cpp_string_literal(sig_str)
+                    << "'\");\n";
+            }
+            out << "    static constexpr bool satisfied = true;\n";
+            out << "};\n\n";
+        }
     } else {
         out << "/** @typedef " << safe_model_name << "Services\n * @brief Empty services sentinel. */\n";
         out << "using " << safe_model_name << "Services = ::fsm::no_services;\n\n";
@@ -1547,7 +1627,16 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                                 << escape_cpp_keyword(pr->port_name) << ";\n";
                         }
                     } else if (const auto* ac = std::get_if<ActionCallOp>(&inst.op)) {
-                        out << indent << "srv." << escape_cpp_keyword(ac->function_name) << "(";
+                        out << indent;
+                        if (ac->result_target.has_value() && !ac->result_target->empty()) {
+                            const std::string tgt = escape_member_path(ac->result_target->full_path());
+                            const bool is_out_port =
+                                (ac->result_target->scope == LValueScope::OutPort) ||
+                                (model.find_port(ac->result_target->name) != nullptr &&
+                                 model.find_port(ac->result_target->name)->direction != PortDirection::In);
+                            out << (is_out_port ? "out." : "reg.") << tgt << " = ";
+                        }
+                        out << "srv." << escape_cpp_keyword(ac->function_name) << "(";
                         for (std::size_t i = 0; i < ac->arguments.size(); ++i) {
                             if (i > 0)
                                 out << ", ";
@@ -1949,6 +2038,25 @@ void CppModelEmitter::emit_fsm_aliases(std::ostream& out, const FsmIr& model, co
     out << "    ::fsm::with_services<" << safe_model_name << "Services>,\n";
     out << "    ::fsm::with_observer<::fsm::no_observer>\n";
     out << ">;\n\n";
+
+    if (!model.services.empty()) {
+        out << "/**\n";
+        out << " * @typedef " << fsm_alias_name << "WithServices\n";
+        out << " * @brief Zero-vtable FSM alias accepting any user Services struct satisfying " << safe_model_name
+            << "ServicesContract.\n";
+        out << " */\n";
+        out << "template <typename CustomServices>\n";
+        out << "using " << fsm_alias_name << "WithServices = std::enable_if_t<\n";
+        out << "    " << safe_model_name << "ServicesContract<CustomServices>::satisfied,\n";
+        out << "    ::fsm::make_fsm<\n";
+        out << "        " << table_type_name << ",\n";
+        out << "        ::fsm::with_initial_state<" << init_state << ">,\n";
+        out << "        ::fsm::with_ports<" << safe_model_name << "InPorts, " << safe_model_name << "OutPorts>,\n";
+        out << "        ::fsm::with_registers<" << safe_model_name << "Registers>,\n";
+        out << "        ::fsm::with_services<CustomServices>,\n";
+        out << "        ::fsm::with_observer<::fsm::no_observer>\n";
+        out << "    >>;\n\n";
+    }
 
     if (options.thread_safe && !options.freestanding) {
         out << "/**\n";

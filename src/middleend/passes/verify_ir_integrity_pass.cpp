@@ -79,6 +79,13 @@ bool VerifyIrIntegrityPass::run(FsmIr& ir, diagnostic::DiagnosticEngine& diag) {
         }
     }
 
+    std::unordered_map<std::string, const ir::ServiceMethodSignature*> declared_services;
+    for (const auto& svc : ir.services) {
+        if (!declared_services.emplace(svc.name, &svc).second) {
+            report_err("E_IR_DUP_ID", "Duplicate ServiceMethodSignature::name '" + svc.name + "'.");
+        }
+    }
+
     // 3. Hierarchy integrity & acyclicity (E_IR_HIERARCHY)
     for (const auto& st : ir.states) {
         if (!st.parent_state.empty() && ir.find_state(st.parent_state) == nullptr) {
@@ -186,6 +193,40 @@ bool VerifyIrIntegrityPass::run(FsmIr& ir, diagnostic::DiagnosticEngine& diag) {
                         "E_IR_TYPE_MISMATCH",
                         "Action '" + act.name + "' PortWriteOp targets read-only InPort '" + pw->port_name + "'.",
                         line);
+                }
+            } else if (const auto* call = std::get_if<ir::ActionCallOp>(&inst.op)) {
+                if (call->result_target.has_value() && !call->result_target->name.empty() &&
+                    in_only_ports.count(call->result_target->name) != 0 &&
+                    seen_vars.count(call->result_target->name) == 0) {
+                    report_err("E_IR_TYPE_MISMATCH",
+                               "Action '" + act.name + "' ActionCallOp '" + call->function_name +
+                                   "' attempts to store result into read-only InPort '" + call->result_target->name +
+                                   "'.",
+                               line);
+                }
+                if (!declared_services.empty()) {
+                    auto it = declared_services.find(call->function_name);
+                    if (it == declared_services.end()) {
+                        report_err(
+                            "E_IR_TYPE_MISMATCH",
+                            "Action '" + act.name + "' invokes undeclared service '" + call->function_name + "'.",
+                            line);
+                    } else {
+                        const auto* svc = it->second;
+                        if (call->arguments.size() != svc->parameters.size()) {
+                            report_err("E_IR_TYPE_MISMATCH",
+                                       "Action '" + act.name + "' calls service '" + call->function_name + "' with " +
+                                           std::to_string(call->arguments.size()) + " argument(s), expected " +
+                                           std::to_string(svc->parameters.size()) + ".",
+                                       line);
+                        }
+                        if (call->result_target.has_value() && !call->result_target->empty() && svc->is_void_return()) {
+                            report_err("E_IR_TYPE_MISMATCH",
+                                       "Action '" + act.name + "' assigns result of void service '" +
+                                           call->function_name + "' to '" + call->result_target->full_path() + "'.",
+                                       line);
+                        }
+                    }
                 }
             }
         }

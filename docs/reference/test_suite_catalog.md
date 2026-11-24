@@ -4,8 +4,8 @@
 > To update this file, run: `cmake --build build --target generate_test_catalog` or `python3 scripts/generate_test_catalog.py`.
 
 **Total Documented Subsystems**: 12  
-**Total Test Suites & Binaries**: 88  
-**Total Documented Test Cases**: 776  
+**Total Test Suites & Binaries**: 89  
+**Total Documented Test Cases**: 779  
 
 ---
 
@@ -44,6 +44,7 @@
 | [`test_cpp_e2e_compiler.cpp`](../../tests/backend/cpp/test_cpp_e2e_compiler.cpp) | `tests/backend/cpp/test_cpp_e2e_compiler.cpp` | 9 | End-to-End integration and host compiler verification test suite for C++ Emitter (C++17 & C++20). |
 | [`test_cpp_model_emitter.cpp`](../../tests/backend/cpp/test_cpp_model_emitter.cpp) | `tests/backend/cpp/test_cpp_model_emitter.cpp` | 38 | Unit verification suite for C++ model emitter syntax generation. |
 | [`test_generated_fsm.cpp`](../../tests/backend/cpp/test_generated_fsm.cpp) | `tests/backend/cpp/test_generated_fsm.cpp` | 0 | Standalone executable validating compilation and runtime dispatch of generated FSM code. |
+| [`test_typed_services_contract.cpp`](../../tests/backend/cpp/test_typed_services_contract.cpp) | `tests/backend/cpp/test_typed_services_contract.cpp` | 3 | Unit and E2E compile-time tests for explicitly typed Services (sys-math / HAL) and ActionCallOp. |
 
 ## Diagram & Emitter Backend Subsystem
 

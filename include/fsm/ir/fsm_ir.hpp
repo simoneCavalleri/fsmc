@@ -337,6 +337,7 @@ struct FsmIr {
     void rebuild_adjacency_indices();
     void sort_transitions_by_priority();
     void canonicalize();
+    void invalidate_state_index() const noexcept;
     [[nodiscard]] bool is_well_formed(std::string& error) const noexcept;
 
     bool operator==(const FsmIr& other) const noexcept {
@@ -349,6 +350,24 @@ struct FsmIr {
                guards == other.guards && actions == other.actions && choice_nodes == other.choice_nodes &&
                bindings == other.bindings;
     }
+
+  private:
+    struct TransparentStringHash {
+        using is_transparent = void;
+        std::size_t operator()(std::string_view sv) const noexcept { return std::hash<std::string_view>{}(sv); }
+    };
+    struct TransparentStringEq {
+        using is_transparent = void;
+        bool operator()(std::string_view a, std::string_view b) const noexcept { return a == b; }
+    };
+
+    void ensure_state_index() const noexcept;
+    void rebuild_state_index() const noexcept;
+
+    mutable std::unordered_map<std::string, std::size_t, TransparentStringHash, TransparentStringEq> state_name_index_;
+    mutable std::unordered_map<std::string, std::size_t, TransparentStringHash, TransparentStringEq> state_id_index_;
+    mutable std::size_t indexed_state_count_{0};
+    mutable bool state_index_valid_{false};
 };
 
 }  // namespace fsm::ir

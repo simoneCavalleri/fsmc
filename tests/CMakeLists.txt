@@ -1,11 +1,4 @@
-# Ensure test assertions remain active across all compilers in Release builds
-if(MSVC)
-    add_compile_options(/UNDEBUG)
-else()
-    add_compile_options(-UNDEBUG -Wno-unused-const-variable)
-endif()
-
-# Google Test via FetchContent
+# Google Test via FetchContent (isolated from fsmc_project_options)
 include(FetchContent)
 FetchContent_Declare(
     googletest
@@ -18,6 +11,14 @@ set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
 set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(googletest)
+
+# Test-only compile options (assertions active even in Release builds; linked after fsmc_project_options)
+add_library(fsmc_test_options INTERFACE)
+if(MSVC)
+    target_compile_options(fsmc_test_options INTERFACE /UNDEBUG)
+else()
+    target_compile_options(fsmc_test_options INTERFACE -UNDEBUG -Wno-unused-const-variable)
+endif()
 
 # ==============================================================================
 # Helper Function for DRY Test Declarations
@@ -36,7 +37,7 @@ function(add_fsm_unit_test TEST_NAME)
     endif()
 
     add_executable(${TEST_NAME} ${ARG_SOURCES})
-    target_link_libraries(${TEST_NAME} PRIVATE fsmc_compiler fsmc_runtime GTest::gtest GTest::gtest_main ${ARG_EXTRA_LIBS})
+    target_link_libraries(${TEST_NAME} PRIVATE fsmc_compiler fsmc_runtime fsmc_project_options fsmc_test_options GTest::gtest GTest::gtest_main ${ARG_EXTRA_LIBS})
 
     if(ARG_STANDARD)
         set_target_properties(${TEST_NAME} PROPERTIES CXX_STANDARD ${ARG_STANDARD} CXX_STANDARD_REQUIRED ON)
@@ -71,6 +72,29 @@ add_fsm_unit_test(test_ring_buffer_overflow DIR backend/cpp/runtime)
 add_fsm_unit_test(test_spsc_fsm DIR backend/cpp/runtime)
 add_fsm_unit_test(test_policy_config DIR backend/cpp/runtime)
 add_fsm_unit_test(test_flight_recorder DIR backend/cpp/runtime)
+
+# C++17 Runtime Compatibility Matrix (pure runtime tests compiled strictly under C++17)
+add_executable(test_runtime_cpp17_suite
+    backend/cpp/runtime/test_async_and_guards.cpp
+    backend/cpp/runtime/test_flight_recorder.cpp
+    backend/cpp/runtime/test_observer.cpp
+    backend/cpp/runtime/test_policy_config.cpp
+    backend/cpp/runtime/test_ring_buffer_overflow.cpp
+    backend/cpp/runtime/test_spsc_fsm.cpp
+    backend/cpp/runtime/test_spsc_queue.cpp
+    backend/cpp/runtime/test_state_serialization.cpp
+    backend/cpp/runtime/test_thread_safe_stress.cpp
+    backend/cpp/runtime/test_timed_transitions.cpp
+    backend/cpp/runtime/test_traits_and_hooks.cpp
+)
+target_link_libraries(test_runtime_cpp17_suite PRIVATE fsmc_runtime fsmc_project_options fsmc_test_options GTest::gtest GTest::gtest_main)
+set_target_properties(test_runtime_cpp17_suite PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+add_test(NAME test_runtime_cpp17_suite COMMAND test_runtime_cpp17_suite)
+
+add_executable(test_zero_alloc_runtime_cpp17 backend/cpp/runtime/test_zero_alloc_runtime.cpp)
+target_link_libraries(test_zero_alloc_runtime_cpp17 PRIVATE fsmc_runtime fsmc_project_options fsmc_test_options GTest::gtest GTest::gtest_main)
+set_target_properties(test_zero_alloc_runtime_cpp17 PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+add_test(NAME test_zero_alloc_runtime_cpp17 COMMAND test_zero_alloc_runtime_cpp17)
 
 # ==============================================================================
 # Formal IR Tests (tests/ir/)
@@ -179,6 +203,7 @@ fsmc_target_sources(test_generated_fsm
     STANDARD 20
     NAMESPACE net_mermaid
     MODULAR
+    ALLOW_DIAGRAM_CODEGEN
 )
 
 # C++17 Standalone Output
@@ -189,6 +214,7 @@ fsmc_target_sources(test_cpp17_standalone
     STANDARD 17
     STANDALONE
     NAMESPACE net17
+    ALLOW_DIAGRAM_CODEGEN
 )
 
 # C++20 Standalone Output
@@ -199,6 +225,7 @@ fsmc_target_sources(test_cpp20_standalone
     STANDARD 20
     STANDALONE
     NAMESPACE net20
+    ALLOW_DIAGRAM_CODEGEN
 )
 
 # ==============================================================================
@@ -206,14 +233,13 @@ fsmc_target_sources(test_cpp20_standalone
 # ==============================================================================
 add_fsm_unit_test(test_full_7stage_pipeline DIR integration/pipeline)
 add_fsm_unit_test(test_pipeline_extensibility DIR integration/pipeline EXTRA_LIBS ${CMAKE_DL_LIBS})
-add_fsm_unit_test(test_cli_driver_errors DIR integration)
-target_include_directories(test_cli_driver_errors PRIVATE ${PROJECT_SOURCE_DIR})
+set_target_properties(test_pipeline_extensibility PROPERTIES ENABLE_EXPORTS ON)
+target_compile_definitions(test_pipeline_extensibility PRIVATE FSMC_TEST_CXX_COMPILER="${CMAKE_CXX_COMPILER}")
+add_fsm_unit_test(test_cli_driver_errors DIR integration EXTRA_LIBS fsmc_driver_lib)
 
-add_fsm_unit_test(test_fsmc_cli_options DIR integration)
-target_include_directories(test_fsmc_cli_options PRIVATE ${PROJECT_SOURCE_DIR})
+add_fsm_unit_test(test_fsmc_cli_options DIR integration EXTRA_LIBS fsmc_driver_lib)
 
-add_fsm_unit_test(test_fsm_opt_cli_options DIR integration)
-target_include_directories(test_fsm_opt_cli_options PRIVATE ${PROJECT_SOURCE_DIR})
+add_fsm_unit_test(test_fsm_opt_cli_options DIR integration EXTRA_LIBS fsmc_driver_lib)
 
 add_fsm_unit_test(test_cmake_integration DIR integration STANDARD 20)
 fsmc_target_sources(test_cmake_integration
@@ -222,15 +248,31 @@ fsmc_target_sources(test_cmake_integration
     STANDARD 20
     STANDALONE
     NAMESPACE net_cmake
+    ALLOW_DIAGRAM_CODEGEN
 )
 
 add_fsm_unit_test(test_multiformat_presets_roundtrip DIR integration STANDARD 20)
 target_compile_definitions(test_multiformat_presets_roundtrip PRIVATE FSMC_INCLUDE_DIR="${PROJECT_SOURCE_DIR}/include")
 add_fsm_unit_test(test_golden_ir_invariance DIR integration STANDARD 20)
+add_fsm_unit_test(test_differential_semantics DIR integration STANDARD 20 EXTRA_LIBS fsmc_driver_lib)
 
 if(Python3_FOUND)
     add_test(NAME test_documentation_freshness
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../scripts/verify_docs.py
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..
     )
+endif()
+
+# ==============================================================================
+# Optional libFuzzer Harnesses (Clang + ASan/UBSan)
+# ==============================================================================
+option(FSMC_ENABLE_FUZZERS "Build libFuzzer targets under tests/fuzz/ (requires Clang)" OFF)
+if(FSMC_ENABLE_FUZZERS)
+    foreach(FUZZ_TARGET fuzz_all_parsers fuzz_expressions_and_guards fuzz_json_deserializer)
+        add_executable(${FUZZ_TARGET} fuzz/${FUZZ_TARGET}.cpp)
+        target_link_libraries(${FUZZ_TARGET} PRIVATE fsmc_compiler)
+        set_target_properties(${FUZZ_TARGET} PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+        target_compile_options(${FUZZ_TARGET} PRIVATE -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer)
+        target_link_options(${FUZZ_TARGET} PRIVATE -fsanitize=fuzzer,address,undefined)
+    endforeach()
 endif()

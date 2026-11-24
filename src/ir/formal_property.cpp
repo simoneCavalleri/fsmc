@@ -1,5 +1,7 @@
 #include "fsm/ir/formal_property.hpp"
 
+#include <sstream>
+
 namespace fsm::ir {
 
 std::string temporal_op_to_string(TemporalOp op) {
@@ -157,6 +159,29 @@ FormalProperty::FormalProperty(std::string prop_name, PropertyKind prop_kind, st
     if (!raw_formula.empty()) {
         ast = PropertyAstNode(raw_formula);
     }
+}
+
+std::string ModelCheckResult::format_counterexample() const {
+    if (passed || counterexample_trace.empty()) {
+        return "";
+    }
+    std::ostringstream ss;
+    ss << "Counterexample execution trace:\n";
+    for (const auto& step : counterexample_trace) {
+        ss << "    Step " << step.step_index << ": State '" << step.state_name << "'";
+        if (!step.event_name.empty()) {
+            ss << " --[" << step.event_name;
+            if (!step.guard_condition.empty()) {
+                ss << " if " << step.guard_condition;
+            }
+            ss << "]-->";
+        }
+        if (!step.description.empty()) {
+            ss << " (" << step.description << ")";
+        }
+        ss << "\n";
+    }
+    return ss.str();
 }
 
 }  // namespace fsm::ir

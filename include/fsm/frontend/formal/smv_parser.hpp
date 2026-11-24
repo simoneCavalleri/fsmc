@@ -29,9 +29,10 @@ class SmvParser : public IParser {
      * @param error_message Diagnostic error description on failure.
      * @return True if parsing succeeded, false otherwise.
      */
-    bool parse(std::string_view content, FsmIr& model, std::string& error_message) override;
+    bool parse(std::string_view content, FsmIr& model, diagnostic::DiagnosticEngine& diag) override;
 
   private:
+    bool parse_impl(std::string_view content, FsmIr& out_ir, std::string& out_error);
     static std::string trim(std::string_view str);
     static void parse_enum_states(const std::string& line, FsmIr& model);
     static void parse_enum_events(const std::string& line, FsmIr& model);

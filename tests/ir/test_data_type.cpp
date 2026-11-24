@@ -168,28 +168,22 @@ TEST(DataType, MetamodelEntitiesIntegration_AdaptsVariablePortAndSignalTypes) {
 }
 
 /**
- * @brief Verify GuardAstNode multi-language boolean syntax lowering.
+ * @brief Verify GuardAstNode target-agnostic canonical boolean syntax formatting.
  * @scenario AST representing expression 'is_ready && !timeout'.
- * @expected Emits 'is_ready && !timeout' for C++/Rust, 'is_ready and not timeout' for SysML, and 'is_ready & !timeout'
- * for SMV.
+ * @expected Emits canonical infix boolean string 'is_ready && !timeout' and preserves AST structure.
  */
-TEST(GuardAstNode, TargetAgnosticBooleanSyntax_EmitsCppSysmlSmvAndRustExpressions) {
+TEST(GuardAstNode, TargetAgnosticBooleanSyntax_EmitsCanonicalInfixExpression) {
     GuardAstNode node_a("is_ready");
     GuardAstNode node_b("timeout");
     GuardAstNode not_b(GuardOp::Not, {node_b});
     GuardAstNode and_node(GuardOp::And, {node_a, not_b});
 
-    // ISO C++
-    EXPECT_EQ(and_node.to_cpp(), "is_ready && !timeout");
-
-    // SysML v2 / KerML
-    EXPECT_EQ(and_node.to_sysml(), "is_ready and not timeout");
-
-    // nuXmv / SMV
-    EXPECT_EQ(and_node.to_smv(), "is_ready & !timeout");
-
-    // Rust
-    EXPECT_EQ(and_node.to_rust(), "is_ready && !timeout");
+    EXPECT_EQ(and_node.to_string(), "is_ready && !timeout");
+    std::vector<std::string> atoms;
+    and_node.collect_atomic_guards(atoms);
+    ASSERT_EQ(atoms.size(), 2u);
+    EXPECT_EQ(atoms[0], "is_ready");
+    EXPECT_EQ(atoms[1], "timeout");
 }
 
 /**

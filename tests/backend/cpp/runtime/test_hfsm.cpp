@@ -10,13 +10,12 @@
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
-#include "fsm/middleend/analysis/fsm_validator.hpp"
+#include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm::backend::cpp;
 using namespace fsm::backend;
 using namespace fsm::frontend::diagram;
 using namespace fsm::frontend;
-using namespace fsm::middleend::analysis;
 using namespace fsm::middleend;
 using namespace fsm::ir;
 
@@ -44,8 +43,8 @@ TEST(HfsmHierarchy, PlantUmlCompositeState_NestedHierarchy_ParsedCorrectly) {
 
     PlantUmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.initial_state, "Active");
     EXPECT_EQ(model.states.size(), 4u);  // Active, Idle, Processing, Terminated
@@ -63,8 +62,8 @@ TEST(HfsmHierarchy, PlantUmlCompositeState_NestedHierarchy_ParsedCorrectly) {
     ASSERT_NE(processing_state, nullptr);
     EXPECT_EQ(processing_state->parent_state, "Active");
 
-    const auto validation = FsmValidator::validate(model);
-    EXPECT_TRUE(validation.is_valid);
+    fsm::diagnostic::DiagnosticEngine diag;
+    EXPECT_TRUE(fsm::middleend::PassManager::create_validation_pipeline().run(model, diag));
 }
 
 /**
@@ -85,8 +84,8 @@ TEST(HfsmHierarchy, MermaidCompositeState_NestedHierarchy_ParsedCorrectly) {
 
     MermaidParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err.render_to_string();
 
     EXPECT_EQ(model.initial_state, "Session");
 
@@ -99,8 +98,8 @@ TEST(HfsmHierarchy, MermaidCompositeState_NestedHierarchy_ParsedCorrectly) {
     ASSERT_NE(conn_state, nullptr);
     EXPECT_EQ(conn_state->parent_state, "Session");
 
-    const auto validation = FsmValidator::validate(model);
-    EXPECT_TRUE(validation.is_valid);
+    fsm::diagnostic::DiagnosticEngine diag;
+    EXPECT_TRUE(fsm::middleend::PassManager::create_validation_pipeline().run(model, diag));
 }
 
 }  // namespace

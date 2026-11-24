@@ -40,6 +40,7 @@ fsmc_target_sources(robotic_arm_example
     STANDARD 20
     STANDALONE
     NAMESPACE robotics
+    ALLOW_DIAGRAM_CODEGEN
 )
 add_test(NAME robotic_arm_example COMMAND robotic_arm_example)
 

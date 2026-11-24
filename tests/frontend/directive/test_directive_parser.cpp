@@ -206,7 +206,7 @@ TEST(GuardParser, RelationalExpressions_TokenizedAndForwarded) {
     EXPECT_EQ(res.atomic_guard_details[0].expression, "canBusHealthy");
     EXPECT_EQ(res.atomic_guard_details[1].name, "faultCount_lt_3");
     EXPECT_EQ(res.atomic_guard_details[1].expression, "faultCount < 3");
-    EXPECT_NE(res.cpp_type.find("fsm::and_<canBusHealthy, faultCount_lt_3>"), std::string::npos);
+    EXPECT_EQ(res.canonical_expression, "canBusHealthy && faultCount_lt_3");
     ASSERT_TRUE(res.ast.has_value());
     EXPECT_EQ(res.ast->op, GuardOp::And);
     ASSERT_EQ(res.ast->children.size(), 2u);

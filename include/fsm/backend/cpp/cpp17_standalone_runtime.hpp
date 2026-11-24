@@ -22,16 +22,16 @@ class Cpp17StandaloneRuntime {
 #define FSMC_CPP17_RUNTIME 1
 #endif
 #include <array>
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <functional>
 #include <iomanip>
 #include <iterator>
+#include <limits>
 #include <optional>
-#include <ostream>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
@@ -39,10 +39,19 @@ class Cpp17StandaloneRuntime {
 #include <variant>
 )raw_fsm_runtime";
 
-        if (opts.thread_safe) {
+        if (!opts.freestanding) {
+            out << R"raw_fsm_runtime(
+// Hosted STL Includes (omitted in --freestanding mode)
+#if !defined(FSMC_FREESTANDING)
+#include <functional>
+#include <ostream>
+#endif
+)raw_fsm_runtime";
+        }
+
+        if (opts.thread_safe && !opts.freestanding) {
             out << R"raw_fsm_runtime(
 // Thread-Safe System Includes
-#include <atomic>
 #include <condition_variable>
 #include <exception>
 #include <future>
@@ -65,7 +74,7 @@ class Cpp17StandaloneRuntime {
 
         Cpp20StandaloneRuntime::emit_core_body(out);
 
-        if (opts.thread_safe) {
+        if (opts.thread_safe && !opts.freestanding) {
             out << R"raw_fsm_runtime(
 
 // ============================================================================

@@ -92,11 +92,14 @@ int main() {
 
     // 2. Chained Connective Junction Evaluation:
     // Standby -> [EvStart] -> Junction_Precheck [sensors_ok == 1] -> Junction_Mode [eco_requested == 0] -> Drive
-    std::cout << "\n[Step 2] Dispatching EvStart (sensors_ok=true, eco_requested=false)...\n";
-    srv.sensors_ok_val = true;
-    srv.eco_requested_val = false;
+    std::cout << "\n[Step 2] Dispatching EvStart (sensors_ok=1, eco_requested=0)...\n";
+    EcuEngineFSMInPorts in{};
+    EcuEngineFSMOutPorts out{};
+    in.sensors_ok = 1;
+    in.eco_requested = 0;
+    in.engine_temp = 90.0;
 
-    auto res = ecu.dispatch(EvStart{});
+    auto res = ecu.dispatch(EvStart{}, in, out);
     VERIFY_EXPR(res.is_success());
     VERIFY_EXPR(ecu.is_in_state<Drive>());
     std::cout << "  -> Connective Junction Chaining Pass collapsed 2 intermediate junctions!\n";
@@ -108,8 +111,8 @@ int main() {
 
     // 3. Inject Overheating Anomaly
     std::cout << "\n[Step 3] Simulating coolant radiator failure: engine_temp rises to 112 deg C...\n";
-    srv.engine_temp_val = 112.0;
-    auto res_overheat = ecu.dispatch(EvOverheat{});
+    in.engine_temp = 112.0;
+    auto res_overheat = ecu.dispatch(EvOverheat{}, in, out);
     VERIFY_EXPR(res_overheat.is_success());
     VERIFY_EXPR(ecu.is_in_state<LimpHome>());
     std::cout << "  -> Overheat guard triggered -> Active state transitioned to: LimpHome\n";

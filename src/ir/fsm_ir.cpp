@@ -4,7 +4,68 @@
 
 namespace fsm::ir {
 
+void FsmIr::invalidate_state_index() const noexcept {
+    state_index_valid_ = false;
+    indexed_state_count_ = 0;
+}
+
+void FsmIr::rebuild_state_index() const noexcept {
+    try {
+        state_name_index_.clear();
+        state_id_index_.clear();
+        state_name_index_.reserve(states.size());
+        state_id_index_.reserve(states.size());
+        for (std::size_t i = 0; i < states.size(); ++i) {
+            if (!states[i].name.empty()) {
+                state_name_index_.try_emplace(states[i].name, i);
+            }
+            if (!states[i].id.empty()) {
+                state_id_index_.try_emplace(states[i].id, i);
+            }
+        }
+        indexed_state_count_ = states.size();
+        state_index_valid_ = true;
+    } catch (...) {
+        state_name_index_.clear();
+        state_id_index_.clear();
+        indexed_state_count_ = 0;
+        state_index_valid_ = false;
+    }
+}
+
+void FsmIr::ensure_state_index() const noexcept {
+    if (!state_index_valid_ || indexed_state_count_ != states.size()) {
+        rebuild_state_index();
+    }
+}
+
 const StateNode* FsmIr::find_state_by_id(std::string_view state_id) const noexcept {
+    if (state_id.empty()) {
+        return nullptr;
+    }
+    ensure_state_index();
+    if (state_index_valid_) {
+        if (auto it = state_id_index_.find(state_id); it != state_id_index_.end()) {
+            const std::size_t idx = it->second;
+            if (idx < states.size() && states[idx].id == state_id) {
+                return &states[idx];
+            }
+            rebuild_state_index();
+            if (auto it2 = state_id_index_.find(state_id);
+                it2 != state_id_index_.end() && it2->second < states.size()) {
+                return &states[it2->second];
+            }
+            return nullptr;
+        }
+        // Verify cache wasn't invalidated by in-place id mutation without size change
+        for (const auto& s : states) {
+            if (s.id == state_id) {
+                rebuild_state_index();
+                return &s;
+            }
+        }
+        return nullptr;
+    }
     for (const auto& s : states) {
         if (s.id == state_id)
             return &s;
@@ -13,14 +74,35 @@ const StateNode* FsmIr::find_state_by_id(std::string_view state_id) const noexce
 }
 
 StateNode* FsmIr::find_state_by_id(std::string_view state_id) noexcept {
-    for (auto& s : states) {
-        if (s.id == state_id)
-            return &s;
-    }
-    return nullptr;
+    return const_cast<StateNode*>(static_cast<const FsmIr*>(this)->find_state_by_id(state_id));
 }
 
 const StateNode* FsmIr::find_state_by_name(std::string_view state_name) const noexcept {
+    if (state_name.empty()) {
+        return nullptr;
+    }
+    ensure_state_index();
+    if (state_index_valid_) {
+        if (auto it = state_name_index_.find(state_name); it != state_name_index_.end()) {
+            const std::size_t idx = it->second;
+            if (idx < states.size() && states[idx].name == state_name) {
+                return &states[idx];
+            }
+            rebuild_state_index();
+            if (auto it2 = state_name_index_.find(state_name);
+                it2 != state_name_index_.end() && it2->second < states.size()) {
+                return &states[it2->second];
+            }
+            return nullptr;
+        }
+        for (const auto& s : states) {
+            if (s.name == state_name) {
+                rebuild_state_index();
+                return &s;
+            }
+        }
+        return nullptr;
+    }
     for (const auto& s : states) {
         if (s.name == state_name)
             return &s;
@@ -29,11 +111,7 @@ const StateNode* FsmIr::find_state_by_name(std::string_view state_name) const no
 }
 
 StateNode* FsmIr::find_state_by_name(std::string_view state_name) noexcept {
-    for (auto& s : states) {
-        if (s.name == state_name)
-            return &s;
-    }
-    return nullptr;
+    return const_cast<StateNode*>(static_cast<const FsmIr*>(this)->find_state_by_name(state_name));
 }
 
 const StateNode* FsmIr::find_state_by_fqn(std::string_view state_fqn) const noexcept {

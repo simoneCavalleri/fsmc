@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.12.0] - 2026-11-24
+
+### Added
+- **Clean Default & `--freestanding` Zero-STL Profile**:
+  - Added `--freestanding` CLI option in `fsmc`, `FREESTANDING` option in `FsmcTools.cmake`, and `FSMC_FREESTANDING` runtime profile emitting zero-STL C++17/C++20 headers (no `<iostream>`, `<string>`, `<functional>`, `<mutex>`, `<thread>`), verified under `-fno-exceptions -fno-rtti -Wall -Wextra -Werror` with zero heap allocations.
+  - Changed the default primary FSM alias to use `::fsm::no_observer` and removed `<iostream>` from generated headers.
+- **Extensible `ICodegenBackend` & `TargetCapabilities`-Driven Lowering**:
+  - Added `fsm::ir::TargetCapabilities` presets (`cpp17()`, `cpp20()`, `c99_baremetal()`, `rust_no_std()`) and `fsm::backend::ICodegenBackend` / `CppCodegenBackend`.
+  - Added `PassManager::add_lowering_passes_for()` and `PassManager::create_lowering_pipeline()` to dynamically schedule structural lowering passes based on target capabilities.
+- **Full HFSM/EFSM `IrSimulator` & Differential Verification Suite**:
+  - Extended `IrSimulator` with hierarchical LCA `on_enter`/`on_exit`/`do_activity` ordering, shallow/deep history restoration, deferred event queuing/recall, fail-closed `strict_guards` mode, and structured JSON export via `--simulate --trace-out <file.json>`.
+  - Added `test_differential_semantics` CTest suite comparing `IrSimulator` against compiled C++17 and C++20 generated FSMs.
+- **Pipeline Introspection & Per-Pass IR Verification (`fsm-opt`)**:
+  - Added `fsm-opt --dump-pipeline` (`PassManager::dump_pipeline()`) and `--verify-ir` (`PassManager::set_verify_ir_each_pass(true)`) verifying `FsmGraphOps::is_well_formed()` after every pass (`E_IR_VERIFY`).
+- **Fuzzing, C++17 Runtime Matrix & Scaling Benchmarks**:
+  - Added `libFuzzer` harnesses under `tests/fuzz/` (`-DFSMC_ENABLE_FUZZERS=ON`), C++17 runtime compatibility suites (`test_runtime_cpp17_suite`, `test_zero_alloc_runtime_cpp17`), `PassManager` property-based idempotency/determinism tests, and 50/200/500-state compiler scaling benchmarks.
+
+### Changed
+- **Strict 5-Library CMake DAG & Isolated Project Options**:
+  - Split compiled compiler engine into strict DAG targets (`fsmc_core`, `fsmc_frontend`, `fsmc_middleend`, `fsmc_backend`, `fsmc_driver_lib`) with internal `fsmc_project_options` target isolation, `GNUInstallDirs`, Emscripten guards, and `FSMC_HOST_EXECUTABLE` + `ALLOW_DIAGRAM_CODEGEN` in `FsmcTools.cmake`.
+  - Migrated `IParser`/`IEmitter` to `DiagnosticEngine&` with multi-file `SourceManager` and `NO_COLOR`, unified `PassRegistry` (eliminating 33 wrapper classes and duplicate `FsmValidator`), added `AnalysisManager` caching and O(1) `FsmIr` state hash indices, and cleaned C++ syntax leakage from IR.
+  - Aligned `conanfile.py` (component targets + `with_zlib`), `vcpkg.json` (`version` + dependencies), and CI/Release workflows (full SDK archives, `find_package(fsmc)` consumer verification, `check_test_catalog`, and TSan coverage for `test_spsc_fsm` and `test_flight_recorder`).
+
+### Fixed
+- **Codegen Security & Runtime Concurrency**:
+  - Enforced fail-closed codegen on unresolved formal expressions and sanitized model names, namespaces, strings, and comments against injection.
+  - Resolved SPSC/thread-safe runtime concurrency and timer issues (atomic double-buffered snapshots, generation-tagged `cancel_timer()`, RAII `PluginLoader` ABI v1 handshake, and `PassManager` destructor ordering before `dlclose`).
+- **Formal Verification Soundness, Parsers & Determinism**:
+  - Fixed negation handling in `EFSMIntervalAnalyzer`, `!=`/`||` handling in `GuardSatisfiabilityPass`, CTL/stuttering semantics in `ModelChecker`, iterator invalidation in `WcetAnalysisPass`, and deterministic `ir.signals` ordering in `FsmGraphOps::canonicalize()`.
+  - Fixed `SimpleJsonParser` exponential duplication (`O(2^D)` -> `O(N)`), recursion depth limits across all parsers, `evaluate_numeric` UB, truncated `.slx` `Z_OK` handling, `SIGPIPE` in `PipeThroughPass`, and configurable `nuXmv` timeout.
+
 ## [0.11.0] - 2026-11-19
 
 ### Added

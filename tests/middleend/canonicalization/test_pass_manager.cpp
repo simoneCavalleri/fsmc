@@ -9,12 +9,11 @@
 #include <string>
 #include <vector>
 
+#include "fsm/ir/fsm_ir_serializer.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm::diagnostic;
 using namespace fsm::middleend;
-using namespace fsm::middleend::passes;
-using namespace fsm::middleend::analysis;
 using namespace fsm::ir;
 
 namespace {
@@ -102,14 +101,14 @@ TEST(PassManager, SampledChangeTriggerAndSubmachineWrappers_ExecuteCleanly) {
     ir.transitions.push_back(t);
 
     PassManager pm;
-    pm.add_pass(std::make_unique<SampledChangeTriggerPassWrapper>());
-    pm.add_pass(std::make_unique<SubmachineInliningPassWrapper>());
+    pm.add_pass(PassManager::create_pass_by_name("sampled-change-trigger"));
+    pm.add_pass(PassManager::create_pass_by_name("submachine-inlining"));
 
     DiagnosticEngine diag;
     EXPECT_TRUE(pm.run(ir, diag));
     EXPECT_EQ(pm.get_stats().size(), 2u);
-    EXPECT_EQ(pm.get_stats()[0].pass_name, "SampledChangeTrigger");
-    EXPECT_EQ(pm.get_stats()[1].pass_name, "SubmachineInlining");
+    EXPECT_EQ(pm.get_stats()[0].pass_name, "sampled-change-trigger");
+    EXPECT_EQ(pm.get_stats()[1].pass_name, "submachine-inlining");
     EXPECT_TRUE(std::holds_alternative<AnonymousTrigger>(ir.transitions[0].trigger));
 }
 
@@ -126,14 +125,14 @@ TEST(PassManager, NoOpTransformationWrappersReturnSuccessAndAnalyticalPreserveIr
 
     PassManager pm;
     pm.add_pass(std::make_unique<SemanticValidationPass>());
-    pm.add_pass(std::make_unique<HistoryLoweringPassWrapper>());
-    pm.add_pass(std::make_unique<ForkJoinLoweringPassWrapper>());
-    pm.add_pass(std::make_unique<DeferredEventLoweringPassWrapper>());
-    pm.add_pass(std::make_unique<BoundaryActionFusionPassWrapper>());
-    pm.add_pass(std::make_unique<OrthogonalProductPassWrapper>());
+    pm.add_pass(PassManager::create_pass_by_name("history-lowering"));
+    pm.add_pass(PassManager::create_pass_by_name("fork-join-lowering"));
+    pm.add_pass(PassManager::create_pass_by_name("deferred-event-lowering"));
+    pm.add_pass(PassManager::create_pass_by_name("boundary-action-fusion"));
+    pm.add_pass(PassManager::create_pass_by_name("orthogonal-product"));
     pm.add_pass(std::make_unique<ChoiceCompletenessPass>());
     pm.add_pass(std::make_unique<ModelSafetyVerifierPass>());
-    pm.add_pass(std::make_unique<WcetAnalysisPassWrapper>());
+    pm.add_pass(PassManager::create_pass_by_name("wcet-analysis"));
     pm.add_pass(std::make_unique<EFSMDataPathPass>(false));
 
     DiagnosticEngine diag;
@@ -252,6 +251,149 @@ TEST(PassManager, RandomizedFsmIrPropertyFuzz_PreservesInvariantsWithoutCrash) {
         // Second run must remain stable and not crash
         EXPECT_NO_THROW({ (void)pm.run(ir, diag); }) << "idempotency seed=" << seed;
     }
+}
+
+/**
+ * @brief Regression (F2.3): Verify AnalysisManager caches AdjacencyIndex and EFSMIntervalResult across
+ * preserving passes and invalidates them when a mutating pass executes.
+ */
+TEST(PassManager, AnalysisManager_CachesAndInvalidatesDeclaratively) {
+    FsmIr ir;
+    ir.name = "CacheTest";
+    ir.initial_state = "S0";
+    ir.variables.emplace_back("x", DataType(PrimitiveTypeKind::Int32), "0");
+    ir.add_state("S0");
+    ir.add_state("S1");
+    ir.add_transition(TransitionEdge("S0", "S1", "Go"));
+
+    PassManager pm;
+    const auto& adj1 = pm.analysis_manager().get_adjacency(ir);
+    ASSERT_EQ(adj1.outgoing.at("S0").size(), 1u);
+    EXPECT_EQ(pm.analysis_manager().adjacency_computations(), 1u);
+
+    // Repeated query returns cached result without recomputing
+    (void)pm.analysis_manager().get_adjacency(ir);
+    EXPECT_EQ(pm.analysis_manager().adjacency_computations(), 1u);
+
+    (void)pm.analysis_manager().get_efsm_intervals(ir);
+    EXPECT_EQ(pm.analysis_manager().efsm_computations(), 1u);
+
+    // Selective invalidation resets only AdjacencyIndex
+    pm.analysis_manager().invalidate({"AdjacencyIndex"});
+    EXPECT_FALSE(pm.analysis_manager().has_adjacency());
+    EXPECT_TRUE(pm.analysis_manager().has_efsm_intervals());
+
+    // Running a mutating pass invalidates all cached analyses
+    pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
+    DiagnosticEngine diag;
+    EXPECT_TRUE(pm.run(ir, diag));
+    EXPECT_FALSE(pm.analysis_manager().has_efsm_intervals());
+}
+
+/**
+ * @brief Property-Based Test (F2.5): Verify cross-run determinism (byte-identical JSON),
+ * idempotency (`P(P(ir)) == P(ir)`), and IR well-formedness across randomized FSMs.
+ */
+TEST(PassManager, PropertyBased_IdempotencyDeterminismAndWellFormedness) {
+    const std::vector<std::string> events = {"EvA", "EvB", "EvC", "EvD"};
+    const std::vector<std::string> guards = {"", "x > 0", "x <= 5", "y == 1"};
+
+    for (unsigned seed = 100; seed < 120; ++seed) {
+        std::mt19937 rng(seed);
+        FsmIr base_ir;
+        base_ir.name = "PropFsm_" + std::to_string(seed);
+        base_ir.variables.emplace_back("x", DataType(PrimitiveTypeKind::Int32), "0");
+        base_ir.variables.emplace_back("y", DataType(PrimitiveTypeKind::Int32), "1");
+
+        const int num_states = 3 + static_cast<int>(rng() % 5);
+        for (int s = 0; s < num_states; ++s) {
+            base_ir.add_state("S" + std::to_string(s));
+        }
+        base_ir.initial_state = "S0";
+
+        const int num_trans = 4 + static_cast<int>(rng() % 10);
+        for (int t = 0; t < num_trans; ++t) {
+            const int src = static_cast<int>(rng() % static_cast<unsigned>(num_states));
+            const int dst = static_cast<int>(rng() % static_cast<unsigned>(num_states));
+            TransitionEdge edge("S" + std::to_string(src), "S" + std::to_string(dst), events[rng() % events.size()]);
+            const auto& g = guards[rng() % guards.size()];
+            if (!g.empty()) {
+                edge.set_guard(g);
+            }
+            base_ir.add_transition(std::move(edge));
+        }
+
+        // Run 1 & Run 2 on independent copies -> must produce byte-identical JSON (determinism)
+        FsmIr ir1 = base_ir;
+        FsmIr ir2 = base_ir;
+        DiagnosticEngine diag1;
+        DiagnosticEngine diag2;
+        auto pm1 = PassManager::create_default_pipeline();
+        auto pm2 = PassManager::create_default_pipeline();
+        (void)pm1.run(ir1, diag1);
+        (void)pm2.run(ir2, diag2);
+
+        const std::string json1 = FsmIrSerializer::serialize_json(ir1);
+        const std::string json2 = FsmIrSerializer::serialize_json(ir2);
+        EXPECT_EQ(json1, json2) << "Non-deterministic pipeline output for seed=" << seed;
+
+        // Well-formedness check after pipeline
+        std::string wf_err;
+        EXPECT_TRUE(ir1.is_well_formed(wf_err)) << "Malformed IR for seed=" << seed << ": " << wf_err;
+
+        // Idempotency check: P(P(ir)) == P(ir)
+        FsmIr ir_idem = ir1;
+        DiagnosticEngine diag_idem;
+        auto pm_idem = PassManager::create_default_pipeline();
+        (void)pm_idem.run(ir_idem, diag_idem);
+        EXPECT_EQ(FsmIrSerializer::serialize_json(ir_idem), json1) << "Non-idempotent pipeline for seed=" << seed;
+    }
+}
+
+/**
+ * @brief Verify PassManager::dump_pipeline() introspection and set_verify_ir_each_pass() invariant enforcement.
+ * @scenario Dump default pipeline and run a mock pass that introduces a dangling transition under verify_ir_each_pass.
+ * @expected dump_pipeline lists passes/prerequisites/invalidations; verify_ir_each_pass catches corruption with
+ *           E_IR_VERIFY.
+ */
+TEST(PassManager, DumpPipelineAndVerifyIrEachPass) {
+    class CorruptingPass final : public IPass {
+      public:
+        [[nodiscard]] std::string name() const override { return "CorruptingMockPass"; }
+        [[nodiscard]] std::string description() const override { return "Intentionally corrupts IR for testing"; }
+        bool run(FsmIr& ir, DiagnosticEngine& /*diag*/) override {
+            ir.transitions.emplace_back("Idle", "NonExistentState", "EvBroken");
+            return true;
+        }
+    };
+
+    auto pm = PassManager::create_default_pipeline();
+    const std::string dump = pm.dump_pipeline();
+    EXPECT_NE(dump.find("PassManager Pipeline Introspection"), std::string::npos);
+    EXPECT_NE(dump.find("HierarchyCanonicalization"), std::string::npos);
+    EXPECT_NE(dump.find("requires"), std::string::npos);
+    EXPECT_NE(dump.find("invalidates"), std::string::npos);
+
+    PassManager bad_pm;
+    bad_pm.set_verify_ir_each_pass(true);
+    bad_pm.add_pass(std::make_unique<CorruptingPass>());
+
+    FsmIr ir;
+    ir.name = "VerifyIrTarget";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+
+    DiagnosticEngine diag;
+    EXPECT_FALSE(bad_pm.run(ir, diag));
+    ASSERT_TRUE(diag.has_errors());
+    bool found_verify_code = false;
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "E_IR_VERIFY") {
+            found_verify_code = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_verify_code);
 }
 
 }  // namespace

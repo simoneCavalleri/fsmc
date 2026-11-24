@@ -7,7 +7,7 @@
 
 #include <string>
 
-#include "fsm/frontend/common/companion_manifest_parser.hpp"
+#include "fsm/ir/companion_manifest.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 namespace fsm::backend::diagram {
@@ -22,17 +22,17 @@ class CompanionManifestEmitter {
     /**
      * @brief Extracts formal contracts and datapath metadata from FsmIr into a CompanionManifest.
      */
-    [[nodiscard]] static frontend::CompanionManifest build_manifest(const ir::FsmIr& ir);
+    [[nodiscard]] static ir::CompanionManifest build_manifest(const ir::FsmIr& ir);
 
     /**
      * @brief Serializes a CompanionManifest to YAML format (.fsm.yaml).
      */
-    [[nodiscard]] static std::string emit_yaml(const frontend::CompanionManifest& manifest);
+    [[nodiscard]] static std::string emit_yaml(const ir::CompanionManifest& manifest);
 
     /**
      * @brief Serializes a CompanionManifest to JSON format (.fsm.json).
      */
-    [[nodiscard]] static std::string emit_json(const frontend::CompanionManifest& manifest);
+    [[nodiscard]] static std::string emit_json(const ir::CompanionManifest& manifest);
 
     /**
      * @brief Convenience method extracting and serializing FsmIr directly to YAML.

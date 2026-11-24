@@ -11,14 +11,11 @@
 #include "fsm/backend/cpp/runtime/fsm.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
-#include "fsm/middleend/analysis/fsm_validator.hpp"
 
 using namespace fsm::backend::cpp;
 using namespace fsm::backend;
 using namespace fsm::frontend::diagram;
 using namespace fsm::frontend;
-using namespace fsm::middleend::analysis;
-using namespace fsm::middleend;
 using namespace fsm::ir;
 
 namespace {
@@ -45,8 +42,8 @@ TEST(HistoryPseudostate, PlantUmlHistory_ShallowHistory_ParsedIntoIr) {
 
     PlantUmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err.render_to_string();
 
     const auto* op_state = model.find_state("Operating");
     ASSERT_NE(op_state, nullptr);
@@ -79,8 +76,8 @@ TEST(HistoryPseudostate, MermaidDeepHistory_DeepHistory_ParsedIntoIr) {
 
     MermaidParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err.render_to_string();
 
     const auto* op_state = model.find_state("Operating");
     ASSERT_NE(op_state, nullptr);
@@ -110,8 +107,8 @@ TEST(HistoryPseudostate, HistoryCodegen_HistoryTable_EmittedInGeneratedHeader) {
 
     PlantUmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err.render_to_string();
 
     GeneratorOptions opts;
     opts.cpp_standard = CppStandard::Cpp20;

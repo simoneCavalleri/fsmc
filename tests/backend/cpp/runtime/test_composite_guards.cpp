@@ -149,7 +149,7 @@ TEST(CompositeGuards, GuardExpressionParser_NestedExpressions_ParsedIntoAst) {
     // 1. Single identifier
     {
         auto res = GuardExpressionParser::parse("EmergencyStop");
-        EXPECT_EQ(res.cpp_type, "EmergencyStop");
+        EXPECT_EQ(res.canonical_expression, "EmergencyStop");
         ASSERT_EQ(res.atomic_guards.size(), 1u);
         EXPECT_EQ(res.atomic_guards[0], "EmergencyStop");
     }
@@ -157,7 +157,7 @@ TEST(CompositeGuards, GuardExpressionParser_NestedExpressions_ParsedIntoAst) {
     // 2. Unary Not
     {
         auto res = GuardExpressionParser::parse("!EmergencyStop");
-        EXPECT_EQ(res.cpp_type, "fsm::not_<EmergencyStop>");
+        EXPECT_EQ(res.canonical_expression, "!EmergencyStop");
         ASSERT_EQ(res.atomic_guards.size(), 1u);
         EXPECT_EQ(res.atomic_guards[0], "EmergencyStop");
     }
@@ -165,28 +165,28 @@ TEST(CompositeGuards, GuardExpressionParser_NestedExpressions_ParsedIntoAst) {
     // 3. Binary And
     {
         auto res = GuardExpressionParser::parse("PowerOk && !EmergencyStop");
-        EXPECT_EQ(res.cpp_type, "fsm::and_<PowerOk, fsm::not_<EmergencyStop>>");
+        EXPECT_EQ(res.canonical_expression, "PowerOk && !EmergencyStop");
         ASSERT_EQ(res.atomic_guards.size(), 2u);
     }
 
     // 4. Precedence: && binds tighter than ||
     {
         auto res = GuardExpressionParser::parse("A || B && C");
-        EXPECT_EQ(res.cpp_type, "fsm::or_<A, fsm::and_<B, C>>");
+        EXPECT_EQ(res.canonical_expression, "A || B && C");
         ASSERT_EQ(res.atomic_guards.size(), 3u);
     }
 
     // 5. Parentheses overriding precedence
     {
         auto res = GuardExpressionParser::parse("(A || B) && C");
-        EXPECT_EQ(res.cpp_type, "fsm::and_<fsm::or_<A, B>, C>");
+        EXPECT_EQ(res.canonical_expression, "(A || B) && C");
         ASSERT_EQ(res.atomic_guards.size(), 3u);
     }
 
     // 6. Deep 4-level nesting
     {
         auto res = GuardExpressionParser::parse("((A && !B) || (C && (D || !E)))");
-        EXPECT_EQ(res.cpp_type, "fsm::or_<fsm::and_<A, fsm::not_<B>>, fsm::and_<C, fsm::or_<D, fsm::not_<E>>>>");
+        EXPECT_EQ(res.canonical_expression, "A && !B || C && (D || !E)");
         ASSERT_EQ(res.atomic_guards.size(), 5u);
     }
 }
@@ -200,69 +200,68 @@ TEST(CompositeGuards, GuardExpressionParser_EdgeCases_HandlesSyntaxVariants) {
     // 1. Whitespace resilience
     {
         auto res = GuardExpressionParser::parse("  !  EmergencyStop   ");
-        EXPECT_EQ(res.cpp_type, "fsm::not_<EmergencyStop>");
+        EXPECT_EQ(res.canonical_expression, "!EmergencyStop");
     }
     {
         auto res = GuardExpressionParser::parse("A&&! B || ( C&&D )");
-        EXPECT_EQ(res.cpp_type, "fsm::or_<fsm::and_<A, fsm::not_<B>>, fsm::and_<C, D>>");
+        EXPECT_EQ(res.canonical_expression, "A && !B || C && D");
     }
 
     // 2. Empty or whitespace-only expressions
     {
         auto res = GuardExpressionParser::parse("");
-        EXPECT_TRUE(res.cpp_type.empty());
+        EXPECT_TRUE(res.canonical_expression.empty());
         EXPECT_TRUE(res.atomic_guards.empty());
     }
     {
         auto res = GuardExpressionParser::parse("   \t\n  ");
-        EXPECT_TRUE(res.cpp_type.empty());
+        EXPECT_TRUE(res.canonical_expression.empty());
         EXPECT_TRUE(res.atomic_guards.empty());
     }
 
-    // 3. Roundtrip diagram string formatting
+    // 3. Legacy C++ combinator decoding & roundtrip canonical formatting
     {
-        std::string cpp_t = "fsm::and_<SafetyOk, fsm::not_<EStop>>";
-        std::string diagram_s = GuardExpressionParser::to_diagram_string(cpp_t);
+        std::string legacy_cpp = "fsm::and_<SafetyOk, fsm::not_<EStop>>";
+        std::string diagram_s = GuardExpressionParser::to_diagram_string(legacy_cpp);
         EXPECT_EQ(diagram_s, "SafetyOk && !EStop");
 
-        // Re-parsing diagram string gives identical C++ type
         auto reparsed = GuardExpressionParser::parse(diagram_s);
-        EXPECT_EQ(reparsed.cpp_type, cpp_t);
+        EXPECT_EQ(reparsed.canonical_expression, "SafetyOk && !EStop");
     }
     {
-        std::string cpp_t = "fsm::or_<fsm::and_<A, B>, fsm::not_<C>>";
-        std::string diagram_s = GuardExpressionParser::to_diagram_string(cpp_t);
+        std::string legacy_cpp = "fsm::or_<fsm::and_<A, B>, fsm::not_<C>>";
+        std::string diagram_s = GuardExpressionParser::to_diagram_string(legacy_cpp);
         EXPECT_EQ(diagram_s, "A && B || !C");
     }
     {
         // AND containing OR must wrap OR in parentheses to preserve precedence
-        std::string cpp_t = "fsm::and_<A, fsm::or_<B, C>>";
-        std::string diagram_s = GuardExpressionParser::to_diagram_string(cpp_t);
+        std::string legacy_cpp = "fsm::and_<A, fsm::or_<B, C>>";
+        std::string diagram_s = GuardExpressionParser::to_diagram_string(legacy_cpp);
         EXPECT_EQ(diagram_s, "A && (B || C)");
         auto reparsed = GuardExpressionParser::parse(diagram_s);
-        EXPECT_EQ(reparsed.cpp_type, cpp_t);
+        EXPECT_EQ(reparsed.canonical_expression, "A && (B || C)");
     }
     {
-        std::string cpp_t = "fsm::and_<fsm::or_<A, B>, C>";
-        std::string diagram_s = GuardExpressionParser::to_diagram_string(cpp_t);
+        std::string legacy_cpp = "fsm::and_<fsm::or_<A, B>, C>";
+        std::string diagram_s = GuardExpressionParser::to_diagram_string(legacy_cpp);
         EXPECT_EQ(diagram_s, "(A || B) && C");
         auto reparsed = GuardExpressionParser::parse(diagram_s);
-        EXPECT_EQ(reparsed.cpp_type, cpp_t);
+        EXPECT_EQ(reparsed.canonical_expression, "(A || B) && C");
     }
     {
         // NOT containing composite expression must wrap in parentheses
-        std::string cpp_t = "fsm::not_<fsm::and_<A, B>>";
-        std::string diagram_s = GuardExpressionParser::to_diagram_string(cpp_t);
+        std::string legacy_cpp = "fsm::not_<fsm::and_<A, B>>";
+        std::string diagram_s = GuardExpressionParser::to_diagram_string(legacy_cpp);
         EXPECT_EQ(diagram_s, "!(A && B)");
         auto reparsed = GuardExpressionParser::parse(diagram_s);
-        EXPECT_EQ(reparsed.cpp_type, cpp_t);
+        EXPECT_EQ(reparsed.canonical_expression, "!(A && B)");
     }
     {
-        std::string cpp_t = "fsm::not_<fsm::or_<A, B>>";
-        std::string diagram_s = GuardExpressionParser::to_diagram_string(cpp_t);
+        std::string legacy_cpp = "fsm::not_<fsm::or_<A, B>>";
+        std::string diagram_s = GuardExpressionParser::to_diagram_string(legacy_cpp);
         EXPECT_EQ(diagram_s, "!(A || B)");
         auto reparsed = GuardExpressionParser::parse(diagram_s);
-        EXPECT_EQ(reparsed.cpp_type, cpp_t);
+        EXPECT_EQ(reparsed.canonical_expression, "!(A || B)");
     }
 }
 
@@ -276,7 +275,7 @@ TEST(CompositeGuards, MultiFormatParser_CompositeGuards_IngestedAcrossDialects) 
     {
         PlantUmlParser parser;
         fsm::ir::FsmIr model;
-        std::string err;
+        fsm::diagnostic::DiagnosticEngine err;
         std::string puml = R"(
 @startuml
 [*] --> Off
@@ -287,7 +286,7 @@ Running --> Off : StopCmd
         ASSERT_TRUE(parser.parse(puml, model, err));
         ASSERT_EQ(model.transitions.size(), 2u);
         ASSERT_TRUE(model.transitions[0].guard.has_value());
-        EXPECT_EQ(*model.transitions[0].guard, "fsm::and_<PowerOk, fsm::not_<EmergencyStop>>");
+        EXPECT_EQ(*model.transitions[0].guard, "PowerOk && !EmergencyStop");
         EXPECT_EQ(model.guards.size(), 2u);
     }
 
@@ -295,7 +294,7 @@ Running --> Off : StopCmd
     {
         MermaidParser parser;
         fsm::ir::FsmIr model;
-        std::string err;
+        fsm::diagnostic::DiagnosticEngine err;
         std::string mmd = R"(
 stateDiagram-v2
     [*] --> Off
@@ -304,14 +303,14 @@ stateDiagram-v2
 )";
         ASSERT_TRUE(parser.parse(mmd, model, err));
         ASSERT_EQ(model.transitions.size(), 2u);
-        EXPECT_EQ(*model.transitions[0].guard, "fsm::and_<PowerOk, DoorClosed>");
+        EXPECT_EQ(*model.transitions[0].guard, "PowerOk && DoorClosed");
     }
 
     // 3. SysML v2
     {
         Sysml2Parser parser;
         fsm::ir::FsmIr model;
-        std::string err;
+        fsm::diagnostic::DiagnosticEngine err;
         std::string sysml = R"(
 state def MachineFSM {
     entry; then Off;
@@ -322,14 +321,14 @@ state def MachineFSM {
 )";
         ASSERT_TRUE(parser.parse(sysml, model, err));
         ASSERT_EQ(model.transitions.size(), 1u);
-        EXPECT_EQ(*model.transitions[0].guard, "fsm::and_<PowerOk, fsm::not_<EmergencyStop>>");
+        EXPECT_EQ(*model.transitions[0].guard, "PowerOk && !EmergencyStop");
     }
 
     // 4. SCXML
     {
         ScxmlParser parser;
         fsm::ir::FsmIr model;
-        std::string err;
+        fsm::diagnostic::DiagnosticEngine err;
         std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
 <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" initial="Off">
     <state id="Off">
@@ -339,14 +338,14 @@ state def MachineFSM {
 </scxml>)";
         ASSERT_TRUE(parser.parse(scxml, model, err));
         ASSERT_EQ(model.transitions.size(), 1u);
-        EXPECT_EQ(*model.transitions[0].guard, "fsm::and_<PowerOk, fsm::not_<EmergencyStop>>");
+        EXPECT_EQ(*model.transitions[0].guard, "PowerOk && !EmergencyStop");
     }
 
     // 5. DOT
     {
         DotParser parser;
         fsm::ir::FsmIr model;
-        std::string err;
+        fsm::diagnostic::DiagnosticEngine err;
         std::string dot = R"(
 digraph FSM {
     __start [shape=point];
@@ -356,14 +355,14 @@ digraph FSM {
 )";
         ASSERT_TRUE(parser.parse(dot, model, err));
         ASSERT_EQ(model.transitions.size(), 1u);
-        EXPECT_EQ(*model.transitions[0].guard, "fsm::and_<PowerOk, fsm::not_<EmergencyStop>>");
+        EXPECT_EQ(*model.transitions[0].guard, "PowerOk && !EmergencyStop");
     }
 
     // 6. JSON
     {
         fsm::frontend::JsonParser parser;
         fsm::ir::FsmIr model;
-        std::string err;
+        fsm::diagnostic::DiagnosticEngine err;
         std::string json = R"({
     "id": "MachineFSM",
     "initial": "Off",
@@ -378,7 +377,7 @@ digraph FSM {
 })";
         ASSERT_TRUE(parser.parse(json, model, err));
         ASSERT_EQ(model.transitions.size(), 1u);
-        EXPECT_EQ(*model.transitions[0].guard, "fsm::and_<PowerOk, fsm::not_<EmergencyStop>>");
+        EXPECT_EQ(*model.transitions[0].guard, "PowerOk && !EmergencyStop");
     }
 }
 

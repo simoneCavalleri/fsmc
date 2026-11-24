@@ -8,8 +8,8 @@
 #include <set>
 #include <sstream>
 
-#include "fsm/frontend/directive/directive_parser.hpp"
-#include "fsm/frontend/directive/guard_parser.hpp"
+#include "fsm/ir/guard.hpp"
+#include "fsm/ir/type_definition.hpp"
 
 namespace fsm::backend::formal {
 
@@ -286,9 +286,9 @@ std::string SmvSerializer::serialize(const FsmIr& model) {
 
     for (const auto& ct : model.custom_types) {
         if (ct.is_enum()) {
-            out << "-- @fsm:enum " << frontend::directive::DirectiveParser::format_enum_directive(ct) << "\n";
+            out << "-- @fsm:enum " << ir::format_enum_directive(ct) << "\n";
         } else if (ct.is_struct()) {
-            out << "-- @fsm:struct " << frontend::directive::DirectiveParser::format_struct_directive(ct) << "\n";
+            out << "-- @fsm:struct " << ir::format_struct_directive(ct) << "\n";
         }
     }
     for (const auto& port : model.ports) {

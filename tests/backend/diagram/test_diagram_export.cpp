@@ -61,8 +61,8 @@ TEST(DiagramExport, CameoXmiModel_ExportedToMermaidAndValidated) {
 
     CameoXmiParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi, model, err)) << "Error: " << err.render_to_string();
 
     // Export to Mermaid
     const std::string mermaid_diagram = MermaidSerializer::serialize(model);
@@ -73,7 +73,7 @@ TEST(DiagramExport, CameoXmiModel_ExportedToMermaidAndValidated) {
     // Verify the exported Mermaid can be re-parsed by MermaidParser
     MermaidParser mermaid_parser;
     FsmIr roundtrip_model;
-    ASSERT_TRUE(mermaid_parser.parse(mermaid_diagram, roundtrip_model, err)) << "Error: " << err;
+    ASSERT_TRUE(mermaid_parser.parse(mermaid_diagram, roundtrip_model, err)) << "Error: " << err.render_to_string();
     ASSERT_NE(roundtrip_model.find_state("Idle"), nullptr);
     ASSERT_NE(roundtrip_model.find_state("Running"), nullptr);
     ASSERT_EQ(roundtrip_model.transitions.size(), 1U);
@@ -99,8 +99,8 @@ TEST(DiagramExport, ScxmlModel_ExportedToPlantUmlAndValidated) {
 
     ScxmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(scxml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(scxml, model, err)) << "Error: " << err.render_to_string();
 
     // Export to PlantUML
     const std::string puml_diagram = PlantUmlSerializer::serialize(model);
@@ -113,7 +113,7 @@ TEST(DiagramExport, ScxmlModel_ExportedToPlantUmlAndValidated) {
     // Verify PlantUML roundtrip parse
     PlantUmlParser puml_parser;
     FsmIr roundtrip_model;
-    ASSERT_TRUE(puml_parser.parse(puml_diagram, roundtrip_model, err)) << "Error: " << err;
+    ASSERT_TRUE(puml_parser.parse(puml_diagram, roundtrip_model, err)) << "Error: " << err.render_to_string();
     ASSERT_NE(roundtrip_model.find_state("Disconnected"), nullptr);
     ASSERT_NE(roundtrip_model.find_state("Connecting"), nullptr);
 }
@@ -200,8 +200,8 @@ Operating --> Idle : StopCmd / DisengageDrive
 
     PlantUmlParser puml_parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(puml_parser.parse(puml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(puml_parser.parse(puml, model, err)) << "Error: " << err.render_to_string();
 
     // 1. Verify AST Hierarchy
     EXPECT_EQ(model.initial_state, "Idle");
@@ -227,7 +227,7 @@ Operating --> Idle : StopCmd / DisengageDrive
     EXPECT_NE(exported_puml.find("[SafetyOk && !EStop]"), std::string::npos);
     EXPECT_EQ(exported_puml.find("fsm::and_"), std::string::npos);  // Clean diagram format
     FsmIr roundtrip_puml;
-    ASSERT_TRUE(puml_parser.parse(exported_puml, roundtrip_puml, err)) << "Error: " << err;
+    ASSERT_TRUE(puml_parser.parse(exported_puml, roundtrip_puml, err)) << "Error: " << err.render_to_string();
     EXPECT_EQ(roundtrip_puml.initial_state, "Idle");
     EXPECT_EQ(roundtrip_puml.find_state("SelfTest")->parent_state, "Initializing");
     EXPECT_EQ(roundtrip_puml.find_state("Manual")->parent_state, "Running");
@@ -241,7 +241,7 @@ Operating --> Idle : StopCmd / DisengageDrive
     EXPECT_EQ(exported_mmd.find("fsm::and_"), std::string::npos);  // Clean diagram format
     MermaidParser mmd_parser;
     FsmIr roundtrip_mmd;
-    ASSERT_TRUE(mmd_parser.parse(exported_mmd, roundtrip_mmd, err)) << "Error: " << err;
+    ASSERT_TRUE(mmd_parser.parse(exported_mmd, roundtrip_mmd, err)) << "Error: " << err.render_to_string();
     EXPECT_EQ(roundtrip_mmd.find_state("SelfTest")->parent_state, "Initializing");
     EXPECT_EQ(roundtrip_mmd.find_state("Manual")->parent_state, "Running");
 
@@ -254,7 +254,7 @@ Operating --> Idle : StopCmd / DisengageDrive
     EXPECT_EQ(exported_json.find("fsm::and_"), std::string::npos);  // Clean diagram format
     fsm::frontend::JsonParser json_parser;
     FsmIr roundtrip_json;
-    ASSERT_TRUE(json_parser.parse(exported_json, roundtrip_json, err)) << "Error: " << err;
+    ASSERT_TRUE(json_parser.parse(exported_json, roundtrip_json, err)) << "Error: " << err.render_to_string();
     EXPECT_EQ(roundtrip_json.find_state("SelfTest")->parent_state, "Initializing");
     EXPECT_EQ(roundtrip_json.find_state("Manual")->parent_state, "Running");
 }
@@ -287,7 +287,7 @@ TEST(DiagramExport, AdvancedPseudostatesAndInvariants_PreservedAcrossDiagramExpo
     t2.priority = 2;
     model.add_transition(t2);
 
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
 
     // 1. PlantUML Export & Re-parse
     const std::string puml_out = PlantUmlSerializer::serialize(model);
@@ -298,7 +298,7 @@ TEST(DiagramExport, AdvancedPseudostatesAndInvariants_PreservedAcrossDiagramExpo
 
     PlantUmlParser puml_parser;
     FsmIr puml_ir;
-    ASSERT_TRUE(puml_parser.parse(puml_out, puml_ir, err)) << "PlantUML parse error: " << err;
+    ASSERT_TRUE(puml_parser.parse(puml_out, puml_ir, err)) << "PlantUML parse error: " << err.render_to_string();
     EXPECT_EQ(puml_ir.find_state("EnPort")->kind, StateKind::EntryPoint);
     EXPECT_EQ(puml_ir.find_state("ExPort")->kind, StateKind::ExitPoint);
     ASSERT_TRUE(puml_ir.find_state("Standby")->time_invariant.has_value());
@@ -323,7 +323,7 @@ TEST(DiagramExport, AdvancedPseudostatesAndInvariants_PreservedAcrossDiagramExpo
 
     fsm::frontend::JsonParser json_parser;
     FsmIr json_ir;
-    ASSERT_TRUE(json_parser.parse(json_out, json_ir, err)) << "JSON parse error: " << err;
+    ASSERT_TRUE(json_parser.parse(json_out, json_ir, err)) << "JSON parse error: " << err.render_to_string();
     EXPECT_EQ(json_ir.find_state("EnPort")->kind, StateKind::EntryPoint);
     EXPECT_EQ(json_ir.find_state("ExPort")->kind, StateKind::ExitPoint);
     ASSERT_TRUE(json_ir.find_state("Standby")->time_invariant.has_value());
@@ -493,8 +493,8 @@ TEST(DiagramExport, FsmIrModel_ExportedToDotGraphvizFormat) {
     // Re-parse with DotParser
     DotParser dot_parser;
     FsmIr parsed_ir;
-    std::string err;
-    ASSERT_TRUE(dot_parser.parse(dot_out, parsed_ir, err)) << "DOT parser error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(dot_parser.parse(dot_out, parsed_ir, err)) << "DOT parser error: " << err.render_to_string();
     EXPECT_EQ(parsed_ir.states.size(), 3u);
     EXPECT_EQ(parsed_ir.transitions.size(), 2u);
     EXPECT_EQ(parsed_ir.transitions[0].event, "EvTurnOn");

@@ -10,6 +10,7 @@
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/ir/guard.hpp"
+#include "fsm/middleend/pass_interface.hpp"
 
 namespace fsm::middleend::passes {
 
@@ -21,13 +22,8 @@ using ir::GuardAstNode;
  * @class GuardSimplificationPass
  * @brief Target-Agnostic Middle-End Pass: Algebraic simplification and canonicalization of Guard ASTs.
  */
-class GuardSimplificationPass {
+class GuardSimplificationPass : public ::fsm::middleend::IPass {
   public:
-    [[nodiscard]] static std::string name() { return "GuardSimplification"; }
-    [[nodiscard]] static std::string description() {
-        return "Performs algebraic simplification, constant folding, and canonicalization of guard ASTs";
-    }
-
     /**
      * @brief Simplifies a single GuardAstNode recursively.
      */
@@ -39,7 +35,12 @@ class GuardSimplificationPass {
      * @param diag Diagnostic engine for errors.
      * @return True on success, false on failure.
      */
-    bool run(FsmIr& ir, DiagnosticEngine& diag);
+    [[nodiscard]] std::string name() const override { return "guard-simplification"; }
+    [[nodiscard]] std::string description() const override {
+        return "Simplifies redundant boolean guard expressions and algebraic tautologies.";
+    }
+    [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };
 
 }  // namespace fsm::middleend::passes

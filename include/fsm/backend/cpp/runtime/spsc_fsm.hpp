@@ -1,8 +1,10 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <optional>
 #include <string_view>
 #if !defined(FSMC_FREESTANDING)
@@ -21,17 +23,69 @@ namespace fsm {
  * @brief Lock-Free, Zero-Allocation Single-Producer Single-Consumer (SPSC) FSM Wrapper.
  *
  * Designed for Hard Real-Time, Embedded Systems, and Interrupt Service Routines (ISR).
- * - **Producer (ISR / Sensor Task)**: Calls `enqueue()` in Wait-Free O(1) time without acquiring locks or allocating
+ * - **Producer (ISR / Sensor Task)**: Calls `post()` in Wait-Free O(1) time without acquiring locks or allocating
  * memory.
- * - **Consumer (Control Task / Worker)**: Calls `process_one()` or `run_until_empty()` to drain the queue and advance
- * the FSM sequentially.
- * - **Readers (Any Thread)**: Inspect `state_index()`, `state_name()`, and `snapshot_registers()` via acquire-release
- * semantics and seqlock synchronization.
- * Reviewed and found correct as-is: the seqlock in snapshot_registers() below
- * (odd/even sequence counter bracketing every register mutation, retried
- * read on the reader side) is a standard, sound seqlock.
+ * - **Consumer (Control Task / Worker)**: Calls `process_one()`, `run_until_empty()`, `step()`, `tick()`,
+ *   and consumer-only introspection (`get_history()`, `timer_manager()`).
+ * - **Readers (Any Thread)**: Inspect `state_index()`, `state_name()`, `is_in()`, `state_residence_time()`,
+ *   `has_invariant_violation()`, and `snapshot_registers()` via race-free atomic word snapshots (zero UB under
+ * C++20/TSan).
  */
 namespace detail {
+
+template <typename T>
+class atomic_word_snapshot {
+    static_assert(std::is_trivially_copyable_v<T>, "atomic_word_snapshot requires trivially copyable T");
+    static constexpr std::size_t kWords = (sizeof(T) + sizeof(std::uint64_t) - 1) / sizeof(std::uint64_t);
+
+  public:
+    atomic_word_snapshot() noexcept = default;
+
+    void publish(const T& value) noexcept {
+        std::array<std::uint64_t, kWords> raw{};
+        std::memcpy(raw.data(), static_cast<const void*>(&value), sizeof(T));
+        const std::uint64_t s = seq_.load(std::memory_order_relaxed);
+        seq_.store(s + 1, std::memory_order_seq_cst);
+        for (std::size_t i = 0; i < kWords; ++i) {
+            words_[i].store(raw[i], std::memory_order_release);
+        }
+        seq_.store(s + 2, std::memory_order_release);
+    }
+
+    [[nodiscard]] T load() const noexcept {
+        std::array<std::uint64_t, kWords> raw{};
+        for (;;) {
+            const std::uint64_t s0 = seq_.load(std::memory_order_acquire);
+            if ((s0 & 1ULL) != 0ULL) {
+#if !defined(FSMC_FREESTANDING)
+                std::this_thread::yield();
+#endif
+                continue;
+            }
+            for (std::size_t i = 0; i < kWords; ++i) {
+                raw[i] = words_[i].load(std::memory_order_acquire);
+            }
+            const std::uint64_t s1 = seq_.load(std::memory_order_seq_cst);
+            if (s0 == s1) {
+                break;
+            }
+        }
+        T out{};
+        std::memcpy(static_cast<void*>(&out), raw.data(), sizeof(T));
+        return out;
+    }
+
+  private:
+    std::atomic<std::uint64_t> seq_{0};
+    std::array<std::atomic<std::uint64_t>, kWords> words_{};
+};
+
+template <>
+class atomic_word_snapshot<no_registers> {
+  public:
+    constexpr void publish(const no_registers&) noexcept {}
+    [[nodiscard]] constexpr no_registers load() const noexcept { return no_registers{}; }
+};
 template <typename Variant, std::size_t... Is>
 constexpr std::string_view get_state_name_by_index_impl(std::size_t idx, std::index_sequence<Is...>) noexcept {
     constexpr std::string_view names[] = {::fsm::get_state_name(std::variant_alternative_t<Is, Variant>{})...};
@@ -111,23 +165,21 @@ class spsc_fsm {
     static constexpr bool has_event = fsm_type::template has_event<Event>;
 
     // Constructors
-    spsc_fsm() : fsm_() { state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_relaxed); }
+    spsc_fsm() : fsm_() { publish_snapshot(); }
 
-    explicit spsc_fsm(Services& srv, Table table = Table{}) : fsm_(srv, std::move(table)) {
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_relaxed);
-    }
+    explicit spsc_fsm(Services& srv, Table table = Table{}) : fsm_(srv, std::move(table)) { publish_snapshot(); }
 
     explicit spsc_fsm(Registers reg, Table table = Table{}) : fsm_(std::move(reg), std::move(table)) {
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_relaxed);
+        publish_snapshot();
     }
 
     explicit spsc_fsm(Registers reg, Services& srv, Table table = Table{})
         : fsm_(std::move(reg), srv, std::move(table)) {
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_relaxed);
+        publish_snapshot();
     }
 
     explicit spsc_fsm(InitialState initial, Table table = Table{}) : fsm_(std::move(initial), std::move(table)) {
-        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_relaxed);
+        publish_snapshot();
     }
 
     // Non-copyable, non-movable
@@ -296,13 +348,15 @@ class spsc_fsm {
         fsm_.clear_history();
     }
 
+    /// Consumer-thread-only history inspection (non-concurrent; do not call from reader threads).
     [[nodiscard]] std::string_view get_history(std::string_view parent) const noexcept {
-        return seqlock_read([this, parent]() { return fsm_.get_history(parent); });
+        return fsm_.get_history(parent);
     }
 
+    /// Consumer-thread-only typed history inspection (non-concurrent; do not call from reader threads).
     template <typename ParentState>
     [[nodiscard]] std::string_view get_history() const noexcept {
-        return seqlock_read([this]() { return fsm_.template get_history<ParentState>(); });
+        return fsm_.template get_history<ParentState>();
     }
 
     void clear_deferred() noexcept {
@@ -315,13 +369,25 @@ class spsc_fsm {
         fsm_.clear_deferred_events();
     }
 
+    void set_invariant_violation_handler(void (*fn)(const invariant_violation_info&)) noexcept {
+        mutation_guard guard(*this);
+        fsm_.set_invariant_violation_handler(fn);
+    }
+
+    void set_invariant_violation_handler(void (*fn)(void*, const invariant_violation_info&), void* ctx) noexcept {
+        mutation_guard guard(*this);
+        fsm_.set_invariant_violation_handler(fn, ctx);
+    }
+
+#if !defined(FSMC_FREESTANDING)
     void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
         mutation_guard guard(*this);
         fsm_.set_invariant_violation_handler(std::move(handler));
     }
+#endif
 
     // ========================================================================
-    // Concurrent Telemetry & State Inspection API (Lock-Free / Seqlock)
+    // Concurrent Telemetry & State Inspection API (Lock-Free Atomic Snapshots)
     // Safe to invoke from external monitoring, telemetry, or reader threads.
     // ========================================================================
 
@@ -349,33 +415,27 @@ class spsc_fsm {
     }
 
     [[nodiscard]] std::uint64_t state_residence_time() const noexcept {
-        return seqlock_read([this]() { return fsm_.state_residence_time(); });
+        return residence_time_ms_.load(std::memory_order_acquire);
     }
     [[nodiscard]] bool has_invariant_violation() const noexcept {
-        return seqlock_read([this]() { return fsm_.has_invariant_violation(); });
+        return has_invariant_violation_.load(std::memory_order_acquire);
     }
-    [[nodiscard]] bool is_invariant_satisfied() const noexcept {
-        return seqlock_read([this]() { return fsm_.is_invariant_satisfied(); });
-    }
+    [[nodiscard]] bool is_invariant_satisfied() const noexcept { return !has_invariant_violation(); }
+    /// Consumer-thread-only detailed invariant violation inspection.
     [[nodiscard]] std::optional<invariant_violation_info> last_invariant_violation() const noexcept {
-        return seqlock_read([this]() { return fsm_.last_invariant_violation(); });
+        return fsm_.last_invariant_violation();
     }
 
     /**
      * @brief Captures a consistent snapshot of internal registers without blocking the consumer thread.
-     *
-     * WHY (Seqlock Lock-Free Protocol):
-     * In hard real-time systems, external logging or telemetry threads must never block or preempt
-     * the control task. We implement a lightweight Sequence Lock (seqlock):
-     * 1. The consumer increments `seq_` to an odd number before mutating registers, and to even after.
-     * 2. The reader thread samples `seq_` before and after reading the registers.
-     * 3. If `seq_` was even and unchanged across the copy, the snapshot is guaranteed free of torn reads.
+     * Uses atomic word-level snapshot storage so concurrent reads and writes are 100% data-race-free
+     * under the C++20 memory model and ThreadSanitizer.
      */
     [[nodiscard]] Registers snapshot_registers() const noexcept {
         if constexpr (std::is_same_v<Registers, no_registers>) {
             return no_registers{};
         } else {
-            return seqlock_read([this]() { return fsm_.registers(); });
+            return registers_snapshot_.load();
         }
     }
 
@@ -390,16 +450,18 @@ class spsc_fsm {
     [[nodiscard]] bool queue_full() const noexcept { return queue_.full(); }
 
   private:
+    void publish_snapshot() noexcept {
+        if constexpr (!std::is_same_v<Registers, no_registers>) {
+            registers_snapshot_.publish(fsm_.registers());
+        }
+        residence_time_ms_.store(fsm_.state_residence_time(), std::memory_order_release);
+        has_invariant_violation_.store(fsm_.has_invariant_violation(), std::memory_order_release);
+        state_index_.store(fsm_.get_current_state_variant().index(), std::memory_order_release);
+    }
+
     struct mutation_guard {
-        explicit mutation_guard(spsc_fsm& owner) noexcept : owner_(owner) {
-            owner_.seq_.fetch_add(1, std::memory_order_acq_rel);
-            std::atomic_thread_fence(std::memory_order_release);
-        }
-        ~mutation_guard() noexcept {
-            owner_.state_index_.store(owner_.fsm_.get_current_state_variant().index(), std::memory_order_release);
-            std::atomic_thread_fence(std::memory_order_release);
-            owner_.seq_.fetch_add(1, std::memory_order_release);
-        }
+        explicit mutation_guard(spsc_fsm& owner) noexcept : owner_(owner) {}
+        ~mutation_guard() noexcept { owner_.publish_snapshot(); }
         mutation_guard(const mutation_guard&) = delete;
         mutation_guard& operator=(const mutation_guard&) = delete;
 
@@ -407,31 +469,12 @@ class spsc_fsm {
         spsc_fsm& owner_;
     };
 
-    template <typename Fn>
-    auto seqlock_read(Fn&& fn) const noexcept {
-        using Result = std::decay_t<decltype(fn())>;
-        Result result{};
-        std::uint32_t s0 = 0;
-        do {
-            s0 = seq_.load(std::memory_order_acquire);
-            while (s0 & 1U) {
-#if !defined(FSMC_FREESTANDING)
-                std::this_thread::yield();
-#else
-                (void)0;
-#endif
-                s0 = seq_.load(std::memory_order_acquire);
-            }
-            result = fn();
-            std::atomic_thread_fence(std::memory_order_acquire);
-        } while (seq_.load(std::memory_order_acquire) != s0);
-        return result;
-    }
-
     fsm_type fsm_;
     spsc_ring_buffer<event_variant, QueueCapacity> queue_;
+    detail::atomic_word_snapshot<Registers> registers_snapshot_{};
     std::atomic<std::size_t> state_index_{0};
-    mutable std::atomic<std::uint32_t> seq_{0};
+    std::atomic<std::uint64_t> residence_time_ms_{0};
+    std::atomic<bool> has_invariant_violation_{false};
 };
 
 }  // namespace fsm

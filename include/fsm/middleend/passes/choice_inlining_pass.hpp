@@ -9,6 +9,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/pass_interface.hpp"
 
 namespace fsm::middleend::passes {
 
@@ -19,20 +20,20 @@ using ir::FsmIr;
  * @class ChoiceInliningPass
  * @brief Target-Agnostic Middle-End Pass: Choice & Junction Pseudostate Inlining.
  */
-class ChoiceInliningPass {
+class ChoiceInliningPass : public ::fsm::middleend::IPass {
   public:
-    [[nodiscard]] static std::string name() { return "ChoiceInlining"; }
-    [[nodiscard]] static std::string description() {
-        return "Inlines choice and junction pseudostates into direct composite transitions on the IR graph";
-    }
-
     /**
      * @brief Inlines choice pseudostates into direct transitions across the IR model.
      * @param ir Target FsmIr to mutate.
      * @param diag Diagnostic reporting engine.
      * @return True on success, false on fatal transform failure.
      */
-    static bool run(FsmIr& ir, DiagnosticEngine& diag);
+    [[nodiscard]] std::string name() const override { return "choice-inlining"; }
+    [[nodiscard]] std::string description() const override {
+        return "Inlines UML Choice pseudostates into guarded direct transitions.";
+    }
+    [[nodiscard]] bool preserves_ir() const noexcept override { return false; }
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };
 
 }  // namespace fsm::middleend::passes

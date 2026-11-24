@@ -15,7 +15,12 @@ int main() {
               << "  RUNNING CMAKE INTEGRATION (fsm_target_sources) \n"
               << "=================================================\n";
 
-    net_cmake::ConnectionFSM sm;
+    struct TestServices : net_cmake::ConnectionFSMServices {
+        bool HasNetworkGuard() const override { return true; }
+        bool HasValidCredentialsGuard() const override { return true; }
+    };
+    TestServices srv;
+    net_cmake::ConnectionFSM sm(srv);
 
     assert(sm.current_state_name() == "Disconnected");
     assert(sm.is_in_state<net_cmake::Disconnected>());

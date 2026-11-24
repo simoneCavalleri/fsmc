@@ -54,7 +54,7 @@ class spsc_ring_buffer {
             return false;  // Full
         }
 
-        new (get_slot(head)) T(std::forward<Args>(args)...);
+        new (raw_slot_ptr(head)) T(std::forward<Args>(args)...);
         head_.store(head + 1, std::memory_order_release);
         return true;
     }
@@ -104,31 +104,35 @@ class spsc_ring_buffer {
     }
 
     [[nodiscard]] bool empty() const noexcept {
-        return head_.load(std::memory_order_relaxed) == tail_.load(std::memory_order_relaxed);
+        const std::size_t tail = tail_.load(std::memory_order_acquire);
+        const std::size_t head = head_.load(std::memory_order_acquire);
+        return head == tail;
     }
 
-    [[nodiscard]] bool full() const noexcept {
-        return (head_.load(std::memory_order_relaxed) - tail_.load(std::memory_order_relaxed)) >= Capacity;
-    }
+    [[nodiscard]] bool full() const noexcept { return size() >= Capacity; }
 
     [[nodiscard]] std::size_t size() const noexcept {
-        const std::size_t head = head_.load(std::memory_order_relaxed);
-        const std::size_t tail = tail_.load(std::memory_order_relaxed);
-        return head - tail;
+        const std::size_t tail = tail_.load(std::memory_order_acquire);
+        const std::size_t head = head_.load(std::memory_order_acquire);
+        return (head >= tail) ? (head - tail) : 0;
     }
 
     [[nodiscard]] constexpr std::size_t capacity() const noexcept { return Capacity; }
 
   private:
     static constexpr std::size_t IndexMask = Capacity - 1;
+    static constexpr std::size_t StorageAlign = (cache_line_size > alignof(T)) ? cache_line_size : alignof(T);
 
-    // Aligned byte storage for placement-new.
+    // Raw uninitialized byte storage pointer for placement-new (avoids std::launder UB on uninitialized memory).
+    void* raw_slot_ptr(std::size_t index) noexcept { return raw_storage_.data() + (index & IndexMask) * sizeof(T); }
+
+    // Laundered typed pointer for accessing an already-constructed T object.
     T* get_slot(std::size_t index) noexcept {
         return std::launder(reinterpret_cast<T*>(raw_storage_.data() + (index & IndexMask) * sizeof(T)));
     }
 
     // C4324: MSVC warns when a struct is padded due to __declspec(align) / alignas.
-    // This padding is intentional: head_ and tail_ are placed on separate cache lines
+    // This padding is intentional: head_, tail_, and raw_storage_ are placed on separate cache lines
     // to eliminate false sharing between the producer and consumer threads.
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -136,7 +140,7 @@ class spsc_ring_buffer {
 #endif
     alignas(cache_line_size) std::atomic<std::size_t> head_{0};
     alignas(cache_line_size) std::atomic<std::size_t> tail_{0};
-    alignas(alignof(T)) std::array<std::byte, sizeof(T) * Capacity> raw_storage_;
+    alignas(StorageAlign) std::array<std::byte, sizeof(T) * Capacity> raw_storage_;
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif

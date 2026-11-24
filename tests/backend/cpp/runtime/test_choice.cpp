@@ -8,14 +8,15 @@
 #include <string>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
+#include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/frontend/diagram/plantuml_parser.hpp"
-#include "fsm/middleend/analysis/fsm_validator.hpp"
+#include "fsm/middleend/pass_manager.hpp"
+#include "fsm/middleend/passes/choice_inlining_pass.hpp"
 
 using namespace fsm::backend::cpp;
 using namespace fsm::backend;
 using namespace fsm::frontend::diagram;
 using namespace fsm::frontend;
-using namespace fsm::middleend::analysis;
 using namespace fsm::middleend;
 using namespace fsm::ir;
 
@@ -41,8 +42,8 @@ TEST(ChoicePseudostate, ChoicePseudostate_ConditionalEvaluation_BranchesToTarget
 
     PlantUmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err.render_to_string();
 
     ASSERT_EQ(model.choice_nodes.size(), 1u);
     EXPECT_EQ(model.choice_nodes[0].name, "AuthChoice");
@@ -50,8 +51,12 @@ TEST(ChoicePseudostate, ChoicePseudostate_ConditionalEvaluation_BranchesToTarget
     EXPECT_EQ(model.guards.size(), 2u);
     EXPECT_EQ(model.actions.size(), 2u);
 
-    const auto validation = FsmValidator::validate(model);
-    EXPECT_TRUE(validation.is_valid);
+    fsm::diagnostic::DiagnosticEngine val_diag;
+    EXPECT_TRUE(fsm::middleend::PassManager::create_validation_pipeline().run(model, val_diag));
+
+    fsm::diagnostic::DiagnosticEngine diag;
+    fsm::middleend::passes::ChoiceInliningPass choice_pass;
+    ASSERT_TRUE(choice_pass.run(model, diag));
 
     GeneratorOptions opts;
     opts.cpp_standard = CppStandard::Cpp20;

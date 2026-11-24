@@ -19,6 +19,8 @@
 #include "fsm/backend/cpp/cpp_model_emitter.hpp"
 #include "fsm/backend/cpp/cpp_options.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/passes/choice_inlining_pass.hpp"
+#include "fsm/middleend/passes/orthogonal_product_pass.hpp"
 
 using namespace fsm::backend::cpp;
 using namespace fsm::backend;
@@ -352,6 +354,13 @@ TEST(CppGenerator, ChoiceInStateList_IsInlinedAutomaticallyBeforeValidation) {
     GeneratorOptions opts;
     opts.standalone = false;
 
+    // Unlowered choice pseudostate is rejected by CppGenerator (strict layering: lowering belongs to middleend)
+    EXPECT_THROW((void)CppGenerator::generate_header(model, opts), std::invalid_argument);
+
+    fsm::diagnostic::DiagnosticEngine diag;
+    fsm::middleend::passes::ChoiceInliningPass choice_pass;
+    ASSERT_TRUE(choice_pass.run(model, diag));
+
     EXPECT_NO_THROW({
         std::string code = CppGenerator::generate_header(model, opts);
         EXPECT_FALSE(code.empty());
@@ -458,6 +467,14 @@ TEST(CppGenerator, ParallelRegions_AreLoweredBeforeEmission) {
     GeneratorOptions options;
     options.standalone = false;
     options.target_namespace = "parallel_test";
+
+    // Unlowered parallel region is rejected by CppGenerator (strict layering: lowering belongs to middleend)
+    EXPECT_THROW((void)CppGenerator::generate_header(model, options), std::invalid_argument);
+
+    fsm::diagnostic::DiagnosticEngine diag;
+    fsm::middleend::passes::OrthogonalProductPass product_pass;
+    ASSERT_TRUE(product_pass.run(model, diag));
+
     const auto generated = CppGenerator::generate_header(model, options);
 
     EXPECT_NE(generated.find("DualChannel_FirstIdle_SecondIdle"), std::string::npos);
@@ -609,7 +626,7 @@ TEST(CppModelEmitter, FluentFactoryAliases_EmittedCorrectly) {
     EXPECT_NE(str.find("::fsm::with_ports<DeviceControllerInPorts, DeviceControllerOutPorts>"), std::string::npos);
     EXPECT_NE(str.find("::fsm::with_registers<DeviceControllerRegisters>"), std::string::npos);
     EXPECT_NE(str.find("::fsm::with_services<DeviceControllerServices>"), std::string::npos);
-    EXPECT_NE(str.find("::fsm::with_observer<::fsm::dynamic_observer>"), std::string::npos);
+    EXPECT_NE(str.find("::fsm::with_observer<::fsm::no_observer>"), std::string::npos);
 
     EXPECT_NE(str.find("using ThreadSafeDeviceController = ::fsm::make_thread_safe_fsm<"), std::string::npos);
     EXPECT_NE(str.find("using SpscDeviceController = ::fsm::make_spsc_fsm<"), std::string::npos);
@@ -1095,8 +1112,8 @@ TEST(CppModelEmitterTest, ActionCallOpOmitsNoServiceOverloadsAndDisambiguatesMod
     call_op.function_name = "do_step";
     act.instructions.emplace_back(call_op);
 
-    model.add_guard("undeclared_gt_0", "", "undeclared_var > 0", "undeclared_var > 0");
-    TransitionEdge trans("Par", "Done", "EvGo", "undeclared_gt_0", act);
+    model.add_guard("symbolic_ready", "", "", "");
+    TransitionEdge trans("Par", "Done", "EvGo", "symbolic_ready", act);
     model.transitions.push_back(trans);
 
     std::ostringstream out;
@@ -1113,11 +1130,25 @@ TEST(CppModelEmitterTest, ActionCallOpOmitsNoServiceOverloadsAndDisambiguatesMod
               std::string::npos);
     EXPECT_NE(str.find("Services& srv) const"), std::string::npos);
 
-    // Unresolved guard expression falls back to compilable stub
-    EXPECT_NE(str.find("// Unresolved guard expression: undeclared_var > 0"), std::string::npos);
+    // Purely symbolic guard delegates fail-closed to Services::symbolic_ready() (never emits return true;)
+    EXPECT_NE(str.find("return srv.symbolic_ready();"), std::string::npos);
+    EXPECT_NE(str.find("virtual bool symbolic_ready() const { return false; }"), std::string::npos);
+    EXPECT_EQ(str.find("return true;"), std::string::npos);
 
     // Model alias collides with state 'Par', so it is disambiguated as 'ParFsm'
     EXPECT_NE(str.find("using ParFsm = ::fsm::make_fsm<"), std::string::npos);
+
+    // Unresolved expression guard must fail-closed with ECPP011 instead of emitting return true;
+    FsmIr bad_model;
+    bad_model.name = "BadGuardFsm";
+    bad_model.initial_state = "Idle";
+    bad_model.add_state("Idle");
+    bad_model.add_state("Done");
+    bad_model.add_event("EvGo");
+    bad_model.add_guard("undeclared_gt_0", "", "undeclared_var > 0", "undeclared_var > 0");
+    bad_model.transitions.emplace_back("Idle", "Done", "EvGo", "undeclared_gt_0");
+    std::ostringstream bad_out;
+    EXPECT_THROW(CppModelEmitter::emit_model(bad_out, bad_model, opts), std::invalid_argument);
 }
 
 /**
@@ -1304,7 +1335,7 @@ TEST(CppModelEmitter, LowersTargetAgnosticInfixBooleanGuardsToCppCombinators) {
     CppModelEmitter::emit_model(out, model, opts);
     const std::string str = out.str();
 
-    EXPECT_NE(str.find("fsm::or_<fsm::not_<fsm::and_<a_ok, b_ok>>, c_ok>"), std::string::npos);
+    EXPECT_NE(str.find("::fsm::or_<::fsm::not_<::fsm::and_<a_ok, b_ok>>, c_ok>"), std::string::npos);
 }
 
 /**
@@ -1409,8 +1440,8 @@ TEST(CppModelEmitterTest, GuardFunctionCallMatchingStructName_DoesNotEmitSelfCon
         CppModelEmitter::emit_model(out, model, opts);
         const std::string str = out.str();
         EXPECT_EQ(str.find("return check_ok();"), std::string::npos);
-        EXPECT_NE(str.find("// Unresolved guard expression: check_ok()"), std::string::npos);
-        EXPECT_NE(str.find("return true;"), std::string::npos);
+        EXPECT_NE(str.find("return srv.check_ok();"), std::string::npos);
+        EXPECT_EQ(str.find("return true;"), std::string::npos);
     }
 
     {
@@ -1471,4 +1502,79 @@ TEST(CppModelEmitterTest, StringPayloadEvent_OmitsConstexprCtorInCpp17) {
     const std::string str = out.str();
     EXPECT_EQ(str.find("constexpr explicit Telemetry("), std::string::npos);
     EXPECT_NE(str.find("explicit Telemetry(uint32_t val_, std::string tag_)"), std::string::npos);
+}
+
+/**
+ * @brief Verify C++ codegen sanitizes malicious model names, namespaces, descriptions, and preserves declared 'f'
+ * variable.
+ * @scenario Emit a model with comment-breaking description, unsafe namespace/model name, and a struct register named
+ * 'f'.
+ * @expected Emitted header neutralizes comment/namespace injection and qualifies `f.val` as `reg.f.val`.
+ */
+TEST(CppModelEmitterTest, CodegenSanitization_NeutralizesInjectionAndPreservesVariableF) {
+    FsmIr model;
+    model.name = "My-Model*/Hack";
+    model.initial_state = "Idle";
+    StateNode st("Idle");
+    st.description = "safe */ int injected = 1; /*";
+    model.states.push_back(st);
+    model.add_state("Done");
+    model.add_event("EvGo");
+
+    StructDefinition f_struct("FlagBox");
+    f_struct.fields.emplace_back("val", DataType::int32());
+    model.add_struct(f_struct);
+    model.add_variable(VariableDefinition("f", DataType::custom("FlagBox")));
+    model.add_guard("check_f", "", "f.val > 0", "f.val > 0");
+    model.transitions.emplace_back("Idle", "Done", "EvGo", "check_f");
+
+    GeneratorOptions opts;
+    opts.standalone = false;
+    opts.target_namespace = "app::bad;ns";
+    opts.include_stubs = true;
+    const std::string code = CppGenerator::generate_header(model, opts);
+
+    EXPECT_NE(code.find("namespace app::bad_ns {"), std::string::npos);
+    EXPECT_NE(code.find("using My_Model__Hack = ::fsm::make_fsm<"), std::string::npos);
+    EXPECT_EQ(code.find("safe */ int injected"), std::string::npos);
+    EXPECT_NE(code.find("return reg.f.val > 0;"), std::string::npos);
+    // Register-referencing guard must NOT emit a fake 1-arg operator()(const InPorts&) returning true
+    EXPECT_EQ(code.find("return true;"), std::string::npos);
+}
+
+/**
+ * @brief Verify default clean header omits <iostream> and dynamic_observer, and --freestanding omits all hosted STL.
+ * @scenario Generate default and freestanding standalone C++17/C++20 headers from a sample FsmIr.
+ * @expected Default header omits <iostream> and uses no_observer; freestanding header defines FSMC_FREESTANDING and
+ *           omits <iostream>, <string>, <functional>, <mutex>, <thread>, dynamic_observer, and ThreadSafe alias.
+ */
+TEST(CppModelEmitterTest, FreestandingAndCleanDefault_OmitsHostedStlAndDynamicObserver) {
+    auto model = create_sample_ir();
+
+    // 1. Default standalone C++20 header must omit <iostream> and use no_observer on primary alias
+    GeneratorOptions default_opts;
+    default_opts.cpp_standard = CppStandard::Cpp20;
+    default_opts.standalone = true;
+    const std::string default_code = CppGenerator::generate_header(model, default_opts);
+    EXPECT_EQ(default_code.find("#include <iostream>"), std::string::npos);
+    EXPECT_NE(default_code.find("::fsm::with_observer<::fsm::no_observer>"), std::string::npos);
+
+    // 2. Freestanding standalone C++17 and C++20 headers must omit all hosted STL headers and ThreadSafe wrappers
+    for (auto std_ver : {CppStandard::Cpp17, CppStandard::Cpp20}) {
+        GeneratorOptions fs_opts;
+        fs_opts.cpp_standard = std_ver;
+        fs_opts.standalone = true;
+        fs_opts.freestanding = true;
+        fs_opts.thread_safe = true;  // must be overridden to false by freestanding
+        const std::string fs_code = CppGenerator::generate_header(model, fs_opts);
+
+        EXPECT_NE(fs_code.find("#define FSMC_FREESTANDING 1"), std::string::npos);
+        EXPECT_EQ(fs_code.find("#include <iostream>"), std::string::npos);
+        EXPECT_EQ(fs_code.find("#include <string>"), std::string::npos);
+        EXPECT_EQ(fs_code.find("#include <functional>"), std::string::npos);
+        EXPECT_EQ(fs_code.find("#include <mutex>"), std::string::npos);
+        EXPECT_EQ(fs_code.find("#include <thread>"), std::string::npos);
+        EXPECT_EQ(fs_code.find("using ThreadSafeDeviceController"), std::string::npos);
+        EXPECT_NE(fs_code.find("::fsm::with_observer<::fsm::no_observer>"), std::string::npos);
+    }
 }

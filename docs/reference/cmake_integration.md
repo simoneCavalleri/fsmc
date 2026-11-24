@@ -31,7 +31,9 @@ fsmc_target_sources(
     [STANDALONE]
     [MODULAR]
     [NO_THREAD_SAFE]
+    [FREESTANDING]
     [NO_STUBS]
+    [ALLOW_DIAGRAM_CODEGEN]
     [FORMAT <FormatName>]
     [TARGET_LANG <Language>]
 )
@@ -50,9 +52,14 @@ fsmc_target_sources(
 | `MODULAR` | Flag | Generate header that includes external runtime header (default: `"fsm.hpp"`, matching `--export-runtime`). |
 | `RUNTIME_HEADER` | String | Custom runtime header path included in modular mode (e.g. `"fsm.hpp"`, `"<fsm/fsm.hpp>"`). |
 | `NO_THREAD_SAFE` | Flag | Disable generation of the `thread_safe_fsm` asynchronous wrapper. |
+| `FREESTANDING` | Flag | Emit zero-STL freestanding header (`--freestanding`, `-fno-exceptions -fno-rtti` compatible). |
 | `NO_STUBS` | Flag | Disable generation of default stubs for custom actions and guards. |
+| `ALLOW_DIAGRAM_CODEGEN` | Flag | Explicitly opt in to C++ codegen from informal diagram formats (`.puml`, `.mmd`, `.dot`). |
 | `FORMAT` | String | Override input model format parser (`sysml2`, `plantuml`, `mermaid`, etc.). |
 | `TARGET_LANG` | String | Target code generator language (`cpp`). |
+
+!!! tip "Cross-Compilation (`FSMC_HOST_EXECUTABLE`)"
+    When cross-compiling for embedded targets (ARM Cortex-M, RISC-V, Emscripten), pass `-DFSMC_HOST_EXECUTABLE=/path/to/host/fsmc` so `fsmc_target_sources` runs the host compiler binary instead of the cross-compiled target executable.
 
 ---
 

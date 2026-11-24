@@ -2,6 +2,9 @@
 <Stateflow>
     <machine name="DigitalTwinECU">
         <chart id="1" name="EcuEngineController">
+            <!-- @fsm:port name=sensors_ok type=int32 dir=in -->
+            <!-- @fsm:port name=eco_requested type=int32 dir=in -->
+            <!-- @fsm:port name=engine_temp type=double dir=in -->
             <state id="10" name="Standby"/>
             <junction id="20" SSID="Precheck" type="CONNECTIVE"/>
             <junction id="21" SSID="Mode" type="CONNECTIVE"/>

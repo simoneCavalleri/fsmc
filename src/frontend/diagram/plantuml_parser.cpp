@@ -13,7 +13,16 @@ namespace fsm::frontend::diagram {
 using namespace fsm::ir;
 using directive::DirectiveParser;
 
-bool PlantUmlParser::parse(std::string_view content, FsmIr& out_model, std::string& out_error) {
+bool PlantUmlParser::parse(std::string_view content, FsmIr& out_ir, diagnostic::DiagnosticEngine& diag) {
+    std::string err;
+    if (!parse_impl(content, out_ir, err)) {
+        report_parse_error(diag, "E_PARSE_PLANTUML", err);
+        return false;
+    }
+    return true;
+}
+
+bool PlantUmlParser::parse_impl(std::string_view content, FsmIr& out_model, std::string& out_error) {
     std::istringstream stream(std::string{content});
     std::string line;
     size_t line_num = 0;

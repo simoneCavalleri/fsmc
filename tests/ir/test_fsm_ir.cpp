@@ -27,8 +27,9 @@
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/ir/fsm_ir_deserializer.hpp"
 #include "fsm/ir/fsm_ir_serializer.hpp"
+#include "fsm/ir/numeric_parse.hpp"
 #include "fsm/ir/type_definition.hpp"
-#include "fsm/middleend/analysis/fsm_validator.hpp"
+#include "fsm/middleend/analysis/semantic_analyzer.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm::ir;
@@ -1028,7 +1029,7 @@ TEST(PassManager, SemanticValidationStage_RejectsSemanticallyInvalidModels) {
  * @scenario Run FsmValidator::validate on valid and invalid state machine models.
  * @expected Returns true for valid models and false with diagnostics for invalid models.
  */
-TEST(FsmValidator, CustomTypesAndSemanticValidation_EmitsDiagnosticsOnErrors) {
+TEST(ValidationPipeline, CustomTypesAndSemanticValidation_EmitsDiagnosticsOnErrors) {
     FsmIr ir;
     ir.name = "ValidatorModel";
     ir.add_state("Active");
@@ -1037,13 +1038,13 @@ TEST(FsmValidator, CustomTypesAndSemanticValidation_EmitsDiagnosticsOnErrors) {
     // Unknown port type
     ir.ports.push_back(PortDefinition("bad_port", "InvalidNonExistentType", PortDirection::Out));
 
-    auto result = FsmValidator::validate(ir);
-    EXPECT_FALSE(result.is_valid);
-    ASSERT_FALSE(result.errors.empty());
+    DiagnosticEngine diag;
+    EXPECT_FALSE(PassManager::create_validation_pipeline().run(ir, diag));
+    EXPECT_TRUE(diag.has_errors());
 
     bool found_semantic_err = false;
-    for (const auto& err : result.errors) {
-        if (err.find("InvalidNonExistentType") != std::string::npos) {
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.message.find("InvalidNonExistentType") != std::string::npos) {
             found_semantic_err = true;
             break;
         }
@@ -1458,7 +1459,7 @@ TEST(FsmIr, JsonDeserializer_PreservesCppGuardTypeInGuardAstForBooleanExpression
     ASSERT_TRUE(FsmIrDeserializer::deserialize_json(json, ir, err)) << err;
     ASSERT_EQ(ir.transitions.size(), 1u);
     ASSERT_TRUE(ir.transitions[0].guard.has_value());
-    EXPECT_NE(ir.transitions[0].guard->find("fsm::or_<"), std::string::npos);
+    EXPECT_EQ(*ir.transitions[0].guard, "!(a_gte_10 && b_eq_0) || c_lt_5");
     ASSERT_TRUE(ir.transitions[0].guard_ast.has_value());
     EXPECT_EQ(ir.transitions[0].guard_ast->op, GuardOp::Or);
     EXPECT_EQ(ir.transitions[0].guard_ast->to_string(), "!(a_gte_10 && b_eq_0) || c_lt_5");
@@ -1576,6 +1577,82 @@ TEST(StateNode, StateTimeInvariant_AllUnitsAndOperatorsCovered) {
     EXPECT_EQ("inv: " + structured, "inv: stay < 42s");
     EXPECT_EQ(structured + std::string(" !"), "stay < 42s !");
     EXPECT_EQ(structured + " !", "stay < 42s !");
+}
+
+/**
+ * @brief Regression (F2.2): Verify ExpressionAstNode::evaluate_numeric guards against shift/modulo/NaN UB
+ * and rejects excessively nested expressions.
+ */
+TEST(ExpressionAst, EvaluateNumeric_SafeAgainstUBAndDepthOverflow) {
+    std::unordered_map<std::string, double> env;
+    env["neg"] = -1.0;
+    env["big"] = 100.0;
+    env["nan_v"] = std::numeric_limits<double>::quiet_NaN();
+    env["inf_v"] = std::numeric_limits<double>::infinity();
+
+    // Negative / out-of-range shifts must return nullopt without UB
+    auto shl_neg = ExpressionAstNode::parse("1 << neg");
+    EXPECT_FALSE(shl_neg.evaluate_numeric(env).has_value());
+
+    auto shl_big = ExpressionAstNode::parse("1 << big");
+    EXPECT_FALSE(shl_big.evaluate_numeric(env).has_value());
+
+    auto shr_big = ExpressionAstNode::parse("8 >> big");
+    EXPECT_FALSE(shr_big.evaluate_numeric(env).has_value());
+
+    // NaN / Inf in bitwise/modulo ops must return nullopt without float-to-int UB
+    auto mod_nan = ExpressionAstNode::parse("nan_v % 2");
+    EXPECT_FALSE(mod_nan.evaluate_numeric(env).has_value());
+
+    auto bit_inf = ExpressionAstNode::parse("inf_v & 3");
+    EXPECT_FALSE(bit_inf.evaluate_numeric(env).has_value());
+
+    // Valid shift still works cleanly
+    auto shl_ok = ExpressionAstNode::parse("1 << 4");
+    ASSERT_TRUE(shl_ok.evaluate_numeric(env).has_value());
+    EXPECT_DOUBLE_EQ(*shl_ok.evaluate_numeric(env), 16.0);
+
+    // Excessively deep parenthesized expression (> kMaxExprDepth) must fall back to RawExpression without stack
+    // overflow
+    std::string deep_expr;
+    for (int i = 0; i < 200; ++i) {
+        deep_expr += "(";
+    }
+    deep_expr += "1";
+    for (int i = 0; i < 200; ++i) {
+        deep_expr += ")";
+    }
+    auto deep_ast = ExpressionAstNode::parse(deep_expr);
+    EXPECT_EQ(deep_ast.kind, ExpressionKind::RawExpression);
+}
+
+/**
+ * @brief Regression (F2.3): Verify FsmIr O(1) hash state index stays coherent across direct vector mutations
+ * and verify zero-exception parse_int64 / parse_double helpers.
+ */
+TEST(FsmIr, StateHashIndexAndNumericParseHelpers) {
+    FsmIr ir;
+    ir.add_state("Alpha");
+    ir.add_state("Beta");
+    ASSERT_NE(ir.find_state("Alpha"), nullptr);
+    ASSERT_NE(ir.find_state("Beta"), nullptr);
+
+    // Direct mutation of public ir.states vector must not return stale index entries
+    ir.states.push_back(StateNode("Gamma"));
+    ASSERT_NE(ir.find_state("Gamma"), nullptr);
+    EXPECT_EQ(ir.find_state("Gamma")->name, "Gamma");
+
+    ir.states[0].name = "AlphaRenamed";
+    EXPECT_EQ(ir.find_state("Alpha"), nullptr);
+    ASSERT_NE(ir.find_state("AlphaRenamed"), nullptr);
+
+    // Zero-exception numeric parsing
+    EXPECT_EQ(parse_int64("  -42 "), std::optional<int64_t>(-42));
+    EXPECT_EQ(parse_int64("FF", 16), std::optional<int64_t>(255));
+    EXPECT_FALSE(parse_int64("12abc").has_value());
+    EXPECT_DOUBLE_EQ(parse_double(" +3.25 ").value_or(0.0), 3.25);
+    EXPECT_FALSE(parse_double("nan").has_value());
+    EXPECT_FALSE(parse_double("12.3xyz").has_value());
 }
 
 }  // namespace

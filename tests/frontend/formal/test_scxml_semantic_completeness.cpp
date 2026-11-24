@@ -8,12 +8,11 @@
 #include "fsm/backend/formal/scxml_serializer.hpp"
 #include "fsm/frontend/formal/scxml_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
-#include "fsm/middleend/analysis/fsm_validator.hpp"
+#include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm::frontend::formal;
 using namespace fsm::frontend;
 using namespace fsm::backend::formal;
-using namespace fsm::middleend::analysis;
 using namespace fsm::ir;
 
 namespace {
@@ -41,10 +40,10 @@ TEST(ScxmlSemanticCompleteness, ParallelRegions_ParsedAsOrthogonalStates) {
 
     ScxmlParser parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
     bool ok = parser.parse(scxml_src, model, err);
 
-    ASSERT_TRUE(ok) << "SCXML parse error: " << err;
+    ASSERT_TRUE(ok) << "SCXML parse error: " << err.render_to_string();
 
     const auto* dual_channel = model.find_state("DualChannel");
     ASSERT_NE(dual_channel, nullptr);
@@ -82,10 +81,10 @@ TEST(ScxmlSemanticCompleteness, FinalStates_EmitsCompletionEvents) {
 
     ScxmlParser parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
     bool ok = parser.parse(scxml_src, model, err);
 
-    ASSERT_TRUE(ok) << "SCXML parse error: " << err;
+    ASSERT_TRUE(ok) << "SCXML parse error: " << err.render_to_string();
 
     const auto* final_state = model.find_state("TaskDone");
     ASSERT_NE(final_state, nullptr);
@@ -129,10 +128,10 @@ TEST(ScxmlSemanticCompleteness, SendAndRaiseDirectives_CapturedInActionIr) {
 
     ScxmlParser parser;
     FsmIr model;
-    std::string err;
+    fsm::diagnostic::DiagnosticEngine err;
     bool ok = parser.parse(scxml_src, model, err);
 
-    ASSERT_TRUE(ok) << "SCXML parse error: " << err;
+    ASSERT_TRUE(ok) << "SCXML parse error: " << err.render_to_string();
 
     // Verify raised and sent actions
     bool has_internal_alert = false;
@@ -168,8 +167,8 @@ TEST(ScxmlSemanticCompleteness, XmlEntities_DecodedInGuardsAndAssignments) {
 
     ScxmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(scxml_src, model, err)) << "SCXML parse error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(scxml_src, model, err)) << "SCXML parse error: " << err.render_to_string();
 
     ASSERT_EQ(model.transitions.size(), 1u);
     const auto& tr = model.transitions[0];
@@ -213,8 +212,8 @@ TEST(ScxmlSemanticCompleteness, HistoryPseudostates_ResolvedAndRoundtripSerializ
 
     ScxmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(scxml_src, model, err)) << "SCXML parse error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(scxml_src, model, err)) << "SCXML parse error: " << err.render_to_string();
 
     // Verify states: Off, On, Mode1, Mode2 (On_hist must NOT be a state)
     EXPECT_EQ(model.states.size(), 4u);
@@ -235,10 +234,10 @@ TEST(ScxmlSemanticCompleteness, HistoryPseudostates_ResolvedAndRoundtripSerializ
     EXPECT_TRUE(found_hist_trans);
 
     // Validation must pass with 0 errors and 0 warnings
-    const auto validation = FsmValidator::validate(model);
-    EXPECT_TRUE(validation.is_valid);
-    EXPECT_TRUE(validation.errors.empty());
-    EXPECT_TRUE(validation.warnings.empty());
+    fsm::diagnostic::DiagnosticEngine diag;
+    EXPECT_TRUE(fsm::middleend::PassManager::create_validation_pipeline().run(model, diag));
+    EXPECT_FALSE(diag.has_errors());
+    EXPECT_FALSE(diag.has_warnings());
 
     // Roundtrip serialization back to SCXML
     std::string exported_xml = ScxmlSerializer::serialize(model);

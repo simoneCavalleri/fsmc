@@ -57,7 +57,16 @@ void DotParser::parse_label(const std::string& label, std::string& out_event, st
     out_event = trim_line(work);
 }
 
-bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error_message) {
+bool DotParser::parse(std::string_view content, FsmIr& out_ir, diagnostic::DiagnosticEngine& diag) {
+    std::string err;
+    if (!parse_impl(content, out_ir, err)) {
+        report_parse_error(diag, "E_PARSE_DOT", err);
+        return false;
+    }
+    return true;
+}
+
+bool DotParser::parse_impl(std::string_view content, FsmIr& model, std::string& error_message) {
     std::istringstream stream{std::string(content)};
     std::string line;
     std::string current_parent_state;
@@ -72,14 +81,14 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
         return s;
     };
 
-    const std::regex digraph_regex(R"(^\s*(?:digraph|graph)\s+([A-Za-z0-9_]+))", std::regex::icase);
-    const std::regex subgraph_regex(R"raw(^\s*subgraph\s+([A-Za-z0-9_]+|"[^"]*")\s*\{?)raw", std::regex::icase);
-    const std::regex node_point_regex(
+    static const std::regex digraph_regex(R"(^\s*(?:digraph|graph)\s+([A-Za-z0-9_]+))", std::regex::icase);
+    static const std::regex subgraph_regex(R"raw(^\s*subgraph\s+([A-Za-z0-9_]+|"[^"]*")\s*\{?)raw", std::regex::icase);
+    static const std::regex node_point_regex(
         R"raw(^\s*([A-Za-z0-9_]+|"[^"]*")\s*\[.*shape\s*=\s*(?:point|circle|none).*\].*)raw", std::regex::icase);
-    const std::regex edge_regex(
+    static const std::regex edge_regex(
         R"raw(^\s*([A-Za-z0-9_\[\]\*]+|"[^"]*")\s*(?:->|--)\s*([A-Za-z0-9_\[\]\*]+|"[^"]*")(?:\s*\[(.*)\])?.*)raw");
-    const std::regex label_prefix_regex(R"raw(label\s*=\s*")raw", std::regex::icase);
-    auto extract_label_attr = [&label_prefix_regex](const std::string& input, std::string& out) -> bool {
+    static const std::regex label_prefix_regex(R"raw(label\s*=\s*")raw", std::regex::icase);
+    auto extract_label_attr = [](const std::string& input, std::string& out) -> bool {
         std::smatch m;
         if (!std::regex_search(input, m, label_prefix_regex)) {
             return false;
@@ -243,7 +252,7 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
 
         // Check cluster label inside subgraph: label = "..." or label="...";
         if (!current_parent_state.empty()) {
-            const std::regex cluster_label_prefix(R"raw(^\s*label\s*=\s*")raw", std::regex::icase);
+            static const std::regex cluster_label_prefix(R"raw(^\s*label\s*=\s*")raw", std::regex::icase);
             std::string lbl_content;
             if (std::regex_search(trimmed, cluster_label_prefix) && extract_label_attr(trimmed, lbl_content)) {
                 parse_label_actions(lbl_content, current_parent_state);
@@ -310,7 +319,7 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
         }
 
         // Check node attributes (e.g. StateName [defer="Event1, Event2"];)
-        const std::regex node_attr_regex(R"raw(^\s*([A-Za-z0-9_]+|"[^"]*")\s*\[(.*)\])raw", std::regex::icase);
+        static const std::regex node_attr_regex(R"raw(^\s*([A-Za-z0-9_]+|"[^"]*")\s*\[(.*)\])raw", std::regex::icase);
         if (!std::regex_search(trimmed, match, edge_regex) && std::regex_search(trimmed, match, node_attr_regex)) {
             std::string node_name = sanitize_identifier(unquote_node(match[1].str()));
             std::string attrs = match[2].str();
@@ -338,7 +347,7 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
                 parse_label_actions(lbl_content, node_name);
             }
 
-            const std::regex defer_attr_regex(R"raw(defer\s*=\s*"([^"]*)")raw", std::regex::icase);
+            static const std::regex defer_attr_regex(R"raw(defer\s*=\s*"([^"]*)")raw", std::regex::icase);
             std::smatch defer_match;
             if (std::regex_search(attrs, defer_match, defer_attr_regex)) {
                 std::string def_events = defer_match[1].str();
@@ -452,8 +461,8 @@ bool DotParser::parse(std::string_view content, FsmIr& model, std::string& error
             trans.priority = priority;
             if (!guard_name.empty()) {
                 auto parsed = GuardExpressionParser::parse(guard_name);
-                if (!parsed.cpp_type.empty()) {
-                    trans.guard = parsed.cpp_type;
+                if (!parsed.canonical_expression.empty()) {
+                    trans.guard = parsed.canonical_expression;
                     for (const auto& detail : parsed.atomic_guard_details) {
                         model.add_guard(detail.name, "", detail.expression, detail.expression);
                     }

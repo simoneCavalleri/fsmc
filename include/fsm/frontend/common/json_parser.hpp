@@ -23,8 +23,13 @@ class JsonParser : public IParser {
     [[nodiscard]] FrontendKind kind() const noexcept override { return FrontendKind::Formal; }
     [[nodiscard]] std::string_view format_name() const noexcept override { return "json"; }
 
-    bool parse(std::string_view content, ir::FsmIr& out_ir, std::string& out_error) override {
-        return ir::FsmIrDeserializer::deserialize_json(content, out_ir, out_error);
+    bool parse(std::string_view content, ir::FsmIr& out_ir, diagnostic::DiagnosticEngine& diag) override {
+        std::string err;
+        if (!ir::FsmIrDeserializer::deserialize_json(content, out_ir, err)) {
+            diag.report(diagnostic::Diagnostic::error("E_PARSE_JSON", err.empty() ? "JSON parse error" : err));
+            return false;
+        }
+        return true;
     }
 };
 

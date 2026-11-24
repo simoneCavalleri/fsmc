@@ -114,4 +114,26 @@ TEST(WcetAnalysis, TimedAndChangeTriggerCyclesWithEmptyEvent_NotFlaggedAsZeno) {
     EXPECT_FALSE(diag.has_errors());
 }
 
+/**
+ * @brief Regression (F2.1): Verify WcetAnalysisPass does not invalidate iterators when an eventless
+ * transition targets an undeclared node name not pre-populated in `adj`.
+ */
+TEST(WcetAnalysis, UndeclaredEventlessTarget_NoIteratorInvalidationOrCrash) {
+    FsmIr model;
+    model.name = "UndeclaredTargetWcet";
+    model.add_state("A");
+    model.add_state("B");
+
+    TransitionEdge t1("A", "GhostTarget", "");
+    TransitionEdge t2("B", "AnotherGhost", "");
+    model.add_transition(t1);
+    model.add_transition(t2);
+
+    WcetAnalysisPass pass;
+    DiagnosticEngine diag;
+    EXPECT_TRUE(pass.run(model, diag));
+    EXPECT_FALSE(pass.has_zeno_cycle());
+    EXPECT_EQ(pass.max_micro_steps(), 1u);
+}
+
 }  // namespace

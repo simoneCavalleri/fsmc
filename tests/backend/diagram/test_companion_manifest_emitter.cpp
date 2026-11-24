@@ -211,8 +211,9 @@ TEST(CompanionManifestEmitter, BareTopologyAndSidecar_RecombinedIntoCompleteMode
 
     PlantUmlParser parser;
     FsmIr bare_model;
+    fsm::diagnostic::DiagnosticEngine parse_diag;
     std::string err;
-    ASSERT_TRUE(parser.parse(puml, bare_model, err)) << err;
+    ASSERT_TRUE(parser.parse(puml, bare_model, parse_diag)) << parse_diag.render_to_string();
     EXPECT_TRUE(bare_model.ports.empty());
     EXPECT_TRUE(bare_model.variables.empty());
 

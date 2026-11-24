@@ -6,6 +6,7 @@
 #include <unordered_set>
 
 #include "fsm/ir/expression.hpp"
+#include "fsm/ir/numeric_parse.hpp"
 
 namespace fsm::middleend::passes {
 
@@ -42,12 +43,17 @@ bool ConstantFoldingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             modified = true;
         } else {
             // Check simple integer comparisons: e.g. "5 > 3", "2 < 1", "4 == 4", "3 != 3"
-            std::regex num_cmp_re(R"(^\s*(-?\d+)\s*(==|!=|<=|>=|<|>)\s*(-?\d+)\s*$)");
+            static const std::regex num_cmp_re(R"(^\s*(-?\d+)\s*(==|!=|<=|>=|<|>)\s*(-?\d+)\s*$)");
             std::smatch m;
             if (std::regex_match(g, m, num_cmp_re)) {
-                long long left = std::stoll(m[1].str());
-                std::string op = m[2].str();
-                long long right = std::stoll(m[3].str());
+                auto left_opt = parse_int64(m[1].str());
+                auto right_opt = parse_int64(m[3].str());
+                if (!left_opt.has_value() || !right_opt.has_value()) {
+                    continue;
+                }
+                const int64_t left = *left_opt;
+                const std::string op = m[2].str();
+                const int64_t right = *right_opt;
 
                 bool result = false;
                 if (op == "==")

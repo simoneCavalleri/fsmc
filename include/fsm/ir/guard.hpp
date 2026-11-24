@@ -54,29 +54,9 @@ struct GuardAstNode {
         : op(operation), children(std::move(sub_nodes)) {}
 
     /**
-     * @brief Returns the canonical string representation (defaults to C++ syntax).
+     * @brief Returns the canonical target-agnostic infix boolean representation (`!`, `&&`, `||`).
      */
-    [[nodiscard]] std::string to_string() const { return to_cpp(); }
-
-    /**
-     * @brief Lowering for ISO C++17/C++20 condition evaluation syntax.
-     */
-    [[nodiscard]] std::string to_cpp() const;
-
-    /**
-     * @brief Lowering for OMG SysML v2 / KerML constraint syntax.
-     */
-    [[nodiscard]] std::string to_sysml() const;
-
-    /**
-     * @brief Lowering for nuXmv / SMV symbolic model verifier syntax.
-     */
-    [[nodiscard]] std::string to_smv() const;
-
-    /**
-     * @brief Lowering for Rust condition evaluation syntax.
-     */
-    [[nodiscard]] std::string to_rust() const { return to_cpp(); }
+    [[nodiscard]] std::string to_string() const;
 
     /**
      * @brief Recursively collects all atomic leaf guard identifiers across the AST.
@@ -124,7 +104,7 @@ struct AtomicGuardInfo {
  * @brief Analysis payload for a parsed transition guard condition.
  */
 struct ParsedGuardResult {
-    std::string cpp_type;                               ///< Target C++ boolean/predicate type signature
+    std::string canonical_expression;                   ///< Target-agnostic canonical guard expression (infix boolean)
     std::vector<std::string> atomic_guards;             ///< Decomposed atomic condition identifiers
     std::vector<AtomicGuardInfo> atomic_guard_details;  ///< Decomposed atomic guards with expressions
     std::optional<GuardAstNode> ast = std::nullopt;     ///< Target-agnostic structured guard AST

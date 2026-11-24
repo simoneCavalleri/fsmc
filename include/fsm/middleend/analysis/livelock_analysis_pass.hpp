@@ -10,6 +10,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/pass_interface.hpp"
 
 namespace fsm::middleend::analysis {
 
@@ -26,20 +27,20 @@ using ir::FsmIr;
  * Reports safety-critical errors (E0401) to prevent infinite non-yielding loops
  * in safety-critical RTOS environments and hardware lockups.
  */
-class LivelockAnalysisPass {
+class LivelockAnalysisPass : public ::fsm::middleend::IPass {
   public:
-    [[nodiscard]] static std::string name() { return "LivelockAnalysis"; }
-    [[nodiscard]] static std::string description() {
-        return "Detects zero-time Zeno cycles and instantaneous livelocks without progress";
-    }
-
     /**
      * @brief Performs cycle detection on instantaneous transitions.
      * @param ir Target FsmIr to verify.
      * @param diag Diagnostic reporting engine.
      * @return True if no zero-time livelocks were found, false if fatal cycles exist.
      */
-    bool run(FsmIr& ir, DiagnosticEngine& diag);
+    [[nodiscard]] std::string name() const override { return "livelock-analysis"; }
+    [[nodiscard]] std::string description() const override {
+        return "Detects autonomous zero-event livelock cycles in the state graph.";
+    }
+    [[nodiscard]] bool preserves_ir() const noexcept override { return true; }
+    bool run(FsmIr& ir, DiagnosticEngine& diag) override;
 };
 
 }  // namespace fsm::middleend::analysis

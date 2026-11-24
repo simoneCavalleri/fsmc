@@ -1,7 +1,9 @@
 #pragma once
 
 #include <chrono>
+#if !defined(FSMC_FREESTANDING)
 #include <functional>
+#endif
 #include <optional>
 #include <string_view>
 #include <type_traits>
@@ -136,6 +138,7 @@ class fsm {
     // Constructors
     // ========================================================================
 
+    template <typename Srv = services_type, typename = std::enable_if_t<std::is_default_constructible_v<Srv>>>
     constexpr fsm() : current_state_(initial_state_type{}), table_(), registers_{}, services_(nullptr) {
         enter_initial_state();
     }
@@ -145,6 +148,7 @@ class fsm {
         enter_initial_state();
     }
 
+    template <typename Srv = services_type, typename = std::enable_if_t<std::is_default_constructible_v<Srv>>>
     constexpr explicit fsm(registers_type reg, Table table = Table{})
         : current_state_(initial_state_type{}),
           table_(std::move(table)),
@@ -158,8 +162,10 @@ class fsm {
         enter_initial_state();
     }
 
-    template <typename InitState, typename = std::enable_if_t<Table::template has_state<std::decay_t<InitState>> &&
-                                                              !std::is_same_v<std::decay_t<InitState>, registers_type>>>
+    template <typename InitState,
+              typename = std::enable_if_t<Table::template has_state<std::decay_t<InitState>> &&
+                                          !std::is_same_v<std::decay_t<InitState>, registers_type> &&
+                                          std::is_default_constructible_v<services_type>>>
     constexpr explicit fsm(InitState&& initial, Table table = Table{})
         : current_state_(std::forward<InitState>(initial)), table_(std::move(table)), registers_{}, services_(nullptr) {
         enter_initial_state();
@@ -389,17 +395,22 @@ class fsm {
     // Observer management
     template <typename Callback>
     void set_observer(Callback observer) {
+#if !defined(FSMC_FREESTANDING)
         if constexpr (std::is_same_v<observer_type, dynamic_observer>) {
             observer_.callback = std::move(observer);
-        } else if constexpr (!std::is_same_v<observer_type, no_observer>) {
+        } else
+#endif
+            if constexpr (!std::is_same_v<observer_type, no_observer>) {
             observer_ = std::move(observer);
         }
     }
 
     void clear_observer() noexcept {
+#if !defined(FSMC_FREESTANDING)
         if constexpr (std::is_same_v<observer_type, dynamic_observer>) {
             observer_.callback = nullptr;
         }
+#endif
     }
 
     [[nodiscard]] const observer_type& observer() const noexcept { return observer_; }
@@ -553,12 +564,18 @@ class fsm {
 
     void clear_invariant_violation() noexcept { invariant_mgr_.clear_invariant_violation(); }
 
+#if !defined(FSMC_FREESTANDING)
     void set_invariant_violation_handler(std::function<void(const invariant_violation_info&)> handler) {
         invariant_mgr_.set_invariant_violation_handler(std::move(handler));
     }
+#endif
 
     void set_invariant_violation_handler(void (*handler)(const invariant_violation_info&)) noexcept {
         invariant_mgr_.set_violation_handler(handler);
+    }
+
+    void set_invariant_violation_handler(void (*handler)(void*, const invariant_violation_info&), void* ctx) noexcept {
+        invariant_mgr_.set_invariant_violation_handler(handler, ctx);
     }
 
     template <typename Callable,
@@ -1003,6 +1020,7 @@ class fsm {
     FSMC_NO_UNIQUE_ADDRESS detail::invariant_manager<Table, has_invariants> invariant_mgr_{};
 };
 
+#if !defined(FSMC_FREESTANDING)
 template <typename Table, typename InPorts = no_ports, typename OutPorts = no_ports, typename Registers = no_registers,
           typename Services = no_services, typename InitialState = typename Table::initial_state,
           std::size_t DeferredCapacity = 16,
@@ -1012,6 +1030,7 @@ template <typename Table, typename InPorts = no_ports, typename OutPorts = no_po
                    : 0)>
 using dynamic_fsm =
     fsm<Table, InPorts, OutPorts, Registers, Services, InitialState, dynamic_observer, DeferredCapacity, TimerCapacity>;
+#endif
 
 template <typename Table, std::size_t MaxTimers = 8>
 using timed_fsm = fsm<Table, no_ports, no_ports, no_registers, no_services, typename Table::initial_state, no_observer,

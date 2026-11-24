@@ -294,4 +294,53 @@ TEST(GuardSatisfiability, SymbolicGuardMetadata_DetectsUnsatisfiableAndOverlappi
     EXPECT_TRUE(has_w0301);
 }
 
+/**
+ * @brief Regression (F2.1): Verify `!=` mutual exclusivity (`x == 5` vs `x != 5`), `!=` contradiction
+ * (`x == 5 && x != 5`), and disjunction (`||`) handling without false positives.
+ */
+TEST(GuardSatisfiability, InequalityAndDisjunction_SoundExclusivityAndSatisfiability) {
+    FsmIr ir;
+    ir.states.push_back(StateNode{"Idle"});
+    ir.states.push_back(StateNode{"A"});
+    ir.states.push_back(StateNode{"B"});
+    ir.states.push_back(StateNode{"C"});
+
+    // 1. Mutually exclusive: x == 5 vs x != 5 -> must NOT emit W0301
+    TransitionEdge t1("Idle", "A", "EvEq", "x == 5");
+    t1.priority = 1;
+    TransitionEdge t2("Idle", "B", "EvEq", "x != 5");
+    t2.priority = 1;
+    ir.transitions.push_back(t1);
+    ir.transitions.push_back(t2);
+
+    // 2. Satisfiable disjunction: x < 5 || x > 10 -> must NOT emit W0302
+    TransitionEdge t3("Idle", "C", "EvOr", "x < 5 || x > 10");
+    ir.transitions.push_back(t3);
+
+    // 3. Nested disjunction inside conjunction: x < 5 && (x > 10 || y == 1) -> must NOT emit W0302
+    TransitionEdge t4("Idle", "C", "EvNestedOr", "x < 5 && (x > 10 || y == 1)");
+    ir.transitions.push_back(t4);
+
+    DiagnosticEngine diag;
+    GuardSatisfiabilityPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+    EXPECT_FALSE(diag.has_warnings());
+
+    // 4. Contradictory equality/inequality: x == 5 && x != 5 -> MUST emit W0302
+    FsmIr ir_contra;
+    ir_contra.states.push_back(StateNode{"Idle"});
+    ir_contra.states.push_back(StateNode{"Dead"});
+    ir_contra.transitions.emplace_back("Idle", "Dead", "EvContra", "x == 5 && x != 5");
+
+    DiagnosticEngine diag_contra;
+    EXPECT_TRUE(pass.run(ir_contra, diag_contra));
+    bool found_w0302 = false;
+    for (const auto& d : diag_contra.get_diagnostics()) {
+        if (d.code == "W0302") {
+            found_w0302 = true;
+        }
+    }
+    EXPECT_TRUE(found_w0302);
+}
+
 }  // namespace

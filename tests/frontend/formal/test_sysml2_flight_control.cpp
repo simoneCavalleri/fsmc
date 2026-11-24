@@ -188,11 +188,11 @@ using FlightControlFSM = fsm::make_fsm<FlightControlTable, fsm::with_initial_sta
  */
 TEST(Sysml2FlightControl, FlightMissionController_ParsedIntoValidFsmIr) {
     fsm::ir::FsmIr model;
-    std::string error;
+    fsm::diagnostic::DiagnosticEngine error;
     Sysml2Parser parser;
 
     bool ok = parser.parse(kFlightControlSysMLv2, model, error);
-    ASSERT_TRUE(ok) << "Parser error: " << error;
+    ASSERT_TRUE(ok) << "Parser error: " << error.render_to_string();
 
     EXPECT_EQ(model.name, "FlightMissionController");
     EXPECT_EQ(model.package, "FlightControlSystem");
@@ -243,7 +243,7 @@ TEST(Sysml2FlightControl, FlightMissionController_ParsedIntoValidFsmIr) {
  */
 TEST(Sysml2FlightControl, IntervalAnalysis_ProvesVariableSafety) {
     fsm::ir::FsmIr model;
-    std::string error;
+    fsm::diagnostic::DiagnosticEngine error;
     Sysml2Parser parser;
     ASSERT_TRUE(parser.parse(kFlightControlSysMLv2, model, error));
 
@@ -267,7 +267,7 @@ TEST(Sysml2FlightControl, IntervalAnalysis_ProvesVariableSafety) {
  */
 TEST(Sysml2FlightControl, CppCodeGeneration_ProducesCompilableHeader) {
     fsm::ir::FsmIr model;
-    std::string error;
+    fsm::diagnostic::DiagnosticEngine error;
     Sysml2Parser parser;
     ASSERT_TRUE(parser.parse(kFlightControlSysMLv2, model, error));
 

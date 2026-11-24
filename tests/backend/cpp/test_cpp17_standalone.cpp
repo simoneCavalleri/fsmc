@@ -16,7 +16,12 @@ int main() {
     std::cout << "  RUNNING C++17 STANDALONE GENERATED FSM TEST    \n";
     std::cout << "=================================================\n";
 
-    net17::ConnectionFSM17 sm;
+    struct TestServices : net17::ConnectionFSM17Services {
+        bool HasNetworkGuard() const override { return true; }
+        bool HasValidCredentialsGuard() const override { return true; }
+    };
+    TestServices srv;
+    net17::ConnectionFSM17 sm(srv);
 
     assert(sm.current_state_name() == "Disconnected");
     assert(sm.is_in_state<net17::Disconnected>());
@@ -42,7 +47,7 @@ int main() {
     assert(sm.is_in_state<net17::Disconnected>());
 
     // Test ThreadSafe
-    net17::ThreadSafeConnectionFSM17 async_sm;
+    net17::ThreadSafeConnectionFSM17 async_sm(srv);
     async_sm.start_worker();
     async_sm.post(net17::ConnectCmd{});
     while (!async_sm.is_in_state<net17::Connecting>()) {

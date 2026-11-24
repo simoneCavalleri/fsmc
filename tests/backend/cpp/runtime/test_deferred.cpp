@@ -53,8 +53,8 @@ TEST(DeferredEvents, PlantUml_DeferredEvents_ParsedIntoIr) {
 
     PlantUmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(puml, model, err)) << "Error: " << err.render_to_string();
 
     const auto* init_state = model.find_state("Initializing");
     ASSERT_NE(init_state, nullptr);
@@ -78,8 +78,8 @@ TEST(DeferredEvents, Mermaid_DeferredEvents_ParsedIntoIr) {
 
     MermaidParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(mmd, model, err)) << "Error: " << err.render_to_string();
 
     const auto* boot_state = model.find_state("Booting");
     ASSERT_NE(boot_state, nullptr);
@@ -112,8 +112,8 @@ TEST(DeferredEvents, Cameo_DeferredEvents_ParsedIntoIr) {
 
     CameoXmiParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(xmi, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xmi, model, err)) << "Error: " << err.render_to_string();
 
     const auto* init_state = model.find_state("Initializing");
     ASSERT_NE(init_state, nullptr);
@@ -138,8 +138,8 @@ TEST(DeferredEvents, Scxml_DeferredEvents_ParsedIntoIr) {
 
     ScxmlParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(scxml, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(scxml, model, err)) << "Error: " << err.render_to_string();
 
     const auto* init_state = model.find_state("Initializing");
     ASSERT_NE(init_state, nullptr);
@@ -169,8 +169,8 @@ TEST(DeferredEvents, Json_DeferredEvents_ParsedIntoIr) {
 
     JsonParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(json, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(json, model, err)) << "Error: " << err.render_to_string();
 
     const auto* init_state = model.find_state("Initializing");
     ASSERT_NE(init_state, nullptr);
@@ -196,8 +196,8 @@ TEST(DeferredEvents, Dot_DeferredEvents_ParsedIntoIr) {
 
     DotParser parser;
     FsmIr model;
-    std::string err;
-    ASSERT_TRUE(parser.parse(dot, model, err)) << "Error: " << err;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot, model, err)) << "Error: " << err.render_to_string();
 
     const auto* init_state = model.find_state("Initializing");
     ASSERT_NE(init_state, nullptr);

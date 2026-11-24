@@ -17,7 +17,7 @@
 # ==============================================================================
 
 function(fsmc_target_sources TARGET_NAME)
-    set(options STANDALONE MODULAR NO_THREAD_SAFE NO_STUBS)
+    set(options STANDALONE MODULAR NO_THREAD_SAFE NO_STUBS ALLOW_DIAGRAM_CODEGEN FREESTANDING)
     set(oneValueArgs NAME STANDARD NAMESPACE OUTPUT_DIR FORMAT TARGET_LANG RUNTIME_HEADER)
     set(multiValueArgs DIAGRAMS)
 
@@ -33,8 +33,14 @@ function(fsmc_target_sources TARGET_NAME)
 
     file(MAKE_DIRECTORY "${FSM_ARG_OUTPUT_DIR}")
 
-    # Determine fsmc executable location (either built in-tree, imported target, or from system)
-    if(TARGET fsmc)
+    # Determine fsmc executable location:
+    # 1. Explicit host compiler path for cross-compilation (FSMC_HOST_EXECUTABLE)
+    # 2. In-tree target (fsmc) or imported package target (fsmc::fsmc)
+    # 3. System PATH fallback
+    if(DEFINED FSMC_HOST_EXECUTABLE AND NOT "${FSMC_HOST_EXECUTABLE}" STREQUAL "")
+        set(FSMC_EXE "${FSMC_HOST_EXECUTABLE}")
+        set(FSMC_DEP "${FSMC_HOST_EXECUTABLE}")
+    elseif(TARGET fsmc)
         set(FSMC_EXE "$<TARGET_FILE:fsmc>")
         set(FSMC_DEP fsmc)
     elseif(TARGET fsmc::fsmc)
@@ -53,7 +59,11 @@ function(fsmc_target_sources TARGET_NAME)
 
         set(OUTPUT_HEADER "${FSM_ARG_OUTPUT_DIR}/${DIAGRAM_NAME}_fsm.hpp")
 
-        set(CLI_ARGS -i "${DIAGRAM_ABS}" -o "${OUTPUT_HEADER}" --allow-diagram-codegen)
+        set(CLI_ARGS -i "${DIAGRAM_ABS}" -o "${OUTPUT_HEADER}")
+
+        if(FSM_ARG_ALLOW_DIAGRAM_CODEGEN)
+            list(APPEND CLI_ARGS --allow-diagram-codegen)
+        endif()
 
         if(FSM_ARG_TARGET_LANG)
             list(APPEND CLI_ARGS --target "${FSM_ARG_TARGET_LANG}")
@@ -87,6 +97,10 @@ function(fsmc_target_sources TARGET_NAME)
 
         if(FSM_ARG_NO_THREAD_SAFE)
             list(APPEND CLI_ARGS --no-thread-safe)
+        endif()
+
+        if(FSM_ARG_FREESTANDING)
+            list(APPEND CLI_ARGS --freestanding)
         endif()
 
         if(FSM_ARG_NO_STUBS)

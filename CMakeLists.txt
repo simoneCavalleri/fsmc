@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(fsmc
-    VERSION 0.12.0
-    DESCRIPTION "A universal zero-overhead State Machine compiler for modern C++ (C++17/20)"
+    VERSION 0.13.0
+    DESCRIPTION "A universal zero-overhead State Machine compiler for modern C++17 and C99 ABI"
     HOMEPAGE_URL "https://github.com/simoneCavalleri/fsmc"
     LANGUAGES CXX
 )

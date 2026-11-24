@@ -3407,8 +3407,6 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
                                               Registers& registers_, Services* services_, FsmInstance& fsm_inst,
                                               const ObserverCallback& observer_, RecordHistoryFn&& record_history_fn,
                                               type_list<RowTypes...> /*rows*/) {
-    constexpr bool has_observer = !std::is_same_v<std::decay_t<ObserverCallback>, no_observer>;
-
     Services& srv = (services_ != nullptr) ? *services_ : fsm_inst.resolve_services();
 
     bool any_guard_rejected = false;
@@ -3464,7 +3462,7 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
                                                   get_type_name<Guard>(),
                                                   get_type_name<Action>(),
                                                   transition_kind::internal};
-                if constexpr (has_observer) {
+                if constexpr (!std::is_same_v<std::decay_t<ObserverCallback>, no_observer>) {
                     observer_(transition_info{src_name, src_name, evt_name, dispatch_status::success,
                                               transition_kind::internal});
                 }
@@ -3496,7 +3494,7 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
                                                   get_type_name<Guard>(),
                                                   get_type_name<Action>(),
                                                   transition_kind::external};
-                if constexpr (has_observer) {
+                if constexpr (!std::is_same_v<std::decay_t<ObserverCallback>, no_observer>) {
                     observer_(transition_info{src_name, dst_name, evt_name, dispatch_status::success,
                                               transition_kind::external});
                 }

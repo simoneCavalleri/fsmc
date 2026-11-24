@@ -224,8 +224,11 @@ def check_version_synchronization(repo_root: Path) -> list:
     vcpkg_file = repo_root / "vcpkg.json"
     if vcpkg_file.exists():
         vcpkg_content = vcpkg_file.read_text(encoding="utf-8")
-        if f'"version-string": "{current_version}"' not in vcpkg_content:
-            errors.append(f"vcpkg.json version mismatch: expected '\"version-string\": \"{current_version}\"'")
+        if (
+            f'"version": "{current_version}"' not in vcpkg_content
+            and f'"version-string": "{current_version}"' not in vcpkg_content
+        ):
+            errors.append(f"vcpkg.json version mismatch: expected '\"version\": \"{current_version}\"'")
 
     # 3. Check CHANGELOG.md
     changelog_file = repo_root / "CHANGELOG.md"

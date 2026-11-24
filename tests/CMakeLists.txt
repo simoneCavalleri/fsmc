@@ -1,11 +1,4 @@
-# Ensure test assertions remain active across all compilers in Release builds
-if(MSVC)
-    add_compile_options(/UNDEBUG)
-else()
-    add_compile_options(-UNDEBUG -Wno-unused-const-variable)
-endif()
-
-# Google Test via FetchContent
+# Google Test via FetchContent (isolated from fsmc_project_options)
 include(FetchContent)
 FetchContent_Declare(
     googletest
@@ -18,6 +11,15 @@ set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
 set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(googletest)
+
+# Test-only compile options (assertions active even in Release builds)
+add_library(fsmc_test_options INTERFACE)
+target_link_libraries(fsmc_test_options INTERFACE fsmc_project_options)
+if(MSVC)
+    target_compile_options(fsmc_test_options INTERFACE /UNDEBUG)
+else()
+    target_compile_options(fsmc_test_options INTERFACE -UNDEBUG -Wno-unused-const-variable)
+endif()
 
 # ==============================================================================
 # Helper Function for DRY Test Declarations
@@ -36,7 +38,7 @@ function(add_fsm_unit_test TEST_NAME)
     endif()
 
     add_executable(${TEST_NAME} ${ARG_SOURCES})
-    target_link_libraries(${TEST_NAME} PRIVATE fsmc_compiler fsmc_runtime GTest::gtest GTest::gtest_main ${ARG_EXTRA_LIBS})
+    target_link_libraries(${TEST_NAME} PRIVATE fsmc_compiler fsmc_runtime fsmc_test_options GTest::gtest GTest::gtest_main ${ARG_EXTRA_LIBS})
 
     if(ARG_STANDARD)
         set_target_properties(${TEST_NAME} PROPERTIES CXX_STANDARD ${ARG_STANDARD} CXX_STANDARD_REQUIRED ON)
@@ -86,12 +88,12 @@ add_executable(test_runtime_cpp17_suite
     backend/cpp/runtime/test_timed_transitions.cpp
     backend/cpp/runtime/test_traits_and_hooks.cpp
 )
-target_link_libraries(test_runtime_cpp17_suite PRIVATE fsmc_runtime GTest::gtest GTest::gtest_main)
+target_link_libraries(test_runtime_cpp17_suite PRIVATE fsmc_runtime fsmc_test_options GTest::gtest GTest::gtest_main)
 set_target_properties(test_runtime_cpp17_suite PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
 add_test(NAME test_runtime_cpp17_suite COMMAND test_runtime_cpp17_suite)
 
 add_executable(test_zero_alloc_runtime_cpp17 backend/cpp/runtime/test_zero_alloc_runtime.cpp)
-target_link_libraries(test_zero_alloc_runtime_cpp17 PRIVATE fsmc_runtime GTest::gtest GTest::gtest_main)
+target_link_libraries(test_zero_alloc_runtime_cpp17 PRIVATE fsmc_runtime fsmc_test_options GTest::gtest GTest::gtest_main)
 set_target_properties(test_zero_alloc_runtime_cpp17 PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
 add_test(NAME test_zero_alloc_runtime_cpp17 COMMAND test_zero_alloc_runtime_cpp17)
 
@@ -202,6 +204,7 @@ fsmc_target_sources(test_generated_fsm
     STANDARD 20
     NAMESPACE net_mermaid
     MODULAR
+    ALLOW_DIAGRAM_CODEGEN
 )
 
 # C++17 Standalone Output
@@ -212,6 +215,7 @@ fsmc_target_sources(test_cpp17_standalone
     STANDARD 17
     STANDALONE
     NAMESPACE net17
+    ALLOW_DIAGRAM_CODEGEN
 )
 
 # C++20 Standalone Output
@@ -222,6 +226,7 @@ fsmc_target_sources(test_cpp20_standalone
     STANDARD 20
     STANDALONE
     NAMESPACE net20
+    ALLOW_DIAGRAM_CODEGEN
 )
 
 # ==============================================================================
@@ -244,6 +249,7 @@ fsmc_target_sources(test_cmake_integration
     STANDARD 20
     STANDALONE
     NAMESPACE net_cmake
+    ALLOW_DIAGRAM_CODEGEN
 )
 
 add_fsm_unit_test(test_multiformat_presets_roundtrip DIR integration STANDARD 20)

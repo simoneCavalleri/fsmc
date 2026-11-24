@@ -31,43 +31,50 @@ option(FSMC_ENABLE_BENCHMARKS "Build micro-benchmarks" ${PROJECT_IS_TOP_LEVEL})
 option(FSMC_ENABLE_SANITIZERS "Enable Address and Undefined sanitizers (Debug only)" OFF)
 option(FSMC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors (-Werror)" OFF)
 
-# Windows platform definitions
+# Internal compile/link options target (never leaks to FetchContent or add_subdirectory consumers)
+add_library(fsmc_project_options INTERFACE)
+
 if(WIN32)
-    add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_definitions(fsmc_project_options INTERFACE NOMINMAX WIN32_LEAN_AND_MEAN)
 endif()
 
-# Compiler warnings & quality flags
 if(MSVC)
-    add_compile_options(/W4 /permissive- /utf-8 /bigobj /FS)
+    target_compile_options(fsmc_project_options INTERFACE /W4 /permissive- /utf-8 /bigobj /FS)
     if(FSMC_WARNINGS_AS_ERRORS)
-        add_compile_options(/WX)
+        target_compile_options(fsmc_project_options INTERFACE /WX)
     else()
-        add_compile_options(/WX-)
+        target_compile_options(fsmc_project_options INTERFACE /WX-)
     endif()
 else()
-    add_compile_options(-Wall -Wextra -Wpedantic -Wshadow -Wnon-virtual-dtor)
+    target_compile_options(fsmc_project_options INTERFACE -Wall -Wextra -Wpedantic -Wshadow -Wnon-virtual-dtor)
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-        add_compile_options(-Wno-overlength-strings)
+        target_compile_options(fsmc_project_options INTERFACE -Wno-overlength-strings)
     endif()
     if(FSMC_WARNINGS_AS_ERRORS)
-        add_compile_options(-Werror)
+        target_compile_options(fsmc_project_options INTERFACE -Werror)
     endif()
-    if(FSMC_ENABLE_SANITIZERS AND CMAKE_BUILD_TYPE STREQUAL "Debug")
-        add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
-        add_link_options(-fsanitize=address,undefined)
+    if(FSMC_ENABLE_SANITIZERS)
+        target_compile_options(fsmc_project_options INTERFACE
+            $<$<CONFIG:Debug>:-fsanitize=address,undefined>
+            $<$<CONFIG:Debug>:-fno-omit-frame-pointer>
+        )
+        target_link_options(fsmc_project_options INTERFACE
+            $<$<CONFIG:Debug>:-fsanitize=address,undefined>
+        )
     endif()
 endif()
 
-# Multithreading support
-find_package(Threads REQUIRED)
+# Multithreading support (disabled on Emscripten/WASM single-threaded targets)
+if(NOT EMSCRIPTEN)
+    find_package(Threads REQUIRED)
+endif()
 
-# Fast compiler cache support (ccache)
-if(PROJECT_IS_TOP_LEVEL)
+# Fast compiler cache support (ccache) via modern compiler launcher
+if(PROJECT_IS_TOP_LEVEL AND NOT CMAKE_CXX_COMPILER_LAUNCHER)
     find_program(CCACHE_PROGRAM ccache)
     if(CCACHE_PROGRAM)
         message(STATUS "Found ccache: ${CCACHE_PROGRAM}")
-        set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
-        set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK "${CCACHE_PROGRAM}")
+        set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
     endif()
 endif()
 
@@ -84,7 +91,9 @@ target_include_directories(fsmc_runtime INTERFACE
 )
 
 target_compile_features(fsmc_runtime INTERFACE cxx_std_17)
-target_link_libraries(fsmc_runtime INTERFACE Threads::Threads)
+if(NOT EMSCRIPTEN)
+    target_link_libraries(fsmc_runtime INTERFACE Threads::Threads)
+endif()
 
 # ==============================================================================
 # Modular Compiled Compiler Engine Targets (Strict DAG Layering)
@@ -120,7 +129,7 @@ target_include_directories(fsmc_core PUBLIC
 )
 target_compile_features(fsmc_core PRIVATE cxx_std_20)
 target_compile_features(fsmc_core INTERFACE cxx_std_17)
-target_link_libraries(fsmc_core PUBLIC fsmc_runtime)
+target_link_libraries(fsmc_core PUBLIC fsmc_runtime PRIVATE $<BUILD_INTERFACE:fsmc_project_options>)
 target_precompile_headers(fsmc_core PRIVATE ${FSMC_PCH_HEADERS})
 
 # 2. fsmc_frontend (Parsers -> fsmc_core)
@@ -130,7 +139,7 @@ file(GLOB_RECURSE FSMC_FRONTEND_SOURCES CONFIGURE_DEPENDS
 add_library(fsmc_frontend STATIC ${FSMC_FRONTEND_SOURCES})
 add_library(fsmc::frontend ALIAS fsmc_frontend)
 target_compile_features(fsmc_frontend PRIVATE cxx_std_20)
-target_link_libraries(fsmc_frontend PUBLIC fsmc_core)
+target_link_libraries(fsmc_frontend PUBLIC fsmc_core PRIVATE $<BUILD_INTERFACE:fsmc_project_options>)
 target_precompile_headers(fsmc_frontend REUSE_FROM fsmc_core)
 
 find_package(ZLIB QUIET)
@@ -146,7 +155,10 @@ file(GLOB_RECURSE FSMC_MIDDLEEND_SOURCES CONFIGURE_DEPENDS
 add_library(fsmc_middleend STATIC ${FSMC_MIDDLEEND_SOURCES})
 add_library(fsmc::middleend ALIAS fsmc_middleend)
 target_compile_features(fsmc_middleend PRIVATE cxx_std_20)
-target_link_libraries(fsmc_middleend PUBLIC fsmc_core PRIVATE ${CMAKE_DL_LIBS})
+target_link_libraries(fsmc_middleend PUBLIC fsmc_core PRIVATE $<BUILD_INTERFACE:fsmc_project_options>)
+if(NOT EMSCRIPTEN)
+    target_link_libraries(fsmc_middleend PRIVATE ${CMAKE_DL_LIBS})
+endif()
 target_precompile_headers(fsmc_middleend REUSE_FROM fsmc_core)
 
 # 4. fsmc_backend (Codegen + Serializers -> fsmc_core ONLY; zero frontend/middleend coupling)
@@ -156,7 +168,7 @@ file(GLOB_RECURSE FSMC_BACKEND_SOURCES CONFIGURE_DEPENDS
 add_library(fsmc_backend STATIC ${FSMC_BACKEND_SOURCES})
 add_library(fsmc::backend ALIAS fsmc_backend)
 target_compile_features(fsmc_backend PRIVATE cxx_std_20)
-target_link_libraries(fsmc_backend PUBLIC fsmc_core)
+target_link_libraries(fsmc_backend PUBLIC fsmc_core PRIVATE $<BUILD_INTERFACE:fsmc_project_options>)
 target_precompile_headers(fsmc_backend REUSE_FROM fsmc_core)
 
 # 5. fsmc_compiler (Backward-compatible aggregate INTERFACE target)
@@ -199,7 +211,6 @@ endif()
 # ==============================================================================
 # Automated Test Catalog Generator & Validator Targets
 # ==============================================================================
-find_package(Python3 COMPONENTS Interpreter)
 if(Python3_FOUND)
     add_custom_target(generate_test_catalog
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_test_catalog.py
@@ -240,6 +251,7 @@ endif()
 # ==============================================================================
 # Packaging & CMake FindPackage Installation Support
 # ==============================================================================
+include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
 write_basic_package_version_file(
@@ -251,26 +263,26 @@ write_basic_package_version_file(
 configure_package_config_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/fsmcConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/fsmcConfig.cmake"
-    INSTALL_DESTINATION lib/cmake/fsmc
+    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/fsmc"
 )
 
 install(TARGETS fsmc_runtime fsmc_core fsmc_frontend fsmc_middleend fsmc_backend fsmc_compiler
     EXPORT fsmcTargets
-    ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib
-    INCLUDES DESTINATION include
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
 )
 
 install(EXPORT fsmcTargets
     NAMESPACE fsmc::
-    DESTINATION lib/cmake/fsmc
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/fsmc"
 )
 
 install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/fsmcConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/fsmcConfigVersion.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FsmcTools.cmake"
-    DESTINATION lib/cmake/fsmc
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/fsmc"
 )
 
-install(DIRECTORY include/ DESTINATION include)
+install(DIRECTORY include/ DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")

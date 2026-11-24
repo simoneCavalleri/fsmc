@@ -37,6 +37,7 @@ jobs:
 
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
+        if: runner.os != 'Windows'
         with:
           key: ${{ matrix.os }}-release
 
@@ -94,7 +95,7 @@ jobs:
           "./pkg_dist/bin/fsm-opt${EXT}" -i smoke.sysml --verify
           rm -f smoke.sysml smoke_fsm.hpp
 
-      - name: Collect Release Tools
+      - name: Collect Release Tools & Full SDK Archive
         shell: bash
         run: |
           mkdir -p dist
@@ -105,9 +106,15 @@ jobs:
           fi
           cp "pkg_dist/bin/fsmc${EXT}" "dist/fsmc-${RELEASE_TAG}-${{ matrix.platform_id }}${EXT}"
           cp "pkg_dist/bin/fsm-opt${EXT}" "dist/fsm-opt-${RELEASE_TAG}-${{ matrix.platform_id }}${EXT}"
+          SDK_NAME="fsmc-sdk-${RELEASE_TAG}-${{ matrix.platform_id }}"
+          if [ "${{ matrix.platform_id }}" = "windows-x64" ]; then
+            python3 -c "import shutil; shutil.make_archive('dist/${SDK_NAME}', 'zip', 'pkg_dist')"
+          else
+            tar -czf "dist/${SDK_NAME}.tar.gz" -C pkg_dist .
+          fi
 
       - name: Upload Release Tools
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: fsmc-${{ matrix.platform_id }}
           path: dist/*

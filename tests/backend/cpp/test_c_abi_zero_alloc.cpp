@@ -203,6 +203,10 @@ int main(void) {
     /* Null pointer safety */
     assert(pump_controller_dispatch_stop_pump(NULL, &in_ports, &out_ports) == PUMP_CONTROLLER_STATUS_INVALID_ARG);
 
+    /* Spec-to-code SHA-256 attestation */
+    assert(strcmp(pump_controller_ir_sha256(), PUMP_CONTROLLER_IR_SHA256) == 0);
+    assert(strlen(pump_controller_ir_sha256()) == 64);
+
     pump_controller_destroy(&fsm);
     return 0;
 }
@@ -227,4 +231,129 @@ int main(void) {
     ASSERT_EQ(std::system(link_cmd.c_str()), 0) << "Linking C99 client with C++17 bridge failed:\n" << link_cmd;
 
     ASSERT_EQ(std::system(("\"" + bin.string() + "\"").c_str()), 0) << "C99 ABI E2E runner failed";
+}
+
+TEST(CAbiZeroAlloc, E2E_PureC99ServicesCallbackWithUserData) {
+    const std::string cc = find_c_compiler();
+    const std::string cxx = find_cpp_compiler();
+    if (cc.empty() || cxx.empty()) {
+        GTEST_SKIP() << "C/C++ compilers not found in PATH; skipping E2E C99 services test.";
+    }
+
+    FsmIr ir;
+    ir.name = "PidFsm";
+    ir.initial_state = "Idle";
+    ir.package = "ctrl_pkg";
+
+    ir.add_service(ServiceMethodSignature("compute_pwm", {ServiceParameter("err", DataType("int32_t"))},
+                                          DataType("int32_t"), /*pure=*/true, /*noexcept=*/true, "PID callback"));
+
+    ir.add_state("Idle");
+    ir.add_state("Active");
+    ir.add_port(PortDefinition("error_in", "int32_t", PortDirection::In));
+    ir.add_port(PortDefinition("pwm_out", "int32_t", PortDirection::Out));
+    ir.add_signal(SignalDefinition("Step"));
+
+    ActionSignature step_act("run_step");
+    ActionCallOp call_pid;
+    call_pid.function_name = "compute_pwm";
+    call_pid.arguments = {"error_in"};
+    call_pid.result_target = LValueTarget("pwm_out", LValueScope::OutPort);
+    step_act.instructions.emplace_back(std::move(call_pid), "call compute_pwm");
+
+    TransitionEdge tr("Idle", "Active", "Step");
+    tr.transition_action = step_act;
+    ir.add_transition(std::move(tr));
+
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::temp_directory_path() / "fsmc_c_abi_services_test";
+    fs::create_directories(tmp_dir);
+
+    GeneratorOptions opts;
+    opts.standalone = true;
+    opts.thread_safe = false;
+
+    const auto cpp_bundle = CppGenerator::generate_bundle(ir, opts, "pid_ports.hpp");
+    const auto c_bundle = CAbiGenerator::generate(ir, opts, "pid_fsm.hpp", "pid_c.h");
+
+    {
+        std::ofstream f(tmp_dir / "pid_ports.hpp");
+        f << cpp_bundle.ports_header;
+    }
+    {
+        std::ofstream f(tmp_dir / "pid_fsm.hpp");
+        f << cpp_bundle.fsm_header;
+    }
+    {
+        std::ofstream f(tmp_dir / "pid_c.h");
+        f << c_bundle.header;
+    }
+    {
+        std::ofstream f(tmp_dir / "pid_c.cpp");
+        f << c_bundle.source;
+    }
+    {
+        std::ofstream f(tmp_dir / "client_srv.c");
+        f << R"c(
+#include <assert.h>
+#include <string.h>
+#include "pid_c.h"
+
+typedef struct {
+    int32_t gain;
+    int32_t calls;
+} c_ctx_t;
+
+static int32_t my_compute_pwm(void* user_data, int32_t err) {
+    c_ctx_t* ctx = (c_ctx_t*)user_data;
+    ctx->calls += 1;
+    return err * ctx->gain;
+}
+
+int main(void) {
+    c_ctx_t ctx;
+    pid_fsm_services_t srv;
+    pid_fsm_fsm_t fsm;
+    pid_fsm_in_ports_t in_ports;
+    pid_fsm_out_ports_t out_ports;
+
+    ctx.gain = 4;
+    ctx.calls = 0;
+    srv.user_data = &ctx;
+    srv.compute_pwm = my_compute_pwm;
+
+    memset(&in_ports, 0, sizeof(in_ports));
+    memset(&out_ports, 0, sizeof(out_ports));
+    in_ports.error_in = 15;
+
+    pid_fsm_init_with_services(&fsm, &srv);
+    assert(pid_fsm_dispatch_step(&fsm, &in_ports, &out_ports) == PID_FSM_STATUS_OK);
+    assert(pid_fsm_current_state(&fsm) == PID_FSM_STATE_ACTIVE);
+    assert(ctx.calls == 1);
+    assert(out_ports.pwm_out == 60);
+
+    pid_fsm_destroy(&fsm);
+    return 0;
+}
+)c";
+    }
+
+    const fs::path bridge_obj = tmp_dir / "pid_c.o";
+    const fs::path client_obj = tmp_dir / "client_srv.o";
+    const fs::path bin = tmp_dir / "c99_srv_runner";
+
+    const std::string cxx_cmd = cxx + " -std=c++17 -fno-exceptions -fno-rtti -Wall -Wextra -Werror -I\"" +
+                                tmp_dir.string() + "\" -c \"" + (tmp_dir / "pid_c.cpp").string() + "\" -o \"" +
+                                bridge_obj.string() + "\"";
+    ASSERT_EQ(std::system(cxx_cmd.c_str()), 0) << "C++17 C-ABI services bridge failed:\n" << cxx_cmd;
+
+    const std::string cc_cmd = cc + " -std=c99 -Wall -Wextra -Werror -pedantic -I\"" + tmp_dir.string() + "\" -c \"" +
+                               (tmp_dir / "client_srv.c").string() + "\" -o \"" + client_obj.string() + "\"";
+    ASSERT_EQ(std::system(cc_cmd.c_str()), 0) << "Pure C99 services client failed:\n" << cc_cmd;
+
+    const std::string link_cmd = cxx + " -fno-exceptions -fno-rtti \"" + client_obj.string() + "\" \"" +
+                                 bridge_obj.string() + "\" -o \"" + bin.string() + "\"";
+    ASSERT_EQ(std::system(link_cmd.c_str()), 0) << "Linking C99 services client failed:\n" << link_cmd;
+
+    ASSERT_EQ(std::system(("\"" + bin.string() + "\"").c_str()), 0) << "C99 services runner failed";
 }

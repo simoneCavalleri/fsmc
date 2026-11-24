@@ -18,9 +18,20 @@ using ir::StateKind;
 bool VerifyIrIntegrityPass::run(FsmIr& ir, diagnostic::DiagnosticEngine& diag) {
     bool ok = true;
 
+    const std::string source_file = [&]() -> std::string {
+        if (auto it = ir.attributes.find("source_file"); it != ir.attributes.end()) {
+            return it->second;
+        }
+        return {};
+    }();
+
     auto report_err = [&](const std::string& code, const std::string& msg, std::uint32_t line = 0) {
         SourceSpan span;
-        if (line > 0) {
+        if (!source_file.empty() && line > 0) {
+            span.file_path = source_file;
+            span.line = line;
+            span.column = 1;
+        } else if (line > 0) {
             span.line = line;
             span.column = 1;
         }

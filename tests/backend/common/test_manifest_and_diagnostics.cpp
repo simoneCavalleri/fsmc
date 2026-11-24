@@ -99,13 +99,16 @@ TEST(ManifestAndDiagnostics, IrSha256_IsConsistentAcrossManifestCppAndCAbi) {
 
     const std::string manifest = ManifestEmitter::emit_json(ir, artifacts, ver);
 
-    // Exact same SHA-256 embedded in manifest, C++ FSM header, and C99 ABI header
+    // Exact same SHA-256 embedded in manifest, C++ FSM header (comment + constexpr), and C99 ABI header
     EXPECT_NE(manifest.find("\"ir_sha256\": \"" + expected_hash + "\""), std::string::npos);
     EXPECT_NE(cpp_bundle.fsm_header.find("IR-SHA256: " + expected_hash), std::string::npos);
+    EXPECT_NE(cpp_bundle.fsm_header.find("TelemetryRouterIrSha256 = \"" + expected_hash + "\""), std::string::npos);
     EXPECT_NE(c_bundle.header.find("#define TELEMETRY_ROUTER_IR_SHA256 \"" + expected_hash + "\""), std::string::npos);
 
     // Verify all contract sections in manifest
     EXPECT_NE(manifest.find("\"manifest_schema_version\": \"1.0\""), std::string::npos);
+    EXPECT_NE(manifest.find("\"compiler_version\": \"0.13.0\""), std::string::npos);
+    EXPECT_NE(manifest.find("\"registers\": ["), std::string::npos);
     EXPECT_NE(manifest.find("\"fsm_name\": \"TelemetryRouter\""), std::string::npos);
     EXPECT_NE(manifest.find("\"ports_header\": \"telemetry_ports.hpp\""), std::string::npos);
     EXPECT_NE(manifest.find("\"c_header\": \"telemetry_c.h\""), std::string::npos);

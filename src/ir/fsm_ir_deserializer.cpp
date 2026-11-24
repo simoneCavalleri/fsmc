@@ -548,6 +548,11 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
     trans.target_is_history = is_history;
     trans.target_is_deep_history = is_deep;
     trans.description = trans_obj.get_string("description");
+    if (const auto* sl = trans_obj.get_child("source_line"); sl != nullptr && sl->type == JsonType::Number) {
+        if (sl->num_val > 0) {
+            trans.source_line = static_cast<std::uint32_t>(sl->num_val);
+        }
+    }
 
     std::string kind_str = trans_obj.get_string("kind");
     if (!kind_str.empty()) {
@@ -995,6 +1000,12 @@ void parse_states_object(const JsonValue& states_obj, FsmIr& model, const std::s
         std::string s_kind = state_data.get_string("kind");
         if (!s_kind.empty() && curr != nullptr) {
             curr->kind = state_kind_from_string(s_kind);
+        }
+        if (const auto* sl = state_data.get_child("source_line");
+            sl != nullptr && sl->type == JsonType::Number && curr != nullptr) {
+            if (sl->num_val > 0) {
+                curr->source_line = static_cast<std::uint32_t>(sl->num_val);
+            }
         }
         std::string s_ti = state_data.get_string("time_invariant");
         if (!s_ti.empty() && curr != nullptr) {

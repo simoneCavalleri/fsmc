@@ -471,7 +471,21 @@ bool ModelCheckingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             if (!trace_str.empty()) {
                 msg += "\n" + trace_str;
             }
-            diag.report(Diagnostic::error("E_MODEL_CHECK_VIOLATION", msg));
+            SourceSpan span;
+            if (auto it = ir.attributes.find("source_file"); it != ir.attributes.end() && !it->second.empty()) {
+                span.file_path = it->second;
+                span.line = 1;
+                span.column = 1;
+            }
+            Diagnostic d = Diagnostic::error("E_MODEL_CHECK_VIOLATION", msg, span);
+            for (std::size_t idx = 0; idx < res.counterexample_trace.size(); ++idx) {
+                const auto& step = res.counterexample_trace[idx];
+                const std::string next_st =
+                    (idx + 1 < res.counterexample_trace.size()) ? res.counterexample_trace[idx + 1].state_name : "";
+                d.counterexample.push_back(diagnostic::DiagnosticCounterexampleStep{step.step_index, step.state_name,
+                                                                                    step.event_name, next_st});
+            }
+            diag.report(std::move(d));
         }
     }
 

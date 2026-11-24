@@ -75,6 +75,7 @@ std::string ManifestEmitter::emit_json(const ir::FsmIr& model, const ManifestArt
     std::ostringstream out;
     out << "{\n";
     out << "  \"manifest_schema_version\": \"" << kManifestSchemaVersion << "\",\n";
+    out << "  \"compiler_version\": \"0.13.0\",\n";
     out << "  \"fsm_name\": \"" << escape_json(canonical.name) << "\",\n";
     out << "  \"package\": \"" << escape_json(canonical.package) << "\",\n";
     out << "  \"ir_sha256\": \"" << ir_hash << "\",\n";
@@ -117,6 +118,30 @@ std::string ManifestEmitter::emit_json(const ir::FsmIr& model, const ManifestArt
         }
         out << " }";
         if (i + 1 < canonical.ports.size()) {
+            out << ",";
+        }
+        out << "\n";
+    }
+    out << "  ],\n";
+
+    // Registers
+    out << "  \"registers\": [\n";
+    for (std::size_t i = 0; i < canonical.variables.size(); ++i) {
+        const auto& v = canonical.variables[i];
+        out << "    { \"name\": \"" << escape_json(v.name) << "\", \"type\": \""
+            << escape_json(v.type.to_canonical_string()) << "\", \"initial_value\": \"" << escape_json(v.initial_value)
+            << "\"";
+        if (v.min_value.has_value()) {
+            out << ", \"min\": " << *v.min_value;
+        }
+        if (v.max_value.has_value()) {
+            out << ", \"max\": " << *v.max_value;
+        }
+        if (v.physical_unit.has_value() && !v.physical_unit->empty()) {
+            out << ", \"unit\": \"" << escape_json(*v.physical_unit) << "\"";
+        }
+        out << " }";
+        if (i + 1 < canonical.variables.size()) {
             out << ",";
         }
         out << "\n";

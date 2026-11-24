@@ -162,6 +162,9 @@ void emit_transition_metadata(std::ostream& out, const TransitionEdge& t, const 
     if (!is_top_level && t.priority > 0) {
         out << ",\n" << field_pad << "\"priority\": " << t.priority;
     }
+    if (t.source_line > 0) {
+        out << ",\n" << field_pad << "\"source_line\": " << t.source_line;
+    }
     if (t.target_is_history) {
         out << ",\n" << field_pad << "\"target_is_history\": true";
         out << ",\n" << field_pad << "\"target_is_deep_history\": " << (t.target_is_deep_history ? "true" : "false");
@@ -410,6 +413,13 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, i
             out << ",\n";
         }
         out << pad << "  \"kind\": \"" << state_kind_to_string(state.kind) << "\"";
+        need_comma = true;
+    }
+    if (state.source_line > 0) {
+        if (need_comma) {
+            out << ",\n";
+        }
+        out << pad << "  \"source_line\": " << state.source_line;
         need_comma = true;
     }
 

@@ -1558,6 +1558,16 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                     }
                 } else if (const auto* ac = std::get_if<ActionCallOp>(&inst.op)) {
                     uses_srv = true;
+                    if (ac->result_target.has_value() && !ac->result_target->name.empty()) {
+                        const auto* p = model.find_port(ac->result_target->name);
+                        const bool is_out =
+                            (ac->result_target->scope == LValueScope::OutPort) || (p != nullptr && p->is_out());
+                        if (is_out) {
+                            uses_out = true;
+                        } else {
+                            uses_reg = true;
+                        }
+                    }
                     for (const auto& arg : ac->arguments) {
                         scan_rhs_usage(qualify_expression(arg, model));
                     }

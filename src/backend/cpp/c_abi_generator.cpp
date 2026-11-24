@@ -257,7 +257,36 @@ GeneratedCAbiBundle CAbiGenerator::generate(const FsmIr& model, const GeneratorO
     hdr << "} " << prefix << "_out_ports_t;\n\n";
 
     // Static aligned opaque storage (zero heap allocation, strict C99 portable alignment)
-    hdr << "enum { " << upper_prefix << "_STORAGE_SIZE = " << storage_bytes << " };\n\n";
+    const bool has_typed_services = !processed.services.empty();
+    const std::size_t effective_storage_bytes =
+        has_typed_services ? (storage_bytes + (processed.services.size() * 16U) + 64U) : storage_bytes;
+
+    if (has_typed_services) {
+        hdr << "typedef struct {\n";
+        hdr << "    void* user_data;\n";
+        for (const auto& svc : processed.services) {
+            std::string ret_c = "void";
+            if (!svc.is_void_return()) {
+                bool is_enum_cast = false;
+                std::string cpp_type;
+                if (!map_to_c_scalar(svc.return_type, processed, ret_c, is_enum_cast, cpp_type)) {
+                    ret_c = "int32_t";
+                }
+            }
+            hdr << "    " << ret_c << " (*" << sanitize_cpp_ident(svc.name) << ")(void* user_data";
+            for (const auto& param : svc.parameters) {
+                std::string p_c = "int32_t";
+                bool is_enum_cast = false;
+                std::string cpp_type;
+                map_to_c_scalar(param.type, processed, p_c, is_enum_cast, cpp_type);
+                hdr << ", " << p_c << " " << sanitize_cpp_ident(param.name);
+            }
+            hdr << ");\n";
+        }
+        hdr << "} " << prefix << "_services_t;\n\n";
+    }
+
+    hdr << "enum { " << upper_prefix << "_STORAGE_SIZE = " << effective_storage_bytes << " };\n\n";
     hdr << "typedef struct {\n";
     hdr << "    union {\n";
     hdr << "        long double _align_ld;\n";
@@ -269,9 +298,14 @@ GeneratedCAbiBundle CAbiGenerator::generate(const FsmIr& model, const GeneratorO
 
     // Lifecycle & query API
     hdr << "void " << prefix << "_init(" << prefix << "_fsm_t* fsm);\n";
+    if (has_typed_services) {
+        hdr << "void " << prefix << "_init_with_services(" << prefix << "_fsm_t* fsm, const " << prefix
+            << "_services_t* services);\n";
+    }
     hdr << "void " << prefix << "_destroy(" << prefix << "_fsm_t* fsm);\n";
     hdr << prefix << "_state_t " << prefix << "_current_state(const " << prefix << "_fsm_t* fsm);\n";
-    hdr << "const char* " << prefix << "_state_name(" << prefix << "_state_t state);\n\n";
+    hdr << "const char* " << prefix << "_state_name(" << prefix << "_state_t state);\n";
+    hdr << "const char* " << prefix << "_ir_sha256(void);\n\n";
 
     // Event dispatchers
     for (const auto& sig : events) {
@@ -307,20 +341,90 @@ GeneratedCAbiBundle CAbiGenerator::generate(const FsmIr& model, const GeneratorO
     src << "#include <new>\n\n";
 
     src << "namespace {\n\n";
-    src << "using CppFsm = " << ns_qual << cpp_model_name << ";\n";
     src << "using CppInPorts = " << ns_qual << cpp_model_name << "InPorts;\n";
-    src << "using CppOutPorts = " << ns_qual << cpp_model_name << "OutPorts;\n\n";
-    src << "static_assert(sizeof(CppFsm) <= sizeof(" << prefix << "_fsm_t),\n";
-    src << "              \"" << prefix << "_fsm_t opaque storage is smaller than " << cpp_model_name << "\");\n";
-    src << "static_assert(alignof(CppFsm) <= alignof(" << prefix << "_fsm_t),\n";
-    src << "              \"" << prefix << "_fsm_t alignment is weaker than " << cpp_model_name << "\");\n\n";
+    src << "using CppOutPorts = " << ns_qual << cpp_model_name << "OutPorts;\n";
+    src << "using CppRegisters = " << ns_qual << cpp_model_name << "Registers;\n\n";
 
-    src << "CppFsm* as_cpp(" << prefix << "_fsm_t* fsm) noexcept {\n";
-    src << "    return std::launder(reinterpret_cast<CppFsm*>(fsm->_storage._bytes));\n";
-    src << "}\n\n";
-    src << "const CppFsm* as_cpp(const " << prefix << "_fsm_t* fsm) noexcept {\n";
-    src << "    return std::launder(reinterpret_cast<const CppFsm*>(fsm->_storage._bytes));\n";
-    src << "}\n\n";
+    if (has_typed_services) {
+        src << "struct CServicesBridge {\n";
+        src << "    " << prefix << "_services_t cb{};\n";
+        src << "    explicit CServicesBridge(const " << prefix << "_services_t* services) noexcept {\n";
+        src << "        if (services != nullptr) {\n";
+        src << "            cb = *services;\n";
+        src << "        }\n";
+        src << "    }\n";
+        for (const auto& svc : processed.services) {
+            const std::string m_name = sanitize_cpp_ident(svc.name);
+            const std::string ret_cpp = svc.is_void_return() ? "void" : svc.return_type.to_cpp_type();
+            src << "    " << ret_cpp << " " << m_name << "(";
+            for (std::size_t pi = 0; pi < svc.parameters.size(); ++pi) {
+                if (pi > 0) {
+                    src << ", ";
+                }
+                src << svc.parameters[pi].type.to_cpp_type() << " " << sanitize_cpp_ident(svc.parameters[pi].name);
+            }
+            src << ")";
+            if (svc.is_noexcept) {
+                src << " noexcept";
+            }
+            src << " {\n";
+            src << "        if (cb." << m_name << " != nullptr) {\n";
+            src << "            ";
+            if (!svc.is_void_return()) {
+                src << "return static_cast<" << ret_cpp << ">(";
+            }
+            src << "cb." << m_name << "(cb.user_data";
+            for (const auto& param : svc.parameters) {
+                std::string p_c = "int32_t";
+                bool is_enum_cast = false;
+                std::string cpp_type;
+                map_to_c_scalar(param.type, processed, p_c, is_enum_cast, cpp_type);
+                src << ", static_cast<" << p_c << ">(" << sanitize_cpp_ident(param.name) << ")";
+            }
+            if (!svc.is_void_return()) {
+                src << ")";
+            }
+            src << ");\n";
+            src << "        }\n";
+            if (!svc.is_void_return()) {
+                src << "        return " << ret_cpp << "{};\n";
+            }
+            src << "    }\n";
+        }
+        src << "};\n\n";
+        src << "using CppFsm = " << ns_qual << cpp_model_name << "WithServices<CServicesBridge>;\n\n";
+        src << "struct CppInstance {\n";
+        src << "    CppRegisters reg{};\n";
+        src << "    CServicesBridge srv;\n";
+        src << "    CppFsm fsm;\n";
+        src << "    explicit CppInstance(const " << prefix
+            << "_services_t* services) : srv(services), fsm(reg, srv) {}\n";
+        src << "};\n\n";
+        src << "static_assert(sizeof(CppInstance) <= sizeof(" << prefix << "_fsm_t),\n";
+        src << "              \"" << prefix << "_fsm_t opaque storage is smaller than " << cpp_model_name << "\");\n";
+        src << "static_assert(alignof(CppInstance) <= alignof(" << prefix << "_fsm_t),\n";
+        src << "              \"" << prefix << "_fsm_t alignment is weaker than " << cpp_model_name << "\");\n\n";
+        src << "CppInstance* as_inst(" << prefix << "_fsm_t* fsm) noexcept {\n";
+        src << "    return std::launder(reinterpret_cast<CppInstance*>(fsm->_storage._bytes));\n";
+        src << "}\n\n";
+        src << "const CppInstance* as_inst(const " << prefix << "_fsm_t* fsm) noexcept {\n";
+        src << "    return std::launder(reinterpret_cast<const CppInstance*>(fsm->_storage._bytes));\n";
+        src << "}\n\n";
+        src << "CppFsm* as_cpp(" << prefix << "_fsm_t* fsm) noexcept { return &as_inst(fsm)->fsm; }\n";
+        src << "const CppFsm* as_cpp(const " << prefix << "_fsm_t* fsm) noexcept { return &as_inst(fsm)->fsm; }\n\n";
+    } else {
+        src << "using CppFsm = " << ns_qual << cpp_model_name << ";\n\n";
+        src << "static_assert(sizeof(CppFsm) <= sizeof(" << prefix << "_fsm_t),\n";
+        src << "              \"" << prefix << "_fsm_t opaque storage is smaller than " << cpp_model_name << "\");\n";
+        src << "static_assert(alignof(CppFsm) <= alignof(" << prefix << "_fsm_t),\n";
+        src << "              \"" << prefix << "_fsm_t alignment is weaker than " << cpp_model_name << "\");\n\n";
+        src << "CppFsm* as_cpp(" << prefix << "_fsm_t* fsm) noexcept {\n";
+        src << "    return std::launder(reinterpret_cast<CppFsm*>(fsm->_storage._bytes));\n";
+        src << "}\n\n";
+        src << "const CppFsm* as_cpp(const " << prefix << "_fsm_t* fsm) noexcept {\n";
+        src << "    return std::launder(reinterpret_cast<const CppFsm*>(fsm->_storage._bytes));\n";
+        src << "}\n\n";
+    }
 
     src << prefix << "_status_t map_status(::fsm::dispatch_status s) noexcept {\n";
     src << "    switch (s) {\n";
@@ -375,18 +479,40 @@ GeneratedCAbiBundle CAbiGenerator::generate(const FsmIr& model, const GeneratorO
     src << "extern \"C\" {\n\n";
 
     // init / destroy
-    src << "void " << prefix << "_init(" << prefix << "_fsm_t* fsm) {\n";
-    src << "    if (fsm == nullptr) {\n";
-    src << "        return;\n";
-    src << "    }\n";
-    src << "    ::new (static_cast<void*>(fsm->_storage._bytes)) CppFsm();\n";
-    src << "}\n\n";
+    if (has_typed_services) {
+        src << "void " << prefix << "_init_with_services(" << prefix << "_fsm_t* fsm, const " << prefix
+            << "_services_t* services) {\n";
+        src << "    if (fsm == nullptr) {\n";
+        src << "        return;\n";
+        src << "    }\n";
+        src << "    ::new (static_cast<void*>(fsm->_storage._bytes)) CppInstance(services);\n";
+        src << "}\n\n";
+        src << "void " << prefix << "_init(" << prefix << "_fsm_t* fsm) {\n";
+        src << "    " << prefix << "_init_with_services(fsm, nullptr);\n";
+        src << "}\n\n";
+        src << "void " << prefix << "_destroy(" << prefix << "_fsm_t* fsm) {\n";
+        src << "    if (fsm == nullptr) {\n";
+        src << "        return;\n";
+        src << "    }\n";
+        src << "    as_inst(fsm)->~CppInstance();\n";
+        src << "}\n\n";
+    } else {
+        src << "void " << prefix << "_init(" << prefix << "_fsm_t* fsm) {\n";
+        src << "    if (fsm == nullptr) {\n";
+        src << "        return;\n";
+        src << "    }\n";
+        src << "    ::new (static_cast<void*>(fsm->_storage._bytes)) CppFsm();\n";
+        src << "}\n\n";
+        src << "void " << prefix << "_destroy(" << prefix << "_fsm_t* fsm) {\n";
+        src << "    if (fsm == nullptr) {\n";
+        src << "        return;\n";
+        src << "    }\n";
+        src << "    as_cpp(fsm)->~CppFsm();\n";
+        src << "}\n\n";
+    }
 
-    src << "void " << prefix << "_destroy(" << prefix << "_fsm_t* fsm) {\n";
-    src << "    if (fsm == nullptr) {\n";
-    src << "        return;\n";
-    src << "    }\n";
-    src << "    as_cpp(fsm)->~CppFsm();\n";
+    src << "const char* " << prefix << "_ir_sha256(void) {\n";
+    src << "    return " << upper_prefix << "_IR_SHA256;\n";
     src << "}\n\n";
 
     // current_state

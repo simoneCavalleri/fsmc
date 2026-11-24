@@ -151,6 +151,10 @@ std::string CppGenerator::generate_header(const FsmIr& model, const GeneratorOpt
         out << "namespace " << effective_ns << " {\n\n";
     }
 
+    out << "/** @brief Deterministic SHA-256 digest of the canonical FsmIr specification. */\n";
+    out << "inline constexpr std::string_view " << sanitize_namespace(processed_model.name) << "IrSha256 = \""
+        << ir_sha256 << "\";\n\n";
+
     CppModelEmitter::emit_model(out, processed_model, effective_opts);
 
     if (!effective_ns.empty()) {
@@ -246,6 +250,11 @@ GeneratedCppBundle CppGenerator::generate_bundle(const FsmIr& model, const Gener
     if (!effective_ns.empty()) {
         fsm_out << "namespace " << effective_ns << " {\n\n";
     }
+
+    fsm_out << "/** @brief Deterministic SHA-256 digest of the canonical FsmIr specification. */\n";
+    fsm_out << "inline constexpr std::string_view " << sanitize_namespace(processed_model.name) << "IrSha256 = \""
+            << ir_sha256 << "\";\n\n";
+
     CppModelEmitter::emit_fsm_engine(fsm_out, processed_model, effective_opts);
     if (!effective_ns.empty()) {
         fsm_out << "\n} // namespace " << effective_ns << "\n";

@@ -5,7 +5,7 @@
 Its architecture strictly decouples model ingestion and formal verification from target code emission using a canonical Intermediate Representation (**`FsmIr`**). While C++ serves as the initial reference production backend, the metamodel natively maps to diverse programming languages and safety-critical execution runtimes.
 
 !!! info "Active Production Targets vs. Roadmap Previews"
-    The **Unified C++17 Reference Backend** (compiling cleanly under C++17, C++20, and C++23) and the **Pure C99 Zero-Allocation ABI** (`--emit-c-abi`) are active production targets. The native **Rust** (`no_std`) and pure-C switch-table backends described below represent **roadmap RFC designs** (Rust and Python callers can already bind directly via `--emit-c-abi`).
+    The **Unified C++17 Reference Backend** (`--target cpp`), the **Pure C99 Zero-Allocation ABI** (`--emit-c-abi`), and the **Native Pure-C99 Bare-Metal Backend** (`--target c99`, zero C++ compiler on target) are active production targets. The native **Rust** (`no_std`) backend described below represents a **roadmap RFC design** (Rust and Python callers can already bind directly via `--target c99` or `--emit-c-abi`).
 
 ---
 
@@ -13,10 +13,10 @@ Its architecture strictly decouples model ingestion and formal verification from
 
 | Target Language | Minimum Standard | Concurrency Models | Safety & Standards Compliance | Ecosystem Status |
 | :--- | :--- | :--- | :--- | :--- |
-| **C++ Target** | C++17 (compiles in C++17/20/23) | Synchronous stack, Lock-Free SPSC, Active Object | Zero heap, zero vtable, $O(1)$ WCET, `--freestanding` | **Production Target** |
-| **Pure C99 ABI (`--emit-c-abi`)** | ISO C99 (`-pedantic -Werror`) | Static aligned opaque storage + C callback `services_t` | Zero heap (`placement-new`), `static_assert` size/align, `ir_sha256()` | **Production Target** |
-| **Rust Target (Native)** | Rust 2021 (`no_std`) | Typestate transitions, lock-free static channels | Compile-time memory safety, zero panic | **Preview / In Development** |
-| **Native Pure-C Table Target** | ISO C99 / C11 | Static transition table, switch-case dispatch | Embedded C without C++ bridge | **Preview / Planned RFC** |
+| **C++ Target (`--target cpp`)** | C++17 (compiles in C++17/20/23) | Synchronous stack, Lock-Free SPSC, Active Object | Zero heap, zero vtable, $O(1)$ WCET, `--freestanding` | **Production Target** |
+| **Native Pure-C99 (`--target c99`)** | ISO C99 (`-pedantic -Werror`) | Flat switch-case dispatch, `step`, `tick`, FNV-1a snapshots, `services_t` | Zero C++ compiler/runtime, zero heap, `TargetCapabilities::c99_baremetal()` lowering | **Production Target** |
+| **Pure C99 ABI (`--emit-c-abi`)** | ISO C99 (`-pedantic -Werror`) | Static aligned opaque storage + C callback `services_t` over C++17 | Zero heap (`placement-new`), `static_assert` size/align, `ir_sha256()` | **Production Target** |
+| **Rust Target (Native)** | Rust 2021 (`no_std`) | Typestate transitions, lock-free static channels | Compile-time memory safety, zero panic | **Planned RFC** |
 
 ---
 

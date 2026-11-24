@@ -14,6 +14,8 @@
     "ports",
     "registers",
     "events",
+    "emitted_events",
+    "timers",
     "services",
     "external_types",
     "requirements",
@@ -30,8 +32,9 @@
     "initial_state": { "type": "string" },
     "artifacts": {
       "type": "object",
-      "required": ["standalone", "ports_header", "fsm_header", "c_header", "c_source"],
+      "required": ["target", "standalone", "ports_header", "fsm_header", "c_header", "c_source"],
       "properties": {
+        "target": { "type": "string", "enum": ["cpp17", "c99"] },
         "standalone": { "type": "boolean" },
         "ports_header": { "type": "string" },
         "fsm_header": { "type": "string" },
@@ -43,6 +46,29 @@
     "ports": { "type": "array", "items": { "type": "object" } },
     "registers": { "type": "array", "items": { "type": "object" } },
     "events": { "type": "array", "items": { "type": "object" } },
+    "emitted_events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["signal", "target_port"],
+        "properties": {
+          "signal": { "type": "string", "minLength": 1 },
+          "target_port": { "type": "string" }
+        }
+      }
+    },
+    "timers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["state", "duration_ms", "periodic"],
+        "properties": {
+          "state": { "type": "string", "minLength": 1 },
+          "duration_ms": { "type": "integer", "minimum": 0 },
+          "periodic": { "type": "boolean" }
+        }
+      }
+    },
     "services": { "type": "array", "items": { "type": "object" } },
     "external_types": { "type": "array", "items": { "type": "object" } },
     "requirements": { "type": "array", "items": { "type": "string" } },

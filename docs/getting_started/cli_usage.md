@@ -28,7 +28,7 @@ fsmc --export-runtime <directory_or_file>
 | :--- | :--- | :--- |
 | `-i, --input <file>` | Path to input model file (`.ir.json`, `.sysml`, `.slx`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, `.dot`), or `-` / `/dev/stdin` for standard input. | Positional argument |
 | `-o, --output <file>` | Path to output generated code (default split: `<stem>_ports.hpp` + `<stem>_fsm.hpp`) or exported diagram file, or `-` / `/dev/stdout` for standard output. | `stdout` |
-| `-t, --target, --lang <lang>` | Target code generator backend: `cpp` (unified C++17, compiles under C++17/20/23). | `cpp` |
+| `-t, --target, --lang <lang>` | Target code generator backend: `cpp` (unified C++17, compiles under C++17/20/23) or `c99` (native bare-metal Pure-C99 `<stem>.h` + `<stem>.c`, zero C++ runtime). | `cpp` |
 | `-n, --name <name>` | Generated state machine class/struct name. | Inferred from filename or `MyFSM` |
 | `-N, --ns, --namespace, --package <ns>` | Generated namespace / package enclosing the state machine types. | `fsm_generated` |
 | `--format, --input-format <fmt>` | Override input parser format: `ir-json` (strict canonical `FsmIr` v1.0), `sysml2`, `stateflow`, `plantuml`, `mermaid`, `cameo`, `scxml`, `xstate-json`/`json`, `dot`, `auto`. | `auto` |

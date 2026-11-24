@@ -4,7 +4,7 @@ hide:
 ---
 
 <div class="fsmc-hero" markdown="1">
-<div class="fsmc-hero__badge">v0.13.0 &middot; C++17 &amp; Pure C99 ABI &middot; Canonical ir-json &middot; LTL / CTL</div>
+<div class="fsmc-hero__badge">v0.14.0 &middot; C++17 &amp; Native Pure-C99 &middot; Canonical ir-json &middot; LTL / CTL</div>
 
 # Universal State Machine Compiler
 

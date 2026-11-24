@@ -1450,4 +1450,166 @@ package ControlPkg {
     EXPECT_EQ(model.services[0].parameters[0].name, "err");
 }
 
+/**
+ * @brief Verify SysML v2 action blocks lower calls to declared @fsm:service functions into typed ActionCallOp
+ *        instructions (both with result_target and void calls).
+ */
+TEST(Sysml2ParserTest, LowersServiceCallsInActionBlocksToActionCallOp) {
+    const std::string sysml = R"sysml(
+package ServiceCallPkg {
+    state def HeaterCtrl {
+        in port temp_c : Int32;
+        out port pwm_duty : Int32;
+        // @fsm:service compute_pwm(temp: int32_t) -> int32_t pure=true noexcept=true
+        // @fsm:service log_fault(code: int32_t) -> void pure=false noexcept=true
+        entry; then Active;
+        state Active;
+        state Fault;
+        transition run_step
+            first Active
+            accept Sample
+            do action RunPid {
+                out.pwm_duty = compute_pwm(in.temp_c);
+            }
+            then Active;
+        transition trip_fault
+            first Active
+            accept Overheat
+            do action LogTrip {
+                log_fault(42);
+            }
+            then Fault;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err.render_to_string();
+
+    ASSERT_EQ(model.services.size(), 2u);
+    ASSERT_EQ(model.transitions.size(), 2u);
+
+    const auto& t_pid = model.transitions[0];
+    ASSERT_TRUE(t_pid.transition_action.has_value());
+    ASSERT_EQ(t_pid.transition_action->instructions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ActionCallOp>(t_pid.transition_action->instructions[0].op));
+    const auto& pid_call = std::get<ActionCallOp>(t_pid.transition_action->instructions[0].op);
+    EXPECT_EQ(pid_call.function_name, "compute_pwm");
+    ASSERT_EQ(pid_call.arguments.size(), 1u);
+    EXPECT_EQ(pid_call.arguments[0], "in.temp_c");
+    ASSERT_TRUE(pid_call.result_target.has_value());
+    EXPECT_EQ(pid_call.result_target->name, "pwm_duty");
+    EXPECT_EQ(pid_call.result_target->scope, LValueScope::OutPort);
+
+    const auto& t_fault = model.transitions[1];
+    ASSERT_TRUE(t_fault.transition_action.has_value());
+    ASSERT_EQ(t_fault.transition_action->instructions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ActionCallOp>(t_fault.transition_action->instructions[0].op));
+    const auto& fault_call = std::get<ActionCallOp>(t_fault.transition_action->instructions[0].op);
+    EXPECT_EQ(fault_call.function_name, "log_fault");
+    ASSERT_EQ(fault_call.arguments.size(), 1u);
+    EXPECT_EQ(fault_call.arguments[0], "42");
+    EXPECT_FALSE(fault_call.result_target.has_value());
+}
+
+/**
+ * @brief Verify 100% standard OMG SysML v2.0 syntax: import ScalarValues::*, item def, calc def -> service,
+ *        directional in/out parameters on state def, attribute := init, assign x := expr;, and accept after N [ms].
+ */
+TEST(Sysml2ParserTest, ParsesStandardOmgSysmlV2CalcDefAssignAndBracketedAfter) {
+    const std::string sysml = R"sysml(
+package StandardV2Pkg {
+    import ScalarValues::*;
+
+    item def EvStart;
+    item def EvTick;
+
+    calc def compute_pwm {
+        in temp : Integer;
+        return : Integer;
+    }
+
+    state def StandardCtrl {
+        in temp_c : Integer;
+        out pwm_duty : Integer;
+        attribute count : Integer := 0;
+
+        entry; then Idle;
+        state Idle;
+        state Active;
+        state TimedOut;
+
+        transition t_start
+            first Idle
+            accept EvStart
+            if temp_c < 100
+            then Active;
+
+        transition t_step
+            first Active
+            accept EvTick
+            do action ControlStep {
+                assign pwm_duty := compute_pwm(temp_c);
+                assign count := count + 1;
+            }
+            then Active;
+
+        transition t_timeout
+            first Active
+            accept after 150 [ms]
+            do action Shutdown {
+                assign pwm_duty := 0;
+            }
+            then TimedOut;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err.render_to_string();
+
+    // Directional in/out parameters on state def -> ports (calc def 'in temp' must NOT leak into ports!)
+    ASSERT_EQ(model.ports.size(), 2u);
+    ASSERT_NE(model.find_port("temp_c"), nullptr);
+    EXPECT_TRUE(model.find_port("temp_c")->is_in());
+    ASSERT_NE(model.find_port("pwm_duty"), nullptr);
+    EXPECT_TRUE(model.find_port("pwm_duty")->is_out());
+
+    // Native calc def -> pure typed service
+    ASSERT_EQ(model.services.size(), 1u);
+    EXPECT_EQ(model.services[0].name, "compute_pwm");
+    EXPECT_TRUE(model.services[0].is_pure);
+    ASSERT_EQ(model.services[0].parameters.size(), 1u);
+    EXPECT_EQ(model.services[0].parameters[0].name, "temp");
+    EXPECT_EQ(model.services[0].return_type.to_canonical_string(), "uint32");
+
+    // attribute := 0
+    ASSERT_EQ(model.variables.size(), 1u);
+    EXPECT_EQ(model.variables[0].name, "count");
+    EXPECT_EQ(model.variables[0].initial_value, "0");
+
+    // assign pwm_duty := compute_pwm(temp_c); & assign count := count + 1;
+    ASSERT_EQ(model.transitions.size(), 3u);
+    const auto& t_step = model.transitions[1];
+    ASSERT_TRUE(t_step.transition_action.has_value());
+    ASSERT_EQ(t_step.transition_action->instructions.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ActionCallOp>(t_step.transition_action->instructions[0].op));
+    const auto& call = std::get<ActionCallOp>(t_step.transition_action->instructions[0].op);
+    EXPECT_EQ(call.function_name, "compute_pwm");
+    ASSERT_TRUE(call.result_target.has_value());
+    EXPECT_EQ(call.result_target->name, "pwm_duty");
+    EXPECT_EQ(call.result_target->scope, LValueScope::OutPort);
+    ASSERT_EQ(t_step.transition_action->assignments.size(), 1u);
+    EXPECT_EQ(t_step.transition_action->assignments[0].target.name, "count");
+
+    // accept after 150 [ms]
+    const auto& t_to = model.transitions[2];
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(t_to.trigger));
+    EXPECT_EQ(std::get<TimeTrigger>(t_to.trigger).duration_in_ms(), 150u);
+}
+
 }  // namespace

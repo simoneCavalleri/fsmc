@@ -75,7 +75,7 @@ std::string ManifestEmitter::emit_json(const ir::FsmIr& model, const ManifestArt
     std::ostringstream out;
     out << "{\n";
     out << "  \"manifest_schema_version\": \"" << kManifestSchemaVersion << "\",\n";
-    out << "  \"compiler_version\": \"0.13.0\",\n";
+    out << "  \"compiler_version\": \"0.14.0\",\n";
     out << "  \"fsm_name\": \"" << escape_json(canonical.name) << "\",\n";
     out << "  \"package\": \"" << escape_json(canonical.package) << "\",\n";
     out << "  \"ir_sha256\": \"" << ir_hash << "\",\n";
@@ -83,6 +83,7 @@ std::string ManifestEmitter::emit_json(const ir::FsmIr& model, const ManifestArt
 
     // Artifacts
     out << "  \"artifacts\": {\n";
+    out << "    \"target\": \"" << escape_json(artifacts.target.empty() ? "cpp17" : artifacts.target) << "\",\n";
     out << "    \"standalone\": " << (artifacts.standalone ? "true" : "false") << ",\n";
     out << "    \"ports_header\": \"" << escape_json(artifacts.ports_header) << "\",\n";
     out << "    \"fsm_header\": \"" << escape_json(artifacts.fsm_header) << "\",\n";
@@ -173,6 +174,76 @@ std::string ManifestEmitter::emit_json(const ir::FsmIr& model, const ManifestArt
         out << "\n";
     }
     out << "  ],\n";
+
+    // Emitted Events (SignalEmitOp across entry/exit/transition actions)
+    {
+        std::set<std::pair<std::string, std::string>> emitted_set;
+        auto collect_emits = [&](const ir::ActionSignature& act) {
+            for (const auto& inst : act.instructions) {
+                if (std::holds_alternative<ir::SignalEmitOp>(inst.op)) {
+                    const auto& em = std::get<ir::SignalEmitOp>(inst.op);
+                    if (!em.signal_name.empty()) {
+                        emitted_set.emplace(em.signal_name, em.target_port.value_or(""));
+                    }
+                }
+            }
+        };
+        for (const auto& st : canonical.states) {
+            for (const auto& a : st.entry_actions) {
+                collect_emits(a);
+            }
+            for (const auto& a : st.exit_actions) {
+                collect_emits(a);
+            }
+        }
+        for (const auto& tr : canonical.transitions) {
+            if (tr.condition_action) {
+                collect_emits(*tr.condition_action);
+            }
+            if (tr.transition_action) {
+                collect_emits(*tr.transition_action);
+            }
+        }
+        out << "  \"emitted_events\": [\n";
+        std::size_t idx = 0;
+        for (const auto& [sig_name, port_name] : emitted_set) {
+            out << "    { \"signal\": \"" << escape_json(sig_name) << "\", \"target_port\": \""
+                << escape_json(port_name) << "\" }";
+            if (++idx < emitted_set.size()) {
+                out << ",";
+            }
+            out << "\n";
+        }
+        out << "  ],\n";
+    }
+
+    // Timers (TimeTrigger transitions for static RTOS tick-rate derivation)
+    {
+        struct TimerRow {
+            std::string state;
+            uint64_t duration_ms;
+            bool periodic;
+        };
+        std::vector<TimerRow> timers;
+        for (const auto& tr : canonical.transitions) {
+            if (std::holds_alternative<ir::TimeTrigger>(tr.trigger)) {
+                const auto& tt = std::get<ir::TimeTrigger>(tr.trigger);
+                timers.push_back(
+                    TimerRow{tr.source, tt.duration_in_ms(), tt.periodic || tt.kind == ir::TimeTriggerKind::Every});
+            }
+        }
+        out << "  \"timers\": [\n";
+        for (std::size_t i = 0; i < timers.size(); ++i) {
+            out << "    { \"state\": \"" << escape_json(timers[i].state)
+                << "\", \"duration_ms\": " << timers[i].duration_ms
+                << ", \"periodic\": " << (timers[i].periodic ? "true" : "false") << " }";
+            if (i + 1 < timers.size()) {
+                out << ",";
+            }
+            out << "\n";
+        }
+        out << "  ],\n";
+    }
 
     // Services
     out << "  \"services\": [\n";

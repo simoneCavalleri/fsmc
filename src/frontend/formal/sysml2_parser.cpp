@@ -54,6 +54,7 @@ bool Sysml2Parser::parse_impl(std::string_view content, FsmIr& model, std::strin
     std::string current_item_def;
     std::string current_enum_def;
     std::string current_struct_def;
+    std::string current_calc_def;
 
     // Step 2: Iterate through all scanned tokens and process directives or block structures
     for (const auto& token : tokens) {
@@ -78,8 +79,8 @@ bool Sysml2Parser::parse_impl(std::string_view content, FsmIr& model, std::strin
         if (token.kind == SysmlTokenKind::BlockOpen) {
             SysmlBlockKind opened_kind = SysmlBlockKind::ActionBlock;
             if (!process_statement(token.text, model, state_stack, package_stack, package_push_counts, current_item_def,
-                                   current_enum_def, current_struct_def, error_message, token.line_number, true,
-                                   opened_kind, symbol_resolver)) {
+                                   current_enum_def, current_struct_def, current_calc_def, error_message,
+                                   token.line_number, true, opened_kind, symbol_resolver)) {
                 return false;
             }
             block_stack.push_back(opened_kind);
@@ -113,14 +114,16 @@ bool Sysml2Parser::parse_impl(std::string_view content, FsmIr& model, std::strin
                     current_enum_def.clear();
                 } else if (popped_kind == SysmlBlockKind::StructDef) {
                     current_struct_def.clear();
+                } else if (popped_kind == SysmlBlockKind::CalcDef) {
+                    current_calc_def.clear();
                 }
             }
         } else if (token.kind == SysmlTokenKind::Statement || token.kind == SysmlTokenKind::ActionBlock) {
             // Regular standalone statement (e.g., transition, entry action, attribute assignment)
             SysmlBlockKind unused_kind = SysmlBlockKind::ActionBlock;
             if (!process_statement(token.text, model, state_stack, package_stack, package_push_counts, current_item_def,
-                                   current_enum_def, current_struct_def, error_message, token.line_number, false,
-                                   unused_kind, symbol_resolver)) {
+                                   current_enum_def, current_struct_def, current_calc_def, error_message,
+                                   token.line_number, false, unused_kind, symbol_resolver)) {
                 return false;
             }
         }
@@ -301,9 +304,100 @@ std::string Sysml2Parser::to_pascal_case(const std::string& str) {
     return res.empty() ? "Custom" : res;
 }
 
-static bool try_parse_assignment_statement(const std::string& statement, std::vector<ActionAssignment>& assignments) {
+static bool try_parse_service_call_statement(const std::string& statement, const FsmIr& model,
+                                             std::vector<ActionAstNode>& out_instructions) {
+    if (model.services.empty()) {
+        return false;
+    }
+
+    auto has_service = [&](const std::string& fn) {
+        for (const auto& svc : model.services) {
+            if (svc.name == fn) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    auto split_args = [](const std::string& args_str) {
+        std::vector<std::string> args;
+        std::string cur;
+        int depth = 0;
+        for (char c : args_str) {
+            if (c == '(' || c == '[' || c == '{') {
+                ++depth;
+                cur.push_back(c);
+            } else if (c == ')' || c == ']' || c == '}') {
+                --depth;
+                cur.push_back(c);
+            } else if (c == ',' && depth == 0) {
+                std::string t(trim(cur));
+                if (!t.empty()) {
+                    args.push_back(std::move(t));
+                }
+                cur.clear();
+            } else {
+                cur.push_back(c);
+            }
+        }
+        std::string t(trim(cur));
+        if (!t.empty()) {
+            args.push_back(std::move(t));
+        }
+        return args;
+    };
+
+    // Form 1: [assign] <lhs> :=|= <service_fn>(<args>)
+    static const std::regex assigned_call_regex(
+        R"(^(?:assign\s+)?([A-Za-z_][A-Za-z0-9_.]*)\s*:?=\s*([A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)$)",
+        std::regex::optimize);
+    std::smatch m;
+    if (std::regex_match(statement, m, assigned_call_regex)) {
+        const std::string lhs_raw(trim(m[1].str()));
+        const std::string fn(trim(m[2].str()));
+        if (!has_service(fn)) {
+            return false;
+        }
+        ActionCallOp call;
+        call.function_name = fn;
+        call.arguments = split_args(m[3].str());
+
+        LValueTarget tgt(lhs_raw);
+        if (lhs_raw.rfind("out.", 0) == 0) {
+            tgt = LValueTarget(lhs_raw.substr(4), LValueScope::OutPort);
+        } else if (lhs_raw.rfind("reg.", 0) == 0) {
+            tgt = LValueTarget(lhs_raw.substr(4), LValueScope::Register);
+        } else if (const auto* p = model.find_port(tgt.name); p != nullptr && p->is_out()) {
+            tgt.scope = LValueScope::OutPort;
+        } else {
+            tgt.scope = LValueScope::Register;
+        }
+        call.result_target = std::move(tgt);
+        out_instructions.emplace_back(std::move(call), statement);
+        return true;
+    }
+
+    // Form 2: <service_fn>(<args>)
+    static const std::regex void_call_regex(R"(^([A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)$)", std::regex::optimize);
+    if (std::regex_match(statement, m, void_call_regex)) {
+        const std::string fn(trim(m[1].str()));
+        if (!has_service(fn)) {
+            return false;
+        }
+        ActionCallOp call;
+        call.function_name = fn;
+        call.arguments = split_args(m[2].str());
+        out_instructions.emplace_back(std::move(call), statement);
+        return true;
+    }
+
+    return false;
+}
+
+static bool try_parse_assignment_statement(const std::string& statement, std::vector<ActionAssignment>& assignments,
+                                           const FsmIr* model = nullptr) {
     static const std::regex assign_regex(
-        R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*(=|\+=|-=|\*=|\/=)\s*(.+)$)",
+        R"(^(?:assign\s+)?((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*(:=|=|\+=|-=|\*=|\/=)\s*(.+)$)",
         std::regex::optimize);
     static const std::regex inc_regex(
         R"(^((?:(?:out|in|reg|local)\.)?)?(?:(?:service|context)\.)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*(\+\+|--)$)",
@@ -343,7 +437,12 @@ static bool try_parse_assignment_statement(const std::string& statement, std::ve
         std::string op = assign_match[3].str();
         std::string rhs = trim_ws(assign_match[4].str());
         LValueTarget tgt(scope_prefix + var_path);
-        if (op == "=") {
+        if (scope_prefix.empty() && model != nullptr) {
+            if (const auto* p = model->find_port(tgt.name); p != nullptr && p->is_out()) {
+                tgt.scope = LValueScope::OutPort;
+            }
+        }
+        if (op == "=" || op == ":=") {
             assignments.push_back({tgt, rhs});
         } else if (op == "+=") {
             assignments.push_back({tgt, var_path + " + " + rhs});
@@ -371,11 +470,41 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
                                      std::vector<std::string>& package_stack,
                                      std::vector<std::size_t>& package_push_counts, std::string& current_item_def,
                                      std::string& current_enum_def, std::string& current_struct_def,
-                                     std::string& error_message, size_t line_number, bool is_block_open,
-                                     SysmlBlockKind& out_kind, Sysml2SymbolResolver& symbol_resolver) {
+                                     std::string& current_calc_def, std::string& error_message, size_t line_number,
+                                     bool is_block_open, SysmlBlockKind& out_kind,
+                                     Sysml2SymbolResolver& symbol_resolver) {
     const std::string stmt = normalize_whitespace(raw_stmt);
     out_kind = SysmlBlockKind::ActionBlock;
     if (stmt.empty()) {
+        return true;
+    }
+
+    // Native OMG SysML v2.0 calc def body: in <param> : <Type>; / return [<name>] : <Type>;
+    if (!current_calc_def.empty()) {
+        std::smatch cm;
+        ServiceMethodSignature* active_svc = nullptr;
+        for (auto& svc : model.services) {
+            if (svc.name == current_calc_def) {
+                active_svc = &svc;
+                break;
+            }
+        }
+        if (active_svc != nullptr) {
+            static const std::regex calc_param_regex(
+                R"(^in\s+(?:attribute\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_:]+))", std::regex::optimize);
+            static const std::regex calc_return_regex(R"(^return(?:\s+[A-Za-z_][A-Za-z0-9_]*)?\s*:\s*([A-Za-z0-9_:]+))",
+                                                      std::regex::optimize);
+            if (std::regex_search(stmt, cm, calc_param_regex)) {
+                const std::string p_name = sanitize_identifier(cm[1].str());
+                const DataType p_type = DataType::from_string(map_sysml_type_to_cpp(cm[2].str(), &symbol_resolver));
+                active_svc->parameters.emplace_back(p_name, p_type);
+                return true;
+            }
+            if (std::regex_search(stmt, cm, calc_return_regex)) {
+                active_svc->return_type = DataType::from_string(map_sysml_type_to_cpp(cm[1].str(), &symbol_resolver));
+                return true;
+            }
+        }
         return true;
     }
 
@@ -511,9 +640,23 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    // 2b. Port declaration: (in|out|inout) (port|attribute) <name> : <Type> [ { assert constraint { <expr> } } ]
+    // 2a-calc. Native OMG SysML v2.0 Calculation Definition -> pure typed ServiceMethodSignature
+    static const std::regex calc_def_regex(R"(^calc\s+def\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
+    if (std::regex_search(stmt, match, calc_def_regex)) {
+        const std::string calc_name = sanitize_identifier(match[1].str());
+        model.add_service(ServiceMethodSignature(calc_name, {}, DataType::from_string("void"), /*pure=*/true,
+                                                 /*noexcept=*/true, ""));
+        if (is_block_open) {
+            current_calc_def = calc_name;
+            out_kind = SysmlBlockKind::CalcDef;
+        }
+        return true;
+    }
+
+    // 2b. Directional parameter / port declaration:
+    //     OMG SysML v2.0: (in|out|inout) [attribute|port] <name> : <Type> [ { assert constraint { <expr> } } ]
     static const std::regex port_regex(
-        R"(^(in|out|inout)\s+(?:port|attribute)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_:]+))",
+        R"(^(in|out|inout)\s+(?:(?:port|attribute)\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_:]+))",
         std::regex::optimize);
     if (std::regex_search(stmt, match, port_regex)) {
         std::string dir_str = match[1].str();
@@ -609,9 +752,9 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         }
     }
 
-    // 3. Attribute / Variable declaration: attribute <name> : <Type> [[unit]] [= <init>] / var <name> : <Type>
+    // 3. Attribute / Variable declaration: attribute <name> : <Type> [[unit]] [:=|= <init>] / var <name> : <Type>
     static const std::regex attr_regex(
-        R"(^(?:attribute|var)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_:]+)(?:\s*(\[[^\]]+\]))?(?:\s*=\s*([^;]+))?)",
+        R"(^(?:attribute|var)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_:]+)(?:\s*(\[[^\]]+\]))?(?:\s*:?=\s*([^;]+))?)",
         std::regex::optimize);
     if (std::regex_search(stmt, match, attr_regex)) {
         const std::string attr_name = sanitize_identifier(match[1].str());
@@ -859,6 +1002,7 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         std::stringstream ss(trimmed_block);
         std::string statement;
         std::vector<ActionAssignment> assignments;
+        std::vector<ActionAstNode> service_calls;
         std::vector<ActionSignature> send_actions;
         std::vector<std::string> standalone_calls;
 
@@ -870,7 +1014,9 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
             ActionSignature send_sig;
             if (try_parse_send_via(statement, send_sig)) {
                 send_actions.push_back(std::move(send_sig));
-            } else if (!try_parse_assignment_statement(statement, assignments)) {
+            } else if (try_parse_service_call_statement(statement, model, service_calls)) {
+                // Lowered directly into typed ActionCallOp
+            } else if (!try_parse_assignment_statement(statement, assignments, &model)) {
                 std::string act_call = statement;
                 if (act_call.ends_with("()")) {
                     act_call.resize(act_call.size() - 2);
@@ -883,11 +1029,12 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
             }
         }
 
-        const bool has_assignments = !assignments.empty();
+        const bool has_assignments = !assignments.empty() || !service_calls.empty();
         if (has_assignments) {
             std::string act_name = !explicit_name.empty() ? explicit_name : default_name;
             ActionSignature sig(act_name);
             sig.assignments = std::move(assignments);
+            sig.instructions = std::move(service_calls);
             model.add_action(act_name);
             target_actions.push_back(std::move(sig));
         }
@@ -1280,6 +1427,7 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
 
     // 6. Action effects and variable assignments: do { ... }, do send via port, or do action_name
     std::vector<ActionAssignment> assignments;
+    std::vector<ActionAstNode> service_calls;
     std::optional<ActionSignature> trans_send_action;
     static const std::regex trans_send_regex(
         R"(\b(?:do\s+)?send\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s+via\s+([A-Za-z_][A-Za-z0-9_]*))",
@@ -1295,7 +1443,9 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
             if (statement.empty())
                 continue;
 
-            if (!try_parse_assignment_statement(statement, assignments)) {
+            if (try_parse_service_call_statement(statement, model, service_calls)) {
+                // Lowered directly into typed ActionCallOp
+            } else if (!try_parse_assignment_statement(statement, assignments, &model)) {
                 static const std::regex block_send_regex(
                     R"(^(?:do\s+)?send\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s+via\s+([A-Za-z_][A-Za-z0-9_]*)$)",
                     std::regex::optimize);
@@ -1332,11 +1482,11 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
             }
         }
 
-        // Materialize synthesized action signatures from variable assignments
-        if (!assignments.empty()) {
+        // Materialize synthesized action signatures from variable assignments or typed service calls
+        if (!assignments.empty() || !service_calls.empty()) {
             if (!explicit_action_name.empty()) {
                 action = explicit_action_name;
-            } else if (assignments.size() == 1) {
+            } else if (!assignments.empty() && assignments.size() == 1 && service_calls.empty()) {
                 const auto& a = assignments[0];
                 if (a.expression == a.target.name + " + 1" || a.expression == a.target.name + " + 1.0") {
                     action = "increment_" + a.target.name;
@@ -1544,10 +1694,11 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     if (trans_send_action.has_value()) {
         trans.transition_action = std::move(trans_send_action);
         model.add_action(action);
-    } else if (!action.empty() || !assignments.empty()) {
+    } else if (!action.empty() || !assignments.empty() || !service_calls.empty()) {
         ActionSignature sig;
         sig.name = action;
         sig.assignments = assignments;
+        sig.instructions = std::move(service_calls);
         trans.transition_action = std::move(sig);
         model.add_action(action);
     }

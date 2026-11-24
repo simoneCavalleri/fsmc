@@ -4,8 +4,8 @@
 > To update this file, run: `cmake --build build --target generate_test_catalog` or `python3 scripts/generate_test_catalog.py`.
 
 **Total Documented Subsystems**: 12  
-**Total Test Suites & Binaries**: 87  
-**Total Documented Test Cases**: 772  
+**Total Test Suites & Binaries**: 88  
+**Total Documented Test Cases**: 776  
 
 ---
 
@@ -117,6 +117,7 @@
 | [`test_efsm_metamodel_extensions.cpp`](../../tests/ir/test_efsm_metamodel_extensions.cpp) | `tests/ir/test_efsm_metamodel_extensions.cpp` | 5 | Unit tests for EFSM metamodel extensions: LValueTarget, ActionAssignment, StateTimeInvariant, and ConcurrencySemantics. |
 | [`test_fsm_ir.cpp`](../../tests/ir/test_fsm_ir.cpp) | `tests/ir/test_fsm_ir.cpp` | 34 | Unit tests for core Intermediate Representation (FsmIr), state hierarchy, AST expressions, and serialization. |
 | [`test_fsm_ir_semantic_completeness.cpp`](../../tests/ir/test_fsm_ir_semantic_completeness.cpp) | `tests/ir/test_fsm_ir_semantic_completeness.cpp` | 8 | Unit tests for target-agnostic FSM IR semantic completeness extensions: Terminate pseudostate, Timed Automata ClockDefinition, ActionAstNode primitive instructions, ChangeTrigger, typed transition endpoints, and ExecutionSemantics. |
+| [`test_ir_json_and_integrity.cpp`](../../tests/ir/test_ir_json_and_integrity.cpp) | `tests/ir/test_ir_json_and_integrity.cpp` | 4 | Tests for strict canonical ir-json ingestion, schema version enforcement, and VerifyIrIntegrityPass. |
 
 ## Middle-End Verification & Transformation Subsystem
 

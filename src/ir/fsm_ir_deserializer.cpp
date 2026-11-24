@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -1166,6 +1167,11 @@ void parse_states_object(const JsonValue& states_obj, FsmIr& model, const std::s
 // ============================================================================
 
 bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& out_ir, std::string& out_error) {
+    return deserialize_json(json_content, out_ir, out_error, DeserializeOptions{});
+}
+
+bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& out_ir, std::string& out_error,
+                                         const DeserializeOptions& options) {
     JsonValue root;
     if (!SimpleJsonParser::parse(json_content, root, out_error)) {
         out_error = "JSON Deserializer: Failed to parse JSON: " + out_error;
@@ -1175,6 +1181,58 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
     if (!root.is_object()) {
         out_error = "JSON Deserializer: Root JSON must be an object.";
         return false;
+    }
+
+    if (options.strict_ir_json) {
+        const std::string schema_ver = root.get_string("ir_schema_version");
+        if (schema_ver.empty()) {
+            out_error = "E_IR_SCHEMA_VERSION: Missing required root field 'ir_schema_version' (expected \"1.0\").";
+            return false;
+        }
+        if (schema_ver != "1.0") {
+            out_error = "E_IR_SCHEMA_VERSION: Unsupported 'ir_schema_version' '" + schema_ver + "' (expected \"1.0\").";
+            return false;
+        }
+
+        static const std::unordered_set<std::string_view> kAllowedIrRootKeys = {"ir_schema_version",
+                                                                                "id",
+                                                                                "fsm_id",
+                                                                                "name",
+                                                                                "initial",
+                                                                                "initial_state",
+                                                                                "initial_state_id",
+                                                                                "package",
+                                                                                "satisfies_reqs",
+                                                                                "attributes",
+                                                                                "concurrency",
+                                                                                "execution_semantics",
+                                                                                "ports",
+                                                                                "variables",
+                                                                                "enums",
+                                                                                "structs",
+                                                                                "types",
+                                                                                "custom_types",
+                                                                                "signals",
+                                                                                "guards",
+                                                                                "actions",
+                                                                                "clocks",
+                                                                                "choice_nodes",
+                                                                                "properties",
+                                                                                "states",
+                                                                                "transitions",
+                                                                                "bindings",
+                                                                                "services",
+                                                                                "source_file"};
+        for (const auto& key : root.obj_keys) {
+            if (kAllowedIrRootKeys.find(key) == kAllowedIrRootKeys.end()) {
+                out_error = "E_IR_UNKNOWN_FIELD: Unrecognized root key '" + key + "' in strict ir-json input.";
+                return false;
+            }
+        }
+        if (root.get_child("states") == nullptr) {
+            out_error = "E_IR_SCHEMA_VERSION: Missing required root field 'states' in strict ir-json input.";
+            return false;
+        }
     }
 
     std::string fsm_id = root.get_string("id");

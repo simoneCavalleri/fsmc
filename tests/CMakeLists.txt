@@ -104,6 +104,7 @@ add_fsm_unit_test(test_data_type DIR ir)
 add_fsm_unit_test(test_efsm_metamodel_extensions DIR ir)
 add_fsm_unit_test(test_fsm_ir_semantic_completeness DIR ir)
 add_fsm_unit_test(test_data_definitions DIR ir)
+add_fsm_unit_test(test_ir_json_and_integrity DIR ir)
 
 # ==============================================================================
 # Frontend Common, Directives & Lexer Tests (tests/frontend/)

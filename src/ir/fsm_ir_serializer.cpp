@@ -624,6 +624,7 @@ std::string FsmIrSerializer::serialize_json(const FsmIr& ir, int indent_spaces) 
     std::ostringstream out;
     std::string sm_name = ir.name.empty() ? "StateMachine" : ir.name;
     out << "{\n";
+    out << "  \"ir_schema_version\": \"" << kIrSchemaVersion << "\",\n";
     out << "  \"id\": \"" << escape_json(sm_name) << "\",\n";
     if (!ir.id.empty()) {
         out << "  \"fsm_id\": \"" << escape_json(ir.id) << "\",\n";
@@ -651,11 +652,12 @@ std::string FsmIrSerializer::serialize_json(const FsmIr& ir, int indent_spaces) 
         out << "],\n";
     }
 
-    // Attributes
+    // Attributes (sorted for byte-identical determinism)
     if (!ir.attributes.empty()) {
+        std::map<std::string, std::string> sorted_attrs(ir.attributes.begin(), ir.attributes.end());
         out << "  \"attributes\": {";
         bool first_attr = true;
-        for (const auto& [k, v] : ir.attributes) {
+        for (const auto& [k, v] : sorted_attrs) {
             if (!first_attr)
                 out << ", ";
             first_attr = false;

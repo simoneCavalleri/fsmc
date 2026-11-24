@@ -31,6 +31,7 @@
 #include "fsm/middleend/passes/submachine_inlining_pass.hpp"
 #include "fsm/middleend/passes/timed_deadlock_pass.hpp"
 #include "fsm/middleend/passes/transition_fusion_pass.hpp"
+#include "fsm/middleend/passes/verify_ir_integrity_pass.hpp"
 #include "fsm/middleend/passes/wcet_analysis_pass.hpp"
 
 namespace fsm::middleend {
@@ -46,6 +47,12 @@ const std::vector<PassDescriptor>& PassRegistry::descriptors() {
          "Normalizes hierarchy, sorts IR collections, and computes deterministic IDs.",
          false,
          []() { return std::make_unique<HierarchyCanonicalizationPass>(); }},
+        {"verify-ir-integrity",
+         {"VerifyIrIntegrity"},
+         "Verification",
+         "Verifies mandatory FsmIr structural invariants (IDs, acyclic hierarchy, endpoints, types, spans).",
+         true,
+         []() { return std::make_unique<VerifyIrIntegrityPass>(); }},
         {"semantic-validation",
          {"SemanticValidation"},
          "Verification",

@@ -82,7 +82,8 @@ inline bool parse_common_compiler_arg(std::string_view arg, int& i, int argc, ch
     if (match_opt_value(arg, i, argc, argv, "-o", "--output", output_path, error_message)) {
         return true;
     }
-    if (match_opt_value(arg, i, argc, argv, "", "--format", format_override, error_message)) {
+    if (match_opt_value(arg, i, argc, argv, "", "--format", format_override, error_message) ||
+        match_opt_value(arg, i, argc, argv, "", "--input-format", format_override, error_message)) {
         return true;
     }
     if (match_opt_value(arg, i, argc, argv, "", "--submachine-dir", submachine_dir, error_message)) {

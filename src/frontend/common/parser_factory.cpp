@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "fsm/frontend/common/ir_json_parser.hpp"
 #include "fsm/frontend/common/json_parser.hpp"
 #include "fsm/frontend/diagram/dot_parser.hpp"
 #include "fsm/frontend/diagram/mermaid_parser.hpp"
@@ -67,7 +68,16 @@ const std::vector<FormatDescriptor>& format_registry() {
          FrontendKind::Formal,
          []() { return std::make_unique<StateflowParser>(); }},
         {"smv", {"nusmv", "nuxmv"}, {".smv"}, FrontendKind::Formal, []() { return std::make_unique<SmvParser>(); }},
-        {"json", {}, {".json"}, FrontendKind::Formal, []() { return std::make_unique<JsonParser>(); }},
+        {"ir-json",
+         {"ir", "fsm-ir"},
+         {".ir.json"},
+         FrontendKind::Formal,
+         []() { return std::make_unique<IrJsonParser>(); }},
+        {"json",
+         {"xstate-json", "xstate"},
+         {".json"},
+         FrontendKind::Formal,
+         []() { return std::make_unique<JsonParser>(); }},
         {"dot", {"gv"}, {".dot", ".gv"}, FrontendKind::Diagram, []() { return std::make_unique<DotParser>(); }},
     };
     return kRegistry;
@@ -98,6 +108,10 @@ std::unique_ptr<IParser> ParserFactory::create_by_format(std::string_view format
 }
 
 std::unique_ptr<IParser> ParserFactory::create_by_extension(std::string_view file_path) {
+    const std::string lower_path = to_lower_ascii(file_path);
+    if (lower_path.size() >= 8 && lower_path.compare(lower_path.size() - 8, 8, ".ir.json") == 0) {
+        return std::make_unique<IrJsonParser>();
+    }
     const std::string ext = to_lower_ascii(std::filesystem::path(file_path).extension().string());
     for (const auto& desc : format_registry()) {
         for (const auto& e : desc.extensions) {

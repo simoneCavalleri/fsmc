@@ -6,6 +6,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 
 #include "fsm/ir/fsm_ir.hpp"
 
@@ -16,6 +17,9 @@ namespace fsm::ir {
  */
 class FsmIrSerializer {
   public:
+    /// Canonical JSON schema version emitted in root "ir_schema_version".
+    static constexpr std::string_view kIrSchemaVersion = "1.0";
+
     /**
      * @brief Serializes the complete FsmIr model into a standard JSON string.
      * @param ir The state machine intermediate representation to serialize.

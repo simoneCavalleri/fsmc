@@ -215,18 +215,10 @@ void FsmGraphOps::rebuild_adjacency_indices(FsmIr& ir) {
 }
 
 void FsmGraphOps::sort_transitions_by_priority(FsmIr& ir) {
-    std::unordered_map<std::string, std::size_t> source_order;
-    std::size_t order = 0;
-    for (const auto& t : ir.transitions) {
-        if (source_order.find(t.source) == source_order.end()) {
-            source_order[t.source] = order++;
-        }
-    }
-
     std::stable_sort(ir.transitions.begin(), ir.transitions.end(),
-                     [&](const TransitionEdge& a, const TransitionEdge& b) {
+                     [](const TransitionEdge& a, const TransitionEdge& b) {
                          if (a.source != b.source) {
-                             return source_order[a.source] < source_order[b.source];
+                             return a.source < b.source;
                          }
                          std::uint32_t pa = a.priority == 0 ? std::numeric_limits<std::uint32_t>::max() : a.priority;
                          std::uint32_t pb = b.priority == 0 ? std::numeric_limits<std::uint32_t>::max() : b.priority;

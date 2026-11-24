@@ -39,6 +39,7 @@
 #include "fsm/middleend/passes/submachine_inlining_pass.hpp"
 #include "fsm/middleend/passes/timed_deadlock_pass.hpp"
 #include "fsm/middleend/passes/transition_fusion_pass.hpp"
+#include "fsm/middleend/passes/verify_ir_integrity_pass.hpp"
 #include "fsm/middleend/passes/wcet_analysis_pass.hpp"
 
 namespace fsm::middleend {
@@ -560,6 +561,7 @@ void PassManager::truncate_passes(std::size_t count) noexcept {
 PassManager PassManager::create_default_pipeline() {
     PassManager pm;
     pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
+    pm.add_pass(std::make_unique<VerifyIrIntegrityPass>());
     pm.add_pass(std::make_unique<SemanticValidationPass>());
     pm.add_pass(std::make_unique<GuardSimplificationPass>());
     pm.add_pass(std::make_unique<DeterminismEnforcementPass>());
@@ -580,6 +582,7 @@ PassManager PassManager::create_default_pipeline() {
 PassManager PassManager::create_optimizing_pipeline(bool prune_dead_states, bool minimize_states) {
     PassManager pm;
     pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
+    pm.add_pass(std::make_unique<VerifyIrIntegrityPass>());
     pm.add_pass(std::make_unique<SemanticValidationPass>());
     pm.add_pass(std::make_unique<GuardSimplificationPass>());
     pm.add_pass(std::make_unique<ConstantFoldingPass>());
@@ -607,8 +610,9 @@ PassManager PassManager::create_optimizing_pipeline(bool prune_dead_states, bool
 
 PassManager PassManager::create_verified_7stage_pipeline(bool optimize) {
     PassManager pm;
-    // Stage 1: Frontend Canonicalization & Syntax Desugaring
+    // Stage 1: Frontend Canonicalization & Integrity Gate
     pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
+    pm.add_pass(std::make_unique<VerifyIrIntegrityPass>());
     pm.add_pass(std::make_unique<SemanticValidationPass>());
     pm.add_pass(std::make_unique<GuardSimplificationPass>());
 
@@ -789,6 +793,7 @@ std::string PassManager::dump_pipeline() const {
 
 PassManager PassManager::create_validation_pipeline() {
     PassManager pm;
+    pm.add_pass(std::make_unique<VerifyIrIntegrityPass>());
     pm.add_pass(std::make_unique<SemanticValidationPass>());
     pm.add_pass(std::make_unique<ChoiceCompletenessPass>());
     pm.add_pass(std::make_unique<LivelockAnalysisPass>());

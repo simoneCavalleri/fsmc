@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.13.0] - 2026-11-24
+
+### Added
+- **Direct Canonical `FsmIr` Ingestion (`--input-format=ir-json`) & Mandatory `verify-ir-integrity` Gate**:
+  - Formalized the canonical `FsmIr` JSON contract (`ir_schema_version: "1.0"`) with `schemas/fsm_ir.schema.json` and lossless byte-identical round-trip between `--emit-ir` and `IrJsonParser` (`.ir.json`), including `source_line` preservation on states and transitions.
+  - Added mandatory `VerifyIrIntegrityPass` (`verify-ir-integrity`) at the front of all middle-end pipelines enforcing root invariants (`E_IR_ROOT`), ID/FQN/symbol uniqueness (`E_IR_DUP_ID`), acyclic hierarchy (`E_IR_HIERARCHY`), valid transition endpoints (`E_IR_DANGLING_REF`), and datapath/service type safety (`E_IR_TYPE_MISMATCH`).
+- **Explicit Typed `Services` Contract (`ServiceMethodSignature`) & Zero-Vtable Verification**:
+  - Added `ServiceMethodSignature` and `ActionCallOp::result_target` to `FsmIr` with full `ir-json` round-trip, `@fsm:service` directives (SysML v2 & diagrams), YAML/JSON sidecar `services:` support, and integrity checks.
+  - Generated C++17 expression-SFINAE `<Model>ServicesContract<Srv>` and `<Model>WithServices<CustomServices>` for compile-time validation of injected math / HAL services (supporting normal, overloaded, and template methods with zero vtable overhead).
+- **Language-Agnostic External Type References (`external_ref`) & Default Split Headers (`*_ports.hpp` + `*_fsm.hpp`)**:
+  - Added `ExternalTypeRef` (`module`, `symbol`) on `TypeDefinition` (via `.ir.json`, `@fsm:external_type` directives, and sidecar manifests) so external PODs/enums are referenced via `#include` + `using` aliases without regenerating duplicate structs across multi-FSM systems.
+  - Switched file output to split mode by default (`*_ports.hpp` with zero `fsm.hpp` dependency + `*_fsm.hpp`), keeping `--standalone` as an explicit single-header option; updated `FsmcTools.cmake` and all examples.
+- **Zero-Allocation Pure C99 ABI Generator (`--emit-c-abi`)**:
+  - Added `CAbiGenerator` (`*_c.h` + `*_c.cpp`) emitting strict C99 `-pedantic` `extern "C"` headers with flat & local POD `struct` ports, statically aligned opaque storage, `<prefix>_step`, `<prefix>_tick`, `<prefix>_save_snapshot` / `<prefix>_restore_snapshot`, `<prefix>_services_t` callbacks with `void* user_data`, `<prefix>_ir_sha256()`, and zero-heap C++17 placement-new bridges verified by compile-time `static_assert`.
+- **System Manifest (`*.manifest.json`), Real-Time Scheduling Bounds, Pure C++ SHA-256 & Structured Diagnostics (`--diagnostics=json`)**:
+  - Added zero-dependency FIPS 180-4 SHA-256 (`fsm/ir/sha256.hpp`) and cross-artifact `ir_sha256` attestation across `*.manifest.json`, `*_fsm.hpp` (`inline constexpr <Model>IrSha256`), and `*_c.h` (`<PREFIX>_IR_SHA256` / `<prefix>_ir_sha256()`).
+  - Added `ManifestEmitter` (`--emit-manifest[=<file>]`) with real-time `scheduling` bounds (`wcet_max_microsteps`, `max_event_queue_bound`, `zeno_free`), `schemas/fsm_manifest.schema.json`, and automated CI JSON Schema validation (`scripts/verify_schemas.py`).
+  - Extended `DiagnosticEngine::render_json()` (`--diagnostics=<text|json|github>`) with structured `counterexample` (populated by `ModelCheckingPass`) and `suggested_fixes`.
+  - Added seeded randomized differential testing verifying step-by-step parity across `IrSimulator == C++17 == C99 ABI` (including mid-trace snapshot/restore).
+
+### Changed
+- **Unified Modern C++17 Backend (Zero C++17/C++20 Bifurcation)**:
+  - Consolidated `Cpp17StandaloneRuntime` and `Cpp20StandaloneRuntime` into a single `CppStandaloneRuntime` compiling cleanly under C++17, C++20, and C++23.
+  - Canonical transition sorting (`FsmGraphOps::sort_transitions_by_priority`) now deterministically orders transitions originating from `initial_state` first, followed by alphabetical source order and priority.
+
+### Removed
+- Removed `CppStandard`, `GeneratorOptions::cpp_standard`, CLI `--std` / `--c++17` / `--c++20`, `FsmcTools.cmake` `STANDARD`, and legacy `cpp17_standalone_runtime.hpp`.
+
 ## [0.12.0] - 2026-11-24
 
 ### Added

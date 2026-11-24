@@ -423,3 +423,15 @@ SysML v2 --(parse)--> FsmIr --(serialize)--> PlantUML --(parse)--> FsmIr --(seri
 
 All structural hierarchies, orthogonal regions, guard boolean trees, formal verification properties, EFSM variables, and traceability requirements are preserved without loss of semantic precision.
 
+---
+
+## 6. Modular Toolchain Contracts
+
+`FsmIr` defines explicit, versioned, fail-closed JSON contracts designed for composable MBSE toolchains—allowing external SysML parsers, math/HAL libraries, multi-FSM orchestrators, CI pipelines, and automated tooling to interoperate without coupling to internal compiler APIs:
+
+- **Canonical `ir-json` Schema (`schemas/fsm_ir.schema.json`)**: Versioned with `"ir_schema_version": "1.0"`, ingested directly via `fsmc --input-format=ir-json` (or `.ir.json` extension) and validated by the mandatory `verify-ir-integrity` pass (`E_IR_ROOT`, `E_IR_DUP_ID`, `E_IR_HIERARCHY`, `E_IR_DANGLING_REF`, `E_IR_TYPE_MISMATCH`). Preserves `source_line` on states and transitions.
+- **Language-Agnostic External Type References (`external_ref`)**: `TypeDefinition` supports `"external_ref": { "module": "shared_types", "symbol": "shared.BatteryStatus" }`, lowered by the C++ backend into `#include "shared_types.hpp"` and `using BatteryStatus = ::shared::BatteryStatus;` inside `*_ports.hpp`.
+- **Explicit Typed Services (`services` + `ActionCallOp::result_target`)**: Declares typed service signatures (`name`, `params`, `return_type`, `pure`, `noexcept`) verified at compile time via C++17 expression-SFINAE (`<Model>ServicesContract<Srv>`) and exposed as C99 function pointers (`<prefix>_services_t`) under `--emit-c-abi`.
+- **System Manifest (`schemas/fsm_manifest.schema.json`)**: Emitted via `--emit-manifest[=<file>]` containing `ir_sha256` (pure C++ FIPS 180-4 SHA-256 matching `constexpr <Model>IrSha256` in `*_fsm.hpp` and `<prefix>_ir_sha256()` in `*_c.h`), generated artifact paths, ports, registers, events, services, external types, requirements, verification summary, and static real-time `scheduling` bounds (`wcet_max_microsteps`, `max_event_queue_bound`, `zeno_free`).
+
+

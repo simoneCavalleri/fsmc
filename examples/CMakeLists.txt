@@ -20,8 +20,6 @@ set_target_properties(network_protocol_example PROPERTIES CXX_STANDARD 20 CXX_ST
 fsmc_target_sources(network_protocol_example
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/01_basic_patterns/network_protocol/connection.sysml
     NAME ConnectionFSM
-    STANDARD 20
-    STANDALONE
     NAMESPACE net
     NO_STUBS
 )
@@ -37,8 +35,6 @@ set_target_properties(robotic_arm_example PROPERTIES CXX_STANDARD 20 CXX_STANDAR
 fsmc_target_sources(robotic_arm_example
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/02_advanced_semantics/robotic_arm_sequencer/robotic_arm.puml
     NAME RoboticArmFSM
-    STANDARD 20
-    STANDALONE
     NAMESPACE robotics
     ALLOW_DIAGRAM_CODEGEN
 )
@@ -54,8 +50,6 @@ set_target_properties(automotive_bms_example PROPERTIES CXX_STANDARD 20 CXX_STAN
 fsmc_target_sources(automotive_bms_example
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/03_concurrency_and_timing/automotive_bms/bms.sysml
     NAME BatteryManagementSystem
-    STANDARD 20
-    STANDALONE
     NAMESPACE automotive
 )
 add_test(NAME automotive_bms_example COMMAND automotive_bms_example)
@@ -70,8 +64,6 @@ set_target_properties(flight_control_modes_example PROPERTIES CXX_STANDARD 20 CX
 fsmc_target_sources(flight_control_modes_example
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/04_formal_verification/flight_control_modes/fms.sysml
     NAME FlightControlModeManager
-    STANDARD 20
-    STANDALONE
     NAMESPACE avionics
 )
 add_test(NAME flight_control_modes_example COMMAND flight_control_modes_example)
@@ -109,8 +101,6 @@ set_target_properties(sensor_pipeline_example PROPERTIES CXX_STANDARD 20 CXX_STA
 fsmc_target_sources(sensor_pipeline_example
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/05_custom_toolchain/plugin_and_pipeline/sensor_pipeline.sysml
     NAME SensorPipelineController
-    STANDARD 20
-    STANDALONE
     NAMESPACE sensing
 )
 add_test(NAME sensor_pipeline_example COMMAND sensor_pipeline_example)
@@ -125,9 +115,33 @@ set_target_properties(stateflow_digital_twin_ecu_example PROPERTIES CXX_STANDARD
 fsmc_target_sources(stateflow_digital_twin_ecu_example
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/06_stateflow_digital_twin_ecu/ecu.sfx
     NAME EcuEngineFSM
-    STANDARD 20
-    STANDALONE
     NAMESPACE automotive::ecu
 )
 add_test(NAME stateflow_digital_twin_ecu_example COMMAND stateflow_digital_twin_ecu_example)
+
+# ------------------------------------------------------------------------------
+# Module 07: Modular MBSE Toolchain (ir-json, Split Ports, Zero-Vtable Services & Pure C99 ABI)
+# ------------------------------------------------------------------------------
+enable_language(C)
+add_executable(modular_toolchain_c_abi_example
+    07_modular_toolchain_c_abi/main.cpp
+    07_modular_toolchain_c_abi/hal_driver.cpp
+    07_modular_toolchain_c_abi/c_client.c
+)
+target_link_libraries(modular_toolchain_c_abi_example PRIVATE fsmc_runtime)
+set_target_properties(modular_toolchain_c_abi_example PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED ON
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+fsmc_target_sources(modular_toolchain_c_abi_example
+    DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/07_modular_toolchain_c_abi/thermal_controller.ir.json
+    NAME ThermalController
+    NAMESPACE thermal
+    FORMAT ir-json
+    EMIT_C_ABI
+)
+add_test(NAME modular_toolchain_c_abi_example COMMAND modular_toolchain_c_abi_example)
 

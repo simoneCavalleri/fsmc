@@ -59,7 +59,6 @@ TEST(ChoicePseudostate, ChoicePseudostate_ConditionalEvaluation_BranchesToTarget
     ASSERT_TRUE(choice_pass.run(model, diag));
 
     GeneratorOptions opts;
-    opts.cpp_standard = CppStandard::Cpp20;
     opts.standalone = false;
     const std::string code = CppGenerator::generate_header(model, opts);
 

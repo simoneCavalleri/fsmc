@@ -49,6 +49,7 @@ flowchart LR
     Step4 --> Step5["5. Codegen & Concurrency<br/><b>(CMake, SPSC, Active)</b>"]
     Step5 --> Step6["6. Real-World Project<br/><b>(UAV Flight Controller)</b>"]
     Step6 --> Step7["7. Digital Twin ECU<br/><b>(Stateflow & Rollback)</b>"]
+    Step7 --> Step8["8. Modular Toolchain<br/><b>(Services & C99 ABI)</b>"]
 ```
 
 ---
@@ -64,6 +65,7 @@ flowchart LR
 | **[Step 5: Code Generation & Build Integration](05_code_generation_and_integration.md)** | Build systems & concurrency | Integrate `fsmc_target_sources` in CMake, use the Generation Gap pattern, and select execution engines (Sync, SPSC, Active Object). |
 | **[Step 6: Complete Real-World Case Study](06_real_world_case_study.md)** | End-to-end mission controller | Deploy an autonomous UAV flight computer from formal SysML v2 to a full C++20 real-time control loop. |
 | **[Step 7: Stateflow Digital Twin ECU](07_stateflow_digital_twin_ecu.md)** | Automotive ECU & Time-Travel | Import MathWorks Stateflow XML (`.sfx`), optimize connective junctions, and perform zero-heap rollback with `fsm::snapshot_recorder`. |
+| **[Step 8: Modular Toolchain & C99 ABI](08_modular_toolchain_and_c_abi.md)** | Split Ports, Services & FFI | Ingest canonical `.ir.json`, isolate HAL drivers via `*_ports.hpp`, inject zero-vtable services, link pure C99 ABI, and verify `*.manifest.json` SHA-256 attestation. |
 
 ---
 

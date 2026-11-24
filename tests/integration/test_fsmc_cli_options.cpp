@@ -140,21 +140,19 @@ TEST_F(FsmcOptionsTest, ExportRuntime_ToNonexistentDirectory_CreatesDirectoryAnd
 }
 
 /**
- * @brief Test Intent: Verify --export-runtime with --std=20 generates C++20 standalone runtime header.
- * Scenario: Specify --std=20 together with --export-runtime and verify successful generation.
+ * @brief Test Intent: Verify --export-runtime generates the unified C++17+ standalone runtime header.
+ * Scenario: Specify --export-runtime and verify successful generation of fsm.hpp.
  */
-TEST_F(FsmcOptionsTest, ExportRuntime_WithCpp20Dialect_GeneratesCpp20Runtime) {
-    fs::path export_dir = test_dir_ / "runtime_cpp20";
+TEST_F(FsmcOptionsTest, ExportRuntime_GeneratesUnifiedRuntime) {
+    fs::path export_dir = test_dir_ / "runtime_unified";
 
     char p[] = "fsmc";
     char opt1[] = "--export-runtime";
     std::string dir_str = export_dir.string();
-    char opt2[] = "--std=20";
-    char* argv[] = {p, opt1, dir_str.data(), opt2};
+    char* argv[] = {p, opt1, dir_str.data()};
 
-    const auto parsed = fsm::tools::parse_cli_args(4, argv);
+    const auto parsed = fsm::tools::parse_cli_args(3, argv);
     EXPECT_TRUE(parsed.is_valid);
-    EXPECT_EQ(parsed.cpp_standard, fsm::backend::cpp::CppStandard::Cpp20);
 
     int rc = fsm::tools::FsmcDriver::run(parsed);
     EXPECT_EQ(rc, 0);
@@ -336,8 +334,8 @@ TEST_F(FsmcOptionsTest, DiagramInput_BlockedWithoutAllowDiagram_SucceedsWithAllo
 // ============================================================================
 
 /**
- * @brief Test Intent: Verify --modular, --c++20, --no-thread-safe, and --no-stubs options emit lightweight modular
- * C++20 header. Scenario: Compile model with modular runtime inclusion and disabled thread-safe wrappers, verify
+ * @brief Test Intent: Verify --modular, --no-thread-safe, and --no-stubs options emit lightweight modular
+ * C++17 header. Scenario: Compile model with modular runtime inclusion and disabled thread-safe wrappers, verify
  * generated code structure.
  */
 TEST_F(FsmcOptionsTest, ModularPackaging_IncludesExternalHeader) {
@@ -349,14 +347,12 @@ TEST_F(FsmcOptionsTest, ModularPackaging_IncludesExternalHeader) {
     char o[] = "-o";
     std::string out_str = out_file.string();
     char mod[] = "--modular";
-    char c20[] = "--c++20";
     char nothread[] = "--no-thread-safe";
     char nostubs[] = "--no-stubs";
 
-    char* argv[] = {p, i, in_str.data(), o, out_str.data(), mod, c20, nothread, nostubs};
-    const auto opts = fsm::tools::parse_cli_args(9, argv);
+    char* argv[] = {p, i, in_str.data(), o, out_str.data(), mod, nothread, nostubs};
+    const auto opts = fsm::tools::parse_cli_args(8, argv);
     EXPECT_FALSE(opts.standalone);
-    EXPECT_EQ(opts.cpp_standard, fsm::backend::cpp::CppStandard::Cpp20);
     EXPECT_FALSE(opts.thread_safe);
     EXPECT_FALSE(opts.include_stubs);
 
@@ -460,10 +456,9 @@ TEST_F(FsmcOptionsTest, ModularPackaging_ExportRuntimeAlignment) {
         char p[] = "fsmc";
         char exp[] = "--export-runtime";
         std::string dir_str = export_dir.string();
-        char std20[] = "--std=20";
-        char* argv[] = {p, exp, dir_str.data(), std20};
+        char* argv[] = {p, exp, dir_str.data()};
 
-        const auto opts = fsm::tools::parse_cli_args(4, argv);
+        const auto opts = fsm::tools::parse_cli_args(3, argv);
         EXPECT_EQ(fsm::tools::FsmcDriver::run(opts), 0);
         EXPECT_TRUE(fs::exists(export_dir / "fsm.hpp"));
     }
@@ -476,10 +471,9 @@ TEST_F(FsmcOptionsTest, ModularPackaging_ExportRuntimeAlignment) {
         char o[] = "-o";
         std::string out_str = out_file.string();
         char mod[] = "--modular";
-        char c20[] = "--c++20";
-        char* argv[] = {p, i, in_str.data(), o, out_str.data(), mod, c20};
+        char* argv[] = {p, i, in_str.data(), o, out_str.data(), mod};
 
-        const auto opts = fsm::tools::parse_cli_args(7, argv);
+        const auto opts = fsm::tools::parse_cli_args(6, argv);
         EXPECT_EQ(fsm::tools::FsmcDriver::run(opts), 0);
         EXPECT_TRUE(fs::exists(out_file));
     }

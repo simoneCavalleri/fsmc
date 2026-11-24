@@ -20,11 +20,14 @@ bool DiagramContractCombiner::combine(ir::FsmIr& model, const CompanionManifest&
         model.initial_state = manifest.initial_state;
     }
 
-    // 1b. Custom Domain Types
+    // 1b. Custom Domain Types (local and external bindings)
     for (const auto& t : manifest.types) {
         ir::TypeDefinition td;
         td.name = t.name;
         td.kind = (t.kind == "enum") ? ir::TypeKind::Enum : ir::TypeKind::Struct;
+        if (!t.external_module.empty() && !t.external_symbol.empty()) {
+            td.external_ref = ir::ExternalTypeRef{t.external_module, t.external_symbol};
+        }
         for (const auto& f : t.fields) {
             td.fields.emplace_back(f.name, ir::DataType::from_string(f.type));
         }
@@ -90,6 +93,20 @@ bool DiagramContractCombiner::combine(ir::FsmIr& model, const CompanionManifest&
     // 7. Actions
     for (const auto& act : manifest.actions) {
         model.add_action(act.name);
+    }
+
+    // 7b. Typed Services
+    for (const auto& s : manifest.services) {
+        std::vector<ir::ServiceParameter> params;
+        params.reserve(s.params.size());
+        for (const auto& p : s.params) {
+            params.emplace_back(p.name, ir::DataType::from_string(p.type));
+        }
+        ir::DataType ret_dt = (s.return_type.empty() || s.return_type == "void")
+                                  ? ir::DataType::from_string("void")
+                                  : ir::DataType::from_string(s.return_type);
+        model.add_service(
+            ir::ServiceMethodSignature(s.name, std::move(params), std::move(ret_dt), s.is_pure, s.is_noexcept, s.desc));
     }
 
     // 8. Traceability Requirements

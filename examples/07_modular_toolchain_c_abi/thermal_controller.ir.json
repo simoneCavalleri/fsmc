@@ -1,0 +1,79 @@
+{
+  "ir_schema_version": "1.0",
+  "name": "ThermalController",
+  "package": "thermal",
+  "initial_state": "Standby",
+  "satisfies_reqs": ["REQ-THERM-001"],
+  "ports": [
+    {
+      "name": "temp_c",
+      "type": "int32_t",
+      "direction": "in",
+      "min_value": -40,
+      "max_value": 150,
+      "physical_unit": "degC"
+    },
+    {
+      "name": "pwm_duty",
+      "type": "int32_t",
+      "direction": "out",
+      "min_value": 0,
+      "max_value": 100,
+      "physical_unit": "%"
+    }
+  ],
+  "services": [
+    {
+      "name": "compute_pwm",
+      "return_type": "int32_t",
+      "pure": true,
+      "noexcept": true,
+      "description": "Pure control law computing PWM duty cycle from temperature",
+      "params": [
+        { "name": "temp_c", "type": "int32_t" }
+      ]
+    }
+  ],
+  "signals": [
+    { "name": "Enable", "attributes": [] },
+    { "name": "Sample", "attributes": [] },
+    { "name": "Disable", "attributes": [] }
+  ],
+  "states": {
+    "Standby": {
+      "id": "st_standby",
+      "fqn": "Standby",
+      "kind": "Atomic",
+      "on": {
+        "Enable": {
+          "target": "Regulating"
+        }
+      }
+    },
+    "Regulating": {
+      "id": "st_regulating",
+      "fqn": "Regulating",
+      "kind": "Atomic",
+      "on": {
+        "Sample": {
+          "target": "Regulating",
+          "transition_action_obj": {
+            "name": "run_pid",
+            "instructions": [
+              {
+                "kind": "action_call",
+                "function_name": "compute_pwm",
+                "arguments": ["temp_c"],
+                "result_target": "pwm_duty",
+                "result_scope": "OutPort"
+              }
+            ]
+          }
+        },
+        "Disable": {
+          "target": "Standby"
+        }
+      }
+    }
+  }
+}

@@ -54,7 +54,7 @@ fsm-opt examples/02_advanced_semantics/robotic_arm_sequencer/robotic_arm.puml \
 Generate zero-allocation standalone C++20 code:
 ```bash
 fsmc examples/02_advanced_semantics/robotic_arm_sequencer/robotic_arm.puml \
-    --c++20 --standalone --namespace robotics \
+    --standalone --namespace robotics \
     --allow-diagram-codegen -o robotic_arm_fsm.hpp
 ```
 

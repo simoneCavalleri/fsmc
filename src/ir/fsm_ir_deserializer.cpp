@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -487,6 +488,19 @@ ActionSignature parse_action_signature_object(const JsonValue& act_val) {
                     ActionCallOp op;
                     op.function_name = i_val.get_string("function_name");
                     op.arguments = parse_str_vec(i_val.get_child("arguments"));
+                    const std::string res_tgt = i_val.get_string("result_target");
+                    if (!res_tgt.empty()) {
+                        LValueTarget tgt(res_tgt);
+                        const std::string res_scope = i_val.get_string("result_scope");
+                        if (res_scope == "OutPort") {
+                            tgt.scope = LValueScope::OutPort;
+                        } else if (res_scope == "Register") {
+                            tgt.scope = LValueScope::Register;
+                        } else if (res_scope == "Local") {
+                            tgt.scope = LValueScope::Local;
+                        }
+                        op.result_target = std::move(tgt);
+                    }
                     op.read_set = parse_str_vec(i_val.get_child("read_set"));
                     op.write_set = parse_str_vec(i_val.get_child("write_set"));
                     sig.instructions.emplace_back(std::move(op), std::move(desc));
@@ -534,6 +548,11 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
     trans.target_is_history = is_history;
     trans.target_is_deep_history = is_deep;
     trans.description = trans_obj.get_string("description");
+    if (const auto* sl = trans_obj.get_child("source_line"); sl != nullptr && sl->type == JsonType::Number) {
+        if (sl->num_val > 0) {
+            trans.source_line = static_cast<std::uint32_t>(sl->num_val);
+        }
+    }
 
     std::string kind_str = trans_obj.get_string("kind");
     if (!kind_str.empty()) {
@@ -982,6 +1001,12 @@ void parse_states_object(const JsonValue& states_obj, FsmIr& model, const std::s
         if (!s_kind.empty() && curr != nullptr) {
             curr->kind = state_kind_from_string(s_kind);
         }
+        if (const auto* sl = state_data.get_child("source_line");
+            sl != nullptr && sl->type == JsonType::Number && curr != nullptr) {
+            if (sl->num_val > 0) {
+                curr->source_line = static_cast<std::uint32_t>(sl->num_val);
+            }
+        }
         std::string s_ti = state_data.get_string("time_invariant");
         if (!s_ti.empty() && curr != nullptr) {
             curr->time_invariant = StateTimeInvariant(s_ti);
@@ -1166,6 +1191,11 @@ void parse_states_object(const JsonValue& states_obj, FsmIr& model, const std::s
 // ============================================================================
 
 bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& out_ir, std::string& out_error) {
+    return deserialize_json(json_content, out_ir, out_error, DeserializeOptions{});
+}
+
+bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& out_ir, std::string& out_error,
+                                         const DeserializeOptions& options) {
     JsonValue root;
     if (!SimpleJsonParser::parse(json_content, root, out_error)) {
         out_error = "JSON Deserializer: Failed to parse JSON: " + out_error;
@@ -1175,6 +1205,58 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
     if (!root.is_object()) {
         out_error = "JSON Deserializer: Root JSON must be an object.";
         return false;
+    }
+
+    if (options.strict_ir_json) {
+        const std::string schema_ver = root.get_string("ir_schema_version");
+        if (schema_ver.empty()) {
+            out_error = "E_IR_SCHEMA_VERSION: Missing required root field 'ir_schema_version' (expected \"1.0\").";
+            return false;
+        }
+        if (schema_ver != "1.0") {
+            out_error = "E_IR_SCHEMA_VERSION: Unsupported 'ir_schema_version' '" + schema_ver + "' (expected \"1.0\").";
+            return false;
+        }
+
+        static const std::unordered_set<std::string_view> kAllowedIrRootKeys = {"ir_schema_version",
+                                                                                "id",
+                                                                                "fsm_id",
+                                                                                "name",
+                                                                                "initial",
+                                                                                "initial_state",
+                                                                                "initial_state_id",
+                                                                                "package",
+                                                                                "satisfies_reqs",
+                                                                                "attributes",
+                                                                                "concurrency",
+                                                                                "execution_semantics",
+                                                                                "ports",
+                                                                                "variables",
+                                                                                "enums",
+                                                                                "structs",
+                                                                                "types",
+                                                                                "custom_types",
+                                                                                "signals",
+                                                                                "guards",
+                                                                                "actions",
+                                                                                "clocks",
+                                                                                "choice_nodes",
+                                                                                "properties",
+                                                                                "states",
+                                                                                "transitions",
+                                                                                "bindings",
+                                                                                "services",
+                                                                                "source_file"};
+        for (const auto& key : root.obj_keys) {
+            if (kAllowedIrRootKeys.find(key) == kAllowedIrRootKeys.end()) {
+                out_error = "E_IR_UNKNOWN_FIELD: Unrecognized root key '" + key + "' in strict ir-json input.";
+                return false;
+            }
+        }
+        if (root.get_child("states") == nullptr) {
+            out_error = "E_IR_SCHEMA_VERSION: Missing required root field 'states' in strict ir-json input.";
+            return false;
+        }
     }
 
     std::string fsm_id = root.get_string("id");
@@ -1424,6 +1506,42 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
     }
 
     // Clocks
+    const auto* services_arr = root.get_child("services");
+    if (services_arr != nullptr && services_arr->is_array()) {
+        for (const auto& s_val : services_arr->arr_val) {
+            if (!s_val.is_object()) {
+                continue;
+            }
+            ServiceMethodSignature svc;
+            svc.name = sanitize_identifier(s_val.get_string("name"));
+            const std::string ret_str = s_val.get_string("return_type", "void");
+            svc.return_type =
+                (ret_str.empty() || ret_str == "void") ? DataType(PrimitiveTypeKind::Void) : DataType(ret_str);
+            if (const auto* pure_c = s_val.get_child("pure"); pure_c != nullptr && pure_c->type == JsonType::Bool) {
+                svc.is_pure = pure_c->bool_val;
+            }
+            if (const auto* ne_c = s_val.get_child("noexcept"); ne_c != nullptr && ne_c->type == JsonType::Bool) {
+                svc.is_noexcept = ne_c->bool_val;
+            }
+            svc.description = s_val.get_string("description");
+            if (const auto* params_arr = s_val.get_child("params"); params_arr != nullptr && params_arr->is_array()) {
+                for (const auto& p_val : params_arr->arr_val) {
+                    if (!p_val.is_object()) {
+                        continue;
+                    }
+                    const std::string pname = sanitize_identifier(p_val.get_string("name"));
+                    const std::string ptype = p_val.get_string("type", "int32_t");
+                    if (!pname.empty()) {
+                        svc.parameters.emplace_back(pname, DataType(ptype));
+                    }
+                }
+            }
+            if (!svc.name.empty()) {
+                out_ir.add_service(std::move(svc));
+            }
+        }
+    }
+
     const auto* clocks_arr = root.get_child("clocks");
     if (clocks_arr != nullptr && clocks_arr->is_array()) {
         for (const auto& c_val : clocks_arr->arr_val) {
@@ -1580,6 +1698,13 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
                 td.description = t_val.get_string("description");
                 if (const auto* dt_val = t_val.get_child("is_datatype")) {
                     td.is_datatype = (dt_val->type == JsonType::Bool && dt_val->bool_val);
+                }
+                if (const auto* ext_ref = t_val.get_child("external_ref"); ext_ref != nullptr && ext_ref->is_object()) {
+                    const std::string ext_mod = ext_ref->get_string("module");
+                    const std::string ext_sym = ext_ref->get_string("symbol");
+                    if (!ext_mod.empty() || !ext_sym.empty()) {
+                        td.external_ref = ExternalTypeRef{ext_mod, ext_sym.empty() ? td.name : ext_sym};
+                    }
                 }
                 const auto* lits_arr = t_val.get_child("literals");
                 if (lits_arr != nullptr && lits_arr->is_array()) {

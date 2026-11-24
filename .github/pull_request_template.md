@@ -22,29 +22,31 @@
 
 ## Architecture & Subsystem Impact
 
-<!-- Which compiler tier does this PR modify? -->
-- [ ] `include/fsm/frontend/` (SysML v2, UML/Cameo XMI, SCXML, Stateflow, JSON, PlantUML, Mermaid, DOT)
-- [ ] `include/fsm/ir/` (Core FsmIr metamodel, Port/Variable definitions, LTL/CTL properties)
-- [ ] `include/fsm/middleend/` (Optimization passes, dead-state pruning, interval analysis, nuXmv model checking)
-- [ ] `include/fsm/backend/` (C++17/C++20 generators, standalone runtime emitter, diagram serializers)
-- [ ] `include/fsm/backend/cpp/runtime/` (Synchronous FSM, SPSC ring buffer, MPSC thread-safe FSM, lifecycle hooks)
-- [ ] `tools/` (fsmc, fsm-opt CLI binaries)
-- [ ] `examples/` (End-to-end showcases and reference models)
+<!-- Which compiler tier or contract does this PR modify? -->
+- [ ] `include/fsm/frontend/` (`ir-json`, SysML v2, Cameo XMI, SCXML, Stateflow, XState JSON, PlantUML, Mermaid, DOT)
+- [ ] `include/fsm/ir/` (Core `FsmIr`, `ServiceMethodSignature`, `ExternalTypeRef`, SHA-256, LTL/CTL properties)
+- [ ] `include/fsm/middleend/` (`verify-ir-integrity`, optimization passes, interval analysis, LTL/CTL model checking, `IrSimulator`)
+- [ ] `include/fsm/backend/` (Unified C++17 split `*_ports.hpp`/`*_fsm.hpp`, pure C99 ABI, `*.manifest.json`, formal/diagram serializers)
+- [ ] `include/fsm/backend/cpp/runtime/` (Synchronous FSM, lock-free SPSC, thread-safe MPSC, snapshot recorder, freestanding)
+- [ ] `schemas/` (`fsm_ir.schema.json`, `fsm_manifest.schema.json`)
+- [ ] `tools/` (`fsmc`, `fsm-opt` CLI drivers & diagnostics)
+- [ ] `examples/` (End-to-end showcases and `run_all_examples.sh`)
 
 ## Verification & Testing
 
 <!-- Describe how you verified these changes. Include commands and test outputs. -->
 
 - [ ] All unit and integration tests pass locally: `ctest --test-dir build --output-on-failure`
-- [ ] Added dedicated unit test coverage in `tests/` covering the new behavior / edge cases
-- [ ] Regenerated test suite catalog if new tests were added: `python3 scripts/generate_test_catalog.py`
-- [ ] Formatted code with `clang-format`: `find tools include tests examples -name '*.cpp' -o -name '*.hpp' | xargs clang-format -i`
-- [ ] Verified zero compiler warnings under `-Wall -Wextra -Wpedantic -Wconversion`
+- [ ] Added dedicated unit/E2E test coverage in `tests/` covering the new behavior and edge cases
+- [ ] Verified standalone runtime & test catalog sync: `cmake --build build --target check_standalone_runtime check_test_catalog`
+- [ ] Verified documentation quality gate: `python3 scripts/verify_docs.py`
+- [ ] Formatted code with `clang-format`: `find src include tools tests examples benchmarks -type f \( -name '*.hpp' -o -name '*.cpp' -o -name '*.h' -o -name '*.c' \) ! -path '*/generated/*' -print0 | xargs -0 clang-format -i`
+- [ ] Verified zero compiler warnings under `-DFSMC_WARNINGS_AS_ERRORS=ON` (GCC & Clang)
 
 ## Checklist
 
-- [ ] My code follows the project's C++20 / C++17 style guidelines.
-- [ ] I have added/updated Doxygen docstrings for all new public classes, structs, methods, and functions.
-- [ ] I have added "Why" comments explaining non-trivial algorithmic, template, or domain decisions.
-- [ ] Documentation has been updated (under `docs/` and `mkdocs.yml` if applicable).
+- [ ] Compiler core follows C++20 guidelines; generated C++ headers compile cleanly in C++17/20/23 and C ABI headers in strict C99 (`-std=c99 -pedantic`).
+- [ ] Added/updated Doxygen docstrings for all new public classes, structs, methods, and functions.
+- [ ] Added "Why" comments explaining non-trivial algorithmic, template, or domain decisions.
+- [ ] Documentation has been updated (`README.md`, `docs/`, and `mkdocs.yml` if applicable).
 - [ ] No temporary files, debug prints, or unwanted artifacts are committed.

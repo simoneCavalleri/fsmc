@@ -162,7 +162,6 @@ TEST(CppE2ECompiler, GeneratedStandaloneHeaders_CompileAndExecuteUnderCpp17AndCp
     // 1. C++17 Standalone E2E Test
     {
         GeneratorOptions opts17;
-        opts17.cpp_standard = CppStandard::Cpp17;
         opts17.standalone = true;
         opts17.include_stubs = true;
         std::string code17 = CppGenerator::generate_header(model, opts17);
@@ -252,7 +251,6 @@ int main() {
     // 2. C++20 Standalone E2E Test
     {
         GeneratorOptions opts20;
-        opts20.cpp_standard = CppStandard::Cpp20;
         opts20.standalone = true;
         opts20.include_stubs = true;
         std::string code20 = CppGenerator::generate_header(model, opts20);
@@ -350,10 +348,10 @@ TEST(CppE2ECompiler, RuntimeBundling_ExportsHeadersAndResilientCode) {
     const std::string export_dir_cpp17 = "temp_thematic_runtime_export_cpp17";
     std::string err;
 
-    EXPECT_TRUE(RuntimeExporter::export_runtime(export_dir_cpp20 + "/fsm.hpp", CppStandard::Cpp20, err));
+    EXPECT_TRUE(RuntimeExporter::export_runtime(export_dir_cpp20 + "/fsm.hpp", err));
     EXPECT_TRUE(fs::exists(export_dir_cpp20 + "/fsm.hpp"));
 
-    EXPECT_TRUE(RuntimeExporter::export_runtime(export_dir_cpp17 + "/fsm.hpp", CppStandard::Cpp17, err));
+    EXPECT_TRUE(RuntimeExporter::export_runtime(export_dir_cpp17 + "/fsm.hpp", err));
     EXPECT_TRUE(fs::exists(export_dir_cpp17 + "/fsm.hpp"));
 
     fs::remove_all(export_dir_cpp20);
@@ -365,7 +363,7 @@ TEST(CppE2ECompiler, RuntimeBundling_ExportsHeadersAndResilientCode) {
         std::ofstream f(blocker_file);
         f << "blocker";
     }
-    bool ok = RuntimeExporter::export_runtime(blocker_file + "/subdir/fsm.hpp", CppStandard::Cpp20, err);
+    bool ok = RuntimeExporter::export_runtime(blocker_file + "/subdir/fsm.hpp", err);
     EXPECT_FALSE(ok);
     EXPECT_FALSE(err.empty());
     fs::remove(blocker_file);
@@ -532,7 +530,7 @@ int main() {
 }
 )";
 
-    auto run_standard_test = [&](const std::string& std_flag, CppStandard cpp_std, const std::string& suffix) {
+    auto run_standard_test = [&](const std::string& std_flag, const std::string& suffix) {
         FsmIr lowered = model;
         fsm::diagnostic::DiagnosticEngine lower_diag;
         fsm::middleend::passes::OrthogonalProductPass ortho_pass;
@@ -540,7 +538,6 @@ int main() {
         ASSERT_FALSE(lower_diag.has_errors());
 
         GeneratorOptions opts;
-        opts.cpp_standard = cpp_std;
         opts.standalone = true;
         opts.include_stubs = true;
         std::string code = CppGenerator::generate_header(lowered, opts);
@@ -573,8 +570,8 @@ int main() {
                               << "action order or uniqueness violated";
     };
 
-    run_standard_test("-std=c++17", CppStandard::Cpp17, "cpp17");
-    run_standard_test("-std=c++20", CppStandard::Cpp20, "cpp20");
+    run_standard_test("-std=c++17", "cpp17");
+    run_standard_test("-std=c++20", "cpp20");
 
     fs::remove_all(temp_dir);
 }
@@ -654,7 +651,7 @@ int main() {
 }
 )";
 
-    auto run_standard_test = [&](const std::string& std_flag, CppStandard cpp_std, const std::string& suffix) {
+    auto run_standard_test = [&](const std::string& std_flag, const std::string& suffix) {
         FsmIr lowered = model;
         fsm::diagnostic::DiagnosticEngine lower_diag;
         fsm::middleend::passes::OrthogonalProductPass ortho_pass;
@@ -662,7 +659,6 @@ int main() {
         ASSERT_FALSE(lower_diag.has_errors());
 
         GeneratorOptions opts;
-        opts.cpp_standard = cpp_std;
         opts.standalone = true;
         opts.include_stubs = true;
         std::string code = CppGenerator::generate_header(lowered, opts);
@@ -693,8 +689,8 @@ int main() {
         EXPECT_EQ(run_ret, 0) << "[" << suffix << "] Runtime execution failed";
     };
 
-    run_standard_test("-std=c++17", CppStandard::Cpp17, "cpp17");
-    run_standard_test("-std=c++20", CppStandard::Cpp20, "cpp20");
+    run_standard_test("-std=c++17", "cpp17");
+    run_standard_test("-std=c++20", "cpp20");
 
     fs::remove_all(temp_dir);
 }
@@ -762,7 +758,7 @@ int main() {
 }
 )";
 
-    auto run_standard_test = [&](const std::string& std_flag, CppStandard cpp_std, const std::string& suffix) {
+    auto run_standard_test = [&](const std::string& std_flag, const std::string& suffix) {
         FsmIr lowered = model;
         fsm::diagnostic::DiagnosticEngine lower_diag;
         fsm::middleend::passes::OrthogonalProductPass ortho_pass;
@@ -770,7 +766,6 @@ int main() {
         ASSERT_FALSE(lower_diag.has_errors());
 
         GeneratorOptions opts;
-        opts.cpp_standard = cpp_std;
         opts.standalone = true;
         opts.include_stubs = true;
         std::string code = CppGenerator::generate_header(lowered, opts);
@@ -801,8 +796,8 @@ int main() {
         EXPECT_EQ(run_ret, 0) << "[" << suffix << "] Runtime execution failed";
     };
 
-    run_standard_test("-std=c++17", CppStandard::Cpp17, "cpp17");
-    run_standard_test("-std=c++20", CppStandard::Cpp20, "cpp20");
+    run_standard_test("-std=c++17", "cpp17");
+    run_standard_test("-std=c++20", "cpp20");
 
     fs::remove_all(temp_dir);
 }
@@ -887,7 +882,7 @@ int main() {
 }
 )";
 
-    auto run_standard_test = [&](const std::string& std_flag, CppStandard cpp_std, const std::string& suffix) {
+    auto run_standard_test = [&](const std::string& std_flag, const std::string& suffix) {
         FsmIr lowered = model;
         fsm::diagnostic::DiagnosticEngine lower_diag;
         fsm::middleend::passes::OrthogonalProductPass ortho_pass;
@@ -895,7 +890,6 @@ int main() {
         ASSERT_FALSE(lower_diag.has_errors());
 
         GeneratorOptions opts;
-        opts.cpp_standard = cpp_std;
         opts.standalone = true;
         opts.include_stubs = true;
         std::string code = CppGenerator::generate_header(lowered, opts);
@@ -926,8 +920,8 @@ int main() {
         EXPECT_EQ(run_ret, 0) << "[" << suffix << "] Runtime execution failed";
     };
 
-    run_standard_test("-std=c++17", CppStandard::Cpp17, "cpp17");
-    run_standard_test("-std=c++20", CppStandard::Cpp20, "cpp20");
+    run_standard_test("-std=c++17", "cpp17");
+    run_standard_test("-std=c++20", "cpp20");
 
     fs::remove_all(temp_dir);
 }
@@ -986,7 +980,7 @@ int main() {
 }
 )";
 
-    auto run_standard_test = [&](const std::string& std_flag, CppStandard cpp_std, const std::string& suffix) {
+    auto run_standard_test = [&](const std::string& std_flag, const std::string& suffix) {
         FsmIr lowered = model;
         fsm::diagnostic::DiagnosticEngine lower_diag;
         fsm::middleend::passes::OrthogonalProductPass ortho_pass;
@@ -994,7 +988,6 @@ int main() {
         ASSERT_FALSE(lower_diag.has_errors());
 
         GeneratorOptions opts;
-        opts.cpp_standard = cpp_std;
         opts.standalone = true;
         opts.include_stubs = true;
         std::string code = CppGenerator::generate_header(lowered, opts);
@@ -1025,8 +1018,8 @@ int main() {
         EXPECT_EQ(run_ret, 0) << "[" << suffix << "] Runtime execution failed";
     };
 
-    run_standard_test("-std=c++17", CppStandard::Cpp17, "cpp17");
-    run_standard_test("-std=c++20", CppStandard::Cpp20, "cpp20");
+    run_standard_test("-std=c++17", "cpp17");
+    run_standard_test("-std=c++20", "cpp20");
 
     fs::remove_all(temp_dir);
 }
@@ -1098,9 +1091,8 @@ int main() {
 }
 )";
 
-    auto run_standard_test = [&](const std::string& std_flag, CppStandard cpp_std, const std::string& suffix) {
+    auto run_standard_test = [&](const std::string& std_flag, const std::string& suffix) {
         GeneratorOptions opts;
-        opts.cpp_standard = cpp_std;
         opts.standalone = true;
         opts.include_stubs = false;
         opts.thread_safe = false;
@@ -1136,8 +1128,8 @@ int main() {
         EXPECT_EQ(run_ret, 0) << "[" << suffix << "] Runtime execution failed";
     };
 
-    run_standard_test("-std=c++17", CppStandard::Cpp17, "cpp17");
-    run_standard_test("-std=c++20", CppStandard::Cpp20, "cpp20");
+    run_standard_test("-std=c++17", "cpp17");
+    run_standard_test("-std=c++20", "cpp20");
 
     fs::remove_all(temp_dir);
 }
@@ -1229,7 +1221,7 @@ int main() {
     SpscV010E2eFsm spsc;
     assert(!spsc.post(Packet{2000}));
     assert(spsc.post(Packet{50}));
-    assert(spsc.process_one(::fsm::no_ports{}, out));
+    assert(spsc.process_one(in, out));
     assert(spsc.is_in<LowMode>());
     assert(out.out_port == 50);
 
@@ -1241,9 +1233,8 @@ int main() {
     fs::path temp_dir = fs::temp_directory_path() / "fsmc_e2e_v010_comprehensive_test";
     fs::create_directories(temp_dir);
 
-    auto run_std = [&](const std::string& std_flag, CppStandard std_enum, const std::string& suffix) {
+    auto run_std = [&](const std::string& std_flag, const std::string& suffix) {
         GeneratorOptions opts;
-        opts.cpp_standard = std_enum;
         opts.target_namespace = "fsm";  // Exercises ::fsm::and_ / ::fsm::not_ inside namespace fsm
         opts.standalone = true;
         opts.include_stubs = true;
@@ -1266,8 +1257,8 @@ int main() {
         EXPECT_EQ(std::system(exe.c_str()), 0) << "[" << suffix << "] Execution failed";
     };
 
-    run_std("-std=c++17", CppStandard::Cpp17, "cpp17");
-    run_std("-std=c++20", CppStandard::Cpp20, "cpp20");
+    run_std("-std=c++17", "cpp17");
+    run_std("-std=c++20", "cpp20");
 
     fs::remove_all(temp_dir);
 }
@@ -1341,11 +1332,9 @@ int main() {
     fs::path temp_dir = fs::temp_directory_path() / "fsmc_e2e_bug_hunt_float_dedup";
     fs::create_directories(temp_dir);
 
-    for (const auto& [std_flag, std_enum, suffix] :
-         {std::tuple<std::string, CppStandard, std::string>{"-std=c++17", CppStandard::Cpp17, "cpp17"},
-          std::tuple<std::string, CppStandard, std::string>{"-std=c++20", CppStandard::Cpp20, "cpp20"}}) {
+    for (const auto& [std_flag, suffix] : {std::pair<std::string, std::string>{"-std=c++17", "cpp17"},
+                                           std::pair<std::string, std::string>{"-std=c++20", "cpp20"}}) {
         GeneratorOptions opts;
-        opts.cpp_standard = std_enum;
         opts.standalone = true;
         opts.include_stubs = true;
         std::string code = CppGenerator::generate_header(model, opts);
@@ -1419,7 +1408,6 @@ int main() {
 
     {
         GeneratorOptions opts;
-        opts.cpp_standard = CppStandard::Cpp17;
         opts.standalone = true;
         opts.include_stubs = true;
         std::string code = CppGenerator::generate_header(kw_model, opts);
@@ -1461,7 +1449,6 @@ Check --> Slow : [else]
     ASSERT_TRUE(fsm::middleend::passes::ChoiceInliningPass{}.run(puml_model, diag));
 
     GeneratorOptions opts;
-    opts.cpp_standard = CppStandard::Cpp17;
     opts.standalone = true;
     opts.include_stubs = true;
     std::string puml_code = CppGenerator::generate_header(puml_model, opts);
@@ -1487,7 +1474,6 @@ TEST(CppE2ECompilerTest, XStateJsonContextVariablesCompile) {
     ASSERT_NE(model.find_variable("ready"), nullptr);
 
     GeneratorOptions opts;
-    opts.cpp_standard = CppStandard::Cpp17;
     opts.standalone = true;
     std::string code = CppGenerator::generate_header(model, opts);
 
@@ -1532,7 +1518,6 @@ TEST(CppE2ECompilerTest, KeywordVariableAndPortInGuardCompiles) {
     ASSERT_TRUE(fsm::ir::FsmIrDeserializer::deserialize_json(json_src, model, err)) << err;
 
     GeneratorOptions opts;
-    opts.cpp_standard = CppStandard::Cpp17;
     opts.standalone = true;
     std::string code = CppGenerator::generate_header(model, opts);
     EXPECT_NE(code.find("reg.switch_ == 0"), std::string::npos);
@@ -1590,9 +1575,8 @@ TEST(CppE2ECompilerTest, FreestandingMode_CompilesWithNoExceptionsNoRttiAndZeroA
     fs::path temp_dir = fs::temp_directory_path() / "fsmc_e2e_freestanding_test";
     fs::create_directories(temp_dir);
 
-    auto run_std = [&](const std::string& std_flag, CppStandard cpp_std, const std::string& suffix) {
+    auto run_std = [&](const std::string& std_flag, const std::string& suffix) {
         GeneratorOptions opts;
-        opts.cpp_standard = cpp_std;
         opts.standalone = true;
         opts.freestanding = true;
         opts.target_namespace = "baremetal";
@@ -1635,8 +1619,8 @@ TEST(CppE2ECompilerTest, FreestandingMode_CompilesWithNoExceptionsNoRttiAndZeroA
         EXPECT_EQ(std::system(exe.c_str()), 0) << "[" << suffix << "] Freestanding execution failed";
     };
 
-    run_std("-std=c++17", CppStandard::Cpp17, "cpp17");
-    run_std("-std=c++20", CppStandard::Cpp20, "cpp20");
+    run_std("-std=c++17", "cpp17");
+    run_std("-std=c++20", "cpp20");
 
     fs::remove_all(temp_dir);
 }

@@ -76,7 +76,7 @@ fsmc/
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 3. Middle-End Optimizer & Verifier (33 Registered Passes)   │
+│ 3. Middle-End Optimizer & Verifier (34 Registered Passes)   │
 │  • Stage 1: Canonicalization & Semantic Validation          │
 │  • Stage 2: Structural Lowering (LCA Action Fusion, Choice, │
 │             Fork/Join, Orthogonal Product, History, Deferred│

@@ -93,6 +93,7 @@ flowchart TD
 | Analysis Module | Primary Target | Description | Guide |
 | :--- | :--- | :--- | :--- |
 | **Model Checking (LTL/CTL)** | Temporal Properties | Evaluates safety invariants (`INVARSPEC`), reachability, and response formulas against the transition graph. | [Model Checking](model_checking.md) |
+| **Interactive IR Simulation** | Event Traces | Executes JSON or line-based traces directly on `FsmIr` (HFSM LCA, history, deferred recall, `--trace-out`). | [IR Simulation](ir_simulation.md) |
 | **EFSM Interval Analysis** | Numerical Variables | Abstract interpretation bounding numerical variables and detecting dead guards. | [Interval Analysis](interval_analysis.md) |
 | **MC/DC Test Synthesis** | Boolean Decisions | Derives independence test pairs and generates GoogleTest C++ suites for compound guard decisions. | [MC/DC Coverage](mcdc_synthesis.md) |
 | **Requirement Traceability (RTM)** | Specification Auditing | Generates Markdown and JSON requirement coverage reports from `satisfy requirement` / `@fsm:state satisfies` annotations. | [RTM Specification](rtm_matrix.md) |
@@ -105,6 +106,7 @@ flowchart TD
 Explore the dedicated chapters below for detailed specifications, mathematical principles, and practical examples:
 
 - **[Temporal Model Checking (LTL & CTL)](model_checking.md)**: Details on transition graph evaluation, temporal operators (`G`, `F`, `U`, `X`, `->`), and counterexample failure traces.
+- **[Interactive IR Simulation & Trace Analysis](ir_simulation.md)**: Running `--simulate`, JSON trace inputs, `--trace-out` reports, and `--export-cex-gtest`.
 - **[EFSM Data Path & Interval Analysis](interval_analysis.md)**: Variable interval propagation $[\text{lo}, \text{hi}]$ and detecting unsatisfiable guards (`W0302`).
 - **[MC/DC Test Synthesis](mcdc_synthesis.md)**: Synthesis of GoogleTest C++ suites verifying Modified Condition / Decision Coverage on guard conditions.
 - **[Requirement Traceability Matrix (RTM)](rtm_matrix.md)**: Tagging requirements with `satisfy requirement` / `@fsm:state satisfies` and exporting coverage reports.

@@ -4,8 +4,8 @@
 > To update this file, run: `cmake --build build --target generate_test_catalog` or `python3 scripts/generate_test_catalog.py`.
 
 **Total Documented Subsystems**: 12  
-**Total Test Suites & Binaries**: 87  
-**Total Documented Test Cases**: 772  
+**Total Test Suites & Binaries**: 92  
+**Total Documented Test Cases**: 783  
 
 ---
 
@@ -39,11 +39,14 @@
 
 | Suite File | Source Path | Test Cases | Scope Summary |
 | :--- | :--- | :---: | :--- |
+| [`test_c_abi_zero_alloc.cpp`](../../tests/backend/cpp/test_c_abi_zero_alloc.cpp) | `tests/backend/cpp/test_c_abi_zero_alloc.cpp` | 0 | Tests for pure C99 zero-allocation ABI generation (*_c.h + *_c.cpp) over the unified C++17 FSM backend. |
 | [`test_cpp17_standalone.cpp`](../../tests/backend/cpp/test_cpp17_standalone.cpp) | `tests/backend/cpp/test_cpp17_standalone.cpp` | 0 | Standalone verification executable for C++17 standalone code generation. |
 | [`test_cpp20_standalone.cpp`](../../tests/backend/cpp/test_cpp20_standalone.cpp) | `tests/backend/cpp/test_cpp20_standalone.cpp` | 0 | Standalone verification executable for C++20 standalone code generation. |
 | [`test_cpp_e2e_compiler.cpp`](../../tests/backend/cpp/test_cpp_e2e_compiler.cpp) | `tests/backend/cpp/test_cpp_e2e_compiler.cpp` | 9 | End-to-End integration and host compiler verification test suite for C++ Emitter (C++17 & C++20). |
 | [`test_cpp_model_emitter.cpp`](../../tests/backend/cpp/test_cpp_model_emitter.cpp) | `tests/backend/cpp/test_cpp_model_emitter.cpp` | 38 | Unit verification suite for C++ model emitter syntax generation. |
 | [`test_generated_fsm.cpp`](../../tests/backend/cpp/test_generated_fsm.cpp) | `tests/backend/cpp/test_generated_fsm.cpp` | 0 | Standalone executable validating compilation and runtime dispatch of generated FSM code. |
+| [`test_split_ports_and_external_pods.cpp`](../../tests/backend/cpp/test_split_ports_and_external_pods.cpp) | `tests/backend/cpp/test_split_ports_and_external_pods.cpp` | 0 | Tests for external POD/enum type bindings (`external_binding`) and default split header emission (`*_ports.hpp` + `*_fsm.hpp`) with zero fsm.hpp dependency in the ports header. |
+| [`test_typed_services_contract.cpp`](../../tests/backend/cpp/test_typed_services_contract.cpp) | `tests/backend/cpp/test_typed_services_contract.cpp` | 3 | Unit and E2E compile-time tests for explicitly typed Services (HAL / math libraries) and ActionCallOp. |
 
 ## Diagram & Emitter Backend Subsystem
 
@@ -57,6 +60,7 @@
 | Suite File | Source Path | Test Cases | Scope Summary |
 | :--- | :--- | :---: | :--- |
 | [`test_emitter_factory.cpp`](../../tests/backend/common/test_emitter_factory.cpp) | `tests/backend/common/test_emitter_factory.cpp` | 4 | Unit test suite for the multi-format emitter factory. |
+| [`test_manifest_and_diagnostics.cpp`](../../tests/backend/common/test_manifest_and_diagnostics.cpp) | `tests/backend/common/test_manifest_and_diagnostics.cpp` | 0 | Tests for pure C++ SHA-256, *.manifest.json emission with cross-artifact IR hash consistency, and structured JSON diagnostics (--diagnostics=json) with counterexamples and suggested fixes. |
 
 ## MC/DC Verification & Harness Subsystem
 
@@ -91,12 +95,12 @@
 | [`test_parser_factory_and_lexer.cpp`](../../tests/frontend/common/test_parser_factory_and_lexer.cpp) | `tests/frontend/common/test_parser_factory_and_lexer.cpp` | 9 | Unit tests for ParserFactory dynamic parser resolution and LexerUtils lexical analysis routines. |
 | [`test_parser_negative.cpp`](../../tests/frontend/common/test_parser_negative.cpp) | `tests/frontend/common/test_parser_negative.cpp` | 6 | Negative unit tests across front-end parsers verifying rejection of malformed, empty, or corrupt inputs. |
 | [`test_xml_parser.cpp`](../../tests/frontend/common/test_xml_parser.cpp) | `tests/frontend/common/test_xml_parser.cpp` | 5 | Unit test suite for the lightweight XML parser and DOM abstraction. |
-| [`test_diagram_sidecar.cpp`](../../tests/frontend/diagram/test_diagram_sidecar.cpp) | `tests/frontend/diagram/test_diagram_sidecar.cpp` | 4 | Unit test suite for the Diagram Sidecar Pattern combining diagram topology with companion manifests. |
+| [`test_diagram_sidecar.cpp`](../../tests/frontend/diagram/test_diagram_sidecar.cpp) | `tests/frontend/diagram/test_diagram_sidecar.cpp` | 5 | Unit test suite for the Diagram Sidecar Pattern combining diagram topology with companion manifests. |
 | [`test_dot_parser.cpp`](../../tests/frontend/diagram/test_dot_parser.cpp) | `tests/frontend/diagram/test_dot_parser.cpp` | 21 | Unit test suite for the Graphviz DOT statechart parser. |
 | [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) | `tests/frontend/diagram/test_mermaid_parser.cpp` | 18 | Unit test suite for the Mermaid stateDiagram-v2 parser and frontend dialect. |
 | [`test_multiline_actions.cpp`](../../tests/frontend/diagram/test_multiline_actions.cpp) | `tests/frontend/diagram/test_multiline_actions.cpp` | 0 | Unit test suite verifying multiline and braced composite action block parsing in diagram frontends (PlantUML, Mermaid). |
 | [`test_plantuml_parser.cpp`](../../tests/frontend/diagram/test_plantuml_parser.cpp) | `tests/frontend/diagram/test_plantuml_parser.cpp` | 17 | Unit test suite for the PlantUML state diagram parser and frontend dialect. |
-| [`test_directive_parser.cpp`](../../tests/frontend/directive/test_directive_parser.cpp) | `tests/frontend/directive/test_directive_parser.cpp` | 11 | Unit tests for front-end directive parser (@fsm:state, @fsm:defer, @fsm:signal, @fsm:port, @fsm:enum, |
+| [`test_directive_parser.cpp`](../../tests/frontend/directive/test_directive_parser.cpp) | `tests/frontend/directive/test_directive_parser.cpp` | 12 | Unit tests for front-end directive parser (@fsm:state, @fsm:defer, @fsm:signal, @fsm:port, @fsm:enum, |
 | [`test_cameo_parser.cpp`](../../tests/frontend/formal/test_cameo_parser.cpp) | `tests/frontend/formal/test_cameo_parser.cpp` | 22 | Unit test suite for the Cameo Systems Modeler (OMG XMI 2.x) frontend parser. |
 | [`test_scxml_parser.cpp`](../../tests/frontend/formal/test_scxml_parser.cpp) | `tests/frontend/formal/test_scxml_parser.cpp` | 19 | Unit test suite for the W3C SCXML (State Chart XML) frontend parser. |
 | [`test_scxml_semantic_completeness.cpp`](../../tests/frontend/formal/test_scxml_semantic_completeness.cpp) | `tests/frontend/formal/test_scxml_semantic_completeness.cpp` | 5 | Unit test suite verifying W3C SCXML semantic completeness (parallel regions, final states, events). |
@@ -105,7 +109,7 @@
 | [`test_stateflow_slx_ingestion.cpp`](../../tests/frontend/formal/test_stateflow_slx_ingestion.cpp) | `tests/frontend/formal/test_stateflow_slx_ingestion.cpp` | 5 | Unit test suite for direct ingestion of MathWorks Stateflow .slx container archives. |
 | [`test_sysml2_advanced_constructs.cpp`](../../tests/frontend/formal/test_sysml2_advanced_constructs.cpp) | `tests/frontend/formal/test_sysml2_advanced_constructs.cpp` | 1 | Unit test suite for SysML v2 advanced constructs (nested/qualified packages, binding connectors, fork and join composite transitions). |
 | [`test_sysml2_flight_control.cpp`](../../tests/frontend/formal/test_sysml2_flight_control.cpp) | `tests/frontend/formal/test_sysml2_flight_control.cpp` | 5 | Integration verification suite for OMG SysML v2 Flight Mission Controller pipeline. |
-| [`test_sysml2_parser.cpp`](../../tests/frontend/formal/test_sysml2_parser.cpp) | `tests/frontend/formal/test_sysml2_parser.cpp` | 34 | Unit test suite for the OMG SysML v2 State Definition frontend parser. |
+| [`test_sysml2_parser.cpp`](../../tests/frontend/formal/test_sysml2_parser.cpp) | `tests/frontend/formal/test_sysml2_parser.cpp` | 35 | Unit test suite for the OMG SysML v2 State Definition frontend parser. |
 | [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) | `tests/frontend/formal/test_sysml2_structured_data.cpp` | 6 | Unit test suite for SysML v2 structured data types, enums, temporal triggers, and connection points. |
 
 ## Formal IR Subsystem
@@ -117,6 +121,7 @@
 | [`test_efsm_metamodel_extensions.cpp`](../../tests/ir/test_efsm_metamodel_extensions.cpp) | `tests/ir/test_efsm_metamodel_extensions.cpp` | 5 | Unit tests for EFSM metamodel extensions: LValueTarget, ActionAssignment, StateTimeInvariant, and ConcurrencySemantics. |
 | [`test_fsm_ir.cpp`](../../tests/ir/test_fsm_ir.cpp) | `tests/ir/test_fsm_ir.cpp` | 34 | Unit tests for core Intermediate Representation (FsmIr), state hierarchy, AST expressions, and serialization. |
 | [`test_fsm_ir_semantic_completeness.cpp`](../../tests/ir/test_fsm_ir_semantic_completeness.cpp) | `tests/ir/test_fsm_ir_semantic_completeness.cpp` | 8 | Unit tests for target-agnostic FSM IR semantic completeness extensions: Terminate pseudostate, Timed Automata ClockDefinition, ActionAstNode primitive instructions, ChangeTrigger, typed transition endpoints, and ExecutionSemantics. |
+| [`test_ir_json_and_integrity.cpp`](../../tests/ir/test_ir_json_and_integrity.cpp) | `tests/ir/test_ir_json_and_integrity.cpp` | 4 | Tests for strict canonical ir-json ingestion, schema version enforcement, and VerifyIrIntegrityPass. |
 
 ## Middle-End Verification & Transformation Subsystem
 
@@ -150,7 +155,7 @@
 | [`test_pipeline_extensibility.cpp`](../../tests/integration/pipeline/test_pipeline_extensibility.cpp) | `tests/integration/pipeline/test_pipeline_extensibility.cpp` | 4 | Integration tests for pipeline extensibility, external Unix pipe filters, and dynamic plugin loading. |
 | [`test_cli_driver_errors.cpp`](../../tests/integration/test_cli_driver_errors.cpp) | `tests/integration/test_cli_driver_errors.cpp` | 14 | Comprehensive regression tests for controlled fsmc and fsm-opt driver failure contracts. |
 | [`test_cmake_integration.cpp`](../../tests/integration/test_cmake_integration.cpp) | `tests/integration/test_cmake_integration.cpp` | 0 | Integration test verifying the `fsm_target_sources` CMake build-system macro. |
-| [`test_differential_semantics.cpp`](../../tests/integration/test_differential_semantics.cpp) | `tests/integration/test_differential_semantics.cpp` | 3 | Differential verification suite comparing IrSimulator (reference oracle) against generated C++17 and C++20 FSMs. |
+| [`test_differential_semantics.cpp`](../../tests/integration/test_differential_semantics.cpp) | `tests/integration/test_differential_semantics.cpp` | 4 | Differential verification suite comparing IrSimulator (reference oracle) against generated C++17 and C++20 FSMs. |
 | [`test_fsm_opt_cli_options.cpp`](../../tests/integration/test_fsm_opt_cli_options.cpp) | `tests/integration/test_fsm_opt_cli_options.cpp` | 13 | Comprehensive verification suite for all fsm-opt command-line options. |
 | [`test_fsmc_cli_options.cpp`](../../tests/integration/test_fsmc_cli_options.cpp) | `tests/integration/test_fsmc_cli_options.cpp` | 25 | Comprehensive verification suite for all fsmc command-line options. |
 | [`test_golden_ir_invariance.cpp`](../../tests/integration/test_golden_ir_invariance.cpp) | `tests/integration/test_golden_ir_invariance.cpp` | 9 | Golden IR cross-format roundtrip and middle-end pass invariance test suite. |

@@ -152,6 +152,10 @@ package MissionSafety {
         // Or equivalently via comment directive:
         // @fsm:property ResponseLanding = "G (EvLowBattery -> F Landed)";
 
+        // Bind an external shared POD type and declare a typed zero-vtable service:
+        // @fsm:external_type name=PidState module="ctrl/pid.hpp" symbol="ctrl.PidState" kind=struct
+        // @fsm:service compute_pwm(err: int32_t) -> int32_t pure=true noexcept=true desc="PID step"
+
         state Landed {
             // Native SysML v2 requirement traceability
             satisfy requirement REQ-UAV-001;
@@ -171,7 +175,7 @@ package MissionSafety {
 
 ---
 
-## 3. End-to-End Example: SysML v2 to C++20 Header
+## 3. End-to-End Example: SysML v2 to C++17 Header
 
 === "SysML v2 Source (`spacecraft.sysml`)"
     ```sysml
@@ -210,7 +214,7 @@ package MissionSafety {
         OrbitOps --> SafeMode: EvCritBat [in.battery_soc <= 20.0]
     ```
 
-=== "Generated C++20 Header (`spacecraft_fsm.hpp`)"
+=== "Generated C++17 Header (`spacecraft_fsm.hpp`)"
     ```cpp
     #pragma once
     #include <fsm/backend/cpp/runtime/fsm.hpp>
@@ -248,7 +252,7 @@ package MissionSafety {
 fsmc -i spacecraft.sysml --verify
 
 # Generate standalone C++20 header
-fsmc -i spacecraft.sysml -o spacecraft_fsm.hpp --std 20
+fsmc -i spacecraft.sysml -o spacecraft_fsm.hpp
 
 # Export canonical SMV logic for external nuXmv proof
 fsmc -i spacecraft.sysml --export smv -o formal_model.smv

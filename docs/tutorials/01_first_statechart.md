@@ -128,7 +128,7 @@ Now that you have authored the model, let's compile it into production C++ and r
 Run `fsmc` to generate a self-contained C++20 header with zero external runtime dependencies:
 
 ```bash
-fsmc -i connection.sysml -o connection_fsm.hpp --target cpp --std 20 --standalone --namespace conn --name ConnectionManagerFSM
+fsmc -i connection.sysml -o connection_fsm.hpp --target cpp --standalone --namespace conn --name ConnectionManagerFSM
 ```
 
 `fsmc` analyzes the transition topology and generates:

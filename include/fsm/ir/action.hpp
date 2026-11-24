@@ -269,8 +269,9 @@ struct SignalEmitOp {
 struct ActionCallOp {
     std::string function_name;
     std::vector<std::string> arguments;
-    std::vector<std::string> read_set;   ///< Data-path variables read (for race detection)
-    std::vector<std::string> write_set;  ///< Data-path variables mutated (for race detection)
+    std::vector<std::string> read_set;                        ///< Data-path variables read (for race detection)
+    std::vector<std::string> write_set;                       ///< Data-path variables mutated (for race detection)
+    std::optional<LValueTarget> result_target{std::nullopt};  ///< Optional target register/OutPort for return value
 
     bool operator==(const ActionCallOp& other) const noexcept = default;
 };

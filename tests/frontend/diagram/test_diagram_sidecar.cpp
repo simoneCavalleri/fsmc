@@ -307,4 +307,69 @@ TEST(DiagramSidecar, PreservesPropertyKindReqAndDescAcrossSidecarRoundtrip) {
     EXPECT_EQ(dst.properties[0].description, "Target state is reachable");
 }
 
+/**
+ * @brief Verify sidecar YAML manifest supports external type bindings (module/symbol) and typed service contracts.
+ */
+TEST(DiagramSidecar, CompanionManifest_WithExternalTypesAndServices_PopulatesIR) {
+    const std::string puml = R"(
+    @startuml
+    [*] --> Idle
+    Idle --> Active : Start
+    @enduml
+    )";
+
+    const std::string yaml = R"yaml(
+fsm:
+  name: DriveController
+
+types:
+  - name: MotorConfig
+    kind: struct
+    module: "hal/motor_types.hpp"
+    symbol: "hal.MotorConfig"
+
+services:
+  - name: compute_torque
+    return_type: "float"
+    pure: true
+    noexcept: true
+    desc: "Compute motor torque"
+    params:
+      - name: target_rpm
+        type: "int32_t"
+      - name: cfg
+        type: "MotorConfig"
+    )yaml";
+
+    PlantUmlParser parser;
+    FsmIr model;
+    fsm::diagnostic::DiagnosticEngine parse_diag;
+    std::string err;
+    ASSERT_TRUE(parser.parse(puml, model, parse_diag)) << parse_diag.render_to_string();
+
+    CompanionManifest manifest;
+    ASSERT_TRUE(CompanionManifestParser::parse(yaml, manifest, err)) << err;
+    ASSERT_EQ(manifest.types.size(), 1u);
+    EXPECT_EQ(manifest.types[0].external_module, "hal/motor_types.hpp");
+    EXPECT_EQ(manifest.types[0].external_symbol, "hal.MotorConfig");
+    ASSERT_EQ(manifest.services.size(), 1u);
+    EXPECT_EQ(manifest.services[0].name, "compute_torque");
+    ASSERT_EQ(manifest.services[0].params.size(), 2u);
+
+    ASSERT_TRUE(DiagramContractCombiner::combine(model, manifest, err)) << err;
+    ASSERT_EQ(model.custom_types.size(), 1u);
+    ASSERT_TRUE(model.custom_types[0].is_external());
+    EXPECT_EQ(model.custom_types[0].external_ref->module, "hal/motor_types.hpp");
+    EXPECT_EQ(model.custom_types[0].external_ref->symbol, "hal.MotorConfig");
+
+    ASSERT_EQ(model.services.size(), 1u);
+    EXPECT_EQ(model.services[0].name, "compute_torque");
+    EXPECT_EQ(model.services[0].return_type.to_canonical_string(), "float32");
+    EXPECT_TRUE(model.services[0].is_pure);
+    EXPECT_TRUE(model.services[0].is_noexcept);
+    ASSERT_EQ(model.services[0].parameters.size(), 2u);
+    EXPECT_EQ(model.services[0].parameters[0].name, "target_rpm");
+    EXPECT_EQ(model.services[0].parameters[1].type.to_canonical_string(), "MotorConfig");
+}
+
 }  // namespace

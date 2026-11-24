@@ -151,6 +151,11 @@ jobs:
         run: |
           ctest --test-dir build -C Release --output-on-failure
 
+      - name: Verify JSON Schemas (IR & System Manifest)
+        if: runner.os == 'Linux' && matrix.name == 'Linux (GCC 13)'
+        run: |
+          python3 scripts/verify_schemas.py
+
       - name: Verify SDK Install & find_package(fsmc) Consumer
         if: runner.os == 'Linux' && matrix.name == 'Linux (GCC 13)'
         run: |

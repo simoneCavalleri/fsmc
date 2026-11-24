@@ -26,6 +26,7 @@
 #include "fsm/ir/guard.hpp"
 #include "fsm/ir/port_definition.hpp"
 #include "fsm/ir/region.hpp"
+#include "fsm/ir/service_definition.hpp"
 #include "fsm/ir/signal_definition.hpp"
 #include "fsm/ir/state_kind.hpp"
 #include "fsm/ir/state_node.hpp"
@@ -57,18 +58,19 @@ struct FsmIr {
     std::vector<std::string> satisfies_reqs;                  ///< Requirement traceability IDs
     std::unordered_map<std::string, std::string> attributes;  ///< Target-agnostic metadata attributes
 
-    std::vector<StateNode> states;              ///< Hierarchy of state nodes (simple, composite, parallel)
-    std::vector<TransitionEdge> transitions;    ///< Directed transition edges with triggers, guards, actions
-    std::vector<PortDefinition> ports;          ///< Typed InPorts / OutPorts with range contracts
-    std::vector<SignalDefinition> signals;      ///< MBSE typed signal definitions
-    std::vector<ClockDefinition> clocks;        ///< Continuous Timed Automata clocks
-    std::vector<VariableDefinition> variables;  ///< Internal registers with datapath bounds
-    std::vector<TypeDefinition> custom_types;   ///< Canonical user-defined compound types (Enum, Struct, Alias)
-    std::vector<FormalProperty> properties;     ///< Formal LTL/CTL temporal verification specifications
-    std::vector<GuardModel> guards;             ///< Guard predicates with C++ / SMT expressions
-    std::vector<ActionModel> actions;           ///< Action effects and assignment sequences
-    std::vector<ChoiceNodeModel> choice_nodes;  ///< Choice pseudostates for middle-end inlining
-    std::vector<BindingConnector> bindings;     ///< Structural port/signal bindings (SysML v2 'bind' / 'connect')
+    std::vector<StateNode> states;                 ///< Hierarchy of state nodes (simple, composite, parallel)
+    std::vector<TransitionEdge> transitions;       ///< Directed transition edges with triggers, guards, actions
+    std::vector<PortDefinition> ports;             ///< Typed InPorts / OutPorts with range contracts
+    std::vector<SignalDefinition> signals;         ///< MBSE typed signal definitions
+    std::vector<ClockDefinition> clocks;           ///< Continuous Timed Automata clocks
+    std::vector<VariableDefinition> variables;     ///< Internal registers with datapath bounds
+    std::vector<TypeDefinition> custom_types;      ///< Canonical user-defined compound types (Enum, Struct, Alias)
+    std::vector<FormalProperty> properties;        ///< Formal LTL/CTL temporal verification specifications
+    std::vector<GuardModel> guards;                ///< Guard predicates with C++ / SMT expressions
+    std::vector<ActionModel> actions;              ///< Action effects and assignment sequences
+    std::vector<ChoiceNodeModel> choice_nodes;     ///< Choice pseudostates for middle-end inlining
+    std::vector<BindingConnector> bindings;        ///< Structural port/signal bindings (SysML v2 'bind' / 'connect')
+    std::vector<ServiceMethodSignature> services;  ///< Explicitly typed external service methods (sys-math / HAL)
 
     // ========================================================================
     // Lookups and Query Methods
@@ -126,6 +128,32 @@ struct FsmIr {
      * @brief Finds an I/O port definition by its name.
      */
     [[nodiscard]] const PortDefinition* find_port(std::string_view port_name) const noexcept;
+
+    /**
+     * @brief Finds a declared external service method signature by name.
+     */
+    [[nodiscard]] const ServiceMethodSignature* find_service(std::string_view service_name) const noexcept {
+        for (const auto& svc : services) {
+            if (svc.name == service_name) {
+                return &svc;
+            }
+        }
+        return nullptr;
+    }
+
+    /**
+     * @brief Registers or replaces an explicitly typed external service method signature.
+     */
+    ServiceMethodSignature& add_service(ServiceMethodSignature sig) {
+        for (auto& existing : services) {
+            if (existing.name == sig.name) {
+                existing = std::move(sig);
+                return existing;
+            }
+        }
+        services.push_back(std::move(sig));
+        return services.back();
+    }
 
     /**
      * @brief Finds a mutable I/O port definition by its name.

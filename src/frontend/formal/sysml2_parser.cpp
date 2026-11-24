@@ -57,22 +57,11 @@ bool Sysml2Parser::parse_impl(std::string_view content, FsmIr& model, std::strin
 
     // Step 2: Iterate through all scanned tokens and process directives or block structures
     for (const auto& token : tokens) {
-        // Directives: handles embedded @fsm metadata annotations (variables, properties, signals, state flags)
+        // Directives: handles embedded @fsm metadata annotations (variables, ports, properties, signals, services,
+        // external types, state flags)
         if (token.kind == SysmlTokenKind::Directive) {
             std::string body = directive::DirectiveParser::extract_directive_body(token.text);
-            if (body.rfind("var", 0) == 0) {
-                if (auto var = directive::DirectiveParser::parse_variable_directive(body)) {
-                    model.add_variable(std::move(*var));
-                }
-            } else if (body.rfind("property", 0) == 0) {
-                if (auto prop = directive::DirectiveParser::parse_property_directive(body)) {
-                    model.add_property(std::move(*prop));
-                }
-            } else if (body.rfind("signal", 0) == 0) {
-                if (auto sig = directive::DirectiveParser::parse_signal_directive(body)) {
-                    model.add_signal(std::move(*sig));
-                }
-            } else if (!state_stack.empty()) {
+            if (!directive::DirectiveParser::parse_model_directive(body, model) && !state_stack.empty()) {
                 auto* st = model.find_state_mut(state_stack.back());
                 if (st != nullptr) {
                     if (body.rfind("state", 0) == 0) {

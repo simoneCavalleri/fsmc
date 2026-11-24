@@ -20,17 +20,23 @@ using ir::FsmIr;
  */
 class CppModelEmitter {
   public:
-    /** @brief Emits enum declarations to output stream. */
+    /** @brief Emits #include directives for externally bound POD/enum types. */
+    static void emit_external_includes(std::ostream& out, const FsmIr& model);
+
+    /** @brief Emits enum declarations (or external using aliases) to output stream. */
     static void emit_enums(std::ostream& out, const FsmIr& model);
 
-    /** @brief Emits struct definitions to output stream. */
+    /** @brief Emits struct definitions (or external using aliases) to output stream. */
     static void emit_structs(std::ostream& out, const FsmIr& model);
 
-    /** @brief Emits domain data models and context state. */
+    /** @brief Emits domain data models and context state (zero fsm.hpp dependency). */
     static void emit_domain_structures(std::ostream& out, const FsmIr& model);
 
     /** @brief Emits strongly-typed event structs. */
     static void emit_events(std::ostream& out, const FsmIr& model);
+
+    /** @brief Emits the pure ports/types/events/services interface for *_ports.hpp. */
+    static void emit_ports_interface(std::ostream& out, const FsmIr& model);
 
     /** @brief Emits state tags and hierarchy descriptors. */
     static void emit_states(std::ostream& out, const FsmIr& model);
@@ -50,7 +56,10 @@ class CppModelEmitter {
     /** @brief Emits convenience type aliases and statechart bindings. */
     static void emit_fsm_aliases(std::ostream& out, const FsmIr& model, const GeneratorOptions& options);
 
-    /** @brief Emits complete statechart definition. */
+    /** @brief Emits the state machine engine (guards, actions, states, transition table, aliases) for *_fsm.hpp. */
+    static void emit_fsm_engine(std::ostream& out, const FsmIr& model, const GeneratorOptions& options);
+
+    /** @brief Emits complete statechart definition (ports interface + FSM engine). */
     static void emit_model(std::ostream& out, const FsmIr& model, const GeneratorOptions& options);
 };
 

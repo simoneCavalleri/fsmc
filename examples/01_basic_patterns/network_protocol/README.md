@@ -90,7 +90,6 @@ target_link_libraries(network_protocol_example PRIVATE fsmc_runtime)
 fsmc_target_sources(network_protocol_example
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/connection.sysml
     NAME ConnectionFSM
-    STANDARD 20
     STANDALONE
     NAMESPACE net
     NO_STUBS
@@ -123,7 +122,7 @@ fsm-opt -i connection.sysml --emit-puml -o connection_canonical.puml
 fsm-opt -i connection.sysml --emit-smv -o connection_formal.smv
 
 # 3. Generate production C++20 standalone state machine header
-fsmc -i connection.sysml --target cpp --c++20 --standalone -n ConnectionFSM --namespace net -o connection_fsm.hpp
+fsmc -i connection.sysml --target cpp --standalone -n ConnectionFSM --namespace net -o connection_fsm.hpp
 
 # 4. Build and execute with your C++ compiler (pointing to runtime headers)
 g++ -std=c++20 -Wall -Wextra -Werror -I. -I../../../include main.cpp -o network_runner

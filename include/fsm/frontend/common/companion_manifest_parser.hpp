@@ -17,6 +17,8 @@ using ir::CompanionCustomType;
 using ir::CompanionManifest;
 using ir::CompanionPort;
 using ir::CompanionProperty;
+using ir::CompanionService;
+using ir::CompanionServiceParam;
 using ir::CompanionSignal;
 using ir::CompanionSignalAttr;
 using ir::CompanionTypeField;

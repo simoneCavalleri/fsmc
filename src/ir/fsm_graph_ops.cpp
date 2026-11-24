@@ -215,18 +215,16 @@ void FsmGraphOps::rebuild_adjacency_indices(FsmIr& ir) {
 }
 
 void FsmGraphOps::sort_transitions_by_priority(FsmIr& ir) {
-    std::unordered_map<std::string, std::size_t> source_order;
-    std::size_t order = 0;
-    for (const auto& t : ir.transitions) {
-        if (source_order.find(t.source) == source_order.end()) {
-            source_order[t.source] = order++;
-        }
-    }
-
+    const std::string& init = ir.initial_state;
     std::stable_sort(ir.transitions.begin(), ir.transitions.end(),
-                     [&](const TransitionEdge& a, const TransitionEdge& b) {
+                     [&init](const TransitionEdge& a, const TransitionEdge& b) {
                          if (a.source != b.source) {
-                             return source_order[a.source] < source_order[b.source];
+                             const bool a_init = !init.empty() && a.source == init;
+                             const bool b_init = !init.empty() && b.source == init;
+                             if (a_init != b_init) {
+                                 return a_init;
+                             }
+                             return a.source < b.source;
                          }
                          std::uint32_t pa = a.priority == 0 ? std::numeric_limits<std::uint32_t>::max() : a.priority;
                          std::uint32_t pb = b.priority == 0 ? std::numeric_limits<std::uint32_t>::max() : b.priority;
@@ -266,6 +264,9 @@ void FsmGraphOps::canonicalize(FsmIr& ir) {
     // Sort properties by name
     std::sort(ir.properties.begin(), ir.properties.end(),
               [](const FormalProperty& a, const FormalProperty& b) { return a.name < b.name; });
+    // Sort typed service signatures by name
+    std::sort(ir.services.begin(), ir.services.end(),
+              [](const ServiceMethodSignature& a, const ServiceMethodSignature& b) { return a.name < b.name; });
     // Synchronize interfaces (guards, actions, signals) then sort deterministically
     sync_interfaces(ir);
     std::sort(ir.signals.begin(), ir.signals.end(),

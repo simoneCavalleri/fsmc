@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/simoneCavalleri/fsmc/schemas/fsm_ir.schema.json",
+  "title": "fsmc Canonical FsmIr Schema (v1.0)",
+  "description": "Canonical JSON Intermediate Representation exchanged between external MBSE/SysML parsers, fsm-opt, model checkers, and fsmc codegen backends.",
+  "type": "object",
+  "required": ["ir_schema_version", "name", "states"],
+  "additionalProperties": false,
+  "properties": {
+    "ir_schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Schema version identifier for fail-closed ingestion."
+    },
+    "id": { "type": "string" },
+    "fsm_id": { "type": "string" },
+    "name": { "type": "string", "minLength": 1 },
+    "initial": { "type": "string" },
+    "initial_state": { "type": "string" },
+    "initial_state_id": { "type": "string" },
+    "package": { "type": "string" },
+    "source_file": { "type": "string" },
+    "satisfies_reqs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "attributes": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "concurrency": {
+      "type": "object",
+      "properties": {
+        "dispatch": { "type": "string" },
+        "orthogonal_conflict": { "type": "string" },
+        "datapath_isolation": { "type": "string" }
+      }
+    },
+    "execution_semantics": { "type": "object" },
+    "ports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "type", "direction"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "type": { "type": "string", "minLength": 1 },
+          "direction": { "type": "string", "enum": ["in", "out", "inout"] },
+          "min": { "type": "number" },
+          "min_value": { "type": "number" },
+          "max": { "type": "number" },
+          "max_value": { "type": "number" },
+          "unit": { "type": "string" },
+          "physical_unit": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "variables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "type"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "type": { "type": "string", "minLength": 1 },
+          "init": { "type": "string" },
+          "initial_value": { "type": "string" },
+          "min": { "type": "number" },
+          "min_value": { "type": "number" },
+          "max": { "type": "number" },
+          "max_value": { "type": "number" },
+          "unit": { "type": "string" },
+          "physical_unit": { "type": "string" },
+          "register_index": { "type": "integer", "minimum": 0 },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "enums": { "type": "array", "items": { "type": "object" } },
+    "structs": { "type": "array", "items": { "type": "object" } },
+    "types": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "kind"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "kind": { "type": "string", "enum": ["enum", "struct", "alias"] },
+          "underlying_type": { "type": "string" },
+          "description": { "type": "string" },
+          "is_datatype": { "type": "boolean" },
+          "external_ref": {
+            "type": "object",
+            "required": ["module", "symbol"],
+            "additionalProperties": false,
+            "properties": {
+              "module": { "type": "string", "minLength": 1 },
+              "symbol": { "type": "string", "minLength": 1 }
+            }
+          },
+          "literals": { "type": "array", "items": { "type": "object" } },
+          "fields": { "type": "array", "items": { "type": "object" } }
+        }
+      }
+    },
+    "custom_types": { "type": "array", "items": { "type": "object" } },
+    "signals": { "type": "array", "items": { "type": "object" } },
+    "guards": { "type": "array", "items": { "type": "object" } },
+    "actions": { "type": "array", "items": { "type": "object" } },
+    "clocks": { "type": "array", "items": { "type": "object" } },
+    "choice_nodes": { "type": "array", "items": { "type": "object" } },
+    "properties": { "type": "array", "items": { "type": "object" } },
+    "bindings": { "type": "array", "items": { "type": "object" } },
+    "services": { "type": "array", "items": { "type": "object" } },
+    "transitions": { "type": "array", "items": { "type": "object" } },
+    "states": {
+      "oneOf": [
+        { "type": "object" },
+        { "type": "array", "items": { "type": "object" } }
+      ]
+    }
+  }
+}

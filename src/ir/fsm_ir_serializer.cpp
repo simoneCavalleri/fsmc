@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "fsm/ir/guard.hpp"
+#include "fsm/ir/sha256.hpp"
 
 namespace fsm::ir {
 
@@ -125,6 +126,10 @@ void emit_instructions_array(std::ostream& out, const std::vector<ActionAstNode>
             out << "\"kind\": \"action_call\", \"description\": \"" << escape_json(inst.description)
                 << "\", \"function_name\": \"" << escape_json(ac->function_name) << "\", \"arguments\": ";
             emit_string_array(out, ac->arguments);
+            if (ac->result_target.has_value() && !ac->result_target->empty()) {
+                out << ", \"result_target\": \"" << escape_json(ac->result_target->full_path())
+                    << "\", \"result_scope\": \"" << lvalue_scope_to_string(ac->result_target->scope) << "\"";
+            }
             out << ", \"read_set\": ";
             emit_string_array(out, ac->read_set);
             out << ", \"write_set\": ";
@@ -156,6 +161,9 @@ void emit_transition_metadata(std::ostream& out, const TransitionEdge& t, const 
     }
     if (!is_top_level && t.priority > 0) {
         out << ",\n" << field_pad << "\"priority\": " << t.priority;
+    }
+    if (t.source_line > 0) {
+        out << ",\n" << field_pad << "\"source_line\": " << t.source_line;
     }
     if (t.target_is_history) {
         out << ",\n" << field_pad << "\"target_is_history\": true";
@@ -407,6 +415,13 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, i
         out << pad << "  \"kind\": \"" << state_kind_to_string(state.kind) << "\"";
         need_comma = true;
     }
+    if (state.source_line > 0) {
+        if (need_comma) {
+            out << ",\n";
+        }
+        out << pad << "  \"source_line\": " << state.source_line;
+        need_comma = true;
+    }
 
     if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
         if (need_comma) {
@@ -624,6 +639,7 @@ std::string FsmIrSerializer::serialize_json(const FsmIr& ir, int indent_spaces) 
     std::ostringstream out;
     std::string sm_name = ir.name.empty() ? "StateMachine" : ir.name;
     out << "{\n";
+    out << "  \"ir_schema_version\": \"" << kIrSchemaVersion << "\",\n";
     out << "  \"id\": \"" << escape_json(sm_name) << "\",\n";
     if (!ir.id.empty()) {
         out << "  \"fsm_id\": \"" << escape_json(ir.id) << "\",\n";
@@ -651,11 +667,12 @@ std::string FsmIrSerializer::serialize_json(const FsmIr& ir, int indent_spaces) 
         out << "],\n";
     }
 
-    // Attributes
+    // Attributes (sorted for byte-identical determinism)
     if (!ir.attributes.empty()) {
+        std::map<std::string, std::string> sorted_attrs(ir.attributes.begin(), ir.attributes.end());
         out << "  \"attributes\": {";
         bool first_attr = true;
-        for (const auto& [k, v] : ir.attributes) {
+        for (const auto& [k, v] : sorted_attrs) {
             if (!first_attr)
                 out << ", ";
             first_attr = false;
@@ -850,6 +867,10 @@ std::string FsmIrSerializer::serialize_json(const FsmIr& ir, int indent_spaces) 
             out << "      \"underlying_type\": \"" << escape_json(t.underlying_type) << "\",\n";
             out << "      \"description\": \"" << escape_json(t.description) << "\",\n";
             out << "      \"is_datatype\": " << (t.is_datatype ? "true" : "false");
+            if (t.external_ref.has_value()) {
+                out << ",\n      \"external_ref\": { \"module\": \"" << escape_json(t.external_ref->module)
+                    << "\", \"symbol\": \"" << escape_json(t.external_ref->symbol) << "\" }";
+            }
             if (!t.literals.empty()) {
                 out << ",\n      \"literals\": [\n";
                 for (size_t li = 0; li < t.literals.size(); ++li) {
@@ -977,6 +998,33 @@ std::string FsmIrSerializer::serialize_json(const FsmIr& ir, int indent_spaces) 
         out << "  ],\n";
     }
 
+    // Typed Services (sys-math / HAL)
+    if (!ir.services.empty()) {
+        out << "  \"services\": [\n";
+        for (size_t s = 0; s < ir.services.size(); ++s) {
+            const auto& svc = ir.services[s];
+            out << "    {\n";
+            out << "      \"name\": \"" << escape_json(svc.name) << "\",\n";
+            out << "      \"return_type\": \""
+                << escape_json(svc.is_void_return() ? "void" : svc.return_type.to_canonical_string()) << "\",\n";
+            out << "      \"pure\": " << (svc.is_pure ? "true" : "false") << ",\n";
+            out << "      \"noexcept\": " << (svc.is_noexcept ? "true" : "false") << ",\n";
+            out << "      \"params\": [";
+            for (size_t pi = 0; pi < svc.parameters.size(); ++pi) {
+                if (pi > 0)
+                    out << ", ";
+                out << "{\"name\": \"" << escape_json(svc.parameters[pi].name) << "\", \"type\": \""
+                    << escape_json(svc.parameters[pi].type.to_canonical_string()) << "\"}";
+            }
+            out << "]";
+            if (!svc.description.empty()) {
+                out << ",\n      \"description\": \"" << escape_json(svc.description) << "\"";
+            }
+            out << "\n    }" << (s + 1 < ir.services.size() ? "," : "") << "\n";
+        }
+        out << "  ],\n";
+    }
+
     // Clocks
     if (!ir.clocks.empty()) {
         out << "  \"clocks\": [\n";
@@ -1090,6 +1138,12 @@ std::string FsmIrSerializer::serialize_json(const FsmIr& ir, int indent_spaces) 
     }
     out << "}\n";
     return out.str();
+}
+
+std::string FsmIrSerializer::compute_sha256(const FsmIr& ir) {
+    FsmIr canonical = ir;
+    canonical.canonicalize();
+    return sha256_hex(serialize_json(canonical));
 }
 
 }  // namespace fsm::ir

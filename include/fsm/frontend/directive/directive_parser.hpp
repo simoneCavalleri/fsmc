@@ -94,6 +94,16 @@ class DirectiveParser {
     static std::optional<StructDefinition> parse_struct_directive(std::string_view body);
 
     /**
+     * @brief Parses an external type binding directive (@fsm:external_type).
+     */
+    static std::optional<TypeDefinition> parse_external_type_directive(std::string_view body);
+
+    /**
+     * @brief Parses a typed service contract directive (@fsm:service).
+     */
+    static std::optional<ServiceMethodSignature> parse_service_directive(std::string_view body);
+
+    /**
      * @brief Formats an EnumDefinition into canonical @fsm:enum directive text.
      */
     static std::string format_enum_directive(const EnumDefinition& en);

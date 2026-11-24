@@ -64,7 +64,7 @@ fsmc examples/03_concurrency_and_timing/automotive_bms/bms.sysml \
 Generate thread-safe C++20 code with contract validation:
 ```bash
 fsmc examples/03_concurrency_and_timing/automotive_bms/bms.sysml \
-    --c++20 --standalone --namespace automotive \
+    --standalone --namespace automotive \
     -o bms_fsm.hpp
 ```
 

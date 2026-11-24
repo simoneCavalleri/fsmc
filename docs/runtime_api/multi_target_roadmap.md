@@ -4,8 +4,8 @@
 
 Its architecture strictly decouples model ingestion and formal verification from target code emission using a canonical Intermediate Representation (**`FsmIr`**). While C++ serves as the initial reference production backend, the metamodel natively maps to diverse programming languages and safety-critical execution runtimes.
 
-!!! info "Active Production Target vs. Roadmap Previews"
-    The **C++ Reference Backend** (`C++17/C++20`) is the active production-ready code generation target. The **Rust** (`no_std`) and **C** (`Embedded C`) backends described in this roadmap represent **preview specifications and RFC designs**.
+!!! info "Active Production Targets vs. Roadmap Previews"
+    The **Unified C++17 Reference Backend** (compiling cleanly under C++17, C++20, and C++23) and the **Pure C99 Zero-Allocation ABI** (`--emit-c-abi`) are active production targets. The native **Rust** (`no_std`) and pure-C switch-table backends described below represent **roadmap RFC designs** (Rust and Python callers can already bind directly via `--emit-c-abi`).
 
 ---
 
@@ -13,9 +13,10 @@ Its architecture strictly decouples model ingestion and formal verification from
 
 | Target Language | Minimum Standard | Concurrency Models | Safety & Standards Compliance | Ecosystem Status |
 | :--- | :--- | :--- | :--- | :--- |
-| **C++ Target** | C++17 / C++20 | Synchronous stack, Lock-Free SPSC, Active Object | Zero heap, zero vtable, $O(1)$ WCET | **Production Target** |
-| **Rust Target** | Rust 2021 (`no_std`) | Typestate transitions, lock-free static channels | Compile-time memory safety, zero panic | **Preview / In Development** |
-| **C Target** | ISO C99 / C11 | Static transition table, switch-case dispatch | Embedded C, zero malloc | **Preview / Planned RFC** |
+| **C++ Target** | C++17 (compiles in C++17/20/23) | Synchronous stack, Lock-Free SPSC, Active Object | Zero heap, zero vtable, $O(1)$ WCET, `--freestanding` | **Production Target** |
+| **Pure C99 ABI (`--emit-c-abi`)** | ISO C99 (`-pedantic -Werror`) | Static aligned opaque storage + C callback `services_t` | Zero heap (`placement-new`), `static_assert` size/align, `ir_sha256()` | **Production Target** |
+| **Rust Target (Native)** | Rust 2021 (`no_std`) | Typestate transitions, lock-free static channels | Compile-time memory safety, zero panic | **Preview / In Development** |
+| **Native Pure-C Table Target** | ISO C99 / C11 | Static transition table, switch-case dispatch | Embedded C without C++ bridge | **Preview / Planned RFC** |
 
 ---
 

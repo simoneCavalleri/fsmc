@@ -228,6 +228,68 @@ std::string ManifestEmitter::emit_json(const ir::FsmIr& model, const ManifestArt
     }
     out << "],\n";
 
+    // Compute real-time scheduling bounds (prefer caller-supplied pass results, fallback to IR attributes / static
+    // bound)
+    std::size_t effective_queue_bound = verification.max_event_queue_bound;
+    if (effective_queue_bound == 0U) {
+        if (auto it = canonical.attributes.find("static_event_queue_capacity"); it != canonical.attributes.end()) {
+            try {
+                effective_queue_bound = static_cast<std::size_t>(std::stoull(it->second));
+            } catch (...) {
+                effective_queue_bound = 0U;
+            }
+        }
+    }
+    if (effective_queue_bound == 0U) {
+        std::size_t max_deferred = 0U;
+        std::size_t max_emits = 0U;
+        auto count_emits = [](const ir::ActionSignature& act) {
+            std::size_t c = 0U;
+            for (const auto& inst : act.instructions) {
+                if (std::holds_alternative<ir::SignalEmitOp>(inst.op)) {
+                    ++c;
+                }
+            }
+            return c;
+        };
+        for (const auto& st : canonical.states) {
+            if (st.deferred_events.size() > max_deferred) {
+                max_deferred = st.deferred_events.size();
+            }
+            for (const auto& a : st.entry_actions) {
+                max_emits = std::max(max_emits, count_emits(a));
+            }
+            for (const auto& a : st.exit_actions) {
+                max_emits = std::max(max_emits, count_emits(a));
+            }
+        }
+        for (const auto& tr : canonical.transitions) {
+            if (tr.transition_action) {
+                max_emits = std::max(max_emits, count_emits(*tr.transition_action));
+            }
+            if (tr.condition_action) {
+                max_emits = std::max(max_emits, count_emits(*tr.condition_action));
+            }
+        }
+        const std::size_t raw_bound = max_deferred + max_emits + 2U;
+        effective_queue_bound = 2U;
+        while (effective_queue_bound < raw_bound) {
+            effective_queue_bound <<= 1U;
+        }
+    }
+
+    std::size_t effective_wcet_microsteps = verification.wcet_max_microsteps;
+    if (effective_wcet_microsteps == 0U && !canonical.transitions.empty()) {
+        effective_wcet_microsteps = 1U;
+    }
+
+    // Scheduling metadata
+    out << "  \"scheduling\": {\n";
+    out << "    \"wcet_max_microsteps\": " << effective_wcet_microsteps << ",\n";
+    out << "    \"max_event_queue_bound\": " << effective_queue_bound << ",\n";
+    out << "    \"zeno_free\": " << (verification.zeno_free ? "true" : "false") << "\n";
+    out << "  },\n";
+
     // Verification summary
     out << "  \"verification\": {\n";
     out << "    \"verified\": " << (verification.verified ? "true" : "false") << ",\n";

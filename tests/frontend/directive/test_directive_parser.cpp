@@ -265,4 +265,48 @@ TEST(DirectiveParser, VariableDirective_StringInitPreservesQuotesAndOmitsDefault
     EXPECT_TRUE(no_init->initial_value.empty());
 }
 
+/**
+ * @brief Verify '@fsm:external_type' and '@fsm:service' directives parse into language-agnostic ExternalTypeRef and
+ * ServiceMethodSignature IR nodes.
+ */
+TEST(DirectiveParser, ExternalTypeAndServiceDirectives_ParseCleanly) {
+    const std::string ext_line =
+        "// @fsm:external_type name=Vec3 module=\"math/vec3.hpp\" symbol=\"math.Vec3\" kind=struct desc=\"3D vector\"";
+    ASSERT_TRUE(DirectiveParser::is_directive(ext_line));
+    auto ext_td = DirectiveParser::parse_external_type_directive(DirectiveParser::extract_directive_body(ext_line));
+    ASSERT_TRUE(ext_td.has_value());
+    EXPECT_EQ(ext_td->name, "Vec3");
+    EXPECT_EQ(ext_td->kind, TypeKind::Struct);
+    ASSERT_TRUE(ext_td->is_external());
+    EXPECT_EQ(ext_td->external_ref->module, "math/vec3.hpp");
+    EXPECT_EQ(ext_td->external_ref->symbol, "math.Vec3");
+    EXPECT_EQ(ext_td->description, "3D vector");
+
+    const std::string svc_sig_line =
+        "// @fsm:service compute_pwm(err: int32_t, kp: float) -> int32_t pure=true noexcept=true desc=\"PID step\"";
+    ASSERT_TRUE(DirectiveParser::is_directive(svc_sig_line));
+    auto svc = DirectiveParser::parse_service_directive(DirectiveParser::extract_directive_body(svc_sig_line));
+    ASSERT_TRUE(svc.has_value());
+    EXPECT_EQ(svc->name, "compute_pwm");
+    EXPECT_EQ(svc->return_type.to_canonical_string(), "int32");
+    EXPECT_TRUE(svc->is_pure);
+    EXPECT_TRUE(svc->is_noexcept);
+    EXPECT_EQ(svc->description, "PID step");
+    ASSERT_EQ(svc->parameters.size(), 2u);
+    EXPECT_EQ(svc->parameters[0].name, "err");
+    EXPECT_EQ(svc->parameters[0].type.to_canonical_string(), "int32");
+    EXPECT_EQ(svc->parameters[1].name, "kp");
+    EXPECT_EQ(svc->parameters[1].type.to_canonical_string(), "float32");
+
+    const std::string svc_kv_line = "// @fsm:service name=log_fault params=[code:uint32_t] return=void pure=false";
+    auto svc2 = DirectiveParser::parse_service_directive(DirectiveParser::extract_directive_body(svc_kv_line));
+    ASSERT_TRUE(svc2.has_value());
+    EXPECT_EQ(svc2->name, "log_fault");
+    EXPECT_TRUE(svc2->is_void_return());
+    EXPECT_FALSE(svc2->is_pure);
+    ASSERT_EQ(svc2->parameters.size(), 1u);
+    EXPECT_EQ(svc2->parameters[0].name, "code");
+    EXPECT_EQ(svc2->parameters[0].type.to_canonical_string(), "uint32");
+}
+
 }  // namespace

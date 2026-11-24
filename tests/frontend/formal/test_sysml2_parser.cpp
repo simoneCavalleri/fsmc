@@ -1413,4 +1413,41 @@ TEST(Sysml2Parser, LocalTransition_PreservedAcrossSerializerRoundtrip) {
     EXPECT_TRUE(found_external);
 }
 
+/**
+ * @brief Verify SysML v2 parses @fsm:external_type and @fsm:service directives into FsmIr.
+ */
+TEST(Sysml2ParserTest, ParsesExternalTypeAndServiceDirectives) {
+    const std::string sysml = R"sysml(
+package ControlPkg {
+    state def ThermalCtrl {
+        // @fsm:external_type name=PidState module="ctrl/pid.hpp" symbol="ctrl.PidState" kind=struct
+        // @fsm:service compute_pwm(err: int32_t) -> int32_t pure=true noexcept=true desc="Compute PWM duty"
+        entry; then Idle;
+        state Idle;
+        state Active;
+        transition t1 first Idle accept Start then Active;
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml, model, err)) << err.render_to_string();
+
+    ASSERT_EQ(model.custom_types.size(), 1u);
+    EXPECT_EQ(model.custom_types[0].name, "PidState");
+    ASSERT_TRUE(model.custom_types[0].is_external());
+    EXPECT_EQ(model.custom_types[0].external_ref->module, "ctrl/pid.hpp");
+    EXPECT_EQ(model.custom_types[0].external_ref->symbol, "ctrl.PidState");
+
+    ASSERT_EQ(model.services.size(), 1u);
+    EXPECT_EQ(model.services[0].name, "compute_pwm");
+    EXPECT_EQ(model.services[0].return_type.to_canonical_string(), "int32");
+    EXPECT_TRUE(model.services[0].is_pure);
+    EXPECT_TRUE(model.services[0].is_noexcept);
+    ASSERT_EQ(model.services[0].parameters.size(), 1u);
+    EXPECT_EQ(model.services[0].parameters[0].name, "err");
+}
+
 }  // namespace

@@ -112,7 +112,16 @@ struct CFieldMapping {
     std::string name;
     std::string c_type;
     bool is_enum_cast = false;
+    bool is_local_struct = false;
+    std::string struct_snake;
     std::string cpp_type;
+};
+
+struct CLocalStruct {
+    std::string cpp_name;
+    std::string snake_name;
+    std::string c_type_name;
+    std::vector<CFieldMapping> fields;
 };
 
 bool map_to_c_scalar(const DataType& dt, const FsmIr& model, std::string& out_c_type, bool& out_is_enum_cast,
@@ -136,6 +145,29 @@ bool map_to_c_scalar(const DataType& dt, const FsmIr& model, std::string& out_c_
         out_is_enum_cast = true;
         out_cpp_type = sanitize_cpp_ident(en->name);
         return true;
+    }
+    return false;
+}
+
+bool map_to_c_type(const DataType& dt, const FsmIr& model, const std::vector<CLocalStruct>& local_structs,
+                   CFieldMapping& out_fm) {
+    out_fm.is_enum_cast = false;
+    out_fm.is_local_struct = false;
+    out_fm.struct_snake.clear();
+    if (map_to_c_scalar(dt, model, out_fm.c_type, out_fm.is_enum_cast, out_fm.cpp_type)) {
+        return true;
+    }
+    if (!dt.is_primitive()) {
+        const std::string cname = sanitize_cpp_ident(dt.custom_name());
+        for (const auto& ls : local_structs) {
+            if (ls.cpp_name == cname) {
+                out_fm.c_type = ls.c_type_name;
+                out_fm.cpp_type = ls.cpp_name;
+                out_fm.is_local_struct = true;
+                out_fm.struct_snake = ls.snake_name;
+                return true;
+            }
+        }
     }
     return false;
 }
@@ -166,13 +198,51 @@ GeneratedCAbiBundle CAbiGenerator::generate(const FsmIr& model, const GeneratorO
     const std::string fsm_inc = fsm_header_include.empty() ? (prefix + "_fsm.hpp") : std::string(fsm_header_include);
     const std::string c_inc = c_header_include.empty() ? (prefix + "_c.h") : std::string(c_header_include);
 
-    // Collect C99-compatible scalar/enum fields for InPorts and OutPorts
+    // Collect local POD structs whose fields are C99-mappable (fixed-point for nested structs)
+    std::vector<CLocalStruct> local_structs;
+    {
+        bool progress = true;
+        std::unordered_set<std::string> added;
+        while (progress) {
+            progress = false;
+            for (const auto& td : processed.custom_types) {
+                if (td.kind != TypeKind::Struct || td.is_external()) {
+                    continue;
+                }
+                const std::string cpp_name = sanitize_cpp_ident(td.name);
+                if (added.count(cpp_name) != 0U) {
+                    continue;
+                }
+                CLocalStruct ls;
+                ls.cpp_name = cpp_name;
+                ls.snake_name = to_snake_case(cpp_name);
+                ls.c_type_name = prefix + "_" + ls.snake_name + "_t";
+                bool all_ok = true;
+                for (const auto& f : td.fields) {
+                    CFieldMapping fm;
+                    fm.name = sanitize_cpp_ident(f.name);
+                    if (!map_to_c_type(f.type, processed, local_structs, fm)) {
+                        all_ok = false;
+                        break;
+                    }
+                    ls.fields.push_back(std::move(fm));
+                }
+                if (all_ok) {
+                    added.insert(cpp_name);
+                    local_structs.push_back(std::move(ls));
+                    progress = true;
+                }
+            }
+        }
+    }
+
+    // Collect C99-compatible scalar/enum/POD-struct fields for InPorts and OutPorts
     std::vector<CFieldMapping> in_fields;
     std::vector<CFieldMapping> out_fields;
     for (const auto& port : processed.ports) {
         CFieldMapping fm;
         fm.name = sanitize_cpp_ident(port.name);
-        if (map_to_c_scalar(port.type, processed, fm.c_type, fm.is_enum_cast, fm.cpp_type)) {
+        if (map_to_c_type(port.type, processed, local_structs, fm)) {
             if (port.is_in()) {
                 in_fields.push_back(fm);
             }
@@ -233,6 +303,19 @@ GeneratedCAbiBundle CAbiGenerator::generate(const FsmIr& model, const GeneratorO
     hdr << "    " << upper_prefix << "_STATUS_IGNORED = 2,\n";
     hdr << "    " << upper_prefix << "_STATUS_INVALID_ARG = 3\n";
     hdr << "} " << prefix << "_status_t;\n\n";
+
+    // Local POD structs
+    for (const auto& ls : local_structs) {
+        hdr << "typedef struct {\n";
+        if (ls.fields.empty()) {
+            hdr << "    uint8_t _reserved;\n";
+        } else {
+            for (const auto& f : ls.fields) {
+                hdr << "    " << f.c_type << " " << f.name << ";\n";
+            }
+        }
+        hdr << "} " << ls.c_type_name << ";\n\n";
+    }
 
     // InPorts POD
     hdr << "typedef struct {\n";
@@ -296,7 +379,7 @@ GeneratedCAbiBundle CAbiGenerator::generate(const FsmIr& model, const GeneratorO
     hdr << "    } _storage;\n";
     hdr << "} " << prefix << "_fsm_t;\n\n";
 
-    // Lifecycle & query API
+    // Lifecycle, query, sampled step/tick, and snapshot API
     hdr << "void " << prefix << "_init(" << prefix << "_fsm_t* fsm);\n";
     if (has_typed_services) {
         hdr << "void " << prefix << "_init_with_services(" << prefix << "_fsm_t* fsm, const " << prefix
@@ -305,18 +388,30 @@ GeneratedCAbiBundle CAbiGenerator::generate(const FsmIr& model, const GeneratorO
     hdr << "void " << prefix << "_destroy(" << prefix << "_fsm_t* fsm);\n";
     hdr << prefix << "_state_t " << prefix << "_current_state(const " << prefix << "_fsm_t* fsm);\n";
     hdr << "const char* " << prefix << "_state_name(" << prefix << "_state_t state);\n";
-    hdr << "const char* " << prefix << "_ir_sha256(void);\n\n";
+    hdr << "const char* " << prefix << "_ir_sha256(void);\n";
+    hdr << prefix << "_status_t " << prefix << "_step(" << prefix << "_fsm_t* fsm, const " << prefix
+        << "_in_ports_t* in_ports, " << prefix << "_out_ports_t* out_ports);\n";
+    hdr << prefix << "_status_t " << prefix << "_tick(" << prefix << "_fsm_t* fsm, uint64_t delta_ms, const " << prefix
+        << "_in_ports_t* in_ports, " << prefix << "_out_ports_t* out_ports);\n";
+    hdr << "size_t " << prefix << "_snapshot_size(const " << prefix << "_fsm_t* fsm);\n";
+    hdr << "bool " << prefix << "_save_snapshot(const " << prefix
+        << "_fsm_t* fsm, uint8_t* out_buf, size_t capacity, size_t* bytes_written);\n";
+    hdr << "bool " << prefix << "_restore_snapshot(" << prefix
+        << "_fsm_t* fsm, const uint8_t* buf, size_t size, size_t* bytes_read);\n\n";
 
     // Event dispatchers
     for (const auto& sig : events) {
         const std::string ev_snake = to_snake_case(sig.name);
         hdr << prefix << "_status_t " << prefix << "_dispatch_" << ev_snake << "(" << prefix << "_fsm_t* fsm";
         for (const auto& attr : sig.attributes) {
-            std::string c_type;
-            bool is_enum_cast = false;
-            std::string cpp_type;
-            if (map_to_c_scalar(attr.type, processed, c_type, is_enum_cast, cpp_type)) {
-                hdr << ", " << c_type << " " << sanitize_cpp_ident(attr.name);
+            CFieldMapping fm;
+            fm.name = sanitize_cpp_ident(attr.name);
+            if (map_to_c_type(attr.type, processed, local_structs, fm)) {
+                if (fm.is_local_struct) {
+                    hdr << ", const " << fm.c_type << "* " << fm.name;
+                } else {
+                    hdr << ", " << fm.c_type << " " << fm.name;
+                }
             }
         }
         hdr << ", const " << prefix << "_in_ports_t* in_ports, " << prefix << "_out_ports_t* out_ports);\n";
@@ -426,7 +521,7 @@ GeneratedCAbiBundle CAbiGenerator::generate(const FsmIr& model, const GeneratorO
         src << "}\n\n";
     }
 
-    src << prefix << "_status_t map_status(::fsm::dispatch_status s) noexcept {\n";
+    src << "[[maybe_unused]] " << prefix << "_status_t map_status(::fsm::dispatch_status s) noexcept {\n";
     src << "    switch (s) {\n";
     src << "        case ::fsm::dispatch_status::success:\n";
     src << "        case ::fsm::dispatch_status::deferred:\n";
@@ -438,6 +533,53 @@ GeneratedCAbiBundle CAbiGenerator::generate(const FsmIr& model, const GeneratorO
     src << "    }\n";
     src << "}\n\n";
 
+    src << prefix << "_status_t map_step_status(::fsm::step_status s) noexcept {\n";
+    src << "    return (s == ::fsm::step_status::transitioned) ? " << upper_prefix << "_STATUS_OK : " << upper_prefix
+        << "_STATUS_IGNORED;\n";
+    src << "}\n\n";
+
+    // Local POD struct converters
+    for (const auto& ls : local_structs) {
+        src << "[[maybe_unused]] " << ns_qual << ls.cpp_name << " to_cpp_" << ls.snake_name << "(const "
+            << ls.c_type_name << "& c_val) noexcept {\n";
+        src << "    " << ns_qual << ls.cpp_name << " res{};\n";
+        if (ls.fields.empty()) {
+            src << "    (void)c_val;\n";
+        } else {
+            for (const auto& f : ls.fields) {
+                if (f.is_enum_cast) {
+                    src << "    res." << f.name << " = static_cast<" << ns_qual << f.cpp_type << ">(c_val." << f.name
+                        << ");\n";
+                } else if (f.is_local_struct) {
+                    src << "    res." << f.name << " = to_cpp_" << f.struct_snake << "(c_val." << f.name << ");\n";
+                } else {
+                    src << "    res." << f.name << " = c_val." << f.name << ";\n";
+                }
+            }
+        }
+        src << "    return res;\n";
+        src << "}\n\n";
+
+        src << "[[maybe_unused]] " << ls.c_type_name << " from_cpp_" << ls.snake_name << "(const " << ns_qual
+            << ls.cpp_name << "& cpp_val) noexcept {\n";
+        src << "    " << ls.c_type_name << " res{};\n";
+        if (ls.fields.empty()) {
+            src << "    (void)cpp_val;\n";
+        } else {
+            for (const auto& f : ls.fields) {
+                if (f.is_enum_cast) {
+                    src << "    res." << f.name << " = static_cast<int32_t>(cpp_val." << f.name << ");\n";
+                } else if (f.is_local_struct) {
+                    src << "    res." << f.name << " = from_cpp_" << f.struct_snake << "(cpp_val." << f.name << ");\n";
+                } else {
+                    src << "    res." << f.name << " = cpp_val." << f.name << ";\n";
+                }
+            }
+        }
+        src << "    return res;\n";
+        src << "}\n\n";
+    }
+
     src << "CppInPorts to_cpp_in(const " << prefix << "_in_ports_t* in_ports) noexcept {\n";
     src << "    CppInPorts res{};\n";
     if (!in_fields.empty()) {
@@ -446,6 +588,8 @@ GeneratedCAbiBundle CAbiGenerator::generate(const FsmIr& model, const GeneratorO
             if (f.is_enum_cast) {
                 src << "        res." << f.name << " = static_cast<" << ns_qual << f.cpp_type << ">(in_ports->"
                     << f.name << ");\n";
+            } else if (f.is_local_struct) {
+                src << "        res." << f.name << " = to_cpp_" << f.struct_snake << "(in_ports->" << f.name << ");\n";
             } else {
                 src << "        res." << f.name << " = in_ports->" << f.name << ";\n";
             }
@@ -465,6 +609,9 @@ GeneratedCAbiBundle CAbiGenerator::generate(const FsmIr& model, const GeneratorO
         for (const auto& f : out_fields) {
             if (f.is_enum_cast) {
                 src << "    out_ports->" << f.name << " = static_cast<int32_t>(cpp_out." << f.name << ");\n";
+            } else if (f.is_local_struct) {
+                src << "    out_ports->" << f.name << " = from_cpp_" << f.struct_snake << "(cpp_out." << f.name
+                    << ");\n";
             } else {
                 src << "    out_ports->" << f.name << " = cpp_out." << f.name << ";\n";
             }
@@ -544,6 +691,72 @@ GeneratedCAbiBundle CAbiGenerator::generate(const FsmIr& model, const GeneratorO
     src << "    }\n";
     src << "}\n\n";
 
+    // Sampled step
+    src << prefix << "_status_t " << prefix << "_step(" << prefix << "_fsm_t* fsm, const " << prefix
+        << "_in_ports_t* in_ports, " << prefix << "_out_ports_t* out_ports) {\n";
+    src << "    if (fsm == nullptr) {\n";
+    src << "        return " << upper_prefix << "_STATUS_INVALID_ARG;\n";
+    src << "    }\n";
+    src << "    const CppInPorts cpp_in = to_cpp_in(in_ports);\n";
+    src << "    CppOutPorts cpp_out{};\n";
+    src << "    const auto res = as_cpp(fsm)->step(cpp_in, cpp_out);\n";
+    src << "    from_cpp_out(cpp_out, out_ports);\n";
+    src << "    return map_step_status(res.status);\n";
+    src << "}\n\n";
+
+    // Timed tick + sampled step
+    src << prefix << "_status_t " << prefix << "_tick(" << prefix << "_fsm_t* fsm, uint64_t delta_ms, const " << prefix
+        << "_in_ports_t* in_ports, " << prefix << "_out_ports_t* out_ports) {\n";
+    src << "    if (fsm == nullptr) {\n";
+    src << "        return " << upper_prefix << "_STATUS_INVALID_ARG;\n";
+    src << "    }\n";
+    src << "    const CppInPorts cpp_in = to_cpp_in(in_ports);\n";
+    src << "    CppOutPorts cpp_out{};\n";
+    src << "    const auto res = as_cpp(fsm)->step(delta_ms, cpp_in, cpp_out);\n";
+    src << "    from_cpp_out(cpp_out, out_ports);\n";
+    src << "    return map_step_status(res.status);\n";
+    src << "}\n\n";
+
+    // Snapshot size / save / restore
+    src << "size_t " << prefix << "_snapshot_size(const " << prefix << "_fsm_t* fsm) {\n";
+    src << "    if (fsm == nullptr) {\n";
+    src << "        return 0U;\n";
+    src << "    }\n";
+    src << "    return as_cpp(fsm)->serialized_size();\n";
+    src << "}\n\n";
+
+    src << "bool " << prefix << "_save_snapshot(const " << prefix
+        << "_fsm_t* fsm, uint8_t* out_buf, size_t capacity, size_t* bytes_written) {\n";
+    src << "    if (fsm == nullptr || out_buf == nullptr) {\n";
+    src << "        if (bytes_written != nullptr) {\n";
+    src << "            *bytes_written = 0U;\n";
+    src << "        }\n";
+    src << "        return false;\n";
+    src << "    }\n";
+    src << "    std::size_t written = 0U;\n";
+    src << "    const bool ok = as_cpp(fsm)->serialize(out_buf, capacity, written);\n";
+    src << "    if (bytes_written != nullptr) {\n";
+    src << "        *bytes_written = written;\n";
+    src << "    }\n";
+    src << "    return ok;\n";
+    src << "}\n\n";
+
+    src << "bool " << prefix << "_restore_snapshot(" << prefix
+        << "_fsm_t* fsm, const uint8_t* buf, size_t size, size_t* bytes_read) {\n";
+    src << "    if (fsm == nullptr || buf == nullptr) {\n";
+    src << "        if (bytes_read != nullptr) {\n";
+    src << "            *bytes_read = 0U;\n";
+    src << "        }\n";
+    src << "        return false;\n";
+    src << "    }\n";
+    src << "    std::size_t read_bytes = 0U;\n";
+    src << "    const bool ok = as_cpp(fsm)->deserialize(buf, size, read_bytes);\n";
+    src << "    if (bytes_read != nullptr) {\n";
+    src << "        *bytes_read = read_bytes;\n";
+    src << "    }\n";
+    src << "    return ok;\n";
+    src << "}\n\n";
+
     // Event dispatchers
     for (const auto& sig : events) {
         const std::string ev_snake = to_snake_case(sig.name);
@@ -553,8 +766,12 @@ GeneratedCAbiBundle CAbiGenerator::generate(const FsmIr& model, const GeneratorO
         for (const auto& attr : sig.attributes) {
             CFieldMapping fm;
             fm.name = sanitize_cpp_ident(attr.name);
-            if (map_to_c_scalar(attr.type, processed, fm.c_type, fm.is_enum_cast, fm.cpp_type)) {
-                src << ", " << fm.c_type << " " << fm.name;
+            if (map_to_c_type(attr.type, processed, local_structs, fm)) {
+                if (fm.is_local_struct) {
+                    src << ", const " << fm.c_type << "* " << fm.name;
+                } else {
+                    src << ", " << fm.c_type << " " << fm.name;
+                }
                 ev_fields.push_back(fm);
             }
         }
@@ -566,6 +783,10 @@ GeneratedCAbiBundle CAbiGenerator::generate(const FsmIr& model, const GeneratorO
         for (const auto& ef : ev_fields) {
             if (ef.is_enum_cast) {
                 src << "    ev." << ef.name << " = static_cast<" << ns_qual << ef.cpp_type << ">(" << ef.name << ");\n";
+            } else if (ef.is_local_struct) {
+                src << "    if (" << ef.name << " != nullptr) {\n";
+                src << "        ev." << ef.name << " = to_cpp_" << ef.struct_snake << "(*" << ef.name << ");\n";
+                src << "    }\n";
             } else {
                 src << "    ev." << ef.name << " = " << ef.name << ";\n";
             }

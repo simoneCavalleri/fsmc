@@ -17,6 +17,7 @@
     "services",
     "external_types",
     "requirements",
+    "scheduling",
     "verification"
   ],
   "additionalProperties": false,
@@ -45,6 +46,16 @@
     "services": { "type": "array", "items": { "type": "object" } },
     "external_types": { "type": "array", "items": { "type": "object" } },
     "requirements": { "type": "array", "items": { "type": "string" } },
+    "scheduling": {
+      "type": "object",
+      "required": ["wcet_max_microsteps", "max_event_queue_bound", "zeno_free"],
+      "additionalProperties": false,
+      "properties": {
+        "wcet_max_microsteps": { "type": "integer", "minimum": 0 },
+        "max_event_queue_bound": { "type": "integer", "minimum": 2 },
+        "zeno_free": { "type": "boolean" }
+      }
+    },
     "verification": {
       "type": "object",
       "required": ["verified", "errors", "warnings", "properties_checked"],

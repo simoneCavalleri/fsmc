@@ -27,13 +27,16 @@ struct ManifestArtifacts {
 
 /**
  * @struct ManifestVerificationSummary
- * @brief Summary of middle-end / formal verification status recorded in *.manifest.json.
+ * @brief Summary of middle-end / formal verification and real-time scheduling bounds recorded in *.manifest.json.
  */
 struct ManifestVerificationSummary {
     bool verified = false;
     std::size_t errors = 0;
     std::size_t warnings = 0;
     std::size_t properties_checked = 0;
+    std::size_t wcet_max_microsteps = 0;
+    std::size_t max_event_queue_bound = 0;
+    bool zeno_free = true;
 };
 
 /**

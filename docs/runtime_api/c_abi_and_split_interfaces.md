@@ -88,6 +88,7 @@ fsmc -i thermal_controller.ir.json -o out/thermal_controller_fsm.hpp --emit-c-ab
 
 ### Key Guarantees
 - **Zero Dynamic Allocations**: The caller allocates `thermal_controller_fsm_t` on the stack or in static memory. The bridge uses placement-new only and enforces `static_assert(sizeof(CppInstance) <= sizeof(thermal_controller_fsm_t))` and `static_assert(alignof(CppInstance) <= alignof(thermal_controller_fsm_t))`.
+- **Full Execution Parity**: Exposes event dispatchers (`<prefix>_dispatch_<event>`), sampled control-loop steps (`<prefix>_step`), timed progression (`<prefix>_tick(fsm, delta_ms, in, out)`), local POD `struct` port definitions, and deterministic binary checkpointing (`<prefix>_snapshot_size`, `<prefix>_save_snapshot`, `<prefix>_restore_snapshot`).
 - **C99 Callback Services (`<prefix>_services_t`)**: Models declaring typed services receive a C function-pointer table with `void* user_data` and `<prefix>_init_with_services(&fsm, &srv)`.
 - **Spec-to-Code Attestation**: `<prefix>_ir_sha256()` returns the exact 64-character hex SHA-256 of the canonical `FsmIr`.
 

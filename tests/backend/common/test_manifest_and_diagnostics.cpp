@@ -96,6 +96,9 @@ TEST(ManifestAndDiagnostics, IrSha256_IsConsistentAcrossManifestCppAndCAbi) {
     ver.errors = 0;
     ver.warnings = 0;
     ver.properties_checked = 2;
+    ver.wcet_max_microsteps = 3;
+    ver.max_event_queue_bound = 4;
+    ver.zeno_free = true;
 
     const std::string manifest = ManifestEmitter::emit_json(ir, artifacts, ver);
 
@@ -117,6 +120,10 @@ TEST(ManifestAndDiagnostics, IrSha256_IsConsistentAcrossManifestCppAndCAbi) {
     EXPECT_NE(manifest.find("\"REQ-SYS-001\""), std::string::npos);
     EXPECT_NE(manifest.find("\"REQ-FSM-010\""), std::string::npos);
     EXPECT_NE(manifest.find("\"REQ-FSM-020\""), std::string::npos);
+    EXPECT_NE(manifest.find("\"scheduling\": {"), std::string::npos);
+    EXPECT_NE(manifest.find("\"wcet_max_microsteps\": 3"), std::string::npos);
+    EXPECT_NE(manifest.find("\"max_event_queue_bound\": 4"), std::string::npos);
+    EXPECT_NE(manifest.find("\"zeno_free\": true"), std::string::npos);
     EXPECT_NE(manifest.find("\"verified\": true"), std::string::npos);
 }
 

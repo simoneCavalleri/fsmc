@@ -357,3 +357,158 @@ int main(void) {
 
     ASSERT_EQ(std::system(("\"" + bin.string() + "\"").c_str()), 0) << "C99 services runner failed";
 }
+
+TEST(CAbiZeroAlloc, E2E_StepTickSnapshotAndLocalPodStruct) {
+    const std::string cc = find_c_compiler();
+    const std::string cxx = find_cpp_compiler();
+    if (cc.empty() || cxx.empty()) {
+        GTEST_SKIP() << "C/C++ compilers not found in PATH; skipping E2E C99 parity test.";
+    }
+
+    FsmIr ir;
+    ir.name = "SensorSupervisor";
+    ir.initial_state = "Standby";
+    ir.package = "sup_pkg";
+
+    TypeDefinition reading_td("SensorReading", TypeKind::Struct);
+    reading_td.fields.emplace_back("temp_c", DataType("int32_t"));
+    reading_td.fields.emplace_back("valid", DataType("bool"));
+    ir.add_type(std::move(reading_td));
+
+    ir.add_state("Standby");
+    ir.add_state("Monitoring");
+    ir.add_state("TimedOut");
+
+    ir.add_port(PortDefinition("sensor", "SensorReading", PortDirection::In));
+    ir.add_port(PortDefinition("last_temp", "int32_t", PortDirection::Out));
+    ir.add_variable(VariableDefinition("samples", "int32_t", "0"));
+
+    // Sampled (anonymous) transition: Standby -> Monitoring when sensor.valid && sensor.temp_c > 20
+    ir.add_guard("sensor_ready", "Valid sensor above threshold", "sensor.valid && sensor.temp_c > 20",
+                 "sensor.valid && sensor.temp_c > 20");
+    ActionSignature latch_act("latch_sample");
+    latch_act.assignments.emplace_back(LValueTarget("last_temp", LValueScope::OutPort), "sensor.temp_c");
+    latch_act.assignments.emplace_back(LValueTarget("samples", LValueScope::Register), "samples + 1");
+
+    TransitionEdge t_step("Standby", "Monitoring", "");
+    t_step.set_guard("sensor_ready");
+    t_step.transition_action = latch_act;
+    ir.add_transition(std::move(t_step));
+
+    // Timed transition: Monitoring -> TimedOut after 50ms
+    TransitionEdge t_timeout("Monitoring", "TimedOut", "");
+    t_timeout.trigger = TimeTrigger(50U);
+    ir.add_transition(std::move(t_timeout));
+
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::temp_directory_path() / "fsmc_c_abi_parity_test";
+    fs::create_directories(tmp_dir);
+
+    GeneratorOptions opts;
+    opts.standalone = true;
+    opts.thread_safe = false;
+
+    const auto cpp_bundle = CppGenerator::generate_bundle(ir, opts, "sup_ports.hpp");
+    const auto c_bundle = CAbiGenerator::generate(ir, opts, "sup_fsm.hpp", "sup_c.h");
+
+    {
+        std::ofstream f(tmp_dir / "sup_ports.hpp");
+        f << cpp_bundle.ports_header;
+    }
+    {
+        std::ofstream f(tmp_dir / "sup_fsm.hpp");
+        f << cpp_bundle.fsm_header;
+    }
+    {
+        std::ofstream f(tmp_dir / "sup_c.h");
+        f << c_bundle.header;
+    }
+    {
+        std::ofstream f(tmp_dir / "sup_c.cpp");
+        f << c_bundle.source;
+    }
+    {
+        std::ofstream f(tmp_dir / "client_parity.c");
+        f << R"c(
+#include <assert.h>
+#include <string.h>
+#include "sup_c.h"
+
+int main(void) {
+    sensor_supervisor_fsm_t fsm;
+    sensor_supervisor_fsm_t restored;
+    sensor_supervisor_in_ports_t in_ports;
+    sensor_supervisor_out_ports_t out_ports;
+    uint8_t snap[256];
+    size_t snap_written = 0;
+    size_t snap_read = 0;
+
+    memset(&in_ports, 0, sizeof(in_ports));
+    memset(&out_ports, 0, sizeof(out_ports));
+
+    sensor_supervisor_init(&fsm);
+    assert(sensor_supervisor_current_state(&fsm) == SENSOR_SUPERVISOR_STATE_STANDBY);
+
+    /* Sampled step stays steady when sensor not valid */
+    in_ports.sensor.temp_c = 10;
+    in_ports.sensor.valid = false;
+    assert(sensor_supervisor_step(&fsm, &in_ports, &out_ports) == SENSOR_SUPERVISOR_STATUS_IGNORED);
+    assert(sensor_supervisor_current_state(&fsm) == SENSOR_SUPERVISOR_STATE_STANDBY);
+
+    /* Sampled step transitions when sensor valid and temp > 20 */
+    in_ports.sensor.temp_c = 42;
+    in_ports.sensor.valid = true;
+    assert(sensor_supervisor_step(&fsm, &in_ports, &out_ports) == SENSOR_SUPERVISOR_STATUS_OK);
+    assert(sensor_supervisor_current_state(&fsm) == SENSOR_SUPERVISOR_STATE_MONITORING);
+    assert(out_ports.last_temp == 42);
+
+    /* Advance 30ms (still Monitoring) and take a snapshot */
+    assert(sensor_supervisor_tick(&fsm, 30, &in_ports, &out_ports) == SENSOR_SUPERVISOR_STATUS_IGNORED);
+    assert(sensor_supervisor_current_state(&fsm) == SENSOR_SUPERVISOR_STATE_MONITORING);
+
+    assert(sensor_supervisor_snapshot_size(&fsm) > 0);
+    assert(sensor_supervisor_snapshot_size(&fsm) <= sizeof(snap));
+    assert(sensor_supervisor_save_snapshot(&fsm, snap, sizeof(snap), &snap_written));
+    assert(snap_written > 0);
+
+    /* Advance original past timeout (30 + 25 = 55ms >= 50ms) */
+    assert(sensor_supervisor_tick(&fsm, 25, &in_ports, &out_ports) == SENSOR_SUPERVISOR_STATUS_OK);
+    assert(sensor_supervisor_current_state(&fsm) == SENSOR_SUPERVISOR_STATE_TIMED_OUT);
+
+    /* Restore snapshot into fresh FSM: should be back in Monitoring with 20ms remaining */
+    sensor_supervisor_init(&restored);
+    assert(sensor_supervisor_current_state(&restored) == SENSOR_SUPERVISOR_STATE_STANDBY);
+    assert(sensor_supervisor_restore_snapshot(&restored, snap, snap_written, &snap_read));
+    assert(snap_read == snap_written);
+    assert(sensor_supervisor_current_state(&restored) == SENSOR_SUPERVISOR_STATE_MONITORING);
+
+    /* 20ms more expires the restored timer */
+    assert(sensor_supervisor_tick(&restored, 20, &in_ports, &out_ports) == SENSOR_SUPERVISOR_STATUS_OK);
+    assert(sensor_supervisor_current_state(&restored) == SENSOR_SUPERVISOR_STATE_TIMED_OUT);
+
+    sensor_supervisor_destroy(&restored);
+    sensor_supervisor_destroy(&fsm);
+    return 0;
+}
+)c";
+    }
+
+    const fs::path bridge_obj = tmp_dir / "sup_c.o";
+    const fs::path client_obj = tmp_dir / "client_parity.o";
+    const fs::path bin = tmp_dir / "c99_parity_runner";
+
+    const std::string cxx_cmd = cxx + " -std=c++17 -fno-exceptions -fno-rtti -Wall -Wextra -Werror -I\"" +
+                                tmp_dir.string() + "\" -c \"" + (tmp_dir / "sup_c.cpp").string() + "\" -o \"" +
+                                bridge_obj.string() + "\"";
+    ASSERT_EQ(std::system(cxx_cmd.c_str()), 0) << "C++17 parity bridge failed:\n" << cxx_cmd;
+
+    const std::string cc_cmd = cc + " -std=c99 -Wall -Wextra -Werror -pedantic -I\"" + tmp_dir.string() + "\" -c \"" +
+                               (tmp_dir / "client_parity.c").string() + "\" -o \"" + client_obj.string() + "\"";
+    ASSERT_EQ(std::system(cc_cmd.c_str()), 0) << "Pure C99 parity client failed:\n" << cc_cmd;
+
+    const std::string link_cmd = cxx + " -fno-exceptions -fno-rtti \"" + client_obj.string() + "\" \"" +
+                                 bridge_obj.string() + "\" -o \"" + bin.string() + "\"";
+    ASSERT_EQ(std::system(link_cmd.c_str()), 0) << "Linking C99 parity client failed:\n" << link_cmd;
+
+    ASSERT_EQ(std::system(("\"" + bin.string() + "\"").c_str()), 0) << "C99 parity runner failed";
+}

@@ -9,9 +9,12 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <random>
 #include <sstream>
 #include <string>
+#include <vector>
 
+#include "fsm/backend/cpp/c_abi_generator.hpp"
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "tools/fsmc/ir_simulator.hpp"
@@ -240,6 +243,270 @@ TEST(DifferentialSemantics, DeferredEventsRecallAndStrictFailClosedGuards) {
     // Step 3: EvCheck has unresolved symbolic guard -> fail-closed under strict_guards
     EXPECT_FALSE(report.steps[3].handled);
     EXPECT_EQ(report.final_state, "Configured");
+}
+
+/**
+ * @brief Seeded randomized differential verification: IrSimulator == C++17 == C99 ABI (with mid-trace snapshot).
+ * @scenario Generate a deterministic 200-step randomized event trace over a 4-state EFSM with guarded register
+ *           transitions and execute it identically across IrSimulator, generated C++17, and pure C99 ABI.
+ * @expected Step-by-step state sequence matches 100% across all three execution engines, final register values match
+ *           between IrSimulator and C++17, and mid-trace C99 snapshot/restore produces identical continuation.
+ */
+TEST(DifferentialSemantics, RandomizedTraces_MatchAcrossIrSimulatorCpp17AndC99Abi) {
+    using namespace fsm::ir;
+    using namespace fsm::backend::cpp;
+
+    FsmIr model;
+    model.name = "DiffValveFsm";
+    model.package = "diff_valve";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Charging");
+    model.add_state("Active");
+    model.add_state("Fault");
+
+    model.add_event("Start");
+    model.add_event("Pulse");
+    model.add_event("FaultSig");
+    model.add_event("Reset");
+
+    model.add_variable(VariableDefinition("energy", DataType::int32(), "0"));
+    model.add_variable(VariableDefinition("cycles", DataType::int32(), "0"));
+
+    model.add_guard("low_energy", "", "energy < 3", "energy < 3");
+    model.add_guard("full_energy", "", "energy >= 3", "energy >= 3");
+
+    // Idle -> Charging on Start (energy = 0; cycles += 1)
+    {
+        TransitionEdge t("Idle", "Charging", "Start");
+        ActionSignature act("begin_charge");
+        act.assignments.push_back(ActionAssignment{LValueTarget{"energy", LValueScope::Register}, "0"});
+        act.assignments.push_back(
+            ActionAssignment{LValueTarget{"cycles", LValueScope::Register}, "1", AssignmentOp::AddAssign});
+        t.transition_action = act;
+        model.transitions.push_back(t);
+    }
+    // Charging -> Charging on Pulse [energy < 3] (energy += 1)
+    {
+        TransitionEdge t("Charging", "Charging", "Pulse", "low_energy");
+        t.kind = TransitionEdgeKind::Internal;
+        ActionSignature act("charge_step");
+        act.assignments.push_back(
+            ActionAssignment{LValueTarget{"energy", LValueScope::Register}, "1", AssignmentOp::AddAssign});
+        t.transition_action = act;
+        model.transitions.push_back(t);
+    }
+    // Charging -> Active on Pulse [energy >= 3]
+    model.transitions.emplace_back("Charging", "Active", "Pulse", "full_energy");
+    // Active -> Fault on FaultSig
+    model.transitions.emplace_back("Active", "Fault", "FaultSig");
+    // Charging -> Fault on FaultSig
+    model.transitions.emplace_back("Charging", "Fault", "FaultSig");
+    // Active -> Idle on Reset (energy = 0)
+    {
+        TransitionEdge t("Active", "Idle", "Reset");
+        ActionSignature act("reset_active");
+        act.assignments.push_back(ActionAssignment{LValueTarget{"energy", LValueScope::Register}, "0"});
+        t.transition_action = act;
+        model.transitions.push_back(t);
+    }
+    // Fault -> Idle on Reset (energy = 0)
+    {
+        TransitionEdge t("Fault", "Idle", "Reset");
+        ActionSignature act("reset_fault");
+        act.assignments.push_back(ActionAssignment{LValueTarget{"energy", LValueScope::Register}, "0"});
+        t.transition_action = act;
+        model.transitions.push_back(t);
+    }
+
+    // Generate deterministic 200-step randomized event trace
+    constexpr std::size_t kSteps = 200;
+    const std::vector<std::string> event_pool = {"Start", "Pulse", "FaultSig", "Reset"};
+    std::mt19937 rng(0xF5C013U);
+    std::uniform_int_distribution<std::size_t> dist(0, event_pool.size() - 1);
+
+    std::vector<std::size_t> event_indices;
+    event_indices.reserve(kSteps);
+    std::ostringstream trace_ss;
+    for (std::size_t i = 0; i < kSteps; ++i) {
+        const std::size_t idx = dist(rng);
+        event_indices.push_back(idx);
+        trace_ss << event_pool[idx] << "\n";
+    }
+
+    // 1. Reference Oracle: IrSimulator
+    std::ostringstream sim_log;
+    const auto sim_report = fsm::tools::IrSimulator::simulate_detailed(model, trace_ss.str(), sim_log);
+    ASSERT_EQ(sim_report.steps.size(), kSteps);
+
+#if defined(_WIN32)
+    GTEST_SKIP() << "POSIX cc/c++ compiler invocation skipped on Windows.";
+#else
+    const std::string cc = (std::system("cc --version > /dev/null 2>&1") == 0) ? "cc" : "gcc";
+    const std::string cxx = (std::system("c++ --version > /dev/null 2>&1") == 0) ? "c++" : "g++";
+
+    fs::path temp_dir = fs::temp_directory_path() / "fsmc_diff_random_test";
+    fs::create_directories(temp_dir);
+
+    GeneratorOptions opts;
+    opts.standalone = true;
+    opts.thread_safe = false;
+    opts.target_namespace = "diff_valve";
+
+    const auto cpp_bundle = CppGenerator::generate_bundle(model, opts, "diff_valve_ports.hpp");
+    const auto c_bundle = CAbiGenerator::generate(model, opts, "diff_valve_fsm.hpp", "diff_valve_c.h");
+
+    {
+        std::ofstream f(temp_dir / "diff_valve_ports.hpp");
+        f << cpp_bundle.ports_header;
+    }
+    {
+        std::ofstream f(temp_dir / "diff_valve_fsm.hpp");
+        f << cpp_bundle.fsm_header;
+    }
+    {
+        std::ofstream f(temp_dir / "diff_valve_c.h");
+        f << c_bundle.header;
+    }
+    {
+        std::ofstream f(temp_dir / "diff_valve_c.cpp");
+        f << c_bundle.source;
+    }
+
+    // Emit shared event trace C array header
+    {
+        std::ofstream f(temp_dir / "trace_data.h");
+        f << "static const int kTraceEvents[" << kSteps << "] = {";
+        for (std::size_t i = 0; i < kSteps; ++i) {
+            if (i > 0) {
+                f << ", ";
+            }
+            f << event_indices[i];
+        }
+        f << "};\n";
+    }
+
+    // 2. C++17 Harness
+    const fs::path cpp_out = temp_dir / "cpp17_states.txt";
+    {
+        std::ofstream f(temp_dir / "driver_cpp17.cpp");
+        f << "#include <cstdio>\n"
+          << "#include \"diff_valve_fsm.hpp\"\n"
+          << "#include \"trace_data.h\"\n"
+          << "int main() {\n"
+          << "    using namespace diff_valve;\n"
+          << "    DiffValveFsm sm;\n"
+          << "    std::FILE* fp = std::fopen(\"" << cpp_out.generic_string() << "\", \"w\");\n"
+          << "    if (!fp) return 1;\n"
+          << "    for (int i = 0; i < " << kSteps << "; ++i) {\n"
+          << "        switch (kTraceEvents[i]) {\n"
+          << "            case 0: sm.dispatch(Start{}); break;\n"
+          << "            case 1: sm.dispatch(Pulse{}); break;\n"
+          << "            case 2: sm.dispatch(FaultSig{}); break;\n"
+          << "            default: sm.dispatch(Reset{}); break;\n"
+          << "        }\n"
+          << "        const char* st = sm.is_in<Idle>() ? \"Idle\" : (sm.is_in<Charging>() ? \"Charging\" : "
+             "(sm.is_in<Active>() ? \"Active\" : \"Fault\"));\n"
+          << "        std::fprintf(fp, \"%s\\n\", st);\n"
+          << "    }\n"
+          << "    std::fprintf(fp, \"REGS %d %d\\n\", sm.registers().energy, sm.registers().cycles);\n"
+          << "    std::fclose(fp);\n"
+          << "    return 0;\n"
+          << "}\n";
+    }
+
+    // 3. Pure C99 ABI Harness (also exercises mid-trace snapshot/restore at step 100)
+    const fs::path c99_out = temp_dir / "c99_states.txt";
+    {
+        std::ofstream f(temp_dir / "driver_c99.c");
+        f << "#include <assert.h>\n"
+          << "#include <stdio.h>\n"
+          << "#include <string.h>\n"
+          << "#include \"diff_valve_c.h\"\n"
+          << "#include \"trace_data.h\"\n"
+          << "int main(void) {\n"
+          << "    diff_valve_fsm_fsm_t fsm;\n"
+          << "    diff_valve_fsm_fsm_t restored;\n"
+          << "    diff_valve_fsm_in_ports_t in_p;\n"
+          << "    diff_valve_fsm_out_ports_t out_p;\n"
+          << "    uint8_t snap[256];\n"
+          << "    size_t written = 0;\n"
+          << "    size_t read_sz = 0;\n"
+          << "    FILE* fp = fopen(\"" << c99_out.generic_string() << "\", \"w\");\n"
+          << "    if (!fp) return 1;\n"
+          << "    memset(&in_p, 0, sizeof(in_p));\n"
+          << "    memset(&out_p, 0, sizeof(out_p));\n"
+          << "    diff_valve_fsm_init(&fsm);\n"
+          << "    diff_valve_fsm_init(&restored);\n"
+          << "    for (int i = 0; i < " << kSteps << "; ++i) {\n"
+          << "        diff_valve_fsm_fsm_t* active = (i >= 100) ? &restored : &fsm;\n"
+          << "        switch (kTraceEvents[i]) {\n"
+          << "            case 0: diff_valve_fsm_dispatch_start(active, &in_p, &out_p); break;\n"
+          << "            case 1: diff_valve_fsm_dispatch_pulse(active, &in_p, &out_p); break;\n"
+          << "            case 2: diff_valve_fsm_dispatch_fault_sig(active, &in_p, &out_p); break;\n"
+          << "            default: diff_valve_fsm_dispatch_reset(active, &in_p, &out_p); break;\n"
+          << "        }\n"
+          << "        fprintf(fp, \"%s\\n\", diff_valve_fsm_state_name(diff_valve_fsm_current_state(active)));\n"
+          << "        if (i == 99) {\n"
+          << "            assert(diff_valve_fsm_save_snapshot(&fsm, snap, sizeof(snap), &written));\n"
+          << "            assert(diff_valve_fsm_restore_snapshot(&restored, snap, written, &read_sz));\n"
+          << "            assert(read_sz == written);\n"
+          << "        }\n"
+          << "    }\n"
+          << "    fclose(fp);\n"
+          << "    diff_valve_fsm_destroy(&restored);\n"
+          << "    diff_valve_fsm_destroy(&fsm);\n"
+          << "    return 0;\n"
+          << "}\n";
+    }
+
+    const fs::path cpp_exe = temp_dir / "runner_cpp17";
+    const std::string cpp_cmd = cxx + " -std=c++17 -fno-exceptions -fno-rtti -Wall -Wextra -Werror -I\"" +
+                                temp_dir.string() + "\" \"" + (temp_dir / "driver_cpp17.cpp").string() + "\" -o \"" +
+                                cpp_exe.string() + "\"";
+    ASSERT_EQ(std::system(cpp_cmd.c_str()), 0) << "C++17 randomized differential compile failed";
+    ASSERT_EQ(std::system(("\"" + cpp_exe.string() + "\"").c_str()), 0) << "C++17 randomized runner failed";
+
+    const fs::path c_bridge_obj = temp_dir / "diff_valve_c.o";
+    const fs::path c_client_obj = temp_dir / "driver_c99.o";
+    const fs::path c99_exe = temp_dir / "runner_c99";
+
+    const std::string bridge_cmd = cxx + " -std=c++17 -fno-exceptions -fno-rtti -Wall -Wextra -Werror -I\"" +
+                                   temp_dir.string() + "\" -c \"" + (temp_dir / "diff_valve_c.cpp").string() +
+                                   "\" -o \"" + c_bridge_obj.string() + "\"";
+    ASSERT_EQ(std::system(bridge_cmd.c_str()), 0) << "C++17 C-ABI bridge compile failed";
+
+    const std::string cc_cmd = cc + " -std=c99 -Wall -Wextra -Werror -pedantic -I\"" + temp_dir.string() + "\" -c \"" +
+                               (temp_dir / "driver_c99.c").string() + "\" -o \"" + c_client_obj.string() + "\"";
+    ASSERT_EQ(std::system(cc_cmd.c_str()), 0) << "Pure C99 randomized differential compile failed";
+
+    const std::string link_cmd = cxx + " -fno-exceptions -fno-rtti \"" + c_client_obj.string() + "\" \"" +
+                                 c_bridge_obj.string() + "\" -o \"" + c99_exe.string() + "\"";
+    ASSERT_EQ(std::system(link_cmd.c_str()), 0) << "C99 randomized differential link failed";
+    ASSERT_EQ(std::system(("\"" + c99_exe.string() + "\"").c_str()), 0) << "C99 randomized runner failed";
+
+    // Compare all 200 step states across IrSimulator == C++17 == C99 ABI
+    std::ifstream cpp_in(cpp_out);
+    std::ifstream c99_in(c99_out);
+    for (std::size_t i = 0; i < kSteps; ++i) {
+        std::string cpp_st;
+        std::string c99_st;
+        ASSERT_TRUE(static_cast<bool>(cpp_in >> cpp_st)) << "Missing C++17 state at step " << i;
+        ASSERT_TRUE(static_cast<bool>(c99_in >> c99_st)) << "Missing C99 state at step " << i;
+        EXPECT_EQ(cpp_st, sim_report.steps[i].to_state) << "IrSimulator vs C++17 mismatch at step " << i;
+        EXPECT_EQ(c99_st, sim_report.steps[i].to_state) << "IrSimulator vs C99 ABI mismatch at step " << i;
+    }
+
+    std::string tag;
+    int cpp_energy = -1;
+    int cpp_cycles = -1;
+    ASSERT_TRUE(static_cast<bool>(cpp_in >> tag >> cpp_energy >> cpp_cycles));
+    EXPECT_EQ(tag, "REGS");
+    EXPECT_EQ(cpp_energy, static_cast<int>(sim_report.final_registers.at("energy")));
+    EXPECT_EQ(cpp_cycles, static_cast<int>(sim_report.final_registers.at("cycles")));
+
+    fs::remove_all(temp_dir);
+#endif
 }
 
 }  // namespace

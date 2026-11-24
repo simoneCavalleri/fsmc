@@ -46,6 +46,7 @@
 #include "fsm/frontend/diagram/diagram_contract_combiner.hpp"
 #include "fsm/frontend/directive/ltl_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/middleend/analysis/event_queue_bound_pass.hpp"
 #include "fsm/middleend/analysis/model_checker.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 #include "fsm/middleend/passes/dead_state_pruning_pass.hpp"
@@ -53,6 +54,7 @@
 #include "fsm/middleend/passes/guard_simplification_pass.hpp"
 #include "fsm/middleend/passes/orthogonal_interference_pass.hpp"
 #include "fsm/middleend/passes/submachine_inlining_pass.hpp"
+#include "fsm/middleend/passes/wcet_analysis_pass.hpp"
 #include "tools/common/file_utils.hpp"
 #include "tools/fsmc/fsmc_options.hpp"
 
@@ -679,6 +681,24 @@ class FsmcDriverImpl {
                 ManifestVerificationSummary ver_summary;
                 ver_summary.verified = true;
                 ver_summary.properties_checked = model.properties.size();
+
+                ir::FsmIr analysis_copy = model;
+                diagnostic::DiagnosticEngine sched_diag;
+                middleend::passes::WcetAnalysisPass wcet_pass;
+                wcet_pass.run(analysis_copy, sched_diag);
+                ver_summary.wcet_max_microsteps = wcet_pass.max_micro_steps();
+                ver_summary.zeno_free = !wcet_pass.has_zeno_cycle();
+
+                middleend::analysis::EventQueueBoundPass queue_pass;
+                queue_pass.run(analysis_copy, sched_diag);
+                if (auto it = analysis_copy.attributes.find("static_event_queue_capacity");
+                    it != analysis_copy.attributes.end()) {
+                    try {
+                        ver_summary.max_event_queue_bound = static_cast<std::size_t>(std::stoull(it->second));
+                    } catch (...) {
+                    }
+                }
+
                 const std::string manifest_json = ManifestEmitter::emit_json(model, manifest_artifacts, ver_summary);
                 std::string write_err;
                 if (!write_file_content(manifest_path.string(), manifest_json, write_err)) {

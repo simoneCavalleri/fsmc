@@ -440,4 +440,33 @@ TEST_F(FsmOptOptionsTest, InlineSubmachinesPass_ResolvesExternalSubmachineFiles)
     EXPECT_NE(content.find("Calibrating_Step2"), std::string::npos);
 }
 
+/**
+ * @brief Test Intent: Verify fsm-opt --dump-pipeline and --verify-ir CLI options.
+ * Scenario: Run --dump-pipeline standalone and --verify-ir --verify on a valid SysML model.
+ */
+TEST_F(FsmOptOptionsTest, DumpPipelineAndVerifyIrFlags) {
+    // 1. Standalone --dump-pipeline (no input file required)
+    {
+        char p[] = "fsm-opt";
+        char dump_arg[] = "--dump-pipeline";
+        char* argv[] = {p, dump_arg};
+        const auto opts = fsm::tools::parse_opt_args(2, argv);
+        EXPECT_TRUE(opts.dump_pipeline);
+        EXPECT_EQ(fsm::tools::OptDriver::run(opts), 0);
+    }
+
+    // 2. --verify-ir --verify on valid model
+    {
+        char p[] = "fsm-opt";
+        char i[] = "-i";
+        std::string in_str = model_file_;
+        char verify_ir[] = "--verify-ir";
+        char verify[] = "--verify";
+        char* argv[] = {p, i, in_str.data(), verify_ir, verify};
+        const auto opts = fsm::tools::parse_opt_args(5, argv);
+        EXPECT_TRUE(opts.verify_ir);
+        EXPECT_EQ(fsm::tools::OptDriver::run(opts), 0);
+    }
+}
+
 }  // namespace

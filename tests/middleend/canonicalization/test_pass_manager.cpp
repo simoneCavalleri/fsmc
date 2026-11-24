@@ -350,4 +350,50 @@ TEST(PassManager, PropertyBased_IdempotencyDeterminismAndWellFormedness) {
     }
 }
 
+/**
+ * @brief Verify PassManager::dump_pipeline() introspection and set_verify_ir_each_pass() invariant enforcement.
+ * @scenario Dump default pipeline and run a mock pass that introduces a dangling transition under verify_ir_each_pass.
+ * @expected dump_pipeline lists passes/prerequisites/invalidations; verify_ir_each_pass catches corruption with
+ *           E_IR_VERIFY.
+ */
+TEST(PassManager, DumpPipelineAndVerifyIrEachPass) {
+    class CorruptingPass final : public IPass {
+      public:
+        [[nodiscard]] std::string name() const override { return "CorruptingMockPass"; }
+        [[nodiscard]] std::string description() const override { return "Intentionally corrupts IR for testing"; }
+        bool run(FsmIr& ir, DiagnosticEngine& /*diag*/) override {
+            ir.transitions.emplace_back("Idle", "NonExistentState", "EvBroken");
+            return true;
+        }
+    };
+
+    auto pm = PassManager::create_default_pipeline();
+    const std::string dump = pm.dump_pipeline();
+    EXPECT_NE(dump.find("PassManager Pipeline Introspection"), std::string::npos);
+    EXPECT_NE(dump.find("HierarchyCanonicalization"), std::string::npos);
+    EXPECT_NE(dump.find("requires"), std::string::npos);
+    EXPECT_NE(dump.find("invalidates"), std::string::npos);
+
+    PassManager bad_pm;
+    bad_pm.set_verify_ir_each_pass(true);
+    bad_pm.add_pass(std::make_unique<CorruptingPass>());
+
+    FsmIr ir;
+    ir.name = "VerifyIrTarget";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+
+    DiagnosticEngine diag;
+    EXPECT_FALSE(bad_pm.run(ir, diag));
+    ASSERT_TRUE(diag.has_errors());
+    bool found_verify_code = false;
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "E_IR_VERIFY") {
+            found_verify_code = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_verify_code);
+}
+
 }  // namespace

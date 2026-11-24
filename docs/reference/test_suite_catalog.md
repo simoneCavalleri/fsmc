@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 87  
-**Total Documented Test Cases**: 770  
+**Total Documented Test Cases**: 772  
 
 ---
 
@@ -124,7 +124,7 @@
 | :--- | :--- | :---: | :--- |
 | [`test_inlining_passes.cpp`](../../tests/middleend/canonicalization/test_inlining_passes.cpp) | `tests/middleend/canonicalization/test_inlining_passes.cpp` | 8 | Unit tests for submachine and choice pseudo-state inlining canonicalization passes. |
 | [`test_orthogonal_product.cpp`](../../tests/middleend/canonicalization/test_orthogonal_product.cpp) | `tests/middleend/canonicalization/test_orthogonal_product.cpp` | 16 | Unit tests for OrthogonalProductPass Cartesian product canonicalization. |
-| [`test_pass_manager.cpp`](../../tests/middleend/canonicalization/test_pass_manager.cpp) | `tests/middleend/canonicalization/test_pass_manager.cpp` | 8 | Unit tests for PassManager execution pipeline, pass chaining, and statistical profiling. |
+| [`test_pass_manager.cpp`](../../tests/middleend/canonicalization/test_pass_manager.cpp) | `tests/middleend/canonicalization/test_pass_manager.cpp` | 9 | Unit tests for PassManager execution pipeline, pass chaining, and statistical profiling. |
 | [`test_structural_lowering.cpp`](../../tests/middleend/canonicalization/test_structural_lowering.cpp) | `tests/middleend/canonicalization/test_structural_lowering.cpp` | 22 | Unit tests for Category A Structural Lowering Suite: HistoryLoweringPass, DeferredEventLoweringPass, BoundaryActionFusionPass, ForkJoinLoweringPass. |
 | [`test_common_action_factoring.cpp`](../../tests/middleend/optimization/test_common_action_factoring.cpp) | `tests/middleend/optimization/test_common_action_factoring.cpp` | 6 | Unit tests for CommonActionFactoringPass redundant action hoist and sink optimizations. |
 | [`test_constant_folding_and_minimization.cpp`](../../tests/middleend/optimization/test_constant_folding_and_minimization.cpp) | `tests/middleend/optimization/test_constant_folding_and_minimization.cpp` | 8 | Unit tests for ConstantFoldingPass guard evaluation and StateMinimizationPass equivalence partitioning. |
@@ -151,7 +151,7 @@
 | [`test_cli_driver_errors.cpp`](../../tests/integration/test_cli_driver_errors.cpp) | `tests/integration/test_cli_driver_errors.cpp` | 14 | Comprehensive regression tests for controlled fsmc and fsm-opt driver failure contracts. |
 | [`test_cmake_integration.cpp`](../../tests/integration/test_cmake_integration.cpp) | `tests/integration/test_cmake_integration.cpp` | 0 | Integration test verifying the `fsm_target_sources` CMake build-system macro. |
 | [`test_differential_semantics.cpp`](../../tests/integration/test_differential_semantics.cpp) | `tests/integration/test_differential_semantics.cpp` | 3 | Differential verification suite comparing IrSimulator (reference oracle) against generated C++17 and C++20 FSMs. |
-| [`test_fsm_opt_cli_options.cpp`](../../tests/integration/test_fsm_opt_cli_options.cpp) | `tests/integration/test_fsm_opt_cli_options.cpp` | 12 | Comprehensive verification suite for all fsm-opt command-line options. |
+| [`test_fsm_opt_cli_options.cpp`](../../tests/integration/test_fsm_opt_cli_options.cpp) | `tests/integration/test_fsm_opt_cli_options.cpp` | 13 | Comprehensive verification suite for all fsm-opt command-line options. |
 | [`test_fsmc_cli_options.cpp`](../../tests/integration/test_fsmc_cli_options.cpp) | `tests/integration/test_fsmc_cli_options.cpp` | 25 | Comprehensive verification suite for all fsmc command-line options. |
 | [`test_golden_ir_invariance.cpp`](../../tests/integration/test_golden_ir_invariance.cpp) | `tests/integration/test_golden_ir_invariance.cpp` | 9 | Golden IR cross-format roundtrip and middle-end pass invariance test suite. |
 | [`test_multiformat_presets_roundtrip.cpp`](../../tests/integration/test_multiformat_presets_roundtrip.cpp) | `tests/integration/test_multiformat_presets_roundtrip.cpp` | 6 | Formal Verification and End-to-End Roundtrip Suite for Canonical Multi-Format Presets. |

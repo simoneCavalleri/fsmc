@@ -22,6 +22,8 @@ struct OptOptions {
     std::string diagnostic_format = "text";
     bool profile = false;
     bool verify_only = false;
+    bool verify_ir = false;
+    bool dump_pipeline = false;
     bool show_metrics = false;
     bool prune_dead = false;
     bool print_before_all = false;
@@ -51,6 +53,8 @@ inline void print_opt_help(const char* prog_name) {
         << "IR Optimization & Pass Pipeline:\n"
         << "  --passes=<p1,p2,...>      Execute customized comma-separated pass pipeline\n"
         << "  --list-passes             List all available Middle-End passes and exit\n"
+        << "  --dump-pipeline           Print scheduled pass pipeline DAG, prerequisites, and invalidations\n"
+        << "  --verify-ir               Verify FsmGraphOps::is_well_formed(ir) after every pass\n"
         << "  --prune-dead              Enable dead state and dead transition pruning pass\n"
         << "  --print-before-all        Print IR JSON before running passes\n"
         << "  --print-after-all         Print IR JSON after running passes\n"
@@ -164,6 +168,10 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
             opts.emit_explicit = true;
         } else if (arg == "--profile") {
             opts.profile = true;
+        } else if (arg == "--dump-pipeline") {
+            opts.dump_pipeline = true;
+        } else if (arg == "--verify-ir") {
+            opts.verify_ir = true;
         } else if (arg == "--verify" || arg == "--check") {
             opts.verify_only = true;
         } else if (!arg.starts_with("-") || arg == "-") {

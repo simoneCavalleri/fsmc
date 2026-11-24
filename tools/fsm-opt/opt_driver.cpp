@@ -60,6 +60,16 @@ class OptDriverImpl {
             return 1;
         }
 
+        if (opts.dump_pipeline && opts.input_path.empty()) {
+            DiagnosticEngine dump_diag;
+            PassManager pm = build_pipeline(opts, dump_diag);
+            if (!dump_diag.get_diagnostics().empty()) {
+                std::cerr << dump_diag.render_to_string();
+            }
+            std::cout << pm.dump_pipeline();
+            return 0;
+        }
+
         if (!opts.input_path.empty() && !is_stdin_path(opts.input_path) && !is_valid_path_string(opts.input_path)) {
             std::cerr << "Error: Illegal character in input path: " << opts.input_path << "\n";
             return 1;
@@ -119,21 +129,8 @@ class OptDriverImpl {
 
         // Build Pass Pipeline and Diagnostic Engine
         DiagnosticEngine diag;
-        PassManager pm;
-        if (!opts.custom_passes.empty()) {
-            auto pass_names = split_string(opts.custom_passes, ',');
-            auto submachine_resolver = create_filesystem_submachine_resolver(opts.input_path, opts.submachine_dir);
-            for (const auto& p_name : pass_names) {
-                if (auto pass = PassManager::create_pass_by_name(p_name, opts.pipe_through_cmd, submachine_resolver)) {
-                    pm.add_pass(std::move(pass));
-                } else {
-                    diag.report(Diagnostic::warning("W0201", "Unrecognized pass name: '" + p_name + "'. Skipping.",
-                                                    SourceSpan{opts.input_path, 1, 1, 1}));
-                }
-            }
-        } else {
-            pm = PassManager::create_optimizing_pipeline(opts.prune_dead);
-        }
+        PassManager pm = build_pipeline(opts, diag);
+        pm.set_verify_ir_each_pass(opts.verify_ir);
 
         DiagnosticFormat diag_fmt = parse_diagnostic_format(opts.diagnostic_format);
 
@@ -146,6 +143,10 @@ class OptDriverImpl {
         }
         if (!opts.pipe_through_cmd.empty() && opts.custom_passes.empty()) {
             pm.add_pass(PassManager::create_pass_by_name("pipe-through", opts.pipe_through_cmd));
+        }
+
+        if (opts.dump_pipeline) {
+            dump_stream << pm.dump_pipeline();
         }
 
         if (!pm.run(ir, diag)) {
@@ -225,6 +226,25 @@ class OptDriverImpl {
     }
 
   private:
+    static PassManager build_pipeline(const OptOptions& opts, DiagnosticEngine& diag) {
+        PassManager pm;
+        if (!opts.custom_passes.empty()) {
+            auto pass_names = split_string(opts.custom_passes, ',');
+            auto submachine_resolver = create_filesystem_submachine_resolver(opts.input_path, opts.submachine_dir);
+            for (const auto& p_name : pass_names) {
+                if (auto pass = PassManager::create_pass_by_name(p_name, opts.pipe_through_cmd, submachine_resolver)) {
+                    pm.add_pass(std::move(pass));
+                } else {
+                    diag.report(Diagnostic::warning("W0201", "Unrecognized pass name: '" + p_name + "'. Skipping.",
+                                                    SourceSpan{opts.input_path, 1, 1, 1}));
+                }
+            }
+        } else {
+            pm = PassManager::create_optimizing_pipeline(opts.prune_dead);
+        }
+        return pm;
+    }
+
     static std::vector<std::string> split_string(std::string_view s, char delimiter) {
         std::vector<std::string> tokens;
         std::string token;

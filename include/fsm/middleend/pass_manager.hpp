@@ -106,6 +106,10 @@ class PassManager {
     bool load_plugin(const std::string& plugin_path, diagnostic::DiagnosticEngine& diag);
     bool run(ir::FsmIr& ir, diagnostic::DiagnosticEngine& diag);
 
+    void set_verify_ir_each_pass(bool enabled) noexcept { verify_ir_each_pass_ = enabled; }
+    [[nodiscard]] bool verify_ir_each_pass() const noexcept { return verify_ir_each_pass_; }
+    [[nodiscard]] std::string dump_pipeline() const;
+
     [[nodiscard]] const std::vector<PassExecutionStats>& get_stats() const noexcept;
 
     [[nodiscard]] AnalysisManager& analysis_manager() noexcept { return analysis_manager_; }
@@ -122,6 +126,7 @@ class PassManager {
     std::vector<std::unique_ptr<IPass>> passes_;
     std::vector<PassExecutionStats> stats_;
     AnalysisManager analysis_manager_;
+    bool verify_ir_each_pass_{false};
 };
 
 }  // namespace fsm::middleend

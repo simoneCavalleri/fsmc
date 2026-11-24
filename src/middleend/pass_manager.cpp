@@ -5,9 +5,11 @@
 #include <chrono>
 #include <queue>
 #include <set>
+#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 
+#include "fsm/ir/fsm_graph_ops.hpp"
 #include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
 #include "fsm/middleend/analysis/event_queue_bound_pass.hpp"
 #include "fsm/middleend/analysis/guard_satisfiability_pass.hpp"
@@ -719,6 +721,16 @@ bool PassManager::run(FsmIr& ir, DiagnosticEngine& diag) {
             return false;
         }
 
+        if (verify_ir_each_pass_) {
+            std::string wf_error;
+            if (!ir::FsmGraphOps::is_well_formed(ir, wf_error)) {
+                diag.report(diagnostic::Diagnostic::error(
+                    "E_IR_VERIFY",
+                    "IR well-formedness invariant violated after pass '" + pass->name() + "': " + wf_error));
+                return false;
+            }
+        }
+
         executed_passes.insert(pass->name());
         const auto invalidated = pass->invalidated_analyses();
         for (const auto& inv : invalidated) {
@@ -735,6 +747,44 @@ bool PassManager::run(FsmIr& ir, DiagnosticEngine& diag) {
 
 const std::vector<PassExecutionStats>& PassManager::get_stats() const noexcept {
     return stats_;
+}
+
+std::string PassManager::dump_pipeline() const {
+    std::ostringstream out;
+    out << "============================================================================\n"
+        << " PassManager Pipeline Introspection (" << passes_.size() << " passes)\n"
+        << "============================================================================\n";
+    for (std::size_t i = 0; i < passes_.size(); ++i) {
+        const auto& p = passes_[i];
+        out << " [" << (i + 1) << "] " << p->name() << " ("
+            << (p->preserves_ir() ? "analysis/preserves-IR" : "transform/mutates-IR") << ")\n";
+        const auto prereqs = p->required_prerequisites();
+        out << "     requires    : ";
+        if (prereqs.empty()) {
+            out << "(none)";
+        } else {
+            for (std::size_t j = 0; j < prereqs.size(); ++j) {
+                if (j > 0)
+                    out << ", ";
+                out << prereqs[j];
+            }
+        }
+        out << "\n";
+        const auto inv = p->invalidated_analyses();
+        out << "     invalidates : ";
+        if (inv.empty()) {
+            out << (p->preserves_ir() ? "(none)" : "(all cached analyses)");
+        } else {
+            for (std::size_t j = 0; j < inv.size(); ++j) {
+                if (j > 0)
+                    out << ", ";
+                out << inv[j];
+            }
+        }
+        out << "\n";
+    }
+    out << "============================================================================\n";
+    return out.str();
 }
 
 PassManager PassManager::create_validation_pipeline() {

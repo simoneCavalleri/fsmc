@@ -653,6 +653,35 @@ PassManager PassManager::create_verified_7stage_pipeline(bool optimize) {
     return pm;
 }
 
+void PassManager::add_lowering_passes_for(const ir::TargetCapabilities& caps) {
+    if (!caps.supports_fork_join) {
+        add_pass(std::make_unique<ForkJoinLoweringPass>());
+    }
+    if (!caps.supports_history) {
+        add_pass(std::make_unique<HistoryLoweringPass>());
+    }
+    if (!caps.supports_orthogonal) {
+        add_pass(std::make_unique<OrthogonalProductPass>());
+    }
+    if (!caps.supports_deferred) {
+        add_pass(std::make_unique<DeferredEventLoweringPass>());
+    }
+    if (!caps.supports_choice) {
+        add_pass(std::make_unique<ConnectiveJunctionChainingPass>());
+        add_pass(std::make_unique<ChoiceInliningPass>());
+    }
+    if (!caps.supports_sampled_triggers) {
+        add_pass(std::make_unique<SampledChangeTriggerPass>());
+    }
+}
+
+PassManager PassManager::create_lowering_pipeline(const ir::TargetCapabilities& caps) {
+    PassManager pm;
+    pm.add_pass(std::make_unique<HierarchyCanonicalizationPass>());
+    pm.add_lowering_passes_for(caps);
+    return pm;
+}
+
 void PassManager::add_pass(std::unique_ptr<IPass> pass) {
     passes_.push_back(std::move(pass));
 }

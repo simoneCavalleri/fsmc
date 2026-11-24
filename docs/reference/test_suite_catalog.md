@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 86  
-**Total Documented Test Cases**: 766  
+**Total Documented Test Cases**: 767  
 
 ---
 
@@ -56,7 +56,7 @@
 
 | Suite File | Source Path | Test Cases | Scope Summary |
 | :--- | :--- | :---: | :--- |
-| [`test_emitter_factory.cpp`](../../tests/backend/common/test_emitter_factory.cpp) | `tests/backend/common/test_emitter_factory.cpp` | 3 | Unit test suite for the multi-format emitter factory. |
+| [`test_emitter_factory.cpp`](../../tests/backend/common/test_emitter_factory.cpp) | `tests/backend/common/test_emitter_factory.cpp` | 4 | Unit test suite for the multi-format emitter factory. |
 
 ## MC/DC Verification & Harness Subsystem
 

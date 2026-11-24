@@ -14,6 +14,7 @@
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/ir/target_capabilities.hpp"
 #include "fsm/middleend/analysis_manager.hpp"
 #include "fsm/middleend/pass_interface.hpp"
 #include "fsm/middleend/plugin/plugin_loader.hpp"
@@ -95,7 +96,9 @@ class PassManager {
                                                                 bool minimize_states = false);
     [[nodiscard]] static PassManager create_verified_7stage_pipeline(bool optimize = true);
     [[nodiscard]] static PassManager create_validation_pipeline();
+    [[nodiscard]] static PassManager create_lowering_pipeline(const ir::TargetCapabilities& caps);
 
+    void add_lowering_passes_for(const ir::TargetCapabilities& caps);
     void add_pass(std::unique_ptr<IPass> pass);
     [[nodiscard]] std::size_t pass_count() const noexcept;
     void truncate_passes(std::size_t count) noexcept;

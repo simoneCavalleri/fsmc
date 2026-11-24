@@ -1612,4 +1612,76 @@ package StandardV2Pkg {
     EXPECT_EQ(std::get<TimeTrigger>(t_to.trigger).duration_in_ms(), 150u);
 }
 
+/**
+ * @brief Verify Sysml2Serializer emits standard OMG SysML v2.0 (import ScalarValues::*, calc def, item def, in/out,
+ * attribute :=, assign :=, accept after N [ms]) and round-trips cleanly through Sysml2Parser.
+ * @scenario Serialize an FsmIr with a pure service, directional ports, register, assignment, and time trigger to SysML
+ * v2.0 text and parse it back.
+ * @expected Output contains standard OMG SysML v2.0 tokens and re-parsed IR preserves service, ports, variable, and
+ * timer.
+ */
+TEST(Sysml2ParserTest, Sysml2Serializer_RoundtripsStandardOmgSysmlV2CalcDefAndSyntax) {
+    FsmIr orig;
+    orig.name = "ThermalLoop";
+    orig.package = "ThermalPkg";
+    orig.initial_state = "Idle";
+    orig.add_state("Idle");
+    orig.add_state("Active");
+
+    PortDefinition p_in("temp_c", DataType::int32(), PortDirection::In);
+    PortDefinition p_out("pwm_duty", DataType::uint32(), PortDirection::Out);
+    orig.add_port(p_in);
+    orig.add_port(p_out);
+    orig.add_variable(VariableDefinition("ticks", DataType::uint32(), "0"));
+
+    ServiceMethodSignature svc;
+    svc.name = "compute_pwm";
+    svc.return_type = DataType::uint32();
+    svc.is_pure = true;
+    svc.parameters.push_back(ServiceParameter{"temp", DataType::int32()});
+    orig.add_service(svc);
+
+    SignalDefinition sig("EvStart");
+    orig.add_signal(sig);
+
+    TransitionEdge t1("Idle", "Active", "EvStart");
+    ActionSignature act("InitTicks");
+    ActionAssignment assign_ticks;
+    assign_ticks.target = LValueTarget("ticks");
+    assign_ticks.op = AssignmentOp::Assign;
+    assign_ticks.expression = "1";
+    act.assignments.push_back(std::move(assign_ticks));
+    t1.transition_action = act;
+    orig.add_transition(t1);
+
+    TransitionEdge t2("Active", "Idle", "");
+    t2.trigger = TimeTrigger(TimeTriggerKind::After, 200, TimeUnit::Milliseconds);
+    orig.add_transition(t2);
+
+    const std::string text = fsm::backend::formal::Sysml2Serializer::serialize(orig);
+    EXPECT_NE(text.find("import ScalarValues::*;"), std::string::npos) << text;
+    EXPECT_NE(text.find("calc def compute_pwm"), std::string::npos) << text;
+    EXPECT_NE(text.find("item def EvStart;"), std::string::npos) << text;
+    EXPECT_NE(text.find("in temp_c :"), std::string::npos) << text;
+    EXPECT_NE(text.find("out pwm_duty :"), std::string::npos) << text;
+    EXPECT_NE(text.find("attribute ticks :"), std::string::npos) << text;
+    EXPECT_NE(text.find("assign ticks := 1;"), std::string::npos) << text;
+    EXPECT_NE(text.find("accept after 200 [ms]"), std::string::npos) << text;
+
+    Sysml2Parser parser;
+    FsmIr reparsed;
+    fsm::diagnostic::DiagnosticEngine diag;
+    ASSERT_TRUE(parser.parse(text, reparsed, diag)) << diag.render_to_string();
+
+    ASSERT_EQ(reparsed.services.size(), 1u);
+    EXPECT_EQ(reparsed.services[0].name, "compute_pwm");
+    EXPECT_TRUE(reparsed.services[0].is_pure);
+    ASSERT_EQ(reparsed.ports.size(), 2u);
+    ASSERT_EQ(reparsed.variables.size(), 1u);
+    EXPECT_EQ(reparsed.variables[0].name, "ticks");
+    ASSERT_EQ(reparsed.transitions.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(reparsed.transitions[1].trigger));
+    EXPECT_EQ(std::get<TimeTrigger>(reparsed.transitions[1].trigger).duration_in_ms(), 200u);
+}
+
 }  // namespace

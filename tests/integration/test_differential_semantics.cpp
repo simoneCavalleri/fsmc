@@ -115,7 +115,7 @@ TEST(DifferentialSemantics, EfsmGuardsActionsAndRegisters_MatchCpp17AndCpp20) {
                << "    sm.dispatch(Tick{});\n"
                << "    const char* st = sm.is_in<Maintenance>() ? \"Maintenance\" : (sm.is_in<Running>() ? \"Running\" "
                   ": \"Idle\");\n"
-               << "    std::FILE* f = std::fopen(\"" << out_file.string() << "\", \"w\");\n"
+               << "    std::FILE* f = std::fopen(\"" << out_file.generic_string() << "\", \"w\");\n"
                << "    if (!f) return 1;\n"
                << "    std::fprintf(f, \"%s %d %d\\n\", st, sm.registers().ticks, sm.registers().cycles);\n"
                << "    std::fclose(f);\n"

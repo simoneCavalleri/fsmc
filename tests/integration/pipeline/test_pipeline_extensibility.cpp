@@ -170,8 +170,13 @@ TEST(PluginLoader, ValidationErrorsExceptionsAndValidPlugin_HandledCorrectly) {
 #else
         const std::string cxx = "g++";
 #endif
-        const std::string cmd = "\"" + cxx + "\" -std=c++20 -shared -fPIC -I\"" + include_dir.string() + "\" \"" +
-                                src.string() + "\" -o \"" + so.string() + "\"";
+#if defined(__APPLE__)
+        const std::string platform_flags = " -undefined dynamic_lookup";
+#else
+        const std::string platform_flags;
+#endif
+        const std::string cmd = "\"" + cxx + "\" -std=c++20 -shared -fPIC" + platform_flags + " -I\"" +
+                                include_dir.string() + "\" \"" + src.string() + "\" -o \"" + so.string() + "\"";
         if (std::system(cmd.c_str()) != 0) {
             return {};
         }

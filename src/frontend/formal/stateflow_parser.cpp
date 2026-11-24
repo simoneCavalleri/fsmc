@@ -232,6 +232,95 @@ bool extract_stateflow_from_slx(std::string_view zip_content, std::string& extra
     return false;
 }
 
+static std::string decode_sf_newlines(std::string s) {
+    // Handle numeric newline entities &#10; / &#x0A; if not already decoded by SimpleXmlParser
+    size_t pos = 0;
+    while ((pos = s.find("&#10;", pos)) != std::string::npos) {
+        s.replace(pos, 5, "\n");
+        ++pos;
+    }
+    pos = 0;
+    while ((pos = s.find("&#xA;", pos)) != std::string::npos) {
+        s.replace(pos, 5, "\n");
+        ++pos;
+    }
+    return s;
+}
+
+static std::string get_sf_prop(const std::shared_ptr<XmlNode>& node, const std::string& prop_name) {
+    if (!node) {
+        return {};
+    }
+    std::string attr = node->get_attr(prop_name);
+    if (!attr.empty()) {
+        return decode_sf_newlines(std::move(attr));
+    }
+    for (const auto& child : node->children) {
+        if (child->tag == "P" && child->get_attr("Name") == prop_name) {
+            return decode_sf_newlines(child->text_content);
+        }
+    }
+    return {};
+}
+
+static std::string extract_state_name_from_label(std::string_view label) {
+    std::istringstream iss{std::string(label)};
+    std::string first_line;
+    while (std::getline(iss, first_line)) {
+        // Trim whitespace
+        size_t start = first_line.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos) {
+            continue;
+        }
+        size_t end = first_line.find_last_not_of(" \t\r\n");
+        std::string trimmed = first_line.substr(start, end - start + 1);
+        if (trimmed.rfind("entry:", 0) == 0 || trimmed.rfind("en:", 0) == 0 || trimmed.rfind("during:", 0) == 0 ||
+            trimmed.rfind("du:", 0) == 0 || trimmed.rfind("exit:", 0) == 0 || trimmed.rfind("ex:", 0) == 0) {
+            return {};
+        }
+        // State name may be followed by '/' on the same line (e.g. "Idle / entry: x = 0")
+        size_t slash = trimmed.find('/');
+        if (slash != std::string::npos) {
+            trimmed = trimmed.substr(0, slash);
+            size_t e2 = trimmed.find_last_not_of(" \t");
+            trimmed = (e2 == std::string::npos) ? "" : trimmed.substr(0, e2 + 1);
+        }
+        return trimmed;
+    }
+    return {};
+}
+
+static std::string map_sf_datatype(std::string_view sf_type) {
+    if (sf_type == "double") {
+        return "double";
+    }
+    if (sf_type == "single" || sf_type == "float") {
+        return "float";
+    }
+    if (sf_type == "boolean" || sf_type == "bool") {
+        return "bool";
+    }
+    if (sf_type == "int8") {
+        return "int8_t";
+    }
+    if (sf_type == "uint8") {
+        return "uint8_t";
+    }
+    if (sf_type == "int16") {
+        return "int16_t";
+    }
+    if (sf_type == "uint16") {
+        return "uint16_t";
+    }
+    if (sf_type == "int32" || sf_type == "int") {
+        return "int32_t";
+    }
+    if (sf_type == "uint32") {
+        return "uint32_t";
+    }
+    return sf_type.empty() ? "int32_t" : std::string(sf_type);
+}
+
 }  // namespace
 
 bool StateflowParser::parse(std::string_view content, FsmIr& out_ir, diagnostic::DiagnosticEngine& diag) {
@@ -278,21 +367,21 @@ bool StateflowParser::parse_impl(std::string_view content, FsmIr& model, std::st
         return false;
     }
 
-    std::string chart_name = chart_node->get_attr("name");
+    std::string chart_name = get_sf_prop(chart_node, "name");
     if (!chart_name.empty()) {
         model.name = sanitize_identifier(chart_name);
     } else {
         model.name = "StateflowChart";
     }
 
-    std::string chart_initial = chart_node->get_attr("initial");
+    std::string chart_initial = get_sf_prop(chart_node, "initial");
     if (!chart_initial.empty()) {
         model.initial_state = sanitize_identifier(chart_initial);
     }
 
     // Parse @fsm directives from XML comments
     {
-        std::string raw_str{content};
+        std::string raw_str{xml_view};
         static const std::regex comment_re(R"(<!--\s*@fsm:([^\r\n]+?)\s*-->)");
         auto begin = std::sregex_iterator(raw_str.begin(), raw_str.end(), comment_re);
         auto end = std::sregex_iterator();
@@ -302,6 +391,10 @@ bool StateflowParser::parse_impl(std::string_view content, FsmIr& model, std::st
             directive::DirectiveParser::parse_model_directive(body, model);
         }
     }
+
+    // Pre-pass: index all SSID -> state/junction names so transitions using <src><P Name="SSID"> resolve cleanly
+    ssid_to_name_.clear();
+    collect_ssids(chart_node);
 
     // Parse Stateflow elements
     parse_chart_elements(chart_node, model, "");
@@ -357,12 +450,69 @@ std::shared_ptr<XmlNode> StateflowParser::find_element_recursive(const std::shar
 
 static ActionSignature build_stateflow_action(std::string_view raw_action, const std::string& fallback_prefix);
 
+void StateflowParser::collect_ssids(const std::shared_ptr<XmlNode>& node) {
+    if (!node) {
+        return;
+    }
+    for (const auto& child : node->children) {
+        if (child->tag == "Children") {
+            collect_ssids(child);
+            continue;
+        }
+        if (child->tag == "state" || child->tag == "State") {
+            std::string ssid = child->get_attr("SSID");
+            if (ssid.empty()) {
+                ssid = child->get_attr("id");
+            }
+            std::string st_name = get_sf_prop(child, "name");
+            if (st_name.empty()) {
+                st_name = extract_state_name_from_label(get_sf_prop(child, "labelString"));
+            }
+            if (st_name.empty() && !ssid.empty()) {
+                st_name = "State_" + ssid;
+            }
+            if (!ssid.empty() && !st_name.empty()) {
+                ssid_to_name_[ssid] = sanitize_identifier(st_name);
+            }
+            collect_ssids(child);
+        } else if (child->tag == "junction" || child->tag == "Junction") {
+            std::string jtype = get_sf_prop(child, "type");
+            if (jtype == "HISTORY" || jtype == "history" || jtype == "HISTORY_JUNCTION" || jtype == "HISTORY_DEEP" ||
+                jtype == "deep_history") {
+                continue;
+            }
+            std::string jid = child->get_attr("SSID");
+            if (jid.empty()) {
+                jid = child->get_attr("id");
+            }
+            std::string jname = get_sf_prop(child, "name");
+            if (jname.empty() && !jid.empty()) {
+                jname = "Junction_" + jid;
+            }
+            if (!jid.empty() && !jname.empty()) {
+                ssid_to_name_[jid] = sanitize_identifier(jname);
+            }
+        }
+    }
+}
+
 void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node, FsmIr& model,
                                            const std::string& parent_state) {
     for (const auto& child : node->children) {
+        if (child->tag == "Children") {
+            parse_chart_elements(child, model, parent_state);
+            continue;
+        }
         if (child->tag == "state" || child->tag == "State") {
-            std::string st_name = child->get_attr("name");
+            std::string state_label = get_sf_prop(child, "labelString");
+            if (state_label.empty()) {
+                state_label = get_sf_prop(child, "label");
+            }
+            std::string st_name = get_sf_prop(child, "name");
             std::string ssid = child->get_attr("SSID");
+            if (st_name.empty() && !state_label.empty()) {
+                st_name = extract_state_name_from_label(state_label);
+            }
             if (st_name.empty()) {
                 st_name = child->get_attr("id");
             }
@@ -376,16 +526,16 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
             st_name = sanitize_identifier(st_name);
             model.add_state(st_name, parent_state);
 
-            // Check for Stateflow decomposition (parallel/AND vs exclusive/OR)
-            std::string decomp = child->get_attr("decomposition");
-            if (decomp == "PARALLEL_AND" || decomp == "AND") {
+            // Check for Stateflow decomposition (parallel/AND: SET_STATE / PARALLEL_AND / AND)
+            std::string decomp = get_sf_prop(child, "decomposition");
+            if (decomp == "PARALLEL_AND" || decomp == "AND" || decomp == "SET_STATE") {
                 if (auto* s = model.find_state_mut(st_name)) {
                     s->kind = StateKind::Parallel;
                 }
             }
 
             auto* s = model.find_state_mut(st_name);
-            std::string initial_sub = child->get_attr("initial");
+            std::string initial_sub = get_sf_prop(child, "initial");
             if (s != nullptr && !initial_sub.empty()) {
                 s->initial_sub_state = sanitize_identifier(initial_sub);
             }
@@ -409,7 +559,7 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
             if (exit_act.empty())
                 exit_act = child->get_attr("on_exit");
 
-            std::string defer_attr = child->get_attr("defer");
+            std::string defer_attr = get_sf_prop(child, "defer");
             if (!defer_attr.empty() && s != nullptr) {
                 std::istringstream dss(defer_attr);
                 std::string dev;
@@ -421,7 +571,7 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
                     }
                 }
             }
-            std::string req_attr = child->get_attr("satisfies");
+            std::string req_attr = get_sf_prop(child, "satisfies");
             if (!req_attr.empty() && s != nullptr) {
                 std::istringstream rss(req_attr);
                 std::string req_item;
@@ -433,15 +583,12 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
                     }
                 }
             }
-            std::string inv_attr = child->get_attr("invariant");
+            std::string inv_attr = get_sf_prop(child, "invariant");
             if (!inv_attr.empty() && s != nullptr) {
                 s->time_invariant = inv_attr;
             }
 
             // Parse state labelString (e.g. StateName\nentry: ...\nduring: ...\nexit: ...)
-            std::string state_label = child->get_attr("labelString");
-            if (state_label.empty())
-                state_label = child->get_attr("label");
             if (!state_label.empty()) {
                 std::istringstream stream(state_label);
                 std::string line;
@@ -539,12 +686,12 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
                 }
             }
         } else if (child->tag == "junction" || child->tag == "Junction") {
-            std::string jtype = child->get_attr("type");
+            std::string jtype = get_sf_prop(child, "type");
             std::string jid = child->get_attr("SSID");
             if (jid.empty()) {
                 jid = child->get_attr("id");
             }
-            if (jtype == "HISTORY" || jtype == "history") {
+            if (jtype == "HISTORY" || jtype == "history" || jtype == "HISTORY_JUNCTION") {
                 if (auto* s = model.find_state_mut(parent_state)) {
                     s->has_history = true;
                     s->has_deep_history = false;
@@ -555,9 +702,32 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
                     s->has_deep_history = true;
                 }
             } else {
-                std::string jname =
-                    sanitize_identifier("Junction_" + (jid.empty() ? std::to_string(model.states.size() + 1) : jid));
+                std::string jname = get_sf_prop(child, "name");
+                if (jname.empty()) {
+                    jname = "Junction_" + (jid.empty() ? std::to_string(model.states.size() + 1) : jid);
+                }
+                jname = sanitize_identifier(jname);
                 model.add_state(jname, parent_state, StateKind::Junction);
+            }
+        } else if (child->tag == "data" || child->tag == "Data") {
+            std::string d_name = get_sf_prop(child, "name");
+            if (!d_name.empty()) {
+                d_name = sanitize_identifier(d_name);
+                std::string scope = get_sf_prop(child, "scope");
+                std::string d_type = map_sf_datatype(get_sf_prop(child, "dataType"));
+                if (scope == "INPUT_DATA" || scope == "OUTPUT_DATA") {
+                    if (model.find_port(d_name) == nullptr) {
+                        PortDefinition p;
+                        p.name = d_name;
+                        p.type = d_type;
+                        p.direction = (scope == "OUTPUT_DATA") ? PortDirection::Out : PortDirection::In;
+                        model.add_port(std::move(p));
+                    }
+                } else if (scope == "LOCAL_DATA" || scope.empty()) {
+                    if (model.find_variable(d_name) == nullptr) {
+                        model.add_variable(VariableDefinition(d_name, d_type, ""));
+                    }
+                }
             }
         } else if (child->tag == "transition" || child->tag == "Transition") {
             parse_stateflow_transition(child, model, parent_state);
@@ -776,8 +946,22 @@ static ActionSignature build_stateflow_action(std::string_view raw_action, const
 
 void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>& trans_node, FsmIr& model,
                                                  const std::string& scope) {
-    std::string src = trans_node->get_attr("src");
-    std::string dst = trans_node->get_attr("dst");
+    auto resolve_endpoint = [&](const std::string& tag_name) -> std::string {
+        std::string direct = trans_node->get_attr(tag_name);
+        if (!direct.empty()) {
+            return direct;
+        }
+        if (auto ep = trans_node->find_first_child(tag_name)) {
+            std::string ssid = get_sf_prop(ep, "SSID");
+            if (!ssid.empty()) {
+                auto it = ssid_to_name_.find(ssid);
+                return (it != ssid_to_name_.end()) ? it->second : ("State_" + ssid);
+            }
+        }
+        return {};
+    };
+    std::string src = resolve_endpoint("src");
+    std::string dst = resolve_endpoint("dst");
     if (src.empty() && !dst.empty()) {
         if (scope.empty() && model.initial_state.empty()) {
             model.initial_state = sanitize_identifier(dst);
@@ -791,9 +975,9 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
         return;
     }
 
-    std::string label = trans_node->get_attr("labelString");
+    std::string label = get_sf_prop(trans_node, "labelString");
     if (label.empty()) {
-        label = trans_node->get_attr("label");
+        label = get_sf_prop(trans_node, "label");
     }
 
     auto strip_matlab_comments = [](std::string_view input) -> std::string {
@@ -845,9 +1029,9 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
     TransitionEdge trans;
     trans.source = src_name;
     trans.target = dst_name;
-    std::string trans_type = trans_node->get_attr("type");
+    std::string trans_type = get_sf_prop(trans_node, "type");
     if (trans_type.empty()) {
-        trans_type = trans_node->get_attr("kind");
+        trans_type = get_sf_prop(trans_node, "kind");
     }
     if (trans_type == "internal" || (dst.empty() && !src.empty())) {
         trans.kind = TransitionEdgeKind::Internal;

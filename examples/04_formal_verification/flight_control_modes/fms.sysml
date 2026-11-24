@@ -11,13 +11,15 @@
 // @fsm:property name=AutopilotReachable kind=Reachability formula="F AutopilotNav" req="REQ-FBW-AUTO-03" desc="Autopilot navigation mode is reachable under nominal flight conditions"
 
 package FlightControl {
+    import ScalarValues::*;
+
     state def FlightControlModeManager {
-        // Typed MBSE I/O Ports with Aerospace Physical Range Bounds
-        in port airspeed_knots : Real { assert constraint { self >= 0.0 and self <= 600.0; } }
-        in port radar_altitude_ft : Real { assert constraint { self >= 0.0 and self <= 60000.0; } }
-        in port hydraulic_pressure_psi : Real { assert constraint { self >= 0.0 and self <= 3500.0; } }
-        out port flight_director_engaged : Boolean;
-        out port direct_law_annunciator : Boolean;
+        // Typed MBSE I/O Parameters with Aerospace Physical Range Bounds
+        in airspeed_knots : Real { assert constraint { self >= 0.0 and self <= 600.0; } }
+        in radar_altitude_ft : Real { assert constraint { self >= 0.0 and self <= 60000.0; } }
+        in hydraulic_pressure_psi : Real { assert constraint { self >= 0.0 and self <= 3500.0; } }
+        out flight_director_engaged : Boolean;
+        out direct_law_annunciator : Boolean;
 
         entry; then GroundInit;
 

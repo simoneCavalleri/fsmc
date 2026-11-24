@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 92  
-**Total Documented Test Cases**: 786  
+**Total Documented Test Cases**: 787  
 
 ---
 
@@ -90,7 +90,7 @@
 
 | Suite File | Source Path | Test Cases | Scope Summary |
 | :--- | :--- | :---: | :--- |
-| [`test_json_parser.cpp`](../../tests/frontend/common/test_json_parser.cpp) | `tests/frontend/common/test_json_parser.cpp` | 9 | Unit tests for front-end JSON statechart parser, composite states, transitions arrays, and port constraints. |
+| [`test_json_parser.cpp`](../../tests/frontend/common/test_json_parser.cpp) | `tests/frontend/common/test_json_parser.cpp` | 10 | Unit tests for front-end JSON statechart parser, composite states, transitions arrays, and port constraints. |
 | [`test_parser_classification.cpp`](../../tests/frontend/common/test_parser_classification.cpp) | `tests/frontend/common/test_parser_classification.cpp` | 3 | Unit tests for front-end parser taxonomy and format classification (Formal vs Diagram). |
 | [`test_parser_factory_and_lexer.cpp`](../../tests/frontend/common/test_parser_factory_and_lexer.cpp) | `tests/frontend/common/test_parser_factory_and_lexer.cpp` | 9 | Unit tests for ParserFactory dynamic parser resolution and LexerUtils lexical analysis routines. |
 | [`test_parser_negative.cpp`](../../tests/frontend/common/test_parser_negative.cpp) | `tests/frontend/common/test_parser_negative.cpp` | 6 | Negative unit tests across front-end parsers verifying rejection of malformed, empty, or corrupt inputs. |

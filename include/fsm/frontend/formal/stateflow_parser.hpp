@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 #include "fsm/frontend/common/parser_interface.hpp"
 #include "fsm/frontend/common/xml_parser.hpp"
@@ -50,9 +51,12 @@ class StateflowParser : public IParser {
 
     static std::shared_ptr<XmlNode> find_element_recursive(const std::shared_ptr<XmlNode>& node,
                                                            std::string_view tag_name);
+    void collect_ssids(const std::shared_ptr<XmlNode>& node);
     void parse_chart_elements(const std::shared_ptr<XmlNode>& node, FsmIr& model, const std::string& parent_state);
     static StateflowLabelComponents parse_stateflow_label(std::string_view raw_label);
     void parse_stateflow_transition(const std::shared_ptr<XmlNode>& trans_node, FsmIr& model, const std::string& scope);
+
+    std::unordered_map<std::string, std::string> ssid_to_name_;
 };
 
 }  // namespace fsm::frontend::formal

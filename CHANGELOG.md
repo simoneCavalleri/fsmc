@@ -24,10 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added Showcase `examples/08_baremetal_c99_controller/` compiled and linked purely in C99 (`LINKER_LANGUAGE C`, zero C++ runtime).
 
 ### Changed
-- **Formal Frontend & Serializer Standards Conformance (OMG SysML v2.0, W3C SCXML 1.0, OMG UML 2.5.1 / XMI 2.5.1)**:
-  - `Sysml2Serializer`: emits 100% standard OMG SysML v2.0 textual notation (`import ScalarValues::*;`, `item def`, `calc def`, directional `in`/`out` parameters, `attribute ... := ...;`, `assign ... := ...;`, `accept after N [ms]`).
-  - `ScxmlSerializer` & `ScxmlParser`: declared `xmlns:fsm="https://github.com/simoneCavalleri/fsmc/scxml"` and namespaced all `fsmc`-specific attributes (`fsm:kind`, `fsm:satisfies`, `fsm:invariant`, `fsm:priority`, `fsm:type`, `fsm:port`, `fsm:dir`, `fsm:min`, `fsm:max`, `fsm:constraint`) and `<fsm:defer>` elements for strict W3C SCXML 1.0 schema compliance (keeping backwards-compatible parsing for un-namespaced legacy files).
-  - `CameoSerializer`: upgraded XMI export envelope from UML 2.1 to standard OMG UML 2.5.1 / XMI 2.5.1 (`xmi:version="2.5.1"`, `http://www.omg.org/spec/UML/20131001`, `http://www.omg.org/spec/XMI/20131001`).
+- **Full Standards Conformance Across All Formal & Diagram Frontends/Serializers**:
+  - **OMG SysML v2.0**: `Sysml2Serializer` and all `.sysml` examples (`examples/01..08`) conform to OMG SysML v2.0 (`import ScalarValues::*;`, `item def`, `calc def`, directional `in`/`out` parameters, `attribute ... := ...;`, `assign ... := ...;`, `transition first`, `accept after N [ms]`).
+  - **W3C SCXML 1.0**: `ScxmlSerializer` & `ScxmlParser` declare `xmlns:fsm="https://github.com/simoneCavalleri/fsmc/scxml"` and namespace all `fsmc` extension attributes (`fsm:kind`, `fsm:satisfies`, `fsm:invariant`, `fsm:priority`, `fsm:type`, `fsm:port`, `fsm:dir`, `fsm:min`, `fsm:max`, `fsm:constraint`) and `<fsm:defer>` elements (with legacy read fallback).
+  - **OMG UML 2.5.1 / XMI 2.5.1**: `CameoSerializer` emits standard `xmi:version="2.5.1"`, `http://www.omg.org/spec/UML/20131001`, and `http://www.omg.org/spec/XMI/20131001`.
+  - **MathWorks Stateflow (`simulink/stateflow.xml`)**: `StateflowSerializer` and `StateflowParser` support native `<Children>`, `<P Name="...">`, `SSID`-indexed `<src>`/`<dst>`, `HISTORY_JUNCTION`/`CONNECTIVE_JUNCTION`, `SET_STATE`/`CLUSTER_STATE`, and `<data>` (`INPUT_DATA`/`OUTPUT_DATA`/`LOCAL_DATA`).
+  - **XState v5 JSON**: `FsmIrDeserializer` / `JsonParser` fully supports guarded/actioned and array-branched `after` delayed transitions, `always` completion transitions, `type: "history"` (`shallow`/`deep`), and `reenter`/`internal` self-transition flags.
 
 ---
 

@@ -490,7 +490,6 @@ static void BM_Compiler_CppGenerator(benchmark::State& state) {
     parser.parse(SAMPLE_PUML, ir, parse_diag);
 
     fsm::backend::cpp::GeneratorOptions opts;
-    opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
     opts.standalone = true;
 
     for (auto _ : state) {
@@ -561,7 +560,6 @@ static void BM_Compiler_Scale_CppGenerator(benchmark::State& state) {
     const fsm::ir::FsmIr ir = make_scaled_ir(n_states);
 
     fsm::backend::cpp::GeneratorOptions opts;
-    opts.cpp_standard = fsm::backend::cpp::CppStandard::Cpp20;
     opts.standalone = false;
 
     for (auto _ : state) {

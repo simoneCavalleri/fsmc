@@ -35,7 +35,9 @@ struct FsmcOptions {
     bool standalone = true;
     bool standalone_specified = false;
     bool modular_specified = false;
-    bool emit_c_abi = false;  // --emit-c-abi
+    bool emit_c_abi = false;         // --emit-c-abi
+    bool emit_manifest = false;      // --emit-manifest[=<file>]
+    std::string emit_manifest_file;  // optional explicit manifest path
     bool thread_safe = true;
     bool freestanding = false;
     bool include_stubs = true;
@@ -102,6 +104,7 @@ inline void print_help(const char* prog_name) {
         << "  --standalone                 Generate a single self-contained header instead of split *_ports.hpp + "
            "*_fsm.hpp\n"
         << "  --emit-c-abi                 Also emit pure C99 zero-allocation ABI wrapper (*_c.h + *_c.cpp)\n"
+        << "  --emit-manifest[=<file>]     Emit machine-readable *.manifest.json contract alongside generated code\n"
         << "  --modular[=<hdr>]            Generate FSM header only, including external runtime header (default: "
            "\"fsm.hpp\")\n"
         << "  --runtime-header <hdr>       Custom runtime header path included when --modular is active (default: "
@@ -123,7 +126,8 @@ inline void print_help(const char* prog_name) {
         << "  --trace <file>               JSON/line event trace file for --simulate\n"
         << "  --trace-out <file>           Write structured JSON simulation trace report to file\n"
         << "  --export-cex-gtest <file>    Export formal verification counterexample to GoogleTest C++\n"
-        << "  --diagnostic-format <fmt>    Diagnostic output format: 'text', 'json', or 'github'\n\n"
+        << "  --diagnostics <fmt>          Diagnostic output format: 'text', 'json', or 'github' (alias: "
+           "--diagnostic-format)\n\n"
         << "General Options:\n"
         << "  -h, --help                   Show this help message and exit\n"
         << "  -v, --version                Show version information and exit\n\n";
@@ -334,9 +338,20 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
 
-            // 9. Runtime packaging mode (standalone single-header vs modular) & C ABI emission
+            // 9. Runtime packaging mode (standalone single-header vs modular) & C ABI / Manifest emission
         } else if (arg == "--emit-c-abi") {
             opts.emit_c_abi = true;
+        } else if (arg == "--emit-manifest") {
+            opts.emit_manifest = true;
+            if (idx + 1 < argc && argv[idx + 1][0] != '-') {
+                std::string_view next_token = argv[idx + 1];
+                if (next_token.size() >= 5 && next_token.compare(next_token.size() - 5, 5, ".json") == 0) {
+                    opts.emit_manifest_file = argv[++idx];
+                }
+            }
+        } else if (arg.rfind("--emit-manifest=", 0) == 0) {
+            opts.emit_manifest = true;
+            opts.emit_manifest_file = arg.substr(16);
         } else if (arg == "--standalone") {
             opts.standalone_specified = true;
             opts.standalone = true;

@@ -89,7 +89,8 @@ inline bool parse_common_compiler_arg(std::string_view arg, int& i, int argc, ch
     if (match_opt_value(arg, i, argc, argv, "", "--submachine-dir", submachine_dir, error_message)) {
         return true;
     }
-    if (match_opt_value(arg, i, argc, argv, "", "--diagnostic-format", diagnostic_format, error_message)) {
+    if (match_opt_value(arg, i, argc, argv, "", "--diagnostic-format", diagnostic_format, error_message) ||
+        match_opt_value(arg, i, argc, argv, "", "--diagnostics", diagnostic_format, error_message)) {
         if (error_message.empty() && !is_valid_diagnostic_format(diagnostic_format)) {
             error_message =
                 "Invalid diagnostic format '" + diagnostic_format + "'. Supported formats: text, json, github.";

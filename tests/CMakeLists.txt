@@ -183,6 +183,7 @@ add_fsm_unit_test(test_diagnostics DIR diagnostic)
 # Diagram & Formal Emitter Tests (tests/backend/)
 # ==============================================================================
 add_fsm_unit_test(test_emitter_factory DIR backend/common)
+add_fsm_unit_test(test_manifest_and_diagnostics DIR backend/common)
 add_fsm_unit_test(test_diagram_export DIR backend/diagram)
 add_fsm_unit_test(test_companion_manifest_emitter DIR backend/diagram)
 add_fsm_unit_test(test_formal_roundtrip DIR backend/formal)

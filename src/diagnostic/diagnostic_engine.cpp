@@ -361,6 +361,35 @@ std::string DiagnosticEngine::render_json() const {
             }
             ss << "    ],\n";
         }
+        if (!diag.counterexample.empty()) {
+            ss << "    \"counterexample\": [\n";
+            for (size_t j = 0; j < diag.counterexample.size(); ++j) {
+                const auto& step = diag.counterexample[j];
+                ss << "      {\"step\": " << step.step << ", \"state\": \"" << escape_json_str(step.state)
+                   << "\", \"event\": \"" << escape_json_str(step.event) << "\", \"next_state\": \""
+                   << escape_json_str(step.next_state) << "\"}";
+                if (j + 1 < diag.counterexample.size()) {
+                    ss << ",";
+                }
+                ss << "\n";
+            }
+            ss << "    ],\n";
+        }
+        if (!diag.suggested_fixes.empty()) {
+            ss << "    \"suggested_fixes\": [\n";
+            for (size_t j = 0; j < diag.suggested_fixes.size(); ++j) {
+                const auto& fix = diag.suggested_fixes[j];
+                ss << "      {\"description\": \"" << escape_json_str(fix.description) << "\", \"file\": \""
+                   << escape_json_str(fix.span.file_path) << "\", \"line\": " << fix.span.line
+                   << ", \"column\": " << fix.span.column << ", \"length\": " << fix.span.length
+                   << ", \"replacement\": \"" << escape_json_str(fix.replacement) << "\"}";
+                if (j + 1 < diag.suggested_fixes.size()) {
+                    ss << ",";
+                }
+                ss << "\n";
+            }
+            ss << "    ],\n";
+        }
         ss << "    \"help\": \"" << escape_json_str(diag.help_suggestion) << "\"\n";
         ss << "  }";
         if (i + 1 < diagnostics_.size()) {

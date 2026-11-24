@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "fsm/ir/guard.hpp"
+#include "fsm/ir/sha256.hpp"
 
 namespace fsm::ir {
 
@@ -1127,6 +1128,12 @@ std::string FsmIrSerializer::serialize_json(const FsmIr& ir, int indent_spaces) 
     }
     out << "}\n";
     return out.str();
+}
+
+std::string FsmIrSerializer::compute_sha256(const FsmIr& ir) {
+    FsmIr canonical = ir;
+    canonical.canonicalize();
+    return sha256_hex(serialize_json(canonical));
 }
 
 }  // namespace fsm::ir

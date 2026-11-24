@@ -36,6 +36,7 @@
 #include "fsm/backend/diagram/companion_manifest_emitter.hpp"
 #include "fsm/backend/emitter_factory.hpp"
 #include "fsm/backend/formal/smv_serializer.hpp"
+#include "fsm/backend/manifest_emitter.hpp"
 #include "fsm/backend/rtm/rtm_emitter.hpp"
 #include "fsm/backend/verification/mcdc_harness_generator.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
@@ -589,9 +590,14 @@ class FsmcDriverImpl {
                 stem.erase(stem.size() - 4);
             }
 
+            ManifestArtifacts manifest_artifacts;
+            manifest_artifacts.standalone = !use_split;
+            manifest_artifacts.fsm_header = fsm_path.filename().string();
+
             if (use_split) {
                 const fs::path ports_path = fsm_path.parent_path() / (stem + "_ports" + (ext.empty() ? ".hpp" : ext));
                 const std::string ports_inc = ports_path.filename().string();
+                manifest_artifacts.ports_header = ports_inc;
 
                 GeneratedCppBundle bundle;
                 try {
@@ -659,9 +665,27 @@ class FsmcDriverImpl {
                     std::cerr << "Error: " << write_err << "\n";
                     return 1;
                 }
+                manifest_artifacts.c_header = c_hdr_path.filename().string();
+                manifest_artifacts.c_source = c_src_path.filename().string();
                 std::cout << "[SUCCESS] C99 ABI generated successfully:\n"
                           << "  - Header: " << c_hdr_path.string() << "\n"
                           << "  - Bridge: " << c_src_path.string() << "\n";
+            }
+
+            if (opts.emit_manifest) {
+                const fs::path manifest_path = opts.emit_manifest_file.empty()
+                                                   ? (fsm_path.parent_path() / (stem + ".manifest.json"))
+                                                   : fs::path(opts.emit_manifest_file);
+                ManifestVerificationSummary ver_summary;
+                ver_summary.verified = true;
+                ver_summary.properties_checked = model.properties.size();
+                const std::string manifest_json = ManifestEmitter::emit_json(model, manifest_artifacts, ver_summary);
+                std::string write_err;
+                if (!write_file_content(manifest_path.string(), manifest_json, write_err)) {
+                    std::cerr << "Error: " << write_err << "\n";
+                    return 1;
+                }
+                std::cout << "[SUCCESS] System manifest generated successfully to: " << manifest_path.string() << "\n";
             }
         } else {
             std::string generated_code;

@@ -4,7 +4,7 @@
 > To update this file, run: `cmake --build build --target generate_test_catalog` or `python3 scripts/generate_test_catalog.py`.
 
 **Total Documented Subsystems**: 12  
-**Total Test Suites & Binaries**: 91  
+**Total Test Suites & Binaries**: 92  
 **Total Documented Test Cases**: 779  
 
 ---
@@ -60,6 +60,7 @@
 | Suite File | Source Path | Test Cases | Scope Summary |
 | :--- | :--- | :---: | :--- |
 | [`test_emitter_factory.cpp`](../../tests/backend/common/test_emitter_factory.cpp) | `tests/backend/common/test_emitter_factory.cpp` | 4 | Unit test suite for the multi-format emitter factory. |
+| [`test_manifest_and_diagnostics.cpp`](../../tests/backend/common/test_manifest_and_diagnostics.cpp) | `tests/backend/common/test_manifest_and_diagnostics.cpp` | 0 | Tests for pure C++ SHA-256, *.manifest.json emission with cross-artifact IR hash consistency, and structured JSON diagnostics (--diagnostics=json) with counterexamples and suggested fixes. |
 
 ## MC/DC Verification & Harness Subsystem
 

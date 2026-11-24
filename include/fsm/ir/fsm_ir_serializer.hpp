@@ -27,6 +27,11 @@ class FsmIrSerializer {
      * @return Formatted JSON string representing the full AST.
      */
     static std::string serialize_json(const FsmIr& ir, int indent_spaces = 2);
+
+    /**
+     * @brief Computes the deterministic SHA-256 digest of the canonical JSON serialization of @p ir.
+     */
+    static std::string compute_sha256(const FsmIr& ir);
 };
 
 }  // namespace fsm::ir

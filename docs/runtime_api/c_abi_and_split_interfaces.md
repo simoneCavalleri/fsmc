@@ -54,7 +54,20 @@ Both `ChargerFsm` and `DriveFsm` reference the exact same `::shared::BatteryStat
 
 ## 3. Typed Zero-Vtable Services (`ServicesContract`)
 
-When a model declares typed services (`ServiceMethodSignature` in `FsmIr::services`), `*_ports.hpp` emits a C++17 expression-SFINAE contract validator (`<Model>ServicesContract<Srv>`) alongside `<Model>WithServices<CustomServices>`:
+External algorithms (control laws, math helpers, HAL drivers) are decoupled from the FSM through **typed service contracts**. The full lifecycle has three steps:
+
+1. **Declare** the contract in `.ir.json` (`"services": [...]`), in SysML v2 / diagrams (`@fsm:service compute_pwm(temp_c: int32_t) -> int32_t pure=true noexcept=true`), or in a sidecar `.fsm.yaml` (`services:`).
+2. **Invoke** it inside a transition or state action (`ActionCallOp` with optional `result_target` writing directly to an `OutPort` or `Register`):
+   ```json
+   {
+     "kind": "action_call",
+     "function_name": "compute_pwm",
+     "arguments": ["temp_c"],
+     "result_target": "pwm_duty",
+     "result_scope": "OutPort"
+   }
+   ```
+3. **Inject** any concrete C++17 struct (zero virtual inheritance, zero vtable) into `<Model>WithServices<CustomServices>`. `*_ports.hpp` emits an expression-SFINAE validator (`<Model>ServicesContract<Srv>`) that verifies method names, arity, and types at compile time:
 
 ```cpp
 struct ControlLawService {
@@ -113,13 +126,22 @@ void run_controller(void) {
     thermal_controller_dispatch_enable(&fsm, &in_ports, &out_ports);
     thermal_controller_dispatch_sample(&fsm, &in_ports, &out_ports);
     /* out_ports.pwm_duty == 70 */
+
+    /* Sampled step, timed progression (ms), and deterministic binary snapshots */
+    uint8_t snap[256];
+    size_t written = 0, read_sz = 0;
+    thermal_controller_step(&fsm, &in_ports, &out_ports);
+    thermal_controller_tick(&fsm, 50, &in_ports, &out_ports);
+    thermal_controller_save_snapshot(&fsm, snap, sizeof(snap), &written);
+    thermal_controller_restore_snapshot(&fsm, snap, written, &read_sz);
+
     thermal_controller_destroy(&fsm);
 }
 ```
 
 ---
 
-## 5. System Manifest & SHA-256 Attestation (`--emit-manifest`)
+## 5. System Manifest, Real-Time Bounds & SHA-256 Attestation (`--emit-manifest`)
 
 Pass `--emit-manifest` (or `--emit-manifest=<path.json>`) to emit a canonical `*.manifest.json` conforming to `schemas/fsm_manifest.schema.json`:
 
@@ -127,10 +149,22 @@ Pass `--emit-manifest` (or `--emit-manifest=<path.json>`) to emit a canonical `*
 fsmc -i thermal_controller.ir.json -o out/thermal_controller_fsm.hpp --emit-c-abi --emit-manifest
 ```
 
-The manifest records `ir_sha256`, generated artifact paths, states, ports, registers, events, typed services, external types, requirements, and verification status. The exact same `ir_sha256` digest is embedded in:
+The manifest records `ir_sha256`, generated artifact paths, states, ports, registers, events, typed services, external types, requirements, verification status, and static real-time **scheduling bounds** (`wcet_max_microsteps`, `max_event_queue_bound`, `zeno_free`) computed by `WcetAnalysisPass` and `EventQueueBoundPass`:
+
+```json
+"scheduling": {
+  "wcet_max_microsteps": 1,
+  "max_event_queue_bound": 2,
+  "zeno_free": true
+}
+```
+
+The exact same `ir_sha256` digest is embedded across all three artifacts:
 
 1. `*.manifest.json` (`"ir_sha256": "..."`)
 2. `*_fsm.hpp` (`inline constexpr std::string_view <Model>IrSha256 = "...";`)
 3. `*_c.h` (`#define <PREFIX>_IR_SHA256 "..."` and `const char* <prefix>_ir_sha256(void);`)
+
+Both `schemas/fsm_ir.schema.json` and `schemas/fsm_manifest.schema.json` are continuously validated against live compiler outputs by `scripts/verify_schemas.py` in CI.
 
 See [`examples/07_modular_toolchain_c_abi/`](https://github.com/simoneCavalleri/fsmc/tree/main/examples/07_modular_toolchain_c_abi) for a complete runnable CMake project combining all of these features.

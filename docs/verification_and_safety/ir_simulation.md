@@ -120,3 +120,15 @@ fsmc -i flight_control.sysml --verify --export-cex-gtest flight_cex_test.cpp
 ```
 
 Combined with `--diagnostics=json`, CI pipelines and external tools receive both the machine-readable counterexample trace (`counterexample` array in JSON diagnostics) and an immediately compilable regression test.
+
+---
+
+## 6. Differential Verification (`IrSimulator == C++17 == C99 ABI`)
+
+`IrSimulator` also serves as the reference semantic oracle in `fsmc`'s differential test suite (`test_differential_semantics`). Deterministic seeded randomized event traces (200+ steps) are executed identically across:
+
+1. **`IrSimulator`** (direct IR interpretation),
+2. **Generated C++17** (`CppGenerator`), and
+3. **Generated Pure C99 ABI** (`CAbiGenerator`, including mid-trace `save_snapshot` / `restore_snapshot` continuation).
+
+Every transition step and final register value is compared bit-for-bit to guarantee zero semantic drift between the IR model and compiled target binaries.

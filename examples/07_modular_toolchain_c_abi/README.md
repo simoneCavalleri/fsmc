@@ -9,7 +9,9 @@ This showcase demonstrates the complete **`fsmc`** modular MBSE toolchain workfl
 3. **Zero-Vtable Typed Services (`main.cpp`)**:
    - Injects a pure C++17 `ControlLawService` validated at compile time by `ThermalControllerServicesContract<ControlLawService>`.
 4. **Pure C99 Zero-Allocation ABI (`c_client.c`)**:
-   - Links a strict C99 client against `thermal_controller_c.h` + `thermal_controller_c.cpp`, passing C function-pointer callbacks with `void* user_data` and verifying cross-artifact `ir_sha256` attestation against `thermal::ThermalControllerIrSha256`.
+   - Links a strict C99 client against `thermal_controller_c.h` + `thermal_controller_c.cpp`, passing C function-pointer callbacks with `void* user_data` and verifying cross-artifact `ir_sha256` attestation against `thermal::ThermalControllerIrSha256`. The generated C99 ABI also exposes `<prefix>_step`, `<prefix>_tick`, local POD `struct` ports, and binary snapshot save/restore (`<prefix>_save_snapshot` / `<prefix>_restore_snapshot`).
+5. **System Manifest & Real-Time Scheduling Bounds (`thermal_controller.manifest.json`)**:
+   - Emits a schema-validated manifest (`schemas/fsm_manifest.schema.json`) containing ports, services, `ir_sha256`, verification status, and static scheduling bounds (`wcet_max_microsteps`, `max_event_queue_bound`, `zeno_free`).
 
 ## Build & Run
 

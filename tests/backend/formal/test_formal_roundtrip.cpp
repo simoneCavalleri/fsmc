@@ -1423,7 +1423,7 @@ TEST(FormalRoundtrip, StateflowSerializer_PreservesInternalTransitionKindAcrossR
     ir.add_transition(t);
 
     const std::string xml = StateflowSerializer::serialize(ir);
-    EXPECT_NE(xml.find("type=\"internal\""), std::string::npos);
+    EXPECT_NE(xml.find("<P Name=\"type\">internal</P>"), std::string::npos);
 
     StateflowParser parser;
     FsmIr parsed;

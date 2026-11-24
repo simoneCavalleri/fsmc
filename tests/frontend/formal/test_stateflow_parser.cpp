@@ -202,7 +202,8 @@ TEST(StateflowParser, DirectivesAndTransitions_RoundtrippedLosslessly) {
     EXPECT_NE(xml.find("@fsm:var"), std::string::npos);
     EXPECT_NE(xml.find("@fsm:port"), std::string::npos);
     EXPECT_NE(xml.find("after(1500, msec)"), std::string::npos);
-    EXPECT_NE(xml.find("type=\"HISTORY\""), std::string::npos);
+    EXPECT_NE(xml.find("<P Name=\"type\">HISTORY_JUNCTION</P>"), std::string::npos);
+    EXPECT_NE(xml.find("<Children>"), std::string::npos);
 
     // Parse back
     StateflowParser parser;
@@ -339,14 +340,14 @@ TEST(StateflowParser, StateActionsAndPeriodicTimers_ParsedAndSerialized) {
     EXPECT_EQ(tt.kind, TimeTriggerKind::Every);
     EXPECT_EQ(tt.duration_ms, 50u);
 
-    // Roundtrip serialize to Stateflow XML
+    // Roundtrip serialize to standard MathWorks simulink/stateflow.xml
     std::string exported_xml = StateflowSerializer::serialize(model);
 
-    EXPECT_NE(exported_xml.find("entry=\"initHardware\""), std::string::npos);
-    EXPECT_NE(exported_xml.find("during=\"monitorSensors\""), std::string::npos);
-    EXPECT_NE(exported_xml.find("exit=\"cleanupHardware\""), std::string::npos);
-    EXPECT_NE(exported_xml.find("entry=\"enterSleep\""), std::string::npos);
-    EXPECT_NE(exported_xml.find("exit=\"wakeUp\""), std::string::npos);
+    EXPECT_NE(exported_xml.find("entry: initHardware"), std::string::npos);
+    EXPECT_NE(exported_xml.find("during: monitorSensors"), std::string::npos);
+    EXPECT_NE(exported_xml.find("exit: cleanupHardware"), std::string::npos);
+    EXPECT_NE(exported_xml.find("entry: enterSleep"), std::string::npos);
+    EXPECT_NE(exported_xml.find("exit: wakeUp"), std::string::npos);
     EXPECT_NE(exported_xml.find("every(50, msec)"), std::string::npos);
 }
 
@@ -432,7 +433,7 @@ TEST(StateflowParser, CompositeInitialSubstate_RoundtripsViaAttributeAndInitialT
     EXPECT_EQ(active->initial_sub_state, "Idle");
 
     const std::string serialized = StateflowSerializer::serialize(model);
-    EXPECT_NE(serialized.find("initial=\"Idle\""), std::string::npos);
+    EXPECT_NE(serialized.find("<P Name=\"initial\">Idle</P>"), std::string::npos);
 
     FsmIr reparsed;
     ASSERT_TRUE(parser.parse(serialized, reparsed, err)) << "Re-parse error: " << err.render_to_string();
@@ -807,7 +808,7 @@ TEST(StateflowParser, ChangeTrigger_PreservedAcrossSerializerRoundtrip) {
     ir.add_transition(t);
 
     const std::string xml = StateflowSerializer::serialize(ir);
-    EXPECT_NE(xml.find("labelString=\"when(count &gt; 5)\""), std::string::npos) << xml;
+    EXPECT_NE(xml.find("<P Name=\"labelString\">when(count &gt; 5)</P>"), std::string::npos) << xml;
 
     StateflowParser parser;
     FsmIr parsed;

@@ -393,4 +393,86 @@ TEST(JsonParser, Hardening_RejectsTrailingGarbageAndExcessiveDepthLinearly) {
     }
 }
 
+/**
+ * @brief Verify full XState v5 conformance: guarded/array `after`, `always` completion transitions, `history`, and
+ * `reenter`.
+ * @scenario Parse an XState v5 machine using `after` with guard/actions and array branches, `always`, `type:
+ * "history"`, and `reenter: true`.
+ * @expected All triggers, guards, action assignments, history flags, and transition kinds map accurately into FsmIr.
+ */
+TEST(JsonParser, XStateV5_AfterGuardsActionsAlwaysHistoryAndReenter) {
+    const std::string json_content = R"json({
+  "id": "XStateV5Demo",
+  "initial": "Armed",
+  "context": { "retries": 0 },
+  "states": {
+    "Armed": {
+      "after": {
+        "250": [
+          { "target": "Timeout", "guard": "retries >= 3", "actions": ["retries = 0"] },
+          { "target": "Armed", "reenter": true, "actions": ["retries += 1"] }
+        ]
+      }
+    },
+    "Timeout": {
+      "always": [
+        { "target": "Done", "guard": "retries == 0" }
+      ]
+    },
+    "Done": {
+      "type": "final"
+    },
+    "Saved": {
+      "type": "history",
+      "history": "deep"
+    }
+  }
+})json";
+
+    JsonParser parser;
+    FsmIr model;
+    fsm::diagnostic::DiagnosticEngine diag;
+    ASSERT_TRUE(parser.parse(json_content, model, diag)) << diag.render_to_string();
+
+    ASSERT_EQ(model.transitions.size(), 3u);
+
+    // Branch 1 of after[250]
+    const auto& t0 = model.transitions[0];
+    EXPECT_EQ(t0.source, "Armed");
+    EXPECT_EQ(t0.target, "Timeout");
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(t0.trigger));
+    EXPECT_EQ(std::get<TimeTrigger>(t0.trigger).duration_ms, 250u);
+    ASSERT_TRUE(t0.guard.has_value());
+    EXPECT_FALSE(t0.guard->empty());
+    ASSERT_TRUE(t0.transition_action.has_value());
+    ASSERT_EQ(t0.transition_action->assignments.size(), 1u);
+    EXPECT_EQ(t0.transition_action->assignments[0].target.name, "retries");
+    EXPECT_EQ(t0.transition_action->assignments[0].expression, "0");
+
+    // Branch 2 of after[250] with reenter: true
+    const auto& t1 = model.transitions[1];
+    EXPECT_EQ(t1.source, "Armed");
+    EXPECT_EQ(t1.target, "Armed");
+    EXPECT_EQ(t1.kind, TransitionEdgeKind::External);
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(t1.trigger));
+    EXPECT_EQ(std::get<TimeTrigger>(t1.trigger).duration_ms, 250u);
+
+    // always transition -> AnonymousTrigger
+    const auto& t2 = model.transitions[2];
+    EXPECT_EQ(t2.source, "Timeout");
+    EXPECT_EQ(t2.target, "Done");
+    EXPECT_TRUE(t2.event.empty());
+    EXPECT_TRUE(std::holds_alternative<AnonymousTrigger>(t2.trigger));
+    ASSERT_TRUE(t2.guard.has_value());
+
+    const auto* done_state = model.find_state("Done");
+    ASSERT_NE(done_state, nullptr);
+    EXPECT_EQ(done_state->kind, StateKind::Final);
+
+    const auto* saved_state = model.find_state("Saved");
+    ASSERT_NE(saved_state, nullptr);
+    EXPECT_TRUE(saved_state->has_history);
+    EXPECT_TRUE(saved_state->has_deep_history);
+}
+
 }  // namespace

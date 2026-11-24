@@ -4,12 +4,14 @@
 // ============================================================================
 
 package NetworkProtocols {
+    import ScalarValues::*;
+
     state def ConnectionFSM {
-        // Typed MBSE I/O Ports with Physical Bounds
-        in port has_network_interface : Boolean;
-        in port has_valid_credentials : Boolean;
-        in port rx_bytes_per_sec : Real { assert constraint { self >= 0.0 and self <= 10000000.0; } }
-        out port tx_bytes_per_sec : Real { assert constraint { self >= 0.0 and self <= 10000000.0; } }
+        // Typed MBSE I/O Parameters with Physical Bounds
+        in has_network_interface : Boolean;
+        in has_valid_credentials : Boolean;
+        in rx_bytes_per_sec : Real { assert constraint { self >= 0.0 and self <= 10000000.0; } }
+        out tx_bytes_per_sec : Real { assert constraint { self >= 0.0 and self <= 10000000.0; } }
 
         entry; then Disconnected;
 
@@ -19,42 +21,42 @@ package NetworkProtocols {
         state Suspended;
 
         // Disconnected: Conditional branching with composite boolean guards
-        transition from Disconnected accept ConnectCmd 
-            if HasNetworkGuard && HasValidCredentialsGuard 
+        transition first Disconnected accept ConnectCmd
+            if HasNetworkGuard && HasValidCredentialsGuard
             do InitSocketAction then Connecting;
 
-        transition from Disconnected accept ConnectCmd 
-            if !HasNetworkGuard || !HasValidCredentialsGuard 
+        transition first Disconnected accept ConnectCmd
+            if !HasNetworkGuard || !HasValidCredentialsGuard
             do LogErrorAction then Disconnected;
 
         // Connecting: Handshake verification and timeout handling
-        transition from Connecting accept HandshakeOkEvent 
+        transition first Connecting accept HandshakeOkEvent
             do SetupSessionAction then Connected;
 
-        transition from Connecting accept HandshakeFailedEvent 
+        transition first Connecting accept HandshakeFailedEvent
             do CleanupAction then Disconnected;
 
-        transition from Connecting accept TimeoutEvent 
+        transition first Connecting accept TimeoutEvent
             do CleanupAction then Disconnected;
 
         // Connected: Session maintenance and degradation
-        transition from Connected accept NetworkDegradedEvent 
+        transition first Connected accept NetworkDegradedEvent
             do PauseQueueAction then Suspended;
 
-        transition from Connected accept DisconnectCmd 
+        transition first Connected accept DisconnectCmd
             do CloseSocketAction then Disconnected;
 
-        transition from Connected accept ConnectionLostEvent 
+        transition first Connected accept ConnectionLostEvent
             do CleanupAction then Disconnected;
 
         // Suspended: Link recovery and session teardown
-        transition from Suspended accept NetworkRestoredEvent 
+        transition first Suspended accept NetworkRestoredEvent
             do ResumeQueueAction then Connected;
 
-        transition from Suspended accept DisconnectCmd 
+        transition first Suspended accept DisconnectCmd
             do CloseSocketAction then Disconnected;
 
-        transition from Suspended accept TimeoutEvent 
+        transition first Suspended accept TimeoutEvent
             do CleanupAction then Disconnected;
     }
 }

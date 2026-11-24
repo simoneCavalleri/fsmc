@@ -911,7 +911,7 @@ TEST(CppModelEmitter, LifecycleActionWithAssignments_EmittedAsAssignmentStructNo
     // 2. Must NOT be misclassified as external service methods
     EXPECT_EQ(str.find("virtual void Active_entry()"), std::string::npos);
     EXPECT_EQ(str.find("virtual void Active_exit()"), std::string::npos);
-    EXPECT_NE(str.find("using LifecycleModelServices = ::fsm::no_services;"), std::string::npos);
+    EXPECT_NE(str.find("struct LifecycleModelServices {};"), std::string::npos);
 
     // 3. Overload taking (InPorts, OutPorts, Registers, Services) must be present
     EXPECT_NE(

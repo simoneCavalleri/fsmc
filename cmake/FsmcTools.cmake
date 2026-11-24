@@ -107,15 +107,26 @@ function(fsmc_target_sources TARGET_NAME)
             list(APPEND CLI_ARGS --no-stubs)
         endif()
 
-        add_custom_command(
-            OUTPUT "${OUTPUT_HEADER}"
-            COMMAND ${FSMC_EXE} ${CLI_ARGS}
-            DEPENDS "${DIAGRAM_ABS}" ${FSMC_DEP}
-            COMMENT "Generating C++ FSM header from ${DIAGRAM_ABS}"
-            VERBATIM
-        )
-
-        list(APPEND GENERATED_HEADERS "${OUTPUT_HEADER}")
+        if(FSM_ARG_STANDALONE)
+            add_custom_command(
+                OUTPUT "${OUTPUT_HEADER}"
+                COMMAND ${FSMC_EXE} ${CLI_ARGS}
+                DEPENDS "${DIAGRAM_ABS}" ${FSMC_DEP}
+                COMMENT "Generating standalone C++ FSM header from ${DIAGRAM_ABS}"
+                VERBATIM
+            )
+            list(APPEND GENERATED_HEADERS "${OUTPUT_HEADER}")
+        else()
+            set(OUTPUT_PORTS_HEADER "${FSM_ARG_OUTPUT_DIR}/${DIAGRAM_NAME}_ports.hpp")
+            add_custom_command(
+                OUTPUT "${OUTPUT_HEADER}" "${OUTPUT_PORTS_HEADER}"
+                COMMAND ${FSMC_EXE} ${CLI_ARGS}
+                DEPENDS "${DIAGRAM_ABS}" ${FSMC_DEP}
+                COMMENT "Generating split C++ FSM headers (*_ports.hpp + *_fsm.hpp) from ${DIAGRAM_ABS}"
+                VERBATIM
+            )
+            list(APPEND GENERATED_HEADERS "${OUTPUT_HEADER}" "${OUTPUT_PORTS_HEADER}")
+        endif()
     endforeach()
 
     target_sources(${TARGET_NAME} PRIVATE ${GENERATED_HEADERS})

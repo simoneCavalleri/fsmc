@@ -79,7 +79,24 @@
     },
     "enums": { "type": "array", "items": { "type": "object" } },
     "structs": { "type": "array", "items": { "type": "object" } },
-    "types": { "type": "array", "items": { "type": "object" } },
+    "types": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "kind"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "kind": { "type": "string", "enum": ["enum", "struct", "alias"] },
+          "underlying_type": { "type": "string" },
+          "description": { "type": "string" },
+          "is_datatype": { "type": "boolean" },
+          "external_header": { "type": "string" },
+          "external_qualified_name": { "type": "string" },
+          "literals": { "type": "array", "items": { "type": "object" } },
+          "fields": { "type": "array", "items": { "type": "object" } }
+        }
+      }
+    },
     "custom_types": { "type": "array", "items": { "type": "object" } },
     "signals": { "type": "array", "items": { "type": "object" } },
     "guards": { "type": "array", "items": { "type": "object" } },

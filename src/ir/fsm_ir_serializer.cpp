@@ -856,6 +856,11 @@ std::string FsmIrSerializer::serialize_json(const FsmIr& ir, int indent_spaces) 
             out << "      \"underlying_type\": \"" << escape_json(t.underlying_type) << "\",\n";
             out << "      \"description\": \"" << escape_json(t.description) << "\",\n";
             out << "      \"is_datatype\": " << (t.is_datatype ? "true" : "false");
+            if (t.external_binding.has_value()) {
+                out << ",\n      \"external_header\": \"" << escape_json(t.external_binding->header) << "\"";
+                out << ",\n      \"external_qualified_name\": \"" << escape_json(t.external_binding->qualified_name)
+                    << "\"";
+            }
             if (!t.literals.empty()) {
                 out << ",\n      \"literals\": [\n";
                 for (size_t li = 0; li < t.literals.size(); ++li) {

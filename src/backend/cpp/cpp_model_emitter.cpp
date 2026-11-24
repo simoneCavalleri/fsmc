@@ -423,6 +423,11 @@ void CppModelEmitter::emit_enums(std::ostream& out, const FsmIr& model) {
 
     for (const auto& en : enums) {
         std::string enum_name = escape_cpp_keyword(en.name);
+        if (en.is_external()) {
+            out << "/** @brief External enumeration alias for '" << sanitize_cpp_comment(en.name) << "'. */\n";
+            out << "using " << enum_name << " = " << en.external_binding->qualified_name << ";\n\n";
+            continue;
+        }
         std::string underlying = en.underlying_type.empty() ? "uint8_t" : en.underlying_type;
         bool has_negative = false;
         int64_t min_val = 0;
@@ -502,6 +507,11 @@ void CppModelEmitter::emit_structs(std::ostream& out, const FsmIr& model) {
 
     for (const auto& st : structs) {
         std::string st_name = escape_cpp_keyword(st.name);
+        if (st.is_external()) {
+            out << "/** @brief External POD type alias for '" << sanitize_cpp_comment(st.name) << "'. */\n";
+            out << "using " << st_name << " = " << st.external_binding->qualified_name << ";\n\n";
+            continue;
+        }
         out << "/**\n";
         out << " * @struct " << st_name << "\n";
         if (!st.description.empty()) {
@@ -638,8 +648,8 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
         out << "    }\n";
         out << "};\n\n";
     } else {
-        out << "/** @typedef " << safe_model_name << "InPorts\n * @brief Empty input ports sentinel. */\n";
-        out << "using " << safe_model_name << "InPorts = ::fsm::no_ports;\n\n";
+        out << "/** @struct " << safe_model_name << "InPorts\n * @brief Empty input ports sentinel. */\n";
+        out << "struct " << safe_model_name << "InPorts {};\n\n";
     }
 
     // 2. OutPorts
@@ -717,8 +727,8 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
         out << "    }\n";
         out << "};\n\n";
     } else {
-        out << "/** @typedef " << safe_model_name << "OutPorts\n * @brief Empty output ports sentinel. */\n";
-        out << "using " << safe_model_name << "OutPorts = ::fsm::no_ports;\n\n";
+        out << "/** @struct " << safe_model_name << "OutPorts\n * @brief Empty output ports sentinel. */\n";
+        out << "struct " << safe_model_name << "OutPorts {};\n\n";
     }
 
     // 3. Registers (State machine internal memory)
@@ -742,8 +752,8 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
         }
         out << "};\n\n";
     } else {
-        out << "/** @typedef " << safe_model_name << "Registers\n * @brief Empty registers sentinel. */\n";
-        out << "using " << safe_model_name << "Registers = ::fsm::no_registers;\n\n";
+        out << "/** @struct " << safe_model_name << "Registers\n * @brief Empty registers sentinel. */\n";
+        out << "struct " << safe_model_name << "Registers {};\n\n";
     }
 
     // 4. Services Interface
@@ -952,8 +962,8 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
             out << "};\n\n";
         }
     } else {
-        out << "/** @typedef " << safe_model_name << "Services\n * @brief Empty services sentinel. */\n";
-        out << "using " << safe_model_name << "Services = ::fsm::no_services;\n\n";
+        out << "/** @struct " << safe_model_name << "Services\n * @brief Empty services sentinel. */\n";
+        out << "struct " << safe_model_name << "Services {};\n\n";
     }
 }
 
@@ -2134,14 +2144,42 @@ void CppModelEmitter::emit_fsm_aliases(std::ostream& out, const FsmIr& model, co
     }
 }
 
-void CppModelEmitter::emit_model(std::ostream& out, const FsmIr& model, const GeneratorOptions& options) {
+void CppModelEmitter::emit_external_includes(std::ostream& out, const FsmIr& model) {
+    std::set<std::string> headers;
+    for (const auto& td : model.custom_types) {
+        if (td.external_binding.has_value() && !td.external_binding->header.empty()) {
+            headers.insert(td.external_binding->header);
+        }
+    }
+    if (headers.empty()) {
+        return;
+    }
+    for (const auto& hdr : headers) {
+        if (hdr.front() == '<' || hdr.front() == '"') {
+            out << "#include " << hdr << "\n";
+        } else {
+            out << "#include \"" << hdr << "\"\n";
+        }
+    }
+    out << "\n";
+}
+
+void CppModelEmitter::emit_ports_interface(std::ostream& out, const FsmIr& model) {
     emit_domain_structures(out, model);
     emit_events(out, model);
+}
+
+void CppModelEmitter::emit_fsm_engine(std::ostream& out, const FsmIr& model, const GeneratorOptions& options) {
     emit_guards(out, model, options);
     emit_actions(out, model, options);
     emit_states(out, model, options);
     emit_transition_table(out, model, options);
     emit_fsm_aliases(out, model, options);
+}
+
+void CppModelEmitter::emit_model(std::ostream& out, const FsmIr& model, const GeneratorOptions& options) {
+    emit_ports_interface(out, model);
+    emit_fsm_engine(out, model, options);
 }
 
 }  // namespace fsm::backend::cpp

@@ -588,29 +588,76 @@ class FsmcDriverImpl {
         gen_opts.target_namespace = opts.ns_name;
         gen_opts.runtime_header = opts.runtime_header;
 
-        std::string generated_code;
-        try {
-            generated_code = CppGenerator::generate_header(model, gen_opts);
-        } catch (const std::exception& ex) {
-            std::cerr << "Error: C++ backend rejected the model: " << ex.what() << "\n";
-            return 1;
-        }
-
         if (!opts.output_file.empty() && !is_stdout_path(opts.output_file)) {
-            std::string write_err;
-            if (!write_file_content(opts.output_file, generated_code, write_err)) {
-                std::cerr << "Error: " << write_err << "\n";
+            const bool use_split = !opts.standalone_specified;
+            const std::string std_label = (opts.cpp_standard == CppStandard::Cpp20) ? "C++20" : "C++17";
+
+            if (use_split) {
+                const fs::path fsm_path(opts.output_file);
+                std::string stem = fsm_path.stem().string();
+                const std::string ext = fsm_path.extension().string();
+                if (stem.size() > 4 && stem.compare(stem.size() - 4, 4, "_fsm") == 0) {
+                    stem.erase(stem.size() - 4);
+                }
+                const fs::path ports_path = fsm_path.parent_path() / (stem + "_ports" + (ext.empty() ? ".hpp" : ext));
+                const std::string ports_inc = ports_path.filename().string();
+
+                GeneratedCppBundle bundle;
+                try {
+                    bundle = CppGenerator::generate_bundle(model, gen_opts, ports_inc);
+                } catch (const std::exception& ex) {
+                    std::cerr << "Error: C++ backend rejected the model: " << ex.what() << "\n";
+                    return 1;
+                }
+
+                std::string write_err;
+                if (!write_file_content(ports_path.string(), bundle.ports_header, write_err)) {
+                    std::cerr << "Error: " << write_err << "\n";
+                    return 1;
+                }
+                if (!write_file_content(opts.output_file, bundle.fsm_header, write_err)) {
+                    std::cerr << "Error: " << write_err << "\n";
+                    return 1;
+                }
+                std::cout << "[SUCCESS] " << std_label << " (Split" << (opts.standalone ? "" : " + Modular")
+                          << ") generated successfully:\n"
+                          << "  - Ports: " << ports_path.string() << "\n"
+                          << "  - FSM:   " << opts.output_file << "\n"
+                          << "  - States: " << model.states.size() << "\n"
+                          << "  - Events: " << model.signals.size() << "\n"
+                          << "  - Transitions: " << model.transitions.size() << "\n"
+                          << "  - Guards: " << model.guards.size() << "\n"
+                          << "  - Actions: " << model.actions.size() << "\n";
+            } else {
+                std::string generated_code;
+                try {
+                    generated_code = CppGenerator::generate_header(model, gen_opts);
+                } catch (const std::exception& ex) {
+                    std::cerr << "Error: C++ backend rejected the model: " << ex.what() << "\n";
+                    return 1;
+                }
+
+                std::string write_err;
+                if (!write_file_content(opts.output_file, generated_code, write_err)) {
+                    std::cerr << "Error: " << write_err << "\n";
+                    return 1;
+                }
+                std::cout << "[SUCCESS] " << std_label << " (" << (opts.standalone ? "Standalone" : "Modular")
+                          << ") generated successfully to: " << opts.output_file << "\n"
+                          << "  - States: " << model.states.size() << "\n"
+                          << "  - Events: " << model.signals.size() << "\n"
+                          << "  - Transitions: " << model.transitions.size() << "\n"
+                          << "  - Guards: " << model.guards.size() << "\n"
+                          << "  - Actions: " << model.actions.size() << "\n";
+            }
+        } else {
+            std::string generated_code;
+            try {
+                generated_code = CppGenerator::generate_header(model, gen_opts);
+            } catch (const std::exception& ex) {
+                std::cerr << "Error: C++ backend rejected the model: " << ex.what() << "\n";
                 return 1;
             }
-            const std::string std_label = (opts.cpp_standard == CppStandard::Cpp20) ? "C++20" : "C++17";
-            std::cout << "[SUCCESS] " << std_label << " (" << (opts.standalone ? "Standalone" : "Modular")
-                      << ") generated successfully to: " << opts.output_file << "\n"
-                      << "  - States: " << model.states.size() << "\n"
-                      << "  - Events: " << model.signals.size() << "\n"
-                      << "  - Transitions: " << model.transitions.size() << "\n"
-                      << "  - Guards: " << model.guards.size() << "\n"
-                      << "  - Actions: " << model.actions.size() << "\n";
-        } else {
             std::cout << generated_code;
         }
 

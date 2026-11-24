@@ -194,6 +194,7 @@ add_fsm_unit_test(test_mcdc_harness DIR backend/verification)
 # ==============================================================================
 add_fsm_unit_test(test_cpp_model_emitter DIR backend/cpp)
 add_fsm_unit_test(test_typed_services_contract DIR backend/cpp STANDARD 20)
+add_fsm_unit_test(test_split_ports_and_external_pods DIR backend/cpp STANDARD 20)
 add_fsm_unit_test(test_cpp_e2e_compiler DIR backend/cpp STANDARD 20)
 add_fsm_unit_test(test_state_serialization DIR backend/cpp/runtime STANDARD 20)
 

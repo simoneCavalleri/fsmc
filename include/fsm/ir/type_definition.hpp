@@ -55,21 +55,35 @@ enum class TypeKind : std::uint8_t {
 }
 
 /**
+ * @brief External header binding for POD/struct/enum types defined outside fsmc-generated code.
+ */
+struct ExternalTypeBinding {
+    std::string header;          ///< Header path to include (e.g. "shared_types.hpp" or "<pkg/types.hpp>")
+    std::string qualified_name;  ///< Fully-qualified C++ type name (e.g. "::shared::BatteryStatus")
+
+    bool operator==(const ExternalTypeBinding& other) const noexcept {
+        return header == other.header && qualified_name == other.qualified_name;
+    }
+};
+
+/**
  * @brief Unified metamodel representing user-defined compound types (Enum, Struct, Alias).
  *
  * Serves as the single canonical source of truth for user-defined types in FSM IR:
  * - Enum: holds `underlying_type` and `literals`.
  * - Struct: holds `fields` and `is_datatype`.
  * - Alias: holds `underlying_type` (the target aliased type).
+ * - External: when `external_binding` is set, references an externally defined POD/enum header.
  */
 struct TypeDefinition {
-    std::string name;                   ///< Type identifier (e.g. "NavigationMode", "Waypoint")
-    TypeKind kind{TypeKind::Struct};    ///< Kind of user type (Enum, Struct, Alias)
-    std::string underlying_type;        ///< Integer type for Enum, or target type for Alias
-    bool is_datatype{false};            ///< For Struct: true if declared as value datatype
-    std::vector<StructField> fields;    ///< Struct fields (for Struct kind)
-    std::vector<EnumLiteral> literals;  ///< Symbolic literals (for Enum kind)
-    std::string description;            ///< Documentation or MBSE annotation
+    std::string name;                                     ///< Type identifier (e.g. "NavigationMode", "Waypoint")
+    TypeKind kind{TypeKind::Struct};                      ///< Kind of user type (Enum, Struct, Alias)
+    std::string underlying_type;                          ///< Integer type for Enum, or target type for Alias
+    bool is_datatype{false};                              ///< For Struct: true if declared as value datatype
+    std::vector<StructField> fields;                      ///< Struct fields (for Struct kind)
+    std::vector<EnumLiteral> literals;                    ///< Symbolic literals (for Enum kind)
+    std::string description;                              ///< Documentation or MBSE annotation
+    std::optional<ExternalTypeBinding> external_binding;  ///< External header/type binding if defined outside fsmc
 
     TypeDefinition() = default;
 
@@ -134,11 +148,22 @@ struct TypeDefinition {
         return TypeDefinition(std::move(name), TypeKind::Alias, std::move(target_type), false, std::move(desc));
     }
 
+    static TypeDefinition make_external(std::string name, std::string header, std::string qualified_name,
+                                        TypeKind type_kind = TypeKind::Struct, std::string desc = "") {
+        TypeDefinition td(std::move(name), type_kind, "", false, std::move(desc));
+        td.external_binding = ExternalTypeBinding{std::move(header), std::move(qualified_name)};
+        return td;
+    }
+
     [[nodiscard]] constexpr bool is_enum() const noexcept { return kind == TypeKind::Enum; }
 
     [[nodiscard]] constexpr bool is_struct() const noexcept { return kind == TypeKind::Struct; }
 
     [[nodiscard]] constexpr bool is_alias() const noexcept { return kind == TypeKind::Alias; }
+
+    [[nodiscard]] bool is_external() const noexcept {
+        return external_binding.has_value() && !external_binding->qualified_name.empty();
+    }
 
     // --- Field Lookups & Mutations (Struct) ---
 
@@ -215,7 +240,7 @@ struct TypeDefinition {
     bool operator==(const TypeDefinition& other) const noexcept {
         return name == other.name && kind == other.kind && underlying_type == other.underlying_type &&
                is_datatype == other.is_datatype && fields == other.fields && literals == other.literals &&
-               description == other.description;
+               description == other.description && external_binding == other.external_binding;
     }
 };
 

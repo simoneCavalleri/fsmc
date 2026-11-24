@@ -12,6 +12,97 @@
 
 namespace fsm::backend::cpp {
 
+namespace {
+
+std::string sanitize_comment(std::string_view text) {
+    std::string res;
+    res.reserve(text.size());
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == '*' && i + 1 < text.size() && text[i + 1] == '/') {
+            res += "* /";
+            ++i;
+        } else if (text[i] == '\r' || text[i] == '\n') {
+            res.push_back(' ');
+        } else {
+            res.push_back(text[i]);
+        }
+    }
+    return res;
+}
+
+std::string sanitize_namespace(std::string_view raw_ns) {
+    if (raw_ns.empty()) {
+        return {};
+    }
+    std::string res;
+    std::size_t pos = 0;
+    while (pos < raw_ns.size()) {
+        const std::size_t sep = raw_ns.find("::", pos);
+        const std::string_view part =
+            (sep == std::string_view::npos) ? raw_ns.substr(pos) : raw_ns.substr(pos, sep - pos);
+        if (!part.empty()) {
+            std::string clean_part;
+            clean_part.reserve(part.size() + 1);
+            for (char ch : part) {
+                const unsigned char uch = static_cast<unsigned char>(ch);
+                if (std::isalnum(uch) != 0 || ch == '_') {
+                    clean_part.push_back(ch);
+                } else {
+                    clean_part.push_back('_');
+                }
+            }
+            if (!clean_part.empty() && std::isdigit(static_cast<unsigned char>(clean_part.front())) != 0) {
+                clean_part.insert(clean_part.begin(), '_');
+            }
+            if (!res.empty()) {
+                res += "::";
+            }
+            res += clean_part;
+        }
+        if (sep == std::string_view::npos) {
+            break;
+        }
+        pos = sep + 2;
+    }
+    return res;
+}
+
+void emit_runtime_preamble(std::ostream& out, const GeneratorOptions& effective_opts) {
+    if (effective_opts.standalone) {
+        out << "#include <cstdint>\n";
+        if (!effective_opts.freestanding) {
+            out << "#include <string>\n";
+        }
+        out << "#include <string_view>\n";
+        out << "#include <type_traits>\n";
+        out << "#include <utility>\n\n";
+        out << "#ifndef FSMC_EMBEDDED_RUNTIME_INCLUDED\n";
+        out << "#define FSMC_EMBEDDED_RUNTIME_INCLUDED\n";
+        if (effective_opts.cpp_standard == CppStandard::Cpp20) {
+            Cpp20StandaloneRuntime::emit(out, effective_opts);
+        } else {
+            Cpp17StandaloneRuntime::emit(out, effective_opts);
+        }
+        out << "#endif // FSMC_EMBEDDED_RUNTIME_INCLUDED\n\n";
+    } else {
+        std::string header_include = effective_opts.runtime_header;
+        if (header_include.empty()) {
+            header_include = "fsm.hpp";
+        }
+        if (header_include.front() == '<' || header_include.front() == '"') {
+            out << "#include " << header_include << "\n";
+        } else {
+            out << "#include \"" << header_include << "\"\n";
+        }
+        out << "#include <cstdint>\n";
+        out << "#include <string_view>\n";
+        out << "#include <type_traits>\n";
+        out << "#include <utility>\n\n";
+    }
+}
+
+}  // namespace
+
 std::string CppGenerator::generate_header(const FsmIr& model, const GeneratorOptions& options) {
     FsmIr processed_model = model;
     processed_model.canonicalize();
@@ -22,61 +113,7 @@ std::string CppGenerator::generate_header(const FsmIr& model, const GeneratorOpt
     }
 
     std::ostringstream out;
-
-    auto sanitize_comment = [](std::string_view text) -> std::string {
-        std::string res;
-        res.reserve(text.size());
-        for (std::size_t i = 0; i < text.size(); ++i) {
-            if (text[i] == '*' && i + 1 < text.size() && text[i + 1] == '/') {
-                res += "* /";
-                ++i;
-            } else if (text[i] == '\r' || text[i] == '\n') {
-                res.push_back(' ');
-            } else {
-                res.push_back(text[i]);
-            }
-        }
-        return res;
-    };
-
-    auto sanitize_namespace = [](std::string_view raw_ns) -> std::string {
-        if (raw_ns.empty()) {
-            return {};
-        }
-        std::string res;
-        std::size_t pos = 0;
-        while (pos < raw_ns.size()) {
-            const std::size_t sep = raw_ns.find("::", pos);
-            const std::string_view part =
-                (sep == std::string_view::npos) ? raw_ns.substr(pos) : raw_ns.substr(pos, sep - pos);
-            if (!part.empty()) {
-                std::string clean_part;
-                clean_part.reserve(part.size() + 1);
-                for (char ch : part) {
-                    const unsigned char uch = static_cast<unsigned char>(ch);
-                    if (std::isalnum(uch) != 0 || ch == '_') {
-                        clean_part.push_back(ch);
-                    } else {
-                        clean_part.push_back('_');
-                    }
-                }
-                if (!clean_part.empty() && std::isdigit(static_cast<unsigned char>(clean_part.front())) != 0) {
-                    clean_part.insert(clean_part.begin(), '_');
-                }
-                if (!res.empty()) {
-                    res += "::";
-                }
-                res += clean_part;
-            }
-            if (sep == std::string_view::npos) {
-                break;
-            }
-            pos = sep + 2;
-        }
-        return res;
-    };
-
-    std::string std_str = (options.cpp_standard == CppStandard::Cpp20) ? "C++20" : "C++17";
+    const std::string std_str = (options.cpp_standard == CppStandard::Cpp20) ? "C++20" : "C++17";
     const std::string safe_model_comment = sanitize_comment(processed_model.name);
 
     GeneratorOptions effective_opts = options;
@@ -104,33 +141,8 @@ std::string CppGenerator::generate_header(const FsmIr& model, const GeneratorOpt
         out << "#endif\n\n";
     }
 
-    if (effective_opts.standalone) {
-        out << "#include <cstdint>\n";
-        if (!effective_opts.freestanding) {
-            out << "#include <string>\n";
-        }
-        out << "#include <string_view>\n\n";
-        out << "#ifndef FSMC_EMBEDDED_RUNTIME_INCLUDED\n";
-        out << "#define FSMC_EMBEDDED_RUNTIME_INCLUDED\n";
-        if (effective_opts.cpp_standard == CppStandard::Cpp20) {
-            Cpp20StandaloneRuntime::emit(out, effective_opts);
-        } else {
-            Cpp17StandaloneRuntime::emit(out, effective_opts);
-        }
-        out << "#endif // FSMC_EMBEDDED_RUNTIME_INCLUDED\n\n";
-    } else {
-        std::string header_include = effective_opts.runtime_header;
-        if (header_include.empty()) {
-            header_include = "fsm.hpp";
-        }
-        if (header_include.front() == '<' || header_include.front() == '"') {
-            out << "#include " << header_include << "\n";
-        } else {
-            out << "#include \"" << header_include << "\"\n";
-        }
-        out << "#include <cstdint>\n";
-        out << "#include <string_view>\n\n";
-    }
+    emit_runtime_preamble(out, effective_opts);
+    CppModelEmitter::emit_external_includes(out, processed_model);
 
     std::string effective_ns = effective_opts.target_namespace;
     if (effective_ns.empty()) {
@@ -149,6 +161,99 @@ std::string CppGenerator::generate_header(const FsmIr& model, const GeneratorOpt
     }
 
     return out.str();
+}
+
+GeneratedCppBundle CppGenerator::generate_bundle(const FsmIr& model, const GeneratorOptions& options,
+                                                 std::string_view ports_header_include) {
+    FsmIr processed_model = model;
+    processed_model.canonicalize();
+
+    diagnostic::DiagnosticEngine backend_diagnostics;
+    if (!CppBackendValidator::validate_model(processed_model, backend_diagnostics)) {
+        throw std::invalid_argument(backend_diagnostics.render_to_string());
+    }
+
+    const std::string std_str = (options.cpp_standard == CppStandard::Cpp20) ? "C++20" : "C++17";
+    const std::string safe_model_comment = sanitize_comment(processed_model.name);
+
+    GeneratorOptions effective_opts = options;
+    if (effective_opts.freestanding) {
+        effective_opts.thread_safe = false;
+    }
+
+    std::string effective_ns = effective_opts.target_namespace;
+    if (effective_ns.empty()) {
+        effective_ns = !processed_model.package.empty() ? processed_model.package : "fsm_generated";
+    }
+    effective_ns = sanitize_namespace(effective_ns);
+
+    const std::string ports_inc =
+        ports_header_include.empty() ? (processed_model.name + "_ports.hpp") : std::string(ports_header_include);
+
+    // 1. Pure interface header (*_ports.hpp) — zero dependency on fsm.hpp
+    std::ostringstream ports_out;
+    ports_out << "/**\n";
+    ports_out << " * @file " << sanitize_comment(ports_inc) << "\n";
+    ports_out << " * @brief Auto-generated I/O Ports, Types, Events & Services Interface for '" << safe_model_comment
+              << "'\n";
+    ports_out << " * @note Generated by fsmc (Finite State Machine Compiler). Zero fsm.hpp dependency.\n";
+    if (effective_opts.freestanding) {
+        ports_out << " * @note Profile: Freestanding / Zero-STL (-fno-exceptions -fno-rtti compatible)\n";
+    }
+    ports_out << " */\n\n";
+    ports_out << "#pragma once\n\n";
+    ports_out << "#include <cstdint>\n";
+    if (!effective_opts.freestanding) {
+        ports_out << "#include <string>\n";
+    }
+    ports_out << "#include <string_view>\n";
+    ports_out << "#include <type_traits>\n";
+    ports_out << "#include <utility>\n\n";
+
+    CppModelEmitter::emit_external_includes(ports_out, processed_model);
+
+    if (!effective_ns.empty()) {
+        ports_out << "namespace " << effective_ns << " {\n\n";
+    }
+    CppModelEmitter::emit_ports_interface(ports_out, processed_model);
+    if (!effective_ns.empty()) {
+        ports_out << "} // namespace " << effective_ns << "\n";
+    }
+
+    // 2. State machine engine header (*_fsm.hpp)
+    std::ostringstream fsm_out;
+    fsm_out << "/**\n";
+    fsm_out << " * @file " << safe_model_comment << "_fsm.hpp\n";
+    fsm_out << " * @brief Auto-generated State Machine Engine for '" << safe_model_comment << "'\n";
+    fsm_out << " * @note Generated by fsmc (Finite State Machine Compiler). Target standard: " << std_str << ".\n";
+    if (effective_opts.freestanding) {
+        fsm_out << " * @note Profile: Freestanding / Zero-STL (-fno-exceptions -fno-rtti compatible)\n";
+    }
+    fsm_out << " */\n\n";
+    fsm_out << "#pragma once\n\n";
+
+    if (effective_opts.freestanding) {
+        fsm_out << "#ifndef FSMC_FREESTANDING\n";
+        fsm_out << "#define FSMC_FREESTANDING 1\n";
+        fsm_out << "#endif\n\n";
+    }
+
+    if (!ports_inc.empty() && (ports_inc.front() == '<' || ports_inc.front() == '"')) {
+        fsm_out << "#include " << ports_inc << "\n";
+    } else {
+        fsm_out << "#include \"" << ports_inc << "\"\n";
+    }
+    emit_runtime_preamble(fsm_out, effective_opts);
+
+    if (!effective_ns.empty()) {
+        fsm_out << "namespace " << effective_ns << " {\n\n";
+    }
+    CppModelEmitter::emit_fsm_engine(fsm_out, processed_model, effective_opts);
+    if (!effective_ns.empty()) {
+        fsm_out << "\n} // namespace " << effective_ns << "\n";
+    }
+
+    return GeneratedCppBundle{ports_out.str(), fsm_out.str()};
 }
 
 }  // namespace fsm::backend::cpp

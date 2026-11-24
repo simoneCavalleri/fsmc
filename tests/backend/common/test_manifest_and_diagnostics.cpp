@@ -55,8 +55,15 @@ FsmIr build_manifest_test_ir() {
 
     TransitionEdge t1("Idle", "Active", "StartStream");
     t1.traceability_reqs.push_back("REQ-FSM-020");
+    ActionSignature emit_act("emit_ready");
+    emit_act.instructions.emplace_back(SignalEmitOp{"StreamReady", {}, "status_port"}, "emit StreamReady");
+    t1.transition_action = std::move(emit_act);
     ir.add_transition(std::move(t1));
-    ir.add_transition(TransitionEdge("Active", "Idle", "StopStream"));
+    TransitionEdge t2("Active", "Idle", "StopStream");
+    ir.add_transition(std::move(t2));
+    TransitionEdge t_timeout("Active", "Idle", "");
+    t_timeout.trigger = TimeTrigger(250U);
+    ir.add_transition(std::move(t_timeout));
     return ir;
 }
 
@@ -110,7 +117,7 @@ TEST(ManifestAndDiagnostics, IrSha256_IsConsistentAcrossManifestCppAndCAbi) {
 
     // Verify all contract sections in manifest
     EXPECT_NE(manifest.find("\"manifest_schema_version\": \"1.0\""), std::string::npos);
-    EXPECT_NE(manifest.find("\"compiler_version\": \"0.13.0\""), std::string::npos);
+    EXPECT_NE(manifest.find("\"compiler_version\": \"0.14.0\""), std::string::npos);
     EXPECT_NE(manifest.find("\"registers\": ["), std::string::npos);
     EXPECT_NE(manifest.find("\"fsm_name\": \"TelemetryRouter\""), std::string::npos);
     EXPECT_NE(manifest.find("\"ports_header\": \"telemetry_ports.hpp\""), std::string::npos);
@@ -124,6 +131,11 @@ TEST(ManifestAndDiagnostics, IrSha256_IsConsistentAcrossManifestCppAndCAbi) {
     EXPECT_NE(manifest.find("\"wcet_max_microsteps\": 3"), std::string::npos);
     EXPECT_NE(manifest.find("\"max_event_queue_bound\": 4"), std::string::npos);
     EXPECT_NE(manifest.find("\"zeno_free\": true"), std::string::npos);
+    EXPECT_NE(manifest.find("\"target\": \"cpp17\""), std::string::npos);
+    EXPECT_NE(manifest.find("\"emitted_events\": ["), std::string::npos);
+    EXPECT_NE(manifest.find("\"signal\": \"StreamReady\", \"target_port\": \"status_port\""), std::string::npos);
+    EXPECT_NE(manifest.find("\"timers\": ["), std::string::npos);
+    EXPECT_NE(manifest.find("\"state\": \"Active\", \"duration_ms\": 250, \"periodic\": false"), std::string::npos);
     EXPECT_NE(manifest.find("\"verified\": true"), std::string::npos);
 }
 

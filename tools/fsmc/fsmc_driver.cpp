@@ -30,6 +30,8 @@
 #include <csignal>
 #endif
 
+#include "fsm/backend/c99/c99_generator.hpp"
+#include "fsm/backend/codegen_backend.hpp"
 #include "fsm/backend/cpp/c_abi_generator.hpp"
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/backend/cpp/runtime_exporter.hpp"
@@ -109,7 +111,7 @@ class FsmcDriverImpl {
         }
 
         if (opts.show_version) {
-            std::cout << "fsmc version 0.13.0 (Universal State Machine Compiler & Optimization Infrastructure)\n";
+            std::cout << "fsmc version 0.14.0 (Universal State Machine Compiler & Optimization Infrastructure)\n";
             return 0;
         }
 
@@ -572,6 +574,98 @@ class FsmcDriverImpl {
                 std::cerr << lowering_diag.render_to_format(diag_fmt, content);
                 return 1;
             }
+        }
+
+        // Native Pure-C99 Bare-Metal Backend (--target c99)
+        if (opts.target_lang == "c99" || opts.target_lang == "c") {
+            DiagnosticEngine lower_diag;
+            ir::FsmIr c99_model = model;
+            auto lower_pm = middleend::PassManager::create_lowering_pipeline(ir::TargetCapabilities::c99_baremetal());
+            if (!lower_pm.run(c99_model, lower_diag) || lower_diag.has_errors()) {
+                std::cerr << lower_diag.render_to_format(diag_fmt, content);
+                return 1;
+            }
+
+            if (!opts.output_file.empty() && !is_stdout_path(opts.output_file)) {
+                const fs::path out_path(opts.output_file);
+                const std::string stem = out_path.stem().string();
+                const fs::path c_hdr_path = out_path.parent_path() / (stem + ".h");
+                const fs::path c_src_path = out_path.parent_path() / (stem + ".c");
+
+                backend::c99::C99GeneratorOptions c99_opts;
+                c99_opts.header_include = c_hdr_path.filename().string();
+                backend::C99CodegenBackend c99_backend(c99_opts);
+                DiagnosticEngine c99_diag;
+                const auto bundle = c99_backend.emit_bundle(c99_model, c99_diag);
+                if (c99_diag.has_errors()) {
+                    std::cerr << c99_diag.render_to_format(diag_fmt, content);
+                    return 1;
+                }
+
+                std::string write_err;
+                if (!write_file_content(c_hdr_path.string(), bundle.header, write_err) ||
+                    !write_file_content(c_src_path.string(), bundle.source, write_err)) {
+                    std::cerr << "Error: " << write_err << "\n";
+                    return 1;
+                }
+                std::cout << "[SUCCESS] Native Pure-C99 generated successfully:\n"
+                          << "  - Header: " << c_hdr_path.string() << "\n"
+                          << "  - Source: " << c_src_path.string() << "\n"
+                          << "  - States: " << c99_model.states.size() << "\n"
+                          << "  - Events: " << c99_model.signals.size() << "\n"
+                          << "  - Transitions: " << c99_model.transitions.size() << "\n";
+
+                if (opts.emit_manifest) {
+                    const fs::path manifest_path = opts.emit_manifest_file.empty()
+                                                       ? (out_path.parent_path() / (stem + ".manifest.json"))
+                                                       : fs::path(opts.emit_manifest_file);
+                    ManifestArtifacts manifest_artifacts;
+                    manifest_artifacts.target = "c99";
+                    manifest_artifacts.standalone = true;
+                    manifest_artifacts.c_header = c_hdr_path.filename().string();
+                    manifest_artifacts.c_source = c_src_path.filename().string();
+
+                    ManifestVerificationSummary ver_summary;
+                    ver_summary.verified = true;
+                    ver_summary.properties_checked = c99_model.properties.size();
+
+                    ir::FsmIr analysis_copy = c99_model;
+                    DiagnosticEngine sched_diag;
+                    middleend::passes::WcetAnalysisPass wcet_pass;
+                    wcet_pass.run(analysis_copy, sched_diag);
+                    ver_summary.wcet_max_microsteps = wcet_pass.max_micro_steps();
+                    ver_summary.zeno_free = !wcet_pass.has_zeno_cycle();
+
+                    middleend::analysis::EventQueueBoundPass queue_pass;
+                    queue_pass.run(analysis_copy, sched_diag);
+                    if (auto it = analysis_copy.attributes.find("static_event_queue_capacity");
+                        it != analysis_copy.attributes.end()) {
+                        try {
+                            ver_summary.max_event_queue_bound = static_cast<std::size_t>(std::stoull(it->second));
+                        } catch (...) {
+                        }
+                    }
+
+                    const std::string manifest_json =
+                        ManifestEmitter::emit_json(c99_model, manifest_artifacts, ver_summary);
+                    if (!write_file_content(manifest_path.string(), manifest_json, write_err)) {
+                        std::cerr << "Error: " << write_err << "\n";
+                        return 1;
+                    }
+                    std::cout << "[SUCCESS] System manifest generated successfully to: " << manifest_path.string()
+                              << "\n";
+                }
+            } else {
+                backend::C99CodegenBackend c99_backend;
+                DiagnosticEngine c99_diag;
+                const std::string out_code = c99_backend.emit(c99_model, c99_diag);
+                if (c99_diag.has_errors()) {
+                    std::cerr << c99_diag.render_to_format(diag_fmt, content);
+                    return 1;
+                }
+                std::cout << out_code;
+            }
+            return 0;
         }
 
         // Generate C++17 code

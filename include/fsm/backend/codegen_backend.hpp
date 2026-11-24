@@ -8,6 +8,7 @@
 #include <string>
 #include <string_view>
 
+#include "fsm/backend/c99/c99_generator.hpp"
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/backend/cpp/cpp_options.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
@@ -71,6 +72,43 @@ class CppCodegenBackend final : public ICodegenBackend {
 
   private:
     cpp::GeneratorOptions options_;
+};
+
+/**
+ * @class C99CodegenBackend
+ * @brief Native Pure-C99 bare-metal code generation backend wrapping C99Generator.
+ */
+class C99CodegenBackend final : public ICodegenBackend {
+  public:
+    explicit C99CodegenBackend(c99::C99GeneratorOptions options = {}) : options_(std::move(options)) {}
+
+    [[nodiscard]] std::string_view id() const noexcept override { return "c99"; }
+
+    [[nodiscard]] ir::TargetCapabilities capabilities() const noexcept override {
+        return ir::TargetCapabilities::c99_baremetal();
+    }
+
+    [[nodiscard]] std::string emit(const ir::FsmIr& ir, diagnostic::DiagnosticEngine& diag) const override {
+        try {
+            const auto bundle = c99::C99Generator::generate(ir, options_);
+            return bundle.header + "\n/* === IMPLEMENTATION === */\n" + bundle.source;
+        } catch (const std::exception& ex) {
+            diag.report(diagnostic::Diagnostic::error("E_C99_CODEGEN", ex.what()));
+            return {};
+        }
+    }
+
+    [[nodiscard]] c99::GeneratedC99Bundle emit_bundle(const ir::FsmIr& ir, diagnostic::DiagnosticEngine& diag) const {
+        try {
+            return c99::C99Generator::generate(ir, options_);
+        } catch (const std::exception& ex) {
+            diag.report(diagnostic::Diagnostic::error("E_C99_CODEGEN", ex.what()));
+            return {};
+        }
+    }
+
+  private:
+    c99::C99GeneratorOptions options_;
 };
 
 }  // namespace fsm::backend

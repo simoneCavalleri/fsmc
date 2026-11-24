@@ -145,3 +145,20 @@ fsmc_target_sources(modular_toolchain_c_abi_example
 )
 add_test(NAME modular_toolchain_c_abi_example COMMAND modular_toolchain_c_abi_example)
 
+# 8. Bare-Metal Pure-C99 Controller (Native --target c99, zero C++ compiler/runtime on target)
+add_executable(baremetal_c99_controller_example
+    08_baremetal_c99_controller/main.c
+)
+set_target_properties(baremetal_c99_controller_example PROPERTIES
+    LINKER_LANGUAGE C
+    C_STANDARD 99
+    C_STANDARD_REQUIRED ON
+    C_EXTENSIONS OFF
+)
+fsmc_target_sources(baremetal_c99_controller_example
+    DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/08_baremetal_c99_controller/watchdog_controller.sysml
+    TARGET c99
+    EMIT_MANIFEST
+)
+add_test(NAME baremetal_c99_controller_example COMMAND baremetal_c99_controller_example)
+

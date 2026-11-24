@@ -144,9 +144,32 @@ def main() -> int:
         manifest_file = tmp_dir / "thermal_controller.manifest.json"
         manifest_doc = json.loads(manifest_file.read_text(encoding="utf-8"))
         validate_doc(manifest_doc, manifest_schema, "thermal_controller.manifest.json")
+        assert manifest_doc["artifacts"]["target"] == "cpp17"
         assert manifest_doc["scheduling"]["max_event_queue_bound"] >= 2
         assert manifest_doc["scheduling"]["zeno_free"] is True
         print("[OK] Validated generated manifest: thermal_controller.manifest.json")
+
+        # Case A2: Native Pure-C99 target (--target c99 --emit-manifest)
+        out_c99 = tmp_dir / "thermal_c99.h"
+        subprocess.run(
+            [
+                str(fsmc_bin),
+                str(sc07_ir),
+                "-o",
+                str(out_c99),
+                "--target",
+                "c99",
+                "--emit-manifest",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        c99_manifest_file = tmp_dir / "thermal_c99.manifest.json"
+        c99_manifest_doc = json.loads(c99_manifest_file.read_text(encoding="utf-8"))
+        validate_doc(c99_manifest_doc, manifest_schema, "thermal_c99.manifest.json")
+        assert c99_manifest_doc["artifacts"]["target"] == "c99"
+        print("[OK] Validated generated Pure-C99 manifest: thermal_c99.manifest.json")
 
         # Case B: SysML v2 example -> emitted IR JSON + manifest
         sysml_examples = sorted(ROOT.glob("examples/**/*.sysml"))

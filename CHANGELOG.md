@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added 500-step deterministic seeded randomized differential test verifying step-by-step state and register equivalence across `IrSimulator == C++17 == Native Pure-C99` (including mid-trace snapshot/restore and byte-identical determinism).
   - Added Showcase `examples/08_baremetal_c99_controller/` compiled and linked purely in C99 (`LINKER_LANGUAGE C`, zero C++ runtime).
 
+### Changed
+- **Formal Frontend & Serializer Standards Conformance (OMG SysML v2.0, W3C SCXML 1.0, OMG UML 2.5.1 / XMI 2.5.1)**:
+  - `Sysml2Serializer`: emits 100% standard OMG SysML v2.0 textual notation (`import ScalarValues::*;`, `item def`, `calc def`, directional `in`/`out` parameters, `attribute ... := ...;`, `assign ... := ...;`, `accept after N [ms]`).
+  - `ScxmlSerializer` & `ScxmlParser`: declared `xmlns:fsm="https://github.com/simoneCavalleri/fsmc/scxml"` and namespaced all `fsmc`-specific attributes (`fsm:kind`, `fsm:satisfies`, `fsm:invariant`, `fsm:priority`, `fsm:type`, `fsm:port`, `fsm:dir`, `fsm:min`, `fsm:max`, `fsm:constraint`) and `<fsm:defer>` elements for strict W3C SCXML 1.0 schema compliance (keeping backwards-compatible parsing for un-namespaced legacy files).
+  - `CameoSerializer`: upgraded XMI export envelope from UML 2.1 to standard OMG UML 2.5.1 / XMI 2.5.1 (`xmi:version="2.5.1"`, `http://www.omg.org/spec/UML/20131001`, `http://www.omg.org/spec/XMI/20131001`).
+
 ---
 
 ## [0.13.0] - 2026-11-24

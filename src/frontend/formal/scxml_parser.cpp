@@ -17,6 +17,18 @@ using namespace fsm::ir;
 using directive::DirectiveParser;
 using directive::GuardExpressionParser;
 
+namespace {
+
+std::string get_fsm_attr(const std::shared_ptr<XmlNode>& node, const std::string& name) {
+    std::string val = node->get_attr("fsm:" + name);
+    if (!val.empty()) {
+        return val;
+    }
+    return node->get_attr(name);
+}
+
+}  // namespace
+
 bool ScxmlParser::parse(std::string_view content, FsmIr& out_ir, diagnostic::DiagnosticEngine& diag) {
     std::string err;
     if (!parse_impl(content, out_ir, err)) {
@@ -194,7 +206,7 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
                 kind = StateKind::Parallel;
             } else if (tag == "final" || ends_with(tag, ":final")) {
                 kind = StateKind::Final;
-            } else if (std::string kind_attr = child->get_attr("kind"); !kind_attr.empty()) {
+            } else if (std::string kind_attr = get_fsm_attr(child, "kind"); !kind_attr.empty()) {
                 kind = state_kind_from_string(kind_attr);
             }
             if (kind == StateKind::Choice) {
@@ -230,9 +242,9 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
                     curr_state->is_composite = true;
                     curr_state->initial_sub_state = sanitize_identifier(sub_initial);
                 }
-                std::string req = child->get_attr("satisfies");
+                std::string req = get_fsm_attr(child, "satisfies");
                 if (req.empty()) {
-                    req = child->get_attr("req");
+                    req = get_fsm_attr(child, "req");
                 }
                 if (!req.empty()) {
                     std::istringstream rss(req);
@@ -246,7 +258,7 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
                         }
                     }
                 }
-                std::string inv = child->get_attr("invariant");
+                std::string inv = get_fsm_attr(child, "invariant");
                 if (!inv.empty()) {
                     curr_state->time_invariant = inv;
                 }
@@ -281,10 +293,10 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
                 if (data_node->tag == "data" || ends_with(data_node->tag, ":data")) {
                     std::string var_id = data_node->get_attr("id");
                     std::string expr = data_node->get_attr("expr");
-                    std::string type_str = data_node->get_attr("type");
+                    std::string type_str = get_fsm_attr(data_node, "type");
                     if (!var_id.empty()) {
-                        std::string is_port = data_node->get_attr("port");
-                        std::string dir_str = data_node->get_attr("dir");
+                        std::string is_port = get_fsm_attr(data_node, "port");
+                        std::string dir_str = get_fsm_attr(data_node, "dir");
                         if (is_port == "true" || !dir_str.empty()) {
                             // Typed I/O port declaration
                             PortDefinition port;
@@ -297,21 +309,21 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
                             } else {
                                 port.direction = PortDirection::In;
                             }
-                            std::string min_s = data_node->get_attr("min");
+                            std::string min_s = get_fsm_attr(data_node, "min");
                             if (!min_s.empty()) {
                                 try {
                                     port.min_value = std::stod(min_s);
                                 } catch (...) {
                                 }
                             }
-                            std::string max_s = data_node->get_attr("max");
+                            std::string max_s = get_fsm_attr(data_node, "max");
                             if (!max_s.empty()) {
                                 try {
                                     port.max_value = std::stod(max_s);
                                 } catch (...) {
                                 }
                             }
-                            std::string constraint = data_node->get_attr("constraint");
+                            std::string constraint = get_fsm_attr(data_node, "constraint");
                             if (!constraint.empty()) {
                                 port.constraint = constraint;
                             }
@@ -685,7 +697,7 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
     trans.kind = is_internal ? TransitionEdgeKind::Internal
                              : (is_local ? TransitionEdgeKind::Local : TransitionEdgeKind::External);
 
-    std::string prio_str = trans_node->get_attr("priority");
+    std::string prio_str = get_fsm_attr(trans_node, "priority");
     if (!prio_str.empty()) {
         try {
             trans.priority = static_cast<std::uint32_t>(std::stoul(prio_str));

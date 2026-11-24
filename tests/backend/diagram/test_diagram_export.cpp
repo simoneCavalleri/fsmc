@@ -443,19 +443,22 @@ TEST(DiagramExport, PseudostatesAndOrthogonalRegions_ExportedCorrectly) {
 
     model.add_choice_node("SpeedCheckChoice");
 
-    // 1. Cameo XMI Export Verification
+    // 1. Cameo XMI Export Verification (OMG UML 2.5.1 / XMI 2.5.1)
     const std::string cameo_out = CameoSerializer::serialize(model);
     EXPECT_NE(cameo_out.find("<xmi:XMI"), std::string::npos);
+    EXPECT_NE(cameo_out.find("xmi:version=\"2.5.1\""), std::string::npos);
+    EXPECT_NE(cameo_out.find("xmlns:uml=\"http://www.omg.org/spec/UML/20131001\""), std::string::npos);
     EXPECT_NE(cameo_out.find("kind=\"choice\""), std::string::npos);
     EXPECT_NE(cameo_out.find("kind=\"deepHistory\""), std::string::npos);
     EXPECT_NE(cameo_out.find("<deferrableTrigger name=\"TelemetryPing\"/>"), std::string::npos);
     EXPECT_NE(cameo_out.find("<subvertex xmi:type=\"uml:State\""), std::string::npos);
 
-    // 2. SCXML Export Verification
+    // 2. SCXML Export Verification (W3C SCXML 1.0 + xmlns:fsm)
     const std::string scxml_out = ScxmlSerializer::serialize(model);
     EXPECT_NE(scxml_out.find("<scxml"), std::string::npos);
+    EXPECT_NE(scxml_out.find("xmlns:fsm=\"https://github.com/simoneCavalleri/fsmc/scxml\""), std::string::npos);
     EXPECT_NE(scxml_out.find("<history id=\"Active_hist\" type=\"deep\"/>"), std::string::npos);
-    EXPECT_NE(scxml_out.find("<defer event=\"TelemetryPing\"/>"), std::string::npos);
+    EXPECT_NE(scxml_out.find("<fsm:defer event=\"TelemetryPing\"/>"), std::string::npos);
     EXPECT_NE(scxml_out.find("<state id=\"Active\" initial=\"Navigating\">"), std::string::npos);
     EXPECT_NE(scxml_out.find("<state id=\"Navigating\""), std::string::npos);
 }

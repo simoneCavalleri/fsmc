@@ -46,8 +46,8 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
     std::string model_name = model.name.empty() ? "GeneratedFSM" : model.name;
 
     out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
-    out << "<xmi:XMI xmi:version=\"2.1\" xmlns:uml=\"http://www.omg.org/spec/UML/20090901\" "
-           "xmlns:xmi=\"http://schema.omg.org/spec/XMI/2.1\">\n";
+    out << "<xmi:XMI xmi:version=\"2.5.1\" xmlns:uml=\"http://www.omg.org/spec/UML/20131001\" "
+           "xmlns:xmi=\"http://www.omg.org/spec/XMI/20131001\">\n";
     out << "  <uml:Model xmi:id=\"_m1\" name=\"" << escape_xml(model_name) << "Model\">\n";
     // Emit declared typed signals as formal directives
     for (const auto& sig : model.signals) {

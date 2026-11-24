@@ -11,6 +11,45 @@ using namespace fsm::ir;
 
 namespace {
 
+std::string format_sysml2_action_block(const ActionSignature& act) {
+    std::ostringstream ss;
+    bool first = true;
+    for (const auto& inst : act.instructions) {
+        if (const auto* call = std::get_if<ActionCallOp>(&inst.op)) {
+            if (!first) {
+                ss << " ";
+            }
+            first = false;
+            if (call->result_target.has_value() && !call->result_target->name.empty()) {
+                ss << "assign " << call->result_target->full_path() << " := ";
+            }
+            ss << call->function_name << "(";
+            for (std::size_t i = 0; i < call->arguments.size(); ++i) {
+                if (i > 0) {
+                    ss << ", ";
+                }
+                ss << call->arguments[i];
+            }
+            ss << ");";
+        }
+    }
+    for (const auto& a : act.assignments) {
+        if (!first) {
+            ss << " ";
+        }
+        first = false;
+        const std::string lhs = a.target.full_path();
+        if (a.op == AssignmentOp::Assign) {
+            ss << "assign " << lhs << " := " << a.expression << ";";
+        } else {
+            const std::string_view op_sv = assignment_op_to_string(a.op);
+            const char bin_op = op_sv.empty() ? '+' : op_sv.front();
+            ss << "assign " << lhs << " := " << lhs << " " << bin_op << " " << a.expression << ";";
+        }
+    }
+    return ss.str();
+}
+
 void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, size_t indent) {
     std::string pad(indent * 4, ' ');
 
@@ -69,8 +108,8 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
 
     // Entry Actions
     for (const auto& act : state.entry_actions) {
-        if (!act.assignments.empty()) {
-            out << pad << "    entry action { " << fsm::ir::format_action_expression(act) << "; }\n";
+        if (!act.assignments.empty() || !act.instructions.empty()) {
+            out << pad << "    entry action { " << format_sysml2_action_block(act) << " }\n";
         } else {
             out << pad << "    entry action " << act.name << ";\n";
         }
@@ -83,8 +122,8 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
 
     // Exit Actions
     for (const auto& act : state.exit_actions) {
-        if (!act.assignments.empty()) {
-            out << pad << "    exit action { " << fsm::ir::format_action_expression(act) << "; }\n";
+        if (!act.assignments.empty() || !act.instructions.empty()) {
+            out << pad << "    exit action { " << format_sysml2_action_block(act) << " }\n";
         } else {
             out << pad << "    exit action " << act.name << ";\n";
         }
@@ -115,6 +154,17 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
 std::string Sysml2Serializer::serialize(const FsmIr& model) {
     std::ostringstream out;
     std::string model_name = model.name.empty() ? "GeneratedStateMachine" : model.name;
+    out << "import ScalarValues::*;\n\n";
+    for (const auto& svc : model.services) {
+        out << "calc def " << svc.name << " {\n";
+        for (const auto& p : svc.parameters) {
+            out << "    in " << p.name << " : " << p.type.to_sysml_type() << ";\n";
+        }
+        if (!svc.is_void_return()) {
+            out << "    return : " << svc.return_type.to_sysml_type() << ";\n";
+        }
+        out << "}\n\n";
+    }
     out << "state def " << model_name << " {\n";
 
     // Native SysML v2 Enumerations
@@ -162,10 +212,9 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
         out << "\n";
     }
 
-    // Native SysML v2 Typed Ports (InPorts / OutPorts / InOutPorts)
+    // Native OMG SysML v2.0 Directional Parameters (In / Out / InOut)
     for (const auto& port : model.ports) {
-        std::string dir_str =
-            port.is_out() ? "out port " : (port.direction == PortDirection::InOut ? "inout port " : "in port ");
+        std::string dir_str = port.is_out() ? "out " : (port.direction == PortDirection::InOut ? "inout " : "in ");
         out << "    " << dir_str << port.name << " : " << port.type.to_sysml_type();
         if (!port.constraint.empty()) {
             out << " { assert constraint { " << port.constraint << " } }";
@@ -178,11 +227,11 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
         out << "\n";
     }
 
-    // Native SysML v2 EFSM Variables
+    // Native OMG SysML v2.0 EFSM Attributes
     for (const auto& var : model.variables) {
         out << "    attribute " << var.name << " : " << var.type.to_sysml_type();
         if (!var.initial_value.empty()) {
-            out << " = " << var.initial_value;
+            out << " := " << var.initial_value;
         }
         out << ";\n";
     }
@@ -190,7 +239,7 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
         out << "\n";
     }
 
-    // Collect synthetic event names used solely by TimeTriggers so we don't emit redundant event defs
+    // Collect synthetic event names used solely by TimeTriggers so we don't emit redundant item defs
     std::set<std::string> time_trigger_events;
     std::set<std::string> non_time_events;
     for (const auto& trans : model.transitions) {
@@ -203,19 +252,19 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
         }
     }
 
-    // Native SysML v2 Signals & Item Definitions
+    // Native OMG SysML v2.0 Item Definitions (Triggers & Payloads)
     for (const auto& sig : model.signals) {
         if (sig.attributes.empty() && time_trigger_events.count(sig.name) > 0 && non_time_events.count(sig.name) == 0) {
             continue;
         }
         if (sig.attributes.empty() && sig.validators.empty()) {
-            out << "    event def " << sig.name << ";\n";
+            out << "    item def " << sig.name << ";\n";
         } else {
             out << "    item def " << sig.name << " {\n";
             for (const auto& attr : sig.attributes) {
                 out << "        attribute " << attr.name << " : " << attr.type.to_sysml_type();
                 if (!attr.default_value.empty()) {
-                    out << " = " << attr.default_value;
+                    out << " := " << attr.default_value;
                 }
                 out << ";\n";
             }
@@ -284,11 +333,11 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
         if (const auto* tt = std::get_if<ir::TimeTrigger>(&trans.trigger)) {
             const std::string_view unit_str = ir::time_unit_to_string(tt->unit);
             if (tt->kind == ir::TimeTriggerKind::Every) {
-                out << "        accept every(" << tt->duration_value << unit_str << ")\n";
+                out << "        accept every " << tt->duration_value << " [" << unit_str << "]\n";
             } else if (tt->kind == ir::TimeTriggerKind::At) {
-                out << "        accept at(" << tt->duration_value << unit_str << ")\n";
+                out << "        accept at " << tt->duration_value << " [" << unit_str << "]\n";
             } else {
-                out << "        accept after(" << tt->duration_value << unit_str << ")\n";
+                out << "        accept after " << tt->duration_value << " [" << unit_str << "]\n";
             }
         } else if (const auto* ct = std::get_if<ir::ChangeTrigger>(&trans.trigger)) {
             if (!ct->raw_expression.empty()) {
@@ -300,8 +349,9 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
         if (trans.guard && !trans.guard->empty()) {
             out << "        if " << ir::GuardExpressionParser::to_diagram_string(*trans.guard, model.guards) << "\n";
         }
-        if (trans.transition_action.has_value() && !trans.transition_action->assignments.empty()) {
-            out << "        do action { " << fsm::ir::format_action_expression(*trans.transition_action) << "; }\n";
+        if (trans.transition_action.has_value() &&
+            (!trans.transition_action->assignments.empty() || !trans.transition_action->instructions.empty())) {
+            out << "        do action { " << format_sysml2_action_block(*trans.transition_action) << " }\n";
         } else {
             std::string act = trans.get_action();
             if (!act.empty()) {

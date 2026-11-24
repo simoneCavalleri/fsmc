@@ -80,11 +80,10 @@ add_executable(flight_control src/main.cpp)
 # Link the header-only runtime library
 target_link_libraries(flight_control PRIVATE fsmc_runtime)
 
-# Automatically transpile SysML v2 / PlantUML statecharts to C++ at build time
+# Automatically transpile SysML v2 / PlantUML / ir-json statecharts to split C++17 headers at build time
 fsmc_target_sources(flight_control
     DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/models/mission_controller.sysml
     NAME MissionControllerFSM
-    STANDARD 20
     NAMESPACE avionics
 )
 ```
@@ -149,7 +148,6 @@ fsmc_target_sources(flight_control
 
 If your target is a bare-metal microcontroller (ARM Cortex-M, RISC-V, ESP32) with no external build system dependencies, you can copy the standalone zero-dependency runtime header directly from the repository:
 
-- C++20 Standalone Runtime: [`include/fsm/backend/cpp/cpp20_standalone_runtime.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/backend/cpp/cpp20_standalone_runtime.hpp)
-- C++17 Standalone Runtime: [`include/fsm/backend/cpp/cpp17_standalone_runtime.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/backend/cpp/cpp17_standalone_runtime.hpp)
+- Unified C++17+ Standalone Runtime Emitter: [`include/fsm/backend/cpp/cpp_standalone_runtime.hpp`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/backend/cpp/cpp_standalone_runtime.hpp) (or run `fsmc --export-runtime ./runtime/` to generate a single `fsm.hpp` that compiles cleanly under C++17, C++20, and C++23).
 
 These single-header files require zero external dependencies beyond standard C++ type traits and atomic headers.

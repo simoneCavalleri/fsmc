@@ -37,11 +37,11 @@ fsm-opt -i model.sysml --passes=canonicalize,constant-folding,dead-state-pruning
 
 ### 2. Comprehensive Pass Reference: The 7-Stage Pipeline
 
-`fsmc` registers **33 middle-end passes** in `PassManager` (inspectable via `fsm-opt --list-passes`). Of these, **28 passes** execute in `PassManager::create_verified_7stage_pipeline(optimize = true)`, while the remaining 5 specialized passes (`inline-submachines`, `choice-completeness`, `race-check`, `state-minimization`, `pipe-through`) are activated by standard optimization modes (`-O1`, `-O2`), dedicated flags (`--inline`, `--races`, `--pipe-through`), or custom `fsm-opt --passes=...` pipelines:
+`fsmc` registers **34 middle-end passes** in `PassManager` (inspectable via `fsm-opt --list-passes`). Of these, **29 passes** execute in `PassManager::create_verified_7stage_pipeline(optimize = true)`—starting with the mandatory fail-closed `verify-ir-integrity` gate—while the remaining 5 specialized passes (`inline-submachines`, `choice-completeness`, `race-check`, `state-minimization`, `pipe-through`) are activated by standard optimization modes (`-O1`, `-O2`), dedicated flags (`--inline`, `--races`, `--pipe-through`), or custom `fsm-opt --passes=...` pipelines:
 
 ```mermaid
 flowchart TD
-    S1["<b>Stage 1: Canonicalization & Desugaring</b><br/>HierarchyCanonicalization • SemanticValidation • GuardSimplification"]
+    S1["<b>Stage 1: Integrity Gate, Canonicalization & Desugaring</b><br/>VerifyIrIntegrity • HierarchyCanonicalization • SemanticValidation • GuardSimplification"]
     S2["<b>Stage 2: Structural Lowering Suite</b><br/>ForkJoinLowering • HistoryLowering • DeferredEventLowering<br/>BoundaryActionFusion • ConnectiveJunctionChaining • ChoiceInlining<br/>OrthogonalProduct • SubmachineInlining"]
     S3["<b>Stage 3: Formal Safety & Invariants</b><br/>SampledChangeTriggers • LivelockAnalysis • PriorityConflict<br/>TimedInvariantsVerifier • EventQueueBound • GuardSatisfiability<br/>ChoiceCompleteness • RaceCheck"]
     S4["<b>Stage 4: Symbolic Model Checking</b><br/>TimedDeadlock • ModelSafetyVerifier • ModelChecking (LTL/CTL)"]
@@ -54,7 +54,11 @@ flowchart TD
 
 ---
 
-### Stage 1: Structural Canonicalization & Desugaring
+### Stage 1: Integrity Gate, Structural Canonicalization & Desugaring
+
+#### 0. `verify-ir-integrity` (`VerifyIrIntegrityPass`)
+* **What it does**: Mandatory fail-closed gate executed at the start of every pipeline (`fsmc`, `fsm-opt`, and formal verification). Validates root invariants (`E_IR_ROOT`), uniqueness of state/port/variable/type/service IDs and FQNs (`E_IR_DUP_ID`), acyclic parent-child hierarchy (`E_IR_HIERARCHY`), valid transition source/target endpoints (`E_IR_DANGLING_REF`), and datapath/service call type safety including prohibition of writes to read-only `InPort`s (`E_IR_TYPE_MISMATCH`).
+* **Why it matters**: Guarantees that externally authored `ir-json` inputs and transformed IRs satisfy all structural invariants before any optimization, model checking, or code generation pass runs.
 
 #### 1. `canonicalize` (`HierarchyCanonicalizationPass`)
 * **What it does**: Computes deterministic 64-bit FNV-1a identifiers, normalizes Fully Qualified Names (`FQN`, e.g. `"Operating.Running.Active"`), reconciles parent-child relationships, and sorts all states and transitions into deterministic order.

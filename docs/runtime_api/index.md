@@ -2,7 +2,7 @@
 
 The `fsmc` compiler translates state machine models into deterministic, formally verified execution runtimes across multiple target programming languages.
 
-The **C++ Reference Backend** provides a header-only, **zero-heap, zero-vtable, and zero-exception** C++17/C++20 runtime library located in [`include/fsm/backend/cpp/runtime/`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/backend/cpp/runtime/). For planned Rust (`no_std`) and ISO C99 code generators, see the **[Multi-Target Architecture & Roadmap](multi_target_roadmap.md)**.
+The **Unified C++17 Reference Backend** provides a header-only, **zero-heap, zero-vtable, and zero-exception** runtime library (compiling cleanly under C++17, C++20, and C++23) located in [`include/fsm/backend/cpp/runtime/`](https://github.com/simoneCavalleri/fsmc/blob/main/include/fsm/backend/cpp/runtime/), alongside a production **Pure C99 Zero-Allocation ABI** (`--emit-c-abi`). For native Rust (`no_std`) and pure-C table roadmaps, see the **[Multi-Target Architecture & Roadmap](multi_target_roadmap.md)**.
 
 ---
 
@@ -10,12 +10,13 @@ The **C++ Reference Backend** provides a header-only, **zero-heap, zero-vtable, 
 
 | Target Language | Minimum Standard | Concurrency Models | Safety & Reliability | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| **C++ Target** | C++17 / C++20 | Synchronous stack, Lock-Free SPSC, Active Object | Zero-Heap, Hard Real-Time | **Production Target** |
-| **Rust Target** | Rust 2021 (`no_std`) | Typestate transitions, lock-free static channels | Compile-time memory safety, zero panic | **Preview / In Development** |
-| **C Target** | ISO C99 / C11 | Static transition table, switch-case dispatch | Embedded C, zero malloc | **Preview / Planned RFC** |
+| **C++ Target** | C++17 (C++17/20/23 compatible) | Synchronous stack, Lock-Free SPSC, Active Object | Zero-Heap, Hard Real-Time, `--freestanding` | **Production Target** |
+| **Pure C99 ABI (`--emit-c-abi`)** | ISO C99 (`-pedantic -Werror`) | Static aligned opaque storage + C callback `services_t` | Zero malloc, `static_assert` size/align, `ir_sha256()` | **Production Target** |
+| **Rust Target (Native)** | Rust 2021 (`no_std`) | Typestate transitions, lock-free static channels | Compile-time memory safety, zero panic | **Preview / In Development** |
+| **Native Pure-C Table Target** | ISO C99 / C11 | Static transition table, switch-case dispatch | Embedded C without C++ bridge | **Preview / Planned RFC** |
 
 !!! note "Production vs. Preview"
-    The **C++ Backend** is the active production-ready target. Rust and C code generation are preview targets currently being designed and implemented.
+    The **Unified C++17 Backend** and **Pure C99 Zero-Allocation ABI (`--emit-c-abi`)** are active production-ready targets. Native Rust and standalone C switch-table generators are roadmap preview targets.
 
 ---
 
@@ -119,6 +120,7 @@ Explore the comprehensive guides below to master every aspect of the `fsmc` runt
 
 ### 1. Fundamentals & Core Building Blocks
 - **[Core Building Blocks](core_concepts.md)**: The 4-Domain Datapath Model (`InPorts`, `OutPorts`, `Registers`, `Services`), flexible guard/action functors, and UML History recovery.
+- **[Split Interfaces, External PODs & Pure C99 ABI](c_abi_and_split_interfaces.md)**: Default `*_ports.hpp` + `*_fsm.hpp` split, `external_ref` shared PODs, zero-vtable `ServicesContract`, `--emit-c-abi`, and `*.manifest.json` SHA-256 attestation.
 
 ### 2. Execution Engines (Choose Your Concurrency Model)
 - **[1. Synchronous Core Engine (`fsm::fsm`)](synchronous_fsm.md)**: Direct execution on caller stack, periodic sampled `step()` control loops, and `in_state_for<Threshold>` continuous dwell timers.

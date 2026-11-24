@@ -11,7 +11,7 @@ A single-page reference covering the universal `fsmc` / `fsm-opt` CLI workflow, 
 
 ```bash
 # Code Generation (C++20 Standalone Header)
-fsmc -i flight.sysml -o flight_fsm.hpp --target cpp --std 20 --standalone
+fsmc -i flight.sysml -o flight_fsm.hpp --target cpp --standalone
 
 # Formal Verification (Invariants, Deadlocks, Unreachable States)
 fsmc -i flight.sysml --verify

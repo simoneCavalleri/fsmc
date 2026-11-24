@@ -120,7 +120,7 @@ Because standard SCXML lacks native elements for hardware I/O port contracts or 
 fsmc -i controller.scxml --verify
 
 # Generate standalone C++20 header
-fsmc -i controller.scxml -o controller_fsm.hpp --std 20
+fsmc -i controller.scxml -o controller_fsm.hpp
 
 # Transpile SCXML into SysML v2 syntax
 fsmc -i controller.scxml --export sysml2 -o controller.sysml

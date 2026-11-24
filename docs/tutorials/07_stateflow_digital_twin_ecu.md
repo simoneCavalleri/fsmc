@@ -97,7 +97,7 @@ You can inspect the transformed IR using `fsm-opt` and compile the standalone C+
 fsm-opt ecu.sfx --passes=connective-junction-chaining --emit-ir
 
 # Compile standalone C++20 ECU header
-fsmc -i ecu.sfx -o ecu_fsm.hpp --std 20 --standalone --namespace automotive::ecu --name EcuEngineFSM
+fsmc -i ecu.sfx -o ecu_fsm.hpp --standalone --namespace automotive::ecu --name EcuEngineFSM
 ```
 
 ---

@@ -119,3 +119,29 @@ fsmc_target_sources(stateflow_digital_twin_ecu_example
 )
 add_test(NAME stateflow_digital_twin_ecu_example COMMAND stateflow_digital_twin_ecu_example)
 
+# ------------------------------------------------------------------------------
+# Module 07: Modular MBSE Toolchain (ir-json, Split Ports, Zero-Vtable Services & Pure C99 ABI)
+# ------------------------------------------------------------------------------
+enable_language(C)
+add_executable(modular_toolchain_c_abi_example
+    07_modular_toolchain_c_abi/main.cpp
+    07_modular_toolchain_c_abi/hal_driver.cpp
+    07_modular_toolchain_c_abi/c_client.c
+)
+target_link_libraries(modular_toolchain_c_abi_example PRIVATE fsmc_runtime)
+set_target_properties(modular_toolchain_c_abi_example PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED ON
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+fsmc_target_sources(modular_toolchain_c_abi_example
+    DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/07_modular_toolchain_c_abi/thermal_controller.ir.json
+    NAME ThermalController
+    NAMESPACE thermal
+    FORMAT ir-json
+    EMIT_C_ABI
+)
+add_test(NAME modular_toolchain_c_abi_example COMMAND modular_toolchain_c_abi_example)
+

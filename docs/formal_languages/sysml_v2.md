@@ -248,7 +248,7 @@ package MissionSafety {
 fsmc -i spacecraft.sysml --verify
 
 # Generate standalone C++20 header
-fsmc -i spacecraft.sysml -o spacecraft_fsm.hpp --std 20
+fsmc -i spacecraft.sysml -o spacecraft_fsm.hpp
 
 # Export canonical SMV logic for external nuXmv proof
 fsmc -i spacecraft.sysml --export smv -o formal_model.smv

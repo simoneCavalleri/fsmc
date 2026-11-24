@@ -155,7 +155,7 @@ transition t_resume
 Save the drone flight model as `flight_controller.sysml` and compile it with `fsmc`:
 
 ```bash
-fsmc -i flight_controller.sysml -o flight_controller_fsm.hpp --target cpp --std 20 --standalone --namespace drone --name FlightControllerFSM
+fsmc -i flight_controller.sysml -o flight_controller_fsm.hpp --target cpp --standalone --namespace drone --name FlightControllerFSM
 ```
 
 ### Complete Verification Harness (`main.cpp`)

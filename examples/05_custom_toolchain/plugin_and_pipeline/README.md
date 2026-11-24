@@ -63,7 +63,7 @@ fsm-opt examples/05_custom_toolchain/plugin_and_pipeline/sensor_pipeline.sysml \
 5. Generate C++20 code, build, and run the verified sensor runner:
 ```bash
 fsmc examples/05_custom_toolchain/plugin_and_pipeline/sensor_pipeline.sysml \
-    --c++20 --standalone --namespace sensing \
+    --standalone --namespace sensing \
     -o sensor_fsm.hpp
 
 g++ -std=c++20 -O2 \

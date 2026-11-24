@@ -6,87 +6,70 @@
 
 [![CI](https://github.com/simoneCavalleri/fsmc/actions/workflows/ci.yml/badge.svg)](https://github.com/simoneCavalleri/fsmc/actions/workflows/ci.yml)
 [![Documentation](https://img.shields.io/badge/Docs-Online%20Manual-0284c7.svg)](https://simoneCavalleri.github.io/fsmc/)
-[![Release](https://img.shields.io/github/v/release/simoneCavalleri/fsmc?color=blue)](https://github.com/simoneCavalleri/fsmc/releases)
+[![Release](https://github.com/simoneCavalleri/fsmc/releases/latest)](https://github.com/simoneCavalleri/fsmc/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Standards](https://img.shields.io/badge/Standards-OMG%20SysML%20v2%20%7C%20UML%202.5%20%7C%20W3C%20SCXML%20%7C%20nuXmv-orange.svg)](https://simoneCavalleri.github.io/fsmc/formal_languages/uml_reference/)
-[![Tests](https://img.shields.io/badge/Tests-86%20Suites%20%7C%2095%20CTest%20Targets-success.svg)](https://simoneCavalleri.github.io/fsmc/reference/test_suite_catalog/)
+[![Tests](https://img.shields.io/badge/Tests-104%20CTest%20Targets-success.svg)](https://simoneCavalleri.github.io/fsmc/reference/test_suite_catalog/)
 
-**The Universal Finite State Machine Compiler, Optimization & Formal Verification Infrastructure.**  
-*Ingest, verify, optimize, transpile, and compile statecharts across 9 modeling formats into deterministic C++17/C++20 runtimes.*
+**The Universal, Zero-Dependency State Machine Compiler & Formal Verification Engine.**  
+*Compile formal statecharts into verified, zero-heap C++17 and pure C99 ABI code—standalone or as the composable core of modern MBSE toolchains.*
 
-[Documentation](https://simoneCavalleri.github.io/fsmc/) • [Quickstart](https://simoneCavalleri.github.io/fsmc/getting_started/quickstart/) • [CLI Reference](https://simoneCavalleri.github.io/fsmc/getting_started/cli_usage/) • [Runtime API](https://simoneCavalleri.github.io/fsmc/runtime_api/synchronous_fsm/) • [Changelog](CHANGELOG.md)
+[Documentation](https://simoneCavalleri.github.io/fsmc/) • [Quickstart](https://simoneCavalleri.github.io/fsmc/getting_started/quickstart/) • [CLI Reference](https://simoneCavalleri.github.io/fsmc/getting_started/cli_usage/) • [Runtime API](https://simoneCavalleri.github.io/fsmc/runtime_api/synchronous_fsm/) • [Examples](examples/) • [Changelog](CHANGELOG.md)
 
 </div>
 
 ---
 
-## Welcome to `fsmc`
+## Why `fsmc`?
 
-**`fsmc`** (Finite State Machine Compiler) is a modular, format-agnostic compiler infrastructure and verification toolchain for Finite State Machines and Hierarchical Statecharts.
+Safety-critical and embedded control software should not rely on hand-coded `switch` statements that drift from architectural models, nor on heavy code generators that drag in runtime dependencies, heap allocations, and opaque tool lock-in.
 
-Built with a decoupled, three-stage compiler architecture (**Frontends $\to$ Canonical IR & Middle-End $\to$ Pluggable Backends**), `fsmc` bridges high-level Model-Based Systems Engineering (MBSE) specifications (OMG SysML v2, Cameo XMI, W3C SCXML, MathWorks Stateflow, PlantUML, Mermaid, Graphviz DOT, JSON) with formal model checkers, middle-end pass optimizers (`fsm-opt`), and deterministic target runtimes:
+**`fsmc`** is a deterministic, zero-dependency compiler that turns statechart specifications into formally verified, zero-overhead production code:
+
+- **Formally Verified Before Codegen**: Built-in LTL/CTL model checking, EFSM interval analysis, deadlock/livelock detection, WCET bounds, interactive IR simulation (`--simulate`), MC/DC GoogleTest synthesis, and Requirement Traceability Matrices (RTM).
+- **Zero-Overhead Deterministic Runtimes**: Unified C++17 backend (compiling cleanly in C++17, C++20, and C++23, plus `--freestanding` `-fno-exceptions -fno-rtti`) with **0 bytes heap**, **0 vtables** on hot paths, $O(1)$ dispatch, lock-free SPSC, thread-safe MPSC, deterministic timers, and zero-heap snapshot rollback.
+- **Pure C99 Zero-Alloc ABI (`--emit-c-abi`)**: Generates strict C99 (`-pedantic -Werror`) `extern "C"` headers with statically aligned opaque storage, flat POD ports, C callback service tables (`void* user_data`), and placement-new C++17 bridges—ready for C, Rust, Python, and legacy C++ callers.
+- **Composable by Design**: Designed as the deterministic backend of modern MBSE toolchains—with strict canonical `ir-json` ingestion (`--input-format=ir-json`), a mandatory `verify-ir-integrity` gate, split `*_ports.hpp` + `*_fsm.hpp` headers for HAL isolation, language-agnostic external type references (`external_ref`), compile-time `ServicesContract` verification, SHA-256 attested `*.manifest.json`, and machine-readable `--diagnostics=json`.
 
 ```mermaid
-flowchart TD
-    subgraph Ingestion["1. Frontend Ingestion"]
-        SysML["<b>MBSE & Formal Specs</b><br/>OMG SysML v2 • Cameo XMI 2.1<br/>W3C SCXML • MathWorks Stateflow"]
-        Diagrams["<b>Visual & Interchange</b><br/>PlantUML • Mermaid<br/>Graphviz DOT • Canonical JSON"]
-    end
+flowchart LR
+    In["<b>Model Inputs</b><br/>SysML v2 · Stateflow · SCXML<br/>Cameo XMI · SMV · Diagrams<br/>Canonical ir-json (v1.0)"]
+    Core["<b>fsmc &amp; fsm-opt Core</b><br/>verify-ir-integrity Gate<br/>34 Optimization &amp; Lowering Passes<br/>LTL/CTL Verifier · IR Simulator"]
+    Out["<b>Deterministic Outputs</b><br/>Split C++17 (*_ports.hpp + *_fsm.hpp)<br/>Pure C99 ABI (*_c.h + *_c.cpp)<br/>Manifest + SHA-256 · SMV · MC/DC · RTM"]
 
-    subgraph Compiler["2. Canonical IR & Middle-End Passes (fsm-opt)"]
-        IR["<b>Canonical Metamodel (FsmIr)</b><br/>Partitioned Memory Model:<br/>InPorts • OutPorts • Registers • Services<br/>Unified Native JSON AST Engine"]
-        Passes["<b>33 Registered Analysis & Opt Passes</b><br/>7-Stage Verified Pipeline • Structural Lowering<br/>Temporal Model Checking • EFSM Intervals<br/>Unix Pipeline (--pipe-through) • C++ Plugins"]
-    end
-
-    subgraph Targets["3. Extensible Target Backends"]
-        CPP["<b>Deterministic C++ Engine</b><br/>C++17 / C++20 • Zero Allocations<br/>Lock-Free SPSC • Thread-Safe MPSC<br/>Deterministic Timer • Flight Recorder"]
-        SMV["<b>Formal Model Checking Export</b><br/>Pure SMV Symbolic Logic<br/>for nuXmv Solver Suite"]
-        Safety["<b>Safety & Certification Tools</b><br/>MC/DC Test Harness Synthesis<br/>Requirement Traceability (RTM)"]
-        Transpile["<b>Universal Transpiler</b><br/>Lossless Roundtrip Conversion<br/>Across All Supported Formats"]
-    end
-
-    Ingestion --> Compiler
-    Compiler --> Targets
+    In --> Core --> Out
 ```
 
 ---
 
-## Key Capabilities
+## Core Capabilities
 
-| Capability | Technical Details | Documentation |
+| Area | Highlights | Guide |
 | :--- | :--- | :--- |
-| **Universal Ingestion** | Ingest and parse statecharts from 9 formats: OMG SysML v2, Cameo / MagicDraw (OMG XMI), W3C SCXML, MathWorks Stateflow XML, nuXmv / SMV, PlantUML, Mermaid, Graphviz DOT, and Canonical JSON. | [Modeling Languages](https://simoneCavalleri.github.io/fsmc/formal_languages/sysml_v2/) |
-| **Pluggable Backends** | Decoupled architecture supporting code generation for modern C++ (C++17/20), formal SMV logic for external provers, visual diagram transpilation, and future target languages. | [Architecture](https://simoneCavalleri.github.io/fsmc/internals/architecture/) |
-| **Canonical IR & Optimizer (`fsm-opt`)** | Strongly typed `FsmIr` with 33 registered passes (28 in the 7-stage verified pipeline), standalone optimizer driver (`fsm-opt`), Unix filter pipeline (`--pipe-through`), and dynamic C++ pass plugins. | [Middle-End Passes](https://simoneCavalleri.github.io/fsmc/internals/middleend_passes/) |
-| **Partitioned Domains** | Clean separation of `InPorts` (read-only), `OutPorts` (write-only), `Registers` ($z^{-1}$ internal state), and `Services` (injected dependencies/side-effects). | [Architecture](https://simoneCavalleri.github.io/fsmc/concepts/guards_and_actions/) |
-| **Dual-Paradigm Execution** | Synchronous continuous sampled loop (`step(in, out)`) and asynchronous event-driven dispatch (`dispatch(ev, in, out)`). | [Runtime C++ API](https://simoneCavalleri.github.io/fsmc/runtime_api/synchronous_fsm/) |
-| **Formal Model Checking** | Integrated LTL/CTL temporal model checker verifying safety invariants, livelocks, deadlock freedom, and choice completeness before emission. | [Model Checking](https://simoneCavalleri.github.io/fsmc/verification_and_safety/model_checking/) |
-| **EFSM Interval Analysis** | Abstract interpretation of numerical guard bounds (`<`, `>`, `<=`, `>=`) with widening $\nabla$ detecting dead transitions and contract violations. | [Interval Analysis](https://simoneCavalleri.github.io/fsmc/verification_and_safety/interval_analysis/) |
-| **MC/DC Test Harness Synthesis** | Automated synthesis of GoogleTest C++ test harnesses verifying Modified Condition / Decision Coverage (MC/DC) for safety standards (DO-178C / ISO 26262). | [MC/DC Synthesis](https://simoneCavalleri.github.io/fsmc/verification_and_safety/mcdc_synthesis/) |
-| **Requirement Traceability (RTM)** | Automated Requirement Traceability Matrix export in Markdown and JSON from `satisfy requirement` and `@fsm:state satisfies` annotations. | [RTM Specification](https://simoneCavalleri.github.io/fsmc/verification_and_safety/rtm_matrix/) |
-| **Zero-Overhead C++ Backend** | Reference implementation with zero heap allocation, zero virtual tables, $O(1)$ dispatching, automatic `.is_valid()` payload rejection, deterministic real-time timer (`tick(dt)`), state residence permanence invariants, `fsm::snapshot_recorder` time-travel replay, and lock-free SPSC (with compile-time `std::is_trivially_copyable_v` checks) / MPSC wrappers. | [Runtime C++ API](https://simoneCavalleri.github.io/fsmc/runtime_api/synchronous_fsm/) |
-| **Interactive IR Simulation & CEX Export** | Simulate event traces directly on `FsmIr` via `fsmc --simulate --trace <file>` and export model-checking counterexamples to GoogleTest C++ via `--export-cex-gtest`. | [Model Checking](https://simoneCavalleri.github.io/fsmc/verification_and_safety/model_checking/) |
+| **9 Modeling Formats + `ir-json`** | OMG SysML v2, MathWorks Stateflow (`.xml`/`.slx`), W3C SCXML, Cameo XMI 2.1, nuXmv SMV, PlantUML, Mermaid, Graphviz DOT, XState JSON, and strict canonical `ir-json` (`schemas/fsm_ir.schema.json`). | [Modeling Languages](https://simoneCavalleri.github.io/fsmc/formal_languages/sysml_v2/) |
+| **Middle-End & `fsm-opt`** | Mandatory `verify-ir-integrity` gate, 34 registered passes (7-stage verified pipeline, guard simplification, dead-state pruning, orthogonal product, connective junction chaining), `--pipe-through`, and dynamic C++ plugins. | [Middle-End Passes](https://simoneCavalleri.github.io/fsmc/internals/middleend_passes/) |
+| **Verification & IR Simulation** | Native LTL/CTL model checker, EFSM interval analysis with widening $\nabla$, interactive IR trace simulator (`--simulate --trace`), counterexample GoogleTest export (`--export-cex-gtest`), MC/DC synthesis, and RTM. | [Verification & Simulation](https://simoneCavalleri.github.io/fsmc/verification_and_safety/ir_simulation/) |
+| **4-Domain Memory Isolation** | Strict separation of `InPorts` (read-only), `OutPorts` (write-only), `Registers` ($z^{-1}$ internal state), and `Services` (typed, zero-vtable injected dependencies validated via `<Model>ServicesContract<Srv>`). | [Guards & Actions](https://simoneCavalleri.github.io/fsmc/concepts/guards_and_actions/) |
+| **Split Headers, External PODs & C99 ABI** | Default split emission (`*_ports.hpp` with zero `fsm.hpp` dependency + `*_fsm.hpp`), `--standalone` single-header mode, language-agnostic `external_ref` shared PODs, and zero-alloc `--emit-c-abi`. | [Split Headers & C99 ABI](https://simoneCavalleri.github.io/fsmc/runtime_api/c_abi_and_split_interfaces/) |
+| **Manifests & Structured Diagnostics** | `--emit-manifest` produces `*.manifest.json` (`schemas/fsm_manifest.schema.json`) with cross-artifact FIPS 180-4 `ir_sha256` attestation; `--diagnostics=json` outputs structured errors, counterexamples, and suggested fixes. | [CLI Reference](https://simoneCavalleri.github.io/fsmc/getting_started/cli_usage/) |
 
 ---
 
 ## Quickstart
 
-### 1. Installation
-
-`fsmc` can be installed directly via CMake, integrated with CMake `FetchContent`, or packaged locally with Conan 2.0:
+### 1. Build & Install
 
 ```bash
-# Build and install locally using CMake
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
 sudo cmake --install build
 ```
 
-*For complete instructions (including Conan and CMake FetchContent), see the [Installation Guide](https://simoneCavalleri.github.io/fsmc/getting_started/installation/).*
+*Also available via CMake `FetchContent`, `vcpkg`, and Conan 2.0 — see the [Installation Guide](https://simoneCavalleri.github.io/fsmc/getting_started/installation/).*
 
-### 2. Compile a Model
+### 2. Verify, Simulate & Compile a Model
 
-Given a formal SysML v2 state machine specification (`satellite.sysml`):
+Given a SysML v2 state machine (`satellite.sysml`):
 
 ```sysml
 state def SatelliteControl {
@@ -113,52 +96,59 @@ state def SatelliteControl {
 }
 ```
 
-Run **`fsmc`** to verify the model and generate a standalone C++20 header:
+Verify, generate split C++17 headers (`satellite_ports.hpp` + `satellite_fsm.hpp`), pure C99 ABI (`satellite_c.h` + `satellite_c.cpp`), and the SHA-256 attested manifest (`satellite.manifest.json`):
 
 ```bash
-fsmc -i satellite.sysml --verify
-fsmc -i satellite.sysml -o satellite_fsm.hpp --std 20 --standalone --name SatelliteControlFSM
+# Formal verification with structured JSON diagnostics
+fsmc -i satellite.sysml --verify --diagnostics=json
+
+# Split C++17 headers + C99 zero-alloc ABI + system manifest
+fsmc -i satellite.sysml -o satellite_fsm.hpp --name SatelliteControlFSM --emit-c-abi --emit-manifest
+
+# Or a single self-contained header
+fsmc -i satellite.sysml -o satellite_fsm.hpp --standalone --name SatelliteControlFSM
 ```
 
-Then instantiate and drive the generated state machine from C++ (`main.cpp`):
+Drive the generated FSM from C++17/20/23 (`main.cpp`):
 
 ```cpp
 #include "satellite_fsm.hpp"
 
 int main() {
-    SatelliteControlRegisters reg{0};
-    SatelliteControlFSM sm(reg);
-    SatelliteControlInPorts in{ .sensor_temp = 25.0 };
-    SatelliteControlOutPorts out{};
+    fsm_generated::SatelliteControlFSMRegisters reg{0};
+    fsm_generated::SatelliteControlFSM sm(reg);
+    fsm_generated::SatelliteControlFSMInPorts in{};
+    in.sensor_temp = 25.0;
+    fsm_generated::SatelliteControlFSMOutPorts out{};
 
-    sm.dispatch(EvSysInit{}, in, out);
+    sm.dispatch(fsm_generated::EvSysInit{}, in, out);
     in.sensor_temp = 95.0;
     sm.step(in, out); // Transitions to SafeMode
 }
 ```
 
-Or inspect and optimize the IR using **`fsm-opt`**:
+Or optimize and exchange canonical IR directly via **`fsm-opt`** and **`--input-format=ir-json`**:
 
 ```bash
-fsm-opt -i satellite.sysml --passes=dead-state-pruning,guard-simplification --emit-ir
+fsm-opt -i satellite.sysml --passes=dead-state-pruning,guard-simplification --emit-ir -o satellite.ir.json
+fsmc --input-format=ir-json -i satellite.ir.json -o satellite_fsm.hpp --emit-manifest
 ```
 
 ---
 
-## Documentation Site Map
+## Documentation
 
-The complete, official documentation is hosted at **[simoneCavalleri.github.io/fsmc](https://simoneCavalleri.github.io/fsmc/)**:
+Full documentation is hosted at **[simoneCavalleri.github.io/fsmc](https://simoneCavalleri.github.io/fsmc/)**:
 
-- **[Getting Started](https://simoneCavalleri.github.io/fsmc/getting_started/installation/)**: Installation, Quickstart Tutorial, CLI Options (`fsmc` & `fsm-opt`), CMake Integration.
-- **[Architecture & Concepts](https://simoneCavalleri.github.io/fsmc/concepts/states_and_hierarchy/)**: HFSM Hierarchy, Transitions, Partitioned Memory Domains, Real-Time Guarantees.
-- **[Formal Languages & Modeling](https://simoneCavalleri.github.io/fsmc/formal_languages/sysml_v2/)**: SysML v2, Cameo XMI, SCXML, MathWorks Stateflow, nuXmv / SMV, PlantUML, Mermaid, UML 2.5 Mapping.
-- **[Verification & Safety](https://simoneCavalleri.github.io/fsmc/verification_and_safety/model_checking/)**: LTL/CTL Model Checking, Interval Analysis, MC/DC Test Harness Synthesis, Requirement Traceability (RTM).
-- **[Runtime C++ API](https://simoneCavalleri.github.io/fsmc/runtime_api/synchronous_fsm/)**: Synchronous Dual-Paradigm Core, Lock-Free SPSC, Thread-Safe MPSC, Deterministic Real-Time Timer, Flight Recorder.
-- **[Compiler Internals](https://simoneCavalleri.github.io/fsmc/internals/architecture/)**: Compiler Architecture, Middle-End Passes Catalog, Canonical AST Specification, Test Suite Catalog.
+- **[Getting Started](https://simoneCavalleri.github.io/fsmc/getting_started/installation/)**: Installation, Quickstart Tutorial, CLI Reference (`fsmc` & `fsm-opt`), CMake Integration.
+- **[Core Concepts](https://simoneCavalleri.github.io/fsmc/concepts/states_and_hierarchy/)**: HFSM Hierarchy, Transitions, 4-Domain Memory Model, Execution Semantics.
+- **[Formal Languages](https://simoneCavalleri.github.io/fsmc/formal_languages/sysml_v2/)**: SysML v2, Stateflow, SCXML, Cameo XMI, nuXmv SMV, PlantUML, Mermaid, DOT.
+- **[Verification & Simulation](https://simoneCavalleri.github.io/fsmc/verification_and_safety/model_checking/)**: LTL/CTL Model Checking, Interactive IR Simulation, Interval Analysis, MC/DC Synthesis, RTM.
+- **[Runtime & C99 ABI](https://simoneCavalleri.github.io/fsmc/runtime_api/synchronous_fsm/)**: Synchronous `fsm`, Lock-Free `spsc_fsm`, Thread-Safe `thread_safe_fsm`, Split Interfaces & C99 ABI.
+- **[Compiler Internals](https://simoneCavalleri.github.io/fsmc/internals/architecture/)**: Pipeline Architecture, 34 Middle-End Passes, Canonical `FsmIr` Schema, Test Suite Catalog.
 
 ---
 
-## License & Trademarks
+## License
 
-- **License**: `fsmc` is released under the permissive [MIT License](LICENSE).
-- **Trademarks**: All product names, logos, brands, and registered trademarks (such as SysML®, Cameo®, MagicDraw®, MATLAB®, Simulink®, Stateflow®, ARM®, FreeRTOS™, STM32®) mentioned in this repository and documentation are property of their respective owners. Their mention is strictly for technical interoperability, compatibility identification, and reference purposes, and does not imply any affiliation, sponsorship, or endorsement.
+`fsmc` is open-source software licensed under the [MIT License](LICENSE).

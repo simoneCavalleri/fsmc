@@ -177,7 +177,7 @@ If the guard returns `false`, no exit actions occur, and the machine remains in 
 Save the model above as `connection_efsm.sysml` and compile it with `fsmc`:
 
 ```bash
-fsmc -i connection_efsm.sysml -o connection_efsm.hpp --target cpp --std 20 --standalone --namespace conn --name ConnectionManagerFSM
+fsmc -i connection_efsm.sysml -o connection_efsm.hpp --target cpp --standalone --namespace conn --name ConnectionManagerFSM
 ```
 
 ### Complete Application (`main.cpp`)

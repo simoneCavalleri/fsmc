@@ -1,6 +1,6 @@
 /**
  * @file test_typed_services_contract.cpp
- * @brief Unit and E2E compile-time tests for explicitly typed Services (sys-math / HAL) and ActionCallOp.
+ * @brief Unit and E2E compile-time tests for explicitly typed Services (HAL / math libraries) and ActionCallOp.
  */
 
 #include <gtest/gtest.h>

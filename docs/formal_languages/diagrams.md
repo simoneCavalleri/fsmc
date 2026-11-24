@@ -270,7 +270,7 @@ fsmc -i architecture.mmd -o architecture_fsm.hpp
 # Pass '--allow-diagram-codegen' to allow heuristic code generation, or use '--verify' / '--export <fmt>'.
 
 # Compiling with explicit guardrail flag:
-fsmc -i uav_control.puml -o uav_fsm.hpp --std 20 --allow-diagram-codegen
+fsmc -i uav_control.puml -o uav_fsm.hpp --allow-diagram-codegen
 ```
 
 Transpilation between diagram formats (e.g. `--export mermaid`, `--export scxml`, `--export smv`) does not require the flag and operates directly on any diagram input.

@@ -175,7 +175,6 @@ add_executable(flight_computer main.cpp)
 fsmc_target_sources(flight_computer
     DIAGRAMS flight_controller.sysml
     NAME UAVFlightControllerFSM
-    STANDARD 20
     STANDALONE
     NAMESPACE uav::flight
 )

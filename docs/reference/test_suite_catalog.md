@@ -46,7 +46,7 @@
 | [`test_cpp_model_emitter.cpp`](../../tests/backend/cpp/test_cpp_model_emitter.cpp) | `tests/backend/cpp/test_cpp_model_emitter.cpp` | 38 | Unit verification suite for C++ model emitter syntax generation. |
 | [`test_generated_fsm.cpp`](../../tests/backend/cpp/test_generated_fsm.cpp) | `tests/backend/cpp/test_generated_fsm.cpp` | 0 | Standalone executable validating compilation and runtime dispatch of generated FSM code. |
 | [`test_split_ports_and_external_pods.cpp`](../../tests/backend/cpp/test_split_ports_and_external_pods.cpp) | `tests/backend/cpp/test_split_ports_and_external_pods.cpp` | 0 | Tests for external POD/enum type bindings (`external_binding`) and default split header emission (`*_ports.hpp` + `*_fsm.hpp`) with zero fsm.hpp dependency in the ports header. |
-| [`test_typed_services_contract.cpp`](../../tests/backend/cpp/test_typed_services_contract.cpp) | `tests/backend/cpp/test_typed_services_contract.cpp` | 3 | Unit and E2E compile-time tests for explicitly typed Services (sys-math / HAL) and ActionCallOp. |
+| [`test_typed_services_contract.cpp`](../../tests/backend/cpp/test_typed_services_contract.cpp) | `tests/backend/cpp/test_typed_services_contract.cpp` | 3 | Unit and E2E compile-time tests for explicitly typed Services (HAL / math libraries) and ActionCallOp. |
 
 ## Diagram & Emitter Backend Subsystem
 

@@ -109,7 +109,7 @@ Expected output:
 Compile the verified model into a self-contained, zero-allocation C++20 header inside namespace `avionics`:
 
 ```bash
-fsmc -i uav_mission.sysml -o uav_mission_fsm.hpp --target cpp --std 20 --standalone --namespace avionics --name UavMissionFSM
+fsmc -i uav_mission.sysml -o uav_mission_fsm.hpp --target cpp --standalone --namespace avionics --name UavMissionFSM
 ```
 
 !!! tip "Compiling From Visual Diagrams"

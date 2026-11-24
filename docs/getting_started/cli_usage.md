@@ -75,7 +75,7 @@ fsmc --export-runtime <directory_or_file>
 | :--- | :--- | :--- |
 | `--standalone` | Emit a single self-contained header instead of the default split `<stem>_ports.hpp` + `<stem>_fsm.hpp` pair. | `false` (split on file output) |
 | `--emit-c-abi` | Also emit pure C99 zero-allocation ABI wrapper (`<stem>_c.h` + `<stem>_c.cpp`) with static aligned storage, C callback `services_t`, and `<prefix>_ir_sha256()`. | `false` |
-| `--emit-manifest[=<file>]` | Emit machine-readable `<stem>.manifest.json` (`schemas/fsm_manifest.schema.json`) with cross-artifact `ir_sha256`, ports, registers, events, services, external types, and requirements. | `false` |
+| `--emit-manifest[=<file>]` | Emit machine-readable `<stem>.manifest.json` (`schemas/fsm_manifest.schema.json`) with cross-artifact `ir_sha256`, ports, registers, events, services, external types, requirements, and real-time `scheduling` bounds (`wcet_max_microsteps`, `max_event_queue_bound`, `zeno_free`). | `false` |
 | `--modular[=<hdr>]` | Emit lightweight header that includes external runtime header (default: `"fsm.hpp"`, matching `--export-runtime`). | `false` |
 | `--runtime-header <hdr>` | Explicit runtime header path included when `--modular` is active (e.g. `<fsm/fsm.hpp>` or `"custom/fsm.hpp"`). | `"fsm.hpp"` |
 | `--export-runtime <dir\|file>` | Export the unified C++17+ standalone runtime header (`fsm.hpp`) to the specified directory or explicit file path. | None |

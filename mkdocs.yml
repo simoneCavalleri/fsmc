@@ -122,6 +122,7 @@ nav:
           - "Step 5: Codegen & C++ Integration": tutorials/05_code_generation_and_integration.md
           - "Step 6: UAV Flight Controller": tutorials/06_real_world_case_study.md
           - "Step 7: Stateflow Digital Twin ECU": tutorials/07_stateflow_digital_twin_ecu.md
+          - "Step 8: Modular Toolchain & C99 ABI": tutorials/08_modular_toolchain_and_c_abi.md
       - Practical Guides:
           - Unit Testing Guide: runtime_api/testing_guide.md
           - Troubleshooting & FAQ: runtime_api/faq_and_troubleshooting.md

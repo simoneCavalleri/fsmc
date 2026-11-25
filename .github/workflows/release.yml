@@ -92,8 +92,9 @@ jobs:
           }
           EOF
           "./pkg_dist/bin/fsmc${EXT}" -i smoke.sysml -o smoke_fsm.hpp --standalone --emit-c-abi --emit-manifest
+          "./pkg_dist/bin/fsmc${EXT}" -i smoke.sysml --target c99 -o smoke_c99.h --emit-manifest
           "./pkg_dist/bin/fsm-opt${EXT}" -i smoke.sysml --verify
-          rm -f smoke.sysml smoke_fsm.hpp
+          rm -f smoke.sysml smoke_fsm.hpp smoke_c.h smoke_c.cpp smoke_c99.h smoke_c99.c smoke*.manifest.json
 
       - name: Collect Release Tools & Full SDK Archive
         shell: bash

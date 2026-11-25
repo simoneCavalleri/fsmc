@@ -167,4 +167,32 @@ The exact same `ir_sha256` digest is embedded across all three artifacts:
 
 Both `schemas/fsm_ir.schema.json` and `schemas/fsm_manifest.schema.json` are continuously validated against live compiler outputs by `scripts/verify_schemas.py` in CI.
 
-See [`examples/07_modular_toolchain_c_abi/`](https://github.com/simoneCavalleri/fsmc/tree/main/examples/07_modular_toolchain_c_abi) for a complete runnable CMake project combining all of these features.
+See [`examples/07_modular_toolchain_c_abi/`](https://github.com/simoneCavalleri/fsmc/tree/main/examples/07_modular_toolchain_c_abi) for a complete runnable CMake project combining split headers, external PODs, `ServicesContract`, and `--emit-c-abi`.
+
+---
+
+## 6. Native Bare-Metal Pure-C99 (`--target c99`) & Zero-Heap Outbox
+
+When the target MCU toolchain has **no C++ compiler or C++ runtime at all**, pass `--target c99` (or `TARGET c99` in `fsmc_target_sources`) instead of `--emit-c-abi`:
+
+```bash
+fsmc -i watchdog_controller.sysml --target c99 -o watchdog_controller.h --emit-manifest
+# Produces:
+#   watchdog_controller.h              (Strict ISO C99 header)
+#   watchdog_controller.c              (Strict ISO C99 implementation — zero C++)
+#   watchdog_controller.manifest.json  (System integration manifest + SHA-256)
+```
+
+| Feature | `--target c99` (Native Bare-Metal C99) | `--target cpp --emit-c-abi` (C99 FFI over C++17) |
+| :--- | :--- | :--- |
+| **Target Compiler** | Pure ISO C99 compiler (`gcc -std=c99`, `clang`, IAR, Keil) | C++17 compiler for `*_c.cpp` + C99/Rust/Python caller |
+| **Generated Files** | `<stem>.h` + `<stem>.c` | `<stem>_ports.hpp` + `<stem>_fsm.hpp` + `<stem>_c.h` + `<stem>_c.cpp` |
+| **HFSM Lowering** | Automatic middle-end flattening (`TargetCapabilities::c99_baremetal()`) | Full C++17 template HFSM engine wrapped via placement-new |
+| **Snapshots & Services** | Built-in FNV-1a checksummed binary snapshots & C callback `services_t` | Built-in binary snapshots & C callback `services_t` |
+| **Signal Outbox** | Static `out_ports_t.outbox[]` + `outbox_count` | Static `OutPorts::outbox` (`std::array`) + `outbox_count` |
+
+### Deterministic Multi-FSM Event Routing (`OutPorts::outbox`)
+
+Transitions that emit events (`send new EvOverTemp(sensor_temp_c) via link;` in SysML v2.0 or `SignalEmitOp` in `FsmIr`) append typed records into a fixed-capacity, zero-heap `outbox` array inside `OutPorts` (`out_ports_t` in C99). System integrators route emitted events deterministically between state machines without dynamic queues or RTOS heap allocation.
+
+See [`examples/08_baremetal_c99_controller/`](https://github.com/simoneCavalleri/fsmc/tree/main/examples/08_baremetal_c99_controller) and [`examples/09_sysmlv2_multi_fsm_system/`](https://github.com/simoneCavalleri/fsmc/tree/main/examples/09_sysmlv2_multi_fsm_system) for complete Pure-C99 showcases.

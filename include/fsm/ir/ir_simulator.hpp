@@ -64,10 +64,10 @@ class IrSimulator {
 }  // namespace fsm::ir
 
 namespace fsm::tools {
-using fsm::ir::EmittedSignalRecord;
-using fsm::ir::IrSimulator;
-using fsm::ir::SimulatedEvent;
-using fsm::ir::SimulationOptions;
-using fsm::ir::SimulationReport;
-using fsm::ir::SimulationTraceStep;
+using ::fsm::ir::EmittedSignalRecord;
+using ::fsm::ir::IrSimulator;
+using ::fsm::ir::SimulatedEvent;
+using ::fsm::ir::SimulationOptions;
+using ::fsm::ir::SimulationReport;
+using ::fsm::ir::SimulationTraceStep;
 }  // namespace fsm::tools

@@ -8,7 +8,7 @@ hide:
 
 # Universal State Machine Compiler
 
-**`fsmc`** is the deterministic, zero-dependency compiler core for modular MBSE toolchains—bridging **OMG SysML v2**, **MathWorks Stateflow**, **W3C SCXML**, **Cameo XMI**, **nuXmv SMV**, visual diagrams, and direct canonical **`ir-json` (v1.0)** ingestion with formal verification, split C++17 headers, zero-allocation C99 ABI bridges, and SHA-256 attested system manifests.
+**`fsmc`** is the deterministic, zero-dependency state machine compiler and formal verifier for safety-critical systems—bridging **OMG SysML v2.0** (including multi-file `import`, conjugated `~PortDef`, and `--state-def`), **MathWorks Stateflow**, **W3C SCXML**, **Cameo XMI**, **nuXmv SMV**, visual diagrams, and canonical **`ir-json` (v1.0)** with LTL/CTL verification, split C++17 headers, native bare-metal Pure-C99 (`--target c99`), C99 FFI bridges, and SHA-256 attested system manifests.
 
 <div class="fsmc-hero__actions" markdown="1">
 [Quickstart Guide](getting_started/quickstart.md){ .md-button .md-button--primary }
@@ -38,13 +38,13 @@ hide:
 
     [:octicons-arrow-right-24: Verification & Safety](verification_and_safety/index.md)
 
--   :material-memory:{ .lg .middle } **Unified C++17 & Pure C99 ABI**
+-   :material-memory:{ .lg .middle } **C++17 & Native Pure-C99 Backends**
 
     ---
 
-    Split `*_ports.hpp` (zero `fsm.hpp` dependency) + `*_fsm.hpp` by default, zero-vtable `ServicesContract`, language-agnostic `external_ref` PODs, and `--emit-c-abi` for strict C99 / Rust / Python FFI.
+    Emit split `*_ports.hpp` + `*_fsm.hpp` C++17 headers (`--target cpp`), native bare-metal ISO C99 `<stem>.h` + `<stem>.c` (`--target c99`, zero C++ runtime), or C99 FFI bridges (`--emit-c-abi`) with static `OutPorts::outbox` event emission.
 
-    [:octicons-arrow-right-24: C++ Runtime Backend](runtime_api/index.md)
+    [:octicons-arrow-right-24: Split Interfaces & C99](runtime_api/c_abi_and_split_interfaces.md)
 
 -   :material-cogs:{ .lg .middle } **34 Middle-End Compiler Passes**
 
@@ -62,9 +62,9 @@ hide:
 
 ```mermaid
 flowchart TB
-    Frontend["<b>1. Frontend Ingestion (9 Formats)</b><br/>SysML v2 · Stateflow · Cameo XMI · SCXML · SMV · JSON · PlantUML · Mermaid · DOT"]
-    IR["<b>2. Canonical FsmIr & 34 Middle-End Passes</b><br/>verify-ir-integrity · Guard Simplification · EFSM Intervals · LTL / CTL · Plugins"]
-    Backend["<b>3. Backend Emission</b><br/>C++17 / C++20 Zero-Heap Headers · Format Transpilation · RTM · MC/DC Tests"]
+    Frontend["<b>1. Frontend Ingestion (9 Formats + ir-json)</b><br/>SysML v2.0 (multi-file) · Stateflow · Cameo XMI · SCXML · SMV · JSON · PlantUML · Mermaid · DOT"]
+    IR["<b>2. Canonical FsmIr & 34 Middle-End Passes</b><br/>verify-ir-integrity · Guard Simplification · EFSM Intervals · LTL / CTL · IR Simulator"]
+    Backend["<b>3. Zero-Heap Backend Emission</b><br/>Split C++17 · Native Pure-C99 · C99 ABI · Manifest + SHA-256 · SMV · RTM · MC/DC"]
 
     Frontend --> IR --> Backend
 ```
@@ -133,7 +133,7 @@ int main() {
 }
 ```
 
-Ready to get started? Follow the **[Quickstart Tutorial](getting_started/quickstart.md)** for a complete runnable project, or see the **[Multi-Target Roadmap](runtime_api/multi_target_roadmap.md)** for planned Rust (`no_std`) and ISO C99 backends.
+Ready to get started? Follow the **[Quickstart Tutorial](getting_started/quickstart.md)** for a complete runnable project, or see the **[Multi-Target Roadmap](runtime_api/multi_target_roadmap.md)** for the planned Rust (`no_std`) target RFC.
 
 ---
 

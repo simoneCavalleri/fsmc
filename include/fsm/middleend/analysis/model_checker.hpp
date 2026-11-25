@@ -17,7 +17,7 @@
 
 namespace fsm::middleend::analysis {
 
-using namespace fsm::ir;
+using namespace ::fsm::ir;
 using diagnostic::DiagnosticEngine;
 
 /**

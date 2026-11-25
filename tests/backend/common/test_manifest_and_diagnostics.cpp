@@ -117,7 +117,7 @@ TEST(ManifestAndDiagnostics, IrSha256_IsConsistentAcrossManifestCppAndCAbi) {
 
     // Verify all contract sections in manifest
     EXPECT_NE(manifest.find("\"manifest_schema_version\": \"1.0\""), std::string::npos);
-    EXPECT_NE(manifest.find("\"compiler_version\": \"0.14.0\""), std::string::npos);
+    EXPECT_NE(manifest.find("\"compiler_version\": \"0.15.0\""), std::string::npos);
     EXPECT_NE(manifest.find("\"registers\": ["), std::string::npos);
     EXPECT_NE(manifest.find("\"fsm_name\": \"TelemetryRouter\""), std::string::npos);
     EXPECT_NE(manifest.find("\"ports_header\": \"telemetry_ports.hpp\""), std::string::npos);

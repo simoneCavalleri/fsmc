@@ -52,7 +52,7 @@ std::optional<int> validate_cli_and_early_exit(const FsmcOptions& opts) {
     }
 
     if (opts.show_version) {
-        std::cout << "fsmc version 0.14.0 (Universal State Machine Compiler & Optimization Infrastructure)\n";
+        std::cout << "fsmc version 0.15.0 (Universal State Machine Compiler & Optimization Infrastructure)\n";
         return 0;
     }
 

@@ -75,7 +75,7 @@ std::string ManifestEmitter::emit_json(const ir::FsmIr& model, const ManifestArt
     std::ostringstream out;
     out << "{\n";
     out << "  \"manifest_schema_version\": \"" << kManifestSchemaVersion << "\",\n";
-    out << "  \"compiler_version\": \"0.14.0\",\n";
+    out << "  \"compiler_version\": \"0.15.0\",\n";
     out << "  \"fsm_name\": \"" << escape_json(canonical.name) << "\",\n";
     out << "  \"package\": \"" << escape_json(canonical.package) << "\",\n";
     out << "  \"ir_sha256\": \"" << ir_hash << "\",\n";

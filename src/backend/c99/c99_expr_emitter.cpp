@@ -209,6 +209,12 @@ std::string translate_expr_to_c(std::string_view expr, const C99Context& ctx,
                     out += "fsm->regs." + sanitize_c_ident(tok);
                     continue;
                 }
+                // SysML v2 event payload binding (e.g. `accept alert : EvOverTemp` -> `alert.peak_temp`)
+                if (event_attrs.count(member) != 0U) {
+                    out += "ev_" + sanitize_c_ident(member);
+                    i = j;
+                    continue;
+                }
                 out += tok;
                 continue;
             }

@@ -208,7 +208,20 @@ echo -e "${YELLOW}Executing built target: baremetal_c99_controller_example...${N
 success "baremetal_c99_controller_example executed with 100% assertions passed"
 
 # ------------------------------------------------------------------------------
+# Module 09: Multi-FSM OMG SysML v2.0 Subsystem (--list-machines, --state-def, -I)
+# ------------------------------------------------------------------------------
+print_header "[MODULE 09] Multi-FSM OMG SysML v2.0 Subsystem (import, ~port def, outbox)"
+echo -e "${YELLOW}Listing machines in thermal_subsystem.sysml (--list-machines=json)...${NC}"
+"${FSMC}" -i "${SCRIPT_DIR}/09_sysmlv2_multi_fsm_system/thermal_subsystem.sysml" --list-machines=json | grep -q "SensorMonitorFsm"
+"${FSMC}" -i "${SCRIPT_DIR}/09_sysmlv2_multi_fsm_system/thermal_subsystem.sysml" --list-machines=json | grep -q "CoolingActuatorFsm"
+success "thermal_subsystem.sysml machine catalog discovered OK"
+
+echo -e "${YELLOW}Executing built target: sysmlv2_multi_fsm_system_example...${NC}"
+"$(find_binary sysmlv2_multi_fsm_system_example)" > /dev/null
+success "sysmlv2_multi_fsm_system_example executed with 100% assertions passed"
+
+# ------------------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------------------
-print_header "ALL 9 FSMC EXAMPLES VERIFIED SUCCESSFULLY (100% PASS RATE)"
+print_header "ALL 10 FSMC EXAMPLES VERIFIED SUCCESSFULLY (100% PASS RATE)"
 echo -e "${GREEN}All models, formal properties, optimization passes, and executable harnesses are valid.${NC}\n"

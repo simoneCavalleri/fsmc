@@ -10,7 +10,7 @@
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/backend/formal/cameo_serializer.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
-#include "fsm/frontend/formal/cameo_xmi_parser.hpp"
+#include "fsm/frontend/formal/cameo_xmi/cameo_xmi_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/passes/choice_inlining_pass.hpp"
 

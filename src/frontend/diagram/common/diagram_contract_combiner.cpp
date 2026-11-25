@@ -1,4 +1,4 @@
-#include "fsm/frontend/diagram/diagram_contract_combiner.hpp"
+#include "fsm/frontend/diagram/common/diagram_contract_combiner.hpp"
 
 #include "fsm/frontend/directive/ltl_parser.hpp"
 #include "fsm/ir/deterministic_id.hpp"

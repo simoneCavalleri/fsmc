@@ -11,8 +11,8 @@
 #include <string>
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
-#include "fsm/frontend/common/ir_json_parser.hpp"
 #include "fsm/frontend/common/parser_factory.hpp"
+#include "fsm/frontend/ir_json/ir_json_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/ir/fsm_ir_deserializer.hpp"
 #include "fsm/ir/fsm_ir_serializer.hpp"

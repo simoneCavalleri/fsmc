@@ -9,7 +9,7 @@
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/backend/diagram/dot_serializer.hpp"
-#include "fsm/frontend/diagram/dot_parser.hpp"
+#include "fsm/frontend/diagram/dot/dot_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 using namespace fsm::backend::diagram;

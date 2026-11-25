@@ -9,7 +9,7 @@
 #include <string>
 
 #include "fsm/backend/diagram/mermaid_serializer.hpp"
-#include "fsm/frontend/diagram/mermaid_parser.hpp"
+#include "fsm/frontend/diagram/mermaid/mermaid_parser.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm::backend::diagram;

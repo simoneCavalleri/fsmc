@@ -1,4 +1,4 @@
-#include "fsm/frontend/diagram/dot_parser.hpp"
+#include "fsm/frontend/diagram/dot/dot_parser.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -6,7 +6,7 @@
 #include <regex>
 #include <sstream>
 
-#include "fsm/frontend/diagram/diagram_action_parser.hpp"
+#include "fsm/frontend/diagram/common/diagram_action_parser.hpp"
 #include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
 

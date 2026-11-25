@@ -1,10 +1,10 @@
-#include "fsm/frontend/diagram/plantuml_parser.hpp"
+#include "fsm/frontend/diagram/plantuml/plantuml_parser.hpp"
 
 #include <regex>
 #include <sstream>
 
-#include "fsm/frontend/diagram/diagram_action_parser.hpp"
-#include "fsm/frontend/diagram/diagram_parser_common.hpp"
+#include "fsm/frontend/diagram/common/diagram_action_parser.hpp"
+#include "fsm/frontend/diagram/common/diagram_parser_common.hpp"
 #include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
 

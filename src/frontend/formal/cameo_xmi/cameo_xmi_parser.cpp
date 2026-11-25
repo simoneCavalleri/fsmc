@@ -1,4 +1,4 @@
-#include "fsm/frontend/formal/cameo_xmi_parser.hpp"
+#include "fsm/frontend/formal/cameo_xmi/cameo_xmi_parser.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -7,9 +7,9 @@
 #include <sstream>
 #include <utility>
 
+#include "cameo_xmi_graph_resolver.hpp"
 #include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
-#include "fsm/frontend/formal/cameo_xmi_graph_resolver.hpp"
 
 namespace fsm::frontend::formal {
 

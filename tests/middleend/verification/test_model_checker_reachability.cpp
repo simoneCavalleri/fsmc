@@ -7,8 +7,8 @@
 
 #include <string>
 
-#include "fsm/frontend/diagram/mermaid_parser.hpp"
-#include "fsm/frontend/diagram/plantuml_parser.hpp"
+#include "fsm/frontend/diagram/mermaid/mermaid_parser.hpp"
+#include "fsm/frontend/diagram/plantuml/plantuml_parser.hpp"
 #include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 

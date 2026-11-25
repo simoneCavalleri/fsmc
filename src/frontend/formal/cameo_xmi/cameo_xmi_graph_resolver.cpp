@@ -1,4 +1,4 @@
-#include "fsm/frontend/formal/cameo_xmi_graph_resolver.hpp"
+#include "cameo_xmi_graph_resolver.hpp"
 
 #include <cctype>
 #include <regex>

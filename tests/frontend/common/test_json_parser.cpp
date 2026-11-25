@@ -8,7 +8,7 @@
 #include <string>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
-#include "fsm/frontend/common/json_parser.hpp"
+#include "fsm/frontend/diagram/xstate/json_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 using namespace fsm::frontend;

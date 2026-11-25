@@ -8,17 +8,17 @@
 #include <filesystem>
 #include <fstream>
 
-#include "fsm/frontend/common/json_parser.hpp"
 #include "fsm/frontend/common/lexer_utils.hpp"
 #include "fsm/frontend/common/parser_factory.hpp"
-#include "fsm/frontend/diagram/dot_parser.hpp"
-#include "fsm/frontend/diagram/mermaid_parser.hpp"
-#include "fsm/frontend/diagram/plantuml_parser.hpp"
-#include "fsm/frontend/formal/cameo_xmi_parser.hpp"
-#include "fsm/frontend/formal/scxml_parser.hpp"
-#include "fsm/frontend/formal/smv_parser.hpp"
-#include "fsm/frontend/formal/stateflow_parser.hpp"
-#include "fsm/frontend/formal/sysml2_parser.hpp"
+#include "fsm/frontend/diagram/dot/dot_parser.hpp"
+#include "fsm/frontend/diagram/mermaid/mermaid_parser.hpp"
+#include "fsm/frontend/diagram/plantuml/plantuml_parser.hpp"
+#include "fsm/frontend/diagram/xstate/json_parser.hpp"
+#include "fsm/frontend/formal/cameo_xmi/cameo_xmi_parser.hpp"
+#include "fsm/frontend/formal/scxml/scxml_parser.hpp"
+#include "fsm/frontend/formal/smv/smv_parser.hpp"
+#include "fsm/frontend/formal/stateflow/stateflow_parser.hpp"
+#include "fsm/frontend/formal/sysml2/sysml2_parser.hpp"
 
 namespace {
 

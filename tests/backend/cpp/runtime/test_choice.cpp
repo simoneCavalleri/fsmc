@@ -9,7 +9,7 @@
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
-#include "fsm/frontend/diagram/plantuml_parser.hpp"
+#include "fsm/frontend/diagram/plantuml/plantuml_parser.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 #include "fsm/middleend/passes/choice_inlining_pass.hpp"
 

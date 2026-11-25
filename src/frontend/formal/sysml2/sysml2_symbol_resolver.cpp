@@ -1,4 +1,4 @@
-#include "fsm/frontend/formal/sysml2_symbol_resolver.hpp"
+#include "fsm/frontend/formal/sysml2/sysml2_symbol_resolver.hpp"
 
 #include <cctype>
 

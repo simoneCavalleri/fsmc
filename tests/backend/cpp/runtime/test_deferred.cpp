@@ -13,12 +13,12 @@
 #include "fsm/backend/cpp/runtime/fsm.hpp"
 #include "fsm/backend/cpp/runtime/spsc_fsm.hpp"
 #include "fsm/backend/cpp/runtime/thread_safe_fsm.hpp"
-#include "fsm/frontend/common/json_parser.hpp"
-#include "fsm/frontend/diagram/dot_parser.hpp"
-#include "fsm/frontend/diagram/mermaid_parser.hpp"
-#include "fsm/frontend/diagram/plantuml_parser.hpp"
-#include "fsm/frontend/formal/cameo_xmi_parser.hpp"
-#include "fsm/frontend/formal/scxml_parser.hpp"
+#include "fsm/frontend/diagram/dot/dot_parser.hpp"
+#include "fsm/frontend/diagram/mermaid/mermaid_parser.hpp"
+#include "fsm/frontend/diagram/plantuml/plantuml_parser.hpp"
+#include "fsm/frontend/diagram/xstate/json_parser.hpp"
+#include "fsm/frontend/formal/cameo_xmi/cameo_xmi_parser.hpp"
+#include "fsm/frontend/formal/scxml/scxml_parser.hpp"
 
 using namespace fsm::backend::cpp;
 using namespace fsm::backend;

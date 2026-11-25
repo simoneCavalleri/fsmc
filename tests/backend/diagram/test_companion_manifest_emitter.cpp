@@ -9,8 +9,8 @@
 
 #include "fsm/backend/diagram/companion_manifest_emitter.hpp"
 #include "fsm/frontend/common/companion_manifest_parser.hpp"
-#include "fsm/frontend/diagram/diagram_contract_combiner.hpp"
-#include "fsm/frontend/diagram/plantuml_parser.hpp"
+#include "fsm/frontend/diagram/common/diagram_contract_combiner.hpp"
+#include "fsm/frontend/diagram/plantuml/plantuml_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 using namespace fsm::backend::diagram;

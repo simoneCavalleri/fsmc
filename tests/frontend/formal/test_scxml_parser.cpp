@@ -9,7 +9,7 @@
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/backend/formal/scxml_serializer.hpp"
-#include "fsm/frontend/formal/scxml_parser.hpp"
+#include "fsm/frontend/formal/scxml/scxml_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 using namespace fsm::frontend::formal;

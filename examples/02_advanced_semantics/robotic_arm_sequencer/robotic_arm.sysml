@@ -4,7 +4,7 @@
 // ============================================================================
 
 package IndustrialRobotics {
-    import ScalarValues::*;
+    private import ScalarValues::*;
 
     state def RoboticArmFSM {
         // Typed MBSE I/O Parameters with Physical Units and Range Bounds

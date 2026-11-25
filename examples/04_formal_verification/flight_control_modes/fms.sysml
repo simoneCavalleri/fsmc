@@ -11,7 +11,7 @@
 // @fsm:property name=AutopilotReachable kind=Reachability formula="F AutopilotNav" req="REQ-FBW-AUTO-03" desc="Autopilot navigation mode is reachable under nominal flight conditions"
 
 package FlightControl {
-    import ScalarValues::*;
+    private import ScalarValues::*;
 
     state def FlightControlModeManager {
         // Typed MBSE I/O Parameters with Aerospace Physical Range Bounds
@@ -26,7 +26,7 @@ package FlightControl {
         state GroundInit {
             satisfy requirement REQ_FBW_INIT_01;
             entry action CalibrateAirDataSensors;
-            stay duration <= 500[ms];
+            // @fsm:state time_invariant="500[ms]"
         }
 
         state ManualFlight {
@@ -46,16 +46,16 @@ package FlightControl {
         }
 
         // Ground Roll to Manual Flight Transition
+        // @fsm:priority 5
         transition t_liftoff
-            priority 5
             first GroundInit
             accept LiftoffDetectedCmd
             do TrimElevatorsAction
             then ManualFlight;
 
         // Autopilot Engagement with Speed Validation Guard
+        // @fsm:priority 5
         transition t_engage_ap
-            priority 5
             first ManualFlight
             accept EngageAutopilotCmd
             if AirspeedValidGuard
@@ -63,24 +63,24 @@ package FlightControl {
             then AutopilotNav;
 
         // Pilot Instinctive Disconnect / Takeover
+        // @fsm:priority 5
         transition t_disengage_ap
-            priority 5
             first AutopilotNav
             accept DisengageAutopilotCmd
             do DisconnectFlightDirectorAction
             then ManualFlight;
 
         // ASIL-D / DO-178C Level A Safety Preemption: Air-Data Failure Fallback
+        // @fsm:priority 1
         transition t_sensor_fault
-            priority 1
             first AutopilotNav
             accept SensorIrregularityFault
             do BypassFlightEnvelopeAction
             then EmergencyDirectLaw;
 
         // Hydraulic System Degraded Fallback
+        // @fsm:priority 1
         transition t_hydraulic_fault
-            priority 1
             first ManualFlight
             accept HydraulicPressureLossFault
             do SwitchMechanicalBackupAction

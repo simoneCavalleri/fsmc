@@ -11,9 +11,59 @@ using namespace fsm::ir;
 
 namespace {
 
-std::string format_sysml2_action_block(const ActionSignature& act) {
+std::string to_sysml2_boolean_syntax(std::string_view expr) {
+    std::string out;
+    out.reserve(expr.size() + 8);
+    for (std::size_t i = 0; i < expr.size(); ++i) {
+        if (expr[i] == '&' && i + 1 < expr.size() && expr[i + 1] == '&') {
+            if (!out.empty() && out.back() != ' ' && out.back() != '(') {
+                out.push_back(' ');
+            }
+            out += "and";
+            if (i + 2 < expr.size() && expr[i + 2] != ' ') {
+                out.push_back(' ');
+            }
+            ++i;
+            continue;
+        }
+        if (expr[i] == '|' && i + 1 < expr.size() && expr[i + 1] == '|') {
+            if (!out.empty() && out.back() != ' ' && out.back() != '(') {
+                out.push_back(' ');
+            }
+            out += "or";
+            if (i + 2 < expr.size() && expr[i + 2] != ' ') {
+                out.push_back(' ');
+            }
+            ++i;
+            continue;
+        }
+        if (expr[i] == '!' && (i + 1 >= expr.size() || expr[i + 1] != '=')) {
+            out += "not ";
+            continue;
+        }
+        out.push_back(expr[i]);
+    }
+    return out;
+}
+
+std::string format_sysml2_action_block(const ActionSignature& act, const FsmIr& model) {
     std::ostringstream ss;
     bool first = true;
+    for (const auto& a : act.assignments) {
+        if (!first) {
+            ss << " ";
+        }
+        first = false;
+        const std::string lhs = a.target.full_path();
+        if (a.op == AssignmentOp::Assign) {
+            ss << "assign " << lhs << " := " << a.expression << ";";
+        } else {
+            const std::string_view op_sv = assignment_op_to_string(a.op);
+            const char bin_op = op_sv.empty() ? '+' : op_sv.front();
+            ss << "assign " << lhs << " := " << lhs << " " << bin_op << " " << a.expression << ";";
+        }
+    }
+    std::size_t msg_idx = 0;
     for (const auto& inst : act.instructions) {
         if (const auto* call = std::get_if<ActionCallOp>(&inst.op)) {
             if (!first) {
@@ -31,20 +81,27 @@ std::string format_sysml2_action_block(const ActionSignature& act) {
                 ss << call->arguments[i];
             }
             ss << ");";
-        }
-    }
-    for (const auto& a : act.assignments) {
-        if (!first) {
-            ss << " ";
-        }
-        first = false;
-        const std::string lhs = a.target.full_path();
-        if (a.op == AssignmentOp::Assign) {
-            ss << "assign " << lhs << " := " << a.expression << ";";
-        } else {
-            const std::string_view op_sv = assignment_op_to_string(a.op);
-            const char bin_op = op_sv.empty() ? '+' : op_sv.front();
-            ss << "assign " << lhs << " := " << lhs << " " << bin_op << " " << a.expression << ";";
+        } else if (const auto* em = std::get_if<SignalEmitOp>(&inst.op)) {
+            if (!first) {
+                ss << " ";
+            }
+            first = false;
+            const std::string port =
+                (em->target_port.has_value() && !em->target_port->empty()) ? *em->target_port : "out_port";
+            if (em->arguments.empty()) {
+                ss << "send new " << em->signal_name << "() via " << port << ";";
+            } else {
+                const std::string msg_var = "msg_" + std::to_string(++msg_idx);
+                ss << "item " << msg_var << " : " << em->signal_name << " { ";
+                const auto* sig_def = model.find_signal(em->signal_name);
+                for (std::size_t i = 0; i < em->arguments.size(); ++i) {
+                    const std::string attr_name = (sig_def != nullptr && i < sig_def->attributes.size())
+                                                      ? sig_def->attributes[i].name
+                                                      : ("arg_" + std::to_string(i));
+                    ss << "attribute :>> " << attr_name << " = " << em->arguments[i] << "; ";
+                }
+                ss << "} send " << msg_var << " via " << port << ";";
+            }
         }
     }
     return ss.str();
@@ -87,18 +144,18 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
         }
     }
 
-    std::string state_kw = (state.kind == StateKind::Parallel) ? "parallel state " : "state ";
+    const bool is_parallel = (state.kind == StateKind::Parallel);
 
-    if (!has_body && !has_children) {
-        out << pad << state_kw << state.name << ";\n";
+    if (!has_body && !has_children && !is_parallel) {
+        out << pad << "state " << state.name << ";\n";
         return;
     }
 
-    out << pad << state_kw << state.name << " {\n";
+    out << pad << "state " << state.name << (is_parallel ? " parallel" : "") << " {\n";
 
-    // Invariant (stay duration)
+    // Residence time invariant preserved via valid SysML v2 structured comment directive
     if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
-        out << pad << "    stay duration <= " << *state.time_invariant << ";\n";
+        out << pad << "    // @fsm:state time_invariant=\"" << *state.time_invariant << "\"\n";
     }
 
     // Requirements
@@ -109,7 +166,7 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
     // Entry Actions
     for (const auto& act : state.entry_actions) {
         if (!act.assignments.empty() || !act.instructions.empty()) {
-            out << pad << "    entry action { " << format_sysml2_action_block(act) << " }\n";
+            out << pad << "    entry action { " << format_sysml2_action_block(act, model) << " }\n";
         } else {
             out << pad << "    entry action " << act.name << ";\n";
         }
@@ -123,7 +180,7 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
     // Exit Actions
     for (const auto& act : state.exit_actions) {
         if (!act.assignments.empty() || !act.instructions.empty()) {
-            out << pad << "    exit action { " << format_sysml2_action_block(act) << " }\n";
+            out << pad << "    exit action { " << format_sysml2_action_block(act, model) << " }\n";
         } else {
             out << pad << "    exit action " << act.name << ";\n";
         }
@@ -154,7 +211,18 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
 std::string Sysml2Serializer::serialize(const FsmIr& model) {
     std::ostringstream out;
     std::string model_name = model.name.empty() ? "GeneratedStateMachine" : model.name;
-    out << "import ScalarValues::*;\n\n";
+    out << "private import ScalarValues::*;\n";
+    bool has_time_triggers = false;
+    for (const auto& trans : model.transitions) {
+        if (std::holds_alternative<ir::TimeTrigger>(trans.trigger)) {
+            has_time_triggers = true;
+            break;
+        }
+    }
+    if (has_time_triggers) {
+        out << "private import SI::*;\n";
+    }
+    out << "\n";
     for (const auto& svc : model.services) {
         out << "calc def " << svc.name << " {\n";
         for (const auto& p : svc.parameters) {
@@ -278,21 +346,18 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
         out << "\n";
     }
 
-    // Native SysML v2 Temporal Logic Properties
+    // Temporal Logic Properties (emitted as structured comments to preserve 100% OMG SysML v2.0 grammar validity)
     for (const auto& prop : model.properties) {
         if (!prop.name.empty() && !prop.raw_formula.empty()) {
-            if (prop.kind != PropertyKind::Safety || !prop.traceability_req.empty() || !prop.description.empty()) {
-                out << "    // @fsm:property name=" << prop.name << " kind=" << property_kind_to_string(prop.kind)
-                    << " formula=\"" << prop.raw_formula << "\"";
-                if (!prop.traceability_req.empty()) {
-                    out << " req=\"" << prop.traceability_req << "\"";
-                }
-                if (!prop.description.empty()) {
-                    out << " desc=\"" << prop.description << "\"";
-                }
-                out << "\n";
+            out << "    // @fsm:property name=" << prop.name << " kind=" << property_kind_to_string(prop.kind)
+                << " formula=\"" << prop.raw_formula << "\"";
+            if (!prop.traceability_req.empty()) {
+                out << " req=\"" << prop.traceability_req << "\"";
             }
-            out << "    assert property " << prop.name << " : " << prop.raw_formula << ";\n";
+            if (!prop.description.empty()) {
+                out << " desc=\"" << prop.description << "\"";
+            }
+            out << "\n";
         }
     }
     if (!model.properties.empty()) {
@@ -325,10 +390,10 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
         if (trans.target_is_history) {
             clean_target += trans.target_is_deep_history ? "[H*]" : "[H]";
         }
-        out << (trans.kind == TransitionEdgeKind::Local ? "    local transition\n" : "    transition\n");
         if (trans.priority > 0) {
-            out << "        priority " << trans.priority << "\n";
+            out << "    // @fsm:priority " << trans.priority << "\n";
         }
+        out << (trans.kind == TransitionEdgeKind::Local ? "    local transition\n" : "    transition\n");
         out << "        first " << trans.source << "\n";
         if (const auto* tt = std::get_if<ir::TimeTrigger>(&trans.trigger)) {
             const std::string_view unit_str = ir::time_unit_to_string(tt->unit);
@@ -341,17 +406,19 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
             }
         } else if (const auto* ct = std::get_if<ir::ChangeTrigger>(&trans.trigger)) {
             if (!ct->raw_expression.empty()) {
-                out << "        accept when (" << ct->raw_expression << ")\n";
+                out << "        accept when (" << to_sysml2_boolean_syntax(ct->raw_expression) << ")\n";
             }
         } else if (!trans.event.empty()) {
             out << "        accept " << trans.event << "\n";
         }
         if (trans.guard && !trans.guard->empty()) {
-            out << "        if " << ir::GuardExpressionParser::to_diagram_string(*trans.guard, model.guards) << "\n";
+            out << "        if "
+                << to_sysml2_boolean_syntax(ir::GuardExpressionParser::to_diagram_string(*trans.guard, model.guards))
+                << "\n";
         }
         if (trans.transition_action.has_value() &&
             (!trans.transition_action->assignments.empty() || !trans.transition_action->instructions.empty())) {
-            out << "        do action { " << format_sysml2_action_block(*trans.transition_action) << " }\n";
+            out << "        do action { " << format_sysml2_action_block(*trans.transition_action, model) << " }\n";
         } else {
             std::string act = trans.get_action();
             if (!act.empty()) {

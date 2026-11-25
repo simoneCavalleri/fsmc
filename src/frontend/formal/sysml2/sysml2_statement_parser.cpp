@@ -80,9 +80,11 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    // Import handling (e.g. import ScalarValues::*, import MyPkg::*)
-    if (stmt.rfind("import ", 0) == 0) {
-        symbol_resolver.register_import(stmt);
+    // Import handling (e.g. private import ScalarValues::*, public import MyPkg::*)
+    static const std::regex import_stmt_regex(R"(^(?:(?:private|public|protected)\s+)?(import\s+.+)$)",
+                                              std::regex::optimize);
+    if (std::regex_match(stmt, match, import_stmt_regex)) {
+        symbol_resolver.register_import(match[1].str());
         return true;
     }
 
@@ -432,10 +434,10 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
             "Invalid SysML v2 state identifier '" + match[1].str() + "': identifiers cannot start with a digit";
         return false;
     }
-    static const std::regex state_decl_regex(R"(^(parallel\s+)?state\s+([A-Za-z_][A-Za-z0-9_]*))",
+    static const std::regex state_decl_regex(R"(^(parallel\s+)?state\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+(parallel)\b)?)",
                                              std::regex::optimize);
     if (std::regex_search(stmt, match, state_decl_regex)) {
-        bool is_parallel = match[1].matched;
+        bool is_parallel = match[1].matched || match[3].matched;
         const std::string state_name = sanitize_identifier(match[2].str());
         const std::string parent_name = state_stack.empty() ? "" : state_stack.back();
         auto* existing = model.find_state_mut(state_name);
@@ -515,54 +517,26 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
     }
 
     // 7b. State Lifecycle Actions: entry action <Act>; / exit action <Act>;
-    auto try_parse_send_via = [&](const std::string& send_stmt, ActionSignature& out_sig) -> bool {
-        static const std::regex block_send_regex(
-            R"(^(?:do\s+)?send\s+(?:new\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s+via\s+([A-Za-z_][A-Za-z0-9_]*)$)",
-            std::regex::optimize);
-        std::smatch sm;
-        if (!std::regex_match(send_stmt, sm, block_send_regex)) {
-            return false;
-        }
-        const std::string sig_name = sanitize_identifier(sm[1].str());
-        const std::string args_str = sm[2].matched ? trim(sm[2].str()) : "";
-        const std::string port_name = sanitize_identifier(sm[3].str());
-        if (model.find_port(port_name) == nullptr) {
-            model.ports.emplace_back(port_name, DataType{PrimitiveTypeKind::UInt32}, PortDirection::Out);
-        }
-        if (model.find_signal(sig_name) == nullptr) {
-            model.signals.emplace_back(sig_name);
-        }
-        out_sig.name = "send_" + sig_name + "_via_" + port_name;
-        out_sig.invocation = port_name + ".send(" + sig_name + (args_str.empty() ? "" : (", " + args_str)) + ")";
-        SignalEmitOp emit_op;
-        emit_op.signal_name = sig_name;
-        emit_op.target_port = port_name;
-        if (!args_str.empty()) {
-            emit_op.arguments.push_back(args_str);
-        }
-        out_sig.instructions.emplace_back(std::move(emit_op));
-        return true;
-    };
-
     auto parse_lifecycle_action_block = [&](const std::string& block_content, const std::string& explicit_name,
                                             const std::string& default_name,
                                             std::vector<ActionSignature>& target_actions) {
-        std::string trimmed_block = trim(block_content);
-        std::stringstream ss(trimmed_block);
-        std::string statement;
         std::vector<ActionAssignment> assignments;
         std::vector<ActionAstNode> service_calls;
-        std::vector<ActionSignature> send_actions;
         std::vector<std::string> standalone_calls;
+        LocalItemMap local_items;
 
-        while (std::getline(ss, statement, ';')) {
-            statement = trim(statement);
-            if (statement.empty())
+        for (const auto& statement : split_action_block_statements(block_content)) {
+            if (statement.empty()) {
                 continue;
-
-            ActionSignature send_sig;
-            if (try_parse_send_via(statement, send_sig)) {
-                send_actions.push_back(std::move(send_sig));
+            }
+            if (try_parse_local_item_usage(statement, local_items)) {
+                continue;
+            }
+            SignalEmitOp emit_op;
+            std::string send_act_name;
+            std::string send_inv;
+            if (try_parse_send_statement(statement, local_items, model, emit_op, send_act_name, send_inv)) {
+                service_calls.emplace_back(std::move(emit_op), std::move(send_inv));
             } else if (try_parse_service_call_statement(statement, model, service_calls)) {
                 // Lowered directly into typed ActionCallOp
             } else if (!try_parse_assignment_statement(statement, assignments, &model)) {
@@ -588,17 +562,12 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
             target_actions.push_back(std::move(sig));
         }
 
-        for (auto& s_act : send_actions) {
-            model.add_action(s_act.name);
-            target_actions.push_back(std::move(s_act));
-        }
-
         for (const auto& call : standalone_calls) {
             model.add_action(call);
             target_actions.emplace_back(call);
         }
 
-        if (!has_assignments && send_actions.empty() && standalone_calls.empty()) {
+        if (!has_assignments && standalone_calls.empty()) {
             std::string act_name = !explicit_name.empty() ? explicit_name : default_name;
             model.add_action(act_name);
             target_actions.emplace_back(act_name);
@@ -767,7 +736,39 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    // 10. Temporal Logic Specifications: assert property <Name> : <Formula>
+    // 9b. Native OMG SysML v2.0 AssertConstraintUsage inside a state or state def:
+    //     `assert [not] constraint [<Name>] { <BooleanExpr> }`
+    static const std::regex state_constraint_regex(
+        R"(^assert\s+(not\s+)?constraint\s*(?:([A-Za-z_][A-Za-z0-9_]*)\s*)?\{([\s\S]+)\}\s*;?$)", std::regex::optimize);
+    if (current_item_def.empty() && std::regex_match(stmt, match, state_constraint_regex)) {
+        const bool is_negated = match[1].matched;
+        std::string prop_name = match[2].matched ? sanitize_identifier(match[2].str()) : "";
+        std::string expr = trim(match[3].str());
+        while (!expr.empty() && expr.back() == ';') {
+            expr = trim(expr.substr(0, expr.size() - 1));
+        }
+        if (!expr.empty()) {
+            if (is_negated) {
+                expr = "not (" + expr + ")";
+            }
+            if (prop_name.empty()) {
+                prop_name = (!state_stack.empty() ? (state_stack.back() + "_Constraint_") : "Constraint_") +
+                            std::to_string(model.properties.size() + 1);
+            }
+            std::string formula = !state_stack.empty() ? ("G (not (" + state_stack.back() + " and not (" + expr + ")))")
+                                                       : ("G (" + expr + ")");
+            FormalProperty prop;
+            prop.name = prop_name;
+            prop.kind = PropertyKind::Safety;
+            prop.raw_formula = formula;
+            prop.ast = directive::LtlPropertyParser::parse(prop.raw_formula);
+            prop.id = compute_deterministic_id(prop.name + ":" + prop.raw_formula);
+            model.add_property(std::move(prop));
+        }
+        return true;
+    }
+
+    // 10. Legacy Temporal Logic Specifications: assert property <Name> : <Formula>
     static const std::regex assert_prop_regex(R"(^(?:assert\s+)?property\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+)$)",
                                               std::regex::optimize);
     if (std::regex_search(stmt, match, assert_prop_regex)) {

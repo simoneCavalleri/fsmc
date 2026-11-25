@@ -1,15 +1,15 @@
 // ============================================================================
 // OMG SysML v2.0 Multi-FSM Thermal Subsystem
 // Demonstrates:
-//   - Multi-file `import SharedProtocol::*;`
+//   - Multi-file `private import SharedProtocol::*;`
 //   - Conjugated `port def` (`~ThermalLinkPort` vs `ThermalLinkPort`)
 //   - Two `state def`s in one specification (`--list-machines`, `--state-def`)
-//   - Executable `send new EvOverTemp(temp_c) via link` zero-heap outbox
+//   - Executable `item msg : EvOverTemp { ... } send msg via link;` zero-heap outbox
 // ============================================================================
 
 package ThermalSubsystem {
-    import ScalarValues::*;
-    import SharedProtocol::*;
+    private import ScalarValues::*;
+    private import SharedProtocol::*;
 
     part def SensorUnit {
         port link : ~ThermalLinkPort;
@@ -22,7 +22,7 @@ package ThermalSubsystem {
     }
 
     state def SensorMonitorFsm {
-        in sensor_temp_c : Int32;
+        in sensor_temp_c : Integer;
         attribute alerts_sent : Integer := 0;
 
         entry; then Monitoring;
@@ -37,7 +37,10 @@ package ThermalSubsystem {
             do action RaiseThermalAlert {
                 assign temp_c := sensor_temp_c;
                 assign alerts_sent := alerts_sent + 1;
-                send new EvOverTemp(sensor_temp_c) via link;
+                item msg : EvOverTemp {
+                    attribute :>> peak_temp = sensor_temp_c;
+                }
+                send msg via link;
             }
             then OverTempLatched;
 
@@ -53,7 +56,7 @@ package ThermalSubsystem {
 
     state def CoolingActuatorFsm {
         out fan_pwm : Integer;
-        attribute last_peak_temp : Int32 := 0;
+        attribute last_peak_temp : Integer := 0;
 
         entry; then Standby;
 

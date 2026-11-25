@@ -174,4 +174,263 @@ bool try_parse_assignment_statement(const std::string& statement, std::vector<Ac
     return false;
 }
 
+namespace {
+
+std::string trim_sv(std::string_view sv) {
+    const std::size_t first = sv.find_first_not_of(" \t\r\n");
+    if (first == std::string_view::npos) {
+        return "";
+    }
+    const std::size_t last = sv.find_last_not_of(" \t\r\n");
+    return std::string(sv.substr(first, last - first + 1));
+}
+
+std::vector<std::string> split_comma_top_level(std::string_view s) {
+    std::vector<std::string> out;
+    std::string cur;
+    int depth = 0;
+    for (char c : s) {
+        if (c == '(' || c == '[' || c == '{') {
+            ++depth;
+            cur.push_back(c);
+        } else if (c == ')' || c == ']' || c == '}') {
+            --depth;
+            cur.push_back(c);
+        } else if (c == ',' && depth == 0) {
+            std::string t = trim_sv(cur);
+            if (!t.empty()) {
+                out.push_back(std::move(t));
+            }
+            cur.clear();
+        } else {
+            cur.push_back(c);
+        }
+    }
+    std::string t = trim_sv(cur);
+    if (!t.empty()) {
+        out.push_back(std::move(t));
+    }
+    return out;
+}
+
+std::vector<std::string> order_named_bindings(const std::string& sig_name,
+                                              const std::vector<std::pair<std::string, std::string>>& bindings,
+                                              const FsmIr& model) {
+    std::vector<std::string> result;
+    if (bindings.empty()) {
+        return result;
+    }
+    if (const auto* sig = model.find_signal(sig_name); sig != nullptr && !sig->attributes.empty()) {
+        for (const auto& attr : sig->attributes) {
+            bool found = false;
+            for (const auto& [k, v] : bindings) {
+                if (k == attr.name) {
+                    result.push_back(v);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found && !attr.default_value.empty()) {
+                result.push_back(attr.default_value);
+            }
+        }
+        if (!result.empty()) {
+            return result;
+        }
+    }
+    for (const auto& [k, v] : bindings) {
+        (void)k;
+        result.push_back(v);
+    }
+    return result;
+}
+
+}  // namespace
+
+std::vector<std::string> split_action_block_statements(std::string_view block) {
+    std::vector<std::string> stmts;
+    std::string cur;
+    int brace_depth = 0;
+    int paren_depth = 0;
+    for (std::size_t i = 0; i < block.size(); ++i) {
+        const char c = block[i];
+        if (c == '(') {
+            ++paren_depth;
+            cur.push_back(c);
+        } else if (c == ')') {
+            if (paren_depth > 0) {
+                --paren_depth;
+            }
+            cur.push_back(c);
+        } else if (c == '{') {
+            ++brace_depth;
+            cur.push_back(c);
+        } else if (c == '}') {
+            if (brace_depth > 0) {
+                --brace_depth;
+            }
+            cur.push_back(c);
+            if (brace_depth == 0 && paren_depth == 0) {
+                std::string t = trim_sv(cur);
+                if (!t.empty()) {
+                    stmts.push_back(std::move(t));
+                }
+                cur.clear();
+            }
+        } else if (c == ';' && brace_depth == 0 && paren_depth == 0) {
+            std::string t = trim_sv(cur);
+            if (!t.empty()) {
+                stmts.push_back(std::move(t));
+            }
+            cur.clear();
+        } else {
+            cur.push_back(c);
+        }
+    }
+    std::string tail = trim_sv(cur);
+    if (!tail.empty()) {
+        stmts.push_back(std::move(tail));
+    }
+    return stmts;
+}
+
+bool extract_do_action_block(std::string_view stmt, std::string& out_explicit_name, std::string& out_body) {
+    static const std::regex head_re(R"(\bdo\s*(?:action\s+)?(?:([A-Za-z_][A-Za-z0-9_]*)\s*)?\{)", std::regex::optimize);
+    std::string text(stmt);
+    std::smatch m;
+    if (!std::regex_search(text, m, head_re)) {
+        return false;
+    }
+    out_explicit_name = m[1].matched ? sanitize_identifier(m[1].str()) : "";
+    const std::size_t open_brace = static_cast<std::size_t>(m.position() + m.length() - 1);
+    int depth = 1;
+    std::size_t pos = open_brace + 1;
+    while (pos < text.size() && depth > 0) {
+        if (text[pos] == '{') {
+            ++depth;
+        } else if (text[pos] == '}') {
+            --depth;
+        }
+        ++pos;
+    }
+    if (depth != 0) {
+        return false;
+    }
+    out_body = trim_sv(std::string_view(text).substr(open_brace + 1, (pos - 1) - (open_brace + 1)));
+    return true;
+}
+
+bool try_parse_local_item_usage(const std::string& statement, LocalItemMap& local_items) {
+    static const std::regex item_re(
+        R"(^item\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z_][A-Za-z0-9_:]*)(?:\s*\{([\s\S]*)\})?$)",
+        std::regex::optimize);
+    std::smatch m;
+    if (!std::regex_match(statement, m, item_re)) {
+        return false;
+    }
+    LocalItemSpec spec;
+    const std::string var_name = sanitize_identifier(m[1].str());
+    std::string raw_type = m[2].str();
+    const auto sep = raw_type.rfind("::");
+    if (sep != std::string::npos) {
+        raw_type = raw_type.substr(sep + 2);
+    }
+    spec.type_name = sanitize_identifier(raw_type);
+
+    if (m[3].matched) {
+        const std::string body = m[3].str();
+        static const std::regex field_re(
+            R"(^(?:attribute\s+)?(?::>>\s*|redefines\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*:?=\s*(.+)$)",
+            std::regex::optimize);
+        std::stringstream ss(body);
+        std::string part;
+        while (std::getline(ss, part, ';')) {
+            part = trim_sv(part);
+            if (part.empty()) {
+                continue;
+            }
+            std::smatch fm;
+            if (std::regex_match(part, fm, field_re)) {
+                spec.field_bindings.emplace_back(sanitize_identifier(fm[1].str()), trim_sv(fm[2].str()));
+            }
+        }
+    }
+    local_items[var_name] = std::move(spec);
+    return true;
+}
+
+bool try_parse_send_statement(const std::string& statement, const LocalItemMap& local_items, FsmIr& model,
+                              SignalEmitOp& out_emit, std::string& out_action_name, std::string& out_invocation) {
+    static const std::regex send_re(
+        R"(^(?:do\s+)?send\s+(new\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s+(?:via|to)\s+([A-Za-z_][A-Za-z0-9_.]*)$)",
+        std::regex::optimize);
+    std::smatch sm;
+    if (!std::regex_match(statement, sm, send_re)) {
+        return false;
+    }
+
+    const bool has_new = sm[1].matched;
+    const std::string target_ident = sanitize_identifier(sm[2].str());
+    const bool has_parens = sm[3].matched;
+    const std::string raw_args = has_parens ? trim_sv(sm[3].str()) : "";
+    std::string raw_port = sm[4].str();
+    const auto dot = raw_port.find('.');
+    if (dot != std::string::npos) {
+        raw_port = raw_port.substr(0, dot);
+    }
+    const std::string port_name = sanitize_identifier(raw_port);
+
+    std::string sig_name = target_ident;
+    std::vector<std::string> resolved_args;
+
+    if (!has_new && !has_parens) {
+        if (auto it = local_items.find(target_ident); it != local_items.end()) {
+            sig_name = it->second.type_name;
+            resolved_args = order_named_bindings(sig_name, it->second.field_bindings, model);
+        }
+    } else if (!raw_args.empty()) {
+        const auto parts = split_comma_top_level(raw_args);
+        std::vector<std::pair<std::string, std::string>> named_bindings;
+        bool all_named = !parts.empty();
+        static const std::regex named_arg_re(R"(^([A-Za-z_][A-Za-z0-9_]*)\s*:?=\s*(.+)$)", std::regex::optimize);
+        for (const auto& p : parts) {
+            std::smatch nm;
+            if (std::regex_match(p, nm, named_arg_re)) {
+                named_bindings.emplace_back(sanitize_identifier(nm[1].str()), trim_sv(nm[2].str()));
+            } else {
+                all_named = false;
+                break;
+            }
+        }
+        if (all_named) {
+            resolved_args = order_named_bindings(sig_name, named_bindings, model);
+        } else {
+            resolved_args = parts;
+        }
+    }
+
+    if (model.find_port(port_name) == nullptr) {
+        model.ports.emplace_back(port_name, DataType{PrimitiveTypeKind::UInt32}, PortDirection::Out);
+    }
+    if (model.find_signal(sig_name) == nullptr) {
+        model.signals.emplace_back(sig_name);
+    }
+
+    std::string joined_args;
+    for (std::size_t i = 0; i < resolved_args.size(); ++i) {
+        if (i > 0) {
+            joined_args += ", ";
+        }
+        joined_args += resolved_args[i];
+    }
+
+    out_action_name = "send_" + sig_name + "_via_" + port_name;
+    out_invocation = port_name + ".send(" + sig_name + (joined_args.empty() ? "" : (", " + joined_args)) + ")";
+    out_emit = SignalEmitOp{};
+    out_emit.signal_name = sig_name;
+    out_emit.target_port = port_name;
+    out_emit.arguments = std::move(resolved_args);
+    return true;
+}
+
 }  // namespace fsm::frontend::formal::sysml2_detail

@@ -5,7 +5,7 @@
 // ============================================================================
 
 package AutomotiveBms {
-    import ScalarValues::*;
+    private import ScalarValues::*;
 
     state def BatteryManagementSystem {
         // Typed MBSE I/O Parameters with Physical Units and ASIL-D Bounds
@@ -24,37 +24,37 @@ package AutomotiveBms {
             do CloseMainContactorsAction then Operational;
 
         // Concurrent Parallel Orthogonal State with 3 Independent Supervision Regions
-        parallel state Operational {
+        state Operational parallel {
             // Region 1: Thermal Supervision & Dynamic Cooling Loop
             state ThermalSupervision {
                 entry; then ThermalNominal;
 
                 state ThermalNominal {
-                    stay duration <= 100[ms];
+                    // @fsm:state time_invariant="100[ms]"
                 }
 
                 state ActiveCooling {
-                    stay duration <= 50[ms];
+                    // @fsm:state time_invariant="50[ms]"
                 }
 
                 state ThermalDerating;
 
+                // @fsm:priority 5
                 transition t_cool_start
-                    priority 5
                     first ThermalNominal
                     accept HighTempWarningEvent
                     do RampCoolingPumpAction
                     then ActiveCooling;
 
+                // @fsm:priority 5
                 transition t_cool_derate
-                    priority 5
                     first ActiveCooling
                     accept CriticalTempEvent
                     do ThrottleDischargeAction
                     then ThermalDerating;
 
+                // @fsm:priority 10
                 transition t_cool_norm
-                    priority 10
                     first ActiveCooling
                     accept TempNominalEvent
                     do StopCoolingPumpAction
@@ -68,18 +68,18 @@ package AutomotiveBms {
                 state BalancingIdle;
 
                 state BalancingActive {
-                    stay duration <= 500[ms];
+                    // @fsm:state time_invariant="500[ms]"
                 }
 
+                // @fsm:priority 5
                 transition t_bal_start
-                    priority 5
                     first BalancingIdle
                     accept DeltaVThresholdExceededEvent
                     do EnableBalanceShuntsAction
                     then BalancingActive;
 
+                // @fsm:priority 5
                 transition t_bal_stop
-                    priority 5
                     first BalancingActive
                     accept CellsBalancedEvent
                     do DisableBalanceShuntsAction
@@ -91,20 +91,20 @@ package AutomotiveBms {
                 entry; then IsoHealthy;
 
                 state IsoHealthy {
-                    stay duration <= 200[ms];
+                    // @fsm:state time_invariant="200[ms]"
                 }
 
                 state IsoWarning;
 
+                // @fsm:priority 5
                 transition t_iso_degrade
-                    priority 5
                     first IsoHealthy
                     accept LowIsolationResistanceEvent
                     do AlertVehicleMasterAction
                     then IsoWarning;
 
+                // @fsm:priority 5
                 transition t_iso_restore
-                    priority 5
                     first IsoWarning
                     accept IsolationRestoredEvent
                     do ClearVehicleAlertAction
@@ -118,15 +118,15 @@ package AutomotiveBms {
         }
 
         // High-Priority Safety Interlock Preemption from Any Operational Region
+        // @fsm:priority 1
         transition t_thermal_runaway
-            priority 1
             first Operational
             accept ThermalRunawayFault
             do OpenMainContactorsAction
             then FaultShutdown;
 
+        // @fsm:priority 1
         transition t_hv_estop
-            priority 1
             first Operational
             accept HvInterlockBreachedFault
             do OpenMainContactorsAction

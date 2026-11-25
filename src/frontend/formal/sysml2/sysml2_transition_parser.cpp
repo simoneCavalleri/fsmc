@@ -59,7 +59,7 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     static const std::regex every_regex(
         R"(\b(?:accept\s+)?every\s*(?:\(\s*(\d+(?:\.\d+)?)\s*(?:\[(?:SI::|ISQ::)?([A-Za-z]+)\]|([A-Za-z]+))?\s*\)|(\d+(?:\.\d+)?)\s*(?:\[(?:SI::|ISQ::)?([A-Za-z]+)\]|([A-Za-z]+))?))",
         std::regex::optimize);
-    static const std::regex at_regex(R"(\b(?:accept\s+)?at\s*(?:\(\s*([^)]+)\s*\)|([A-Za-z0-9_:]+)))",
+    static const std::regex at_regex(R"(\b(?:accept\s+)?at\b\s*(?:\(\s*([^)]+)\s*\)|([A-Za-z0-9_:]+)))",
                                      std::regex::optimize);
     static const std::regex change_when_regex(R"(\b(?:accept\s+)?when\s*\(([^)]+)\))", std::regex::optimize);
     static const std::regex accept_regex(
@@ -152,56 +152,33 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     std::vector<ActionAssignment> assignments;
     std::vector<ActionAstNode> service_calls;
     std::optional<ActionSignature> trans_send_action;
-    static const std::regex trans_send_regex(
-        R"(\b(?:do\s+)?send\s+(?:new\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s+via\s+([A-Za-z_][A-Za-z0-9_]*))",
-        std::regex::optimize);
-    if (std::regex_search(stmt, match, do_block_regex)) {
-        // Parse semicolon-separated action statements within the block
-        std::string explicit_action_name = match[1].matched ? sanitize_identifier(match[1].str()) : "";
-        std::string block_content = trim(match[2].str());
-        std::stringstream ss(block_content);
-        std::string statement;
-        while (std::getline(ss, statement, ';')) {
-            statement = trim(statement);
-            if (statement.empty())
+    LocalItemMap local_items;
+    std::string explicit_action_name;
+    std::string block_content;
+    if (extract_do_action_block(stmt, explicit_action_name, block_content)) {
+        for (const auto& statement : split_action_block_statements(block_content)) {
+            if (statement.empty()) {
                 continue;
-
-            if (try_parse_service_call_statement(statement, model, service_calls)) {
+            }
+            if (try_parse_local_item_usage(statement, local_items)) {
+                continue;
+            }
+            SignalEmitOp emit_op;
+            std::string send_act_name;
+            std::string send_inv;
+            if (try_parse_send_statement(statement, local_items, model, emit_op, send_act_name, send_inv)) {
+                if (action.empty()) {
+                    action = send_act_name;
+                }
+                service_calls.emplace_back(std::move(emit_op), std::move(send_inv));
+            } else if (try_parse_service_call_statement(statement, model, service_calls)) {
                 // Lowered directly into typed ActionCallOp
             } else if (!try_parse_assignment_statement(statement, assignments, &model)) {
-                static const std::regex block_send_regex(
-                    R"(^(?:do\s+)?send\s+(?:new\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s+via\s+([A-Za-z_][A-Za-z0-9_]*)$)",
-                    std::regex::optimize);
-                std::smatch sm;
-                if (std::regex_match(statement, sm, block_send_regex)) {
-                    const std::string sig_name = sanitize_identifier(sm[1].str());
-                    const std::string args_str = sm[2].matched ? trim(sm[2].str()) : "";
-                    const std::string port_name = sanitize_identifier(sm[3].str());
-                    if (model.find_port(port_name) == nullptr) {
-                        model.ports.emplace_back(port_name, DataType{PrimitiveTypeKind::UInt32}, PortDirection::Out);
-                    }
-                    if (model.find_signal(sig_name) == nullptr) {
-                        model.signals.emplace_back(sig_name);
-                    }
-                    if (action.empty()) {
-                        action = "send_" + sig_name + "_via_" + port_name;
-                    }
-                    SignalEmitOp emit_op;
-                    emit_op.signal_name = sig_name;
-                    emit_op.target_port = port_name;
-                    if (!args_str.empty()) {
-                        emit_op.arguments.push_back(args_str);
-                    }
-                    service_calls.emplace_back(
-                        std::move(emit_op),
-                        port_name + ".send(" + sig_name + (args_str.empty() ? "" : (", " + args_str)) + ")");
-                } else {
-                    // Standalone action method call
-                    std::string act_call = sanitize_identifier(statement);
-                    if (!act_call.empty()) {
-                        action = act_call;
-                        model.add_action(act_call);
-                    }
+                // Standalone action method call
+                std::string act_call = sanitize_identifier(statement);
+                if (!act_call.empty()) {
+                    action = act_call;
+                    model.add_action(act_call);
                 }
             }
         }
@@ -246,33 +223,22 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
             }
             model.add_action(action);
         }
-    } else if (std::regex_search(stmt, match, trans_send_regex)) {
-        // Asynchronous message/signal sending via port definition
-        const std::string sig_name = sanitize_identifier(match[1].str());
-        const std::string args_str = match[2].matched ? match[2].str() : "";
-        const std::string port_name = sanitize_identifier(match[3].str());
-
-        if (model.find_port(port_name) == nullptr) {
-            PortDefinition p(port_name, DataType{PrimitiveTypeKind::UInt32}, PortDirection::Out);
-            model.ports.push_back(std::move(p));
+    } else {
+        static const std::regex trans_send_slice_re(
+            R"(\b(?:do\s+)?(send\s+(?:new\s+)?[A-Za-z_][A-Za-z0-9_]*(?:\s*\([^)]*\))?\s+(?:via|to)\s+[A-Za-z_][A-Za-z0-9_.]*))",
+            std::regex::optimize);
+        if (std::regex_search(stmt, match, trans_send_slice_re)) {
+            SignalEmitOp emit_op;
+            std::string send_inv;
+            if (try_parse_send_statement(match[1].str(), local_items, model, emit_op, action, send_inv)) {
+                ActionSignature sig_action(action, std::move(send_inv));
+                sig_action.instructions.emplace_back(std::move(emit_op));
+                trans_send_action = std::move(sig_action);
+            }
+        } else if (std::regex_search(stmt, match, do_regex)) {
+            // Direct action invocation
+            action = sanitize_identifier(match[1].str());
         }
-        if (model.find_signal(sig_name) == nullptr) {
-            model.signals.emplace_back(sig_name);
-        }
-
-        action = "send_" + sig_name + "_via_" + port_name;
-        ActionSignature sig_action(action,
-                                   port_name + ".send(" + sig_name + (args_str.empty() ? "" : (", " + args_str)) + ")");
-        SignalEmitOp emit_op;
-        emit_op.signal_name = sig_name;
-        emit_op.target_port = port_name;
-        if (!args_str.empty())
-            emit_op.arguments.push_back(args_str);
-        sig_action.instructions.emplace_back(std::move(emit_op));
-        trans_send_action = std::move(sig_action);
-    } else if (std::regex_search(stmt, match, do_regex)) {
-        // Direct action invocation
-        action = sanitize_identifier(match[1].str());
     }
 
     // 7. Target state and History pseudostate detection ([H], [H*], .H, .H*)

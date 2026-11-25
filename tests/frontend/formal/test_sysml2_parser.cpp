@@ -1196,10 +1196,10 @@ TEST(Sysml2Parser, SignedIntRoundtrip_PreservesSignedTypeAcrossSerializer) {
 }
 
 /**
- * @brief Regression: `Sysml2Serializer` emits `assert property <name> : <formula>;` for
- * `model.properties` so temporal logic properties survive SysML v2 roundtrips.
+ * @brief Regression: `Sysml2Serializer` emits valid `// @fsm:property` structured comments for
+ * `model.properties` (without non-SysML `assert property`) so temporal logic properties survive SysML v2 roundtrips.
  * @scenario Serialize an FSM with `FormalProperty("safe", "G (not (A and B))")` to SysML v2 and re-parse.
- * @expected Serialized SysML2 contains `assert property safe : G (not (A and B));` and re-parsed IR keeps it.
+ * @expected Serialized SysML2 contains `// @fsm:property name=safe` and re-parsed IR keeps it.
  */
 TEST(Sysml2Parser, PropertiesRoundtrip_PreservedAcrossSerializer) {
     FsmIr ir;
@@ -1213,7 +1213,8 @@ TEST(Sysml2Parser, PropertiesRoundtrip_PreservedAcrossSerializer) {
     ir.add_property(prop);
 
     const std::string sysml = fsm::backend::formal::Sysml2Serializer::serialize(ir);
-    EXPECT_NE(sysml.find("assert property safe : G (not (A and B));"), std::string::npos) << sysml;
+    EXPECT_NE(sysml.find("// @fsm:property name=safe"), std::string::npos) << sysml;
+    EXPECT_EQ(sysml.find("assert property"), std::string::npos) << sysml;
 
     Sysml2Parser parser;
     FsmIr parsed;
@@ -1830,6 +1831,126 @@ package ThermalSubsystem {
     }
 
     fs::remove_all(tmp_dir);
+}
+
+/**
+ * @brief Verify strict OMG SysML v2.0 grammar conformance (`private import`, `state S parallel`, state-local
+ * `assert constraint`, local `item msg : Ev { attribute :>> ... }` + `send msg via port`, named constructor
+ * `send new Ev(attr = val) via port`, and KerML `and`/`or`/`not` serializer emission).
+ * @scenario Parse a strictly conformant OMG SysML v2.0 state machine, verify model checking on its state-local
+ * `assert constraint`, serialize back via `Sysml2Serializer`, and re-parse.
+ * @expected Parser extracts parallel state, state constraint safety property, and both `SignalEmitOp` payloads;
+ * serializer emits `private import ScalarValues::*;`, `state Sup parallel`, `and`/`not`, and zero `&&` or
+ * `assert property`.
+ */
+TEST(Sysml2ParserTest, StrictOmgSysmlV2GrammarConformance_LocalItemSendConstraintParallelAndPrivateImport) {
+    const std::string src = R"(
+        package StrictSysmlPkg {
+            private import ScalarValues::*;
+            private import SI::*;
+
+            item def EvSample;
+            item def EvOverTemp {
+                attribute peak_temp : Integer;
+            }
+
+            port def AlertPort {
+                out item alert : EvOverTemp;
+            }
+
+            state def ThermalGuard {
+                in sensor_temp_c : Integer;
+                in enabled : Boolean;
+                out heater_enable : Boolean;
+                port link : AlertPort;
+
+                entry; then Nominal;
+
+                state Nominal;
+
+                state OverTempLatched {
+                    assert constraint SafeHeaterCutoff {
+                        not heater_enable
+                    }
+                }
+
+                state Sup parallel {
+                    state RegA {
+                        entry; then A0;
+                        state A0;
+                    }
+                    state RegB {
+                        entry; then B0;
+                        state B0;
+                    }
+                }
+
+                transition t_trip
+                    first Nominal
+                    accept EvSample
+                    if sensor_temp_c >= 85 and enabled
+                    do action TripProtection {
+                        assign heater_enable := false;
+                        item msg : EvOverTemp {
+                            attribute :>> peak_temp = sensor_temp_c;
+                        }
+                        send msg via link;
+                    }
+                    then OverTempLatched;
+
+                transition t_named_ctor
+                    first OverTempLatched
+                    accept after 100 [ms]
+                    do action ReNotify {
+                        send new EvOverTemp(peak_temp = sensor_temp_c) via link;
+                    }
+                    then OverTempLatched;
+            }
+        }
+    )";
+
+    Sysml2Parser parser;
+    FsmIr ir;
+    fsm::diagnostic::DiagnosticEngine diag;
+    ASSERT_TRUE(parser.parse(src, ir, diag)) << diag.render_to_string();
+
+    const auto* sup = ir.find_state("Sup");
+    ASSERT_NE(sup, nullptr);
+    EXPECT_EQ(sup->kind, StateKind::Parallel);
+
+    ASSERT_EQ(ir.properties.size(), 1U);
+    EXPECT_EQ(ir.properties[0].name, "SafeHeaterCutoff");
+
+    ASSERT_EQ(ir.transitions.size(), 2U);
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    ASSERT_EQ(ir.transitions[0].transition_action->instructions.size(), 1U);
+    const auto* em0 = std::get_if<SignalEmitOp>(&ir.transitions[0].transition_action->instructions[0].op);
+    ASSERT_NE(em0, nullptr);
+    EXPECT_EQ(em0->signal_name, "EvOverTemp");
+    EXPECT_EQ(em0->target_port, "link");
+    ASSERT_EQ(em0->arguments.size(), 1U);
+    EXPECT_EQ(em0->arguments[0], "sensor_temp_c");
+
+    ASSERT_TRUE(ir.transitions[1].transition_action.has_value());
+    ASSERT_EQ(ir.transitions[1].transition_action->instructions.size(), 1U);
+    const auto* em1 = std::get_if<SignalEmitOp>(&ir.transitions[1].transition_action->instructions[0].op);
+    ASSERT_NE(em1, nullptr);
+    EXPECT_EQ(em1->signal_name, "EvOverTemp");
+    ASSERT_EQ(em1->arguments.size(), 1U);
+    EXPECT_EQ(em1->arguments[0], "sensor_temp_c");
+
+    const std::string exported = fsm::backend::formal::Sysml2Serializer::serialize(ir);
+    EXPECT_NE(exported.find("private import ScalarValues::*;"), std::string::npos) << exported;
+    EXPECT_NE(exported.find("private import SI::*;"), std::string::npos) << exported;
+    EXPECT_NE(exported.find("state Sup parallel {"), std::string::npos) << exported;
+    EXPECT_EQ(exported.find("&&"), std::string::npos) << exported;
+    EXPECT_EQ(exported.find("assert property"), std::string::npos) << exported;
+
+    FsmIr reparsed;
+    ASSERT_TRUE(parser.parse(exported, reparsed, diag)) << diag.render_to_string();
+    ASSERT_NE(reparsed.find_state("Sup"), nullptr);
+    EXPECT_EQ(reparsed.find_state("Sup")->kind, StateKind::Parallel);
+    ASSERT_EQ(reparsed.transitions.size(), 2U);
 }
 
 }  // namespace

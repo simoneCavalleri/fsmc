@@ -1,49 +1,53 @@
-# OMG Systems Modeling Language (SysML) v2
+# OMG Systems Modeling Language (SysML) v2.0
 
-`fsmc` provides native parsing and emission for the **OMG SysML v2** textual state definition grammar, including hardware I/O ports with range contracts, internal attribute memory registers, and action behaviors.
+`fsmc` provides native parsing, verification, and lossless emission for the **OMG SysML v2.0** textual state machine notation (`SysML.xtext` / `KerMLExpressions.xtext`), including typed `port def`s with conjugation (`~`), `item def` signal payloads, `calc def` pure functions, `assert constraint` state invariants, and `assign` / `send` action behaviors.
 
 ---
 
-## 1. SysML v2 Statechart Grammar Reference
+## 1. SysML v2.0 Statechart Grammar Reference
 
-`fsmc` supports the standard declarative SysML v2 statechart constructs:
+### A. Package Imports, Data Definitions & State Machine Parameters
 
-### A. State Machine Definition & Domains
+In standard OMG SysML v2.0, package imports declare explicit visibility (`private import` or `public import`), scalar I/O parameters use directional features (`in`, `out`, `inout`), and internal persistent registers use `attribute` with `:=` initialization:
+
 ```sysml
 package SpacecraftSubsystems {
+    private import ScalarValues::*;
+    private import SI::*;
+
+    enum def FlightPhase {
+        enum Preflight;
+        enum Ascent;
+        enum Cruise;
+        enum Descent;
+    }
+
+    item def NavigationVector {
+        attribute latitude : Real;
+        attribute longitude : Real;
+        attribute altitude : Real;
+    }
+
+    item def EvArmed;
+    item def EvOrbitComplete;
+    item def EvEStop;
+
     state def FlightController {
-        // 0. Data Definitions (Enums and Structs)
-        enum def FlightPhase {
-            Preflight;
-            Ascent;
-            Cruise;
-            Descent;
-            Terminal;
-        }
+        // 1. Read-only Input Parameters with formal range constraints
+        in sensor_altitude : Real { assert constraint { self >= 0.0 and self <= 100000.0 } }
+        in gps_lock : Boolean;
 
-        struct def NavigationVector {
-            attribute latitude : Real;
-            attribute longitude : Real;
-            attribute altitude : Real;
-        }
-
-        // 1. Read-only Input Ports with formal range constraints
-        in port sensor_altitude : Real { assert constraint { self >= 0.0 and self <= 100000.0; } }
-        in port gps_lock : Boolean;
-        in port target_waypoint : NavigationVector;
-
-        // 2. Write-only Output Ports
-        out port thruster_level : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
-        out port active_phase : FlightPhase;
+        // 2. Write-only Output Parameters
+        out thruster_level : Real { assert constraint { self >= 0.0 and self <= 100.0 } }
+        out active_phase : FlightPhase;
 
         // 3. Persistent Internal Memory (Registers / z^-1 state)
-        attribute orbit_count : Integer = 0;
-        attribute fault_counter : Integer = 0;
-        attribute current_pos : NavigationVector;
+        attribute orbit_count : Integer := 0;
+        attribute fault_counter : Integer := 0;
 
         // 4. Initial transition entry point
         entry; then Preflight;
-        
+
         // State definitions follow...
     }
 }
@@ -51,14 +55,15 @@ package SpacecraftSubsystems {
 
 ---
 
-### B. State Lifecycles & Nested Hierarchies (HFSM)
+### B. State Lifecycles, Nested Hierarchies (HFSM) & Parallel States
+
 ```sysml
 state Preflight {
-    entry action initializeSensors();
-    do action runSelfTest();
-    exit action logPreflightComplete();
+    entry action initializeSensors;
+    do action runSelfTest;
+    exit action logPreflightComplete;
 
-    transition on EvArmed if in.gps_lock then ActiveFlight;
+    transition first Preflight accept EvArmed if gps_lock then ActiveFlight;
 }
 
 // Composite / Hierarchical State
@@ -66,87 +71,63 @@ state ActiveFlight {
     entry; then Ascending;
 
     state Ascending {
-        transition on AltitudeReached if in.sensor_altitude > 10000.0 then Cruising;
+        transition first Ascending if sensor_altitude > 10000.0 then Cruising;
     }
 
     state Cruising {
-        transition on OrbitComplete do action { reg.orbit_count = reg.orbit_count + 1; } then Cruising;
+        transition first Cruising
+            accept EvOrbitComplete
+            do action CountOrbit {
+                assign orbit_count := orbit_count + 1;
+            }
+            then Cruising;
     }
 
-    // High-level interrupt transition out of composite state
-    transition on EvEStop then EmergencyHold;
+    // High-level preemption out of composite state
+    transition first ActiveFlight accept EvEStop then EmergencyHold;
+}
+
+// Concurrent Orthogonal Regions ('parallel' follows the state name in SysML v2.0)
+state Supervision parallel {
+    state ThermalRegion {
+        entry; then Nominal;
+        state Nominal;
+    }
+    state IsolationRegion {
+        entry; then Healthy;
+        state Healthy;
+    }
 }
 
 state EmergencyHold;
 ```
 
-!!! warning "MBSE Exchange vs C++ Backend (`ECPP006`)"
-    State-level `do action <Activity>();` (`do_activity`) is fully parsed and preserved in `FsmIr` for lossless MBSE model exchange (e.g., SysML v2 $\leftrightarrow$ SCXML $\leftrightarrow$ Cameo $\leftrightarrow$ Stateflow). However, the zero-heap synchronous C++ reference backend rejects unlowered `do_activity` with diagnostic `ECPP006`, because synchronous finite state automata require discrete zero-time run-to-completion semantics. For background work in C++, use transition actions or the multi-threaded `thread_safe_fsm` executor.
+!!! warning "MBSE Exchange vs Synchronous C++ Backend (`ECPP006`)"
+    State-level `do action <Activity>;` (`do_activity`) is preserved in `FsmIr` for lossless MBSE model exchange (SysML v2.0 $\leftrightarrow$ SCXML $\leftrightarrow$ Cameo XMI $\leftrightarrow$ Stateflow). The zero-heap synchronous C++ reference backend rejects unlowered `do_activity` with diagnostic `ECPP006` because synchronous state machines execute discrete zero-time run-to-completion steps.
 
 ---
 
-### C. Transition Syntax Varieties & Fork/Join Synchronization
-`fsmc` parses both full explicit transition statements and shorthand forms:
+### C. Transition Syntax Varieties
 
-| Transition Style | Syntax | Description |
+| Construct | Standard SysML v2.0 Syntax | Description |
 | :--- | :--- | :--- |
-| **Full Explicit** | `transition tr1 first Idle accept EvStart if in.gps_lock do action { out.thrust = 50.0; } then Running;` | Complete specification with explicit source, trigger, guard, action, and target. |
-| **Shorthand Trigger** | `transition on EvStart to Running;` | Inline trigger inside a state block targeting `Running`. |
-| **Temporal Trigger (after)** | `transition on after(500 ms) then TimeoutFault;` | Discrete-time dwell delay transition. |
-| **Temporal Trigger (at)** | `transition on at(12:00:00) then ScheduledSync;` | Absolute clock trigger transition. |
-| **Guarded Shorthand** | `transition if in.sensor_altitude <= 0.0 then Landed;` | Immediate guard-evaluated transition. |
-| **Fork Transition** | `transition fork (Region1, Region2);` | Direct multi-target fork transition activating concurrent orthogonal regions. |
-| **Join Transition** | `transition join (Region1, Region2) then Converged;` | Direct multi-source join transition synchronizing completion of orthogonal regions. |
-| **Fork Pseudostate** | `fork Fork1; transition first St1 then Fork1; transition first Fork1 then ParallelA;` | Spawns concurrent execution across orthogonal regions. |
-| **Join Pseudostate** | `join Join1; transition first ParallelA then Join1; transition first Join1 then St2;` | Synchronizes completion of orthogonal regions. |
-| **Connection Point** | `entry point En1; exit point Ex1;` | Structured entry and exit connection points across state boundaries. |
+| **Explicit Transition** | `transition tr1 first Idle accept EvStart if gps_lock and ready do action { assign thrust := 50.0; } then Running;` | Complete transition with source, signal trigger, KerML boolean guard (`and`/`or`/`not`), assignment, and target. |
+| **Payload Binding** | `transition first Standby accept alert : EvOverTemp via link do action { assign peak := alert.peak_temp; } then Cooling;` | Binds incoming `item def` signal occurrence `alert` and reads its attributes. |
+| **Relative Time (`after`)** | `transition first Active accept after 500 [ms] then TimeoutFault;` | Discrete-time dwell timeout transition (`private import SI::*;`). |
+| **Periodic Time (`every`)** | `transition first Active accept every 20 [ms] then SampleStep;` | Periodic tick-driven transition. |
+| **Change Trigger (`when`)** | `transition first Monitoring accept when (sensor_temp >= 85) then Alarm;` | Sampled condition change trigger. |
+| **Connection Points** | `entry point En1; exit point Ex1;` | Structured entry and exit connection points across composite state boundaries. |
 
 ---
 
-### D. Nested Qualified Packages & Binding Connectors
-SysML v2 namespaces can be nested or qualified, with explicit port bindings and structural connectors:
+### D. Multi-FSM System Architecture: `private import`, Conjugated `port def` (`~`), `calc def` & Outbox
 
-```sysml
-package Avionics::PowerSystem {
-    state def BatterySupervision {
-        in port raw_bus_voltage : Real;
-        out port filtered_voltage : Real;
-
-        // Port bindings and structural connectors
-        bind filtered_voltage = raw_bus_voltage;
-        connect telemetry_out to GroundStation::rx_bus;
-
-        // Nested package hierarchy
-        package ThermalSubsystem {
-            state def Cooler {
-                entry; then Passive;
-                state Passive;
-            }
-        }
-    }
-}
-```
-
-### E. Choice Pseudostates & Branching
-```sysml
-choice ClearanceCheck;
-
-transition first Preflight accept EvRequestLaunch then ClearanceCheck;
-
-transition check_ok   first ClearanceCheck if in.gps_lock then ActiveFlight;
-transition check_fail first ClearanceCheck if not in.gps_lock then Preflight;
-```
-
----
-
-### F. Multi-FSM System Architecture: `import`, Conjugated `port def` (`~`), `calc def` & Outbox
-
-`fsmc` supports multi-file OMG SysML v2.0 system specifications with shared protocol packages (`import <Pkg>::*;`), typed signals (`item def`), pure calculations (`calc def`), directional port definitions (`port def`), conjugated ports (`~PortDef`), `part def` with `exhibit state`, and executable event emission (`send new <Signal>(...) via <port>;`):
+`fsmc` compiles multi-file OMG SysML v2.0 system models featuring shared protocol packages (`private import <Pkg>::*;`), typed `item def` signals, pure `calc def` functions, directional `port def` interfaces, conjugated ports (`~PortDef`), `part def` with `exhibit state`, and standard `item` instantiation + `send ... via ...`:
 
 ```sysml
 // shared_protocol.sysml
 package SharedProtocol {
-    import ScalarValues::*;
+    private import ScalarValues::*;
 
     item def EvSample;
     item def EvOverTemp {
@@ -163,8 +144,8 @@ package SharedProtocol {
 ```sysml
 // thermal_subsystem.sysml
 package ThermalSubsystem {
-    import ScalarValues::*;
-    import SharedProtocol::*;
+    private import ScalarValues::*;
+    private import SharedProtocol::*;
 
     part def SensorUnit {
         port link : ~ThermalLinkPort; // Conjugated (~): flips in <-> out
@@ -191,7 +172,10 @@ package ThermalSubsystem {
             do action RaiseThermalAlert {
                 assign temp_c := sensor_temp_c;
                 assign alerts_sent := alerts_sent + 1;
-                send new EvOverTemp(sensor_temp_c) via link;
+                item msg : EvOverTemp {
+                    attribute :>> peak_temp = sensor_temp_c;
+                }
+                send msg via link;
             }
             then OverTempLatched;
     }
@@ -216,67 +200,79 @@ package ThermalSubsystem {
 }
 ```
 
+!!! note "Parameterless & Named-Argument Constructor Sends"
+    In addition to local `item` instantiation with `:>>` redefinition, `fsmc` also supports SysML v2.0 `ConstructorExpression` syntax for parameterless signals (`send new EvStart() via link;`) and named-argument constructors (`send new EvOverTemp(peak_temp = sensor_temp_c) via link;`).
+
 ---
 
-## 2. Formal Directives & Traceability in SysML v2
+## 2. State Invariants (`assert constraint`), Traceability & Temporal Directives
 
-In addition to native SysML v2 constructs (`assert property`, `satisfy requirement`, `defer`), you can embed `@fsm:*` annotations inside `//` comments:
+Standard SysML v2.0 synchronous invariants are expressed natively inside states via `assert constraint`, and requirements via `satisfy requirement`. Multi-state LTL/CTL temporal formulas (which extend beyond SysML v2.0's native expression language) and compiler-specific scheduling hints are placed inside standard `// @fsm:*` line comments so `.sysml` files remain 100% valid for external SysML v2.0 tools:
 
 ```sysml
 package MissionSafety {
+    private import ScalarValues::*;
+
+    // Multi-state LTL property in a standard comment (transparent to external SysML v2 parsers):
+    // @fsm:property name=ResponseLanding kind=Safety formula="G (EvLowBattery -> F Landed)"
+
     state def UAVControl {
-        // Formal Safety Invariant: Never allow HighThrust while Landed
-        assert property InvariantNoThrustOnGround : G !(Landed && HighThrust);
+        out motors_armed : Boolean;
 
-        // Or equivalently via comment directive:
-        // @fsm:property ResponseLanding = "G (EvLowBattery -> F Landed)";
-
-        // Bind an external shared POD type and declare a typed zero-vtable service:
-        // @fsm:external_type name=PidState module="ctrl/pid.hpp" symbol="ctrl.PidState" kind=struct
-        // @fsm:service compute_pwm(err: int32_t) -> int32_t pure=true noexcept=true desc="PID step"
+        entry; then Landed;
 
         state Landed {
-            // Native SysML v2 requirement traceability
-            satisfy requirement REQ-UAV-001;
+            satisfy requirement REQ_UAV_001;
 
-            // Defer sensor payload commands until flight is active
+            // Native OMG SysML v2.0 state constraint (automatically proven by fsmc --verify!)
+            assert constraint SafeDisarmOnGround {
+                not motors_armed
+            }
+
             defer EvStreamTelemetry;
-            defer EvStartMission;
         }
 
-        state HighThrust;
+        state FlightActive;
     }
 }
 ```
 
-!!! note "Boolean Operators in SysML v2 Guards"
-    The SysML v2 parser accepts both C-style boolean operators (`&&`, `||`, `!`) and keyword forms (`and`, `or`, `not`) inside `if` guard expressions.
-
 ---
 
-## 3. End-to-End Example: SysML v2 to C++17 Header
+## 3. End-to-End Example: SysML v2.0 to C++17 & Pure-C99
 
-=== "SysML v2 Source (`spacecraft.sysml`)"
+=== "SysML v2.0 Source (`spacecraft.sysml`)"
     ```sysml
     package Aerospace {
-        state def SpacecraftControl {
-            in port battery_soc : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
-            out port heater_cmd : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
-            attribute cycles : Integer = 0;
+        private import ScalarValues::*;
 
-            // @fsm:property SafeBat = "G (EvCritBat -> F SafeMode)";
+        item def EvLaunch;
+        item def EvCritBat;
+
+        // @fsm:property name=SafeBat kind=Safety formula="G (EvCritBat -> F SafeMode)"
+
+        state def SpacecraftControl {
+            in battery_soc : Real { assert constraint { self >= 0.0 and self <= 100.0 } }
+            out heater_cmd : Real { assert constraint { self >= 0.0 and self <= 100.0 } }
+            attribute cycles : Integer := 0;
 
             entry; then Standby;
 
-            state Standby {
-                transition on EvLaunch if in.battery_soc > 20.0 then OrbitOps;
-            }
-
-            state OrbitOps {
-                transition on EvCritBat if in.battery_soc <= 20.0 then SafeMode;
-            }
-
+            state Standby;
+            state OrbitOps;
             state SafeMode;
+
+            transition t_launch
+                first Standby
+                accept EvLaunch
+                if battery_soc > 20.0
+                then OrbitOps;
+
+            transition t_crit
+                first OrbitOps
+                accept EvCritBat
+                if battery_soc <= 20.0
+                then SafeMode;
         }
     }
     ```
@@ -287,37 +283,30 @@ package MissionSafety {
         %% @fsm:name SpacecraftControl
         %% @fsm:port name=battery_soc type=Real dir=in min=0.0 max=100.0
         %% @fsm:port name=heater_cmd type=Real dir=out min=0.0 max=100.0
-        %% @fsm:property name=SafeBat kind=Liveness formula="G (EvCritBat -> F SafeMode)"
+        %% @fsm:property name=SafeBat kind=Safety formula="G (EvCritBat -> F SafeMode)"
         [*] --> Standby
-        Standby --> OrbitOps: EvLaunch [in.battery_soc > 20.0]
-        OrbitOps --> SafeMode: EvCritBat [in.battery_soc <= 20.0]
+        Standby --> OrbitOps: EvLaunch [battery_soc > 20.0]
+        OrbitOps --> SafeMode: EvCritBat [battery_soc <= 20.0]
     ```
 
-=== "Generated C++17 Header (`spacecraft_fsm.hpp`)"
+=== "Generated C++17 Ports (`spacecraft_ports.hpp`)"
     ```cpp
     #pragma once
-    #include <fsm/backend/cpp/runtime/fsm.hpp>
+    #include <cstdint>
 
     namespace Aerospace {
 
-    struct InPorts {
-        double battery_soc{0.0};
+    struct SpacecraftControlInPorts {
+        float battery_soc{0.0f};
     };
 
-    struct OutPorts {
-        double heater_cmd{0.0};
+    struct SpacecraftControlOutPorts {
+        float heater_cmd{0.0f};
     };
 
-    struct Registers {
-        int64_t cycles{0};
+    struct SpacecraftControlRegisters {
+        uint32_t cycles{0};
     };
-
-    struct Standby {};
-    struct OrbitOps {};
-    struct SafeMode {};
-
-    struct EvLaunch {};
-    struct EvCritBat {};
 
     } // namespace Aerospace
     ```
@@ -327,11 +316,11 @@ package MissionSafety {
 ## 4. CLI Invocations
 
 ```bash
-# Formally verify SysML v2 specification (Interval Analysis + Model Checking)
+# Formally verify SysML v2.0 specification (assert constraint + LTL/CTL + Interval Analysis)
 fsmc -i spacecraft.sysml --verify
 
 # Generate split C++17 headers (spacecraft_ports.hpp + spacecraft_fsm.hpp)
-fsmc -i spacecraft.sysml -o spacecraft_fsm.hpp
+fsmc -i spacecraft.sysml --namespace Aerospace -o spacecraft_fsm.hpp
 
 # Generate native bare-metal Pure-C99 (spacecraft.h + spacecraft.c, zero C++ runtime)
 fsmc -i spacecraft.sysml --target c99 -o spacecraft.h --emit-manifest
@@ -342,7 +331,4 @@ fsmc -i thermal_subsystem.sysml -I . --state-def SensorMonitorFsm --target c99 -
 
 # Export canonical SMV logic for external nuXmv proof
 fsmc -i spacecraft.sysml --export smv -o formal_model.smv
-
-# Transpile SysML v2 into PlantUML or Mermaid diagram
-fsmc -i spacecraft.sysml --export plantuml -o diagram.puml
 ```

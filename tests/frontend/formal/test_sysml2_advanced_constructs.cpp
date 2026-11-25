@@ -235,7 +235,7 @@ TEST(Sysml2AdvancedConstructs, ParallelStateAndSlashActions_RoundtrippedLossless
 
     // Roundtrip serialize to SysML v2
     std::string exported_sysml = Sysml2Serializer::serialize(model);
-    EXPECT_NE(exported_sysml.find("parallel state Operational"), std::string::npos);
+    EXPECT_NE(exported_sysml.find("state Operational parallel"), std::string::npos);
     EXPECT_NE(exported_sysml.find("entry action OpenContactorsAction;"), std::string::npos);
     EXPECT_NE(exported_sysml.find("exit action ResetRelaysAction;"), std::string::npos);
 

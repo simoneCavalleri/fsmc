@@ -5,7 +5,7 @@
 // ============================================================================
 
 package SensorToolchain {
-    import ScalarValues::*;
+    private import ScalarValues::*;
 
     state def SensorPipelineController {
         // Typed MBSE I/O Parameters with Physical Range Contracts
@@ -22,11 +22,11 @@ package SensorToolchain {
             entry; then Sampling;
 
             state Sampling {
-                stay duration <= 10[ms];
+                // @fsm:state time_invariant="10[ms]"
             }
 
             state Filtering {
-                stay duration <= 5[ms];
+                // @fsm:state time_invariant="5[ms]"
             }
 
             state Publishing;

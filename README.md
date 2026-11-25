@@ -30,7 +30,7 @@ Embedded and safety-critical control software should neither rely on hand-writte
 - **Formally Verified Before Codegen**: 34 middle-end compiler passes (`fsm-opt` / `fsmc --verify`) enforce structural integrity (`verify-ir-integrity`), built-in **LTL/CTL model checking**, **EFSM interval abstract interpretation**, static race & determinism checks, certified **WCET micro-step & event-queue bounds**, interactive **IR simulation** (`--simulate`), **DO-178C / ISO 26262 RTM matrices**, and **MC/DC GoogleTest synthesis**.
 - **Two Zero-Heap Production Backends + FFI**:
   - **Unified C++17/20/23 (`--target cpp`)**: Split `*_ports.hpp` + `*_fsm.hpp` headers for HAL isolation (or `--standalone` / `--freestanding` `-fno-exceptions -fno-rtti`), **0 bytes heap**, **0 vtables**, $O(1)$ dispatch, lock-free `spsc_fsm`, async `thread_safe_fsm`, flight recorder, snapshot rollback, and optional C99 ABI bridge (`--emit-c-abi`).
-  - **Native Bare-Metal Pure-C99 (`--target c99`)**: Emits strict ISO C99 (`<stem>.h` + `<stem>.c`, `-std=c99 -pedantic -Werror`) with **zero C++ runtime**, flat deterministic dispatch, FNV-1a checksummed binary snapshots, C callback `services_t`, and static `OutPorts::outbox` event emission (`send new ... via ...`) for multi-FSM bare-metal control loops.
+  - **Native Bare-Metal Pure-C99 (`--target c99`)**: Emits strict ISO C99 (`<stem>.h` + `<stem>.c`, `-std=c99 -pedantic -Werror`) with **zero C++ runtime**, flat deterministic dispatch, FNV-1a checksummed binary snapshots, C callback `services_t`, and static `OutPorts::outbox` event emission (`send msg via link`) for multi-FSM bare-metal control loops.
 - **3-Way Differential Semantics & Attested Contracts**: Behavioral equivalence is continuously verified across `IrSimulator == C++17 == Pure-C99`. `--emit-manifest` produces `*.manifest.json` (`schemas/fsm_manifest.schema.json`) binding ports, registers, events, services, requirements, real-time scheduling bounds, and FIPS 180-4 `ir_sha256` digests across all generated artifacts.
 
 ```mermaid
@@ -75,7 +75,7 @@ Define a standard SysML v2.0 state machine (`thermal_guard.sysml`):
 
 ```sysml
 package ThermalSafety {
-    import ScalarValues::*;
+    private import ScalarValues::*;
 
     item def EvSample;
     item def EvCoolComplete;
@@ -93,12 +93,14 @@ package ThermalSafety {
         port link : ThermalAlertPort;
         attribute trip_count : Integer := 0;
 
-        assert property SafeHeaterCutoff : G !(OverTempLatched && heater_enable);
-
         entry; then Nominal;
 
         state Nominal;
-        state OverTempLatched;
+        state OverTempLatched {
+            assert constraint SafeHeaterCutoff {
+                not heater_enable
+            }
+        }
 
         transition t_trip
             first Nominal
@@ -107,7 +109,10 @@ package ThermalSafety {
             do action TripProtection {
                 assign heater_enable := false;
                 assign trip_count := trip_count + 1;
-                send new EvOverTemp(sensor_temp_c) via link;
+                item msg : EvOverTemp {
+                    attribute :>> peak_temp = sensor_temp_c;
+                }
+                send msg via link;
             }
             then OverTempLatched;
 

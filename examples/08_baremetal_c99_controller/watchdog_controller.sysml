@@ -1,5 +1,6 @@
 package BareMetalCtrl {
-    import ScalarValues::*;
+    private import ScalarValues::*;
+    private import SI::*;
 
     item def EvArm;
     item def EvSample;

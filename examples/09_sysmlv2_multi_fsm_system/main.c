@@ -60,15 +60,15 @@ int main(void) {
         memset(&c_in, 0, sizeof(c_in));
         memset(&c_out, 0, sizeof(c_out));
 
-        s_in.sensor_temp_c = 92;
+        s_in.sensor_temp_c = 92U;
         CHECK(sensor_monitor_fsm_dispatch_ev_sample(&sensor, &s_in, &s_out) == SENSOR_MONITOR_FSM_STATUS_OK);
         CHECK(sensor_monitor_fsm_current_state(&sensor) == SENSOR_MONITOR_FSM_STATE_OVER_TEMP_LATCHED);
         CHECK(sensor.regs.alerts_sent == 1U);
-        CHECK(s_out.temp_c == 92);
+        CHECK(s_out.temp_c == 92U);
         CHECK(s_out.outbox_count == 1U);
         CHECK(s_out.outbox[0].tag == SENSOR_MONITOR_FSM_OUT_EV_OVER_TEMP);
         CHECK(strcmp(s_out.outbox[0].port, "link") == 0);
-        CHECK(s_out.outbox[0].ev_over_temp.peak_temp == 92);
+        CHECK(s_out.outbox[0].ev_over_temp.peak_temp == 92U);
 
         /* Deterministic zero-heap bus routing: forward Sensor outbox -> Cooler */
         c_in.temp_c = s_out.temp_c;
@@ -80,7 +80,7 @@ int main(void) {
         }
 
         CHECK(cooling_actuator_fsm_current_state(&cooler) == COOLING_ACTUATOR_FSM_STATE_ACTIVE_COOLING);
-        CHECK(cooler.regs.last_peak_temp == 92);
+        CHECK(cooler.regs.last_peak_temp == 92U);
         CHECK(c_out.fan_pwm == 100U);
     }
 

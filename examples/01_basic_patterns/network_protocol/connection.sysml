@@ -4,7 +4,7 @@
 // ============================================================================
 
 package NetworkProtocols {
-    import ScalarValues::*;
+    private import ScalarValues::*;
 
     state def ConnectionFSM {
         // Typed MBSE I/O Parameters with Physical Bounds
@@ -22,11 +22,11 @@ package NetworkProtocols {
 
         // Disconnected: Conditional branching with composite boolean guards
         transition first Disconnected accept ConnectCmd
-            if HasNetworkGuard && HasValidCredentialsGuard
+            if HasNetworkGuard and HasValidCredentialsGuard
             do InitSocketAction then Connecting;
 
         transition first Disconnected accept ConnectCmd
-            if !HasNetworkGuard || !HasValidCredentialsGuard
+            if not HasNetworkGuard or not HasValidCredentialsGuard
             do LogErrorAction then Disconnected;
 
         // Connecting: Handshake verification and timeout handling

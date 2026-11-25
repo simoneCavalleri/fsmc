@@ -17,6 +17,12 @@ struct SimulatedEvent {
     std::unordered_map<std::string, std::string> string_payload;
 };
 
+struct EmittedSignalRecord {
+    std::string signal_name;
+    std::string target_port;
+    std::vector<double> numeric_args;
+};
+
 struct SimulationOptions {
     bool strict_guards = false;  ///< When true, unresolved symbolic guards fail-closed (return false)
 };
@@ -33,6 +39,7 @@ struct SimulationTraceStep {
     std::vector<std::string> exited_states;
     std::vector<std::string> entered_states;
     std::vector<std::string> executed_actions;
+    std::vector<EmittedSignalRecord> emitted_events;
     std::map<std::string, double> registers_snapshot;
 };
 
@@ -57,6 +64,7 @@ class IrSimulator {
 }  // namespace fsm::ir
 
 namespace fsm::tools {
+using fsm::ir::EmittedSignalRecord;
 using fsm::ir::IrSimulator;
 using fsm::ir::SimulatedEvent;
 using fsm::ir::SimulationOptions;

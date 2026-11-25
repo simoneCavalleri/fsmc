@@ -69,6 +69,8 @@ std::string sanitize_namespace(std::string_view raw_ns) {
 
 void emit_runtime_preamble(std::ostream& out, const GeneratorOptions& effective_opts) {
     if (effective_opts.standalone) {
+        out << "#include <array>\n";
+        out << "#include <cstddef>\n";
         out << "#include <cstdint>\n";
         if (!effective_opts.freestanding) {
             out << "#include <string>\n";
@@ -90,6 +92,8 @@ void emit_runtime_preamble(std::ostream& out, const GeneratorOptions& effective_
         } else {
             out << "#include \"" << header_include << "\"\n";
         }
+        out << "#include <array>\n";
+        out << "#include <cstddef>\n";
         out << "#include <cstdint>\n";
         out << "#include <string_view>\n";
         out << "#include <type_traits>\n";
@@ -203,6 +207,8 @@ GeneratedCppBundle CppGenerator::generate_bundle(const FsmIr& model, const Gener
     }
     ports_out << " */\n\n";
     ports_out << "#pragma once\n\n";
+    ports_out << "#include <array>\n";
+    ports_out << "#include <cstddef>\n";
     ports_out << "#include <cstdint>\n";
     if (!effective_opts.freestanding) {
         ports_out << "#include <string>\n";

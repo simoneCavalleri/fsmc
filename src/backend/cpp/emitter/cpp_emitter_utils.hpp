@@ -1,12 +1,21 @@
 #pragma once
 
+#include <cstddef>
 #include <initializer_list>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "fsm/ir/fsm_ir.hpp"
 
 namespace fsm::backend::cpp::emitter_detail {
+
+struct EmittedSignalSummary {
+    std::vector<std::string> unique_signals;
+    std::size_t max_outbox_capacity{4};
+};
+
+EmittedSignalSummary collect_emitted_signals(const fsm::ir::FsmIr& model);
 
 std::string resolve_external_cpp_symbol(std::string_view symbol);
 std::string resolve_external_cpp_include(std::string_view module_path);

@@ -231,9 +231,11 @@ int main(void) {
 
     // Compile and link strictly with the C compiler ONLY (zero C++ involved!)
     const fs::path bin = tmp_dir / "pure_c99_runner";
-    const std::string cmd = cc + " -std=c99 -Wall -Wextra -Werror -pedantic -I\"" + tmp_dir.string() + "\" \"" +
-                            (tmp_dir / "motor_ctrl.c").string() + "\" \"" + (tmp_dir / "main.c").string() + "\" -o \"" +
-                            bin.string() + "\"";
+    const std::string cmd = cc +
+                            " -std=c99 -Wall -Wextra -Werror -pedantic -Wstrict-prototypes -Wmissing-prototypes "
+                            "-Wshadow -I\"" +
+                            tmp_dir.string() + "\" \"" + (tmp_dir / "motor_ctrl.c").string() + "\" \"" +
+                            (tmp_dir / "main.c").string() + "\" -o \"" + bin.string() + "\"";
     ASSERT_EQ(std::system(cmd.c_str()), 0) << "Pure C99 compilation failed:\n" << cmd;
     ASSERT_EQ(std::system(("\"" + bin.string() + "\"").c_str()), 0) << "Pure C99 runner failed";
 
@@ -256,4 +258,91 @@ TEST(C99Backend, LowersExternalTypeRefToC99IncludeAndTypedef) {
     EXPECT_NE(bundle.header.find("#include \"drivers/can_types.h\""), std::string::npos);
     EXPECT_NE(bundle.header.find("typedef can_frame_t bus_node_can_frame_t;"), std::string::npos);
     EXPECT_NE(bundle.header.find("bus_node_can_frame_t rx;"), std::string::npos);
+}
+
+/**
+ * @brief Verify SignalEmitOp generates a zero-heap static outbox on OutPorts in Pure-C99 and executes cleanly under
+ * strict embedded C99 warning flags.
+ * @scenario Build an FSM with a SignalEmitOp carrying a typed payload over an output port, generate Pure-C99, compile
+ * with -std=c99 -Wall -Wextra -Werror -pedantic -Wstrict-prototypes -Wmissing-prototypes -Wshadow, and verify outbox.
+ * @expected Emitted event tag, port name, and payload match in out_ports.outbox and reset cleanly on the next cycle.
+ */
+TEST(C99Backend, SignalEmitOp_PopulatesStaticOutboxUnderStrictC99) {
+    const std::string cc = find_c_compiler();
+    if (cc.empty()) {
+        GTEST_SKIP() << "No C compiler found on PATH";
+    }
+
+    FsmIr ir;
+    ir.name = "AlertNode";
+    ir.initial_state = "Normal";
+    ir.add_state("Normal");
+    ir.add_state("Fault");
+    ir.add_port(PortDefinition("temp_c", DataType::int32(), PortDirection::In));
+    ir.add_signal(SignalDefinition("EvSample"));
+    SignalDefinition ev_alert("EvOverTemp");
+    ev_alert.attributes.push_back(SignalAttribute{"peak_temp", DataType::int32()});
+    ir.add_signal(ev_alert);
+
+    TransitionEdge t("Normal", "Fault", "EvSample");
+    t.guard = "temp_c >= 90";
+    ActionSignature act("EmitOverTemp");
+    SignalEmitOp se;
+    se.signal_name = "EvOverTemp";
+    se.target_port = "alert_bus";
+    se.arguments = {"temp_c"};
+    act.instructions.emplace_back(se, "emit overtemp");
+    t.transition_action = act;
+    ir.add_transition(t);
+
+    const auto bundle = C99Generator::generate(ir);
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::temp_directory_path() / "fsmc_test_c99_outbox";
+    fs::create_directories(tmp_dir);
+    {
+        std::ofstream(tmp_dir / "alert_node.h") << bundle.header;
+        std::ofstream(tmp_dir / "alert_node.c") << bundle.source;
+        std::ofstream(tmp_dir / "main.c") << R"c(
+#include <assert.h>
+#include <string.h>
+#include "alert_node.h"
+
+int main(void) {
+    alert_node_fsm_t fsm;
+    alert_node_in_ports_t in_p;
+    alert_node_out_ports_t out_p;
+    alert_node_init(&fsm);
+
+    memset(&in_p, 0, sizeof(in_p));
+    memset(&out_p, 0, sizeof(out_p));
+    in_p.temp_c = 50;
+    assert(alert_node_dispatch_ev_sample(&fsm, &in_p, &out_p) == ALERT_NODE_STATUS_GUARD_REJECTED);
+    assert(out_p.outbox_count == 0U);
+
+    in_p.temp_c = 105;
+    assert(alert_node_dispatch_ev_sample(&fsm, &in_p, &out_p) == ALERT_NODE_STATUS_OK);
+    assert(alert_node_current_state(&fsm) == ALERT_NODE_STATE_FAULT);
+    assert(out_p.outbox_count == 1U);
+    assert(out_p.outbox[0].tag == ALERT_NODE_OUT_EV_OVER_TEMP);
+    assert(strcmp(out_p.outbox[0].port, "alert_bus") == 0);
+    assert(out_p.outbox[0].ev_over_temp.peak_temp == 105);
+
+    /* Next cycle resets outbox cleanly */
+    assert(alert_node_dispatch_ev_sample(&fsm, &in_p, &out_p) == ALERT_NODE_STATUS_IGNORED);
+    assert(out_p.outbox_count == 0U);
+    return 0;
+}
+)c";
+    }
+
+    const fs::path bin = tmp_dir / "outbox_runner";
+    const std::string cmd = cc +
+                            " -std=c99 -Wall -Wextra -Werror -pedantic -Wstrict-prototypes -Wmissing-prototypes "
+                            "-Wshadow -I\"" +
+                            tmp_dir.string() + "\" \"" + (tmp_dir / "alert_node.c").string() + "\" \"" +
+                            (tmp_dir / "main.c").string() + "\" -o \"" + bin.string() + "\"";
+    ASSERT_EQ(std::system(cmd.c_str()), 0) << "Strict C99 outbox compilation failed:\n" << cmd;
+    ASSERT_EQ(std::system(("\"" + bin.string() + "\"").c_str()), 0) << "Strict C99 outbox runner failed";
+
+    fs::remove_all(tmp_dir);
 }

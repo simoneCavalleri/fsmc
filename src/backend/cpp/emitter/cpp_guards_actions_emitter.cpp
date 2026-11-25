@@ -348,8 +348,14 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                     for (const auto& arg : ac->arguments) {
                         scan_rhs_usage(qualify_expression(arg, model));
                     }
-                } else if (std::holds_alternative<SignalEmitOp>(inst.op)) {
-                    // SignalEmitOp currently emits a diagnostic comment without touching runtime parameters
+                } else if (const auto* se = std::get_if<SignalEmitOp>(&inst.op)) {
+                    uses_out = true;
+                    const auto* sig_def = model.find_signal(se->signal_name);
+                    if (sig_def != nullptr && !sig_def->attributes.empty()) {
+                        for (std::size_t ai = 0; ai < se->arguments.size() && ai < sig_def->attributes.size(); ++ai) {
+                            scan_rhs_usage(qualify_expression(se->arguments[ai], model));
+                        }
+                    }
                 }
             }
 
@@ -477,7 +483,26 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                         }
                         out << ");\n";
                     } else if (const auto* se = std::get_if<SignalEmitOp>(&inst.op)) {
+                        const std::string safe_model = sanitize_cpp_model_name(model.name);
+                        const std::string safe_sig = escape_cpp_keyword(se->signal_name);
                         out << indent << "// emit signal: " << se->signal_name << "\n";
+                        out << indent << "{\n";
+                        out << indent << "    " << safe_model << "EmittedEvent _em{};\n";
+                        out << indent << "    _em.tag = " << safe_model << "EmittedEventTag::" << safe_sig << ";\n";
+                        out << indent << "    _em.port = \"" << escape_cpp_string_literal(se->target_port.value_or(""))
+                            << "\";\n";
+                        if (const auto* sig_def = model.find_signal(se->signal_name);
+                            sig_def != nullptr && !sig_def->attributes.empty()) {
+                            for (std::size_t ai = 0; ai < se->arguments.size() && ai < sig_def->attributes.size();
+                                 ++ai) {
+                                const auto& attr = sig_def->attributes[ai];
+                                out << indent << "    _em." << safe_sig << "_payload." << escape_cpp_keyword(attr.name)
+                                    << " = static_cast<" << attr.type.to_cpp_type() << ">("
+                                    << qualify_expression(se->arguments[ai], model) << ");\n";
+                            }
+                        }
+                        out << indent << "    out.push_outbox(_em);\n";
+                        out << indent << "}\n";
                     }
                 }
             };

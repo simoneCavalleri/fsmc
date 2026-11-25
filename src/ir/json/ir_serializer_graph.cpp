@@ -1,6 +1,7 @@
 #include <cctype>
 #include <cstdint>
 #include <iomanip>
+#include <map>
 #include <sstream>
 
 #include "fsm/ir/guard.hpp"

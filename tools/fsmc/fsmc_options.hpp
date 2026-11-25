@@ -55,6 +55,10 @@ struct FsmcOptions {
     std::string trace_out_file;              // --trace-out <file.json>
     std::string export_cex_gtest;            // --export-cex-gtest <file.cpp>
     std::string diagnostic_format = "text";  // --diagnostic-format <text|json|github>
+    std::vector<std::string> import_dirs;    // -I <dir> / --import-dir <dir>
+    std::string state_def;                   // --state-def <Name>
+    bool list_machines = false;              // --list-machines[=json]
+    bool list_machines_json = false;
     bool show_help = false;
     bool show_version = false;
     bool is_valid = true;
@@ -81,7 +85,10 @@ inline void print_help(const char* prog_name) {
         << "  --format <fmt>               Override input format: 'sysml2', 'stateflow', 'plantuml', 'mermaid', "
            "'cameo', 'scxml', 'json', 'dot', 'auto'\n"
         << "  -s, --sidecar <file>         Explicit companion manifest file (.fsm.yaml, .fsm.json)\n"
-        << "  --emit-sidecar <file>        Emit companion sidecar manifest (.fsm.yaml) when exporting diagrams\n\n"
+        << "  --emit-sidecar <file>        Emit companion sidecar manifest (.fsm.yaml) when exporting diagrams\n"
+        << "  -I, --import-dir <dir>       Search directory for multi-file SysML v2 `import Pkg::*;` packages\n"
+        << "  --state-def <name>           Select a specific `state def` when a SysML v2 file defines multiple\n"
+        << "  --list-machines[=json]       List all `state def` machines in a SysML v2 file and exit\n\n"
         << "Optimization & Pipeline Options:\n"
         << "  -O0, --no-opt                Disable middle-end optimization passes\n"
         << "  -O1, -O2, --optimize         Enable middle-end optimization passes (default: -O1)\n"
@@ -505,6 +512,33 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             opts.export_cex_gtest = argv[++idx];
         } else if (arg.rfind("--export-cex-gtest=", 0) == 0) {
             opts.export_cex_gtest = arg.substr(19);
+
+            // 15c. SysML v2 multi-file workspace & multi-machine selection
+        } else if (arg == "-I" || arg == "--import-dir") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
+            opts.import_dirs.push_back(argv[++idx]);
+        } else if (arg.rfind("--import-dir=", 0) == 0) {
+            opts.import_dirs.push_back(arg.substr(13));
+        } else if (arg.rfind("-I", 0) == 0 && arg.size() > 2) {
+            opts.import_dirs.push_back(arg.substr(2));
+        } else if (arg == "--state-def") {
+            if (idx + 1 >= argc) {
+                opts.is_valid = false;
+                opts.error_message = "Missing argument for option: " + arg;
+                return opts;
+            }
+            opts.state_def = argv[++idx];
+        } else if (arg.rfind("--state-def=", 0) == 0) {
+            opts.state_def = arg.substr(12);
+        } else if (arg == "--list-machines") {
+            opts.list_machines = true;
+        } else if (arg == "--list-machines=json") {
+            opts.list_machines = true;
+            opts.list_machines_json = true;
 
             // 16. Positional argument: input model file path
         } else if (!arg.empty() && (arg[0] != '-' || arg == "-")) {

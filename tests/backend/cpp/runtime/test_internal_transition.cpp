@@ -10,7 +10,7 @@
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/backend/cpp/runtime/fsm.hpp"
-#include "fsm/frontend/diagram/plantuml_parser.hpp"
+#include "fsm/frontend/diagram/plantuml/plantuml_parser.hpp"
 
 using namespace fsm::backend::cpp;
 using namespace fsm::backend;

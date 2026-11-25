@@ -10,7 +10,7 @@
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/backend/formal/smv_serializer.hpp"
 #include "fsm/frontend/common/parser_interface.hpp"
-#include "fsm/frontend/formal/smv_parser.hpp"
+#include "fsm/frontend/formal/smv/smv_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 using namespace fsm::frontend::formal;

@@ -8,9 +8,9 @@
 
 #include <string>
 
-#include "fsm/frontend/diagram/diagram_action_parser.hpp"
-#include "fsm/frontend/diagram/mermaid_parser.hpp"
-#include "fsm/frontend/diagram/plantuml_parser.hpp"
+#include "fsm/frontend/diagram/common/diagram_action_parser.hpp"
+#include "fsm/frontend/diagram/mermaid/mermaid_parser.hpp"
+#include "fsm/frontend/diagram/plantuml/plantuml_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 using namespace fsm::frontend::diagram;

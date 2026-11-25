@@ -8,8 +8,8 @@
 #include <string>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
-#include "fsm/frontend/diagram/mermaid_parser.hpp"
-#include "fsm/frontend/diagram/plantuml_parser.hpp"
+#include "fsm/frontend/diagram/mermaid/mermaid_parser.hpp"
+#include "fsm/frontend/diagram/plantuml/plantuml_parser.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm::backend::cpp;

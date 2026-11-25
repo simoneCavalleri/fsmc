@@ -9,7 +9,7 @@ Welcome to the **`fsmc` Developer & Contributing Hub**. Whether you are extendin
 | Resource | Focus Area | Description | Link |
 | :--- | :--- | :--- | :--- |
 | **Developer Guide & Recipes** | Extensibility & Workflows | Step-by-step developer recipes for adding parsers, middle-end passes, serializers, and runtime features. | [Developer Guide](../internals/developer_guide.md) |
-| **Test Suite Catalog** | Quality & Verification | Comprehensive catalog of all 86 unit and integration test suites (95 CTest targets). | [Test Suite Catalog](../reference/test_suite_catalog.md) |
+| **Test Suite Catalog** | Quality & Verification | Comprehensive catalog of all 92 unit, integration, and showcase test suites (107 CTest targets). | [Test Suite Catalog](../reference/test_suite_catalog.md) |
 | **CMake Integration Reference** | Build System Automation | Documentation of `fsmc_target_sources` macro and imported CMake interface libraries. | [CMake Reference](../reference/cmake_integration.md) |
 | **Compiler Architecture** | Pipeline & Drivers | Detailed design of compiler stages, data flow, and Intermediate Representation. | [Compiler Architecture](../internals/architecture.md) |
 | **Canonical IR AST Specification** | Data Model | Formal specification of `FsmIr`, `StateNode`, `TransitionEdge`, and port definitions. | [IR Specification](../internals/fsm_ir_specification.md) |
@@ -35,7 +35,7 @@ Welcome to the **`fsmc` Developer & Contributing Hub**. Whether you are extendin
    ```bash
    python3 -m venv .venv
    source .venv/bin/activate
-   pip install -r requirements-docs.txt
+   pip install -r docs/requirements.txt
    ```
 
 4. **Run the Full Verification Pipeline:**
@@ -43,7 +43,7 @@ Welcome to the **`fsmc` Developer & Contributing Hub**. Whether you are extendin
    # Step A: Ensure standalone runtime headers are synchronized
    python3 scripts/generate_standalone_runtime.py --check
 
-   # Step B: Run all 95 CTest targets (unit tests, examples, and doc gate)
+   # Step B: Run all 107 CTest targets (unit tests, examples, and doc gate)
    ctest --test-dir build --output-on-failure
 
    # Step C: Run standalone documentation quality gate and build MkDocs site

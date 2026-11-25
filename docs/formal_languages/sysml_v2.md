@@ -139,6 +139,85 @@ transition check_fail first ClearanceCheck if not in.gps_lock then Preflight;
 
 ---
 
+### F. Multi-FSM System Architecture: `import`, Conjugated `port def` (`~`), `calc def` & Outbox
+
+`fsmc` supports multi-file OMG SysML v2.0 system specifications with shared protocol packages (`import <Pkg>::*;`), typed signals (`item def`), pure calculations (`calc def`), directional port definitions (`port def`), conjugated ports (`~PortDef`), `part def` with `exhibit state`, and executable event emission (`send new <Signal>(...) via <port>;`):
+
+```sysml
+// shared_protocol.sysml
+package SharedProtocol {
+    import ScalarValues::*;
+
+    item def EvSample;
+    item def EvOverTemp {
+        attribute peak_temp : Integer;
+    }
+
+    port def ThermalLinkPort {
+        in attribute temp_c : Integer;
+        in item alert : EvOverTemp;
+    }
+}
+```
+
+```sysml
+// thermal_subsystem.sysml
+package ThermalSubsystem {
+    import ScalarValues::*;
+    import SharedProtocol::*;
+
+    part def SensorUnit {
+        port link : ~ThermalLinkPort; // Conjugated (~): flips in <-> out
+        exhibit state sm : SensorMonitorFsm;
+    }
+
+    part def CoolerUnit {
+        port link : ThermalLinkPort;
+        exhibit state sm : CoolingActuatorFsm;
+    }
+
+    state def SensorMonitorFsm {
+        in sensor_temp_c : Integer;
+        attribute alerts_sent : Integer := 0;
+
+        entry; then Monitoring;
+        state Monitoring;
+        state OverTempLatched;
+
+        transition t_overtemp
+            first Monitoring
+            accept EvSample
+            if sensor_temp_c >= 85
+            do action RaiseThermalAlert {
+                assign temp_c := sensor_temp_c;
+                assign alerts_sent := alerts_sent + 1;
+                send new EvOverTemp(sensor_temp_c) via link;
+            }
+            then OverTempLatched;
+    }
+
+    state def CoolingActuatorFsm {
+        out fan_pwm : Integer;
+        attribute last_peak_temp : Integer := 0;
+
+        entry; then Standby;
+        state Standby;
+        state ActiveCooling;
+
+        transition t_engage_fan
+            first Standby
+            accept alert : EvOverTemp via link
+            do action EngageMaxCooling {
+                assign last_peak_temp := alert.peak_temp;
+                assign fan_pwm := 100;
+            }
+            then ActiveCooling;
+    }
+}
+```
+
+---
+
 ## 2. Formal Directives & Traceability in SysML v2
 
 In addition to native SysML v2 constructs (`assert property`, `satisfy requirement`, `defer`), you can embed `@fsm:*` annotations inside `//` comments:
@@ -251,8 +330,15 @@ package MissionSafety {
 # Formally verify SysML v2 specification (Interval Analysis + Model Checking)
 fsmc -i spacecraft.sysml --verify
 
-# Generate standalone C++20 header
+# Generate split C++17 headers (spacecraft_ports.hpp + spacecraft_fsm.hpp)
 fsmc -i spacecraft.sysml -o spacecraft_fsm.hpp
+
+# Generate native bare-metal Pure-C99 (spacecraft.h + spacecraft.c, zero C++ runtime)
+fsmc -i spacecraft.sysml --target c99 -o spacecraft.h --emit-manifest
+
+# Discover and compile individual machines from a multi-FSM SysML v2.0 workspace
+fsmc -i thermal_subsystem.sysml -I . --list-machines=json
+fsmc -i thermal_subsystem.sysml -I . --state-def SensorMonitorFsm --target c99 -o sensor_monitor.h
 
 # Export canonical SMV logic for external nuXmv proof
 fsmc -i spacecraft.sysml --export smv -o formal_model.smv

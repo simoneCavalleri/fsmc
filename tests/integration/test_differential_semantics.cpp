@@ -19,7 +19,7 @@
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/backend/manifest_emitter.hpp"
 #include "fsm/ir/fsm_ir.hpp"
-#include "tools/fsmc/ir_simulator.hpp"
+#include "fsm/ir/ir_simulator.hpp"
 
 namespace fs = std::filesystem;
 
@@ -35,6 +35,8 @@ TEST(DifferentialSemantics, EfsmGuardsActionsAndRegisters_MatchCpp17AndCpp20) {
     using namespace fsm::ir;
     using namespace fsm::backend::cpp;
 
+    using namespace fsm::ir;
+    using namespace fsm::backend::cpp;
     FsmIr model;
     model.name = "DiffPumpFsm";
     model.initial_state = "Idle";
@@ -158,6 +160,8 @@ TEST(DifferentialSemantics, EfsmGuardsActionsAndRegisters_MatchCpp17AndCpp20) {
 TEST(DifferentialSemantics, HfsmLcaEntryExitAndHistory_IrSimulator) {
     using namespace fsm::ir;
 
+    using namespace fsm::ir;
+    using namespace fsm::backend::cpp;
     FsmIr model;
     model.name = "HfsmHistoryOracle";
     model.initial_state = "Active";
@@ -218,6 +222,8 @@ TEST(DifferentialSemantics, HfsmLcaEntryExitAndHistory_IrSimulator) {
 TEST(DifferentialSemantics, DeferredEventsRecallAndStrictFailClosedGuards) {
     using namespace fsm::ir;
 
+    using namespace fsm::ir;
+    using namespace fsm::backend::cpp;
     FsmIr model;
     model.name = "DeferredOracle";
     model.initial_state = "Busy";
@@ -258,6 +264,8 @@ TEST(DifferentialSemantics, RandomizedTraces_MatchAcrossIrSimulatorCpp17AndC99Ab
     using namespace fsm::ir;
     using namespace fsm::backend::cpp;
 
+    using namespace fsm::ir;
+    using namespace fsm::backend::cpp;
     FsmIr model;
     model.name = "DiffValveFsm";
     model.package = "diff_valve";
@@ -521,6 +529,8 @@ TEST(DifferentialSemantics, ThreeWayRandomizedTraces_MatchIrSimulatorCpp17AndNat
     using namespace fsm::backend::cpp;
     using namespace fsm::backend::c99;
 
+    using namespace fsm::ir;
+    using namespace fsm::backend::cpp;
     FsmIr model;
     model.name = "TriadCtrl";
     model.package = "triad_pkg";
@@ -760,6 +770,120 @@ TEST(DifferentialSemantics, ThreeWayRandomizedTraces_MatchIrSimulatorCpp17AndNat
     EXPECT_EQ(cpp_runs, static_cast<int>(sim_report.final_registers.at("runs")));
     EXPECT_EQ(c99_heat, cpp_heat);
     EXPECT_EQ(c99_runs, cpp_runs);
+
+    fs::remove_all(temp_dir);
+#endif
+}
+
+/**
+ * @brief 3-Way Differential Verification of SignalEmitOp Outbox across IrSimulator, C++17, and Native Pure-C99.
+ * @scenario Execute a transition emitting a typed signal via an output port on IrSimulator, compiled C++17, and
+ * compiled Pure-C99.
+ * @expected All three runtimes emit the exact same signal name, port name, and numeric payload value.
+ */
+TEST(DifferentialSemantics, SignalEmitOp_MatchesAcrossIrSimulatorCpp17AndNativeC99) {
+#if defined(_WIN32)
+    GTEST_SKIP() << "POSIX C/C++ compiler invocation test skipped on Windows.";
+#else
+    using namespace fsm::ir;
+    using namespace fsm::backend::cpp;
+    FsmIr model;
+    model.name = "EmitOracle";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Alerted");
+    model.add_variable(VariableDefinition("level", DataType::int32(), "42"));
+    model.add_signal(SignalDefinition("EvTrigger"));
+    SignalDefinition sig_alarm("EvAlarm");
+    sig_alarm.attributes.push_back(SignalAttribute{"severity", DataType::int32()});
+    model.add_signal(sig_alarm);
+
+    TransitionEdge t("Idle", "Alerted", "EvTrigger");
+    ActionSignature act("RaiseAlarm");
+    SignalEmitOp se;
+    se.signal_name = "EvAlarm";
+    se.target_port = "alarm_port";
+    se.arguments = {"level"};
+    act.instructions.emplace_back(se, "emit alarm");
+    t.transition_action = act;
+    model.add_transition(t);
+
+    // 1. IrSimulator
+    std::ostringstream sim_log;
+    const auto sim_rep = fsm::ir::IrSimulator::simulate_detailed(model, "EvTrigger\n", sim_log);
+    ASSERT_EQ(sim_rep.final_state, "Alerted");
+    ASSERT_EQ(sim_rep.steps.size(), 1U);
+    ASSERT_EQ(sim_rep.steps[0].emitted_events.size(), 1U);
+    EXPECT_EQ(sim_rep.steps[0].emitted_events[0].signal_name, "EvAlarm");
+    EXPECT_EQ(sim_rep.steps[0].emitted_events[0].target_port, "alarm_port");
+    ASSERT_EQ(sim_rep.steps[0].emitted_events[0].numeric_args.size(), 1U);
+    EXPECT_EQ(static_cast<int>(sim_rep.steps[0].emitted_events[0].numeric_args[0]), 42);
+
+    const fs::path temp_dir = fs::temp_directory_path() / "fsmc_diff_emit_3way";
+    fs::create_directories(temp_dir);
+
+    // 2. C++17 Standalone
+    GeneratorOptions opts;
+    opts.standalone = true;
+    opts.include_stubs = false;
+    {
+        std::ofstream(temp_dir / "emit_oracle.hpp") << CppGenerator::generate_header(model, opts);
+        std::ofstream(temp_dir / "main_cpp.cpp") << R"cpp(
+#include <cassert>
+#include <cstring>
+#include "emit_oracle.hpp"
+            int main() {
+                using namespace fsm_generated;
+                EmitOracle sm;
+                EmitOracleInPorts in{};
+                EmitOracleOutPorts out{};
+                sm.dispatch(EvTrigger{}, in, out);
+                assert(sm.is_in<Alerted>());
+                assert(out.outbox_count == 1U);
+                assert(out.outbox[0].tag == EmitOracleEmittedEventTag::EvAlarm);
+                assert(std::strcmp(out.outbox[0].port, "alarm_port") == 0);
+                assert(out.outbox[0].EvAlarm_payload.severity == 42);
+                return 0;
+            }
+        )cpp";
+    }
+    const std::string cxx_cmd = "c++ -std=c++17 -O2 -Wall -Wextra -Werror -I\"" + temp_dir.string() + "\" \"" +
+                                (temp_dir / "main_cpp.cpp").string() + "\" -o \"" + (temp_dir / "cpp_bin").string() +
+                                "\"";
+    ASSERT_EQ(std::system(cxx_cmd.c_str()), 0) << "C++17 SignalEmitOp compile failed";
+    ASSERT_EQ(std::system(("\"" + (temp_dir / "cpp_bin").string() + "\"").c_str()), 0);
+
+    // 3. Pure-C99
+    const auto c99 = fsm::backend::c99::C99Generator::generate(model);
+    {
+        std::ofstream(temp_dir / "emit_oracle.h") << c99.header;
+        std::ofstream(temp_dir / "emit_oracle.c") << c99.source;
+        std::ofstream(temp_dir / "main_c.c") << R"c(
+#include <assert.h>
+#include <string.h>
+#include "emit_oracle.h"
+int main(void) {
+    emit_oracle_fsm_t fsm;
+    emit_oracle_in_ports_t in_p;
+    emit_oracle_out_ports_t out_p;
+    memset(&in_p, 0, sizeof(in_p));
+    memset(&out_p, 0, sizeof(out_p));
+    emit_oracle_init(&fsm);
+    assert(emit_oracle_dispatch_ev_trigger(&fsm, &in_p, &out_p) == EMIT_ORACLE_STATUS_OK);
+    assert(emit_oracle_current_state(&fsm) == EMIT_ORACLE_STATE_ALERTED);
+    assert(out_p.outbox_count == 1U);
+    assert(out_p.outbox[0].tag == EMIT_ORACLE_OUT_EV_ALARM);
+    assert(strcmp(out_p.outbox[0].port, "alarm_port") == 0);
+    assert(out_p.outbox[0].ev_alarm.severity == 42);
+    return 0;
+}
+)c";
+    }
+    const std::string c99_cmd = "cc -std=c99 -O2 -Wall -Wextra -Werror -pedantic -I\"" + temp_dir.string() + "\" \"" +
+                                (temp_dir / "emit_oracle.c").string() + "\" \"" + (temp_dir / "main_c.c").string() +
+                                "\" -o \"" + (temp_dir / "c99_bin").string() + "\"";
+    ASSERT_EQ(std::system(c99_cmd.c_str()), 0) << "Pure-C99 SignalEmitOp compile failed";
+    ASSERT_EQ(std::system(("\"" + (temp_dir / "c99_bin").string() + "\"").c_str()), 0);
 
     fs::remove_all(temp_dir);
 #endif

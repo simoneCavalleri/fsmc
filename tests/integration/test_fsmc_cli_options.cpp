@@ -21,15 +21,16 @@
 #include <fstream>
 #include <sstream>
 
-#include "fsm/frontend/formal/sysml2_parser.hpp"
+#include "fsm/frontend/formal/sysml2/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir_deserializer.hpp"
 #include "fsm/ir/fsm_ir_serializer.hpp"
+#include "fsm/ir/ir_simulator.hpp"
+#include "fsm/middleend/analysis/counterexample_exporter.hpp"
 #include "fsm/middleend/analysis/model_checker.hpp"
 #include "tools/common/cli_utils.hpp"
 #include "tools/fsm-opt/opt_options.hpp"
 #include "tools/fsmc/fsmc_driver.hpp"
 #include "tools/fsmc/fsmc_options.hpp"
-#include "tools/fsmc/ir_simulator.hpp"
 
 namespace fs = std::filesystem;
 

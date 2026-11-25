@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.15.0] - 2026-11-25
+
+### Added
+- **Executable Event Emission (`SignalEmitOp` Zero-Heap Static Outbox & Internal Run-to-Completion `raise`)**:
+  - Generated typed zero-heap static outboxes (`<Model>EmittedEventTag`, `<Model>EmittedEvent`, `outbox` + `outbox_count` inside `OutPorts`) for both **C++17** (`*_ports.hpp` / `*_fsm.hpp`) and **Native Pure-C99** (`--target c99`), preserving payload fields and target port names with zero heap allocation.
+  - Added `EmittedSignalRecord` tracking and internal run-to-completion `raise` queue draining in `IrSimulator`, verified by 3-way differential testing (`IrSimulator == C++17 == Pure-C99`).
+- **OMG SysML v2.0 Multi-File Workspaces, Multi-Machine Selection & Conjugated `port def`**:
+  - Added multi-file `import <Pkg>::*;` resolution (`-I` / `--import-dir`), `--state-def <Name>` selection, and `--list-machines[=json]` discovery in `Sysml2Parser`, `fsmc` CLI, and `cmake/FsmcTools.cmake` (`STATE_DEF`, `IMPORT_DIRS`, `OUTPUT_STEM`).
+  - Added OMG SysML v2.0 `port def` parsing, conjugated `~PortDef` direction inversion (`in` ↔ `out`), `part def` + `exhibit state` port binding, `send new <Signal>(<args>) via <port>`, and `accept <var> : <Signal> via <port>` payload binding across C++17 and Pure-C99.
+- **Showcase 09 (`examples/09_sysmlv2_multi_fsm_system/`) & Strict C99 Embedded Qualification**:
+  - Added multi-FSM OMG SysML v2.0 thermal subsystem (`shared_protocol.sysml` + `thermal_subsystem.sysml`) compiled to Pure-C99 (`LINKER_LANGUAGE C`, zero C++) with deterministic outbox routing.
+  - Hardened Pure-C99 backend verification with strict embedded warning flags (`-std=c99 -Wall -Wextra -Werror -pedantic -Wstrict-prototypes -Wmissing-prototypes -Wshadow`).
+- **`CMakePresets.json`**: Added standard configure/build/test presets (`gcc-release`, `clang-release`, `asan-ubsan`, `tsan`, `coverage`).
+
+### Changed
+- **Codebase Modularization & Per-Format Encapsulation**:
+  - Decomposed all 1,000+ line hand-written monoliths in `src/` and `tools/` (`cpp_model_emitter`, `fsm_ir_deserializer`, `fsm_ir_serializer`, `expression`, `sysml2_parser`, `stateflow_parser`, `directive_parser`, `model_checker`, `c99_generator`, `fsmc_driver`) into cohesive sub-modules.
+  - Encapsulated every formal and diagram frontend/serializer in dedicated per-format folders (`formal/{sysml2,scxml,cameo_xmi,stateflow,smv}/`, `diagram/{common,plantuml,mermaid,dot,xstate}/`, `ir_json/`).
+  - Promoted `IrSimulator` into `fsmc_core` (`include/fsm/ir/ir_simulator.hpp`), `CounterexampleGTestExporter` into `fsmc_middleend`, extracted reusable `include/fsm/ir/json_dom.hpp`, moved `requirements-docs.txt` → `docs/requirements.txt`, and isolated auto-generated `cpp_standalone_runtime.cpp` under `src/backend/cpp/generated/`.
+
+---
+
 ## [0.14.0] - 2026-11-24
 
 ### Added

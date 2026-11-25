@@ -36,6 +36,9 @@ fsmc --export-runtime <directory_or_file>
 | `-s, --sidecar <file>` | Explicit companion manifest file (`.fsm.yaml`, `.fsm.json`) for diagram ingestion and external property attachment. | None |
 | `--emit-sidecar <file>` | Emit companion sidecar manifest (`.fsm.yaml`) alongside exported visual diagrams. | None |
 | `--submachine-dir <dir>` | Search directory for external submachine diagram files referenced in models. | Current directory |
+| `-I, --import-dir <dir>` | Search directory for multi-file SysML v2.0 `import <Pkg>::*;` package resolution (repeatable). | Input file directory |
+| `--state-def <name>` | Select a specific `state def` (by short or qualified name) when compiling multi-machine SysML v2.0 files. | First `state def` |
+| `--list-machines[=json]` | List all `state def` machines discovered in a SysML v2.0 file (text or JSON) and exit. | Inactive |
 
 #### Optimization and Code Transformation
 | Flag | Description | Default |

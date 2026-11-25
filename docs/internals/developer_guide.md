@@ -37,15 +37,16 @@ fsmc/
 │   │   ├── passes/          # Optimization & dead-state elimination passes
 │   │   └── analysis/        # Interval arithmetic & GuardSatisfiabilityPass
 │   └── backend/             # Code generators and serializers
-│       ├── cpp/             # C++ target generator & standalone bundles
+│       ├── cpp/             # C++17/20/23 target generator, C99 ABI bridge & standalone bundles
 │       │   └── runtime/     # Canonical C++17/C++20 zero-heap runtime engine
-│       ├── diagram/         # Diagram format serializers
-│       ├── formal/          # Formal model serializers
+│       ├── c99/             # Native bare-metal ISO C99 generator (--target c99)
+│       ├── diagram/         # Per-format diagram serializers
+│       ├── formal/          # Per-format formal model serializers
 │       └── rtm/             # Requirement Traceability Matrix exporter
 ├── tools/
 │   ├── fsmc/                # Primary compiler driver CLI
 │   └── fsm-opt/             # Standalone formal IR optimizer & linter CLI
-├── tests/                   # Modular GoogleTest suites (86 test suites / 95 CTest targets)
+├── tests/                   # Modular GoogleTest suites (92 test suites / 107 CTest targets)
 ├── scripts/                 # Maintenance tools (generate_standalone_runtime.py, verify_docs.py)
 └── docs/                    # MkDocs documentation source
 ```
@@ -254,7 +255,7 @@ cmake --build build -j$(nproc)
 ctest --test-dir build --output-on-failure
 
 # 3. Setup doc environment (if not already done) and verify documentation build
-pip install -r requirements-docs.txt
+pip install -r docs/requirements.txt
 mkdocs build
 ```
 

@@ -162,3 +162,31 @@ fsmc_target_sources(baremetal_c99_controller_example
 )
 add_test(NAME baremetal_c99_controller_example COMMAND baremetal_c99_controller_example)
 
+# 9. Multi-FSM OMG SysML v2.0 Subsystem (multi-file import, conjugated ~PortDef, --state-def, zero-heap outbox)
+add_executable(sysmlv2_multi_fsm_system_example
+    09_sysmlv2_multi_fsm_system/main.c
+)
+set_target_properties(sysmlv2_multi_fsm_system_example PROPERTIES
+    LINKER_LANGUAGE C
+    C_STANDARD 99
+    C_STANDARD_REQUIRED ON
+    C_EXTENSIONS OFF
+)
+fsmc_target_sources(sysmlv2_multi_fsm_system_example
+    DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/09_sysmlv2_multi_fsm_system/thermal_subsystem.sysml
+    IMPORT_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/09_sysmlv2_multi_fsm_system
+    STATE_DEF SensorMonitorFsm
+    OUTPUT_STEM sensor_monitor
+    TARGET c99
+    EMIT_MANIFEST
+)
+fsmc_target_sources(sysmlv2_multi_fsm_system_example
+    DIAGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/09_sysmlv2_multi_fsm_system/thermal_subsystem.sysml
+    IMPORT_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/09_sysmlv2_multi_fsm_system
+    STATE_DEF CoolingActuatorFsm
+    OUTPUT_STEM cooling_actuator
+    TARGET c99
+    EMIT_MANIFEST
+)
+add_test(NAME sysmlv2_multi_fsm_system_example COMMAND sysmlv2_multi_fsm_system_example)
+

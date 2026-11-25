@@ -9,7 +9,7 @@
 #include <string>
 
 #include "fsm/backend/diagram/plantuml_serializer.hpp"
-#include "fsm/frontend/diagram/plantuml_parser.hpp"
+#include "fsm/frontend/diagram/plantuml/plantuml_parser.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm::backend::diagram;

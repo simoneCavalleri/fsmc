@@ -94,10 +94,10 @@ For the full signature and every parameter (`NAME`, `STANDARD`, `NAMESPACE`, `NO
 ## 4. C/C++ Package Managers
 
 === "Conan 2.0"
-    After exporting `fsmc` to your local Conan cache (`conan create . --version 0.14.0`), reference it in `conanfile.txt`:
+    After exporting `fsmc` to your local Conan cache (`conan create . --version 0.15.0`), reference it in `conanfile.txt`:
     ```ini
     [requires]
-    fsmc/0.14.0
+    fsmc/0.15.0
 
     [generators]
     CMakeDeps

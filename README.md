@@ -6,52 +6,54 @@
 
 [![CI](https://github.com/simoneCavalleri/fsmc/actions/workflows/ci.yml/badge.svg)](https://github.com/simoneCavalleri/fsmc/actions/workflows/ci.yml)
 [![Documentation](https://img.shields.io/badge/Docs-Online%20Manual-0284c7.svg)](https://simoneCavalleri.github.io/fsmc/)
-[![Release](https://github.com/simoneCavalleri/fsmc/releases/latest)](https://github.com/simoneCavalleri/fsmc/releases)
+[![Release](https://github.com/simoneCavalleri/fsmc/releases/latest)](https://github.com/simoneCavalleri.github.io/fsmc/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Standards](https://img.shields.io/badge/Standards-OMG%20SysML%20v2%20%7C%20UML%202.5%20%7C%20W3C%20SCXML%20%7C%20nuXmv-orange.svg)](https://simoneCavalleri.github.io/fsmc/formal_languages/uml_reference/)
-[![Tests](https://img.shields.io/badge/Tests-104%20CTest%20Targets-success.svg)](https://simoneCavalleri.github.io/fsmc/reference/test_suite_catalog/)
+[![Standards](https://img.shields.io/badge/Standards-OMG%20SysML%20v2.0%20%7C%20UML%202.5%20%7C%20W3C%20SCXML%20%7C%20Stateflow-orange.svg)](https://simoneCavalleri.github.io/fsmc/formal_languages/uml_reference/)
+[![Tests](https://img.shields.io/badge/Tests-107%20CTest%20Targets-success.svg)](https://simoneCavalleri.github.io/fsmc/reference/test_suite_catalog/)
 
-**The Universal, Zero-Dependency State Machine Compiler & Formal Verification Engine.**  
-*Compile formal statecharts into verified, zero-heap C++17 and pure C99 ABI code—standalone or as the composable core of modern MBSE toolchains.*
+**Deterministic State Machine Compiler & Formal Verifier for Safety-Critical Systems.**  
+*Compile formal MBSE statecharts into verified, zero-heap C++17/20/23 and native bare-metal Pure-C99 code—with built-in LTL/CTL model checking, WCET bounds, and SHA-256 attested system manifests.*
 
-[Documentation](https://simoneCavalleri.github.io/fsmc/) • [Quickstart](https://simoneCavalleri.github.io/fsmc/getting_started/quickstart/) • [CLI Reference](https://simoneCavalleri.github.io/fsmc/getting_started/cli_usage/) • [Runtime API](https://simoneCavalleri.github.io/fsmc/runtime_api/synchronous_fsm/) • [Examples](examples/) • [Changelog](CHANGELOG.md)
+[Documentation](https://simoneCavalleri.github.io/fsmc/) • [Quickstart](https://simoneCavalleri.github.io/fsmc/getting_started/quickstart/) • [CLI Reference](https://simoneCavalleri.github.io/fsmc/getting_started/cli_usage/) • [CMake Integration](https://simoneCavalleri.github.io/fsmc/reference/cmake_integration/) • [Examples](examples/) • [Changelog](CHANGELOG.md)
 
 </div>
 
 ---
 
-## Why `fsmc`?
+## Scope & Design Principles
 
-Safety-critical and embedded control software should not rely on hand-coded `switch` statements that drift from architectural models, nor on heavy code generators that drag in runtime dependencies, heap allocations, and opaque tool lock-in.
+Embedded and safety-critical control software should neither rely on hand-written `switch` tables that drift from system specifications nor depend on opaque code generators that pull in heap allocations, virtual dispatch, or vendor lock-in.
 
-**`fsmc`** is a deterministic, zero-dependency compiler that turns statechart specifications into formally verified, zero-overhead production code:
+**`fsmc`** focuses on a clear, well-bounded engineering scope—**deterministic compilation, formal verification, and zero-overhead execution of Hierarchical & Extended Finite State Machines (HFSM/EFSM)**:
 
-- **Formally Verified Before Codegen**: Built-in LTL/CTL model checking, EFSM interval analysis, deadlock/livelock detection, WCET bounds, interactive IR simulation (`--simulate`), MC/DC GoogleTest synthesis, and Requirement Traceability Matrices (RTM).
-- **Zero-Overhead Deterministic Runtimes**: Unified C++17 backend (compiling cleanly in C++17, C++20, and C++23, plus `--freestanding` `-fno-exceptions -fno-rtti`) with **0 bytes heap**, **0 vtables** on hot paths, $O(1)$ dispatch, lock-free SPSC, thread-safe MPSC, deterministic timers, and zero-heap snapshot rollback.
-- **Pure C99 Zero-Alloc ABI (`--emit-c-abi`)**: Generates strict C99 (`-pedantic -Werror`) `extern "C"` headers with statically aligned opaque storage, flat POD ports, C callback service tables (`void* user_data`), and placement-new C++17 bridges—ready for C, Rust, Python, and legacy C++ callers.
-- **Composable by Design**: Designed as the deterministic backend of modern MBSE toolchains—with strict canonical `ir-json` ingestion (`--input-format=ir-json`), a mandatory `verify-ir-integrity` gate, split `*_ports.hpp` + `*_fsm.hpp` headers for HAL isolation, language-agnostic external type references (`external_ref`), compile-time `ServicesContract` verification, SHA-256 attested `*.manifest.json`, and machine-readable `--diagnostics=json`.
+- **Standard-Conformant MBSE Ingestion**: Native support for **OMG SysML v2.0** (including multi-file `import <Pkg>::*;`, `port def` & conjugated `~PortDef`, `item def`, `calc def`, `part def` with `exhibit state`, `--state-def`, `--list-machines`), **MathWorks Stateflow** (`.slx`/`.sfx`), **W3C SCXML 1.0**, **Cameo/MagicDraw XMI**, **nuXmv SMV**, visual statecharts with typed sidecars (**PlantUML, Mermaid, XState JSON, Graphviz DOT**), and canonical **`ir-json`** (`schemas/fsm_ir.schema.json`).
+- **Formally Verified Before Codegen**: 34 middle-end compiler passes (`fsm-opt` / `fsmc --verify`) enforce structural integrity (`verify-ir-integrity`), built-in **LTL/CTL model checking**, **EFSM interval abstract interpretation**, static race & determinism checks, certified **WCET micro-step & event-queue bounds**, interactive **IR simulation** (`--simulate`), **DO-178C / ISO 26262 RTM matrices**, and **MC/DC GoogleTest synthesis**.
+- **Two Zero-Heap Production Backends + FFI**:
+  - **Unified C++17/20/23 (`--target cpp`)**: Split `*_ports.hpp` + `*_fsm.hpp` headers for HAL isolation (or `--standalone` / `--freestanding` `-fno-exceptions -fno-rtti`), **0 bytes heap**, **0 vtables**, $O(1)$ dispatch, lock-free `spsc_fsm`, async `thread_safe_fsm`, flight recorder, snapshot rollback, and optional C99 ABI bridge (`--emit-c-abi`).
+  - **Native Bare-Metal Pure-C99 (`--target c99`)**: Emits strict ISO C99 (`<stem>.h` + `<stem>.c`, `-std=c99 -pedantic -Werror`) with **zero C++ runtime**, flat deterministic dispatch, FNV-1a checksummed binary snapshots, C callback `services_t`, and static `OutPorts::outbox` event emission (`send new ... via ...`) for multi-FSM bare-metal control loops.
+- **3-Way Differential Semantics & Attested Contracts**: Behavioral equivalence is continuously verified across `IrSimulator == C++17 == Pure-C99`. `--emit-manifest` produces `*.manifest.json` (`schemas/fsm_manifest.schema.json`) binding ports, registers, events, services, requirements, real-time scheduling bounds, and FIPS 180-4 `ir_sha256` digests across all generated artifacts.
 
 ```mermaid
 flowchart LR
-    In["<b>Model Inputs</b><br/>SysML v2 · Stateflow · SCXML<br/>Cameo XMI · SMV · Diagrams<br/>Canonical ir-json (v1.0)"]
-    Core["<b>fsmc &amp; fsm-opt Core</b><br/>verify-ir-integrity Gate<br/>34 Optimization &amp; Lowering Passes<br/>LTL/CTL Verifier · IR Simulator"]
-    Out["<b>Deterministic Outputs</b><br/>Split C++17 (*_ports.hpp + *_fsm.hpp)<br/>Pure C99 ABI (*_c.h + *_c.cpp)<br/>Manifest + SHA-256 · SMV · MC/DC · RTM"]
+    In["<b>Standard Inputs</b><br/>OMG SysML v2.0 (multi-file)<br/>Stateflow (.slx/.sfx) · SCXML · XMI<br/>PlantUML · Mermaid · XState · DOT<br/>Canonical ir-json (v1.0)"]
+    Core["<b>fsmc &amp; fsm-opt Middle-End</b><br/>verify-ir-integrity Gate<br/>34 Lowering &amp; Optimization Passes<br/>LTL/CTL Checker · EFSM Intervals<br/>IR Simulator · WCET &amp; Queue Bounds"]
+    Out["<b>Zero-Heap Targets &amp; Proofs</b><br/>Split C++17 (*_ports.hpp + *_fsm.hpp)<br/>Native Pure-C99 (*.h + *.c)<br/>C99 FFI (*_c.h + *_c.cpp)<br/>Manifest + SHA-256 · SMV · MC/DC · RTM"]
 
     In --> Core --> Out
 ```
 
 ---
 
-## Core Capabilities
+## Architecture Matrix
 
-| Area | Highlights | Guide |
+| Pillar | Capabilities | Documentation |
 | :--- | :--- | :--- |
-| **9 Modeling Formats + `ir-json`** | OMG SysML v2, MathWorks Stateflow (`.xml`/`.slx`), W3C SCXML, Cameo XMI 2.1, nuXmv SMV, PlantUML, Mermaid, Graphviz DOT, XState JSON, and strict canonical `ir-json` (`schemas/fsm_ir.schema.json`). | [Modeling Languages](https://simoneCavalleri.github.io/fsmc/formal_languages/sysml_v2/) |
-| **Middle-End & `fsm-opt`** | Mandatory `verify-ir-integrity` gate, 34 registered passes (7-stage verified pipeline, guard simplification, dead-state pruning, orthogonal product, connective junction chaining), `--pipe-through`, and dynamic C++ plugins. | [Middle-End Passes](https://simoneCavalleri.github.io/fsmc/internals/middleend_passes/) |
-| **Verification & IR Simulation** | Native LTL/CTL model checker, EFSM interval analysis with widening $\nabla$, interactive IR trace simulator (`--simulate --trace`), counterexample GoogleTest export (`--export-cex-gtest`), MC/DC synthesis, and RTM. | [Verification & Simulation](https://simoneCavalleri.github.io/fsmc/verification_and_safety/ir_simulation/) |
-| **4-Domain Memory Isolation** | Strict separation of `InPorts` (read-only), `OutPorts` (write-only), `Registers` ($z^{-1}$ internal state), and `Services` (typed, zero-vtable injected dependencies validated via `<Model>ServicesContract<Srv>`). | [Guards & Actions](https://simoneCavalleri.github.io/fsmc/concepts/guards_and_actions/) |
-| **Split Headers, External PODs & C99 ABI** | Default split emission (`*_ports.hpp` with zero `fsm.hpp` dependency + `*_fsm.hpp`), `--standalone` single-header mode, language-agnostic `external_ref` shared PODs, and zero-alloc `--emit-c-abi`. | [Split Headers & C99 ABI](https://simoneCavalleri.github.io/fsmc/runtime_api/c_abi_and_split_interfaces/) |
-| **Manifests & Structured Diagnostics** | `--emit-manifest` produces `*.manifest.json` (`schemas/fsm_manifest.schema.json`) with cross-artifact FIPS 180-4 `ir_sha256` attestation; `--diagnostics=json` outputs structured errors, counterexamples, and suggested fixes. | [CLI Reference](https://simoneCavalleri.github.io/fsmc/getting_started/cli_usage/) |
+| **Modeling & Multi-FSM SysML v2.0** | 9 formats + `ir-json`; multi-file `import <Pkg>::*;` (`-I`), `port def` / `~PortDef` conjugation, `--state-def`, `--list-machines[=json]`, lossless roundtrip transpilation (`-e <fmt>`). | [Modeling Languages](https://simoneCavalleri.github.io/fsmc/formal_languages/sysml_v2/) |
+| **Middle-End & `fsm-opt`** | 7-stage verified pass pipeline (34 registered passes), HFSM history & orthogonal product lowering, connective junction chaining, guard simplification, `--pipe-through`, dynamic `.so` pass plugins. | [Middle-End Passes](https://simoneCavalleri.github.io/fsmc/internals/middleend_passes/) |
+| **Formal Verification & Safety** | Native LTL/CTL fixed-point checker, nuXmv SMV export, EFSM interval widening $\nabla$, `--simulate --trace`, counterexample GTest export (`--export-cex-gtest`), MC/DC synthesis, RTM audit. | [Verification & Safety](https://simoneCavalleri.github.io/fsmc/verification_and_safety/model_checking/) |
+| **4-Domain Memory & Outbox** | Segregated `InPorts` (read-only), `OutPorts` (write-only + bounded zero-heap `outbox` for emitted signals), `Registers` ($z^{-1}$ state), and `Services` (`<Model>ServicesContract<Srv>`). | [Guards & Actions](https://simoneCavalleri.github.io/fsmc/concepts/guards_and_actions/) |
+| **C++17 & Pure-C99 Backends** | `--target cpp` (C++17/20/23, `--freestanding`, `--emit-c-abi`) and `--target c99` (zero-C++ ISO C99 MCU codegen), `external_ref` shared PODs, binary checkpointing, `CMake` `fsmc_target_sources`. | [Split Interfaces & C99](https://simoneCavalleri.github.io/fsmc/runtime_api/c_abi_and_split_interfaces/) |
+| **Manifests & JSON Diagnostics** | `--emit-manifest` (`ir_sha256`, `wcet_max_microsteps`, `max_event_queue_bound`, `zeno_free`); `--diagnostics=json\|github` with structured counterexamples and suggested fixes. | [CLI Reference](https://simoneCavalleri.github.io/fsmc/getting_started/cli_usage/) |
 
 ---
 
@@ -60,92 +62,128 @@ flowchart LR
 ### 1. Build & Install
 
 ```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j$(nproc)
-sudo cmake --install build
+cmake --preset release
+cmake --build --preset release -j$(nproc)
+ctest --preset release --output-on-failure
 ```
 
-*Also available via CMake `FetchContent`, `vcpkg`, and Conan 2.0 — see the [Installation Guide](https://simoneCavalleri.github.io/fsmc/getting_started/installation/).*
+*Also available via standard `cmake -B build -DCMAKE_BUILD_TYPE=Release`, CMake `FetchContent`, `vcpkg`, and Conan 2.0 — see the [Installation Guide](https://simoneCavalleri.github.io/fsmc/getting_started/installation/).*
 
-### 2. Verify, Simulate & Compile a Model
+### 2. Model, Verify & Compile (OMG SysML v2.0)
 
-Given a SysML v2 state machine (`satellite.sysml`):
+Define a standard SysML v2.0 state machine (`thermal_guard.sysml`):
 
 ```sysml
-state def SatelliteControl {
-    in port sensor_temp : Real { assert constraint { self >= -50.0 and self <= 150.0; } }
-    out port heater_power : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
-    attribute cycle_count : Integer = 0;
+package ThermalSafety {
+    import ScalarValues::*;
 
-    entry; then Booting;
+    item def EvSample;
+    item def EvCoolComplete;
+    item def EvOverTemp {
+        attribute peak_temp : Integer;
+    }
 
-    state Booting;
-    state Operational;
-    state SafeMode;
+    port def ThermalAlertPort {
+        out item alert : EvOverTemp;
+    }
 
-    transition boot_ok
-        first Booting
-        accept EvSysInit
-        do action { log("Satellite online"); }
-        then Operational;
+    state def ThermalMonitor {
+        in sensor_temp_c : Integer;
+        out heater_enable : Boolean;
+        port link : ThermalAlertPort;
+        attribute trip_count : Integer := 0;
 
-    transition overheat_fault
-        first Operational
-        if in.sensor_temp > 90.0
-        then SafeMode;
+        assert property SafeHeaterCutoff : G !(OverTempLatched && heater_enable);
+
+        entry; then Nominal;
+
+        state Nominal;
+        state OverTempLatched;
+
+        transition t_trip
+            first Nominal
+            accept EvSample
+            if sensor_temp_c >= 85
+            do action TripProtection {
+                assign heater_enable := false;
+                assign trip_count := trip_count + 1;
+                send new EvOverTemp(sensor_temp_c) via link;
+            }
+            then OverTempLatched;
+
+        transition t_recover
+            first OverTempLatched
+            accept EvCoolComplete
+            do action RestoreNominal {
+                assign heater_enable := true;
+            }
+            then Nominal;
+    }
 }
 ```
 
-Verify, generate split C++17 headers (`satellite_ports.hpp` + `satellite_fsm.hpp`), pure C99 ABI (`satellite_c.h` + `satellite_c.cpp`), and the SHA-256 attested manifest (`satellite.manifest.json`):
+Verify formally and compile to either **C++17** or **Native Bare-Metal Pure-C99**:
 
 ```bash
-# Formal verification with structured JSON diagnostics
-fsmc -i satellite.sysml --verify --diagnostics=json
+# 1. Formal LTL/CTL & interval verification with structured JSON diagnostics
+fsmc -i thermal_guard.sysml --verify --diagnostics=json
 
-# Split C++17 headers + C99 zero-alloc ABI + system manifest
-fsmc -i satellite.sysml -o satellite_fsm.hpp --name SatelliteControlFSM --emit-c-abi --emit-manifest
+# 2a. Generate split C++17 headers (thermal_guard_ports.hpp + thermal_guard_fsm.hpp) + manifest
+fsmc -i thermal_guard.sysml --target cpp --namespace ThermalSafety -o thermal_guard_fsm.hpp --emit-manifest
 
-# Or a single self-contained header
-fsmc -i satellite.sysml -o satellite_fsm.hpp --standalone --name SatelliteControlFSM
+# 2b. Or generate native bare-metal Pure-C99 (thermal_guard.h + thermal_guard.c, zero C++ runtime)
+fsmc -i thermal_guard.sysml --target c99 -o thermal_guard.h --emit-manifest
 ```
 
-Drive the generated FSM from C++17/20/23 (`main.cpp`):
+Drive the generated state machine in **C++17/20/23** (or directly in **ISO C99** via `thermal_monitor_init` / `thermal_monitor_dispatch_ev_sample`):
 
 ```cpp
-#include "satellite_fsm.hpp"
+#include "thermal_guard_fsm.hpp"
+#include <cassert>
 
 int main() {
-    fsm_generated::SatelliteControlFSMRegisters reg{0};
-    fsm_generated::SatelliteControlFSM sm(reg);
-    fsm_generated::SatelliteControlFSMInPorts in{};
-    in.sensor_temp = 25.0;
-    fsm_generated::SatelliteControlFSMOutPorts out{};
+    ThermalSafety::ThermalMonitorRegisters reg{};
+    ThermalSafety::ThermalMonitor sm(reg);
+    ThermalSafety::ThermalMonitorInPorts in{92};
+    ThermalSafety::ThermalMonitorOutPorts out{};
 
-    sm.dispatch(fsm_generated::EvSysInit{}, in, out);
-    in.sensor_temp = 95.0;
-    sm.step(in, out); // Transitions to SafeMode
+    sm.dispatch(ThermalSafety::EvSample{}, in, out);
+    assert(sm.is_in<ThermalSafety::OverTempLatched>());
+    assert(out.outbox_count == 1 && out.outbox[0].EvOverTemp_payload.peak_temp == 92);
 }
 ```
 
-Or optimize and exchange canonical IR directly via **`fsm-opt`** and **`--input-format=ir-json`**:
+---
 
-```bash
-fsm-opt -i satellite.sysml --passes=dead-state-pruning,guard-simplification --emit-ir -o satellite.ir.json
-fsmc --input-format=ir-json -i satellite.ir.json -o satellite_fsm.hpp --emit-manifest
-```
+## Runnable Example Catalog (`examples/`)
+
+All 10 end-to-end engineering showcases build and run automatically via CTest (`./examples/run_all_examples.sh`):
+
+| # | Showcase | Key Capabilities Demonstrated |
+| :---: | :--- | :--- |
+| `00` | [`00_standalone_iot_controller`](examples/00_standalone_iot_controller/) | Pure C++20 header-only `fsm::transition_table` DSL (zero codegen, zero heap). |
+| `01` | [`01_basic_patterns/network_protocol`](examples/01_basic_patterns/network_protocol/) | Timers (`tick(dt)`), flight recorder (`with_trace_buffer`), async `thread_safe_fsm`. |
+| `02` | [`02_advanced_semantics/robotic_arm_sequencer`](examples/02_advanced_semantics/robotic_arm_sequencer/) | Multi-level deep history (`[H*]`), hierarchical substates, LCA action fusion. |
+| `03` | [`03_concurrency_and_timing/automotive_bms`](examples/03_concurrency_and_timing/automotive_bms/) | Orthogonal regions, static race/determinism checks, lock-free `spsc_fsm`. |
+| `04` | [`04_formal_verification/flight_control_modes`](examples/04_formal_verification/flight_control_modes/) | LTL/CTL model checking, DO-178C RTM traceability audit, nuXmv SMV export. |
+| `05` | [`05_custom_toolchain/plugin_and_pipeline`](examples/05_custom_toolchain/plugin_and_pipeline/) | Unix IR filter (`--pipe-through`) and dynamic C++ pass plugin (`--load-pass-plugin`). |
+| `06` | [`06_stateflow_digital_twin_ecu`](examples/06_stateflow_digital_twin_ecu/) | MathWorks Stateflow `.sfx` ingestion, junction chaining, `snapshot_recorder` rollback. |
+| `07` | [`07_modular_toolchain_c_abi`](examples/07_modular_toolchain_c_abi/) | Canonical `ir-json` ingestion, split `*_ports.hpp`, `ServicesContract`, `--emit-c-abi`. |
+| `08` | [`08_baremetal_c99_controller`](examples/08_baremetal_c99_controller/) | OMG SysML v2.0 `calc def`, native `--target c99`, FNV-1a binary snapshots, manifest. |
+| `09` | [`09_sysmlv2_multi_fsm_system`](examples/09_sysmlv2_multi_fsm_system/) | Multi-file SysML v2.0 `import`, conjugated `~PortDef`, `--state-def`, Pure-C99 `outbox` routing. |
 
 ---
 
 ## Documentation
 
-Full documentation is hosted at **[simoneCavalleri.github.io/fsmc](https://simoneCavalleri.github.io/fsmc/)**:
+Complete user guides, language references, and compiler internals are hosted at **[simoneCavalleri.github.io/fsmc](https://simoneCavalleri.github.io/fsmc/)**:
 
-- **[Getting Started](https://simoneCavalleri.github.io/fsmc/getting_started/installation/)**: Installation, Quickstart Tutorial, CLI Reference (`fsmc` & `fsm-opt`), CMake Integration.
-- **[Core Concepts](https://simoneCavalleri.github.io/fsmc/concepts/states_and_hierarchy/)**: HFSM Hierarchy, Transitions, 4-Domain Memory Model, Execution Semantics.
-- **[Formal Languages](https://simoneCavalleri.github.io/fsmc/formal_languages/sysml_v2/)**: SysML v2, Stateflow, SCXML, Cameo XMI, nuXmv SMV, PlantUML, Mermaid, DOT.
-- **[Verification & Simulation](https://simoneCavalleri.github.io/fsmc/verification_and_safety/model_checking/)**: LTL/CTL Model Checking, Interactive IR Simulation, Interval Analysis, MC/DC Synthesis, RTM.
-- **[Runtime & C99 ABI](https://simoneCavalleri.github.io/fsmc/runtime_api/synchronous_fsm/)**: Synchronous `fsm`, Lock-Free `spsc_fsm`, Thread-Safe `thread_safe_fsm`, Split Interfaces & C99 ABI.
-- **[Compiler Internals](https://simoneCavalleri.github.io/fsmc/internals/architecture/)**: Pipeline Architecture, 34 Middle-End Passes, Canonical `FsmIr` Schema, Test Suite Catalog.
+- **[Getting Started](https://simoneCavalleri.github.io/fsmc/getting_started/installation/)**: Installation, Quickstart, CLI Reference (`fsmc` & `fsm-opt`), CMake Integration (`fsmc_target_sources`).
+- **[Core Concepts](https://simoneCavalleri.github.io/fsmc/concepts/states_and_hierarchy/)**: HFSM Hierarchy, Dual-Paradigm Execution (`dispatch` vs `step`), 4-Domain Memory & Outbox.
+- **[Modeling Languages](https://simoneCavalleri.github.io/fsmc/formal_languages/sysml_v2/)**: OMG SysML v2.0, MathWorks Stateflow, W3C SCXML, Cameo XMI, nuXmv SMV, Visual Diagrams.
+- **[Verification & Safety](https://simoneCavalleri.github.io/fsmc/verification_and_safety/model_checking/)**: LTL/CTL Model Checking, IR Simulation, EFSM Interval Analysis, MC/DC Synthesis, RTM.
+- **[Runtimes & C99 Targets](https://simoneCavalleri.github.io/fsmc/runtime_api/c_abi_and_split_interfaces/)**: Synchronous `fsm`, Lock-Free `spsc_fsm`, `thread_safe_fsm`, Split C++17 Headers, Native Pure-C99 & C99 ABI.
+- **[Compiler Internals](https://simoneCavalleri.github.io/fsmc/internals/architecture/)**: Modular Architecture, 34 Middle-End Passes, Canonical `FsmIr` Schema, Test Suite Catalog.
 
 ---
 

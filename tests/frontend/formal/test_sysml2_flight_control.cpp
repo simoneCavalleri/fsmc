@@ -10,7 +10,7 @@
 
 #include "fsm/backend/cpp/cpp_model_emitter.hpp"
 #include "fsm/backend/cpp/runtime/fsm.hpp"
-#include "fsm/frontend/formal/sysml2_parser.hpp"
+#include "fsm/frontend/formal/sysml2/sysml2_parser.hpp"
 #include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 

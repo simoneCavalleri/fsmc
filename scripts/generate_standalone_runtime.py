@@ -3,7 +3,7 @@
 generate_standalone_runtime.py - Standalone Runtime Bundler for fsmc
 
 This script automatically generates the unified C++17+ standalone single-header runtime
-(include/fsm/backend/cpp/cpp_standalone_runtime.hpp and src/backend/cpp/cpp_standalone_runtime.cpp)
+(include/fsm/backend/cpp/cpp_standalone_runtime.hpp and src/backend/cpp/generated/cpp_standalone_runtime.cpp)
 directly from the canonical modular runtime headers in include/fsm/backend/cpp/runtime/.
 
 Usage:
@@ -371,7 +371,7 @@ def main():
         unified_thread_incs, thread_chunks
     )
     cpp_hdr_path = os.path.join(backend_cpp_dir, "cpp_standalone_runtime.hpp")
-    cpp_src_path = os.path.join(backend_cpp_src_dir, "cpp_standalone_runtime.cpp")
+    cpp_src_path = os.path.join(backend_cpp_src_dir, "generated", "cpp_standalone_runtime.cpp")
 
     files_to_write = [
         (cpp_hdr_path, cpp_hdr),
@@ -391,6 +391,7 @@ def main():
                     print(f"[OUT OF DATE] Content differs in {path}", file=sys.stderr)
                     is_out_of_date = True
         else:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w", encoding="utf-8", newline="\n") as f:
                 f.write(content)
             print(f"[GENERATED] Successfully updated {path}")

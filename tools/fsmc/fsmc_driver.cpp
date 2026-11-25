@@ -11,7 +11,8 @@
 #include <string>
 #include <vector>
 
-#include "ir_simulator.hpp"
+#include "fsm/ir/ir_simulator.hpp"
+#include "fsm/middleend/analysis/counterexample_exporter.hpp"
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN

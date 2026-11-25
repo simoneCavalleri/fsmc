@@ -35,7 +35,7 @@ Welcome to the **`fsmc` Developer & Contributing Hub**. Whether you are extendin
    ```bash
    python3 -m venv .venv
    source .venv/bin/activate
-   pip install -r requirements-docs.txt
+   pip install -r docs/requirements.txt
    ```
 
 4. **Run the Full Verification Pipeline:**

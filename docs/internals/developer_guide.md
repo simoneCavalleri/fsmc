@@ -254,7 +254,7 @@ cmake --build build -j$(nproc)
 ctest --test-dir build --output-on-failure
 
 # 3. Setup doc environment (if not already done) and verify documentation build
-pip install -r requirements-docs.txt
+pip install -r docs/requirements.txt
 mkdocs build
 ```
 

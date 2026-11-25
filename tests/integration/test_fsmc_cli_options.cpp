@@ -29,7 +29,8 @@
 #include "tools/fsm-opt/opt_options.hpp"
 #include "tools/fsmc/fsmc_driver.hpp"
 #include "tools/fsmc/fsmc_options.hpp"
-#include "tools/fsmc/ir_simulator.hpp"
+#include "fsm/ir/ir_simulator.hpp"
+#include "fsm/middleend/analysis/counterexample_exporter.hpp"
 
 namespace fs = std::filesystem;
 

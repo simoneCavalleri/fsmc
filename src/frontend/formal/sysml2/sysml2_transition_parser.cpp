@@ -153,7 +153,7 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     std::vector<ActionAstNode> service_calls;
     std::optional<ActionSignature> trans_send_action;
     static const std::regex trans_send_regex(
-        R"(\b(?:do\s+)?send\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s+via\s+([A-Za-z_][A-Za-z0-9_]*))",
+        R"(\b(?:do\s+)?send\s+(?:new\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s+via\s+([A-Za-z_][A-Za-z0-9_]*))",
         std::regex::optimize);
     if (std::regex_search(stmt, match, do_block_regex)) {
         // Parse semicolon-separated action statements within the block
@@ -170,7 +170,7 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
                 // Lowered directly into typed ActionCallOp
             } else if (!try_parse_assignment_statement(statement, assignments, &model)) {
                 static const std::regex block_send_regex(
-                    R"(^(?:do\s+)?send\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s+via\s+([A-Za-z_][A-Za-z0-9_]*)$)",
+                    R"(^(?:do\s+)?send\s+(?:new\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s+via\s+([A-Za-z_][A-Za-z0-9_]*)$)",
                     std::regex::optimize);
                 std::smatch sm;
                 if (std::regex_match(statement, sm, block_send_regex)) {

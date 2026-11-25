@@ -19,6 +19,16 @@ namespace fsm::frontend::formal {
 using ir::DataType;
 
 /**
+ * @struct Sysml2ParseOptions
+ * @brief Workspace and multi-machine selection options for OMG SysML v2.0 parsing.
+ */
+struct Sysml2ParseOptions {
+    std::vector<std::string> import_dirs;  ///< Search directories for multi-file `import Pkg::*;` resolution
+    std::string target_state_def;          ///< Optional `state def` name to compile when a model defines multiple
+    std::string source_file;               ///< Optional path of the primary `.sysml` file (parent dir auto-searched)
+};
+
+/**
  * @class Sysml2Parser
  * @brief Parser frontend for OMG Systems Modeling Language (SysML) v2 textual notation.
  */
@@ -39,19 +49,29 @@ class Sysml2Parser : public IParser {
         EnumDef,
         StructDef,
         CalcDef,
+        PortDef,
         ActionBlock
     };
+
+    void set_options(Sysml2ParseOptions opts) { options_ = std::move(opts); }
+    [[nodiscard]] const Sysml2ParseOptions& options() const noexcept { return options_; }
+
+    /**
+     * @brief Scans SysML v2 source text and returns all declared `state def` names in declaration order.
+     */
+    [[nodiscard]] static std::vector<std::string> list_state_defs(std::string_view content);
 
     /**
      * @brief Ingests SysML v2 text into the destination FsmIr model.
      * @param content Raw SysML v2 specification text.
      * @param model Destination FsmIr to populate.
-     * @param error_message Diagnostic description if parsing fails.
+     * @param diag Diagnostic engine for errors and warnings.
      * @return True on success, false otherwise.
      */
     bool parse(std::string_view content, FsmIr& model, diagnostic::DiagnosticEngine& diag) override;
 
   private:
+    Sysml2ParseOptions options_;
     bool parse_impl(std::string_view content, FsmIr& out_ir, std::string& out_error);
     static std::string strip_comments(const std::string& line);
     static std::string trim(const std::string& str);

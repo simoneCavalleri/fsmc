@@ -9,6 +9,7 @@
 #include "fsm/frontend/directive/directive_parser.hpp"
 #include "fsm/frontend/directive/guard_parser.hpp"
 #include "fsm/frontend/directive/ltl_parser.hpp"
+#include "sysml2_workspace.hpp"
 
 namespace fsm::frontend::formal {
 
@@ -40,11 +41,22 @@ bool Sysml2Parser::parse(std::string_view content, FsmIr& out_ir, diagnostic::Di
     return true;
 }
 
+std::vector<std::string> Sysml2Parser::list_state_defs(std::string_view content) {
+    return sysml2_detail::scan_state_def_names(content);
+}
+
 bool Sysml2Parser::parse_impl(std::string_view content, FsmIr& model, std::string& error_message) {
     Sysml2SymbolResolver symbol_resolver;
 
+    // Step 0: Resolve multi-file `import Pkg::*;` workspace dependencies and extract `port def` / `~PortDef` bindings
+    std::string combined_content;
+    if (!sysml2_detail::resolve_workspace_imports(content, options_, combined_content, error_message)) {
+        return false;
+    }
+    const auto ws_meta = sysml2_detail::extract_port_defs_and_bindings(combined_content);
+
     // Step 1: Lexical analysis and block token scanning
-    auto tokens = Sysml2BlockScanner::scan(content);
+    auto tokens = Sysml2BlockScanner::scan(combined_content);
 
     // Stacks to track nested hierarchical states, packages, and definition blocks
     std::vector<std::string> state_stack;
@@ -55,9 +67,22 @@ bool Sysml2Parser::parse_impl(std::string_view content, FsmIr& model, std::strin
     std::string current_enum_def;
     std::string current_struct_def;
     std::string current_calc_def;
+    std::size_t skip_block_depth = 0;
+    bool matched_target_state_def = false;
+    static const std::regex state_def_head_re(R"(^state\s+def\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
+    static const std::regex port_def_head_re(R"(^port\s+def\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
 
     // Step 2: Iterate through all scanned tokens and process directives or block structures
     for (const auto& token : tokens) {
+        if (skip_block_depth > 0) {
+            if (token.kind == SysmlTokenKind::BlockOpen) {
+                ++skip_block_depth;
+            } else if (token.kind == SysmlTokenKind::BlockClose) {
+                --skip_block_depth;
+            }
+            continue;
+        }
+
         // Directives: handles embedded @fsm metadata annotations (variables, ports, properties, signals, services,
         // external types, state flags)
         if (token.kind == SysmlTokenKind::Directive) {
@@ -77,11 +102,33 @@ bool Sysml2Parser::parse_impl(std::string_view content, FsmIr& model, std::strin
 
         // Block open: entering a new composite state, package, item def, enum, or action block
         if (token.kind == SysmlTokenKind::BlockOpen) {
+            const std::string norm_head = normalize_whitespace(strip_comments(token.text));
+            std::smatch hm;
+            if (std::regex_search(norm_head, hm, port_def_head_re)) {
+                // Handled structurally by extract_port_defs_and_bindings
+                skip_block_depth = 1;
+                continue;
+            }
+            std::string opened_state_def_name;
+            if (std::regex_search(norm_head, hm, state_def_head_re)) {
+                opened_state_def_name = sanitize_identifier(hm[1].str());
+                if (!options_.target_state_def.empty() && opened_state_def_name != options_.target_state_def) {
+                    skip_block_depth = 1;
+                    continue;
+                }
+                if (!options_.target_state_def.empty() && opened_state_def_name == options_.target_state_def) {
+                    matched_target_state_def = true;
+                }
+            }
+
             SysmlBlockKind opened_kind = SysmlBlockKind::ActionBlock;
             if (!process_statement(token.text, model, state_stack, package_stack, package_push_counts, current_item_def,
                                    current_enum_def, current_struct_def, current_calc_def, error_message,
                                    token.line_number, true, opened_kind, symbol_resolver)) {
                 return false;
+            }
+            if (!opened_state_def_name.empty()) {
+                sysml2_detail::apply_port_bindings_to_model(ws_meta, opened_state_def_name, model, symbol_resolver);
             }
             block_stack.push_back(opened_kind);
         } else if (token.kind == SysmlTokenKind::BlockClose) {
@@ -129,7 +176,22 @@ bool Sysml2Parser::parse_impl(std::string_view content, FsmIr& model, std::strin
         }
     }
 
-    // Step 3: Validate that at least one valid state was discovered
+    // Step 3: Validate target state def (if requested) and that at least one valid state was discovered
+    if (!options_.target_state_def.empty() && !matched_target_state_def) {
+        const auto available = list_state_defs(content);
+        error_message = "SysML v2 parser: Requested state def '" + options_.target_state_def + "' not found.";
+        if (!available.empty()) {
+            error_message += " Available state defs: ";
+            for (std::size_t i = 0; i < available.size(); ++i) {
+                if (i > 0) {
+                    error_message += ", ";
+                }
+                error_message += available[i];
+            }
+            error_message += ".";
+        }
+        return false;
+    }
     if (model.states.empty()) {
         error_message = "SysML v2 parser: No states found in input.";
         return false;

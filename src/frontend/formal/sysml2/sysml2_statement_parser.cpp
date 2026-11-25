@@ -517,7 +517,7 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
     // 7b. State Lifecycle Actions: entry action <Act>; / exit action <Act>;
     auto try_parse_send_via = [&](const std::string& send_stmt, ActionSignature& out_sig) -> bool {
         static const std::regex block_send_regex(
-            R"(^(?:do\s+)?send\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s+via\s+([A-Za-z_][A-Za-z0-9_]*)$)",
+            R"(^(?:do\s+)?send\s+(?:new\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s+via\s+([A-Za-z_][A-Za-z0-9_]*)$)",
             std::regex::optimize);
         std::smatch sm;
         if (!std::regex_match(send_stmt, sm, block_send_regex)) {
@@ -692,9 +692,9 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    // 8d. State Send Action: [do] send <Signal>[(<Payload>)] via <Port>;
+    // 8d. State Send Action: [do] send [new] <Signal>[(<Payload>)] via <Port>;
     static const std::regex send_act_regex(
-        R"(^(?:do\s+)?send\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s+via\s+([A-Za-z_][A-Za-z0-9_]*))",
+        R"(^(?:do\s+)?send\s+(?:new\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s+via\s+([A-Za-z_][A-Za-z0-9_]*))",
         std::regex::optimize);
     if (std::regex_search(stmt, match, send_act_regex)) {
         const std::string sig_name = sanitize_identifier(match[1].str());

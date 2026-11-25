@@ -13,6 +13,7 @@
 #include "fsm/frontend/common/parser_interface.hpp"
 #include "fsm/frontend/diagram/common/diagram_contract_combiner.hpp"
 #include "fsm/frontend/directive/ltl_parser.hpp"
+#include "fsm/frontend/formal/sysml2/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/event_queue_bound_pass.hpp"
 #include "fsm/middleend/pass_manager.hpp"
@@ -132,6 +133,17 @@ bool load_and_parse_model(const FsmcOptions& opts, std::string& content, fsm::ir
     if (!parser) {
         std::cerr << "Error: Could not instantiate parser for input: " << opts.input_file << "\n";
         return false;
+    }
+
+    // Configure SysML v2 workspace options (multi-file imports & --state-def selection)
+    if (auto* sysml_parser = dynamic_cast<fsm::frontend::formal::Sysml2Parser*>(parser.get())) {
+        fsm::frontend::formal::Sysml2ParseOptions s_opts;
+        s_opts.import_dirs = opts.import_dirs;
+        s_opts.target_state_def = opts.state_def;
+        if (!is_stdin_path(opts.input_file)) {
+            s_opts.source_file = opts.input_file;
+        }
+        sysml_parser->set_options(std::move(s_opts));
     }
 
     fsm::diagnostic::SourceManager source_manager;
@@ -343,6 +355,31 @@ bool run_middleend_pipeline(const FsmcOptions& opts, const std::string& content,
 int FsmcDriver::run(const FsmcOptions& opts) {
     if (auto early_rc = validate_cli_and_early_exit(opts); early_rc.has_value()) {
         return *early_rc;
+    }
+
+    if (opts.list_machines) {
+        std::string read_err;
+        std::string raw = read_file_content(opts.input_file, read_err);
+        if (!read_err.empty()) {
+            std::cerr << "Error: " << read_err << "\n";
+            return 1;
+        }
+        const auto names = fsm::frontend::formal::Sysml2Parser::list_state_defs(raw);
+        if (opts.list_machines_json || opts.diagnostic_format == "json") {
+            std::cout << "[";
+            for (std::size_t i = 0; i < names.size(); ++i) {
+                if (i > 0) {
+                    std::cout << ", ";
+                }
+                std::cout << "\"" << names[i] << "\"";
+            }
+            std::cout << "]\n";
+        } else {
+            for (const auto& n : names) {
+                std::cout << n << "\n";
+            }
+        }
+        return 0;
     }
 
     std::string content;

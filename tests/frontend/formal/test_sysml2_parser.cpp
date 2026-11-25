@@ -5,6 +5,8 @@
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
+#include <fstream>
 #include <string>
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
@@ -1682,6 +1684,152 @@ TEST(Sysml2ParserTest, Sysml2Serializer_RoundtripsStandardOmgSysmlV2CalcDefAndSy
     ASSERT_EQ(reparsed.transitions.size(), 2u);
     ASSERT_TRUE(std::holds_alternative<TimeTrigger>(reparsed.transitions[1].trigger));
     EXPECT_EQ(std::get<TimeTrigger>(reparsed.transitions[1].trigger).duration_in_ms(), 200u);
+}
+
+/**
+ * @brief Verify OMG SysML v2.0 `port def`, conjugated `~PortDef`, `part def` `exhibit state`, `send new ... via ...`,
+ * multi-file `import Pkg::*;`, and `--state-def` / `list_state_defs()` selection.
+ * @scenario Write a shared `protocol.sysml` (`port def ThermalLinkPort`, `item def EvOverTemp`) and a multi-machine
+ * `subsystem.sysml` (`part def SensorUnit` with `~ThermalLinkPort`, `part def CoolerUnit` with `ThermalLinkPort`, and
+ * two `state def`s), then parse each machine with `Sysml2ParseOptions`.
+ * @expected `list_state_defs` returns both machines; `SensorFsm` gets conjugated `Out` port `temp_c` and `SignalEmitOp`
+ * for `EvOverTemp`; `CoolerFsm` gets `In` port `temp_c` and `EvOverTemp` trigger.
+ */
+TEST(Sysml2ParserTest, PortDefConjugationMultiFileImportAndStateDefSelection) {
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::temp_directory_path() / "fsmc_test_sysml2_workspace";
+    fs::create_directories(tmp_dir);
+
+    {
+        std::ofstream(tmp_dir / "shared_protocol.sysml") << R"sysml(
+package SharedProtocol {
+    import ScalarValues::*;
+
+    item def EvSample;
+    item def EvOverTemp {
+        attribute peak_temp : Int32;
+    }
+
+    port def ThermalLinkPort {
+        in attribute temp_c : Int32;
+        in item alert : EvOverTemp;
+    }
+}
+)sysml";
+    }
+
+    const std::string subsys_text = R"sysml(
+package ThermalSubsystem {
+    import ScalarValues::*;
+    import SharedProtocol::*;
+
+    part def SensorUnit {
+        port link : ~ThermalLinkPort;
+        exhibit state sm : SensorFsm;
+    }
+
+    part def CoolerUnit {
+        port link : ThermalLinkPort;
+        exhibit state sm : CoolerFsm;
+    }
+
+    state def SensorFsm {
+        entry; then Monitoring;
+        state Monitoring;
+        state Alerted;
+
+        transition t_overtemp
+            first Monitoring
+            accept EvSample
+            if temp_c >= 90
+            do send new EvOverTemp(temp_c) via link
+            then Alerted;
+    }
+
+    state def CoolerFsm {
+        entry; then Standby;
+        state Standby;
+        state Cooling;
+
+        transition t_cool
+            first Standby
+            accept alert : EvOverTemp via link
+            then Cooling;
+    }
+}
+)sysml";
+
+    const auto machines = Sysml2Parser::list_state_defs(subsys_text);
+    ASSERT_EQ(machines.size(), 2U);
+    EXPECT_EQ(machines[0], "SensorFsm");
+    EXPECT_EQ(machines[1], "CoolerFsm");
+
+    // 1. Parse SensorFsm (conjugated ~ThermalLinkPort -> temp_c becomes Out!)
+    {
+        Sysml2Parser parser;
+        Sysml2ParseOptions sopts;
+        sopts.import_dirs.push_back(tmp_dir.string());
+        sopts.target_state_def = "SensorFsm";
+        parser.set_options(sopts);
+
+        FsmIr ir;
+        fsm::diagnostic::DiagnosticEngine diag;
+        ASSERT_TRUE(parser.parse(subsys_text, ir, diag)) << diag.render_to_string();
+        EXPECT_EQ(ir.name, "SensorFsm");
+        ASSERT_EQ(ir.states.size(), 2U);
+        const auto* p_temp = ir.find_port("temp_c");
+        ASSERT_NE(p_temp, nullptr);
+        EXPECT_TRUE(p_temp->is_out());
+        ASSERT_EQ(ir.transitions.size(), 1U);
+        ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+        ASSERT_EQ(ir.transitions[0].transition_action->instructions.size(), 1U);
+        ASSERT_TRUE(std::holds_alternative<SignalEmitOp>(ir.transitions[0].transition_action->instructions[0].op));
+        const auto& se = std::get<SignalEmitOp>(ir.transitions[0].transition_action->instructions[0].op);
+        EXPECT_EQ(se.signal_name, "EvOverTemp");
+        ASSERT_TRUE(se.target_port.has_value());
+        EXPECT_EQ(*se.target_port, "link");
+        // Imported signal attributes preserved!
+        const auto* sig = ir.find_signal("EvOverTemp");
+        ASSERT_NE(sig, nullptr);
+        ASSERT_EQ(sig->attributes.size(), 1U);
+        EXPECT_EQ(sig->attributes[0].name, "peak_temp");
+    }
+
+    // 2. Parse CoolerFsm (non-conjugated ThermalLinkPort -> temp_c stays In!)
+    {
+        Sysml2Parser parser;
+        Sysml2ParseOptions sopts;
+        sopts.import_dirs.push_back(tmp_dir.string());
+        sopts.target_state_def = "CoolerFsm";
+        parser.set_options(sopts);
+
+        FsmIr ir;
+        fsm::diagnostic::DiagnosticEngine diag;
+        ASSERT_TRUE(parser.parse(subsys_text, ir, diag)) << diag.render_to_string();
+        EXPECT_EQ(ir.name, "CoolerFsm");
+        ASSERT_EQ(ir.states.size(), 2U);
+        const auto* p_temp = ir.find_port("temp_c");
+        ASSERT_NE(p_temp, nullptr);
+        EXPECT_TRUE(p_temp->is_in());
+        ASSERT_EQ(ir.transitions.size(), 1U);
+        EXPECT_EQ(ir.transitions[0].event, "EvOverTemp");
+    }
+
+    // 3. Unknown --state-def must fail cleanly with diagnostic listing available machines
+    {
+        Sysml2Parser parser;
+        Sysml2ParseOptions sopts;
+        sopts.import_dirs.push_back(tmp_dir.string());
+        sopts.target_state_def = "NonExistentFsm";
+        parser.set_options(sopts);
+
+        FsmIr ir;
+        fsm::diagnostic::DiagnosticEngine diag;
+        EXPECT_FALSE(parser.parse(subsys_text, ir, diag));
+        EXPECT_NE(diag.render_to_string().find("SensorFsm"), std::string::npos);
+    }
+
+    fs::remove_all(tmp_dir);
 }
 
 }  // namespace

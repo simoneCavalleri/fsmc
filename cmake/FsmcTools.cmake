@@ -18,8 +18,8 @@
 
 function(fsmc_target_sources TARGET_NAME)
     set(options STANDALONE MODULAR NO_THREAD_SAFE NO_STUBS ALLOW_DIAGRAM_CODEGEN FREESTANDING EMIT_C_ABI EMIT_MANIFEST)
-    set(oneValueArgs NAME NAMESPACE OUTPUT_DIR FORMAT TARGET TARGET_LANG RUNTIME_HEADER)
-    set(multiValueArgs DIAGRAMS)
+    set(oneValueArgs NAME NAMESPACE OUTPUT_DIR OUTPUT_STEM FORMAT TARGET TARGET_LANG RUNTIME_HEADER STATE_DEF)
+    set(multiValueArgs DIAGRAMS IMPORT_DIRS)
 
     cmake_parse_arguments(FSM_ARG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
@@ -60,6 +60,9 @@ function(fsmc_target_sources TARGET_NAME)
     foreach(DIAGRAM_PATH IN LISTS FSM_ARG_DIAGRAMS)
         get_filename_component(DIAGRAM_NAME "${DIAGRAM_PATH}" NAME_WE)
         get_filename_component(DIAGRAM_ABS "${DIAGRAM_PATH}" ABSOLUTE)
+        if(FSM_ARG_OUTPUT_STEM)
+            set(DIAGRAM_NAME "${FSM_ARG_OUTPUT_STEM}")
+        endif()
 
         set(IS_C99_TARGET FALSE)
         if(FSM_ARG_TARGET_LANG STREQUAL "c99" OR FSM_ARG_TARGET_LANG STREQUAL "c")
@@ -93,6 +96,15 @@ function(fsmc_target_sources TARGET_NAME)
         if(FSM_ARG_FORMAT)
             list(APPEND CLI_ARGS --format "${FSM_ARG_FORMAT}")
         endif()
+
+        if(FSM_ARG_STATE_DEF)
+            list(APPEND CLI_ARGS --state-def "${FSM_ARG_STATE_DEF}")
+        endif()
+
+        foreach(IMP_DIR IN LISTS FSM_ARG_IMPORT_DIRS)
+            get_filename_component(IMP_ABS "${IMP_DIR}" ABSOLUTE)
+            list(APPEND CLI_ARGS -I "${IMP_ABS}")
+        endforeach()
 
         if(NOT IS_C99_TARGET)
             if(FSM_ARG_STANDALONE)

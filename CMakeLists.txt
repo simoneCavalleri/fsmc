@@ -30,6 +30,7 @@ option(FSMC_ENABLE_EXAMPLES "Build example applications" ${PROJECT_IS_TOP_LEVEL}
 option(FSMC_ENABLE_BENCHMARKS "Build micro-benchmarks" ${PROJECT_IS_TOP_LEVEL})
 option(FSMC_ENABLE_SANITIZERS "Enable Address and Undefined sanitizers (Debug only)" OFF)
 option(FSMC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors (-Werror)" OFF)
+option(FSMC_ENABLE_PCH "Enable CMake precompiled headers" ON)
 
 # Internal compile/link options target (never leaks to FetchContent or add_subdirectory consumers)
 add_library(fsmc_project_options INTERFACE)
@@ -130,7 +131,9 @@ target_include_directories(fsmc_core PUBLIC
 target_compile_features(fsmc_core PRIVATE cxx_std_20)
 target_compile_features(fsmc_core INTERFACE cxx_std_17)
 target_link_libraries(fsmc_core PUBLIC fsmc_runtime PRIVATE $<BUILD_INTERFACE:fsmc_project_options>)
-target_precompile_headers(fsmc_core PRIVATE ${FSMC_PCH_HEADERS})
+if(FSMC_ENABLE_PCH)
+    target_precompile_headers(fsmc_core PRIVATE ${FSMC_PCH_HEADERS})
+endif()
 
 # 2. fsmc_frontend (Parsers -> fsmc_core)
 file(GLOB_RECURSE FSMC_FRONTEND_SOURCES CONFIGURE_DEPENDS
@@ -140,7 +143,9 @@ add_library(fsmc_frontend STATIC ${FSMC_FRONTEND_SOURCES})
 add_library(fsmc::frontend ALIAS fsmc_frontend)
 target_compile_features(fsmc_frontend PRIVATE cxx_std_20)
 target_link_libraries(fsmc_frontend PUBLIC fsmc_core PRIVATE $<BUILD_INTERFACE:fsmc_project_options>)
-target_precompile_headers(fsmc_frontend REUSE_FROM fsmc_core)
+if(FSMC_ENABLE_PCH)
+    target_precompile_headers(fsmc_frontend REUSE_FROM fsmc_core)
+endif()
 
 find_package(ZLIB QUIET)
 if(ZLIB_FOUND)
@@ -159,7 +164,9 @@ target_link_libraries(fsmc_middleend PUBLIC fsmc_core PRIVATE $<BUILD_INTERFACE:
 if(NOT EMSCRIPTEN)
     target_link_libraries(fsmc_middleend PRIVATE ${CMAKE_DL_LIBS})
 endif()
-target_precompile_headers(fsmc_middleend REUSE_FROM fsmc_core)
+if(FSMC_ENABLE_PCH)
+    target_precompile_headers(fsmc_middleend REUSE_FROM fsmc_core)
+endif()
 
 # 4. fsmc_backend (Codegen + Serializers -> fsmc_core ONLY; zero frontend/middleend coupling)
 file(GLOB_RECURSE FSMC_BACKEND_SOURCES CONFIGURE_DEPENDS
@@ -169,7 +176,9 @@ add_library(fsmc_backend STATIC ${FSMC_BACKEND_SOURCES})
 add_library(fsmc::backend ALIAS fsmc_backend)
 target_compile_features(fsmc_backend PRIVATE cxx_std_20)
 target_link_libraries(fsmc_backend PUBLIC fsmc_core PRIVATE $<BUILD_INTERFACE:fsmc_project_options>)
-target_precompile_headers(fsmc_backend REUSE_FROM fsmc_core)
+if(FSMC_ENABLE_PCH)
+    target_precompile_headers(fsmc_backend REUSE_FROM fsmc_core)
+endif()
 
 # 5. fsmc_compiler (Backward-compatible aggregate INTERFACE target)
 add_library(fsmc_compiler INTERFACE)

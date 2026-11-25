@@ -10,25 +10,27 @@ The repository is structured into distinct, decoupled compiler layers on top of 
 
 ```text
 fsmc/
+├── CMakePresets.json    # Standard configure/build/test presets (release, debug, asan-ubsan)
 ├── include/fsm/
-│   ├── ir/          # Unified AST & Semantic Model (FsmIr, StateNode, TransitionEdge, PortDefinition, FNV-1a IDs, EFSM vars, LTL/INVAR, Serializer/Deserializer)
-│   ├── middleend/   # PassManager, Dead State Pruning, Determinism, Guard Satisfiability, Inlining, TimedDeadlockPass, EFSM Interval Analysis & ModelChecker
-│   ├── diagnostic/  # Rich DiagnosticEngine with ANSI colors, SourceSpan, and visual carets
-│   ├── frontend/    # Two-Category Parser Ingestion Infrastructure & ParserFactory
-│   │   ├── common/  # IParser interface, ParserFactory, XState JSON parser
-│   │   ├── formal/  # High-semantics Formal Models (SysML v2, Stateflow XML, Cameo XMI, W3C SCXML, nuXmv SMV)
-│   │   └── diagram/ # Visual Diagram Sketch Notations (PlantUML, Mermaid, Graphviz DOT)
-│   └── backend/     # Target Code Generators, EmitterFactory & Zero-Overhead C++ Runtime
-│       ├── cpp/     # C++17/C++20 Standalone Bundles & Modular Generators
-│       │   └── runtime/ # Canonical Zero-Heap Real-Time Runtime Engine (fsm, spsc_fsm, thread_safe_fsm, static_ring_buffer)
-│       ├── diagram/ # Visual Diagram Serializers (PlantUML, Mermaid, DOT, JSON)
-│       ├── formal/  # Formal Model Serializers (Cameo XMI, SCXML, Stateflow XML, SMV, SysML v2)
-│       └── rtm/     # Formal Requirement Traceability Matrix (RTM) Emitter
+│   ├── ir/              # Unified AST, JSON DOM, Expression AST, & IrSimulator (FsmIr, StateNode, TransitionEdge, PortDefinition)
+│   ├── middleend/       # PassManager, Structural Lowering, EFSM Interval Analysis, ModelChecker & CounterexampleExporter
+│   ├── diagnostic/      # Structured DiagnosticEngine (ANSI carets, JSON, GitHub Actions)
+│   ├── frontend/        # Encapsulated Per-Format Parser Infrastructure & ParserFactory
+│   │   ├── common/      # IParser interface, ParserFactory, CompanionManifestParser
+│   │   ├── ir_json/     # Strict Canonical ir-json v1.0 Frontend
+│   │   ├── formal/      # Formal Models: sysml2/, stateflow/, cameo_xmi/, scxml/, smv/
+│   │   └── diagram/     # Visual Notations: plantuml/, mermaid/, dot/, xstate/
+│   └── backend/         # Target Code Generators, EmitterFactory & Zero-Overhead Runtimes
+│       ├── cpp/         # Split/Standalone C++17/20/23 Emitter, C99 FFI Bridge & Runtime Engine
+│       ├── c99/         # Native Bare-Metal ISO C99 Generator (--target c99, zero C++ runtime)
+│       ├── diagram/     # Per-Format Diagram Serializers (plantuml/, mermaid/, dot/, xstate/)
+│       ├── formal/      # Per-Format Formal Serializers (sysml2/, scxml/, stateflow/, cameo_xmi/, smv/)
+│       └── rtm/         # Requirement Traceability Matrix (RTM) & Manifest Emitters
 ├── tools/
-│   ├── fsmc/        # Primary Multi-Format Compiler Driver CLI
-│   └── fsm-opt/     # Standalone Formal IR Optimizer, Linter & Roundtrip Formatter CLI
-├── examples/        # Aerospace, Automotive ECU, and Resilient IoT Showcases
-├── tests/           # Modular GoogleTest Suites (86 test suites / 95 CTest targets)
+│   ├── fsmc/            # Primary Compiler Driver CLI (orchestration, codegen, verification)
+│   └── fsm-opt/         # Standalone Formal IR Optimizer, Linter & Roundtrip Formatter CLI
+├── examples/            # 10 End-to-End Aerospace, Automotive, Bare-Metal C99 & Multi-FSM Showcases
+├── tests/               # Modular GoogleTest Suites (92 test suites / 107 CTest targets)
 │   ├── backend/     # Codegen, roundtrip lossless export, and backend/cpp/runtime tests
 │   ├── frontend/    # Frontend tests partitioned into formal/ and diagram/
 │   ├── ir/          # Serialization and AST integrity
@@ -189,7 +191,7 @@ warning[W0103]: Choice pseudostate 'ClearanceChoice' lacks an unconditional else
 In UML 2.5, a choice pseudostate `C` conditionally directs control from an incoming transition `Tin: Ssrc -> C` to several outgoing branches `Tout_i: C -> [Gi] / Ai -> Sdst_i`.
 
 ### Flattening Strategies & Cardinality Evaluation
-In `cpp_model_emitter.hpp`, the compiler evaluates the Cartesian product cardinality for each choice pseudostate:
+In the C++ transition table emitter (`src/backend/cpp/emitter/cpp_table_emitter.cpp`), the compiler evaluates the Cartesian product cardinality for each choice pseudostate:
 
 ```
 K = Nin * Nout

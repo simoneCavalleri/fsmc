@@ -29,7 +29,7 @@ jobs:
 
       - name: Check Formatting with clang-format
         run: |
-          find src include tools tests examples benchmarks -name '*.cpp' -o -name '*.hpp' | xargs clang-format --dry-run --Werror
+          find src include tools tests examples benchmarks -name '*.cpp' -o -name '*.hpp' -o -name '*.c' -o -name '*.h' | xargs clang-format --dry-run --Werror
 
       - name: Configure CMake for Clang-Tidy & SSOT Checks
         run: |
@@ -59,7 +59,7 @@ jobs:
 
       - name: Install MkDocs & Plugins
         run: |
-          pip install mkdocs mkdocs-material pymdown-extensions pyyaml
+          pip install -r docs/requirements.txt
 
       - name: Verify Documentation Freshness & Veracity Gate
         run: |

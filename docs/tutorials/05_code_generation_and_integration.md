@@ -58,7 +58,7 @@ Use `fsmc` to emit either a standalone single-file header or a modular header pa
     ```
 
 !!! info "Target Backends"
-    Production code generation targets **C++17** and **C++20** (`--target cpp`). For planned Rust (`no_std`) and ISO C99 backends, see the **[Multi-Target Architecture & Roadmap](../runtime_api/multi_target_roadmap.md)**.
+    Production code generation supports **C++17/20/23** (`--target cpp`, plus `--emit-c-abi` for C99 FFI) and **Native Bare-Metal ISO C99** (`--target c99`, zero C++ runtime). For the planned Rust (`no_std`) backend RFC, see the **[Multi-Target Architecture & Roadmap](../runtime_api/multi_target_roadmap.md)**.
 
 ---
 

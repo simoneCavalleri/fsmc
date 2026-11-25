@@ -3,15 +3,21 @@
 A single-page reference covering the universal `fsmc` / `fsm-opt` CLI workflow, verification commands, C++ transition table DSL, and runtime execution engines.
 
 !!! note "Workflow Modes"
-    You can either generate code directly from SysML v2 / Stateflow / SCXML / diagram models via **`fsmc`**, or write transition tables directly in C++ using the header-only **`<fsm/fsm.hpp>`** runtime library. For planned Rust and C backends, see the [Multi-Target Roadmap](../runtime_api/multi_target_roadmap.md).
+    You can compile formal SysML v2.0 / Stateflow / SCXML / diagram models into **C++17/20/23** (`--target cpp`) or **Native Bare-Metal Pure-C99** (`--target c99`) via **`fsmc`**, or author transition tables directly in C++ using the header-only **`<fsm/fsm.hpp>`** runtime library. For the planned Rust (`no_std`) backend RFC, see the [Multi-Target Roadmap](../runtime_api/multi_target_roadmap.md).
 
 ---
 
 ## 1. Command-Line Interface & Formal Verification
 
 ```bash
-# Code Generation (C++20 Standalone Header)
+# Code Generation (Split C++17 Headers vs Standalone vs Native Pure-C99)
+fsmc -i flight.sysml -o flight_fsm.hpp --target cpp --emit-manifest
 fsmc -i flight.sysml -o flight_fsm.hpp --target cpp --standalone
+fsmc -i flight.sysml -o flight.h --target c99 --emit-manifest
+
+# Multi-FSM SysML v2.0 Workspace Discovery & Per-Machine Compilation
+fsmc -i subsystem.sysml -I ./protocols --list-machines=json
+fsmc -i subsystem.sysml -I ./protocols --state-def SensorMonitorFsm --target c99 -o sensor.h
 
 # Formal Verification (Invariants, Deadlocks, Unreachable States)
 fsmc -i flight.sysml --verify

@@ -12,7 +12,7 @@ namespace fsm::middleend::analysis {
 
 class CounterexampleGTestExporter {
   public:
-    static std::string export_gtest(const fsm::ir::FsmIr& model, const ModelCheckResult& result,
+    static std::string export_gtest(const ::fsm::ir::FsmIr& model, const ModelCheckResult& result,
                                     std::string_view header_include = "",
                                     std::string_view target_namespace = "fsm_generated") {
         std::ostringstream out;
@@ -56,5 +56,5 @@ class CounterexampleGTestExporter {
 }  // namespace fsm::middleend::analysis
 
 namespace fsm::tools {
-using fsm::middleend::analysis::CounterexampleGTestExporter;
+using ::fsm::middleend::analysis::CounterexampleGTestExporter;
 }  // namespace fsm::tools

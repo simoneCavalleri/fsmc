@@ -14,7 +14,7 @@
 
 namespace fsm::frontend::directive {
 
-using namespace fsm::ir;
+using namespace ::fsm::ir;
 
 /**
  * @class DirectiveParser

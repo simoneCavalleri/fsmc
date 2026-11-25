@@ -185,4 +185,4 @@ Takeoff successful. Current State: WaypointNav
 Emergency fail-safe activated. Transitioned to: ReturnToHome
 ```
 
-For planned Rust (`no_std`) and ISO C99 target backends, see the [Multi-Target Roadmap](../runtime_api/multi_target_roadmap.md).
+For native bare-metal ISO C99 codegen (`--target c99`) and the planned Rust (`no_std`) target RFC, see [Split Interfaces & Pure C99](../runtime_api/c_abi_and_split_interfaces.md) and the [Multi-Target Roadmap](../runtime_api/multi_target_roadmap.md).

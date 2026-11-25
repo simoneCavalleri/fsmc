@@ -10,8 +10,8 @@
 #include <vector>
 
 #include "fsm/frontend/common/parser_interface.hpp"
-#include "fsm/frontend/formal/sysml2_block_scanner.hpp"
-#include "fsm/frontend/formal/sysml2_symbol_resolver.hpp"
+#include "fsm/frontend/formal/sysml2/sysml2_block_scanner.hpp"
+#include "fsm/frontend/formal/sysml2/sysml2_symbol_resolver.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 namespace fsm::frontend::formal {

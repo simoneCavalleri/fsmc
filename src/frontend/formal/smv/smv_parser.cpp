@@ -1,4 +1,4 @@
-#include "fsm/frontend/formal/smv_parser.hpp"
+#include "fsm/frontend/formal/smv/smv_parser.hpp"
 
 #include <algorithm>
 #include <cctype>

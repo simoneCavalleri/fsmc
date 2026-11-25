@@ -8,7 +8,7 @@
 #include "fsm/backend/emitter_factory.hpp"
 #include "fsm/backend/formal/stateflow_serializer.hpp"
 #include "fsm/frontend/common/parser_factory.hpp"
-#include "fsm/frontend/formal/stateflow_parser.hpp"
+#include "fsm/frontend/formal/stateflow/stateflow_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 using namespace fsm::frontend::formal;

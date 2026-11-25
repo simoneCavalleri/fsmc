@@ -1,4 +1,4 @@
-#include "fsm/frontend/formal/sysml2_block_scanner.hpp"
+#include "fsm/frontend/formal/sysml2/sysml2_block_scanner.hpp"
 
 #include <cctype>
 

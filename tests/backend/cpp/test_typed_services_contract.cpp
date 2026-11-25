@@ -12,7 +12,7 @@
 
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
-#include "fsm/frontend/common/ir_json_parser.hpp"
+#include "fsm/frontend/ir_json/ir_json_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/ir/fsm_ir_serializer.hpp"
 #include "fsm/middleend/passes/verify_ir_integrity_pass.hpp"

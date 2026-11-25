@@ -11,7 +11,7 @@
 #include "fsm/backend/cpp/runtime/fsm.hpp"
 #include "fsm/backend/cpp/runtime/spsc_fsm.hpp"
 #include "fsm/backend/cpp/runtime/thread_safe_fsm.hpp"
-#include "fsm/frontend/diagram/plantuml_parser.hpp"
+#include "fsm/frontend/diagram/plantuml/plantuml_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 using namespace fsm::backend::cpp;

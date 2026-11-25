@@ -19,8 +19,8 @@
 #include "fsm/backend/cpp/runtime/static_ring_buffer.hpp"
 #include "fsm/backend/cpp/runtime/thread_safe_fsm.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
-#include "fsm/frontend/diagram/plantuml_parser.hpp"
-#include "fsm/frontend/formal/sysml2_parser.hpp"
+#include "fsm/frontend/diagram/plantuml/plantuml_parser.hpp"
+#include "fsm/frontend/formal/sysml2/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 

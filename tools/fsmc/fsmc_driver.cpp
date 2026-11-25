@@ -46,7 +46,7 @@
 #include "fsm/frontend/common/companion_manifest_parser.hpp"
 #include "fsm/frontend/common/parser_factory.hpp"
 #include "fsm/frontend/common/parser_interface.hpp"
-#include "fsm/frontend/diagram/diagram_contract_combiner.hpp"
+#include "fsm/frontend/diagram/common/diagram_contract_combiner.hpp"
 #include "fsm/frontend/directive/ltl_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/event_queue_bound_pass.hpp"

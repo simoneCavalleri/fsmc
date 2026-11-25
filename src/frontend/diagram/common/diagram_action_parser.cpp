@@ -3,7 +3,7 @@
  * @brief Implementation of composite and multiline action block parsing for diagrams.
  */
 
-#include "fsm/frontend/diagram/diagram_action_parser.hpp"
+#include "fsm/frontend/diagram/common/diagram_action_parser.hpp"
 
 #include <cctype>
 #include <regex>

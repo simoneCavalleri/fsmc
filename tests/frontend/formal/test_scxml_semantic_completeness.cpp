@@ -6,7 +6,7 @@
 #include <gtest/gtest.h>
 
 #include "fsm/backend/formal/scxml_serializer.hpp"
-#include "fsm/frontend/formal/scxml_parser.hpp"
+#include "fsm/frontend/formal/scxml/scxml_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 

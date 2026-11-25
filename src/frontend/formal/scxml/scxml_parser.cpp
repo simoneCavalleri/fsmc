@@ -1,4 +1,4 @@
-#include "fsm/frontend/formal/scxml_parser.hpp"
+#include "fsm/frontend/formal/scxml/scxml_parser.hpp"
 
 #include <cctype>
 #include <cmath>

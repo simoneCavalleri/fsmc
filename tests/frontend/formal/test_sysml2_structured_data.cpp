@@ -6,7 +6,7 @@
 #include <gtest/gtest.h>
 
 #include "fsm/backend/formal/sysml2_serializer.hpp"
-#include "fsm/frontend/formal/sysml2_parser.hpp"
+#include "fsm/frontend/formal/sysml2/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 
 using namespace fsm::frontend::formal;

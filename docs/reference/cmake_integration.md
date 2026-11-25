@@ -30,6 +30,8 @@ fsmc_target_sources(
     [STANDALONE]
     [MODULAR]
     [EMIT_C_ABI]
+    [EMIT_MANIFEST]
+    [TARGET <cpp|c99>]
     [NO_THREAD_SAFE]
     [FREESTANDING]
     [NO_STUBS]
@@ -50,6 +52,8 @@ fsmc_target_sources(
 | `STANDALONE` | Flag | Emit a single self-contained `<stem>_fsm.hpp` instead of the default split `<stem>_ports.hpp` + `<stem>_fsm.hpp` pair. |
 | `MODULAR` | Flag | Generate header that includes external runtime header (default: `"fsm.hpp"`, matching `--export-runtime`). |
 | `EMIT_C_ABI` | Flag | Also emit pure C99 zero-allocation ABI wrapper (`<stem>_c.h` + `<stem>_c.cpp`) and add `<stem>_c.cpp` to `<TargetName>`. |
+| `EMIT_MANIFEST` | Flag | Also emit machine-readable `<stem>.manifest.json` (`schemas/fsm_manifest.schema.json`) alongside generated artifacts. |
+| `TARGET` / `TARGET_LANG` | String | Target backend: `cpp` (default C++17) or `c99` (native Pure-C99 `<stem>.h` + `<stem>.c`, zero C++ runtime). |
 | `RUNTIME_HEADER` | String | Custom runtime header path included in modular mode (e.g. `"fsm.hpp"`, `"<fsm/fsm.hpp>"`). |
 | `NO_THREAD_SAFE` | Flag | Disable generation of the `thread_safe_fsm` asynchronous wrapper. |
 | `FREESTANDING` | Flag | Emit zero-STL freestanding C++17 header (`--freestanding`, `-fno-exceptions -fno-rtti` compatible). |

@@ -14,8 +14,10 @@
 #include <string>
 #include <vector>
 
+#include "fsm/backend/c99/c99_generator.hpp"
 #include "fsm/backend/cpp/c_abi_generator.hpp"
 #include "fsm/backend/cpp/cpp_generator.hpp"
+#include "fsm/backend/manifest_emitter.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "tools/fsmc/ir_simulator.hpp"
 
@@ -504,6 +506,260 @@ TEST(DifferentialSemantics, RandomizedTraces_MatchAcrossIrSimulatorCpp17AndC99Ab
     EXPECT_EQ(tag, "REGS");
     EXPECT_EQ(cpp_energy, static_cast<int>(sim_report.final_registers.at("energy")));
     EXPECT_EQ(cpp_cycles, static_cast<int>(sim_report.final_registers.at("cycles")));
+
+    fs::remove_all(temp_dir);
+#endif
+}
+
+/**
+ * @brief 3-Way Differential Verification: IrSimulator == C++17 == Native Pure-C99 (500-step randomized trace +
+ *        mid-trace snapshot/restore + byte-identical determinism check).
+ */
+TEST(DifferentialSemantics, ThreeWayRandomizedTraces_MatchIrSimulatorCpp17AndNativeC99) {
+    using namespace fsm::ir;
+    using namespace fsm::backend;
+    using namespace fsm::backend::cpp;
+    using namespace fsm::backend::c99;
+
+    FsmIr model;
+    model.name = "TriadCtrl";
+    model.package = "triad_pkg";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Warmup");
+    model.add_state("Active");
+    model.add_state("Fault");
+
+    model.add_event("Start");
+    model.add_event("Step");
+    model.add_event("Trip");
+    model.add_event("Reset");
+
+    model.add_variable(VariableDefinition("heat", DataType::int32(), "0"));
+    model.add_variable(VariableDefinition("runs", DataType::int32(), "0"));
+
+    model.add_guard("heating", "", "heat < 4", "heat < 4");
+    model.add_guard("ready", "", "heat >= 4", "heat >= 4");
+
+    {
+        TransitionEdge t("Idle", "Warmup", "Start");
+        ActionSignature act("start_warmup");
+        act.assignments.push_back(ActionAssignment{LValueTarget{"heat", LValueScope::Register}, "0"});
+        act.assignments.push_back(
+            ActionAssignment{LValueTarget{"runs", LValueScope::Register}, "1", AssignmentOp::AddAssign});
+        t.transition_action = act;
+        model.transitions.push_back(t);
+    }
+    {
+        TransitionEdge t("Warmup", "Warmup", "Step", "heating");
+        t.kind = TransitionEdgeKind::Internal;
+        ActionSignature act("inc_heat");
+        act.assignments.push_back(
+            ActionAssignment{LValueTarget{"heat", LValueScope::Register}, "1", AssignmentOp::AddAssign});
+        t.transition_action = act;
+        model.transitions.push_back(t);
+    }
+    model.transitions.emplace_back("Warmup", "Active", "Step", "ready");
+    model.transitions.emplace_back("Warmup", "Fault", "Trip");
+    model.transitions.emplace_back("Active", "Fault", "Trip");
+    {
+        TransitionEdge t("Active", "Idle", "Reset");
+        ActionSignature act("reset_act");
+        act.assignments.push_back(ActionAssignment{LValueTarget{"heat", LValueScope::Register}, "0"});
+        t.transition_action = act;
+        model.transitions.push_back(t);
+    }
+    {
+        TransitionEdge t("Fault", "Idle", "Reset");
+        ActionSignature act("reset_flt");
+        act.assignments.push_back(ActionAssignment{LValueTarget{"heat", LValueScope::Register}, "0"});
+        t.transition_action = act;
+        model.transitions.push_back(t);
+    }
+
+    // Verify byte-identical determinism across repeated codegen & manifest runs
+    const auto c99_a = C99Generator::generate(model, C99GeneratorOptions{"triad_ctrl.h"});
+    const auto c99_b = C99Generator::generate(model, C99GeneratorOptions{"triad_ctrl.h"});
+    EXPECT_EQ(c99_a.header, c99_b.header);
+    EXPECT_EQ(c99_a.source, c99_b.source);
+    EXPECT_EQ(ManifestEmitter::emit_json(model), ManifestEmitter::emit_json(model));
+
+    constexpr std::size_t kSteps = 500;
+    const std::vector<std::string> ev_names = {"Start", "Step", "Trip", "Reset"};
+    std::mt19937 rng(0xF5C014U);
+    std::uniform_int_distribution<std::size_t> dist(0, ev_names.size() - 1);
+
+    std::vector<std::size_t> ev_seq;
+    ev_seq.reserve(kSteps);
+    std::ostringstream trace_ss;
+    for (std::size_t i = 0; i < kSteps; ++i) {
+        const std::size_t idx = dist(rng);
+        ev_seq.push_back(idx);
+        trace_ss << ev_names[idx] << "\n";
+    }
+
+    // 1. Oracle: IrSimulator
+    std::ostringstream sim_log;
+    const auto sim_report = fsm::tools::IrSimulator::simulate_detailed(model, trace_ss.str(), sim_log);
+    ASSERT_EQ(sim_report.steps.size(), kSteps);
+
+#if defined(_WIN32)
+    GTEST_SKIP() << "POSIX cc/c++ compiler invocation skipped on Windows.";
+#else
+    const std::string cc = (std::system("cc --version > /dev/null 2>&1") == 0) ? "cc" : "gcc";
+    const std::string cxx = (std::system("c++ --version > /dev/null 2>&1") == 0) ? "c++" : "g++";
+
+    const fs::path temp_dir = fs::temp_directory_path() / "fsmc_diff_3way_test";
+    fs::create_directories(temp_dir);
+
+    GeneratorOptions opts;
+    opts.standalone = true;
+    opts.thread_safe = false;
+    opts.target_namespace = "triad_pkg";
+    const auto cpp_bundle = CppGenerator::generate_bundle(model, opts, "triad_ports.hpp");
+
+    {
+        std::ofstream f(temp_dir / "triad_ports.hpp");
+        f << cpp_bundle.ports_header;
+    }
+    {
+        std::ofstream f(temp_dir / "triad_fsm.hpp");
+        f << cpp_bundle.fsm_header;
+    }
+    {
+        std::ofstream f(temp_dir / "triad_ctrl.h");
+        f << c99_a.header;
+    }
+    {
+        std::ofstream f(temp_dir / "triad_ctrl.c");
+        f << c99_a.source;
+    }
+    {
+        std::ofstream f(temp_dir / "trace_500.h");
+        f << "static const int kTrace500[" << kSteps << "] = {";
+        for (std::size_t i = 0; i < kSteps; ++i) {
+            if (i > 0) {
+                f << ", ";
+            }
+            f << ev_seq[i];
+        }
+        f << "};\n";
+    }
+
+    // 2. C++17 Harness
+    const fs::path cpp_out = temp_dir / "cpp17_out.txt";
+    {
+        std::ofstream f(temp_dir / "drv_cpp.cpp");
+        f << "#include <cstdio>\n"
+          << "#include \"triad_fsm.hpp\"\n"
+          << "#include \"trace_500.h\"\n"
+          << "int main() {\n"
+          << "    using namespace triad_pkg;\n"
+          << "    TriadCtrl sm;\n"
+          << "    std::FILE* fp = std::fopen(\"" << cpp_out.generic_string() << "\", \"w\");\n"
+          << "    if (!fp) return 1;\n"
+          << "    for (int i = 0; i < " << kSteps << "; ++i) {\n"
+          << "        switch (kTrace500[i]) {\n"
+          << "            case 0: sm.dispatch(Start{}); break;\n"
+          << "            case 1: sm.dispatch(Step{}); break;\n"
+          << "            case 2: sm.dispatch(Trip{}); break;\n"
+          << "            default: sm.dispatch(Reset{}); break;\n"
+          << "        }\n"
+          << "        const char* st = sm.is_in<Idle>() ? \"Idle\" : (sm.is_in<Warmup>() ? \"Warmup\" : "
+             "(sm.is_in<Active>() ? \"Active\" : \"Fault\"));\n"
+          << "        std::fprintf(fp, \"%s\\n\", st);\n"
+          << "    }\n"
+          << "    std::fprintf(fp, \"REGS %d %d\\n\", sm.registers().heat, sm.registers().runs);\n"
+          << "    std::fclose(fp);\n"
+          << "    return 0;\n"
+          << "}\n";
+    }
+
+    // 3. Native Pure-C99 Harness (compiled ONLY with C99 compiler, mid-trace snapshot/restore at step 250)
+    const fs::path c99_out = temp_dir / "c99_out.txt";
+    {
+        std::ofstream f(temp_dir / "drv_c99.c");
+        f << "#include <assert.h>\n"
+          << "#include <stdio.h>\n"
+          << "#include <string.h>\n"
+          << "#include \"triad_ctrl.h\"\n"
+          << "#include \"trace_500.h\"\n"
+          << "int main(void) {\n"
+          << "    triad_ctrl_fsm_t fsm;\n"
+          << "    triad_ctrl_fsm_t restored;\n"
+          << "    triad_ctrl_in_ports_t in_p;\n"
+          << "    triad_ctrl_out_ports_t out_p;\n"
+          << "    uint8_t snap[128];\n"
+          << "    size_t written = 0;\n"
+          << "    size_t read_sz = 0;\n"
+          << "    FILE* fp = fopen(\"" << c99_out.generic_string() << "\", \"w\");\n"
+          << "    if (!fp) return 1;\n"
+          << "    memset(&in_p, 0, sizeof(in_p));\n"
+          << "    memset(&out_p, 0, sizeof(out_p));\n"
+          << "    triad_ctrl_init(&fsm);\n"
+          << "    triad_ctrl_init(&restored);\n"
+          << "    for (int i = 0; i < " << kSteps << "; ++i) {\n"
+          << "        triad_ctrl_fsm_t* cur = (i >= 250) ? &restored : &fsm;\n"
+          << "        switch (kTrace500[i]) {\n"
+          << "            case 0: triad_ctrl_dispatch_start(cur, &in_p, &out_p); break;\n"
+          << "            case 1: triad_ctrl_dispatch_step(cur, &in_p, &out_p); break;\n"
+          << "            case 2: triad_ctrl_dispatch_trip(cur, &in_p, &out_p); break;\n"
+          << "            default: triad_ctrl_dispatch_reset(cur, &in_p, &out_p); break;\n"
+          << "        }\n"
+          << "        fprintf(fp, \"%s\\n\", triad_ctrl_state_name(triad_ctrl_current_state(cur)));\n"
+          << "        if (i == 249) {\n"
+          << "            assert(triad_ctrl_save_snapshot(&fsm, snap, sizeof(snap), &written));\n"
+          << "            assert(triad_ctrl_restore_snapshot(&restored, snap, written, &read_sz));\n"
+          << "            assert(read_sz == written);\n"
+          << "        }\n"
+          << "    }\n"
+          << "    fprintf(fp, \"REGS %d %d\\n\", restored.regs.heat, restored.regs.runs);\n"
+          << "    fclose(fp);\n"
+          << "    triad_ctrl_destroy(&restored);\n"
+          << "    triad_ctrl_destroy(&fsm);\n"
+          << "    return 0;\n"
+          << "}\n";
+    }
+
+    const fs::path cpp_exe = temp_dir / "runner_cpp";
+    const std::string cpp_cmd = cxx + " -std=c++17 -fno-exceptions -fno-rtti -Wall -Wextra -Werror -I\"" +
+                                temp_dir.string() + "\" \"" + (temp_dir / "drv_cpp.cpp").string() + "\" -o \"" +
+                                cpp_exe.string() + "\"";
+    ASSERT_EQ(std::system(cpp_cmd.c_str()), 0) << "C++17 3-way compile failed";
+    ASSERT_EQ(std::system(("\"" + cpp_exe.string() + "\"").c_str()), 0) << "C++17 3-way runner failed";
+
+    const fs::path c99_exe = temp_dir / "runner_c99";
+    const std::string c99_cmd = cc + " -std=c99 -Wall -Wextra -Werror -pedantic -I\"" + temp_dir.string() + "\" \"" +
+                                (temp_dir / "triad_ctrl.c").string() + "\" \"" + (temp_dir / "drv_c99.c").string() +
+                                "\" -o \"" + c99_exe.string() + "\"";
+    ASSERT_EQ(std::system(c99_cmd.c_str()), 0) << "Pure C99 3-way compile failed";
+    ASSERT_EQ(std::system(("\"" + c99_exe.string() + "\"").c_str()), 0) << "Pure C99 3-way runner failed";
+
+    std::ifstream cpp_in(cpp_out);
+    std::ifstream c99_in(c99_out);
+    for (std::size_t i = 0; i < kSteps; ++i) {
+        std::string cpp_st;
+        std::string c99_st;
+        ASSERT_TRUE(static_cast<bool>(cpp_in >> cpp_st)) << "Missing C++17 state at step " << i;
+        ASSERT_TRUE(static_cast<bool>(c99_in >> c99_st)) << "Missing C99 state at step " << i;
+        EXPECT_EQ(cpp_st, sim_report.steps[i].to_state) << "IrSimulator vs C++17 mismatch at step " << i;
+        EXPECT_EQ(c99_st, sim_report.steps[i].to_state) << "IrSimulator vs Pure-C99 mismatch at step " << i;
+    }
+
+    std::string tag1;
+    std::string tag2;
+    int cpp_heat = -1;
+    int cpp_runs = -1;
+    int c99_heat = -1;
+    int c99_runs = -1;
+    ASSERT_TRUE(static_cast<bool>(cpp_in >> tag1 >> cpp_heat >> cpp_runs));
+    ASSERT_TRUE(static_cast<bool>(c99_in >> tag2 >> c99_heat >> c99_runs));
+    EXPECT_EQ(tag1, "REGS");
+    EXPECT_EQ(tag2, "REGS");
+    EXPECT_EQ(cpp_heat, static_cast<int>(sim_report.final_registers.at("heat")));
+    EXPECT_EQ(cpp_runs, static_cast<int>(sim_report.final_registers.at("runs")));
+    EXPECT_EQ(c99_heat, cpp_heat);
+    EXPECT_EQ(c99_runs, cpp_runs);
 
     fs::remove_all(temp_dir);
 #endif

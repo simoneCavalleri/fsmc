@@ -557,6 +557,12 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
     std::string kind_str = trans_obj.get_string("kind");
     if (!kind_str.empty()) {
         trans.kind = transition_edge_kind_from_string(kind_str);
+    } else if (const auto* reenter_val = trans_obj.get_child("reenter");
+               reenter_val != nullptr && reenter_val->type == JsonType::Bool) {
+        trans.kind = reenter_val->bool_val ? TransitionEdgeKind::External : TransitionEdgeKind::Internal;
+    } else if (const auto* internal_val = trans_obj.get_child("internal");
+               internal_val != nullptr && internal_val->type == JsonType::Bool) {
+        trans.kind = internal_val->bool_val ? TransitionEdgeKind::Internal : TransitionEdgeKind::External;
     }
 
     if (event_name == "always" || event_name.empty() || event_name == "Anonymous" || event_name == "AnonymousEvent" ||
@@ -1119,27 +1125,53 @@ void parse_states_object(const JsonValue& states_obj, FsmIr& model, const std::s
             parse_on_transitions(*on_obj, state_name, model);
         }
 
-        // Parse after (time triggers)
+        // Parse after (XState v4/v5 delayed transitions: string, object with guard/actions, or array)
         const auto* after_obj = state_data.get_child("after");
         if (after_obj != nullptr && after_obj->is_object()) {
+            auto make_after_tt = [](const std::string& delay_str) -> JsonValue {
+                JsonValue tt;
+                tt.type = JsonType::Object;
+                JsonValue k;
+                k.type = JsonType::String;
+                k.str_val = "after";
+                tt.set_member("kind", std::move(k));
+                JsonValue dur;
+                dur.type = JsonType::Number;
+                dur.num_val = static_cast<double>(std::strtoull(delay_str.c_str(), nullptr, 10));
+                tt.set_member("duration_value", dur);
+                tt.set_member("duration_ms", dur);
+                JsonValue u;
+                u.type = JsonType::String;
+                u.str_val = "ms";
+                tt.set_member("unit", std::move(u));
+                return tt;
+            };
+            auto parse_after_entry = [&](const JsonValue& entry, const std::string& delay_str) {
+                JsonValue enriched;
+                if (entry.is_object()) {
+                    enriched = entry;
+                } else if (entry.is_string()) {
+                    enriched.type = JsonType::Object;
+                    enriched.set_member("target", entry);
+                } else {
+                    return;
+                }
+                if (enriched.get_child("time_trigger") == nullptr) {
+                    enriched.set_member("time_trigger", make_after_tt(delay_str));
+                }
+                parse_single_transition_object(enriched, state_name, "", model);
+            };
+
             for (std::size_t a_idx = 0; a_idx < after_obj->obj_keys.size(); ++a_idx) {
                 const auto& delay_str = after_obj->obj_keys[a_idx];
                 const auto& target_val = after_obj->obj_values[a_idx];
-                TransitionEdge t;
-                t.source = state_name;
-                if (target_val.is_string()) {
-                    t.target = sanitize_identifier(target_val.str_val);
-                } else if (target_val.is_object()) {
-                    t.target = sanitize_identifier(target_val.get_string("target"));
+                if (target_val.is_array()) {
+                    for (const auto& elem : target_val.arr_val) {
+                        parse_after_entry(elem, delay_str);
+                    }
+                } else {
+                    parse_after_entry(target_val, delay_str);
                 }
-                TimeTrigger tt;
-                tt.kind = TimeTriggerKind::After;
-                tt.duration_value = static_cast<uint64_t>(std::strtoull(delay_str.c_str(), nullptr, 10));
-                tt.unit = TimeUnit::Milliseconds;
-                tt.duration_ms = tt.duration_in_ms();
-                tt.periodic = false;
-                t.trigger = tt;
-                model.add_transition(std::move(t));
             }
         }
 

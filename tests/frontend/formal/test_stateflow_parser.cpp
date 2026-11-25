@@ -202,7 +202,8 @@ TEST(StateflowParser, DirectivesAndTransitions_RoundtrippedLosslessly) {
     EXPECT_NE(xml.find("@fsm:var"), std::string::npos);
     EXPECT_NE(xml.find("@fsm:port"), std::string::npos);
     EXPECT_NE(xml.find("after(1500, msec)"), std::string::npos);
-    EXPECT_NE(xml.find("type=\"HISTORY\""), std::string::npos);
+    EXPECT_NE(xml.find("<P Name=\"type\">HISTORY_JUNCTION</P>"), std::string::npos);
+    EXPECT_NE(xml.find("<Children>"), std::string::npos);
 
     // Parse back
     StateflowParser parser;
@@ -339,14 +340,14 @@ TEST(StateflowParser, StateActionsAndPeriodicTimers_ParsedAndSerialized) {
     EXPECT_EQ(tt.kind, TimeTriggerKind::Every);
     EXPECT_EQ(tt.duration_ms, 50u);
 
-    // Roundtrip serialize to Stateflow XML
+    // Roundtrip serialize to standard MathWorks simulink/stateflow.xml
     std::string exported_xml = StateflowSerializer::serialize(model);
 
-    EXPECT_NE(exported_xml.find("entry=\"initHardware\""), std::string::npos);
-    EXPECT_NE(exported_xml.find("during=\"monitorSensors\""), std::string::npos);
-    EXPECT_NE(exported_xml.find("exit=\"cleanupHardware\""), std::string::npos);
-    EXPECT_NE(exported_xml.find("entry=\"enterSleep\""), std::string::npos);
-    EXPECT_NE(exported_xml.find("exit=\"wakeUp\""), std::string::npos);
+    EXPECT_NE(exported_xml.find("entry: initHardware"), std::string::npos);
+    EXPECT_NE(exported_xml.find("during: monitorSensors"), std::string::npos);
+    EXPECT_NE(exported_xml.find("exit: cleanupHardware"), std::string::npos);
+    EXPECT_NE(exported_xml.find("entry: enterSleep"), std::string::npos);
+    EXPECT_NE(exported_xml.find("exit: wakeUp"), std::string::npos);
     EXPECT_NE(exported_xml.find("every(50, msec)"), std::string::npos);
 }
 
@@ -432,7 +433,7 @@ TEST(StateflowParser, CompositeInitialSubstate_RoundtripsViaAttributeAndInitialT
     EXPECT_EQ(active->initial_sub_state, "Idle");
 
     const std::string serialized = StateflowSerializer::serialize(model);
-    EXPECT_NE(serialized.find("initial=\"Idle\""), std::string::npos);
+    EXPECT_NE(serialized.find("<P Name=\"initial\">Idle</P>"), std::string::npos);
 
     FsmIr reparsed;
     ASSERT_TRUE(parser.parse(serialized, reparsed, err)) << "Re-parse error: " << err.render_to_string();
@@ -807,7 +808,7 @@ TEST(StateflowParser, ChangeTrigger_PreservedAcrossSerializerRoundtrip) {
     ir.add_transition(t);
 
     const std::string xml = StateflowSerializer::serialize(ir);
-    EXPECT_NE(xml.find("labelString=\"when(count &gt; 5)\""), std::string::npos) << xml;
+    EXPECT_NE(xml.find("<P Name=\"labelString\">when(count &gt; 5)</P>"), std::string::npos) << xml;
 
     StateflowParser parser;
     FsmIr parsed;
@@ -816,6 +817,104 @@ TEST(StateflowParser, ChangeTrigger_PreservedAcrossSerializerRoundtrip) {
     ASSERT_EQ(parsed.transitions.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<ChangeTrigger>(parsed.transitions[0].trigger));
     EXPECT_EQ(std::get<ChangeTrigger>(parsed.transitions[0].trigger).raw_expression, "count > 5");
+}
+
+/**
+ * @brief Verify StateflowParser ingests native MathWorks simulink/stateflow.xml without any @fsm comments.
+ * @scenario Parse standard <Stateflow><machine><Children><chart><Children> XML with <state SSID>, <P
+ * Name="labelString">, SSID-referenced <transition><src>/<dst>, <junction> HISTORY_JUNCTION, and <data>
+ * INPUT_DATA/OUTPUT_DATA/LOCAL_DATA.
+ * @expected Chart name, initial state, hierarchy, transitions, history flag, ports, and variables are all extracted.
+ */
+TEST(StateflowParser, ParsesNativeMathWorksStateflowXmlWithoutFsmComments) {
+    const std::string native_sf_xml = R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<Stateflow>
+  <machine id="1">
+    <P Name="name">BrakeCtrlMachine</P>
+    <Children>
+      <chart id="2">
+        <P Name="name">BrakeController</P>
+        <P Name="decomposition">CLUSTER_CHART</P>
+        <Children>
+          <state SSID="10">
+            <P Name="labelString">Idle&#10;entry: pressure_cmd = 0</P>
+            <P Name="decomposition">CLUSTER_STATE</P>
+          </state>
+          <state SSID="11">
+            <P Name="labelString">Engaged</P>
+            <P Name="decomposition">CLUSTER_STATE</P>
+            <Children>
+              <junction SSID="12">
+                <P Name="type">HISTORY_JUNCTION</P>
+              </junction>
+              <state SSID="13">
+                <P Name="labelString">Holding</P>
+                <P Name="decomposition">CLUSTER_STATE</P>
+              </state>
+              <transition SSID="14">
+                <dst><P Name="SSID">13</P></dst>
+              </transition>
+            </Children>
+          </state>
+          <data SSID="20" name="pedal_force">
+            <P Name="scope">INPUT_DATA</P>
+            <P Name="dataType">int32</P>
+          </data>
+          <data SSID="21" name="pressure_cmd">
+            <P Name="scope">OUTPUT_DATA</P>
+            <P Name="dataType">uint32</P>
+          </data>
+          <data SSID="22" name="cycle_cnt">
+            <P Name="scope">LOCAL_DATA</P>
+            <P Name="dataType">uint32</P>
+          </data>
+          <transition SSID="30">
+            <dst><P Name="SSID">10</P></dst>
+          </transition>
+          <transition SSID="31">
+            <P Name="labelString">EvPress [pedal_force &gt; 10] / { cycle_cnt = cycle_cnt + 1 }</P>
+            <src><P Name="SSID">10</P></src>
+            <dst><P Name="SSID">11</P></dst>
+          </transition>
+        </Children>
+      </chart>
+    </Children>
+  </machine>
+</Stateflow>
+)xml";
+
+    StateflowParser parser;
+    FsmIr model;
+    fsm::diagnostic::DiagnosticEngine diag;
+    ASSERT_TRUE(parser.parse(native_sf_xml, model, diag)) << diag.render_to_string();
+
+    EXPECT_EQ(model.name, "BrakeController");
+    EXPECT_EQ(model.initial_state, "Idle");
+    ASSERT_NE(model.find_state("Idle"), nullptr);
+    const auto* engaged = model.find_state("Engaged");
+    ASSERT_NE(engaged, nullptr);
+    EXPECT_TRUE(engaged->has_history);
+    EXPECT_EQ(engaged->initial_sub_state, "Holding");
+
+    const auto* p_in = model.find_port("pedal_force");
+    ASSERT_NE(p_in, nullptr);
+    EXPECT_TRUE(p_in->is_in());
+    EXPECT_EQ(p_in->type.to_cpp_type(), "int32_t");
+
+    const auto* p_out = model.find_port("pressure_cmd");
+    ASSERT_NE(p_out, nullptr);
+    EXPECT_TRUE(p_out->is_out());
+    EXPECT_EQ(p_out->type.to_cpp_type(), "uint32_t");
+
+    const auto* var_local = model.find_variable("cycle_cnt");
+    ASSERT_NE(var_local, nullptr);
+    EXPECT_EQ(var_local->type.to_cpp_type(), "uint32_t");
+
+    ASSERT_EQ(model.transitions.size(), 1u);
+    EXPECT_EQ(model.transitions[0].source, "Idle");
+    EXPECT_EQ(model.transitions[0].target, "Engaged");
+    EXPECT_EQ(model.transitions[0].event, "EvPress");
+    EXPECT_TRUE(model.transitions[0].target_is_history);
 }
 
 }  // namespace

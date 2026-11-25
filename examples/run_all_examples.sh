@@ -192,7 +192,23 @@ echo -e "${YELLOW}Executing built target: modular_toolchain_c_abi_example...${NC
 success "modular_toolchain_c_abi_example executed with 100% assertions passed"
 
 # ------------------------------------------------------------------------------
+# Module 08: Bare-Metal Pure-C99 Controller (--target c99, zero C++ runtime)
+# ------------------------------------------------------------------------------
+print_header "[MODULE 08] Bare-Metal Pure-C99 Controller (--target c99)"
+echo -e "${YELLOW}Compiling watchdog_controller.sysml with --target c99 --emit-manifest...${NC}"
+"${FSMC}" -i "${SCRIPT_DIR}/08_baremetal_c99_controller/watchdog_controller.sysml" \
+    --target c99 -o "${TMP_MOD07_DIR}/watchdog_controller.h" --emit-manifest > /dev/null
+[[ -f "${TMP_MOD07_DIR}/watchdog_controller.h" ]]
+[[ -f "${TMP_MOD07_DIR}/watchdog_controller.c" ]]
+[[ -f "${TMP_MOD07_DIR}/watchdog_controller.manifest.json" ]]
+success "watchdog_controller.sysml pure-C99 header, source, and manifest emitted OK"
+
+echo -e "${YELLOW}Executing built target: baremetal_c99_controller_example...${NC}"
+"$(find_binary baremetal_c99_controller_example)" > /dev/null
+success "baremetal_c99_controller_example executed with 100% assertions passed"
+
+# ------------------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------------------
-print_header "ALL 8 FSMC EXAMPLES VERIFIED SUCCESSFULLY (100% PASS RATE)"
+print_header "ALL 9 FSMC EXAMPLES VERIFIED SUCCESSFULLY (100% PASS RATE)"
 echo -e "${GREEN}All models, formal properties, optimization passes, and executable harnesses are valid.${NC}\n"

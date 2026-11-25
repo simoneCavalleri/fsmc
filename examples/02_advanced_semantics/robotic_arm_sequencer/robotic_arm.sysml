@@ -4,18 +4,20 @@
 // ============================================================================
 
 package IndustrialRobotics {
+    import ScalarValues::*;
+
     state def RoboticArmFSM {
-        // Typed MBSE I/O Ports with Physical Units and Range Bounds
-        in port payload_weight_kg : Real { assert constraint { self >= 0.0 and self <= 35.0; } }
-        in port emergency_stop : Boolean;
-        out port motor_torque_nm : Real { assert constraint { self >= 0.0 and self <= 250.0; } }
-        out port tool_gripper_closed : Boolean;
+        // Typed MBSE I/O Parameters with Physical Units and Range Bounds
+        in payload_weight_kg : Real { assert constraint { self >= 0.0 and self <= 35.0; } }
+        in emergency_stop : Boolean;
+        out motor_torque_nm : Real { assert constraint { self >= 0.0 and self <= 250.0; } }
+        out tool_gripper_closed : Boolean;
 
         entry; then Standby;
 
         state Standby;
 
-        transition from Standby accept PowerUpCmd do InitializeServosAction then Operational;
+        transition first Standby accept PowerUpCmd do InitializeServosAction then Operational;
 
         // Composite Operational State with Multi-Level History
         state Operational {
@@ -31,43 +33,43 @@ package IndustrialRobotics {
                 state SemiFinishing;
                 state Finishing;
 
-                transition from Roughing accept StepFinishingCmd do AdvanceToolpathAction then SemiFinishing;
-                transition from SemiFinishing accept StepFinishingCmd do AdvanceToolpathAction then Finishing;
+                transition first Roughing accept StepFinishingCmd do AdvanceToolpathAction then SemiFinishing;
+                transition first SemiFinishing accept StepFinishingCmd do AdvanceToolpathAction then Finishing;
             }
 
             // Submachine Tool Calibration
             state ToolCalibration;
 
-            transition from Idle accept StartJobCmd 
-                if PayloadWeightValidGuard 
+            transition first Idle accept StartJobCmd
+                if PayloadWeightValidGuard
                 do SpinSpindleAction then Machining;
 
-            transition from Machining accept CalibrateToolCmd 
+            transition first Machining accept CalibrateToolCmd
                 do RetractArmAction then ToolCalibration;
 
-            transition from ToolCalibration accept CalibrationOkEvent 
+            transition first ToolCalibration accept CalibrationOkEvent
                 do RestoreOffsetsAction then Machining; // Re-enters via Deep History
         }
 
         // Safety Paused state triggered by interlock
         state SafetyInterlocked {
-            entry / EngageBrakesAction;
-            exit / ReleaseBrakesAction;
+            entry action EngageBrakesAction;
+            exit action ReleaseBrakesAction;
         }
 
         // Transition into safety pause from machining
-        transition from Machining accept SafetyPauseCmd 
+        transition first Machining accept SafetyPauseCmd
             do CutPowerAction then SafetyInterlocked;
 
         // Resume transition restoring exact nested machining substate via History
-        transition from SafetyInterlocked accept ResumeJobCmd 
-            if SafetyInterlockClearedGuard 
+        transition first SafetyInterlocked accept ResumeJobCmd
+            if SafetyInterlockClearedGuard
             do WarmupServosAction then Machining; // Re-enters via Deep History
 
-        transition from Operational accept EStopCmd 
+        transition first Operational accept EStopCmd
             do EngageBrakesAction then Standby;
 
-        transition from Finishing accept JobCompleteCmd 
+        transition first Finishing accept JobCompleteCmd
             do EngageBrakesAction then Standby;
     }
 }

@@ -18,6 +18,7 @@ namespace fsm::backend {
  * @brief Generated code artifact paths recorded in *.manifest.json.
  */
 struct ManifestArtifacts {
+    std::string target = "cpp17";
     std::string ports_header;
     std::string fsm_header;
     std::string c_header;

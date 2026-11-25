@@ -5,20 +5,22 @@
 // ============================================================================
 
 package AutomotiveBms {
+    import ScalarValues::*;
+
     state def BatteryManagementSystem {
-        // Typed MBSE I/O Ports with Physical Units and ASIL-D Bounds
-        in port pack_voltage_v : Real { assert constraint { self >= 250.0 and self <= 450.0; } }
-        in port max_cell_temp_c : Real { assert constraint { self >= -20.0 and self <= 65.0; } }
-        in port isolation_resistance_kohm : Real { assert constraint { self >= 100.0 and self <= 10000.0; } }
-        out port cooling_pump_pwm : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
-        out port contactors_closed : Boolean;
-        out port balancing_active : Boolean;
+        // Typed MBSE I/O Parameters with Physical Units and ASIL-D Bounds
+        in pack_voltage_v : Real { assert constraint { self >= 250.0 and self <= 450.0; } }
+        in max_cell_temp_c : Real { assert constraint { self >= -20.0 and self <= 65.0; } }
+        in isolation_resistance_kohm : Real { assert constraint { self >= 100.0 and self <= 10000.0; } }
+        out cooling_pump_pwm : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
+        out contactors_closed : Boolean;
+        out balancing_active : Boolean;
 
         entry; then Standby;
 
         state Standby;
 
-        transition from Standby accept PrechargeCompleteCmd 
+        transition first Standby accept PrechargeCompleteCmd
             do CloseMainContactorsAction then Operational;
 
         // Concurrent Parallel Orthogonal State with 3 Independent Supervision Regions
@@ -112,7 +114,7 @@ package AutomotiveBms {
 
         // Global ASIL-D Emergency Shutdown State
         state FaultShutdown {
-            entry / OpenMainContactorsAction;
+            entry action OpenMainContactorsAction;
         }
 
         // High-Priority Safety Interlock Preemption from Any Operational Region

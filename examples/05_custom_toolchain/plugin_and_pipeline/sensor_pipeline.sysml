@@ -5,12 +5,14 @@
 // ============================================================================
 
 package SensorToolchain {
+    import ScalarValues::*;
+
     state def SensorPipelineController {
-        // Typed MBSE I/O Ports with Physical Range Contracts
-        in port raw_adc_microvolts : Real { assert constraint { self >= 0.0 and self <= 3300000.0; } }
-        in port sample_rate_hz : Real { assert constraint { self >= 1.0 and self <= 50000.0; } }
-        out port filtered_value : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
-        out port dsp_active : Boolean;
+        // Typed MBSE I/O Parameters with Physical Range Contracts
+        in raw_adc_microvolts : Real { assert constraint { self >= 0.0 and self <= 3300000.0; } }
+        in sample_rate_hz : Real { assert constraint { self >= 1.0 and self <= 50000.0; } }
+        out filtered_value : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
+        out dsp_active : Boolean;
 
         entry; then SensorSleep;
 
@@ -29,24 +31,24 @@ package SensorToolchain {
 
             state Publishing;
 
-            transition from Sampling accept AdcSampleReadyEvent 
-                do ProcessFirFilterAction 
+            transition first Sampling accept AdcSampleReadyEvent
+                do ProcessFirFilterAction
                 then Filtering;
 
-            transition from Filtering accept FilterCompleteEvent 
-                do PublishMqttTelemetryAction 
+            transition first Filtering accept FilterCompleteEvent
+                do PublishMqttTelemetryAction
                 then Publishing;
 
-            transition from Publishing accept PublishAckEvent 
+            transition first Publishing accept PublishAckEvent
                 then Sampling;
         }
 
-        transition from SensorSleep accept WakeupTimerEvent 
-            do PowerUpFrontendAction 
+        transition first SensorSleep accept WakeupTimerEvent
+            do PowerUpFrontendAction
             then SensorActive;
 
-        transition from SensorActive accept LowBatteryShutdownCmd 
-            do PowerDownFrontendAction 
+        transition first SensorActive accept LowBatteryShutdownCmd
+            do PowerDownFrontendAction
             then SensorSleep;
     }
 }

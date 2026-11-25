@@ -31,7 +31,16 @@ class Sysml2Parser : public IParser {
      * @enum SysmlBlockKind
      * @brief Lexical scope categories for SysML v2 state and structural definitions.
      */
-    enum class SysmlBlockKind : std::uint8_t { Package, StateDef, State, ItemDef, EnumDef, StructDef, ActionBlock };
+    enum class SysmlBlockKind : std::uint8_t {
+        Package,
+        StateDef,
+        State,
+        ItemDef,
+        EnumDef,
+        StructDef,
+        CalcDef,
+        ActionBlock
+    };
 
     /**
      * @brief Ingests SysML v2 text into the destination FsmIr model.
@@ -56,8 +65,8 @@ class Sysml2Parser : public IParser {
                                   std::vector<std::string>& package_stack,
                                   std::vector<std::size_t>& package_push_counts, std::string& current_item_def,
                                   std::string& current_enum_def, std::string& current_struct_def,
-                                  std::string& error_message, size_t line_number, bool is_block_open,
-                                  SysmlBlockKind& out_kind, Sysml2SymbolResolver& symbol_resolver);
+                                  std::string& current_calc_def, std::string& error_message, size_t line_number,
+                                  bool is_block_open, SysmlBlockKind& out_kind, Sysml2SymbolResolver& symbol_resolver);
 
     static bool parse_transition_statement(const std::string& stmt, FsmIr& model,
                                            const std::vector<std::string>& state_stack,

@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.0] - 2026-11-24
+
+### Added
+- **Native Pure-C99 Bare-Metal Backend (`--target c99`, zero C++ compiler on target)**:
+  - Added `C99Generator` (`include/fsm/backend/c99/c99_generator.hpp`, `src/backend/c99/c99_generator.cpp`) and `C99CodegenBackend : ICodegenBackend` wired to `PassManager::create_lowering_pipeline(TargetCapabilities::c99_baremetal())`.
+  - Emits strict, zero-heap, MISRA-friendly ISO C99 (`<stem>.h` + `<stem>.c`) compiling and linking with only a C99 compiler (`-std=c99 -Wall -Wextra -Werror -pedantic`), supporting flat states, guards, registers, local POD structs, `external_ref` (`#include` + `typedef`), `services_t` callbacks with `void* user_data`, `step`, timed `tick` (`after`/`every`), FNV-1a checksummed binary `save_snapshot`/`restore_snapshot`, and `ir_sha256()`.
+  - Added `--target c99` in `fsmc` CLI and `TARGET c99` / `EMIT_MANIFEST` in `cmake/FsmcTools.cmake`.
+- **System-Composer Manifest Metadata (`emitted_events`, `timers`, `artifacts.target`)**:
+  - Extended `ManifestEmitter` and `schemas/fsm_manifest.schema.json` with `artifacts.target` (`"cpp17"` | `"c99"`), `emitted_events` (port-routed `SignalEmitOp` signals), and `timers` (`TimeTrigger` state/duration/periodic rows), validated in CI by `scripts/verify_schemas.py`.
+- **OMG SysML v2.0 Standard Conformance & Native `calc def` Service Lowering**:
+  - Added native OMG SysML v2.0 parsing for `calc def <name> { in <p> : <T>; return : <R>; }` (mapping directly to pure `ServiceMethodSignature`), directional `in`/`out` parameters on `state def`, `attribute <name> : <T> := <init>;`, `assign <target> := <expr>;` statements, and `accept after <N> [ms]` triggers.
+  - Lowered service calls inside action blocks (e.g. `assign pwm_duty := compute_duty(temp_c);` or `log_fault(42);`) directly into typed `ActionCallOp` instructions with `result_target`.
+- **3-Way Differential Verification & Showcase 08**:
+  - Added 500-step deterministic seeded randomized differential test verifying step-by-step state and register equivalence across `IrSimulator == C++17 == Native Pure-C99` (including mid-trace snapshot/restore and byte-identical determinism).
+  - Added Showcase `examples/08_baremetal_c99_controller/` compiled and linked purely in C99 (`LINKER_LANGUAGE C`, zero C++ runtime).
+
+### Changed
+- **Full Standards Conformance Across All Formal & Diagram Frontends/Serializers**:
+  - **OMG SysML v2.0**: `Sysml2Serializer` and all `.sysml` examples (`examples/01..08`) conform to OMG SysML v2.0 (`import ScalarValues::*;`, `item def`, `calc def`, directional `in`/`out` parameters, `attribute ... := ...;`, `assign ... := ...;`, `transition first`, `accept after N [ms]`).
+  - **W3C SCXML 1.0**: `ScxmlSerializer` & `ScxmlParser` declare `xmlns:fsm="https://github.com/simoneCavalleri/fsmc/scxml"` and namespace all `fsmc` extension attributes (`fsm:kind`, `fsm:satisfies`, `fsm:invariant`, `fsm:priority`, `fsm:type`, `fsm:port`, `fsm:dir`, `fsm:min`, `fsm:max`, `fsm:constraint`) and `<fsm:defer>` elements (with legacy read fallback).
+  - **OMG UML 2.5.1 / XMI 2.5.1**: `CameoSerializer` emits standard `xmi:version="2.5.1"`, `http://www.omg.org/spec/UML/20131001`, and `http://www.omg.org/spec/XMI/20131001`.
+  - **MathWorks Stateflow (`simulink/stateflow.xml`)**: `StateflowSerializer` and `StateflowParser` support native `<Children>`, `<P Name="...">`, `SSID`-indexed `<src>`/`<dst>`, `HISTORY_JUNCTION`/`CONNECTIVE_JUNCTION`, `SET_STATE`/`CLUSTER_STATE`, and `<data>` (`INPUT_DATA`/`OUTPUT_DATA`/`LOCAL_DATA`).
+  - **XState v5 JSON**: `FsmIrDeserializer` / `JsonParser` fully supports guarded/actioned and array-branched `after` delayed transitions, `always` completion transitions, `type: "history"` (`shallow`/`deep`), and `reenter`/`internal` self-transition flags.
+
+---
+
 ## [0.13.0] - 2026-11-24
 
 ### Added

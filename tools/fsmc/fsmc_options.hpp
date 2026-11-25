@@ -74,7 +74,8 @@ inline void print_help(const char* prog_name) {
         << "Input & Output Options:\n"
         << "  -i, --input <file>           Input model file (.sysml, .slx, .puml, .mmd, .xmi, .scxml, .json, .dot)\n"
         << "  -o, --output <file>          Output generated code or exported diagram file (default: stdout)\n"
-        << "  -t, --target <lang>          Target code generator backend: 'cpp' (default)\n"
+        << "  -t, --target <lang>          Target code generator backend: 'cpp' (default) or 'c99' (native bare-metal "
+           "C99)\n"
         << "  -n, --name <name>            Generated FSM class name (default: inferred or 'MyFSM')\n"
         << "  -N, --ns, --namespace <ns>   Generated namespace/package name (default: 'fsm_generated')\n"
         << "  --format <fmt>               Override input format: 'sysml2', 'stateflow', 'plantuml', 'mermaid', "
@@ -171,7 +172,10 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
             continue;
         }
 
-        // 3. Target language selection (C++ code generator backend)
+        // 3. Target language selection (C++17 or native Pure-C99 code generator backend)
+        auto is_supported_target = [](const std::string& t) {
+            return t == "cpp" || t == "c++" || t == "cpp17" || t == "c99" || t == "c";
+        };
         if (arg == "-t" || arg == "--target" || arg == "--lang") {
             if (idx + 1 >= argc) {
                 opts.is_valid = false;
@@ -179,26 +183,26 @@ inline FsmcOptions parse_cli_args(int argc, char* argv[]) {
                 return opts;
             }
             opts.target_lang = argv[++idx];
-            if (opts.target_lang != "cpp" && opts.target_lang != "c++") {
+            if (!is_supported_target(opts.target_lang)) {
                 opts.is_valid = false;
                 opts.error_message =
-                    "Unsupported target language: '" + opts.target_lang + "' (currently supported: 'cpp')";
+                    "Unsupported target language: '" + opts.target_lang + "' (supported: 'cpp', 'cpp17', 'c99')";
                 return opts;
             }
         } else if (arg.rfind("--target=", 0) == 0) {
             opts.target_lang = arg.substr(9);
-            if (opts.target_lang != "cpp" && opts.target_lang != "c++") {
+            if (!is_supported_target(opts.target_lang)) {
                 opts.is_valid = false;
                 opts.error_message =
-                    "Unsupported target language: '" + opts.target_lang + "' (currently supported: 'cpp')";
+                    "Unsupported target language: '" + opts.target_lang + "' (supported: 'cpp', 'cpp17', 'c99')";
                 return opts;
             }
         } else if (arg.rfind("--lang=", 0) == 0) {
             opts.target_lang = arg.substr(7);
-            if (opts.target_lang != "cpp" && opts.target_lang != "c++") {
+            if (!is_supported_target(opts.target_lang)) {
                 opts.is_valid = false;
                 opts.error_message =
-                    "Unsupported target language: '" + opts.target_lang + "' (currently supported: 'cpp')";
+                    "Unsupported target language: '" + opts.target_lang + "' (supported: 'cpp', 'cpp17', 'c99')";
                 return opts;
             }
 

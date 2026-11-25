@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 92  
-**Total Documented Test Cases**: 783  
+**Total Documented Test Cases**: 790  
 
 ---
 
@@ -90,7 +90,7 @@
 
 | Suite File | Source Path | Test Cases | Scope Summary |
 | :--- | :--- | :---: | :--- |
-| [`test_json_parser.cpp`](../../tests/frontend/common/test_json_parser.cpp) | `tests/frontend/common/test_json_parser.cpp` | 9 | Unit tests for front-end JSON statechart parser, composite states, transitions arrays, and port constraints. |
+| [`test_json_parser.cpp`](../../tests/frontend/common/test_json_parser.cpp) | `tests/frontend/common/test_json_parser.cpp` | 10 | Unit tests for front-end JSON statechart parser, composite states, transitions arrays, and port constraints. |
 | [`test_parser_classification.cpp`](../../tests/frontend/common/test_parser_classification.cpp) | `tests/frontend/common/test_parser_classification.cpp` | 3 | Unit tests for front-end parser taxonomy and format classification (Formal vs Diagram). |
 | [`test_parser_factory_and_lexer.cpp`](../../tests/frontend/common/test_parser_factory_and_lexer.cpp) | `tests/frontend/common/test_parser_factory_and_lexer.cpp` | 9 | Unit tests for ParserFactory dynamic parser resolution and LexerUtils lexical analysis routines. |
 | [`test_parser_negative.cpp`](../../tests/frontend/common/test_parser_negative.cpp) | `tests/frontend/common/test_parser_negative.cpp` | 6 | Negative unit tests across front-end parsers verifying rejection of malformed, empty, or corrupt inputs. |
@@ -105,11 +105,11 @@
 | [`test_scxml_parser.cpp`](../../tests/frontend/formal/test_scxml_parser.cpp) | `tests/frontend/formal/test_scxml_parser.cpp` | 19 | Unit test suite for the W3C SCXML (State Chart XML) frontend parser. |
 | [`test_scxml_semantic_completeness.cpp`](../../tests/frontend/formal/test_scxml_semantic_completeness.cpp) | `tests/frontend/formal/test_scxml_semantic_completeness.cpp` | 5 | Unit test suite verifying W3C SCXML semantic completeness (parallel regions, final states, events). |
 | [`test_smv_parser.cpp`](../../tests/frontend/formal/test_smv_parser.cpp) | `tests/frontend/formal/test_smv_parser.cpp` | 23 | Unit test suite for the nuXmv / SMV formal model frontend parser. |
-| [`test_stateflow_parser.cpp`](../../tests/frontend/formal/test_stateflow_parser.cpp) | `tests/frontend/formal/test_stateflow_parser.cpp` | 18 | Unit test suite for the MathWorks Stateflow chart frontend parser. |
+| [`test_stateflow_parser.cpp`](../../tests/frontend/formal/test_stateflow_parser.cpp) | `tests/frontend/formal/test_stateflow_parser.cpp` | 19 | Unit test suite for the MathWorks Stateflow chart frontend parser. |
 | [`test_stateflow_slx_ingestion.cpp`](../../tests/frontend/formal/test_stateflow_slx_ingestion.cpp) | `tests/frontend/formal/test_stateflow_slx_ingestion.cpp` | 5 | Unit test suite for direct ingestion of MathWorks Stateflow .slx container archives. |
 | [`test_sysml2_advanced_constructs.cpp`](../../tests/frontend/formal/test_sysml2_advanced_constructs.cpp) | `tests/frontend/formal/test_sysml2_advanced_constructs.cpp` | 1 | Unit test suite for SysML v2 advanced constructs (nested/qualified packages, binding connectors, fork and join composite transitions). |
 | [`test_sysml2_flight_control.cpp`](../../tests/frontend/formal/test_sysml2_flight_control.cpp) | `tests/frontend/formal/test_sysml2_flight_control.cpp` | 5 | Integration verification suite for OMG SysML v2 Flight Mission Controller pipeline. |
-| [`test_sysml2_parser.cpp`](../../tests/frontend/formal/test_sysml2_parser.cpp) | `tests/frontend/formal/test_sysml2_parser.cpp` | 35 | Unit test suite for the OMG SysML v2 State Definition frontend parser. |
+| [`test_sysml2_parser.cpp`](../../tests/frontend/formal/test_sysml2_parser.cpp) | `tests/frontend/formal/test_sysml2_parser.cpp` | 38 | Unit test suite for the OMG SysML v2 State Definition frontend parser. |
 | [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) | `tests/frontend/formal/test_sysml2_structured_data.cpp` | 6 | Unit test suite for SysML v2 structured data types, enums, temporal triggers, and connection points. |
 
 ## Formal IR Subsystem
@@ -155,8 +155,8 @@
 | [`test_pipeline_extensibility.cpp`](../../tests/integration/pipeline/test_pipeline_extensibility.cpp) | `tests/integration/pipeline/test_pipeline_extensibility.cpp` | 4 | Integration tests for pipeline extensibility, external Unix pipe filters, and dynamic plugin loading. |
 | [`test_cli_driver_errors.cpp`](../../tests/integration/test_cli_driver_errors.cpp) | `tests/integration/test_cli_driver_errors.cpp` | 14 | Comprehensive regression tests for controlled fsmc and fsm-opt driver failure contracts. |
 | [`test_cmake_integration.cpp`](../../tests/integration/test_cmake_integration.cpp) | `tests/integration/test_cmake_integration.cpp` | 0 | Integration test verifying the `fsm_target_sources` CMake build-system macro. |
-| [`test_differential_semantics.cpp`](../../tests/integration/test_differential_semantics.cpp) | `tests/integration/test_differential_semantics.cpp` | 4 | Differential verification suite comparing IrSimulator (reference oracle) against generated C++17 and C++20 FSMs. |
+| [`test_differential_semantics.cpp`](../../tests/integration/test_differential_semantics.cpp) | `tests/integration/test_differential_semantics.cpp` | 5 | Differential verification suite comparing IrSimulator (reference oracle) against generated C++17 and C++20 FSMs. |
 | [`test_fsm_opt_cli_options.cpp`](../../tests/integration/test_fsm_opt_cli_options.cpp) | `tests/integration/test_fsm_opt_cli_options.cpp` | 13 | Comprehensive verification suite for all fsm-opt command-line options. |
-| [`test_fsmc_cli_options.cpp`](../../tests/integration/test_fsmc_cli_options.cpp) | `tests/integration/test_fsmc_cli_options.cpp` | 25 | Comprehensive verification suite for all fsmc command-line options. |
+| [`test_fsmc_cli_options.cpp`](../../tests/integration/test_fsmc_cli_options.cpp) | `tests/integration/test_fsmc_cli_options.cpp` | 26 | Comprehensive verification suite for all fsmc command-line options. |
 | [`test_golden_ir_invariance.cpp`](../../tests/integration/test_golden_ir_invariance.cpp) | `tests/integration/test_golden_ir_invariance.cpp` | 9 | Golden IR cross-format roundtrip and middle-end pass invariance test suite. |
 | [`test_multiformat_presets_roundtrip.cpp`](../../tests/integration/test_multiformat_presets_roundtrip.cpp) | `tests/integration/test_multiformat_presets_roundtrip.cpp` | 6 | Formal Verification and End-to-End Roundtrip Suite for Canonical Multi-Format Presets. |

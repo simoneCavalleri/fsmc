@@ -19,7 +19,7 @@
 #include "fsm/backend/cpp/cpp_generator.hpp"
 #include "fsm/backend/manifest_emitter.hpp"
 #include "fsm/ir/fsm_ir.hpp"
-#include "tools/fsmc/ir_simulator.hpp"
+#include "fsm/ir/ir_simulator.hpp"
 
 namespace fs = std::filesystem;
 

@@ -7,6 +7,8 @@ include(GNUInstallDirs)
 # Compiled driver library shared by CLI executables and integration tests
 add_library(fsmc_driver_lib STATIC
     fsmc/fsmc_driver.cpp
+    fsmc/driver_codegen.cpp
+    fsmc/driver_verify.cpp
     fsm-opt/opt_driver.cpp
 )
 target_link_libraries(fsmc_driver_lib PUBLIC fsmc_compiler fsmc_runtime PRIVATE $<BUILD_INTERFACE:fsmc_project_options>)

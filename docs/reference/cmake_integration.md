@@ -26,6 +26,9 @@ fsmc_target_sources(
     [NAME <GeneratedFSMClassName>]
     [NAMESPACE <NamespaceName>]
     [OUTPUT_DIR <OutputDirectory>]
+    [OUTPUT_STEM <FileStem>]
+    [STATE_DEF <StateDefName>]
+    [IMPORT_DIRS <dir1> [<dir2>...]]
     [RUNTIME_HEADER <HeaderPath>]
     [STANDALONE]
     [MODULAR]
@@ -49,6 +52,9 @@ fsmc_target_sources(
 | `NAME` | String | Name of the generated C++ class (e.g. `UavMissionFSM`). |
 | `NAMESPACE` | String | C++ namespace to enclose generated types. Default: `fsm_generated`. |
 | `OUTPUT_DIR` | Path | Output directory for generated artifacts (default: `${CMAKE_CURRENT_BINARY_DIR}/generated_${TARGET_NAME}`). |
+| `OUTPUT_STEM` | String | Custom output filename stem (useful when compiling multiple `STATE_DEF` machines from the same `.sysml` file). |
+| `STATE_DEF` | String | Select a specific SysML v2.0 `state def` (`--state-def`) from a multi-machine model file. |
+| `IMPORT_DIRS` | Paths | List of search directories forwarded as `-I <dir>` for multi-file SysML v2.0 `import <Pkg>::*;` resolution. |
 | `STANDALONE` | Flag | Emit a single self-contained `<stem>_fsm.hpp` instead of the default split `<stem>_ports.hpp` + `<stem>_fsm.hpp` pair. |
 | `MODULAR` | Flag | Generate header that includes external runtime header (default: `"fsm.hpp"`, matching `--export-runtime`). |
 | `EMIT_C_ABI` | Flag | Also emit pure C99 zero-allocation ABI wrapper (`<stem>_c.h` + `<stem>_c.cpp`) and add `<stem>_c.cpp` to `<TargetName>`. |

@@ -183,17 +183,18 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
                     if (model.find_signal(sig_name) == nullptr) {
                         model.signals.emplace_back(sig_name);
                     }
-                    action = "send_" + sig_name + "_via_" + port_name;
-                    ActionSignature sig_action(
-                        action, port_name + ".send(" + sig_name + (args_str.empty() ? "" : (", " + args_str)) + ")");
+                    if (action.empty()) {
+                        action = "send_" + sig_name + "_via_" + port_name;
+                    }
                     SignalEmitOp emit_op;
                     emit_op.signal_name = sig_name;
                     emit_op.target_port = port_name;
                     if (!args_str.empty()) {
                         emit_op.arguments.push_back(args_str);
                     }
-                    sig_action.instructions.emplace_back(std::move(emit_op));
-                    trans_send_action = std::move(sig_action);
+                    service_calls.emplace_back(
+                        std::move(emit_op),
+                        port_name + ".send(" + sig_name + (args_str.empty() ? "" : (", " + args_str)) + ")");
                 } else {
                     // Standalone action method call
                     std::string act_call = sanitize_identifier(statement);

@@ -310,6 +310,34 @@ void emit_action_c(std::ostringstream& src, const ActionSignature& act, const C9
                 src << ");\n";
                 src << indent << "}\n";
             }
+        } else if (std::holds_alternative<SignalEmitOp>(inst.op)) {
+            const auto& se = std::get<SignalEmitOp>(inst.op);
+            if (!se.signal_name.empty() && !ctx.emitted_signals.empty()) {
+                const std::string tag_const =
+                    ctx.upper_prefix + "_OUT_" + to_upper_ascii(to_snake_case(se.signal_name));
+                const std::string port_lit = se.target_port.value_or("");
+                src << indent << "if (out_val.outbox_count < " << ctx.upper_prefix << "_MAX_OUTBOX) {\n";
+                src << indent << "    " << ctx.prefix << "_emitted_event_t _em;\n";
+                src << indent << "    memset(&_em, 0, sizeof(_em));\n";
+                src << indent << "    _em.tag = " << tag_const << ";\n";
+                src << indent << "    _em.port = \"" << port_lit << "\";\n";
+                auto sig_it = ctx.emitted_signals_map.find(se.signal_name);
+                const SignalDefinition* sig_def = (sig_it != ctx.emitted_signals_map.end()) ? sig_it->second : nullptr;
+                if (sig_def != nullptr && !sig_def->attributes.empty()) {
+                    const std::string field_pfx = "_em." + to_snake_case(se.signal_name) + ".";
+                    for (std::size_t ai = 0; ai < se.arguments.size() && ai < sig_def->attributes.size(); ++ai) {
+                        const auto& attr = sig_def->attributes[ai];
+                        std::string ct;
+                        bool is_st = false;
+                        if (map_type_to_c99(attr.type, ctx, ct, is_st)) {
+                            src << indent << "    " << field_pfx << sanitize_c_ident(attr.name) << " = (" << ct << ")("
+                                << translate_expr_to_c(se.arguments[ai], ctx, event_attrs) << ");\n";
+                        }
+                    }
+                }
+                src << indent << "    out_val.outbox[out_val.outbox_count++] = _em;\n";
+                src << indent << "}\n";
+            }
         }
     }
 }

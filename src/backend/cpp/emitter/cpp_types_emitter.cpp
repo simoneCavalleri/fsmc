@@ -258,7 +258,42 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
         out << "struct " << safe_model_name << "InPorts {};\n\n";
     }
 
-    // 2. OutPorts
+    // 2. OutPorts (plus zero-heap Static Outbox when the model emits signals via SignalEmitOp)
+    const auto emitted_summary = collect_emitted_signals(model);
+    const bool has_emitted_signals = !emitted_summary.unique_signals.empty();
+    if (has_emitted_signals) {
+        out << "/**\n";
+        out << " * @enum " << safe_model_name << "EmittedEventTag\n";
+        out << " * @brief Discriminator for zero-heap emitted signals from '" << safe_model_comment << "'.\n";
+        out << " */\n";
+        out << "enum class " << safe_model_name << "EmittedEventTag : std::uint16_t {\n";
+        out << "    None = 0,\n";
+        for (const auto& sig_name : emitted_summary.unique_signals) {
+            out << "    " << escape_cpp_keyword(sig_name) << ",\n";
+        }
+        out << "};\n\n";
+
+        out << "/**\n";
+        out << " * @struct " << safe_model_name << "EmittedEvent\n";
+        out << " * @brief Static zero-heap outbox record for emitted signals.\n";
+        out << " */\n";
+        out << "struct " << safe_model_name << "EmittedEvent {\n";
+        out << "    " << safe_model_name << "EmittedEventTag tag{" << safe_model_name << "EmittedEventTag::None};\n";
+        out << "    const char* port{\"\"};\n";
+        for (const auto& sig_name : emitted_summary.unique_signals) {
+            const auto* sig_def = model.find_signal(sig_name);
+            if (sig_def != nullptr && !sig_def->attributes.empty()) {
+                const std::string safe_sig = escape_cpp_keyword(sig_name);
+                out << "    struct " << safe_sig << "Payload {\n";
+                for (const auto& attr : sig_def->attributes) {
+                    out << "        " << attr.type.to_cpp_type() << " " << escape_cpp_keyword(attr.name) << "{};\n";
+                }
+                out << "    } " << safe_sig << "_payload{};\n";
+            }
+        }
+        out << "};\n\n";
+    }
+
     bool has_out_ports = false;
     for (const auto& port : model.ports) {
         if (port.is_out()) {
@@ -266,7 +301,7 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
             break;
         }
     }
-    if (has_out_ports) {
+    if (has_out_ports || has_emitted_signals) {
         out << "/**\n";
         out << " * @struct " << safe_model_name << "OutPorts\n";
         out << " * @brief Actuator output command write buffer for '" << safe_model_comment << "'.\n";
@@ -291,6 +326,19 @@ void CppModelEmitter::emit_domain_structures(std::ostream& out, const FsmIr& mod
                 }
                 out << "\n";
             }
+        }
+        if (has_emitted_signals) {
+            out << "    static constexpr std::size_t kMaxOutbox = " << emitted_summary.max_outbox_capacity << "U;\n";
+            out << "    std::array<" << safe_model_name << "EmittedEvent, kMaxOutbox> outbox{};\n";
+            out << "    std::size_t outbox_count{0};\n\n";
+            out << "    constexpr void clear_outbox() noexcept { outbox_count = 0; }\n";
+            out << "    constexpr bool push_outbox(const " << safe_model_name << "EmittedEvent& ev) noexcept {\n";
+            out << "        if (outbox_count < kMaxOutbox) {\n";
+            out << "            outbox[outbox_count++] = ev;\n";
+            out << "            return true;\n";
+            out << "        }\n";
+            out << "        return false;\n";
+            out << "    }\n";
         }
 
         std::vector<std::string> out_validations;

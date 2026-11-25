@@ -435,4 +435,46 @@ bool has_member_access_prefix(const std::string& expr, std::initializer_list<std
     return false;
 }
 
+EmittedSignalSummary collect_emitted_signals(const FsmIr& model) {
+    EmittedSignalSummary summary;
+    std::unordered_set<std::string> seen;
+    std::size_t max_burst = 0;
+
+    auto scan_action = [&](const ActionSignature& act) {
+        std::size_t burst = 0;
+        for (const auto& inst : act.instructions) {
+            if (const auto* se = std::get_if<SignalEmitOp>(&inst.op)) {
+                if (!se->signal_name.empty()) {
+                    ++burst;
+                    if (seen.insert(se->signal_name).second) {
+                        summary.unique_signals.push_back(se->signal_name);
+                    }
+                }
+            }
+        }
+        if (burst > max_burst) {
+            max_burst = burst;
+        }
+    };
+
+    for (const auto& st : model.states) {
+        for (const auto& act : st.entry_actions) {
+            scan_action(act);
+        }
+        for (const auto& act : st.exit_actions) {
+            scan_action(act);
+        }
+    }
+    for (const auto& tr : model.transitions) {
+        if (tr.condition_action.has_value()) {
+            scan_action(*tr.condition_action);
+        }
+        if (tr.transition_action.has_value()) {
+            scan_action(*tr.transition_action);
+        }
+    }
+    summary.max_outbox_capacity = std::max<std::size_t>(4U, max_burst * 2U);
+    return summary;
+}
+
 }  // namespace fsm::backend::cpp::emitter_detail

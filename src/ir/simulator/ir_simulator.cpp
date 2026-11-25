@@ -74,6 +74,31 @@ std::string SimulationReport::to_json() const {
         os << ",\n";
         os << "      \"actions\": ";
         emit_str_array(os, st.executed_actions);
+        if (!st.emitted_events.empty()) {
+            os << ",\n      \"emitted_events\": [";
+            for (std::size_t ei = 0; ei < st.emitted_events.size(); ++ei) {
+                if (ei > 0) {
+                    os << ", ";
+                }
+                const auto& em = st.emitted_events[ei];
+                os << "{\"signal\": \"" << esc(em.signal_name) << "\"";
+                if (!em.target_port.empty()) {
+                    os << ", \"port\": \"" << esc(em.target_port) << "\"";
+                }
+                if (!em.numeric_args.empty()) {
+                    os << ", \"args\": [";
+                    for (std::size_t ai = 0; ai < em.numeric_args.size(); ++ai) {
+                        if (ai > 0) {
+                            os << ", ";
+                        }
+                        os << em.numeric_args[ai];
+                    }
+                    os << "]";
+                }
+                os << "}";
+            }
+            os << "]";
+        }
         os << "\n";
         os << "    }" << (i + 1 < steps.size() ? "," : "") << "\n";
     }
@@ -154,6 +179,18 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
         s_env[target_name] = env[target_name];
     };
 
+    std::deque<SimulatedEvent> internal_raise_queue;
+    std::vector<EmittedSignalRecord>* active_emitted_log = nullptr;
+
+    auto is_internal_trigger_signal = [&](const std::string& sig_name) -> bool {
+        for (const auto& tr : model.transitions) {
+            if (tr.get_trigger_name() == sig_name) {
+                return true;
+            }
+        }
+        return false;
+    };
+
     auto apply_action_sig = [&](const ActionSignature& act_sig, std::unordered_map<std::string, double>& s_env,
                                 std::vector<std::string>* action_log) {
         if (action_log != nullptr && !act_sig.name.empty()) {
@@ -176,6 +213,28 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
                 if (eval_rhs(pw->expression, s_env, rhs)) {
                     env[pw->port_name] = rhs;
                     s_env[pw->port_name] = rhs;
+                }
+            } else if (const auto* se = std::get_if<SignalEmitOp>(&inst.op)) {
+                std::vector<double> eval_args;
+                for (const auto& arg_expr : se->arguments) {
+                    double v = 0.0;
+                    if (eval_rhs(arg_expr, s_env, v)) {
+                        eval_args.push_back(v);
+                    }
+                }
+                const bool has_port = se->target_port.has_value() && !se->target_port->empty();
+                if (!has_port && is_internal_trigger_signal(se->signal_name)) {
+                    SimulatedEvent raised;
+                    raised.name = se->signal_name;
+                    if (const auto* sig_def = model.find_signal(se->signal_name)) {
+                        for (std::size_t ai = 0; ai < eval_args.size() && ai < sig_def->attributes.size(); ++ai) {
+                            raised.numeric_payload[sig_def->attributes[ai].name] = eval_args[ai];
+                        }
+                    }
+                    internal_raise_queue.push_back(std::move(raised));
+                } else if (active_emitted_log != nullptr) {
+                    active_emitted_log->push_back(
+                        EmittedSignalRecord{se->signal_name, se->target_port.value_or(""), std::move(eval_args)});
                 }
             }
         }
@@ -403,6 +462,7 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
 
         trace_step.handled = true;
         trace_step.used_symbolic_guard = used_symbolic_guard;
+        active_emitted_log = &trace_step.emitted_events;
 
         const bool is_internal = (matched->kind == TransitionEdgeKind::Internal);
         std::string next_state = is_internal ? current_state : resolve_entry_target(matched->target);
@@ -492,6 +552,7 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
         }
         out << "\n";
 
+        active_emitted_log = nullptr;
         const bool state_changed = (next_state != current_state);
         current_state = std::move(next_state);
         trace_step.to_state = current_state;
@@ -505,6 +566,15 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
     auto events = simulator_detail::parse_trace_input(trace_content);
     for (const auto& ev : events) {
         bool changed = process_event(ev, false);
+        // Drain internal run-to-completion raised signals first (bounded to prevent livelocks)
+        std::size_t raise_budget = 64;
+        while (!internal_raise_queue.empty() && raise_budget-- > 0) {
+            SimulatedEvent raised = std::move(internal_raise_queue.front());
+            internal_raise_queue.pop_front();
+            if (process_event(raised, false)) {
+                changed = true;
+            }
+        }
         // Recall deferred events whenever state changes (bounded to prevent infinite loops)
         std::size_t recall_budget = 64;
         while (changed && !deferred_queue.empty() && recall_budget-- > 0) {

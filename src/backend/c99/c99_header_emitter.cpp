@@ -127,13 +127,49 @@ std::string emit_c99_header(const C99EmitPlan& plan) {
     }
     hdr << "} " << ctx.prefix << "_in_ports_t;\n\n";
 
+    // Emitted Events Static Outbox (when model uses SignalEmitOp)
+    if (!ctx.emitted_signals.empty()) {
+        hdr << "#define " << ctx.upper_prefix << "_MAX_OUTBOX " << ctx.max_outbox << "U\n\n";
+        hdr << "typedef enum {\n";
+        hdr << "    " << ctx.upper_prefix << "_OUT_NONE = 0";
+        for (std::size_t i = 0; i < ctx.emitted_signals.size(); ++i) {
+            hdr << ",\n    " << ctx.upper_prefix << "_OUT_" << to_upper_ascii(to_snake_case(ctx.emitted_signals[i]))
+                << " = " << (i + 1U);
+        }
+        hdr << "\n} " << ctx.prefix << "_emitted_event_tag_t;\n\n";
+
+        hdr << "typedef struct {\n";
+        hdr << "    " << ctx.prefix << "_emitted_event_tag_t tag;\n";
+        hdr << "    const char* port;\n";
+        for (const auto& sig_name : ctx.emitted_signals) {
+            auto it = ctx.emitted_signals_map.find(sig_name);
+            const SignalDefinition* sig_def = (it != ctx.emitted_signals_map.end()) ? it->second : nullptr;
+            if (sig_def != nullptr && !sig_def->attributes.empty()) {
+                hdr << "    struct {\n";
+                for (const auto& attr : sig_def->attributes) {
+                    std::string ct;
+                    bool is_st = false;
+                    if (map_type_to_c99(attr.type, ctx, ct, is_st)) {
+                        hdr << "        " << ct << " " << sanitize_c_ident(attr.name) << ";\n";
+                    }
+                }
+                hdr << "    } " << to_snake_case(sig_name) << ";\n";
+            }
+        }
+        hdr << "} " << ctx.prefix << "_emitted_event_t;\n\n";
+    }
+
     // OutPorts POD
     hdr << "typedef struct {\n";
-    if (out_fields.empty()) {
+    if (out_fields.empty() && ctx.emitted_signals.empty()) {
         hdr << "    uint8_t _reserved;\n";
     } else {
         for (const auto& f : out_fields) {
             hdr << "    " << f.c_type << " " << f.name << ";\n";
+        }
+        if (!ctx.emitted_signals.empty()) {
+            hdr << "    " << ctx.prefix << "_emitted_event_t outbox[" << ctx.upper_prefix << "_MAX_OUTBOX];\n";
+            hdr << "    size_t outbox_count;\n";
         }
     }
     hdr << "} " << ctx.prefix << "_out_ports_t;\n\n";

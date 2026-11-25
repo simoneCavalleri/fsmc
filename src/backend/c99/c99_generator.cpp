@@ -129,6 +129,48 @@ GeneratedC99Bundle C99Generator::generate(const FsmIr& model, const C99Generator
         events.push_back(sig);
     }
 
+    // Collect emitted signals (SignalEmitOp) for static zero-heap outbox
+    {
+        std::unordered_set<std::string> seen_emits;
+        std::size_t max_burst = 0U;
+        auto scan_emits = [&](const ActionSignature& act) {
+            std::size_t burst = 0U;
+            for (const auto& inst : act.instructions) {
+                if (const auto* se = std::get_if<SignalEmitOp>(&inst.op)) {
+                    if (!se->signal_name.empty()) {
+                        ++burst;
+                        if (seen_emits.insert(se->signal_name).second) {
+                            ctx.emitted_signals.push_back(se->signal_name);
+                            ctx.emitted_signals_map[se->signal_name] = processed.find_signal(se->signal_name);
+                        }
+                    }
+                }
+            }
+            if (burst > max_burst) {
+                max_burst = burst;
+            }
+        };
+        for (const auto& st : processed.states) {
+            for (const auto& act : st.entry_actions) {
+                scan_emits(act);
+            }
+            for (const auto& act : st.exit_actions) {
+                scan_emits(act);
+            }
+        }
+        for (const auto& tr : processed.transitions) {
+            if (tr.condition_action.has_value()) {
+                scan_emits(*tr.condition_action);
+            }
+            if (tr.transition_action.has_value()) {
+                scan_emits(*tr.transition_action);
+            }
+        }
+        if (!ctx.emitted_signals.empty()) {
+            ctx.max_outbox = (max_burst * 2U > 4U) ? (max_burst * 2U) : 4U;
+        }
+    }
+
     const bool has_typed_services = !processed.services.empty();
 
     const C99EmitPlan plan{processed,     ctx,       header_inc, ir_sha256,  external_types, local_enums,

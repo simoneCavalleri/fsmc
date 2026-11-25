@@ -78,7 +78,7 @@ flowchart TD
 When a statechart defines a timed transition such as:
 ```sysml
 state Armed {
-    transition on after(500 ms) then LaunchTimeout;
+    transition first Armed accept after 500 [SI::ms] then LaunchTimeout;
 }
 ```
 

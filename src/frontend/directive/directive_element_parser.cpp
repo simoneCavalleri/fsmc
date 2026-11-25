@@ -109,6 +109,20 @@ bool DirectiveParser::parse_defer_directive(std::string_view body, StateNode& st
         str = trim(str.substr(5));
     }
     auto list = extract_array_items(str, 0);
+    if (list.empty() && !str.empty()) {
+        std::istringstream iss(str);
+        std::string token;
+        while (std::getline(iss, token, ',')) {
+            std::string t = trim(token);
+            if (t.size() >= 2 && t.front() == '"' && t.back() == '"') {
+                t = t.substr(1, t.size() - 2);
+            }
+            t = sanitize_identifier(t);
+            if (!t.empty()) {
+                list.push_back(std::move(t));
+            }
+        }
+    }
     for (auto& ev : list) {
         if (!ev.empty() &&
             std::find(state.deferred_events.begin(), state.deferred_events.end(), ev) == state.deferred_events.end()) {

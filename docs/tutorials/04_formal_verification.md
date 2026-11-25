@@ -81,13 +81,15 @@ In formal verification, properties describe how systems behave over time:
 
 ### Embedding Properties in Models
 
-Attach formal properties directly inside SysML v2 models using `// @fsm:property` directives (or native `assert property` blocks):
+Attach formal properties directly inside SysML v2 models using `// @fsm:property` directives (or state-local `assert constraint` blocks for synchronous invariants):
 
 ```sysml
+private import ScalarValues::*;
+
 // @fsm:property name=PropSafety kind=Safety formula="G !(Ascending && Emergency)" req="REQ_FLIGHT_041"
 // @fsm:property name=PropReachable kind=Reachability formula="F Cruising" req="REQ_FLIGHT_042"
 state def FlightController {
-    in port battery_pct : Integer { assert constraint { self >= 0 and self <= 100; } }
+    in battery_pct : Integer { assert constraint { battery_pct >= 0 and battery_pct <= 100 } }
 
     entry; then Booting;
     state Booting;
@@ -109,18 +111,18 @@ When you run `fsmc --verify` (or export to nuXmv with `--export smv`), `fsmc` tr
 When models define constrained input ports or registers, `fsmc` performs forward abstract interpretation over interval lattices `[min, max]`:
 
 ```sysml
-in port battery_pct : Integer { assert constraint { self >= 0 and self <= 100; } }
+in battery_pct : Integer { assert constraint { battery_pct >= 0 and battery_pct <= 100 } }
 
 transition t_low
     first Cruising
     accept LowBatteryWarning
-    if in.battery_pct < 20
+    if battery_pct < 20
     then Emergency;
 
 transition t_impossible
     first Cruising
     accept LowBatteryWarning
-    if in.battery_pct > 120  // <-- triggers W_EFSM_UNSATISFIABLE_GUARD
+    if battery_pct > 120  // <-- triggers W_EFSM_UNSATISFIABLE_GUARD
     then Emergency;
 ```
 

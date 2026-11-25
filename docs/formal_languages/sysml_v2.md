@@ -34,11 +34,15 @@ package SpacecraftSubsystems {
 
     state def FlightController {
         // 1. Read-only Input Parameters with formal range constraints
-        in sensor_altitude : Real { assert constraint { self >= 0.0 and self <= 100000.0 } }
+        in sensor_altitude : Real {
+            assert constraint { sensor_altitude >= 0.0 and sensor_altitude <= 100000.0 }
+        }
         in gps_lock : Boolean;
 
         // 2. Write-only Output Parameters
-        out thruster_level : Real { assert constraint { self >= 0.0 and self <= 100.0 } }
+        out thruster_level : Real {
+            assert constraint { thruster_level >= 0.0 and thruster_level <= 100.0 }
+        }
         out active_phase : FlightPhase;
 
         // 3. Persistent Internal Memory (Registers / z^-1 state)
@@ -159,6 +163,7 @@ package ThermalSubsystem {
 
     state def SensorMonitorFsm {
         in sensor_temp_c : Integer;
+        port link : ~ThermalLinkPort;
         attribute alerts_sent : Integer := 0;
 
         entry; then Monitoring;
@@ -170,7 +175,7 @@ package ThermalSubsystem {
             accept EvSample
             if sensor_temp_c >= 85
             do action RaiseThermalAlert {
-                assign temp_c := sensor_temp_c;
+                assign link.temp_c := sensor_temp_c;
                 assign alerts_sent := alerts_sent + 1;
                 item msg : EvOverTemp {
                     attribute :>> peak_temp = sensor_temp_c;
@@ -182,6 +187,7 @@ package ThermalSubsystem {
 
     state def CoolingActuatorFsm {
         out fan_pwm : Integer;
+        port link : ThermalLinkPort;
         attribute last_peak_temp : Integer := 0;
 
         entry; then Standby;
@@ -229,7 +235,7 @@ package MissionSafety {
                 not motors_armed
             }
 
-            defer EvStreamTelemetry;
+            // @fsm:defer EvStreamTelemetry
         }
 
         state FlightActive;
@@ -252,8 +258,12 @@ package MissionSafety {
         // @fsm:property name=SafeBat kind=Safety formula="G (EvCritBat -> F SafeMode)"
 
         state def SpacecraftControl {
-            in battery_soc : Real { assert constraint { self >= 0.0 and self <= 100.0 } }
-            out heater_cmd : Real { assert constraint { self >= 0.0 and self <= 100.0 } }
+            in battery_soc : Real {
+                assert constraint { battery_soc >= 0.0 and battery_soc <= 100.0 }
+            }
+            out heater_cmd : Real {
+                assert constraint { heater_cmd >= 0.0 and heater_cmd <= 100.0 }
+            }
             attribute cycles : Integer := 0;
 
             entry; then Standby;

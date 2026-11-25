@@ -104,6 +104,9 @@ bool Sysml2Parser::parse_impl(std::string_view content, FsmIr& model, std::strin
                         directive::DirectiveParser::parse_state_directive(body, *st);
                     } else if (body.rfind("defer", 0) == 0) {
                         directive::DirectiveParser::parse_defer_directive(body, *st);
+                        for (const auto& de : st->deferred_events) {
+                            model.add_event(de);
+                        }
                     }
                 }
             }

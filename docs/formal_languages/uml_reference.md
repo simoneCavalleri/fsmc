@@ -19,13 +19,13 @@ state def PowerSystem {
         first Idle
         accept StartEvent
         if HasPowerGuard
-        do TurnOnAction
+        do action TurnOnAction
         then Running;
 
     transition stop_trans
         first Running
         accept StopEvent
-        do TurnOffAction
+        do action TurnOffAction
         then Idle;
 }
 ```
@@ -71,9 +71,9 @@ state def FlightSystem {
 
     state Landing;
 
-    transition from Ascending accept AltitudeReachedEvent do DeployPanelsAction then Cruising;
-    transition from Cruising accept InsertionEvent then Orbiting;
-    transition from InFlight accept DeorbitCmd then Landing;
+    transition first Ascending accept AltitudeReachedEvent do action DeployPanelsAction then Cruising;
+    transition first Cruising accept InsertionEvent then Orbiting;
+    transition first InFlight accept DeorbitCmd then Landing;
 }
 ```
 
@@ -119,8 +119,8 @@ state def Satellite {
     entry; then Orbiting;
     state Orbiting;
 
-    // Internal transition: no 'then/to' target
-    transition from Orbiting accept PingTelemetry do LogTelemetryAction;
+    // Internal transition: no 'then' target
+    transition first Orbiting accept PingTelemetry do action LogTelemetryAction;
 }
 ```
 
@@ -161,15 +161,15 @@ state def Authentication {
     entry; then Standby;
 
     state Standby;
-    state AuthChoice :> Choice;
+    decide AuthChoice;
     state AdminView;
     state UserView;
     state Locked;
 
-    transition from Standby accept LoginCmd then AuthChoice;
-    transition from AuthChoice if IsAdminGuard do GrantAdminAction then AdminView;
-    transition from AuthChoice if IsUserGuard do GrantUserAction then UserView;
-    transition from AuthChoice if NoClearanceGuard do LockoutAction then Locked;
+    transition first Standby accept LoginCmd then AuthChoice;
+    transition first AuthChoice if IsAdminGuard do action GrantAdminAction then AdminView;
+    transition first AuthChoice if IsUserGuard do action GrantUserAction then UserView;
+    transition first AuthChoice if NoClearanceGuard do action LockoutAction then Locked;
 }
 ```
 
@@ -222,9 +222,9 @@ state def TaskManager {
 
     state Suspended;
 
-    transition from Step1 accept NextStep then Step2;
-    transition from Processing accept PauseCmd then Suspended;
-    transition from Suspended accept ResumeCmd then Processing[H];
+    transition first Step1 accept NextStep then Step2;
+    transition first Processing accept PauseCmd then Suspended;
+    transition first Suspended accept ResumeCmd then Processing.H;
 }
 ```
 
@@ -252,15 +252,16 @@ Suspended --> Processing[H] : ResumeCmd
 state def BootSequence {
     entry; then Initializing;
 
-    state Initializing;
-    defer StartMissionCmd;
-    defer DataPacketEvent;
+    state Initializing {
+        // @fsm:defer StartMissionCmd
+        // @fsm:defer DataPacketEvent
+    }
 
     state Ready;
     state InFlight;
 
-    transition from Initializing accept BootComplete then Ready;
-    transition from Ready accept StartMissionCmd then InFlight;
+    transition first Initializing accept BootComplete then Ready;
+    transition first Ready accept StartMissionCmd then InFlight;
 }
 ```
 
@@ -394,7 +395,7 @@ fsmc -i mission.puml --export sysml2 -o mission.sysml
 
 #### Multi-Format Syntax:
 - **PlantUML / Mermaid / DOT**: `StateA --> StateB : Event [PowerOk && !EmergencyStop]`
-- **SysML v2**: `transition from StateA accept Event if PowerOk && !EmergencyStop then StateB;`
+- **SysML v2**: `transition first StateA accept Event if PowerOk and not EmergencyStop then StateB;`
 - **SCXML**: `<transition event="Event" cond="PowerOk &amp;&amp; !EmergencyStop" target="StateB"/>`
 - **XState JSON**: `"guard": "PowerOk && !EmergencyStop"`
 
@@ -446,11 +447,11 @@ struct DeploySolarPanelsAction {
 | **Initial / Final States** | Native | Native | Native | Native | Native | Native (`[*]`) | Native (`[*]`) | Extended (`shape=point`) |
 | **Composite States (HFSM)** | Native | Native | Native (`EXCLUSIVE_OR`) | Native | Native | Native | Native | Extended (`subgraph`) |
 | **Internal Transitions** | Native | Native | Native | Native | Native | Native (`State : E / A`) | Native (`State : E / A`) | Extended (`internal=true`) |
-| **Choice / Junction** | Native | Native | Native (`CONNECTIVE`) | Extended (`cond` list) | Extended (`cond` list) | Native (`<<choice>>`) | Native (`<<choice>>`) | Extended (`shape=diamond`) |
-| **History States (`[H]`, `[H*]`)** | Native | Native (`[H]`, `[H*]`) | Native (`HISTORY`) | Native | Native (`type: "history"`) | Native (`State[H]`) | Extended (`[H]`) | *N/A* |
-| **Deferred Events** | Native | Native (`defer Evt;`) | Extended (`@fsm:defer`) | Extended (`<defer>`) | Native (`"defer": []`) | Extended (`: defer Evt`) | Extended (`: [defer] Evt`) | Extended (`defer="..."`) |
-| **Composite Guards (`!`, `&&`, `||`)** | Extended (AST) | Native (`and`/`&&`, `or`/`||`, `not`/`!`) | Native | Native | Native | Extended (AST) | Extended (AST) | Extended (AST) |
-| **Timed Transitions (`after_ms<N>`)** | Extended (AST) | Native (`after 500 ms`) | Native (`after(500, msec)`) | Native (`delay=...`) | Native (`after: {}`) | Extended (AST) | Extended (AST) | Extended (AST) |
+| **Choice / Junction** | Native | Native (`decide`) | Native (`CONNECTIVE`) | Extended (`cond` list) | Extended (`cond` list) | Native (`<<choice>>`) | Native (`<<choice>>`) | Extended (`shape=diamond`) |
+| **History States (`[H]`, `[H*]`)** | Native | Extended (`.H`, `.deep_history`) | Native (`HISTORY`) | Native | Native (`type: "history"`) | Native (`State[H]`) | Extended (`[H]`) | *N/A* |
+| **Deferred Events** | Native | Extended (`@fsm:defer`) | Extended (`@fsm:defer`) | Extended (`<defer>`) | Native (`"defer": []`) | Extended (`: defer Evt`) | Extended (`: [defer] Evt`) | Extended (`defer="..."`) |
+| **Composite Guards (`!`, `&&`, `||`)** | Extended (AST) | Native (`and`, `or`, `not`) | Native | Native | Native | Extended (AST) | Extended (AST) | Extended (AST) |
+| **Timed Transitions (`after_ms<N>`)** | Extended (AST) | Native (`accept after 500 [SI::ms]`) | Native (`after(500, msec)`) | Native (`delay=...`) | Native (`after: {}`) | Extended (AST) | Extended (AST) | Extended (AST) |
 | **Comment Directives** | *N/A* | `// @fsm:...` | `<!-- @fsm:... -->` | `<!-- @fsm:... -->` | `@fsm:...` / sidecar | `' @fsm:...` | `%% @fsm:...` | `// @fsm:...` |
 
 ### C. Extension Design Principles
@@ -465,7 +466,7 @@ For the complete comment-directive syntax (`@fsm:port`, `@fsm:var`, `@fsm:signal
 
 ### D. Timed Transitions (`after(...)`, `every(...)`) & SMV Discrete Timers
 
-- **OMG SysML v2**: `transition accept after 500 ms then NextState;`
+- **OMG SysML v2**: `transition first CurrentState accept after 500 [SI::ms] then NextState;`
 - **MathWorks Stateflow**: `after(500, msec)` or `after(0.5, sec)`
 - **W3C SCXML**: `<transition delay="500ms" target="NextState"/>`
 - **XState JSON**: `"after": { "500": "NextState" }`

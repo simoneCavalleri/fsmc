@@ -73,38 +73,42 @@ Because the intersection is empty, the guard can never evaluate to `true` at run
 === "Model with Dead Guard (Triggers Warning)"
     ```sysml
     package DroneSystem {
+        private import ScalarValues::*;
+
         state def PowerController {
-            in port battery_soc : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
+            in battery_soc : Real { assert constraint { battery_soc >= 0.0 and battery_soc <= 100.0 } }
 
             state Cruising;
             state TurboMode;
 
             // Flaw: battery_soc contract is [0.0, 100.0], so (> 120.0) is mathematically dead
-            transition boost first Cruising if in.battery_soc > 120.0 then TurboMode;
+            transition boost first Cruising if battery_soc > 120.0 then TurboMode;
         }
     }
     ```
 
 === "Compiler Diagnostic Output"
     ```text
-    warning[W0302]: Guard 'in.battery_soc > 120.0' on transition 'Cruising -> TurboMode' is unsatisfiable.
-      --> power_controller.sysml:9:9
+    warning[W0302]: Guard 'battery_soc > 120.0' on transition 'Cruising -> TurboMode' is unsatisfiable.
+      --> power_controller.sysml:11:9
        |
-     9 |         transition boost first Cruising if in.battery_soc > 120.0 then TurboMode;
-       |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Variable range [0.0, 100.0] never satisfies (> 120.0)
+    11 |         transition boost first Cruising if battery_soc > 120.0 then TurboMode;
+       |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Variable range [0.0, 100.0] never satisfies (> 120.0)
     ```
 
 === "Resolved Model (Clean)"
     ```sysml
     package DroneSystem {
+        private import ScalarValues::*;
+
         state def PowerController {
-            in port battery_soc : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
+            in battery_soc : Real { assert constraint { battery_soc >= 0.0 and battery_soc <= 100.0 } }
 
             state Cruising;
             state TurboMode;
 
             // Fixed: valid threshold within [0.0, 100.0] domain
-            transition boost first Cruising if in.battery_soc > 80.0 then TurboMode;
+            transition boost first Cruising if battery_soc > 80.0 then TurboMode;
         }
     }
     ```
@@ -123,14 +127,16 @@ When a transition action assigns an expression whose computed interval falls out
 === "Model with Port Violation (Triggers Warning)"
     ```sysml
     package ThermalManagement {
+        private import ScalarValues::*;
+
         state def HeaterUnit {
-            out port heater_duty_cycle : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
+            out heater_duty_cycle : Real { assert constraint { heater_duty_cycle >= 0.0 and heater_duty_cycle <= 100.0 } }
 
             state Standby;
             state Active;
 
             // Flaw: 150.0 exceeds the declared OutPort contract [0.0, 100.0]
-            transition heat first Standby do action { out.heater_duty_cycle = 150.0; } then Active;
+            transition heat first Standby do action { assign heater_duty_cycle := 150.0; } then Active;
         }
     }
     ```
@@ -138,23 +144,25 @@ When a transition action assigns an expression whose computed interval falls out
 === "Compiler Diagnostic Output"
     ```text
     warning[W_PORT_RANGE_VIOLATION]: OutPort contract violation on transition 'Standby -> Active'.
-      --> heater_unit.sysml:9:9
+      --> heater_unit.sysml:11:9
        |
-     9 |         transition heat first Standby do action { out.heater_duty_cycle = 150.0; } then Active;
-       |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Value 150.0 exceeds OutPort bound [0.0, 100.0]
+    11 |         transition heat first Standby do action { assign heater_duty_cycle := 150.0; } then Active;
+       |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Value 150.0 exceeds OutPort bound [0.0, 100.0]
     ```
 
 === "Resolved Model (Clean)"
     ```sysml
     package ThermalManagement {
+        private import ScalarValues::*;
+
         state def HeaterUnit {
-            out port heater_duty_cycle : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
+            out heater_duty_cycle : Real { assert constraint { heater_duty_cycle >= 0.0 and heater_duty_cycle <= 100.0 } }
 
             state Standby;
             state Active;
 
             // Fixed: clamped value conforming to port contract
-            transition heat first Standby do action { out.heater_duty_cycle = 100.0; } then Active;
+            transition heat first Standby do action { assign heater_duty_cycle := 100.0; } then Active;
         }
     }
     ```
@@ -170,16 +178,18 @@ When multiple transitions share the same `(source_state, trigger_event)` and hav
 === "Model with Overlapping Guards (Triggers Warning)"
     ```sysml
     package FlightSystem {
+        private import ScalarValues::*;
+
         state def NavigationMode {
-            in port altitude : Real;
+            in altitude : Real;
 
             state Normal;
             state HighAltitude;
             state LowAltitude;
 
             // Flaw: when altitude is between 500.0 and 800.0, both transitions evaluate to true
-            transition to_high first Normal if in.altitude > 500.0 then HighAltitude;
-            transition to_low  first Normal if in.altitude < 800.0 then LowAltitude;
+            transition to_high first Normal if altitude > 500.0 then HighAltitude;
+            transition to_low  first Normal if altitude < 800.0 then LowAltitude;
         }
     }
     ```
@@ -187,27 +197,29 @@ When multiple transitions share the same `(source_state, trigger_event)` and hav
 === "Compiler Diagnostic Output"
     ```text
     warning[W0301]: Potentially non-deterministic overlapping guards on state 'Normal'.
-      --> navigation.sysml:10:9
+      --> navigation.sysml:12:9
        |
-    10 |         transition to_high first Normal if in.altitude > 500.0 then HighAltitude;
-    11 |         transition to_low  first Normal if in.altitude < 800.0 then LowAltitude;
-       |         -------------------------------------------------------------------------
+    12 |         transition to_high first Normal if altitude > 500.0 then HighAltitude;
+    13 |         transition to_low  first Normal if altitude < 800.0 then LowAltitude;
+       |         -------------------------------------------------------------------
        |         Intersecting interval (500.0, 800.0) matches multiple unprioritized branches.
     ```
 
 === "Resolved with Disjoint Guards"
     ```sysml
     package FlightSystem {
+        private import ScalarValues::*;
+
         state def NavigationMode {
-            in port altitude : Real;
+            in altitude : Real;
 
             state Normal;
             state HighAltitude;
             state LowAltitude;
 
             // Resolution A: Provably disjoint interval bounds
-            transition to_high first Normal if in.altitude >= 600.0 then HighAltitude;
-            transition to_low  first Normal if in.altitude <  600.0 then LowAltitude;
+            transition to_high first Normal if altitude >= 600.0 then HighAltitude;
+            transition to_low  first Normal if altitude <  600.0 then LowAltitude;
         }
     }
     ```
@@ -215,17 +227,21 @@ When multiple transitions share the same `(source_state, trigger_event)` and hav
 === "Resolved with Explicit Priorities"
     ```sysml
     package FlightSystem {
+        private import ScalarValues::*;
+
         state def NavigationMode {
-            in port altitude : Real;
+            in altitude : Real;
 
             state Normal;
             state HighAltitude;
             state LowAltitude;
 
-            // Resolution B: Priority disambiguation (Priority 1 evaluates before Priority 2)
-            transition to_high priority = 1 first Normal if in.altitude > 500.0 then HighAltitude;
+            // Resolution B: Priority disambiguation (higher priority evaluates first)
+            // @fsm:priority 2
+            transition to_high first Normal if altitude > 500.0 then HighAltitude;
 
-            transition to_low  priority = 2 first Normal if in.altitude < 800.0 then LowAltitude;
+            // @fsm:priority 1
+            transition to_low  first Normal if altitude < 800.0 then LowAltitude;
         }
     }
     ```
@@ -237,7 +253,7 @@ When multiple transitions share the same `(source_state, trigger_event)` and hav
 The computed interval bounds are automatically fed into the formal backend serializers:
 
 - **nuXmv / NuSMV**: Bounded variables (`VAR sensor_temp : -50..150;`) and contract invariants (`INVAR sensor_temp >= -50 & sensor_temp <= 150;`).
-- **SysML v2**: Exported `assert constraint { self >= min and self <= max; }`.
+- **SysML v2**: Exported `assert constraint { <port_name> >= min and <port_name> <= max }`.
 
 ```bash
 # Run the full formal verification pipeline via CLI

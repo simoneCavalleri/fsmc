@@ -60,10 +60,10 @@ Recursively restores the full hierarchy chain down to the deepest active leaf st
         state Processing;
     }
 
-    state Suspended {
-        // Transition targeting the shallow history of Operational
-        transition on ResumeCmd then Operational[H];
-    }
+    state Suspended;
+
+    // Transition targeting the shallow history of Operational
+    transition resume_op first Suspended accept ResumeCmd then Operational.H;
     ```
 
 === "W3C SCXML"

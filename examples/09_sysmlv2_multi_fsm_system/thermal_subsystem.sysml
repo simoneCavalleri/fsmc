@@ -23,6 +23,7 @@ package ThermalSubsystem {
 
     state def SensorMonitorFsm {
         in sensor_temp_c : Integer;
+        port link : ~ThermalLinkPort;
         attribute alerts_sent : Integer := 0;
 
         entry; then Monitoring;
@@ -35,7 +36,7 @@ package ThermalSubsystem {
             accept EvSample
             if sensor_temp_c >= 85
             do action RaiseThermalAlert {
-                assign temp_c := sensor_temp_c;
+                assign link.temp_c := sensor_temp_c;
                 assign alerts_sent := alerts_sent + 1;
                 item msg : EvOverTemp {
                     attribute :>> peak_temp = sensor_temp_c;
@@ -49,13 +50,14 @@ package ThermalSubsystem {
             accept EvSample
             if sensor_temp_c < 70
             do action ClearReading {
-                assign temp_c := sensor_temp_c;
+                assign link.temp_c := sensor_temp_c;
             }
             then Monitoring;
     }
 
     state def CoolingActuatorFsm {
         out fan_pwm : Integer;
+        port link : ThermalLinkPort;
         attribute last_peak_temp : Integer := 0;
 
         entry; then Standby;

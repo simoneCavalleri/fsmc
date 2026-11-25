@@ -138,7 +138,7 @@ fsmc -i flight_mission.sysml --simulate --trace events.json
 ## Specifying Properties in Models
 
 ### 1. In OMG SysML v2
-Use either native `assert property Name : Formula;` or a `// @fsm:property` comment directive:
+Use state-local `assert constraint Name { Expr }` blocks for synchronous state invariants, and `// @fsm:property` structured comments for LTL/CTL temporal logic formulas:
 
 ```sysml
 package FlightControl {
@@ -322,7 +322,11 @@ When a property fails, the model checker emits `error[E_MODEL_CHECK_VIOLATION]` 
 === "Resolved Model (Clean)"
     ```sysml
     package FlightSystem {
+        private import ScalarValues::*;
+
         state def MissionController {
+            in holding_time : Real;
+
             state InFlight;
             state HoldingPattern;
             state Landed;
@@ -330,8 +334,8 @@ When a property fails, the model checker emits `error[E_MODEL_CHECK_VIOLATION]` 
             // @fsm:property SafeLanding = "G (LowBattery -> F Landed)";
 
             transition on_low_bat first InFlight accept LowBattery then HoldingPattern;
-            transition hold_loop first HoldingPattern accept EvHoldTick if in.holding_time < 5.0 then HoldingPattern;
-            transition descend   first HoldingPattern if in.holding_time >= 5.0 then Landed;
+            transition hold_loop first HoldingPattern accept EvHoldTick if holding_time < 5.0 then HoldingPattern;
+            transition descend   first HoldingPattern if holding_time >= 5.0 then Landed;
         }
     }
     ```

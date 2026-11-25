@@ -144,7 +144,7 @@ TEST(DiagramExport, Sysml2Model_ExportedToPlantUmlAndMermaid) {
     EXPECT_NE(sysml.find("first Off"), std::string::npos);
     EXPECT_NE(sysml.find("accept ToggleCmd"), std::string::npos);
     EXPECT_NE(sysml.find("if PowerGuard"), std::string::npos);
-    EXPECT_NE(sysml.find("do TurnOnAction"), std::string::npos);
+    EXPECT_NE(sysml.find("do action TurnOnAction"), std::string::npos);
     EXPECT_NE(sysml.find("then On;"), std::string::npos);
 }
 

@@ -37,10 +37,12 @@ stateDiagram-v2
 ## 2. Modeling EFSM in SysML v2
 
 ```sysml
+private import ScalarValues::*;
+
 state def ConnectionManager {
-    in port latency_ms : Real { assert constraint { self >= 0.0 and self <= 10000.0; } }
-    in port is_authenticated : Boolean;
-    out port socket_connected : Boolean;
+    in latency_ms : Real { assert constraint { latency_ms >= 0.0 and latency_ms <= 10000.0 } }
+    in is_authenticated : Boolean;
+    out socket_connected : Boolean;
     attribute retry_count : Integer = 0;
 
     entry; then Disconnected;
@@ -53,31 +55,31 @@ state def ConnectionManager {
     transition t_connect
         first Disconnected
         accept ConnectCmd
-        do action { reg.retry_count = 0; }
+        do action { assign retry_count := 0; }
         then Connecting;
 
     transition t_handshake_success
         first Connecting
         accept HandshakeOk
-        if in.is_authenticated and in.latency_ms < 500.0
+        if is_authenticated and latency_ms < 500.0
         do action {
-            out.socket_connected = true;
-            reg.retry_count = 0;
+            assign socket_connected := true;
+            assign retry_count := 0;
         }
         then Connected;
 
     transition t_retry
         first Connecting
         accept HandshakeFailed
-        if reg.retry_count < 3
-        do action { reg.retry_count = reg.retry_count + 1; }
+        if retry_count < 3
+        do action { assign retry_count := retry_count + 1; }
         then Reconnecting;
 
     transition t_abort
         first Connecting
         accept HandshakeFailed
-        if reg.retry_count >= 3
-        do action { out.socket_connected = false; }
+        if retry_count >= 3
+        do action { assign socket_connected := false; }
         then Disconnected;
 
     transition t_retry_tick
@@ -88,7 +90,7 @@ state def ConnectionManager {
     transition t_disconnect
         first Connected
         accept DisconnectCmd
-        do action { out.socket_connected = false; }
+        do action { assign socket_connected := false; }
         then Disconnected;
 }
 ```
@@ -101,12 +103,12 @@ When `fsmc` compiles an EFSM model, it maps domain definitions into strongly typ
 
 | Model Element (`.sysml`) | Generated C++ Construct | Developer Responsibility |
 | :--- | :--- | :--- |
-| `in port latency_ms : Real { ... }` | Field in `ConnectionManagerFSMInPorts` | Populate sensor snapshot prior to dispatching events. |
-| `{ assert constraint { ... }; }` | Method `in.validate_contracts()` | Call `assert(in.validate_contracts())` in debug / CI loops. |
-| `out port socket_connected : Boolean;` | Field in `ConnectionManagerFSMOutPorts` | Read updated actuator outputs after dispatch. |
+| `in latency_ms : Real { ... }` | Field in `ConnectionManagerFSMInPorts` | Populate sensor snapshot prior to dispatching events. |
+| `{ assert constraint { ... } }` | Method `in.validate_contracts()` | Call `assert(in.validate_contracts())` in debug / CI loops. |
+| `out socket_connected : Boolean;` | Field in `ConnectionManagerFSMOutPorts` | Read updated actuator outputs after dispatch. |
 | `attribute retry_count : Integer = 0;` | Field in `ConnectionManagerFSMRegisters` | Pass initial struct to state machine constructor. |
-| `if in.is_authenticated and ...` | Inline boolean expression | Zero developer code: evaluated automatically by the engine. |
-| `do action { out.socket = true; }` | Inline mutation sequence | Zero developer code: synthesized directly into transition. |
+| `if is_authenticated and ...` | Inline boolean expression | Zero developer code: evaluated automatically by the engine. |
+| `do action { assign socket := true; }` | Inline mutation sequence | Zero developer code: synthesized directly into transition. |
 | `do action flushBuffers;` | Method in `ConnectionManagerFSMServices` | Inherit from `FSMServices` and implement custom driver logic. |
 
 ### Generated C++ Domain Structures
@@ -288,13 +290,15 @@ Events can also carry strongly typed parameters defined as SysML v2 `item def` b
 
 ```sysml
 package ConnPkg {
+    private import ScalarValues::*;
+
     item def ConnectCmd {
         attribute timeout_ms : Integer;
-        assert constraint { timeout_ms >= 100 and timeout_ms <= 5000; }
+        assert constraint { timeout_ms >= 100 and timeout_ms <= 5000 }
     }
 
     state def ConnectionManager {
-        in port is_authenticated : Boolean;
+        in is_authenticated : Boolean;
         attribute retry_count : Integer = 0;
 
         entry; then Disconnected;
@@ -303,9 +307,9 @@ package ConnPkg {
 
         transition t_connect
             first Disconnected
-            accept ConnectCmd
-            if payload.timeout_ms <= 3000 and in.is_authenticated
-            do action { reg.retry_count = 0; }
+            accept payload : ConnectCmd
+            if payload.timeout_ms <= 3000 and is_authenticated
+            do action { assign retry_count := 0; }
             then Connecting;
     }
 }

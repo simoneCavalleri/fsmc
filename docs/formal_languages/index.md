@@ -66,13 +66,13 @@ Visual diagram languages (like PlantUML and Mermaid) are traditionally purely gr
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Frontend Category** | Formal | Formal | Formal | Formal | Formal | Diagram (`--allow-diagram`) | Formal |
 | **Hierarchical States (HFSM)** | `state def { ... }` | `EXCLUSIVE_OR` | `uml:Region` | `<state><state/></state>` | Nested `states` | `state P { ... }` / `subgraph` | Flattened states |
-| **Choice / Connective Junctions** | `choice Branch;` | `CONNECTIVE` | `uml:Pseudostate` | `<transition cond="...">` | `cond` array | `<<choice>>` / `shape=diamond` | `case ... esac` |
-| **Shallow & Deep History** | `[H]`, `[H*]` | `HISTORY` | `uml:Pseudostate` | `<history type="deep"/>` | `type: "history"` | `[H]`, `[H*]` | $z^{-1}$ memory var |
-| **Hardware Ports (`In`/`Out`)** | `in/out port` + `assert` | `<!-- @fsm:port -->` | `uml:Port` | `<!-- @fsm:port -->` | `@fsm:port` / sidecar | `@fsm:port` / sidecar | Bounded `VAR` |
+| **Choice / Connective Junctions** | `decide Branch;` | `CONNECTIVE` | `uml:Pseudostate` | `<transition cond="...">` | `cond` array | `<<choice>>` / `shape=diamond` | `case ... esac` |
+| **Shallow & Deep History** | `.H` / `@fsm:state history=...` | `HISTORY` | `uml:Pseudostate` | `<history type="deep"/>` | `type: "history"` | `[H]`, `[H*]` | $z^{-1}$ memory var |
+| **Hardware Ports (`In`/`Out`)** | `in` / `out` + `assert constraint` | `<!-- @fsm:port -->` | `uml:Port` | `<!-- @fsm:port -->` | `@fsm:port` / sidecar | `@fsm:port` / sidecar | Bounded `VAR` |
 | **Internal Memory (`Registers`)** | `attribute` | `<!-- @fsm:register -->` | `uml:Property` | `<datamodel>` | `context` | `@fsm:var` / sidecar | `VAR` + `next()` |
-| **Timed Dwell Transitions** | `after 500 ms` | `after(N, msec)` | `TimeTrigger` | `<transition delay="...">` | `after: { ... }` | `after(500ms)` / `after_500ms` | `timer : 0..500` |
-| **Deferred Events** | `defer Evt;` | `@fsm:defer` | `<<deferred>>` | `<defer event="..."/>` | `"defer": [...]` | `@fsm:defer [Evt]` | Discrete Event Queue |
-| **Safety & Liveness (LTL/CTL)** | `assert property` / `// @fsm:property` | `<!-- @fsm:property -->` | Stereotype / comment | `<!-- @fsm:property -->` | `@fsm:property` | `@fsm:property` | `INVARSPEC` / `LTLSPEC` / `CTLSPEC` |
+| **Timed Dwell Transitions** | `accept after 500 [SI::ms]` | `after(N, msec)` | `TimeTrigger` | `<transition delay="...">` | `after: { ... }` | `after(500ms)` / `after_500ms` | `timer : 0..500` |
+| **Deferred Events** | `// @fsm:defer Evt` | `@fsm:defer` | `<<deferred>>` | `<defer event="..."/>` | `"defer": [...]` | `@fsm:defer [Evt]` | Discrete Event Queue |
+| **Safety & Liveness (LTL/CTL)** | `assert constraint` / `// @fsm:property` | `<!-- @fsm:property -->` | Stereotype / comment | `<!-- @fsm:property -->` | `@fsm:property` | `@fsm:property` | `INVARSPEC` / `LTLSPEC` / `CTLSPEC` |
 | **Requirement Traceability** | `satisfy requirement REQ;` | `<!-- @fsm:state satisfies=[...] -->` | `<<Satisfy>>` | `satisfies="..."` | `@fsm:state satisfies=[...]` | `@fsm:state satisfies=[...]` | Traceability Matrix |
 
 ---

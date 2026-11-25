@@ -1288,7 +1288,7 @@ TEST(Sysml2Parser, ChangeTriggerRoundtrip_PreservedAcrossSerializer) {
  * @brief Regression: `Sysml2Serializer` emits `choice <Name>;` for `ChoiceNode` entries
  * so `Sysml2Parser` preserves `choice_nodes` across SysML v2 roundtrips.
  * @scenario Serialize an FSM with `ChoiceNode("C1")` to SysML v2 and re-parse.
- * @expected Serialized SysML2 contains `choice C1;` and re-parsed IR has `is_choice_node("C1") == true`.
+ * @expected Serialized SysML2 contains `decide C1;` and re-parsed IR has `is_choice_node("C1") == true`.
  */
 TEST(Sysml2Parser, ChoiceNodeRoundtrip_PreservedAcrossSerializer) {
     FsmIr ir;
@@ -1301,7 +1301,7 @@ TEST(Sysml2Parser, ChoiceNodeRoundtrip_PreservedAcrossSerializer) {
     ir.add_transition(TransitionEdge("C1", "High", ""));
 
     const std::string sysml = fsm::backend::formal::Sysml2Serializer::serialize(ir);
-    EXPECT_NE(sysml.find("choice C1;"), std::string::npos) << sysml;
+    EXPECT_NE(sysml.find("decide C1;"), std::string::npos) << sysml;
 
     Sysml2Parser parser;
     FsmIr parsed;

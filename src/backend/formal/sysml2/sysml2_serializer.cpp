@@ -127,7 +127,7 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
         return;
     }
     if (state.kind == StateKind::Choice) {
-        out << pad << "choice " << state.name << ";\n";
+        out << pad << "decide " << state.name << ";\n";
         return;
     }
 
@@ -186,9 +186,9 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
         }
     }
 
-    // Deferred Events
+    // Deferred Events (preserved via structured comment since 'defer' is not in OMG SysML v2.0 Xtext)
     for (const auto& d_evt : state.deferred_events) {
-        out << pad << "    defer " << d_evt << ";\n";
+        out << pad << "    // @fsm:defer " << d_evt << "\n";
     }
 
     // Initial substate (only for exclusive/OR states, not parallel orthogonal states)
@@ -285,11 +285,17 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
         std::string dir_str = port.is_out() ? "out " : (port.direction == PortDirection::InOut ? "inout " : "in ");
         out << "    " << dir_str << port.name << " : " << port.type.to_sysml_type();
         if (!port.constraint.empty()) {
-            out << " { assert constraint { " << port.constraint << " } }";
+            std::string clean_c = port.constraint;
+            while (!clean_c.empty() && (clean_c.back() == ';' || clean_c.back() == ' ')) {
+                clean_c.pop_back();
+            }
+            out << " { assert constraint { " << clean_c << " } }\n";
         } else if (port.min_value.has_value() && port.max_value.has_value()) {
-            out << " { assert constraint { self >= " << *port.min_value << " and self <= " << *port.max_value << " } }";
+            out << " { assert constraint { " << port.name << " >= " << *port.min_value << " and " << port.name
+                << " <= " << *port.max_value << " } }\n";
+        } else {
+            out << ";\n";
         }
-        out << ";\n";
     }
     if (!model.ports.empty()) {
         out << "\n";
@@ -376,10 +382,10 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
         }
     }
 
-    // Emit choice pseudostates not already present in states
+    // Emit decision/choice pseudostates not already present in states
     for (const auto& choice : model.choice_nodes) {
         if (model.find_state(choice.name) == nullptr) {
-            out << "    choice " << choice.name << ";\n";
+            out << "    decide " << choice.name << ";\n";
         }
     }
 
@@ -422,7 +428,7 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
         } else {
             std::string act = trans.get_action();
             if (!act.empty()) {
-                out << "        do " << act << "\n";
+                out << "        do action " << act << "\n";
             }
         }
         if (trans.kind == TransitionEdgeKind::Internal && trans.source == trans.target && !trans.event.empty()) {

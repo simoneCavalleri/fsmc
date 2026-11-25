@@ -12,8 +12,10 @@ Given a state machine model with formal annotations (`controller.sysml`):
 
 ```sysml
 package SystemOperations {
+    private import ScalarValues::*;
+
     state def Controller {
-        in port battery_charge : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
+        in battery_charge : Real { assert constraint { battery_charge >= 0.0 and battery_charge <= 100.0 } }
         
         // Safety property: mutually exclusive operational states
         // @fsm:property DisjointState = "G !(Active && Fault)";

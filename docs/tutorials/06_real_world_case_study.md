@@ -48,18 +48,20 @@ stateDiagram-v2
 Here is the complete formal MBSE model specifying ports, attributes, composite states, guards, and temporal safety properties:
 
 ```sysml
+private import ScalarValues::*;
+
 // @fsm:property name=ArmSafety kind=Safety formula="G !(Standby && EmergencyLanding)" req="REQ_UAV_001"
 // @fsm:property name=FailsafeReachable kind=Reachability formula="F EmergencyLanding" req="REQ_UAV_002"
 state def UAVFlightController {
     // 1. Segregated InPorts (Sensor telemetry snapshot)
-    in port battery_pct : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
-    in port altitude_m : Real;
-    in port imu_healthy : Boolean;
+    in battery_pct : Real { assert constraint { battery_pct >= 0.0 and battery_pct <= 100.0 } }
+    in altitude_m : Real;
+    in imu_healthy : Boolean;
 
     // 2. Segregated OutPorts (Actuator command buffer)
-    out port motor_throttle : Real;
-    out port parachute_deployed : Boolean;
-    out port buzzer_active : Boolean;
+    out motor_throttle : Real;
+    out parachute_deployed : Boolean;
+    out buzzer_active : Boolean;
 
     // 3. Persistent Registers (Datapath memory)
     attribute waypoint_index : Integer = 0;
@@ -95,8 +97,8 @@ state def UAVFlightController {
         transition alt_reached first Ascending accept AltReached then WaypointNav;
         transition pause_cmd first WaypointNav accept PauseCmd then HoverPause;
         // Shallow history restoration back into Cruise or OrbitHold:
-        transition resume_cmd first HoverPause accept ResumeCmd then WaypointNav[H];
-        transition low_battery first WaypointNav accept LowBatteryWarning if in.battery_pct < 20.0 then ReturnToHome;
+        transition resume_cmd first HoverPause accept ResumeCmd then WaypointNav.H;
+        transition low_battery first WaypointNav accept LowBatteryWarning if battery_pct < 20.0 then ReturnToHome;
     }
 
     state EmergencyLanding {
@@ -105,13 +107,13 @@ state def UAVFlightController {
 
     // Top-Level Transitions
     transition arm_cmd first Standby accept ArmCmd
-        if in.battery_pct >= 20.0 and in.imu_healthy
+        if battery_pct >= 20.0 and imu_healthy
         then Preflight;
 
     transition takeoff_cmd first Preflight accept TakeoffCmd then OperationalFlight;
 
     transition fault_trip first OperationalFlight accept MotorFaultTrip
-        do action { out.parachute_deployed = true; out.motor_throttle = 0.0; }
+        do action { assign parachute_deployed := true; assign motor_throttle := 0.0; }
         then EmergencyLanding;
 
     transition land_complete first OperationalFlight accept TouchdownEvent then Standby;

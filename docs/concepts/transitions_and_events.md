@@ -42,8 +42,8 @@ When a state machine receives an event that cannot be processed in its current s
 
 ```sysml
 state Calibrating {
-    defer StartMissionCmd;
-    transition on CalibrationFinished then Ready;
+    // @fsm:defer StartMissionCmd
+    transition first Calibrating accept CalibrationFinished then Ready;
 }
 ```
 

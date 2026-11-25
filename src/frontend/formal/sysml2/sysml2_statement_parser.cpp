@@ -233,8 +233,8 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         std::optional<double> max_val = std::nullopt;
 
         if (!constraint_str.empty()) {
-            static const std::regex min_re(R"(self\s*>=\s*([0-9]+(?:\.[0-9]+)?))");
-            static const std::regex max_re(R"(self\s*<=\s*([0-9]+(?:\.[0-9]+)?))");
+            const std::regex min_re("(?:self|that|" + port_name + R"()\s*>=\s*(-?[0-9]+(?:\.[0-9]+)?))");
+            const std::regex max_re("(?:self|that|" + port_name + R"()\s*<=\s*(-?[0-9]+(?:\.[0-9]+)?))");
             std::smatch m_min, m_max;
             if (std::regex_search(constraint_str, m_min, min_re)) {
                 try {

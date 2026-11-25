@@ -146,7 +146,13 @@ bool try_parse_assignment_statement(const std::string& statement, std::vector<Ac
         std::string rhs = trim_ws(assign_match[4].str());
         LValueTarget tgt(scope_prefix + var_path);
         if (scope_prefix.empty() && model != nullptr) {
-            if (const auto* p = model->find_port(tgt.name); p != nullptr && p->is_out()) {
+            if (tgt.member_path.size() == 1U) {
+                const std::string& feat_name = tgt.member_path[0];
+                if (const auto* p = model->find_port(feat_name);
+                    p != nullptr && p->is_out() && p->description.rfind("port:" + tgt.name + ":", 0) == 0) {
+                    tgt = LValueTarget(feat_name, LValueScope::OutPort);
+                }
+            } else if (const auto* p = model->find_port(tgt.name); p != nullptr && p->is_out()) {
                 tgt.scope = LValueScope::OutPort;
             }
         }

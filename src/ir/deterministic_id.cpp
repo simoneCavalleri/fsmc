@@ -1,5 +1,6 @@
 #include "fsm/ir/deterministic_id.hpp"
 
+#include <cstdint>
 #include <cstdio>
 
 namespace fsm::ir {

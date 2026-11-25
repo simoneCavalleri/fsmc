@@ -33,7 +33,7 @@ jobs:
 
       - name: Configure CMake for Clang-Tidy & SSOT Checks
         run: |
-          cmake -B build -S . -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DFSMC_ENABLE_BENCHMARKS=ON
+          cmake -B build -S . -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DFSMC_ENABLE_PCH=OFF -DFSMC_ENABLE_BENCHMARKS=ON
 
       - name: Verify Standalone Runtime & Test Catalog Synchronization (SSOT)
         run: |

@@ -433,7 +433,8 @@ TEST(StateflowParser, CompositeInitialSubstate_RoundtripsViaAttributeAndInitialT
     EXPECT_EQ(active->initial_sub_state, "Idle");
 
     const std::string serialized = StateflowSerializer::serialize(model);
-    EXPECT_NE(serialized.find("<P Name=\"initial\">Idle</P>"), std::string::npos);
+    EXPECT_EQ(serialized.find("<P Name=\"initial\">"), std::string::npos) << serialized;
+    EXPECT_NE(serialized.find("<dst><P Name=\"SSID\">"), std::string::npos) << serialized;
 
     FsmIr reparsed;
     ASSERT_TRUE(parser.parse(serialized, reparsed, err)) << "Re-parse error: " << err.render_to_string();

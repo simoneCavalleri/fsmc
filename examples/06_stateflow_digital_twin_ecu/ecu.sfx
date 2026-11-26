@@ -1,37 +1,160 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Stateflow>
-    <machine name="DigitalTwinECU">
-        <chart id="1" name="EcuEngineController">
-            <!-- @fsm:port name=sensors_ok type=int32 dir=in -->
-            <!-- @fsm:port name=eco_requested type=int32 dir=in -->
-            <!-- @fsm:port name=engine_temp type=double dir=in -->
-            <state id="10" name="Standby"/>
-            <junction id="20" SSID="Precheck" type="CONNECTIVE"/>
-            <junction id="21" SSID="Mode" type="CONNECTIVE"/>
-            <state id="30" name="Drive"/>
-            <state id="31" name="EcoMode"/>
-            <state id="40" name="LimpHome"/>
-            <state id="50" name="EmergencyShutdown"/>
+    <machine id="1">
+        <P Name="name">DigitalTwinECU</P>
+        <Children>
+            <chart id="2">
+                <P Name="name">EcuEngineController</P>
+                <P Name="decomposition">CLUSTER_CHART</P>
+                <Children>
+                    <state SSID="10">
+                        <P Name="labelString">Standby</P>
+                        <P Name="type">OR_STATE</P>
+                        <P Name="decomposition">CLUSTER_STATE</P>
+                    </state>
+                    <state SSID="30">
+                        <P Name="labelString">Drive</P>
+                        <P Name="type">OR_STATE</P>
+                        <P Name="decomposition">CLUSTER_STATE</P>
+                    </state>
+                    <state SSID="31">
+                        <P Name="labelString">EcoMode</P>
+                        <P Name="type">OR_STATE</P>
+                        <P Name="decomposition">CLUSTER_STATE</P>
+                    </state>
+                    <state SSID="40">
+                        <P Name="labelString">LimpHome</P>
+                        <P Name="type">OR_STATE</P>
+                        <P Name="decomposition">CLUSTER_STATE</P>
+                    </state>
+                    <state SSID="50">
+                        <P Name="labelString">EmergencyShutdown</P>
+                        <P Name="type">OR_STATE</P>
+                        <P Name="decomposition">CLUSTER_STATE</P>
+                    </state>
 
-            <!-- Connective Junction Chaining Path:
-                 Standby -> [EvStart] / { checkSensors(); } -> Junction_Precheck
-                 Junction_Precheck -> [sensors_ok == 1] -> Junction_Mode
-                 Junction_Precheck -> [sensors_ok == 0] / { faultAlert(); } -> EmergencyShutdown
-                 Junction_Mode -> [eco_requested == 0] / { setDriveRpm(); } -> Drive
-                 Junction_Mode -> [eco_requested == 1] / { setEcoRpm(); } -> EcoMode
-            -->
-            <transition src="Standby" dst="Junction_Precheck" labelString="EvStart / { checkSensors(); }"/>
-            <transition src="Junction_Precheck" dst="Junction_Mode" labelString="[sensors_ok == 1]"/>
-            <transition src="Junction_Precheck" dst="EmergencyShutdown" labelString="[sensors_ok == 0] / { faultAlert(); }"/>
-            <transition src="Junction_Mode" dst="Drive" labelString="[eco_requested == 0] / { setDriveRpm(); }"/>
-            <transition src="Junction_Mode" dst="EcoMode" labelString="[eco_requested == 1] / { setEcoRpm(); }"/>
+                    <!-- Connective Junctions for Pre-Start Sensor & Mode Selection -->
+                    <junction SSID="20">
+                        <P Name="type">CONNECTIVE_JUNCTION</P>
+                    </junction>
+                    <junction SSID="21">
+                        <P Name="type">CONNECTIVE_JUNCTION</P>
+                    </junction>
 
-            <!-- Operational Transitions -->
-            <transition src="Drive" dst="LimpHome" labelString="EvOverheat [engine_temp &gt; 105] / { activateCooling(); }"/>
-            <transition src="Drive" dst="Standby" labelString="EvStop / { shutdownEngine(); }"/>
-            <transition src="EcoMode" dst="Standby" labelString="EvStop / { shutdownEngine(); }"/>
-            <transition src="LimpHome" dst="EmergencyShutdown" labelString="EvCriticalFault / { emergencyKill(); }"/>
-            <transition src="LimpHome" dst="Drive" labelString="EvCooledDown [engine_temp &lt; 90] / { restorePower(); }"/>
-        </chart>
+                    <!-- Typed Simulink Input Data Ports -->
+                    <data SSID="60" name="sensors_ok">
+                        <P Name="scope">INPUT_DATA</P>
+                        <P Name="dataType">int32</P>
+                    </data>
+                    <data SSID="61" name="eco_requested">
+                        <P Name="scope">INPUT_DATA</P>
+                        <P Name="dataType">int32</P>
+                    </data>
+                    <data SSID="62" name="engine_temp">
+                        <P Name="scope">INPUT_DATA</P>
+                        <P Name="dataType">double</P>
+                    </data>
+
+                    <!-- Stateflow Input Events -->
+                    <event SSID="70" name="EvStart">
+                        <P Name="scope">INPUT_EVENT</P>
+                    </event>
+                    <event SSID="71" name="EvStop">
+                        <P Name="scope">INPUT_EVENT</P>
+                    </event>
+                    <event SSID="72" name="EvOverheat">
+                        <P Name="scope">INPUT_EVENT</P>
+                    </event>
+                    <event SSID="73" name="EvCriticalFault">
+                        <P Name="scope">INPUT_EVENT</P>
+                    </event>
+                    <event SSID="74" name="EvCooledDown">
+                        <P Name="scope">INPUT_EVENT</P>
+                    </event>
+
+                    <!-- Default Initial Transition -> Standby -->
+                    <transition SSID="100">
+                        <P Name="executionOrder">1</P>
+                        <dst><P Name="SSID">10</P></dst>
+                    </transition>
+
+                    <!-- Connective Junction Chaining Path:
+                         Standby (10) -> [EvStart] / { checkSensors(); } -> Junction_20
+                         Junction_20 -> [sensors_ok == 1] -> Junction_21
+                         Junction_20 -> [sensors_ok == 0] / { faultAlert(); } -> EmergencyShutdown (50)
+                         Junction_21 -> [eco_requested == 0] / { setDriveRpm(); } -> Drive (30)
+                         Junction_21 -> [eco_requested == 1] / { setEcoRpm(); } -> EcoMode (31)
+                    -->
+                    <transition SSID="101">
+                        <P Name="labelString">EvStart / { checkSensors(); }</P>
+                        <P Name="executionOrder">1</P>
+                        <src><P Name="SSID">10</P></src>
+                        <dst><P Name="SSID">20</P></dst>
+                    </transition>
+                    <transition SSID="102">
+                        <P Name="labelString">[sensors_ok == 1]</P>
+                        <P Name="executionOrder">1</P>
+                        <src><P Name="SSID">20</P></src>
+                        <dst><P Name="SSID">21</P></dst>
+                    </transition>
+                    <transition SSID="103">
+                        <P Name="labelString">[sensors_ok == 0] / { faultAlert(); }</P>
+                        <P Name="executionOrder">2</P>
+                        <src><P Name="SSID">20</P></src>
+                        <dst><P Name="SSID">50</P></dst>
+                    </transition>
+                    <transition SSID="104">
+                        <P Name="labelString">[eco_requested == 0] / { setDriveRpm(); }</P>
+                        <P Name="executionOrder">1</P>
+                        <src><P Name="SSID">21</P></src>
+                        <dst><P Name="SSID">30</P></dst>
+                    </transition>
+                    <transition SSID="105">
+                        <P Name="labelString">[eco_requested == 1] / { setEcoRpm(); }</P>
+                        <P Name="executionOrder">2</P>
+                        <src><P Name="SSID">21</P></src>
+                        <dst><P Name="SSID">31</P></dst>
+                    </transition>
+
+                    <!-- Operational & Thermal Protection Transitions -->
+                    <transition SSID="106">
+                        <P Name="labelString">EvOverheat [engine_temp &gt; 105] / { activateCooling(); }</P>
+                        <P Name="executionOrder">1</P>
+                        <src><P Name="SSID">30</P></src>
+                        <dst><P Name="SSID">40</P></dst>
+                    </transition>
+                    <transition SSID="107">
+                        <P Name="labelString">EvStop / { shutdownEngine(); }</P>
+                        <P Name="executionOrder">2</P>
+                        <src><P Name="SSID">30</P></src>
+                        <dst><P Name="SSID">10</P></dst>
+                    </transition>
+                    <transition SSID="108">
+                        <P Name="labelString">EvOverheat [engine_temp &gt; 105] / { activateCooling(); }</P>
+                        <P Name="executionOrder">1</P>
+                        <src><P Name="SSID">31</P></src>
+                        <dst><P Name="SSID">40</P></dst>
+                    </transition>
+                    <transition SSID="109">
+                        <P Name="labelString">EvStop / { shutdownEngine(); }</P>
+                        <P Name="executionOrder">2</P>
+                        <src><P Name="SSID">31</P></src>
+                        <dst><P Name="SSID">10</P></dst>
+                    </transition>
+                    <transition SSID="110">
+                        <P Name="labelString">EvCriticalFault / { emergencyKill(); }</P>
+                        <P Name="executionOrder">1</P>
+                        <src><P Name="SSID">40</P></src>
+                        <dst><P Name="SSID">50</P></dst>
+                    </transition>
+                    <transition SSID="111">
+                        <P Name="labelString">EvCooledDown [engine_temp &lt; 90] / { restorePower(); }</P>
+                        <P Name="executionOrder">2</P>
+                        <src><P Name="SSID">40</P></src>
+                        <dst><P Name="SSID">30</P></dst>
+                    </transition>
+                </Children>
+            </chart>
+        </Children>
     </machine>
 </Stateflow>

@@ -450,13 +450,13 @@ struct DeploySolarPanelsAction {
 | **Frontend Category** | **Formal** | **Formal** | **Formal** | **Formal** | **Formal** | **Diagram** | **Diagram** | **Diagram** |
 | **Simple States & Transitions** | Native | Native | Native | Native | Native | Native | Native | Native |
 | **Initial / Final States** | Native | Native | Native | Native | Native | Native (`[*]`) | Native (`[*]`) | Extended (`shape=point`) |
-| **Composite States (HFSM)** | Native | Native | Native (`EXCLUSIVE_OR`) | Native | Native | Native | Native | Extended (`subgraph`) |
-| **Internal Transitions** | Native | Native | Native | Native | Native | Native (`State : E / A`) | Native (`State : E / A`) | Extended (`internal=true`) |
-| **Choice / Junction** | Native | Native (`decide`) | Native (`CONNECTIVE`) | Extended (`cond` list) | Extended (`cond` list) | Native (`<<choice>>`) | Native (`<<choice>>`) | Extended (`shape=diamond`) |
-| **History States (`[H]`, `[H*]`)** | Native | Extended (`.H`, `.deep_history`) | Native (`HISTORY`) | Native | Native (`type: "history"`) | Native (`State[H]`) | Extended (`[H]`) | *N/A* |
-| **Deferred Events** | Native | Metadata (`@Deferred`) | Extended (`@fsm:defer`) | Extended (`<defer>`) | Native (`"defer": []`) | Extended (`: defer Evt`) | Extended (`: [defer] Evt`) | Extended (`defer="..."`) |
+| **Composite States (HFSM)** | Native | Native | Native (`CLUSTER_STATE`) | Native | Native | Native | Native | Extended (`subgraph`) |
+| **Internal Transitions** | Native | Native | Native | Native (`type="internal"`) | Native | Native (`State : E / A`) | Native (`State : E / A`) | Extended (`internal=true`) |
+| **Choice / Junction** | Native | Native (`decide`) | Native (`CONNECTIVE_JUNCTION`) | Extended (`cond` list) | Extended (`cond` list) | Native (`<<choice>>`) | Native (`<<choice>>`) | Extended (`shape=diamond`) |
+| **History States (`[H]`, `[H*]`)** | Native | Extended (`.H`, `.deep_history`) | Native (`HISTORY_JUNCTION`) | Native | Native (`type: "history"`) | Native (`State[H]`) | Extended (`%% @fsm:history`) | *N/A* |
+| **Deferred Events** | Native | Metadata (`@Deferred`) | Extended (`<P Name="description">`) | Extended (`<fsm:defer>`) | Native (`"defer": []`) | Extended (`: defer Evt`) | Extended (`: [defer] Evt`) | Extended (`defer="..."`) |
 | **Composite Guards (`!`, `&&`, `||`)** | Extended (AST) | Native (`and`, `or`, `not`) | Native | Native | Native | Extended (AST) | Extended (AST) | Extended (AST) |
-| **Timed Transitions (`after_ms<N>`)** | Extended (AST) | Native (`accept after 500 [SI::ms]`) | Native (`after(500, msec)`) | Native (`delay=...`) | Native (`after: {}`) | Extended (AST) | Extended (AST) | Extended (AST) |
+| **Timed Transitions (`after_ms<N>`)** | Extended (AST) | Native (`accept after 500 [SI::ms]`) | Native (`after(500, msec)`) | Native (`<send delay="500ms"/>`) | Native (`after: {}`) | Extended (AST) | Extended (AST) | Extended (AST) |
 | **Metadata / Directives** | *N/A* | `metadata def` / `@...` | `<!-- @fsm:... -->` | `<!-- @fsm:... -->` | `@fsm:...` / sidecar | `' @fsm:...` | `%% @fsm:...` | `// @fsm:...` |
 
 ### C. Extension Design Principles
@@ -473,7 +473,7 @@ For the complete comment-directive syntax (`@fsm:port`, `@fsm:var`, `@fsm:signal
 
 - **OMG SysML v2**: `transition first CurrentState accept after 500 [SI::ms] then NextState;`
 - **MathWorks Stateflow**: `after(500, msec)` or `after(0.5, sec)`
-- **W3C SCXML**: `<transition delay="500ms" target="NextState"/>`
+- **W3C SCXML**: `<onentry><send id="t1" event="after_500ms" delay="500ms"/></onentry>` paired with `<onexit><cancel sendid="t1"/></onexit>` and `<transition event="after_500ms" target="NextState"/>`
 - **XState JSON**: `"after": { "500": "NextState" }`
 - **PlantUML / Mermaid / DOT**: `after_500ms`, `after_10s`, `after_50us`, `after(500ms)`, `every(100ms)`
 - **SMV Formal Synthesis**: The SMV serializer allocates discrete tick counters (`timer_<State> : 0..<duration>;`) and resets them on transition entry.

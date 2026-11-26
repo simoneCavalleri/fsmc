@@ -10,15 +10,16 @@
 
 | Stateflow Construct | XML Representation | `fsmc` Semantic Mapping |
 | :--- | :--- | :--- |
-| **Chart Root** | `<Stateflow><machine><chart name="...">` | Root `FsmIr` model and state machine class |
-| **Exclusive State (OR)** | `<state name="..." decomposition="EXCLUSIVE_OR">` | Standard atomic or composite state |
-| **Parallel State (AND)** | `<state name="..." decomposition="PARALLEL_AND">` | Orthogonal parallel execution region |
-| **Connective Junction** | `<junction type="CONNECTIVE">` | Multi-hop flowchart junction lowered via `ConnectiveJunctionChainingPass` |
-| **History Junction** | `<junction type="HISTORY">` | Deep history pseudostate (`DeepHistory`) |
-| **Transitions** | `<transition><src id="..."><dst id="...">` | Directed `TransitionEdge` |
-| **Transition Label** | `<labelString>Event [Guard] { CondAction } / { TransAction }</labelString>` | Trigger, guard condition, condition action, and transition action |
-| **Temporal Logic** | `after(N, sec)`, `after(N, msec)` | Deterministic timed transition (`TimeTrigger`) |
-| **State Actions** | `en: entryAction(); du: during(); ex: exit();` | State entry, continuous step (`do_activity`), and exit actions |
+| **Chart Root** | `<Stateflow><machine><Children><chart id="..."><P Name="name">...</P>` | Root `FsmIr` model and state machine class |
+| **Exclusive State (OR)** | `<state SSID="..."><P Name="type">OR_STATE</P><P Name="decomposition">CLUSTER_STATE</P>` | Standard atomic or composite state |
+| **Parallel State (AND)** | `<state SSID="..."><P Name="decomposition">SET_STATE</P>` with `AND_STATE` child regions | Orthogonal parallel execution region |
+| **Connective Junction** | `<junction SSID="..."><P Name="type">CONNECTIVE_JUNCTION</P></junction>` | Multi-hop flowchart junction lowered via `ConnectiveJunctionChainingPass` |
+| **History Junction** | `<junction SSID="..."><P Name="type">HISTORY_JUNCTION</P></junction>` | History pseudostate (`ShallowHistory` / `DeepHistory`) |
+| **Data & Events** | `<data SSID="..." name="..."><P Name="scope">INPUT_DATA\|OUTPUT_DATA\|LOCAL_DATA</P>` / `<event>` | Segregated `InPorts`, `OutPorts`, `Registers`, and input events |
+| **Transitions** | `<transition SSID="..."><P Name="executionOrder">...</P><src><P Name="SSID">...</P></src><dst>...</dst>` | Ranked directed `TransitionEdge` (default transition omits `<src>`) |
+| **Transition Label** | `<P Name="labelString">Event [Guard] { CondAction } / { TransAction }</P>` | Trigger, guard condition, condition action, and transition action |
+| **Temporal Logic** | `after(N, sec)`, `after(N, msec)`, `every(N, msec)` | Deterministic timed transition (`TimeTrigger`) |
+| **State Actions** | `entry: ...; during: ...; exit: ...;` inside `<P Name="labelString">` | State entry, continuous step (`do_activity`), and exit actions |
 
 ---
 
@@ -71,34 +72,67 @@ To enrich Stateflow models with hardware I/O ports, range bounds, enums, structs
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <Stateflow>
-  <machine name="FlightControllerMachine">
-    <!-- @fsm:enum name=FlightMode values=Idle,Arming,Cruising,Emergency -->
+  <machine id="1">
+    <P Name="name">FlightControllerMachine</P>
+    <!-- @fsm:enum FlightMode : uint8_t { Idle = 0, Arming = 1, Cruising = 2, Emergency = 3 } -->
     <!-- @fsm:port name=sensor_altitude type=float dir=in min=0.0 max=50000.0 unit="[m]" -->
     <!-- @fsm:port name=thrust_cmd type=float dir=out min=0.0 max=100.0 unit="[%]" -->
-    <!-- @fsm:register name=cycles_elapsed type=uint32_t init=0 -->
+    <!-- @fsm:var name=cycles_elapsed type=uint32_t init=0 -->
     <!-- @fsm:property name=SafeCeiling kind=Safety ltl="G (sensor_altitude < 50000.0)" -->
+    <Children>
+      <chart id="2">
+        <P Name="name">FlightController</P>
+        <P Name="decomposition">CLUSTER_CHART</P>
+        <Children>
+          <state SSID="10">
+            <P Name="labelString">Preflight&#10;entry: out.thrust_cmd = 0.0</P>
+            <P Name="type">OR_STATE</P>
+            <P Name="decomposition">CLUSTER_STATE</P>
+          </state>
 
-    <chart name="FlightController" initial="Preflight">
-      <state name="Preflight" SSID="1">
-        <labelString>en: out.thrust_cmd = 0.0;</labelString>
-      </state>
+          <state SSID="11">
+            <P Name="labelString">InFlight&#10;entry: out.thrust_cmd = 75.0</P>
+            <P Name="type">OR_STATE</P>
+            <P Name="decomposition">CLUSTER_STATE</P>
+          </state>
 
-      <state name="InFlight" SSID="2">
-        <labelString>en: out.thrust_cmd = 75.0;</labelString>
-      </state>
+          <data SSID="20" name="sensor_altitude">
+            <P Name="scope">INPUT_DATA</P>
+            <P Name="dataType">single</P>
+          </data>
+          <data SSID="21" name="thrust_cmd">
+            <P Name="scope">OUTPUT_DATA</P>
+            <P Name="dataType">single</P>
+          </data>
+          <data SSID="22" name="cycles_elapsed">
+            <P Name="scope">LOCAL_DATA</P>
+            <P Name="dataType">uint32</P>
+          </data>
+          <event SSID="25" name="EvArm">
+            <P Name="scope">INPUT_EVENT</P>
+          </event>
 
-      <transition SSID="10">
-        <src name="Preflight"/>
-        <dst name="InFlight"/>
-        <labelString>EvArm [in.sensor_altitude >= 0.0] / { reg.cycles_elapsed = 0; }</labelString>
-      </transition>
+          <transition SSID="30">
+            <P Name="executionOrder">1</P>
+            <dst><P Name="SSID">10</P></dst>
+          </transition>
 
-      <transition SSID="11">
-        <src name="InFlight"/>
-        <dst name="Preflight"/>
-        <labelString>after(30, sec)</labelString>
-      </transition>
-    </chart>
+          <transition SSID="31">
+            <P Name="labelString">EvArm [in.sensor_altitude &gt;= 0.0] / { reg.cycles_elapsed = 0 }</P>
+            <P Name="executionOrder">1</P>
+            <src><P Name="SSID">10</P></src>
+            <dst><P Name="SSID">11</P></dst>
+          </transition>
+
+          <transition SSID="32">
+            <P Name="labelString">after(30, sec)</P>
+            <P Name="executionOrder">1</P>
+            <src><P Name="SSID">11</P></src>
+            <dst><P Name="SSID">10</P></dst>
+          </transition>
+        </Children>
+      </chart>
+    </Children>
   </machine>
 </Stateflow>
 ```

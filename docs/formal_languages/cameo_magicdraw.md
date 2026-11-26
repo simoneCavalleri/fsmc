@@ -23,13 +23,14 @@ To export state machine diagrams from Cameo Systems Modeler for compilation with
 | :--- | :--- | :--- |
 | **State Machine Root** | `<packagedElement xmi:type="uml:StateMachine">` | Root `ModelNode` |
 | **Execution Region** | `<region xmi:type="uml:Region">` | State container / Composite sub-region |
-| **Simple State** | `<subvertex xmi:type="uml:State">` | Atomic `StateNode` |
+| **Simple / Final State** | `<subvertex xmi:type="uml:State">` / `<subvertex xmi:type="uml:FinalState">` | Atomic or Final `StateNode` |
 | **Initial Pseudostate** | `<subvertex xmi:type="uml:Pseudostate" kind="initial">` | Initial entry transition |
 | **Choice / Junction** | `<subvertex xmi:type="uml:Pseudostate" kind="choice\|junction">` | `ChoiceNode` branching point |
 | **History States** | `<subvertex xmi:type="uml:Pseudostate" kind="shallowHistory\|deepHistory">` | `HistoryNode` with $z^{-1}$ memory |
-| **Transition Edge** | `<transition xmi:type="uml:Transition">` | `TransitionEdge` |
-| **Guard Predicate** | `<guard xmi:type="uml:Constraint"> <specification body="..."/>` | Strongly typed boolean guard AST |
-| **Transition Action** | `<effect xmi:type="uml:OpaqueBehavior" body="..."/>` | Inlined execution action |
+| **State Invariant** | `<stateInvariant xmi:type="uml:Constraint"><specification><body>...</body></specification></stateInvariant>` | State residence-time invariant (`time_invariant`) |
+| **Transition Edge** | `<transition xmi:type="uml:Transition" kind="external\|local\|internal">` | `TransitionEdge` |
+| **Guard Predicate** | `<guard xmi:type="uml:Constraint"><specification xmi:type="uml:OpaqueExpression"><body>...</body></specification></guard>` | Strongly typed boolean guard AST |
+| **Transition Action** | `<effect xmi:type="uml:OpaqueBehavior"><body>...</body></effect>` | Inlined execution action |
 | **Port Definition** | `<ownedPort xmi:type="uml:Port">` | Segregated `InPorts` / `OutPorts` domain |
 | **Requirement Link** | `<sysml:Satisfy base_Abstraction="...">` | Requirement Traceability (`traceability_reqs`) |
 

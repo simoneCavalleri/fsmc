@@ -342,6 +342,22 @@ TEST(DiagramExport, AdvancedPseudostatesAndInvariants_PreservedAcrossDiagramExpo
     ASSERT_EQ(json_ir.transitions.size(), 2u);
     EXPECT_EQ(json_ir.transitions[0].priority, 10u);
     EXPECT_EQ(json_ir.transitions[1].priority, 2u);
+
+    // 4. Mermaid Export & Re-parse (must not emit illegal <<entryPoint>> / <<exitPoint>> stereotypes)
+    const std::string mmd_out = MermaidSerializer::serialize(model);
+    EXPECT_EQ(mmd_out.find("<<entryPoint>>"), std::string::npos) << mmd_out;
+    EXPECT_EQ(mmd_out.find("<<exitPoint>>"), std::string::npos) << mmd_out;
+
+    MermaidParser mmd_parser;
+    FsmIr mmd_ir;
+    ASSERT_TRUE(mmd_parser.parse(mmd_out, mmd_ir, err)) << "Mermaid parse error: " << err.render_to_string();
+    EXPECT_EQ(mmd_ir.find_state("EnPort")->kind, StateKind::EntryPoint);
+    EXPECT_EQ(mmd_ir.find_state("ExPort")->kind, StateKind::ExitPoint);
+    ASSERT_TRUE(mmd_ir.find_state("Standby")->time_invariant.has_value());
+    EXPECT_EQ(*mmd_ir.find_state("Standby")->time_invariant, "stay <= 250ms");
+    ASSERT_EQ(mmd_ir.transitions.size(), 2u);
+    EXPECT_EQ(mmd_ir.transitions[0].priority, 10u);
+    EXPECT_EQ(mmd_ir.transitions[1].priority, 2u);
 }
 
 /**
@@ -461,7 +477,8 @@ TEST(DiagramExport, PseudostatesAndOrthogonalRegions_ExportedCorrectly) {
     EXPECT_NE(cameo_out.find("xmlns:uml=\"http://www.omg.org/spec/UML/20131001\""), std::string::npos);
     EXPECT_NE(cameo_out.find("kind=\"choice\""), std::string::npos);
     EXPECT_NE(cameo_out.find("kind=\"deepHistory\""), std::string::npos);
-    EXPECT_NE(cameo_out.find("<deferrableTrigger name=\"TelemetryPing\"/>"), std::string::npos);
+    EXPECT_NE(cameo_out.find("<deferrableTrigger xmi:type=\"uml:Trigger\""), std::string::npos);
+    EXPECT_NE(cameo_out.find("name=\"TelemetryPing\"/>"), std::string::npos);
     EXPECT_NE(cameo_out.find("<subvertex xmi:type=\"uml:State\""), std::string::npos);
 
     // 2. SCXML Export Verification (W3C SCXML 1.0 + xmlns:fsm)

@@ -868,7 +868,9 @@ TEST(CameoParser, ChangeTrigger_PreservedAcrossSerializerRoundtrip) {
     ir.add_transition(t);
 
     const std::string xmi = fsm::backend::formal::CameoSerializer::serialize(ir);
-    EXPECT_NE(xmi.find("trigger=\"when(count &gt; 5)\""), std::string::npos) << xmi;
+    EXPECT_EQ(xmi.find("trigger=\"when("), std::string::npos) << xmi;
+    EXPECT_NE(xmi.find("<trigger xmi:type=\"uml:Trigger\""), std::string::npos) << xmi;
+    EXPECT_NE(xmi.find("name=\"when(count &gt; 5)\"/>"), std::string::npos) << xmi;
 
     CameoXmiParser parser;
     FsmIr parsed;

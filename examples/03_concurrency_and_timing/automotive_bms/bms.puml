@@ -28,26 +28,28 @@ state Operational {
         [*] --> ThermalNominal
         ThermalNominal : stay <= 100ms
         ActiveCooling : stay <= 50ms
+        state ThermalDerating
 
-        ThermalNominal --> ActiveCooling : HighTempWarningEvent / RampCoolingPumpAction
-        ActiveCooling --> ThermalDerating : CriticalTempEvent / ThrottleDischargeAction
-        ActiveCooling --> ThermalNominal : TempNominalEvent / StopCoolingPumpAction
+        ThermalNominal --> ActiveCooling : (prio=5) HighTempWarningEvent / RampCoolingPumpAction
+        ActiveCooling --> ThermalDerating : (prio=2) CriticalTempEvent / ThrottleDischargeAction
+        ActiveCooling --> ThermalNominal : (prio=5) TempNominalEvent / StopCoolingPumpAction
+        ThermalDerating --> ActiveCooling : (prio=5) TempNominalEvent / RampCoolingPumpAction
     }
     --
     state CellBalancing {
         [*] --> BalancingIdle
         BalancingActive : stay <= 500ms
 
-        BalancingIdle --> BalancingActive : DeltaVThresholdExceededEvent / EnableBalanceShuntsAction
-        BalancingActive --> BalancingIdle : CellsBalancedEvent / DisableBalanceShuntsAction
+        BalancingIdle --> BalancingActive : (prio=5) DeltaVThresholdExceededEvent / EnableBalanceShuntsAction
+        BalancingActive --> BalancingIdle : (prio=5) CellsBalancedEvent / DisableBalanceShuntsAction
     }
     --
     state IsolationMonitoring {
         [*] --> IsoHealthy
         IsoHealthy : stay <= 200ms
 
-        IsoHealthy --> IsoWarning : LowIsolationResistanceEvent / AlertVehicleMasterAction
-        IsoWarning --> IsoHealthy : IsolationRestoredEvent / ClearVehicleAlertAction
+        IsoHealthy --> IsoWarning : (prio=5) LowIsolationResistanceEvent / AlertVehicleMasterAction
+        IsoWarning --> IsoHealthy : (prio=5) IsolationRestoredEvent / ClearVehicleAlertAction
     }
 }
 
@@ -55,7 +57,7 @@ state FaultShutdown {
     FaultShutdown : entry / OpenMainContactorsAction
 }
 
-Operational --> FaultShutdown : ThermalRunawayFault / OpenMainContactorsAction
-Operational --> FaultShutdown : HvInterlockBreachedFault / OpenMainContactorsAction
+Operational --> FaultShutdown : (prio=1) ThermalRunawayFault / OpenMainContactorsAction
+Operational --> FaultShutdown : (prio=1) HvInterlockBreachedFault / OpenMainContactorsAction
 
 @enduml

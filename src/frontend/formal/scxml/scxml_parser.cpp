@@ -371,6 +371,15 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
                 } else if (entry_child->tag == "send" || entry_child->tag == "raise" ||
                            ends_with(entry_child->tag, ":send") || ends_with(entry_child->tag, ":raise")) {
                     std::string evt = entry_child->get_attr("event");
+                    std::string delay_attr = entry_child->get_attr("delay");
+                    std::string send_id = entry_child->get_attr("id");
+                    static const std::regex timer_ev_re(R"(^(after|every)_[0-9]+(?:\.[0-9]+)?(ms|us|s|m)$)",
+                                                        std::regex::optimize);
+                    if (!delay_attr.empty() &&
+                        (send_id.rfind("_timer_", 0) == 0 || std::regex_match(evt, timer_ev_re))) {
+                        // W3C SCXML timer-scheduling <send id="_timer_..." event="after_..." delay="..."/>
+                        continue;
+                    }
                     if (!evt.empty()) {
                         std::string s_evt = sanitize_identifier(evt);
                         if (act.name.empty()) {
@@ -613,8 +622,21 @@ void ScxmlParser::parse_scxml_transition(const std::shared_ptr<XmlNode>& trans_n
     }
 
     std::string trans_type_attr = trans_node->get_attr("type");
-    bool is_internal = target_tokens.empty() || trans_type_attr == "internal";
-    bool is_local = !is_internal && trans_type_attr == "local";
+    std::string fsm_local_attr = get_fsm_attr(trans_node, "local");
+    bool is_local = false;
+    bool is_internal = false;
+    if (target_tokens.empty()) {
+        is_internal = true;
+    } else if (fsm_local_attr == "true" || trans_type_attr == "local") {
+        is_local = true;
+    } else if (trans_type_attr == "internal") {
+        // W3C SCXML 1.0 §3.5: type="internal" with a target distinct from source is a UML local transition.
+        if (sanitize_identifier(dst) == sanitize_identifier(src)) {
+            is_internal = true;
+        } else {
+            is_local = true;
+        }
+    }
 
     TransitionEdge trans;
     trans.source = sanitize_identifier(src);

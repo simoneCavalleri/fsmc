@@ -50,8 +50,12 @@
           "min_value": { "type": "number" },
           "max": { "type": "number" },
           "max_value": { "type": "number" },
+          "constraint": { "type": "string" },
+          "default": { "type": "string" },
+          "default_value": { "type": "string" },
           "unit": { "type": "string" },
           "physical_unit": { "type": "string" },
+          "bound_to": { "type": "string" },
           "description": { "type": "string" }
         }
       }

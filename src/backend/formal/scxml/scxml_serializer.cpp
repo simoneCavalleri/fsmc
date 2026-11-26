@@ -42,13 +42,14 @@ std::string escape_xml(const std::string& input) {
 void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, size_t indent) {
     std::string pad(indent, ' ');
     const bool is_parallel = (state.kind == StateKind::Parallel || !state.orthogonal_regions.empty());
-    const std::string tag_name = is_parallel ? "parallel" : (state.kind == StateKind::Final ? "final" : "state");
+    const bool is_final = (state.kind == StateKind::Final);
+    const std::string tag_name = is_parallel ? "parallel" : (is_final ? "final" : "state");
     out << pad << "<" << tag_name << " id=\"" << escape_xml(state.name) << "\"";
     if (state.kind == StateKind::Fork || state.kind == StateKind::Join || state.kind == StateKind::EntryPoint ||
         state.kind == StateKind::ExitPoint || state.kind == StateKind::Choice) {
         out << " fsm:kind=\"" << state_kind_to_string(state.kind) << "\"";
     }
-    if (!is_parallel && !state.initial_sub_state.empty()) {
+    if (!is_parallel && !is_final && !state.initial_sub_state.empty()) {
         out << " initial=\"" << escape_xml(state.initial_sub_state) << "\"";
     }
     if (!state.traceability_reqs.empty()) {
@@ -81,8 +82,34 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
         }
     };
 
-    // OnEntry actions and variable assignments
+    // Collect W3C SCXML delayed-<send> timers for outgoing After TimeTriggers on this state
+    struct DelayedSendTimer {
+        std::string send_id;
+        std::string event_name;
+        std::string delay_literal;
+    };
+    std::vector<DelayedSendTimer> state_timers;
+    if (!is_final) {
+        size_t timer_idx = 0;
+        for (const auto& trans : model.transitions) {
+            if (trans.source == state.name && trans.event.empty()) {
+                if (const auto* tt = std::get_if<TimeTrigger>(&trans.trigger);
+                    tt != nullptr && tt->kind == TimeTriggerKind::After) {
+                    ++timer_idx;
+                    const std::string unit_s(time_unit_to_string(tt->unit));
+                    state_timers.push_back({"_timer_" + state.name + "_" + std::to_string(timer_idx),
+                                            "after_" + std::to_string(tt->duration_value) + unit_s,
+                                            std::to_string(tt->duration_value) + unit_s});
+                }
+            }
+        }
+    }
+
+    // OnEntry actions, variable assignments, and W3C SCXML timer arming
     for (const auto& entry_act : state.entry_actions) {
+        if (is_final && entry_act.name.rfind("emit_done_state_", 0) == 0) {
+            continue;
+        }
         out << pad << "  <onentry>\n";
         for (const auto& assign : entry_act.assignments) {
             out << pad << "    <assign location=\"" << escape_xml(assign.target.full_path()) << "\" expr=\""
@@ -91,8 +118,16 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
         emit_action_instructions(entry_act, pad + "    ");
         out << pad << "  </onentry>\n";
     }
+    if (!state_timers.empty()) {
+        out << pad << "  <onentry>\n";
+        for (const auto& tmr : state_timers) {
+            out << pad << "    <send id=\"" << escape_xml(tmr.send_id) << "\" event=\"" << escape_xml(tmr.event_name)
+                << "\" delay=\"" << escape_xml(tmr.delay_literal) << "\"/>\n";
+        }
+        out << pad << "  </onentry>\n";
+    }
 
-    // OnExit actions
+    // OnExit actions and W3C SCXML timer cancellation
     for (const auto& exit_act : state.exit_actions) {
         out << pad << "  <onexit>\n";
         for (const auto& assign : exit_act.assignments) {
@@ -101,6 +136,19 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
         }
         emit_action_instructions(exit_act, pad + "    ");
         out << pad << "  </onexit>\n";
+    }
+    if (!state_timers.empty()) {
+        out << pad << "  <onexit>\n";
+        for (const auto& tmr : state_timers) {
+            out << pad << "    <cancel sendid=\"" << escape_xml(tmr.send_id) << "\"/>\n";
+        }
+        out << pad << "  </onexit>\n";
+    }
+
+    // W3C SCXML 1.0 §3.7: <final> only allows <onentry>, <onexit>, and <donedata>
+    if (is_final) {
+        out << pad << "</" << tag_name << ">\n";
+        return;
     }
 
     // Do Activity (Async/Background activity via SCXML <invoke>)
@@ -167,8 +215,12 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
                     out << " target=\"" << escape_xml(trans.target) << "\"";
                 }
             }
-            if (trans.kind == TransitionEdgeKind::Local) {
-                out << " type=\"local\"";
+            if (trans.kind == TransitionEdgeKind::Internal) {
+                out << " type=\"internal\"";
+            } else if (trans.kind == TransitionEdgeKind::Local) {
+                // W3C SCXML 1.0 §3.5: TransitionType.datatype only allows "internal" | "external".
+                // In SCXML, type="internal" with a descendant target implements UML local transition semantics.
+                out << " type=\"internal\" fsm:local=\"true\"";
             }
 
             bool has_assignments =
@@ -216,8 +268,11 @@ std::string ScxmlSerializer::serialize(const FsmIr& model) {
     out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
     out << "<scxml xmlns=\"http://www.w3.org/2005/07/scxml\" "
            "xmlns:fsm=\"https://github.com/simoneCavalleri/fsmc/scxml\" "
-           "version=\"1.0\" initial=\""
-        << model.initial_state << "\" name=\"" << (model.name.empty() ? "GeneratedFSM" : model.name) << "\">\n";
+           "version=\"1.0\"";
+    if (!model.initial_state.empty()) {
+        out << " initial=\"" << escape_xml(model.initial_state) << "\"";
+    }
+    out << " name=\"" << escape_xml(model.name.empty() ? "GeneratedFSM" : model.name) << "\">\n";
 
     // Native SCXML Datamodel (W3C <data id="..." expr="..."/> + fsm:* metadata attributes)
     if (!model.variables.empty() || !model.ports.empty()) {

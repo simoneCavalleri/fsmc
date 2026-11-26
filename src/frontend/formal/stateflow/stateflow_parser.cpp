@@ -274,6 +274,17 @@ void StateflowParser::collect_ssids(const std::shared_ptr<XmlNode>& node) {
                 jid = child->get_attr("id");
             }
             std::string jname = get_sf_prop(child, "name");
+            if (jname.empty()) {
+                std::string jdesc = get_sf_prop(child, "description");
+                auto cpos = jdesc.find("@fsm:choice=");
+                if (cpos != std::string::npos) {
+                    jname = jdesc.substr(cpos + 12);
+                    auto semi = jname.find(';');
+                    if (semi != std::string::npos) {
+                        jname = jname.substr(0, semi);
+                    }
+                }
+            }
             if (jname.empty() && !jid.empty()) {
                 jname = "Junction_" + jid;
             }
@@ -348,6 +359,23 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
                 exit_act = child->get_attr("on_exit");
 
             std::string defer_attr = get_sf_prop(child, "defer");
+            std::string req_attr = get_sf_prop(child, "satisfies");
+            std::string inv_attr = get_sf_prop(child, "invariant");
+            const std::string st_desc = get_sf_prop(child, "description");
+            if (!st_desc.empty()) {
+                std::istringstream dstream(st_desc);
+                std::string dseg;
+                while (std::getline(dstream, dseg, ';')) {
+                    std::string seg = std::string(trim(dseg));
+                    if (seg.rfind("@fsm:defer=", 0) == 0 && defer_attr.empty()) {
+                        defer_attr = seg.substr(11);
+                    } else if (seg.rfind("@fsm:satisfies=", 0) == 0 && req_attr.empty()) {
+                        req_attr = seg.substr(15);
+                    } else if (seg.rfind("@fsm:invariant=", 0) == 0 && inv_attr.empty()) {
+                        inv_attr = seg.substr(15);
+                    }
+                }
+            }
             if (!defer_attr.empty() && s != nullptr) {
                 std::istringstream dss(defer_attr);
                 std::string dev;
@@ -359,7 +387,6 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
                     }
                 }
             }
-            std::string req_attr = get_sf_prop(child, "satisfies");
             if (!req_attr.empty() && s != nullptr) {
                 std::istringstream rss(req_attr);
                 std::string req_item;
@@ -371,7 +398,6 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
                     }
                 }
             }
-            std::string inv_attr = get_sf_prop(child, "invariant");
             if (!inv_attr.empty() && s != nullptr) {
                 s->time_invariant = inv_attr;
             }
@@ -482,7 +508,8 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
             if (jtype == "HISTORY" || jtype == "history" || jtype == "HISTORY_JUNCTION") {
                 if (auto* s = model.find_state_mut(parent_state)) {
                     s->has_history = true;
-                    s->has_deep_history = false;
+                    const std::string jdesc = get_sf_prop(child, "description");
+                    s->has_deep_history = (jdesc.find("@fsm:history=deep") != std::string::npos);
                 }
             } else if (jtype == "HISTORY_DEEP" || jtype == "deep_history") {
                 if (auto* s = model.find_state_mut(parent_state)) {
@@ -491,6 +518,20 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
                 }
             } else {
                 std::string jname = get_sf_prop(child, "name");
+                const std::string jdesc = get_sf_prop(child, "description");
+                if (jname.empty()) {
+                    auto cpos = jdesc.find("@fsm:choice=");
+                    if (cpos != std::string::npos) {
+                        jname = jdesc.substr(cpos + 12);
+                        auto semi = jname.find(';');
+                        if (semi != std::string::npos) {
+                            jname = jname.substr(0, semi);
+                        }
+                        jname = sanitize_identifier(jname);
+                        model.add_choice_node(jname);
+                        continue;
+                    }
+                }
                 if (jname.empty()) {
                     jname = "Junction_" + (jid.empty() ? std::to_string(model.states.size() + 1) : jid);
                 }
@@ -503,18 +544,31 @@ void StateflowParser::parse_chart_elements(const std::shared_ptr<XmlNode>& node,
                 d_name = sanitize_identifier(d_name);
                 std::string scope = get_sf_prop(child, "scope");
                 std::string d_type = map_sf_datatype(get_sf_prop(child, "dataType"));
-                if (scope == "INPUT_DATA" || scope == "OUTPUT_DATA") {
+                if (scope == "INPUT_DATA" || scope == "OUTPUT_DATA" || scope == "DATA_STORE_MEMORY_DATA" ||
+                    scope == "INOUT_DATA") {
                     if (model.find_port(d_name) == nullptr) {
                         PortDefinition p;
                         p.name = d_name;
                         p.type = d_type;
-                        p.direction = (scope == "OUTPUT_DATA") ? PortDirection::Out : PortDirection::In;
+                        p.direction =
+                            (scope == "OUTPUT_DATA")
+                                ? PortDirection::Out
+                                : ((scope == "DATA_STORE_MEMORY_DATA" || scope == "INOUT_DATA") ? PortDirection::InOut
+                                                                                                : PortDirection::In);
                         model.add_port(std::move(p));
                     }
                 } else if (scope == "LOCAL_DATA" || scope.empty()) {
                     if (model.find_variable(d_name) == nullptr) {
                         model.add_variable(VariableDefinition(d_name, d_type, ""));
                     }
+                }
+            }
+        } else if (child->tag == "event" || child->tag == "Event") {
+            std::string ev_name = get_sf_prop(child, "name");
+            if (!ev_name.empty()) {
+                ev_name = sanitize_identifier(ev_name);
+                if (!ev_name.empty()) {
+                    model.add_event(ev_name);
                 }
             }
         } else if (child->tag == "transition" || child->tag == "Transition") {
@@ -611,6 +665,31 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
     std::string trans_type = get_sf_prop(trans_node, "type");
     if (trans_type.empty()) {
         trans_type = get_sf_prop(trans_node, "kind");
+    }
+    const std::string trans_desc = get_sf_prop(trans_node, "description");
+    if (!trans_desc.empty()) {
+        std::istringstream dstream(trans_desc);
+        std::string dseg;
+        while (std::getline(dstream, dseg, ';')) {
+            std::string seg = std::string(trim(dseg));
+            if (seg.rfind("@fsm:kind=", 0) == 0 && trans_type.empty()) {
+                trans_type = seg.substr(10);
+            } else if (seg.rfind("@fsm:priority=", 0) == 0) {
+                try {
+                    trans.priority = static_cast<std::uint32_t>(std::stoul(seg.substr(14)));
+                } catch (...) {
+                }
+            }
+        }
+    }
+    if (trans.priority == 0) {
+        std::string exec_order = get_sf_prop(trans_node, "executionOrder");
+        if (!exec_order.empty()) {
+            try {
+                trans.priority = static_cast<std::uint32_t>(std::stoul(exec_order));
+            } catch (...) {
+            }
+        }
     }
     if (trans_type == "internal" || (dst.empty() && !src.empty())) {
         trans.kind = TransitionEdgeKind::Internal;

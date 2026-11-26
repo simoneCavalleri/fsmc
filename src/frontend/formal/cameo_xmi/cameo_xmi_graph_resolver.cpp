@@ -174,9 +174,11 @@ void CameoXmiGraphResolver::process_subvertex(const std::shared_ptr<XmlNode>& ve
 
     // 2. Classify UML pseudostates (Initial, Choice, Junction, ShallowHistory, DeepHistory, Fork, Join, EntryPoint,
     // ExitPoint)
-    if (type == "uml:Pseudostate" || ends_with(type, ":Pseudostate") || kind == "initial" || kind == "choice" ||
-        kind == "junction" || kind == "shallowHistory" || kind == "deepHistory" || kind == "fork" || kind == "join" ||
-        kind == "entryPoint" || kind == "exitPoint") {
+    if (type == "uml:FinalState" || ends_with(type, ":FinalState")) {
+        st_kind = StateKind::Final;
+    } else if (type == "uml:Pseudostate" || ends_with(type, ":Pseudostate") || kind == "initial" || kind == "choice" ||
+               kind == "junction" || kind == "shallowHistory" || kind == "deepHistory" || kind == "fork" ||
+               kind == "join" || kind == "entryPoint" || kind == "exitPoint") {
         if (kind == "initial" || raw_name == "Initial" || raw_name == "initial") {
             st_kind = StateKind::Initial;
             is_initial = true;
@@ -239,6 +241,20 @@ void CameoXmiGraphResolver::process_subvertex(const std::shared_ptr<XmlNode>& ve
     } else if (st_kind != StateKind::Initial && st_kind != StateKind::Junction) {
         auto& st = model.add_state(state_name, parent_state, st_kind);
         std::string req = vertex_node->get_attr("satisfies");
+        if (req.empty()) {
+            for (const auto& child : vertex_node->children) {
+                if (child->tag == "xmi:Extension" || ends_with(child->tag, ":Extension")) {
+                    for (const auto& ext_child : child->children) {
+                        if (ext_child->tag == "satisfies" || ends_with(ext_child->tag, ":satisfies")) {
+                            req = ext_child->get_attr("value");
+                            if (req.empty()) {
+                                req = ext_child->text_content;
+                            }
+                        }
+                    }
+                }
+            }
+        }
         if (!req.empty()) {
             std::istringstream rss(req);
             std::string item;
@@ -253,6 +269,27 @@ void CameoXmiGraphResolver::process_subvertex(const std::shared_ptr<XmlNode>& ve
             }
         }
         std::string inv = vertex_node->get_attr("invariant");
+        if (inv.empty()) {
+            for (const auto& inv_node : vertex_node->find_children("stateInvariant")) {
+                inv = inv_node->get_attr("body");
+                if (inv.empty()) {
+                    for (const auto& spec : inv_node->children) {
+                        inv = spec->get_attr("body");
+                        if (inv.empty()) {
+                            for (const auto& b : spec->find_children("body")) {
+                                if (!b->text_content.empty()) {
+                                    inv = b->text_content;
+                                    break;
+                                }
+                            }
+                        }
+                        if (inv.empty()) {
+                            inv = spec->text_content;
+                        }
+                    }
+                }
+            }
+        }
         if (!inv.empty()) {
             st.time_invariant = inv;
         }
@@ -545,10 +582,42 @@ void CameoXmiGraphResolver::process_transition(const std::shared_ptr<XmlNode>& t
                 for (const auto& spec : g->children) {
                     guard_expr = spec->get_attr("body");
                     if (guard_expr.empty()) {
+                        for (const auto& body_node : spec->find_children("body")) {
+                            if (!body_node->text_content.empty()) {
+                                guard_expr = body_node->text_content;
+                                break;
+                            }
+                        }
+                    }
+                    if (guard_expr.empty()) {
                         guard_expr = spec->text_content;
                     }
                 }
             }
+        }
+    }
+
+    // Priority (MOF <xmi:Extension> or legacy priority attribute)
+    std::uint32_t priority_val = 0;
+    std::string prio_str = trans_node->get_attr("priority");
+    if (prio_str.empty()) {
+        for (const auto& child : trans_node->children) {
+            if (child->tag == "xmi:Extension" || ends_with(child->tag, ":Extension")) {
+                for (const auto& ext_child : child->children) {
+                    if (ext_child->tag == "priority" || ends_with(ext_child->tag, ":priority")) {
+                        prio_str = ext_child->get_attr("value");
+                        if (prio_str.empty()) {
+                            prio_str = ext_child->text_content;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (!prio_str.empty()) {
+        try {
+            priority_val = static_cast<std::uint32_t>(std::stoul(prio_str));
+        } catch (...) {
         }
     }
 
@@ -580,6 +649,7 @@ void CameoXmiGraphResolver::process_transition(const std::shared_ptr<XmlNode>& t
     TransitionEdge trans;
     trans.source = src_name;
     trans.target = dst_name;
+    trans.priority = priority_val;
     std::string trans_kind = trans_node->get_attr("kind");
     if (trans_kind == "internal") {
         trans.kind = TransitionEdgeKind::Internal;

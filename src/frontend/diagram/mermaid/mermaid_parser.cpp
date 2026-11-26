@@ -27,6 +27,8 @@ bool MermaidParser::parse_impl(std::string_view content, FsmIr& out_model, std::
     std::string line;
     size_t line_num = 0;
     bool pending_local_transition = false;
+    bool pending_history_transition = false;
+    bool pending_deep_history_transition = false;
     std::vector<std::string> parent_stack;
     std::vector<size_t> scope_state_start_idx;
     std::vector<std::vector<size_t>> scope_region_splits;
@@ -94,6 +96,11 @@ bool MermaidParser::parse_impl(std::string_view content, FsmIr& out_model, std::
             std::string body = DirectiveParser::extract_directive_body(trimmed);
             if (body == "local") {
                 pending_local_transition = true;
+                continue;
+            }
+            if (body.rfind("history", 0) == 0) {
+                pending_history_transition = true;
+                pending_deep_history_transition = (body.find("deep") != std::string::npos);
                 continue;
             }
             if (body.rfind("name", 0) == 0 || body.rfind("fsm", 0) == 0) {
@@ -325,6 +332,19 @@ bool MermaidParser::parse_impl(std::string_view content, FsmIr& out_model, std::
             if (pending_local_transition && out_model.transitions.size() > prev_transitions) {
                 out_model.transitions.back().kind = TransitionEdgeKind::Local;
                 pending_local_transition = false;
+            }
+            if (pending_history_transition && out_model.transitions.size() > prev_transitions) {
+                auto& tr = out_model.transitions.back();
+                tr.target_is_history = true;
+                tr.target_is_deep_history = pending_deep_history_transition;
+                if (auto* tgt_st = out_model.find_state_mut(tr.target)) {
+                    tgt_st->has_history = true;
+                    if (pending_deep_history_transition) {
+                        tgt_st->has_deep_history = true;
+                    }
+                }
+                pending_history_transition = false;
+                pending_deep_history_transition = false;
             }
             continue;
         }

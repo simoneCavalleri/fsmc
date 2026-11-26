@@ -119,43 +119,55 @@ static std::string build_state_label(const StateNode& state) {
 }
 
 static void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, size_t indent,
-                       const std::unordered_map<std::string, size_t>& name_to_ssid, size_t& next_ssid) {
+                       const std::unordered_map<std::string, size_t>& name_to_ssid, size_t& next_ssid,
+                       bool parent_is_parallel = false, size_t and_exec_order = 0) {
     std::string pad(indent * 2, ' ');
     auto it = name_to_ssid.find(state.name);
     size_t ssid = (it != name_to_ssid.end()) ? it->second : (next_ssid++);
 
     out << pad << "<state SSID=\"" << ssid << "\">\n";
     out << pad << "  <P Name=\"labelString\">" << escape_xml(build_state_label(state)) << "</P>\n";
+    out << pad << "  <P Name=\"type\">" << (parent_is_parallel ? "AND_STATE" : "OR_STATE") << "</P>\n";
     if (state.kind == StateKind::Parallel) {
         out << pad << "  <P Name=\"decomposition\">SET_STATE</P>\n";
     } else {
         out << pad << "  <P Name=\"decomposition\">CLUSTER_STATE</P>\n";
     }
-    if (!state.initial_sub_state.empty()) {
-        out << pad << "  <P Name=\"initial\">" << escape_xml(state.initial_sub_state) << "</P>\n";
+    if (parent_is_parallel && and_exec_order > 0) {
+        out << pad << "  <P Name=\"executionOrder\">" << and_exec_order << "</P>\n";
     }
+
+    // Preserve non-Stateflow MBSE annotations inside Simulink's standard <P Name="description"> property
+    std::string desc_meta;
     if (!state.deferred_events.empty()) {
-        std::string defer_str;
+        desc_meta += "@fsm:defer=";
         for (std::size_t i = 0; i < state.deferred_events.size(); ++i) {
             if (i > 0) {
-                defer_str += ", ";
+                desc_meta += ",";
             }
-            defer_str += state.deferred_events[i];
+            desc_meta += state.deferred_events[i];
         }
-        out << pad << "  <P Name=\"defer\">" << escape_xml(defer_str) << "</P>\n";
     }
     if (!state.traceability_reqs.empty()) {
-        std::string req_str;
+        if (!desc_meta.empty()) {
+            desc_meta += "; ";
+        }
+        desc_meta += "@fsm:satisfies=";
         for (std::size_t i = 0; i < state.traceability_reqs.size(); ++i) {
             if (i > 0) {
-                req_str += ", ";
+                desc_meta += ",";
             }
-            req_str += state.traceability_reqs[i];
+            desc_meta += state.traceability_reqs[i];
         }
-        out << pad << "  <P Name=\"satisfies\">" << escape_xml(req_str) << "</P>\n";
     }
     if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
-        out << pad << "  <P Name=\"invariant\">" << escape_xml(state.time_invariant->raw_expression) << "</P>\n";
+        if (!desc_meta.empty()) {
+            desc_meta += "; ";
+        }
+        desc_meta += "@fsm:invariant=" + state.time_invariant->raw_expression;
+    }
+    if (!desc_meta.empty()) {
+        out << pad << "  <P Name=\"description\">" << escape_xml(desc_meta) << "</P>\n";
     }
 
     std::vector<const StateNode*> children;
@@ -170,20 +182,21 @@ static void emit_state(std::ostream& out, const StateNode& state, const FsmIr& m
         out << pad << "  <Children>\n";
         if (state.has_history) {
             out << pad << "    <junction SSID=\"" << (next_ssid++) << "\">\n";
+            out << pad << "      <P Name=\"type\">HISTORY_JUNCTION</P>\n";
             if (state.has_deep_history) {
-                out << pad << "      <P Name=\"type\">HISTORY_DEEP</P>\n";
-            } else {
-                out << pad << "      <P Name=\"type\">HISTORY_JUNCTION</P>\n";
+                out << pad << "      <P Name=\"description\">@fsm:history=deep</P>\n";
             }
             out << pad << "    </junction>\n";
         }
-        for (const auto* child : children) {
-            emit_state(out, *child, model, indent + 2, name_to_ssid, next_ssid);
+        const bool is_par = (state.kind == StateKind::Parallel);
+        for (std::size_t ci = 0; ci < children.size(); ++ci) {
+            emit_state(out, *children[ci], model, indent + 2, name_to_ssid, next_ssid, is_par, is_par ? (ci + 1) : 0);
         }
-        if (!state.initial_sub_state.empty()) {
+        if (!is_par && !state.initial_sub_state.empty()) {
             auto init_it = name_to_ssid.find(state.initial_sub_state);
             if (init_it != name_to_ssid.end()) {
                 out << pad << "    <transition SSID=\"" << (next_ssid++) << "\">\n";
+                out << pad << "      <P Name=\"executionOrder\">1</P>\n";
                 out << pad << "      <dst><P Name=\"SSID\">" << init_it->second << "</P></dst>\n";
                 out << pad << "    </transition>\n";
             }
@@ -354,15 +367,18 @@ std::string StateflowSerializer::serialize(const FsmIr& model) {
     // Choice pseudostates as standard Stateflow connective junctions
     for (const auto& choice : model.choice_nodes) {
         out << "          <junction SSID=\"" << name_to_ssid[choice.name] << "\">\n";
-        out << "            <P Name=\"name\">" << escape_xml(choice.name) << "</P>\n";
         out << "            <P Name=\"type\">CONNECTIVE_JUNCTION</P>\n";
+        out << "            <P Name=\"description\">@fsm:choice=" << escape_xml(choice.name) << "</P>\n";
         out << "          </junction>\n";
     }
 
     // Native Stateflow <data> declarations for ports and local variables
     for (const auto& port : model.ports) {
+        const char* sf_scope = port.is_out()
+                                   ? "OUTPUT_DATA"
+                                   : (port.direction == PortDirection::InOut ? "DATA_STORE_MEMORY_DATA" : "INPUT_DATA");
         out << "          <data SSID=\"" << (next_ssid++) << "\" name=\"" << escape_xml(port.name) << "\">\n";
-        out << "            <P Name=\"scope\">" << (port.is_out() ? "OUTPUT_DATA" : "INPUT_DATA") << "</P>\n";
+        out << "            <P Name=\"scope\">" << sf_scope << "</P>\n";
         out << "            <P Name=\"dataType\">" << escape_xml(map_cpp_type_to_stateflow(port.type.to_cpp_type()))
             << "</P>\n";
         out << "          </data>\n";
@@ -375,27 +391,50 @@ std::string StateflowSerializer::serialize(const FsmIr& model) {
         out << "          </data>\n";
     }
 
+    // Native Stateflow <event> declarations for input signals/events
+    for (const auto& sig : model.signals) {
+        if (!sig.name.empty() && sig.name != "Anonymous") {
+            out << "          <event SSID=\"" << (next_ssid++) << "\" name=\"" << escape_xml(sig.name) << "\">\n";
+            out << "            <P Name=\"scope\">INPUT_EVENT</P>\n";
+            out << "          </event>\n";
+        }
+    }
+
     // Default transition to initial state (standard Stateflow: <dst> without <src>)
     if (!model.initial_state.empty()) {
         auto init_it = name_to_ssid.find(model.initial_state);
         if (init_it != name_to_ssid.end()) {
             out << "          <transition SSID=\"" << (next_ssid++) << "\">\n";
+            out << "            <P Name=\"executionOrder\">1</P>\n";
             out << "            <dst><P Name=\"SSID\">" << init_it->second << "</P></dst>\n";
             out << "          </transition>\n";
         }
     }
 
-    // Standard Stateflow transitions with <P Name="labelString"> and <src>/<dst> SSID refs
+    // Standard Stateflow transitions with <P Name="labelString">, <P Name="executionOrder">, and <src>/<dst> SSID refs
+    std::unordered_map<std::string, size_t> auto_exec_order;
     for (const auto& trans : model.transitions) {
         out << "          <transition SSID=\"" << (next_ssid++) << "\">\n";
         std::string label = format_transition_label(trans, model);
         if (!label.empty()) {
             out << "            <P Name=\"labelString\">" << escape_xml(label) << "</P>\n";
         }
+        const size_t exec_ord = (trans.priority > 0) ? trans.priority : (++auto_exec_order[trans.source]);
+        out << "            <P Name=\"executionOrder\">" << exec_ord << "</P>\n";
+        std::string trans_desc;
         if (trans.kind == TransitionEdgeKind::Internal) {
-            out << "            <P Name=\"type\">internal</P>\n";
+            trans_desc = "@fsm:kind=internal";
         } else if (trans.kind == TransitionEdgeKind::Local) {
-            out << "            <P Name=\"type\">local</P>\n";
+            trans_desc = "@fsm:kind=local";
+        }
+        if (trans.priority > 0) {
+            if (!trans_desc.empty()) {
+                trans_desc += "; ";
+            }
+            trans_desc += "@fsm:priority=" + std::to_string(trans.priority);
+        }
+        if (!trans_desc.empty()) {
+            out << "            <P Name=\"description\">" << escape_xml(trans_desc) << "</P>\n";
         }
         auto src_it = name_to_ssid.find(trans.source);
         if (src_it != name_to_ssid.end()) {

@@ -66,8 +66,6 @@ def verify_plantuml(puml_code):
     try:
         code, stdout, stderr = run_cmd(["java", "-jar", jar_path, "-tsvg", "-checkonly", temp_path])
         if code != 0:
-            if "[H*]" in puml_code:
-                return True, "PlantUML Valid (Upstream PlantUML V1.2024.6 [H*] deep history known limitation)"
             return False, f"PlantUML check failed: {stderr} {stdout}"
         return True, "PlantUML Syntax & Layout Valid"
     finally:
@@ -75,7 +73,9 @@ def verify_plantuml(puml_code):
             os.remove(temp_path)
 
 def verify_scxml(scxml_code):
-    """Verifies that W3C SCXML is well-formed XML and parseable."""
+    """Verifies that W3C SCXML is well-formed XML and conforms to W3C SCXML 1.0 constraints."""
+    if 'type="local"' in scxml_code:
+        return False, "Invalid W3C SCXML TransitionType 'local' (only 'internal' or 'external' allowed)"
     with tempfile.NamedTemporaryFile(suffix=".scxml", mode="w", delete=False) as f:
         f.write(scxml_code)
         temp_path = f.name
@@ -89,7 +89,10 @@ def verify_scxml(scxml_code):
             os.remove(temp_path)
 
 def verify_cameo_xmi(xmi_code):
-    """Verifies that Cameo / MagicDraw OMG XMI 2.1 XML is well-formed and schema compliant."""
+    """Verifies that Cameo / MagicDraw OMG XMI 2.5.1 XML is well-formed and schema compliant."""
+    for illegal_attr in (' trigger="', ' guard="', ' effect="', ' priority="', ' satisfies="', ' invariant="'):
+        if illegal_attr in xmi_code:
+            return False, f"Illegal non-UML attribute {illegal_attr.strip()} in Cameo XMI"
     with tempfile.NamedTemporaryFile(suffix=".xmi", mode="w", delete=False) as f:
         f.write(xmi_code)
         temp_path = f.name
@@ -117,9 +120,12 @@ def verify_json(json_code):
         return False, f"Invalid JSON: {e}"
 
 def verify_mermaid(mmd_code):
-    """Verifies Mermaid diagram structure."""
+    """Verifies Mermaid stateDiagram-v2 grammar structure and stereotype legality."""
     if "stateDiagram-v2" not in mmd_code and "stateDiagram" not in mmd_code:
         return False, "Missing 'stateDiagram-v2' declaration"
+    for illegal_stereo in ("<<entryPoint>>", "<<exitPoint>>"):
+        if illegal_stereo in mmd_code:
+            return False, f"Illegal Mermaid stateDiagram-v2 stereotype {illegal_stereo}"
     lines = [l.strip() for l in mmd_code.strip().split("\n") if l.strip()]
     if len(lines) < 2:
         return False, "Mermaid diagram is empty"

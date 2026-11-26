@@ -33,8 +33,10 @@ $$\text{Guard}: (\text{InPorts}, \text{Registers}, \text{Event}) \to \{\text{tru
 
 === "OMG SysML v2"
     ```sysml
-    transition on FlightCommand
-        if in.battery_soc >= 25.0 and reg.cycle_count < 1000
+    transition start_nav
+        first Ready
+        accept FlightCommand
+        if battery_soc >= 25.0 and cycle_count < 1000
         then Navigating;
     ```
 
@@ -60,10 +62,10 @@ $$\text{Action}: (\text{OutPorts}, \text{Registers}, \text{Services}, \text{InPo
     transition climb_ok
         first Ascending
         accept AltitudeReached
-        if in.battery_soc >= 20.0
+        if battery_soc >= 20.0
         do action {
-            out.climb_rate = 0.0;
-            reg.waypoint_index = reg.waypoint_index + 1;
+            assign climb_rate := 0.0;
+            assign waypoint_index := waypoint_index + 1;
         }
         then WaypointNav;
     ```

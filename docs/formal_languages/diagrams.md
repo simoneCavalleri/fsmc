@@ -62,8 +62,10 @@ Standard diagram notations cannot natively declare hardware I/O ports, typed reg
 | **PlantUML** | `' @fsm:...` | `' @fsm:port name=voltage type=float dir=in min=0.0 max=24.0` |
 | **Mermaid** | `%% @fsm:...` | `%% @fsm:var name=retry_count type=uint32_t init=0 min=0 max=5` |
 | **Graphviz DOT** | `// @fsm:...` | `// @fsm:signal EvPacketRecv{uint32_t len} validator="len > 0"` |
-| **W3C SCXML** | `<!-- @fsm:... -->` | `<!-- @fsm:property name=SafeLand formula="G (LowBat -> F Landed)" -->` |
-| **SysML v2** | `// @fsm:...` | `// @fsm:property name=SafeLand formula="G (LowBat -> F Landed)"` |
+| **W3C SCXML** | `<!-- @fsm:... -->` | `<!-- @fsm:property name=SafeLand ltl="G (LowBat -> F Landed)" -->` |
+| **Stateflow / XMI** | `<!-- @fsm:... -->` | `<!-- @fsm:enum Mode : uint8_t { Off = 0, On = 1 } -->` |
+
+> **Note:** OMG SysML v2.0 uses native KerML/SysML v2 `metadata def` annotations (`@Priority`, `@Deferred`, `@TemporalProperty`) and `assert constraint` blocks rather than `@fsm:*` comments.
 
 ---
 

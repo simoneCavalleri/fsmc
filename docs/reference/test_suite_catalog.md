@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 92  
-**Total Documented Test Cases**: 792  
+**Total Documented Test Cases**: 794  
 
 ---
 
@@ -109,7 +109,7 @@
 | [`test_stateflow_slx_ingestion.cpp`](../../tests/frontend/formal/test_stateflow_slx_ingestion.cpp) | `tests/frontend/formal/test_stateflow_slx_ingestion.cpp` | 5 | Unit test suite for direct ingestion of MathWorks Stateflow .slx container archives. |
 | [`test_sysml2_advanced_constructs.cpp`](../../tests/frontend/formal/test_sysml2_advanced_constructs.cpp) | `tests/frontend/formal/test_sysml2_advanced_constructs.cpp` | 1 | Unit test suite for SysML v2 advanced constructs (nested/qualified packages, binding connectors, fork and join composite transitions). |
 | [`test_sysml2_flight_control.cpp`](../../tests/frontend/formal/test_sysml2_flight_control.cpp) | `tests/frontend/formal/test_sysml2_flight_control.cpp` | 5 | Integration verification suite for OMG SysML v2 Flight Mission Controller pipeline. |
-| [`test_sysml2_parser.cpp`](../../tests/frontend/formal/test_sysml2_parser.cpp) | `tests/frontend/formal/test_sysml2_parser.cpp` | 39 | Unit test suite for the OMG SysML v2 State Definition frontend parser. |
+| [`test_sysml2_parser.cpp`](../../tests/frontend/formal/test_sysml2_parser.cpp) | `tests/frontend/formal/test_sysml2_parser.cpp` | 41 | Unit test suite for the OMG SysML v2 State Definition frontend parser. |
 | [`test_sysml2_structured_data.cpp`](../../tests/frontend/formal/test_sysml2_structured_data.cpp) | `tests/frontend/formal/test_sysml2_structured_data.cpp` | 6 | Unit test suite for SysML v2 structured data types, enums, temporal triggers, and connection points. |
 
 ## Formal IR Subsystem

@@ -1,18 +1,54 @@
 // ============================================================================
-// OMG SysML v2 State Machine: High-Voltage Automotive BMS (ISO 26262 ASIL-D)
+// OMG SysML v2.0 State Machine: High-Voltage Automotive BMS (ISO 26262 ASIL-D)
 // Domain: Automotive Electric Powertrain & Battery Safety Management
-// Demonstrating: Parallel Orthogonal Regions, Clocks, Time Invariants, Race Checking
+// Demonstrating: Parallel Orthogonal Regions, Time Invariants, Race Checking
 // ============================================================================
 
 package AutomotiveBms {
-    import ScalarValues::*;
+    private import ScalarValues::*;
+    private import SI::*;
+    private import Time::DurationOf;
+
+    metadata def Priority {
+        doc /* Deterministic evaluation rank: 1 = highest priority (evaluated first). */
+        attribute value : Natural;
+    }
+
+    item def PrechargeCompleteCmd;
+    item def HighTempWarningEvent;
+    item def CriticalTempEvent;
+    item def TempNominalEvent;
+    item def DeltaVThresholdExceededEvent;
+    item def CellsBalancedEvent;
+    item def LowIsolationResistanceEvent;
+    item def IsolationRestoredEvent;
+    item def ThermalRunawayFault;
+    item def HvInterlockBreachedFault;
+
+    action def CloseMainContactorsAction;
+    action def OpenMainContactorsAction;
+    action def RampCoolingPumpAction;
+    action def ThrottleDischargeAction;
+    action def StopCoolingPumpAction;
+    action def EnableBalanceShuntsAction;
+    action def DisableBalanceShuntsAction;
+    action def AlertVehicleMasterAction;
+    action def ClearVehicleAlertAction;
 
     state def BatteryManagementSystem {
         // Typed MBSE I/O Parameters with Physical Units and ASIL-D Bounds
-        in pack_voltage_v : Real { assert constraint { self >= 250.0 and self <= 450.0; } }
-        in max_cell_temp_c : Real { assert constraint { self >= -20.0 and self <= 65.0; } }
-        in isolation_resistance_kohm : Real { assert constraint { self >= 100.0 and self <= 10000.0; } }
-        out cooling_pump_pwm : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
+        in pack_voltage_v : Real {
+            assert constraint { pack_voltage_v >= 250.0 and pack_voltage_v <= 450.0 }
+        }
+        in max_cell_temp_c : Real {
+            assert constraint { max_cell_temp_c >= -20.0 and max_cell_temp_c <= 65.0 }
+        }
+        in isolation_resistance_kohm : Real {
+            assert constraint { isolation_resistance_kohm >= 100.0 and isolation_resistance_kohm <= 10000.0 }
+        }
+        out cooling_pump_pwm : Real {
+            assert constraint { cooling_pump_pwm >= 0.0 and cooling_pump_pwm <= 100.0 }
+        }
         out contactors_closed : Boolean;
         out balancing_active : Boolean;
 
@@ -21,44 +57,55 @@ package AutomotiveBms {
         state Standby;
 
         transition first Standby accept PrechargeCompleteCmd
-            do CloseMainContactorsAction then Operational;
+            do action : CloseMainContactorsAction then Operational;
 
         // Concurrent Parallel Orthogonal State with 3 Independent Supervision Regions
-        parallel state Operational {
+        state Operational parallel {
             // Region 1: Thermal Supervision & Dynamic Cooling Loop
             state ThermalSupervision {
                 entry; then ThermalNominal;
 
                 state ThermalNominal {
-                    stay duration <= 100[ms];
+                    assert constraint { DurationOf(that) <= 100 [ms] }
                 }
 
                 state ActiveCooling {
-                    stay duration <= 50[ms];
+                    assert constraint { DurationOf(that) <= 50 [ms] }
                 }
 
                 state ThermalDerating;
 
                 transition t_cool_start
-                    priority 5
                     first ThermalNominal
                     accept HighTempWarningEvent
-                    do RampCoolingPumpAction
-                    then ActiveCooling;
+                    do action : RampCoolingPumpAction
+                    then ActiveCooling {
+                        @Priority { value = 5; }
+                    }
 
                 transition t_cool_derate
-                    priority 5
                     first ActiveCooling
                     accept CriticalTempEvent
-                    do ThrottleDischargeAction
-                    then ThermalDerating;
+                    do action : ThrottleDischargeAction
+                    then ThermalDerating {
+                        @Priority { value = 2; }
+                    }
 
                 transition t_cool_norm
-                    priority 10
                     first ActiveCooling
                     accept TempNominalEvent
-                    do StopCoolingPumpAction
-                    then ThermalNominal;
+                    do action : StopCoolingPumpAction
+                    then ThermalNominal {
+                        @Priority { value = 5; }
+                    }
+
+                transition t_derate_recover
+                    first ThermalDerating
+                    accept TempNominalEvent
+                    do action : RampCoolingPumpAction
+                    then ActiveCooling {
+                        @Priority { value = 5; }
+                    }
             }
 
             // Region 2: Multi-Cell Voltage Balancing
@@ -68,22 +115,24 @@ package AutomotiveBms {
                 state BalancingIdle;
 
                 state BalancingActive {
-                    stay duration <= 500[ms];
+                    assert constraint { DurationOf(that) <= 500 [ms] }
                 }
 
                 transition t_bal_start
-                    priority 5
                     first BalancingIdle
                     accept DeltaVThresholdExceededEvent
-                    do EnableBalanceShuntsAction
-                    then BalancingActive;
+                    do action : EnableBalanceShuntsAction
+                    then BalancingActive {
+                        @Priority { value = 5; }
+                    }
 
                 transition t_bal_stop
-                    priority 5
                     first BalancingActive
                     accept CellsBalancedEvent
-                    do DisableBalanceShuntsAction
-                    then BalancingIdle;
+                    do action : DisableBalanceShuntsAction
+                    then BalancingIdle {
+                        @Priority { value = 5; }
+                    }
             }
 
             // Region 3: High-Voltage Chassis Isolation Barrier Monitoring
@@ -91,45 +140,49 @@ package AutomotiveBms {
                 entry; then IsoHealthy;
 
                 state IsoHealthy {
-                    stay duration <= 200[ms];
+                    assert constraint { DurationOf(that) <= 200 [ms] }
                 }
 
                 state IsoWarning;
 
                 transition t_iso_degrade
-                    priority 5
                     first IsoHealthy
                     accept LowIsolationResistanceEvent
-                    do AlertVehicleMasterAction
-                    then IsoWarning;
+                    do action : AlertVehicleMasterAction
+                    then IsoWarning {
+                        @Priority { value = 5; }
+                    }
 
                 transition t_iso_restore
-                    priority 5
                     first IsoWarning
                     accept IsolationRestoredEvent
-                    do ClearVehicleAlertAction
-                    then IsoHealthy;
+                    do action : ClearVehicleAlertAction
+                    then IsoHealthy {
+                        @Priority { value = 5; }
+                    }
             }
         }
 
-        // Global ASIL-D Emergency Shutdown State
+        // Global ASIL-D Emergency Shutdown Latch State
         state FaultShutdown {
-            entry action OpenMainContactorsAction;
+            entry action : OpenMainContactorsAction;
         }
 
-        // High-Priority Safety Interlock Preemption from Any Operational Region
+        // Rank-1 (Highest Priority) Safety Interlock Preemption from Any Operational Region
         transition t_thermal_runaway
-            priority 1
             first Operational
             accept ThermalRunawayFault
-            do OpenMainContactorsAction
-            then FaultShutdown;
+            do action : OpenMainContactorsAction
+            then FaultShutdown {
+                @Priority { value = 1; }
+            }
 
         transition t_hv_estop
-            priority 1
             first Operational
             accept HvInterlockBreachedFault
-            do OpenMainContactorsAction
-            then FaultShutdown;
+            do action : OpenMainContactorsAction
+            then FaultShutdown {
+                @Priority { value = 1; }
+            }
     }
 }

@@ -15,40 +15,46 @@
 | `<state>` | `id`, `initial` | Simple atomic state or composite parent state |
 | `<parallel>` | `id` | Orthogonal concurrent execution regions (flattened via `OrthogonalProductPass`) |
 | `<history>` | `id`, `type="shallow\|deep"` | History pseudostate with $z^{-1}$ memory |
-| `<final>` | `id` | Final termination state emitting completion event `done.state.<id>` |
-| `<transition>` | `event`, `cond`, `target`, `delay` | Transition with event trigger, guard, target, and timed dwell |
-| `<send>` / `<raise>` | `event="..."` | Internal event dispatch and cascade execution |
-| `<onentry>` / `<onexit>` | `<script>`, executable content | State entry and exit lifecycle actions |
+| `<final>` | `id` (`<onentry>`, `<onexit>`, `<donedata>`) | Final termination state emitting completion event `done.state.<parent_id>` |
+| `<transition>` | `event`, `cond`, `target`, `type="external\|internal"` | Transition with event trigger, guard, target, and external/internal/local semantics |
+| `<send>` / `<cancel>` | `id`, `event`, `delay`, `sendid` | Internal event dispatch and W3C delayed-send timed transitions |
+| `<onentry>` / `<onexit>` | `<assign>`, `<send>`, `<cancel>`, `<script>` | State entry and exit lifecycle actions |
 
 ---
 
 ## 2. Embedding Lossless Directives in SCXML
 
-Because standard SCXML lacks native elements for hardware I/O port contracts or temporal LTL model checking formulas, `fsmc` allows embedding **`@fsm:*` directives** inside standard XML comments:
+Because standard SCXML lacks native elements for hardware I/O port range contracts or temporal LTL model checking formulas, `fsmc` supports W3C-valid `xmlns:fsm` extension attributes on `<data>`/`<state>`/`<transition>` as well as `@fsm:*` directives inside standard XML comments:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" name="MotorController" initial="Idle">
+<scxml xmlns="http://www.w3.org/2005/07/scxml"
+       xmlns:fsm="https://github.com/simoneCavalleri/fsmc/scxml"
+       version="1.0" name="MotorController" initial="Idle">
 
-    <!-- @fsm:port name=bus_voltage type=float dir=in min=0.0 max=48.0 unit="[V]" -->
-    <!-- @fsm:port name=pwm_duty type=float dir=out min=0.0 max=100.0 unit="[%]" -->
-    <!-- @fsm:property name=SafeStop kind=Safety formula="G (EvFault -> F SafeIdle)" -->
+    <!-- @fsm:property name=SafeStop kind=Safety ltl="G (EvFault -> F SafeIdle)" -->
 
     <datamodel>
-        <data id="retry_count" expr="0"/>
+        <data id="bus_voltage" expr="0.0" fsm:port="true" fsm:type="float" fsm:dir="in" fsm:min="0.0" fsm:max="48.0"/>
+        <data id="pwm_duty" expr="0.0" fsm:port="true" fsm:type="float" fsm:dir="out" fsm:min="0.0" fsm:max="100.0"/>
+        <data id="retry_count" expr="0" fsm:type="uint32"/>
     </datamodel>
 
     <state id="Idle">
-        <transition event="EvStart" cond="in.bus_voltage > 12.0" target="Running"/>
+        <transition event="EvStart" cond="bus_voltage &gt; 12.0" target="Running"/>
     </state>
 
     <state id="Running">
         <onentry>
-            <!-- Executed upon entering Running -->
-            <script>out.pwm_duty = 50.0;</script>
+            <assign location="pwm_duty" expr="50.0"/>
+            <send id="_timer_Running_1" event="after_500ms" delay="500ms"/>
         </onentry>
+        <onexit>
+            <cancel sendid="_timer_Running_1"/>
+        </onexit>
         <transition event="EvStop" target="Idle"/>
         <transition event="EvFault" target="SafeIdle"/>
+        <transition event="after_500ms" target="SafeIdle"/>
     </state>
 
     <state id="SafeIdle"/>
@@ -62,23 +68,27 @@ Because standard SCXML lacks native elements for hardware I/O port contracts or 
 === "W3C SCXML Source (`controller.scxml`)"
     ```xml
     <?xml version="1.0" encoding="UTF-8"?>
-    <scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" name="Thermostat" initial="Off">
-        <!-- @fsm:port name=current_temp type=float dir=in min=-20.0 max=60.0 -->
-        <!-- @fsm:port name=heater_relay type=bool dir=out -->
+    <scxml xmlns="http://www.w3.org/2005/07/scxml"
+           xmlns:fsm="https://github.com/simoneCavalleri/fsmc/scxml"
+           version="1.0" name="Thermostat" initial="Off">
+        <datamodel>
+            <data id="current_temp" expr="20.0" fsm:port="true" fsm:type="float" fsm:dir="in" fsm:min="-20.0" fsm:max="60.0"/>
+            <data id="heater_relay" expr="false" fsm:port="true" fsm:type="bool" fsm:dir="out"/>
+        </datamodel>
 
         <state id="Off">
             <transition event="EvEnable" target="Heating"/>
         </state>
 
         <state id="Heating">
-            <onentry><script>out.heater_relay = true;</script></onentry>
-            <transition event="EvTargetReached" cond="in.current_temp >= 22.0" target="Standby"/>
+            <onentry><assign location="heater_relay" expr="true"/></onentry>
+            <transition event="EvTargetReached" cond="current_temp &gt;= 22.0" target="Standby"/>
             <transition event="EvDisable" target="Off"/>
         </state>
 
         <state id="Standby">
-            <onentry><script>out.heater_relay = false;</script></onentry>
-            <transition event="EvTempDrop" cond="in.current_temp < 19.0" target="Heating"/>
+            <onentry><assign location="heater_relay" expr="false"/></onentry>
+            <transition event="EvTempDrop" cond="current_temp &lt; 19.0" target="Heating"/>
             <transition event="EvDisable" target="Off"/>
         </state>
     </scxml>

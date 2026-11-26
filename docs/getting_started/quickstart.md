@@ -21,10 +21,20 @@ Choose your preferred modeling syntax to define the UAV state machine with typed
 === "OMG SysML v2 (`uav_mission.sysml`)"
     ```sysml
     package UavMissionSystem {
+        private import ScalarValues::*;
+
+        item def CalibrationOk;
+        item def TakeoffCmd;
+        item def AreaReached;
+        item def LowBatteryEvent;
+        item def ResumeMissionCmd;
+        item def TouchdownEvent;
+        item def ShutdownCmd;
+
         state def UavMissionStatechart {
-            in port isGpsLocked : Boolean;
-            in port batteryLevel : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
-            out port waypointReached : Boolean;
+            in isGpsLocked : Boolean;
+            in batteryLevel : Real { assert constraint { batteryLevel >= 0.0 and batteryLevel <= 100.0 } }
+            out waypointReached : Boolean;
             attribute cycleCounter : Integer = 0;
 
             entry; then SensorCalib;
@@ -33,15 +43,15 @@ Choose your preferred modeling syntax to define the UAV state machine with typed
                 transition cal first SensorCalib accept CalibrationOk then SystemReady;
             }
             state SystemReady {
-                transition takeoff first SystemReady accept TakeoffCmd if in.isGpsLocked then WaypointNav;
+                transition takeoff first SystemReady accept TakeoffCmd if isGpsLocked then WaypointNav;
             }
             state WaypointNav {
-                transition wp first WaypointNav accept AreaReached do action { out.waypointReached = true; } then HoverPause;
-                transition low1 first WaypointNav accept LowBatteryEvent if in.batteryLevel < 20.0 then ReturnToHome;
+                transition wp first WaypointNav accept AreaReached do action { assign waypointReached := true; } then HoverPause;
+                transition low1 first WaypointNav accept LowBatteryEvent if batteryLevel < 20.0 then ReturnToHome;
             }
             state HoverPause {
                 transition res first HoverPause accept ResumeMissionCmd then WaypointNav;
-                transition low2 first HoverPause accept LowBatteryEvent if in.batteryLevel < 20.0 then ReturnToHome;
+                transition low2 first HoverPause accept LowBatteryEvent if batteryLevel < 20.0 then ReturnToHome;
             }
             state ReturnToHome {
                 transition td first ReturnToHome accept TouchdownEvent then Landed;

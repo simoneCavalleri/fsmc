@@ -1,4 +1,4 @@
-@startuml
+@startuml ConnectionFSM
 ' @fsm:port name=has_network_interface type=bool dir=in
 ' @fsm:port name=has_valid_credentials type=bool dir=in
 ' @fsm:port name=rx_bytes_per_sec type=float dir=in min=0.0 max=10000000.0

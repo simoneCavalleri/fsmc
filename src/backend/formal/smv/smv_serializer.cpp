@@ -139,6 +139,13 @@ std::string to_smv_predicate(std::string_view expr) {
         s.replace(pos, 2, "|");
         pos += 1;
     }
+    static const std::regex kw_not(R"(\bnot\b)", std::regex::optimize);
+    static const std::regex kw_and(R"(\band\b)", std::regex::optimize);
+    static const std::regex kw_or(R"(\bor\b)", std::regex::optimize);
+    s = std::regex_replace(s, kw_not, "!");
+    s = std::regex_replace(s, kw_and, "&");
+    s = std::regex_replace(s, kw_or, "|");
+
     pos = 0;
     while ((pos = s.find("==", pos)) != std::string::npos) {
         s.replace(pos, 2, "=");

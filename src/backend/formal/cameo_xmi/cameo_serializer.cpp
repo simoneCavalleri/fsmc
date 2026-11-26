@@ -193,36 +193,48 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
             return;
         }
 
-        out << pad << "<subvertex xmi:type=\"uml:State\" xmi:id=\"" << st_id << "\" name=\"" << escape_xml(state.name)
-            << "\"";
+        const std::string vertex_type = (state.kind == StateKind::Final) ? "uml:FinalState" : "uml:State";
+        out << pad << "<subvertex xmi:type=\"" << vertex_type << "\" xmi:id=\"" << st_id << "\" name=\""
+            << escape_xml(state.name) << "\">\n";
+
         if (!state.traceability_reqs.empty()) {
-            out << " satisfies=\"";
+            out << pad << "  <xmi:Extension extender=\"fsmc\">\n";
+            out << pad << "    <satisfies value=\"";
             for (size_t r = 0; r < state.traceability_reqs.size(); ++r) {
                 if (r > 0)
                     out << ", ";
                 out << escape_xml(state.traceability_reqs[r]);
             }
-            out << "\"";
+            out << "\"/>\n";
+            out << pad << "  </xmi:Extension>\n";
         }
-        if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
-            out << " invariant=\"" << escape_xml(*state.time_invariant) << "\"";
+        if (state.time_invariant.has_value() && !state.time_invariant->empty() && state.kind != StateKind::Final) {
+            out << pad << "  <stateInvariant xmi:type=\"uml:Constraint\" xmi:id=\"_inv" << st_id << "\">\n";
+            out << pad << "    <specification xmi:type=\"uml:OpaqueExpression\" xmi:id=\"_invspec" << st_id << "\">\n";
+            out << pad << "      <body>" << escape_xml(*state.time_invariant) << "</body>\n";
+            out << pad << "    </specification>\n";
+            out << pad << "  </stateInvariant>\n";
         }
-        out << ">\n";
 
         for (const auto& act : state.entry_actions) {
-            out << pad << "  <entry xmi:type=\"uml:Activity\" name=\"" << escape_xml(format_action_for_xmi(act))
-                << "\"/>\n";
+            out << pad << "  <entry xmi:type=\"uml:OpaqueBehavior\" xmi:id=\"_ent" << st_id << "_" << (id_counter++)
+                << "\">\n";
+            out << pad << "    <body>" << escape_xml(format_action_for_xmi(act)) << "</body>\n";
+            out << pad << "  </entry>\n";
         }
-        if (state.do_activity.has_value() && !state.do_activity->empty()) {
-            out << pad << "  <doActivity xmi:type=\"uml:Activity\" name=\"" << escape_xml(*state.do_activity)
-                << "\"/>\n";
+        if (state.do_activity.has_value() && !state.do_activity->empty() && state.kind != StateKind::Final) {
+            out << pad << "  <doActivity xmi:type=\"uml:OpaqueBehavior\" xmi:id=\"_do" << st_id << "\" name=\""
+                << escape_xml(*state.do_activity) << "\"/>\n";
         }
         for (const auto& act : state.exit_actions) {
-            out << pad << "  <exit xmi:type=\"uml:Activity\" name=\"" << escape_xml(format_action_for_xmi(act))
-                << "\"/>\n";
+            out << pad << "  <exit xmi:type=\"uml:OpaqueBehavior\" xmi:id=\"_ext" << st_id << "_" << (id_counter++)
+                << "\">\n";
+            out << pad << "    <body>" << escape_xml(format_action_for_xmi(act)) << "</body>\n";
+            out << pad << "  </exit>\n";
         }
         for (const auto& d_evt : state.deferred_events) {
-            out << pad << "  <deferrableTrigger name=\"" << escape_xml(d_evt) << "\"/>\n";
+            out << pad << "  <deferrableTrigger xmi:type=\"uml:Trigger\" xmi:id=\"_dt" << st_id << "_" << (id_counter++)
+                << "\" name=\"" << escape_xml(d_evt) << "\"/>\n";
         }
 
         auto emit_region_contents = [&](const std::string& scope_name, const std::string& scope_id,
@@ -239,15 +251,28 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
                 std::string init_ps = "_ps_init_" + scope_id;
                 out << rpad << "  <subvertex xmi:type=\"uml:Pseudostate\" xmi:id=\"" << init_ps
                     << "\" kind=\"initial\"/>\n";
-                out << rpad << "  <transition xmi:id=\"_t_init_" << scope_id << "\" source=\"" << init_ps
-                    << "\" target=\"" << id_map[scope_state.initial_sub_state] << "\"/>\n";
+                out << rpad << "  <transition xmi:type=\"uml:Transition\" xmi:id=\"_t_init_" << scope_id
+                    << "\" source=\"" << init_ps << "\" target=\"" << id_map[scope_state.initial_sub_state] << "\"/>\n";
             }
 
-            if (scope_state.has_history) {
-                std::string hist_ps = "_ps_hist_" + scope_id;
-                std::string kind_str = scope_state.has_deep_history ? "deepHistory" : "shallowHistory";
-                out << rpad << "  <subvertex xmi:type=\"uml:Pseudostate\" xmi:id=\"" << hist_ps << "\" kind=\""
-                    << kind_str << "\"/>\n";
+            bool has_shallow_hist = scope_state.has_history && !scope_state.has_deep_history;
+            bool has_deep_hist = scope_state.has_deep_history;
+            for (const auto& t : model.transitions) {
+                if (t.target == scope_name) {
+                    if (t.target_is_deep_history) {
+                        has_deep_hist = true;
+                    } else if (t.target_is_history) {
+                        has_shallow_hist = true;
+                    }
+                }
+            }
+            if (has_shallow_hist) {
+                out << rpad << "  <subvertex xmi:type=\"uml:Pseudostate\" xmi:id=\"_ps_hist_" << scope_id
+                    << "\" kind=\"shallowHistory\"/>\n";
+            }
+            if (has_deep_hist) {
+                out << rpad << "  <subvertex xmi:type=\"uml:Pseudostate\" xmi:id=\"_ps_dhist_" << scope_id
+                    << "\" kind=\"deepHistory\"/>\n";
             }
 
             // Child states
@@ -256,6 +281,71 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
                     emit_state_node(child, region_indent + 1);
                 }
             }
+
+            auto emit_uml_transition = [&](size_t idx, const TransitionEdge& trans, const std::string& tpad) {
+                std::string src_id = id_map.count(trans.source) ? id_map[trans.source] : trans.source;
+                std::string dst_id = id_map.count(trans.target) ? id_map[trans.target] : trans.target;
+                if (const auto* tgt_st = model.find_state(trans.target);
+                    tgt_st != nullptr && tgt_st->is_composite && id_map.count(trans.target)) {
+                    if (trans.target_is_deep_history) {
+                        dst_id = "_ps_dhist_" + id_map[trans.target];
+                    } else if (trans.target_is_history) {
+                        dst_id = "_ps_hist_" + id_map[trans.target];
+                    }
+                }
+                std::string trig_str;
+                if (const auto* ct = std::get_if<ChangeTrigger>(&trans.trigger);
+                    ct != nullptr && !ct->raw_expression.empty()) {
+                    trig_str = "when(" + ct->raw_expression + ")";
+                } else if (const auto* tt = std::get_if<TimeTrigger>(&trans.trigger);
+                           tt != nullptr && trans.event.empty()) {
+                    trig_str = std::string(tt->kind == TimeTriggerKind::Every ? "every_" : "after_") +
+                               std::to_string(tt->duration_value) + std::string(time_unit_to_string(tt->unit));
+                } else if (!trans.event.empty() && trans.event != "Anonymous") {
+                    trig_str = trans.event;
+                }
+                std::string guard_str =
+                    (trans.guard && !trans.guard->empty()) ? resolve_guard_str(*trans.guard) : std::string{};
+                std::string act_str = trans.transition_action.has_value()
+                                          ? format_action_for_xmi(*trans.transition_action)
+                                          : trans.get_action();
+
+                out << tpad << "<transition xmi:type=\"uml:Transition\" xmi:id=\"_t" << (idx + 1) << "\" source=\""
+                    << src_id << "\" target=\"" << dst_id << "\"";
+                if (trans.kind == TransitionEdgeKind::Internal) {
+                    out << " kind=\"internal\"";
+                } else if (trans.kind == TransitionEdgeKind::Local) {
+                    out << " kind=\"local\"";
+                }
+                if (trig_str.empty() && guard_str.empty() && act_str.empty() && trans.priority == 0) {
+                    out << "/>\n";
+                    return;
+                }
+                out << ">\n";
+                if (trans.priority > 0) {
+                    out << tpad << "  <xmi:Extension extender=\"fsmc\">\n";
+                    out << tpad << "    <priority value=\"" << trans.priority << "\"/>\n";
+                    out << tpad << "  </xmi:Extension>\n";
+                }
+                if (!trig_str.empty()) {
+                    out << tpad << "  <trigger xmi:type=\"uml:Trigger\" xmi:id=\"_tr_" << (idx + 1) << "\" name=\""
+                        << escape_xml(trig_str) << "\"/>\n";
+                }
+                if (!guard_str.empty()) {
+                    out << tpad << "  <guard xmi:type=\"uml:Constraint\" xmi:id=\"_g_" << (idx + 1) << "\">\n";
+                    out << tpad << "    <specification xmi:type=\"uml:OpaqueExpression\" xmi:id=\"_gspec_" << (idx + 1)
+                        << "\">\n";
+                    out << tpad << "      <body>" << escape_xml(guard_str) << "</body>\n";
+                    out << tpad << "    </specification>\n";
+                    out << tpad << "  </guard>\n";
+                }
+                if (!act_str.empty()) {
+                    out << tpad << "  <effect xmi:type=\"uml:OpaqueBehavior\" xmi:id=\"_eff_" << (idx + 1) << "\">\n";
+                    out << tpad << "    <body>" << escape_xml(act_str) << "</body>\n";
+                    out << tpad << "  </effect>\n";
+                }
+                out << tpad << "</transition>\n";
+            };
 
             // Local transitions within this region scope
             for (size_t i = 0; i < model.transitions.size(); ++i) {
@@ -266,39 +356,7 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
                 std::string p_src = (it_p != parent_map.end()) ? it_p->second : "";
                 if (p_src == scope_name) {
                     emitted_transitions.insert(i);
-                    std::string src_id = id_map.count(trans.source) ? id_map[trans.source] : trans.source;
-                    std::string dst_id = id_map.count(trans.target) ? id_map[trans.target] : trans.target;
-                    out << rpad << "  <transition xmi:id=\"_t" << (i + 1) << "\" source=\"" << src_id << "\" target=\""
-                        << dst_id << "\"";
-                    if (trans.kind == TransitionEdgeKind::Internal) {
-                        out << " kind=\"internal\"";
-                    } else if (trans.kind == TransitionEdgeKind::Local) {
-                        out << " kind=\"local\"";
-                    }
-                    if (trans.priority > 0) {
-                        out << " priority=\"" << trans.priority << "\"";
-                    }
-                    if (const auto* ct = std::get_if<ChangeTrigger>(&trans.trigger);
-                        ct != nullptr && !ct->raw_expression.empty()) {
-                        out << " trigger=\"when(" << escape_xml(ct->raw_expression) << ")\"";
-                    } else if (const auto* tt = std::get_if<TimeTrigger>(&trans.trigger);
-                               tt != nullptr && trans.event.empty()) {
-                        out << " trigger=\"" << (tt->kind == TimeTriggerKind::Every ? "every_" : "after_")
-                            << tt->duration_value << time_unit_to_string(tt->unit) << "\"";
-                    } else if (!trans.event.empty() && trans.event != "Anonymous") {
-                        out << " trigger=\"" << escape_xml(trans.event) << "\"";
-                    }
-                    if (trans.guard && !trans.guard->empty()) {
-                        std::string readable_guard = resolve_guard_str(*trans.guard);
-                        out << " guard=\"" << escape_xml(readable_guard) << "\"";
-                    }
-                    std::string act = trans.transition_action.has_value()
-                                          ? format_action_for_xmi(*trans.transition_action)
-                                          : trans.get_action();
-                    if (!act.empty()) {
-                        out << " effect=\"" << escape_xml(act) << "\"";
-                    }
-                    out << "/>\n";
+                    emit_uml_transition(i, trans, rpad + "  ");
                 }
             }
 
@@ -337,7 +395,7 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
 
     // Root initial transition
     if (!model.initial_state.empty() && id_map.count(model.initial_state)) {
-        out << "        <transition xmi:id=\"_t_root_init\" source=\"_ps_root\" target=\""
+        out << "        <transition xmi:type=\"uml:Transition\" xmi:id=\"_t_root_init\" source=\"_ps_root\" target=\""
             << id_map[model.initial_state] << "\"/>\n";
     }
 
@@ -348,34 +406,63 @@ std::string CameoSerializer::serialize(const FsmIr& model) {
         const auto& trans = model.transitions[i];
         std::string src_id = id_map.count(trans.source) ? id_map[trans.source] : trans.source;
         std::string dst_id = id_map.count(trans.target) ? id_map[trans.target] : trans.target;
-        out << "        <transition xmi:id=\"_t" << (i + 1) << "\" source=\"" << src_id << "\" target=\"" << dst_id
-            << "\"";
+        if (const auto* tgt_st = model.find_state(trans.target);
+            tgt_st != nullptr && tgt_st->is_composite && id_map.count(trans.target)) {
+            if (trans.target_is_deep_history) {
+                dst_id = "_ps_dhist_" + id_map[trans.target];
+            } else if (trans.target_is_history) {
+                dst_id = "_ps_hist_" + id_map[trans.target];
+            }
+        }
+        std::string trig_str;
+        if (const auto* ct = std::get_if<ChangeTrigger>(&trans.trigger); ct != nullptr && !ct->raw_expression.empty()) {
+            trig_str = "when(" + ct->raw_expression + ")";
+        } else if (const auto* tt = std::get_if<TimeTrigger>(&trans.trigger); tt != nullptr && trans.event.empty()) {
+            trig_str = std::string(tt->kind == TimeTriggerKind::Every ? "every_" : "after_") +
+                       std::to_string(tt->duration_value) + std::string(time_unit_to_string(tt->unit));
+        } else if (!trans.event.empty() && trans.event != "Anonymous") {
+            trig_str = trans.event;
+        }
+        std::string guard_str =
+            (trans.guard && !trans.guard->empty()) ? resolve_guard_str(*trans.guard) : std::string{};
+        std::string act_str =
+            trans.transition_action.has_value() ? format_action_for_xmi(*trans.transition_action) : trans.get_action();
+
+        out << "        <transition xmi:type=\"uml:Transition\" xmi:id=\"_t" << (i + 1) << "\" source=\"" << src_id
+            << "\" target=\"" << dst_id << "\"";
         if (trans.kind == TransitionEdgeKind::Internal) {
             out << " kind=\"internal\"";
         } else if (trans.kind == TransitionEdgeKind::Local) {
             out << " kind=\"local\"";
         }
+        if (trig_str.empty() && guard_str.empty() && act_str.empty() && trans.priority == 0) {
+            out << "/>\n";
+            continue;
+        }
+        out << ">\n";
         if (trans.priority > 0) {
-            out << " priority=\"" << trans.priority << "\"";
+            out << "          <xmi:Extension extender=\"fsmc\">\n";
+            out << "            <priority value=\"" << trans.priority << "\"/>\n";
+            out << "          </xmi:Extension>\n";
         }
-        if (const auto* ct = std::get_if<ChangeTrigger>(&trans.trigger); ct != nullptr && !ct->raw_expression.empty()) {
-            out << " trigger=\"when(" << escape_xml(ct->raw_expression) << ")\"";
-        } else if (const auto* tt = std::get_if<TimeTrigger>(&trans.trigger); tt != nullptr && trans.event.empty()) {
-            out << " trigger=\"" << (tt->kind == TimeTriggerKind::Every ? "every_" : "after_") << tt->duration_value
-                << time_unit_to_string(tt->unit) << "\"";
-        } else if (!trans.event.empty() && trans.event != "Anonymous") {
-            out << " trigger=\"" << escape_xml(trans.event) << "\"";
+        if (!trig_str.empty()) {
+            out << "          <trigger xmi:type=\"uml:Trigger\" xmi:id=\"_tr_" << (i + 1) << "\" name=\""
+                << escape_xml(trig_str) << "\"/>\n";
         }
-        if (trans.guard && !trans.guard->empty()) {
-            std::string readable_guard = resolve_guard_str(*trans.guard);
-            out << " guard=\"" << escape_xml(readable_guard) << "\"";
+        if (!guard_str.empty()) {
+            out << "          <guard xmi:type=\"uml:Constraint\" xmi:id=\"_g_" << (i + 1) << "\">\n";
+            out << "            <specification xmi:type=\"uml:OpaqueExpression\" xmi:id=\"_gspec_" << (i + 1)
+                << "\">\n";
+            out << "              <body>" << escape_xml(guard_str) << "</body>\n";
+            out << "            </specification>\n";
+            out << "          </guard>\n";
         }
-        std::string act =
-            trans.transition_action.has_value() ? format_action_for_xmi(*trans.transition_action) : trans.get_action();
-        if (!act.empty()) {
-            out << " effect=\"" << escape_xml(act) << "\"";
+        if (!act_str.empty()) {
+            out << "          <effect xmi:type=\"uml:OpaqueBehavior\" xmi:id=\"_eff_" << (i + 1) << "\">\n";
+            out << "            <body>" << escape_xml(act_str) << "</body>\n";
+            out << "          </effect>\n";
         }
-        out << "/>\n";
+        out << "        </transition>\n";
     }
 
     out << "      </region>\n";

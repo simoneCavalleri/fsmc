@@ -1,28 +1,34 @@
 // ============================================================================
 // OMG SysML v2.0 Multi-FSM Thermal Subsystem
 // Demonstrates:
-//   - Multi-file `import SharedProtocol::*;`
+//   - Multi-file `private import SharedProtocol::*;`
 //   - Conjugated `port def` (`~ThermalLinkPort` vs `ThermalLinkPort`)
+//   - `ref port` in `state def` explicitly bound inside `part def` (`exhibit state`)
 //   - Two `state def`s in one specification (`--list-machines`, `--state-def`)
-//   - Executable `send new EvOverTemp(temp_c) via link` zero-heap outbox
+//   - Executable `item msg : EvOverTemp { ... } send msg via link;` zero-heap outbox
 // ============================================================================
 
 package ThermalSubsystem {
-    import ScalarValues::*;
-    import SharedProtocol::*;
+    private import ScalarValues::*;
+    private import SharedProtocol::*;
 
     part def SensorUnit {
         port link : ~ThermalLinkPort;
-        exhibit state sm : SensorMonitorFsm;
+        exhibit state sm : SensorMonitorFsm {
+            ref :>> link = SensorUnit::link;
+        }
     }
 
     part def CoolerUnit {
         port link : ThermalLinkPort;
-        exhibit state sm : CoolingActuatorFsm;
+        exhibit state sm : CoolingActuatorFsm {
+            ref :>> link = CoolerUnit::link;
+        }
     }
 
     state def SensorMonitorFsm {
-        in sensor_temp_c : Int32;
+        in sensor_temp_c : Integer;
+        ref port link : ~ThermalLinkPort;
         attribute alerts_sent : Integer := 0;
 
         entry; then Monitoring;
@@ -35,9 +41,12 @@ package ThermalSubsystem {
             accept EvSample
             if sensor_temp_c >= 85
             do action RaiseThermalAlert {
-                assign temp_c := sensor_temp_c;
+                assign link.temp_c := sensor_temp_c;
                 assign alerts_sent := alerts_sent + 1;
-                send new EvOverTemp(sensor_temp_c) via link;
+                item msg : EvOverTemp {
+                    attribute :>> peak_temp = sensor_temp_c;
+                }
+                send msg via link;
             }
             then OverTempLatched;
 
@@ -46,14 +55,15 @@ package ThermalSubsystem {
             accept EvSample
             if sensor_temp_c < 70
             do action ClearReading {
-                assign temp_c := sensor_temp_c;
+                assign link.temp_c := sensor_temp_c;
             }
             then Monitoring;
     }
 
     state def CoolingActuatorFsm {
         out fan_pwm : Integer;
-        attribute last_peak_temp : Int32 := 0;
+        ref port link : ThermalLinkPort;
+        attribute last_peak_temp : Integer := 0;
 
         entry; then Standby;
 

@@ -130,7 +130,7 @@ stateDiagram-v2
 - **Shallow History (`[H]`)**: Restores the direct child state of `Flight`.
 - **Deep History (`[H*]`)**: Restores the nested active state recursively across all levels of hierarchy.
 
-In SysML v2, target a state's history pseudostate by appending `[H]` (shallow) or `[H*]` (deep) directly to the target state name:
+In SysML v2, target a state's history pseudostate via feature chain `.H` / `.history` (shallow) or `.deep_history` (deep) (or diagram-style `[H]` / `[H*]` shorthand):
 
 ```sysml
 state Suspended;
@@ -143,7 +143,7 @@ transition t_pause
 transition t_resume
     first Suspended
     accept ResumeMissionCmd
-    then Flight[H*];
+    then Flight.deep_history;
 ```
 
 `fsmc` compiles `[H]` and `[H*]` into static `fsm::history_is<CompositeState, SubState>` transition-table entries with zero dynamic allocation.

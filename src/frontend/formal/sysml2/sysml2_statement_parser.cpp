@@ -80,9 +80,11 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    // Import handling (e.g. import ScalarValues::*, import MyPkg::*)
-    if (stmt.rfind("import ", 0) == 0) {
-        symbol_resolver.register_import(stmt);
+    // Import handling (e.g. private import ScalarValues::*, public import MyPkg::*)
+    static const std::regex import_stmt_regex(R"(^(?:(?:private|public|protected)\s+)?(import\s+.+)$)",
+                                              std::regex::optimize);
+    if (std::regex_match(stmt, match, import_stmt_regex)) {
+        symbol_resolver.register_import(match[1].str());
         return true;
     }
 
@@ -202,6 +204,23 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
+    // 2a-calc-usage. Native OMG SysML v2.0 CalculationUsage (`[abstract] calc <GuardName> { return [result] : Boolean
+    // ... }`)
+    static const std::regex calc_usage_regex(R"(^(?:abstract\s+)?calc\s+(?!def\b)([A-Za-z_][A-Za-z0-9_]*)\b)",
+                                             std::regex::optimize);
+    if (std::regex_search(stmt, match, calc_usage_regex)) {
+        const std::string calc_name = sanitize_identifier(match[1].str());
+        if (!calc_name.empty()) {
+            model.add_guard(calc_name);
+        }
+        return true;
+    }
+
+    // 2a-ref-port. Reference port inside `state def` (`ref port <name> : [~]<PortDef>;`) — handled by workspace binder
+    if (stmt.rfind("ref port ", 0) == 0) {
+        return true;
+    }
+
     // 2b. Directional parameter / port declaration:
     //     OMG SysML v2.0: (in|out|inout) [attribute|port] <name> : <Type> [ { assert constraint { <expr> } } ]
     static const std::regex port_regex(
@@ -231,8 +250,8 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         std::optional<double> max_val = std::nullopt;
 
         if (!constraint_str.empty()) {
-            static const std::regex min_re(R"(self\s*>=\s*([0-9]+(?:\.[0-9]+)?))");
-            static const std::regex max_re(R"(self\s*<=\s*([0-9]+(?:\.[0-9]+)?))");
+            const std::regex min_re("(?:self|that|" + port_name + R"()\s*>=\s*(-?[0-9]+(?:\.[0-9]+)?))");
+            const std::regex max_re("(?:self|that|" + port_name + R"()\s*<=\s*(-?[0-9]+(?:\.[0-9]+)?))");
             std::smatch m_min, m_max;
             if (std::regex_search(constraint_str, m_min, min_re)) {
                 try {
@@ -432,10 +451,10 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
             "Invalid SysML v2 state identifier '" + match[1].str() + "': identifiers cannot start with a digit";
         return false;
     }
-    static const std::regex state_decl_regex(R"(^(parallel\s+)?state\s+([A-Za-z_][A-Za-z0-9_]*))",
+    static const std::regex state_decl_regex(R"(^(parallel\s+)?state\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+(parallel)\b)?)",
                                              std::regex::optimize);
     if (std::regex_search(stmt, match, state_decl_regex)) {
-        bool is_parallel = match[1].matched;
+        bool is_parallel = match[1].matched || match[3].matched;
         const std::string state_name = sanitize_identifier(match[2].str());
         const std::string parent_name = state_stack.empty() ? "" : state_stack.back();
         auto* existing = model.find_state_mut(state_name);
@@ -515,54 +534,26 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
     }
 
     // 7b. State Lifecycle Actions: entry action <Act>; / exit action <Act>;
-    auto try_parse_send_via = [&](const std::string& send_stmt, ActionSignature& out_sig) -> bool {
-        static const std::regex block_send_regex(
-            R"(^(?:do\s+)?send\s+(?:new\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s+via\s+([A-Za-z_][A-Za-z0-9_]*)$)",
-            std::regex::optimize);
-        std::smatch sm;
-        if (!std::regex_match(send_stmt, sm, block_send_regex)) {
-            return false;
-        }
-        const std::string sig_name = sanitize_identifier(sm[1].str());
-        const std::string args_str = sm[2].matched ? trim(sm[2].str()) : "";
-        const std::string port_name = sanitize_identifier(sm[3].str());
-        if (model.find_port(port_name) == nullptr) {
-            model.ports.emplace_back(port_name, DataType{PrimitiveTypeKind::UInt32}, PortDirection::Out);
-        }
-        if (model.find_signal(sig_name) == nullptr) {
-            model.signals.emplace_back(sig_name);
-        }
-        out_sig.name = "send_" + sig_name + "_via_" + port_name;
-        out_sig.invocation = port_name + ".send(" + sig_name + (args_str.empty() ? "" : (", " + args_str)) + ")";
-        SignalEmitOp emit_op;
-        emit_op.signal_name = sig_name;
-        emit_op.target_port = port_name;
-        if (!args_str.empty()) {
-            emit_op.arguments.push_back(args_str);
-        }
-        out_sig.instructions.emplace_back(std::move(emit_op));
-        return true;
-    };
-
     auto parse_lifecycle_action_block = [&](const std::string& block_content, const std::string& explicit_name,
                                             const std::string& default_name,
                                             std::vector<ActionSignature>& target_actions) {
-        std::string trimmed_block = trim(block_content);
-        std::stringstream ss(trimmed_block);
-        std::string statement;
         std::vector<ActionAssignment> assignments;
         std::vector<ActionAstNode> service_calls;
-        std::vector<ActionSignature> send_actions;
         std::vector<std::string> standalone_calls;
+        LocalItemMap local_items;
 
-        while (std::getline(ss, statement, ';')) {
-            statement = trim(statement);
-            if (statement.empty())
+        for (const auto& statement : split_action_block_statements(block_content)) {
+            if (statement.empty()) {
                 continue;
-
-            ActionSignature send_sig;
-            if (try_parse_send_via(statement, send_sig)) {
-                send_actions.push_back(std::move(send_sig));
+            }
+            if (try_parse_local_item_usage(statement, local_items)) {
+                continue;
+            }
+            SignalEmitOp emit_op;
+            std::string send_act_name;
+            std::string send_inv;
+            if (try_parse_send_statement(statement, local_items, model, emit_op, send_act_name, send_inv)) {
+                service_calls.emplace_back(std::move(emit_op), std::move(send_inv));
             } else if (try_parse_service_call_statement(statement, model, service_calls)) {
                 // Lowered directly into typed ActionCallOp
             } else if (!try_parse_assignment_statement(statement, assignments, &model)) {
@@ -588,17 +579,12 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
             target_actions.push_back(std::move(sig));
         }
 
-        for (auto& s_act : send_actions) {
-            model.add_action(s_act.name);
-            target_actions.push_back(std::move(s_act));
-        }
-
         for (const auto& call : standalone_calls) {
             model.add_action(call);
             target_actions.emplace_back(call);
         }
 
-        if (!has_assignments && send_actions.empty() && standalone_calls.empty()) {
+        if (!has_assignments && standalone_calls.empty()) {
             std::string act_name = !explicit_name.empty() ? explicit_name : default_name;
             model.add_action(act_name);
             target_actions.emplace_back(act_name);
@@ -649,7 +635,7 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
     }
 
     static const std::regex entry_act_regex(
-        R"(^entry\s*(?:/\s*|(?:action|do)\s+)?(?!point\b)([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?)",
+        R"(^entry\s*(?:/\s*|(?:action|do)\s*(?::\s*)?)?(?!point\b)([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?)",
         std::regex::optimize);
     if (std::regex_search(stmt, match, entry_act_regex)) {
         const std::string act_name = sanitize_identifier(match[1].str());
@@ -664,7 +650,7 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
     }
 
     static const std::regex exit_act_regex(
-        R"(^exit\s*(?:/\s*|(?:action|do)\s+)?(?!point\b)([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?)",
+        R"(^exit\s*(?:/\s*|(?:action|do)\s*(?::\s*)?)?(?!point\b)([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?)",
         std::regex::optimize);
     if (std::regex_search(stmt, match, exit_act_regex)) {
         const std::string act_name = sanitize_identifier(match[1].str());
@@ -678,9 +664,9 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    // 8. State Do Activity: do action <Activity>; or do <Activity>;
-    static const std::regex do_act_regex(R"(^do\s*(?:/\s*|action\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?$)",
-                                         std::regex::optimize);
+    // 8. State Do Activity: do action [:] <Activity>; or do <Activity>;
+    static const std::regex do_act_regex(
+        R"(^do\s*(?:/\s*|action\s*(?::\s*)?)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?$)", std::regex::optimize);
     if (std::regex_search(stmt, match, do_act_regex)) {
         const std::string act_name = sanitize_identifier(match[1].str());
         if (!state_stack.empty()) {
@@ -754,8 +740,9 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    // 9. Requirement Satisfaction: satisfy [requirement] <ReqId>;
-    static const std::regex satisfy_regex(R"(^satisfy\s+(?:requirement\s+)?([A-Za-z0-9_\-]+))", std::regex::optimize);
+    // 9. Requirement Satisfaction: `[assert] satisfy [requirement [:]] <ReqId>;`
+    static const std::regex satisfy_regex(R"(^(?:assert\s+)?satisfy\s+(?:requirement\s*(?::\s*)?)?([A-Za-z0-9_\-]+))",
+                                          std::regex::optimize);
     if (std::regex_search(stmt, match, satisfy_regex)) {
         const std::string req_id = match[1].str();
         if (!state_stack.empty()) {
@@ -767,7 +754,173 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    // 10. Temporal Logic Specifications: assert property <Name> : <Formula>
+    // 9a-1. Native OMG SysML v2.0 MetadataUsage for Deferred Events:
+    //       `@Deferred { events = ("EvA", "EvB"); }` or `@Deferred { events = "EvA"; }`
+    static const std::regex meta_defer_regex(
+        R"(^(?:@|metadata\s+)(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?(?:[A-Za-z_][A-Za-z0-9_]*::)?Deferred\s*\{([\s\S]*)\}\s*;?$)",
+        std::regex::optimize);
+    if (std::regex_match(stmt, match, meta_defer_regex)) {
+        if (!state_stack.empty()) {
+            if (auto* st = model.find_state_mut(state_stack.back())) {
+                const std::string body = match[1].str();
+                static const std::regex quoted_ev_re(R"delim("([^"]+)")delim", std::regex::optimize);
+                bool found_quoted = false;
+                for (std::sregex_iterator it(body.begin(), body.end(), quoted_ev_re), end; it != end; ++it) {
+                    std::string ev = sanitize_identifier((*it)[1].str());
+                    if (!ev.empty()) {
+                        found_quoted = true;
+                        if (std::find(st->deferred_events.begin(), st->deferred_events.end(), ev) ==
+                            st->deferred_events.end()) {
+                            st->deferred_events.push_back(ev);
+                        }
+                        model.add_event(ev);
+                    }
+                }
+                if (!found_quoted) {
+                    auto eq_pos = body.find('=');
+                    if (eq_pos != std::string::npos) {
+                        std::string rhs = body.substr(eq_pos + 1);
+                        for (char& ch : rhs) {
+                            if (ch == '(' || ch == ')' || ch == ';') {
+                                ch = ' ';
+                            }
+                        }
+                        std::istringstream iss(rhs);
+                        std::string tok;
+                        while (std::getline(iss, tok, ',')) {
+                            std::string ev = sanitize_identifier(trim(tok));
+                            if (!ev.empty()) {
+                                if (std::find(st->deferred_events.begin(), st->deferred_events.end(), ev) ==
+                                    st->deferred_events.end()) {
+                                    st->deferred_events.push_back(ev);
+                                }
+                                model.add_event(ev);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    // 9a-2. Native OMG SysML v2.0 MetadataUsage for Formal Temporal Properties:
+    //       `@<PropName> : TemporalProperty [about <Target>] { kind = "Safety"; formula = "G (...)"; ... }`
+    static const std::regex meta_prop_regex(
+        R"(^(?:@|metadata\s+)(?:([A-Za-z_][A-Za-z0-9_]*)\s*:\s*)?(?:[A-Za-z_][A-Za-z0-9_]*::)?TemporalProperty(?:\s+about\s+[A-Za-z0-9_:,\s]+)?\s*\{([\s\S]*)\}\s*;?$)",
+        std::regex::optimize);
+    if (std::regex_match(stmt, match, meta_prop_regex)) {
+        std::string prop_name = match[1].matched ? sanitize_identifier(match[1].str()) : "";
+        const std::string body = match[2].str();
+        auto extract_meta_attr = [&](const std::string& attr_name) -> std::string {
+            std::regex attr_re(R"((?:^|[;\s])(?:ref\s+)?(?::>>\s*|redefines\s+)?)" + attr_name +
+                               R"delim(\s*:?=\s*"((?:\\.|[^"\\])*)")delim");
+            std::smatch am;
+            if (!std::regex_search(body, am, attr_re)) {
+                return "";
+            }
+            std::string raw = am[1].str();
+            std::string unescaped;
+            unescaped.reserve(raw.size());
+            for (std::size_t i = 0; i < raw.size(); ++i) {
+                if (raw[i] == '\\' && i + 1 < raw.size()) {
+                    ++i;
+                }
+                unescaped.push_back(raw[i]);
+            }
+            return unescaped;
+        };
+        if (prop_name.empty()) {
+            prop_name = sanitize_identifier(extract_meta_attr("name"));
+        }
+        const std::string kind_str = extract_meta_attr("kind");
+        const std::string formula_str = extract_meta_attr("formula");
+        const std::string req_str = extract_meta_attr("req");
+        std::string desc_str = extract_meta_attr("description");
+        if (desc_str.empty()) {
+            desc_str = extract_meta_attr("desc");
+        }
+        if (!prop_name.empty() && !formula_str.empty()) {
+            FormalProperty prop;
+            prop.name = prop_name;
+            prop.kind = kind_str.empty() ? PropertyKind::Safety : property_kind_from_string(kind_str);
+            prop.raw_formula = formula_str;
+            prop.traceability_req = req_str;
+            prop.description = desc_str;
+            prop.ast = directive::LtlPropertyParser::parse(prop.raw_formula);
+            prop.id = compute_deterministic_id(prop.name + ":" + prop.raw_formula);
+            model.add_property(std::move(prop));
+        }
+        return true;
+    }
+
+    // 9a-3. Ignore any other generic SysML v2 `@Metadata` annotations so they do not misparse as transitions
+    if (stmt.rfind("@", 0) == 0 || stmt.rfind("metadata ", 0) == 0) {
+        return true;
+    }
+
+    // 9b-0. Native OMG SysML v2.0 Time::DurationOf state residence constraint:
+    //       `assert constraint [<Name>] { DurationOf(<State>) <= 100 [ms] }`
+    static const std::regex duration_of_constraint_regex(
+        R"(^assert\s+constraint\s*(?:[A-Za-z_][A-Za-z0-9_]*\s*)?\{\s*(?:Time::)?DurationOf\s*\(\s*[A-Za-z_][A-Za-z0-9_]*\s*\)\s*(<=|<)\s*(\d+)\s*(?:\[\s*(?:SI::|ISQ::)?([A-Za-z]+)\s*\]|([A-Za-z]+))?\s*;?\s*\}\s*;?$)",
+        std::regex::optimize);
+    if (current_item_def.empty() && !state_stack.empty() &&
+        std::regex_match(stmt, match, duration_of_constraint_regex)) {
+        const std::string op_str = match[1].str();
+        const std::string dur_str = match[2].str();
+        std::string unit_str = match[3].matched ? match[3].str() : (match[4].matched ? match[4].str() : "ms");
+        if (unit_str == "sec" || unit_str == "seconds") {
+            unit_str = "s";
+        } else if (unit_str == "msec" || unit_str == "milliseconds") {
+            unit_str = "ms";
+        } else if (unit_str == "usec" || unit_str == "microseconds") {
+            unit_str = "us";
+        } else if (unit_str == "nsec" || unit_str == "nanoseconds") {
+            unit_str = "ns";
+        }
+        if (auto* st = model.find_state_mut(state_stack.back())) {
+            if (op_str == "<=") {
+                st->time_invariant = StateTimeInvariant(dur_str + "[" + unit_str + "]");
+            } else {
+                st->time_invariant = StateTimeInvariant("stay_duration < " + dur_str + "[" + unit_str + "]");
+            }
+        }
+        return true;
+    }
+
+    // 9b. Native OMG SysML v2.0 AssertConstraintUsage inside a state or state def:
+    //     `assert [not] constraint [<Name>] { <BooleanExpr> }`
+    static const std::regex state_constraint_regex(
+        R"(^assert\s+(not\s+)?constraint\s*(?:([A-Za-z_][A-Za-z0-9_]*)\s*)?\{([\s\S]+)\}\s*;?$)", std::regex::optimize);
+    if (current_item_def.empty() && std::regex_match(stmt, match, state_constraint_regex)) {
+        const bool is_negated = match[1].matched;
+        std::string prop_name = match[2].matched ? sanitize_identifier(match[2].str()) : "";
+        std::string expr = trim(match[3].str());
+        while (!expr.empty() && expr.back() == ';') {
+            expr = trim(expr.substr(0, expr.size() - 1));
+        }
+        if (!expr.empty()) {
+            if (is_negated) {
+                expr = "not (" + expr + ")";
+            }
+            if (prop_name.empty()) {
+                prop_name = (!state_stack.empty() ? (state_stack.back() + "_Constraint_") : "Constraint_") +
+                            std::to_string(model.properties.size() + 1);
+            }
+            std::string formula = !state_stack.empty() ? ("G (not (" + state_stack.back() + " and not (" + expr + ")))")
+                                                       : ("G (" + expr + ")");
+            FormalProperty prop;
+            prop.name = prop_name;
+            prop.kind = PropertyKind::Safety;
+            prop.raw_formula = formula;
+            prop.ast = directive::LtlPropertyParser::parse(prop.raw_formula);
+            prop.id = compute_deterministic_id(prop.name + ":" + prop.raw_formula);
+            model.add_property(std::move(prop));
+        }
+        return true;
+    }
+
+    // 10. Legacy Temporal Logic Specifications: assert property <Name> : <Formula>
     static const std::regex assert_prop_regex(R"(^(?:assert\s+)?property\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+)$)",
                                               std::regex::optimize);
     if (std::regex_search(stmt, match, assert_prop_regex)) {

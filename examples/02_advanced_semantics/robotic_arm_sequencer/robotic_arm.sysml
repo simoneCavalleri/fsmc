@@ -1,31 +1,61 @@
 // ============================================================================
-// OMG SysML v2 State Machine: 6-DOF Industrial Robotic Tool Sequencer
+// OMG SysML v2.0 State Machine: 6-DOF Industrial Robotic Tool Sequencer
 // Domain: Industrial Automation & High-Precision Robotics
 // ============================================================================
 
 package IndustrialRobotics {
-    import ScalarValues::*;
+    private import ScalarValues::*;
+
+    item def PowerUpCmd;
+    item def StartJobCmd;
+    item def StepFinishingCmd;
+    item def CalibrateToolCmd;
+    item def CalibrationOkEvent;
+    item def SafetyPauseCmd;
+    item def ResumeJobCmd;
+    item def EStopCmd;
+    item def JobCompleteCmd;
+
+    action def InitializeServosAction;
+    action def SpinSpindleAction;
+    action def AdvanceToolpathAction;
+    action def RetractArmAction;
+    action def RestoreOffsetsAction;
+    action def EngageBrakesAction;
+    action def ReleaseBrakesAction;
+    action def CutPowerAction;
+    action def WarmupServosAction;
 
     state def RoboticArmFSM {
         // Typed MBSE I/O Parameters with Physical Units and Range Bounds
-        in payload_weight_kg : Real { assert constraint { self >= 0.0 and self <= 35.0; } }
+        in payload_weight_kg : Real {
+            assert constraint { payload_weight_kg >= 0.0 and payload_weight_kg <= 35.0 }
+        }
         in emergency_stop : Boolean;
-        out motor_torque_nm : Real { assert constraint { self >= 0.0 and self <= 250.0; } }
+        out motor_torque_nm : Real {
+            assert constraint { motor_torque_nm >= 0.0 and motor_torque_nm <= 250.0 }
+        }
         out tool_gripper_closed : Boolean;
+
+        // Safety predicates bound to input telemetry
+        calc PayloadWeightValidGuard {
+            return result : Boolean = payload_weight_kg >= 0.0 and payload_weight_kg <= 35.0;
+        }
+        calc SafetyInterlockClearedGuard {
+            return result : Boolean = not emergency_stop;
+        }
 
         entry; then Standby;
 
         state Standby;
 
-        transition first Standby accept PowerUpCmd do InitializeServosAction then Operational;
-
-        // Composite Operational State with Multi-Level History
+        // Composite Operational State
         state Operational {
             entry; then Idle;
 
             state Idle;
 
-            // Machining composite state with Deep History [H*]
+            // Multi-pass Machining composite state
             state Machining {
                 entry; then Roughing;
 
@@ -33,43 +63,46 @@ package IndustrialRobotics {
                 state SemiFinishing;
                 state Finishing;
 
-                transition first Roughing accept StepFinishingCmd do AdvanceToolpathAction then SemiFinishing;
-                transition first SemiFinishing accept StepFinishingCmd do AdvanceToolpathAction then Finishing;
+                transition first Roughing accept StepFinishingCmd
+                    do action : AdvanceToolpathAction then SemiFinishing;
+                transition first SemiFinishing accept StepFinishingCmd
+                    do action : AdvanceToolpathAction then Finishing;
             }
 
-            // Submachine Tool Calibration
+            // Tool Calibration state
             state ToolCalibration;
 
+            // Safety Paused state triggered by light-curtain interlock
+            state SafetyInterlocked {
+                entry action : EngageBrakesAction;
+                exit action : ReleaseBrakesAction;
+            }
+
             transition first Idle accept StartJobCmd
-                if PayloadWeightValidGuard
-                do SpinSpindleAction then Machining;
+                if PayloadWeightValidGuard.result
+                do action : SpinSpindleAction then Machining;
 
             transition first Machining accept CalibrateToolCmd
-                do RetractArmAction then ToolCalibration;
+                do action : RetractArmAction then ToolCalibration;
 
             transition first ToolCalibration accept CalibrationOkEvent
-                do RestoreOffsetsAction then Machining; // Re-enters via Deep History
+                do action : RestoreOffsetsAction then Machining;
+
+            transition first Machining accept SafetyPauseCmd
+                do action : CutPowerAction then SafetyInterlocked;
+
+            transition first SafetyInterlocked accept ResumeJobCmd
+                if SafetyInterlockClearedGuard.result
+                do action : WarmupServosAction then Machining;
         }
 
-        // Safety Paused state triggered by interlock
-        state SafetyInterlocked {
-            entry action EngageBrakesAction;
-            exit action ReleaseBrakesAction;
-        }
-
-        // Transition into safety pause from machining
-        transition first Machining accept SafetyPauseCmd
-            do CutPowerAction then SafetyInterlocked;
-
-        // Resume transition restoring exact nested machining substate via History
-        transition first SafetyInterlocked accept ResumeJobCmd
-            if SafetyInterlockClearedGuard
-            do WarmupServosAction then Machining; // Re-enters via Deep History
+        transition first Standby accept PowerUpCmd
+            do action : InitializeServosAction then Operational;
 
         transition first Operational accept EStopCmd
-            do EngageBrakesAction then Standby;
+            do action : EngageBrakesAction then Standby;
 
-        transition first Finishing accept JobCompleteCmd
-            do EngageBrakesAction then Standby;
+        transition first Operational accept JobCompleteCmd
+            do action : EngageBrakesAction then Standby;
     }
 }

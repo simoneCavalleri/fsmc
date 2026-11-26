@@ -13,18 +13,36 @@ Requirements can be attached to states and formal properties natively in SysML v
 === "OMG SysML v2"
     ```sysml
     package AerospaceEngine {
+        private import ScalarValues::*;
+
+        metadata def TemporalProperty {
+            attribute kind : String;
+            attribute formula : String;
+            attribute req : String[0..1];
+        }
+
+        requirement def REQ_ENG_SAFE_01;
+        requirement def REQ_ENG_EMERG_02;
+        item def EmergencyStop;
+
         state def EngineController {
-            // Tagged Formal LTL Property linked to REQ-ENG-SAFE-01
-            // @fsm:property SafeShutdownGuaranteed = "G (EmergencyStop -> F SafeShutdown)" req="REQ-ENG-SAFE-01"
+            @SafeShutdownGuaranteed : TemporalProperty {
+                kind = "Safety";
+                formula = "G (EmergencyStop -> F SafeShutdown)";
+                req = "REQ_ENG_SAFE_01";
+            }
+
+            entry; then Running;
 
             state Running {
-                satisfy requirement REQ-ENG-EMERG-02;
-                transition on EmergencyStop then SafeShutdown;
+                satisfy requirement REQ_ENG_EMERG_02;
             }
 
             state SafeShutdown {
-                satisfy requirement REQ-ENG-SAFE-01;
+                satisfy requirement REQ_ENG_SAFE_01;
             }
+
+            transition emergency_cutoff first Running accept EmergencyStop then SafeShutdown;
         }
     }
     ```

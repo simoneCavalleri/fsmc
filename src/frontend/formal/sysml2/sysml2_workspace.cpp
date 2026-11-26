@@ -301,12 +301,13 @@ WorkspaceMetadata extract_port_defs_and_bindings(std::string_view combined_conte
         meta.port_defs[pd_name] = std::move(spec);
     }
 
-    // 2. Scan `port <inst> : (~)?<PortDef>;` inside `part def` with `exhibit state <inst> : <StateDef>;`
+    // 2. Scan `[ref] port <inst> : (~)?<PortDef>;` inside `part def` with `exhibit state <inst> : <StateDef> [; | { ...
+    // }]`
     static const std::regex part_def_re(R"(\bpart\s+def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{)");
     static const std::regex port_inst_re(
-        R"(\bport\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(~)?\s*([A-Za-z_][A-Za-z0-9_]*)\s*;)");
+        R"(\b(?:ref\s+)?port\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(~)?\s*([A-Za-z_][A-Za-z0-9_]*)\s*;)");
     static const std::regex exhibit_re(
-        R"(\bexhibit\s+state\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*([A-Za-z_][A-Za-z0-9_]*)\s*;)");
+        R"(\bexhibit\s+state\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:;|\{))");
 
     for (std::sregex_iterator it(cleaned.begin(), cleaned.end(), part_def_re), end; it != end; ++it) {
         const std::size_t open_pos = static_cast<std::size_t>(it->position() + it->length()) - 1U;

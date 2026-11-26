@@ -41,9 +41,13 @@ Anonymous transitions have no event trigger. They fire automatically when the so
 When a state machine receives an event that cannot be processed in its current state but must not be dropped, the event can be deferred:
 
 ```sysml
+metadata def Deferred {
+    attribute events : ScalarValues::String[*];
+}
+
 state Calibrating {
-    defer StartMissionCmd;
-    transition on CalibrationFinished then Ready;
+    @Deferred { events = "StartMissionCmd"; }
+    transition first Calibrating accept CalibrationFinished then Ready;
 }
 ```
 

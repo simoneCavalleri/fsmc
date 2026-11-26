@@ -113,8 +113,16 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
     if (!is_parallel && !state.initial_sub_state.empty()) {
         out << pad << "  [*] --> " << state.initial_sub_state << "\n";
     }
-    if (state.has_history || state.has_deep_history) {
-        out << pad << "  " << (state.has_deep_history ? "[H*]" : "[H]") << "\n";
+    bool has_incoming_history_edge = false;
+    for (const auto& t : model.transitions) {
+        if (t.target == state.name && (t.target_is_history || t.target_is_deep_history)) {
+            has_incoming_history_edge = true;
+            break;
+        }
+    }
+    if ((state.has_history || state.has_deep_history) && !has_incoming_history_edge &&
+        !state.initial_sub_state.empty()) {
+        out << pad << "  " << (state.has_deep_history ? "[H*]" : "[H]") << " --> " << state.initial_sub_state << "\n";
     }
 
     if (state.time_invariant.has_value() && !state.time_invariant->empty()) {

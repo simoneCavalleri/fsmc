@@ -19,11 +19,13 @@ namespace {
 
 void emit_leaf_state(std::ostream& out, const StateNode& state, const std::string& pad) {
     if (state.kind == StateKind::EntryPoint) {
-        out << pad << "state " << state.name << " <<entryPoint>>\n";
+        out << pad << "state " << state.name << "\n";
+        out << pad << "%% @fsm:state name=" << state.name << " kind=EntryPoint\n";
         return;
     }
     if (state.kind == StateKind::ExitPoint) {
-        out << pad << "state " << state.name << " <<exitPoint>>\n";
+        out << pad << "state " << state.name << "\n";
+        out << pad << "%% @fsm:state name=" << state.name << " kind=ExitPoint\n";
         return;
     }
     if (state.kind == StateKind::Fork) {
@@ -200,12 +202,14 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model,
                 } else {
                     target = "[*]";
                 }
-                if (trans.target_is_history && label.find("[H]") == std::string::npos) {
-                    label = label.empty() ? "[H]" : label + " [H]";
-                }
             }
             if (trans.kind == TransitionEdgeKind::Local) {
                 out << pad << "    %% @fsm:local\n";
+            }
+            if (trans.target_is_deep_history) {
+                out << pad << "    %% @fsm:history deep\n";
+            } else if (trans.target_is_history) {
+                out << pad << "    %% @fsm:history shallow\n";
             }
             out << pad << "    " << trans.source << " --> " << target;
             if (!label.empty()) {
@@ -443,13 +447,15 @@ std::string MermaidSerializer::serialize(const FsmIr& model) {
                     break;
                 }
             }
-            if (trans.target_is_history && label.find("[H]") == std::string::npos) {
-                label = label.empty() ? "[H]" : label + " [H]";
-            }
         }
 
         if (trans.kind == TransitionEdgeKind::Local) {
             out << "    %% @fsm:local\n";
+        }
+        if (trans.target_is_deep_history) {
+            out << "    %% @fsm:history deep\n";
+        } else if (trans.target_is_history) {
+            out << "    %% @fsm:history shallow\n";
         }
         out << "    " << trans.source << " --> " << target;
         if (!label.empty()) {

@@ -694,10 +694,12 @@ TEST(ScxmlSerializerTest, MultiReqsAndSignalAttributes_PreservedAcrossRoundtrip)
 }
 
 /**
- * @brief Regression: `ScxmlSerializer` emits `type="local"` on `TransitionEdgeKind::Local`
- * transitions so `ScxmlParser` preserves `Local` kind across W3C SCXML roundtrips.
+ * @brief Regression: `ScxmlSerializer` emits W3C SCXML 1.0 compliant `type="internal" fsm:local="true"`
+ * on `TransitionEdgeKind::Local` transitions (never non-standard `type="local"`) so `ScxmlParser`
+ * preserves `Local` kind across W3C SCXML roundtrips.
  * @scenario Serialize a composite state `Comp` with a `Local` transition `Comp -> S2`, then re-parse.
- * @expected Serialized SCXML contains `type="local"` and re-parsed transition has `kind == TransitionEdgeKind::Local`.
+ * @expected Serialized SCXML uses `type="internal"` without `type="local"` and re-parsed transition has `kind ==
+ * TransitionEdgeKind::Local`.
  */
 TEST(ScxmlSerializerTest, LocalTransition_PreservedAcrossRoundtrip) {
     FsmIr ir;
@@ -713,7 +715,8 @@ TEST(ScxmlSerializerTest, LocalTransition_PreservedAcrossRoundtrip) {
     ir.add_transition(t);
 
     const std::string xml = ScxmlSerializer::serialize(ir);
-    EXPECT_NE(xml.find("type=\"local\""), std::string::npos) << xml;
+    EXPECT_EQ(xml.find("type=\"local\""), std::string::npos) << xml;
+    EXPECT_NE(xml.find("type=\"internal\""), std::string::npos) << xml;
 
     ScxmlParser parser;
     FsmIr parsed;

@@ -19,8 +19,7 @@ skinparam state {
 
 [*] --> SensorSleep
 
-state SensorSleep {
-}
+state SensorSleep
 
 state SensorActive {
     [*] --> Sampling
@@ -33,8 +32,7 @@ state SensorActive {
         Filtering : stay <= 5ms
     }
 
-    state Publishing {
-    }
+    state Publishing
 
     Sampling --> Filtering : AdcSampleReadyEvent / ProcessFirFilterAction
     Filtering --> Publishing : FilterCompleteEvent / PublishMqttTelemetryAction

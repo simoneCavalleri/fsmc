@@ -12,9 +12,9 @@ skinparam state {
 ' ============================================================================
 
 ' Formal Temporal Properties
-' @fsm:property name=MutualExclusion kind=Safety formula="G !(ManualFlight && AutopilotNav)" req="REQ-FBW-MUTEX-01"
-' @fsm:property name=FailsafeDirectLaw kind=Safety formula="G (SensorIrregularityFault -> F EmergencyDirectLaw)" req="REQ-FBW-FAILSAFE-04"
-' @fsm:property name=AutopilotReachable kind=Reachability formula="F AutopilotNav" req="REQ-FBW-AUTO-03"
+' @fsm:property name=MutualExclusion kind=Safety formula="G !(ManualFlight && AutopilotNav)" req="REQ_FBW_MUTEX_01"
+' @fsm:property name=FailsafeDirectLaw kind=Safety formula="G (SensorIrregularityFault -> F EmergencyDirectLaw)" req="REQ_FBW_FAILSAFE_04"
+' @fsm:property name=AutopilotReachable kind=Reachability formula="F AutopilotNav" req="REQ_FBW_AUTO_03"
 
 ' Typed MBSE I/O Ports with range bounds
 ' @fsm:port name=airspeed_knots type=float32 dir=in min=0.0 max=600.0
@@ -22,6 +22,12 @@ skinparam state {
 ' @fsm:port name=hydraulic_pressure_psi type=float32 dir=in min=0.0 max=3500.0
 ' @fsm:port name=flight_director_engaged type=bool dir=out
 ' @fsm:port name=direct_law_annunciator type=bool dir=out
+
+' DO-178C State Requirement Traceability
+' @fsm:state name=GroundInit satisfies=["REQ_FBW_INIT_01"]
+' @fsm:state name=ManualFlight satisfies=["REQ_FBW_MANUAL_02"]
+' @fsm:state name=AutopilotNav satisfies=["REQ_FBW_AUTO_03"]
+' @fsm:state name=EmergencyDirectLaw satisfies=["REQ_FBW_FAILSAFE_04"]
 
 [*] --> GroundInit
 
@@ -43,11 +49,11 @@ state EmergencyDirectLaw {
     EmergencyDirectLaw : entry / AnnunciateDirectLawWarning
 }
 
-GroundInit --> ManualFlight : LiftoffDetectedCmd / TrimElevatorsAction
-ManualFlight --> AutopilotNav : EngageAutopilotCmd [AirspeedValidGuard] / ConnectFlightDirectorAction
-AutopilotNav --> ManualFlight : DisengageAutopilotCmd / DisconnectFlightDirectorAction
+GroundInit --> ManualFlight : (prio=5) LiftoffDetectedCmd / TrimElevatorsAction
+ManualFlight --> AutopilotNav : (prio=5) EngageAutopilotCmd [AirspeedValidGuard] / ConnectFlightDirectorAction
+AutopilotNav --> ManualFlight : (prio=5) DisengageAutopilotCmd / DisconnectFlightDirectorAction
 
-AutopilotNav --> EmergencyDirectLaw : SensorIrregularityFault / BypassFlightEnvelopeAction
-ManualFlight --> EmergencyDirectLaw : HydraulicPressureLossFault / SwitchMechanicalBackupAction
+AutopilotNav --> EmergencyDirectLaw : (prio=1) SensorIrregularityFault / BypassFlightEnvelopeAction
+ManualFlight --> EmergencyDirectLaw : (prio=1) HydraulicPressureLossFault / SwitchMechanicalBackupAction
 
 @enduml

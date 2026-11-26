@@ -1,17 +1,36 @@
 // ============================================================================
-// OMG SysML v2 State Machine: Industrial Sensor Acquisition Pipeline
+// OMG SysML v2.0 State Machine: Industrial Sensor Acquisition Pipeline
 // Domain: Embedded Edge Sensing & Digital Signal Processing (DSP)
 // Demonstrating: Custom Toolchain Integration, Unix Pipe Filters, and Pass Plugins
 // ============================================================================
 
 package SensorToolchain {
-    import ScalarValues::*;
+    private import ScalarValues::*;
+    private import SI::*;
+    private import Time::DurationOf;
+
+    item def AdcSampleReadyEvent;
+    item def FilterCompleteEvent;
+    item def PublishAckEvent;
+    item def WakeupTimerEvent;
+    item def LowBatteryShutdownCmd;
+
+    action def PowerUpFrontendAction;
+    action def PowerDownFrontendAction;
+    action def ProcessFirFilterAction;
+    action def PublishMqttTelemetryAction;
 
     state def SensorPipelineController {
         // Typed MBSE I/O Parameters with Physical Range Contracts
-        in raw_adc_microvolts : Real { assert constraint { self >= 0.0 and self <= 3300000.0; } }
-        in sample_rate_hz : Real { assert constraint { self >= 1.0 and self <= 50000.0; } }
-        out filtered_value : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
+        in raw_adc_microvolts : Real {
+            assert constraint { raw_adc_microvolts >= 0.0 and raw_adc_microvolts <= 3300000.0 }
+        }
+        in sample_rate_hz : Real {
+            assert constraint { sample_rate_hz >= 1.0 and sample_rate_hz <= 50000.0 }
+        }
+        out filtered_value : Real {
+            assert constraint { filtered_value >= 0.0 and filtered_value <= 100.0 }
+        }
         out dsp_active : Boolean;
 
         entry; then SensorSleep;
@@ -22,21 +41,21 @@ package SensorToolchain {
             entry; then Sampling;
 
             state Sampling {
-                stay duration <= 10[ms];
+                assert constraint { DurationOf(that) <= 10 [ms] }
             }
 
             state Filtering {
-                stay duration <= 5[ms];
+                assert constraint { DurationOf(that) <= 5 [ms] }
             }
 
             state Publishing;
 
             transition first Sampling accept AdcSampleReadyEvent
-                do ProcessFirFilterAction
+                do action : ProcessFirFilterAction
                 then Filtering;
 
             transition first Filtering accept FilterCompleteEvent
-                do PublishMqttTelemetryAction
+                do action : PublishMqttTelemetryAction
                 then Publishing;
 
             transition first Publishing accept PublishAckEvent
@@ -44,11 +63,11 @@ package SensorToolchain {
         }
 
         transition first SensorSleep accept WakeupTimerEvent
-            do PowerUpFrontendAction
+            do action : PowerUpFrontendAction
             then SensorActive;
 
         transition first SensorActive accept LowBatteryShutdownCmd
-            do PowerDownFrontendAction
+            do action : PowerDownFrontendAction
             then SensorSleep;
     }
 }

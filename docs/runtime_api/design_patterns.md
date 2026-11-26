@@ -74,9 +74,11 @@ An autonomous UAV mission consists of multi-stage sub-states (`Preflight`, `Asce
 
 ### SysML v2 State Definition
 ```sysml
+private import ScalarValues::*;
+
 state def MissionController {
-    in port battery_pct : Real { assert constraint { self >= 0.0 and self <= 100.0; } }
-    out port motor_throttle : Real;
+    in battery_pct : Real { assert constraint { battery_pct >= 0.0 and battery_pct <= 100.0 } }
+    out motor_throttle : Real;
     attribute waypoint_idx : Integer = 0;
 
     entry; then Preflight;
@@ -98,7 +100,7 @@ state def MissionController {
         state HoverPause;
 
         transition pause_cmd first Navigating accept PauseCmd then HoverPause;
-        transition resume_cmd first HoverPause accept ResumeCmd then Navigating[H*];
+        transition resume_cmd first HoverPause accept ResumeCmd then Navigating.deep_history;
     }
 }
 ```

@@ -69,8 +69,10 @@ bool Sysml2Parser::parse_impl(std::string_view content, FsmIr& model, std::strin
     std::string current_calc_def;
     std::size_t skip_block_depth = 0;
     bool matched_target_state_def = false;
+    std::uint32_t pending_transition_priority = 0;
     static const std::regex state_def_head_re(R"(^state\s+def\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
     static const std::regex port_def_head_re(R"(^port\s+def\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
+    static const std::regex prio_dir_re(R"(^(?:transition\s+)?priority\s*=?\s*(\d+))", std::regex::optimize);
 
     // Step 2: Iterate through all scanned tokens and process directives or block structures
     for (const auto& token : tokens) {
@@ -87,6 +89,14 @@ bool Sysml2Parser::parse_impl(std::string_view content, FsmIr& model, std::strin
         // external types, state flags)
         if (token.kind == SysmlTokenKind::Directive) {
             std::string body = directive::DirectiveParser::extract_directive_body(token.text);
+            std::smatch pm;
+            if (std::regex_search(body, pm, prio_dir_re)) {
+                try {
+                    pending_transition_priority = static_cast<std::uint32_t>(std::stoul(pm[1].str()));
+                } catch (...) {
+                }
+                continue;
+            }
             if (!directive::DirectiveParser::parse_model_directive(body, model) && !state_stack.empty()) {
                 auto* st = model.find_state_mut(state_stack.back());
                 if (st != nullptr) {
@@ -94,6 +104,9 @@ bool Sysml2Parser::parse_impl(std::string_view content, FsmIr& model, std::strin
                         directive::DirectiveParser::parse_state_directive(body, *st);
                     } else if (body.rfind("defer", 0) == 0) {
                         directive::DirectiveParser::parse_defer_directive(body, *st);
+                        for (const auto& de : st->deferred_events) {
+                            model.add_event(de);
+                        }
                     }
                 }
             }
@@ -167,11 +180,18 @@ bool Sysml2Parser::parse_impl(std::string_view content, FsmIr& model, std::strin
             }
         } else if (token.kind == SysmlTokenKind::Statement || token.kind == SysmlTokenKind::ActionBlock) {
             // Regular standalone statement (e.g., transition, entry action, attribute assignment)
+            const std::size_t prev_trans_count = model.transitions.size();
             SysmlBlockKind unused_kind = SysmlBlockKind::ActionBlock;
             if (!process_statement(token.text, model, state_stack, package_stack, package_push_counts, current_item_def,
                                    current_enum_def, current_struct_def, current_calc_def, error_message,
                                    token.line_number, false, unused_kind, symbol_resolver)) {
                 return false;
+            }
+            if (pending_transition_priority > 0 && model.transitions.size() > prev_trans_count) {
+                if (model.transitions.back().priority == 0) {
+                    model.transitions.back().priority = pending_transition_priority;
+                }
+                pending_transition_priority = 0;
             }
         }
     }

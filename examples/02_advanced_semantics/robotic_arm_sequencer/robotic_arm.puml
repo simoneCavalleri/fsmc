@@ -19,39 +19,31 @@ skinparam state {
 
 [*] --> Standby
 
-state Standby {
-}
+state Standby
 
 Standby --> Operational : PowerUpCmd / InitializeServosAction
 
 state Operational {
     [*] --> Idle
 
-    state Idle {
-    }
+    state Idle
 
     state Machining {
         [*] --> Roughing
 
-        state Roughing {
-        }
+        state Roughing
+        state SemiFinishing
+        state Finishing
 
-        state SemiFinishing {
-        }
-
-        state Finishing {
-        }
-
-        Roughing --> SemiFinishing : StepFinishingCmd / AdvanceToolpathAction
-        SemiFinishing --> Finishing : StepFinishingCmd / AdvanceToolpathAction
+        Roughing --> SemiFinishing : (prio=5) StepFinishingCmd / AdvanceToolpathAction
+        SemiFinishing --> Finishing : (prio=5) StepFinishingCmd / AdvanceToolpathAction
     }
 
-    state ToolCalibration {
-    }
+    state ToolCalibration
 
-    Idle --> Machining : StartJobCmd [PayloadWeightValidGuard] / SpinSpindleAction
-    Machining --> ToolCalibration : CalibrateToolCmd / RetractArmAction
-    ToolCalibration --> Machining[H*] : CalibrationOkEvent / RestoreOffsetsAction
+    Idle --> Machining : (prio=5) StartJobCmd [PayloadWeightValidGuard] / SpinSpindleAction
+    Machining --> ToolCalibration : (prio=2) CalibrateToolCmd / RetractArmAction
+    ToolCalibration --> Machining[H] : (prio=5) CalibrationOkEvent / RestoreOffsetsAction
 }
 
 state SafetyInterlocked {
@@ -59,9 +51,9 @@ state SafetyInterlocked {
     SafetyInterlocked : exit / ReleaseBrakesAction
 }
 
-Machining --> SafetyInterlocked : SafetyPauseCmd / CutPowerAction
-SafetyInterlocked --> Machining[H*] : ResumeJobCmd [SafetyInterlockClearedGuard] / WarmupServosAction
-Finishing --> Standby : JobCompleteCmd / EngageBrakesAction
-Operational --> Standby : EStopCmd / EngageBrakesAction
+Machining --> SafetyInterlocked : (prio=1) SafetyPauseCmd / CutPowerAction
+SafetyInterlocked --> Machining[H*] : (prio=5) ResumeJobCmd [SafetyInterlockClearedGuard] / WarmupServosAction
+Finishing --> Standby : (prio=5) JobCompleteCmd / EngageBrakesAction
+Operational --> Standby : (prio=1) EStopCmd / EngageBrakesAction
 
 @enduml

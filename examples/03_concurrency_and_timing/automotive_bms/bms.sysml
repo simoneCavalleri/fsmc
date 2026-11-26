@@ -10,6 +10,7 @@ package AutomotiveBms {
     private import Time::DurationOf;
 
     metadata def Priority {
+        doc /* Deterministic evaluation rank: 1 = highest priority (evaluated first). */
         attribute value : Natural;
     }
 
@@ -23,6 +24,16 @@ package AutomotiveBms {
     item def IsolationRestoredEvent;
     item def ThermalRunawayFault;
     item def HvInterlockBreachedFault;
+
+    action def CloseMainContactorsAction;
+    action def OpenMainContactorsAction;
+    action def RampCoolingPumpAction;
+    action def ThrottleDischargeAction;
+    action def StopCoolingPumpAction;
+    action def EnableBalanceShuntsAction;
+    action def DisableBalanceShuntsAction;
+    action def AlertVehicleMasterAction;
+    action def ClearVehicleAlertAction;
 
     state def BatteryManagementSystem {
         // Typed MBSE I/O Parameters with Physical Units and ASIL-D Bounds
@@ -46,7 +57,7 @@ package AutomotiveBms {
         state Standby;
 
         transition first Standby accept PrechargeCompleteCmd
-            do action CloseMainContactorsAction then Operational;
+            do action : CloseMainContactorsAction then Operational;
 
         // Concurrent Parallel Orthogonal State with 3 Independent Supervision Regions
         state Operational parallel {
@@ -55,11 +66,11 @@ package AutomotiveBms {
                 entry; then ThermalNominal;
 
                 state ThermalNominal {
-                    assert constraint { DurationOf(ThermalNominal) <= 100 [ms] }
+                    assert constraint { DurationOf(that) <= 100 [ms] }
                 }
 
                 state ActiveCooling {
-                    assert constraint { DurationOf(ActiveCooling) <= 50 [ms] }
+                    assert constraint { DurationOf(that) <= 50 [ms] }
                 }
 
                 state ThermalDerating;
@@ -67,7 +78,7 @@ package AutomotiveBms {
                 transition t_cool_start
                     first ThermalNominal
                     accept HighTempWarningEvent
-                    do action RampCoolingPumpAction
+                    do action : RampCoolingPumpAction
                     then ActiveCooling {
                         @Priority { value = 5; }
                     }
@@ -75,17 +86,25 @@ package AutomotiveBms {
                 transition t_cool_derate
                     first ActiveCooling
                     accept CriticalTempEvent
-                    do action ThrottleDischargeAction
+                    do action : ThrottleDischargeAction
                     then ThermalDerating {
-                        @Priority { value = 5; }
+                        @Priority { value = 2; }
                     }
 
                 transition t_cool_norm
                     first ActiveCooling
                     accept TempNominalEvent
-                    do action StopCoolingPumpAction
+                    do action : StopCoolingPumpAction
                     then ThermalNominal {
-                        @Priority { value = 10; }
+                        @Priority { value = 5; }
+                    }
+
+                transition t_derate_recover
+                    first ThermalDerating
+                    accept TempNominalEvent
+                    do action : RampCoolingPumpAction
+                    then ActiveCooling {
+                        @Priority { value = 5; }
                     }
             }
 
@@ -96,13 +115,13 @@ package AutomotiveBms {
                 state BalancingIdle;
 
                 state BalancingActive {
-                    assert constraint { DurationOf(BalancingActive) <= 500 [ms] }
+                    assert constraint { DurationOf(that) <= 500 [ms] }
                 }
 
                 transition t_bal_start
                     first BalancingIdle
                     accept DeltaVThresholdExceededEvent
-                    do action EnableBalanceShuntsAction
+                    do action : EnableBalanceShuntsAction
                     then BalancingActive {
                         @Priority { value = 5; }
                     }
@@ -110,7 +129,7 @@ package AutomotiveBms {
                 transition t_bal_stop
                     first BalancingActive
                     accept CellsBalancedEvent
-                    do action DisableBalanceShuntsAction
+                    do action : DisableBalanceShuntsAction
                     then BalancingIdle {
                         @Priority { value = 5; }
                     }
@@ -121,7 +140,7 @@ package AutomotiveBms {
                 entry; then IsoHealthy;
 
                 state IsoHealthy {
-                    assert constraint { DurationOf(IsoHealthy) <= 200 [ms] }
+                    assert constraint { DurationOf(that) <= 200 [ms] }
                 }
 
                 state IsoWarning;
@@ -129,7 +148,7 @@ package AutomotiveBms {
                 transition t_iso_degrade
                     first IsoHealthy
                     accept LowIsolationResistanceEvent
-                    do action AlertVehicleMasterAction
+                    do action : AlertVehicleMasterAction
                     then IsoWarning {
                         @Priority { value = 5; }
                     }
@@ -137,23 +156,23 @@ package AutomotiveBms {
                 transition t_iso_restore
                     first IsoWarning
                     accept IsolationRestoredEvent
-                    do action ClearVehicleAlertAction
+                    do action : ClearVehicleAlertAction
                     then IsoHealthy {
                         @Priority { value = 5; }
                     }
             }
         }
 
-        // Global ASIL-D Emergency Shutdown State
+        // Global ASIL-D Emergency Shutdown Latch State
         state FaultShutdown {
-            entry action OpenMainContactorsAction;
+            entry action : OpenMainContactorsAction;
         }
 
-        // High-Priority Safety Interlock Preemption from Any Operational Region
+        // Rank-1 (Highest Priority) Safety Interlock Preemption from Any Operational Region
         transition t_thermal_runaway
             first Operational
             accept ThermalRunawayFault
-            do action OpenMainContactorsAction
+            do action : OpenMainContactorsAction
             then FaultShutdown {
                 @Priority { value = 1; }
             }
@@ -161,7 +180,7 @@ package AutomotiveBms {
         transition t_hv_estop
             first Operational
             accept HvInterlockBreachedFault
-            do action OpenMainContactorsAction
+            do action : OpenMainContactorsAction
             then FaultShutdown {
                 @Priority { value = 1; }
             }

@@ -15,6 +15,11 @@ package SensorToolchain {
     item def WakeupTimerEvent;
     item def LowBatteryShutdownCmd;
 
+    action def PowerUpFrontendAction;
+    action def PowerDownFrontendAction;
+    action def ProcessFirFilterAction;
+    action def PublishMqttTelemetryAction;
+
     state def SensorPipelineController {
         // Typed MBSE I/O Parameters with Physical Range Contracts
         in raw_adc_microvolts : Real {
@@ -36,21 +41,21 @@ package SensorToolchain {
             entry; then Sampling;
 
             state Sampling {
-                assert constraint { DurationOf(Sampling) <= 10 [ms] }
+                assert constraint { DurationOf(that) <= 10 [ms] }
             }
 
             state Filtering {
-                assert constraint { DurationOf(Filtering) <= 5 [ms] }
+                assert constraint { DurationOf(that) <= 5 [ms] }
             }
 
             state Publishing;
 
             transition first Sampling accept AdcSampleReadyEvent
-                do action ProcessFirFilterAction
+                do action : ProcessFirFilterAction
                 then Filtering;
 
             transition first Filtering accept FilterCompleteEvent
-                do action PublishMqttTelemetryAction
+                do action : PublishMqttTelemetryAction
                 then Publishing;
 
             transition first Publishing accept PublishAckEvent
@@ -58,11 +63,11 @@ package SensorToolchain {
         }
 
         transition first SensorSleep accept WakeupTimerEvent
-            do action PowerUpFrontendAction
+            do action : PowerUpFrontendAction
             then SensorActive;
 
         transition first SensorActive accept LowBatteryShutdownCmd
-            do action PowerDownFrontendAction
+            do action : PowerDownFrontendAction
             then SensorSleep;
     }
 }

@@ -96,10 +96,10 @@ bool Sysml2Parser::parse_transition_statement(const std::string& raw_stmt, FsmIr
     static const std::regex change_when_regex(R"(\b(?:accept\s+)?when\s*\(([^)]+)\))", std::regex::optimize);
     static const std::regex accept_regex(
         R"(\b(?:accept|when)\s+(?:([A-Za-z_][A-Za-z0-9_]*)\s*:\s*)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
-    static const std::regex if_regex(R"(\bif\s+([^;]+?)(?=\s+(?:do\b|then\b|to\b)|;|$))", std::regex::optimize);
+    static const std::regex if_regex(R"(\bif\s+([^;]+?)(?=\s+(?:do\b|then\b|to\b)|;|\{|$))", std::regex::optimize);
     static const std::regex do_block_regex(R"(\bdo\s*(?:action\s+)?(?:([A-Za-z_][A-Za-z0-9_]*)\s*)?\{([^}]+)\})",
                                            std::regex::optimize);
-    static const std::regex do_regex(R"(\bdo\s+(?:action\s+)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
+    static const std::regex do_regex(R"(\bdo\s+(?:action\s*(?::\s*)?)?([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
     static const std::regex then_regex(R"(\b(?:then|to)\s+([A-Za-z_][A-Za-z0-9_.\[\]\*]*))", std::regex::optimize);
 
     // 3. Source state detection (explicit 'first/from <State>' or inherited from parent scope)
@@ -161,7 +161,8 @@ bool Sysml2Parser::parse_transition_statement(const std::string& raw_stmt, FsmIr
 
     // 5. Guard expression resolution (composite boolean expressions or named guard contracts)
     if (std::regex_search(stmt, match, if_regex)) {
-        const std::string raw_guard_expr = trim(match[1].str());
+        static const std::regex calc_result_suffix_re(R"(\b([A-Za-z_][A-Za-z0-9_]*)\.result\b)", std::regex::optimize);
+        const std::string raw_guard_expr = std::regex_replace(trim(match[1].str()), calc_result_suffix_re, "$1");
         auto parsed = directive::GuardExpressionParser::parse(raw_guard_expr);
         if (!parsed.canonical_expression.empty()) {
             guard = parsed.canonical_expression;

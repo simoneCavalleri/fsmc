@@ -15,6 +15,14 @@ package NetworkProtocols {
     item def NetworkRestoredEvent;
     item def ConnectionLostEvent;
 
+    action def InitSocketAction;
+    action def LogErrorAction;
+    action def SetupSessionAction;
+    action def CleanupAction;
+    action def PauseQueueAction;
+    action def CloseSocketAction;
+    action def ResumeQueueAction;
+
     state def ConnectionFSM {
         // Typed MBSE I/O Parameters with Physical Bounds
         in has_network_interface : Boolean;
@@ -26,9 +34,9 @@ package NetworkProtocols {
             assert constraint { tx_bytes_per_sec >= 0.0 and tx_bytes_per_sec <= 10000000.0 }
         }
 
-        // Boolean guard evaluations
-        calc HasNetworkGuard { return : Boolean; }
-        calc HasValidCredentialsGuard { return : Boolean; }
+        // Boolean guard calculations bound to input parameters
+        calc HasNetworkGuard { return result : Boolean = has_network_interface; }
+        calc HasValidCredentialsGuard { return result : Boolean = has_valid_credentials; }
 
         entry; then Disconnected;
 
@@ -39,41 +47,41 @@ package NetworkProtocols {
 
         // Disconnected: Conditional branching with composite boolean guards
         transition first Disconnected accept ConnectCmd
-            if HasNetworkGuard and HasValidCredentialsGuard
-            do action InitSocketAction then Connecting;
+            if HasNetworkGuard.result and HasValidCredentialsGuard.result
+            do action : InitSocketAction then Connecting;
 
         transition first Disconnected accept ConnectCmd
-            if not HasNetworkGuard or not HasValidCredentialsGuard
-            do action LogErrorAction then Disconnected;
+            if not HasNetworkGuard.result or not HasValidCredentialsGuard.result
+            do action : LogErrorAction then Disconnected;
 
         // Connecting: Handshake verification and timeout handling
         transition first Connecting accept HandshakeOkEvent
-            do action SetupSessionAction then Connected;
+            do action : SetupSessionAction then Connected;
 
         transition first Connecting accept HandshakeFailedEvent
-            do action CleanupAction then Disconnected;
+            do action : CleanupAction then Disconnected;
 
         transition first Connecting accept TimeoutEvent
-            do action CleanupAction then Disconnected;
+            do action : CleanupAction then Disconnected;
 
         // Connected: Session maintenance and degradation
         transition first Connected accept NetworkDegradedEvent
-            do action PauseQueueAction then Suspended;
+            do action : PauseQueueAction then Suspended;
 
         transition first Connected accept DisconnectCmd
-            do action CloseSocketAction then Disconnected;
+            do action : CloseSocketAction then Disconnected;
 
         transition first Connected accept ConnectionLostEvent
-            do action CleanupAction then Disconnected;
+            do action : CleanupAction then Disconnected;
 
         // Suspended: Link recovery and session teardown
         transition first Suspended accept NetworkRestoredEvent
-            do action ResumeQueueAction then Connected;
+            do action : ResumeQueueAction then Connected;
 
         transition first Suspended accept DisconnectCmd
-            do action CloseSocketAction then Disconnected;
+            do action : CloseSocketAction then Disconnected;
 
         transition first Suspended accept TimeoutEvent
-            do action CleanupAction then Disconnected;
+            do action : CleanupAction then Disconnected;
     }
 }

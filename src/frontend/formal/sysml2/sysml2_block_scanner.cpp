@@ -29,7 +29,7 @@ bool Sysml2BlockScanner::ends_with_word(std::string_view text, std::string_view 
 bool Sysml2BlockScanner::is_structural_statement(std::string_view stmt) {
     std::string s = trim_str(stmt);
     if (s.rfind("allocate ", 0) == 0 || s.rfind("allocation ", 0) == 0 || s.rfind("metadata def ", 0) == 0 ||
-        s.rfind("requirement def ", 0) == 0) {
+        s.rfind("requirement def ", 0) == 0 || s.rfind("action def ", 0) == 0) {
         return true;
     }
     if (s.rfind("part ", 0) == 0 && s.find(':') != std::string_view::npos) {
@@ -42,7 +42,8 @@ bool Sysml2BlockScanner::is_structural_block_head(std::string_view head) {
     std::string h = trim_str(head);
     return (h.rfind("part def", 0) == 0 || h.rfind("part ", 0) == 0 || h.rfind("interface def", 0) == 0 ||
             h.rfind("allocation def", 0) == 0 || h.rfind("connection def", 0) == 0 ||
-            h.rfind("item def Part", 0) == 0 || h.rfind("metadata def", 0) == 0 || h.rfind("requirement def", 0) == 0);
+            h.rfind("item def Part", 0) == 0 || h.rfind("metadata def", 0) == 0 || h.rfind("requirement def", 0) == 0 ||
+            h.rfind("action def", 0) == 0);
 }
 
 bool Sysml2BlockScanner::is_container_block_head(std::string_view head) {

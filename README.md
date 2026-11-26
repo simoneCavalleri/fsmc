@@ -90,7 +90,7 @@ package ThermalSafety {
     state def ThermalMonitor {
         in sensor_temp_c : Integer;
         out heater_enable : Boolean;
-        port link : ThermalAlertPort;
+        ref port link : ThermalAlertPort;
         attribute trip_count : Integer := 0;
 
         entry; then Nominal;

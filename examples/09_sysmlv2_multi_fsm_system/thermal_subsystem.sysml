@@ -3,6 +3,7 @@
 // Demonstrates:
 //   - Multi-file `private import SharedProtocol::*;`
 //   - Conjugated `port def` (`~ThermalLinkPort` vs `ThermalLinkPort`)
+//   - `ref port` in `state def` explicitly bound inside `part def` (`exhibit state`)
 //   - Two `state def`s in one specification (`--list-machines`, `--state-def`)
 //   - Executable `item msg : EvOverTemp { ... } send msg via link;` zero-heap outbox
 // ============================================================================
@@ -13,17 +14,21 @@ package ThermalSubsystem {
 
     part def SensorUnit {
         port link : ~ThermalLinkPort;
-        exhibit state sm : SensorMonitorFsm;
+        exhibit state sm : SensorMonitorFsm {
+            ref :>> link = SensorUnit::link;
+        }
     }
 
     part def CoolerUnit {
         port link : ThermalLinkPort;
-        exhibit state sm : CoolingActuatorFsm;
+        exhibit state sm : CoolingActuatorFsm {
+            ref :>> link = CoolerUnit::link;
+        }
     }
 
     state def SensorMonitorFsm {
         in sensor_temp_c : Integer;
-        port link : ~ThermalLinkPort;
+        ref port link : ~ThermalLinkPort;
         attribute alerts_sent : Integer := 0;
 
         entry; then Monitoring;
@@ -57,7 +62,7 @@ package ThermalSubsystem {
 
     state def CoolingActuatorFsm {
         out fan_pwm : Integer;
-        port link : ThermalLinkPort;
+        ref port link : ThermalLinkPort;
         attribute last_peak_temp : Integer := 0;
 
         entry; then Standby;

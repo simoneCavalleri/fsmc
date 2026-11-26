@@ -240,13 +240,13 @@ When multiple transitions share the same `(source_state, trigger_event)` and hav
             state HighAltitude;
             state LowAltitude;
 
-            // Resolution B: Priority disambiguation via SysML v2 MetadataUsage
+            // Resolution B: Priority disambiguation via SysML v2 MetadataUsage (1 = evaluated first)
             transition to_high first Normal if altitude > 500.0 then HighAltitude {
-                @Priority { value = 2; }
+                @Priority { value = 1; }
             }
 
             transition to_low  first Normal if altitude < 800.0 then LowAltitude {
-                @Priority { value = 1; }
+                @Priority { value = 2; }
             }
         }
     }

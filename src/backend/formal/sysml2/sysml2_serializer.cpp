@@ -1,7 +1,9 @@
 #include "fsm/backend/formal/sysml2_serializer.hpp"
 
+#include <algorithm>
 #include <set>
 #include <sstream>
+#include <vector>
 
 #include "fsm/ir/guard.hpp"
 
@@ -161,9 +163,9 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
             << state.time_invariant->duration << " [" << unit_str << "] }\n";
     }
 
-    // Requirements
+    // Requirements (typed anonymous SatisfyRequirementUsage referencing `requirement def <REQ>`)
     for (const auto& req : state.traceability_reqs) {
-        out << pad << "    satisfy requirement " << req << ";\n";
+        out << pad << "    satisfy requirement : " << req << ";\n";
     }
 
     // Entry Actions
@@ -290,6 +292,21 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
             << "    attribute req : String[0..1];\n"
             << "    attribute description : String[0..1];\n"
             << "}\n\n";
+    }
+
+    std::vector<std::string> unique_reqs;
+    for (const auto& st : model.states) {
+        for (const auto& req : st.traceability_reqs) {
+            if (!req.empty() && std::find(unique_reqs.begin(), unique_reqs.end(), req) == unique_reqs.end()) {
+                unique_reqs.push_back(req);
+            }
+        }
+    }
+    if (!unique_reqs.empty()) {
+        for (const auto& req : unique_reqs) {
+            out << "requirement def " << req << ";\n";
+        }
+        out << "\n";
     }
     for (const auto& svc : model.services) {
         out << "calc def " << svc.name << " {\n";

@@ -153,17 +153,21 @@ package ThermalSubsystem {
 
     part def SensorUnit {
         port link : ~ThermalLinkPort; // Conjugated (~): flips in <-> out
-        exhibit state sm : SensorMonitorFsm;
+        exhibit state sm : SensorMonitorFsm {
+            ref :>> link = SensorUnit::link;
+        }
     }
 
     part def CoolerUnit {
         port link : ThermalLinkPort;
-        exhibit state sm : CoolingActuatorFsm;
+        exhibit state sm : CoolingActuatorFsm {
+            ref :>> link = CoolerUnit::link;
+        }
     }
 
     state def SensorMonitorFsm {
         in sensor_temp_c : Integer;
-        port link : ~ThermalLinkPort;
+        ref port link : ~ThermalLinkPort;
         attribute alerts_sent : Integer := 0;
 
         entry; then Monitoring;
@@ -187,7 +191,7 @@ package ThermalSubsystem {
 
     state def CoolingActuatorFsm {
         out fan_pwm : Integer;
-        port link : ThermalLinkPort;
+        ref port link : ThermalLinkPort;
         attribute last_peak_temp : Integer := 0;
 
         entry; then Standby;
@@ -241,18 +245,12 @@ package MissionSafety {
     item def EvLowBattery;
 
     state def UAVControl {
-        @ResponseLanding : TemporalProperty {
-            kind = "Safety";
-            formula = "G (EvLowBattery -> F Landed)";
-            req = "REQ_UAV_001";
-        }
-
         out motors_armed : Boolean;
 
         entry; then Landed;
 
         state Landed {
-            satisfy requirement REQ_UAV_001;
+            satisfy requirement : REQ_UAV_001;
 
             // Native OMG SysML v2.0 state constraint (proven by fsmc --verify)
             assert constraint SafeDisarmOnGround {
@@ -264,15 +262,21 @@ package MissionSafety {
 
         state FlightActive {
             // Native OMG SysML v2.0 state residence-time bound
-            assert constraint { DurationOf(FlightActive) <= 500 [ms] }
+            assert constraint { DurationOf(that) <= 500 [ms] }
         }
 
         transition emergency_land
             first FlightActive
             accept EvLowBattery
             then Landed {
-                @Priority { value = 10; }
+                @Priority { value = 1; }
             }
+    }
+
+    @ResponseLanding : TemporalProperty about UAVControl {
+        kind = "Safety";
+        formula = "G (EvLowBattery -> F Landed)";
+        req = "REQ_UAV_001";
     }
 }
 ```

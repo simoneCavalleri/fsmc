@@ -60,10 +60,10 @@ TEST(HistoryLowering, ShallowHistoryTarget_LowersToShadowRegisterAndDispatchGuar
     // 1. History pseudostate pruned
     EXPECT_EQ(ir.find_state("[H]"), nullptr);
 
-    // 2. Shadow history register synthesized
+    // 2. Shadow history register synthesized (zero-alloc int32 index)
     const auto* hvar = ir.find_variable("__history_state_Operating");
     ASSERT_NE(hvar, nullptr);
-    EXPECT_EQ(hvar->type, "string");
+    EXPECT_EQ(hvar->type, "int32");
 
     // 3. Substates have exit actions recording history
     const auto* subA_after = ir.find_state("ModeA");

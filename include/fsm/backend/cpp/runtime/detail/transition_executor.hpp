@@ -21,34 +21,36 @@ inline constexpr bool is_strict_substate_of_v =
     (get_state_name_static<SubState>() != get_state_name_static<SuperState>()) &&
     is_substate_of_v<SubState, SuperState>;
 
-template <typename Ancestor, typename TransSrc, typename Target>
+template <typename Ancestor, typename TransSrc, typename Target, bool IsLocal = false>
 inline constexpr bool is_lca_or_above_v =
-    is_strict_substate_of_v<TransSrc, Ancestor> && is_strict_substate_of_v<Target, Ancestor>;
+    IsLocal ? (is_substate_of_v<TransSrc, Ancestor> && is_substate_of_v<Target, Ancestor>)
+            : (is_strict_substate_of_v<TransSrc, Ancestor> && is_strict_substate_of_v<Target, Ancestor>);
 
-template <typename Current, typename Target, typename TransSrc = Current, typename State, typename Event, typename In,
-          typename Out, typename Registers, typename Services>
+template <typename Current, typename Target, typename TransSrc = Current, bool IsLocal = false, typename State,
+          typename Event, typename In, typename Out, typename Registers, typename Services>
 constexpr void call_hierarchical_on_exit(State& current_state, const Event& event, const In& in, Out& out,
                                          Registers& reg, Services& srv) {
     call_on_exit(current_state, event, in, out, reg, srv);
     if constexpr (has_parent_type<State>::value) {
         using Parent = typename State::parent_type;
-        if constexpr (!is_lca_or_above_v<Parent, TransSrc, Target>) {
+        if constexpr (!is_lca_or_above_v<Parent, TransSrc, Target, IsLocal>) {
             if constexpr (std::is_default_constructible_v<Parent>) {
                 Parent parent_inst{};
-                call_hierarchical_on_exit<Current, Target, TransSrc, Parent>(parent_inst, event, in, out, reg, srv);
+                call_hierarchical_on_exit<Current, Target, TransSrc, IsLocal, Parent>(parent_inst, event, in, out, reg,
+                                                                                      srv);
             }
         }
     }
 }
 
-template <typename Current, typename Target, typename TransSrc, typename Ancestor, typename Event, typename In,
-          typename Out, typename Registers, typename Services>
+template <typename Current, typename Target, typename TransSrc, bool IsLocal, typename Ancestor, typename Event,
+          typename In, typename Out, typename Registers, typename Services>
 constexpr void call_ancestor_on_enter_helper(const Event& event, const In& in, Out& out, Registers& reg,
                                              Services& srv) {
     if constexpr (has_parent_type<Ancestor>::value) {
         using SuperParent = typename Ancestor::parent_type;
-        if constexpr (!is_lca_or_above_v<SuperParent, TransSrc, Target>) {
-            call_ancestor_on_enter_helper<Current, Target, TransSrc, SuperParent>(event, in, out, reg, srv);
+        if constexpr (!is_lca_or_above_v<SuperParent, TransSrc, Target, IsLocal>) {
+            call_ancestor_on_enter_helper<Current, Target, TransSrc, IsLocal, SuperParent>(event, in, out, reg, srv);
         }
     }
     if constexpr (!std::is_same_v<Ancestor, Target>) {
@@ -59,14 +61,14 @@ constexpr void call_ancestor_on_enter_helper(const Event& event, const In& in, O
     }
 }
 
-template <typename Current, typename Target, typename TransSrc = Current, typename State, typename Event, typename In,
-          typename Out, typename Registers, typename Services>
+template <typename Current, typename Target, typename TransSrc = Current, bool IsLocal = false, typename State,
+          typename Event, typename In, typename Out, typename Registers, typename Services>
 constexpr void call_hierarchical_on_enter(State& target_state, const Event& event, const In& in, Out& out,
                                           Registers& reg, Services& srv) {
     if constexpr (has_parent_type<Target>::value) {
         using Parent = typename Target::parent_type;
-        if constexpr (!is_lca_or_above_v<Parent, TransSrc, Target>) {
-            call_ancestor_on_enter_helper<Current, Target, TransSrc, Parent>(event, in, out, reg, srv);
+        if constexpr (!is_lca_or_above_v<Parent, TransSrc, Target, IsLocal>) {
+            call_ancestor_on_enter_helper<Current, Target, TransSrc, IsLocal, Parent>(event, in, out, reg, srv);
         }
     }
     call_on_enter(target_state, event, in, out, reg, srv);
@@ -208,12 +210,13 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
                 // 3. state reassignment
                 // 4. on_enter(dst_state)
                 TransDst dst_state{};
-                call_hierarchical_on_exit<CurrentSrc, TransDst, TransSrc>(src_state, event, in, out, registers_, srv);
+                call_hierarchical_on_exit<CurrentSrc, TransDst, TransSrc, RowType::is_local>(src_state, event, in, out,
+                                                                                             registers_, srv);
                 Action act{};
                 call_action(act, event, src_state, dst_state, in, out, registers_, srv);
 
                 fsm_inst.set_current_state_variant(std::move(dst_state));
-                call_hierarchical_on_enter<CurrentSrc, TransDst, TransSrc>(
+                call_hierarchical_on_enter<CurrentSrc, TransDst, TransSrc, RowType::is_local>(
                     std::get<TransDst>(fsm_inst.get_current_state_variant()), event, in, out, registers_, srv);
 
                 const auto dst_name = get_state_name(std::get<TransDst>(fsm_inst.get_current_state_variant()));

@@ -346,3 +346,92 @@ int main(void) {
 
     fs::remove_all(tmp_dir);
 }
+
+/**
+ * @brief Verify C99 backend expands compound guards, synthesizes symbolic guard callbacks, runs native zero-heap
+ *        deferred event recall, and omits #include "<prefix>.h" in single-TU stdout emit().
+ */
+TEST(C99Backend, CompoundGuardsDeferredRecallAndSingleTuEmit_StrictC99) {
+    FsmIr ir;
+    ir.name = "C99AuditFsm";
+    ir.initial_state = "Busy";
+
+    ir.add_state("Busy");
+    ir.add_state("Ready");
+    ir.add_state("Done");
+    ir.find_state_mut("Busy")->deferred_events.push_back("Work");
+
+    ir.add_signal(SignalDefinition("Finish"));
+    ir.add_signal(SignalDefinition("Work"));
+    ir.add_guard("g_ok", "", "", "");
+    ir.add_guard("g_safe", "", "", "");
+
+    {
+        TransitionEdge t("Busy", "Ready", "Finish");
+        t.set_guard("fsm::and_<g_ok, g_safe>");
+        ir.add_transition(std::move(t));
+    }
+    {
+        TransitionEdge t("Ready", "Done", "Work");
+        ir.add_transition(std::move(t));
+    }
+
+    auto pm = fsm::middleend::PassManager::create_lowering_pipeline(TargetCapabilities::c99_baremetal());
+    fsm::diagnostic::DiagnosticEngine diag;
+    ASSERT_TRUE(pm.run(ir, diag));
+
+    C99CodegenBackend backend;
+    const std::string single_tu = backend.emit(ir, diag);
+    EXPECT_FALSE(diag.has_errors());
+    EXPECT_EQ(single_tu.find("#include \"c99_audit_fsm.h\""), std::string::npos);
+    EXPECT_NE(single_tu.find("bool (*g_ok)(void* user_data);"), std::string::npos);
+    EXPECT_NE(single_tu.find("bool (*g_safe)(void* user_data);"), std::string::npos);
+    EXPECT_EQ(single_tu.find("fsm::and_"), std::string::npos);
+    EXPECT_NE(single_tu.find("deferred_queue"), std::string::npos);
+    EXPECT_NE(single_tu.find("c99_audit_fsm_recall_deferred"), std::string::npos);
+
+    const std::string cc = find_c_compiler();
+    if (cc.empty()) {
+        return;
+    }
+
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::temp_directory_path() / "fsmc_c99_guards_deferred_test";
+    fs::create_directories(tmp_dir);
+    const auto bundle = backend.emit_bundle(ir, diag);
+    {
+        std::ofstream hf(tmp_dir / "c99_audit_fsm.h");
+        hf << bundle.header;
+        std::ofstream cf(tmp_dir / "c99_audit_fsm.c");
+        cf << bundle.source;
+        std::ofstream mf(tmp_dir / "main.c");
+        mf << R"c(
+#include <assert.h>
+#include <stdbool.h>
+#include "c99_audit_fsm.h"
+
+static bool cb_ok(void* ud) { (void)ud; return true; }
+static bool cb_safe(void* ud) { (void)ud; return true; }
+
+int main(void) {
+    c99_audit_fsm_fsm_t fsm;
+    c99_audit_fsm_services_t srv = { NULL, cb_ok, cb_safe };
+    c99_audit_fsm_init_with_services(&fsm, &srv);
+    assert(c99_audit_fsm_current_state(&fsm) == C99_AUDIT_FSM_STATE_BUSY);
+    assert(c99_audit_fsm_dispatch_work(&fsm, NULL, NULL) == C99_AUDIT_FSM_STATUS_OK);
+    assert(c99_audit_fsm_current_state(&fsm) == C99_AUDIT_FSM_STATE_BUSY);
+    assert(c99_audit_fsm_dispatch_finish(&fsm, NULL, NULL) == C99_AUDIT_FSM_STATUS_OK);
+    assert(c99_audit_fsm_current_state(&fsm) == C99_AUDIT_FSM_STATE_DONE);
+    return 0;
+}
+)c";
+    }
+
+    const fs::path bin = tmp_dir / "deferred_runner";
+    const std::string cmd = cc + " -std=c99 -Wall -Wextra -Werror -pedantic -I\"" + tmp_dir.string() + "\" \"" +
+                            (tmp_dir / "c99_audit_fsm.c").string() + "\" \"" + (tmp_dir / "main.c").string() +
+                            "\" -o \"" + bin.string() + "\"";
+    ASSERT_EQ(std::system(cmd.c_str()), 0) << "Strict C99 compile failed:\n" << cmd;
+    ASSERT_EQ(std::system(("\"" + bin.string() + "\"").c_str()), 0);
+    fs::remove_all(tmp_dir);
+}

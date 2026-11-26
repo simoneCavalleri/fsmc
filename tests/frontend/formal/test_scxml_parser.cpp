@@ -726,4 +726,30 @@ TEST(ScxmlSerializerTest, LocalTransition_PreservedAcrossRoundtrip) {
     EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Local);
 }
 
+/**
+ * @brief Test Intent: Verify W3C SCXML <initial><transition target="..."/></initial> child elements are parsed
+ * for both root <scxml> and composite <state> elements.
+ */
+TEST(ScxmlParserTest, InitialChildElement_ResolvesRootAndCompositeInitialState) {
+    const std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" name="ScxmlInitTest">
+  <initial><transition target="Active"/></initial>
+  <state id="Idle"/>
+  <state id="Active">
+    <initial><transition target="Sub2"/></initial>
+    <state id="Sub1"/>
+    <state id="Sub2"/>
+  </state>
+</scxml>
+)";
+    ScxmlParser parser;
+    FsmIr ir;
+    fsm::diagnostic::DiagnosticEngine diag;
+    ASSERT_TRUE(parser.parse(scxml, ir, diag)) << diag.render_to_string();
+    EXPECT_EQ(ir.initial_state, "Active");
+    const auto* active = ir.find_state("Active");
+    ASSERT_NE(active, nullptr);
+    EXPECT_EQ(active->initial_sub_state, "Sub2");
+}
+
 }  // namespace

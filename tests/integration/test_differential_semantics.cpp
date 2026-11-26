@@ -889,4 +889,49 @@ int main(void) {
 #endif
 }
 
+/**
+ * @brief Test Intent: Verify OMG UML 2.5.1 §14.2.3.8 Local vs External transition semantics in IrSimulator and
+ * CppGenerator (External exits/re-enters composite source; Local preserves composite source).
+ */
+TEST(DifferentialSemantics, LocalVsExternalTransitionSemantics_Uml251) {
+    using namespace fsm::ir;
+    auto build_model = [](TransitionEdgeKind kind) {
+        FsmIr ir;
+        ir.name = "LocalVsExt";
+        ir.initial_state = "Active";
+        ir.add_state("Active");
+        ir.find_state_mut("Active")->is_composite = true;
+        ir.find_state_mut("Active")->initial_sub_state = "SubA";
+        ir.add_state("SubA", "Active");
+        ir.add_state("SubB", "Active");
+        ir.add_signal(SignalDefinition("Switch"));
+
+        TransitionEdge tr("Active", "SubB", "Switch");
+        tr.kind = kind;
+        ir.add_transition(std::move(tr));
+        return ir;
+    };
+
+    {
+        FsmIr ext_ir = build_model(TransitionEdgeKind::External);
+        std::ostringstream log;
+        auto rep = IrSimulator::simulate_detailed(ext_ir, "Switch\n", log);
+        ASSERT_EQ(rep.steps.size(), 1U);
+        EXPECT_EQ(rep.steps[0].exited_states, (std::vector<std::string>{"SubA", "Active"}));
+        EXPECT_EQ(rep.steps[0].entered_states, (std::vector<std::string>{"Active", "SubB"}));
+    }
+
+    {
+        FsmIr loc_ir = build_model(TransitionEdgeKind::Local);
+        std::ostringstream log;
+        auto rep = IrSimulator::simulate_detailed(loc_ir, "Switch\n", log);
+        ASSERT_EQ(rep.steps.size(), 1U);
+        EXPECT_EQ(rep.steps[0].exited_states, (std::vector<std::string>{"SubA"}));
+        EXPECT_EQ(rep.steps[0].entered_states, (std::vector<std::string>{"SubB"}));
+
+        const std::string cpp = fsm::backend::cpp::CppGenerator::generate_header(loc_ir);
+        EXPECT_NE(cpp.find("::fsm::local_row<"), std::string::npos);
+    }
+}
+
 }  // namespace

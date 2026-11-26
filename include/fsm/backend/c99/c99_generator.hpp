@@ -18,7 +18,8 @@ using ir::FsmIr;
  * @brief Configuration options for native Pure-C99 code generation.
  */
 struct C99GeneratorOptions {
-    std::string header_include;  ///< Include path for the generated .h inside .c (default: "<prefix>.h")
+    std::string header_include;        ///< Include path for the generated .h inside .c (default: "<prefix>.h")
+    bool omit_header_include = false;  ///< Omit `#include "<header>"` in .c (for single-TU stdout emission)
 };
 
 /**

@@ -253,6 +253,11 @@ std::string translate_expr_to_c(std::string_view expr, const C99Context& ctx,
                     out += "out_val." + sanitize_c_ident(tok);
                     continue;
                 }
+                if (ctx.guard_callbacks.count(tok) != 0U) {
+                    const std::string cb = sanitize_c_ident(tok);
+                    out += "(fsm->services." + cb + " != NULL && fsm->services." + cb + "(fsm->services.user_data))";
+                    continue;
+                }
             }
             out += tok;
             continue;
@@ -354,7 +359,9 @@ std::string resolve_guard_expr_c(const TransitionEdge& tr, const FsmIr& model, c
         return "";
     }
     std::string raw_expr = *tr.guard;
-    if (const auto* g = model.find_guard(*tr.guard)) {
+    if (raw_expr.find("fsm::") != std::string::npos) {
+        raw_expr = GuardExpressionParser::to_diagram_string(raw_expr, model.guards);
+    } else if (const auto* g = model.find_guard(raw_expr)) {
         if (g->raw_expression.has_value() && !g->raw_expression->empty()) {
             raw_expr = *g->raw_expression;
         }

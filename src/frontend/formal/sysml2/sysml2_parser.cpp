@@ -33,6 +33,14 @@ using directive::GuardExpressionParser;
  * @return True if parsing and IR construction succeeded, false otherwise.
  */
 bool Sysml2Parser::parse(std::string_view content, FsmIr& out_ir, diagnostic::DiagnosticEngine& diag) {
+    if (options_.target_state_def.empty()) {
+        const auto all_defs = list_state_defs(content);
+        if (all_defs.size() > 1U) {
+            diag.report(diagnostic::Diagnostic::warning(
+                "W_MULTI_STATE_DEF", "Multiple 'state def' machines found; defaulting to first '" + all_defs.front() +
+                                         "'. Use --state-def <Name> or --list-machines to select a specific machine."));
+        }
+    }
     std::string err;
     if (!parse_impl(content, out_ir, err)) {
         report_parse_error(diag, "E_PARSE_SYSML2", err);
@@ -69,6 +77,7 @@ bool Sysml2Parser::parse_impl(std::string_view content, FsmIr& model, std::strin
     std::string current_calc_def;
     std::size_t skip_block_depth = 0;
     bool matched_target_state_def = false;
+    bool parsed_default_state_def = false;
     std::uint32_t pending_transition_priority = 0;
     static const std::regex state_def_head_re(R"(^state\s+def\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
     static const std::regex port_def_head_re(R"(^port\s+def\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
@@ -125,12 +134,18 @@ bool Sysml2Parser::parse_impl(std::string_view content, FsmIr& model, std::strin
             std::string opened_state_def_name;
             if (std::regex_search(norm_head, hm, state_def_head_re)) {
                 opened_state_def_name = sanitize_identifier(hm[1].str());
-                if (!options_.target_state_def.empty() && opened_state_def_name != options_.target_state_def) {
-                    skip_block_depth = 1;
-                    continue;
-                }
-                if (!options_.target_state_def.empty() && opened_state_def_name == options_.target_state_def) {
+                if (!options_.target_state_def.empty()) {
+                    if (opened_state_def_name != options_.target_state_def) {
+                        skip_block_depth = 1;
+                        continue;
+                    }
                     matched_target_state_def = true;
+                } else {
+                    if (parsed_default_state_def) {
+                        skip_block_depth = 1;
+                        continue;
+                    }
+                    parsed_default_state_def = true;
                 }
             }
 

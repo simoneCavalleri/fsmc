@@ -45,9 +45,13 @@ struct TargetCapabilities {
     [[nodiscard]] static constexpr TargetCapabilities cpp20() noexcept { return cpp17(); }
 
     /**
-     * @brief Capabilities of a flat C99 bare-metal switch-case backend (all high-level constructs lowered).
+     * @brief Capabilities of a flat C99 bare-metal switch-case backend (native zero-heap deferred queue supported).
      */
-    [[nodiscard]] static constexpr TargetCapabilities c99_baremetal() noexcept { return TargetCapabilities{}; }
+    [[nodiscard]] static constexpr TargetCapabilities c99_baremetal() noexcept {
+        TargetCapabilities caps;
+        caps.supports_deferred = true;
+        return caps;
+    }
 
     /**
      * @brief Capabilities of a Rust no_std enum/match backend (choice supported via match guards).

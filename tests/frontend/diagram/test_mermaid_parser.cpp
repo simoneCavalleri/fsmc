@@ -627,4 +627,33 @@ TEST(MermaidParser, LocalTransition_PreservedAcrossSerializerRoundtrip) {
     EXPECT_TRUE(found_external);
 }
 
+/**
+ * @brief Test Intent: Verify explicitly declared composite substates retain pinned parent_state across outer
+ * cross-boundary transitions after hierarchy normalization.
+ */
+TEST(MermaidParserTest, CompositeHierarchy_PreservesPinnedParentOnOuterTransitions) {
+    const std::string mmd = R"(
+stateDiagram-v2
+    [*] --> Operational
+    state Operational {
+        [*] --> Machining
+        state Machining {
+            [*] --> Roughing
+            Roughing --> Finishing : Next
+        }
+        Machining --> Standby : Done
+    }
+    Operational --> EStop : EStopCmd
+)";
+    FsmIr ir;
+    fsm::diagnostic::DiagnosticEngine diag;
+    MermaidParser parser;
+    ASSERT_TRUE(parser.parse(mmd, ir, diag)) << diag.render_to_string();
+    ir.normalize_hierarchy();
+
+    const auto* mach = ir.find_state("Machining");
+    ASSERT_NE(mach, nullptr);
+    EXPECT_EQ(mach->parent_state, "Operational");
+}
+
 }  // namespace

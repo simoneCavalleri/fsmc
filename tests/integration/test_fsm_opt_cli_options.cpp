@@ -469,4 +469,20 @@ TEST_F(FsmOptOptionsTest, DumpPipelineAndVerifyIrFlags) {
     }
 }
 
+/**
+ * @brief Test Intent: Verify filesystem submachine resolver accepts submachine names that already include an explicit
+ * file extension (e.g. "sub_child.puml").
+ */
+TEST_F(FsmOptOptionsTest, SubmachineResolver_AcceptsExplicitFileExtension) {
+    const fs::path sub_file = test_dir_ / "sub_child.puml";
+    {
+        std::ofstream f(sub_file);
+        f << "@startuml\n[*] --> S1\nS1 --> S2 : Go\n@enduml\n";
+    }
+    auto resolver = fsm::tools::create_filesystem_submachine_resolver("", test_dir_.string());
+    const fsm::ir::FsmIr* resolved = resolver("sub_child.puml");
+    ASSERT_NE(resolved, nullptr);
+    EXPECT_NE(resolved->find_state("S1"), nullptr);
+}
+
 }  // namespace

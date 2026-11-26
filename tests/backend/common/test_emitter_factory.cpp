@@ -9,6 +9,7 @@
 #include "fsm/backend/emitter_factory.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/ir/json_dom.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 
 namespace {
@@ -201,7 +202,7 @@ TEST(EmitterFactoryTest, ICodegenBackend_TargetCapabilitiesDrivenLowering) {
 
     // 2. Mock C99 bare-metal backend lowers deferred events and schedules choice inlining
     MockC99BareMetalBackend c99_backend;
-    EXPECT_FALSE(c99_backend.capabilities().supports_deferred);
+    EXPECT_TRUE(c99_backend.capabilities().supports_deferred);
     EXPECT_FALSE(c99_backend.capabilities().supports_choice);
     FsmIr c99_ir = base_ir;
     auto c99_pm = PassManager::create_lowering_pipeline(c99_backend.capabilities());
@@ -209,7 +210,7 @@ TEST(EmitterFactoryTest, ICodegenBackend_TargetCapabilitiesDrivenLowering) {
     EXPECT_TRUE(c99_pm.run(c99_ir, c99_diag));
     const auto* busy_c99 = c99_ir.find_state("Busy");
     ASSERT_NE(busy_c99, nullptr);
-    EXPECT_TRUE(busy_c99->deferred_events.empty());
+    EXPECT_FALSE(busy_c99->deferred_events.empty());
     const std::string c99_code = c99_backend.emit(c99_ir, c99_diag);
     EXPECT_NE(c99_code.find("C99 flat FSM: TelemetryFsm"), std::string::npos);
 
@@ -223,6 +224,62 @@ TEST(EmitterFactoryTest, ICodegenBackend_TargetCapabilitiesDrivenLowering) {
     fsm::diagnostic::DiagnosticEngine rust_diag;
     EXPECT_TRUE(rust_pm.run(rust_ir, rust_diag));
     EXPECT_NE(rust_backend.emit(rust_ir, rust_diag).find("#![no_std]"), std::string::npos);
+}
+
+/**
+ * @brief Verify real XState v5 JSON serializer emits standard nested machine config distinct from FsmIr JSON.
+ */
+TEST(EmitterFactory, XStateV5Serializer_EmitsStandardNestedMachineConfig) {
+    FsmIr ir;
+    ir.name = "TrafficLight";
+    ir.initial_state = "Active";
+    ir.add_variable(VariableDefinition("cycles", "int32_t", "0"));
+    ir.add_state("Active");
+    ir.find_state_mut("Active")->is_composite = true;
+    ir.find_state_mut("Active")->initial_sub_state = "Green";
+    ir.find_state_mut("Active")->has_history = true;
+    ir.add_state("Green", "Active");
+    ir.add_state("Yellow", "Active");
+    ir.add_state("Off", "", StateKind::Final);
+    ir.add_signal(SignalDefinition("PowerOff"));
+
+    {
+        TransitionEdge t("Green", "Yellow", "");
+        t.trigger = TimeTrigger(5000U);
+        ir.add_transition(std::move(t));
+    }
+    {
+        TransitionEdge t("Active", "Off", "PowerOff");
+        ir.add_transition(std::move(t));
+    }
+
+    const std::string xstate_json = EmitterFactory::emit(ir, "xstate");
+    ASSERT_FALSE(xstate_json.empty());
+
+    JsonValue root;
+    std::string parse_err;
+    ASSERT_TRUE(SimpleJsonParser::parse(xstate_json, root, parse_err)) << parse_err;
+    ASSERT_TRUE(root.is_object());
+    EXPECT_EQ(root.get_string("id"), "TrafficLight");
+    EXPECT_EQ(root.get_string("initial"), "Active");
+    EXPECT_EQ(root.get_child("ir_schema_version"), nullptr);
+    ASSERT_NE(root.get_child("context"), nullptr);
+    ASSERT_NE(root.get_child("states"), nullptr);
+    const auto* active = root.get_child("states")->get_child("Active");
+    ASSERT_NE(active, nullptr);
+    EXPECT_EQ(active->get_string("initial"), "Green");
+    ASSERT_NE(active->get_child("on"), nullptr);
+    ASSERT_NE(active->get_child("on")->get_child("PowerOff"), nullptr);
+    const auto* green = active->get_child("states")->get_child("Green");
+    ASSERT_NE(green, nullptr);
+    ASSERT_NE(green->get_child("after"), nullptr);
+    ASSERT_NE(green->get_child("after")->get_child("5000"), nullptr);
+    const auto* hist = active->get_child("states")->get_child("Active_hist");
+    ASSERT_NE(hist, nullptr);
+    EXPECT_EQ(hist->get_string("type"), "history");
+    const auto* off = root.get_child("states")->get_child("Off");
+    ASSERT_NE(off, nullptr);
+    EXPECT_EQ(off->get_string("type"), "final");
 }
 
 }  // namespace

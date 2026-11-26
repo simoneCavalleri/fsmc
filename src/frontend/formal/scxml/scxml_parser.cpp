@@ -27,6 +27,24 @@ std::string get_fsm_attr(const std::shared_ptr<XmlNode>& node, const std::string
     return node->get_attr(name);
 }
 
+std::string find_child_initial_target(const std::shared_ptr<XmlNode>& node) {
+    for (const auto& child : node->children) {
+        if (child->tag == "initial" ||
+            (child->tag.size() > 8 && child->tag.compare(child->tag.size() - 8, 8, ":initial") == 0)) {
+            for (const auto& sub : child->children) {
+                if (sub->tag == "transition" ||
+                    (sub->tag.size() > 11 && sub->tag.compare(sub->tag.size() - 11, 11, ":transition") == 0)) {
+                    std::string target = sub->get_attr("target");
+                    if (!target.empty()) {
+                        return target;
+                    }
+                }
+            }
+        }
+    }
+    return {};
+}
+
 }  // namespace
 
 bool ScxmlParser::parse(std::string_view content, FsmIr& out_ir, diagnostic::DiagnosticEngine& diag) {
@@ -70,6 +88,9 @@ bool ScxmlParser::parse_impl(std::string_view content, FsmIr& model, std::string
     }
 
     std::string root_init = scxml_node->get_attr("initial");
+    if (root_init.empty()) {
+        root_init = find_child_initial_target(scxml_node);
+    }
     if (!root_init.empty()) {
         model.initial_state = sanitize_identifier(root_init);
     }
@@ -216,6 +237,9 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
             }
 
             std::string sub_initial = child->get_attr("initial");
+            if (sub_initial.empty()) {
+                sub_initial = find_child_initial_target(child);
+            }
             if (!current_parent_state.empty()) {
                 auto* parent = model.find_state_mut(current_parent_state);
                 if (parent != nullptr) {

@@ -90,7 +90,9 @@ class C99CodegenBackend final : public ICodegenBackend {
 
     [[nodiscard]] std::string emit(const ir::FsmIr& ir, diagnostic::DiagnosticEngine& diag) const override {
         try {
-            const auto bundle = c99::C99Generator::generate(ir, options_);
+            c99::C99GeneratorOptions opts = options_;
+            opts.omit_header_include = true;
+            const auto bundle = c99::C99Generator::generate(ir, opts);
             return bundle.header + "\n/* === IMPLEMENTATION === */\n" + bundle.source;
         } catch (const std::exception& ex) {
             diag.report(diagnostic::Diagnostic::error("E_C99_CODEGEN", ex.what()));

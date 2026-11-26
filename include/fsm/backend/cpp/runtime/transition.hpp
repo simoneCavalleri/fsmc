@@ -285,8 +285,20 @@ struct transition {
     using action_type = ActionType;
     using guard_type = GuardType;
     static constexpr bool is_internal = false;
+    static constexpr bool is_local = false;
 
     constexpr transition() = default;
+};
+
+/**
+ * @brief Canonical representation of a UML 2.5.1 local state transition
+ *        (does not exit/re-enter the composite source state when targeting a substate).
+ */
+template <typename SourceState, typename EventType, typename TargetState, typename ActionType = no_action,
+          typename GuardType = no_guard>
+struct local_transition : transition<SourceState, EventType, TargetState, ActionType, GuardType> {
+    static constexpr bool is_local = true;
+    constexpr local_transition() = default;
 };
 
 /**
@@ -353,6 +365,27 @@ struct internal_row : internal_transition<State, EventType, ActionType, GuardTyp
 
     template <typename NewAction>
     using then = internal_row<State, EventType, NewAction, GuardType>;
+};
+
+// Fluent Local Transition Builder: local_row<Source, Event, Target>::when<Guard>::then<Action>
+template <typename SourceState, typename EventType, typename TargetState, typename ActionType = no_action,
+          typename GuardType = no_guard>
+struct local_row : local_transition<SourceState, EventType, TargetState, ActionType, GuardType> {
+    using base = local_transition<SourceState, EventType, TargetState, ActionType, GuardType>;
+
+    constexpr local_row() = default;
+
+    template <typename NewGuard>
+    using guard = local_row<SourceState, EventType, TargetState, ActionType, NewGuard>;
+
+    template <typename NewGuard>
+    using when = local_row<SourceState, EventType, TargetState, ActionType, NewGuard>;
+
+    template <typename NewAction>
+    using action = local_row<SourceState, EventType, TargetState, NewAction, GuardType>;
+
+    template <typename NewAction>
+    using then = local_row<SourceState, EventType, TargetState, NewAction, GuardType>;
 };
 
 // Fluent Event-First Builder:

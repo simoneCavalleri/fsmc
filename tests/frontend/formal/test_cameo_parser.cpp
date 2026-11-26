@@ -947,4 +947,36 @@ TEST(CameoParser, MultiReqsAndSignalAttributes_PreservedAcrossSerializerRoundtri
     EXPECT_EQ(p_tel->validators[0], "val > 0");
 }
 
+/**
+ * @brief Test Intent: Verify Cameo/MagicDraw XMI <trigger event="..."/> resolves SignalEvent to its referenced
+ * Signal name.
+ */
+TEST(CameoParserTest, TriggerEventAttribute_ResolvesSignalEventToSignalName) {
+    const std::string xmi = R"(<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20131001">
+  <uml:Model xmi:id="m1" name="CameoTriggerTest">
+    <packagedElement xmi:type="uml:Signal" xmi:id="sig_go" name="GoSignal"/>
+    <packagedElement xmi:type="uml:SignalEvent" xmi:id="ev_go" name="GoEvent" signal="sig_go"/>
+    <packagedElement xmi:type="uml:StateMachine" xmi:id="sm1" name="CameoTriggerTest">
+      <region xmi:type="uml:Region" xmi:id="r1">
+        <subvertex xmi:type="uml:Pseudostate" xmi:id="init" kind="initial"/>
+        <subvertex xmi:type="uml:State" xmi:id="s1" name="Idle"/>
+        <subvertex xmi:type="uml:State" xmi:id="s2" name="Running"/>
+        <transition xmi:type="uml:Transition" xmi:id="t0" source="init" target="s1"/>
+        <transition xmi:type="uml:Transition" xmi:id="t1" source="s1" target="s2">
+          <trigger xmi:type="uml:Trigger" xmi:id="tr1" event="ev_go"/>
+        </transition>
+      </region>
+    </packagedElement>
+  </uml:Model>
+</xmi:XMI>
+)";
+    CameoXmiParser parser;
+    FsmIr ir;
+    fsm::diagnostic::DiagnosticEngine diag;
+    ASSERT_TRUE(parser.parse(xmi, ir, diag)) << diag.render_to_string();
+    ASSERT_EQ(ir.transitions.size(), 1U);
+    EXPECT_EQ(ir.transitions[0].event, "GoSignal");
+}
+
 }  // namespace

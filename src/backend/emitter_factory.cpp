@@ -12,6 +12,7 @@
 #include "fsm/backend/formal/smv_serializer.hpp"
 #include "fsm/backend/formal/stateflow_serializer.hpp"
 #include "fsm/backend/formal/sysml2_serializer.hpp"
+#include "fsm/backend/formal/xstate_serializer.hpp"
 #include "fsm/ir/fsm_ir_serializer.hpp"
 
 namespace fsm::backend {
@@ -30,6 +31,7 @@ struct EmitterDescriptor {
 const std::vector<EmitterDescriptor>& emitter_registry() {
     static const std::vector<EmitterDescriptor> kRegistry = {
         {"ir", {"json", "fsm_ir", "json_ir"}, [](const FsmIr& m) { return ir::FsmIrSerializer::serialize_json(m); }},
+        {"xstate", {"xstate5", "xstate-json"}, [](const FsmIr& m) { return XStateSerializer::serialize(m); }},
         {"plantuml", {"puml"}, [](const FsmIr& m) { return PlantUmlSerializer::serialize(m); }},
         {"mermaid", {"mmd"}, [](const FsmIr& m) { return MermaidSerializer::serialize(m); }},
         {"sysml2", {"sysml"}, [](const FsmIr& m) { return Sysml2Serializer::serialize(m); }},
@@ -71,7 +73,8 @@ std::string EmitterFactory::emit_diagram(const FsmIr& ir, std::string_view forma
 }
 
 std::vector<std::string_view> EmitterFactory::supported_formats() noexcept {
-    return {"ir", "plantuml", "mermaid", "sysml2", "json", "dot", "scxml", "cameo", "smv", "stateflow", "cpp", "c++17"};
+    return {"ir",    "xstate", "plantuml", "mermaid",   "sysml2", "json", "dot",
+            "scxml", "cameo",  "smv",      "stateflow", "cpp",    "c++17"};
 }
 
 bool EmitterFactory::is_supported_format(std::string_view format_name) noexcept {

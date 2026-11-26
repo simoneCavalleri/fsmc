@@ -15,6 +15,11 @@ struct OptOptions {
     std::string input_path;
     std::string output_path;
     std::string format_override;
+    std::string sidecar_file;
+    std::vector<std::string> import_dirs;
+    std::string state_def;
+    bool list_machines = false;
+    bool list_machines_json = false;
     std::string custom_passes;
     std::string submachine_dir;
     std::string emit_format = "ir";
@@ -46,10 +51,15 @@ inline void print_opt_help(const char* prog_name) {
         << "Usage: " << prog_name << " -i <model_file> [OPTIONS]\n"
         << "       " << prog_name << " [OPTIONS] <model_file>\n\n"
         << "Input & Output Options:\n"
-        << "  -i, --input <file>        Input model or IR file (.sysml, .puml, .mmd, .xmi, .scxml, .json, .dot, .xml)\n"
+        << "  -i, --input <file>        Input model or IR file (.sysml, .puml, .mmd, .xmi, .scxml, .json, .dot, .sfx, "
+           ".smv, .xml)\n"
         << "  -o, --output <file>       Output file path (default: stdout)\n"
         << "  --format <fmt>            Override parser format (sysml2, plantuml, mermaid, cameo, scxml, json, dot, "
-           "stateflow)\n\n"
+           "stateflow, smv)\n"
+        << "  -s, --sidecar <file>      Companion typed manifest (.fsm.yaml/.fsm.json; auto-discovered if omitted)\n"
+        << "  -I, --import-dir <dir>    Additional SysML v2 package search directory (repeatable)\n"
+        << "  --state-def <name>        Select a specific SysML v2 'state def' in multi-machine files\n"
+        << "  --list-machines[=json]    List all 'state def' machines in a SysML v2 file and exit\n\n"
         << "IR Optimization & Pass Pipeline:\n"
         << "  --passes=<p1,p2,...>      Execute customized comma-separated pass pipeline\n"
         << "  --list-passes             List all available Middle-End passes and exit\n"
@@ -65,7 +75,7 @@ inline void print_opt_help(const char* prog_name) {
         << "  --emit-puml               Emit canonical PlantUML state diagram\n"
         << "  --emit-mmd                Emit canonical Mermaid stateDiagram-v2\n"
         << "  --emit-sysml              Emit canonical OMG SysML v2 state definition\n"
-        << "  --emit-json               Emit canonical XState JSON\n"
+        << "  --emit-json, --emit-xstate Emit canonical XState v5 JSON statechart\n"
         << "  --emit-dot                Emit canonical Graphviz DOT diagram\n"
         << "  --emit-scxml              Emit canonical W3C SCXML statechart\n"
         << "  --emit-cameo              Emit canonical Cameo / MagicDraw OMG XMI 2.1\n"
@@ -128,6 +138,28 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
                 opts.is_valid = false;
                 return opts;
             }
+        } else if (match_opt_value(arg, i, argc, argv, "-s", "--sidecar", opts.sidecar_file, opts.error_message)) {
+            if (!opts.error_message.empty()) {
+                opts.is_valid = false;
+                return opts;
+            }
+        } else if (std::string inc_dir;
+                   match_opt_value(arg, i, argc, argv, "-I", "--import-dir", inc_dir, opts.error_message)) {
+            if (!opts.error_message.empty()) {
+                opts.is_valid = false;
+                return opts;
+            }
+            opts.import_dirs.push_back(std::move(inc_dir));
+        } else if (match_opt_value(arg, i, argc, argv, "", "--state-def", opts.state_def, opts.error_message)) {
+            if (!opts.error_message.empty()) {
+                opts.is_valid = false;
+                return opts;
+            }
+        } else if (arg == "--list-machines") {
+            opts.list_machines = true;
+        } else if (arg == "--list-machines=json") {
+            opts.list_machines = true;
+            opts.list_machines_json = true;
         } else if (arg == "--prune-dead") {
             opts.prune_dead = true;
         } else if (arg == "--print-before-all") {
@@ -148,8 +180,8 @@ inline OptOptions parse_opt_args(int argc, char* argv[]) {
         } else if (arg == "--emit-sysml") {
             opts.emit_format = "sysml";
             opts.emit_explicit = true;
-        } else if (arg == "--emit-json") {
-            opts.emit_format = "json";
+        } else if (arg == "--emit-json" || arg == "--emit-xstate") {
+            opts.emit_format = "xstate";
             opts.emit_explicit = true;
         } else if (arg == "--emit-dot") {
             opts.emit_format = "dot";

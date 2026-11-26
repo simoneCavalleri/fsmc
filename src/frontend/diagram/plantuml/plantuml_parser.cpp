@@ -309,6 +309,9 @@ std::string PlantUmlParser::parse_composite_state_header(std::string_view line, 
         model.add_state(name, parent);
         if (auto* state = model.find_state_mut(name)) {
             state->is_composite = true;
+            if (!parent.empty()) {
+                state->pinned_parent = true;
+            }
         }
         return name;
     }
@@ -350,6 +353,9 @@ void PlantUmlParser::parse_state_definition(std::string_view line, FsmIr& model,
         model.add_state(name, parent);
         if (auto* state = model.find_state_mut(name)) {
             state->description = description;
+            if (!parent.empty()) {
+                state->pinned_parent = true;
+            }
         }
         return;
     }
@@ -358,6 +364,11 @@ void PlantUmlParser::parse_state_definition(std::string_view line, FsmIr& model,
     if (std::regex_search(line_str, match, state_simple_regex)) {
         const std::string name = sanitize_identifier(match[1].str());
         model.add_state(name, parent);
+        if (!parent.empty()) {
+            if (auto* state = model.find_state_mut(name)) {
+                state->pinned_parent = true;
+            }
+        }
     }
 }
 

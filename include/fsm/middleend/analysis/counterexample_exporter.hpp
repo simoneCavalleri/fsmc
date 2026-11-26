@@ -1,9 +1,11 @@
 #pragma once
 
 #include <cctype>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/model_checker.hpp"
@@ -31,18 +33,86 @@ class CounterexampleGTestExporter {
             }
         }
 
+        std::unordered_set<std::string> in_port_names;
+        for (const auto& p : model.ports) {
+            if (p.is_in()) {
+                in_port_names.insert(p.name);
+            }
+        }
+        const bool has_in_ports = !in_port_names.empty();
+
         out << "TEST(" << model.name << "CounterexampleTest, Reproduces_" << test_name << ") {\n"
             << "    // Violated property: " << result.property_formula << "\n"
             << "    " << model.name << " sm;\n";
+        if (has_in_ports) {
+            out << "    " << model.name << "::in_ports_type in{};\n";
+        }
+
+        auto emit_witness_assignments = [&](const std::string& raw_guard) {
+            if (!has_in_ports || raw_guard.empty()) {
+                return;
+            }
+            std::string expr = raw_guard;
+            if (const auto* g = model.find_guard(raw_guard)) {
+                if (g->raw_expression.has_value() && !g->raw_expression->empty()) {
+                    expr = *g->raw_expression;
+                }
+            }
+            static const std::regex cmp_re(
+                R"((?:in\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(>=|<=|==|!=|>|<)\s*(-?[0-9]+(?:\.[0-9]+)?|true|false))");
+            auto begin = std::sregex_iterator(expr.begin(), expr.end(), cmp_re);
+            auto end = std::sregex_iterator();
+            for (auto it = begin; it != end; ++it) {
+                const std::string lhs = (*it)[1].str();
+                const std::string op = (*it)[2].str();
+                const std::string rhs = (*it)[3].str();
+                if (in_port_names.count(lhs) == 0U) {
+                    continue;
+                }
+                if (rhs == "true" || rhs == "false") {
+                    bool val = (rhs == "true");
+                    if (op == "!=") {
+                        val = !val;
+                    }
+                    out << "    in." << lhs << " = " << (val ? "true" : "false") << ";\n";
+                } else {
+                    const bool is_float = (rhs.find('.') != std::string::npos);
+                    if (op == "==" || op == ">=" || op == "<=") {
+                        out << "    in." << lhs << " = " << rhs << ";\n";
+                    } else if (op == ">" || op == "!=") {
+                        if (is_float) {
+                            out << "    in." << lhs << " = " << rhs << " + 1.0;\n";
+                        } else {
+                            out << "    in." << lhs << " = " << rhs << " + 1;\n";
+                        }
+                    } else if (op == "<") {
+                        if (is_float) {
+                            out << "    in." << lhs << " = " << rhs << " - 1.0;\n";
+                        } else {
+                            out << "    in." << lhs << " = " << rhs << " - 1;\n";
+                        }
+                    }
+                }
+            }
+        };
 
         std::string final_state;
         for (const auto& step : result.counterexample_trace) {
             if (!step.state_name.empty()) {
                 final_state = step.state_name;
             }
+            if (!step.guard_condition.empty()) {
+                emit_witness_assignments(step.guard_condition);
+            }
             if (!step.event_name.empty() && step.event_name != "anonymous_event" &&
                 step.event_name != "completion_event") {
-                out << "    sm.dispatch(" << step.event_name << "{});\n";
+                if (has_in_ports) {
+                    out << "    sm.dispatch(" << step.event_name << "{}, in);\n";
+                } else {
+                    out << "    sm.dispatch(" << step.event_name << "{});\n";
+                }
+            } else if (step.step_index > 0U && has_in_ports) {
+                out << "    sm.step(in);\n";
             }
         }
         if (!final_state.empty()) {

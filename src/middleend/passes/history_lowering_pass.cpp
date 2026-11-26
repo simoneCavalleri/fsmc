@@ -81,7 +81,7 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             }
         }
 
-        // 3. Attach exit action to substates recording active state (and collect deep descendants)
+        // 3. Collect all direct substates (or deep leaf descendants) and assign deterministic integer indices
         for (auto& s : ir.states) {
             bool is_target = false;
             if (is_deep) {
@@ -102,17 +102,22 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 
             if (is_target && s.kind != StateKind::ShallowHistory && s.kind != StateKind::DeepHistory &&
                 (!is_deep || !s.is_composite)) {
-                if (std::find(target_substates.begin(), target_substates.end(), s.name) == target_substates.end()) {
+                auto sub_it = std::find(target_substates.begin(), target_substates.end(), s.name);
+                std::size_t sub_idx = 0U;
+                if (sub_it == target_substates.end()) {
+                    sub_idx = target_substates.size();
                     target_substates.push_back(s.name);
+                } else {
+                    sub_idx = static_cast<std::size_t>(std::distance(target_substates.begin(), sub_it));
                 }
-                // Synthesize StoreOp to update shadow register
+                // Synthesize StoreOp to update zero-alloc integer shadow register
                 StoreOp store;
                 store.target = LValueTarget(history_var_name, LValueScope::Register);
                 store.op = AssignmentOp::Assign;
-                store.expression = "\"" + s.name + "\"";
+                store.expression = std::to_string(sub_idx);
 
                 ActionSignature exit_sig("__record_history_" + s.name);
-                exit_sig.instructions.emplace_back(store, "Record active substate on exit");
+                exit_sig.instructions.emplace_back(store, "Record active substate index on exit");
                 s.exit_actions.push_back(std::move(exit_sig));
                 modified = true;
             }
@@ -134,6 +139,12 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             default_substate = target_substates.front();
         }
 
+        std::size_t default_idx = 0U;
+        if (auto dit = std::find(target_substates.begin(), target_substates.end(), default_substate);
+            dit != target_substates.end()) {
+            default_idx = static_cast<std::size_t>(std::distance(target_substates.begin(), dit));
+        }
+
         // Only synthesize a HistoryRestore choice node if at least one transition actually targets this history.
         bool has_incoming_history = false;
         for (const auto& t : ir.transitions) {
@@ -147,7 +158,7 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
             continue;
         }
 
-        // 2. Synthesize shadow history state variable
+        // 2. Synthesize zero-alloc int32 shadow history state variable (C99 & freestanding compatible)
         bool var_exists = false;
         for (const auto& v : ir.variables) {
             if (v.name == history_var_name) {
@@ -158,9 +169,9 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         if (!var_exists) {
             VariableDefinition vdef;
             vdef.name = history_var_name;
-            vdef.type = "string";
-            vdef.initial_value = "\"" + default_substate + "\"";
-            vdef.description = "Shadow register recording last active substate of composite state " + parent_name;
+            vdef.type = "int32";
+            vdef.initial_value = std::to_string(default_idx);
+            vdef.description = "Shadow register recording last active substate index of composite state " + parent_name;
             ir.variables.push_back(std::move(vdef));
             modified = true;
         }
@@ -175,9 +186,10 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         ir.choice_nodes.emplace_back(restore_choice_name);
 
         // Add restore branch transitions from choice to each substate
-        for (const auto& sub_name : target_substates) {
+        for (std::size_t sub_idx = 0; sub_idx < target_substates.size(); ++sub_idx) {
+            const auto& sub_name = target_substates[sub_idx];
             std::string grd_name = "__hist_" + parent_name + "_is_" + sub_name;
-            std::string grd_expr = history_var_name + " == \"" + sub_name + "\"";
+            std::string grd_expr = history_var_name + " == " + std::to_string(sub_idx);
             ir.add_guard(grd_name, "History restore predicate for " + sub_name, grd_expr, grd_expr);
             TransitionEdge branch(restore_choice_name, sub_name, "", grd_name, std::nullopt,
                                   "Restore branch to " + sub_name, TransitionEdgeKind::External, 1);

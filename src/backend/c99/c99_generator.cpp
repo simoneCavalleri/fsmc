@@ -6,6 +6,7 @@
 
 #include "c99_emitter_internal.hpp"
 #include "fsm/ir/fsm_ir_serializer.hpp"
+#include "fsm/ir/guard.hpp"
 
 namespace fsm::backend::c99 {
 
@@ -171,10 +172,105 @@ GeneratedC99Bundle C99Generator::generate(const FsmIr& model, const C99Generator
         }
     }
 
-    const bool has_typed_services = !processed.services.empty();
+    // Collect symbolic guard predicates (guards with no inline expression) as C99 bool (*)(void*) callbacks
+    {
+        auto is_simple_ident = [](std::string_view s) {
+            if (s.empty()) {
+                return false;
+            }
+            const auto first = static_cast<unsigned char>(s[0]);
+            if (!((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z') || first == '_')) {
+                return false;
+            }
+            for (std::size_t i = 1; i < s.size(); ++i) {
+                const auto ch = static_cast<unsigned char>(s[i]);
+                if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_')) {
+                    return false;
+                }
+            }
+            return true;
+        };
 
-    const C99EmitPlan plan{processed,     ctx,       header_inc, ir_sha256,  external_types, local_enums,
-                           local_structs, in_fields, out_fields, reg_fields, events,         has_typed_services};
+        std::unordered_set<std::string> known_symbols{"true", "false", "else", "and", "or", "not"};
+        for (const auto& p : ctx.in_ports) {
+            known_symbols.insert(p);
+        }
+        for (const auto& p : ctx.out_ports) {
+            known_symbols.insert(p);
+        }
+        for (const auto& r : ctx.registers) {
+            known_symbols.insert(r);
+        }
+        for (const auto& [svc_name, _] : ctx.services) {
+            known_symbols.insert(svc_name);
+        }
+        for (const auto* en : local_enums) {
+            for (const auto& lit : en->literals) {
+                known_symbols.insert(lit.name);
+            }
+        }
+        for (const auto& sig : events) {
+            for (const auto& attr : sig.attributes) {
+                known_symbols.insert(attr.name);
+            }
+        }
+
+        auto maybe_register_guard_cb = [&](std::string_view name) {
+            if (!is_simple_ident(name)) {
+                return;
+            }
+            const std::string key(name);
+            if (known_symbols.count(key) != 0U) {
+                return;
+            }
+            if (ctx.guard_callbacks.insert(key).second) {
+                ctx.guard_callbacks_ordered.push_back(key);
+            }
+        };
+
+        for (const auto& g : processed.guards) {
+            if (!g.raw_expression.has_value() || g.raw_expression->empty() || *g.raw_expression == g.name) {
+                maybe_register_guard_cb(g.name);
+            }
+        }
+        for (const auto& tr : processed.transitions) {
+            if (!tr.guard.has_value() || tr.guard->empty() || *tr.guard == "else") {
+                continue;
+            }
+            std::string expanded = *tr.guard;
+            if (expanded.find("fsm::") != std::string::npos) {
+                expanded = GuardExpressionParser::to_diagram_string(expanded, processed.guards);
+            } else if (const auto* g = processed.find_guard(expanded)) {
+                if (g->raw_expression.has_value() && !g->raw_expression->empty()) {
+                    expanded = *g->raw_expression;
+                }
+            }
+            const auto parsed = GuardExpressionParser::parse(expanded);
+            if (!parsed.atomic_guard_details.empty()) {
+                for (const auto& leaf : parsed.atomic_guard_details) {
+                    maybe_register_guard_cb(leaf.expression);
+                }
+            } else {
+                maybe_register_guard_cb(expanded);
+            }
+        }
+    }
+
+    bool has_deferred = false;
+    if (!events.empty()) {
+        for (const auto& st : processed.states) {
+            if (!st.deferred_events.empty()) {
+                has_deferred = true;
+                break;
+            }
+        }
+    }
+
+    const bool has_typed_services = !processed.services.empty() || !ctx.guard_callbacks_ordered.empty();
+
+    const C99EmitPlan plan{
+        processed, ctx,        header_inc, ir_sha256, external_types,     local_enums,  local_structs,
+        in_fields, out_fields, reg_fields, events,    has_typed_services, has_deferred, options.omit_header_include};
     return GeneratedC99Bundle{emit_c99_header(plan), emit_c99_source(plan)};
 }
 

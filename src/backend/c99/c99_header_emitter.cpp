@@ -185,7 +185,7 @@ std::string emit_c99_header(const C99EmitPlan& plan) {
     }
     hdr << "} " << ctx.prefix << "_registers_t;\n\n";
 
-    // Services callback table
+    // Services & symbolic guard callback table
     if (has_typed_services) {
         hdr << "typedef struct {\n";
         hdr << "    void* user_data;\n";
@@ -206,7 +206,39 @@ std::string emit_c99_header(const C99EmitPlan& plan) {
             }
             hdr << ");\n";
         }
+        for (const auto& gname : ctx.guard_callbacks_ordered) {
+            hdr << "    bool (*" << sanitize_c_ident(gname) << ")(void* user_data);\n";
+        }
         hdr << "} " << ctx.prefix << "_services_t;\n\n";
+    }
+
+    // Static zero-heap deferred event queue types (only when model uses deferred events)
+    if (plan.has_deferred) {
+        hdr << "#define " << ctx.upper_prefix << "_MAX_DEFERRED 16U\n\n";
+        hdr << "typedef enum {\n";
+        hdr << "    " << ctx.upper_prefix << "_EV_NONE = 0";
+        for (std::size_t i = 0; i < events.size(); ++i) {
+            hdr << ",\n    " << ctx.upper_prefix << "_EV_" << to_upper_ascii(to_snake_case(events[i].name)) << " = "
+                << (i + 1U);
+        }
+        hdr << "\n} " << ctx.prefix << "_event_tag_t;\n\n";
+
+        hdr << "typedef struct {\n";
+        hdr << "    " << ctx.prefix << "_event_tag_t tag;\n";
+        for (const auto& sig : events) {
+            if (!sig.attributes.empty()) {
+                hdr << "    struct {\n";
+                for (const auto& attr : sig.attributes) {
+                    std::string ct;
+                    bool is_st = false;
+                    if (map_type_to_c99(attr.type, ctx, ct, is_st)) {
+                        hdr << "        " << ct << " " << sanitize_c_ident(attr.name) << ";\n";
+                    }
+                }
+                hdr << "    } " << to_snake_case(sig.name) << ";\n";
+            }
+        }
+        hdr << "} " << ctx.prefix << "_deferred_event_t;\n\n";
     }
 
     // Transparent zero-heap FSM instance struct
@@ -216,6 +248,11 @@ std::string emit_c99_header(const C99EmitPlan& plan) {
     hdr << "    uint64_t state_elapsed_ms;\n";
     if (has_typed_services) {
         hdr << "    " << ctx.prefix << "_services_t services;\n";
+    }
+    if (plan.has_deferred) {
+        hdr << "    " << ctx.prefix << "_deferred_event_t deferred_queue[" << ctx.upper_prefix << "_MAX_DEFERRED];\n";
+        hdr << "    size_t deferred_count;\n";
+        hdr << "    bool recalling_deferred;\n";
     }
     hdr << "} " << ctx.prefix << "_fsm_t;\n\n";
 

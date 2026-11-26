@@ -1309,4 +1309,32 @@ TEST_F(FsmcOptionsTest, TargetC99_EmitsPureC99HeaderSourceAndManifest_AndRejects
     }
 }
 
+/**
+ * @brief Test Intent: Verify CounterexampleGTestExporter honors custom header include hint and synthesizes InPorts
+ * witness assignments for guarded counterexample transitions.
+ */
+TEST(FsmcCliOptionsStandaloneTest, CounterexampleExporter_HonorsHeaderHintAndEmitsInPortsWitnesses) {
+    fsm::ir::FsmIr ir;
+    ir.name = "ThermalFsm";
+    ir.initial_state = "Normal";
+    ir.add_state("Normal");
+    ir.add_state("Overheat");
+    ir.add_port(fsm::ir::PortDefinition("temp", "int32_t", fsm::ir::PortDirection::In));
+    ir.add_signal(fsm::ir::SignalDefinition("Tick"));
+
+    fsm::ir::ModelCheckResult res;
+    res.passed = false;
+    res.property_name = "NoOverheat";
+    res.property_formula = "G (!Overheat)";
+    res.counterexample_trace.push_back(fsm::ir::CounterexampleStep{0, "Normal", "", "", ""});
+    res.counterexample_trace.push_back(fsm::ir::CounterexampleStep{1, "Overheat", "Tick", "temp > 100", ""});
+
+    const std::string code =
+        fsm::tools::CounterexampleGTestExporter::export_gtest(ir, res, "custom_thermal.hpp", "my_ns");
+    EXPECT_NE(code.find("#include \"custom_thermal.hpp\""), std::string::npos);
+    EXPECT_NE(code.find("ThermalFsm::in_ports_type in{};"), std::string::npos);
+    EXPECT_NE(code.find("in.temp = 100 + 1;"), std::string::npos);
+    EXPECT_NE(code.find("sm.dispatch(Tick{}, in);"), std::string::npos);
+}
+
 }  // namespace

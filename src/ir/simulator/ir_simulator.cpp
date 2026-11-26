@@ -475,11 +475,12 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
                 apply_action_sig(*matched->transition_action, step_env, &trace_step.executed_actions);
             }
         } else {
-            // Compute LCA between current_state and next_state
+            // Compute LCA between current_state and next_state per OMG UML 2.5.1 §14.2.3.8
             const auto src_chain = get_ancestors(current_state);
             const auto dst_chain = get_ancestors(next_state);
             std::size_t lca_len = 0;
             const bool is_self = (current_state == next_state);
+            const bool is_local = (matched->kind == TransitionEdgeKind::Local);
             if (!is_self) {
                 while (lca_len < src_chain.size() && lca_len < dst_chain.size() &&
                        src_chain[lca_len] == dst_chain[lca_len]) {
@@ -487,6 +488,17 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
                 }
             } else if (src_chain.size() > 1) {
                 lca_len = src_chain.size() - 1;
+            }
+            // For External transitions originating from an enclosing composite state (matched->source),
+            // UML 2.5.1 mandates exiting and re-entering matched->source itself; for Local transitions,
+            // matched->source remains active (not exited/re-entered).
+            if (!is_local) {
+                for (std::size_t idx = 0; idx < lca_len; ++idx) {
+                    if (src_chain[idx] == matched->source) {
+                        lca_len = idx;
+                        break;
+                    }
+                }
             }
 
             // Record shallow and deep history for exited composite ancestors

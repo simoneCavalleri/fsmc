@@ -596,4 +596,37 @@ TEST(PlantUmlParser, LocalTransition_PreservedAcrossSerializerRoundtrip) {
     EXPECT_TRUE(found_external);
 }
 
+/**
+ * @brief Test Intent: Verify explicitly declared composite substates retain pinned parent_state across outer
+ * cross-boundary transitions after hierarchy normalization.
+ */
+TEST(PlantUmlParserTest, CompositeHierarchy_PreservesPinnedParentOnOuterTransitions) {
+    const std::string puml = R"(
+@startuml
+[*] --> Operational
+state Operational {
+    [*] --> Machining
+    state Machining {
+        [*] --> Roughing
+        Roughing --> Finishing : Next
+    }
+    Machining --> Standby : Done
+}
+Operational --> EStop : EStopCmd
+@enduml
+)";
+    FsmIr ir;
+    fsm::diagnostic::DiagnosticEngine diag;
+    PlantUmlParser parser;
+    ASSERT_TRUE(parser.parse(puml, ir, diag)) << diag.render_to_string();
+    ir.normalize_hierarchy();
+
+    const auto* mach = ir.find_state("Machining");
+    ASSERT_NE(mach, nullptr);
+    EXPECT_EQ(mach->parent_state, "Operational");
+    const auto* rough = ir.find_state("Roughing");
+    ASSERT_NE(rough, nullptr);
+    EXPECT_EQ(rough->parent_state, "Machining");
+}
+
 }  // namespace

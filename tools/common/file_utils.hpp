@@ -245,8 +245,13 @@ inline std::function<const fsm::ir::FsmIr*(const std::string&)> create_filesyste
                                                       ".xmi",   ".scxml",     ".json",     ".dot", ".gv",
                                                       ".sfx",   ".stateflow", ".slx",      ".smv"};
 
+        std::vector<fs::path> candidates;
+        candidates.push_back(search_dir / sub_name);
         for (const char* ext : kExtensions) {
-            fs::path candidate = search_dir / (sub_name + ext);
+            candidates.push_back(search_dir / (sub_name + ext));
+        }
+
+        for (const auto& candidate : candidates) {
             std::error_code ec;
             if (fs::exists(candidate, ec) && fs::is_regular_file(candidate, ec)) {
                 std::string read_err;

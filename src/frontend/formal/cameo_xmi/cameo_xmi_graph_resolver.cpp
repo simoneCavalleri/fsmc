@@ -545,26 +545,42 @@ void CameoXmiGraphResolver::process_transition(const std::shared_ptr<XmlNode>& t
         event_name = trans_node->get_attr("event");
     }
 
-    // Inspect child triggers or resolve cross-referenced triggers
+    // Inspect child triggers or resolve cross-referenced triggers (Cameo / MagicDraw / Eclipse UML2)
     for (const auto& trig : trans_node->find_children("trigger")) {
         std::string tname = trig->get_attr("name");
-        std::string idref = trig->get_attr("xmi:idref");
+        std::string idref = trig->get_attr("event");
+        if (idref.empty()) {
+            idref = trig->get_attr("xmi:idref");
+        }
         if (idref.empty()) {
             idref = trig->get_attr("idref");
         }
         if (!idref.empty()) {
             auto trig_it = id_map.find(idref);
             if (trig_it != id_map.end()) {
-                if (tname.empty()) {
-                    tname = trig_it->second->get_attr("name");
-                }
-                std::string sig_ref = trig_it->second->get_attr("signal");
-                if (tname.empty() && !sig_ref.empty()) {
+                const auto& ev_node = trig_it->second;
+                // Prefer referenced Signal/Operation name if event node is uml:SignalEvent / uml:CallEvent
+                std::string sig_ref = ev_node->get_attr("signal");
+                if (!sig_ref.empty()) {
                     auto sig_it = id_map.find(sig_ref);
-                    if (sig_it != id_map.end()) {
+                    if (sig_it != id_map.end() && !sig_it->second->get_attr("name").empty()) {
                         tname = sig_it->second->get_attr("name");
                     }
                 }
+                if (tname.empty()) {
+                    std::string op_ref = ev_node->get_attr("operation");
+                    if (!op_ref.empty()) {
+                        auto op_it = id_map.find(op_ref);
+                        if (op_it != id_map.end() && !op_it->second->get_attr("name").empty()) {
+                            tname = op_it->second->get_attr("name");
+                        }
+                    }
+                }
+                if (tname.empty()) {
+                    tname = ev_node->get_attr("name");
+                }
+            } else if (tname.empty()) {
+                tname = idref;
             }
         }
         if (!tname.empty()) {

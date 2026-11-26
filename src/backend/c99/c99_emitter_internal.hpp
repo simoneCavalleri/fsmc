@@ -40,6 +40,8 @@ struct C99Context {
     std::unordered_set<std::string> out_ports;
     std::unordered_set<std::string> registers;
     std::unordered_map<std::string, const fsm::ir::ServiceMethodSignature*> services;
+    std::unordered_set<std::string> guard_callbacks;
+    std::vector<std::string> guard_callbacks_ordered;
     std::unordered_map<std::string, std::string> state_enums;
     std::vector<std::string> emitted_signals;
     std::unordered_map<std::string, const fsm::ir::SignalDefinition*> emitted_signals_map;
@@ -59,6 +61,8 @@ struct C99EmitPlan {
     const std::vector<C99RegField>& reg_fields;
     const std::vector<fsm::ir::SignalDefinition>& events;
     bool has_typed_services = false;
+    bool has_deferred = false;
+    bool omit_header_include = false;
 };
 
 std::string to_snake_case(std::string_view raw);

@@ -26,13 +26,13 @@ fsmc --export-runtime <directory_or_file>
 #### Input and Output Options
 | Flag | Description | Default |
 | :--- | :--- | :--- |
-| `-i, --input <file>` | Path to input model file (`.ir.json`, `.sysml`, `.slx`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, `.dot`), or `-` / `/dev/stdin` for standard input. | Positional argument |
+| `-i, --input <file>` | Path to input model file (`.ir.json`, `.sysml`, `.sfx`, `.slx`, `.smv`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, `.dot`), or `-` / `/dev/stdin` for standard input. | Positional argument |
 | `-o, --output <file>` | Path to output generated code (default split: `<stem>_ports.hpp` + `<stem>_fsm.hpp`) or exported diagram file, or `-` / `/dev/stdout` for standard output. | `stdout` |
-| `-t, --target, --lang <lang>` | Target code generator backend: `cpp` (unified C++17, compiles under C++17/20/23) or `c99` (native bare-metal Pure-C99 `<stem>.h` + `<stem>.c`, zero C++ runtime). | `cpp` |
+| `-t, --target, --lang <lang>` | Target code generator backend: `cpp` (default) or `c99` (native bare-metal Pure-C99 `<stem>.h` + `<stem>.c`, zero C++ runtime). | `cpp` |
 | `-n, --name <name>` | Generated state machine class/struct name. | Inferred from filename or `MyFSM` |
 | `-N, --ns, --namespace, --package <ns>` | Generated namespace / package enclosing the state machine types. | `fsm_generated` |
-| `--format, --input-format <fmt>` | Override input parser format: `ir-json` (strict canonical `FsmIr` v1.0), `sysml2`, `stateflow`, `plantuml`, `mermaid`, `cameo`, `scxml`, `xstate-json`/`json`, `dot`, `auto`. | `auto` |
-| `-e, --export <fmt>` | Export diagram or formal model to: `mermaid`, `plantuml`, `sysml2`, `stateflow`, `json`, `dot`, `scxml`, `cameo`, `smv`. | None |
+| `--format, --input-format <fmt>` | Override input parser format: `ir-json` (strict canonical `FsmIr` v1.0), `sysml2`, `stateflow`, `smv`, `plantuml`, `mermaid`, `cameo`, `scxml`, `json`, `dot`, `auto`. | `auto` |
+| `-e, --export <fmt>` | Export diagram or formal model to: `mermaid`, `plantuml`, `sysml2`, `stateflow`, `xstate`, `json`, `dot`, `scxml`, `cameo`, `smv`. | None |
 | `-s, --sidecar <file>` | Explicit companion manifest file (`.fsm.yaml`, `.fsm.json`) for diagram ingestion and external property attachment. | None |
 | `--emit-sidecar <file>` | Emit companion sidecar manifest (`.fsm.yaml`) alongside exported visual diagrams. | None |
 | `--submachine-dir <dir>` | Search directory for external submachine diagram files referenced in models. | Current directory |
@@ -114,9 +114,13 @@ fsm-opt [OPTIONS] <input_model>
 #### Input and Output Options
 | Flag | Description | Default |
 | :--- | :--- | :--- |
-| `-i, --input <file>` | Input model or IR file (`.ir.json`, `.sysml`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, `.dot`, `.xml`). | Positional argument |
+| `-i, --input <file>` | Input model or IR file (`.ir.json`, `.sysml`, `.sfx`, `.smv`, `.puml`, `.mmd`, `.xmi`, `.scxml`, `.json`, `.dot`, `.xml`). | Positional argument |
 | `-o, --output <file>` | Output file path for transformed IR or emitted model. | `stdout` |
-| `--format, --input-format <fmt>` | Override parser format (`ir-json`, `sysml2`, `plantuml`, `mermaid`, `cameo`, `scxml`, `xstate-json`/`json`, `dot`, `stateflow`). | `auto` |
+| `--format, --input-format <fmt>` | Override parser format (`ir-json`, `sysml2`, `plantuml`, `mermaid`, `cameo`, `scxml`, `json`, `dot`, `stateflow`, `smv`). | `auto` |
+| `-s, --sidecar <file>` | Explicit companion manifest file (`.fsm.yaml`, `.fsm.json`; auto-discovered if omitted). | Auto-discovered |
+| `-I, --import-dir <dir>` | Search directory for multi-file SysML v2.0 `import <Pkg>::*;` package resolution (repeatable). | Input file directory |
+| `--state-def <name>` | Select a specific `state def` when processing multi-machine SysML v2.0 files. | First `state def` |
+| `--list-machines[=json]` | List all `state def` machines in a SysML v2.0 file (text or JSON) and exit. | Inactive |
 | `--submachine-dir <dir>` | Search directory for external submachine diagram files referenced in models. | Current directory |
 
 #### Pass Pipeline and Optimization
@@ -141,7 +145,7 @@ fsm-opt [OPTIONS] <input_model>
 | `--emit-puml` | Emit canonical PlantUML state diagram. | None |
 | `--emit-mmd` | Emit canonical Mermaid `stateDiagram-v2`. | None |
 | `--emit-sysml` | Emit canonical OMG SysML v2 state definition. | None |
-| `--emit-json` | Emit canonical XState JSON statechart. | None |
+| `--emit-json, --emit-xstate` | Emit canonical XState v5 JSON statechart. | None |
 | `--emit-dot` | Emit canonical Graphviz DOT diagram. | None |
 | `--emit-scxml` | Emit canonical W3C SCXML statechart. | None |
 | `--emit-cameo, --emit-xmi` | Emit canonical Cameo / MagicDraw OMG XMI 2.1 model. | None |
@@ -200,3 +204,4 @@ The `fsmc` middle-end provides **34 registered passes** (executable via `fsm-opt
 31. **`sampled-change-trigger`**: Lowers continuous stream change triggers (`when (pred)`) into discrete edge-triggered guards with unit-delay shadow registers ($z^{-1}$).
 32. **`connective-junction-chaining`**: Collapses multi-hop connective junction paths into direct atomic transitions, fusing condition and transition actions into compound signatures.
 33. **`semantic-validation`**: Validates variable/port targets, type resolution, and algebraic assignments.
+34. **`verify-ir-integrity`**: Verifies mandatory `FsmIr` structural invariants (unique IDs, acyclic hierarchy, valid transition endpoints, type references, and source spans).

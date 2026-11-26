@@ -67,16 +67,17 @@ void CppModelEmitter::emit_transition_table(std::ostream& out, const FsmIr& mode
 
     bool first_row = true;
     auto emit_single_row = [&](const std::string& src, const std::string& evt, const std::string& tgt,
-                               const std::string& act, const std::string& grd) {
+                               const std::string& act, const std::string& grd, bool is_local = false) {
         std::string s = escape_type(src);
         std::string e = escape_type(evt);
         std::string t = escape_type(tgt);
         std::string a = (act.rfind("::", 0) == 0) ? act : resolve_action_cpp_name(act, model);
         std::string g = (grd.rfind("::", 0) == 0) ? grd : escape_cpp_keyword(grd);
+        const char* row_kind = is_local ? "::fsm::local_row<" : "::fsm::row<";
         if (!first_row) {
-            out << ",\n    ::fsm::row<" << s << ", " << e << ", " << t << ">";
+            out << ",\n    " << row_kind << s << ", " << e << ", " << t << ">";
         } else {
-            out << "\n    ::fsm::row<" << s << ", " << e << ", " << t << ">";
+            out << "\n    " << row_kind << s << ", " << e << ", " << t << ">";
             first_row = false;
         }
         if (g != "::fsm::no_guard") {
@@ -245,24 +246,29 @@ void CppModelEmitter::emit_transition_table(std::ostream& out, const FsmIr& mode
                         composite_guard += escaped_sub;
                         composite_guard += ">";
                     }
-                    emit_single_row(t.source, event_type, sub, action_type, composite_guard);
+                    emit_single_row(t.source, event_type, sub, action_type, composite_guard,
+                                    t.kind == TransitionEdgeKind::Local);
                 }
                 std::string default_sub =
                     !target_node->initial_sub_state.empty() ? target_node->initial_sub_state : sub_states[0];
                 default_sub = find_initial_leaf_substate(find_initial_leaf_substate, default_sub);
-                emit_single_row(t.source, event_type, default_sub, action_type, guard_type);
+                emit_single_row(t.source, event_type, default_sub, action_type, guard_type,
+                                t.kind == TransitionEdgeKind::Local);
             } else if (!target_node->initial_sub_state.empty()) {
                 std::string leaf_sub =
                     find_initial_leaf_substate(find_initial_leaf_substate, target_node->initial_sub_state);
-                emit_single_row(t.source, event_type, leaf_sub, action_type, guard_type);
+                emit_single_row(t.source, event_type, leaf_sub, action_type, guard_type,
+                                t.kind == TransitionEdgeKind::Local);
             } else {
-                emit_single_row(t.source, event_type, t.target, action_type, guard_type);
+                emit_single_row(t.source, event_type, t.target, action_type, guard_type,
+                                t.kind == TransitionEdgeKind::Local);
             }
         } else {
             if (t.kind == TransitionEdgeKind::Internal) {
                 emit_internal_row(t.source, event_type, action_type, guard_type);
             } else {
-                emit_single_row(t.source, event_type, t.target, action_type, guard_type);
+                emit_single_row(t.source, event_type, t.target, action_type, guard_type,
+                                t.kind == TransitionEdgeKind::Local);
             }
         }
     }

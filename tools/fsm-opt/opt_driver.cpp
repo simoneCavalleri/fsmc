@@ -10,8 +10,11 @@
 
 #include "fsm/backend/emitter_factory.hpp"
 #include "fsm/diagnostic/diagnostic_engine.hpp"
+#include "fsm/frontend/common/companion_manifest_parser.hpp"
 #include "fsm/frontend/common/parser_factory.hpp"
 #include "fsm/frontend/common/parser_interface.hpp"
+#include "fsm/frontend/diagram/common/diagram_contract_combiner.hpp"
+#include "fsm/frontend/formal/sysml2/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/ir/fsm_ir_serializer.hpp"
 #include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
@@ -92,6 +95,25 @@ class OptDriverImpl {
             return 1;
         }
 
+        if (opts.list_machines) {
+            const auto names = fsm::frontend::formal::Sysml2Parser::list_state_defs(content);
+            if (opts.list_machines_json || opts.diagnostic_format == "json") {
+                std::cout << "[";
+                for (std::size_t i = 0; i < names.size(); ++i) {
+                    if (i > 0) {
+                        std::cout << ", ";
+                    }
+                    std::cout << "\"" << names[i] << "\"";
+                }
+                std::cout << "]\n";
+            } else {
+                for (const auto& name : names) {
+                    std::cout << name << "\n";
+                }
+            }
+            return 0;
+        }
+
         std::string resolved_format = opts.format_override;
         if (is_stdin_path(opts.input_path) && (resolved_format.empty() || resolved_format == "auto")) {
             std::string detected = ParserFactory::detect_format_from_content(content);
@@ -106,14 +128,69 @@ class OptDriverImpl {
             return 1;
         }
 
+        if (auto* sysml_parser = dynamic_cast<fsm::frontend::formal::Sysml2Parser*>(parser.get())) {
+            fsm::frontend::formal::Sysml2ParseOptions s_opts;
+            s_opts.import_dirs = opts.import_dirs;
+            s_opts.target_state_def = opts.state_def;
+            if (!is_stdin_path(opts.input_path)) {
+                s_opts.source_file = opts.input_path;
+            }
+            sysml_parser->set_options(std::move(s_opts));
+        }
+
+        const DiagnosticFormat diag_fmt = parse_diagnostic_format(opts.diagnostic_format);
+        fsm::diagnostic::SourceManager source_manager;
+        source_manager.register_source(opts.input_path, content);
+
         fsm::ir::FsmIr ir;
         fsm::diagnostic::DiagnosticEngine parse_diag;
         if (!parser->parse(content, ir, parse_diag)) {
-            std::cerr << "Frontend Parse Error:\n" << parse_diag.render_to_string(content);
+            if (diag_fmt == DiagnosticFormat::Text) {
+                std::cerr << "Frontend Parse Error:\n";
+            }
+            std::cerr << parse_diag.render_to_format(diag_fmt, content, &source_manager);
             return 1;
+        }
+        if (!parse_diag.get_diagnostics().empty()) {
+            std::cerr << parse_diag.render_to_format(diag_fmt, content, &source_manager);
         }
         if (ir.name.empty() || ir.name == "Fsm" || ir.name == "MyStateMachine") {
             ir.name = infer_fsm_name_from_file(opts.input_path);
+        }
+
+        // Companion sidecar manifest (--sidecar <file> or auto-discovery)
+        std::string sidecar_path = opts.sidecar_file;
+        if (sidecar_path.empty() && !is_stdin_path(opts.input_path)) {
+            namespace fs = std::filesystem;
+            const fs::path p(opts.input_path);
+            const std::string stem = p.stem().string();
+            const fs::path dir = p.parent_path();
+            const std::vector<std::string> candidates = {
+                (dir / (stem + ".fsm.yaml")).string(), (dir / (stem + ".fsm.yml")).string(),
+                (dir / (stem + ".fsm.json")).string(), (dir / (stem + ".yaml")).string(),
+                (dir / (stem + ".yml")).string()};
+            for (const auto& candidate : candidates) {
+                if (fs::exists(candidate)) {
+                    sidecar_path = candidate;
+                    break;
+                }
+            }
+        }
+        if (!sidecar_path.empty()) {
+            std::string sidecar_read_err;
+            const std::string sidecar_content = read_file_content(sidecar_path, sidecar_read_err);
+            if (sidecar_read_err.empty()) {
+                CompanionManifest manifest;
+                std::string parse_manifest_err;
+                if (CompanionManifestParser::parse(sidecar_content, manifest, parse_manifest_err)) {
+                    std::string combine_err;
+                    if (!fsm::frontend::diagram::DiagramContractCombiner::combine(ir, manifest, combine_err)) {
+                        std::cerr << "Error combining companion manifest '" << sidecar_path << "': " << combine_err
+                                  << "\n";
+                        return 1;
+                    }
+                }
+            }
         }
 
         const bool emitting_to_stdout = !opts.verify_only &&
@@ -131,8 +208,6 @@ class OptDriverImpl {
         DiagnosticEngine diag;
         PassManager pm = build_pipeline(opts, diag);
         pm.set_verify_ir_each_pass(opts.verify_ir);
-
-        DiagnosticFormat diag_fmt = parse_diagnostic_format(opts.diagnostic_format);
 
         for (const auto& plugin_path : opts.pass_plugins) {
             DiagnosticEngine plugin_diag;
@@ -166,7 +241,9 @@ class OptDriverImpl {
                     }
                 }
                 if (has_warnings) {
-                    std::cerr << "\n[ERROR] -Werror enabled: compilation failed due to middle-end warnings.\n";
+                    if (diag_fmt == DiagnosticFormat::Text) {
+                        std::cerr << "\n[ERROR] -Werror enabled: compilation failed due to middle-end warnings.\n";
+                    }
                     return 1;
                 }
             }
@@ -201,7 +278,7 @@ class OptDriverImpl {
 
         // Serialization & Emission
         std::string output_str;
-        if (opts.emit_format == "ir" || opts.emit_format == "json") {
+        if (opts.emit_format == "ir") {
             output_str = fsm::ir::FsmIrSerializer::serialize_json(ir);
         } else {
             output_str = EmitterFactory::emit_diagram(ir, opts.emit_format);
@@ -217,7 +294,9 @@ class OptDriverImpl {
                 std::cerr << "Error: " << write_err << "\n";
                 return 1;
             }
-            std::cerr << "[SUCCESS] Optimized output written to: " << opts.output_path << "\n";
+            if (diag_fmt == DiagnosticFormat::Text) {
+                std::cerr << "[SUCCESS] Optimized output written to: " << opts.output_path << "\n";
+            }
         } else {
             std::cout << output_str;
         }
@@ -235,7 +314,8 @@ class OptDriverImpl {
                 if (auto pass = PassManager::create_pass_by_name(p_name, opts.pipe_through_cmd, submachine_resolver)) {
                     pm.add_pass(std::move(pass));
                 } else {
-                    diag.report(Diagnostic::warning("W0201", "Unrecognized pass name: '" + p_name + "'. Skipping.",
+                    diag.report(Diagnostic::warning("W_UNKNOWN_PASS",
+                                                    "Unrecognized pass name: '" + p_name + "'. Skipping.",
                                                     SourceSpan{opts.input_path, 1, 1, 1}));
                 }
             }

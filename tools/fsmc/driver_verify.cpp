@@ -79,47 +79,47 @@ bool is_nuxmv_available() noexcept {
     return false;
 }
 
-void perform_req_audit(const fsm::ir::FsmIr& model) {
-    std::cout << "============================================================================\n"
-              << " Requirement Traceability Matrix (@fsm:req) : " << model.name << "\n"
-              << "============================================================================\n";
+void perform_req_audit(const fsm::ir::FsmIr& model, std::ostream& out) {
+    out << "============================================================================\n"
+        << " Requirement Traceability Matrix (@fsm:req) : " << model.name << "\n"
+        << "============================================================================\n";
     std::size_t req_count = 0;
     if (!model.satisfies_reqs.empty()) {
-        std::cout << " Model '" << model.name << "' -> Requirements: ";
+        out << " Model '" << model.name << "' -> Requirements: ";
         for (const auto& r : model.satisfies_reqs) {
-            std::cout << "[" << r << "] ";
+            out << "[" << r << "] ";
             ++req_count;
         }
-        std::cout << "\n";
+        out << "\n";
     }
     for (const auto& st : model.states) {
         if (!st.traceability_reqs.empty()) {
-            std::cout << " State '" << st.name << "' -> Requirements: ";
+            out << " State '" << st.name << "' -> Requirements: ";
             for (const auto& r : st.traceability_reqs) {
-                std::cout << "[" << r << "] ";
+                out << "[" << r << "] ";
                 ++req_count;
             }
-            std::cout << "\n";
+            out << "\n";
         }
     }
     for (const auto& t : model.transitions) {
         if (!t.traceability_reqs.empty()) {
-            std::cout << " Transition '" << t.source << " -> " << t.target << "' -> Requirements: ";
+            out << " Transition '" << t.source << " -> " << t.target << "' -> Requirements: ";
             for (const auto& r : t.traceability_reqs) {
-                std::cout << "[" << r << "] ";
+                out << "[" << r << "] ";
                 ++req_count;
             }
-            std::cout << "\n";
+            out << "\n";
         }
     }
     for (const auto& prop : model.properties) {
         if (!prop.traceability_req.empty()) {
-            std::cout << " Formal Property '" << prop.name << "' -> Requirement: [" << prop.traceability_req << "]\n";
+            out << " Formal Property '" << prop.name << "' -> Requirement: [" << prop.traceability_req << "]\n";
             ++req_count;
         }
     }
-    std::cout << " Total Requirements Mapped: " << req_count << "\n"
-              << "============================================================================\n\n";
+    out << " Total Requirements Mapped: " << req_count << "\n"
+        << "============================================================================\n\n";
 }
 
 int run_nuxmv_verification(const FsmcOptions& opts, const fsm::ir::FsmIr& model, const DiagnosticEngine& diag_engine) {
@@ -427,7 +427,10 @@ int print_verification_report(const FsmcOptions& opts, const fsm::ir::FsmIr& mod
                     std::cout << "  " << ce;
                 }
                 if (!opts.export_cex_gtest.empty() && !res.counterexample_trace.empty()) {
-                    std::string gtest_code = CounterexampleGTestExporter::export_gtest(model, res, "", opts.ns_name);
+                    const std::string hdr_hint =
+                        opts.output_file.empty() ? "" : std::filesystem::path(opts.output_file).filename().string();
+                    std::string gtest_code =
+                        CounterexampleGTestExporter::export_gtest(model, res, hdr_hint, opts.ns_name);
                     std::string write_err;
                     if (!write_file_content(opts.export_cex_gtest, gtest_code, write_err)) {
                         std::cerr << "Error exporting counterexample GTest: " << write_err << "\n";

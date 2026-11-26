@@ -216,7 +216,8 @@ int emit_cpp_target(const FsmcOptions& opts, const std::string& content, fsm::ir
             return 1;
         }
 
-        if (!opts.output_file.empty() && !is_stdout_path(opts.output_file)) {
+        const bool is_null_device = (opts.output_file == "/dev/null" || opts.output_file == "NUL");
+        if (!opts.output_file.empty() && !is_stdout_path(opts.output_file) && !is_null_device) {
             const fs::path out_path(opts.output_file);
             const std::string stem = out_path.stem().string();
             const fs::path c_hdr_path = out_path.parent_path() / (stem + ".h");
@@ -292,7 +293,15 @@ int emit_cpp_target(const FsmcOptions& opts, const std::string& content, fsm::ir
                 std::cerr << c99_diag.render_to_format(diag_fmt, content);
                 return 1;
             }
-            std::cout << out_code;
+            if (is_null_device) {
+                std::string write_err;
+                if (!write_file_content(opts.output_file, out_code, write_err)) {
+                    std::cerr << "Error: " << write_err << "\n";
+                    return 1;
+                }
+            } else {
+                std::cout << out_code;
+            }
         }
         return 0;
     }
@@ -307,7 +316,8 @@ int emit_cpp_target(const FsmcOptions& opts, const std::string& content, fsm::ir
     gen_opts.runtime_header = opts.runtime_header;
 
     if (!opts.output_file.empty() && !is_stdout_path(opts.output_file)) {
-        const bool use_split = !opts.standalone_specified;
+        const bool is_null_device = (opts.output_file == "/dev/null" || opts.output_file == "NUL");
+        const bool use_split = !opts.standalone_specified && !is_null_device;
         const fs::path fsm_path(opts.output_file);
         std::string stem = fsm_path.stem().string();
         const std::string ext = fsm_path.extension().string();

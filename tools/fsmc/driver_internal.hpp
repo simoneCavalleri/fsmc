@@ -19,7 +19,7 @@ int emit_cpp_target(const FsmcOptions& opts, const std::string& content, fsm::ir
                     const fsm::frontend::IParser& parser, bool has_sidecar, fsm::diagnostic::DiagnosticFormat diag_fmt);
 
 bool is_nuxmv_available() noexcept;
-void perform_req_audit(const fsm::ir::FsmIr& model);
+void perform_req_audit(const fsm::ir::FsmIr& model, std::ostream& out = std::cout);
 int run_nuxmv_verification(const FsmcOptions& opts, const fsm::ir::FsmIr& model,
                            const fsm::diagnostic::DiagnosticEngine& diag_engine);
 int print_verification_report(const FsmcOptions& opts, const fsm::ir::FsmIr& model,

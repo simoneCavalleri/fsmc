@@ -2082,4 +2082,44 @@ package BatterySafety {
     EXPECT_EQ(reparsed.transitions[1].priority, 10U);
 }
 
+/**
+ * @brief Test Intent: Verify multi-machine SysML v2 files default to the first state def with a W_MULTI_STATE_DEF
+ * warning instead of merging states across machines.
+ */
+TEST(Sysml2ParserTest, MultiMachineFile_DefaultsToFirstWithWarning) {
+    const std::string sysml = R"(
+package MultiPkg {
+    attribute def EvGo;
+    state def MachineA {
+        entry; then A1;
+        state A1;
+        state A2;
+        transition first A1 accept EvGo then A2;
+    }
+    state def MachineB {
+        entry; then B1;
+        state B1;
+        state B2;
+        transition first B1 accept EvGo then B2;
+    }
+}
+)";
+    Sysml2Parser parser;
+    FsmIr ir;
+    fsm::diagnostic::DiagnosticEngine diag;
+    ASSERT_TRUE(parser.parse(sysml, ir, diag));
+    EXPECT_EQ(ir.name, "MachineA");
+    EXPECT_NE(ir.find_state("A1"), nullptr);
+    EXPECT_EQ(ir.find_state("B1"), nullptr);
+
+    bool found_warn = false;
+    for (const auto& d : diag.get_diagnostics()) {
+        if (d.code == "W_MULTI_STATE_DEF") {
+            found_warn = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_warn);
+}
+
 }  // namespace

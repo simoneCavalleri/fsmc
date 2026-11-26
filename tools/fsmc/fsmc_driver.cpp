@@ -150,11 +150,16 @@ bool load_and_parse_model(const FsmcOptions& opts, std::string& content, fsm::ir
     source_manager.register_source(opts.input_file, content);
 
     fsm::diagnostic::DiagnosticEngine parse_diag;
+    const auto parse_fmt = parse_diagnostic_format(opts.diagnostic_format);
     if (!parser->parse(content, model, parse_diag)) {
-        const auto parse_fmt = parse_diagnostic_format(opts.diagnostic_format);
-        std::cerr << "Syntax Error in " << opts.input_file << ":\n"
-                  << parse_diag.render_to_format(parse_fmt, content, &source_manager);
+        if (parse_fmt == DiagnosticFormat::Text) {
+            std::cerr << "Syntax Error in " << opts.input_file << ":\n";
+        }
+        std::cerr << parse_diag.render_to_format(parse_fmt, content, &source_manager);
         return false;
+    }
+    if (!parse_diag.get_diagnostics().empty()) {
+        std::cerr << parse_diag.render_to_format(parse_fmt, content, &source_manager);
     }
 
     // Check for companion sidecar manifest (--sidecar <file> or auto-discovery)
@@ -253,7 +258,8 @@ bool load_and_parse_model(const FsmcOptions& opts, std::string& content, fsm::ir
 
     // Requirement audit
     if (opts.req_audit) {
-        perform_req_audit(model);
+        const bool code_to_stdout = !opts.verify_mode && (opts.output_file.empty() || is_stdout_path(opts.output_file));
+        perform_req_audit(model, code_to_stdout ? std::cerr : std::cout);
     }
     return true;
 }
@@ -341,7 +347,9 @@ bool run_middleend_pipeline(const FsmcOptions& opts, const std::string& content,
     }
 
     if (opts.werror && (middleend_diag.has_warnings() || middleend_diag.has_errors()) && !opts.verify_mode) {
-        std::cerr << "\n[ERROR] -Werror enabled: compilation failed due to middle-end warnings/errors:\n";
+        if (diag_fmt == DiagnosticFormat::Text) {
+            std::cerr << "\n[ERROR] -Werror enabled: compilation failed due to middle-end warnings/errors:\n";
+        }
         std::cerr << middleend_diag.render_to_format(diag_fmt, content);
         return false;
     } else if (!middleend_diag.get_diagnostics().empty() && !opts.verify_mode) {

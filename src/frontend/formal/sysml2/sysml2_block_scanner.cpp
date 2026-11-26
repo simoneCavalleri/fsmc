@@ -28,7 +28,8 @@ bool Sysml2BlockScanner::ends_with_word(std::string_view text, std::string_view 
 
 bool Sysml2BlockScanner::is_structural_statement(std::string_view stmt) {
     std::string s = trim_str(stmt);
-    if (s.rfind("allocate ", 0) == 0 || s.rfind("allocation ", 0) == 0) {
+    if (s.rfind("allocate ", 0) == 0 || s.rfind("allocation ", 0) == 0 || s.rfind("metadata def ", 0) == 0 ||
+        s.rfind("requirement def ", 0) == 0) {
         return true;
     }
     if (s.rfind("part ", 0) == 0 && s.find(':') != std::string_view::npos) {
@@ -40,7 +41,8 @@ bool Sysml2BlockScanner::is_structural_statement(std::string_view stmt) {
 bool Sysml2BlockScanner::is_structural_block_head(std::string_view head) {
     std::string h = trim_str(head);
     return (h.rfind("part def", 0) == 0 || h.rfind("part ", 0) == 0 || h.rfind("interface def", 0) == 0 ||
-            h.rfind("allocation def", 0) == 0 || h.rfind("connection def", 0) == 0 || h.rfind("item def Part", 0) == 0);
+            h.rfind("allocation def", 0) == 0 || h.rfind("connection def", 0) == 0 ||
+            h.rfind("item def Part", 0) == 0 || h.rfind("metadata def", 0) == 0 || h.rfind("requirement def", 0) == 0);
 }
 
 bool Sysml2BlockScanner::is_container_block_head(std::string_view head) {
@@ -60,9 +62,13 @@ bool Sysml2BlockScanner::is_container_block_head(std::string_view head) {
 
 bool Sysml2BlockScanner::is_transition_like(std::string_view stmt) {
     std::string s = trim_str(stmt);
-    return (s.rfind("transition", 0) == 0 || s.find(" then ") != std::string::npos ||
-            s.find(" to ") != std::string::npos || s.find(" first ") != std::string::npos ||
-            s.find(" fork") != std::string::npos || s.find(" join") != std::string::npos);
+    if (s.rfind("@", 0) == 0 || s.rfind("metadata ", 0) == 0 || s.rfind("assert ", 0) == 0) {
+        return false;
+    }
+    return (s.rfind("transition", 0) == 0 || s.rfind("local transition", 0) == 0 ||
+            s.find(" then ") != std::string::npos || s.find(" to ") != std::string::npos ||
+            s.find(" first ") != std::string::npos || s.find(" fork") != std::string::npos ||
+            s.find(" join") != std::string::npos);
 }
 
 std::vector<SysmlScannedToken> Sysml2BlockScanner::scan(std::string_view content) {
@@ -74,6 +80,48 @@ std::vector<SysmlScannedToken> Sysml2BlockScanner::scan(std::string_view content
     std::string accumulated;
     size_t structural_block_depth = 0;
     size_t inline_brace_depth = 0;
+    bool in_transition_action_body = false;
+
+    auto ends_with_do_header = [](const std::string& h) -> bool {
+        // Check whether '{' is opening a transition `do [action] [<Name>] { ... }` effect block
+        // rather than the terminal `ActionBody` after `then <Target> { ... }`.
+        size_t end = h.size();
+        while (end > 0 && std::isspace(static_cast<unsigned char>(h[end - 1])) != 0) {
+            --end;
+        }
+        auto prev_token = [&](size_t& pos) -> std::string_view {
+            while (pos > 0 && std::isspace(static_cast<unsigned char>(h[pos - 1])) != 0) {
+                --pos;
+            }
+            if (pos > 0 && h[pos - 1] == '/') {
+                --pos;
+                return "/";
+            }
+            size_t tok_end = pos;
+            while (pos > 0 && (std::isalnum(static_cast<unsigned char>(h[pos - 1])) != 0 || h[pos - 1] == '_')) {
+                --pos;
+            }
+            return std::string_view(h).substr(pos, tok_end - pos);
+        };
+        size_t p = end;
+        std::string_view t1 = prev_token(p);
+        if (t1 == "do") {
+            return true;
+        }
+        if (t1 == "/") {
+            return prev_token(p) == "do";
+        }
+        if (!t1.empty()) {
+            std::string_view t2 = prev_token(p);
+            if (t2 == "do") {
+                return true;
+            }
+            if (t2 == "action" && prev_token(p) == "do") {
+                return true;
+            }
+        }
+        return false;
+    };
 
     while (idx < len) {
         char c = content[idx];
@@ -179,7 +227,8 @@ std::vector<SysmlScannedToken> Sysml2BlockScanner::scan(std::string_view content
                     accumulated.clear();
                     tokens.push_back({SysmlTokenKind::BlockOpen, head, current_line});
                 } else {
-                    // Inline brace block (port constraints, transition actions, entry/exit actions)
+                    // Inline brace block (port constraints, transition actions, transition metadata body, entry/exit)
+                    in_transition_action_body = is_transition_like(head) && !ends_with_do_header(head);
                     inline_brace_depth = 1;
                     accumulated += " {";
                 }
@@ -194,8 +243,10 @@ std::vector<SysmlScannedToken> Sysml2BlockScanner::scan(std::string_view content
                 inline_brace_depth--;
                 accumulated += "}";
                 if (inline_brace_depth == 0) {
-                    // If not a continuation statement like transition, emit immediately
-                    if (!is_transition_like(accumulated)) {
+                    const bool finish_transition_body = in_transition_action_body;
+                    in_transition_action_body = false;
+                    // Emit immediately unless waiting for `then <Target>;` after a `do { ... }` block
+                    if (finish_transition_body || !is_transition_like(accumulated)) {
                         std::string stmt = trim_str(accumulated);
                         accumulated.clear();
                         if (!stmt.empty() && !is_structural_statement(stmt)) {

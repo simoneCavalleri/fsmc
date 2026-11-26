@@ -1199,7 +1199,7 @@ TEST(Sysml2Parser, SignedIntRoundtrip_PreservesSignedTypeAcrossSerializer) {
  * @brief Regression: `Sysml2Serializer` emits valid `// @fsm:property` structured comments for
  * `model.properties` (without non-SysML `assert property`) so temporal logic properties survive SysML v2 roundtrips.
  * @scenario Serialize an FSM with `FormalProperty("safe", "G (not (A and B))")` to SysML v2 and re-parse.
- * @expected Serialized SysML2 contains `// @fsm:property name=safe` and re-parsed IR keeps it.
+ * @expected Serialized SysML2 contains `@safe : TemporalProperty` and re-parsed IR keeps it.
  */
 TEST(Sysml2Parser, PropertiesRoundtrip_PreservedAcrossSerializer) {
     FsmIr ir;
@@ -1213,7 +1213,8 @@ TEST(Sysml2Parser, PropertiesRoundtrip_PreservedAcrossSerializer) {
     ir.add_property(prop);
 
     const std::string sysml = fsm::backend::formal::Sysml2Serializer::serialize(ir);
-    EXPECT_NE(sysml.find("// @fsm:property name=safe"), std::string::npos) << sysml;
+    EXPECT_NE(sysml.find("@safe : TemporalProperty"), std::string::npos) << sysml;
+    EXPECT_EQ(sysml.find("@fsm:"), std::string::npos) << sysml;
     EXPECT_EQ(sysml.find("assert property"), std::string::npos) << sysml;
 
     Sysml2Parser parser;
@@ -1951,6 +1952,134 @@ TEST(Sysml2ParserTest, StrictOmgSysmlV2GrammarConformance_LocalItemSendConstrain
     ASSERT_NE(reparsed.find_state("Sup"), nullptr);
     EXPECT_EQ(reparsed.find_state("Sup")->kind, StateKind::Parallel);
     ASSERT_EQ(reparsed.transitions.size(), 2U);
+}
+
+/**
+ * @brief Verify native OMG SysML v2.0 `Time::DurationOf` state residence constraints and `metadata def` /
+ * `@MetadataUsage` (`@Priority`, `@Deferred`, `@TemporalProperty`) parse and roundtrip with zero `@fsm:` comments.
+ * @scenario Parse a pure OMG SysML v2.0 model using `DurationOf(Precharge) <= 100 [ms]`, `@Deferred`, `@Priority`,
+ * and `@SafeShutdown : TemporalProperty`, serialize via `Sysml2Serializer`, and re-parse.
+ * @expected Serialized output contains zero `@fsm:` directives, preserves `time_invariant`, `deferred_events`,
+ * transition `priority`, and `FormalProperty` metadata across roundtrip.
+ */
+TEST(Sysml2ParserTest, NativeSysmlV2DurationOfAndMetadataUsages_ZeroFsmDirectivesRoundtrip) {
+    const std::string sysml = R"sysml(
+package BatterySafety {
+    private import ScalarValues::*;
+    private import SI::*;
+    private import Time::DurationOf;
+
+    metadata def Priority {
+        attribute value : Natural;
+    }
+
+    metadata def Deferred {
+        attribute events : String[*];
+    }
+
+    metadata def TemporalProperty {
+        attribute kind : String;
+        attribute formula : String;
+        attribute req : String[0..1];
+        attribute description : String[0..1];
+    }
+
+    item def EvReady;
+    item def EvFault;
+    item def EvTelemetryReq;
+    item def EvDiagDump;
+
+    state def PackSequencer {
+        @SafeFaultResponse : TemporalProperty {
+            kind = "Safety";
+            formula = "G (EvFault -> F SafeTripped)";
+            req = "REQ-BMS-042";
+            description = "Any fault transitions to SafeTripped";
+        }
+
+        out contactors_closed : Boolean;
+
+        entry; then Precharge;
+
+        state Precharge {
+            assert constraint { DurationOf(Precharge) <= 100 [ms] }
+            @Deferred { events = ("EvTelemetryReq", "EvDiagDump"); }
+        }
+
+        state Running;
+        state SafeTripped;
+
+        transition t_ready
+            first Precharge
+            accept EvReady
+            do action { assign contactors_closed := true; }
+            then Running {
+                @Priority { value = 5; }
+            }
+
+        transition t_fault
+            first Precharge
+            accept EvFault
+            do action { assign contactors_closed := false; }
+            then SafeTripped {
+                @Priority { value = 10; }
+            }
+    }
+}
+)sysml";
+
+    Sysml2Parser parser;
+    FsmIr ir;
+    fsm::diagnostic::DiagnosticEngine diag;
+    ASSERT_TRUE(parser.parse(sysml, ir, diag)) << diag.render_to_string();
+    EXPECT_FALSE(diag.has_errors());
+    EXPECT_TRUE(ir.variables.empty());
+
+    const auto* pre = ir.find_state("Precharge");
+    ASSERT_NE(pre, nullptr);
+    ASSERT_TRUE(pre->time_invariant.has_value());
+    EXPECT_EQ(*pre->time_invariant, "100[ms]");
+    ASSERT_EQ(pre->deferred_events.size(), 2U);
+    EXPECT_EQ(pre->deferred_events[0], "EvTelemetryReq");
+    EXPECT_EQ(pre->deferred_events[1], "EvDiagDump");
+
+    ASSERT_EQ(ir.properties.size(), 1U);
+    EXPECT_EQ(ir.properties[0].name, "SafeFaultResponse");
+    EXPECT_EQ(ir.properties[0].kind, PropertyKind::Safety);
+    EXPECT_EQ(ir.properties[0].raw_formula, "G (EvFault -> F SafeTripped)");
+    EXPECT_EQ(ir.properties[0].traceability_req, "REQ-BMS-042");
+    EXPECT_EQ(ir.properties[0].description, "Any fault transitions to SafeTripped");
+
+    ASSERT_EQ(ir.transitions.size(), 2U);
+    EXPECT_EQ(ir.transitions[0].target, "Running");
+    EXPECT_EQ(ir.transitions[0].priority, 5U);
+    EXPECT_EQ(ir.transitions[1].target, "SafeTripped");
+    EXPECT_EQ(ir.transitions[1].priority, 10U);
+
+    const std::string exported = fsm::backend::formal::Sysml2Serializer::serialize(ir);
+    EXPECT_EQ(exported.find("@fsm:"), std::string::npos) << exported;
+    EXPECT_NE(exported.find("private import Time::DurationOf;"), std::string::npos) << exported;
+    EXPECT_NE(exported.find("DurationOf(Precharge) <= 100 [ms]"), std::string::npos) << exported;
+    EXPECT_NE(exported.find("metadata def Priority"), std::string::npos) << exported;
+    EXPECT_NE(exported.find("metadata def Deferred"), std::string::npos) << exported;
+    EXPECT_NE(exported.find("metadata def TemporalProperty"), std::string::npos) << exported;
+    EXPECT_NE(exported.find("@SafeFaultResponse : TemporalProperty"), std::string::npos) << exported;
+    EXPECT_NE(exported.find("@Priority { value = 10; }"), std::string::npos) << exported;
+
+    FsmIr reparsed;
+    ASSERT_TRUE(parser.parse(exported, reparsed, diag)) << diag.render_to_string();
+    EXPECT_TRUE(reparsed.variables.empty());
+    const auto* pre2 = reparsed.find_state("Precharge");
+    ASSERT_NE(pre2, nullptr);
+    ASSERT_TRUE(pre2->time_invariant.has_value());
+    EXPECT_EQ(*pre2->time_invariant, "100[ms]");
+    EXPECT_EQ(pre2->deferred_events, pre->deferred_events);
+    ASSERT_EQ(reparsed.properties.size(), 1U);
+    EXPECT_EQ(reparsed.properties[0].raw_formula, "G (EvFault -> F SafeTripped)");
+    EXPECT_EQ(reparsed.properties[0].traceability_req, "REQ-BMS-042");
+    ASSERT_EQ(reparsed.transitions.size(), 2U);
+    EXPECT_EQ(reparsed.transitions[0].priority, 5U);
+    EXPECT_EQ(reparsed.transitions[1].priority, 10U);
 }
 
 }  // namespace

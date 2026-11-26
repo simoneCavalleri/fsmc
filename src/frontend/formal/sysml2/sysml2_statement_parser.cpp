@@ -736,6 +736,141 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
+    // 9a-1. Native OMG SysML v2.0 MetadataUsage for Deferred Events:
+    //       `@Deferred { events = ("EvA", "EvB"); }` or `@Deferred { events = "EvA"; }`
+    static const std::regex meta_defer_regex(
+        R"(^(?:@|metadata\s+)(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?(?:[A-Za-z_][A-Za-z0-9_]*::)?Deferred\s*\{([\s\S]*)\}\s*;?$)",
+        std::regex::optimize);
+    if (std::regex_match(stmt, match, meta_defer_regex)) {
+        if (!state_stack.empty()) {
+            if (auto* st = model.find_state_mut(state_stack.back())) {
+                const std::string body = match[1].str();
+                static const std::regex quoted_ev_re(R"delim("([^"]+)")delim", std::regex::optimize);
+                bool found_quoted = false;
+                for (std::sregex_iterator it(body.begin(), body.end(), quoted_ev_re), end; it != end; ++it) {
+                    std::string ev = sanitize_identifier((*it)[1].str());
+                    if (!ev.empty()) {
+                        found_quoted = true;
+                        if (std::find(st->deferred_events.begin(), st->deferred_events.end(), ev) ==
+                            st->deferred_events.end()) {
+                            st->deferred_events.push_back(ev);
+                        }
+                        model.add_event(ev);
+                    }
+                }
+                if (!found_quoted) {
+                    auto eq_pos = body.find('=');
+                    if (eq_pos != std::string::npos) {
+                        std::string rhs = body.substr(eq_pos + 1);
+                        for (char& ch : rhs) {
+                            if (ch == '(' || ch == ')' || ch == ';') {
+                                ch = ' ';
+                            }
+                        }
+                        std::istringstream iss(rhs);
+                        std::string tok;
+                        while (std::getline(iss, tok, ',')) {
+                            std::string ev = sanitize_identifier(trim(tok));
+                            if (!ev.empty()) {
+                                if (std::find(st->deferred_events.begin(), st->deferred_events.end(), ev) ==
+                                    st->deferred_events.end()) {
+                                    st->deferred_events.push_back(ev);
+                                }
+                                model.add_event(ev);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    // 9a-2. Native OMG SysML v2.0 MetadataUsage for Formal Temporal Properties:
+    //       `@<PropName> : TemporalProperty { kind = "Safety"; formula = "G (...)"; req = "..."; description = "...";
+    //       }`
+    static const std::regex meta_prop_regex(
+        R"(^(?:@|metadata\s+)(?:([A-Za-z_][A-Za-z0-9_]*)\s*:\s*)?(?:[A-Za-z_][A-Za-z0-9_]*::)?TemporalProperty\s*\{([\s\S]*)\}\s*;?$)",
+        std::regex::optimize);
+    if (std::regex_match(stmt, match, meta_prop_regex)) {
+        std::string prop_name = match[1].matched ? sanitize_identifier(match[1].str()) : "";
+        const std::string body = match[2].str();
+        auto extract_meta_attr = [&](const std::string& attr_name) -> std::string {
+            std::regex attr_re(R"((?:^|[;\s])(?:ref\s+)?(?::>>\s*|redefines\s+)?)" + attr_name +
+                               R"delim(\s*:?=\s*"((?:\\.|[^"\\])*)")delim");
+            std::smatch am;
+            if (!std::regex_search(body, am, attr_re)) {
+                return "";
+            }
+            std::string raw = am[1].str();
+            std::string unescaped;
+            unescaped.reserve(raw.size());
+            for (std::size_t i = 0; i < raw.size(); ++i) {
+                if (raw[i] == '\\' && i + 1 < raw.size()) {
+                    ++i;
+                }
+                unescaped.push_back(raw[i]);
+            }
+            return unescaped;
+        };
+        if (prop_name.empty()) {
+            prop_name = sanitize_identifier(extract_meta_attr("name"));
+        }
+        const std::string kind_str = extract_meta_attr("kind");
+        const std::string formula_str = extract_meta_attr("formula");
+        const std::string req_str = extract_meta_attr("req");
+        std::string desc_str = extract_meta_attr("description");
+        if (desc_str.empty()) {
+            desc_str = extract_meta_attr("desc");
+        }
+        if (!prop_name.empty() && !formula_str.empty()) {
+            FormalProperty prop;
+            prop.name = prop_name;
+            prop.kind = kind_str.empty() ? PropertyKind::Safety : property_kind_from_string(kind_str);
+            prop.raw_formula = formula_str;
+            prop.traceability_req = req_str;
+            prop.description = desc_str;
+            prop.ast = directive::LtlPropertyParser::parse(prop.raw_formula);
+            prop.id = compute_deterministic_id(prop.name + ":" + prop.raw_formula);
+            model.add_property(std::move(prop));
+        }
+        return true;
+    }
+
+    // 9a-3. Ignore any other generic SysML v2 `@Metadata` annotations so they do not misparse as transitions
+    if (stmt.rfind("@", 0) == 0 || stmt.rfind("metadata ", 0) == 0) {
+        return true;
+    }
+
+    // 9b-0. Native OMG SysML v2.0 Time::DurationOf state residence constraint:
+    //       `assert constraint [<Name>] { DurationOf(<State>) <= 100 [ms] }`
+    static const std::regex duration_of_constraint_regex(
+        R"(^assert\s+constraint\s*(?:[A-Za-z_][A-Za-z0-9_]*\s*)?\{\s*(?:Time::)?DurationOf\s*\(\s*[A-Za-z_][A-Za-z0-9_]*\s*\)\s*(<=|<)\s*(\d+)\s*(?:\[\s*(?:SI::|ISQ::)?([A-Za-z]+)\s*\]|([A-Za-z]+))?\s*;?\s*\}\s*;?$)",
+        std::regex::optimize);
+    if (current_item_def.empty() && !state_stack.empty() &&
+        std::regex_match(stmt, match, duration_of_constraint_regex)) {
+        const std::string op_str = match[1].str();
+        const std::string dur_str = match[2].str();
+        std::string unit_str = match[3].matched ? match[3].str() : (match[4].matched ? match[4].str() : "ms");
+        if (unit_str == "sec" || unit_str == "seconds") {
+            unit_str = "s";
+        } else if (unit_str == "msec" || unit_str == "milliseconds") {
+            unit_str = "ms";
+        } else if (unit_str == "usec" || unit_str == "microseconds") {
+            unit_str = "us";
+        } else if (unit_str == "nsec" || unit_str == "nanoseconds") {
+            unit_str = "ns";
+        }
+        if (auto* st = model.find_state_mut(state_stack.back())) {
+            if (op_str == "<=") {
+                st->time_invariant = StateTimeInvariant(dur_str + "[" + unit_str + "]");
+            } else {
+                st->time_invariant = StateTimeInvariant("stay_duration < " + dur_str + "[" + unit_str + "]");
+            }
+        }
+        return true;
+    }
+
     // 9b. Native OMG SysML v2.0 AssertConstraintUsage inside a state or state def:
     //     `assert [not] constraint [<Name>] { <BooleanExpr> }`
     static const std::regex state_constraint_regex(

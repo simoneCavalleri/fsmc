@@ -211,18 +211,42 @@ package ThermalSubsystem {
 
 ---
 
-## 2. State Invariants (`assert constraint`), Traceability & Temporal Directives
+## 2. State Invariants (`assert constraint`, `DurationOf`) & Metadata (`metadata def`)
 
-Standard SysML v2.0 synchronous invariants are expressed natively inside states via `assert constraint`, and requirements via `satisfy requirement`. Multi-state LTL/CTL temporal formulas (which extend beyond SysML v2.0's native expression language) and compiler-specific scheduling hints are placed inside standard `// @fsm:*` line comments so `.sysml` files remain 100% valid for external SysML v2.0 tools:
+Synchronous invariants and state residence-time bounds are expressed directly with OMG SysML v2.0 `assert constraint` and `Time::DurationOf`, requirements with `satisfy requirement`, and domain extensions (multi-state LTL/CTL temporal logic, transition evaluation priority, and static event deferral) with first-class SysML v2.0 `metadata def` / `@MetadataUsage` blocks:
 
 ```sysml
 package MissionSafety {
     private import ScalarValues::*;
+    private import SI::*;
+    private import Time::DurationOf;
 
-    // Multi-state LTL property in a standard comment (transparent to external SysML v2 parsers):
-    // @fsm:property name=ResponseLanding kind=Safety formula="G (EvLowBattery -> F Landed)"
+    metadata def Priority {
+        attribute value : Natural;
+    }
+
+    metadata def Deferred {
+        attribute events : String[*];
+    }
+
+    metadata def TemporalProperty {
+        attribute kind : String;
+        attribute formula : String;
+        attribute req : String[0..1];
+        attribute description : String[0..1];
+    }
+
+    requirement def REQ_UAV_001;
+    item def EvStreamTelemetry;
+    item def EvLowBattery;
 
     state def UAVControl {
+        @ResponseLanding : TemporalProperty {
+            kind = "Safety";
+            formula = "G (EvLowBattery -> F Landed)";
+            req = "REQ_UAV_001";
+        }
+
         out motors_armed : Boolean;
 
         entry; then Landed;
@@ -230,15 +254,25 @@ package MissionSafety {
         state Landed {
             satisfy requirement REQ_UAV_001;
 
-            // Native OMG SysML v2.0 state constraint (automatically proven by fsmc --verify!)
+            // Native OMG SysML v2.0 state constraint (proven by fsmc --verify)
             assert constraint SafeDisarmOnGround {
                 not motors_armed
             }
 
-            // @fsm:defer EvStreamTelemetry
+            @Deferred { events = "EvStreamTelemetry"; }
         }
 
-        state FlightActive;
+        state FlightActive {
+            // Native OMG SysML v2.0 state residence-time bound
+            assert constraint { DurationOf(FlightActive) <= 500 [ms] }
+        }
+
+        transition emergency_land
+            first FlightActive
+            accept EvLowBattery
+            then Landed {
+                @Priority { value = 10; }
+            }
     }
 }
 ```
@@ -252,12 +286,20 @@ package MissionSafety {
     package Aerospace {
         private import ScalarValues::*;
 
+        metadata def TemporalProperty {
+            attribute kind : String;
+            attribute formula : String;
+        }
+
         item def EvLaunch;
         item def EvCritBat;
 
-        // @fsm:property name=SafeBat kind=Safety formula="G (EvCritBat -> F SafeMode)"
-
         state def SpacecraftControl {
+            @SafeBat : TemporalProperty {
+                kind = "Safety";
+                formula = "G (EvCritBat -> F SafeMode)";
+            }
+
             in battery_soc : Real {
                 assert constraint { battery_soc >= 0.0 and battery_soc <= 100.0 }
             }

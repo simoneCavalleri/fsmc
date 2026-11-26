@@ -138,21 +138,31 @@ fsmc -i flight_mission.sysml --simulate --trace events.json
 ## Specifying Properties in Models
 
 ### 1. In OMG SysML v2
-Use state-local `assert constraint Name { Expr }` blocks for synchronous state invariants, and `// @fsm:property` structured comments for LTL/CTL temporal logic formulas:
+Use state-local `assert constraint Name { Expr }` blocks for synchronous state invariants, and `@<Name> : TemporalProperty { ... }` (`metadata def TemporalProperty`) for multi-state LTL/CTL temporal logic formulas:
 
 ```sysml
 package FlightControl {
+    private import ScalarValues::*;
+
+    metadata def TemporalProperty {
+        attribute kind : String;
+        attribute formula : String;
+    }
+
     state def AircraftMission {
+        @DisjointFlight : TemporalProperty {
+            kind = "Safety";
+            formula = "G (!(Preflight && InFlight))";
+        }
+        @SafeLandingOnLowBattery : TemporalProperty {
+            kind = "Liveness";
+            formula = "G (LowBattery -> F Landed)";
+        }
+
         entry; then Preflight;
         state Preflight;
         state InFlight;
         state Landed;
-
-        // Formal Safety Property: Mutual exclusion between Preflight and InFlight
-        // @fsm:property DisjointFlight = "G (!(Preflight && InFlight))";
-
-        // Formal Liveness Property: Low battery always eventually leads to Landed
-        // @fsm:property SafeLandingOnLowBattery = "G (LowBattery -> F Landed)";
     }
 }
 ```

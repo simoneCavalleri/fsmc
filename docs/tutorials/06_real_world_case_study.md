@@ -50,9 +50,24 @@ Here is the complete formal MBSE model specifying ports, attributes, composite s
 ```sysml
 private import ScalarValues::*;
 
-// @fsm:property name=ArmSafety kind=Safety formula="G !(Standby && EmergencyLanding)" req="REQ_UAV_001"
-// @fsm:property name=FailsafeReachable kind=Reachability formula="F EmergencyLanding" req="REQ_UAV_002"
+metadata def TemporalProperty {
+    attribute kind : String;
+    attribute formula : String;
+    attribute req : String[0..1];
+}
+
 state def UAVFlightController {
+    @ArmSafety : TemporalProperty {
+        kind = "Safety";
+        formula = "G !(Standby && EmergencyLanding)";
+        req = "REQ_UAV_001";
+    }
+    @FailsafeReachable : TemporalProperty {
+        kind = "Reachability";
+        formula = "F EmergencyLanding";
+        req = "REQ_UAV_002";
+    }
+
     // 1. Segregated InPorts (Sensor telemetry snapshot)
     in battery_pct : Real { assert constraint { battery_pct >= 0.0 and battery_pct <= 100.0 } }
     in altitude_m : Real;

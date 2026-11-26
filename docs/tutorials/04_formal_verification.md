@@ -81,14 +81,29 @@ In formal verification, properties describe how systems behave over time:
 
 ### Embedding Properties in Models
 
-Attach formal properties directly inside SysML v2 models using `// @fsm:property` directives (or state-local `assert constraint` blocks for synchronous invariants):
+Attach formal properties inside SysML v2 models using `assert constraint` blocks for synchronous state invariants and `@<Name> : TemporalProperty { ... }` (`metadata def`) for multi-state LTL/CTL properties:
 
 ```sysml
 private import ScalarValues::*;
 
-// @fsm:property name=PropSafety kind=Safety formula="G !(Ascending && Emergency)" req="REQ_FLIGHT_041"
-// @fsm:property name=PropReachable kind=Reachability formula="F Cruising" req="REQ_FLIGHT_042"
+metadata def TemporalProperty {
+    attribute kind : String;
+    attribute formula : String;
+    attribute req : String[0..1];
+}
+
 state def FlightController {
+    @PropSafety : TemporalProperty {
+        kind = "Safety";
+        formula = "G !(Ascending && Emergency)";
+        req = "REQ_FLIGHT_041";
+    }
+    @PropReachable : TemporalProperty {
+        kind = "Reachability";
+        formula = "F Cruising";
+        req = "REQ_FLIGHT_042";
+    }
+
     in battery_pct : Integer { assert constraint { battery_pct >= 0 and battery_pct <= 100 } }
 
     entry; then Booting;

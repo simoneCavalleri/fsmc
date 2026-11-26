@@ -6,6 +6,8 @@
 
 package SensorToolchain {
     private import ScalarValues::*;
+    private import SI::*;
+    private import Time::DurationOf;
 
     item def AdcSampleReadyEvent;
     item def FilterCompleteEvent;
@@ -34,11 +36,11 @@ package SensorToolchain {
             entry; then Sampling;
 
             state Sampling {
-                // @fsm:state time_invariant="10[ms]"
+                assert constraint { DurationOf(Sampling) <= 10 [ms] }
             }
 
             state Filtering {
-                // @fsm:state time_invariant="5[ms]"
+                assert constraint { DurationOf(Filtering) <= 5 [ms] }
             }
 
             state Publishing;

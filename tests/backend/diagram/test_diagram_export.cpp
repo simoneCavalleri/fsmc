@@ -311,14 +311,16 @@ TEST(DiagramExport, AdvancedPseudostatesAndInvariants_PreservedAcrossDiagramExpo
     const std::string sysml_out = Sysml2Serializer::serialize(model);
     EXPECT_NE(sysml_out.find("entry point EnPort;"), std::string::npos);
     EXPECT_NE(sysml_out.find("exit point ExPort;"), std::string::npos);
-    EXPECT_NE(sysml_out.find("// @fsm:state time_invariant=\"stay <= 250ms\""), std::string::npos);
-    EXPECT_NE(sysml_out.find("// @fsm:priority 10"), std::string::npos);
+    EXPECT_NE(sysml_out.find("DurationOf(Standby) <= 250 [ms]"), std::string::npos);
+    EXPECT_NE(sysml_out.find("@Priority { value = 10; }"), std::string::npos);
+    EXPECT_EQ(sysml_out.find("@fsm:"), std::string::npos);
 
     fsm::frontend::formal::Sysml2Parser sysml_parser;
     FsmIr sysml_ir;
     ASSERT_TRUE(sysml_parser.parse(sysml_out, sysml_ir, err)) << "SysML2 parse error: " << err.render_to_string();
     ASSERT_TRUE(sysml_ir.find_state("Standby")->time_invariant.has_value());
-    EXPECT_EQ(*sysml_ir.find_state("Standby")->time_invariant, "stay <= 250ms");
+    EXPECT_EQ(*sysml_ir.find_state("Standby")->time_invariant, "250[ms]");
+    EXPECT_EQ(sysml_ir.find_state("Standby")->time_invariant->duration, 250U);
     ASSERT_EQ(sysml_ir.transitions.size(), 2u);
     EXPECT_EQ(sysml_ir.transitions[0].priority, 10u);
     EXPECT_EQ(sysml_ir.transitions[1].priority, 2u);

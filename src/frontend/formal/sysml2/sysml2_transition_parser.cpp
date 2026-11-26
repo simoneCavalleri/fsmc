@@ -14,9 +14,10 @@ namespace fsm::frontend::formal {
 using namespace fsm::ir;
 using namespace sysml2_detail;
 
-bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& model,
+bool Sysml2Parser::parse_transition_statement(const std::string& raw_stmt, FsmIr& model,
                                               const std::vector<std::string>& state_stack,
                                               const Sysml2SymbolResolver* symbol_resolver) {
+    std::string stmt = raw_stmt;
     std::string source;
     std::string target;
     std::string event;
@@ -25,6 +26,37 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
     std::uint32_t priority = 0;
     std::optional<TimeTrigger> time_trigger;
     std::optional<ChangeTrigger> change_trigger;
+
+    // 0. Native OMG SysML v2.0 TransitionUsage ActionBody `@Priority { value = <N>; }`
+    static const std::regex meta_prio_regex(
+        R"((?:@|metadata\s+)(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?(?:[A-Za-z_][A-Za-z0-9_]*::)?Priority\s*\{\s*(?:ref\s+)?(?::>>\s*|redefines\s+)?value\s*:?=\s*(\d+)\s*;?\s*\})",
+        std::regex::optimize);
+    std::smatch meta_prio_match;
+    if (std::regex_search(stmt, meta_prio_match, meta_prio_regex)) {
+        try {
+            priority = static_cast<std::uint32_t>(std::stoul(meta_prio_match[1].str()));
+        } catch (...) {
+        }
+        // Strip trailing ActionBody `{ @Priority { ... } }` if it follows `then <Target>`
+        if (!stmt.empty() && stmt.back() == '}') {
+            int depth = 0;
+            std::size_t open_pos = std::string::npos;
+            for (std::size_t i = stmt.size(); i > 0; --i) {
+                if (stmt[i - 1] == '}') {
+                    ++depth;
+                } else if (stmt[i - 1] == '{') {
+                    --depth;
+                    if (depth == 0) {
+                        open_pos = i - 1;
+                        break;
+                    }
+                }
+            }
+            if (open_pos != std::string::npos && stmt.substr(open_pos).find("Priority") != std::string::npos) {
+                stmt = trim(stmt.substr(0, open_pos));
+            }
+        }
+    }
 
     // 1. Optional transition name matching
     static const std::regex local_prefix_regex(R"(^local\s+transition\b)", std::regex::optimize);
@@ -41,10 +73,10 @@ bool Sysml2Parser::parse_transition_statement(const std::string& stmt, FsmIr& mo
         }
     }
 
-    // 2. Transition priority extraction (e.g., 'priority = 10' or 'prio 1')
+    // 2. Legacy transition priority extraction (e.g., 'priority = 10' or 'prio 1')
     static const std::regex prio_regex(R"(\b(?:priority|prio)\s*=?\s*(\d+))", std::regex::optimize);
     std::smatch prio_match;
-    if (std::regex_search(stmt, prio_match, prio_regex)) {
+    if (priority == 0 && std::regex_search(stmt, prio_match, prio_regex)) {
         try {
             priority = static_cast<std::uint32_t>(std::stoul(prio_match[1].str()));
         } catch (...) {

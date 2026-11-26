@@ -249,12 +249,17 @@ Suspended --> Processing[H] : ResumeCmd
 
 ### OMG SysML v2 (`.sysml`)
 ```sysml
+private import ScalarValues::*;
+
+metadata def Deferred {
+    attribute events : String[*];
+}
+
 state def BootSequence {
     entry; then Initializing;
 
     state Initializing {
-        // @fsm:defer StartMissionCmd
-        // @fsm:defer DataPacketEvent
+        @Deferred { events = ("StartMissionCmd", "DataPacketEvent"); }
     }
 
     state Ready;
@@ -449,10 +454,10 @@ struct DeploySolarPanelsAction {
 | **Internal Transitions** | Native | Native | Native | Native | Native | Native (`State : E / A`) | Native (`State : E / A`) | Extended (`internal=true`) |
 | **Choice / Junction** | Native | Native (`decide`) | Native (`CONNECTIVE`) | Extended (`cond` list) | Extended (`cond` list) | Native (`<<choice>>`) | Native (`<<choice>>`) | Extended (`shape=diamond`) |
 | **History States (`[H]`, `[H*]`)** | Native | Extended (`.H`, `.deep_history`) | Native (`HISTORY`) | Native | Native (`type: "history"`) | Native (`State[H]`) | Extended (`[H]`) | *N/A* |
-| **Deferred Events** | Native | Extended (`@fsm:defer`) | Extended (`@fsm:defer`) | Extended (`<defer>`) | Native (`"defer": []`) | Extended (`: defer Evt`) | Extended (`: [defer] Evt`) | Extended (`defer="..."`) |
+| **Deferred Events** | Native | Metadata (`@Deferred`) | Extended (`@fsm:defer`) | Extended (`<defer>`) | Native (`"defer": []`) | Extended (`: defer Evt`) | Extended (`: [defer] Evt`) | Extended (`defer="..."`) |
 | **Composite Guards (`!`, `&&`, `||`)** | Extended (AST) | Native (`and`, `or`, `not`) | Native | Native | Native | Extended (AST) | Extended (AST) | Extended (AST) |
 | **Timed Transitions (`after_ms<N>`)** | Extended (AST) | Native (`accept after 500 [SI::ms]`) | Native (`after(500, msec)`) | Native (`delay=...`) | Native (`after: {}`) | Extended (AST) | Extended (AST) | Extended (AST) |
-| **Comment Directives** | *N/A* | `// @fsm:...` | `<!-- @fsm:... -->` | `<!-- @fsm:... -->` | `@fsm:...` / sidecar | `' @fsm:...` | `%% @fsm:...` | `// @fsm:...` |
+| **Metadata / Directives** | *N/A* | `metadata def` / `@...` | `<!-- @fsm:... -->` | `<!-- @fsm:... -->` | `@fsm:...` / sidecar | `' @fsm:...` | `%% @fsm:...` | `// @fsm:...` |
 
 ### C. Extension Design Principles
 

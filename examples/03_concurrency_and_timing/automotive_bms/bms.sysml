@@ -6,6 +6,12 @@
 
 package AutomotiveBms {
     private import ScalarValues::*;
+    private import SI::*;
+    private import Time::DurationOf;
+
+    metadata def Priority {
+        attribute value : Natural;
+    }
 
     item def PrechargeCompleteCmd;
     item def HighTempWarningEvent;
@@ -49,35 +55,38 @@ package AutomotiveBms {
                 entry; then ThermalNominal;
 
                 state ThermalNominal {
-                    // @fsm:state time_invariant="100[ms]"
+                    assert constraint { DurationOf(ThermalNominal) <= 100 [ms] }
                 }
 
                 state ActiveCooling {
-                    // @fsm:state time_invariant="50[ms]"
+                    assert constraint { DurationOf(ActiveCooling) <= 50 [ms] }
                 }
 
                 state ThermalDerating;
 
-                // @fsm:priority 5
                 transition t_cool_start
                     first ThermalNominal
                     accept HighTempWarningEvent
                     do action RampCoolingPumpAction
-                    then ActiveCooling;
+                    then ActiveCooling {
+                        @Priority { value = 5; }
+                    }
 
-                // @fsm:priority 5
                 transition t_cool_derate
                     first ActiveCooling
                     accept CriticalTempEvent
                     do action ThrottleDischargeAction
-                    then ThermalDerating;
+                    then ThermalDerating {
+                        @Priority { value = 5; }
+                    }
 
-                // @fsm:priority 10
                 transition t_cool_norm
                     first ActiveCooling
                     accept TempNominalEvent
                     do action StopCoolingPumpAction
-                    then ThermalNominal;
+                    then ThermalNominal {
+                        @Priority { value = 10; }
+                    }
             }
 
             // Region 2: Multi-Cell Voltage Balancing
@@ -87,22 +96,24 @@ package AutomotiveBms {
                 state BalancingIdle;
 
                 state BalancingActive {
-                    // @fsm:state time_invariant="500[ms]"
+                    assert constraint { DurationOf(BalancingActive) <= 500 [ms] }
                 }
 
-                // @fsm:priority 5
                 transition t_bal_start
                     first BalancingIdle
                     accept DeltaVThresholdExceededEvent
                     do action EnableBalanceShuntsAction
-                    then BalancingActive;
+                    then BalancingActive {
+                        @Priority { value = 5; }
+                    }
 
-                // @fsm:priority 5
                 transition t_bal_stop
                     first BalancingActive
                     accept CellsBalancedEvent
                     do action DisableBalanceShuntsAction
-                    then BalancingIdle;
+                    then BalancingIdle {
+                        @Priority { value = 5; }
+                    }
             }
 
             // Region 3: High-Voltage Chassis Isolation Barrier Monitoring
@@ -110,24 +121,26 @@ package AutomotiveBms {
                 entry; then IsoHealthy;
 
                 state IsoHealthy {
-                    // @fsm:state time_invariant="200[ms]"
+                    assert constraint { DurationOf(IsoHealthy) <= 200 [ms] }
                 }
 
                 state IsoWarning;
 
-                // @fsm:priority 5
                 transition t_iso_degrade
                     first IsoHealthy
                     accept LowIsolationResistanceEvent
                     do action AlertVehicleMasterAction
-                    then IsoWarning;
+                    then IsoWarning {
+                        @Priority { value = 5; }
+                    }
 
-                // @fsm:priority 5
                 transition t_iso_restore
                     first IsoWarning
                     accept IsolationRestoredEvent
                     do action ClearVehicleAlertAction
-                    then IsoHealthy;
+                    then IsoHealthy {
+                        @Priority { value = 5; }
+                    }
             }
         }
 
@@ -137,18 +150,20 @@ package AutomotiveBms {
         }
 
         // High-Priority Safety Interlock Preemption from Any Operational Region
-        // @fsm:priority 1
         transition t_thermal_runaway
             first Operational
             accept ThermalRunawayFault
             do action OpenMainContactorsAction
-            then FaultShutdown;
+            then FaultShutdown {
+                @Priority { value = 1; }
+            }
 
-        // @fsm:priority 1
         transition t_hv_estop
             first Operational
             accept HvInterlockBreachedFault
             do action OpenMainContactorsAction
-            then FaultShutdown;
+            then FaultShutdown {
+                @Priority { value = 1; }
+            }
     }
 }

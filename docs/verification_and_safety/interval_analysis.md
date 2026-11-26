@@ -229,6 +229,10 @@ When multiple transitions share the same `(source_state, trigger_event)` and hav
     package FlightSystem {
         private import ScalarValues::*;
 
+        metadata def Priority {
+            attribute value : Natural;
+        }
+
         state def NavigationMode {
             in altitude : Real;
 
@@ -236,12 +240,14 @@ When multiple transitions share the same `(source_state, trigger_event)` and hav
             state HighAltitude;
             state LowAltitude;
 
-            // Resolution B: Priority disambiguation (higher priority evaluates first)
-            // @fsm:priority 2
-            transition to_high first Normal if altitude > 500.0 then HighAltitude;
+            // Resolution B: Priority disambiguation via SysML v2 MetadataUsage
+            transition to_high first Normal if altitude > 500.0 then HighAltitude {
+                @Priority { value = 2; }
+            }
 
-            // @fsm:priority 1
-            transition to_low  first Normal if altitude < 800.0 then LowAltitude;
+            transition to_low  first Normal if altitude < 800.0 then LowAltitude {
+                @Priority { value = 1; }
+            }
         }
     }
     ```

@@ -153,9 +153,12 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
 
     out << pad << "state " << state.name << (is_parallel ? " parallel" : "") << " {\n";
 
-    // Residence time invariant preserved via valid SysML v2 structured comment directive
+    // Native OMG SysML v2.0 Time::DurationOf residence time constraint
     if (state.time_invariant.has_value() && !state.time_invariant->empty()) {
-        out << pad << "    // @fsm:state time_invariant=\"" << *state.time_invariant << "\"\n";
+        const std::string_view op_str = (state.time_invariant->op == ir::TimeInvariantOp::LessThan) ? "<" : "<=";
+        const std::string_view unit_str = ir::time_unit_to_string(state.time_invariant->unit);
+        out << pad << "    assert constraint { DurationOf(" << state.name << ") " << op_str << " "
+            << state.time_invariant->duration << " [" << unit_str << "] }\n";
     }
 
     // Requirements
@@ -186,9 +189,22 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
         }
     }
 
-    // Deferred Events (preserved via structured comment since 'defer' is not in OMG SysML v2.0 Xtext)
-    for (const auto& d_evt : state.deferred_events) {
-        out << pad << "    // @fsm:defer " << d_evt << "\n";
+    // Deferred Events via native OMG SysML v2.0 MetadataUsage (`@Deferred`)
+    if (!state.deferred_events.empty()) {
+        out << pad << "    @Deferred { events = ";
+        if (state.deferred_events.size() == 1) {
+            out << "\"" << state.deferred_events.front() << "\"";
+        } else {
+            out << "(";
+            for (std::size_t i = 0; i < state.deferred_events.size(); ++i) {
+                if (i > 0) {
+                    out << ", ";
+                }
+                out << "\"" << state.deferred_events[i] << "\"";
+            }
+            out << ")";
+        }
+        out << "; }\n";
     }
 
     // Initial substate (only for exclusive/OR states, not parallel orthogonal states)
@@ -206,23 +222,75 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
     out << pad << "}\n";
 }
 
+std::string escape_sysml_string(std::string_view s) {
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s) {
+        if (c == '"' || c == '\\') {
+            out.push_back('\\');
+        }
+        out.push_back(c);
+    }
+    return out;
+}
+
 }  // namespace
 
 std::string Sysml2Serializer::serialize(const FsmIr& model) {
     std::ostringstream out;
     std::string model_name = model.name.empty() ? "GeneratedStateMachine" : model.name;
     out << "private import ScalarValues::*;\n";
+
     bool has_time_triggers = false;
+    bool has_priorities = false;
     for (const auto& trans : model.transitions) {
         if (std::holds_alternative<ir::TimeTrigger>(trans.trigger)) {
             has_time_triggers = true;
+        }
+        if (trans.priority > 0) {
+            has_priorities = true;
+        }
+    }
+    bool has_time_invariants = false;
+    bool has_deferred_events = false;
+    for (const auto& st : model.states) {
+        if (st.time_invariant.has_value() && !st.time_invariant->empty()) {
+            has_time_invariants = true;
+        }
+        if (!st.deferred_events.empty()) {
+            has_deferred_events = true;
+        }
+    }
+    bool has_properties = false;
+    for (const auto& prop : model.properties) {
+        if (!prop.name.empty() && !prop.raw_formula.empty()) {
+            has_properties = true;
             break;
         }
     }
-    if (has_time_triggers) {
+
+    if (has_time_triggers || has_time_invariants) {
         out << "private import SI::*;\n";
     }
+    if (has_time_invariants) {
+        out << "private import Time::DurationOf;\n";
+    }
     out << "\n";
+
+    if (has_priorities) {
+        out << "metadata def Priority {\n    attribute value : Natural;\n}\n\n";
+    }
+    if (has_deferred_events) {
+        out << "metadata def Deferred {\n    attribute events : String[*];\n}\n\n";
+    }
+    if (has_properties) {
+        out << "metadata def TemporalProperty {\n"
+            << "    attribute kind : String;\n"
+            << "    attribute formula : String;\n"
+            << "    attribute req : String[0..1];\n"
+            << "    attribute description : String[0..1];\n"
+            << "}\n\n";
+    }
     for (const auto& svc : model.services) {
         out << "calc def " << svc.name << " {\n";
         for (const auto& p : svc.parameters) {
@@ -352,18 +420,19 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
         out << "\n";
     }
 
-    // Temporal Logic Properties (emitted as structured comments to preserve 100% OMG SysML v2.0 grammar validity)
+    // Temporal Logic Properties via native OMG SysML v2.0 MetadataUsage (`@<Name> : TemporalProperty`)
     for (const auto& prop : model.properties) {
         if (!prop.name.empty() && !prop.raw_formula.empty()) {
-            out << "    // @fsm:property name=" << prop.name << " kind=" << property_kind_to_string(prop.kind)
-                << " formula=\"" << prop.raw_formula << "\"";
+            out << "    @" << prop.name << " : TemporalProperty {\n"
+                << "        kind = \"" << escape_sysml_string(property_kind_to_string(prop.kind)) << "\";\n"
+                << "        formula = \"" << escape_sysml_string(prop.raw_formula) << "\";\n";
             if (!prop.traceability_req.empty()) {
-                out << " req=\"" << prop.traceability_req << "\"";
+                out << "        req = \"" << escape_sysml_string(prop.traceability_req) << "\";\n";
             }
             if (!prop.description.empty()) {
-                out << " desc=\"" << prop.description << "\"";
+                out << "        description = \"" << escape_sysml_string(prop.description) << "\";\n";
             }
-            out << "\n";
+            out << "    }\n";
         }
     }
     if (!model.properties.empty()) {
@@ -394,10 +463,7 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
     for (const auto& trans : model.transitions) {
         std::string clean_target = trans.target;
         if (trans.target_is_history) {
-            clean_target += trans.target_is_deep_history ? "[H*]" : "[H]";
-        }
-        if (trans.priority > 0) {
-            out << "    // @fsm:priority " << trans.priority << "\n";
+            clean_target += trans.target_is_deep_history ? ".deep_history" : ".H";
         }
         out << (trans.kind == TransitionEdgeKind::Local ? "    local transition\n" : "    transition\n");
         out << "        first " << trans.source << "\n";
@@ -432,9 +498,19 @@ std::string Sysml2Serializer::serialize(const FsmIr& model) {
             }
         }
         if (trans.kind == TransitionEdgeKind::Internal && trans.source == trans.target && !trans.event.empty()) {
-            out << "        ;\n";
+            if (trans.priority > 0) {
+                out << "        { @Priority { value = " << trans.priority << "; } }\n";
+            } else {
+                out << "        ;\n";
+            }
         } else {
-            out << "        then " << clean_target << ";\n";
+            if (trans.priority > 0) {
+                out << "        then " << clean_target << " {\n"
+                    << "            @Priority { value = " << trans.priority << "; }\n"
+                    << "        }\n";
+            } else {
+                out << "        then " << clean_target << ";\n";
+            }
         }
     }
 

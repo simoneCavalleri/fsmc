@@ -70,9 +70,9 @@ Visual diagram languages (like PlantUML and Mermaid) are traditionally purely gr
 | **Shallow & Deep History** | `.H` / `@fsm:state history=...` | `HISTORY` | `uml:Pseudostate` | `<history type="deep"/>` | `type: "history"` | `[H]`, `[H*]` | $z^{-1}$ memory var |
 | **Hardware Ports (`In`/`Out`)** | `in` / `out` + `assert constraint` | `<!-- @fsm:port -->` | `uml:Port` | `<!-- @fsm:port -->` | `@fsm:port` / sidecar | `@fsm:port` / sidecar | Bounded `VAR` |
 | **Internal Memory (`Registers`)** | `attribute` | `<!-- @fsm:register -->` | `uml:Property` | `<datamodel>` | `context` | `@fsm:var` / sidecar | `VAR` + `next()` |
-| **Timed Dwell Transitions** | `accept after 500 [SI::ms]` | `after(N, msec)` | `TimeTrigger` | `<transition delay="...">` | `after: { ... }` | `after(500ms)` / `after_500ms` | `timer : 0..500` |
-| **Deferred Events** | `// @fsm:defer Evt` | `@fsm:defer` | `<<deferred>>` | `<defer event="..."/>` | `"defer": [...]` | `@fsm:defer [Evt]` | Discrete Event Queue |
-| **Safety & Liveness (LTL/CTL)** | `assert constraint` / `// @fsm:property` | `<!-- @fsm:property -->` | Stereotype / comment | `<!-- @fsm:property -->` | `@fsm:property` | `@fsm:property` | `INVARSPEC` / `LTLSPEC` / `CTLSPEC` |
+| **Timed Dwell Transitions** | `accept after 500 [SI::ms]` / `DurationOf` | `after(N, msec)` | `TimeTrigger` | `<transition delay="...">` | `after: { ... }` | `after(500ms)` / `after_500ms` | `timer : 0..500` |
+| **Deferred Events** | `@Deferred { events = ...; }` | `@fsm:defer` | `<<deferred>>` | `<defer event="..."/>` | `"defer": [...]` | `@fsm:defer [Evt]` | Discrete Event Queue |
+| **Safety & Liveness (LTL/CTL)** | `assert constraint` / `@TemporalProperty` | `<!-- @fsm:property -->` | Stereotype / comment | `<!-- @fsm:property -->` | `@fsm:property` | `@fsm:property` | `INVARSPEC` / `LTLSPEC` / `CTLSPEC` |
 | **Requirement Traceability** | `satisfy requirement REQ;` | `<!-- @fsm:state satisfies=[...] -->` | `<<Satisfy>>` | `satisfies="..."` | `@fsm:state satisfies=[...]` | `@fsm:state satisfies=[...]` | Traceability Matrix |
 
 ---

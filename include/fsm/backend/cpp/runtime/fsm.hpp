@@ -643,6 +643,8 @@ class fsm {
     // State Snapshot Serialization & Deserialization (Zero-Heap / RTOS-Safe)
     // ========================================================================
 
+    static constexpr std::uint32_t SNAPSHOT_FLAG_HAS_DEFERRED = 1U;
+
     [[nodiscard]] std::size_t serialized_size() const noexcept {
         std::size_t sz = sizeof(snapshot_header);
         for (std::size_t i = 0; i < history_mgr_.size(); ++i) {
@@ -654,6 +656,7 @@ class fsm {
         if constexpr (!std::is_same_v<registers_type, no_registers> && std::is_trivially_copyable_v<registers_type>) {
             sz += sizeof(registers_type);
         }
+        sz += deferred_mgr_.serialized_payload_size();
         return sz;
     }
 
@@ -670,7 +673,7 @@ class fsm {
         snapshot_header header{};
         header.magic = SNAPSHOT_MAGIC;
         header.version = SNAPSHOT_VERSION;
-        header.flags = 0;
+        header.flags = (deferred_mgr_.deferred_count() > 0U) ? SNAPSHOT_FLAG_HAS_DEFERRED : 0U;
         header.state_index = static_cast<std::uint32_t>(current_state_.index());
         header.history_count = static_cast<std::uint32_t>(history_mgr_.size());
         header.timer_count = static_cast<std::uint32_t>(timer_mgr_.active_count());
@@ -717,6 +720,10 @@ class fsm {
         if constexpr (!std::is_same_v<registers_type, no_registers> && std::is_trivially_copyable_v<registers_type>) {
             std::memcpy(curr, &registers_, sizeof(registers_type));
             curr += sizeof(registers_type);
+        }
+
+        if (deferred_mgr_.deferred_count() > 0U) {
+            curr += deferred_mgr_.serialize_payload(curr);
         }
 
         auto payload_len = static_cast<std::size_t>(curr - payload_start);
@@ -805,6 +812,13 @@ class fsm {
         }
         curr += header.registers_size;
 
+        const bool has_deferred_payload = ((header.flags & SNAPSHOT_FLAG_HAS_DEFERRED) != 0U);
+        if (has_deferred_payload) {
+            if (!deferred_mgr_.validate_payload(curr, end)) {
+                return false;
+            }
+        }
+
         auto payload_len = static_cast<std::size_t>(curr - payload_start);
         if (compute_checksum(payload_start, payload_len) != header.payload_checksum) {
             return false;
@@ -849,6 +863,13 @@ class fsm {
         if (header.registers_size > 0) {
             std::memcpy(&registers_, curr, header.registers_size);
             curr += header.registers_size;
+        }
+
+        deferred_mgr_.clear_deferred_events();
+        if (has_deferred_payload) {
+            if (!deferred_mgr_.deserialize_payload(curr, end)) {
+                return false;
+            }
         }
 
         bytes_read = static_cast<std::size_t>(curr - src);

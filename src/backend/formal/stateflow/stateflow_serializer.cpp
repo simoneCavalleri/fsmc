@@ -177,13 +177,24 @@ static void emit_state(std::ostream& out, const StateNode& state, const FsmIr& m
         }
     }
 
-    bool has_children = !children.empty() || state.has_history;
+    bool emit_hist = state.has_history;
+    bool emit_deep_hist = state.has_deep_history;
+    for (const auto& t : model.transitions) {
+        if (t.target == state.name && (t.target_is_history || t.target_is_deep_history)) {
+            emit_hist = true;
+            if (t.target_is_deep_history) {
+                emit_deep_hist = true;
+            }
+        }
+    }
+
+    bool has_children = !children.empty() || emit_hist;
     if (has_children) {
         out << pad << "  <Children>\n";
-        if (state.has_history) {
+        if (emit_hist) {
             out << pad << "    <junction SSID=\"" << (next_ssid++) << "\">\n";
             out << pad << "      <P Name=\"type\">HISTORY_JUNCTION</P>\n";
-            if (state.has_deep_history) {
+            if (emit_deep_hist) {
                 out << pad << "      <P Name=\"description\">@fsm:history=deep</P>\n";
             }
             out << pad << "    </junction>\n";
@@ -432,6 +443,17 @@ std::string StateflowSerializer::serialize(const FsmIr& model) {
                 trans_desc += "; ";
             }
             trans_desc += "@fsm:priority=" + std::to_string(trans.priority);
+        }
+        if (trans.target_is_deep_history) {
+            if (!trans_desc.empty()) {
+                trans_desc += "; ";
+            }
+            trans_desc += "@fsm:target_history=deep";
+        } else if (trans.target_is_history) {
+            if (!trans_desc.empty()) {
+                trans_desc += "; ";
+            }
+            trans_desc += "@fsm:target_history=shallow";
         }
         if (!trans_desc.empty()) {
             out << "            <P Name=\"description\">" << escape_xml(trans_desc) << "</P>\n";

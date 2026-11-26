@@ -205,13 +205,24 @@ void parse_single_state_entry(const std::string& state_key, const JsonValue& sta
             curr->do_activity = s_do;
         }
 
-        // Parse satisfies / requirements
+        const auto* meta_obj = state_data.get_child("meta");
+        if (meta_obj != nullptr && !meta_obj->is_object()) {
+            meta_obj = nullptr;
+        }
+
+        // Parse satisfies / requirements (top-level or XState v5 meta.requirements)
         const auto* reqs_val = state_data.get_child("satisfies");
         if (reqs_val == nullptr) {
             reqs_val = state_data.get_child("requirements");
         }
         if (reqs_val == nullptr) {
             reqs_val = state_data.get_child("traceability_reqs");
+        }
+        if (reqs_val == nullptr && meta_obj != nullptr) {
+            reqs_val = meta_obj->get_child("requirements");
+            if (reqs_val == nullptr) {
+                reqs_val = meta_obj->get_child("satisfies");
+            }
         }
         if (reqs_val != nullptr && curr != nullptr) {
             if (reqs_val->is_string()) {
@@ -225,10 +236,19 @@ void parse_single_state_entry(const std::string& state_key, const JsonValue& sta
             }
         }
 
-        // Parse deferred events
+        // Parse deferred events (top-level or XState v5 meta.deferred)
         const auto* def_val = state_data.get_child("defer");
         if (def_val == nullptr) {
             def_val = state_data.get_child("deferred_events");
+        }
+        if (def_val == nullptr && meta_obj != nullptr) {
+            def_val = meta_obj->get_child("deferred");
+            if (def_val == nullptr) {
+                def_val = meta_obj->get_child("deferred_events");
+            }
+            if (def_val == nullptr) {
+                def_val = meta_obj->get_child("defer");
+            }
         }
         if (def_val != nullptr && curr != nullptr) {
             if (def_val->is_string()) {

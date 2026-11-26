@@ -171,7 +171,13 @@ std::optional<int> handle_auxiliary_modes(const FsmcOptions& opts, const fsm::ir
 
     // MC/DC Test Harness Synthesis
     if (!opts.emit_test_harness.empty()) {
-        std::string harness = fsm::backend::verification::McdcHarnessGenerator::generate_gtest_harness(model);
+        std::string fsm_hdr_inc;
+        if (!opts.output_file.empty() && opts.output_file != "-" && opts.output_file != "/dev/null" &&
+            opts.target_lang != "c99" && opts.target_lang != "c") {
+            fsm_hdr_inc = fs::path(opts.output_file).filename().string();
+        }
+        std::string harness =
+            fsm::backend::verification::McdcHarnessGenerator::generate_gtest_harness(model, fsm_hdr_inc, opts.ns_name);
         std::string write_err;
         if (!write_file_content(opts.emit_test_harness, harness, write_err)) {
             std::cerr << "Error writing MC/DC test harness to '" << opts.emit_test_harness << "': " << write_err

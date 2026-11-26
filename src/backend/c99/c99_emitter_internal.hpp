@@ -40,6 +40,8 @@ struct C99Context {
     std::unordered_set<std::string> in_ports;
     std::unordered_set<std::string> out_ports;
     std::unordered_set<std::string> registers;
+    std::unordered_set<std::string> string_symbols;
+    bool uses_strings = false;
     std::unordered_map<std::string, const fsm::ir::ServiceMethodSignature*> services;
     std::unordered_set<std::string> guard_callbacks;
     std::vector<std::string> guard_callbacks_ordered;
@@ -79,9 +81,12 @@ void emit_action_c(std::ostringstream& src, const fsm::ir::ActionSignature& act,
                    const std::unordered_set<std::string>& event_attrs, const std::string& indent);
 std::string resolve_guard_expr_c(const fsm::ir::TransitionEdge& tr, const fsm::ir::FsmIr& model, const C99Context& ctx,
                                  const std::unordered_set<std::string>& event_attrs = {});
+std::vector<std::string> get_c99_ancestors(const fsm::ir::FsmIr& model, const std::string& state_name);
+std::string resolve_c99_initial_leaf(const fsm::ir::FsmIr& model, const std::string& state_name);
 void emit_transition_body_c(std::ostringstream& src, const fsm::ir::TransitionEdge& tr, const fsm::ir::FsmIr& model,
                             const C99Context& ctx, const std::unordered_set<std::string>& event_attrs,
-                            const std::string& indent, bool is_periodic_timer = false, uint64_t timer_dur_ms = 0U);
+                            const std::string& indent, bool is_periodic_timer = false, uint64_t timer_dur_ms = 0U,
+                            const std::string& active_leaf_state = "");
 
 std::string emit_c99_header(const C99EmitPlan& plan);
 std::string emit_c99_source(const C99EmitPlan& plan);

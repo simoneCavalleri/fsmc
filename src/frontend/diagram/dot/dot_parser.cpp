@@ -128,15 +128,19 @@ bool DotParser::parse_impl(std::string_view content, FsmIr& model, std::string& 
                 }
                 continue;
             }
+            bool handled = false;
             if (body.rfind("state", 0) == 0) {
                 std::vector<std::string> stack;
                 if (!current_parent_state.empty()) {
                     stack.push_back(current_parent_state);
                 }
-                DirectiveParser::parse_state_directive(body, model, stack);
-                continue;
+                handled = DirectiveParser::parse_state_directive(body, model, stack);
+            } else {
+                handled = DirectiveParser::parse_model_directive(body, model);
             }
-            DirectiveParser::parse_model_directive(body, model);
+            if (!handled) {
+                model.parse_warnings.push_back("Unrecognized or malformed @fsm directive: '@fsm:" + body + "'");
+            }
             continue;
         }
 
@@ -397,7 +401,19 @@ bool DotParser::parse_impl(std::string_view content, FsmIr& model, std::string& 
             }
 
             std::string src = sanitize_identifier(src_raw);
-            std::string dst = sanitize_identifier(dst_raw);
+            bool dst_is_history = false;
+            bool dst_is_deep_history = false;
+            std::string dst_effective = dst_raw;
+            if (dst_raw.rfind("__hist_", 0) == 0 && dst_raw.size() > 9 && dst_raw.substr(dst_raw.size() - 2) == "__") {
+                dst_effective = dst_raw.substr(7, dst_raw.size() - 9);
+                dst_is_history = true;
+                if (attrs.find("deep_history") != std::string::npos) {
+                    dst_is_deep_history = true;
+                } else if (const auto* st = model.find_state(sanitize_identifier(dst_effective))) {
+                    dst_is_deep_history = st->has_deep_history;
+                }
+            }
+            std::string dst = sanitize_identifier(dst_effective);
 
             // Parse label: Event (prio=1) [Guard] / Action
             std::string event_name;
@@ -428,6 +444,16 @@ bool DotParser::parse_impl(std::string_view content, FsmIr& model, std::string& 
             TransitionEdge trans;
             trans.source = src;
             trans.target = dst;
+            trans.target_is_history = dst_is_history;
+            trans.target_is_deep_history = dst_is_deep_history;
+            if (dst_is_history) {
+                if (auto* st = model.find_state_mut(dst)) {
+                    st->has_history = true;
+                    if (dst_is_deep_history) {
+                        st->has_deep_history = true;
+                    }
+                }
+            }
             static const std::regex when_ev_regex(R"(^when\s*\((.+)\)$)", std::regex::icase);
             std::smatch wm;
             if (!event_name.empty() && std::regex_match(event_name, wm, when_ev_regex)) {

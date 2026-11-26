@@ -533,3 +533,114 @@ int main(void) {
     ASSERT_EQ(std::system(("\"" + bin.string() + "\"").c_str()), 0);
     fs::remove_all(tmp_dir);
 }
+
+/**
+ * @brief Regression (BUG-33 & BUG-35): Pure-C99 resolves multi-level composite initial states, runs full
+ * ancestor-to-leaf entry/exit LCA cascades, inherits composite outgoing transitions, and supports zero-heap
+ * `const char*` String ports/registers with safe `strcmp` comparisons.
+ */
+TEST(C99BackendTest, MultiLevelHierarchyLcaAndZeroHeapStrings_CompileAndExecute) {
+    FsmIr ir;
+    ir.name = "HierStrCtrl";
+    ir.initial_state = "Outer";
+    ir.add_port(PortDefinition("label", DataType::string(), PortDirection::In));
+    ir.add_variable(VariableDefinition("x", DataType::uint32(), "0"));
+    ir.add_variable(VariableDefinition("saved", DataType::string(), "\"init\""));
+    ir.add_event("Go");
+    ir.add_event("Abort");
+
+    auto make_add = [](const std::string& name, const std::string& delta) {
+        ActionSignature a(name);
+        a.assignments.emplace_back(LValueTarget("x", LValueScope::Register), "x + " + delta);
+        return a;
+    };
+
+    auto& outer = ir.add_state("Outer");
+    outer.is_composite = true;
+    outer.initial_sub_state = "Mid";
+    outer.entry_actions.push_back(make_add("enter_outer", "1"));
+    outer.exit_actions.push_back(make_add("exit_outer", "1000"));
+
+    auto& mid = ir.add_state("Mid", "Outer");
+    mid.is_composite = true;
+    mid.initial_sub_state = "Leaf";
+    mid.entry_actions.push_back(make_add("enter_mid", "10"));
+
+    auto& leaf = ir.add_state("Leaf", "Mid");
+    leaf.entry_actions.push_back(make_add("enter_leaf", "100"));
+
+    auto& leaf2 = ir.add_state("Leaf2", "Mid");
+    leaf2.entry_actions.push_back(make_add("enter_leaf2", "200"));
+
+    ir.add_state("Aborted");
+
+    TransitionEdge go("Leaf", "Leaf2", "Go");
+    go.guard = "label == \"go\"";
+    ActionSignature save_lbl("save_lbl");
+    save_lbl.assignments.emplace_back(LValueTarget("saved", LValueScope::Register), "label");
+    go.transition_action = save_lbl;
+    ir.add_transition(go);
+    ir.add_transition(TransitionEdge("Outer", "Aborted", "Abort"));
+
+    C99GeneratorOptions opts;
+    opts.header_include = "hier_str.h";
+    C99CodegenBackend backend(opts);
+    fsm::diagnostic::DiagnosticEngine diag;
+    const auto bundle = backend.emit_bundle(ir, diag);
+    ASSERT_FALSE(diag.has_errors()) << diag.render_to_string();
+    EXPECT_NE(bundle.header.find("const char* label;"), std::string::npos);
+    EXPECT_NE(bundle.source.find("_str_eq("), std::string::npos);
+
+    const std::string cc = find_c_compiler();
+    if (cc.empty()) {
+        return;
+    }
+
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::temp_directory_path() / "fsmc_c99_hier_str_test";
+    fs::create_directories(tmp_dir);
+    {
+        std::ofstream hf(tmp_dir / "hier_str.h");
+        hf << bundle.header;
+        std::ofstream cf(tmp_dir / "hier_str.c");
+        cf << bundle.source;
+        std::ofstream mf(tmp_dir / "main.c");
+        mf << R"c(
+#include <assert.h>
+#include <string.h>
+#include "hier_str.h"
+
+int main(void) {
+    hier_str_ctrl_fsm_t sm;
+    hier_str_ctrl_in_ports_t in_p;
+    hier_str_ctrl_init(&sm);
+    assert(hier_str_ctrl_current_state(&sm) == HIER_STR_CTRL_STATE_LEAF);
+    assert(sm.regs.x == 111U);
+    assert(strcmp(sm.regs.saved, "init") == 0);
+
+    in_p.label = "nope";
+    assert(hier_str_ctrl_dispatch_go(&sm, &in_p, NULL) == HIER_STR_CTRL_STATUS_GUARD_REJECTED);
+    assert(hier_str_ctrl_current_state(&sm) == HIER_STR_CTRL_STATE_LEAF);
+
+    in_p.label = "go";
+    assert(hier_str_ctrl_dispatch_go(&sm, &in_p, NULL) == HIER_STR_CTRL_STATUS_OK);
+    assert(hier_str_ctrl_current_state(&sm) == HIER_STR_CTRL_STATE_LEAF2);
+    assert(sm.regs.x == 311U);
+    assert(strcmp(sm.regs.saved, "go") == 0);
+
+    assert(hier_str_ctrl_dispatch_abort(&sm, &in_p, NULL) == HIER_STR_CTRL_STATUS_OK);
+    assert(hier_str_ctrl_current_state(&sm) == HIER_STR_CTRL_STATE_ABORTED);
+    assert(sm.regs.x == 1311U);
+    return 0;
+}
+)c";
+    }
+
+    const fs::path bin = tmp_dir / "runner";
+    const std::string cmd = cc + " -std=c99 -Wall -Wextra -Werror -pedantic -I\"" + tmp_dir.string() + "\" \"" +
+                            (tmp_dir / "hier_str.c").string() + "\" \"" + (tmp_dir / "main.c").string() + "\" -o \"" +
+                            bin.string() + "\"";
+    ASSERT_EQ(std::system(cmd.c_str()), 0) << "Strict C99 compile failed:\n" << cmd;
+    ASSERT_EQ(std::system(("\"" + bin.string() + "\"").c_str()), 0);
+    fs::remove_all(tmp_dir);
+}

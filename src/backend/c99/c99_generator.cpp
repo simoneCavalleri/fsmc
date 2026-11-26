@@ -104,15 +104,26 @@ GeneratedC99Bundle C99Generator::generate(const FsmIr& model, const C99Generator
     for (const auto& port : processed.ports) {
         C99Field cf;
         cf.name = sanitize_c_ident(port.name);
-        if (map_type_to_c99(port.type, ctx, cf.c_type, cf.is_struct)) {
+        if (!map_type_to_c99(port.type, ctx, cf.c_type, cf.is_struct)) {
+            throw std::invalid_argument("C99Generator: unsupported type '" + port.type.to_cpp_type() + "' for port '" +
+                                        port.name + "'.");
+        }
+        if (port.type.is_string()) {
+            ctx.uses_strings = true;
             if (port.is_in()) {
-                in_fields.push_back(cf);
-                ctx.in_ports.insert(port.name);
+                ctx.string_symbols.insert("in_val." + cf.name);
             }
             if (port.is_out()) {
-                out_fields.push_back(cf);
-                ctx.out_ports.insert(port.name);
+                ctx.string_symbols.insert("out_val." + cf.name);
             }
+        }
+        if (port.is_in()) {
+            in_fields.push_back(cf);
+            ctx.in_ports.insert(port.name);
+        }
+        if (port.is_out()) {
+            out_fields.push_back(cf);
+            ctx.out_ports.insert(port.name);
         }
     }
 
@@ -120,11 +131,17 @@ GeneratedC99Bundle C99Generator::generate(const FsmIr& model, const C99Generator
     for (const auto& var : processed.variables) {
         C99RegField rf;
         rf.name = sanitize_c_ident(var.name);
-        if (map_type_to_c99(var.type, ctx, rf.c_type, rf.is_struct)) {
-            rf.init_expr = var.initial_value;
-            reg_fields.push_back(std::move(rf));
-            ctx.registers.insert(var.name);
+        if (!map_type_to_c99(var.type, ctx, rf.c_type, rf.is_struct)) {
+            throw std::invalid_argument("C99Generator: unsupported type '" + var.type.to_cpp_type() +
+                                        "' for variable '" + var.name + "'.");
         }
+        if (var.type.is_string()) {
+            ctx.uses_strings = true;
+            ctx.string_symbols.insert("fsm->regs." + rf.name);
+        }
+        rf.init_expr = var.initial_value;
+        reg_fields.push_back(std::move(rf));
+        ctx.registers.insert(var.name);
     }
 
     // Collect public signals/events
@@ -132,6 +149,12 @@ GeneratedC99Bundle C99Generator::generate(const FsmIr& model, const C99Generator
     for (const auto& sig : processed.signals) {
         if (sig.name == "anonymous_event" || sig.name == "completion_event") {
             continue;
+        }
+        for (const auto& attr : sig.attributes) {
+            if (attr.type.is_string()) {
+                ctx.uses_strings = true;
+                ctx.string_symbols.insert("ev_" + sanitize_c_ident(attr.name));
+            }
         }
         events.push_back(sig);
     }

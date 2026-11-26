@@ -149,8 +149,12 @@ class McdcHarnessGenerator {
   public:
     /**
      * @brief Synthesizes complete GoogleTest unit test file verifying MC/DC coverage.
+     * @param ir Canonical FsmIr model.
+     * @param fsm_header_include Optional generated C++ FSM header to `#include` and exercise directly.
+     * @param target_namespace Optional target C++ namespace (defaults to `ir.package` or `fsm_generated`).
      */
-    static std::string generate_gtest_harness(const FsmIr& ir);
+    static std::string generate_gtest_harness(const FsmIr& ir, std::string_view fsm_header_include = "",
+                                              std::string_view target_namespace = "");
 
     /**
      * @brief Computes the MC/DC independence pairs for a boolean AST and list of conditions.

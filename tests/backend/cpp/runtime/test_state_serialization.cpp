@@ -372,4 +372,62 @@ TEST(SnapshotRecorder, CircularBufferWraparound_PreservesCapacity) {
     EXPECT_EQ(latest->tag, 10u);
 }
 
+struct DefWorkEvt {
+    std::int32_t code = 0;
+};
+struct DefFinishEvt {};
+struct DefBusyState {
+    static constexpr std::string_view name = "DefBusyState";
+    using deferred_events = fsm::type_list<DefWorkEvt>;
+};
+struct DefReadyState {
+    static constexpr std::string_view name = "DefReadyState";
+};
+struct DefDoneState {
+    static constexpr std::string_view name = "DefDoneState";
+};
+struct DefRegs {
+    std::int32_t last_code = 0;
+};
+struct DefCaptureWork {
+    void operator()(const DefWorkEvt& ev, const fsm::no_ports&, fsm::no_ports&, DefRegs& reg) const {
+        reg.last_code = ev.code;
+    }
+};
+using DefSnapTable = fsm::transition_table<fsm::row<DefBusyState, DefFinishEvt, DefReadyState>,
+                                           fsm::row<DefReadyState, DefWorkEvt, DefDoneState>::then<DefCaptureWork>>;
+using DefSnapFsm = fsm::fsm<DefSnapTable, fsm::no_ports, fsm::no_ports, DefRegs>;
+
+/**
+ * @brief Regression (BUG-37): Binary snapshot serialize/deserialize preserves queued deferred events
+ * in `deferred_mgr_` while keeping empty-queue `serialized_size()` unchanged.
+ */
+TEST(StateSerialization, DeferredEvents_PreservedAcrossSerializeDeserialize) {
+    DefSnapFsm f1;
+    const std::size_t empty_sz = f1.serialized_size();
+    EXPECT_EQ(empty_sz, sizeof(fsm::snapshot_header) + sizeof(DefRegs));
+
+    f1.dispatch(DefWorkEvt{42});
+    EXPECT_TRUE(f1.is_in_state<DefBusyState>());
+    EXPECT_EQ(f1.deferred_count(), 1u);
+    EXPECT_GT(f1.serialized_size(), empty_sz);
+
+    std::vector<std::uint8_t> buf(f1.serialized_size());
+    std::size_t written = 0;
+    ASSERT_TRUE(f1.serialize(buf.data(), buf.size(), written));
+    EXPECT_EQ(written, buf.size());
+
+    DefSnapFsm f2;
+    std::size_t read = 0;
+    ASSERT_TRUE(f2.deserialize(buf.data(), written, read));
+    EXPECT_EQ(read, written);
+    EXPECT_EQ(f2.deferred_count(), 1u);
+
+    // Leaving DefBusyState must recall the restored deferred DefWorkEvt{42} and transition DefReadyState ->
+    // DefDoneState
+    f2.dispatch(DefFinishEvt{});
+    EXPECT_TRUE(f2.is_in_state<DefDoneState>());
+    EXPECT_EQ(f2.registers().last_code, 42);
+}
+
 }  // namespace

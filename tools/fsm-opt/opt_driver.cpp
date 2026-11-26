@@ -151,6 +151,9 @@ class OptDriverImpl {
             std::cerr << parse_diag.render_to_format(diag_fmt, content, &source_manager);
             return 1;
         }
+        for (const auto& warn : ir.parse_warnings) {
+            parse_diag.report(Diagnostic::warning("W_UNKNOWN_DIRECTIVE", warn));
+        }
         if (!parse_diag.get_diagnostics().empty()) {
             std::cerr << parse_diag.render_to_format(diag_fmt, content, &source_manager);
         }

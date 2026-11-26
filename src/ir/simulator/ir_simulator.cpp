@@ -5,6 +5,7 @@
 #include <iostream>
 #include <sstream>
 #include <string_view>
+#include <unordered_set>
 #include <variant>
 
 #include "fsm/ir/expression.hpp"
@@ -543,6 +544,11 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
                 }
             }
 
+            const std::unordered_set<std::string> skip_exit(matched->skip_exit_actions.begin(),
+                                                            matched->skip_exit_actions.end());
+            const std::unordered_set<std::string> skip_entry(matched->skip_entry_actions.begin(),
+                                                             matched->skip_entry_actions.end());
+
             // Record shallow and deep history for exited composite ancestors
             for (std::size_t idx = src_chain.size(); idx > lca_len; --idx) {
                 const std::string& exiting = src_chain[idx - 1];
@@ -556,6 +562,9 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
                 trace_step.exited_states.push_back(exiting);
                 if (const auto* st = model.find_state(exiting)) {
                     for (const auto& act : st->exit_actions) {
+                        if (!act.name.empty() && skip_exit.count(act.name) != 0U) {
+                            continue;
+                        }
                         apply_action_sig(act, step_env, &trace_step.executed_actions);
                     }
                 }
@@ -575,6 +584,9 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
                 trace_step.entered_states.push_back(entering);
                 if (const auto* st = model.find_state(entering)) {
                     for (const auto& act : st->entry_actions) {
+                        if (!act.name.empty() && skip_entry.count(act.name) != 0U) {
+                            continue;
+                        }
                         apply_action_sig(act, step_env, &trace_step.executed_actions);
                     }
                     if (st->do_activity.has_value() && !st->do_activity->empty()) {

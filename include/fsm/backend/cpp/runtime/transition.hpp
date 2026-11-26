@@ -286,6 +286,7 @@ struct transition {
     using guard_type = GuardType;
     static constexpr bool is_internal = false;
     static constexpr bool is_local = false;
+    static constexpr bool is_fused = false;
 
     constexpr transition() = default;
 };
@@ -299,6 +300,17 @@ template <typename SourceState, typename EventType, typename TargetState, typena
 struct local_transition : transition<SourceState, EventType, TargetState, ActionType, GuardType> {
     static constexpr bool is_local = true;
     constexpr local_transition() = default;
+};
+
+/**
+ * @brief Transition whose selective boundary exit/entry actions (e.g. intra-parallel orthogonal steps)
+ *        have been fused into ActionType so direct state on_exit/on_enter hooks are suppressed.
+ */
+template <typename SourceState, typename EventType, typename TargetState, typename ActionType = no_action,
+          typename GuardType = no_guard>
+struct fused_transition : transition<SourceState, EventType, TargetState, ActionType, GuardType> {
+    static constexpr bool is_fused = true;
+    constexpr fused_transition() = default;
 };
 
 /**
@@ -386,6 +398,27 @@ struct local_row : local_transition<SourceState, EventType, TargetState, ActionT
 
     template <typename NewAction>
     using then = local_row<SourceState, EventType, TargetState, NewAction, GuardType>;
+};
+
+// Fluent Fused Transition Builder: fused_row<Source, Event, Target>::when<Guard>::then<Action>
+template <typename SourceState, typename EventType, typename TargetState, typename ActionType = no_action,
+          typename GuardType = no_guard>
+struct fused_row : fused_transition<SourceState, EventType, TargetState, ActionType, GuardType> {
+    using base = fused_transition<SourceState, EventType, TargetState, ActionType, GuardType>;
+
+    constexpr fused_row() = default;
+
+    template <typename NewGuard>
+    using guard = fused_row<SourceState, EventType, TargetState, ActionType, NewGuard>;
+
+    template <typename NewGuard>
+    using when = fused_row<SourceState, EventType, TargetState, ActionType, NewGuard>;
+
+    template <typename NewAction>
+    using action = fused_row<SourceState, EventType, TargetState, NewAction, GuardType>;
+
+    template <typename NewAction>
+    using then = fused_row<SourceState, EventType, TargetState, NewAction, GuardType>;
 };
 
 // Fluent Event-First Builder:

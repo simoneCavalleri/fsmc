@@ -125,4 +125,31 @@ TEST(McdcHarness, SymbolicGuardMetadata_ResolvedForMcdcPairs) {
     EXPECT_NE(harness.find("McdcCoverage_Trans_1_Idle_to_Armed"), std::string::npos);
 }
 
+/**
+ * @brief Regression (BUG-42): When a generated FSM header is supplied, `McdcHarnessGenerator` emits
+ * `#include "<header>"` and concrete FSM execution tests exercising `InPorts` and `dispatch(...)`.
+ */
+TEST(McdcHarness, WithGeneratedFsmHeader_EmitsIncludeAndConcreteFsmExecutionTests) {
+    FsmIr model;
+    model.name = "SafetyGate";
+    model.initial_state = "Idle";
+    model.add_state("Idle");
+    model.add_state("Active");
+    model.add_port(PortDefinition("temp", DataType::int32(), PortDirection::In));
+    model.add_port(PortDefinition("armed", DataType::boolean(), PortDirection::In));
+
+    TransitionEdge t;
+    t.source = "Idle";
+    t.target = "Active";
+    t.event = "EvTrigger";
+    t.guard = "temp > 10 && armed";
+    model.add_transition(t);
+
+    std::string harness = McdcHarnessGenerator::generate_gtest_harness(model, "safety_gate.hpp", "safety_ns");
+    EXPECT_NE(harness.find("#include \"safety_gate.hpp\""), std::string::npos);
+    EXPECT_NE(harness.find("McdcCoverage_Trans_1_Idle_to_Active_FsmExecution"), std::string::npos);
+    EXPECT_NE(harness.find("safety_ns::SafetyGate sm;"), std::string::npos);
+    EXPECT_NE(harness.find("sm.dispatch(safety_ns::EvTrigger{}, in, out)"), std::string::npos);
+}
+
 }  // namespace

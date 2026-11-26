@@ -1,6 +1,8 @@
 #include "fsm/backend/verification/mcdc_harness_generator.hpp"
 
+#include <regex>
 #include <sstream>
+#include <unordered_map>
 
 #include "fsm/ir/guard.hpp"
 
@@ -148,7 +150,8 @@ std::vector<McdcIndependencePair> McdcHarnessGenerator::compute_mcdc_pairs(const
     return result;
 }
 
-std::string McdcHarnessGenerator::generate_gtest_harness(const FsmIr& ir) {
+std::string McdcHarnessGenerator::generate_gtest_harness(const FsmIr& ir, std::string_view fsm_header_include,
+                                                         std::string_view target_namespace) {
     std::ostringstream out;
     out << "// ============================================================================\n";
     out << "// Automated MC/DC Safety Verification Test Harness\n";
@@ -157,7 +160,71 @@ std::string McdcHarnessGenerator::generate_gtest_harness(const FsmIr& ir) {
     out << "// ============================================================================\n\n";
 
     out << "#include <gtest/gtest.h>\n";
-    out << "#include <string_view>\n\n";
+    out << "#include <string_view>\n";
+    if (!fsm_header_include.empty()) {
+        out << "#include \"" << fsm_header_include << "\"\n";
+    }
+    out << "\n";
+
+    std::string ns = !target_namespace.empty() ? std::string(target_namespace)
+                                               : (!ir.package.empty() ? ir.package : std::string("fsm_generated"));
+    std::unordered_map<std::string, const ir::PortDefinition*> in_port_map;
+    for (const auto& p : ir.ports) {
+        if (p.is_in()) {
+            in_port_map[p.name] = &p;
+        }
+    }
+
+    // Helper: synthesize a concrete C++ assignment on `in.<port>` to make an atomic condition true/false.
+    auto synthesize_port_assignment = [&](const std::string& cond_raw, bool want_true, std::string& out_stmt) -> bool {
+        const std::string c = trim(cond_raw);
+        static const std::regex rel_re(
+            R"(^(?:in\.)?([A-Za-z_][A-Za-z0-9_]*)\s*(==|!=|>=|<=|>|<)\s*(-?[0-9]+(?:\.[0-9]+)?)$)");
+        static const std::regex bool_re(R"(^(!?)\s*(?:in\.)?([A-Za-z_][A-Za-z0-9_]*)$)");
+        std::smatch m;
+        if (std::regex_match(c, m, rel_re)) {
+            const std::string pname = m[1].str();
+            auto pit = in_port_map.find(pname);
+            if (pit == in_port_map.end()) {
+                return false;
+            }
+            const std::string op = m[2].str();
+            const double val = std::stod(m[3].str());
+            const bool is_fp = pit->second->type.is_floating_point();
+            double chosen = val;
+            if (op == ">") {
+                chosen = want_true ? (val + 1.0) : val;
+            } else if (op == ">=") {
+                chosen = want_true ? val : (val - 1.0);
+            } else if (op == "<") {
+                chosen = want_true ? (val - 1.0) : val;
+            } else if (op == "<=") {
+                chosen = want_true ? val : (val + 1.0);
+            } else if (op == "==") {
+                chosen = want_true ? val : (val + 1.0);
+            } else if (op == "!=") {
+                chosen = want_true ? (val + 1.0) : val;
+            }
+            if (is_fp) {
+                out_stmt = "in." + pname + " = " + std::to_string(chosen) + ";";
+            } else {
+                out_stmt = "in." + pname + " = " + std::to_string(static_cast<long long>(chosen)) + ";";
+            }
+            return true;
+        }
+        if (std::regex_match(c, m, bool_re)) {
+            const bool negated = !m[1].str().empty();
+            const std::string pname = m[2].str();
+            auto pit = in_port_map.find(pname);
+            if (pit == in_port_map.end() || !pit->second->type.is_boolean()) {
+                return false;
+            }
+            const bool v = negated ? !want_true : want_true;
+            out_stmt = "in." + pname + " = " + std::string(v ? "true" : "false") + ";";
+            return true;
+        }
+        return false;
+    };
 
     std::size_t test_idx = 0;
     for (const auto& t : ir.transitions) {
@@ -256,6 +323,49 @@ std::string McdcHarnessGenerator::generate_gtest_harness(const FsmIr& ir) {
             out << "    }\n\n";
         }
         out << "}\n\n";
+
+        // When the generated FSM header is linked, also synthesize concrete FSM dispatch MC/DC vectors
+        // for transitions originating from the initial state whose conditions map to InPorts.
+        if (!fsm_header_include.empty() && t.source == ir.initial_state && !t.event.empty() &&
+            !std::holds_alternative<ir::TimeTrigger>(t.trigger) &&
+            !std::holds_alternative<ir::ChangeTrigger>(t.trigger)) {
+            bool all_ports_solvable = true;
+            for (const auto& cond : conditions) {
+                std::string dummy;
+                if (!synthesize_port_assignment(cond, true, dummy)) {
+                    all_ports_solvable = false;
+                    break;
+                }
+            }
+            if (all_ports_solvable) {
+                out << "TEST(McdcSafetyHarness, " << test_name << "_FsmExecution) {\n";
+                for (const auto& pair : pairs) {
+                    out << "    // Concrete FSM MC/DC pair for condition: " << pair.condition_name << "\n";
+                    for (int vec_idx = 0; vec_idx < 2; ++vec_idx) {
+                        const auto& vec = (vec_idx == 0) ? pair.vector_true : pair.vector_false;
+                        out << "    {\n";
+                        out << "        " << ns << "::" << ir.name << " sm;\n";
+                        out << "        " << ns << "::" << ir.name << "::in_ports_type in{};\n";
+                        out << "        " << ns << "::" << ir.name << "::out_ports_type out{};\n";
+                        for (const auto& cond : conditions) {
+                            std::string assign_stmt;
+                            synthesize_port_assignment(cond, vec.condition_values.at(cond), assign_stmt);
+                            out << "        " << assign_stmt << "\n";
+                        }
+                        out << "        auto res = sm.dispatch(" << ns << "::" << t.event << "{}, in, out);\n";
+                        if (vec.decision_outcome) {
+                            out << "        EXPECT_TRUE(res.is_success());\n";
+                            out << "        EXPECT_TRUE(sm.is_in<" << ns << "::" << t.target << ">());\n";
+                        } else {
+                            out << "        EXPECT_FALSE(res.is_success());\n";
+                            out << "        EXPECT_TRUE(sm.is_in<" << ns << "::" << t.source << ">());\n";
+                        }
+                        out << "    }\n";
+                    }
+                }
+                out << "}\n\n";
+            }
+        }
     }
 
     if (test_idx == 0) {

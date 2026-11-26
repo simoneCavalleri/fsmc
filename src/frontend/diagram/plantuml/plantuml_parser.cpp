@@ -91,10 +91,11 @@ bool PlantUmlParser::parse_impl(std::string_view content, FsmIr& out_model, std:
                 pending_local_transition = true;
                 continue;
             }
+            bool handled = false;
             if (DirectiveParser::parse_model_directive(body, out_model)) {
-                continue;
+                handled = true;
             } else if (body.rfind("state", 0) == 0) {
-                DirectiveParser::parse_state_directive(body, out_model, parent_stack);
+                handled = DirectiveParser::parse_state_directive(body, out_model, parent_stack);
             } else {
                 std::string target_state;
                 auto fsm_pos = trimmed.find("@fsm:");
@@ -119,13 +120,17 @@ bool PlantUmlParser::parse_impl(std::string_view content, FsmIr& out_model, std:
                         st = &out_model.add_state(target_state, parent_for_state);
                     }
                     if (body.rfind("defer", 0) == 0) {
-                        DirectiveParser::parse_defer_directive(body, *st);
+                        handled = DirectiveParser::parse_defer_directive(body, *st);
                     } else if (body.rfind("submachine", 0) == 0) {
-                        DirectiveParser::parse_submachine_directive(body, *st);
+                        handled = DirectiveParser::parse_submachine_directive(body, *st);
                     } else {
-                        DirectiveParser::parse_state_directive(body, *st);
+                        handled = DirectiveParser::parse_state_directive(body, *st);
                     }
                 }
+            }
+            if (!handled) {
+                out_model.parse_warnings.push_back("Unrecognized or malformed @fsm directive at line " +
+                                                   std::to_string(line_num) + ": '@fsm:" + body + "'");
             }
             continue;
         }
@@ -653,13 +658,33 @@ bool PlantUmlParser::parse_transition_line(std::string_view line, FsmIr& model, 
             label = label.substr(0, open_bracket) + label.substr(close_bracket + 1);
         }
 
-        // Remaining is EventName (or ChangeTrigger when(...))
+        // Remaining is EventName (or ChangeTrigger when(...) or TimeTrigger after(...)/every(...)/at(...))
         const std::string evt = std::string(trim(label));
         if (!evt.empty()) {
             static const std::regex when_ev_regex(R"(^when\s*\((.+)\)$)", std::regex::icase);
+            static const std::regex time_call_regex(
+                R"(^(after|every|at)\s*\(\s*([0-9]+)\s*(ms|us|s|m|msec|usec|sec|min)?\s*\)$)", std::regex::icase);
             std::smatch wm;
+            std::smatch tcm;
             if (std::regex_match(evt, wm, when_ev_regex)) {
                 raw_event_change_expr = std::string(trim(wm[1].str()));
+            } else if (std::regex_match(evt, tcm, time_call_regex)) {
+                std::string kw = tcm[1].str();
+                std::transform(kw.begin(), kw.end(), kw.begin(),
+                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                std::string u = tcm[3].matched ? tcm[3].str() : "ms";
+                std::transform(u.begin(), u.end(), u.begin(),
+                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                if (u == "msec") {
+                    u = "ms";
+                } else if (u == "usec") {
+                    u = "us";
+                } else if (u == "sec") {
+                    u = "s";
+                } else if (u == "min") {
+                    u = "m";
+                }
+                event_name = kw + "_" + tcm[2].str() + u;
             } else {
                 event_name = sanitize_identifier(evt);
             }
@@ -701,13 +726,15 @@ bool PlantUmlParser::parse_transition_line(std::string_view line, FsmIr& model, 
     if (!raw_event_change_expr.empty()) {
         trans.trigger = ChangeTrigger(raw_event_change_expr, true);
     } else if (!event_name.empty()) {
-        static const std::regex time_ev_regex(R"(^(after|every)_([0-9]+)(ms|us|s|m)$)", std::regex::icase);
+        static const std::regex time_ev_regex(R"(^(after|every|at)_([0-9]+)(ms|us|s|m)$)", std::regex::icase);
         std::smatch tm;
         if (std::regex_match(event_name, tm, time_ev_regex)) {
             std::string kw = tm[1].str();
             std::transform(kw.begin(), kw.end(), kw.begin(),
                            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-            const TimeTriggerKind tkind = (kw == "every") ? TimeTriggerKind::Every : TimeTriggerKind::After;
+            const TimeTriggerKind tkind = (kw == "every")
+                                              ? TimeTriggerKind::Every
+                                              : ((kw == "at") ? TimeTriggerKind::At : TimeTriggerKind::After);
             const std::uint64_t val = static_cast<std::uint64_t>(std::stoull(tm[2].str()));
             std::string u = tm[3].str();
             std::transform(u.begin(), u.end(), u.begin(),

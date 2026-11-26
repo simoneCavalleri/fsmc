@@ -123,6 +123,10 @@ bool map_type_to_c99(const DataType& dt, const C99Context& ctx, std::string& out
         out_c_type = dt.to_cpp_type();
         return true;
     }
+    if (dt.is_string()) {
+        out_c_type = "const char*";
+        return true;
+    }
     if (!dt.is_primitive()) {
         const std::string cname = dt.custom_name();
         if (auto it = ctx.custom_c_types.find(cname); it != ctx.custom_c_types.end()) {
@@ -290,6 +294,102 @@ std::string translate_expr_to_c(std::string_view expr, const C99Context& ctx,
 
         out.push_back(expr[i++]);
     }
+
+    if (ctx.uses_strings) {
+        auto trim_sv = [](std::string_view sv) -> std::string_view {
+            while (!sv.empty() && std::isspace(static_cast<unsigned char>(sv.front())) != 0) {
+                sv.remove_prefix(1);
+            }
+            while (!sv.empty() && std::isspace(static_cast<unsigned char>(sv.back())) != 0) {
+                sv.remove_suffix(1);
+            }
+            return sv;
+        };
+        auto is_string_operand = [&](std::string_view operand) -> bool {
+            operand = trim_sv(operand);
+            if (operand.size() >= 2 && operand.front() == '"' && operand.back() == '"') {
+                return true;
+            }
+            for (const auto& sym : ctx.string_symbols) {
+                if (operand == sym) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        auto rewrite_str_cmp = [&](std::string s) -> std::string {
+            std::size_t pos = 0;
+            bool in_str = false;
+            while (pos + 1 < s.size()) {
+                if (s[pos] == '"' && (pos == 0 || s[pos - 1] != '\\')) {
+                    in_str = !in_str;
+                    ++pos;
+                    continue;
+                }
+                if (!in_str && ((s[pos] == '=' && s[pos + 1] == '=') || (s[pos] == '!' && s[pos + 1] == '='))) {
+                    const bool is_ne = (s[pos] == '!');
+                    // Find LHS boundary back to nearest &&, ||, (, ?, :, , or start
+                    std::size_t lhs_start = pos;
+                    int pdepth = 0;
+                    bool s_in_q = false;
+                    while (lhs_start > 0) {
+                        const char ch = s[lhs_start - 1];
+                        if (ch == '"' && (lhs_start < 2 || s[lhs_start - 2] != '\\')) {
+                            s_in_q = !s_in_q;
+                        } else if (!s_in_q) {
+                            if (ch == ')') {
+                                ++pdepth;
+                            } else if (ch == '(') {
+                                if (pdepth == 0) {
+                                    break;
+                                }
+                                --pdepth;
+                            } else if (pdepth == 0 && (ch == '&' || ch == '|' || ch == ',' || ch == '?' || ch == ':')) {
+                                break;
+                            }
+                        }
+                        --lhs_start;
+                    }
+                    // Find RHS boundary forward to nearest &&, ||, ), ?, :, , or end
+                    std::size_t rhs_end = pos + 2;
+                    pdepth = 0;
+                    s_in_q = false;
+                    while (rhs_end < s.size()) {
+                        const char ch = s[rhs_end];
+                        if (ch == '"' && (rhs_end == 0 || s[rhs_end - 1] != '\\')) {
+                            s_in_q = !s_in_q;
+                        } else if (!s_in_q) {
+                            if (ch == '(') {
+                                ++pdepth;
+                            } else if (ch == ')') {
+                                if (pdepth == 0) {
+                                    break;
+                                }
+                                --pdepth;
+                            } else if (pdepth == 0 && (ch == '&' || ch == '|' || ch == ',' || ch == '?' || ch == ':')) {
+                                break;
+                            }
+                        }
+                        ++rhs_end;
+                    }
+                    const std::string_view lhs = trim_sv(std::string_view(s).substr(lhs_start, pos - lhs_start));
+                    const std::string_view rhs = trim_sv(std::string_view(s).substr(pos + 2, rhs_end - (pos + 2)));
+                    if (!lhs.empty() && !rhs.empty() && (is_string_operand(lhs) || is_string_operand(rhs))) {
+                        const std::string repl = (is_ne ? "!" : "") + ctx.prefix + "_str_eq(" + std::string(lhs) +
+                                                 ", " + std::string(rhs) + ")";
+                        s.replace(lhs_start, rhs_end - lhs_start, repl);
+                        pos = lhs_start + repl.size();
+                        continue;
+                    }
+                    pos += 2;
+                    continue;
+                }
+                ++pos;
+            }
+            return s;
+        };
+        out = rewrite_str_cmp(std::move(out));
+    }
     return out;
 }
 
@@ -394,9 +494,36 @@ std::string resolve_guard_expr_c(const TransitionEdge& tr, const FsmIr& model, c
     return translate_expr_to_c(raw_expr, ctx, event_attrs);
 }
 
+std::vector<std::string> get_c99_ancestors(const FsmIr& model, const std::string& state_name) {
+    std::vector<std::string> chain;
+    std::unordered_set<std::string> visited;
+    std::string curr = state_name;
+    while (!curr.empty() && visited.insert(curr).second) {
+        chain.push_back(curr);
+        const auto* st = model.find_state(curr);
+        curr = (st != nullptr) ? st->parent_state : "";
+    }
+    std::reverse(chain.begin(), chain.end());
+    return chain;
+}
+
+std::string resolve_c99_initial_leaf(const FsmIr& model, const std::string& state_name) {
+    std::string curr = state_name;
+    std::unordered_set<std::string> visited;
+    while (!curr.empty() && visited.insert(curr).second) {
+        const auto* st = model.find_state(curr);
+        if (st == nullptr || st->initial_sub_state.empty()) {
+            break;
+        }
+        curr = st->initial_sub_state;
+    }
+    return curr;
+}
+
 void emit_transition_body_c(std::ostringstream& src, const TransitionEdge& tr, const FsmIr& model,
                             const C99Context& ctx, const std::unordered_set<std::string>& event_attrs,
-                            const std::string& indent, bool is_periodic_timer, uint64_t timer_dur_ms) {
+                            const std::string& indent, bool is_periodic_timer, uint64_t timer_dur_ms,
+                            const std::string& active_leaf_state) {
     if (tr.condition_action.has_value()) {
         emit_action_c(src, *tr.condition_action, ctx, event_attrs, indent);
     }
@@ -411,27 +538,71 @@ void emit_transition_body_c(std::ostringstream& src, const TransitionEdge& tr, c
         return;
     }
 
-    // External transition: exit source -> transition action -> update state -> reset timer -> enter target
-    if (const auto* src_st = model.find_state(tr.source)) {
-        for (const auto& exit_act : src_st->exit_actions) {
-            emit_action_c(src, exit_act, ctx, event_attrs, indent);
+    const std::string effective_src = active_leaf_state.empty() ? tr.source : active_leaf_state;
+    const std::string target_leaf = resolve_c99_initial_leaf(model, tr.target);
+
+    // Compute UML 2.5.1 LCA between active leaf state and resolved target leaf
+    const auto src_chain = get_c99_ancestors(model, effective_src);
+    const auto dst_chain = get_c99_ancestors(model, target_leaf);
+    std::size_t lca_len = 0U;
+    const bool is_self = (effective_src == target_leaf);
+    const bool is_local = (tr.kind == TransitionEdgeKind::Local);
+    if (!is_self) {
+        while (lca_len < src_chain.size() && lca_len < dst_chain.size() && src_chain[lca_len] == dst_chain[lca_len]) {
+            ++lca_len;
+        }
+    } else if (src_chain.size() > 1U) {
+        lca_len = src_chain.size() - 1U;
+    }
+    if (!is_local) {
+        for (std::size_t idx = 0U; idx < lca_len; ++idx) {
+            if (src_chain[idx] == tr.source) {
+                lca_len = idx;
+                break;
+            }
         }
     }
+
+    const std::unordered_set<std::string> skip_exit(tr.skip_exit_actions.begin(), tr.skip_exit_actions.end());
+    const std::unordered_set<std::string> skip_entry(tr.skip_entry_actions.begin(), tr.skip_entry_actions.end());
+
+    // 1. Exit source hierarchy bottom-up to LCA
+    for (std::size_t idx = src_chain.size(); idx > lca_len; --idx) {
+        if (const auto* st = model.find_state(src_chain[idx - 1U])) {
+            for (const auto& exit_act : st->exit_actions) {
+                if (!exit_act.name.empty() && skip_exit.count(exit_act.name) != 0U) {
+                    continue;
+                }
+                emit_action_c(src, exit_act, ctx, event_attrs, indent);
+            }
+        }
+    }
+
+    // 2. Transition action
     if (tr.transition_action.has_value()) {
         emit_action_c(src, *tr.transition_action, ctx, event_attrs, indent);
     }
-    const auto tgt_it = ctx.state_enums.find(tr.target);
+
+    // 3. Update state & timer
+    const auto tgt_it = ctx.state_enums.find(target_leaf);
     if (tgt_it != ctx.state_enums.end()) {
         src << indent << "fsm->state = " << tgt_it->second << ";\n";
     }
-    if (is_periodic_timer && tr.source == tr.target && timer_dur_ms > 0U) {
+    if (is_periodic_timer && effective_src == target_leaf && timer_dur_ms > 0U) {
         src << indent << "fsm->state_elapsed_ms -= " << timer_dur_ms << "ULL;\n";
     } else {
         src << indent << "fsm->state_elapsed_ms = 0ULL;\n";
     }
-    if (const auto* dst_st = model.find_state(tr.target)) {
-        for (const auto& entry_act : dst_st->entry_actions) {
-            emit_action_c(src, entry_act, ctx, event_attrs, indent);
+
+    // 4. Enter target hierarchy top-down from LCA
+    for (std::size_t idx = lca_len; idx < dst_chain.size(); ++idx) {
+        if (const auto* st = model.find_state(dst_chain[idx])) {
+            for (const auto& entry_act : st->entry_actions) {
+                if (!entry_act.name.empty() && skip_entry.count(entry_act.name) != 0U) {
+                    continue;
+                }
+                emit_action_c(src, entry_act, ctx, event_attrs, indent);
+            }
         }
     }
 }

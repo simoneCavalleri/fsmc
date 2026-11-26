@@ -656,4 +656,30 @@ stateDiagram-v2
     EXPECT_EQ(mach->parent_state, "Operational");
 }
 
+/**
+ * @brief Regression (BUG-36 & BUG-41): Mermaid parses `after(500ms)` / `every(100ms)` as `TimeTrigger`
+ * and records `parse_warnings` for unrecognized `@fsm:...` directives.
+ */
+TEST(MermaidParserTest, TimeTriggerCallSyntaxAndUnknownDirectiveWarning) {
+    const std::string mmd = R"(
+stateDiagram-v2
+    %% @fsm:bogus_dir x=1
+    [*] --> Wait
+    Wait --> Done : after(500ms)
+    Done --> Done : every(100ms)
+)";
+    FsmIr ir;
+    fsm::diagnostic::DiagnosticEngine diag;
+    MermaidParser parser;
+    ASSERT_TRUE(parser.parse(mmd, ir, diag)) << diag.render_to_string();
+    ASSERT_EQ(ir.transitions.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(ir.transitions[0].trigger));
+    EXPECT_EQ(std::get<TimeTrigger>(ir.transitions[0].trigger).duration_in_ms(), 500U);
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(ir.transitions[1].trigger));
+    EXPECT_EQ(std::get<TimeTrigger>(ir.transitions[1].trigger).kind, TimeTriggerKind::Every);
+    EXPECT_EQ(std::get<TimeTrigger>(ir.transitions[1].trigger).duration_in_ms(), 100U);
+    ASSERT_FALSE(ir.parse_warnings.empty());
+    EXPECT_NE(ir.parse_warnings[0].find("bogus_dir"), std::string::npos);
+}
+
 }  // namespace

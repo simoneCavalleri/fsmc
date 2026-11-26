@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 92  
-**Total Documented Test Cases**: 809  
+**Total Documented Test Cases**: 817  
 
 ---
 
@@ -29,7 +29,7 @@
 | [`test_ring_buffer_overflow.cpp`](../../tests/backend/cpp/runtime/test_ring_buffer_overflow.cpp) | `tests/backend/cpp/runtime/test_ring_buffer_overflow.cpp` | 3 | Unit test suite for ring buffer overflow policies (DropIncoming, DropOldest). |
 | [`test_spsc_fsm.cpp`](../../tests/backend/cpp/runtime/test_spsc_fsm.cpp) | `tests/backend/cpp/runtime/test_spsc_fsm.cpp` | 6 | Unit test suite for Single-Producer Single-Consumer (SPSC) lock-free FSM runtime. |
 | [`test_spsc_queue.cpp`](../../tests/backend/cpp/runtime/test_spsc_queue.cpp) | `tests/backend/cpp/runtime/test_spsc_queue.cpp` | 5 | Unit test suite for lock-free SPSC ring buffer memory management and lifecycles. |
-| [`test_state_serialization.cpp`](../../tests/backend/cpp/runtime/test_state_serialization.cpp) | `tests/backend/cpp/runtime/test_state_serialization.cpp` | 0 | Unit tests for C++ runtime state snapshot binary serialization and deserialization. |
+| [`test_state_serialization.cpp`](../../tests/backend/cpp/runtime/test_state_serialization.cpp) | `tests/backend/cpp/runtime/test_state_serialization.cpp` | 1 | Unit tests for C++ runtime state snapshot binary serialization and deserialization. |
 | [`test_thread_safe_stress.cpp`](../../tests/backend/cpp/runtime/test_thread_safe_stress.cpp) | `tests/backend/cpp/runtime/test_thread_safe_stress.cpp` | 5 | Unit test suite for high-concurrency stress testing of thread_safe_fsm. |
 | [`test_timed_transitions.cpp`](../../tests/backend/cpp/runtime/test_timed_transitions.cpp) | `tests/backend/cpp/runtime/test_timed_transitions.cpp` | 14 | Unit test suite for timed transitions, timer cancellation, and discrete tick stepping. |
 | [`test_traits_and_hooks.cpp`](../../tests/backend/cpp/runtime/test_traits_and_hooks.cpp) | `tests/backend/cpp/runtime/test_traits_and_hooks.cpp` | 13 | Unit test suite for type-list traits, metaprogramming algorithms, and reflection hooks. |
@@ -66,13 +66,13 @@
 
 | Suite File | Source Path | Test Cases | Scope Summary |
 | :--- | :--- | :---: | :--- |
-| [`test_mcdc_harness.cpp`](../../tests/backend/verification/test_mcdc_harness.cpp) | `tests/backend/verification/test_mcdc_harness.cpp` | 4 | Unit test suite for MC/DC test harness generation and independence pair analysis. |
+| [`test_mcdc_harness.cpp`](../../tests/backend/verification/test_mcdc_harness.cpp) | `tests/backend/verification/test_mcdc_harness.cpp` | 5 | Unit test suite for MC/DC test harness generation and independence pair analysis. |
 
 ## Formal Model Checking & nuXmv Subsystem
 
 | Suite File | Source Path | Test Cases | Scope Summary |
 | :--- | :--- | :---: | :--- |
-| [`test_formal_roundtrip.cpp`](../../tests/backend/formal/test_formal_roundtrip.cpp) | `tests/backend/formal/test_formal_roundtrip.cpp` | 25 | Unit test suite verifying lossless roundtrip transpilation across all supported formats. |
+| [`test_formal_roundtrip.cpp`](../../tests/backend/formal/test_formal_roundtrip.cpp) | `tests/backend/formal/test_formal_roundtrip.cpp` | 26 | Unit test suite verifying lossless roundtrip transpilation across all supported formats. |
 
 ## Requirements Traceability (RTM) Subsystem
 
@@ -96,16 +96,16 @@
 | [`test_parser_negative.cpp`](../../tests/frontend/common/test_parser_negative.cpp) | `tests/frontend/common/test_parser_negative.cpp` | 6 | Negative unit tests across front-end parsers verifying rejection of malformed, empty, or corrupt inputs. |
 | [`test_xml_parser.cpp`](../../tests/frontend/common/test_xml_parser.cpp) | `tests/frontend/common/test_xml_parser.cpp` | 5 | Unit test suite for the lightweight XML parser and DOM abstraction. |
 | [`test_diagram_sidecar.cpp`](../../tests/frontend/diagram/test_diagram_sidecar.cpp) | `tests/frontend/diagram/test_diagram_sidecar.cpp` | 5 | Unit test suite for the Diagram Sidecar Pattern combining diagram topology with companion manifests. |
-| [`test_dot_parser.cpp`](../../tests/frontend/diagram/test_dot_parser.cpp) | `tests/frontend/diagram/test_dot_parser.cpp` | 21 | Unit test suite for the Graphviz DOT statechart parser. |
-| [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) | `tests/frontend/diagram/test_mermaid_parser.cpp` | 19 | Unit test suite for the Mermaid stateDiagram-v2 parser and frontend dialect. |
+| [`test_dot_parser.cpp`](../../tests/frontend/diagram/test_dot_parser.cpp) | `tests/frontend/diagram/test_dot_parser.cpp` | 22 | Unit test suite for the Graphviz DOT statechart parser. |
+| [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) | `tests/frontend/diagram/test_mermaid_parser.cpp` | 20 | Unit test suite for the Mermaid stateDiagram-v2 parser and frontend dialect. |
 | [`test_multiline_actions.cpp`](../../tests/frontend/diagram/test_multiline_actions.cpp) | `tests/frontend/diagram/test_multiline_actions.cpp` | 0 | Unit test suite verifying multiline and braced composite action block parsing in diagram frontends (PlantUML, Mermaid). |
-| [`test_plantuml_parser.cpp`](../../tests/frontend/diagram/test_plantuml_parser.cpp) | `tests/frontend/diagram/test_plantuml_parser.cpp` | 19 | Unit test suite for the PlantUML state diagram parser and frontend dialect. |
+| [`test_plantuml_parser.cpp`](../../tests/frontend/diagram/test_plantuml_parser.cpp) | `tests/frontend/diagram/test_plantuml_parser.cpp` | 20 | Unit test suite for the PlantUML state diagram parser and frontend dialect. |
 | [`test_directive_parser.cpp`](../../tests/frontend/directive/test_directive_parser.cpp) | `tests/frontend/directive/test_directive_parser.cpp` | 12 | Unit tests for front-end directive parser (@fsm:state, @fsm:defer, @fsm:signal, @fsm:port, @fsm:enum, |
 | [`test_cameo_parser.cpp`](../../tests/frontend/formal/test_cameo_parser.cpp) | `tests/frontend/formal/test_cameo_parser.cpp` | 24 | Unit test suite for the Cameo Systems Modeler (OMG XMI 2.x) frontend parser. |
 | [`test_scxml_parser.cpp`](../../tests/frontend/formal/test_scxml_parser.cpp) | `tests/frontend/formal/test_scxml_parser.cpp` | 21 | Unit test suite for the W3C SCXML (State Chart XML) frontend parser. |
 | [`test_scxml_semantic_completeness.cpp`](../../tests/frontend/formal/test_scxml_semantic_completeness.cpp) | `tests/frontend/formal/test_scxml_semantic_completeness.cpp` | 5 | Unit test suite verifying W3C SCXML semantic completeness (parallel regions, final states, events). |
 | [`test_smv_parser.cpp`](../../tests/frontend/formal/test_smv_parser.cpp) | `tests/frontend/formal/test_smv_parser.cpp` | 23 | Unit test suite for the nuXmv / SMV formal model frontend parser. |
-| [`test_stateflow_parser.cpp`](../../tests/frontend/formal/test_stateflow_parser.cpp) | `tests/frontend/formal/test_stateflow_parser.cpp` | 19 | Unit test suite for the MathWorks Stateflow chart frontend parser. |
+| [`test_stateflow_parser.cpp`](../../tests/frontend/formal/test_stateflow_parser.cpp) | `tests/frontend/formal/test_stateflow_parser.cpp` | 20 | Unit test suite for the MathWorks Stateflow chart frontend parser. |
 | [`test_stateflow_slx_ingestion.cpp`](../../tests/frontend/formal/test_stateflow_slx_ingestion.cpp) | `tests/frontend/formal/test_stateflow_slx_ingestion.cpp` | 5 | Unit test suite for direct ingestion of MathWorks Stateflow .slx container archives. |
 | [`test_sysml2_advanced_constructs.cpp`](../../tests/frontend/formal/test_sysml2_advanced_constructs.cpp) | `tests/frontend/formal/test_sysml2_advanced_constructs.cpp` | 1 | Unit test suite for SysML v2 advanced constructs (nested/qualified packages, binding connectors, fork and join composite transitions). |
 | [`test_sysml2_flight_control.cpp`](../../tests/frontend/formal/test_sysml2_flight_control.cpp) | `tests/frontend/formal/test_sysml2_flight_control.cpp` | 5 | Integration verification suite for OMG SysML v2 Flight Mission Controller pipeline. |
@@ -128,7 +128,7 @@
 | Suite File | Source Path | Test Cases | Scope Summary |
 | :--- | :--- | :---: | :--- |
 | [`test_inlining_passes.cpp`](../../tests/middleend/canonicalization/test_inlining_passes.cpp) | `tests/middleend/canonicalization/test_inlining_passes.cpp` | 8 | Unit tests for submachine and choice pseudo-state inlining canonicalization passes. |
-| [`test_orthogonal_product.cpp`](../../tests/middleend/canonicalization/test_orthogonal_product.cpp) | `tests/middleend/canonicalization/test_orthogonal_product.cpp` | 16 | Unit tests for OrthogonalProductPass Cartesian product canonicalization. |
+| [`test_orthogonal_product.cpp`](../../tests/middleend/canonicalization/test_orthogonal_product.cpp) | `tests/middleend/canonicalization/test_orthogonal_product.cpp` | 17 | Unit tests for OrthogonalProductPass Cartesian product canonicalization. |
 | [`test_pass_manager.cpp`](../../tests/middleend/canonicalization/test_pass_manager.cpp) | `tests/middleend/canonicalization/test_pass_manager.cpp` | 9 | Unit tests for PassManager execution pipeline, pass chaining, and statistical profiling. |
 | [`test_structural_lowering.cpp`](../../tests/middleend/canonicalization/test_structural_lowering.cpp) | `tests/middleend/canonicalization/test_structural_lowering.cpp` | 22 | Unit tests for Category A Structural Lowering Suite: HistoryLoweringPass, DeferredEventLoweringPass, BoundaryActionFusionPass, ForkJoinLoweringPass. |
 | [`test_common_action_factoring.cpp`](../../tests/middleend/optimization/test_common_action_factoring.cpp) | `tests/middleend/optimization/test_common_action_factoring.cpp` | 6 | Unit tests for CommonActionFactoringPass redundant action hoist and sink optimizations. |

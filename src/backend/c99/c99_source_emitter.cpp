@@ -53,10 +53,25 @@ std::string emit_c99_source(const C99EmitPlan& plan) {
     src << "    return hash;\n";
     src << "}\n\n";
 
+    if (ctx.uses_strings) {
+        src << "static bool " << ctx.prefix << "_str_eq(const char* a, const char* b) {\n";
+        src << "    if (a == b) {\n";
+        src << "        return true;\n";
+        src << "    }\n";
+        src << "    if (a == NULL || b == NULL) {\n";
+        src << "        return false;\n";
+        src << "    }\n";
+        src << "    return strcmp(a, b) == 0;\n";
+        src << "}\n\n";
+    }
+
     // init_with_services / init / destroy
-    const std::string init_state_enum = ctx.state_enums.count(processed.initial_state) != 0U
-                                            ? ctx.state_enums.at(processed.initial_state)
-                                            : ctx.state_enums.at(processed.states.front().name);
+    const std::string raw_init_state =
+        ctx.state_enums.count(processed.initial_state) != 0U ? processed.initial_state : processed.states.front().name;
+    const std::string init_leaf_state = resolve_c99_initial_leaf(processed, raw_init_state);
+    const std::string init_state_enum = ctx.state_enums.count(init_leaf_state) != 0U
+                                            ? ctx.state_enums.at(init_leaf_state)
+                                            : ctx.state_enums.at(raw_init_state);
 
     auto emit_init_body = [&](bool with_services) {
         src << "    " << ctx.prefix << "_in_ports_t in_val;\n";
@@ -81,10 +96,12 @@ std::string emit_c99_source(const C99EmitPlan& plan) {
                 src << "    fsm->regs." << rf.name << " = " << translate_expr_to_c(rf.init_expr, ctx) << ";\n";
             }
         }
-        if (const auto* init_st = processed.find_state(processed.initial_state)) {
-            const std::unordered_set<std::string> no_attrs;
-            for (const auto& entry_act : init_st->entry_actions) {
-                emit_action_c(src, entry_act, ctx, no_attrs, "    ");
+        const std::unordered_set<std::string> no_attrs;
+        for (const auto& anc_name : get_c99_ancestors(processed, init_leaf_state)) {
+            if (const auto* anc_st = processed.find_state(anc_name)) {
+                for (const auto& entry_act : anc_st->entry_actions) {
+                    emit_action_c(src, entry_act, ctx, no_attrs, "    ");
+                }
             }
         }
     };
@@ -287,13 +304,23 @@ std::string emit_c99_source(const C99EmitPlan& plan) {
         src << "}\n\n";
     }
 
-    // Sampled step (anonymous non-timed transitions)
+    // Sampled step (anonymous non-timed transitions, inheriting composite ancestor transitions leaf-to-root)
     {
-        std::unordered_map<std::string, std::vector<const TransitionEdge*>> anon_by_state;
+        std::unordered_map<std::string, std::vector<const TransitionEdge*>> anon_direct;
         for (const auto& tr : processed.transitions) {
             if (!std::holds_alternative<TimeTrigger>(tr.trigger) &&
                 (tr.event.empty() || tr.event == "anonymous_event" || tr.event == "completion_event")) {
-                anon_by_state[tr.source].push_back(&tr);
+                anon_direct[tr.source].push_back(&tr);
+            }
+        }
+        std::unordered_map<std::string, std::vector<const TransitionEdge*>> anon_by_state;
+        for (const auto& st : processed.states) {
+            const auto ancs = get_c99_ancestors(processed, st.name);
+            for (auto it = ancs.rbegin(); it != ancs.rend(); ++it) {
+                if (auto dit = anon_direct.find(*it); dit != anon_direct.end()) {
+                    auto& vec = anon_by_state[st.name];
+                    vec.insert(vec.end(), dit->second.begin(), dit->second.end());
+                }
             }
         }
         src << ctx.prefix << "_status_t " << ctx.prefix << "_step(" << ctx.prefix << "_fsm_t* fsm, const " << ctx.prefix
@@ -329,12 +356,13 @@ std::string emit_c99_source(const C99EmitPlan& plan) {
                     const std::string g_expr = resolve_guard_expr_c(*tr, processed, ctx, no_attrs);
                     if (!g_expr.empty()) {
                         src << "            if (" << g_expr << ") {\n";
-                        emit_transition_body_c(src, *tr, processed, ctx, no_attrs, "                ");
+                        emit_transition_body_c(src, *tr, processed, ctx, no_attrs, "                ", false, 0U,
+                                               st.name);
                         src << "                status = " << ctx.upper_prefix << "_STATUS_OK;\n";
                         src << "                break;\n";
                         src << "            }\n";
                     } else {
-                        emit_transition_body_c(src, *tr, processed, ctx, no_attrs, "            ");
+                        emit_transition_body_c(src, *tr, processed, ctx, no_attrs, "            ", false, 0U, st.name);
                         src << "            status = " << ctx.upper_prefix << "_STATUS_OK;\n";
                         src << "            break;\n";
                     }
@@ -357,12 +385,22 @@ std::string emit_c99_source(const C99EmitPlan& plan) {
         src << "}\n\n";
     }
 
-    // Timed tick (advances state_elapsed_ms, evaluates TimeTrigger transitions, then sampled step)
+    // Timed tick (advances state_elapsed_ms, evaluates TimeTrigger transitions leaf-to-root, then sampled step)
     {
-        std::unordered_map<std::string, std::vector<const TransitionEdge*>> timed_by_state;
+        std::unordered_map<std::string, std::vector<const TransitionEdge*>> timed_direct;
         for (const auto& tr : processed.transitions) {
             if (std::holds_alternative<TimeTrigger>(tr.trigger)) {
-                timed_by_state[tr.source].push_back(&tr);
+                timed_direct[tr.source].push_back(&tr);
+            }
+        }
+        std::unordered_map<std::string, std::vector<const TransitionEdge*>> timed_by_state;
+        for (const auto& st : processed.states) {
+            const auto ancs = get_c99_ancestors(processed, st.name);
+            for (auto it = ancs.rbegin(); it != ancs.rend(); ++it) {
+                if (auto dit = timed_direct.find(*it); dit != timed_direct.end()) {
+                    auto& vec = timed_by_state[st.name];
+                    vec.insert(vec.end(), dit->second.begin(), dit->second.end());
+                }
             }
         }
         src << ctx.prefix << "_status_t " << ctx.prefix << "_tick(" << ctx.prefix
@@ -406,7 +444,8 @@ std::string emit_c99_source(const C99EmitPlan& plan) {
                         src << " && (" << g_expr << ")";
                     }
                     src << ") {\n";
-                    emit_transition_body_c(src, *tr, processed, ctx, no_attrs, "                ", is_periodic, dur);
+                    emit_transition_body_c(src, *tr, processed, ctx, no_attrs, "                ", is_periodic, dur,
+                                           st.name);
                     src << "                status = " << ctx.upper_prefix << "_STATUS_OK;\n";
                     src << "                break;\n";
                     src << "            }\n";
@@ -487,22 +526,44 @@ std::string emit_c99_source(const C99EmitPlan& plan) {
             src << "    (void)ev_" << sp.name << ";\n";
         }
 
-        // Group transitions matching this signal by source state
-        std::unordered_map<std::string, std::vector<const TransitionEdge*>> by_state;
+        // Group transitions matching this signal by source state (inheriting composite ancestors leaf-to-root)
+        std::unordered_map<std::string, std::vector<const TransitionEdge*>> by_state_direct;
         for (const auto& tr : processed.transitions) {
             if (!std::holds_alternative<TimeTrigger>(tr.trigger) && tr.event == sig.name) {
-                by_state[tr.source].push_back(&tr);
+                by_state_direct[tr.source].push_back(&tr);
+            }
+        }
+        std::unordered_map<std::string, std::vector<const TransitionEdge*>> by_state;
+        for (const auto& st : processed.states) {
+            const auto ancs = get_c99_ancestors(processed, st.name);
+            for (auto it = ancs.rbegin(); it != ancs.rend(); ++it) {
+                if (auto dit = by_state_direct.find(*it); dit != by_state_direct.end()) {
+                    auto& vec = by_state[st.name];
+                    vec.insert(vec.end(), dit->second.begin(), dit->second.end());
+                }
             }
         }
 
         std::unordered_set<std::string> deferring_states;
         if (plan.has_deferred) {
             for (const auto& st : processed.states) {
-                for (const auto& def_ev : st.deferred_events) {
-                    if (def_ev == sig.name) {
-                        deferring_states.insert(st.name);
+                const auto ancs = get_c99_ancestors(processed, st.name);
+                bool defers = false;
+                for (const auto& anc_name : ancs) {
+                    if (const auto* anc_st = processed.find_state(anc_name)) {
+                        for (const auto& def_ev : anc_st->deferred_events) {
+                            if (def_ev == sig.name) {
+                                defers = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (defers) {
                         break;
                     }
+                }
+                if (defers) {
+                    deferring_states.insert(st.name);
                 }
             }
         }
@@ -522,14 +583,16 @@ std::string emit_c99_source(const C99EmitPlan& plan) {
                         const std::string g_expr = resolve_guard_expr_c(*tr, processed, ctx, ev_attrs);
                         if (!g_expr.empty()) {
                             src << "            if (" << g_expr << ") {\n";
-                            emit_transition_body_c(src, *tr, processed, ctx, ev_attrs, "                ");
+                            emit_transition_body_c(src, *tr, processed, ctx, ev_attrs, "                ", false, 0U,
+                                                   st.name);
                             src << "                status = " << ctx.upper_prefix << "_STATUS_OK;\n";
                             src << "                break;\n";
                             src << "            } else {\n";
                             src << "                status = " << ctx.upper_prefix << "_STATUS_GUARD_REJECTED;\n";
                             src << "            }\n";
                         } else {
-                            emit_transition_body_c(src, *tr, processed, ctx, ev_attrs, "            ");
+                            emit_transition_body_c(src, *tr, processed, ctx, ev_attrs, "            ", false, 0U,
+                                                   st.name);
                             src << "            status = " << ctx.upper_prefix << "_STATUS_OK;\n";
                             src << "            break;\n";
                         }

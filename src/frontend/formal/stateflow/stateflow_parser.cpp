@@ -679,6 +679,12 @@ void StateflowParser::parse_stateflow_transition(const std::shared_ptr<XmlNode>&
                     trans.priority = static_cast<std::uint32_t>(std::stoul(seg.substr(14)));
                 } catch (...) {
                 }
+            } else if (seg == "@fsm:target_history=deep") {
+                trans.target_is_history = true;
+                trans.target_is_deep_history = true;
+            } else if (seg == "@fsm:target_history=shallow") {
+                trans.target_is_history = true;
+                trans.target_is_deep_history = false;
             }
         }
     }

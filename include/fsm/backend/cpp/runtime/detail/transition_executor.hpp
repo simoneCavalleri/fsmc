@@ -210,14 +210,18 @@ dispatch_result execute_transition_from_ports(CurrentSrc& src_state, const Event
                 // 3. state reassignment
                 // 4. on_enter(dst_state)
                 TransDst dst_state{};
-                call_hierarchical_on_exit<CurrentSrc, TransDst, TransSrc, RowType::is_local>(src_state, event, in, out,
-                                                                                             registers_, srv);
+                if constexpr (!RowType::is_fused) {
+                    call_hierarchical_on_exit<CurrentSrc, TransDst, TransSrc, RowType::is_local>(src_state, event, in,
+                                                                                                 out, registers_, srv);
+                }
                 Action act{};
                 call_action(act, event, src_state, dst_state, in, out, registers_, srv);
 
                 fsm_inst.set_current_state_variant(std::move(dst_state));
-                call_hierarchical_on_enter<CurrentSrc, TransDst, TransSrc, RowType::is_local>(
-                    std::get<TransDst>(fsm_inst.get_current_state_variant()), event, in, out, registers_, srv);
+                if constexpr (!RowType::is_fused) {
+                    call_hierarchical_on_enter<CurrentSrc, TransDst, TransSrc, RowType::is_local>(
+                        std::get<TransDst>(fsm_inst.get_current_state_variant()), event, in, out, registers_, srv);
+                }
 
                 const auto dst_name = get_state_name(std::get<TransDst>(fsm_inst.get_current_state_variant()));
                 executed_trace = transition_trace{src_name,

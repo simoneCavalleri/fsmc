@@ -158,6 +158,9 @@ bool load_and_parse_model(const FsmcOptions& opts, std::string& content, fsm::ir
         std::cerr << parse_diag.render_to_format(parse_fmt, content, &source_manager);
         return false;
     }
+    for (const auto& warn : model.parse_warnings) {
+        parse_diag.report(Diagnostic::warning("W_UNKNOWN_DIRECTIVE", warn));
+    }
     if (!parse_diag.get_diagnostics().empty()) {
         std::cerr << parse_diag.render_to_format(parse_fmt, content, &source_manager);
     }

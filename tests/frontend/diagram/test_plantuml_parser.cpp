@@ -651,4 +651,31 @@ S1 --> S2 : Go
     EXPECT_EQ(s1->deferred_events, (std::vector<std::string>{"EvUml", "EvSlash"}));
 }
 
+/**
+ * @brief Regression (BUG-36 & BUG-41): PlantUML parses `after(500ms)` / `every(100ms)` as `TimeTrigger`
+ * and records `parse_warnings` for unrecognized `@fsm:...` directives.
+ */
+TEST(PlantUmlParserTest, TimeTriggerCallSyntaxAndUnknownDirectiveWarning) {
+    const std::string puml = R"(
+@startuml TimedWarn
+' @fsm:typo_directive foo=bar
+[*] --> Wait
+Wait --> Done : after(500ms)
+Done --> Done : every(100ms)
+@enduml
+)";
+    FsmIr ir;
+    fsm::diagnostic::DiagnosticEngine diag;
+    PlantUmlParser parser;
+    ASSERT_TRUE(parser.parse(puml, ir, diag)) << diag.render_to_string();
+    ASSERT_EQ(ir.transitions.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(ir.transitions[0].trigger));
+    EXPECT_EQ(std::get<TimeTrigger>(ir.transitions[0].trigger).duration_in_ms(), 500U);
+    ASSERT_TRUE(std::holds_alternative<TimeTrigger>(ir.transitions[1].trigger));
+    EXPECT_EQ(std::get<TimeTrigger>(ir.transitions[1].trigger).kind, TimeTriggerKind::Every);
+    EXPECT_EQ(std::get<TimeTrigger>(ir.transitions[1].trigger).duration_in_ms(), 100U);
+    ASSERT_FALSE(ir.parse_warnings.empty());
+    EXPECT_NE(ir.parse_warnings[0].find("typo_directive"), std::string::npos);
+}
+
 }  // namespace

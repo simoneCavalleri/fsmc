@@ -77,6 +77,9 @@ std::string SemanticValidationPass::description() const {
 }
 
 bool SemanticValidationPass::run(FsmIr& ir, DiagnosticEngine& diag) {
+    for (const auto& warn : ir.parse_warnings) {
+        diag.report(Diagnostic::warning("W_UNKNOWN_DIRECTIVE", warn));
+    }
     if (ir.states.empty() && ir.choice_nodes.empty()) {
         diag.report(Diagnostic::error("E0001", "State machine does not contain any states."));
         return false;

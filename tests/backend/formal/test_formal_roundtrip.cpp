@@ -13,6 +13,7 @@
 #include "fsm/backend/formal/smv_serializer.hpp"
 #include "fsm/backend/formal/stateflow_serializer.hpp"
 #include "fsm/backend/formal/sysml2_serializer.hpp"
+#include "fsm/backend/formal/xstate_serializer.hpp"
 #include "fsm/frontend/diagram/dot/dot_parser.hpp"
 #include "fsm/frontend/diagram/mermaid/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml/plantuml_parser.hpp"
@@ -1432,6 +1433,33 @@ TEST(FormalRoundtrip, StateflowSerializer_PreservesInternalTransitionKindAcrossR
     ASSERT_TRUE(parser.parse(xml, parsed, err)) << err.render_to_string();
     ASSERT_EQ(parsed.transitions.size(), 1u);
     EXPECT_EQ(parsed.transitions[0].kind, TransitionEdgeKind::Internal);
+}
+
+/**
+ * @brief Regression (BUG-40): `FsmIrDeserializer` preserves `deferred_events` and `traceability_reqs`
+ * emitted inside XState v5 `meta: { deferred, requirements }` across XState JSON roundtrips.
+ */
+TEST(FormalRoundtrip, XStateSerializer_PreservesMetaDeferredAndRequirementsAcrossRoundtrip) {
+    FsmIr ir;
+    ir.name = "XStateMetaRt";
+    ir.initial_state = "Busy";
+    auto& busy = ir.add_state("Busy");
+    busy.deferred_events = {"Work", "Ping"};
+    busy.traceability_reqs = {"REQ_XS_01"};
+    ir.add_state("Done");
+    ir.add_transition(TransitionEdge("Busy", "Done", "Finish"));
+
+    const std::string xstate_json = fsm::backend::formal::XStateSerializer::serialize(ir);
+    EXPECT_NE(xstate_json.find("\"deferred\""), std::string::npos) << xstate_json;
+
+    fsm::frontend::JsonParser parser;
+    FsmIr parsed;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xstate_json, parsed, err)) << err.render_to_string();
+    const auto* p_busy = parsed.find_state("Busy");
+    ASSERT_NE(p_busy, nullptr);
+    EXPECT_EQ(p_busy->deferred_events, (std::vector<std::string>{"Work", "Ping"}));
+    EXPECT_EQ(p_busy->traceability_reqs, (std::vector<std::string>{"REQ_XS_01"}));
 }
 
 }  // namespace

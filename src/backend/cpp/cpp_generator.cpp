@@ -3,6 +3,7 @@
 #include <cctype>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_set>
 
 #include "fsm/backend/cpp/cpp_backend_validator.hpp"
 #include "fsm/backend/cpp/cpp_model_emitter.hpp"
@@ -101,11 +102,83 @@ void emit_runtime_preamble(std::ostream& out, const GeneratorOptions& effective_
     }
 }
 
+void fuse_orthogonal_skip_actions(ir::FsmIr& model) {
+    auto append_act = [](ir::ActionSignature& dst, const ir::ActionSignature& src) {
+        const bool has_structured = !src.instructions.empty() || !src.assignments.empty();
+        for (const auto& inst : src.instructions) {
+            dst.instructions.push_back(inst);
+        }
+        for (const auto& a : src.assignments) {
+            dst.assignments.push_back(a);
+        }
+        if (!has_structured && (!src.invocation.empty() || !src.name.empty())) {
+            ir::ActionCallOp call;
+            call.function_name = !src.invocation.empty() ? src.invocation : src.name;
+            dst.instructions.emplace_back(std::move(call), "Fused callback " + src.name);
+        }
+    };
+
+    std::unordered_set<std::string> used_names;
+    for (const auto& a : model.actions) {
+        used_names.insert(a.name);
+    }
+
+    std::size_t fused_idx = 0U;
+    for (auto& t : model.transitions) {
+        if (t.kind == ir::TransitionEdgeKind::Internal ||
+            (t.skip_exit_actions.empty() && t.skip_entry_actions.empty())) {
+            continue;
+        }
+        const auto* src_st = model.find_state(t.source);
+        const auto* dst_st = model.find_state(t.target);
+        if (src_st == nullptr || dst_st == nullptr || src_st->parent_state != dst_st->parent_state) {
+            continue;
+        }
+        const std::unordered_set<std::string> skip_exit(t.skip_exit_actions.begin(), t.skip_exit_actions.end());
+        const std::unordered_set<std::string> skip_entry(t.skip_entry_actions.begin(), t.skip_entry_actions.end());
+
+        std::string base_name = "fused_" + t.source + "_to_" + t.target;
+        if (t.transition_action.has_value() && !t.transition_action->name.empty()) {
+            base_name += "_" + t.transition_action->name;
+        }
+        std::string unique_name = base_name;
+        while (used_names.count(unique_name) != 0U) {
+            unique_name = base_name + "_" + std::to_string(++fused_idx);
+        }
+        used_names.insert(unique_name);
+
+        ir::ActionSignature fused(unique_name);
+        for (const auto& act : src_st->exit_actions) {
+            if (!act.name.empty() && skip_exit.count(act.name) != 0U) {
+                continue;
+            }
+            append_act(fused, act);
+        }
+        if (t.transition_action.has_value()) {
+            append_act(fused, *t.transition_action);
+        }
+        for (const auto& act : dst_st->entry_actions) {
+            if (!act.name.empty() && skip_entry.count(act.name) != 0U) {
+                continue;
+            }
+            append_act(fused, act);
+        }
+
+        if (!fused.assignments.empty() || !fused.instructions.empty()) {
+            model.add_action(fused.name);
+            t.transition_action = std::move(fused);
+        } else {
+            t.transition_action.reset();
+        }
+    }
+}
+
 }  // namespace
 
 std::string CppGenerator::generate_header(const FsmIr& model, const GeneratorOptions& options) {
     FsmIr processed_model = model;
     processed_model.canonicalize();
+    fuse_orthogonal_skip_actions(processed_model);
 
     diagnostic::DiagnosticEngine backend_diagnostics;
     if (!CppBackendValidator::validate_model(processed_model, backend_diagnostics)) {
@@ -172,6 +245,7 @@ GeneratedCppBundle CppGenerator::generate_bundle(const FsmIr& model, const Gener
                                                  std::string_view ports_header_include) {
     FsmIr processed_model = model;
     processed_model.canonicalize();
+    fuse_orthogonal_skip_actions(processed_model);
 
     diagnostic::DiagnosticEngine backend_diagnostics;
     if (!CppBackendValidator::validate_model(processed_model, backend_diagnostics)) {

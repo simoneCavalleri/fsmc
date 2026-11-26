@@ -918,4 +918,42 @@ TEST(StateflowParser, ParsesNativeMathWorksStateflowXmlWithoutFsmComments) {
     EXPECT_TRUE(model.transitions[0].target_is_history);
 }
 
+/**
+ * @brief Regression (BUG-39): `StateflowSerializer` and `StateflowParser` preserve Deep History
+ * (`target_is_history == true`, `target_is_deep_history == true`) across Stateflow XML roundtrips.
+ */
+TEST(StateflowParser, DeepHistoryTransition_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "SfDeepHistRt";
+    ir.initial_state = "Outer";
+    auto& outer = ir.add_state("Outer");
+    outer.is_composite = true;
+    outer.initial_sub_state = "Sub1";
+    ir.add_state("Sub1", "Outer");
+    ir.add_state("Paused");
+
+    ir.add_transition(TransitionEdge("Outer", "Paused", "Pause"));
+    TransitionEdge resume("Paused", "Outer", "Resume");
+    resume.target_is_history = true;
+    resume.target_is_deep_history = true;
+    ir.add_transition(resume);
+
+    const std::string xml = StateflowSerializer::serialize(ir);
+    StateflowParser parser;
+    FsmIr parsed;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(xml, parsed, err)) << err.render_to_string();
+
+    bool found_resume = false;
+    for (const auto& t : parsed.transitions) {
+        if (t.event == "Resume") {
+            EXPECT_EQ(t.target, "Outer");
+            EXPECT_TRUE(t.target_is_history);
+            EXPECT_TRUE(t.target_is_deep_history);
+            found_resume = true;
+        }
+    }
+    EXPECT_TRUE(found_resume);
+}
+
 }  // namespace

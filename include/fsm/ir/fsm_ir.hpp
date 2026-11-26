@@ -71,6 +71,7 @@ struct FsmIr {
     std::vector<ChoiceNodeModel> choice_nodes;     ///< Choice pseudostates for middle-end inlining
     std::vector<BindingConnector> bindings;        ///< Structural port/signal bindings (SysML v2 'bind' / 'connect')
     std::vector<ServiceMethodSignature> services;  ///< Explicitly typed external service methods (sys-math / HAL)
+    std::vector<std::string> parse_warnings;  ///< Transient frontend parse warnings (e.g. malformed @fsm: directives)
 
     // ========================================================================
     // Lookups and Query Methods

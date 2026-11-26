@@ -243,12 +243,22 @@ std::string DotSerializer::serialize(const FsmIr& model) {
                 out << pad << "    " << init_node << " -> " << escape_id(state.initial_sub_state) << ";\n";
             }
 
-            if (state.has_history) {
+            bool emit_hist = state.has_history;
+            bool emit_deep_hist = state.has_deep_history;
+            for (const auto& t : model.transitions) {
+                if (t.target == state.name && (t.target_is_history || t.target_is_deep_history)) {
+                    emit_hist = true;
+                    if (t.target_is_deep_history) {
+                        emit_deep_hist = true;
+                    }
+                }
+            }
+            if (emit_hist) {
                 std::string hist_node = "__hist_" + state.name + "__";
                 out << pad << "    " << hist_node
                     << " [shape=circle, style=\"filled,bold\", fillcolor=\"#e0e7ff\", color=\"#4f46e5\", "
                        "width=0.25, label=\""
-                    << (state.has_deep_history ? "H*" : "H") << "\"];\n";
+                    << (emit_deep_hist ? "H*" : "H") << "\"];\n";
             }
 
             // Child states
@@ -267,23 +277,37 @@ std::string DotSerializer::serialize(const FsmIr& model) {
                 std::string p_src = (it_p != parent_map.end()) ? it_p->second : "";
                 if (p_src == state.name) {
                     emitted_transitions.insert(i);
-                    out << pad << "    " << escape_id(trans.source) << " -> " << escape_id(trans.target);
+                    const std::string target_node = (trans.target_is_history || trans.target_is_deep_history)
+                                                        ? ("__hist_" + trans.target + "__")
+                                                        : escape_id(trans.target);
+                    out << pad << "    " << escape_id(trans.source) << " -> " << target_node;
                     std::string label = build_label(trans, model);
-                    const char* kind_comment = nullptr;
+                    std::string comment_val;
                     if (trans.kind == TransitionEdgeKind::Internal) {
-                        kind_comment = "internal";
+                        comment_val = "internal";
                     } else if (trans.kind == TransitionEdgeKind::Local) {
-                        kind_comment = "local";
+                        comment_val = "local";
                     }
-                    if (!label.empty() || kind_comment != nullptr) {
+                    if (trans.target_is_deep_history) {
+                        if (!comment_val.empty()) {
+                            comment_val += ";";
+                        }
+                        comment_val += "deep_history";
+                    } else if (trans.target_is_history) {
+                        if (!comment_val.empty()) {
+                            comment_val += ";";
+                        }
+                        comment_val += "history";
+                    }
+                    if (!label.empty() || !comment_val.empty()) {
                         out << " [";
                         if (!label.empty()) {
                             out << "label=\"" << escape_label(label) << "\"";
                         }
-                        if (kind_comment != nullptr) {
+                        if (!comment_val.empty()) {
                             if (!label.empty())
                                 out << ", ";
-                            out << "comment=\"" << kind_comment << "\"";
+                            out << "comment=\"" << comment_val << "\"";
                         }
                         out << "]";
                     }
@@ -348,23 +372,37 @@ std::string DotSerializer::serialize(const FsmIr& model) {
         if (emitted_transitions.count(i))
             continue;
         const auto& trans = model.transitions[i];
-        out << "    " << escape_id(trans.source) << " -> " << escape_id(trans.target);
+        const std::string target_node = (trans.target_is_history || trans.target_is_deep_history)
+                                            ? ("__hist_" + trans.target + "__")
+                                            : escape_id(trans.target);
+        out << "    " << escape_id(trans.source) << " -> " << target_node;
         std::string label = build_label(trans, model);
-        const char* kind_comment = nullptr;
+        std::string comment_val;
         if (trans.kind == TransitionEdgeKind::Internal) {
-            kind_comment = "internal";
+            comment_val = "internal";
         } else if (trans.kind == TransitionEdgeKind::Local) {
-            kind_comment = "local";
+            comment_val = "local";
         }
-        if (!label.empty() || kind_comment != nullptr) {
+        if (trans.target_is_deep_history) {
+            if (!comment_val.empty()) {
+                comment_val += ";";
+            }
+            comment_val += "deep_history";
+        } else if (trans.target_is_history) {
+            if (!comment_val.empty()) {
+                comment_val += ";";
+            }
+            comment_val += "history";
+        }
+        if (!label.empty() || !comment_val.empty()) {
             out << " [";
             if (!label.empty()) {
                 out << "label=\"" << escape_label(label) << "\"";
             }
-            if (kind_comment != nullptr) {
+            if (!comment_val.empty()) {
                 if (!label.empty())
                     out << ", ";
-                out << "comment=\"" << kind_comment << "\"";
+                out << "comment=\"" << comment_val << "\"";
             }
             out << "]";
         }

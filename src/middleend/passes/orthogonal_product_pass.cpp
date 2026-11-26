@@ -285,6 +285,7 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                     std::uint32_t priority = 0;
                     bool any_chosen = false;
                     bool all_internal = true;
+                    std::optional<TriggerVariant> preserved_trigger;
 
                     for (std::size_t idx = 0; idx < regions.size(); ++idx) {
                         const auto* t = chosen_transitions[idx];
@@ -292,6 +293,10 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                             continue;
                         }
                         any_chosen = true;
+                        if (!preserved_trigger.has_value() && (std::holds_alternative<TimeTrigger>(t->trigger) ||
+                                                               std::holds_alternative<ChangeTrigger>(t->trigger))) {
+                            preserved_trigger = t->trigger;
+                        }
                         if (t->kind != TransitionEdgeKind::Internal) {
                             all_internal = false;
                         }
@@ -368,7 +373,7 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                     pt.target = dst_product;
                     pt.target_id = compute_deterministic_id(dst_product);
                     pt.event = ev;
-                    pt.trigger = SignalTrigger(ev);
+                    pt.trigger = preserved_trigger.has_value() ? *preserved_trigger : TriggerVariant(SignalTrigger(ev));
                     pt.kind = (any_chosen && all_internal && src_product == dst_product) ? TransitionEdgeKind::Internal
                                                                                          : TransitionEdgeKind::External;
                     pt.priority = priority;
@@ -446,6 +451,24 @@ bool OrthogonalProductPass::expand_parallel_state(FsmIr& ir, const std::string& 
                     pt.target_ids = {dst_product};
                     pt.multi_target_ids = {pt.target_id};
                     pt.id = compute_deterministic_id(pt.source + "->" + pt.target + ":" + pt.get_trigger_name());
+                    if (src_product != dst_product) {
+                        for (std::size_t idx = 0; idx < regions.size(); ++idx) {
+                            if (tup[idx] == next_tup[idx]) {
+                                if (const auto* m_node = ir.find_state(tup[idx])) {
+                                    for (const auto& act : m_node->exit_actions) {
+                                        if (!act.name.empty()) {
+                                            pt.skip_exit_actions.push_back(act.name);
+                                        }
+                                    }
+                                    for (const auto& act : m_node->entry_actions) {
+                                        if (!act.name.empty()) {
+                                            pt.skip_entry_actions.push_back(act.name);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     new_product_transitions.push_back(std::move(pt));
                 }
             }

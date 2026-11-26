@@ -854,4 +854,43 @@ TEST(OrthogonalProduct, SimultaneousRegions_CombinesAllConditionActions) {
     EXPECT_TRUE(found_combined);
 }
 
+/**
+ * @brief Regression (BUG-34): Verify OrthogonalProductPass preserves TimeTrigger on intra-region
+ * timed transitions instead of overwriting them with SignalTrigger.
+ */
+TEST(OrthogonalProduct, IntraRegionTimeTrigger_PreservedInProductTransitions) {
+    FsmIr model;
+    model.name = "OrthoTimed";
+    model.initial_state = "P";
+
+    auto& par = model.add_state("P", "", StateKind::Parallel);
+    OrthogonalRegion r1{"R1", "R1", "A1", {"A1", "A2"}, 0};
+    OrthogonalRegion r2{"R2", "R2", "B1", {"B1", "B2"}, 0};
+    par.orthogonal_regions = {r1, r2};
+
+    model.add_state("A1", "R1");
+    model.add_state("A2", "R1");
+    model.add_state("B1", "R2");
+    model.add_state("B2", "R2");
+
+    model.add_transition(TransitionEdge("A1", "A2", "GoA"));
+    TransitionEdge timed("B1", "B2", "after_100ms");
+    timed.trigger = TimeTrigger(TimeTriggerKind::After, 100, TimeUnit::Milliseconds);
+    model.add_transition(timed);
+
+    DiagnosticEngine diag;
+    OrthogonalProductPass pass;
+    ASSERT_TRUE(pass.run(model, diag));
+
+    bool found_timed = false;
+    for (const auto& t : model.transitions) {
+        if (t.source == "P_A2_B1" && t.target == "P_A2_B2") {
+            ASSERT_TRUE(std::holds_alternative<TimeTrigger>(t.trigger));
+            EXPECT_EQ(std::get<TimeTrigger>(t.trigger).duration_in_ms(), 100U);
+            found_timed = true;
+        }
+    }
+    EXPECT_TRUE(found_timed);
+}
+
 }  // namespace

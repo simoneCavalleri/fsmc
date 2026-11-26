@@ -704,4 +704,46 @@ TEST(DotParser, LocalTransition_PreservedAcrossSerializerRoundtrip) {
     EXPECT_TRUE(found_external);
 }
 
+/**
+ * @brief Regression (BUG-38): `DotSerializer` and `DotParser` preserve both Shallow (`[H]`)
+ * and Deep (`[H*]`) History transition targets across DOT roundtrips.
+ */
+TEST(DotParser, ShallowAndDeepHistoryTransitions_PreservedAcrossSerializerRoundtrip) {
+    FsmIr ir;
+    ir.name = "DotHistRt";
+    ir.initial_state = "Outer";
+    auto& outer = ir.add_state("Outer");
+    outer.is_composite = true;
+    outer.initial_sub_state = "Sub1";
+    outer.has_history = true;
+    outer.has_deep_history = true;
+    ir.add_state("Sub1", "Outer");
+    ir.add_state("Paused");
+
+    TransitionEdge pause("Outer", "Paused", "Pause");
+    ir.add_transition(pause);
+    TransitionEdge resume("Paused", "Outer", "Resume");
+    resume.target_is_history = true;
+    resume.target_is_deep_history = true;
+    ir.add_transition(resume);
+
+    const std::string dot = DotSerializer::serialize(ir);
+    EXPECT_NE(dot.find("__hist_Outer__"), std::string::npos) << dot;
+
+    DotParser parser;
+    FsmIr parsed;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(dot, parsed, err)) << err.render_to_string();
+    bool found_resume = false;
+    for (const auto& t : parsed.transitions) {
+        if (t.event == "Resume") {
+            EXPECT_EQ(t.target, "Outer");
+            EXPECT_TRUE(t.target_is_history);
+            EXPECT_TRUE(t.target_is_deep_history);
+            found_resume = true;
+        }
+    }
+    EXPECT_TRUE(found_resume);
+}
+
 }  // namespace

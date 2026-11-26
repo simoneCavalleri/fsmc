@@ -284,9 +284,10 @@ WorkspaceMetadata extract_port_defs_and_bindings(std::string_view combined_conte
             feat.signal_type = sanitize_identifier((*iit)[3].str());
             spec.item_features.push_back(std::move(feat));
         }
+        std::unordered_set<std::string> seen_data_feats;
         for (std::sregex_iterator dit(body.begin(), body.end(), data_feat_re), dend; dit != dend; ++dit) {
             const std::string fname = sanitize_identifier((*dit)[2].str());
-            if (fname == "item") {
+            if (fname == "item" || !seen_data_feats.insert(fname).second) {
                 continue;
             }
             PortDefDataFeature feat;
@@ -296,6 +297,21 @@ WorkspaceMetadata extract_port_defs_and_bindings(std::string_view combined_conte
                                                 : PortDirection::In;
             feat.name = fname;
             feat.raw_type = (*dit)[3].str();
+            spec.data_features.push_back(std::move(feat));
+        }
+        // Also capture undirected `attribute <name> : <Type>;` fields inside `port def`
+        // (used when direction is specified on the port instance, e.g. `in port s : SensorP;`)
+        static const std::regex undirected_attr_re(
+            R"(\battribute\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_:]+)\s*;)");
+        for (std::sregex_iterator uit(body.begin(), body.end(), undirected_attr_re), uend; uit != uend; ++uit) {
+            const std::string fname = sanitize_identifier((*uit)[1].str());
+            if (fname == "item" || !seen_data_feats.insert(fname).second) {
+                continue;
+            }
+            PortDefDataFeature feat;
+            feat.direction = PortDirection::In;
+            feat.name = fname;
+            feat.raw_type = (*uit)[2].str();
             spec.data_features.push_back(std::move(feat));
         }
         meta.port_defs[pd_name] = std::move(spec);
@@ -348,6 +364,27 @@ WorkspaceMetadata extract_port_defs_and_bindings(std::string_view combined_conte
 
 void apply_port_bindings_to_model(const WorkspaceMetadata& meta, const std::string& state_def_name, FsmIr& model,
                                   const Sysml2SymbolResolver& resolver) {
+    // Materialize `port def` types referenced directly by `in/out port p : PortDef;` inside `state def`
+    // as local POD structs in `model.custom_types` so C++ and C99 backends emit valid struct definitions.
+    for (const auto& port : model.ports) {
+        if (!port.type.is_custom()) {
+            continue;
+        }
+        const std::string& tname = port.type.custom_name();
+        if (model.find_type(tname) != nullptr) {
+            continue;
+        }
+        auto pd_it = meta.port_defs.find(tname);
+        if (pd_it == meta.port_defs.end()) {
+            continue;
+        }
+        TypeDefinition td(tname, TypeKind::Struct);
+        for (const auto& df : pd_it->second.data_features) {
+            td.fields.emplace_back(df.name, DataType::from_string(map_raw_type_to_cpp(df.raw_type, resolver)));
+        }
+        model.add_type(std::move(td));
+    }
+
     auto it = meta.state_def_ports.find(state_def_name);
     if (it == meta.state_def_ports.end()) {
         return;

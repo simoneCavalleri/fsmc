@@ -78,7 +78,7 @@ std::string emit_c99_source(const C99EmitPlan& plan) {
         src << "    fsm->state_elapsed_ms = 0ULL;\n";
         for (const auto& rf : reg_fields) {
             if (!rf.is_struct && !rf.init_expr.empty()) {
-                src << "    fsm->regs." << rf.name << " = " << rf.init_expr << ";\n";
+                src << "    fsm->regs." << rf.name << " = " << translate_expr_to_c(rf.init_expr, ctx) << ";\n";
             }
         }
         if (const auto* init_st = processed.find_state(processed.initial_state)) {
@@ -130,12 +130,17 @@ std::string emit_c99_source(const C99EmitPlan& plan) {
     src << "}\n\n";
 
     // Snapshot size / save / restore
-    // Layout: [4 magic] [4 version=1] [4 state] [8 elapsed_ms] [sizeof(regs)] [4 fnv1a_32]
+    // Layout: [4 magic] [4 version=1] [4 state] [8 elapsed_ms] [sizeof(regs)] ([4 deferred_count]
+    // [sizeof(deferred_queue)] if deferred) [4 fnv1a_32]
     src << "size_t " << ctx.prefix << "_snapshot_size(const " << ctx.prefix << "_fsm_t* fsm) {\n";
     src << "    if (fsm == NULL) {\n";
     src << "        return 0U;\n";
     src << "    }\n";
-    src << "    return 24U + sizeof(fsm->regs);\n";
+    if (plan.has_deferred) {
+        src << "    return 28U + sizeof(fsm->regs) + sizeof(fsm->deferred_queue);\n";
+    } else {
+        src << "    return 24U + sizeof(fsm->regs);\n";
+    }
     src << "}\n\n";
 
     src << "bool " << ctx.prefix << "_save_snapshot(const " << ctx.prefix
@@ -144,6 +149,9 @@ std::string emit_c99_source(const C99EmitPlan& plan) {
     src << "    const uint32_t magic = 0x434D5346U; /* 'FSMC' */\n";
     src << "    const uint32_t version = 1U;\n";
     src << "    uint32_t state_u32;\n";
+    if (plan.has_deferred) {
+        src << "    uint32_t def_count_u32;\n";
+    }
     src << "    uint32_t crc;\n";
     src << "    size_t offset = 0U;\n";
     src << "    if (fsm == NULL || out_buf == NULL || capacity < needed) {\n";
@@ -158,6 +166,12 @@ std::string emit_c99_source(const C99EmitPlan& plan) {
     src << "    memcpy(out_buf + offset, &state_u32, 4U); offset += 4U;\n";
     src << "    memcpy(out_buf + offset, &fsm->state_elapsed_ms, 8U); offset += 8U;\n";
     src << "    memcpy(out_buf + offset, &fsm->regs, sizeof(fsm->regs)); offset += sizeof(fsm->regs);\n";
+    if (plan.has_deferred) {
+        src << "    def_count_u32 = (uint32_t)fsm->deferred_count;\n";
+        src << "    memcpy(out_buf + offset, &def_count_u32, 4U); offset += 4U;\n";
+        src << "    memcpy(out_buf + offset, fsm->deferred_queue, sizeof(fsm->deferred_queue)); offset += "
+               "sizeof(fsm->deferred_queue);\n";
+    }
     src << "    crc = " << ctx.prefix << "_fnv1a_32(out_buf, offset);\n";
     src << "    memcpy(out_buf + offset, &crc, 4U); offset += 4U;\n";
     src << "    if (bytes_written != NULL) {\n";
@@ -174,6 +188,10 @@ std::string emit_c99_source(const C99EmitPlan& plan) {
     src << "    uint32_t state_u32 = 0U;\n";
     src << "    uint64_t elapsed_ms = 0ULL;\n";
     src << "    " << ctx.prefix << "_registers_t tmp_regs;\n";
+    if (plan.has_deferred) {
+        src << "    uint32_t def_count_u32 = 0U;\n";
+        src << "    " << ctx.prefix << "_deferred_event_t tmp_def[" << ctx.upper_prefix << "_MAX_DEFERRED];\n";
+    }
     src << "    uint32_t stored_crc = 0U;\n";
     src << "    uint32_t computed_crc = 0U;\n";
     src << "    size_t offset = 0U;\n";
@@ -188,10 +206,18 @@ std::string emit_c99_source(const C99EmitPlan& plan) {
     src << "    memcpy(&state_u32, buf + offset, 4U); offset += 4U;\n";
     src << "    memcpy(&elapsed_ms, buf + offset, 8U); offset += 8U;\n";
     src << "    memcpy(&tmp_regs, buf + offset, sizeof(tmp_regs)); offset += sizeof(tmp_regs);\n";
+    if (plan.has_deferred) {
+        src << "    memcpy(&def_count_u32, buf + offset, 4U); offset += 4U;\n";
+        src << "    memcpy(tmp_def, buf + offset, sizeof(tmp_def)); offset += sizeof(tmp_def);\n";
+    }
     src << "    computed_crc = " << ctx.prefix << "_fnv1a_32(buf, offset);\n";
     src << "    memcpy(&stored_crc, buf + offset, 4U); offset += 4U;\n";
     src << "    if (magic != 0x434D5346U || version != 1U || state_u32 >= (uint32_t)" << ctx.upper_prefix
-        << "_STATE_COUNT || stored_crc != computed_crc) {\n";
+        << "_STATE_COUNT || stored_crc != computed_crc";
+    if (plan.has_deferred) {
+        src << " || def_count_u32 > (uint32_t)" << ctx.upper_prefix << "_MAX_DEFERRED";
+    }
+    src << ") {\n";
     src << "        if (bytes_read != NULL) {\n";
     src << "            *bytes_read = 0U;\n";
     src << "        }\n";
@@ -200,6 +226,11 @@ std::string emit_c99_source(const C99EmitPlan& plan) {
     src << "    fsm->state = (" << ctx.prefix << "_state_t)state_u32;\n";
     src << "    fsm->state_elapsed_ms = elapsed_ms;\n";
     src << "    fsm->regs = tmp_regs;\n";
+    if (plan.has_deferred) {
+        src << "    fsm->deferred_count = (size_t)def_count_u32;\n";
+        src << "    memcpy(fsm->deferred_queue, tmp_def, sizeof(tmp_def));\n";
+        src << "    fsm->recalling_deferred = false;\n";
+    }
     src << "    if (bytes_read != NULL) {\n";
     src << "        *bytes_read = offset;\n";
     src << "    }\n";

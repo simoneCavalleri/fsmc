@@ -250,7 +250,9 @@ void CppModelEmitter::emit_transition_table(std::ostream& out, const FsmIr& mode
                                     t.kind == TransitionEdgeKind::Local);
                 }
                 std::string default_sub =
-                    !target_node->initial_sub_state.empty() ? target_node->initial_sub_state : sub_states[0];
+                    !target_node->history_default_sub_state.empty()
+                        ? target_node->history_default_sub_state
+                        : (!target_node->initial_sub_state.empty() ? target_node->initial_sub_state : sub_states[0]);
                 default_sub = find_initial_leaf_substate(find_initial_leaf_substate, default_sub);
                 emit_single_row(t.source, event_type, default_sub, action_type, guard_type,
                                 t.kind == TransitionEdgeKind::Local);

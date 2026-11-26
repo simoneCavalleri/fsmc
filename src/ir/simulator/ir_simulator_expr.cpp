@@ -312,6 +312,16 @@ std::vector<SimulatedEvent> parse_trace_input(const std::string& content) {
                 } catch (...) {
                     ev.string_payload[k] = v;
                 }
+            } else if ((ev.name == "tick" || ev.name == "wait" || ev.name == "advance") &&
+                       ev.numeric_payload.count("delta_ms") == 0U) {
+                try {
+                    std::string num_s = tok;
+                    if (num_s.size() > 2 && num_s.compare(num_s.size() - 2, 2, "ms") == 0) {
+                        num_s.erase(num_s.size() - 2);
+                    }
+                    ev.numeric_payload["delta_ms"] = std::stod(num_s);
+                } catch (...) {
+                }
             }
         }
         if (!ev.name.empty()) {

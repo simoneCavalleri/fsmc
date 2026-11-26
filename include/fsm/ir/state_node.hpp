@@ -106,13 +106,14 @@ struct StateNode {
     std::vector<OrthogonalRegion> orthogonal_regions;  ///< Parallel regions for orthogonal execution
     std::optional<SubmachineRef> submachine;           ///< Reusable sub-machine statechart invocation
 
-    bool is_composite{false};       ///< True if state encapsulates substates
-    bool pinned_parent{false};      ///< When true, normalize_hierarchy must not clear
-                                    ///<   parent_state (set by OrthogonalProductPass for
-                                    ///<   synthesised Cartesian product states).
-    std::string initial_sub_state;  ///< Default sub-state on hierarchical entry
-    bool has_history{false};        ///< True if shallow history pseudo-state [H] is active
-    bool has_deep_history{false};   ///< True if deep history pseudo-state [H*] is active
+    bool is_composite{false};               ///< True if state encapsulates substates
+    bool pinned_parent{false};              ///< When true, normalize_hierarchy must not clear
+                                            ///<   parent_state (set by OrthogonalProductPass for
+                                            ///<   synthesised Cartesian product states).
+    std::string initial_sub_state;          ///< Default sub-state on hierarchical entry
+    bool has_history{false};                ///< True if shallow history pseudo-state [H] is active
+    bool has_deep_history{false};           ///< True if deep history pseudo-state [H*] is active
+    std::string history_default_sub_state;  ///< Optional default substate for unvisited [H]/[H*] entry (W3C SCXML)
 
     std::vector<ActionSignature> entry_actions;  ///< Ordered entry action signatures
     std::vector<ActionSignature> exit_actions;   ///< Ordered exit action signatures

@@ -53,6 +53,12 @@ GeneratedC99Bundle C99Generator::generate(const FsmIr& model, const C99Generator
         } else if (td.kind == TypeKind::Enum) {
             const std::string c_alias = ctx.prefix + "_" + to_snake_case(td.name) + "_t";
             ctx.custom_c_types[td.name] = c_alias;
+            const std::string en_upper = ctx.upper_prefix + "_" + to_upper_ascii(to_snake_case(td.name));
+            for (const auto& lit : td.literals) {
+                const std::string c_lit = en_upper + "_" + to_upper_ascii(to_snake_case(lit.name));
+                ctx.enum_literals[td.name + "::" + lit.name] = c_lit;
+                ctx.enum_literals[td.name + "." + lit.name] = c_lit;
+            }
             local_enums.push_back(&td);
         }
     }

@@ -298,6 +298,9 @@ bool Sysml2Parser::parse_impl(std::string_view content, FsmIr& model, std::strin
         }
     }
 
+    // Materialize any `port def` types referenced by `in/out port p : PortDef;` inside `state def`
+    sysml2_detail::apply_port_bindings_to_model(ws_meta, model.name, model, symbol_resolver);
+
     return true;
 }
 

@@ -752,4 +752,33 @@ TEST(ScxmlParserTest, InitialChildElement_ResolvesRootAndCompositeInitialState) 
     EXPECT_EQ(active->initial_sub_state, "Sub2");
 }
 
+/**
+ * @brief Test Intent: Verify W3C SCXML `<history><transition target="S2"/></history>` records the default
+ * history target distinct from the composite state's `initial` substate.
+ */
+TEST(ScxmlParserTest, HistoryDefaultTransitionTarget_ParsedIntoHistoryDefaultSubState) {
+    const std::string scxml = R"(<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" name="HistDef" initial="Standby">
+  <state id="Standby">
+    <transition event="EnterHist" target="Work_h"/>
+  </state>
+  <state id="Work" initial="S1">
+    <history id="Work_h" type="shallow">
+      <transition target="S2"/>
+    </history>
+    <state id="S1"/>
+    <state id="S2"/>
+  </state>
+</scxml>
+)";
+    ScxmlParser parser;
+    FsmIr ir;
+    fsm::diagnostic::DiagnosticEngine diag;
+    ASSERT_TRUE(parser.parse(scxml, ir, diag)) << diag.render_to_string();
+    const auto* work = ir.find_state("Work");
+    ASSERT_NE(work, nullptr);
+    EXPECT_EQ(work->initial_sub_state, "S1");
+    EXPECT_EQ(work->history_default_sub_state, "S2");
+}
+
 }  // namespace

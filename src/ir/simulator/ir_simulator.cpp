@@ -244,7 +244,7 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
     std::unordered_map<std::string, std::string> shallow_history;
     std::unordered_map<std::string, std::string> deep_history;
 
-    auto resolve_entry_target = [&](const std::string& raw_target) -> std::string {
+    auto resolve_entry_target = [&](const std::string& raw_target, bool via_history = false) -> std::string {
         std::string target = raw_target;
         std::size_t depth = 0;
         while (const auto* st = model.find_state(target)) {
@@ -256,9 +256,14 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
                     return it->second;
                 }
                 const auto* parent = model.find_state(st->parent_state);
-                if (parent != nullptr && !parent->initial_sub_state.empty()) {
-                    target = parent->initial_sub_state;
-                    continue;
+                if (parent != nullptr) {
+                    const std::string& def_sub = !parent->history_default_sub_state.empty()
+                                                     ? parent->history_default_sub_state
+                                                     : parent->initial_sub_state;
+                    if (!def_sub.empty()) {
+                        target = def_sub;
+                        continue;
+                    }
                 }
                 break;
             }
@@ -268,9 +273,14 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
                     continue;
                 }
                 const auto* parent = model.find_state(st->parent_state);
-                if (parent != nullptr && !parent->initial_sub_state.empty()) {
-                    target = parent->initial_sub_state;
-                    continue;
+                if (parent != nullptr) {
+                    const std::string& def_sub = !parent->history_default_sub_state.empty()
+                                                     ? parent->history_default_sub_state
+                                                     : parent->initial_sub_state;
+                    if (!def_sub.empty()) {
+                        target = def_sub;
+                        continue;
+                    }
                 }
                 break;
             }
@@ -282,11 +292,18 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
             if (st->has_history) {
                 if (auto it = shallow_history.find(st->name); it != shallow_history.end()) {
                     target = it->second;
+                    via_history = false;
+                    continue;
+                }
+                if (via_history && !st->history_default_sub_state.empty()) {
+                    target = st->history_default_sub_state;
+                    via_history = false;
                     continue;
                 }
             }
             if (!st->initial_sub_state.empty()) {
                 target = st->initial_sub_state;
+                via_history = false;
             } else {
                 break;
             }
@@ -332,6 +349,7 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
 
     std::deque<SimulatedEvent> deferred_queue;
     std::size_t step_counter = 0;
+    std::uint64_t state_elapsed_ms = 0U;
 
     auto process_event = [&](const SimulatedEvent& ev, bool is_recalled) -> bool {
         const std::size_t step = step_counter++;
@@ -340,6 +358,14 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
         trace_step.from_state = current_state;
         trace_step.event = ev.name;
         trace_step.recalled = is_recalled;
+
+        const bool is_time_tick = (ev.name == "tick" || ev.name == "wait" || ev.name == "advance");
+        if (is_time_tick) {
+            auto dit = ev.numeric_payload.find("delta_ms");
+            if (dit != ev.numeric_payload.end() && dit->second > 0.0) {
+                state_elapsed_ms += static_cast<std::uint64_t>(dit->second);
+            }
+        }
 
         auto step_env = env;
         for (const auto& [k, v] : ev.numeric_payload) {
@@ -381,7 +407,12 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
                 if (tr.source != probe) {
                     continue;
                 }
-                if (tr.get_trigger_name() != ev.name) {
+                if (is_time_tick) {
+                    const auto* tt = std::get_if<TimeTrigger>(&tr.trigger);
+                    if (tt == nullptr || state_elapsed_ms < tt->duration_in_ms()) {
+                        continue;
+                    }
+                } else if (tr.get_trigger_name() != ev.name) {
                     continue;
                 }
                 bool sym = false;
@@ -465,7 +496,18 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
         active_emitted_log = &trace_step.emitted_events;
 
         const bool is_internal = (matched->kind == TransitionEdgeKind::Internal);
-        std::string next_state = is_internal ? current_state : resolve_entry_target(matched->target);
+        const bool via_hist = matched->target_is_history || matched->target_is_deep_history;
+        std::string next_state = is_internal ? current_state : resolve_entry_target(matched->target, via_hist);
+        if (const auto* tt = std::get_if<TimeTrigger>(&matched->trigger)) {
+            if ((tt->periodic || tt->kind == TimeTriggerKind::Every) && tt->duration_in_ms() > 0U &&
+                state_elapsed_ms >= tt->duration_in_ms()) {
+                state_elapsed_ms -= tt->duration_in_ms();
+            } else if (!is_internal) {
+                state_elapsed_ms = 0U;
+            }
+        } else if (!is_internal) {
+            state_elapsed_ms = 0U;
+        }
 
         if (is_internal) {
             if (matched->condition_action.has_value()) {

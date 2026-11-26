@@ -2122,4 +2122,36 @@ package MultiPkg {
     EXPECT_TRUE(found_warn);
 }
 
+/**
+ * @brief Test Intent: Verify `in port s : PortDef;` inside `state def` materializes `PortDef` as a struct
+ * TypeDefinition in `custom_types` so C++ and C99 codegen compile cleanly.
+ */
+TEST(Sysml2ParserTest, PortDefInsideStateDef_MaterializesStructType) {
+    const std::string sysml = R"(
+package PortStructPkg {
+    private import ScalarValues::*;
+    port def SensorP {
+        attribute temp : Integer;
+    }
+    attribute def EvSample;
+    state def SensorFsm {
+        in port s : SensorP;
+        entry; then Safe;
+        state Safe;
+        state Hazard;
+        transition first Safe accept EvSample if s.temp > 100 then Hazard;
+    }
+}
+)";
+    Sysml2Parser parser;
+    FsmIr ir;
+    fsm::diagnostic::DiagnosticEngine diag;
+    ASSERT_TRUE(parser.parse(sysml, ir, diag)) << diag.render_to_string();
+    const auto* td = ir.find_type("SensorP");
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(td->kind, TypeKind::Struct);
+    ASSERT_EQ(td->fields.size(), 1U);
+    EXPECT_EQ(td->fields[0].name, "temp");
+}
+
 }  // namespace

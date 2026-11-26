@@ -52,7 +52,17 @@ std::optional<int> handle_auxiliary_modes(const FsmcOptions& opts, const fsm::ir
         }
         SimulationOptions sim_opts;
         sim_opts.strict_guards = opts.strict_determinism;
-        auto report = IrSimulator::simulate_detailed(model, trace_content, std::cout, sim_opts);
+        FsmIr sim_model = model;
+        {
+            PassManager sim_pm;
+            sim_pm.add_pass(PassManager::create_pass_by_name("connective-junction-chaining"));
+            sim_pm.add_pass(PassManager::create_pass_by_name("choice-inlining"));
+            sim_pm.add_pass(PassManager::create_pass_by_name("fork-join-lowering"));
+            sim_pm.add_pass(PassManager::create_pass_by_name("orthogonal-product"));
+            DiagnosticEngine sim_diag;
+            sim_pm.run(sim_model, sim_diag);
+        }
+        auto report = IrSimulator::simulate_detailed(sim_model, trace_content, std::cout, sim_opts);
         if (!opts.trace_out_file.empty()) {
             std::string write_err;
             if (!write_file_content(opts.trace_out_file, report.to_json(), write_err)) {

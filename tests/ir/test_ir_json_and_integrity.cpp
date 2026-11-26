@@ -224,4 +224,55 @@ TEST(IrJsonAndIntegrityTest, SchemaFileAndPassRegistryPresence) {
     EXPECT_NE(ss.str().find("\"ir_schema_version\""), std::string::npos);
 }
 
+/**
+ * @brief Verify FsmIrDeserializer preserves entry_actions and deferred_events in array-form `states`,
+ *        and resolves XState v5 `#MachineId.Parent.Child` absolute targets and `reenter: false` local transitions.
+ */
+TEST(IrJsonAndIntegrityTest, JsonDeserializer_ArrayStatesAndXStateV5Targets) {
+    const std::string arr_json = R"({
+        "ir_schema_version": "1.0",
+        "name": "ArrStates",
+        "initial_state": "Busy",
+        "states": [
+            {
+                "name": "Busy",
+                "entry_actions": [{"name": "on_busy"}],
+                "deferred_events": ["Work"]
+            },
+            {"name": "Done"}
+        ],
+        "transitions": [{"source": "Busy", "target": "Done", "event": "Finish"}]
+    })";
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(FsmIrDeserializer::deserialize_json(arr_json, ir, err)) << err;
+    const auto* busy = ir.find_state("Busy");
+    ASSERT_NE(busy, nullptr);
+    ASSERT_EQ(busy->entry_actions.size(), 1U);
+    EXPECT_EQ(busy->entry_actions[0].name, "on_busy");
+    EXPECT_EQ(busy->deferred_events, (std::vector<std::string>{"Work"}));
+
+    const std::string xstate_json = R"({
+        "id": "Traffic",
+        "initial": "Active",
+        "states": {
+            "Active": {
+                "initial": "Green",
+                "on": {
+                    "Reset": {"target": "#Traffic.Active.Green", "reenter": false}
+                },
+                "states": {
+                    "Green": {},
+                    "Yellow": {}
+                }
+            }
+        }
+    })";
+    FsmIr xs_ir;
+    ASSERT_TRUE(FsmIrDeserializer::deserialize_json(xstate_json, xs_ir, err)) << err;
+    ASSERT_EQ(xs_ir.transitions.size(), 1U);
+    EXPECT_EQ(xs_ir.transitions[0].target, "Green");
+    EXPECT_EQ(xs_ir.transitions[0].kind, TransitionEdgeKind::Local);
+}
+
 }  // namespace

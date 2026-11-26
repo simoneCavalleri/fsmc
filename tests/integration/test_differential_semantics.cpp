@@ -934,4 +934,27 @@ TEST(DifferentialSemantics, LocalVsExternalTransitionSemantics_Uml251) {
     }
 }
 
+/**
+ * @brief Test Intent: Verify IrSimulator advances state_elapsed_ms via `tick <ms>` trace steps and triggers
+ * `TimeTrigger` (`after`) transitions.
+ */
+TEST(DifferentialSemantics, IrSimulator_TickAdvancesElapsedMsForTimeTriggers) {
+    using namespace fsm::ir;
+    FsmIr ir;
+    ir.name = "BlinkerSim";
+    ir.initial_state = "OffState";
+    ir.add_state("OffState");
+    ir.add_state("OnState");
+    TransitionEdge t("OffState", "OnState", "");
+    t.trigger = TimeTrigger(100U);
+    ir.add_transition(std::move(t));
+
+    std::ostringstream log;
+    auto rep = IrSimulator::simulate_detailed(ir, "tick 60\ntick 50\n", log);
+    ASSERT_EQ(rep.steps.size(), 2U);
+    EXPECT_FALSE(rep.steps[0].handled);
+    EXPECT_TRUE(rep.steps[1].handled);
+    EXPECT_EQ(rep.final_state, "OnState");
+}
+
 }  // namespace

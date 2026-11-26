@@ -629,4 +629,26 @@ Operational --> EStop : EStopCmd
     EXPECT_EQ(rough->parent_state, "Machining");
 }
 
+/**
+ * @brief Test Intent: Verify PlantUML supports both OMG UML 2.5 `State : Event / defer` and `State : defer / Event`
+ * without corrupting event names with leading underscores.
+ */
+TEST(PlantUmlParserTest, DeferredEvent_UmlStandardSlashDeferAndDeferSlashSyntax) {
+    const std::string puml = R"(
+@startuml
+[*] --> S1
+S1 : EvUml / defer
+S1 : defer / EvSlash
+S1 --> S2 : Go
+@enduml
+)";
+    FsmIr ir;
+    fsm::diagnostic::DiagnosticEngine diag;
+    PlantUmlParser parser;
+    ASSERT_TRUE(parser.parse(puml, ir, diag)) << diag.render_to_string();
+    const auto* s1 = ir.find_state("S1");
+    ASSERT_NE(s1, nullptr);
+    EXPECT_EQ(s1->deferred_events, (std::vector<std::string>{"EvUml", "EvSlash"}));
+}
+
 }  // namespace

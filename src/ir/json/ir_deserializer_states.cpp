@@ -7,8 +7,13 @@ namespace fsm::ir::json_detail {
 
 void parse_states_object(const JsonValue& states_obj, FsmIr& model, const std::string& current_parent) {
     for (std::size_t i = 0; i < states_obj.obj_keys.size(); ++i) {
-        const auto& state_key = states_obj.obj_keys[i];
-        const auto& state_data = states_obj.obj_values[i];
+        parse_single_state_entry(states_obj.obj_keys[i], states_obj.obj_values[i], model, current_parent);
+    }
+}
+
+void parse_single_state_entry(const std::string& state_key, const JsonValue& state_data, FsmIr& model,
+                              const std::string& current_parent) {
+    {
         const std::string state_name = sanitize_identifier(state_key);
         auto& node = model.add_state(state_name, current_parent);
         node.parent_state = current_parent;
@@ -24,7 +29,7 @@ void parse_states_object(const JsonValue& states_obj, FsmIr& model, const std::s
         }
 
         if (!state_data.is_object()) {
-            continue;
+            return;
         }
 
         auto* curr = model.find_state_mut(state_name);

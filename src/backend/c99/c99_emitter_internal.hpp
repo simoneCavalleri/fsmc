@@ -35,6 +35,7 @@ struct C99Context {
     std::string prefix;
     std::string upper_prefix;
     std::unordered_map<std::string, std::string> custom_c_types;
+    std::unordered_map<std::string, std::string> enum_literals;
     std::unordered_set<std::string> struct_ir_names;
     std::unordered_set<std::string> in_ports;
     std::unordered_set<std::string> out_ports;

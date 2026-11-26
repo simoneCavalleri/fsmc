@@ -623,10 +623,11 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
     } else if (states_obj != nullptr && states_obj->is_array()) {
         for (const auto& s_item : states_obj->arr_val) {
             if (s_item.is_object()) {
-                std::string s_name = sanitize_identifier(s_item.get_string("name", s_item.get_string("id")));
-                std::string p_name = sanitize_identifier(s_item.get_string("parent"));
+                std::string s_name = s_item.get_string("name", s_item.get_string("id"));
+                std::string p_name =
+                    sanitize_identifier(s_item.get_string("parent_state", s_item.get_string("parent")));
                 if (!s_name.empty()) {
-                    out_ir.add_state(s_name, p_name);
+                    parse_single_state_entry(s_name, s_item, out_ir, p_name);
                 }
             }
         }

@@ -263,8 +263,11 @@ bool PlantUmlParser::parse_impl(std::string_view content, FsmIr& out_model, std:
             continue;
         }
 
-        // Deferred events: StateName : defer EventName
-        if (trimmed.find(": defer ") != std::string_view::npos || trimmed.find(":defer ") != std::string_view::npos) {
+        // Deferred events: `StateName : defer EventName`, `StateName : defer / EventName`, or UML 2.5 `StateName :
+        // EventName / defer`
+        if (trimmed.find(": defer ") != std::string_view::npos || trimmed.find(":defer ") != std::string_view::npos ||
+            trimmed.find(": defer:") != std::string_view::npos || ends_with(trimmed, "/ defer") ||
+            ends_with(trimmed, "/defer")) {
             parse_deferred_event(trimmed, out_model, parent_stack);
             continue;
         }
@@ -385,10 +388,20 @@ void PlantUmlParser::parse_deferred_event(std::string_view line, FsmIr& model,
         rest = trim(rest.substr(7));
     } else if (starts_with(rest, "defer:") || starts_with(rest, "defer ")) {
         rest = trim(rest.substr(6));
+        if (!rest.empty() && (rest.front() == '/' || rest.front() == ':')) {
+            rest = trim(rest.substr(1));
+        }
+    } else if (ends_with(rest, "/ defer")) {
+        rest = trim(rest.substr(0, rest.size() - 7));
+    } else if (ends_with(rest, "/defer")) {
+        rest = trim(rest.substr(0, rest.size() - 6));
     } else {
         const auto defer_pos = rest.find("defer ");
         if (defer_pos != std::string_view::npos) {
             rest = trim(rest.substr(defer_pos + 6));
+            if (!rest.empty() && (rest.front() == '/' || rest.front() == ':')) {
+                rest = trim(rest.substr(1));
+            }
         } else {
             return;
         }

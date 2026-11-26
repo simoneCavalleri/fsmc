@@ -979,4 +979,35 @@ TEST(CameoParserTest, TriggerEventAttribute_ResolvesSignalEventToSignalName) {
     EXPECT_EQ(ir.transitions[0].event, "GoSignal");
 }
 
+/**
+ * @brief Test Intent: Verify Cameo/MagicDraw XMI `<deferrableTrigger event="..."/>` resolves SignalEvent to its
+ * referenced Signal name.
+ */
+TEST(CameoParserTest, DeferrableTriggerEventAttribute_ResolvesSignalName) {
+    const std::string xmi = R"(<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20131001">
+  <uml:Model xmi:id="m1" name="CameoDefTest">
+    <packagedElement xmi:type="uml:Signal" xmi:id="sig_def" name="DeferredSig"/>
+    <packagedElement xmi:type="uml:SignalEvent" xmi:id="ev_def" name="DefEv" signal="sig_def"/>
+    <packagedElement xmi:type="uml:StateMachine" xmi:id="sm1" name="CameoDefTest">
+      <region xmi:type="uml:Region" xmi:id="r1">
+        <subvertex xmi:type="uml:Pseudostate" xmi:id="init" kind="initial"/>
+        <subvertex xmi:type="uml:State" xmi:id="s1" name="Working">
+          <deferrableTrigger xmi:type="uml:Trigger" xmi:id="dt1" event="ev_def"/>
+        </subvertex>
+        <transition xmi:type="uml:Transition" xmi:id="t0" source="init" target="s1"/>
+      </region>
+    </packagedElement>
+  </uml:Model>
+</xmi:XMI>
+)";
+    CameoXmiParser parser;
+    FsmIr ir;
+    fsm::diagnostic::DiagnosticEngine diag;
+    ASSERT_TRUE(parser.parse(xmi, ir, diag)) << diag.render_to_string();
+    const auto* working = ir.find_state("Working");
+    ASSERT_NE(working, nullptr);
+    EXPECT_EQ(working->deferred_events, (std::vector<std::string>{"DeferredSig"}));
+}
+
 }  // namespace

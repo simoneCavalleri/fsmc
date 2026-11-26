@@ -435,3 +435,101 @@ int main(void) {
     ASSERT_EQ(std::system(("\"" + bin.string() + "\"").c_str()), 0);
     fs::remove_all(tmp_dir);
 }
+
+/**
+ * @brief Verify C99 backend escapes reserved C99/C++ keywords, translates qualified enum literals (Mode::Off),
+ *        and preserves queued deferred events across save/restore snapshots.
+ */
+TEST(C99Backend, KeywordEscapingQualifiedEnumsAndDeferredSnapshot_StrictC99) {
+    FsmIr ir;
+    ir.name = "ModeSnap";
+    ir.initial_state = "Busy";
+
+    TypeDefinition mode_en("Mode", TypeKind::Enum);
+    mode_en.add_literal("Off", 0);
+    mode_en.add_literal("Auto", 1);
+    ir.add_type(std::move(mode_en));
+
+    ir.add_port(PortDefinition("default", "int32_t", PortDirection::Out));
+    ir.add_variable(VariableDefinition("register", "int32_t", "0"));
+    ir.add_variable(VariableDefinition("mode", "Mode", "Mode::Off"));
+
+    ir.add_state("Busy");
+    ir.find_state_mut("Busy")->deferred_events.push_back("Work");
+    ir.add_state("Ready");
+    ir.add_state("Done");
+    ir.add_signal(SignalDefinition("Finish"));
+    ir.add_signal(SignalDefinition("Work"));
+
+    {
+        ActionSignature act("set_auto");
+        act.assignments.emplace_back(LValueTarget("mode", LValueScope::Register), "Mode::Auto");
+        act.assignments.emplace_back(LValueTarget("default", LValueScope::OutPort), "1");
+        TransitionEdge t("Busy", "Ready", "Finish");
+        t.set_guard("mode == Mode::Off");
+        t.transition_action = std::move(act);
+        ir.add_transition(std::move(t));
+    }
+    {
+        TransitionEdge t("Ready", "Done", "Work");
+        ir.add_transition(std::move(t));
+    }
+
+    auto pm = fsm::middleend::PassManager::create_lowering_pipeline(TargetCapabilities::c99_baremetal());
+    fsm::diagnostic::DiagnosticEngine diag;
+    ASSERT_TRUE(pm.run(ir, diag));
+
+    C99CodegenBackend backend;
+    const auto bundle = backend.emit_bundle(ir, diag);
+    ASSERT_FALSE(diag.has_errors());
+    EXPECT_EQ(bundle.source.find("Mode::"), std::string::npos);
+    EXPECT_NE(bundle.header.find("default_"), std::string::npos);
+    EXPECT_NE(bundle.header.find("register_"), std::string::npos);
+
+    const std::string cc = find_c_compiler();
+    if (cc.empty()) {
+        return;
+    }
+
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::temp_directory_path() / "fsmc_c99_kw_enum_snap_test";
+    fs::create_directories(tmp_dir);
+    {
+        std::ofstream hf(tmp_dir / "mode_snap.h");
+        hf << bundle.header;
+        std::ofstream cf(tmp_dir / "mode_snap.c");
+        cf << bundle.source;
+        std::ofstream mf(tmp_dir / "main.c");
+        mf << R"c(
+#include <assert.h>
+#include <stdint.h>
+#include "mode_snap.h"
+
+int main(void) {
+    mode_snap_fsm_t f1, f2;
+    uint8_t buf[512];
+    size_t w = 0U, r = 0U;
+    mode_snap_init(&f1);
+    mode_snap_init(&f2);
+    assert(f1.regs.mode == MODE_SNAP_MODE_OFF);
+    assert(mode_snap_dispatch_work(&f1, NULL, NULL) == MODE_SNAP_STATUS_OK);
+    assert(f1.deferred_count == 1U);
+    assert(mode_snap_save_snapshot(&f1, buf, sizeof(buf), &w));
+    assert(mode_snap_restore_snapshot(&f2, buf, w, &r));
+    assert(f2.deferred_count == 1U);
+    assert(mode_snap_dispatch_finish(&f2, NULL, NULL) == MODE_SNAP_STATUS_OK);
+    assert(mode_snap_current_state(&f2) == MODE_SNAP_STATE_DONE);
+    assert(f2.regs.mode == MODE_SNAP_MODE_AUTO);
+    return 0;
+}
+)c";
+    }
+
+    const fs::path bin = tmp_dir / "runner";
+    const std::string cmd = cc + " -std=c99 -Wall -Wextra -Werror -pedantic -I\"" + tmp_dir.string() + "\" \"" +
+                            (tmp_dir / "mode_snap.c").string() + "\" \"" + (tmp_dir / "main.c").string() + "\" -o \"" +
+                            bin.string() + "\"";
+    ASSERT_EQ(std::system(cmd.c_str()), 0) << "Strict C99 compile failed:\n" << cmd;
+    ASSERT_EQ(std::system(("\"" + bin.string() + "\"").c_str()), 0);
+    fs::remove_all(tmp_dir);
+}

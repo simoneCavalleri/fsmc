@@ -1333,8 +1333,9 @@ TEST(FsmcCliOptionsStandaloneTest, CounterexampleExporter_HonorsHeaderHintAndEmi
         fsm::tools::CounterexampleGTestExporter::export_gtest(ir, res, "custom_thermal.hpp", "my_ns");
     EXPECT_NE(code.find("#include \"custom_thermal.hpp\""), std::string::npos);
     EXPECT_NE(code.find("ThermalFsm::in_ports_type in{};"), std::string::npos);
+    EXPECT_NE(code.find("ThermalFsm::out_ports_type out{};"), std::string::npos);
     EXPECT_NE(code.find("in.temp = 100 + 1;"), std::string::npos);
-    EXPECT_NE(code.find("sm.dispatch(Tick{}, in);"), std::string::npos);
+    EXPECT_NE(code.find("sm.dispatch(Tick{}, in, out);"), std::string::npos);
 }
 
 }  // namespace

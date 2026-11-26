@@ -71,6 +71,17 @@ std::string sanitize_c_ident(std::string_view raw) {
     if (std::isdigit(static_cast<unsigned char>(res.front())) != 0) {
         res.insert(res.begin(), '_');
     }
+    static const std::unordered_set<std::string_view> kReservedKeywords = {
+        "auto",     "break",   "case",     "char",     "const",      "continue",  "default",   "do",
+        "double",   "else",    "enum",     "extern",   "float",      "for",       "goto",      "if",
+        "inline",   "int",     "long",     "register", "restrict",   "return",    "short",     "signed",
+        "sizeof",   "static",  "struct",   "switch",   "typedef",    "union",     "unsigned",  "void",
+        "volatile", "while",   "_Bool",    "_Complex", "_Imaginary", "class",     "namespace", "template",
+        "typename", "virtual", "override", "private",  "public",     "protected", "new",       "delete",
+        "try",      "catch",   "throw",    "bool",     "true",       "false",     "nullptr"};
+    if (kReservedKeywords.count(res) != 0U) {
+        res.push_back('_');
+    }
     return res;
 }
 
@@ -166,6 +177,20 @@ std::string translate_expr_to_c(std::string_view expr, const C99Context& ctx,
                 ++i;
             }
             const std::string tok(expr.substr(start, i - start));
+
+            // Check if followed by '::' (qualified enum literal: Mode::Auto -> PREFIX_MODE_AUTO)
+            if (i + 1 < n && expr[i] == ':' && expr[i + 1] == ':') {
+                std::size_t j = i + 2;
+                while (j < n && is_ident_char(expr[j])) {
+                    ++j;
+                }
+                const std::string member(expr.substr(i + 2, j - (i + 2)));
+                if (auto enum_it = ctx.enum_literals.find(tok + "::" + member); enum_it != ctx.enum_literals.end()) {
+                    out += enum_it->second;
+                    i = j;
+                    continue;
+                }
+            }
 
             // Check if followed by '.' (scoped access: in.x, out.y, reg.z, ev.a, or struct.field)
             if (i < n && expr[i] == '.') {

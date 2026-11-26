@@ -45,7 +45,8 @@ class CounterexampleGTestExporter {
             << "    // Violated property: " << result.property_formula << "\n"
             << "    " << model.name << " sm;\n";
         if (has_in_ports) {
-            out << "    " << model.name << "::in_ports_type in{};\n";
+            out << "    " << model.name << "::in_ports_type in{};\n"
+                << "    " << model.name << "::out_ports_type out{};\n";
         }
 
         auto emit_witness_assignments = [&](const std::string& raw_guard) {
@@ -107,12 +108,12 @@ class CounterexampleGTestExporter {
             if (!step.event_name.empty() && step.event_name != "anonymous_event" &&
                 step.event_name != "completion_event") {
                 if (has_in_ports) {
-                    out << "    sm.dispatch(" << step.event_name << "{}, in);\n";
+                    out << "    sm.dispatch(" << step.event_name << "{}, in, out);\n";
                 } else {
                     out << "    sm.dispatch(" << step.event_name << "{});\n";
                 }
             } else if (step.step_index > 0U && has_in_ports) {
-                out << "    sm.step(in);\n";
+                out << "    sm.step(in, out);\n";
             }
         }
         if (!final_state.empty()) {

@@ -14,6 +14,23 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
     bool is_history = false;
     bool is_deep = false;
     std::string clean_target = target_raw;
+    // Normalize XState v5 absolute targets (`#MachineId.Parent.Child` or `#MachineId.Parent.Parent_hist`)
+    if (!clean_target.empty() && clean_target.front() == '#') {
+        if (const auto dot = clean_target.rfind('.'); dot != std::string::npos && dot + 1U < clean_target.size()) {
+            clean_target = clean_target.substr(dot + 1U);
+        } else {
+            clean_target.erase(clean_target.begin());
+        }
+        if (clean_target.size() > 10U && clean_target.rfind("_deep_hist") == clean_target.size() - 10U) {
+            is_history = true;
+            is_deep = true;
+            clean_target.erase(clean_target.size() - 10U);
+        } else if (clean_target.size() > 5U && clean_target.rfind("_hist") == clean_target.size() - 5U) {
+            is_history = true;
+            is_deep = false;
+            clean_target.erase(clean_target.size() - 5U);
+        }
+    }
     if (clean_target.size() > 4 && clean_target.rfind("[H*]") == clean_target.size() - 4) {
         is_history = true;
         is_deep = true;
@@ -52,7 +69,11 @@ void parse_single_transition_object(const JsonValue& trans_obj, const std::strin
         trans.kind = transition_edge_kind_from_string(kind_str);
     } else if (const auto* reenter_val = trans_obj.get_child("reenter");
                reenter_val != nullptr && reenter_val->type == JsonType::Bool) {
-        trans.kind = reenter_val->bool_val ? TransitionEdgeKind::External : TransitionEdgeKind::Internal;
+        if (reenter_val->bool_val) {
+            trans.kind = TransitionEdgeKind::External;
+        } else {
+            trans.kind = clean_target.empty() ? TransitionEdgeKind::Internal : TransitionEdgeKind::Local;
+        }
     } else if (const auto* internal_val = trans_obj.get_child("internal");
                internal_val != nullptr && internal_val->type == JsonType::Bool) {
         trans.kind = internal_val->bool_val ? TransitionEdgeKind::Internal : TransitionEdgeKind::External;

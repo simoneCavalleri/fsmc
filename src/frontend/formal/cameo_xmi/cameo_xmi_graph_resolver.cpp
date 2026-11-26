@@ -350,33 +350,58 @@ void CameoXmiGraphResolver::process_subvertex(const std::shared_ptr<XmlNode>& ve
             }
             // Deferred event triggers
         } else if (act->tag == "deferrableTrigger" || ends_with(act->tag, ":deferrableTrigger")) {
+            auto resolve_trigger_ref = [&](const std::string& ref_id) -> std::string {
+                if (ref_id.empty()) {
+                    return {};
+                }
+                if (auto map_it = id_map.find(ref_id); map_it != id_map.end()) {
+                    const auto& ev_node = map_it->second;
+                    std::string sig_ref = ev_node->get_attr("signal");
+                    if (!sig_ref.empty()) {
+                        if (auto sig_it = id_map.find(sig_ref);
+                            sig_it != id_map.end() && !sig_it->second->get_attr("name").empty()) {
+                            return sig_it->second->get_attr("name");
+                        }
+                    }
+                    std::string op_ref = ev_node->get_attr("operation");
+                    if (!op_ref.empty()) {
+                        if (auto op_it = id_map.find(op_ref);
+                            op_it != id_map.end() && !op_it->second->get_attr("name").empty()) {
+                            return op_it->second->get_attr("name");
+                        }
+                    }
+                    if (!ev_node->get_attr("name").empty()) {
+                        return ev_node->get_attr("name");
+                    }
+                }
+                if (auto it = id_to_name.find(ref_id); it != id_to_name.end()) {
+                    return it->second;
+                }
+                return {};
+            };
+
             std::string def_name = act->get_attr("name");
-            std::string trig_id = act->get_attr("xmi:idref");
+            std::string trig_id = act->get_attr("event");
+            if (trig_id.empty())
+                trig_id = act->get_attr("xmi:idref");
             if (trig_id.empty())
                 trig_id = act->get_attr("idref");
-            if (trig_id.empty())
-                trig_id = act->get_attr("event");
             if (!trig_id.empty()) {
-                auto it = id_to_name.find(trig_id);
-                if (it != id_to_name.end()) {
-                    def_name = it->second;
+                std::string resolved = resolve_trigger_ref(trig_id);
+                if (!resolved.empty()) {
+                    def_name = resolved;
                 }
             }
             if (def_name.empty()) {
                 for (const auto& trig : act->find_children("trigger")) {
                     def_name = trig->get_attr("name");
                     if (def_name.empty()) {
-                        std::string ref = trig->get_attr("xmi:idref");
+                        std::string ref = trig->get_attr("event");
+                        if (ref.empty())
+                            ref = trig->get_attr("xmi:idref");
                         if (ref.empty())
                             ref = trig->get_attr("idref");
-                        if (ref.empty())
-                            ref = trig->get_attr("event");
-                        if (!ref.empty()) {
-                            auto it = id_to_name.find(ref);
-                            if (it != id_to_name.end()) {
-                                def_name = it->second;
-                            }
-                        }
+                        def_name = resolve_trigger_ref(ref);
                     }
                     if (!def_name.empty()) {
                         break;

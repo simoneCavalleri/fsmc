@@ -61,7 +61,8 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         history_pseudostates_of_parent.insert(parent_name + ".[H*]");
         history_pseudostates_of_parent.insert(parent_name + "_H");
         history_pseudostates_of_parent.insert(parent_name + "_HStar");
-        std::string default_substate = parent->initial_sub_state;
+        std::string default_substate =
+            !parent->history_default_sub_state.empty() ? parent->history_default_sub_state : parent->initial_sub_state;
 
         for (const auto& s : ir.states) {
             if (s.parent_state == parent_name) {

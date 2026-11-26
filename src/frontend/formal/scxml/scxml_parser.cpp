@@ -520,6 +520,15 @@ void ScxmlParser::parse_scxml_children(const std::shared_ptr<XmlNode>& parent_no
                 if (is_deep) {
                     curr_state->has_deep_history = true;
                 }
+                for (const auto& hchild : child->children) {
+                    if (hchild->tag == "transition" || ends_with(hchild->tag, ":transition")) {
+                        std::string h_tgt = hchild->get_attr("target");
+                        if (!h_tgt.empty()) {
+                            curr_state->history_default_sub_state = sanitize_identifier(h_tgt);
+                            break;
+                        }
+                    }
+                }
             }
             if (!hist_id.empty()) {
                 std::string s_id = sanitize_identifier(hist_id);

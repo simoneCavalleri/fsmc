@@ -413,7 +413,15 @@ std::vector<EFSMAnalysisFinding> EFSMIntervalAnalyzer::analyze(DiagnosticEngine&
             std::sort(sorted_vars.begin(), sorted_vars.end());
 
             for (const auto& var_name : sorted_vars) {
-                const auto& var_interval = curr_env.at(var_name);
+                Interval var_interval = curr_env.at(var_name);
+                // External InPorts can take any value in their declared [min, max] domain on subsequent
+                // sampling cycles; do not flag a guard on an InPort as unsatisfiable solely because an
+                // earlier incoming transition narrowed that InPort to enter t.source.
+                if (const auto* in_p = ir_.find_port(var_name); in_p != nullptr && in_p->is_in()) {
+                    double lo = in_p->min_value.value_or(-std::numeric_limits<double>::infinity());
+                    double hi = in_p->max_value.value_or(std::numeric_limits<double>::infinity());
+                    var_interval = Interval(lo, hi);
+                }
                 auto guard_interval = parse_guard_domain(g_str, var_name);
                 if (guard_interval.has_value()) {
                     auto intersection = var_interval.intersect_with(*guard_interval);

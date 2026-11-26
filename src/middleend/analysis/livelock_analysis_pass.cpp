@@ -41,6 +41,11 @@ bool LivelockAnalysisPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         if (!edge.is_zero_time_eventless()) {
             continue;
         }
+        // Sampled change-trigger edge detectors (`!__change_*_prev && ...`) are evaluated once per
+        // discrete sampling cycle (z^-1) and cannot spin in zero-time Zeno cycles.
+        if (edge.guard.has_value() && edge.guard->find("__change_") != std::string::npos) {
+            continue;
+        }
 
         std::vector<std::string> srcs;
         for (const auto& sid : edge.multi_source_ids) {

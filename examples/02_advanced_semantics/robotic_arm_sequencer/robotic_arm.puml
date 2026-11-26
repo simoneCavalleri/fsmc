@@ -52,7 +52,7 @@ state SafetyInterlocked {
 }
 
 Machining --> SafetyInterlocked : (prio=1) SafetyPauseCmd / CutPowerAction
-SafetyInterlocked --> Operational[H*] : (prio=5) ResumeJobCmd [SafetyInterlockClearedGuard] / WarmupServosAction
+SafetyInterlocked --> Machining[H*] : (prio=5) ResumeJobCmd [SafetyInterlockClearedGuard] / WarmupServosAction
 Finishing --> Standby : (prio=5) JobCompleteCmd / EngageBrakesAction
 Operational --> Standby : (prio=1) EStopCmd / EngageBrakesAction
 

@@ -16,6 +16,31 @@ using namespace fsm::diagnostic;
 bool ConstantFoldingPass::run(FsmIr& ir, DiagnosticEngine& diag) {
     bool modified = false;
 
+    // 0. Fold constant arithmetic initializers on variables (e.g. "2 + 3 * 4" -> "14")
+    for (auto& var : ir.variables) {
+        if (var.initial_value.empty()) {
+            continue;
+        }
+        auto ast = ExpressionAstNode::parse(var.initial_value);
+        if (ast.kind != ExpressionKind::RawExpression && ast.kind != ExpressionKind::IntegerLiteral &&
+            ast.kind != ExpressionKind::FloatLiteral && ast.kind != ExpressionKind::BooleanLiteral) {
+            std::vector<std::string> refs;
+            ast.collect_references(refs);
+            if (refs.empty()) {
+                const std::unordered_map<std::string, double> empty_env;
+                if (auto val = ast.evaluate_numeric(empty_env); val.has_value()) {
+                    const double d = *val;
+                    if (static_cast<double>(static_cast<int64_t>(d)) == d) {
+                        var.initial_value = std::to_string(static_cast<int64_t>(d));
+                    } else {
+                        var.initial_value = std::to_string(d);
+                    }
+                    modified = true;
+                }
+            }
+        }
+    }
+
     // 1. Fold guard conditions
     for (auto& t : ir.transitions) {
         if (!t.guard.has_value()) {

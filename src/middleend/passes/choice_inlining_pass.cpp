@@ -158,8 +158,20 @@ bool ChoiceInliningPass::run(FsmIr& ir, DiagnosticEngine& /*diag*/) {
                     }
 
                     // Combine Guards as target-agnostic GuardAstNode
-                    auto combined_guard =
-                        combine_choice_guard_asts(extract_non_else_guard_ast(in), extract_non_else_guard_ast(out));
+                    auto out_guard = extract_non_else_guard_ast(out);
+                    const bool out_targets_choice =
+                        std::find(choice_names.begin(), choice_names.end(), out.target) != choice_names.end();
+                    if (!out_guard.has_value() && has_guarded_sibling && out_targets_choice) {
+                        // Conjoin negation of guarded siblings on chained [else] branches so downstream choices
+                        // remain mutually exclusive with earlier guarded branches.
+                        for (const auto& sib : outgoing) {
+                            if (auto sib_g = extract_non_else_guard_ast(sib); sib_g.has_value()) {
+                                GuardAstNode neg(GuardOp::Not, {*sib_g});
+                                out_guard = combine_choice_guard_asts(out_guard, neg);
+                            }
+                        }
+                    }
+                    auto combined_guard = combine_choice_guard_asts(extract_non_else_guard_ast(in), out_guard);
                     if (combined_guard.has_value()) {
                         composite.set_guard_ast(std::move(combined_guard));
                     }

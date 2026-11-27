@@ -371,6 +371,29 @@ TEST(PriorityConflict, EquivalentSymbolicGuardMetadata_EmitsW0402) {
 }
 
 /**
+ * @brief Regression (BUG-50): PriorityConflictPass skips `StateKind::Fork` pseudostates
+ * because parallel fork outflows are concurrent branches, not competing priority conflicts.
+ */
+TEST(PriorityConflict, ForkPseudostateMultipleOutflows_DoesNotEmitW0402) {
+    FsmIr ir;
+    ir.name = "ForkNoConflict";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+    ir.add_state("ForkNode", "", StateKind::Fork);
+    ir.add_state("BranchA");
+    ir.add_state("BranchB");
+
+    ir.add_transition(TransitionEdge("Idle", "ForkNode", "EvGo"));
+    ir.add_transition(TransitionEdge("ForkNode", "BranchA", ""));
+    ir.add_transition(TransitionEdge("ForkNode", "BranchB", ""));
+
+    DiagnosticEngine diag;
+    PriorityConflictPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+    EXPECT_FALSE(diag.has_warnings());
+}
+
+/**
  * @brief Verify FsmValidator correctly accepts initial_state_id without const_cast mutation or false warnings.
  */
 TEST(ValidationPipeline, InitialStateSpecifiedViaId_ValidatesCleanlyWithoutConstCastMutation) {

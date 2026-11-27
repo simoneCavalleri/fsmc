@@ -301,6 +301,78 @@ bool Sysml2Parser::parse_impl(std::string_view content, FsmIr& model, std::strin
     // Materialize any `port def` types referenced by `in/out port p : PortDef;` inside `state def`
     sysml2_detail::apply_port_bindings_to_model(ws_meta, model.name, model, symbol_resolver);
 
+    // Materialize any `item def` / `attribute def` (local or imported) referenced as a Port or Variable type
+    // into `model.custom_types` (TypeKind::Struct), and drop it from `model.signals` if never used as an event.
+    {
+        std::unordered_set<std::string> referenced_data_types;
+        for (const auto& p : model.ports) {
+            if (!p.type.is_primitive() && !p.type.custom_name().empty()) {
+                referenced_data_types.insert(p.type.custom_name());
+            }
+        }
+        for (const auto& v : model.variables) {
+            if (!v.type.is_primitive() && !v.type.custom_name().empty()) {
+                referenced_data_types.insert(v.type.custom_name());
+            }
+        }
+        std::unordered_set<std::string> used_as_event;
+        for (const auto& tr : model.transitions) {
+            if (!tr.event.empty()) {
+                used_as_event.insert(tr.event);
+            }
+            if (tr.transition_action.has_value()) {
+                for (const auto& inst : tr.transition_action->instructions) {
+                    if (const auto* se = std::get_if<SignalEmitOp>(&inst.op)) {
+                        used_as_event.insert(se->signal_name);
+                    }
+                }
+            }
+        }
+        for (const auto& st : model.states) {
+            for (const auto& dev : st.deferred_events) {
+                used_as_event.insert(dev);
+            }
+            auto scan_acts = [&](const std::vector<ActionSignature>& acts) {
+                for (const auto& act : acts) {
+                    for (const auto& inst : act.instructions) {
+                        if (const auto* se = std::get_if<SignalEmitOp>(&inst.op)) {
+                            used_as_event.insert(se->signal_name);
+                        }
+                    }
+                }
+            };
+            scan_acts(st.entry_actions);
+            scan_acts(st.exit_actions);
+        }
+
+        std::unordered_set<std::string> promoted_signals;
+        for (const auto& type_name : referenced_data_types) {
+            const bool already_exists = std::any_of(model.custom_types.begin(), model.custom_types.end(),
+                                                    [&](const TypeDefinition& td) { return td.name == type_name; });
+            if (already_exists) {
+                continue;
+            }
+            if (const auto* sig = model.find_signal(type_name); sig != nullptr && !sig->attributes.empty()) {
+                TypeDefinition td;
+                td.name = sig->name;
+                td.kind = TypeKind::Struct;
+                for (const auto& attr : sig->attributes) {
+                    td.add_field(StructField(attr.name, attr.type, attr.default_value));
+                }
+                model.custom_types.push_back(std::move(td));
+                if (used_as_event.count(sig->name) == 0U) {
+                    promoted_signals.insert(sig->name);
+                }
+            }
+        }
+        if (!promoted_signals.empty()) {
+            model.signals.erase(
+                std::remove_if(model.signals.begin(), model.signals.end(),
+                               [&](const SignalDefinition& s) { return promoted_signals.count(s.name) != 0U; }),
+                model.signals.end());
+        }
+    }
+
     return true;
 }
 

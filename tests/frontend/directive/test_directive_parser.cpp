@@ -309,4 +309,25 @@ TEST(DirectiveParser, ExternalTypeAndServiceDirectives_ParseCleanly) {
     EXPECT_EQ(svc2->parameters[0].type.to_canonical_string(), "uint32");
 }
 
+/**
+ * @brief Regression (BUG-54): `@fsm:property` supports `Name : Formula` and unquoted formulas containing
+ * relational operators (`<=`, `>=`, `!=`, `==`) without truncating on the first `=` character.
+ */
+TEST(DirectiveParser, PropertyDirective_ColonAndRelationalOperatorsParsedIntact) {
+    auto p1 = DirectiveParser::parse_property_directive("property SafeX : G (x <= 10)");
+    ASSERT_TRUE(p1.has_value());
+    EXPECT_EQ(p1->name, "SafeX");
+    EXPECT_EQ(p1->raw_formula, "G (x <= 10)");
+
+    auto p2 = DirectiveParser::parse_property_directive("property NoErr : G (state != ErrState)");
+    ASSERT_TRUE(p2.has_value());
+    EXPECT_EQ(p2->name, "NoErr");
+    EXPECT_EQ(p2->raw_formula, "G (state != ErrState)");
+
+    auto p3 = DirectiveParser::parse_property_directive("property NeverBad = G !(state == Bad)");
+    ASSERT_TRUE(p3.has_value());
+    EXPECT_EQ(p3->name, "NeverBad");
+    EXPECT_EQ(p3->raw_formula, "G !(state == Bad)");
+}
+
 }  // namespace

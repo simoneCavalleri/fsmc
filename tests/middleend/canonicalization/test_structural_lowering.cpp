@@ -1287,3 +1287,80 @@ TEST(StructuralLowering, HistoryLowering_SkipsOrphanRestoreChoiceWhenNoTransitio
     EXPECT_EQ(ir.find_state("Work_HistoryRestore"), nullptr);
     EXPECT_TRUE(ir.choice_nodes.empty());
 }
+
+/**
+ * @brief Regression (BUG-43): HistoryLoweringPass supports both shallow [H] and deep [H*] transitions
+ * targeting the same 3-level composite state independently.
+ * @scenario Composite 'Outer' contains 'Mid1' ('Leaf1', 'Leaf2') and 'Mid2' ('Leaf3', 'Leaf4');
+ *           'Paused -> Outer' via shallow [H] and 'Paused -> Outer' via deep [H*].
+ * @expected Both '__history_state_Outer' (shallow) and '__deep_history_state_Outer' (deep) are synthesized
+ *           with distinct restore choices ('Outer_HistoryRestore' targeting 'Leaf3' for Mid2,
+ *           'Outer_DeepHistoryRestore' targeting 'Leaf4').
+ */
+TEST(StructuralLowering, HistoryLowering_MixedShallowAndDeepHistoryOnSameComposite_LowersIndependently) {
+    FsmIr ir;
+    ir.name = "MixedHist";
+    ir.initial_state = "Outer";
+
+    StateNode outer("Outer");
+    outer.is_composite = true;
+    outer.has_history = true;
+    outer.has_deep_history = true;
+    outer.initial_sub_state = "Mid1";
+
+    StateNode mid1("Mid1", "", "Outer");
+    mid1.is_composite = true;
+    mid1.initial_sub_state = "Leaf1";
+    StateNode leaf1("Leaf1", "", "Mid1");
+    StateNode leaf2("Leaf2", "", "Mid1");
+
+    StateNode mid2("Mid2", "", "Outer");
+    mid2.is_composite = true;
+    mid2.initial_sub_state = "Leaf3";
+    StateNode leaf3("Leaf3", "", "Mid2");
+    StateNode leaf4("Leaf4", "", "Mid2");
+
+    StateNode paused("Paused");
+    ir.states = {outer, mid1, leaf1, leaf2, mid2, leaf3, leaf4, paused};
+
+    ir.transitions.emplace_back("Outer", "Paused", "EvPause");
+    TransitionEdge t_shallow("Paused", "Outer", "EvResumeShallow");
+    t_shallow.target_is_history = true;
+    ir.transitions.push_back(t_shallow);
+
+    TransitionEdge t_deep("Paused", "Outer", "EvResumeDeep");
+    t_deep.target_is_history = true;
+    t_deep.target_is_deep_history = true;
+    ir.transitions.push_back(t_deep);
+
+    DiagnosticEngine diag;
+    ASSERT_TRUE(HistoryLoweringPass{}.run(ir, diag));
+
+    EXPECT_NE(ir.find_variable("__history_state_Outer"), nullptr);
+    EXPECT_NE(ir.find_variable("__deep_history_state_Outer"), nullptr);
+    EXPECT_NE(ir.find_state("Outer_HistoryRestore"), nullptr);
+    EXPECT_NE(ir.find_state("Outer_DeepHistoryRestore"), nullptr);
+
+    bool shallow_retargeted = false;
+    bool deep_retargeted = false;
+    bool shallow_targets_mid2 = false;
+    bool deep_targets_leaf4 = false;
+    for (const auto& tr : ir.transitions) {
+        if (tr.event == "EvResumeShallow" && tr.target == "Outer_HistoryRestore") {
+            shallow_retargeted = true;
+        }
+        if (tr.event == "EvResumeDeep" && tr.target == "Outer_DeepHistoryRestore") {
+            deep_retargeted = true;
+        }
+        if (tr.source == "Outer_HistoryRestore" && tr.target == "Mid2") {
+            shallow_targets_mid2 = true;
+        }
+        if (tr.source == "Outer_DeepHistoryRestore" && tr.target == "Leaf4") {
+            deep_targets_leaf4 = true;
+        }
+    }
+    EXPECT_TRUE(shallow_retargeted);
+    EXPECT_TRUE(deep_retargeted);
+    EXPECT_TRUE(shallow_targets_mid2);
+    EXPECT_TRUE(deep_targets_leaf4);
+}

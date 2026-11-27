@@ -303,6 +303,16 @@ std::vector<SimulatedEvent> parse_trace_input(const std::string& content) {
         lss >> ev.name;
         std::string tok;
         while (lss >> tok) {
+            // Strip optional braces and trailing commas so both `Ev x=20` and `Ev {x=20, y=5}` parse cleanly
+            while (!tok.empty() && (tok.front() == '{' || tok.front() == ',')) {
+                tok.erase(tok.begin());
+            }
+            while (!tok.empty() && (tok.back() == '}' || tok.back() == ',')) {
+                tok.pop_back();
+            }
+            if (tok.empty()) {
+                continue;
+            }
             auto eq = tok.find('=');
             if (eq != std::string::npos) {
                 std::string k = tok.substr(0, eq);

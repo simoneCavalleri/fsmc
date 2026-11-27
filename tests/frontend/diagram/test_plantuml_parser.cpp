@@ -678,4 +678,25 @@ Done --> Done : every(100ms)
     EXPECT_NE(ir.parse_warnings[0].find("typo_directive"), std::string::npos);
 }
 
+/**
+ * @brief Regression (BUG-47): PlantUML parses `state Login <<submachine:AuthSub>>` into `StateNode::submachine`.
+ */
+TEST(PlantUmlParserTest, SubmachineStereotype_PopulatesSubmachineRef) {
+    const std::string puml = R"(
+@startuml HostApp
+[*] --> Idle
+state Login <<submachine:AuthSub>>
+Idle --> Login : EvStart
+@enduml
+)";
+    FsmIr ir;
+    fsm::diagnostic::DiagnosticEngine diag;
+    PlantUmlParser parser;
+    ASSERT_TRUE(parser.parse(puml, ir, diag)) << diag.render_to_string();
+    const StateNode* login = ir.find_state("Login");
+    ASSERT_NE(login, nullptr);
+    ASSERT_TRUE(login->submachine.has_value());
+    EXPECT_EQ(login->submachine->fsm_name, "AuthSub");
+}
+
 }  // namespace

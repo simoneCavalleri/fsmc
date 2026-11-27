@@ -115,9 +115,10 @@ struct StateNode {
     bool has_deep_history{false};           ///< True if deep history pseudo-state [H*] is active
     std::string history_default_sub_state;  ///< Optional default substate for unvisited [H]/[H*] entry (W3C SCXML)
 
-    std::vector<ActionSignature> entry_actions;  ///< Ordered entry action signatures
-    std::vector<ActionSignature> exit_actions;   ///< Ordered exit action signatures
-    std::optional<std::string> do_activity;      ///< Async background activity (e.g., coroutine/worker)
+    std::vector<ActionSignature> entry_actions;         ///< Ordered entry action signatures
+    std::vector<ActionSignature> exit_actions;          ///< Ordered exit action signatures
+    std::optional<std::string> do_activity;             ///< Async background activity (e.g., coroutine/worker)
+    std::optional<ActionSignature> do_activity_action;  ///< Optional inline EFSM body for continuous do_activity
 
     std::vector<uint32_t> outgoing_transitions;  ///< Contiguous indices into FsmIr::transitions (O(1) graph traversal)
     std::vector<uint32_t> incoming_transitions;  ///< Contiguous indices into FsmIr::transitions (O(1) graph traversal)
@@ -185,10 +186,10 @@ struct StateNode {
                children_ids == other.children_ids && orthogonal_regions == other.orthogonal_regions &&
                submachine == other.submachine && entry_actions == other.entry_actions &&
                exit_actions == other.exit_actions && do_activity == other.do_activity &&
-               time_invariant == other.time_invariant && invariants == other.invariants &&
-               deferred_events == other.deferred_events && traceability_reqs == other.traceability_reqs &&
-               description == other.description && outgoing_transitions == other.outgoing_transitions &&
-               incoming_transitions == other.incoming_transitions;
+               do_activity_action == other.do_activity_action && time_invariant == other.time_invariant &&
+               invariants == other.invariants && deferred_events == other.deferred_events &&
+               traceability_reqs == other.traceability_reqs && description == other.description &&
+               outgoing_transitions == other.outgoing_transitions && incoming_transitions == other.incoming_transitions;
     }
 };
 

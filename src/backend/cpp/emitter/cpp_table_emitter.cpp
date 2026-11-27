@@ -222,10 +222,10 @@ void CppModelEmitter::emit_transition_table(std::ostream& out, const FsmIr& mode
 
         const auto* target_node = find_state_by_name(t.target);
         if (target_node != nullptr && target_node->is_composite) {
-            std::vector<std::string> sub_states =
-                get_all_substates(get_all_substates, target_node->name, target_node->has_deep_history);
+            const bool wants_deep = t.target_is_deep_history || (!t.target_is_history && target_node->has_deep_history);
+            std::vector<std::string> sub_states = get_all_substates(get_all_substates, target_node->name, wants_deep);
 
-            if (target_node->has_history && !sub_states.empty()) {
+            if ((t.target_is_history || t.target_is_deep_history || target_node->has_history) && !sub_states.empty()) {
                 for (const auto& sub : sub_states) {
                     std::string composite_guard;
                     std::string escaped_target = escape_cpp_keyword(target_node->name);
@@ -247,7 +247,8 @@ void CppModelEmitter::emit_transition_table(std::ostream& out, const FsmIr& mode
                         composite_guard += escaped_sub;
                         composite_guard += ">";
                     }
-                    emit_single_row(t.source, event_type, sub, action_type, composite_guard,
+                    const std::string resolved_sub = find_initial_leaf_substate(find_initial_leaf_substate, sub);
+                    emit_single_row(t.source, event_type, resolved_sub, action_type, composite_guard,
                                     t.kind == TransitionEdgeKind::Local);
                 }
                 std::string default_sub =

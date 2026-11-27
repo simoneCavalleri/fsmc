@@ -8,8 +8,9 @@ std::string GuardAstNode::to_string() const {
     }
     if (op == GuardOp::Not) {
         if (!children.empty()) {
-            return "!" +
-                   (children[0].op != GuardOp::None ? "(" + children[0].to_string() + ")" : children[0].to_string());
+            const std::string inner = children[0].to_string();
+            const bool needs_parens = (children[0].op != GuardOp::None) || (inner.find(' ') != std::string::npos);
+            return "!" + (needs_parens ? ("(" + inner + ")") : inner);
         }
         return "!" + expression;
     }

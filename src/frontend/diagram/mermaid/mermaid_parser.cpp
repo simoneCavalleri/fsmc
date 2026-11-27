@@ -395,10 +395,20 @@ std::string MermaidParser::parse_composite_state_header(std::string_view line, F
 }
 
 void MermaidParser::parse_choice_definition(std::string_view line, FsmIr& model) {
-    static const std::regex choice_regex(
-        R"(state\s+([a-zA-Z0-9_]+)\s*<<(choice|junction|fork|join|entryPoint|exitPoint)>>)");
+    static const std::regex submachine_regex(R"(state\s+([a-zA-Z0-9_]+)\s*<<submachine\s*:\s*([^>]+)>>)");
     const std::string line_str{line};
     std::smatch match;
+    if (std::regex_search(line_str, match, submachine_regex)) {
+        const std::string name = sanitize_identifier(match[1].str());
+        const std::string target_fsm = std::string(trim(match[2].str()));
+        auto& st = model.add_or_get_state(name);
+        SubmachineRef ref;
+        ref.fsm_name = target_fsm;
+        st.submachine = std::move(ref);
+        return;
+    }
+    static const std::regex choice_regex(
+        R"(state\s+([a-zA-Z0-9_]+)\s*<<(choice|junction|fork|join|entryPoint|exitPoint)>>)");
     if (std::regex_search(line_str, match, choice_regex)) {
         const std::string name = sanitize_identifier(match[1].str());
         const std::string kind_str = match[2].str();

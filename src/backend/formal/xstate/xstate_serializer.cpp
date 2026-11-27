@@ -98,9 +98,8 @@ std::string format_json_literal(const DataType& dt, std::string_view initial_val
         if (dt.is_string()) {
             return "\"\"";
         }
-        if (dt.is_integer() ||
-            (dt.is_primitive() &&
-             (dt.primitive() == PrimitiveTypeKind::Float32 || dt.primitive() == PrimitiveTypeKind::Float64))) {
+        if (dt.is_integer() || (dt.is_primitive() && (dt.primitive() == PrimitiveTypeKind::Float32 ||
+                                                      dt.primitive() == PrimitiveTypeKind::Float64))) {
             return "0";
         }
         return "null";
@@ -606,7 +605,95 @@ std::string XStateSerializer::serialize(const FsmIr& model) {
         out << "    " << json_string(root_states[i]->name) << ": ";
         emit_state_node(out, *root_states[i], canonical, state_map, children_map, trans_by_src, 2U);
     }
-    out << "\n  }\n}\n";
+    out << "\n  }";
+
+    // Preserve EFSM I/O port metadata and imperative action bodies in standard XState v5 top-level `meta`
+    std::map<std::string, std::vector<std::string>> action_bodies;
+    auto record_action_body = [&](const ActionSignature& act) {
+        if (act.name.empty() || action_bodies.count(act.name) != 0U) {
+            return;
+        }
+        std::vector<std::string> stmts;
+        for (const auto& a : act.assignments) {
+            stmts.push_back(a.target.full_path() + " " + std::string(assignment_op_to_string(a.op)) + " " +
+                            a.expression);
+        }
+        for (const auto& inst : act.instructions) {
+            if (const auto* st = std::get_if<StoreOp>(&inst.op)) {
+                stmts.push_back(st->target.full_path() + " " + std::string(assignment_op_to_string(st->op)) + " " +
+                                st->expression);
+            } else if (const auto* pw = std::get_if<PortWriteOp>(&inst.op)) {
+                stmts.push_back(pw->port_name + " = " + pw->expression);
+            }
+        }
+        if (!stmts.empty()) {
+            action_bodies.emplace(act.name, std::move(stmts));
+        }
+    };
+    for (const auto& st : canonical.states) {
+        for (const auto& a : st.entry_actions) {
+            record_action_body(a);
+        }
+        for (const auto& a : st.exit_actions) {
+            record_action_body(a);
+        }
+        if (st.do_activity_action.has_value()) {
+            record_action_body(*st.do_activity_action);
+        }
+    }
+    for (const auto& tr : canonical.transitions) {
+        if (tr.condition_action.has_value()) {
+            record_action_body(*tr.condition_action);
+        }
+        if (tr.transition_action.has_value()) {
+            record_action_body(*tr.transition_action);
+        }
+    }
+
+    if (!canonical.ports.empty() || !action_bodies.empty()) {
+        out << ",\n  \"meta\": {\n";
+        bool first_meta = true;
+        if (!canonical.ports.empty()) {
+            first_meta = false;
+            out << "    \"ports\": [\n";
+            for (std::size_t i = 0; i < canonical.ports.size(); ++i) {
+                const auto& p = canonical.ports[i];
+                if (i > 0) {
+                    out << ",\n";
+                }
+                out << "      { \"name\": " << json_string(p.name)
+                    << ", \"direction\": " << json_string(p.is_in() ? "in" : "out")
+                    << ", \"type\": " << json_string(p.type.to_canonical_string())
+                    << ", \"default\": " << json_string(p.default_value) << " }";
+            }
+            out << "\n    ]";
+        }
+        if (!action_bodies.empty()) {
+            if (!first_meta) {
+                out << ",\n";
+            }
+            out << "    \"actions\": {\n";
+            bool first_act = true;
+            for (const auto& [aname, stmts] : action_bodies) {
+                if (!first_act) {
+                    out << ",\n";
+                }
+                first_act = false;
+                out << "      " << json_string(aname) << ": [";
+                for (std::size_t si = 0; si < stmts.size(); ++si) {
+                    if (si > 0) {
+                        out << ", ";
+                    }
+                    out << json_string(stmts[si]);
+                }
+                out << "]";
+            }
+            out << "\n    }";
+        }
+        out << "\n  }";
+    }
+
+    out << "\n}\n";
 
     return out.str();
 }

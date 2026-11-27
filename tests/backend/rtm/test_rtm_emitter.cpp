@@ -114,4 +114,20 @@ TEST(RtmEmitter, UntracedElements_AuditedWithSummaryDiagnostic) {
     EXPECT_TRUE(found_audit_summary);
 }
 
+/**
+ * @brief Regression (BUG-61): RtmEmitter includes top-level machine requirements from `FsmIr::satisfies_reqs`.
+ */
+TEST(RtmEmitter, TopLevelMachineSatisfiesReqs_IncludedInRtmOutput) {
+    FsmIr model;
+    model.name = "TopReqFsm";
+    model.satisfies_reqs = {"REQ-TOP-01"};
+    auto& s1 = model.add_state("Red");
+    s1.traceability_reqs.push_back("REQ-RED-01");
+
+    const std::string json_out = RtmEmitter::emit(model, {}, RtmFormat::Json);
+    EXPECT_NE(json_out.find("\"REQ-TOP-01\""), std::string::npos);
+    EXPECT_NE(json_out.find("\"REQ-RED-01\""), std::string::npos);
+    EXPECT_NE(json_out.find("\"total_requirements\": 2"), std::string::npos);
+}
+
 }  // namespace

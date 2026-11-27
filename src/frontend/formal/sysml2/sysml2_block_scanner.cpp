@@ -54,8 +54,9 @@ bool Sysml2BlockScanner::is_container_block_head(std::string_view head) {
         h.rfind("enum def\t", 0) == 0 || h.rfind("struct def ", 0) == 0 || h.rfind("struct def\t", 0) == 0 ||
         h.rfind("datatype def ", 0) == 0 || h.rfind("datatype def\t", 0) == 0 || h.rfind("item def ", 0) == 0 ||
         h.rfind("item def\t", 0) == 0 || h.rfind("event def ", 0) == 0 || h.rfind("event def\t", 0) == 0 ||
-        h.rfind("attribute def ", 0) == 0 || h.rfind("attribute def\t", 0) == 0 || h.rfind("port def ", 0) == 0 ||
-        h.rfind("port def\t", 0) == 0 || h.rfind("calc def ", 0) == 0 || h.rfind("calc def\t", 0) == 0) {
+        h.rfind("signal def ", 0) == 0 || h.rfind("signal def\t", 0) == 0 || h.rfind("attribute def ", 0) == 0 ||
+        h.rfind("attribute def\t", 0) == 0 || h.rfind("port def ", 0) == 0 || h.rfind("port def\t", 0) == 0 ||
+        h.rfind("calc def ", 0) == 0 || h.rfind("calc def\t", 0) == 0) {
         return true;
     }
     return false;

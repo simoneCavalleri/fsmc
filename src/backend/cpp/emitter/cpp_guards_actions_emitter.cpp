@@ -243,6 +243,9 @@ void CppModelEmitter::emit_actions(std::ostream& out, const FsmIr& model, const 
                     collect_action_body(a);
                 }
             }
+            if (st.do_activity_action.has_value() && st.do_activity_action->name == action_item.name) {
+                collect_action_body(*st.do_activity_action);
+            }
         }
 
         if (!options.include_stubs && assignments.empty() && instructions.empty()) {

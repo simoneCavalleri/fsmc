@@ -1596,19 +1596,19 @@ package StandardV2Pkg {
     EXPECT_EQ(model.variables[0].name, "count");
     EXPECT_EQ(model.variables[0].initial_value, "0");
 
-    // assign pwm_duty := compute_pwm(temp_c); & assign count := count + 1;
+    // assign pwm_duty := compute_pwm(temp_c); & assign count := count + 1; (preserved in imperative order)
     ASSERT_EQ(model.transitions.size(), 3u);
     const auto& t_step = model.transitions[1];
     ASSERT_TRUE(t_step.transition_action.has_value());
-    ASSERT_EQ(t_step.transition_action->instructions.size(), 1u);
+    ASSERT_EQ(t_step.transition_action->instructions.size(), 2u);
     ASSERT_TRUE(std::holds_alternative<ActionCallOp>(t_step.transition_action->instructions[0].op));
     const auto& call = std::get<ActionCallOp>(t_step.transition_action->instructions[0].op);
     EXPECT_EQ(call.function_name, "compute_pwm");
     ASSERT_TRUE(call.result_target.has_value());
     EXPECT_EQ(call.result_target->name, "pwm_duty");
     EXPECT_EQ(call.result_target->scope, LValueScope::OutPort);
-    ASSERT_EQ(t_step.transition_action->assignments.size(), 1u);
-    EXPECT_EQ(t_step.transition_action->assignments[0].target.name, "count");
+    ASSERT_TRUE(std::holds_alternative<StoreOp>(t_step.transition_action->instructions[1].op));
+    EXPECT_EQ(std::get<StoreOp>(t_step.transition_action->instructions[1].op).target.name, "count");
 
     // accept after 150 [ms]
     const auto& t_to = model.transitions[2];

@@ -26,8 +26,26 @@ void CppModelEmitter::emit_events(std::ostream& out, const FsmIr& model) {
     out << "// Events & Signals\n";
     out << "// ============================================================================\n\n";
 
+    // Collect names used exclusively as TimeTrigger names (emitted via ::fsm::after_ms<N> / ::fsm::every_ms<N>)
+    std::unordered_set<std::string> discrete_signal_names;
+    std::unordered_set<std::string> time_trigger_names;
+    for (const auto& tr : model.transitions) {
+        if (std::holds_alternative<TimeTrigger>(tr.trigger)) {
+            const std::string tname = tr.get_trigger_name();
+            if (!tname.empty()) {
+                time_trigger_names.insert(tname);
+            }
+        } else if (!tr.event.empty()) {
+            discrete_signal_names.insert(tr.event);
+        }
+    }
+
     for (const auto& sig : model.signals) {
         if (sig.name == "anonymous_event" || sig.name == "completion_event") {
+            continue;
+        }
+        if (sig.attributes.empty() && time_trigger_names.count(sig.name) != 0U &&
+            discrete_signal_names.count(sig.name) == 0U) {
             continue;
         }
         std::string event_type_name = escape_cpp_keyword(sig.name);
@@ -98,6 +116,77 @@ void CppModelEmitter::emit_events(std::ostream& out, const FsmIr& model) {
                 out << "    }\n";
             }
             out << "};\n\n";
+        }
+    }
+
+    // Emit ADL run-to-completion internal signal drain helper when model emits portless internal trigger signals
+    const auto emitted_summary = collect_emitted_signals(model);
+    if (!emitted_summary.unique_signals.empty()) {
+        std::unordered_set<std::string> trigger_signals;
+        for (const auto& tr : model.transitions) {
+            if (!tr.event.empty() && !std::holds_alternative<TimeTrigger>(tr.trigger)) {
+                trigger_signals.insert(tr.event);
+            }
+        }
+        std::vector<std::string> internal_emitted;
+        for (const auto& sname : emitted_summary.unique_signals) {
+            if (trigger_signals.count(sname) != 0U) {
+                internal_emitted.push_back(sname);
+            }
+        }
+        if (!internal_emitted.empty()) {
+            const std::string safe_model_name = sanitize_cpp_model_name(model.name);
+            out << "template <typename FsmT, typename InT, typename SrvT>\n";
+            out << "inline void fsm_drain_internal_events(FsmT& sm, const InT& in, " << safe_model_name
+                << "OutPorts& out, SrvT& srv) {\n";
+            out << "    for (std::size_t _iter = 0; _iter < " << safe_model_name
+                << "OutPorts::kMaxOutbox; ++_iter) {\n";
+            out << "        std::size_t _found = " << safe_model_name << "OutPorts::kMaxOutbox;\n";
+            out << "        for (std::size_t _i = 0; _i < out.outbox_count; ++_i) {\n";
+            out << "            if (out.outbox[_i].port != nullptr && out.outbox[_i].port[0] != '\\0') {\n";
+            out << "                continue;\n";
+            out << "            }\n";
+            out << "            if (";
+            for (std::size_t k = 0; k < internal_emitted.size(); ++k) {
+                if (k > 0) {
+                    out << " || ";
+                }
+                out << "out.outbox[_i].tag == " << safe_model_name
+                    << "EmittedEventTag::" << escape_cpp_keyword(internal_emitted[k]);
+            }
+            out << ") {\n";
+            out << "                _found = _i;\n";
+            out << "                break;\n";
+            out << "            }\n";
+            out << "        }\n";
+            out << "        if (_found >= out.outbox_count) {\n";
+            out << "            break;\n";
+            out << "        }\n";
+            out << "        const auto _ev = out.outbox[_found];\n";
+            out << "        for (std::size_t _j = _found + 1; _j < out.outbox_count; ++_j) {\n";
+            out << "            out.outbox[_j - 1] = out.outbox[_j];\n";
+            out << "        }\n";
+            out << "        --out.outbox_count;\n";
+            out << "        switch (_ev.tag) {\n";
+            for (const auto& isig : internal_emitted) {
+                const std::string esc = escape_cpp_keyword(isig);
+                out << "            case " << safe_model_name << "EmittedEventTag::" << esc << ": {\n";
+                out << "                " << esc << " _raised{};\n";
+                if (const auto* sdef = model.find_signal(isig)) {
+                    for (const auto& attr : sdef->attributes) {
+                        const std::string af = escape_cpp_keyword(attr.name);
+                        out << "                _raised." << af << " = _ev." << esc << "_payload." << af << ";\n";
+                    }
+                }
+                out << "                sm.dispatch_direct_ports(_raised, in, out, srv);\n";
+                out << "                break;\n";
+                out << "            }\n";
+            }
+            out << "            default:\n";
+            out << "                break;\n";
+            out << "        }\n";
+            out << "    }\n";
+            out << "}\n\n";
         }
     }
 }

@@ -49,177 +49,214 @@ bool HistoryLoweringPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         if (parent == nullptr)
             continue;
 
-        bool is_deep = parent->has_deep_history;
+        const bool parent_had_deep = parent->has_deep_history;
         parent->has_history = false;
         parent->has_deep_history = false;
-        std::string history_var_name = "__history_state_" + parent_name;
 
-        // Collect all direct substates (or recursive substates if deep)
-        std::vector<std::string> target_substates;
-        std::unordered_set<std::string> history_pseudostates_of_parent;
-        history_pseudostates_of_parent.insert(parent_name + ".[H]");
-        history_pseudostates_of_parent.insert(parent_name + ".[H*]");
-        history_pseudostates_of_parent.insert(parent_name + "_H");
-        history_pseudostates_of_parent.insert(parent_name + "_HStar");
-        std::string default_substate =
+        std::unordered_set<std::string> shallow_pseudos = {parent_name + ".[H]", parent_name + "_H"};
+        std::unordered_set<std::string> deep_pseudos = {parent_name + ".[H*]", parent_name + "_HStar"};
+        std::string base_default_substate =
             !parent->history_default_sub_state.empty() ? parent->history_default_sub_state : parent->initial_sub_state;
 
+        bool has_deep_pseudo = false;
         for (const auto& s : ir.states) {
-            if (s.parent_state == parent_name) {
-                if (s.kind == StateKind::ShallowHistory || s.kind == StateKind::DeepHistory) {
-                    history_pseudostates_of_parent.insert(s.name);
-                    if (s.kind == StateKind::DeepHistory)
-                        is_deep = true;
-                    // Find default target from outgoing transition of history pseudostate
-                    for (const auto& t : ir.transitions) {
-                        if (t.source == s.name && !t.target.empty()) {
-                            default_substate = t.target;
-                        }
-                    }
+            if (s.parent_state == parent_name &&
+                (s.kind == StateKind::ShallowHistory || s.kind == StateKind::DeepHistory)) {
+                if (s.kind == StateKind::DeepHistory) {
+                    deep_pseudos.insert(s.name);
+                    has_deep_pseudo = true;
                 } else {
-                    target_substates.push_back(s.name);
+                    shallow_pseudos.insert(s.name);
+                }
+                for (const auto& t : ir.transitions) {
+                    if (t.source == s.name && !t.target.empty()) {
+                        base_default_substate = t.target;
+                    }
                 }
             }
         }
 
-        // 3. Collect all direct substates (or deep leaf descendants) and assign deterministic integer indices
-        for (auto& s : ir.states) {
-            bool is_target = false;
-            if (is_deep) {
-                // Check if s is descendant of parent, guarding against cycles
-                std::string curr_p = s.parent_state;
-                std::unordered_set<std::string> visited;
-                while (!curr_p.empty() && visited.insert(curr_p).second) {
-                    if (curr_p == parent_name) {
-                        is_target = true;
+        auto is_shallow_target = [&](const TransitionEdge& t) {
+            if (shallow_pseudos.count(t.target) > 0) {
+                return true;
+            }
+            return t.target == parent_name && t.target_is_history && !t.target_is_deep_history;
+        };
+        auto is_deep_target = [&](const TransitionEdge& t) {
+            if (deep_pseudos.count(t.target) > 0) {
+                return true;
+            }
+            return t.target == parent_name && t.target_is_deep_history;
+        };
+
+        bool needs_shallow = false;
+        bool needs_deep = false;
+        for (const auto& t : ir.transitions) {
+            if (is_deep_target(t)) {
+                needs_deep = true;
+            } else if (is_shallow_target(t)) {
+                needs_shallow = true;
+            }
+        }
+        if (!needs_shallow && !needs_deep) {
+            // Fallback for models where history was declared on StateNode without explicit incoming edge
+            if (parent_had_deep || has_deep_pseudo) {
+                needs_deep = true;
+            } else {
+                needs_shallow = true;
+            }
+        }
+
+        const bool has_both = needs_shallow && needs_deep;
+
+        auto lower_history_mode = [&](bool is_deep, bool use_deep_suffix) {
+            const std::string history_var_name =
+                use_deep_suffix ? ("__deep_history_state_" + parent_name) : ("__history_state_" + parent_name);
+            const std::string restore_choice_name =
+                use_deep_suffix ? (parent_name + "_DeepHistoryRestore") : (parent_name + "_HistoryRestore");
+            const std::string grd_prefix =
+                use_deep_suffix ? ("__dhist_" + parent_name + "_is_") : ("__hist_" + parent_name + "_is_");
+
+            std::vector<std::string> target_substates;
+            for (const auto& s : ir.states) {
+                if (!is_deep && s.parent_state == parent_name && s.kind != StateKind::ShallowHistory &&
+                    s.kind != StateKind::DeepHistory) {
+                    target_substates.push_back(s.name);
+                }
+            }
+
+            // Collect all direct substates (or deep leaf descendants) and assign deterministic integer indices
+            for (auto& s : ir.states) {
+                bool is_target = false;
+                if (is_deep) {
+                    std::string curr_p = s.parent_state;
+                    std::unordered_set<std::string> visited;
+                    while (!curr_p.empty() && visited.insert(curr_p).second) {
+                        if (curr_p == parent_name) {
+                            is_target = true;
+                            break;
+                        }
+                        const auto* p_node = ir.find_state(curr_p);
+                        curr_p = (p_node != nullptr) ? p_node->parent_state : "";
+                    }
+                } else {
+                    is_target = (s.parent_state == parent_name);
+                }
+
+                if (is_target && s.kind != StateKind::ShallowHistory && s.kind != StateKind::DeepHistory &&
+                    (!is_deep || !s.is_composite)) {
+                    auto sub_it = std::find(target_substates.begin(), target_substates.end(), s.name);
+                    std::size_t sub_idx = 0U;
+                    if (sub_it == target_substates.end()) {
+                        sub_idx = target_substates.size();
+                        target_substates.push_back(s.name);
+                    } else {
+                        sub_idx = static_cast<std::size_t>(std::distance(target_substates.begin(), sub_it));
+                    }
+                    StoreOp store;
+                    store.target = LValueTarget(history_var_name, LValueScope::Register);
+                    store.op = AssignmentOp::Assign;
+                    store.expression = std::to_string(sub_idx);
+
+                    ActionSignature exit_sig((use_deep_suffix ? "__record_deep_history_" : "__record_history_") +
+                                             s.name);
+                    exit_sig.instructions.emplace_back(store, "Record active substate index on exit");
+                    s.exit_actions.push_back(std::move(exit_sig));
+                    modified = true;
+                }
+            }
+
+            std::string default_substate = base_default_substate;
+            if (is_deep && !default_substate.empty()) {
+                std::unordered_set<std::string> visited_def;
+                while (visited_def.insert(default_substate).second) {
+                    const auto* def_node = ir.find_state(default_substate);
+                    if (def_node != nullptr && def_node->is_composite && !def_node->initial_sub_state.empty()) {
+                        default_substate = def_node->initial_sub_state;
+                    } else {
                         break;
                     }
-                    const auto* p_node = ir.find_state(curr_p);
-                    curr_p = (p_node != nullptr) ? p_node->parent_state : "";
                 }
-            } else {
-                is_target = (s.parent_state == parent_name);
+            }
+            if (default_substate.empty() && !target_substates.empty()) {
+                default_substate = target_substates.front();
             }
 
-            if (is_target && s.kind != StateKind::ShallowHistory && s.kind != StateKind::DeepHistory &&
-                (!is_deep || !s.is_composite)) {
-                auto sub_it = std::find(target_substates.begin(), target_substates.end(), s.name);
-                std::size_t sub_idx = 0U;
-                if (sub_it == target_substates.end()) {
-                    sub_idx = target_substates.size();
-                    target_substates.push_back(s.name);
-                } else {
-                    sub_idx = static_cast<std::size_t>(std::distance(target_substates.begin(), sub_it));
-                }
-                // Synthesize StoreOp to update zero-alloc integer shadow register
-                StoreOp store;
-                store.target = LValueTarget(history_var_name, LValueScope::Register);
-                store.op = AssignmentOp::Assign;
-                store.expression = std::to_string(sub_idx);
-
-                ActionSignature exit_sig("__record_history_" + s.name);
-                exit_sig.instructions.emplace_back(store, "Record active substate index on exit");
-                s.exit_actions.push_back(std::move(exit_sig));
-                modified = true;
+            std::size_t default_idx = 0U;
+            if (auto dit = std::find(target_substates.begin(), target_substates.end(), default_substate);
+                dit != target_substates.end()) {
+                default_idx = static_cast<std::size_t>(std::distance(target_substates.begin(), dit));
             }
-        }
 
-        if (is_deep && !default_substate.empty()) {
-            std::unordered_set<std::string> visited_def;
-            while (visited_def.insert(default_substate).second) {
-                const auto* def_node = ir.find_state(default_substate);
-                if (def_node != nullptr && def_node->is_composite && !def_node->initial_sub_state.empty()) {
-                    default_substate = def_node->initial_sub_state;
-                } else {
+            bool has_incoming = false;
+            for (const auto& t : ir.transitions) {
+                if ((is_deep && is_deep_target(t)) || (!is_deep && is_shallow_target(t))) {
+                    has_incoming = true;
                     break;
                 }
             }
-        }
-
-        if (default_substate.empty() && !target_substates.empty()) {
-            default_substate = target_substates.front();
-        }
-
-        std::size_t default_idx = 0U;
-        if (auto dit = std::find(target_substates.begin(), target_substates.end(), default_substate);
-            dit != target_substates.end()) {
-            default_idx = static_cast<std::size_t>(std::distance(target_substates.begin(), dit));
-        }
-
-        // Only synthesize a HistoryRestore choice node if at least one transition actually targets this history.
-        bool has_incoming_history = false;
-        for (const auto& t : ir.transitions) {
-            if (history_pseudostates_of_parent.count(t.target) > 0 ||
-                ((t.target_is_history || t.target_is_deep_history) && t.target == parent_name)) {
-                has_incoming_history = true;
-                break;
-            }
-        }
-        if (!has_incoming_history) {
-            continue;
-        }
-
-        // 2. Synthesize zero-alloc int32 shadow history state variable (C99 & freestanding compatible)
-        bool var_exists = false;
-        for (const auto& v : ir.variables) {
-            if (v.name == history_var_name) {
-                var_exists = true;
-                break;
-            }
-        }
-        if (!var_exists) {
-            VariableDefinition vdef;
-            vdef.name = history_var_name;
-            vdef.type = "int32";
-            vdef.initial_value = std::to_string(default_idx);
-            vdef.description = "Shadow register recording last active substate index of composite state " + parent_name;
-            ir.variables.push_back(std::move(vdef));
-            modified = true;
-        }
-
-        // 4. Synthesize Choice Restore Pseudostate
-        std::string restore_choice_name = parent_name + "_HistoryRestore";
-        StateNode restore_node(restore_choice_name, "Choice branch restoring recorded history substate", parent_name);
-        restore_node.kind = StateKind::Choice;
-        // Preserve parent membership across normalize_hierarchy() even before choice inlining.
-        restore_node.pinned_parent = true;
-        ir.states.push_back(std::move(restore_node));
-        ir.choice_nodes.emplace_back(restore_choice_name);
-
-        // Add restore branch transitions from choice to each substate
-        for (std::size_t sub_idx = 0; sub_idx < target_substates.size(); ++sub_idx) {
-            const auto& sub_name = target_substates[sub_idx];
-            std::string grd_name = "__hist_" + parent_name + "_is_" + sub_name;
-            std::string grd_expr = history_var_name + " == " + std::to_string(sub_idx);
-            ir.add_guard(grd_name, "History restore predicate for " + sub_name, grd_expr, grd_expr);
-            TransitionEdge branch(restore_choice_name, sub_name, "", grd_name, std::nullopt,
-                                  "Restore branch to " + sub_name, TransitionEdgeKind::External, 1);
-            ir.transitions.push_back(std::move(branch));
-        }
-
-        // Add default/else fallback branch with lower priority (2) than guarded branches (1)
-        TransitionEdge fallback(restore_choice_name, default_substate, "", "else", std::nullopt,
-                                "Default history restore fallback", TransitionEdgeKind::External, 2);
-        ir.transitions.push_back(std::move(fallback));
-
-        // 5. Retarget incoming transitions pointing to history to the restore choice node
-        for (auto& t : ir.transitions) {
-            bool targets_this_parent_history = false;
-            if (history_pseudostates_of_parent.count(t.target) > 0) {
-                targets_this_parent_history = true;
-            } else if ((t.target_is_history || t.target_is_deep_history) && t.target == parent_name) {
-                targets_this_parent_history = true;
+            if (!has_incoming) {
+                return;
             }
 
-            if (targets_this_parent_history) {
-                t.target = restore_choice_name;
-                t.target_id = compute_deterministic_id(restore_choice_name);
-                t.target_ids = {restore_choice_name};
-                t.multi_target_ids = {t.target_id};
-                t.target_is_history = false;
-                t.target_is_deep_history = false;
+            bool var_exists = false;
+            for (const auto& v : ir.variables) {
+                if (v.name == history_var_name) {
+                    var_exists = true;
+                    break;
+                }
+            }
+            if (!var_exists) {
+                VariableDefinition vdef;
+                vdef.name = history_var_name;
+                vdef.type = "int32";
+                vdef.initial_value = std::to_string(default_idx);
+                vdef.description =
+                    "Shadow register recording last active substate index of composite state " + parent_name;
+                ir.variables.push_back(std::move(vdef));
                 modified = true;
             }
+
+            StateNode restore_node(restore_choice_name, "Choice branch restoring recorded history substate",
+                                   parent_name);
+            restore_node.kind = StateKind::Choice;
+            restore_node.pinned_parent = true;
+            ir.states.push_back(std::move(restore_node));
+            ir.choice_nodes.emplace_back(restore_choice_name);
+
+            for (std::size_t sub_idx = 0; sub_idx < target_substates.size(); ++sub_idx) {
+                const auto& sub_name = target_substates[sub_idx];
+                std::string grd_name = grd_prefix + sub_name;
+                std::string grd_expr = history_var_name + " == " + std::to_string(sub_idx);
+                ir.add_guard(grd_name, "History restore predicate for " + sub_name, grd_expr, grd_expr);
+                TransitionEdge branch(restore_choice_name, sub_name, "", grd_name, std::nullopt,
+                                      "Restore branch to " + sub_name, TransitionEdgeKind::External, 1);
+                ir.transitions.push_back(std::move(branch));
+            }
+
+            TransitionEdge fallback(restore_choice_name, default_substate, "", "else", std::nullopt,
+                                    "Default history restore fallback", TransitionEdgeKind::External, 2);
+            ir.transitions.push_back(std::move(fallback));
+
+            for (auto& t : ir.transitions) {
+                const bool matches = is_deep ? is_deep_target(t) : is_shallow_target(t);
+                if (matches) {
+                    t.target = restore_choice_name;
+                    t.target_id = compute_deterministic_id(restore_choice_name);
+                    t.target_ids = {restore_choice_name};
+                    t.multi_target_ids = {t.target_id};
+                    t.target_is_history = false;
+                    t.target_is_deep_history = false;
+                    modified = true;
+                }
+            }
+        };
+
+        if (needs_shallow) {
+            lower_history_mode(false, false);
+        }
+        if (needs_deep) {
+            lower_history_mode(true, has_both);
         }
     }
 

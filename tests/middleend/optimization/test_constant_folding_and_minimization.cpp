@@ -342,4 +342,28 @@ TEST(ConstantFolding, DoActivityAndActionCallOp_PreservedDuringActionCleanup) {
     EXPECT_FALSE(has_action("UnusedAction"));
 }
 
+/**
+ * @brief Regression (BUG-48): ConstantFoldingPass folds constant arithmetic expressions in
+ * `VariableDefinition::initial_value`.
+ */
+TEST(ConstantFolding, VariableArithmeticInitialValue_FoldedToNumericLiteral) {
+    FsmIr model;
+    model.name = "VarInitFold";
+    model.initial_state = "S1";
+    model.add_state("S1");
+    model.add_variable(VariableDefinition("x", DataType::int32(), "2 + 3 * 4"));
+    model.add_variable(VariableDefinition("y", DataType::int32(), "(10 - 4) * 2"));
+
+    ConstantFoldingPass pass;
+    DiagnosticEngine diag;
+    EXPECT_TRUE(pass.run(model, diag));
+
+    const auto* vx = model.find_variable("x");
+    const auto* vy = model.find_variable("y");
+    ASSERT_NE(vx, nullptr);
+    ASSERT_NE(vy, nullptr);
+    EXPECT_EQ(vx->initial_value, "14");
+    EXPECT_EQ(vy->initial_value, "12");
+}
+
 }  // namespace

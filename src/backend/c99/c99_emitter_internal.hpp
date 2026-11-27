@@ -45,8 +45,10 @@ struct C99Context {
     std::unordered_map<std::string, const fsm::ir::ServiceMethodSignature*> services;
     std::unordered_set<std::string> guard_callbacks;
     std::vector<std::string> guard_callbacks_ordered;
+    std::unordered_map<std::string, std::string> guard_expressions;
     std::unordered_map<std::string, std::string> state_enums;
     std::vector<std::string> emitted_signals;
+    std::vector<std::string> internal_emitted_signals;
     std::unordered_map<std::string, const fsm::ir::SignalDefinition*> emitted_signals_map;
     std::size_t max_outbox = 0U;
 };

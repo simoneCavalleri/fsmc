@@ -304,6 +304,80 @@ std::string emit_c99_source(const C99EmitPlan& plan) {
         src << "}\n\n";
     }
 
+    // Internal run-to-completion signal emitter drain helper (portless SignalEmitOp matching an internal trigger)
+    if (!ctx.internal_emitted_signals.empty()) {
+        src << "static void " << ctx.prefix << "_drain_internal_outbox(" << ctx.prefix << "_fsm_t* fsm, const "
+            << ctx.prefix << "_in_ports_t* in_ports, " << ctx.prefix << "_out_ports_t* out_ports) {\n";
+        src << "    size_t iter;\n";
+        src << "    if (fsm == NULL || out_ports == NULL || fsm->draining_internal || out_ports->outbox_count == 0U) "
+               "{\n";
+        src << "        return;\n";
+        src << "    }\n";
+        src << "    fsm->draining_internal = true;\n";
+        src << "    for (iter = 0U; iter < " << ctx.upper_prefix << "_MAX_OUTBOX; ++iter) {\n";
+        src << "        size_t found = " << ctx.upper_prefix << "_MAX_OUTBOX;\n";
+        src << "        size_t i;\n";
+        src << "        size_t j;\n";
+        src << "        " << ctx.prefix << "_emitted_event_t ev;\n";
+        src << "        " << ctx.prefix << "_out_ports_t tmp_out;\n";
+        src << "        for (i = 0U; i < out_ports->outbox_count; ++i) {\n";
+        src << "            if (out_ports->outbox[i].port != NULL && out_ports->outbox[i].port[0] != '\\0') {\n";
+        src << "                continue;\n";
+        src << "            }\n";
+        src << "            if (";
+        for (std::size_t k = 0; k < ctx.internal_emitted_signals.size(); ++k) {
+            if (k > 0) {
+                src << " || ";
+            }
+            src << "out_ports->outbox[i].tag == " << ctx.upper_prefix << "_OUT_"
+                << to_upper_ascii(to_snake_case(ctx.internal_emitted_signals[k]));
+        }
+        src << ") {\n";
+        src << "                found = i;\n";
+        src << "                break;\n";
+        src << "            }\n";
+        src << "        }\n";
+        src << "        if (found >= out_ports->outbox_count) {\n";
+        src << "            break;\n";
+        src << "        }\n";
+        src << "        ev = out_ports->outbox[found];\n";
+        src << "        for (j = found + 1U; j < out_ports->outbox_count; ++j) {\n";
+        src << "            out_ports->outbox[j - 1U] = out_ports->outbox[j];\n";
+        src << "        }\n";
+        src << "        --out_ports->outbox_count;\n";
+        src << "        memset(&tmp_out, 0, sizeof(tmp_out));\n";
+        src << "        switch (ev.tag) {\n";
+        for (const auto& isig : ctx.internal_emitted_signals) {
+            const std::string ev_snake = to_snake_case(isig);
+            const std::string tag_const = ctx.upper_prefix + "_OUT_" + to_upper_ascii(ev_snake);
+            src << "            case " << tag_const << ":\n";
+            src << "                (void)" << ctx.prefix << "_dispatch_" << ev_snake << "(fsm";
+            if (auto sit = ctx.emitted_signals_map.find(isig);
+                sit != ctx.emitted_signals_map.end() && sit->second != nullptr) {
+                for (const auto& attr : sit->second->attributes) {
+                    std::string c_type;
+                    bool is_st = false;
+                    if (map_type_to_c99(attr.type, ctx, c_type, is_st)) {
+                        const std::string field = "ev." + ev_snake + "." + sanitize_c_ident(attr.name);
+                        src << (is_st ? ", &" : ", ") << field;
+                    }
+                }
+            }
+            src << ", in_ports, &tmp_out);\n";
+            src << "                break;\n";
+        }
+        src << "            default:\n";
+        src << "                break;\n";
+        src << "        }\n";
+        src << "        for (j = 0U; j < tmp_out.outbox_count && out_ports->outbox_count < " << ctx.upper_prefix
+            << "_MAX_OUTBOX; ++j) {\n";
+        src << "            out_ports->outbox[out_ports->outbox_count++] = tmp_out.outbox[j];\n";
+        src << "        }\n";
+        src << "    }\n";
+        src << "    fsm->draining_internal = false;\n";
+        src << "}\n\n";
+    }
+
     // Sampled step (anonymous non-timed transitions, inheriting composite ancestor transitions leaf-to-root)
     {
         std::unordered_map<std::string, std::vector<const TransitionEdge*>> anon_direct;
@@ -377,6 +451,34 @@ std::string emit_c99_source(const C99EmitPlan& plan) {
             src << "    if (fsm->state != prev_state && fsm->deferred_count > 0U) {\n";
             src << "        " << ctx.prefix << "_recall_deferred(fsm, &in_val, &out_val);\n";
             src << "    }\n";
+        }
+        // Execute continuous state do_activity_action when steady (no completion transition fired)
+        {
+            bool has_do_actions = false;
+            for (const auto& st : processed.states) {
+                if (st.do_activity_action.has_value() &&
+                    (!st.do_activity_action->assignments.empty() || !st.do_activity_action->instructions.empty())) {
+                    has_do_actions = true;
+                    break;
+                }
+            }
+            if (has_do_actions) {
+                const std::unordered_set<std::string> no_attrs;
+                src << "    if (status != " << ctx.upper_prefix << "_STATUS_OK) {\n";
+                src << "        switch (fsm->state) {\n";
+                for (const auto& st : processed.states) {
+                    if (st.do_activity_action.has_value() &&
+                        (!st.do_activity_action->assignments.empty() || !st.do_activity_action->instructions.empty())) {
+                        src << "            case " << ctx.state_enums.at(st.name) << ":\n";
+                        emit_action_c(src, *st.do_activity_action, ctx, no_attrs, "                ");
+                        src << "                break;\n";
+                    }
+                }
+                src << "            default:\n";
+                src << "                break;\n";
+                src << "        }\n";
+                src << "    }\n";
+            }
         }
         src << "    if (out_ports != NULL) {\n";
         src << "        *out_ports = out_val;\n";
@@ -618,6 +720,12 @@ std::string emit_c99_source(const C99EmitPlan& plan) {
             }
             src << "        default:\n";
             src << "            break;\n";
+            src << "    }\n";
+        }
+
+        if (!ctx.internal_emitted_signals.empty()) {
+            src << "    if (status == " << ctx.upper_prefix << "_STATUS_OK && out_val.outbox_count > 0U) {\n";
+            src << "        " << ctx.prefix << "_drain_internal_outbox(fsm, &in_val, &out_val);\n";
             src << "    }\n";
         }
 

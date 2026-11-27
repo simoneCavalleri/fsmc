@@ -519,4 +519,98 @@ TEST(SubmachineInlining, VariableRewritingAndNestedHierarchy_RewritesAllEntities
     EXPECT_TRUE(found_exit_remap);
 }
 
+/**
+ * @brief Regression (BUG-47): SubmachineInliningPass replaces existing placeholder entryPoint/exitPoint
+ * states in `host.states` instead of appending duplicates.
+ */
+TEST(SubmachineInlining, PlaceholderEntryExitStates_ReplacedWithoutDuplicates) {
+    FsmIr sub;
+    sub.name = "AuthSub";
+    sub.initial_state = "Check";
+    sub.add_state("ep_fast", "", StateKind::EntryPoint);
+    sub.add_state("Check");
+    sub.add_state("xp_ok", "", StateKind::ExitPoint);
+    sub.add_transition(TransitionEdge("ep_fast", "Check", ""));
+    sub.add_transition(TransitionEdge("Check", "xp_ok", "EvPass"));
+
+    FsmIr host;
+    host.name = "AppHost";
+    host.initial_state = "Idle";
+    host.add_state("Idle");
+    host.add_state("Done");
+    auto& login = host.add_or_get_state("Login", "", StateKind::Composite);
+    login.submachine = SubmachineRef("AuthSub");
+    // Host pre-declares placeholder states matching prefixed entry/exit names
+    host.add_state("Login_ep_fast");
+    host.add_state("Login_xp_ok");
+    host.add_transition(TransitionEdge("Idle", "Login_ep_fast", "EvStart"));
+    host.add_transition(TransitionEdge("Login_xp_ok", "Done", ""));
+
+    SubmachineInliningPass pass([&](const std::string& n) -> const FsmIr* { return n == "AuthSub" ? &sub : nullptr; });
+    DiagnosticEngine diag;
+    ASSERT_TRUE(pass.run(host, diag));
+    EXPECT_FALSE(diag.has_errors());
+
+    int ep_count = 0;
+    int xp_count = 0;
+    for (const auto& st : host.states) {
+        if (st.name == "Login_ep_fast") {
+            ++ep_count;
+            EXPECT_EQ(st.kind, StateKind::EntryPoint);
+        }
+        if (st.name == "Login_xp_ok") {
+            ++xp_count;
+            EXPECT_EQ(st.kind, StateKind::ExitPoint);
+        }
+    }
+    EXPECT_EQ(ep_count, 1);
+    EXPECT_EQ(xp_count, 1);
+}
+
+/**
+ * @brief Regression (BUG-49): ChoiceInliningPass conjoins negated sibling guards on an `[else]` branch
+ * targeting a downstream choice node so chained choices remain mutually exclusive.
+ */
+TEST(ChoiceInlining, ChainedChoiceElseBranch_NegatesSiblingGuard) {
+    FsmIr ir;
+    ir.name = "ChainedChoice";
+    ir.initial_state = "Idle";
+    ir.add_state("Idle");
+    ir.add_state("C1", "", StateKind::Choice);
+    ir.add_state("C2", "", StateKind::Choice);
+    ir.add_state("High");
+    ir.add_state("Med");
+    ir.add_state("Low");
+
+    ir.add_transition(TransitionEdge("Idle", "C1", "EvCheck"));
+    ir.add_transition(TransitionEdge("C1", "High", "", "v > 100"));
+    ir.add_transition(TransitionEdge("C1", "C2", "", "else"));
+    ir.add_transition(TransitionEdge("C2", "Med", "", "v > 50"));
+    ir.add_transition(TransitionEdge("C2", "Low", "", "else"));
+
+    ChoiceInliningPass pass;
+    DiagnosticEngine diag;
+    ASSERT_TRUE(pass.run(ir, diag));
+
+    EXPECT_EQ(ir.find_state("C1"), nullptr);
+    EXPECT_EQ(ir.find_state("C2"), nullptr);
+    ASSERT_EQ(ir.transitions.size(), 3u);
+
+    const TransitionEdge* to_med = nullptr;
+    const TransitionEdge* to_low = nullptr;
+    for (const auto& tr : ir.transitions) {
+        if (tr.target == "Med")
+            to_med = &tr;
+        if (tr.target == "Low")
+            to_low = &tr;
+    }
+    ASSERT_NE(to_med, nullptr);
+    ASSERT_NE(to_low, nullptr);
+    ASSERT_TRUE(to_med->guard.has_value());
+    EXPECT_NE(to_med->guard->find("!(v > 100)"), std::string::npos);
+    EXPECT_NE(to_med->guard->find("v > 50"), std::string::npos);
+    ASSERT_TRUE(to_low->guard.has_value());
+    EXPECT_NE(to_low->guard->find("!(v > 100)"), std::string::npos);
+}
+
 }  // namespace

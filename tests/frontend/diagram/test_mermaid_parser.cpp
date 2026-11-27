@@ -682,4 +682,24 @@ stateDiagram-v2
     EXPECT_NE(ir.parse_warnings[0].find("bogus_dir"), std::string::npos);
 }
 
+/**
+ * @brief Regression (BUG-47): Mermaid parses `state Login <<submachine:AuthSub>>` into `StateNode::submachine`.
+ */
+TEST(MermaidParserTest, SubmachineStereotype_PopulatesSubmachineRef) {
+    const std::string mmd = R"(
+stateDiagram-v2
+    [*] --> Idle
+    state Login <<submachine:AuthSub>>
+    Idle --> Login : EvStart
+)";
+    FsmIr ir;
+    fsm::diagnostic::DiagnosticEngine diag;
+    MermaidParser parser;
+    ASSERT_TRUE(parser.parse(mmd, ir, diag)) << diag.render_to_string();
+    const StateNode* login = ir.find_state("Login");
+    ASSERT_NE(login, nullptr);
+    ASSERT_TRUE(login->submachine.has_value());
+    EXPECT_EQ(login->submachine->fsm_name, "AuthSub");
+}
+
 }  // namespace

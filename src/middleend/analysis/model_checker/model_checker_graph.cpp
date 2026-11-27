@@ -154,6 +154,16 @@ void ModelChecker::build_graph() {
     }
 
     for (const auto& t : ir_.transitions) {
+        if (t.guard.has_value()) {
+            std::string g_eff = *t.guard;
+            if (const auto* gm = ir_.find_guard(g_eff);
+                gm != nullptr && gm->raw_expression.has_value() && !gm->raw_expression->empty()) {
+                g_eff = *gm->raw_expression;
+            }
+            if (g_eff == "false" || g_eff == "0") {
+                continue;
+            }
+        }
         std::string src = resolve_name(t.source, t.source_id);
         std::string dst = resolve_name(t.target, t.target_id);
         if (!src.empty() && !dst.empty()) {
@@ -232,14 +242,19 @@ void ModelChecker::build_graph() {
             std::string curr = q.front();
             q.pop();
 
-            // Composite child states
+            // Composite child states: only enter the declared initial substate (already wired into adj_[curr]
+            // above); if no initial_sub_state was declared, fall back to the first non-pseudostate child.
             if (const auto* s = ir_.find_state(curr)) {
-                if (s->is_composite) {
+                if (s->is_composite && s->initial_sub_state.empty()) {
                     for (const auto& sub : ir_.states) {
-                        if (sub.parent_state == curr && reachable_states_.count(sub.name) == 0) {
+                        if (sub.parent_state == curr && sub.kind != StateKind::ShallowHistory &&
+                            sub.kind != StateKind::DeepHistory && sub.kind != StateKind::Choice &&
+                            sub.kind != StateKind::Junction && sub.kind != StateKind::Fork &&
+                            sub.kind != StateKind::Join && reachable_states_.count(sub.name) == 0) {
                             reachable_states_.insert(sub.name);
                             predecessor_map_[sub.name] = {curr, {sub.name, "enter_composite", ""}};
                             q.push(sub.name);
+                            break;
                         }
                     }
                 }

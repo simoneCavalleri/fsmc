@@ -644,3 +644,79 @@ int main(void) {
     ASSERT_EQ(std::system(("\"" + bin.string() + "\"").c_str()), 0);
     fs::remove_all(tmp_dir);
 }
+
+/**
+ * @brief Regression (BUG-55 & BUG-57): Pure-C99 expands symbolic guards inside compound boolean expressions
+ * inline instead of emitting NULL service callbacks, and executes inline `do_activity_action` in `*_step()`.
+ */
+TEST(C99BackendTest, CompoundSymbolicGuardsAndInlineDoActivity_CompileAndExecute) {
+    FsmIr ir;
+    ir.name = "CmpDoCtrl";
+    ir.initial_state = "Idle";
+    ir.add_port(PortDefinition("x", DataType::int32(), PortDirection::In));
+    ir.add_variable(VariableDefinition("y", DataType::int32(), "10"));
+    ir.add_variable(VariableDefinition("ticks", DataType::int32(), "0"));
+    ir.add_event("EvGo");
+
+    ir.add_guard("x_gt_5", "", std::string("x > 5"), std::string("x > 5"));
+    ir.add_guard("y_eq_10", "", std::string("y == 10"), std::string("y == 10"));
+
+    ir.add_state("Idle");
+    auto& active = ir.add_state("Active");
+    active.do_activity = "Active_do";
+    ActionSignature do_sig("Active_do");
+    do_sig.assignments.emplace_back(LValueTarget("ticks", LValueScope::Register), "ticks + 1");
+    active.do_activity_action = std::move(do_sig);
+
+    TransitionEdge tr("Idle", "Active", "EvGo");
+    tr.set_guard("x_gt_5 && y_eq_10");
+    ir.add_transition(std::move(tr));
+
+    C99GeneratorOptions opts;
+    opts.header_include = "cmp_do.h";
+    C99CodegenBackend backend(opts);
+    fsm::diagnostic::DiagnosticEngine diag;
+    const auto bundle = backend.emit_bundle(ir, diag);
+    ASSERT_FALSE(diag.has_errors()) << diag.render_to_string();
+    EXPECT_EQ(bundle.source.find("fsm->services.x_gt_5"), std::string::npos);
+    EXPECT_NE(bundle.source.find("in_val.x > 5"), std::string::npos);
+    EXPECT_NE(bundle.source.find("fsm->regs.y == 10"), std::string::npos);
+
+    const std::string cc = find_c_compiler();
+    if (cc.empty()) {
+        return;
+    }
+
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::temp_directory_path() / "fsmc_c99_cmp_do_test";
+    fs::create_directories(tmp_dir);
+    {
+        std::ofstream(tmp_dir / "cmp_do.h") << bundle.header;
+        std::ofstream(tmp_dir / "cmp_do.c") << bundle.source;
+        std::ofstream(tmp_dir / "main.c") << R"c(
+#include <assert.h>
+#include <string.h>
+#include "cmp_do.h"
+int main(void) {
+    cmp_do_ctrl_fsm_t sm;
+    cmp_do_ctrl_in_ports_t in_p;
+    memset(&in_p, 0, sizeof(in_p));
+    in_p.x = 20;
+    cmp_do_ctrl_init(&sm);
+    assert(cmp_do_ctrl_dispatch_ev_go(&sm, &in_p, NULL) == CMP_DO_CTRL_STATUS_OK);
+    assert(cmp_do_ctrl_current_state(&sm) == CMP_DO_CTRL_STATE_ACTIVE);
+    cmp_do_ctrl_step(&sm, &in_p, NULL);
+    cmp_do_ctrl_step(&sm, &in_p, NULL);
+    assert(sm.regs.ticks == 2);
+    return 0;
+}
+)c";
+    }
+    const fs::path bin = tmp_dir / "runner";
+    const std::string cmd = cc + " -std=c99 -Wall -Wextra -Werror -pedantic -I\"" + tmp_dir.string() + "\" \"" +
+                            (tmp_dir / "cmp_do.c").string() + "\" \"" + (tmp_dir / "main.c").string() + "\" -o \"" +
+                            bin.string() + "\"";
+    ASSERT_EQ(std::system(cmd.c_str()), 0) << "Strict C99 compile failed:\n" << cmd;
+    ASSERT_EQ(std::system(("\"" + bin.string() + "\"").c_str()), 0);
+    fs::remove_all(tmp_dir);
+}

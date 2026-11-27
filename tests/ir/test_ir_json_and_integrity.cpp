@@ -275,4 +275,49 @@ TEST(IrJsonAndIntegrityTest, JsonDeserializer_ArrayStatesAndXStateV5Targets) {
     EXPECT_EQ(xs_ir.transitions[0].kind, TransitionEdgeKind::Local);
 }
 
+/**
+ * @brief Regression (BUG-59): FsmIrDeserializer rehydrates XState v5 top-level `meta.ports` and
+ * `meta.actions` so EFSM port directions and action assignments survive XState roundtrips.
+ */
+TEST(FsmIrJsonTest, XStateTopLevelMeta_RehydratesPortsAndActionAssignments) {
+    const std::string xs_json = R"({
+        "id": "ThermalCtrl",
+        "initial": "Off",
+        "context": { "trips": 0, "temp": 0, "fan_on": false },
+        "states": {
+            "Off": {
+                "on": {
+                    "EvSample": { "target": "Cooling", "guard": "temp > 70", "actions": "bump_trips" }
+                }
+            },
+            "Cooling": {}
+        },
+        "meta": {
+            "ports": [
+                { "name": "temp", "direction": "in", "type": "int32", "default": "0" },
+                { "name": "fan_on", "direction": "out", "type": "bool", "default": "false" }
+            ],
+            "actions": {
+                "bump_trips": ["trips = trips + 1", "fan_on = true"]
+            }
+        }
+    })";
+
+    FsmIr ir;
+    std::string err;
+    ASSERT_TRUE(FsmIrDeserializer::deserialize_json(xs_json, ir, err)) << err;
+    ASSERT_NE(ir.find_port("temp"), nullptr);
+    EXPECT_TRUE(ir.find_port("temp")->is_in());
+    ASSERT_NE(ir.find_port("fan_on"), nullptr);
+    EXPECT_TRUE(ir.find_port("fan_on")->is_out());
+    EXPECT_EQ(ir.find_variable("temp"), nullptr);
+    EXPECT_NE(ir.find_variable("trips"), nullptr);
+
+    ASSERT_EQ(ir.transitions.size(), 1U);
+    ASSERT_TRUE(ir.transitions[0].transition_action.has_value());
+    ASSERT_EQ(ir.transitions[0].transition_action->assignments.size(), 2U);
+    EXPECT_EQ(ir.transitions[0].transition_action->assignments[0].target.name, "trips");
+    EXPECT_EQ(ir.transitions[0].transition_action->assignments[1].target.scope, LValueScope::OutPort);
+}
+
 }  // namespace

@@ -184,6 +184,9 @@ bool Sysml2Parser::parse_transition_statement(const std::string& raw_stmt, FsmIr
     // 6. Action effects and variable assignments: do { ... }, do send via port, or do action_name
     std::vector<ActionAssignment> assignments;
     std::vector<ActionAstNode> service_calls;
+    std::vector<ActionAstNode> ordered_instructions;
+    bool has_non_assign_inst = false;
+    bool has_assign_after_inst = false;
     std::optional<ActionSignature> trans_send_action;
     LocalItemMap local_items;
     std::string explicit_action_name;
@@ -199,14 +202,35 @@ bool Sysml2Parser::parse_transition_statement(const std::string& raw_stmt, FsmIr
             SignalEmitOp emit_op;
             std::string send_act_name;
             std::string send_inv;
+            const std::size_t prev_assign_sz = assignments.size();
+            const std::size_t prev_sc_sz = service_calls.size();
             if (try_parse_send_statement(statement, local_items, model, emit_op, send_act_name, send_inv)) {
                 if (action.empty()) {
                     action = send_act_name;
                 }
-                service_calls.emplace_back(std::move(emit_op), std::move(send_inv));
+                has_non_assign_inst = true;
+                ActionAstNode node(std::move(emit_op), std::move(send_inv));
+                ordered_instructions.push_back(node);
+                service_calls.push_back(std::move(node));
             } else if (try_parse_service_call_statement(statement, model, service_calls)) {
                 // Lowered directly into typed ActionCallOp
-            } else if (!try_parse_assignment_statement(statement, assignments, &model)) {
+                has_non_assign_inst = true;
+                for (std::size_t si = prev_sc_sz; si < service_calls.size(); ++si) {
+                    ordered_instructions.push_back(service_calls[si]);
+                }
+            } else if (try_parse_assignment_statement(statement, assignments, &model)) {
+                if (has_non_assign_inst) {
+                    has_assign_after_inst = true;
+                }
+                for (std::size_t ai = prev_assign_sz; ai < assignments.size(); ++ai) {
+                    StoreOp st_op;
+                    st_op.target = assignments[ai].target;
+                    st_op.op = assignments[ai].op;
+                    st_op.expression = assignments[ai].expression;
+                    st_op.expr_ast = assignments[ai].expr_ast;
+                    ordered_instructions.emplace_back(std::move(st_op), statement);
+                }
+            } else {
                 // Standalone action method call
                 std::string act_call = sanitize_identifier(statement);
                 if (!act_call.empty()) {
@@ -214,6 +238,11 @@ bool Sysml2Parser::parse_transition_statement(const std::string& raw_stmt, FsmIr
                     model.add_action(act_call);
                 }
             }
+        }
+        if (has_assign_after_inst && !assignments.empty()) {
+            // Preserve exact imperative source order when an assign follows a send/call statement.
+            service_calls = std::move(ordered_instructions);
+            assignments.clear();
         }
 
         // Materialize synthesized action signatures from variable assignments or typed service calls

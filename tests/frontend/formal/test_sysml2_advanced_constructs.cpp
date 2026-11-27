@@ -261,4 +261,106 @@ TEST(Sysml2AdvancedConstructs, ParallelStateAndSlashActions_RoundtrippedLossless
     EXPECT_FALSE(has_reachability_warning);
 }
 
+/**
+ * @brief Regression (BUG-46): SysML v2 portless `send EvInternal();` lowers to `SignalEmitOp`
+ * with `target_port == std::nullopt` for run-to-completion internal self-dispatch.
+ */
+TEST(Sysml2AdvancedConstructs, PortlessSendStatement_LowersToInternalSignalEmitOp) {
+    const std::string sysml_src = R"(
+state def InternalChain {
+    entry; then S1;
+    state S1;
+    state S2 {
+        entry action { send EvNext(); }
+    }
+    state S3;
+
+    transition t1 first S1 accept EvStart then S2;
+    transition t2 first S2 accept EvNext then S3;
+}
+)";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_src, model, err)) << "Error: " << err.render_to_string();
+
+    const StateNode* s2 = model.find_state("S2");
+    ASSERT_NE(s2, nullptr);
+    ASSERT_FALSE(s2->entry_actions.empty());
+    bool found_internal_emit = false;
+    for (const auto& inst : s2->entry_actions[0].instructions) {
+        if (const auto* se = std::get_if<SignalEmitOp>(&inst.op)) {
+            if (se->signal_name == "EvNext" && !se->target_port.has_value()) {
+                found_internal_emit = true;
+            }
+        }
+    }
+    EXPECT_TRUE(found_internal_emit);
+}
+
+/**
+ * @brief Regression (BUG-56 & BUG-57): SysML v2 preserves imperative source order when `assign` and `send`
+ * are interleaved, captures inline `do action { ... }` and `time invariant`, and widens negative `Integer`
+ * variables to signed `int32_t`.
+ */
+TEST(Sysml2AdvancedConstructs, SequentialAssignSendDoActionTimeInvariantAndNegativeInteger) {
+    const std::string sysml_src = R"(
+package SeqPkg {
+    signal def EvOut { attribute v : Integer; }
+    state def SeqFsm {
+        out port outp : Integer;
+        attribute x : Integer = 0;
+        attribute balance : Integer = -5;
+
+        entry; then Active;
+        state Active {
+            time invariant stay <= 100 [ms];
+            do action { assign x := x + 1; }
+        }
+        state Done;
+
+        transition t1 first Active accept EvGo do action {
+            assign x := 10;
+            send EvOut(x) via outp;
+            assign x := 20;
+        } then Done;
+    }
+}
+)";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_src, model, err)) << "Error: " << err.render_to_string();
+
+    // Negative Integer widens to signed int32_t
+    const auto* bal = model.find_variable("balance");
+    ASSERT_NE(bal, nullptr);
+    EXPECT_EQ(bal->type, DataType::int32());
+    EXPECT_EQ(bal->initial_value, "-5");
+
+    // time invariant & inline do action body captured on Active
+    const auto* active = model.find_state("Active");
+    ASSERT_NE(active, nullptr);
+    ASSERT_TRUE(active->time_invariant.has_value());
+    EXPECT_NE(active->time_invariant->raw_expression.find("100"), std::string::npos);
+    ASSERT_TRUE(active->do_activity_action.has_value());
+    ASSERT_EQ(active->do_activity_action->assignments.size(), 1u);
+    EXPECT_EQ(active->do_activity_action->assignments[0].target.name, "x");
+
+    // Interleaved assign -> send -> assign lowered in exact order inside instructions
+    ASSERT_EQ(model.transitions.size(), 1u);
+    ASSERT_TRUE(model.transitions[0].transition_action.has_value());
+    const auto& act = *model.transitions[0].transition_action;
+    EXPECT_TRUE(act.assignments.empty());
+    ASSERT_EQ(act.instructions.size(), 3u);
+    ASSERT_TRUE(std::holds_alternative<StoreOp>(act.instructions[0].op));
+    EXPECT_EQ(std::get<StoreOp>(act.instructions[0].op).expression, "10");
+    ASSERT_TRUE(std::holds_alternative<SignalEmitOp>(act.instructions[1].op));
+    EXPECT_EQ(std::get<SignalEmitOp>(act.instructions[1].op).signal_name, "EvOut");
+    ASSERT_TRUE(std::holds_alternative<StoreOp>(act.instructions[2].op));
+    EXPECT_EQ(std::get<StoreOp>(act.instructions[2].op).expression, "20");
+}
+
 }  // namespace

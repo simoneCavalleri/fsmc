@@ -340,4 +340,54 @@ state def SubMsTimers {
     EXPECT_EQ(std::get<TimeTrigger>(model.transitions[2].trigger).duration_in_ms(), 1u);
 }
 
+/**
+ * @brief Regression (BUG-44): SysML v2 `item def` referenced as a port or variable type is promoted
+ * to a `TypeKind::Struct` in `custom_types` and removed from `signals`, while `signal def` blocks
+ * preserve their payload attributes.
+ */
+TEST(Sysml2StructuredData, ItemDefUsedAsPortOrVarType_PromotedToStructAndSignalDefPreserved) {
+    const std::string sysml_src = R"(
+package FlightPkg {
+    item def NavData {
+        attribute alt : Real = 0.0;
+        attribute valid : Boolean = false;
+    }
+
+    signal def EvCommand {
+        attribute code : Integer = 0;
+    }
+
+    state def FlightFsm {
+        in port nav_in : NavData;
+        attribute cached_nav : NavData;
+
+        entry; then Idle;
+        state Idle;
+        state Active;
+
+        transition t1 first Idle accept EvCommand then Active;
+    }
+}
+)";
+
+    Sysml2Parser parser;
+    FsmIr model;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(sysml_src, model, err)) << "Parser error: " << err.render_to_string();
+
+    // NavData must be promoted to a Struct custom type and NOT left as a Signal
+    const auto* nav_struct = model.find_struct("NavData");
+    ASSERT_NE(nav_struct, nullptr);
+    ASSERT_EQ(nav_struct->fields.size(), 2u);
+    EXPECT_EQ(nav_struct->fields[0].name, "alt");
+    EXPECT_EQ(nav_struct->fields[1].name, "valid");
+    EXPECT_EQ(model.find_signal("NavData"), nullptr);
+
+    // signal def EvCommand must remain a Signal with its `code` attribute
+    const auto* sig_cmd = model.find_signal("EvCommand");
+    ASSERT_NE(sig_cmd, nullptr);
+    ASSERT_EQ(sig_cmd->attributes.size(), 1u);
+    EXPECT_EQ(sig_cmd->attributes[0].name, "code");
+}
+
 }  // namespace

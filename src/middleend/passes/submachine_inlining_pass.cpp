@@ -465,9 +465,13 @@ bool SubmachineInliningPass::run(FsmIr& ir, DiagnosticEngine& diag) {
         st.submachine = std::nullopt;
     }
 
-    // Append inlined entities
+    // Append or replace placeholder inlined states (e.g. host references to Sub.entryPoint / Sub.exitPoint)
     for (auto& s : inlined_states) {
-        ir.states.push_back(std::move(s));
+        if (auto* existing = ir.find_state_mut(s.name)) {
+            *existing = std::move(s);
+        } else {
+            ir.states.push_back(std::move(s));
+        }
     }
     for (auto& t : inlined_transitions) {
         ir.transitions.push_back(std::move(t));

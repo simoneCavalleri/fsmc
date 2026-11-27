@@ -282,6 +282,10 @@ std::string translate_expr_to_c(std::string_view expr, const C99Context& ctx,
                     out += "out_val." + sanitize_c_ident(tok);
                     continue;
                 }
+                if (auto g_it = ctx.guard_expressions.find(tok); g_it != ctx.guard_expressions.end()) {
+                    out += "(" + translate_expr_to_c(g_it->second, ctx, event_attrs) + ")";
+                    continue;
+                }
                 if (ctx.guard_callbacks.count(tok) != 0U) {
                     const std::string cb = sanitize_c_ident(tok);
                     out += "(fsm->services." + cb + " != NULL && fsm->services." + cb + "(fsm->services.user_data))";

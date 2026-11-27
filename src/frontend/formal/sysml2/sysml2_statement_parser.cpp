@@ -281,9 +281,10 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    // 2. Item Definition (Signal with Payload): item def / event def / attribute def <Name>
+    // 2. Item / Signal Definition (Signal with Payload): item def / signal def / event def / attribute def <Name>
     static const std::regex item_def_regex(
-        R"(^(?:item\s+def|event\s+def|attribute\s+def|port\s+def)\s+([A-Za-z_][A-Za-z0-9_]*))", std::regex::optimize);
+        R"(^(?:item\s+def|signal\s+def|event\s+def|attribute\s+def|port\s+def)\s+([A-Za-z_][A-Za-z0-9_]*))",
+        std::regex::optimize);
     if (std::regex_search(stmt, match, item_def_regex)) {
         const std::string sig_name = sanitize_identifier(match[1].str());
         SignalDefinition sig;
@@ -377,7 +378,14 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
             // Top-level EFSM state machine variable
             VariableDefinition var;
             var.name = attr_name;
-            var.type = canonical_dt;
+            // Widen default unsigned Integer (uint32_t) to signed int32_t when initialized with a negative literal
+            // to prevent C++17 brace-initialization narrowing errors (-Wnarrowing).
+            if (canonical_dt.is_primitive() && canonical_dt.primitive() == PrimitiveTypeKind::UInt32 &&
+                !init_val.empty() && init_val.front() == '-') {
+                var.type = DataType::int32();
+            } else {
+                var.type = canonical_dt;
+            }
             std::string clean_unit = unit_str;
             if (clean_unit.size() >= 2 && clean_unit.front() == '[' && clean_unit.back() == ']') {
                 clean_unit = clean_unit.substr(1, clean_unit.size() - 2);
@@ -539,6 +547,9 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
                                             std::vector<ActionSignature>& target_actions) {
         std::vector<ActionAssignment> assignments;
         std::vector<ActionAstNode> service_calls;
+        std::vector<ActionAstNode> ordered_instructions;
+        bool has_non_assign_inst = false;
+        bool has_assign_after_inst = false;
         std::vector<std::string> standalone_calls;
         LocalItemMap local_items;
 
@@ -552,11 +563,32 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
             SignalEmitOp emit_op;
             std::string send_act_name;
             std::string send_inv;
+            const std::size_t prev_assign_sz = assignments.size();
+            const std::size_t prev_sc_sz = service_calls.size();
             if (try_parse_send_statement(statement, local_items, model, emit_op, send_act_name, send_inv)) {
-                service_calls.emplace_back(std::move(emit_op), std::move(send_inv));
+                has_non_assign_inst = true;
+                ActionAstNode node(std::move(emit_op), std::move(send_inv));
+                ordered_instructions.push_back(node);
+                service_calls.push_back(std::move(node));
             } else if (try_parse_service_call_statement(statement, model, service_calls)) {
                 // Lowered directly into typed ActionCallOp
-            } else if (!try_parse_assignment_statement(statement, assignments, &model)) {
+                has_non_assign_inst = true;
+                for (std::size_t si = prev_sc_sz; si < service_calls.size(); ++si) {
+                    ordered_instructions.push_back(service_calls[si]);
+                }
+            } else if (try_parse_assignment_statement(statement, assignments, &model)) {
+                if (has_non_assign_inst) {
+                    has_assign_after_inst = true;
+                }
+                for (std::size_t ai = prev_assign_sz; ai < assignments.size(); ++ai) {
+                    StoreOp st_op;
+                    st_op.target = assignments[ai].target;
+                    st_op.op = assignments[ai].op;
+                    st_op.expression = assignments[ai].expression;
+                    st_op.expr_ast = assignments[ai].expr_ast;
+                    ordered_instructions.emplace_back(std::move(st_op), statement);
+                }
+            } else {
                 std::string act_call = statement;
                 if (act_call.ends_with("()")) {
                     act_call.resize(act_call.size() - 2);
@@ -567,6 +599,10 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
                     standalone_calls.push_back(act_call);
                 }
             }
+        }
+        if (has_assign_after_inst && !assignments.empty()) {
+            service_calls = std::move(ordered_instructions);
+            assignments.clear();
         }
 
         const bool has_assignments = !assignments.empty() || !service_calls.empty();
@@ -621,14 +657,24 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    static const std::regex do_block_act_regex(R"(^do(?:\s*\/)?(?:\s+action)?\s*\{([\s\S]*)\})", std::regex::optimize);
+    static const std::regex do_block_act_regex(
+        R"(^do(?:\s*\/)?(?:\s+action)?(?:\s+([A-Za-z_][A-Za-z0-9_]*))?\s*\{([\s\S]*)\})", std::regex::optimize);
     if (std::regex_search(stmt, match, do_block_act_regex)) {
-        std::string act_name = !state_stack.empty() ? (state_stack.back() + "_do") : "do_activity";
+        std::string explicit_name = match[1].matched ? sanitize_identifier(match[1].str()) : "";
+        std::string default_name = !state_stack.empty() ? (state_stack.back() + "_do") : "do_activity";
+        std::vector<ActionSignature> do_sigs;
+        parse_lifecycle_action_block(match[2].str(), explicit_name, default_name, do_sigs);
+        std::string act_name =
+            !do_sigs.empty() ? do_sigs.front().name : (!explicit_name.empty() ? explicit_name : default_name);
         model.add_action(act_name);
         if (!state_stack.empty()) {
             auto* st = model.find_state_mut(state_stack.back());
             if (st != nullptr) {
                 st->do_activity = act_name;
+                if (!do_sigs.empty() &&
+                    (!do_sigs.front().assignments.empty() || !do_sigs.front().instructions.empty())) {
+                    st->do_activity_action = std::move(do_sigs.front());
+                }
             }
         }
         return true;
@@ -714,8 +760,8 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
         return true;
     }
 
-    // 8c. State Stay Duration / Invariant: stay duration <= 500[ms]; or invariant stay <= 500ms;
-    static const std::regex invariant_regex(R"(^(?:stay(?:\s+duration)?\s*<=?|invariant)\s*(.+)$)",
+    // 8c. State Stay Duration / Invariant: stay duration <= 500[ms]; or [time] invariant stay <= 500ms;
+    static const std::regex invariant_regex(R"(^(?:stay(?:\s+duration)?\s*<=?|(?:time\s+)?invariant)\s*(.+)$)",
                                             std::regex::optimize);
     if (std::regex_search(stmt, match, invariant_regex)) {
         if (!state_stack.empty()) {
@@ -749,6 +795,11 @@ bool Sysml2Parser::process_statement(const std::string& raw_stmt, FsmIr& model, 
             auto* st = model.find_state_mut(state_stack.back());
             if (st != nullptr) {
                 st->traceability_reqs.push_back(req_id);
+            }
+        } else {
+            if (std::find(model.satisfies_reqs.begin(), model.satisfies_reqs.end(), req_id) ==
+                model.satisfies_reqs.end()) {
+                model.satisfies_reqs.push_back(req_id);
             }
         }
         return true;

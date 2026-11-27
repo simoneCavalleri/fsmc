@@ -254,6 +254,9 @@ std::string emit_c99_header(const C99EmitPlan& plan) {
         hdr << "    size_t deferred_count;\n";
         hdr << "    bool recalling_deferred;\n";
     }
+    if (!ctx.internal_emitted_signals.empty()) {
+        hdr << "    bool draining_internal;\n";
+    }
     hdr << "} " << ctx.prefix << "_fsm_t;\n\n";
 
     // Public C99 API

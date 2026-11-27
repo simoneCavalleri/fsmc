@@ -9,7 +9,9 @@
 
 #include "fsm/frontend/diagram/mermaid/mermaid_parser.hpp"
 #include "fsm/frontend/diagram/plantuml/plantuml_parser.hpp"
+#include "fsm/middleend/analysis/counterexample_exporter.hpp"
 #include "fsm/middleend/analysis/efsm_interval_analysis.hpp"
+#include "fsm/middleend/analysis/model_checker.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm::frontend;
@@ -296,6 +298,73 @@ TEST(ValidationPipeline, MultiTargetForkTransition_NoFalseUnreachableWarning) {
     for (const auto& d : diag.get_diagnostics()) {
         EXPECT_NE(d.code, "W0201") << d.message;
     }
+}
+
+/**
+ * @brief Regression (BUG-53): ModelChecker enters only `initial_sub_state` on composite states and skips
+ * transitions with static `false` guards, avoiding false-positive violations on unreachable substates.
+ */
+TEST(ModelCheckerReachability, CompositeInitialSubstateAndStaticFalseGuard_NoFalseViolation) {
+    FsmIr model;
+    model.name = "CompReach";
+    model.initial_state = "Active";
+    auto& active = model.add_state("Active");
+    active.is_composite = true;
+    active.initial_sub_state = "SafeSub";
+    model.add_state("SafeSub", "Active");
+    model.add_state("UnreachableHazard", "Active");
+
+    TransitionEdge dead_tr("SafeSub", "UnreachableHazard", "EvGo");
+    dead_tr.set_guard("false");
+    model.add_transition(std::move(dead_tr));
+
+    FormalProperty prop("NoHazard", PropertyKind::Safety, "G (state != UnreachableHazard)");
+    prop.ast = PropertyAstNode::parse(prop.raw_formula);
+
+    ModelChecker checker(model);
+    const auto res = checker.verify_property(prop);
+    EXPECT_TRUE(res.passed);
+}
+
+/**
+ * @brief Regression (BUG-58): CounterexampleGTestExporter emits `std::chrono::milliseconds(...)` steps
+ * for TimeTrigger transitions and populates witness assignments for both in-ports and event payloads in
+ * compound symbolic guards.
+ */
+TEST(ModelCheckerReachability, CounterexampleGTestExporter_EmitsTimerStepAndPayloadWitnesses) {
+    FsmIr model;
+    model.name = "ReactorCtrl";
+    model.initial_state = "Nominal";
+    model.add_state("Nominal");
+    model.add_state("Pressurized");
+    model.add_state("Meltdown");
+    model.add_port(PortDefinition("ambient", DataType::int32(), PortDirection::In));
+    SignalDefinition sig("EvBoost");
+    sig.attributes.emplace_back("delta", DataType::int32());
+    model.add_signal(sig);
+    model.add_guard("ambient_gt_20", "", std::string("ambient > 20"), std::string("ambient > 20"));
+    model.add_guard("delta_gt_5", "", std::string("delta > 5"), std::string("delta > 5"));
+
+    TransitionEdge t1("Nominal", "Pressurized", "EvBoost");
+    t1.set_guard("ambient_gt_20 && delta_gt_5");
+    model.add_transition(std::move(t1));
+
+    TransitionEdge t2("Pressurized", "Meltdown", "after_100ms");
+    t2.trigger = TimeTrigger{TimeTriggerKind::After, 100};
+    model.add_transition(std::move(t2));
+
+    FormalProperty prop("NoMeltdown", PropertyKind::Safety, "G (state != Meltdown)");
+    prop.ast = PropertyAstNode::parse(prop.raw_formula);
+
+    ModelChecker checker(model);
+    const auto res = checker.verify_property(prop);
+    ASSERT_FALSE(res.passed);
+
+    const std::string gtest = CounterexampleGTestExporter::export_gtest(model, res, "reactor.hpp", "fsm_generated");
+    EXPECT_NE(gtest.find("in.ambient = 20 + 1;"), std::string::npos) << gtest;
+    EXPECT_NE(gtest.find("ev.delta = 5 + 1;"), std::string::npos) << gtest;
+    EXPECT_NE(gtest.find("sm.step(std::chrono::milliseconds(100), in, out);"), std::string::npos) << gtest;
+    EXPECT_EQ(gtest.find("sm.dispatch(after_100ms"), std::string::npos) << gtest;
 }
 
 }  // namespace

@@ -168,6 +168,15 @@ std::vector<RequirementRecord> RtmEmitter::aggregate_records(const FsmIr& ir,
                                                              const std::vector<ModelCheckResult>& results) {
     std::map<std::string, RequirementRecord> map;
 
+    // 0. From Top-Level Machine Requirements (satisfy REQ_... on state def)
+    for (const auto& req : ir.satisfies_reqs) {
+        if (req.empty()) {
+            continue;
+        }
+        auto& rec = map[req];
+        rec.id = req;
+    }
+
     // 1. From States
     for (const auto& s : ir.states) {
         for (const auto& req : s.traceability_reqs) {

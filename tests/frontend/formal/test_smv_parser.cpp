@@ -923,4 +923,50 @@ TEST(SmvParser, LocalTransition_PreservedAcrossSerializerRoundtrip) {
     EXPECT_TRUE(found_external);
 }
 
+/**
+ * @brief Regression (BUG-60): SmvParser parses standard NuSMV `next(var) := case ... esac;` variable
+ * updates without relying on `-- action:` comments, and populates `FormalProperty::ast` for `LTLSPEC`.
+ */
+TEST(SmvParser, StandardNextVarCaseAndLtlSpecAst_ParsedWithoutActionComments) {
+    const std::string smv_content = R"(MODULE main
+VAR
+  state : {Idle, Busy, Error};
+  retries : 0..5;
+  event : {none, EvRun, EvFail};
+ASSIGN
+  init(state) := Idle;
+  init(retries) := 0;
+  next(state) := case
+    state = Idle & event = EvRun : Busy;
+    state = Busy & event = EvFail & retries < 3 : Idle;
+    state = Busy & event = EvFail & retries >= 3 : Error;
+    TRUE : state;
+  esac;
+  next(retries) := case
+    state = Busy & event = EvFail & retries < 3 : retries + 1;
+    TRUE : retries;
+  esac;
+LTLSPEC G (state != Error)
+)";
+
+    SmvParser parser;
+    FsmIr model;
+    fsm::diagnostic::DiagnosticEngine err;
+    ASSERT_TRUE(parser.parse(smv_content, model, err)) << err.render_to_string();
+
+    bool found_retry_inc = false;
+    for (const auto& tr : model.transitions) {
+        if (tr.source == "Busy" && tr.target == "Idle" && tr.transition_action.has_value()) {
+            for (const auto& a : tr.transition_action->assignments) {
+                if (a.target.name == "retries" && a.expression == "retries + 1") {
+                    found_retry_inc = true;
+                }
+            }
+        }
+    }
+    EXPECT_TRUE(found_retry_inc);
+    ASSERT_EQ(model.properties.size(), 1u);
+    EXPECT_TRUE(model.properties[0].ast.has_value());
+}
+
 }  // namespace

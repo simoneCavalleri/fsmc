@@ -13,6 +13,46 @@ ir::CompanionManifest CompanionManifestEmitter::build_manifest(const ir::FsmIr& 
     manifest.fsm_name = ir.name;
     manifest.initial_state = ir.initial_state;
 
+    // Custom Types (Enums, Structs, External Types)
+    manifest.types.reserve(ir.custom_types.size());
+    for (const auto& td : ir.custom_types) {
+        ir::CompanionCustomType ct;
+        ct.name = td.name;
+        ct.kind = td.is_enum() ? "enum" : "struct";
+        if (td.is_external()) {
+            ct.external_module = td.external_ref->module;
+            ct.external_symbol = td.external_ref->symbol;
+        }
+        for (const auto& lit : td.literals) {
+            ct.enum_literals.push_back(lit.name);
+        }
+        for (const auto& f : td.fields) {
+            ir::CompanionTypeField cf;
+            cf.name = f.name;
+            cf.type = f.type.to_canonical_string();
+            ct.fields.push_back(std::move(cf));
+        }
+        manifest.types.push_back(std::move(ct));
+    }
+
+    // Services
+    manifest.services.reserve(ir.services.size());
+    for (const auto& svc : ir.services) {
+        ir::CompanionService cs;
+        cs.name = svc.name;
+        cs.return_type = svc.return_type.to_canonical_string();
+        cs.is_pure = svc.is_pure;
+        cs.is_noexcept = svc.is_noexcept;
+        cs.desc = svc.description;
+        for (const auto& p : svc.parameters) {
+            ir::CompanionServiceParam cp;
+            cp.name = p.name;
+            cp.type = p.type.to_canonical_string();
+            cs.params.push_back(std::move(cp));
+        }
+        manifest.services.push_back(std::move(cs));
+    }
+
     // Ports
     manifest.ports.reserve(ir.ports.size());
     for (const auto& p : ir.ports) {
@@ -156,6 +196,61 @@ std::string CompanionManifestEmitter::emit_yaml(const ir::CompanionManifest& man
         ss << "  initial: \"" << manifest.initial_state << "\"\n";
     }
 
+    if (!manifest.types.empty()) {
+        ss << "\ntypes:\n";
+        for (const auto& t : manifest.types) {
+            ss << "  - name: \"" << t.name << "\"\n";
+            ss << "    kind: \"" << t.kind << "\"\n";
+            if (!t.external_module.empty()) {
+                ss << "    external_module: \"" << t.external_module << "\"\n";
+            }
+            if (!t.external_symbol.empty()) {
+                ss << "    external_symbol: \"" << t.external_symbol << "\"\n";
+            }
+            if (!t.enum_literals.empty()) {
+                ss << "    literals: [";
+                for (std::size_t i = 0; i < t.enum_literals.size(); ++i) {
+                    if (i > 0) {
+                        ss << ", ";
+                    }
+                    ss << "\"" << t.enum_literals[i] << "\"";
+                }
+                ss << "]\n";
+            }
+            if (!t.fields.empty()) {
+                ss << "    fields:\n";
+                for (const auto& f : t.fields) {
+                    ss << "      - name: \"" << f.name << "\"\n";
+                    ss << "        type: \"" << f.type << "\"\n";
+                }
+            }
+        }
+    }
+
+    if (!manifest.services.empty()) {
+        ss << "\nservices:\n";
+        for (const auto& svc : manifest.services) {
+            ss << "  - name: \"" << svc.name << "\"\n";
+            ss << "    return_type: \"" << svc.return_type << "\"\n";
+            if (svc.is_pure) {
+                ss << "    pure: true\n";
+            }
+            if (!svc.is_noexcept) {
+                ss << "    noexcept: false\n";
+            }
+            if (!svc.desc.empty()) {
+                ss << "    desc: \"" << svc.desc << "\"\n";
+            }
+            if (!svc.params.empty()) {
+                ss << "    params:\n";
+                for (const auto& p : svc.params) {
+                    ss << "      - name: \"" << p.name << "\"\n";
+                    ss << "        type: \"" << p.type << "\"\n";
+                }
+            }
+        }
+    }
+
     if (!manifest.ports.empty()) {
         ss << "\nports:\n";
         for (const auto& p : manifest.ports) {
@@ -266,6 +361,66 @@ std::string CompanionManifestEmitter::emit_json(const ir::CompanionManifest& man
     ss << "    \"name\": \"" << manifest.fsm_name << "\",\n";
     ss << "    \"initial\": \"" << manifest.initial_state << "\"\n";
     ss << "  },\n";
+
+    // types
+    if (!manifest.types.empty()) {
+        ss << "  \"types\": [\n";
+        for (size_t i = 0; i < manifest.types.size(); ++i) {
+            const auto& t = manifest.types[i];
+            ss << "    {\n";
+            ss << "      \"name\": \"" << t.name << "\",\n";
+            ss << "      \"kind\": \"" << t.kind << "\"";
+            if (!t.external_module.empty()) {
+                ss << ",\n      \"external_module\": \"" << t.external_module << "\"";
+            }
+            if (!t.external_symbol.empty()) {
+                ss << ",\n      \"external_symbol\": \"" << t.external_symbol << "\"";
+            }
+            if (!t.enum_literals.empty()) {
+                ss << ",\n      \"literals\": [";
+                for (size_t li = 0; li < t.enum_literals.size(); ++li) {
+                    if (li > 0) {
+                        ss << ", ";
+                    }
+                    ss << "\"" << t.enum_literals[li] << "\"";
+                }
+                ss << "]";
+            }
+            if (!t.fields.empty()) {
+                ss << ",\n      \"fields\": [\n";
+                for (size_t fi = 0; fi < t.fields.size(); ++fi) {
+                    ss << "        {\"name\": \"" << t.fields[fi].name << "\", \"type\": \"" << t.fields[fi].type
+                       << "\"}" << (fi + 1 < t.fields.size() ? "," : "") << "\n";
+                }
+                ss << "      ]";
+            }
+            ss << "\n    }" << (i + 1 < manifest.types.size() ? "," : "") << "\n";
+        }
+        ss << "  ],\n";
+    }
+
+    // services
+    if (!manifest.services.empty()) {
+        ss << "  \"services\": [\n";
+        for (size_t i = 0; i < manifest.services.size(); ++i) {
+            const auto& svc = manifest.services[i];
+            ss << "    {\n";
+            ss << "      \"name\": \"" << svc.name << "\",\n";
+            ss << "      \"return_type\": \"" << svc.return_type << "\",\n";
+            ss << "      \"pure\": " << (svc.is_pure ? "true" : "false") << ",\n";
+            ss << "      \"noexcept\": " << (svc.is_noexcept ? "true" : "false");
+            if (!svc.params.empty()) {
+                ss << ",\n      \"params\": [\n";
+                for (size_t pi = 0; pi < svc.params.size(); ++pi) {
+                    ss << "        {\"name\": \"" << svc.params[pi].name << "\", \"type\": \"" << svc.params[pi].type
+                       << "\"}" << (pi + 1 < svc.params.size() ? "," : "") << "\n";
+                }
+                ss << "      ]";
+            }
+            ss << "\n    }" << (i + 1 < manifest.services.size() ? "," : "") << "\n";
+        }
+        ss << "  ],\n";
+    }
 
     // ports
     ss << "  \"ports\": [\n";

@@ -4190,6 +4190,17 @@ inline constexpr bool has_is_valid_v = has_is_valid<std::decay_t<T>>::value;
  * History states and Deferred Event queues.
  * @note Zero-VTable: Employs static C++ template metaprogramming for deterministic execution times.
  */
+namespace detail {
+template <typename Out, typename Fsm, typename In, typename Srv, typename = void>
+struct has_drain_internal_events : std::false_type {};
+
+template <typename Out, typename Fsm, typename In, typename Srv>
+struct has_drain_internal_events<
+    Out, Fsm, In, Srv,
+    std::void_t<decltype(fsm_drain_internal_events(std::declval<Fsm&>(), std::declval<const In&>(),
+                                                   std::declval<Out&>(), std::declval<Srv&>()))>> : std::true_type {};
+}  // namespace detail
+
 template <typename Table, typename InPorts = no_ports, typename OutPorts = no_ports, typename Registers = no_registers,
           typename Services = no_services, typename InitialState = typename Table::initial_state,
           typename Observer = no_observer, std::size_t DeferredCapacity = 16,
@@ -4402,6 +4413,9 @@ class fsm {
                                           res.trace ? res.trace->kind : transition_kind::external});
             }
         } else if (res.is_success()) {
+            if constexpr (detail::has_drain_internal_events<out_ports_type, fsm, in_ports_type, services_type>::value) {
+                fsm_drain_internal_events(*this, in, out, srv);
+            }
             if constexpr (has_deferred) {
                 process_deferred_queue_ports(in, out, srv);
             }

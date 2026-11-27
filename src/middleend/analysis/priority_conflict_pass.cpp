@@ -78,6 +78,9 @@ bool PriorityConflictPass::run(FsmIr& ir, DiagnosticEngine& diag) {
 
     for (const auto& [state_id, edges] : state_transitions) {
         auto* state = ir.find_state_by_id(state_id);
+        if (state != nullptr && state->kind == ir::StateKind::Fork) {
+            continue;
+        }
         std::string state_name = state ? state->name : state_id;
 
         for (std::size_t i = 0; i < edges.size(); ++i) {

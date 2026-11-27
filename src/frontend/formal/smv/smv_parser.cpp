@@ -26,9 +26,10 @@ bool SmvParser::parse_impl(std::string_view content, FsmIr& model, std::string& 
     std::istringstream stream(content_str);
     std::string line;
 
-    enum class Section : std::uint8_t { None, Var, AssignNextState, AssignInit };
+    enum class Section : std::uint8_t { None, Var, AssignNextState, AssignNextVar, AssignInit };
     Section current_section = Section::None;
     std::string case_accumulator;
+    std::string active_next_var;
 
     while (std::getline(stream, line)) {
         std::string trimmed = trim(line);
@@ -122,10 +123,22 @@ bool SmvParser::parse_impl(std::string_view content, FsmIr& model, std::string& 
         }
         if (trimmed.find("next(state)") != std::string::npos && trimmed.find("case") != std::string::npos) {
             current_section = Section::AssignNextState;
+            case_accumulator.clear();
             continue;
+        }
+        if (trimmed.rfind("next(", 0) == 0 && trimmed.find("case") != std::string::npos) {
+            const std::size_t rp = trimmed.find(')');
+            if (rp != std::string::npos && rp > 5) {
+                active_next_var = sanitize_identifier(trim(trimmed.substr(5, rp - 5)));
+                current_section = Section::AssignNextVar;
+                case_accumulator.clear();
+                continue;
+            }
         }
         if (trimmed == "esac;" || trimmed == "esac") {
             current_section = Section::None;
+            active_next_var.clear();
+            case_accumulator.clear();
             continue;
         }
 
@@ -171,6 +184,7 @@ bool SmvParser::parse_impl(std::string_view content, FsmIr& model, std::string& 
             prop.kind = kind;
             prop.raw_formula = trim(rest);
             if (!prop.raw_formula.empty()) {
+                prop.ast = PropertyAstNode::parse(prop.raw_formula);
                 model.add_property(std::move(prop));
             }
             continue;
@@ -252,6 +266,113 @@ bool SmvParser::parse_impl(std::string_view content, FsmIr& model, std::string& 
                 }
                 if (stmt.find("TRUE :") == std::string::npos && stmt.find("TRUE:") == std::string::npos) {
                     parse_transition_case(stmt, model);
+                }
+                semi_pos = case_accumulator.find(';');
+            }
+            continue;
+        }
+
+        // 4. ASSIGN next(<var>) := case ... esac; (standard NuSMV variable updates)
+        if (current_section == Section::AssignNextVar && !active_next_var.empty()) {
+            std::string line_code = trimmed;
+            if (auto cpos = trimmed.find("--"); cpos != std::string::npos) {
+                line_code = trim(trimmed.substr(0, cpos));
+            }
+            if (!line_code.empty()) {
+                if (!case_accumulator.empty()) {
+                    case_accumulator += " ";
+                }
+                case_accumulator += line_code;
+            }
+            size_t semi_pos = case_accumulator.find(';');
+            while (semi_pos != std::string::npos) {
+                std::string stmt = trim(case_accumulator.substr(0, semi_pos));
+                case_accumulator = trim(case_accumulator.substr(semi_pos + 1));
+                const std::size_t colon = stmt.find(':');
+                if (colon != std::string::npos && stmt.find("TRUE :") == std::string::npos &&
+                    stmt.find("TRUE:") == std::string::npos) {
+                    const std::string cond = trim(stmt.substr(0, colon));
+                    std::string rhs = trim(stmt.substr(colon + 1));
+                    if (rhs == "TRUE") {
+                        rhs = "true";
+                    } else if (rhs == "FALSE") {
+                        rhs = "false";
+                    }
+                    if (!rhs.empty() && rhs != active_next_var) {
+                        std::string src_state;
+                        std::string ev_name;
+                        std::vector<std::string> extra_guards;
+                        std::size_t start = 0;
+                        while (start < cond.size()) {
+                            std::size_t amp = cond.find('&', start);
+                            std::string part =
+                                trim(amp == std::string::npos ? cond.substr(start) : cond.substr(start, amp - start));
+                            start = (amp == std::string::npos) ? cond.size() : (amp + 1);
+                            if (part.empty()) {
+                                continue;
+                            }
+                            if (part.rfind("state =", 0) == 0 || part.rfind("state=", 0) == 0) {
+                                const std::size_t eq = part.find('=');
+                                src_state = sanitize_identifier(trim(part.substr(eq + 1)));
+                            } else if (part.rfind("event =", 0) == 0 || part.rfind("event=", 0) == 0) {
+                                const std::size_t eq = part.find('=');
+                                ev_name = sanitize_identifier(trim(part.substr(eq + 1)));
+                            } else {
+                                while (part.size() >= 2 && part.front() == '(' && part.back() == ')') {
+                                    part = trim(part.substr(1, part.size() - 2));
+                                }
+                                extra_guards.push_back(std::move(part));
+                            }
+                        }
+                        std::string joined_guard;
+                        for (std::size_t gi = 0; gi < extra_guards.size(); ++gi) {
+                            if (gi > 0) {
+                                joined_guard += " && ";
+                            }
+                            joined_guard += extra_guards[gi];
+                        }
+                        if (!src_state.empty()) {
+                            for (auto& tr : model.transitions) {
+                                if (tr.source != src_state) {
+                                    continue;
+                                }
+                                if (!ev_name.empty() && tr.event != ev_name) {
+                                    continue;
+                                }
+                                if (!joined_guard.empty() && tr.guard.has_value() && !tr.guard->empty()) {
+                                    std::string tr_g = *tr.guard;
+                                    if (const auto* gm = model.find_guard(tr_g); gm != nullptr &&
+                                                                                 gm->raw_expression.has_value() &&
+                                                                                 !gm->raw_expression->empty()) {
+                                        tr_g = *gm->raw_expression;
+                                    }
+                                    if (tr_g != joined_guard) {
+                                        continue;
+                                    }
+                                }
+                                // Skip if transition already has an assignment to this variable (e.g. from -- action:)
+                                bool already_assigned = false;
+                                if (tr.transition_action.has_value()) {
+                                    for (const auto& a : tr.transition_action->assignments) {
+                                        if (a.target.name == active_next_var) {
+                                            already_assigned = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (!already_assigned) {
+                                    if (!tr.transition_action.has_value()) {
+                                        tr.transition_action = ActionSignature("smv_update_" + active_next_var);
+                                    }
+                                    LValueTarget tgt(active_next_var, LValueScope::Register);
+                                    if (const auto* p = model.find_port(active_next_var); p != nullptr && p->is_out()) {
+                                        tgt.scope = LValueScope::OutPort;
+                                    }
+                                    tr.transition_action->assignments.emplace_back(std::move(tgt), rhs);
+                                }
+                            }
+                        }
+                    }
                 }
                 semi_pos = case_accumulator.find(';');
             }

@@ -1573,3 +1573,83 @@ TEST(CppModelEmitterTest, FreestandingAndCleanDefault_OmitsHostedStlAndDynamicOb
         EXPECT_NE(fs_code.find("::fsm::with_observer<::fsm::no_observer>"), std::string::npos);
     }
 }
+
+/**
+ * @brief Regression (BUG-43): C++17 table emitter resolves shallow [H] history targets on 3-level composites
+ * to the initial leaf substate (Leaf3) instead of the intermediate composite (Mid2), while preserving deep [H*].
+ */
+TEST(CppModelEmitterTest, ShallowHistoryOnThreeLevelComposite_TargetsInitialLeafNotComposite) {
+    FsmIr model;
+    model.name = "ThreeLevelHist";
+    model.initial_state = "Outer";
+
+    StateNode outer("Outer");
+    outer.is_composite = true;
+    outer.has_history = true;
+    outer.has_deep_history = true;
+    outer.initial_sub_state = "Mid1";
+
+    StateNode mid1("Mid1", "", "Outer");
+    mid1.is_composite = true;
+    mid1.initial_sub_state = "Leaf1";
+    StateNode leaf1("Leaf1", "", "Mid1");
+    StateNode leaf2("Leaf2", "", "Mid1");
+
+    StateNode mid2("Mid2", "", "Outer");
+    mid2.is_composite = true;
+    mid2.initial_sub_state = "Leaf3";
+    StateNode leaf3("Leaf3", "", "Mid2");
+    StateNode leaf4("Leaf4", "", "Mid2");
+
+    StateNode paused("Paused");
+    model.states = {outer, mid1, leaf1, leaf2, mid2, leaf3, leaf4, paused};
+    model.add_event("EvPause");
+    model.add_event("EvResumeShallow");
+    model.add_event("EvResumeDeep");
+
+    model.transitions.emplace_back("Outer", "Paused", "EvPause");
+    TransitionEdge t_sh("Paused", "Outer", "EvResumeShallow");
+    t_sh.target_is_history = true;
+    model.transitions.push_back(t_sh);
+
+    TransitionEdge t_dp("Paused", "Outer", "EvResumeDeep");
+    t_dp.target_is_history = true;
+    t_dp.target_is_deep_history = true;
+    model.transitions.push_back(t_dp);
+
+    std::ostringstream out;
+    GeneratorOptions opts;
+    CppModelEmitter::emit_transition_table(out, model, opts);
+    const std::string table = out.str();
+
+    // Shallow [H] must land on Leaf3 (initial leaf of Mid2), never on composite Mid2
+    EXPECT_NE(table.find("::fsm::row<Paused, EvResumeShallow, Leaf3>"), std::string::npos);
+    EXPECT_EQ(table.find("::fsm::row<Paused, EvResumeShallow, Mid2>"), std::string::npos);
+    // Deep [H*] must preserve direct Leaf4 restoration
+    EXPECT_NE(table.find("::fsm::row<Paused, EvResumeDeep, Leaf4>"), std::string::npos);
+}
+
+/**
+ * @brief Regression (BUG-62): CppModelEmitter::emit_events omits orphan `struct after_100ms {}` /
+ * `struct every_50ms {}` event structs when those names are only used as TimeTrigger transitions.
+ */
+TEST(CppModelEmitterTest, TimeTriggerOnlyEvents_DoNotEmitOrphanEventStructs) {
+    FsmIr model;
+    model.name = "TimedOnlyFsm";
+    model.initial_state = "Wait";
+    model.add_state("Wait");
+    model.add_state("Done");
+    model.add_event("after_100ms");
+    model.add_event("EvManual");
+
+    TransitionEdge t_time("Wait", "Done", "after_100ms");
+    t_time.trigger = TimeTrigger{TimeTriggerKind::After, 100};
+    model.add_transition(std::move(t_time));
+    model.add_transition(TransitionEdge("Done", "Wait", "EvManual"));
+
+    std::ostringstream out;
+    CppModelEmitter::emit_events(out, model);
+    const std::string str = out.str();
+    EXPECT_EQ(str.find("struct after_100ms"), std::string::npos);
+    EXPECT_NE(str.find("struct EvManual"), std::string::npos);
+}

@@ -231,4 +231,55 @@ TEST(CompanionManifestEmitter, BareTopologyAndSidecar_RecombinedIntoCompleteMode
     EXPECT_EQ(bare_model.properties[0].name, "SafetyAltitudePositive");
 }
 
+/**
+ * @brief Regression (BUG-45): CompanionManifestEmitter preserves custom `types` (enums & structs) and
+ * `services` across both YAML and JSON sidecar roundtrips.
+ */
+TEST(CompanionManifestEmitter, TypesAndServices_RoundtrippedInYamlAndJson) {
+    FsmIr model = build_test_fsm();
+
+    EnumDefinition op_mode("OpMode", "uint8_t");
+    op_mode.add_literal(EnumLiteral{"Off", 0});
+    op_mode.add_literal(EnumLiteral{"Auto", 1});
+    model.add_enum(op_mode);
+
+    StructDefinition pkt("TelemetryPkt");
+    pkt.add_field(StructField{"seq", "uint32_t", "0"});
+    pkt.add_field(StructField{"voltage", "float", "0.0"});
+    model.add_struct(pkt);
+
+    ServiceMethodSignature svc;
+    svc.name = "log_packet";
+    svc.return_type = "void";
+    svc.parameters.emplace_back("seq", "uint32_t");
+    model.services.push_back(svc);
+
+    const std::string yaml_out = CompanionManifestEmitter::emit_yaml(model);
+    EXPECT_NE(yaml_out.find("types:"), std::string::npos);
+    EXPECT_NE(yaml_out.find("OpMode"), std::string::npos);
+    EXPECT_NE(yaml_out.find("TelemetryPkt"), std::string::npos);
+    EXPECT_NE(yaml_out.find("services:"), std::string::npos);
+    EXPECT_NE(yaml_out.find("log_packet"), std::string::npos);
+
+    CompanionManifest parsed_yaml;
+    std::string err;
+    ASSERT_TRUE(CompanionManifestParser::parse(yaml_out, parsed_yaml, err)) << err;
+    ASSERT_EQ(parsed_yaml.types.size(), 2u);
+    EXPECT_EQ(parsed_yaml.types[0].name, "OpMode");
+    EXPECT_EQ(parsed_yaml.types[0].kind, "enum");
+    EXPECT_EQ(parsed_yaml.types[1].name, "TelemetryPkt");
+    EXPECT_EQ(parsed_yaml.types[1].kind, "struct");
+    ASSERT_EQ(parsed_yaml.services.size(), 1u);
+    EXPECT_EQ(parsed_yaml.services[0].name, "log_packet");
+
+    const std::string json_out = CompanionManifestEmitter::emit_json(model);
+    CompanionManifest parsed_json;
+    ASSERT_TRUE(CompanionManifestParser::parse(json_out, parsed_json, err)) << err;
+    ASSERT_EQ(parsed_json.types.size(), 2u);
+    EXPECT_EQ(parsed_json.types[0].name, "OpMode");
+    EXPECT_EQ(parsed_json.types[1].name, "TelemetryPkt");
+    ASSERT_EQ(parsed_json.services.size(), 1u);
+    EXPECT_EQ(parsed_json.services[0].name, "log_packet");
+}
+
 }  // namespace

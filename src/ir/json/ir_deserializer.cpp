@@ -665,6 +665,89 @@ bool FsmIrDeserializer::deserialize_json(std::string_view json_content, FsmIr& o
         out_ir.initial_state = out_ir.states.front().name;
     }
 
+    // Rehydrate XState v5 top-level `meta` (`ports` & EFSM `actions`) if present
+    if (const auto* meta_obj = root.get_child("meta"); meta_obj != nullptr && meta_obj->is_object()) {
+        if (const auto* meta_ports = meta_obj->get_child("ports"); meta_ports != nullptr && meta_ports->is_array()) {
+            std::unordered_set<std::string> port_names;
+            for (const auto& pv : meta_ports->arr_val) {
+                if (!pv.is_object()) {
+                    continue;
+                }
+                const std::string pname = sanitize_identifier(pv.get_string("name"));
+                if (pname.empty()) {
+                    continue;
+                }
+                port_names.insert(pname);
+                if (out_ir.find_port(pname) == nullptr) {
+                    PortDirection dir =
+                        (pv.get_string("direction", "in") == "out") ? PortDirection::Out : PortDirection::In;
+                    const DataType dt = DataType::from_string(pv.get_string("type", "int32"));
+                    PortDefinition pd(pname, dt, dir);
+                    pd.default_value = pv.get_string("default");
+                    out_ir.ports.push_back(std::move(pd));
+                }
+            }
+            if (!port_names.empty()) {
+                out_ir.variables.erase(
+                    std::remove_if(out_ir.variables.begin(), out_ir.variables.end(),
+                                   [&](const VariableDefinition& v) { return port_names.count(v.name) != 0U; }),
+                    out_ir.variables.end());
+            }
+        }
+        if (const auto* meta_actions = meta_obj->get_child("actions");
+            meta_actions != nullptr && meta_actions->is_object()) {
+            std::unordered_map<std::string, std::vector<ActionAssignment>> parsed_bodies;
+            for (std::size_t ai = 0; ai < meta_actions->obj_keys.size(); ++ai) {
+                const std::string& aname = meta_actions->obj_keys[ai];
+                const auto& aval = meta_actions->obj_values[ai];
+                if (!aval.is_array()) {
+                    continue;
+                }
+                std::string joined;
+                for (const auto& stmt_v : aval.arr_val) {
+                    if (stmt_v.is_string() && !stmt_v.str_val.empty()) {
+                        if (!joined.empty()) {
+                            joined += "; ";
+                        }
+                        joined += stmt_v.str_val;
+                    }
+                }
+                if (auto parsed = try_parse_assignment_action(joined, aname); parsed.has_value()) {
+                    for (auto& asgn : parsed->assignments) {
+                        if (const auto* p = out_ir.find_port(asgn.target.name); p != nullptr && p->is_out()) {
+                            asgn.target.scope = LValueScope::OutPort;
+                        }
+                    }
+                    parsed_bodies.emplace(aname, std::move(parsed->assignments));
+                }
+            }
+            auto hydrate = [&](ActionSignature& sig) {
+                if (!sig.assignments.empty() || !sig.instructions.empty() || sig.name.empty()) {
+                    return;
+                }
+                if (auto it = parsed_bodies.find(sig.name); it != parsed_bodies.end()) {
+                    sig.assignments = it->second;
+                }
+            };
+            for (auto& st : out_ir.states) {
+                for (auto& a : st.entry_actions) {
+                    hydrate(a);
+                }
+                for (auto& a : st.exit_actions) {
+                    hydrate(a);
+                }
+            }
+            for (auto& tr : out_ir.transitions) {
+                if (tr.condition_action.has_value()) {
+                    hydrate(*tr.condition_action);
+                }
+                if (tr.transition_action.has_value()) {
+                    hydrate(*tr.transition_action);
+                }
+            }
+        }
+    }
+
     for (auto& edge : out_ir.transitions) {
         if (!edge.source.empty()) {
             if (const auto* src_node = out_ir.find_state_by_name(edge.source)) {

@@ -116,6 +116,13 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
     std::unordered_map<std::string, double> env;
     for (const auto& var : model.variables) {
         if (!var.initial_value.empty()) {
+            auto init_ast = ExpressionAstNode::parse(var.initial_value);
+            if (init_ast.kind != ExpressionKind::RawExpression) {
+                if (auto v = init_ast.evaluate_numeric(env); v.has_value()) {
+                    env[var.name] = *v;
+                    continue;
+                }
+            }
             try {
                 env[var.name] = std::stod(var.initial_value);
             } catch (...) {
@@ -245,7 +252,8 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
     std::unordered_map<std::string, std::string> shallow_history;
     std::unordered_map<std::string, std::string> deep_history;
 
-    auto resolve_entry_target = [&](const std::string& raw_target, bool via_history = false) -> std::string {
+    auto resolve_entry_target = [&](const std::string& raw_target, bool via_history = false,
+                                    bool via_deep_history = false) -> std::string {
         std::string target = raw_target;
         std::size_t depth = 0;
         while (const auto* st = model.find_state(target)) {
@@ -271,6 +279,8 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
             if (st->kind == StateKind::ShallowHistory && !st->parent_state.empty()) {
                 if (auto it = shallow_history.find(st->parent_state); it != shallow_history.end()) {
                     target = it->second;
+                    via_history = false;
+                    via_deep_history = false;
                     continue;
                 }
                 const auto* parent = model.find_state(st->parent_state);
@@ -280,31 +290,36 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
                                                      : parent->initial_sub_state;
                     if (!def_sub.empty()) {
                         target = def_sub;
+                        via_history = false;
+                        via_deep_history = false;
                         continue;
                     }
                 }
                 break;
             }
-            if (st->has_deep_history) {
+            if (via_deep_history || (!via_history && st->has_deep_history)) {
                 if (auto it = deep_history.find(st->name); it != deep_history.end()) {
                     return it->second;
                 }
             }
-            if (st->has_history) {
+            if (via_history || st->has_history) {
                 if (auto it = shallow_history.find(st->name); it != shallow_history.end()) {
                     target = it->second;
                     via_history = false;
+                    via_deep_history = false;
                     continue;
                 }
                 if (via_history && !st->history_default_sub_state.empty()) {
                     target = st->history_default_sub_state;
                     via_history = false;
+                    via_deep_history = false;
                     continue;
                 }
             }
             if (!st->initial_sub_state.empty()) {
                 target = st->initial_sub_state;
                 via_history = false;
+                via_deep_history = false;
             } else {
                 break;
             }
@@ -413,6 +428,13 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
                     if (tt == nullptr || state_elapsed_ms < tt->duration_in_ms()) {
                         continue;
                     }
+                } else if (ev.name == "anonymous_event") {
+                    const bool is_anon_edge =
+                        (tr.event.empty() && std::holds_alternative<AnonymousTrigger>(tr.trigger)) ||
+                        tr.get_trigger_name() == "anonymous_event";
+                    if (!is_anon_edge) {
+                        continue;
+                    }
                 } else if (tr.get_trigger_name() != ev.name) {
                     continue;
                 }
@@ -498,7 +520,9 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
 
         const bool is_internal = (matched->kind == TransitionEdgeKind::Internal);
         const bool via_hist = matched->target_is_history || matched->target_is_deep_history;
-        std::string next_state = is_internal ? current_state : resolve_entry_target(matched->target, via_hist);
+        const bool via_deep = matched->target_is_deep_history;
+        std::string next_state =
+            is_internal ? current_state : resolve_entry_target(matched->target, via_hist, via_deep);
         if (const auto* tt = std::get_if<TimeTrigger>(&matched->trigger)) {
             if ((tt->periodic || tt->kind == TimeTriggerKind::Every) && tt->duration_in_ms() > 0U &&
                 state_elapsed_ms >= tt->duration_in_ms()) {
@@ -629,16 +653,39 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
         return state_changed;
     };
 
+    auto has_eventless_completion = [&]() -> bool {
+        std::string probe = current_state;
+        std::size_t depth = 0;
+        while (!probe.empty() && depth++ < 64) {
+            for (const auto& tr : model.transitions) {
+                if (tr.source == probe && tr.event.empty() && std::holds_alternative<AnonymousTrigger>(tr.trigger)) {
+                    return true;
+                }
+            }
+            const auto* st = model.find_state(probe);
+            probe = (st != nullptr) ? st->parent_state : "";
+        }
+        return false;
+    };
+
     auto events = simulator_detail::parse_trace_input(trace_content);
     for (const auto& ev : events) {
         bool changed = process_event(ev, false);
-        // Drain internal run-to-completion raised signals first (bounded to prevent livelocks)
-        std::size_t raise_budget = 64;
-        while (!internal_raise_queue.empty() && raise_budget-- > 0) {
-            SimulatedEvent raised = std::move(internal_raise_queue.front());
-            internal_raise_queue.pop_front();
-            if (process_event(raised, false)) {
-                changed = true;
+        // Drain internal run-to-completion raised signals and eventless completion transitions
+        std::size_t completion_budget = 64;
+        while ((!internal_raise_queue.empty() || (changed && has_eventless_completion())) && completion_budget-- > 0) {
+            if (!internal_raise_queue.empty()) {
+                SimulatedEvent raised = std::move(internal_raise_queue.front());
+                internal_raise_queue.pop_front();
+                if (process_event(raised, false)) {
+                    changed = true;
+                }
+                continue;
+            }
+            SimulatedEvent comp;
+            comp.name = "anonymous_event";
+            if (!process_event(comp, false)) {
+                break;
             }
         }
         // Recall deferred events whenever state changes (bounded to prevent infinite loops)

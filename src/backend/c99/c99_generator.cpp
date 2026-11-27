@@ -198,6 +198,17 @@ GeneratedC99Bundle C99Generator::generate(const FsmIr& model, const C99Generator
         }
         if (!ctx.emitted_signals.empty()) {
             ctx.max_outbox = (max_burst * 2U > 4U) ? (max_burst * 2U) : 4U;
+            std::unordered_set<std::string> trigger_events;
+            for (const auto& tr : processed.transitions) {
+                if (!tr.event.empty() && !std::holds_alternative<TimeTrigger>(tr.trigger)) {
+                    trigger_events.insert(tr.event);
+                }
+            }
+            for (const auto& ename : ctx.emitted_signals) {
+                if (trigger_events.count(ename) != 0U) {
+                    ctx.internal_emitted_signals.push_back(ename);
+                }
+            }
         }
     }
 
@@ -260,6 +271,9 @@ GeneratedC99Bundle C99Generator::generate(const FsmIr& model, const C99Generator
         for (const auto& g : processed.guards) {
             if (!g.raw_expression.has_value() || g.raw_expression->empty() || *g.raw_expression == g.name) {
                 maybe_register_guard_cb(g.name);
+            } else {
+                ctx.guard_expressions[g.name] = *g.raw_expression;
+                known_symbols.insert(g.name);
             }
         }
         for (const auto& tr : processed.transitions) {

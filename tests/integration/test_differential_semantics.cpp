@@ -957,4 +957,182 @@ TEST(DifferentialSemantics, IrSimulator_TickAdvancesElapsedMsForTimeTriggers) {
     EXPECT_EQ(rep.final_state, "OnState");
 }
 
+/**
+ * @brief Regression (BUG-43, BUG-48, BUG-51, BUG-52): Verify IrSimulator evaluates arithmetic initial_value,
+ * parses brace-wrapped `{k=v}` payloads, auto-fires eventless completion transitions, and distinguishes
+ * shallow [H] vs deep [H*] history on the same 3-level composite state.
+ */
+TEST(DifferentialSemantics, IrSimulator_ArithmeticInitBracePayloadCompletionAndMixedHistory) {
+    using namespace fsm::ir;
+
+    // 1. Arithmetic initial_value (BUG-48) + brace payload {v=5} (BUG-51) + eventless completion (BUG-52)
+    {
+        FsmIr ir;
+        ir.name = "SimFeatures";
+        ir.initial_state = "Init";
+        ir.add_state("Init");
+        ir.add_state("Step");
+        ir.add_state("Done");
+        ir.add_variable(VariableDefinition("acc", DataType::int32(), "2 + 3 * 4"));
+        SignalDefinition ev_add("EvAdd");
+        ev_add.attributes.push_back(SignalAttribute{"v", DataType::int32()});
+        ir.add_signal(ev_add);
+
+        TransitionEdge t1("Init", "Step", "EvAdd");
+        ActionSignature a1("add_v");
+        a1.assignments.push_back(ActionAssignment{LValueTarget{"acc", LValueScope::Register}, "acc + v"});
+        t1.transition_action = a1;
+        ir.add_transition(t1);
+
+        TransitionEdge t2("Step", "Done", "");
+        t2.trigger = AnonymousTrigger{};
+        ir.add_transition(t2);
+
+        std::ostringstream log;
+        auto rep = IrSimulator::simulate_detailed(ir, "EvAdd {v=6}\n", log);
+        EXPECT_EQ(rep.final_state, "Done");
+        EXPECT_EQ(static_cast<int>(rep.final_registers.at("acc")), 20);
+    }
+
+    // 2. Mixed shallow [H] vs deep [H*] on 3-level composite (BUG-43)
+    {
+        FsmIr ir;
+        ir.name = "HistSim";
+        ir.initial_state = "Outer";
+
+        StateNode outer("Outer");
+        outer.is_composite = true;
+        outer.has_history = true;
+        outer.has_deep_history = true;
+        outer.initial_sub_state = "Mid1";
+
+        StateNode mid1("Mid1", "", "Outer");
+        mid1.is_composite = true;
+        mid1.initial_sub_state = "Leaf1";
+        StateNode leaf1("Leaf1", "", "Mid1");
+        StateNode leaf2("Leaf2", "", "Mid1");
+
+        StateNode mid2("Mid2", "", "Outer");
+        mid2.is_composite = true;
+        mid2.initial_sub_state = "Leaf3";
+        StateNode leaf3("Leaf3", "", "Mid2");
+        StateNode leaf4("Leaf4", "", "Mid2");
+
+        StateNode paused("Paused");
+        ir.states = {outer, mid1, leaf1, leaf2, mid2, leaf3, leaf4, paused};
+        ir.transitions.emplace_back("Leaf1", "Leaf4", "EvJump");
+        ir.transitions.emplace_back("Outer", "Paused", "EvPause");
+
+        TransitionEdge t_deep("Paused", "Outer", "EvDeep");
+        t_deep.target_is_history = true;
+        t_deep.target_is_deep_history = true;
+        ir.transitions.push_back(t_deep);
+
+        TransitionEdge t_shallow("Paused", "Outer", "EvShallow");
+        t_shallow.target_is_history = true;
+        ir.transitions.push_back(t_shallow);
+
+        std::ostringstream log;
+        auto rep = IrSimulator::simulate_detailed(ir, "EvJump\nEvPause\nEvDeep\nEvPause\nEvShallow\n", log);
+        ASSERT_EQ(rep.steps.size(), 5U);
+        EXPECT_EQ(rep.steps[2].to_state, "Leaf4");
+        EXPECT_EQ(rep.steps[4].to_state, "Leaf3");
+    }
+}
+
+/**
+ * @brief Regression (BUG-46): 3-Way Differential Verification of portless internal `SignalEmitOp`
+ * run-to-completion dispatch across IrSimulator, C++17, and Native Pure-C99.
+ */
+TEST(DifferentialSemantics, InternalPortlessSignalEmit_DispatchesRunToCompletionAcrossAllRuntimes) {
+#if defined(_WIN32)
+    GTEST_SKIP() << "POSIX C/C++ compiler invocation test skipped on Windows.";
+#else
+    using namespace fsm::ir;
+    using namespace fsm::backend::cpp;
+
+    FsmIr model;
+    model.name = "RtcInternal";
+    model.initial_state = "S1";
+    model.add_state("S1");
+    StateNode s2("S2");
+    ActionSignature s2_entry("s2_entry");
+    SignalEmitOp se;
+    se.signal_name = "EvAuto";
+    s2_entry.instructions.emplace_back(se, "internal raise");
+    s2.entry_actions.push_back(s2_entry);
+    model.states.push_back(s2);
+    model.add_state("S3");
+
+    model.add_signal(SignalDefinition("EvStart"));
+    model.add_signal(SignalDefinition("EvAuto"));
+    model.add_transition(TransitionEdge("S1", "S2", "EvStart"));
+    model.add_transition(TransitionEdge("S2", "S3", "EvAuto"));
+
+    // 1. IrSimulator
+    std::ostringstream sim_log;
+    const auto sim_rep = IrSimulator::simulate_detailed(model, "EvStart\n", sim_log);
+    EXPECT_EQ(sim_rep.final_state, "S3");
+
+    const fs::path temp_dir = fs::temp_directory_path() / "fsmc_diff_rtc_internal";
+    fs::create_directories(temp_dir);
+
+    // 2. C++17 Standalone
+    GeneratorOptions opts;
+    opts.standalone = true;
+    opts.include_stubs = false;
+    {
+        std::ofstream(temp_dir / "rtc_internal.hpp") << CppGenerator::generate_header(model, opts);
+        std::ofstream(temp_dir / "main_cpp.cpp") << R"cpp(
+#include <cassert>
+#include "rtc_internal.hpp"
+            int main() {
+                using namespace fsm_generated;
+                RtcInternal sm;
+                RtcInternalInPorts in{};
+                RtcInternalOutPorts out{};
+                sm.dispatch(EvStart{}, in, out);
+                assert(sm.is_in<S3>());
+                return 0;
+            }
+        )cpp";
+    }
+    const std::string cxx_cmd = "c++ -std=c++17 -O2 -Wall -Wextra -Werror -I\"" + temp_dir.string() + "\" \"" +
+                                (temp_dir / "main_cpp.cpp").string() + "\" -o \"" + (temp_dir / "cpp_bin").string() +
+                                "\"";
+    ASSERT_EQ(std::system(cxx_cmd.c_str()), 0) << "C++17 RTC internal compile failed";
+    ASSERT_EQ(std::system(("\"" + (temp_dir / "cpp_bin").string() + "\"").c_str()), 0);
+
+    // 3. Pure-C99
+    const auto c99 = fsm::backend::c99::C99Generator::generate(model);
+    {
+        std::ofstream(temp_dir / "rtc_internal.h") << c99.header;
+        std::ofstream(temp_dir / "rtc_internal.c") << c99.source;
+        std::ofstream(temp_dir / "main_c.c") << R"c(
+#include <assert.h>
+#include <string.h>
+#include "rtc_internal.h"
+int main(void) {
+    rtc_internal_fsm_t fsm;
+    rtc_internal_in_ports_t in_p;
+    rtc_internal_out_ports_t out_p;
+    memset(&in_p, 0, sizeof(in_p));
+    memset(&out_p, 0, sizeof(out_p));
+    rtc_internal_init(&fsm);
+    assert(rtc_internal_dispatch_ev_start(&fsm, &in_p, &out_p) == RTC_INTERNAL_STATUS_OK);
+    assert(rtc_internal_current_state(&fsm) == RTC_INTERNAL_STATE_S3);
+    return 0;
+}
+)c";
+    }
+    const std::string c99_cmd = "cc -std=c99 -O2 -Wall -Wextra -Werror -pedantic -I\"" + temp_dir.string() + "\" \"" +
+                                (temp_dir / "rtc_internal.c").string() + "\" \"" + (temp_dir / "main_c.c").string() +
+                                "\" -o \"" + (temp_dir / "c99_bin").string() + "\"";
+    ASSERT_EQ(std::system(c99_cmd.c_str()), 0) << "Pure-C99 RTC internal compile failed";
+    ASSERT_EQ(std::system(("\"" + (temp_dir / "c99_bin").string() + "\"").c_str()), 0);
+
+    fs::remove_all(temp_dir);
+#endif
+}
+
 }  // namespace

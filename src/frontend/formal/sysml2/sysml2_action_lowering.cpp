@@ -368,7 +368,7 @@ bool try_parse_local_item_usage(const std::string& statement, LocalItemMap& loca
 bool try_parse_send_statement(const std::string& statement, const LocalItemMap& local_items, FsmIr& model,
                               SignalEmitOp& out_emit, std::string& out_action_name, std::string& out_invocation) {
     static const std::regex send_re(
-        R"(^(?:do\s+)?send\s+(new\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s+(?:via|to)\s+([A-Za-z_][A-Za-z0-9_.]*)$)",
+        R"(^(?:do\s+)?send\s+(new\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?(?:\s+(?:via|to)\s+([A-Za-z_][A-Za-z0-9_.]*))?$)",
         std::regex::optimize);
     std::smatch sm;
     if (!std::regex_match(statement, sm, send_re)) {
@@ -379,12 +379,15 @@ bool try_parse_send_statement(const std::string& statement, const LocalItemMap& 
     const std::string target_ident = sanitize_identifier(sm[2].str());
     const bool has_parens = sm[3].matched;
     const std::string raw_args = has_parens ? trim_sv(sm[3].str()) : "";
-    std::string raw_port = sm[4].str();
-    const auto dot = raw_port.find('.');
-    if (dot != std::string::npos) {
-        raw_port = raw_port.substr(0, dot);
+    std::string port_name;
+    if (sm[4].matched) {
+        std::string raw_port = sm[4].str();
+        const auto dot = raw_port.find('.');
+        if (dot != std::string::npos) {
+            raw_port = raw_port.substr(0, dot);
+        }
+        port_name = sanitize_identifier(raw_port);
     }
-    const std::string port_name = sanitize_identifier(raw_port);
 
     std::string sig_name = target_ident;
     std::vector<std::string> resolved_args;
@@ -415,7 +418,7 @@ bool try_parse_send_statement(const std::string& statement, const LocalItemMap& 
         }
     }
 
-    if (model.find_port(port_name) == nullptr) {
+    if (!port_name.empty() && model.find_port(port_name) == nullptr) {
         model.ports.emplace_back(port_name, DataType{PrimitiveTypeKind::UInt32}, PortDirection::Out);
     }
     if (model.find_signal(sig_name) == nullptr) {
@@ -430,12 +433,18 @@ bool try_parse_send_statement(const std::string& statement, const LocalItemMap& 
         joined_args += resolved_args[i];
     }
 
-    out_action_name = "send_" + sig_name + "_via_" + port_name;
-    out_invocation = port_name + ".send(" + sig_name + (joined_args.empty() ? "" : (", " + joined_args)) + ")";
     out_emit = SignalEmitOp{};
     out_emit.signal_name = sig_name;
-    out_emit.target_port = port_name;
     out_emit.arguments = std::move(resolved_args);
+    if (!port_name.empty()) {
+        out_action_name = "send_" + sig_name + "_via_" + port_name;
+        out_invocation = port_name + ".send(" + sig_name + (joined_args.empty() ? "" : (", " + joined_args)) + ")";
+        out_emit.target_port = port_name;
+    } else {
+        out_action_name = "send_" + sig_name;
+        out_invocation = "send(" + sig_name + (joined_args.empty() ? "" : (", " + joined_args)) + ")";
+        out_emit.target_port = std::nullopt;
+    }
     return true;
 }
 

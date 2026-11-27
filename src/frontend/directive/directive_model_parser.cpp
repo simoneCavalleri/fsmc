@@ -74,13 +74,15 @@ std::optional<FormalProperty> DirectiveParser::parse_property_directive(std::str
     }
 
     FormalProperty prop;
+    std::size_t after_name_pos = std::string::npos;
     auto n_pos = str.find("name=");
     if (n_pos != std::string::npos) {
         prop.name = extract_quoted_or_word(str, n_pos + 5);
     } else {
-        auto first_space = str.find_first_of(" \t=");
-        if (first_space != std::string::npos) {
-            prop.name = trim(str.substr(0, first_space));
+        auto first_delim = str.find_first_of(" \t=:");
+        if (first_delim != std::string::npos) {
+            prop.name = trim(str.substr(0, first_delim));
+            after_name_pos = first_delim;
         } else {
             prop.name = str;
         }
@@ -102,21 +104,43 @@ std::optional<FormalProperty> DirectiveParser::parse_property_directive(std::str
         f_pos += 8;
     }
 
+    auto extract_inline_formula = [](std::string_view raw) -> std::string {
+        std::string tail = trim(raw);
+        if (tail.empty()) {
+            return {};
+        }
+        if (tail.front() == '"' || tail.front() == '\'') {
+            return extract_quoted_or_word(tail, 0);
+        }
+        // Strip trailing key=value metadata clauses (req=, desc=, kind=) if present
+        std::size_t cut = tail.size();
+        for (const char* kw : {" req=", " desc=", " kind="}) {
+            if (auto p = tail.find(kw); p != std::string::npos && p < cut) {
+                cut = p;
+            }
+        }
+        std::string formula = trim(tail.substr(0, cut));
+        if (!formula.empty() && formula.back() == ';') {
+            formula.pop_back();
+            formula = trim(formula);
+        }
+        return formula;
+    };
+
     if (f_pos != std::string::npos) {
         prop.raw_formula = extract_quoted_or_word(str, f_pos);
         prop.ast = LtlPropertyParser::parse(prop.raw_formula);
-    } else {
-        auto eq_pos = str.find('=');
-        if (eq_pos != std::string::npos) {
-            std::string after_eq = trim(str.substr(eq_pos + 1));
-            if (after_eq.rfind("formula=", 0) == std::string::npos && after_eq.rfind("ltl=", 0) == std::string::npos &&
-                after_eq.rfind("kind=", 0) == std::string::npos) {
-                prop.raw_formula = extract_quoted_or_word(str, eq_pos + 1);
+    } else if (after_name_pos != std::string::npos) {
+        std::size_t sep = after_name_pos;
+        while (sep < str.size() && (str[sep] == ' ' || str[sep] == '\t')) {
+            ++sep;
+        }
+        if (sep < str.size() && (str[sep] == ':' || str[sep] == '=')) {
+            std::string after_sep = trim(str.substr(sep + 1));
+            if (after_sep.rfind("formula=", 0) == std::string::npos &&
+                after_sep.rfind("ltl=", 0) == std::string::npos && after_sep.rfind("kind=", 0) == std::string::npos) {
+                prop.raw_formula = extract_inline_formula(after_sep);
                 if (!prop.raw_formula.empty()) {
-                    if (prop.raw_formula.back() == ';') {
-                        prop.raw_formula.pop_back();
-                        prop.raw_formula = trim(prop.raw_formula);
-                    }
                     prop.ast = LtlPropertyParser::parse(prop.raw_formula);
                 }
             }

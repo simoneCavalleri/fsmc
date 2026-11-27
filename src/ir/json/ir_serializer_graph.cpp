@@ -445,6 +445,15 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, i
         need_comma = true;
     }
 
+    if (state.do_activity_action.has_value() && !state.do_activity_action->empty()) {
+        if (need_comma) {
+            out << ",\n";
+        }
+        out << pad << "  \"do_activity_action\": ";
+        emit_action_signature_object(out, *state.do_activity_action);
+        need_comma = true;
+    }
+
     if (!state.traceability_reqs.empty()) {
         if (need_comma) {
             out << ",\n";

@@ -113,12 +113,70 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
     SimulationReport report;
     report.model_name = model.name;
 
+    std::unordered_map<std::string, double> enum_consts;
+    for (const auto& td : model.custom_types) {
+        if (!td.is_enum()) {
+            continue;
+        }
+        int64_t next_val = 0;
+        for (const auto& ev : td.literals) {
+            const int64_t v = ev.value.value_or(next_val);
+            next_val = v + 1;
+            const double val = static_cast<double>(v);
+            enum_consts[td.name + "::" + ev.name] = val;
+            enum_consts[td.name + "." + ev.name] = val;
+            enum_consts.try_emplace(ev.name, val);
+        }
+    }
+
     std::unordered_map<std::string, double> env;
+    auto init_struct_fields = [&](auto& self, const std::string& prefix, const DataType& dtype,
+                                  std::size_t depth) -> void {
+        if (depth > 8 || dtype.is_primitive()) {
+            return;
+        }
+        const auto* st_def = model.find_struct(dtype.custom_name());
+        if (st_def == nullptr) {
+            return;
+        }
+        for (const auto& f : st_def->fields) {
+            const std::string fpath = prefix + "." + f.name;
+            if (!f.type.is_primitive() && model.find_struct(f.type.custom_name()) != nullptr) {
+                self(self, fpath, f.type, depth + 1);
+            } else {
+                double fval = 0.0;
+                if (!f.default_value.empty()) {
+                    if (auto eit = enum_consts.find(f.default_value); eit != enum_consts.end()) {
+                        fval = eit->second;
+                    } else {
+                        try {
+                            fval = std::stod(f.default_value);
+                        } catch (...) {
+                            fval = 0.0;
+                        }
+                    }
+                }
+                env[fpath] = fval;
+            }
+        }
+    };
     for (const auto& var : model.variables) {
+        if (!var.type.is_primitive() && model.find_struct(var.type.custom_name()) != nullptr) {
+            init_struct_fields(init_struct_fields, var.name, var.type, 0);
+            continue;
+        }
         if (!var.initial_value.empty()) {
+            if (auto eit = enum_consts.find(var.initial_value); eit != enum_consts.end()) {
+                env[var.name] = eit->second;
+                continue;
+            }
+            auto init_eval_env = enum_consts;
+            for (const auto& [k, v] : env) {
+                init_eval_env[k] = v;
+            }
             auto init_ast = ExpressionAstNode::parse(var.initial_value);
             if (init_ast.kind != ExpressionKind::RawExpression) {
-                if (auto v = init_ast.evaluate_numeric(env); v.has_value()) {
+                if (auto v = init_ast.evaluate_numeric(init_eval_env); v.has_value()) {
                     env[var.name] = *v;
                     continue;
                 }
@@ -152,16 +210,29 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
 
     auto eval_rhs = [&](const std::string& expr_str, const std::unordered_map<std::string, double>& s_env,
                         double& rhs_out) -> bool {
-        auto ast = ExpressionAstNode::parse(expr_str);
-        if (ast.kind != ExpressionKind::RawExpression) {
-            if (auto v = ast.evaluate_numeric(s_env); v.has_value()) {
-                rhs_out = *v;
-                return true;
-            }
-        }
         if (auto it = s_env.find(expr_str); it != s_env.end()) {
             rhs_out = it->second;
             return true;
+        }
+        if (auto eit = enum_consts.find(expr_str); eit != enum_consts.end()) {
+            rhs_out = eit->second;
+            return true;
+        }
+        auto ast = ExpressionAstNode::parse(expr_str);
+        if (ast.kind != ExpressionKind::RawExpression) {
+            if (!enum_consts.empty()) {
+                auto eval_env = enum_consts;
+                for (const auto& [k, v] : s_env) {
+                    eval_env[k] = v;
+                }
+                if (auto v = ast.evaluate_numeric(eval_env); v.has_value()) {
+                    rhs_out = *v;
+                    return true;
+                }
+            } else if (auto v = ast.evaluate_numeric(s_env); v.has_value()) {
+                rhs_out = *v;
+                return true;
+            }
         }
         try {
             rhs_out = std::stod(expr_str);
@@ -207,14 +278,14 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
         for (const auto& assign : act_sig.assignments) {
             double rhs = 0.0;
             if (eval_rhs(assign.expression, s_env, rhs)) {
-                apply_assign_op(assign.target.name, assign.op, rhs, s_env);
+                apply_assign_op(assign.target.full_path(), assign.op, rhs, s_env);
             }
         }
         for (const auto& inst : act_sig.instructions) {
             if (const auto* st = std::get_if<StoreOp>(&inst.op)) {
                 double rhs = 0.0;
                 if (eval_rhs(st->expression, s_env, rhs)) {
-                    apply_assign_op(st->target.name, st->op, rhs, s_env);
+                    apply_assign_op(st->target.full_path(), st->op, rhs, s_env);
                 }
             } else if (const auto* pw = std::get_if<PortWriteOp>(&inst.op)) {
                 double rhs = 0.0;
@@ -684,6 +755,7 @@ SimulationReport IrSimulator::simulate_detailed(const FsmIr& model, const std::s
             }
             SimulatedEvent comp;
             comp.name = "anonymous_event";
+            comp.numeric_payload = ev.numeric_payload;
             if (!process_event(comp, false)) {
                 break;
             }

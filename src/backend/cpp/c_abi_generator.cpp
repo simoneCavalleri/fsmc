@@ -671,7 +671,7 @@ GeneratedCAbiBundle CAbiGenerator::generate(const FsmIr& model, const GeneratorO
     for (const auto& st : processed.states) {
         const std::string st_cpp = sanitize_cpp_ident(st.name);
         const std::string st_enum = upper_prefix + "_STATE_" + to_upper_ascii(to_snake_case(st.name));
-        src << "    if (sm->is_in<" << ns_qual << st_cpp << ">()) {\n";
+        src << "    if (sm->is_in_state<" << ns_qual << st_cpp << ">()) {\n";
         src << "        return " << st_enum << ";\n";
         src << "    }\n";
     }

@@ -317,6 +317,15 @@ class fsm {
                                           res.trace ? res.trace->kind : transition_kind::external});
             }
         } else if (res.is_success()) {
+            if constexpr (!std::is_same_v<std::decay_t<Event>, anonymous_event>) {
+                for (std::size_t comp_step = 0; comp_step < 64U; ++comp_step) {
+                    const std::size_t before_idx = current_state_.index();
+                    auto comp_res = dispatch_direct_ports(anonymous_event{}, in, out, srv);
+                    if (!comp_res.is_success() || current_state_.index() == before_idx) {
+                        break;
+                    }
+                }
+            }
             if constexpr (detail::has_drain_internal_events<out_ports_type, fsm, in_ports_type, services_type>::value) {
                 fsm_drain_internal_events(*this, in, out, srv);
             }

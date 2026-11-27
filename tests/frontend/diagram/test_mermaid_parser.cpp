@@ -702,4 +702,46 @@ stateDiagram-v2
     EXPECT_EQ(login->submachine->fsm_name, "AuthSub");
 }
 
+/**
+ * @brief Regression (BUG-64): Cross-boundary transition inside an intermediate composite state must not
+ * duplicate already-declared nested leaf StateNodes in Mermaid.
+ */
+TEST(MermaidParserTest, NestedCompositeCrossBoundaryTransition_NoDuplicateStates) {
+    const std::string mmd = R"(
+stateDiagram-v2
+    [*] --> Outer
+    state Outer {
+        [*] --> Mid1
+        state Mid1 {
+            [*] --> Leaf1
+            state Leaf1
+        }
+        state Mid2 {
+            [*] --> Leaf3
+            state Leaf3
+            state Leaf4
+        }
+        Leaf1 --> Leaf4 : EvJump
+    }
+)";
+    FsmIr ir;
+    fsm::diagnostic::DiagnosticEngine diag;
+    MermaidParser parser;
+    ASSERT_TRUE(parser.parse(mmd, ir, diag)) << diag.render_to_string();
+
+    std::size_t leaf1_count = 0;
+    std::size_t leaf4_count = 0;
+    for (const auto& s : ir.states) {
+        if (s.name == "Leaf1") {
+            ++leaf1_count;
+            EXPECT_EQ(s.parent_state, "Mid1");
+        } else if (s.name == "Leaf4") {
+            ++leaf4_count;
+            EXPECT_EQ(s.parent_state, "Mid2");
+        }
+    }
+    EXPECT_EQ(leaf1_count, 1U);
+    EXPECT_EQ(leaf4_count, 1U);
+}
+
 }  // namespace

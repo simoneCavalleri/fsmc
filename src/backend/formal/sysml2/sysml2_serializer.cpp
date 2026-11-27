@@ -178,7 +178,10 @@ void emit_state(std::ostream& out, const StateNode& state, const FsmIr& model, s
     }
 
     // Do Activity
-    if (state.do_activity.has_value() && !state.do_activity->empty()) {
+    if (state.do_activity_action.has_value() &&
+        (!state.do_activity_action->assignments.empty() || !state.do_activity_action->instructions.empty())) {
+        out << pad << "    do action { " << format_sysml2_action_block(*state.do_activity_action, model) << " }\n";
+    } else if (state.do_activity.has_value() && !state.do_activity->empty()) {
         out << pad << "    do action " << *state.do_activity << ";\n";
     }
 

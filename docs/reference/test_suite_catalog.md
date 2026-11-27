@@ -5,7 +5,7 @@
 
 **Total Documented Subsystems**: 12  
 **Total Test Suites & Binaries**: 92  
-**Total Documented Test Cases**: 838  
+**Total Documented Test Cases**: 845  
 
 ---
 
@@ -39,7 +39,7 @@
 
 | Suite File | Source Path | Test Cases | Scope Summary |
 | :--- | :--- | :---: | :--- |
-| [`test_c_abi_zero_alloc.cpp`](../../tests/backend/cpp/test_c_abi_zero_alloc.cpp) | `tests/backend/cpp/test_c_abi_zero_alloc.cpp` | 0 | Tests for pure C99 zero-allocation ABI generation (*_c.h + *_c.cpp) over the unified C++17 FSM backend. |
+| [`test_c_abi_zero_alloc.cpp`](../../tests/backend/cpp/test_c_abi_zero_alloc.cpp) | `tests/backend/cpp/test_c_abi_zero_alloc.cpp` | 1 | Tests for pure C99 zero-allocation ABI generation (*_c.h + *_c.cpp) over the unified C++17 FSM backend. |
 | [`test_cpp17_standalone.cpp`](../../tests/backend/cpp/test_cpp17_standalone.cpp) | `tests/backend/cpp/test_cpp17_standalone.cpp` | 0 | Standalone verification executable for C++17 standalone code generation. |
 | [`test_cpp20_standalone.cpp`](../../tests/backend/cpp/test_cpp20_standalone.cpp) | `tests/backend/cpp/test_cpp20_standalone.cpp` | 0 | Standalone verification executable for C++20 standalone code generation. |
 | [`test_cpp_e2e_compiler.cpp`](../../tests/backend/cpp/test_cpp_e2e_compiler.cpp) | `tests/backend/cpp/test_cpp_e2e_compiler.cpp` | 9 | End-to-End integration and host compiler verification test suite for C++ Emitter (C++17 & C++20). |
@@ -97,9 +97,9 @@
 | [`test_xml_parser.cpp`](../../tests/frontend/common/test_xml_parser.cpp) | `tests/frontend/common/test_xml_parser.cpp` | 5 | Unit test suite for the lightweight XML parser and DOM abstraction. |
 | [`test_diagram_sidecar.cpp`](../../tests/frontend/diagram/test_diagram_sidecar.cpp) | `tests/frontend/diagram/test_diagram_sidecar.cpp` | 5 | Unit test suite for the Diagram Sidecar Pattern combining diagram topology with companion manifests. |
 | [`test_dot_parser.cpp`](../../tests/frontend/diagram/test_dot_parser.cpp) | `tests/frontend/diagram/test_dot_parser.cpp` | 22 | Unit test suite for the Graphviz DOT statechart parser. |
-| [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) | `tests/frontend/diagram/test_mermaid_parser.cpp` | 21 | Unit test suite for the Mermaid stateDiagram-v2 parser and frontend dialect. |
+| [`test_mermaid_parser.cpp`](../../tests/frontend/diagram/test_mermaid_parser.cpp) | `tests/frontend/diagram/test_mermaid_parser.cpp` | 22 | Unit test suite for the Mermaid stateDiagram-v2 parser and frontend dialect. |
 | [`test_multiline_actions.cpp`](../../tests/frontend/diagram/test_multiline_actions.cpp) | `tests/frontend/diagram/test_multiline_actions.cpp` | 0 | Unit test suite verifying multiline and braced composite action block parsing in diagram frontends (PlantUML, Mermaid). |
-| [`test_plantuml_parser.cpp`](../../tests/frontend/diagram/test_plantuml_parser.cpp) | `tests/frontend/diagram/test_plantuml_parser.cpp` | 21 | Unit test suite for the PlantUML state diagram parser and frontend dialect. |
+| [`test_plantuml_parser.cpp`](../../tests/frontend/diagram/test_plantuml_parser.cpp) | `tests/frontend/diagram/test_plantuml_parser.cpp` | 22 | Unit test suite for the PlantUML state diagram parser and frontend dialect. |
 | [`test_directive_parser.cpp`](../../tests/frontend/directive/test_directive_parser.cpp) | `tests/frontend/directive/test_directive_parser.cpp` | 13 | Unit tests for front-end directive parser (@fsm:state, @fsm:defer, @fsm:signal, @fsm:port, @fsm:enum, |
 | [`test_cameo_parser.cpp`](../../tests/frontend/formal/test_cameo_parser.cpp) | `tests/frontend/formal/test_cameo_parser.cpp` | 24 | Unit test suite for the Cameo Systems Modeler (OMG XMI 2.x) frontend parser. |
 | [`test_scxml_parser.cpp`](../../tests/frontend/formal/test_scxml_parser.cpp) | `tests/frontend/formal/test_scxml_parser.cpp` | 21 | Unit test suite for the W3C SCXML (State Chart XML) frontend parser. |
@@ -130,16 +130,16 @@
 | [`test_inlining_passes.cpp`](../../tests/middleend/canonicalization/test_inlining_passes.cpp) | `tests/middleend/canonicalization/test_inlining_passes.cpp` | 10 | Unit tests for submachine and choice pseudo-state inlining canonicalization passes. |
 | [`test_orthogonal_product.cpp`](../../tests/middleend/canonicalization/test_orthogonal_product.cpp) | `tests/middleend/canonicalization/test_orthogonal_product.cpp` | 17 | Unit tests for OrthogonalProductPass Cartesian product canonicalization. |
 | [`test_pass_manager.cpp`](../../tests/middleend/canonicalization/test_pass_manager.cpp) | `tests/middleend/canonicalization/test_pass_manager.cpp` | 9 | Unit tests for PassManager execution pipeline, pass chaining, and statistical profiling. |
-| [`test_structural_lowering.cpp`](../../tests/middleend/canonicalization/test_structural_lowering.cpp) | `tests/middleend/canonicalization/test_structural_lowering.cpp` | 23 | Unit tests for Category A Structural Lowering Suite: HistoryLoweringPass, DeferredEventLoweringPass, BoundaryActionFusionPass, ForkJoinLoweringPass. |
+| [`test_structural_lowering.cpp`](../../tests/middleend/canonicalization/test_structural_lowering.cpp) | `tests/middleend/canonicalization/test_structural_lowering.cpp` | 24 | Unit tests for Category A Structural Lowering Suite: HistoryLoweringPass, DeferredEventLoweringPass, BoundaryActionFusionPass, ForkJoinLoweringPass. |
 | [`test_common_action_factoring.cpp`](../../tests/middleend/optimization/test_common_action_factoring.cpp) | `tests/middleend/optimization/test_common_action_factoring.cpp` | 6 | Unit tests for CommonActionFactoringPass redundant action hoist and sink optimizations. |
 | [`test_constant_folding_and_minimization.cpp`](../../tests/middleend/optimization/test_constant_folding_and_minimization.cpp) | `tests/middleend/optimization/test_constant_folding_and_minimization.cpp` | 9 | Unit tests for ConstantFoldingPass guard evaluation and StateMinimizationPass equivalence partitioning. |
-| [`test_datapath_optimizations.cpp`](../../tests/middleend/optimization/test_datapath_optimizations.cpp) | `tests/middleend/optimization/test_datapath_optimizations.cpp` | 17 | Unit tests for Category B Data-Path Optimizations: DeadActionEliminationPass, RegisterLivenessPass, TransitionFusionPass, CommonActionFactoringPass. |
+| [`test_datapath_optimizations.cpp`](../../tests/middleend/optimization/test_datapath_optimizations.cpp) | `tests/middleend/optimization/test_datapath_optimizations.cpp` | 18 | Unit tests for Category B Data-Path Optimizations: DeadActionEliminationPass, RegisterLivenessPass, TransitionFusionPass, CommonActionFactoringPass. |
 | [`test_dead_state_pruning.cpp`](../../tests/middleend/optimization/test_dead_state_pruning.cpp) | `tests/middleend/optimization/test_dead_state_pruning.cpp` | 5 | Unit tests for DeadStatePruningPass reachability and dead transition analysis. |
 | [`test_guard_simplification.cpp`](../../tests/middleend/optimization/test_guard_simplification.cpp) | `tests/middleend/optimization/test_guard_simplification.cpp` | 2 | Unit tests for GuardSimplificationPass boolean algebra reductions. |
 | [`test_adversarial_qa.cpp`](../../tests/middleend/verification/test_adversarial_qa.cpp) | `tests/middleend/verification/test_adversarial_qa.cpp` | 0 | Adversarial, Chaos & Edge-Case QA Test Suite for fsmc. |
 | [`test_concurrency_verification.cpp`](../../tests/middleend/verification/test_concurrency_verification.cpp) | `tests/middleend/verification/test_concurrency_verification.cpp` | 5 | Unit tests for concurrency safety, data race detection, and determinism verification passes. |
 | [`test_efsm_interval_analysis.cpp`](../../tests/middleend/verification/test_efsm_interval_analysis.cpp) | `tests/middleend/verification/test_efsm_interval_analysis.cpp` | 10 | Unit tests for EFSMIntervalAnalyzer abstract interpretation and port interval contracts. |
-| [`test_formal_safety_passes.cpp`](../../tests/middleend/verification/test_formal_safety_passes.cpp) | `tests/middleend/verification/test_formal_safety_passes.cpp` | 13 | Unit tests for Category D Formal Safety & Analysis Passes: LivelockAnalysisPass, PriorityConflictPass, TimedInvariantsVerifierPass, EventQueueBoundPass. |
+| [`test_formal_safety_passes.cpp`](../../tests/middleend/verification/test_formal_safety_passes.cpp) | `tests/middleend/verification/test_formal_safety_passes.cpp` | 14 | Unit tests for Category D Formal Safety & Analysis Passes: LivelockAnalysisPass, PriorityConflictPass, TimedInvariantsVerifierPass, EventQueueBoundPass. |
 | [`test_guard_satisfiability.cpp`](../../tests/middleend/verification/test_guard_satisfiability.cpp) | `tests/middleend/verification/test_guard_satisfiability.cpp` | 9 | Unit tests for GuardSatisfiabilityPass interval analysis, dead guards, and mutual exclusivity. |
 | [`test_ltl_model_checker_extended.cpp`](../../tests/middleend/verification/test_ltl_model_checker_extended.cpp) | `tests/middleend/verification/test_ltl_model_checker_extended.cpp` | 0 | Unit tests for extended LTL model checking operators and EFSM interval integration. |
 | [`test_model_checker_reachability.cpp`](../../tests/middleend/verification/test_model_checker_reachability.cpp) | `tests/middleend/verification/test_model_checker_reachability.cpp` | 11 | Unit tests for FSM formal validator, graph reachability, livelock cycles, and EFSM interval analysis. |
@@ -155,7 +155,7 @@
 | [`test_pipeline_extensibility.cpp`](../../tests/integration/pipeline/test_pipeline_extensibility.cpp) | `tests/integration/pipeline/test_pipeline_extensibility.cpp` | 4 | Integration tests for pipeline extensibility, external Unix pipe filters, and dynamic plugin loading. |
 | [`test_cli_driver_errors.cpp`](../../tests/integration/test_cli_driver_errors.cpp) | `tests/integration/test_cli_driver_errors.cpp` | 14 | Comprehensive regression tests for controlled fsmc and fsm-opt driver failure contracts. |
 | [`test_cmake_integration.cpp`](../../tests/integration/test_cmake_integration.cpp) | `tests/integration/test_cmake_integration.cpp` | 0 | Integration test verifying the `fsm_target_sources` CMake build-system macro. |
-| [`test_differential_semantics.cpp`](../../tests/integration/test_differential_semantics.cpp) | `tests/integration/test_differential_semantics.cpp` | 10 | Differential verification suite comparing IrSimulator (reference oracle) against generated C++17 and C++20 FSMs. |
+| [`test_differential_semantics.cpp`](../../tests/integration/test_differential_semantics.cpp) | `tests/integration/test_differential_semantics.cpp` | 11 | Differential verification suite comparing IrSimulator (reference oracle) against generated C++17 and C++20 FSMs. |
 | [`test_fsm_opt_cli_options.cpp`](../../tests/integration/test_fsm_opt_cli_options.cpp) | `tests/integration/test_fsm_opt_cli_options.cpp` | 14 | Comprehensive verification suite for all fsm-opt command-line options. |
 | [`test_fsmc_cli_options.cpp`](../../tests/integration/test_fsmc_cli_options.cpp) | `tests/integration/test_fsmc_cli_options.cpp` | 27 | Comprehensive verification suite for all fsmc command-line options. |
 | [`test_golden_ir_invariance.cpp`](../../tests/integration/test_golden_ir_invariance.cpp) | `tests/integration/test_golden_ir_invariance.cpp` | 9 | Golden IR cross-format roundtrip and middle-end pass invariance test suite. |

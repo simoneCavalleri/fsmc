@@ -291,11 +291,11 @@ bool FsmGraphOps::is_well_formed(const FsmIr& ir, std::string& error) noexcept {
         return false;
     }
     for (const auto& tr : ir.transitions) {
-        if (!tr.source.empty() && ir.find_state(tr.source) == nullptr) {
+        if (!tr.source.empty() && ir.find_state(tr.source) == nullptr && !ir.is_choice_node(tr.source)) {
             error = "Transition source state '" + tr.source + "' not found in states";
             return false;
         }
-        if (!tr.target.empty() && ir.find_state(tr.target) == nullptr) {
+        if (!tr.target.empty() && ir.find_state(tr.target) == nullptr && !ir.is_choice_node(tr.target)) {
             error = "Transition target state '" + tr.target + "' not found in states";
             return false;
         }

@@ -10,9 +10,9 @@ using namespace fsm::ir;
 using namespace fsm::diagnostic;
 
 ModelChecker::ModelChecker(const FsmIr& ir) : ir_(ir) {
-    build_graph();
     EFSMIntervalAnalyzer analyzer(ir_);
     state_intervals_ = analyzer.compute_state_intervals();
+    build_graph();
 }
 
 ModelCheckResult ModelChecker::verify_property(const FormalProperty& prop) {
@@ -153,7 +153,10 @@ void ModelChecker::build_graph() {
         }
     }
 
+    EFSMIntervalAnalyzer interval_analyzer(ir_);
     for (const auto& t : ir_.transitions) {
+        std::string src = resolve_name(t.source, t.source_id);
+        std::string dst = resolve_name(t.target, t.target_id);
         if (t.guard.has_value()) {
             std::string g_eff = *t.guard;
             if (const auto* gm = ir_.find_guard(g_eff);
@@ -163,9 +166,12 @@ void ModelChecker::build_graph() {
             if (g_eff == "false" || g_eff == "0") {
                 continue;
             }
+            if (auto it_iv = state_intervals_.find(src); it_iv != state_intervals_.end()) {
+                if (interval_analyzer.is_guard_unsatisfiable(g_eff, it_iv->second)) {
+                    continue;
+                }
+            }
         }
-        std::string src = resolve_name(t.source, t.source_id);
-        std::string dst = resolve_name(t.target, t.target_id);
         if (!src.empty() && !dst.empty()) {
             GraphEdge edge;
             edge.target = dst;

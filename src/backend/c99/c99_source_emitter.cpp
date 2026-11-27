@@ -379,6 +379,7 @@ std::string emit_c99_source(const C99EmitPlan& plan) {
     }
 
     // Sampled step (anonymous non-timed transitions, inheriting composite ancestor transitions leaf-to-root)
+    bool has_completion_drain = false;
     {
         std::unordered_map<std::string, std::vector<const TransitionEdge*>> anon_direct;
         for (const auto& tr : processed.transitions) {
@@ -396,6 +397,66 @@ std::string emit_c99_source(const C99EmitPlan& plan) {
                     vec.insert(vec.end(), dit->second.begin(), dit->second.end());
                 }
             }
+        }
+        if (!anon_by_state.empty() && !events.empty()) {
+            has_completion_drain = true;
+            const std::unordered_set<std::string> no_attrs;
+            src << "static void " << ctx.prefix << "_drain_completions(" << ctx.prefix << "_fsm_t* fsm, const "
+                << ctx.prefix << "_in_ports_t* in_ports, " << ctx.prefix << "_out_ports_t* out_ports) {\n";
+            src << "    " << ctx.prefix << "_in_ports_t in_val;\n";
+            src << "    " << ctx.prefix << "_out_ports_t out_val;\n";
+            src << "    size_t comp_budget;\n";
+            src << "    if (fsm == NULL) {\n";
+            src << "        return;\n";
+            src << "    }\n";
+            src << "    memset(&in_val, 0, sizeof(in_val));\n";
+            src << "    memset(&out_val, 0, sizeof(out_val));\n";
+            src << "    if (in_ports != NULL) {\n";
+            src << "        in_val = *in_ports;\n";
+            src << "    }\n";
+            src << "    if (out_ports != NULL) {\n";
+            src << "        out_val = *out_ports;\n";
+            src << "    }\n";
+            src << "    (void)in_val;\n";
+            src << "    for (comp_budget = 0U; comp_budget < 64U; ++comp_budget) {\n";
+            src << "        " << ctx.prefix << "_state_t before_state = fsm->state;\n";
+            src << "        bool fired = false;\n";
+            src << "        switch (fsm->state) {\n";
+            for (const auto& st : processed.states) {
+                auto it = anon_by_state.find(st.name);
+                if (it == anon_by_state.end()) {
+                    continue;
+                }
+                src << "            case " << ctx.state_enums.at(st.name) << ":\n";
+                for (const auto* tr : it->second) {
+                    const std::string g_expr = resolve_guard_expr_c(*tr, processed, ctx, no_attrs);
+                    if (!g_expr.empty()) {
+                        src << "                if (" << g_expr << ") {\n";
+                        emit_transition_body_c(src, *tr, processed, ctx, no_attrs, "                    ", false, 0U,
+                                               st.name);
+                        src << "                    fired = true;\n";
+                        src << "                    break;\n";
+                        src << "                }\n";
+                    } else {
+                        emit_transition_body_c(src, *tr, processed, ctx, no_attrs, "                ", false, 0U,
+                                               st.name);
+                        src << "                fired = true;\n";
+                        src << "                break;\n";
+                    }
+                }
+                src << "                break;\n";
+            }
+            src << "            default:\n";
+            src << "                break;\n";
+            src << "        }\n";
+            src << "        if (!fired || fsm->state == before_state) {\n";
+            src << "            break;\n";
+            src << "        }\n";
+            src << "    }\n";
+            src << "    if (out_ports != NULL) {\n";
+            src << "        *out_ports = out_val;\n";
+            src << "    }\n";
+            src << "}\n\n";
         }
         src << ctx.prefix << "_status_t " << ctx.prefix << "_step(" << ctx.prefix << "_fsm_t* fsm, const " << ctx.prefix
             << "_in_ports_t* in_ports, " << ctx.prefix << "_out_ports_t* out_ports) {\n";
@@ -720,6 +781,12 @@ std::string emit_c99_source(const C99EmitPlan& plan) {
             }
             src << "        default:\n";
             src << "            break;\n";
+            src << "    }\n";
+        }
+
+        if (has_completion_drain) {
+            src << "    if (status == " << ctx.upper_prefix << "_STATUS_OK) {\n";
+            src << "        " << ctx.prefix << "_drain_completions(fsm, &in_val, &out_val);\n";
             src << "    }\n";
         }
 

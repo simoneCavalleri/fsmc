@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include "fsm/diagnostic/diagnostic_engine.hpp"
+#include "fsm/ir/fsm_graph_ops.hpp"
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/passes/boundary_action_fusion_pass.hpp"
 #include "fsm/middleend/passes/choice_inlining_pass.hpp"
@@ -1363,4 +1364,24 @@ TEST(StructuralLowering, HistoryLowering_MixedShallowAndDeepHistoryOnSameComposi
     EXPECT_TRUE(deep_retargeted);
     EXPECT_TRUE(shallow_targets_mid2);
     EXPECT_TRUE(deep_targets_leaf4);
+}
+
+/**
+ * @brief Regression (BUG-69): FsmGraphOps::is_well_formed accepts transitions whose source or target
+ * is a ChoiceNode in ir.choice_nodes (prior to ChoiceInliningPass).
+ */
+TEST(StructuralLowering, IsWellFormed_AcceptsChoiceNodeTransitionEndpoints) {
+    FsmIr ir;
+    ir.name = "ChoiceVerifyModel";
+    ir.initial_state = "Init";
+    ir.add_state("Init");
+    ir.add_state("High");
+    ir.add_state("Low");
+    ir.choice_nodes.emplace_back("RouteChoice");
+    ir.add_transition(TransitionEdge("Init", "RouteChoice", "EvEval"));
+    ir.add_transition(TransitionEdge("RouteChoice", "High", "", "x > 0"));
+    ir.add_transition(TransitionEdge("RouteChoice", "Low", "", "else"));
+
+    std::string err;
+    EXPECT_TRUE(FsmGraphOps::is_well_formed(ir, err)) << err;
 }

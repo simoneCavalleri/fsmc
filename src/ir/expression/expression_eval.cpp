@@ -39,6 +39,7 @@ std::optional<double> ExpressionAstNode::evaluate_numeric(const std::unordered_m
                 return 0.0;
             }
             return std::nullopt;
+        case ExpressionKind::EnumLiteral:
         case ExpressionKind::VariableRef:
         case ExpressionKind::PortRef:
         case ExpressionKind::EventParamRef: {
@@ -230,7 +231,6 @@ std::optional<double> ExpressionAstNode::evaluate_numeric(const std::unordered_m
                     return std::nullopt;
             }
         }
-        case ExpressionKind::EnumLiteral:
         case ExpressionKind::RawExpression:
             return std::nullopt;
     }

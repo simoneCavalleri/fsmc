@@ -11,6 +11,8 @@
 #include "fsm/backend/formal/sysml2_serializer.hpp"
 #include "fsm/frontend/formal/sysml2/sysml2_parser.hpp"
 #include "fsm/ir/fsm_ir.hpp"
+#include "fsm/ir/fsm_ir_deserializer.hpp"
+#include "fsm/ir/fsm_ir_serializer.hpp"
 #include "fsm/middleend/pass_manager.hpp"
 
 using namespace fsm::backend::formal;
@@ -361,6 +363,28 @@ package SeqPkg {
     EXPECT_EQ(std::get<SignalEmitOp>(act.instructions[1].op).signal_name, "EvOut");
     ASSERT_TRUE(std::holds_alternative<StoreOp>(act.instructions[2].op));
     EXPECT_EQ(std::get<StoreOp>(act.instructions[2].op).expression, "20");
+
+    // Regression (BUG-72): do_activity_action body survives both SysML v2 and IR JSON roundtrips
+    const std::string sysml_rt = Sysml2Serializer::serialize(model);
+    EXPECT_NE(sysml_rt.find("do action { assign x := x + 1; }"), std::string::npos) << sysml_rt;
+    FsmIr model_from_sysml;
+    fsm::diagnostic::DiagnosticEngine err2;
+    ASSERT_TRUE(parser.parse(sysml_rt, model_from_sysml, err2)) << err2.render_to_string();
+    const auto* active_s = model_from_sysml.find_state("Active");
+    ASSERT_NE(active_s, nullptr);
+    ASSERT_TRUE(active_s->do_activity_action.has_value());
+    ASSERT_EQ(active_s->do_activity_action->assignments.size(), 1u);
+    EXPECT_EQ(active_s->do_activity_action->assignments[0].target.name, "x");
+
+    const std::string ir_json = FsmIrSerializer::serialize_json(model);
+    FsmIr model_from_json;
+    std::string json_err;
+    ASSERT_TRUE(FsmIrDeserializer::deserialize_json(ir_json, model_from_json, json_err)) << json_err;
+    const auto* active_j = model_from_json.find_state("Active");
+    ASSERT_NE(active_j, nullptr);
+    ASSERT_TRUE(active_j->do_activity_action.has_value());
+    ASSERT_EQ(active_j->do_activity_action->assignments.size(), 1u);
+    EXPECT_EQ(active_j->do_activity_action->assignments[0].target.name, "x");
 }
 
 }  // namespace

@@ -266,6 +266,9 @@ TEST(SpscFsm, SeqlockSnapshotConsistency_AcrossMultiplePostAndProcessOneCycles_N
         EXPECT_EQ(snap2.counter1, cycle * 2);
         EXPECT_EQ(snap2.counter2, cycle * 2);
     }
+    // Regression (BUG-71): spsc_fsm exposes current_state_name() for API parity with fsm and thread_safe_fsm.
+    EXPECT_EQ(machine.current_state_name(), machine.state_name());
+    EXPECT_EQ(machine.current_state_name(), "StateIdle");
 }
 
 }  // namespace

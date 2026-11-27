@@ -782,11 +782,13 @@ bool MermaidParser::parse_transition_line(std::string_view line, FsmIr& model, s
         }
     }
 
-    if (!model.is_choice_node(src)) {
+    if (!model.is_choice_node(src) && model.find_state(src) == nullptr) {
         model.add_state(src, current_parent);
     }
     if (!model.is_choice_node(dst)) {
-        model.add_state(dst, current_parent);
+        if (model.find_state(dst) == nullptr) {
+            model.add_state(dst, current_parent);
+        }
         if (is_history) {
             if (auto* state = model.find_state_mut(dst)) {
                 state->has_history = true;

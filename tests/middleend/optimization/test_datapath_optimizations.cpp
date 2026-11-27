@@ -528,13 +528,11 @@ TEST(TransitionFusion, TransientIntermediateState_FusesTransitionsAndBypassesSta
     t1.guard_ast = GuardAstNode("x > 0");
     ir.add_transition(t1);
 
-    // Transition 2: s_trans -> s_end immediate (AnonymousTrigger) with guard G2 and action A2
+    // Transition 2: s_trans -> s_end immediate (AnonymousTrigger) unguarded with action A2
     TransitionEdge t2;
     t2.source_id = "s_trans";
     t2.target_id = "s_end";
     t2.trigger = AnonymousTrigger{};
-    t2.guard = "y < 10";
-    t2.guard_ast = GuardAstNode("y < 10");
     ActionSignature a2("act2");
     StoreOp op2;
     op2.target = LValueTarget("y");
@@ -561,14 +559,41 @@ TEST(TransitionFusion, TransientIntermediateState_FusesTransitionsAndBypassesSta
     ASSERT_TRUE(std::holds_alternative<SignalTrigger>(fused.trigger));
     EXPECT_EQ(std::get<SignalTrigger>(fused.trigger).signal_name, "EV1");
 
-    // Guard must be conjunction
+    // Guard from incoming transition is preserved
     ASSERT_TRUE(fused.guard.has_value());
     EXPECT_TRUE(fused.guard->find("x > 0") != std::string::npos);
-    EXPECT_TRUE(fused.guard->find("y < 10") != std::string::npos);
 
     // Action must chain both act1 and act2 instructions
     ASSERT_TRUE(fused.transition_action.has_value());
     EXPECT_EQ(fused.transition_action->instructions.size(), 2);
+}
+
+/**
+ * @brief Regression (BUG-66): TransitionFusionPass must NOT fuse or delete an intermediate state whose
+ * outgoing completion transition is guarded, because when the guard is false the machine must remain in Mid.
+ */
+TEST(TransitionFusion, GuardedCompletionTransition_PreservesIntermediateState) {
+    FsmIr ir;
+    ir.name = "GuardedCompModel";
+    ir.initial_state_id = "A";
+    ir.initial_state = "A";
+    ir.states.emplace_back("A", "A");
+    ir.states.emplace_back("Mid", "Mid");
+    ir.states.emplace_back("B", "B");
+
+    TransitionEdge t1("A", "Mid", "EvGo");
+    ir.add_transition(t1);
+
+    TransitionEdge t2("Mid", "B", "");
+    t2.trigger = AnonymousTrigger{};
+    t2.set_guard("x > 50");
+    ir.add_transition(t2);
+
+    DiagnosticEngine diag;
+    TransitionFusionPass pass;
+    EXPECT_TRUE(pass.run(ir, diag));
+    EXPECT_NE(ir.find_state("Mid"), nullptr);
+    EXPECT_EQ(ir.transitions.size(), 2U);
 }
 
 /**

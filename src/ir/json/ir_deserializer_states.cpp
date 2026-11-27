@@ -204,6 +204,17 @@ void parse_single_state_entry(const std::string& state_key, const JsonValue& sta
         if (!s_do.empty() && curr != nullptr) {
             curr->do_activity = s_do;
         }
+        if (const auto* do_act_val = state_data.get_child("do_activity_action");
+            do_act_val != nullptr && do_act_val->is_object() && curr != nullptr) {
+            ActionSignature sig = parse_action_signature_object(*do_act_val);
+            if (!sig.name.empty()) {
+                model.add_action(sig.name);
+                if (!curr->do_activity.has_value() || curr->do_activity->empty()) {
+                    curr->do_activity = sig.name;
+                }
+            }
+            curr->do_activity_action = std::move(sig);
+        }
 
         const auto* meta_obj = state_data.get_child("meta");
         if (meta_obj != nullptr && !meta_obj->is_object()) {

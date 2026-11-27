@@ -183,6 +183,12 @@ class EFSMIntervalAnalyzer {
      */
     std::unordered_map<std::string, std::unordered_map<std::string, Interval>> compute_state_intervals();
 
+    /**
+     * @brief Returns true if @p guard_expr is provably unsatisfiable under @p state_env.
+     */
+    [[nodiscard]] bool is_guard_unsatisfiable(std::string_view guard_expr,
+                                              const std::unordered_map<std::string, Interval>& state_env) const;
+
     static std::string strip_qualifier(const std::string& name);
     static std::string clean_number_literal(std::string s);
     static std::optional<Interval> parse_guard_domain(std::string_view expr, std::string_view var_name);

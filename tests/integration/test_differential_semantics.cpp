@@ -1135,4 +1135,214 @@ int main(void) {
 #endif
 }
 
+/**
+ * @brief Regression (BUG-65, BUG-67, BUG-70): Verify IrSimulator enum literal evaluation, struct field
+ * assignments/guards (v.x, v.y), and 3-way completion transition agreement (IrSimulator, C++17, Pure-C99)
+ * on guarded AnonymousTrigger with InPorts.
+ */
+TEST(DifferentialSemantics, EnumLiteralsStructFieldsAndGuardedCompletion_AgreeAcrossRuntimes) {
+    using namespace fsm::ir;
+
+    // 1. BUG-65: Enum literals in IrSimulator guards and assignments
+    {
+        FsmIr ir;
+        ir.name = "EnumSim";
+        ir.initial_state = "Init";
+        TypeDefinition op_mode("OpMode", TypeKind::Enum);
+        op_mode.literals.emplace_back("Off", 0);
+        op_mode.literals.emplace_back("Warmup", 1);
+        op_mode.literals.emplace_back("Auto", 2);
+        ir.add_type(op_mode);
+        ir.add_variable(VariableDefinition("cur_mode", DataType("OpMode"), "OpMode::Off"));
+        ir.add_variable(VariableDefinition("ok", DataType::int32(), "0"));
+        ir.add_state("Init");
+        ir.add_state("WrongState");
+        ir.add_state("WarmState");
+        ir.add_signal(SignalDefinition("EvStep1"));
+
+        TransitionEdge t_wrong("Init", "WrongState", "EvStep1");
+        t_wrong.set_guard("cur_mode == OpMode::Auto");
+        ActionSignature a_wrong("set_wrong");
+        a_wrong.assignments.emplace_back(LValueTarget("ok", LValueScope::Register), "-1");
+        t_wrong.transition_action = a_wrong;
+        ir.add_transition(t_wrong);
+
+        TransitionEdge t_ok("Init", "WarmState", "EvStep1");
+        t_ok.set_guard("cur_mode == OpMode::Off");
+        ActionSignature a_ok("set_warm");
+        a_ok.assignments.emplace_back(LValueTarget("cur_mode", LValueScope::Register), "OpMode::Warmup");
+        a_ok.assignments.emplace_back(LValueTarget("ok", LValueScope::Register), "1");
+        t_ok.transition_action = a_ok;
+        ir.add_transition(t_ok);
+
+        std::ostringstream log;
+        auto rep = IrSimulator::simulate_detailed(ir, "EvStep1\n", log);
+        EXPECT_EQ(rep.final_state, "WarmState");
+        EXPECT_EQ(static_cast<int>(rep.final_registers.at("cur_mode")), 1);
+        EXPECT_EQ(static_cast<int>(rep.final_registers.at("ok")), 1);
+    }
+
+    // 2. BUG-70: Struct field assignments & guards in IrSimulator (v.x, v.y tracked independently)
+    {
+        FsmIr ir;
+        ir.name = "StructSim";
+        ir.initial_state = "S0";
+        TypeDefinition vec2("Vec2", TypeKind::Struct);
+        vec2.fields.emplace_back("x", DataType::int32());
+        vec2.fields.emplace_back("y", DataType::int32());
+        ir.add_type(vec2);
+        ir.add_variable(VariableDefinition("v", DataType("Vec2")));
+        ir.add_state("S0");
+        ir.add_state("S1");
+        ir.add_state("Wrong");
+        ir.add_state("Good");
+        ir.add_signal(SignalDefinition("EvSet"));
+        ir.add_signal(SignalDefinition("EvCheck"));
+
+        TransitionEdge t1("S0", "S1", "EvSet");
+        ActionSignature a1("set_vec");
+        LValueTarget tx("v", LValueScope::Register);
+        tx.member_path.push_back("x");
+        LValueTarget ty("v", LValueScope::Register);
+        ty.member_path.push_back("y");
+        a1.assignments.emplace_back(tx, "10");
+        a1.assignments.emplace_back(ty, "20");
+        t1.transition_action = a1;
+        ir.add_transition(t1);
+
+        TransitionEdge t_bad("S1", "Wrong", "EvCheck");
+        t_bad.set_guard("v.x == 999 && v.y == 20");
+        ir.add_transition(t_bad);
+
+        TransitionEdge t_good("S1", "Good", "EvCheck");
+        t_good.set_guard("v.x == 10 && v.y == 20");
+        ir.add_transition(t_good);
+
+        std::ostringstream log;
+        auto rep = IrSimulator::simulate_detailed(ir, "EvSet\nEvCheck\n", log);
+        EXPECT_EQ(rep.final_state, "Good");
+        EXPECT_EQ(static_cast<int>(rep.final_registers.at("v.x")), 10);
+        EXPECT_EQ(static_cast<int>(rep.final_registers.at("v.y")), 20);
+    }
+
+    // 3. BUG-67: Guarded completion transition (AnonymousTrigger) across IrSimulator, C++17, and Pure-C99
+#if !defined(_WIN32)
+    {
+        using namespace fsm::backend::cpp;
+        FsmIr model;
+        model.name = "GuardedComp";
+        model.initial_state = "A";
+        model.add_port(PortDefinition("x", DataType::int32(), PortDirection::In));
+        model.add_variable(VariableDefinition("y", DataType::int32(), "0"));
+        model.add_state("A");
+        model.add_state("Mid");
+        model.add_state("B");
+        model.add_signal(SignalDefinition("EvGo"));
+
+        model.add_transition(TransitionEdge("A", "Mid", "EvGo"));
+        model.add_guard("x_gt_50", "x above 50", "x > 50", "x > 50");
+        TransitionEdge t_comp("Mid", "B", "");
+        t_comp.trigger = AnonymousTrigger{};
+        t_comp.set_guard("x_gt_50");
+        ActionSignature a_comp("set_y");
+        a_comp.assignments.emplace_back(LValueTarget("y", LValueScope::Register), "99");
+        t_comp.transition_action = a_comp;
+        model.add_transition(t_comp);
+
+        // IrSimulator: x=10 stays in Mid (y=0); x=80 auto-completes to B (y=99)
+        {
+            std::ostringstream log;
+            auto rep_low = IrSimulator::simulate_detailed(model, "EvGo {x=10}\n", log);
+            EXPECT_EQ(rep_low.final_state, "Mid");
+            EXPECT_EQ(static_cast<int>(rep_low.final_registers.at("y")), 0);
+
+            auto rep_hi = IrSimulator::simulate_detailed(model, "EvGo {x=80}\n", log);
+            EXPECT_EQ(rep_hi.final_state, "B");
+            EXPECT_EQ(static_cast<int>(rep_hi.final_registers.at("y")), 99);
+        }
+
+        const fs::path temp_dir = fs::temp_directory_path() / "fsmc_diff_guarded_comp";
+        fs::create_directories(temp_dir);
+
+        // C++17
+        GeneratorOptions opts;
+        opts.standalone = true;
+        opts.include_stubs = false;
+        {
+            std::ofstream(temp_dir / "gc.hpp") << CppGenerator::generate_header(model, opts);
+            std::ofstream(temp_dir / "main_cpp.cpp") << R"cpp(
+#include <cassert>
+#include "gc.hpp"
+                int main() {
+                    using namespace fsm_generated;
+                    {
+                        GuardedComp sm;
+                        GuardedCompInPorts in{};
+                        GuardedCompOutPorts out{};
+                        in.x = 10;
+                        sm.dispatch(EvGo{}, in, out);
+                        assert(sm.is_in<Mid>());
+                        assert(sm.registers().y == 0);
+                    }
+                    {
+                        GuardedComp sm;
+                        GuardedCompInPorts in{};
+                        GuardedCompOutPorts out{};
+                        in.x = 80;
+                        sm.dispatch(EvGo{}, in, out);
+                        assert(sm.is_in<B>());
+                        assert(sm.registers().y == 99);
+                    }
+                    return 0;
+                }
+            )cpp";
+        }
+        const std::string cxx_cmd = "c++ -std=c++17 -O2 -Wall -Wextra -Werror -I\"" + temp_dir.string() + "\" \"" +
+                                    (temp_dir / "main_cpp.cpp").string() + "\" -o \"" +
+                                    (temp_dir / "cpp_bin").string() + "\"";
+        ASSERT_EQ(std::system(cxx_cmd.c_str()), 0);
+        ASSERT_EQ(std::system(("\"" + (temp_dir / "cpp_bin").string() + "\"").c_str()), 0);
+
+        // Pure-C99
+        const auto c99 = fsm::backend::c99::C99Generator::generate(model);
+        {
+            std::ofstream(temp_dir / "guarded_comp.h") << c99.header;
+            std::ofstream(temp_dir / "guarded_comp.c") << c99.source;
+            std::ofstream(temp_dir / "main_c.c") << R"c(
+#include <assert.h>
+#include <string.h>
+#include "guarded_comp.h"
+int main(void) {
+    guarded_comp_fsm_t sm;
+    guarded_comp_in_ports_t in_p;
+    guarded_comp_out_ports_t out_p;
+    memset(&in_p, 0, sizeof(in_p));
+    memset(&out_p, 0, sizeof(out_p));
+    guarded_comp_init(&sm);
+    in_p.x = 10;
+    assert(guarded_comp_dispatch_ev_go(&sm, &in_p, &out_p) == GUARDED_COMP_STATUS_OK);
+    assert(guarded_comp_current_state(&sm) == GUARDED_COMP_STATE_MID);
+    assert(sm.regs.y == 0);
+
+    guarded_comp_init(&sm);
+    in_p.x = 80;
+    assert(guarded_comp_dispatch_ev_go(&sm, &in_p, &out_p) == GUARDED_COMP_STATUS_OK);
+    assert(guarded_comp_current_state(&sm) == GUARDED_COMP_STATE_B);
+    assert(sm.regs.y == 99);
+    return 0;
+}
+)c";
+        }
+        const std::string c99_cmd = "cc -std=c99 -O2 -Wall -Wextra -Werror -pedantic -I\"" + temp_dir.string() +
+                                    "\" \"" + (temp_dir / "guarded_comp.c").string() + "\" \"" +
+                                    (temp_dir / "main_c.c").string() + "\" -o \"" + (temp_dir / "c99_bin").string() +
+                                    "\"";
+        ASSERT_EQ(std::system(c99_cmd.c_str()), 0);
+        ASSERT_EQ(std::system(("\"" + (temp_dir / "c99_bin").string() + "\"").c_str()), 0);
+
+        fs::remove_all(temp_dir);
+    }
+#endif
+}
+
 }  // namespace

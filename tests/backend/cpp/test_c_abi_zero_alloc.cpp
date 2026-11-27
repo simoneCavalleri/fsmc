@@ -512,3 +512,33 @@ int main(void) {
 
     ASSERT_EQ(std::system(("\"" + bin.string() + "\"").c_str()), 0) << "C99 parity runner failed";
 }
+
+/**
+ * @brief Regression (BUG-63): Verify C-ABI `<prefix>_current_state()` reports the exact active leaf substate
+ * inside a composite state rather than masking it behind the composite parent via `is_in<Parent>()`.
+ */
+TEST(CAbiZeroAlloc, CompositeHierarchy_CurrentStateReportsExactActiveLeafSubstate) {
+    FsmIr ir;
+    ir.name = "CompAbiFsm";
+    ir.initial_state = "Outer";
+    ir.package = "comp_pkg";
+
+    auto& outer = ir.add_state("Outer");
+    outer.is_composite = true;
+    outer.initial_sub_state = "Sub1";
+    ir.add_state("Sub1", "Outer");
+    ir.add_state("Sub2", "Outer");
+    ir.add_state("Escaped");
+    ir.add_signal(SignalDefinition("EvNext"));
+    ir.add_signal(SignalDefinition("EvEscape"));
+    ir.add_transition(TransitionEdge("Sub1", "Sub2", "EvNext"));
+    ir.add_transition(TransitionEdge("Outer", "Escaped", "EvEscape"));
+
+    GeneratorOptions opts;
+    opts.standalone = true;
+    const auto c_bundle = CAbiGenerator::generate(ir, opts, "comp_fsm.hpp", "comp_c.h");
+
+    EXPECT_NE(c_bundle.source.find("sm->is_in_state<::comp_pkg::Outer>()"), std::string::npos);
+    EXPECT_NE(c_bundle.source.find("sm->is_in_state<::comp_pkg::Sub1>()"), std::string::npos);
+    EXPECT_EQ(c_bundle.source.find("sm->is_in<::comp_pkg::Outer>()"), std::string::npos);
+}

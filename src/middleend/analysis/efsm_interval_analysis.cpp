@@ -48,19 +48,63 @@ bool is_integer_symbol_in_ir(const FsmIr* ir, std::string_view var_name) {
     }
     std::string clean = EFSMIntervalAnalyzer::strip_qualifier(std::string(var_name));
     if (const auto* v = ir->find_variable(clean); v != nullptr) {
-        return v->type.is_integer();
+        return v->type.is_integer() || (!v->type.is_primitive() && ir->find_enum(v->type.custom_name()) != nullptr);
     }
     if (const auto* p = ir->find_port(clean); p != nullptr) {
-        return p->type.is_integer();
+        return p->type.is_integer() || (!p->type.is_primitive() && ir->find_enum(p->type.custom_name()) != nullptr);
     }
     for (const auto& sig : ir->signals) {
         for (const auto& attr : sig.attributes) {
             if (attr.name == clean) {
-                return attr.type.is_integer();
+                return attr.type.is_integer() ||
+                       (!attr.type.is_primitive() && ir->find_enum(attr.type.custom_name()) != nullptr);
             }
         }
     }
     return false;
+}
+
+std::optional<double> resolve_enum_literal_value(const FsmIr* ir, std::string_view tok) {
+    if (ir == nullptr || tok.empty()) {
+        return std::nullopt;
+    }
+    while (!tok.empty() && std::isspace(static_cast<unsigned char>(tok.front())) != 0) {
+        tok.remove_prefix(1);
+    }
+    while (!tok.empty() && std::isspace(static_cast<unsigned char>(tok.back())) != 0) {
+        tok.remove_suffix(1);
+    }
+    if (tok.empty()) {
+        return std::nullopt;
+    }
+    std::string_view enum_part;
+    std::string_view lit_part;
+    if (auto sep = tok.find("::"); sep != std::string_view::npos) {
+        enum_part = tok.substr(0, sep);
+        lit_part = tok.substr(sep + 2);
+    } else if (auto dot = tok.find('.'); dot != std::string_view::npos) {
+        enum_part = tok.substr(0, dot);
+        lit_part = tok.substr(dot + 1);
+    } else {
+        lit_part = tok;
+    }
+    for (const auto& td : ir->custom_types) {
+        if (!td.is_enum()) {
+            continue;
+        }
+        if (!enum_part.empty() && td.name != enum_part) {
+            continue;
+        }
+        int64_t next_val = 0;
+        for (const auto& ev : td.literals) {
+            const int64_t v = ev.value.value_or(next_val);
+            next_val = v + 1;
+            if (ev.name == lit_part) {
+                return static_cast<double>(v);
+            }
+        }
+    }
+    return std::nullopt;
 }
 
 using StateEnv = std::unordered_map<std::string, Interval>;
@@ -85,6 +129,12 @@ std::optional<Interval> eval_expr_interval(const ExpressionAstNode& node, const 
                 return Interval(v, v);
             }
             return std::nullopt;
+        case ExpressionKind::EnumLiteral: {
+            if (auto ev = resolve_enum_literal_value(g_active_ir, node.symbol); ev.has_value()) {
+                return Interval(*ev, *ev);
+            }
+            return std::nullopt;
+        }
         case ExpressionKind::VariableRef:
         case ExpressionKind::PortRef:
         case ExpressionKind::EventParamRef: {
@@ -97,6 +147,9 @@ std::optional<Interval> eval_expr_interval(const ExpressionAstNode& node, const 
             }
             if (auto it = env.find("payload." + stripped); it != env.end()) {
                 return it->second;
+            }
+            if (auto ev = resolve_enum_literal_value(g_active_ir, node.symbol); ev.has_value()) {
+                return Interval(*ev, *ev);
             }
             return std::nullopt;
         }
@@ -177,6 +230,8 @@ EFSMIntervalAnalyzer::compute_state_intervals() {
     for (const auto& var : ir_.variables) {
         if (auto val = parse_double(var.initial_value); val.has_value()) {
             init_env[var.name] = Interval(*val, *val);
+        } else if (auto ev = resolve_enum_literal_value(&ir_, var.initial_value); ev.has_value()) {
+            init_env[var.name] = Interval(*ev, *ev);
         } else {
             init_env[var.name] = Interval();
         }
@@ -185,6 +240,10 @@ EFSMIntervalAnalyzer::compute_state_intervals() {
     for (const auto& port : ir_.ports) {
         if (auto val = parse_double(port.default_value); val.has_value()) {
             init_env[port.name] = Interval(*val, *val);
+            continue;
+        }
+        if (auto ev = resolve_enum_literal_value(&ir_, port.default_value); ev.has_value()) {
+            init_env[port.name] = Interval(*ev, *ev);
             continue;
         }
         if (port.min_value.has_value() || port.max_value.has_value()) {
@@ -305,6 +364,9 @@ EFSMIntervalAnalyzer::compute_state_intervals() {
             }
 
             // Propagate variable and port assignments across the transition
+            if (t.guard.has_value() && is_guard_unsatisfiable(*t.guard, curr_env)) {
+                continue;
+            }
             auto next_env = curr_env;
             if (t.guard.has_value() && !t.guard->empty() && *t.guard != "else" && *t.guard != "default" &&
                 *t.guard != "otherwise") {
@@ -382,6 +444,35 @@ EFSMIntervalAnalyzer::compute_state_intervals() {
     }
 
     return state_envs;
+}
+
+bool EFSMIntervalAnalyzer::is_guard_unsatisfiable(std::string_view guard_expr,
+                                                  const std::unordered_map<std::string, Interval>& state_env) const {
+    ScopedActiveIr active_ir_guard(&ir_);
+    std::string g_str = ir_.resolve_guard_expression(guard_expr);
+    if (g_str.empty() || g_str == "true" || g_str == "else" || g_str == "default" || g_str == "otherwise") {
+        return false;
+    }
+    if (g_str == "false" || g_str == "0") {
+        return true;
+    }
+    if (has_top_level_or(g_str)) {
+        return false;
+    }
+    for (const auto& [var_name, iv] : state_env) {
+        Interval effective_iv = iv;
+        if (const auto* in_p = ir_.find_port(var_name); in_p != nullptr && in_p->is_in()) {
+            double lo = in_p->min_value.value_or(-std::numeric_limits<double>::infinity());
+            double hi = in_p->max_value.value_or(std::numeric_limits<double>::infinity());
+            effective_iv = Interval(lo, hi);
+        }
+        if (auto guard_iv = parse_guard_domain(g_str, var_name); guard_iv.has_value()) {
+            if (effective_iv.intersect_with(*guard_iv).is_empty()) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 std::vector<EFSMAnalysisFinding> EFSMIntervalAnalyzer::analyze(DiagnosticEngine& diag) {
@@ -728,40 +819,48 @@ std::optional<Interval> EFSMIntervalAnalyzer::parse_guard_domain(std::string_vie
                     }
                     num_len++;
                 }
+                std::optional<double> c_opt;
                 if (has_digits) {
-                    if (auto c_opt = parse_double(rem.substr(0, num_len)); c_opt.has_value()) {
-                        const double c = *c_opt;
-                        const bool is_int_exact =
-                            is_integer_symbol_in_ir(g_active_ir, var_name) && (std::floor(c) == c);
-                        const double strict_step = is_int_exact ? 1.0 : 1e-6;
-                        Interval clause_iv;
-                        bool valid_clause = true;
-                        switch (op) {
-                            case Op::Gte:
-                                clause_iv = Interval(c, std::numeric_limits<double>::infinity());
-                                break;
-                            case Op::Gt:
-                                clause_iv = Interval(c + strict_step, std::numeric_limits<double>::infinity());
-                                break;
-                            case Op::Lte:
-                                clause_iv = Interval(-std::numeric_limits<double>::infinity(), c);
-                                break;
-                            case Op::Lt:
-                                clause_iv = Interval(-std::numeric_limits<double>::infinity(), c - strict_step);
-                                break;
-                            case Op::Eq:
-                                clause_iv = Interval(c, c);
-                                break;
-                            default:
-                                valid_clause = false;
-                                break;
-                        }
-                        if (valid_clause) {
-                            if (!combined_iv.has_value()) {
-                                combined_iv = clause_iv;
-                            } else {
-                                combined_iv = combined_iv->intersect_with(clause_iv);
-                            }
+                    c_opt = parse_double(rem.substr(0, num_len));
+                } else if (!rem.empty() && (std::isalpha(static_cast<unsigned char>(rem[0])) != 0 || rem[0] == '_')) {
+                    size_t id_len = 0;
+                    while (id_len < rem.size() && (std::isalnum(static_cast<unsigned char>(rem[id_len])) != 0 ||
+                                                   rem[id_len] == '_' || rem[id_len] == ':' || rem[id_len] == '.')) {
+                        id_len++;
+                    }
+                    c_opt = resolve_enum_literal_value(g_active_ir, rem.substr(0, id_len));
+                }
+                if (c_opt.has_value()) {
+                    const double c = *c_opt;
+                    const bool is_int_exact = is_integer_symbol_in_ir(g_active_ir, var_name) && (std::floor(c) == c);
+                    const double strict_step = is_int_exact ? 1.0 : 1e-6;
+                    Interval clause_iv;
+                    bool valid_clause = true;
+                    switch (op) {
+                        case Op::Gte:
+                            clause_iv = Interval(c, std::numeric_limits<double>::infinity());
+                            break;
+                        case Op::Gt:
+                            clause_iv = Interval(c + strict_step, std::numeric_limits<double>::infinity());
+                            break;
+                        case Op::Lte:
+                            clause_iv = Interval(-std::numeric_limits<double>::infinity(), c);
+                            break;
+                        case Op::Lt:
+                            clause_iv = Interval(-std::numeric_limits<double>::infinity(), c - strict_step);
+                            break;
+                        case Op::Eq:
+                            clause_iv = Interval(c, c);
+                            break;
+                        default:
+                            valid_clause = false;
+                            break;
+                    }
+                    if (valid_clause) {
+                        if (!combined_iv.has_value()) {
+                            combined_iv = clause_iv;
+                        } else {
+                            combined_iv = combined_iv->intersect_with(clause_iv);
                         }
                     }
                 }

@@ -355,9 +355,30 @@ void FsmIr::add_type(TypeDefinition type) {
 
 StateNode& FsmIr::add_or_get_state(const std::string& state_name, const std::string& parent_fqn, StateKind kind) {
     const std::string actual_parent = (parent_fqn == state_name) ? "" : parent_fqn;
+    auto is_ancestor_of = [&](const std::string& candidate_ancestor, const std::string& descendant) -> bool {
+        if (candidate_ancestor.empty() || descendant.empty()) {
+            return false;
+        }
+        std::string cur = descendant;
+        std::size_t depth = 0;
+        while (!cur.empty() && depth++ < 64) {
+            if (cur == candidate_ancestor) {
+                return true;
+            }
+            const auto* st = find_state_by_name(cur);
+            if (st == nullptr || st->parent_state.empty()) {
+                break;
+            }
+            cur = st->parent_state;
+        }
+        return false;
+    };
     for (auto& s : states) {
-        if (s.name == state_name && (actual_parent.empty() || s.parent_state.empty() ||
-                                     s.parent_state == actual_parent || s.fqn == actual_parent + "." + state_name)) {
+        if (s.name != state_name) {
+            continue;
+        }
+        if (actual_parent.empty() || s.parent_state.empty() || s.parent_state == actual_parent ||
+            s.fqn == actual_parent + "." + state_name) {
             if (!actual_parent.empty() && s.parent_state.empty()) {
                 s.parent_state = actual_parent;
                 auto* parent = find_state_by_fqn(actual_parent);
@@ -375,6 +396,35 @@ StateNode& FsmIr::add_or_get_state(const std::string& state_name, const std::str
                 } else {
                     s.fqn = actual_parent + "." + state_name;
                 }
+            }
+            return s;
+        }
+        // Existing state is already nested deeper inside actual_parent: reuse it without duplicating.
+        if (is_ancestor_of(actual_parent, s.parent_state)) {
+            return s;
+        }
+        // Existing state was previously referenced at an outer ancestor scope and is now explicitly nested deeper:
+        // reparent it cleanly instead of creating a duplicate StateNode.
+        if (is_ancestor_of(s.parent_state, actual_parent)) {
+            if (auto* old_parent = find_state_by_name(s.parent_state)) {
+                auto& ch = old_parent->children_ids;
+                ch.erase(std::remove(ch.begin(), ch.end(), s.id), ch.end());
+            }
+            s.parent_state = actual_parent;
+            auto* new_parent = find_state_by_fqn(actual_parent);
+            if (new_parent == nullptr) {
+                new_parent = find_state_by_name(actual_parent);
+            }
+            if (new_parent != nullptr) {
+                s.fqn = new_parent->fqn + "." + state_name;
+                s.parent_id = new_parent->id;
+                new_parent->children_ids.push_back(s.id);
+                new_parent->is_composite = true;
+                if (new_parent->kind == StateKind::Atomic) {
+                    new_parent->kind = StateKind::Composite;
+                }
+            } else {
+                s.fqn = actual_parent + "." + state_name;
             }
             return s;
         }

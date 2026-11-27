@@ -52,7 +52,7 @@ inline void print_opt_help(const char* prog_name) {
         << "       " << prog_name << " [OPTIONS] <model_file>\n\n"
         << "Input & Output Options:\n"
         << "  -i, --input <file>        Input model or IR file (.sysml, .puml, .mmd, .xmi, .scxml, .json, .dot, .sfx, "
-           ".smv, .xml)\n"
+           ".slx, .smv, .xml)\n"
         << "  -o, --output <file>       Output file path (default: stdout)\n"
         << "  --format <fmt>            Override parser format (sysml2, plantuml, mermaid, cameo, scxml, json, dot, "
            "stateflow, smv)\n"

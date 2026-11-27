@@ -197,24 +197,13 @@ bool TransitionFusionPass::run(FsmIr& ir, DiagnosticEngine& diag) {
                 continue;
             }
 
-            // Do not fuse in_edge (A -> B) with a guarded out_edge (B -> C [g2]) if in_edge or B entry has side
-            // effects/actions
+            // Do not fuse a guarded completion transition (Mid --[g2]--> B): when !g2 holds, the machine must
+            // enter and remain in Mid rather than staying stuck in A.
             bool out_is_guarded =
                 (out_edge.guard.has_value() && !out_edge.guard->empty() && *out_edge.guard != "true") ||
                 (out_edge.guard_ast.has_value() && out_edge.guard_ast->to_string() != "true");
             if (out_is_guarded) {
-                bool has_pre_guard_actions = !state.entry_actions.empty();
-                for (std::size_t in_idx : incoming_indices) {
-                    const auto& in_edge = ir.transitions[in_idx];
-                    if ((in_edge.transition_action.has_value() && !in_edge.transition_action->empty()) ||
-                        (in_edge.condition_action.has_value() && !in_edge.condition_action->empty())) {
-                        has_pre_guard_actions = true;
-                        break;
-                    }
-                }
-                if (has_pre_guard_actions) {
-                    continue;
-                }
+                continue;
             }
 
             std::string mid_state_id = state.id;

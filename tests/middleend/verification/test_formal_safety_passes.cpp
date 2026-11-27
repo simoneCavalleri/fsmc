@@ -10,6 +10,7 @@
 #include "fsm/ir/fsm_ir.hpp"
 #include "fsm/middleend/analysis/event_queue_bound_pass.hpp"
 #include "fsm/middleend/analysis/livelock_analysis_pass.hpp"
+#include "fsm/middleend/analysis/model_checker.hpp"
 #include "fsm/middleend/analysis/priority_conflict_pass.hpp"
 #include "fsm/middleend/analysis/timed_invariants_verifier_pass.hpp"
 #include "fsm/middleend/pass_manager.hpp"
@@ -548,4 +549,38 @@ TEST(EventQueueBound, DeferredEventsAndSignalEmits_CalculatesSafeCapacityPowerOf
     // max_deferred = 3, max_emits = 2 -> bound = 3 + 2 + 2 = 7 -> rounded up to power of two: 8
     ASSERT_TRUE(ir.attributes.count("static_event_queue_capacity"));
     EXPECT_EQ(ir.attributes["static_event_queue_capacity"], "8");
+}
+
+/**
+ * @brief Regression (BUG-68): EFSMIntervalAnalyzer and ModelChecker resolve Enum literal values and prune
+ * provably unsatisfiable enum-guarded transitions instead of reporting false-positive LTL violations.
+ */
+TEST(FormalModelChecker, ConstantEnumGuardUnsatisfiable_NoFalsePositiveViolation) {
+    FsmIr ir;
+    ir.name = "VerifyEnum";
+    ir.initial_state = "Safe";
+
+    TypeDefinition mode_td("Mode", TypeKind::Enum);
+    mode_td.literals.emplace_back("Off", 0);
+    mode_td.literals.emplace_back("Armed", 1);
+    mode_td.literals.emplace_back("Active", 2);
+    ir.add_type(mode_td);
+
+    ir.add_variable(VariableDefinition("mode", DataType("Mode"), "Mode::Off"));
+    ir.add_state("Safe");
+    ir.add_state("PrematureFire");
+    ir.add_signal(SignalDefinition("EvTryFire"));
+
+    TransitionEdge t("Safe", "PrematureFire", "EvTryFire");
+    t.set_guard("mode == Mode::Armed");
+    ir.add_transition(t);
+
+    FormalProperty prop;
+    prop.name = "NeverPremature";
+    prop.raw_formula = "G (state != PrematureFire)";
+    prop.ast = PropertyAstNode::parse(prop.raw_formula);
+
+    ModelChecker mc(ir);
+    const auto res = mc.verify_property(prop);
+    EXPECT_TRUE(res.passed);
 }

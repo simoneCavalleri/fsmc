@@ -147,10 +147,76 @@ bool eval_numeric_predicate(std::string_view expr, const std::unordered_map<std:
         }
     }
 
+    auto resolve_enum_const = [&](const std::string& tok, double& out_val) -> bool {
+        if (model == nullptr) {
+            return false;
+        }
+        auto sep = tok.find("::");
+        std::string_view enum_part;
+        std::string_view lit_part;
+        if (sep != std::string::npos) {
+            enum_part = std::string_view(tok).substr(0, sep);
+            lit_part = std::string_view(tok).substr(sep + 2);
+        } else if (auto dot = tok.find('.'); dot != std::string::npos) {
+            enum_part = std::string_view(tok).substr(0, dot);
+            lit_part = std::string_view(tok).substr(dot + 1);
+        } else {
+            lit_part = tok;
+        }
+        for (const auto& td : model->custom_types) {
+            if (!td.is_enum()) {
+                continue;
+            }
+            if (!enum_part.empty() && td.name != enum_part) {
+                continue;
+            }
+            int64_t next_val = 0;
+            for (const auto& ev : td.literals) {
+                const int64_t v = ev.value.value_or(next_val);
+                next_val = v + 1;
+                if (ev.name == lit_part) {
+                    out_val = static_cast<double>(v);
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+
     auto ast = ExpressionAstNode::parse(s);
     if (ast.kind != ExpressionKind::RawExpression) {
-        if (auto b = ast.evaluate_boolean(env); b.has_value()) {
-            return *b;
+        bool has_enums = false;
+        if (model != nullptr) {
+            for (const auto& td : model->custom_types) {
+                if (td.is_enum()) {
+                    has_enums = true;
+                    break;
+                }
+            }
+        }
+        if (has_enums) {
+            std::unordered_map<std::string, double> eval_env = env;
+            for (const auto& td : model->custom_types) {
+                if (!td.is_enum()) {
+                    continue;
+                }
+                int64_t next_val = 0;
+                for (const auto& ev : td.literals) {
+                    const int64_t v = ev.value.value_or(next_val);
+                    next_val = v + 1;
+                    const double val = static_cast<double>(v);
+                    eval_env.try_emplace(td.name + "::" + ev.name, val);
+                    eval_env.try_emplace(td.name + "." + ev.name, val);
+                    eval_env.try_emplace(ev.name, val);
+                }
+            }
+            if (auto b = ast.evaluate_boolean(eval_env); b.has_value()) {
+                return *b;
+            }
+        } else {
+            if (auto b = ast.evaluate_boolean(env); b.has_value()) {
+                return *b;
+            }
         }
     }
 
@@ -165,6 +231,9 @@ bool eval_numeric_predicate(std::string_view expr, const std::unordered_map<std:
         }
         if (auto it = env.find(tok); it != env.end()) {
             out_val = it->second;
+            return true;
+        }
+        if (resolve_enum_const(tok, out_val)) {
             return true;
         }
         if (auto dot = tok.rfind('.'); dot != std::string::npos) {
